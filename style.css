@@ -23,7 +23,7 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     font-size: 1.6rem !important;
     border-bottom: 1px solid #EBECEF !important;
     padding-bottom: 12px !important;
-    margin-bottom: 24px !important;
+    margin-bottom: 15px !important; /* 少し間隔を詰める */
 }
 .block-container h1::before {
     content: '';
@@ -34,6 +34,15 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     margin-right: 10px;
     vertical-align: middle;
     border-radius: 2px;
+}
+
+/* ★ サブタイトル（メニューを選択してください等）の改行・デザイン調整 ★ */
+.block-container h3 {
+    color: #555555 !important; /* 少し優しいグレーに */
+    font-size: 1.1rem !important; /* スマホでも1行に収まるサイズ */
+    font-weight: 500 !important;
+    word-break: keep-all !important; /* 単語の途中で変な改行をさせない魔法 */
+    margin-bottom: 24px !important;
 }
 
 /* メッセージ（Status/Success/Error）を画面最上部に固定 */
@@ -50,35 +59,34 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
 }
 
 /* ★ 一般的なボタン（TOP画面のメニューボタンをスタイリッシュに） ★ */
-/* TOP画面のボタンだけを狙うため、親要素や配置で特定する */
 div.stHorizontalBlock > div.stColumn div.stButton > button {
-    height: 6em !important; /* 高さを出して存在感を */
-    font-size: 1.2rem !important; /* 文字を少し大きく */
-    border-radius: 12px !important; /* 角丸を大きくしてモダンに */
-    border: 2px solid #D1D5DB !important; /* 枠線を少し太く */
+    height: 6em !important; 
+    font-size: 1.1rem !important; /* スマホでも綺麗に収まるように微調整 */
+    border-radius: 12px !important; 
+    border: 2px solid #D1D5DB !important; 
     background-color: #FFFFFF !important;
     color: #111111 !important;
     font-weight: 600 !important;
-    text-align: center !important; /* 中央揃え */
+    text-align: center !important; 
     justify-content: center !important;
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important; /* アイコンと文字の間隔 */
-    box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important; /* 柔らかい影 */
-    transition: all 0.3s ease !important; /* スムーズなアニメーション */
+    gap: 10px !important; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important; 
+    transition: all 0.3s ease !important; 
 }
 
 /* ホバー時の設定（TOP画面） */
 div.stHorizontalBlock > div.stColumn div.stButton > button:hover {
-    border-color: #00B900 !important; /* LINE Greenの枠線 */
-    color: #00B900 !important; /* 文字も緑に */
-    box-shadow: 0 6px 12px rgba(0,185,0,0.15) !important; /* 影を大きくして浮いた感じに */
-    transform: translateY(-3px) !important; /* 少し上に浮かせる */
+    border-color: #00B900 !important; 
+    color: #00B900 !important; 
+    box-shadow: 0 6px 12px rgba(0,185,0,0.15) !important; 
+    transform: translateY(-3px) !important; 
 }
 
 /* 押した時の反応（TOP画面） */
 div.stHorizontalBlock > div.stColumn div.stButton > button:active {
-    transform: translateY(-1px) !important; /* 少し下げる */
+    transform: translateY(-1px) !important; 
     box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
 }
 
@@ -126,7 +134,7 @@ div.stButton > button:has(div p:contains("クラウド保存")):hover {
     color: #111111 !important; 
     font-weight: 600 !important;
 }
-h2, h3, .subheader {
+h2, .subheader {
     color: #111111 !important; 
 }
 
