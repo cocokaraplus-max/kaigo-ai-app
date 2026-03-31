@@ -25,36 +25,36 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定（Secrets） ---
+# --- 2. 接続設定（Secretsから取得） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓")
 
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    st.sidebar.success("✅ 接続完了")
+    st.sidebar.success("✅ システム接続完了")
 except Exception as e:
-    st.sidebar.error("❌ 設定エラー")
+    st.sidebar.error("❌ 接続エラー：Secretsを確認してください")
     st.stop()
 
 # --- 3. メイン画面：ケース記録入力 ---
-st.title("📓 AIケース記録（日付指定）")
+st.title("📓 AIケース記録システム")
 
-# 利用者名と日付の入力
-col_name, col_date = st.columns([2, 1])
-with col_name:
-    user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
-with col_date:
-    # 日付指定（初期値は今日）
-    target_date = st.date_input("記録対象日", value=date.today())
+# 1. 利用者名
+user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
 
-# 音声入力
-st.subheader("🎙️ 音声で様子を記録")
+# 2. 日付指定（カレンダー）
+# 初期値はNone（未入力状態）に設定したいところですが、Streamlitの仕様上、
+# 視覚的に分かりやすく「今日」をデフォルトにし、変更可能にします。
+target_date = st.date_input("記録対象日（空欄なら今日として処理されます）", value=date.today())
+
+# 3. 音声入力セクション
+st.subheader("🎙️ 音声で入力する")
 audio_value = st.audio_input("マイクをタップして話してください")
 
-# AI文章作成
+# AI解析実行
 if audio_value:
-    if st.button("AI報告文を生成"):
-        with st.spinner("AI作成中..."):
+    if st.button("音声から文章を生成"):
+        with st.spinner("AIがプロの文章に変換中..."):
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     f.write(audio_value.read())
@@ -63,48 +63,57 @@ if audio_value:
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 sample_file = genai.upload_file(path=temp_path)
                 
-                # 日付を文章に含める
-                formatted_date = target_date.strftime("%Y年%m月%d日")
+                # プロンプト（指示文）
                 prompt = f"""
-                あなたはプロの介護職です。{formatted_date}のケース記録を作成してください。
-                利用者名：{user_name}
-                音声内容：(添付ファイル)
+                あなたは優秀な介護スタッフです。以下の音声内容から、プロフェッショナルな「ケース記録」を作成してください。
+                対象者：{user_name}
+                日付：{target_date.strftime('%Y年%m月%d日')}
                 
                 【ルール】
-                ・ケアマネジャーや家族が読むことを想定した丁寧な敬語。
-                ・専門用語を交え、客観的な事実を中心に300文字程度で作成。
+                ・丁寧な敬語（～されました、～の様子です）を使用。
+                ・専門用語を適切に使い、客観的な事実を中心にまとめる。
+                ・300文字程度。
                 """
                 
                 response = model.generate_content([sample_file, prompt])
-                st.session_state["case_result"] = response.text
+                st.session_state["edit_content"] = response.text
                 os.remove(temp_path)
                 
             except Exception as e:
-                st.error(f"解析失敗: {e}")
+                st.error(f"AI解析エラー: {e}")
 
-# 生成結果の表示と保存
 st.divider()
-final_report = st.text_area("生成された記録（修正可能）", 
-                            value=st.session_state.get("case_result", ""), 
-                            height=300)
 
-if st.button("クラウドに保存"):
-    if user_name and final_report:
-        # 保存するデータの作成
-        # 指定された日付をISOフォーマット（YYYY-MM-DD）にして保存
-        data = {
+# 4. 手入力・修正セクション
+st.subheader("📝 記録内容の確認・手入力")
+# 音声解析結果が入るが、手動で書き換えたり最初から手入力も可能
+final_content = st.text_area(
+    "こちらに直接入力・修正が可能です", 
+    value=st.session_state.get("edit_content", ""), 
+    height=300,
+    placeholder="音声入力するか、ここに直接記録を書いてください..."
+)
+
+# 5. 保存実行
+if st.button("クラウド(Supabase)に保存"):
+    if user_name and final_content:
+        # 日付が選択されているか、デフォルト（今日）かを確認して保存
+        save_date = target_date.isoformat() if target_date else date.today().isoformat()
+        
+        record_data = {
             "user_name": user_name,
-            "content": final_report,
+            "content": final_content,
             "category": "ケース記録",
-            "created_at": target_date.isoformat() 
+            "created_at": save_date
         }
+        
         try:
-            # Supabaseのrecordsテーブルへ挿入
-            supabase.table("records").insert(data).execute()
-            st.success(f"✅ {target_date.strftime('%m/%d')}の記録として保存しました！")
-            if "case_result" in st.session_state:
-                del st.session_state["case_result"]
+            supabase.table("records").insert(record_data).execute()
+            st.success(f"✅ {save_date} の記録として正常に保存されました。")
+            # 保存後は入力欄をクリアするためにセッションを削除
+            if "edit_content" in st.session_state:
+                del st.session_state["edit_content"]
         except Exception as e:
-            st.error(f"保存失敗: {e}")
+            st.error(f"保存エラー: {e}")
     else:
-        st.warning("名前と内容を入力してください。")
+        st.warning("「利用者名」と「記録内容」を入力してください。")
