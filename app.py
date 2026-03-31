@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+import tempfile
 import os
 import pandas as pd
 from datetime import datetime, date
@@ -12,7 +13,7 @@ import time
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
-# --- 1. 接続設定とUIカスタム ---
+# --- 1. UIカスタム（メッセージ最上部固定 & スマホボタンフロート） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
@@ -21,7 +22,7 @@ st.markdown("""
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* ★ メッセージ（Status/Success/Error）を画面最上部に固定 ★ */
+/* メッセージを画面最上部に固定 */
 [data-testid="stNotification"] {
     position: fixed !important;
     top: 10px !important;
@@ -31,16 +32,6 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     z-index: 1000000 !important;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
     border-radius: 10px !important;
-}
-
-/* TOP画面のメニューボタン */
-div.stButton > button.top-menu-btn {
-    height: 8em !important;
-    font-size: 1.5rem !important;
-    border-radius: 20px !important;
-    background-color: #f0f2f6 !important;
-    color: #31333F !important;
-    border: 2px solid #d1d5db !important;
 }
 
 /* スマホ用：保存ボタンを右下固定 */
@@ -62,22 +53,20 @@ div.stButton > button.top-menu-btn {
 </style>
 """, unsafe_allow_html=True)
 
-# Supabase & Gemini 接続
+# 接続設定
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except Exception as e:
-    st.error("❌ 接続エラー：APIキーを確認してください")
+    st.error("❌ 接続エラー：SecretsのAPIキー設定を確認してください")
     st.stop()
 
-# 利用者リスト取得
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
         return sorted(list(set([r['user_name'] for r in res.data if r['user_name']]))) if res.data else []
     except: return []
 
-# セッション状態
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "form_id" not in st.session_state: st.session_state["form_id"] = 0
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
@@ -121,28 +110,17 @@ elif st.session_state["page"] == "input":
 
         st.subheader("🎙️ 音声入力")
         audio_value = st.audio_input("マイクをタップして話してください", key=f"a_{fid}")
-        
-        # --- 💡 AI文章生成ロジックの改善 ---
         if audio_value:
             if st.button("✨ AIで文章にする"):
                 with st.spinner("文章を作成中..."):
                     try:
-                        # 安定版の1.5-flashモデルを使用
                         model = genai.GenerativeModel("gemini-1.5-flash")
-                        
-                        # 音声データをファイル保存せずに、直接メモリからAIへ送信
                         audio_data = {"mime_type": "audio/wav", "data": audio_value.read()}
-                        prompt = f"{user_name}さんの介護記録を簡潔な申し送り形式で作成してください。"
-                        
-                        # 生成実行
+                        prompt = f"{user_name}さんの介護記録を簡潔に作成してください。"
                         response = model.generate_content([audio_data, prompt])
-                        
-                        # 成功したらテキストエリアに反映
                         st.session_state["edit_content"] = response.text
                         st.rerun()
-                        
                     except Exception as e:
-                        # エラーが起きた場合は詳細を画面最上部に表示
                         st.error(f"❌ AI生成エラー: {e}")
 
     with col2:
@@ -150,7 +128,6 @@ elif st.session_state["page"] == "input":
         final_content = st.text_area("修正があればここを書き換えてください", value=st.session_state["edit_content"], height=300, key=f"t_{fid}")
         btn_save = st.button("💾 クラウド保存")
 
-    # 保存処理
     if btn_save:
         if user_name:
             st.info("⏳ クラウドへ保存中...")
@@ -169,7 +146,7 @@ elif st.session_state["page"] == "input":
                 }
                 supabase.table("records").insert(record_data).execute()
                 
-                st.success(f"✅ 【{user_name}様】の記録を正常に保存しました！")
+                st.success(f"✅ 【{user_name}様】の記録を保存しました！")
                 time.sleep(1.8)
                 
                 st.session_state["edit_content"] = ""
