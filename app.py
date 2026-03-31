@@ -26,17 +26,25 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定とUI非表示設定 ---
+# --- 2. 接続設定とUI絶対非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# ▼▼▼ Streamlitのロゴやメニューを隠す魔法のCSS ▼▼▼
+# ▼▼▼ あらゆるバージョンのStreamlit UIを根こそぎ消し去る最強のCSS ▼▼▼
 hide_streamlit_style = """
 <style>
+/* ヘッダー全体（上の余白やメニュー）を完全に消す */
+[data-testid="stHeader"] {display: none !important;}
+/* 右上のツールバー（開発者マーク、王冠、Deploy等）を消す */
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="manage-app-button"] {display: none !important;}
+/* Deployボタンを消す */
+[data-testid="stAppDeployButton"] {display: none !important;}
+.stDeployButton {display: none !important;}
+/* 古いメニュークラスも念のため消す */
 #MainMenu {visibility: hidden !important;}
+/* フッター（Made with Streamlit）を消す */
 footer {visibility: hidden !important;}
-.stDeployButton {display:none !important;}
-header {visibility: hidden !important;}
-/* 右下の開発者アイコン（王冠とアバター）を強制的に消す試み */
+/* 右下のアバターやバッジも徹底的に消す */
 .viewerBadge_container {display: none !important;}
 .viewerBadge_link {display: none !important;}
 [data-testid="viewerBadge"] {display: none !important;}
