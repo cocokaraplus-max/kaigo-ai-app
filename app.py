@@ -13,7 +13,7 @@ import time
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
-# --- 1. 接続設定とUIカスタム（LINE WORKS風・視認性向上版） ---
+# --- 1. 接続設定とUIカスタム（機能変更なし・コントラスト修正版） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
@@ -45,7 +45,6 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     padding-bottom: 12px !important;
     margin-bottom: 24px !important;
 }
-/* タイトルの左側にLINE WORKS風の緑のアクセントライン */
 .block-container h1::before {
     content: '';
     display: inline-block;
@@ -110,45 +109,70 @@ div.stButton > button:has(div p:contains("クラウド保存")):hover {
     }
 }
 
-/* ★ 入力フォーム（文字が見えるように修正） ★ */
-/* ラベル（「利用者名」「記録対象日」など）を濃く */
-.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, div.subheader p {
+/* ★ 入力フォーム・セレクトボックスの見出し色 ★ */
+.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, .stSelectbox label, div.subheader p {
     color: #111111 !important; /* 濃い黒 */
     font-weight: 600 !important;
 }
-/* 見出し（音声入力など）を濃く */
 h2, h3, .subheader {
-    color: #111111 !important; /* 濃い黒 */
+    color: #111111 !important; 
 }
 
-/* 入力欄（テキストや日付）の背景と文字色 */
+/* 入力欄の背景と文字色 */
 .stTextInput input, .stTextArea textarea, .stDateInput input {
     border-radius: 6px !important;
     border: 1px solid #D1D5DB !important;
-    background-color: #FAFAFA !important; /* 薄いグレーの背景 */
-    color: #111111 !important; /* 入力文字は黒（ここが重要） */
+    background-color: #FAFAFA !important; 
+    color: #111111 !important; 
 }
-/* プレースホルダー（入力前の薄い文字）も濃い目に */
 .stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
-    color: #888888 !important; /* 濃い目のグレー */
+    color: #888888 !important; 
 }
-
 .stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
     border-color: #00B900 !important;
     box-shadow: 0 0 0 1px #00B900 !important;
     background-color: #FFFFFF !important;
 }
 
-/* ★ ファイルアップローダーの文字色修正 ★ */
+/* ★ セレクトボックス（履歴検索など）の文字色修正 ★ */
+.stSelectbox div[data-baseweb="select"] {
+    background-color: #FAFAFA !important;
+    border-radius: 6px !important;
+    border: 1px solid #D1D5DB !important;
+}
+.stSelectbox div[data-baseweb="select"] span {
+    color: #111111 !important; /* 選択されている文字を黒に */
+}
+
+/* ★ 履歴閲覧エリア（Expander）と一般テキストの色飛び防止 ★ */
+.stMarkdown p, .stMarkdown span {
+    color: #111111 !important; /* 抽出されたデータテキストを確実に黒にする */
+}
+[data-testid="stExpander"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid #D1D5DB !important;
+    border-radius: 8px !important;
+}
+[data-testid="stExpander"] summary {
+    background-color: #F5F6F8 !important; /* タイトル背景を少しグレーに */
+}
+[data-testid="stExpander"] summary p {
+    color: #111111 !important; /* 日付などの文字色を黒に */
+    font-weight: 600 !important;
+}
+[data-testid="stExpander"] summary svg {
+    fill: #111111 !important; /* 矢印アイコンを黒に */
+}
+
+/* ★ ファイルアップローダー ★ */
 [data-testid="stFileUploader"] {
     border: 2px dashed #D1D5DB !important;
     border-radius: 8px !important;
 }
 [data-testid="stFileUploader"] > div > div > span,
 [data-testid="stFileUploader"] > div > div > small {
-    color: #333333 !important; /* ファイルドラッグ時のテキストを濃く */
+    color: #333333 !important; 
 }
-/* Browse filesボタン */
 [data-testid="stFileUploader"] button {
     background-color: #FAFAFA !important;
     color: #333333 !important;
@@ -157,7 +181,7 @@ h2, h3, .subheader {
 </style>
 """, unsafe_allow_html=True)
 
-# Supabase & Gemini 接続（機能部分は変更なし）
+# Supabase & Gemini 接続（機能変更なし）
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
