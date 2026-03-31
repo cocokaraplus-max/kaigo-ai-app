@@ -94,7 +94,7 @@ elif st.session_state["page"] == "input":
         audio_value = st.audio_input("マイクをタップして話してください", key=f"a_{fid}")
         if audio_value:
             if st.button("✨ AIで文章にする"):
-                with st.spinner("文章を作成中..."):
+                with st.spinner("文章を作成中。しばらくお待ちください..."):
                     try:
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                             f.write(audio_value.getvalue())
@@ -154,7 +154,9 @@ elif st.session_state["page"] == "history":
     res_area = st.container()
     if search_btn or moni_btn:
         if s_user and s_user != "（未選択）":
-            with st.spinner("データ取得中..."):
+            # ★ 検索時とモニタリング生成時のスピナーメッセージを修正 ★
+            loading_msg = "モニタリングを生成しています。しばらくお待ちください..." if moni_btn else "検索中。しばらくお待ちください..."
+            with st.spinner(loading_msg):
                 try:
                     res = supabase.table("records").select("*").eq("user_name", s_user).execute()
                     if res.data:
