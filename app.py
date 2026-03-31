@@ -99,8 +99,9 @@ elif st.session_state["page"] == "input":
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                             f.write(audio_value.getvalue())
                             temp_path = f.name
-                        # ★ ここを安定版の 1.5-flash に修正しました ★
-                        model = genai.GenerativeModel("gemini-1.5-flash")
+                            
+                        # ★ 正解だった 2.5-flash に戻しました！ ★
+                        model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
                         
                         prompt = f"""
@@ -170,8 +171,8 @@ elif st.session_state["page"] == "history":
                                     st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
                                     all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
                                     
-                                    # ★ ここも安定版の 1.5-flash に修正しました ★
-                                    model = genai.GenerativeModel("gemini-1.5-flash")
+                                    # ★ ここも正解だった 2.5-flash に戻しました！ ★
+                                    model = genai.GenerativeModel("gemini-2.5-flash")
                                     prompt = f"""
                                     あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
                                     【指示】
