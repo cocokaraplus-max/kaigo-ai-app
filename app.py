@@ -37,7 +37,7 @@ except Exception as e:
     st.stop()
 
 # --- 3. メイン画面 ---
-st.title("📓 AIケース記録 (診断版)")
+st.title("📓 AIケース記録 (完成版)")
 
 user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
 target_date = st.date_input("記録対象日", value=date.today())
@@ -56,7 +56,9 @@ if audio_value:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                # 【大成功の鍵】あなたのアカウントで使える最新モデルを指定！
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                
                 sample_file = genai.upload_file(path=temp_path)
                 
                 prompt = f"""
@@ -70,18 +72,12 @@ if audio_value:
                 
                 response = model.generate_content([sample_file, prompt])
                 st.session_state["edit_content"] = response.text
+                
                 os.remove(temp_path)
                 
             except Exception as e:
-                st.error("AI解析エラーが発生しました。")
+                st.error(f"AI解析エラーが発生しました。")
                 st.info(f"詳細ログ: {e}")
-                
-                # 【診断機能】使えるモデルを調べて画面に表示する
-                try:
-                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    st.warning(f"💡 現在のAPIキーで使えるモデルの一覧:\n{', '.join(available_models)}")
-                except Exception as diag_e:
-                    st.error(f"モデル一覧の取得にも失敗: {diag_e}")
 
 st.divider()
 
