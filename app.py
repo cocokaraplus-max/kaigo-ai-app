@@ -15,7 +15,7 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
 # --- 1. 接続設定とUIカスタム ---
-st.set_page_config(page_title="TASUKARU ケース記録", page_icon="🦝", layout="wide")
+st.set_page_config(page_title="ケース記録アプリ", page_icon="logo.png", layout="wide")
 
 def load_css(file_name):
     try:
@@ -37,6 +37,16 @@ try:
 except Exception as e:
     st.error(f"⚠️ 接続設定エラー: {e}")
     st.stop()
+
+# ★ 私（AI）が名前を間違えないよう、Googleから今使えるモデルを自動で取得する関数 ★
+def get_available_flash_model():
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
+                return m.name.replace('models/', '') # 自動で正しい名前（gemini-1.5-flash等）を取得
+    except Exception:
+        pass
+    return "gemini-1.5-flash" # 万が一の予備
 
 def get_user_list():
     try:
@@ -100,8 +110,9 @@ elif st.session_state["page"] == "input":
                             f.write(audio_value.getvalue())
                             temp_path = f.name
                         
-                        # ★ ここを現在の最新稼働モデル「gemini-3.0-flash」に修正しました ★
-                        model = genai.GenerativeModel("gemini-3.0-flash")
+                        # ★ もう名前でエラーにはなりません。自動で最適なAIを呼び出します ★
+                        best_model_name = get_available_flash_model()
+                        model = genai.GenerativeModel(best_model_name)
                         sample_file = genai.upload_file(path=temp_path)
                         
                         prompt = f"""
@@ -171,8 +182,10 @@ elif st.session_state["page"] == "history":
                                     st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
                                     all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
                                     
-                                    # ★ モニタリング側も最新稼働モデル「gemini-3.0-flash」に修正しました ★
-                                    model = genai.GenerativeModel("gemini-3.0-flash")
+                                    # ★ ここも自動取得関数を使用します ★
+                                    best_model_name = get_available_flash_model()
+                                    model = genai.GenerativeModel(best_model_name)
+                                    
                                     prompt = f"""
                                     あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
                                     【指示】
