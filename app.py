@@ -29,17 +29,28 @@ if not check_password():
 # --- 2. 接続設定とUI絶対非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# ▼▼▼ あらゆる余計なUIを根こそぎ消し去る究極のCSS ▼▼▼
+# ▼▼▼ StreamlitのUIを根こそぎ消し去る究極のCSS ▼▼▼
 hide_streamlit_style = """
 <style>
-/* 1. 通常のヘッダー・メニュー・フッターを消す */
+/* 1. ヘッダー全体（上の余白やメニュー、Deployボタンなどを完全に消す） */
+header {display: none !important;}
 [data-testid="stHeader"] {display: none !important;}
-[data-testid="stToolbar"] {display: none !important;}
-#MainMenu {visibility: hidden !important;}
-footer {visibility: hidden !important;}
 
-/* 2. ?embed=true をつけた時に出る「下のバー（Built with Streamlit）」を狙い撃ちして消す！ */
-div[class*="embeddedAppMetaInfoBar"] {display: none !important; visibility: hidden !important;}
+/* 2. 右上のツールバー（赤いDeployボタンやアバターなどを完全に消す） */
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stAppDeployButton"] {display: none !important;}
+
+/* 3. フッター（下部のMade with Streamlitを完全に消す） */
+footer {display: none !important;}
+
+/* 4. 右下のフローティングバッジ（王冠やアバター）を完全に消す */
+.viewerBadge_container {display: none !important;}
+
+/* 5. 古い仕様のメインメニューも念のため消す */
+#MainMenu {visibility: hidden !important;}
+
+/* 6. 上部の余白を詰めてアプリを上まで引き上げる */
+.block-container {padding-top: 2rem !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
