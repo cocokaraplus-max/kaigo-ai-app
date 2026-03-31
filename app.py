@@ -1,9 +1,8 @@
-# update: Fix Gemini model 404 error and keep date/manual input
 import streamlit as st
 import google.generativeai as genai
 import tempfile
 import os
-from datetime import datetime, date
+from datetime import date
 from supabase import create_client, Client # type: ignore
 
 # --- 1. パスワード認証 ---
@@ -58,9 +57,8 @@ if audio_value:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                # 【重要修正】モデルの指定方法を変更
-                # 404エラー対策として明示的に 'models/gemini-1.5-flash' を指定
-                model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+                # 【修正箇所】一番賢い最新モデル「gemini-1.5-pro」をシンプルに呼び出す
+                model = genai.GenerativeModel("gemini-1.5-pro")
                 
                 # ファイルアップロード
                 sample_file = genai.upload_file(path=temp_path)
@@ -82,8 +80,7 @@ if audio_value:
                 os.remove(temp_path)
                 
             except Exception as e:
-                # エラー詳細を表示して原因を特定しやすくする
-                st.error(f"AI解析エラーが発生しました。設定を確認してください。")
+                st.error(f"AI解析エラーが発生しました。")
                 st.info(f"詳細ログ: {e}")
 
 st.divider()
