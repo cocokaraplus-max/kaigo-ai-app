@@ -3,7 +3,6 @@ import google.generativeai as genai
 import tempfile
 import os
 import pandas as pd
-# --- 時間ズレ対策のライブラリ ---
 from datetime import datetime, date
 import pytz 
 from supabase import create_client, Client # type: ignore
@@ -34,47 +33,17 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定と究極のUI非表示設定 ---
+# --- 2. UI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
 <style>
-/* Streamlitの純正アイコン・メニュー・デプロイボタンを徹底消去 */
-[data-testid="stHeader"], 
-[data-testid="stToolbar"], 
-[data-testid="stAppDeployButton"],
-footer, #MainMenu, header {
-    display: none !important;
-    visibility: hidden !important;
-}
-
-/* アプリ上部の余白を詰め、スマホで見やすく */
-.block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 1rem !important;
-}
-
-/* ボタンのデザイン：押し心地と視認性を重視 */
-div.stButton > button {
-    height: 4em !important;
-    width: 100% !important;
-    border-radius: 12px !important;
-    font-weight: bold !important;
-    font-size: 1.2rem !important;
-}
-
-/* 保存ボタン（赤） */
-div.stButton > button[key="save_btn"] {
-    background-color: #FF4B4B !important;
-    color: white !important;
-    border: 2px solid #D32F2F !important;
-    box-shadow: 0 4px #991B1B !important;
-}
-div.stButton > button[key="save_btn"]:active {
-    background-color: #7F1D1D !important;
-    box-shadow: 0 0px !important;
-    transform: translateY(4px) !important;
-}
+[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
+footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
+.block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+div.stButton > button { height: 4em !important; width: 100% !important; border-radius: 12px !important; font-weight: bold !important; font-size: 1.2rem !important; }
+div.stButton > button[key="save_btn"] { background-color: #FF4B4B !important; color: white !important; border: 2px solid #D32F2F !important; box-shadow: 0 4px #991B1B !important; }
+div.stButton > button[key="save_btn"]:active { background-color: #7F1D1D !important; box-shadow: 0 0px !important; transform: translateY(4px) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -85,28 +54,32 @@ except Exception as e:
     st.error("❌ 接続エラー")
     st.stop()
 
+# 利用者リスト取得（エラー回避処理付き）
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
-        return sorted(list(set([r['user_name'] for r in res.data if r['user_name']]))) if res.data else []
+        if res.data:
+            return sorted(list(set([r['user_name'] for r in res.data if r['user_name']])))
+        return []
     except:
         return []
 
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力（日本時間・リセット対応）
+# タブ1: 入力（リセット機能を強化）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
     col1, col2 = st.columns([1, 1])
     
+    # セッション状態の初期化
+    if "input_user_name" not in st.session_state: st.session_state["input_user_name"] = ""
+    if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
+
     with col1:
-        if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
-        
-        # 利用者名は自由入力（保存後に消えるよう空欄デフォルト）
-        user_name = st.text_input("利用者名", placeholder="山田 太郎", key="user_input_field")
-        # デフォルト日付を「日本時間の今日」に固定
+        # valueにセッション状態を紐付け
+        user_name = st.text_input("利用者名", value=st.session_state["input_user_name"], placeholder="山田 太郎")
         target_date = st.date_input("記録対象日", value=now_tokyo.date())
         
         st.subheader("📸 写真を追加")
@@ -125,9 +98,10 @@ with tab1:
                             temp_path = f.name
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
-                        prompt = f"{user_name}さんの記録を申し送り形式で作成してください。"
+                        prompt = f"{user_name}さんの記録を介護申し送り形式で簡潔に作成してください。"
                         response = model.generate_content([sample_file, prompt])
                         st.session_state["edit_content"] = response.text
+                        st.session_state["input_user_name"] = user_name # 名前を保持
                         os.remove(temp_path)
                         st.rerun()
                     except: st.error("生成失敗")
@@ -160,9 +134,9 @@ with tab1:
                     status_area.success(f"✅ 保存完了！")
                     time.sleep(1.5)
                     
-                    # 保存が成功したら、すべての入力をリセット
+                    # --- 完全リセット処理 ---
                     st.session_state["edit_content"] = ""
-                    # 画面をリロードして真っさらにする
+                    st.session_state["input_user_name"] = ""
                     st.rerun()
                     
                 except Exception as e:
@@ -171,7 +145,7 @@ with tab1:
                 st.warning("利用者名を入力してください")
 
 # ==========================================
-# タブ2: 履歴閲覧
+# タブ2: 履歴閲覧（エラー回避強化版）
 # ==========================================
 with tab2:
     st.title("📊 履歴表示")
@@ -185,14 +159,27 @@ with tab2:
     if st.button("🔍 履歴を表示", key="search_btn"):
         if s_user and s_user != "（未選択）":
             with st.spinner("検索中..."):
-                res = supabase.table("records").select("*").eq("user_name", s_user).execute()
-                if res.data:
-                    df = pd.DataFrame(res.data)
-                    df['created_at'] = pd.to_datetime(df['created_at'])
-                    df_f = df[(df['created_at'].dt.year == s_year) & (df['created_at'].dt.month == s_month)].sort_values("created_at", ascending=False)
-                    for d in df_f['created_at'].dt.date.unique():
-                        with st.expander(f"📅 {d}"):
-                            for _, r in df_f[df_f['created_at'].dt.date == d].iterrows():
-                                st.write(r['content'])
-                                if r.get("image_url"): st.image(r["image_url"], width=300)
-                else: st.info("記録なし")
+                try:
+                    res = supabase.table("records").select("*").eq("user_name", s_user).execute()
+                    if res.data and len(res.data) > 0:
+                        df = pd.DataFrame(res.data)
+                        df['created_at'] = pd.to_datetime(df['created_at'])
+                        # フィルタリング
+                        df_f = df[(df['created_at'].dt.year == s_year) & (df['created_at'].dt.month == s_month)]
+                        
+                        if not df_f.empty:
+                            df_f = df_f.sort_values("created_at", ascending=False)
+                            for d in df_f['created_at'].dt.date.unique():
+                                with st.expander(f"📅 {d}"):
+                                    day_recs = df_f[df_f['created_at'].dt.date == d]
+                                    for _, r in day_recs.iterrows():
+                                        st.write(r['content'])
+                                        if r.get("image_url"): st.image(r["image_url"], width=300)
+                        else:
+                            st.info(f"{s_year}年{s_month}月の記録はありません。")
+                    else:
+                        st.info("この利用者様の記録はまだ登録されていません。")
+                except Exception as e:
+                    st.error("検索中にエラーが発生しました。")
+        else:
+            st.warning("利用者名を選択してください。")
