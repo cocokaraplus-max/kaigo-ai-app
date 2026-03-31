@@ -21,7 +21,7 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
 /* メイン画面を白枠のエレガントなカード風に */
 .block-container {
     background-color: #FFFFFF !important;
-    padding-top: 1rem !important; /* ★ ロゴ表示のために上部の余白をさらに詰める ★ */
+    padding-top: 1rem !important; 
     padding-bottom: 2.5rem !important;
     box-shadow: 0 4px 15px rgba(0,0,0,0.03) !important;
     border-radius: 12px !important;
@@ -30,21 +30,21 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
 /* ★ タイトル（画像）を中央に大きく配置する設定 ★ */
 [data-testid="stImage"] img {
     display: block !important;
-    margin: 0 auto !important; /* ★ 横方向の中央揃え ★ */
-    width: 350px !important; /* ★ ロゴの横幅を大きく（以前は280px） ★ */
-    max-width: 90% !important; /* スマホでははみ出さないように */
+    margin: 0 auto !important; 
+    width: 350px !important; 
+    max-width: 90% !important; 
     height: auto !important;
-    margin-bottom: 15px !important; /* 下部との間隔 */
+    margin-bottom: 15px !important; 
 }
 
 /* ★ TOP画面のタイトル（画像）の下だけにアクセントラインを入れる ★ */
 div.has-markdown-stitle::after {
     content: '';
     display: block;
-    width: 80px; /* ラインを少し長く */
+    width: 80px; 
     height: 3px;
-    background-color: #C5A059; /* 大人なゴールドグレー */
-    margin: -5px auto 30px !important; /* 画像のすぐ下に配置 */
+    background-color: #C5A059; 
+    margin: -5px auto 30px !important; 
     border-radius: 2px;
 }
 
@@ -115,8 +115,8 @@ div.stHorizontalBlock > div.stColumn div.stButton > button:hover {
 /* ★ スマホ用：ボタンが1行に綺麗に収まるように微調整 ★ */
 @media (max-width: 768px) {
     div.stHorizontalBlock > div.stColumn div.stButton > button {
-        width: 100% !important; /* スマホでは横幅を広く使って1行に収める */
-        font-size: 0.9rem !important; /* スマホ用に文字を少し小さく */
+        width: 100% !important; 
+        font-size: 0.9rem !important; 
         gap: 8px !important;
         height: 70px !important;
     }
@@ -149,7 +149,7 @@ div.stButton > button:has(div p:contains("クラウド保存")):hover {
     }
 }
 
-/* ★ 入力フォーム（文字が見えるように修正） ★ */
+/* ★ 入力フォーム ★ */
 .stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, .stSelectbox label, div.subheader p {
     color: #333333 !important;
     font-weight: 500 !important;
@@ -164,6 +164,7 @@ h2, h3, .subheader {
     border: 1px solid #E0E0E0 !important;
     background-color: #FFFFFF !important;
     color: #111111 !important;
+    caret-color: #111111 !important; /* ★ 追加：カーソルの色を黒に固定 ★ */
 }
 .stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
     color: #888888 !important;

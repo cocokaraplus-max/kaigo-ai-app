@@ -101,12 +101,14 @@ elif st.session_state["page"] == "input":
                             temp_path = f.name
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
+                        
+                        # ★ AIのプロンプトを厳格化（見出し・挨拶などを禁止） ★
                         prompt = f"""
-                        あなたはプロの介護職員です。{user_name}さんの以下の音声を、他の職員への正確な「申し送り記録」としてまとめてください。
-                        【ルール】
-                        1. 介護現場で使われる専門的かつ簡潔な口調（です・ます調）にすること。
-                        2. 音声の内容を忠実に再現し、虚偽や過度な脚色は一切行わないこと。
-                        3. 「はい、承知いたしました」などの不要な返事は含めないこと。
+                        以下の音声を、{user_name}さんの介護記録として、です・ます調の簡潔な文章で文字起こし・要約してください。
+                        【厳守ルール】
+                        1. 音声の中で話されている事実のみを記述すること。
+                        2. 「日時」「記録者」「申し送り記録」といった見出しや、空欄のテンプレートは絶対に生成しないこと。
+                        3. AIとしての挨拶や返事（承知いたしました等）は一切含めないこと。
                         """
                         response = model.generate_content([sample_file, prompt])
                         st.session_state["edit_content"] = response.text
@@ -154,7 +156,6 @@ elif st.session_state["page"] == "history":
     res_area = st.container()
     if search_btn or moni_btn:
         if s_user and s_user != "（未選択）":
-            # ★ 検索時とモニタリング生成時のスピナーメッセージを修正 ★
             loading_msg = "モニタリングを生成しています。しばらくお待ちください..." if moni_btn else "検索中。しばらくお待ちください..."
             with st.spinner(loading_msg):
                 try:
@@ -169,6 +170,7 @@ elif st.session_state["page"] == "history":
                                     st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
                                     all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
                                     model = genai.GenerativeModel("gemini-2.5-flash")
+                                    # ★ モニタリング用のプロンプトも厳密化 ★
                                     prompt = f"""
                                     あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
                                     【指示】
