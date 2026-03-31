@@ -2,15 +2,10 @@ import streamlit as st
 import google.generativeai as genai
 import tempfile
 import os
-from datetime import datetime
+from datetime import datetime, date
+from supabase import create_client, Client # type: ignore
 
-# Pylanceのエラーを回避しつつ読み込む設定
-try:
-    from supabase import create_client, Client
-except ImportError:
-    pass
-
-# --- 1. セキュリティ（パスワード） ---
+# --- 1. パスワード認証 ---
 PASSWORD = "admin"  
 def check_password():
     if "authenticated" not in st.session_state:
@@ -30,36 +25,35 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定（Secretsから取得） ---
-st.set_page_config(page_title="AIモニタリング", page_icon="📝")
+# --- 2. 接続設定（Secrets） ---
+st.set_page_config(page_title="AIケース記録", page_icon="📓")
 
 try:
-    # 以前共有いただいたキーを使用
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     st.sidebar.success("✅ 接続完了")
 except Exception as e:
-    st.sidebar.error("❌ Secretsの設定を確認してください")
+    st.sidebar.error("❌ 設定エラー")
     st.stop()
 
-# --- 3. メイン機能 ---
-st.title("📋 ケアマネ報告作成AI")
+# --- 3. メイン画面：ケース記録入力 ---
+st.title("📓 AIケース記録（日付指定）")
 
-user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
+# 利用者名と日付の入力
+col_name, col_date = st.columns([2, 1])
+with col_name:
+    user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
+with col_date:
+    # 日付指定（初期値は今日）
+    target_date = st.date_input("記録対象日", value=date.today())
 
-col1, col2 = st.columns(2)
-with col1:
-    meal = st.selectbox("食事", ["完食", "半分程度", "欠食"])
-with col2:
-    activity = st.selectbox("活動", ["元気に参加", "見学", "傾眠"])
+# 音声入力
+st.subheader("🎙️ 音声で様子を記録")
+audio_value = st.audio_input("マイクをタップして話してください")
 
-# 音声入力（録音）
-st.subheader("🎙️ 音声で様子を話す")
-audio_value = st.audio_input("マイクをタップして録音")
-
-# AI生成
+# AI文章作成
 if audio_value:
-    if st.button("AI文章を生成"):
+    if st.button("AI報告文を生成"):
         with st.spinner("AI作成中..."):
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
@@ -69,36 +63,48 @@ if audio_value:
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 sample_file = genai.upload_file(path=temp_path)
                 
+                # 日付を文章に含める
+                formatted_date = target_date.strftime("%Y年%m月%d日")
                 prompt = f"""
-                プロの介護職として、ケアマネ向けの報告文を作って。
-                名前：{user_name}
-                食事：{meal}
-                活動：{activity}
+                あなたはプロの介護職です。{formatted_date}のケース記録を作成してください。
+                利用者名：{user_name}
                 音声内容：(添付ファイル)
-                敬語で300文字以内。専門用語を含めて。
+                
+                【ルール】
+                ・ケアマネジャーや家族が読むことを想定した丁寧な敬語。
+                ・専門用語を交え、客観的な事実を中心に300文字程度で作成。
                 """
                 
                 response = model.generate_content([sample_file, prompt])
-                st.session_state["result_text"] = response.text
+                st.session_state["case_result"] = response.text
                 os.remove(temp_path)
                 
             except Exception as e:
-                st.error(f"解析失敗。マイク許可を確認してください。")
+                st.error(f"解析失敗: {e}")
 
-# 表示と保存
+# 生成結果の表示と保存
 st.divider()
-final_report = st.text_area("生成結果", value=st.session_state.get("result_text", ""), height=300)
+final_report = st.text_area("生成された記録（修正可能）", 
+                            value=st.session_state.get("case_result", ""), 
+                            height=300)
 
-if st.button("保存する"):
+if st.button("クラウドに保存"):
     if user_name and final_report:
-        # あなたのSupabaseのカラム名（id, created_atは自動）に一致させています
+        # 保存するデータの作成
+        # 指定された日付をISOフォーマット（YYYY-MM-DD）にして保存
         data = {
             "user_name": user_name,
             "content": final_report,
-            "category": "モニタリング"
+            "category": "ケース記録",
+            "created_at": target_date.isoformat() 
         }
         try:
+            # Supabaseのrecordsテーブルへ挿入
             supabase.table("records").insert(data).execute()
-            st.success("✅ 保存しました！")
+            st.success(f"✅ {target_date.strftime('%m/%d')}の記録として保存しました！")
+            if "case_result" in st.session_state:
+                del st.session_state["case_result"]
         except Exception as e:
             st.error(f"保存失敗: {e}")
+    else:
+        st.warning("名前と内容を入力してください。")
