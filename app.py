@@ -33,54 +33,58 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. UIカスタマイズ（完全固定フロートボタン） ---
+# --- 2. UIカスタマイズ（PCとスマホでボタンの挙動を切り替え） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
 <style>
-/* Streamlit標準パーツを非表示 */
+/* 共通：Streamlit標準パーツを非表示 */
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* 画面全体の余白調整 */
-.main .block-container {
-    padding-bottom: 250px !important;
-}
-
-/* ★ 画面右下に「完全固定」する魔法 ★ */
-/* 「クラウド保存」という文字を持つボタンを探して固定する */
-button:has(div p:contains("クラウド保存")), 
-button:contains("クラウド保存") {
-    position: fixed !important;
-    bottom: 40px !important;  /* 下から40px */
-    right: 20px !important;   /* 右から20px */
-    width: 140px !important;  /* 押しやすいサイズ */
-    height: 70px !important;
+/* 共通：ボタンの基本デザイン（赤色・太字） */
+div.stButton > button:has(div p:contains("クラウド保存")) {
     background-color: #FF4B4B !important;
     color: white !important;
-    border-radius: 50px !important;
     font-weight: bold !important;
-    font-size: 1.1rem !important;
-    z-index: 999999 !important; /* 最前面 */
-    border: 3px solid white !important;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+    border: 2px solid white !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
 }
 
-/* ボタンが押された時のアニメーション */
-button:has(div p:contains("クラウド保存")):active,
-button:contains("クラウド保存"):active {
-    transform: scale(0.9) translateY(5px) !important;
+/* ★ スマホ（画面幅 768px 以下）の場合の設定 ★ */
+@media (max-width: 768px) {
+    div.stButton > button:has(div p:contains("クラウド保存")) {
+        position: fixed !important;
+        bottom: 30px !important;  /* 下から30px */
+        right: 20px !important;   /* 右から20px */
+        width: 150px !important;  /* 押しやすい幅 */
+        height: 70px !important;
+        border-radius: 35px !important;
+        z-index: 999999 !important;
+        font-size: 1.1rem !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.4) !important;
+    }
+    /* 画面下の余白（ボタンと被らないように） */
+    .main .block-container {
+        padding-bottom: 150px !important;
+    }
+}
+
+/* ★ PC（画面幅 769px 以上）の場合の設定 ★ */
+@media (min-width: 769px) {
+    div.stButton > button:has(div p:contains("クラウド保存")) {
+        position: static !important; /* 通常の配置に戻す */
+        width: 100% !important;
+        height: 4em !important;
+        border-radius: 10px !important;
+        margin-top: 20px !important;
+    }
+}
+
+/* ボタンが押された時の反応 */
+div.stButton > button:has(div p:contains("クラウド保存")):active {
+    transform: scale(0.95) !important;
     background-color: #B91C1C !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-}
-
-/* タブ2（履歴）のボタンは浮かせない（通常配置にする） */
-[data-testid="stExpander"] button, 
-[data-testid="stVerticalBlock"] > div:nth-child(2) button {
-    position: static !important;
-    width: 100% !important;
-    height: auto !important;
-    box-shadow: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -104,7 +108,7 @@ if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力（フロートボタン配置）
+# タブ1: 入力（PCは枠下、スマホはフロート）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
@@ -114,9 +118,6 @@ with tab1:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        # このボタンがCSSで右下に「固定」されます
-        btn_save = st.button("💾 クラウド保存")
-
         user_name = st.text_input("利用者名", placeholder="山田 太郎", key=f"user_{fid}")
         target_date = st.date_input("記録対象日", value=now_tokyo.date(), key=f"date_{fid}")
         
@@ -146,6 +147,9 @@ with tab1:
     with col2:
         st.subheader("📝 内容の確認・修正")
         final_content = st.text_area("修正があれば書き換えてください", value=st.session_state["edit_content"], height=300, key=f"text_{fid}")
+
+        # PCではこの位置に表示され、スマホでは右下に浮きます
+        btn_save = st.button("💾 クラウド保存")
 
     # 保存処理
     if btn_save:
