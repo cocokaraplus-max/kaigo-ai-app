@@ -1,4 +1,4 @@
-# update: 音声・手入力両対応 / 日付選択機能付き
+# update: Fix Gemini model 404 error and keep date/manual input
 import streamlit as st
 import google.generativeai as genai
 import tempfile
@@ -37,32 +37,32 @@ except Exception as e:
     st.sidebar.error("❌ 接続エラー：Secretsを確認してください")
     st.stop()
 
-# --- 3. メイン画面：入力セクション ---
+# --- 3. メイン画面 ---
 st.title("📓 AIケース記録システム")
 
-# 利用者名
 user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
-
-# 日付指定（カレンダー）
-# デフォルトで今日の日付が入ります。変更されればその日付、されなければ今日として扱います。
 target_date = st.date_input("記録対象日", value=date.today())
 
 st.divider()
 
-# 音声入力
+# --- 4. 音声入力セクション ---
 st.subheader("🎙️ 音声で入力")
 audio_value = st.audio_input("マイクをタップして話してください")
 
-# 音声が入力されたらAIで文章化
 if audio_value:
     if st.button("音声から文章を生成"):
         with st.spinner("AIが文章を作成中..."):
             try:
+                # 一時ファイルに保存
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                # 【重要修正】モデルの指定方法を変更
+                # 404エラー対策として明示的に 'models/gemini-1.5-flash' を指定
+                model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+                
+                # ファイルアップロード
                 sample_file = genai.upload_file(path=temp_path)
                 
                 prompt = f"""
@@ -70,22 +70,26 @@ if audio_value:
                 対象者：{user_name}
                 
                 【ルール】
-                ・丁寧な敬語を使用。
-                ・専門的な視点を含め、300文字程度にまとめる。
+                ・丁寧な敬語を使用し、プロフェッショナルな介護記録にする。
+                ・300文字程度にまとめる。
                 """
                 
+                # 生成実行
                 response = model.generate_content([sample_file, prompt])
                 st.session_state["edit_content"] = response.text
+                
+                # 一時ファイルの削除
                 os.remove(temp_path)
                 
             except Exception as e:
-                st.error(f"AI解析エラー: {e}")
+                # エラー詳細を表示して原因を特定しやすくする
+                st.error(f"AI解析エラーが発生しました。設定を確認してください。")
+                st.info(f"詳細ログ: {e}")
 
 st.divider()
 
-# 手入力・修正エリア
+# --- 5. 手入力・修正エリア ---
 st.subheader("📝 記録内容（手入力・修正）")
-# 音声解析結果が表示されますが、最初から手入力も可能です。
 final_content = st.text_area(
     "内容を確認・修正してください", 
     value=st.session_state.get("edit_content", ""), 
@@ -93,10 +97,9 @@ final_content = st.text_area(
     placeholder="ここに直接入力するか、音声入力を利用してください..."
 )
 
-# 保存ボタン
+# --- 6. 保存ボタン ---
 if st.button("クラウド(Supabase)に保存"):
     if user_name and final_content:
-        # 選択された日付をISOフォーマット（YYYY-MM-DD）で保存
         save_date = target_date.isoformat()
         
         record_data = {
@@ -109,7 +112,6 @@ if st.button("クラウド(Supabase)に保存"):
         try:
             supabase.table("records").insert(record_data).execute()
             st.success(f"✅ {save_date} の記録として保存しました！")
-            # 保存が終わったら入力内容をリセット
             if "edit_content" in st.session_state:
                 del st.session_state["edit_content"]
         except Exception as e:
