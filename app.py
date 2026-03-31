@@ -3,10 +3,16 @@ import google.generativeai as genai
 import tempfile
 import os
 import pandas as pd
-from datetime import date
+# --- 時間ズレ対策のライブラリ ---
+from datetime import datetime, date
+import pytz 
 from supabase import create_client, Client # type: ignore
 import uuid
 import time
+
+# 日本時間を定義
+tokyo_tz = pytz.timezone('Asia/Tokyo')
+now_tokyo = datetime.now(tokyo_tz)
 
 # --- 1. パスワード認証 ---
 PASSWORD = "admin"  
@@ -31,27 +37,24 @@ if not check_password():
 # --- 2. 接続設定と究極のUI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# あらゆるStreamlit純正アイコン・ボタンを抹殺するCSS
 st.markdown("""
 <style>
-/* 1. ヘッダー、メニュー、デプロイボタン、フッターをすべて非表示 */
+/* Streamlitの純正アイコン・メニュー・デプロイボタンを徹底消去 */
 [data-testid="stHeader"], 
 [data-testid="stToolbar"], 
 [data-testid="stAppDeployButton"],
-footer, 
-#MainMenu, 
-header {
+footer, #MainMenu, header {
     display: none !important;
     visibility: hidden !important;
 }
 
-/* 2. アプリ上部の無駄な余白をカット */
+/* アプリ上部の余白を詰め、スマホで見やすく */
 .block-container {
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
 }
 
-/* 3. ボタンのデザイン（押し感を維持） */
+/* ボタンのデザイン：押し心地と視認性を重視 */
 div.stButton > button {
     height: 4em !important;
     width: 100% !important;
@@ -82,7 +85,6 @@ except Exception as e:
     st.error("❌ 接続エラー")
     st.stop()
 
-# 利用者リスト取得
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
@@ -93,19 +95,19 @@ def get_user_list():
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力（保存後リセット機能付き）
+# タブ1: 入力（日本時間・リセット対応）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        # 入力内容を管理するためのセッション状態
-        if "input_name" not in st.session_state: st.session_state["input_name"] = ""
         if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
         
-        user_name = st.text_input("利用者名", value=st.session_state["input_name"], placeholder="山田 太郎", key="name_field")
-        target_date = st.date_input("記録対象日", value=date.today())
+        # 利用者名は自由入力（保存後に消えるよう空欄デフォルト）
+        user_name = st.text_input("利用者名", placeholder="山田 太郎", key="user_input_field")
+        # デフォルト日付を「日本時間の今日」に固定
+        target_date = st.date_input("記録対象日", value=now_tokyo.date())
         
         st.subheader("📸 写真を追加")
         img_file = st.file_uploader("写真を選択/撮影", type=['jpg', 'png', 'jpeg'], label_visibility="collapsed")
@@ -134,8 +136,7 @@ with tab1:
         st.subheader("📝 内容の確認・修正")
         status_area = st.empty()
         
-        # テキストエリアの内容もセッション状態で管理
-        final_content = st.text_area("修正があれば書き換えてください", value=st.session_state["edit_content"], height=300)
+        final_content = st.text_area("内容を確認してください", value=st.session_state["edit_content"], height=300)
         
         if st.button("💾 クラウドに保存する", key="save_btn"):
             if user_name:
@@ -156,14 +157,12 @@ with tab1:
                     }
                     supabase.table("records").insert(record_data).execute()
                     
-                    # --- 成功後の処理 ---
-                    status_area.success(f"✅ 【{user_name}様】の記録を保存しました！")
+                    status_area.success(f"✅ 保存完了！")
                     time.sleep(1.5)
                     
-                    # セッション状態を空にして画面をリセット
+                    # 保存が成功したら、すべての入力をリセット
                     st.session_state["edit_content"] = ""
-                    st.session_state["input_name"] = ""
-                    # 確実にリロードして入力を消す
+                    # 画面をリロードして真っさらにする
                     st.rerun()
                     
                 except Exception as e:
@@ -181,7 +180,7 @@ with tab2:
         registered_users = get_user_list()
         s_user = st.selectbox("利用者名を選択", ["（未選択）"] + registered_users) if registered_users else st.text_input("利用者名を入力")
     with c4: s_year = st.selectbox("年", [2025, 2026, 2027], index=1)
-    with c5: s_month = st.selectbox("月", range(1, 13), index=date.today().month - 1)
+    with c5: s_month = st.selectbox("月", range(1, 13), index=now_tokyo.month - 1)
     
     if st.button("🔍 履歴を表示", key="search_btn"):
         if s_user and s_user != "（未選択）":
