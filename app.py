@@ -33,11 +33,11 @@ st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wid
 
 st.markdown("""
 <style>
-/* ヘッダー・ツールバー・フッター非表示 */
+/* ヘッダー・メニュー・フッターを徹底非表示 */
 [data-testid="stHeader"], [data-testid="stToolbar"], footer {display: none !important;}
 .block-container {padding-top: 1.5rem !important;}
 
-/* --- 保存ボタン（赤）のスタイル：押し感を最大化 --- */
+/* 保存ボタン（赤）のスタイル：押し感を強調 */
 div.stButton > button:first-child {
     background-color: #FF4B4B !important;
     color: white !important;
@@ -56,15 +56,6 @@ div.stButton > button:first-child:active {
     box-shadow: 0 1px #7F1D1D !important;
     transform: translateY(5px) !important;
 }
-
-/* 英語表記を消すための再トライ（一部のブラウザ向け） */
-[data-testid="stFileUploadDropzone"] div div span {display:none !important;}
-[data-testid="stFileUploadDropzone"]::before {
-    content: "📷 写真を選択（タップしてください）";
-    font-weight: bold;
-    display: block;
-    text-align: center;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,13 +63,13 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except Exception as e:
-    st.error("❌ 接続エラー")
+    st.error("❌ 接続エラーが発生しました")
     st.stop()
 
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力（背面カメラ優先設定）
+# タブ1: 入力（カメラエラー対策版）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
@@ -92,18 +83,14 @@ with tab1:
         target_date = st.date_input("記録対象日", value=date.today())
         
         st.subheader("📸 写真を追加")
-        use_camera = st.checkbox("カメラを起動する")
-        if use_camera:
-            # facing_mode="environment" で背面カメラを優先起動
-            img_file = st.camera_input("撮影", facing_mode="environment", label_visibility="collapsed")
-        else:
-            img_file = st.file_uploader("写真を選択", type=['jpg', 'png', 'jpeg'], label_visibility="collapsed")
+        # スマホではこのボタンから「カメラを起動」が選べるため、こちらに統一します
+        img_file = st.file_uploader("写真を撮る、または選択", type=['jpg', 'png', 'jpeg'])
         
         if img_file:
-            st.image(img_file, caption="準備完了", width=250)
+            st.image(img_file, caption="撮影・選択済み", width=250)
 
         st.subheader("🎙️ 音声で入力")
-        audio_value = st.audio_input("話してください")
+        audio_value = st.audio_input("マイクをタップして話してください")
         
         if audio_value:
             if st.button("✨ 声から生成"):
@@ -114,23 +101,23 @@ with tab1:
                             temp_path = f.name
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
-                        prompt = f"{user_name}さんの記録を申し送り形式で作成してください。"
+                        prompt = f"{user_name}さんの記録を介護申し送り形式で作成してください。"
                         response = model.generate_content([sample_file, prompt])
                         st.session_state["edit_content"] = response.text
                         os.remove(temp_path)
                         st.rerun()
                     except:
-                        st.error("生成失敗")
+                        st.error("生成に失敗しました。もう一度お試しください。")
 
     with col2:
         st.subheader("📝 内容の確認・修正")
-        status_area = st.empty() # メッセージ表示用
+        status_area = st.empty() # 保存状態メッセージ用
         
-        final_content = st.text_area("修正があれば書き換えてください", value=st.session_state.get("edit_content", ""), height=300)
+        final_content = st.text_area("内容の最終確認", value=st.session_state.get("edit_content", ""), height=300)
         
         if st.button("💾 クラウドに保存する"):
             if user_name:
-                status_area.warning("⏳ 保存中... しばらくお待ちください")
+                status_area.warning("⏳ クラウドに保存しています...")
                 try:
                     image_url = None
                     if img_file:
@@ -141,13 +128,13 @@ with tab1:
 
                     record_data = {
                         "user_name": user_name,
-                        "content": final_content if final_content else "（写真のみ）",
+                        "content": final_content if final_content else "（写真保存）",
                         "image_url": image_url, 
                         "created_at": target_date.isoformat()
                     }
                     supabase.table("records").insert(record_data).execute()
                     
-                    status_area.success(f"✅ 【{user_name}様】の記録を「保存完了」しました！")
+                    status_area.success(f"✅ 【{user_name}様】の記録を保存しました！")
                     time.sleep(2.0)
                     
                     st.session_state["edit_content"] = ""
@@ -155,7 +142,7 @@ with tab1:
                     st.rerun()
                     
                 except Exception as e:
-                    status_area.error(f"❌ 保存失敗しました ({e})")
+                    status_area.error(f"❌ 保存できませんでした ({e})")
             else:
                 st.warning("利用者名を入力してください")
 
@@ -165,7 +152,7 @@ with tab1:
 with tab2:
     st.title("📊 履歴表示")
     c3, c4, c5 = st.columns([2, 1, 1])
-    with c3: s_user = st.text_input("検索する利用者名")
+    with c3: s_user = st.text_input("検索する名前")
     with c4: s_year = st.selectbox("年", [2025, 2026, 2027], index=1)
     with c5: s_month = st.selectbox("月", range(1, 13), index=date.today().month - 1)
     
@@ -182,4 +169,4 @@ with tab2:
                             st.write(r['content'])
                             if r.get("image_url"): st.image(r["image_url"], width=300)
         except:
-            st.error("取得失敗")
+            st.error("データの取得に失敗しました")
