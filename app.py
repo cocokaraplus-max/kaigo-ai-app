@@ -127,23 +127,28 @@ elif st.session_state["page"] == "input":
             if st.button("✨ AIで文章にする"):
                 with st.spinner("文章を作成中..."):
                     try:
-                        # 1. 確実なアップロード方式を使用（getvalueでデータ欠落を防ぐ）
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                             f.write(audio_value.getvalue())
                             temp_path = f.name
                             
-                        # 2. AIモデルに送信
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
-                        prompt = f"{user_name}さんの介護記録を簡潔に作成してください。"
+                        
+                        # 💡 AIへの命令（プロンプト）を厳格に修正
+                        prompt = f"""
+                        以下の音声データの内容を元に、{user_name}さんの介護記録（申し送り）を簡潔にまとめてください。
+                        
+                        【絶対のルール】
+                        1. 「はい、承知いたしました」などの挨拶や返事は一切含めないでください。
+                        2. 音声に含まれていない情報（空欄のフォーマットや推測など）は絶対に勝手に生成しないでください。
+                        3. 音声が単なるテストやメモの場合、そのまま要約・文字起こししたテキストのみを出力してください。
+                        """
                         
                         response = model.generate_content([sample_file, prompt])
                         
-                        # 3. Streamlitの仕様対策：テキストエリアの「キー(ID)」に直接流し込む！
                         st.session_state["edit_content"] = response.text
                         st.session_state[f"t_{fid}"] = response.text
                         
-                        # 後片付け
                         os.remove(temp_path)
                         
                     except Exception as e:
@@ -176,7 +181,6 @@ elif st.session_state["page"] == "input":
                 st.success(f"✅ 【{user_name}様】の記録を正常に保存しました！")
                 time.sleep(1.8)
                 
-                # 完全リセット
                 st.session_state["edit_content"] = ""
                 st.session_state["form_id"] += 1
                 st.rerun()
