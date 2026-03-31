@@ -2,7 +2,7 @@
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* アプリ全体の背景色をLINE WORKS風の薄いグレーに */
+/* アプリ全体の背景色を薄いグレーに */
 .stApp {
     background-color: #F5F6F8 !important;
 }
@@ -49,17 +49,47 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     border: none !important;
 }
 
-/* 一般的なボタン */
-div.stButton > button {
+/* ★ 一般的なボタン（TOP画面のメニューボタンをスタイリッシュに） ★ */
+/* TOP画面のボタンだけを狙うため、親要素や配置で特定する */
+div.stHorizontalBlock > div.stColumn div.stButton > button {
+    height: 6em !important; /* 高さを出して存在感を */
+    font-size: 1.2rem !important; /* 文字を少し大きく */
+    border-radius: 12px !important; /* 角丸を大きくしてモダンに */
+    border: 2px solid #D1D5DB !important; /* 枠線を少し太く */
+    background-color: #FFFFFF !important;
+    color: #111111 !important;
+    font-weight: 600 !important;
+    text-align: center !important; /* 中央揃え */
+    justify-content: center !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important; /* アイコンと文字の間隔 */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important; /* 柔らかい影 */
+    transition: all 0.3s ease !important; /* スムーズなアニメーション */
+}
+
+/* ホバー時の設定（TOP画面） */
+div.stHorizontalBlock > div.stColumn div.stButton > button:hover {
+    border-color: #00B900 !important; /* LINE Greenの枠線 */
+    color: #00B900 !important; /* 文字も緑に */
+    box-shadow: 0 6px 12px rgba(0,185,0,0.15) !important; /* 影を大きくして浮いた感じに */
+    transform: translateY(-3px) !important; /* 少し上に浮かせる */
+}
+
+/* 押した時の反応（TOP画面） */
+div.stHorizontalBlock > div.stColumn div.stButton > button:active {
+    transform: translateY(-1px) !important; /* 少し下げる */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+}
+
+/* それ以外のボタン（TOP画面以外やTOPに戻るボタンなど） */
+[data-testid="stExpander"] div.stButton > button, 
+[data-testid="stMain"] div.stButton > button[kind="secondaryFormSubmit"] {
     background-color: #FFFFFF !important;
     color: #111111 !important; 
     border: 1px solid #D1D5DB !important;
     border-radius: 6px !important;
     font-weight: 600 !important;
-}
-div.stButton > button:hover {
-    border-color: #00B900 !important;
-    color: #00B900 !important;
 }
 
 /* ★ 保存ボタン（緑色） ★ */
@@ -67,6 +97,8 @@ div.stButton > button:has(div p:contains("クラウド保存")) {
     background-color: #00B900 !important;
     color: #FFFFFF !important; 
     border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 div.stButton > button:has(div p:contains("クラウド保存")):hover {
     background-color: #00A000 !important;
