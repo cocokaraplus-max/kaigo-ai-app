@@ -22,17 +22,19 @@ st.markdown("""
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* TOP画面のメニューボタン */
-div.stButton > button.top-menu-btn {
-    height: 8em !important;
-    font-size: 1.5rem !important;
-    border-radius: 20px !important;
-    background-color: #f0f2f6 !important;
-    color: #31333F !important;
-    border: 2px solid #d1d5db !important;
+/* ★ メッセージ（Status/Success/Error）を画面最上部に固定する魔法 ★ */
+[data-testid="stNotification"] {
+    position: fixed !important;
+    top: 10px !important;
+    left: 5% !important;
+    right: 5% !important;
+    width: 90% !important;
+    z-index: 1000000 !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+    border-radius: 10px !important;
 }
 
-/* 保存ボタン（スマホ時は右下固定、PCは通常） */
+/* スマホ用：保存ボタンを右下固定 */
 @media (max-width: 768px) {
     div.stButton > button:has(div p:contains("クラウド保存")) {
         position: fixed !important;
@@ -59,14 +61,14 @@ except Exception as e:
     st.error("❌ 接続エラー：APIキーを確認してください")
     st.stop()
 
-# --- 2. 各種関数 ---
+# 利用者リスト取得
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
         return sorted(list(set([r['user_name'] for r in res.data if r['user_name']]))) if res.data else []
     except: return []
 
-# セッション状態（どの画面を表示するか）
+# セッション状態
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "form_id" not in st.session_state: st.session_state["form_id"] = 0
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
@@ -99,7 +101,6 @@ elif st.session_state["page"] == "input":
         st.rerun()
 
     st.title("✍️ ケース記録入力")
-    status_area = st.empty()
     fid = st.session_state["form_id"]
 
     col1, col2 = st.columns([1, 1])
@@ -132,9 +133,11 @@ elif st.session_state["page"] == "input":
         final_content = st.text_area("修正があればここを書き換えてください", value=st.session_state["edit_content"], height=300, key=f"t_{fid}")
         btn_save = st.button("💾 クラウド保存")
 
+    # 保存処理
     if btn_save:
         if user_name:
-            status_area.warning("⏳ 保存中...")
+            # 画面最上部にメッセージを表示
+            st.info("⏳ クラウドへ保存中...")
             try:
                 image_url = None
                 if img_file:
@@ -149,15 +152,19 @@ elif st.session_state["page"] == "input":
                     "created_at": target_date.isoformat()
                 }
                 supabase.table("records").insert(record_data).execute()
-                status_area.success("✅ 保存完了！")
-                time.sleep(1.5)
+                
+                # 成功メッセージを最上部に表示
+                st.success(f"✅ 【{user_name}様】の記録を正常に保存しました！")
+                time.sleep(1.8)
+                
+                # リセット
                 st.session_state["edit_content"] = ""
                 st.session_state["form_id"] += 1
                 st.rerun()
             except Exception as e:
-                status_area.error(f"❌ エラー: {e}")
+                st.error(f"❌ 保存に失敗しました: {e}")
         else:
-            st.warning("利用者名を入力してください")
+            st.warning("⚠️ 利用者名を入力してください")
 
 # ==========================================
 # 📊 履歴表示画面
