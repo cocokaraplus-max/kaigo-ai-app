@@ -15,47 +15,54 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
 # --- 1. 接続設定とUIカスタム ---
-# アプリ名を「TASUKARU」に変更
+# アプリ名を「TASUKARU」に設定
 st.set_page_config(page_title="TASUKARU ケース記録", page_icon="🦝", layout="wide")
 
+# 外部のデザインファイル(style.css)を読み込む関数
 def load_css(file_name):
     try:
         with open(file_name, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-    except: pass
+    except Exception:
+        pass
 
 load_css("style.css")
 
-# Supabase & Gemini 接続
+# Supabase & Gemini 接続設定
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-except:
-    st.error("❌ 接続エラー：APIキーを確認してください")
+    s_url = st.secrets["SUPABASE_URL"]
+    s_key = st.secrets["SUPABASE_KEY"]
+    g_key = st.secrets["GEMINI_API_KEY"]
+    
+    genai.configure(api_key=g_key)
+    supabase: Client = create_client(s_url, s_key)
+except Exception as e:
+    st.error(f"⚠️ 接続設定エラー: {e}")
+    st.info("StreamlitのSecrets（SUPABASE_KEY等）を再確認してください。")
     st.stop()
 
-# 利用者リスト取得
+# 利用者リスト取得（履歴検索用）
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
-        return sorted(list(set([r['user_name'] for r in res.data if r['user_name']]))) if res.data else []
-    except: return []
+        if res.data:
+            return sorted(list(set([r['user_name'] for r in res.data if r['user_name']])))
+        return []
+    except Exception:
+        return []
 
-# ページ中央にロゴとアクセントラインを表示する関数
+# ロゴ画像を表示する関数
 def display_logo(show_line=False):
     try:
-        # 画像を読み込む（ステップ1でアップロードしたlogo.png）
         image = Image.open('logo.png')
-        # 画像を表示（CSSで中央揃えにしています）
-        st.image(image, width=280)
-        # TOP画面の場合のみ、ロゴの下にゴールドのアクセントラインを入れる
+        st.image(image)
         if show_line:
+            # TOP画面のみロゴの下にゴールドのアクセントラインを表示
             st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
     except FileNotFoundError:
-        # 画像がない場合は、以前のテキストタイトルを表示（バックアップ）
-        st.title("🦝 AIケース記録システム")
+        st.title("🦝 TASUKARU")
 
-# セッション状態
+# セッション状態の管理
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "form_id" not in st.session_state: st.session_state["form_id"] = 0
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
@@ -64,7 +71,6 @@ if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 # 🏠 TOP画面
 # ==========================================
 if st.session_state["page"] == "top":
-    # ★ 「AIケース記録システム」の文字タイトルを消して、ロゴを表示！ ★
     display_logo(show_line=True)
     
     col_t1, col_t2 = st.columns(2)
@@ -86,7 +92,6 @@ elif st.session_state["page"] == "input":
         st.session_state["page"] = "top"
         st.rerun()
 
-    # 入力画面と履歴画面では、上部に小さくロゴを表示
     display_logo()
     st.title("ケース記録入力")
     fid = st.session_state["form_id"]
@@ -113,21 +118,18 @@ elif st.session_state["page"] == "input":
                         sample_file = genai.upload_file(path=temp_path)
                         
                         prompt = f"""
-                        以下の音声データの内容を元に、{user_name}さんの介護記録（申し送り）を簡潔にまとめてください。
+                        あなたはプロの介護職員です。{user_name}さんの以下の音声を、他の職員への正確な「申し送り記録」としてまとめてください。
                         
-                        【絶対のルール】
-                        1. 介護職員間の連絡に適した、丁寧かつ簡潔な口調（です・ます調）にすること。
-                        2. 「はい、承知いたしました」などの挨拶や返事は一切含めないでください。
-                        3. 音声に含まれていない情報は絶対に勝手に生成しないでください。
+                        【ルール】
+                        1. 職員間の連絡に適した、丁寧かつ簡潔な口調（です・ます調）にすること。
+                        2. 音声の内容を忠実に再現し、虚偽や過度な脚色は一切行わないこと。
+                        3. 「はい、承知いたしました」などの不要な返事は含めないこと。
                         """
                         
                         response = model.generate_content([sample_file, prompt])
-                        
                         st.session_state["edit_content"] = response.text
                         st.session_state[f"t_{fid}"] = response.text
-                        
                         os.remove(temp_path)
-                        
                     except Exception as e:
                         st.error(f"❌ AI生成エラー: {e}")
 
@@ -139,7 +141,7 @@ elif st.session_state["page"] == "input":
     # 保存処理
     if btn_save:
         if user_name:
-            st.info("⏳ 保存中...")
+            st.info("⏳ クラウドへ保存中...")
             try:
                 image_url = None
                 if img_file:
@@ -154,10 +156,8 @@ elif st.session_state["page"] == "input":
                     "created_at": target_date.isoformat()
                 }
                 supabase.table("records").insert(record_data).execute()
-                
                 st.success(f"✅ 【{user_name}様】の記録を保存しました")
                 time.sleep(1.5)
-                
                 st.session_state["edit_content"] = ""
                 st.session_state["form_id"] += 1
                 st.rerun()
@@ -167,7 +167,7 @@ elif st.session_state["page"] == "input":
             st.warning("⚠️ 利用者名を入力してください")
 
 # ==========================================
-# 📊 履歴表示画面
+# 📊 履歴表示・モニタリング画面
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOPに戻る"):
@@ -183,12 +183,10 @@ elif st.session_state["page"] == "history":
     with c4: s_year = st.selectbox("年", [2025, 2026, 2027], index=1)
     with c5: s_month = st.selectbox("月", range(1, 13), index=now_tokyo.month - 1)
     
-    # ボタンエリア
     cb1, cb2 = st.columns(2)
     with cb1: search_btn = st.button("🔍 履歴を検索", use_container_width=True)
     with cb2: moni_btn = st.button("📈 モニタリング生成(AI)", use_container_width=True)
     
-    # 結果表示エリア
     res_area = st.container()
 
     if search_btn or moni_btn:
@@ -205,14 +203,12 @@ elif st.session_state["page"] == "history":
                             if moni_btn:
                                 st.subheader(f"📋 {s_user}様 {s_year}年{s_month}月 モニタリング要約")
                                 if not df_f.empty:
-                                    # 全記録をテキストにまとめる
                                     all_text = "\n".join([f"【{r.created_at.date()}】: {r.content}" for _, r in df_f.iterrows()])
-                                    # AIでモニタリングを作成
                                     model = genai.GenerativeModel("gemini-2.5-flash")
-                                    prompt = f"{s_user}さんの1ヶ月分の介護記録に基づき、月末に提出する専門的な「モニタリング報告書（総括）」を作成してください。事実に基づき、虚偽や推測を含めないこと。\n\nデータ:\n{all_text}"
+                                    prompt = f"{s_user}さんの1ヶ月分の介護記録に基づき、月末に提出する専門的な「モニタリング報告書」を作成してください。虚偽を含めず、事実に基づいた変化をプロの口調で記述してください。\n\nデータ:\n{all_text}"
                                     moni_text = model.generate_content(prompt).text
                                     st.info(moni_text)
-                                    # 印刷ボタン
+                                    # 印刷/PDF保存ボタン
                                     st.button("🖨️ レポートを印刷 / PDF保存", on_click=lambda: st.components.v1.html("<script>window.print();</script>", height=0))
                                 else:
                                     st.warning("対象期間の記録がありません")
@@ -226,5 +222,9 @@ elif st.session_state["page"] == "history":
                                                 if r.get("image_url"): st.image(r["image_url"], width=250)
                                 else:
                                     st.info("記録なし")
+                    else:
+                        st.info("データが見つかりませんでした。")
                 except Exception as e:
                     st.error(f"検索エラー: {e}")
+        else:
+            st.warning("⚠️ 利用者名を選択してください")
