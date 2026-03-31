@@ -127,14 +127,25 @@ elif st.session_state["page"] == "input":
             if st.button("✨ AIで文章にする"):
                 with st.spinner("文章を作成中..."):
                     try:
-                        # 💡 修正：正解の最新モデル「gemini-2.5-flash」に戻しました！
+                        # 1. 確実なアップロード方式を使用（getvalueでデータ欠落を防ぐ）
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                            f.write(audio_value.getvalue())
+                            temp_path = f.name
+                            
+                        # 2. AIモデルに送信
                         model = genai.GenerativeModel("gemini-2.5-flash")
-                        audio_data = {"mime_type": "audio/wav", "data": audio_value.read()}
+                        sample_file = genai.upload_file(path=temp_path)
                         prompt = f"{user_name}さんの介護記録を簡潔に作成してください。"
                         
-                        response = model.generate_content([audio_data, prompt])
+                        response = model.generate_content([sample_file, prompt])
+                        
+                        # 3. Streamlitの仕様対策：テキストエリアの「キー(ID)」に直接流し込む！
                         st.session_state["edit_content"] = response.text
-                        st.rerun()
+                        st.session_state[f"t_{fid}"] = response.text
+                        
+                        # 後片付け
+                        os.remove(temp_path)
+                        
                     except Exception as e:
                         st.error(f"❌ AI生成エラー: {e}")
 
@@ -165,6 +176,7 @@ elif st.session_state["page"] == "input":
                 st.success(f"✅ 【{user_name}様】の記録を正常に保存しました！")
                 time.sleep(1.8)
                 
+                # 完全リセット
                 st.session_state["edit_content"] = ""
                 st.session_state["form_id"] += 1
                 st.rerun()
