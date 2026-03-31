@@ -15,14 +15,7 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
 # --- 1. 接続設定とUIカスタム ---
-# ★ ホーム画面用のアイコン画像とアプリ名を指定 ★
-try:
-    app_icon = Image.open('logo.png')
-except Exception:
-    app_icon = "🦝" # 画像が見つからない場合の予備
-
-# page_title がホーム画面に登録される時のデフォルトの名前になります
-st.set_page_config(page_title="ケース記録アプリ", page_icon=app_icon, layout="wide")
+st.set_page_config(page_title="TASUKARU ケース記録", page_icon="🦝", layout="wide")
 
 def load_css(file_name):
     try:
@@ -109,6 +102,7 @@ elif st.session_state["page"] == "input":
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
                         
+                        # ★ AIのプロンプトを厳格化（見出し・挨拶などを禁止） ★
                         prompt = f"""
                         以下の音声を、{user_name}さんの介護記録として、です・ます調の簡潔な文章で文字起こし・要約してください。
                         【厳守ルール】
@@ -176,6 +170,7 @@ elif st.session_state["page"] == "history":
                                     st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
                                     all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
                                     model = genai.GenerativeModel("gemini-2.5-flash")
+                                    # ★ モニタリング用のプロンプトも厳密化 ★
                                     prompt = f"""
                                     あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
                                     【指示】
