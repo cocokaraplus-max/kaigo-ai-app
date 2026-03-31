@@ -29,13 +29,17 @@ if not check_password():
 # --- 2. 接続設定とUI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# ▼▼▼ Streamlitのロゴやメニューを隠す魔法のCSS ▼▼▼
+# ▼▼▼ Streamlitのロゴやメニュー、右下のアイコンを隠す強力なCSS ▼▼▼
 hide_streamlit_style = """
 <style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-.stDeployButton {display:none;}
-header {visibility: hidden;}
+#MainMenu {visibility: hidden !important;}
+footer {visibility: hidden !important;}
+.stDeployButton {display:none !important;}
+header {visibility: hidden !important;}
+/* 右下の開発者アイコン（王冠とアバター）を強制的に消す */
+.viewerBadge_container {display: none !important;}
+.viewerBadge_link {display: none !important;}
+[data-testid="viewerBadge"] {display: none !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
