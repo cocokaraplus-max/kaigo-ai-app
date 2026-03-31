@@ -13,7 +13,7 @@ import time
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
-# --- 1. 接続設定とUIカスタム（LINE WORKS風デザイン） ---
+# --- 1. 接続設定とUIカスタム（LINE WORKS風・視認性向上版） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
@@ -39,13 +39,11 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
 .block-container h1 {
     font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif !important;
     font-weight: 700 !important;
-    color: #111111 !important;
+    color: #111111 !important; /* 濃い黒 */
     font-size: 1.6rem !important;
     border-bottom: 1px solid #EBECEF !important;
     padding-bottom: 12px !important;
     margin-bottom: 24px !important;
-    background: none !important; /* グラデーション廃止 */
-    -webkit-text-fill-color: initial !important;
 }
 /* タイトルの左側にLINE WORKS風の緑のアクセントライン */
 .block-container h1::before {
@@ -72,35 +70,27 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     border: none !important;
 }
 
-/* 一般的なボタン（メニューやTOPに戻るなど） */
+/* 一般的なボタン */
 div.stButton > button {
     background-color: #FFFFFF !important;
-    color: #333333 !important;
+    color: #111111 !important; /* 濃い黒 */
     border: 1px solid #D1D5DB !important;
     border-radius: 6px !important;
     font-weight: 600 !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
-    transition: all 0.2s !important;
 }
 div.stButton > button:hover {
     border-color: #00B900 !important;
     color: #00B900 !important;
 }
 
-/* ★ 保存ボタン（LINE WORKSの送信ボタンのような緑色） ★ */
+/* ★ 保存ボタン（緑色） ★ */
 div.stButton > button:has(div p:contains("クラウド保存")) {
     background-color: #00B900 !important;
-    color: #FFFFFF !important;
+    color: #FFFFFF !important; /* 文字色は白でOK */
     border: none !important;
-    box-shadow: 0 2px 6px rgba(0, 185, 0, 0.2) !important;
 }
 div.stButton > button:has(div p:contains("クラウド保存")):hover {
     background-color: #00A000 !important;
-    color: #FFFFFF !important;
-}
-div.stButton > button:has(div p:contains("クラウド保存")):active {
-    background-color: #008800 !important;
-    transform: scale(0.98) !important;
 }
 
 /* スマホ用：保存ボタンを右下固定 */
@@ -111,7 +101,7 @@ div.stButton > button:has(div p:contains("クラウド保存")):active {
         right: 20px !important;
         width: 140px !important;
         height: 60px !important;
-        border-radius: 30px !important; /* スッキリした丸み */
+        border-radius: 30px !important;
         z-index: 999999 !important;
         font-size: 1.1rem !important;
     }
@@ -120,21 +110,54 @@ div.stButton > button:has(div p:contains("クラウド保存")):active {
     }
 }
 
-/* 入力フォーム（テキストや日付）のスタイリング */
+/* ★ 入力フォーム（文字が見えるように修正） ★ */
+/* ラベル（「利用者名」「記録対象日」など）を濃く */
+.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, div.subheader p {
+    color: #111111 !important; /* 濃い黒 */
+    font-weight: 600 !important;
+}
+/* 見出し（音声入力など）を濃く */
+h2, h3, .subheader {
+    color: #111111 !important; /* 濃い黒 */
+}
+
+/* 入力欄（テキストや日付）の背景と文字色 */
 .stTextInput input, .stTextArea textarea, .stDateInput input {
     border-radius: 6px !important;
     border: 1px solid #D1D5DB !important;
-    background-color: #FAFAFA !important;
+    background-color: #FAFAFA !important; /* 薄いグレーの背景 */
+    color: #111111 !important; /* 入力文字は黒（ここが重要） */
 }
+/* プレースホルダー（入力前の薄い文字）も濃い目に */
+.stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
+    color: #888888 !important; /* 濃い目のグレー */
+}
+
 .stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
     border-color: #00B900 !important;
     box-shadow: 0 0 0 1px #00B900 !important;
     background-color: #FFFFFF !important;
 }
+
+/* ★ ファイルアップローダーの文字色修正 ★ */
+[data-testid="stFileUploader"] {
+    border: 2px dashed #D1D5DB !important;
+    border-radius: 8px !important;
+}
+[data-testid="stFileUploader"] > div > div > span,
+[data-testid="stFileUploader"] > div > div > small {
+    color: #333333 !important; /* ファイルドラッグ時のテキストを濃く */
+}
+/* Browse filesボタン */
+[data-testid="stFileUploader"] button {
+    background-color: #FAFAFA !important;
+    color: #333333 !important;
+    border: 1px solid #D1D5DB !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Supabase & Gemini 接続
+# Supabase & Gemini 接続（機能部分は変更なし）
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
@@ -289,6 +312,6 @@ elif st.session_state["page"] == "history":
                                 with st.expander(f"📅 {d}"):
                                     for _, r in df_f[df_f['created_at'].dt.date == d].iterrows():
                                         st.write(r['content'])
-                                        if r.get("image_url"): st.image(r["image_url"], width=300)
+                                        if r.get("image_url"): st.image(r["image_url"], width=250)
                         else: st.info("記録なし")
                 except: st.error("検索エラー")
