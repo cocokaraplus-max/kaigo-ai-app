@@ -33,35 +33,42 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. UI設定 ---
+# --- 2. 究極のUIカスタマイズ（フロートボタン実装） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
 <style>
-/* Streamlit純正パーツ非表示 */
+/* Streamlitパーツ非表示 */
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* スマホ用：画面最下部に大きな余白を作り、キーボードで隠れるのを防ぐ */
+/* 画面下の余白（キーボード対策） */
 .main .block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 250px !important; /* ← ここで画面下に巨大な隙間を作っています */
+    padding-bottom: 300px !important;
 }
 
-/* ボタンのデザイン */
-div.stButton > button { height: 4em !important; width: 100% !important; border-radius: 12px !important; font-weight: bold !important; font-size: 1.2rem !important; }
-
-/* 保存ボタン（赤） */
+/* ★ 追いかけてくる「保存ボタン」の魔法 ★ */
 div.stButton > button[key="save_btn"] {
+    position: fixed !important;
+    bottom: 30px !important;   /* 画面下から30px */
+    right: 20px !important;    /* 画面右から20px */
+    width: 150px !important;   /* 押しやすい幅 */
+    height: 70px !important;   /* 押しやすい高さ */
+    z-index: 999999 !important; /* 他のパーツより一番上に表示 */
     background-color: #FF4B4B !important;
     color: white !important;
-    border: 2px solid #D32F2F !important;
-    box-shadow: 0 4px #991B1B !important;
+    border-radius: 35px !important; /* 丸みを持たせて「浮いてる感」を出す */
+    font-size: 1.1rem !important;
+    font-weight: bold !important;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3) !important; /* 影を付けて浮かす */
+    border: 2px solid white !important;
+    transition: all 0.1s !important;
 }
+
+/* ボタンを押した時の反応 */
 div.stButton > button[key="save_btn"]:active {
-    background-color: #7F1D1D !important;
-    transform: translateY(4px) !important;
-    box-shadow: 0 0px !important;
+    transform: scale(0.9) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -85,25 +92,22 @@ if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力（ボタン配置を上に変更）
+# タブ1: 入力（フロートボタンで快適操作）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
     
-    # 状態表示エリア
+    # 状態表示エリア（ここを上に置くことで保存中かどうかわかるようにします）
     status_area = st.empty()
     fid = st.session_state["form_id"]
 
-    # 💡 改善：保存ボタンを入力欄より「上」に配置
-    # これにより、キーボードが出てきてもボタンが隠れません
-    if st.button("💾 クラウドに保存する（入力後に押す）", key="save_btn"):
-        # 保存ロジックは下に記載している変数を使うため、ここではフラグだけ立てる
-        st.session_state["trigger_save"] = True
+    # 💡 右下に常に浮いている「保存ボタン」
+    if st.button("💾 クラウド保存", key="save_btn"):
+        st.session_state["do_save"] = True
     else:
-        st.session_state["trigger_save"] = False
+        st.session_state["do_save"] = False
 
     col1, col2 = st.columns([1, 1])
-    
     with col1:
         user_name = st.text_input("利用者名", placeholder="山田 太郎", key=f"user_{fid}")
         target_date = st.date_input("記録対象日", value=now_tokyo.date(), key=f"date_{fid}")
@@ -135,10 +139,10 @@ with tab1:
         st.subheader("📝 内容の確認・修正")
         final_content = st.text_area("修正があれば書き換えてください", value=st.session_state["edit_content"], height=300, key=f"text_{fid}")
 
-    # 保存実行（ボタンが押された時の処理）
-    if st.session_state.get("trigger_save"):
+    # 保存処理（浮いているボタンが押されたとき）
+    if st.session_state.get("do_save"):
         if user_name:
-            status_area.warning("⏳ 保存中...")
+            status_area.warning("⏳ クラウドへ保存中...")
             try:
                 image_url = None
                 if img_file:
@@ -149,13 +153,13 @@ with tab1:
 
                 record_data = {
                     "user_name": user_name,
-                    "content": final_content if final_content else "（画像保存のみ）",
+                    "content": final_content if final_content else "（画像のみ保存）",
                     "image_url": image_url, 
                     "created_at": target_date.isoformat()
                 }
                 supabase.table("records").insert(record_data).execute()
                 
-                status_area.success(f"✅ 保存完了しました！")
+                status_area.success(f"✅ 保存が完了しました！")
                 time.sleep(1.5)
                 
                 # 完全リセット
@@ -163,7 +167,7 @@ with tab1:
                 st.session_state["form_id"] += 1
                 st.rerun()
             except Exception as e:
-                status_area.error(f"❌ 保存失敗: {e}")
+                status_area.error(f"❌ エラー: {e}")
         else:
             status_area.error("利用者名を入力してください")
 
