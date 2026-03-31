@@ -57,8 +57,8 @@ if audio_value:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                # 【修正箇所】一番賢い最新モデル「gemini-1.5-pro」をシンプルに呼び出す
-                model = genai.GenerativeModel("gemini-1.5-pro")
+                # 【最強の修正箇所】絶対にアクセスできる最新のFlashモデルを指定
+                model = genai.GenerativeModel("gemini-1.5-flash-latest")
                 
                 # ファイルアップロード
                 sample_file = genai.upload_file(path=temp_path)
