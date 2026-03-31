@@ -37,7 +37,7 @@ except Exception as e:
     st.stop()
 
 # --- 3. メイン画面 ---
-st.title("📓 AIケース記録システム")
+st.title("📓 AIケース記録 (最新版)")
 
 user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
 target_date = st.date_input("記録対象日", value=date.today())
@@ -52,15 +52,13 @@ if audio_value:
     if st.button("音声から文章を生成"):
         with st.spinner("AIが文章を作成中..."):
             try:
-                # 一時ファイルに保存
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                # 【最強の修正箇所】絶対にアクセスできる最新のFlashモデルを指定
-                model = genai.GenerativeModel("gemini-1.5-flash-latest")
+                # エラーが出ない安定版モデルを指定
+                model = genai.GenerativeModel("gemini-1.5-flash")
                 
-                # ファイルアップロード
                 sample_file = genai.upload_file(path=temp_path)
                 
                 prompt = f"""
@@ -72,11 +70,9 @@ if audio_value:
                 ・300文字程度にまとめる。
                 """
                 
-                # 生成実行
                 response = model.generate_content([sample_file, prompt])
                 st.session_state["edit_content"] = response.text
                 
-                # 一時ファイルの削除
                 os.remove(temp_path)
                 
             except Exception as e:
