@@ -28,22 +28,36 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定とUI設定 ---
+# --- 2. 接続設定と究極のUI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
+# あらゆるStreamlit純正アイコン・ボタンを抹殺するCSS
 st.markdown("""
 <style>
-[data-testid="stHeader"], [data-testid="stToolbar"], footer {display: none !important;}
-.block-container {padding-top: 1.5rem !important;}
+/* 1. ヘッダー、メニュー、デプロイボタン、フッターをすべて非表示 */
+[data-testid="stHeader"], 
+[data-testid="stToolbar"], 
+[data-testid="stAppDeployButton"],
+footer, 
+#MainMenu, 
+header {
+    display: none !important;
+    visibility: hidden !important;
+}
 
-/* 保存ボタン・検索ボタンの共通スタイル */
+/* 2. アプリ上部の無駄な余白をカット */
+.block-container {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+
+/* 3. ボタンのデザイン（押し感を維持） */
 div.stButton > button {
     height: 4em !important;
     width: 100% !important;
     border-radius: 12px !important;
     font-weight: bold !important;
     font-size: 1.2rem !important;
-    transition: all 0.05s !important;
 }
 
 /* 保存ボタン（赤） */
@@ -51,25 +65,12 @@ div.stButton > button[key="save_btn"] {
     background-color: #FF4B4B !important;
     color: white !important;
     border: 2px solid #D32F2F !important;
-    box-shadow: 0 6px #991B1B !important;
+    box-shadow: 0 4px #991B1B !important;
 }
 div.stButton > button[key="save_btn"]:active {
     background-color: #7F1D1D !important;
-    box-shadow: 0 1px #7F1D1D !important;
-    transform: translateY(5px) !important;
-}
-
-/* 履歴を表示ボタン（青） */
-div.stButton > button[key="search_btn"] {
-    background-color: #007BFF !important;
-    color: white !important;
-    border: 2px solid #0056b3 !important;
-    box-shadow: 0 6px #004085 !important;
-}
-div.stButton > button[key="search_btn"]:active {
-    background-color: #004085 !important;
-    box-shadow: 0 1px #004085 !important;
-    transform: translateY(5px) !important;
+    box-shadow: 0 0px !important;
+    transform: translateY(4px) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -78,44 +79,40 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except Exception as e:
-    st.error("❌ 接続エラーが発生しました")
+    st.error("❌ 接続エラー")
     st.stop()
 
-# 利用者リストを取得する関数
+# 利用者リスト取得
 def get_user_list():
     try:
         res = supabase.table("records").select("user_name").execute()
-        if res.data:
-            users = sorted(list(set([r['user_name'] for r in res.data if r['user_name']])))
-            return users
-        return []
+        return sorted(list(set([r['user_name'] for r in res.data if r['user_name']]))) if res.data else []
     except:
         return []
 
 tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧"])
 
 # ==========================================
-# タブ1: 入力
+# タブ1: 入力（保存後リセット機能付き）
 # ==========================================
 with tab1:
     st.title("📓 ケース記録入力")
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        if "user_name_val" not in st.session_state:
-            st.session_state["user_name_val"] = ""
+        # 入力内容を管理するためのセッション状態
+        if "input_name" not in st.session_state: st.session_state["input_name"] = ""
+        if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
         
-        user_name = st.text_input("利用者名", value=st.session_state["user_name_val"], placeholder="山田 太郎")
+        user_name = st.text_input("利用者名", value=st.session_state["input_name"], placeholder="山田 太郎", key="name_field")
         target_date = st.date_input("記録対象日", value=date.today())
         
         st.subheader("📸 写真を追加")
-        img_file = st.file_uploader("写真を撮る、または選択", type=['jpg', 'png', 'jpeg'])
-        
-        if img_file:
-            st.image(img_file, caption="撮影・選択済み", width=250)
+        img_file = st.file_uploader("写真を選択/撮影", type=['jpg', 'png', 'jpeg'], label_visibility="collapsed")
+        if img_file: st.image(img_file, width=250)
 
         st.subheader("🎙️ 音声で入力")
-        audio_value = st.audio_input("話してください")
+        audio_value = st.audio_input("マイクをタップ")
         
         if audio_value:
             if st.button("✨ 声から生成"):
@@ -126,22 +123,23 @@ with tab1:
                             temp_path = f.name
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
-                        prompt = f"{user_name}さんの記録を介護申し送り形式で作成してください。"
+                        prompt = f"{user_name}さんの記録を申し送り形式で作成してください。"
                         response = model.generate_content([sample_file, prompt])
                         st.session_state["edit_content"] = response.text
                         os.remove(temp_path)
                         st.rerun()
-                    except:
-                        st.error("生成失敗")
+                    except: st.error("生成失敗")
 
     with col2:
         st.subheader("📝 内容の確認・修正")
-        status_area_1 = st.empty() 
-        final_content = st.text_area("内容の最終確認", value=st.session_state.get("edit_content", ""), height=300)
+        status_area = st.empty()
+        
+        # テキストエリアの内容もセッション状態で管理
+        final_content = st.text_area("修正があれば書き換えてください", value=st.session_state["edit_content"], height=300)
         
         if st.button("💾 クラウドに保存する", key="save_btn"):
             if user_name:
-                status_area_1.warning("⏳ クラウドに保存しています...")
+                status_area.warning("⏳ 保存中...")
                 try:
                     image_url = None
                     if img_file:
@@ -158,13 +156,18 @@ with tab1:
                     }
                     supabase.table("records").insert(record_data).execute()
                     
-                    status_area_1.success(f"✅ 保存完了しました！")
+                    # --- 成功後の処理 ---
+                    status_area.success(f"✅ 【{user_name}様】の記録を保存しました！")
                     time.sleep(1.5)
+                    
+                    # セッション状態を空にして画面をリセット
                     st.session_state["edit_content"] = ""
-                    st.session_state["user_name_val"] = ""
+                    st.session_state["input_name"] = ""
+                    # 確実にリロードして入力を消す
                     st.rerun()
+                    
                 except Exception as e:
-                    status_area_1.error(f"❌ 保存失敗 ({e})")
+                    status_area.error(f"❌ 保存失敗: {e}")
             else:
                 st.warning("利用者名を入力してください")
 
@@ -173,45 +176,24 @@ with tab1:
 # ==========================================
 with tab2:
     st.title("📊 履歴表示")
-    
-    # 検索条件エリア
     c3, c4, c5 = st.columns([2, 1, 1])
-    
     with c3:
-        # 登録済みの名前をプルダウンで表示
         registered_users = get_user_list()
-        if registered_users:
-            s_user = st.selectbox("利用者名を選択", ["（未選択）"] + registered_users)
-        else:
-            s_user = st.text_input("利用者名を入力（まだデータがありません）")
-            
+        s_user = st.selectbox("利用者名を選択", ["（未選択）"] + registered_users) if registered_users else st.text_input("利用者名を入力")
     with c4: s_year = st.selectbox("年", [2025, 2026, 2027], index=1)
     with c5: s_month = st.selectbox("月", range(1, 13), index=date.today().month - 1)
     
-    status_area_2 = st.empty() # 検索メッセージ用
-    
     if st.button("🔍 履歴を表示", key="search_btn"):
-        if s_user == "（未選択）" or not s_user:
-            st.warning("利用者を選択してください")
-        else:
-            status_area_2.info(f"🔍 {s_user}様の履歴を検索しています...")
-            try:
+        if s_user and s_user != "（未選択）":
+            with st.spinner("検索中..."):
                 res = supabase.table("records").select("*").eq("user_name", s_user).execute()
                 if res.data:
                     df = pd.DataFrame(res.data)
                     df['created_at'] = pd.to_datetime(df['created_at'])
                     df_f = df[(df['created_at'].dt.year == s_year) & (df['created_at'].dt.month == s_month)].sort_values("created_at", ascending=False)
-                    
-                    if not df_f.empty:
-                        status_area_2.success(f"✅ {len(df_f)}件の記録が見つかりました")
-                        for d in df_f['created_at'].dt.date.unique():
-                            with st.expander(f"📅 {d.strftime('%Y年%m月%d日')}"):
-                                for _, r in df_f[df_f['created_at'].dt.date == d].iterrows():
-                                    st.write(r['content'])
-                                    if r.get("image_url"): st.image(r["image_url"], width=300)
-                    else:
-                        status_area_2.warning("該当する期間の記録はありませんでした。")
-                else:
-                    status_area_2.warning("記録が見つかりませんでした。")
-            except Exception as e:
-                status_area_2.error(f"検索エラーが発生しました: {e}")
+                    for d in df_f['created_at'].dt.date.unique():
+                        with st.expander(f"📅 {d}"):
+                            for _, r in df_f[df_f['created_at'].dt.date == d].iterrows():
+                                st.write(r['content'])
+                                if r.get("image_url"): st.image(r["image_url"], width=300)
+                else: st.info("記録なし")
