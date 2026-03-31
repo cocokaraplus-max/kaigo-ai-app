@@ -29,13 +29,17 @@ if not check_password():
 # --- 2. 接続設定とUI絶対非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# ▼▼▼ アプリ内部の余計な余白やヘッダーを消すCSS ▼▼▼
+# ▼▼▼ あらゆる余計なUIを根こそぎ消し去る究極のCSS ▼▼▼
 hide_streamlit_style = """
 <style>
+/* 1. 通常のヘッダー・メニュー・フッターを消す */
 [data-testid="stHeader"] {display: none !important;}
 [data-testid="stToolbar"] {display: none !important;}
 #MainMenu {visibility: hidden !important;}
 footer {visibility: hidden !important;}
+
+/* 2. ?embed=true をつけた時に出る「下のバー（Built with Streamlit）」を狙い撃ちして消す！ */
+div[class*="embeddedAppMetaInfoBar"] {display: none !important; visibility: hidden !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
