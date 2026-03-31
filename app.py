@@ -1,6 +1,5 @@
 import streamlit as st
 import google.generativeai as genai
-import tempfile
 import os
 import pandas as pd
 from datetime import datetime, date
@@ -22,7 +21,7 @@ st.markdown("""
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* ★ メッセージ（Status/Success/Error）を画面最上部に固定する魔法 ★ */
+/* ★ メッセージ（Status/Success/Error）を画面最上部に固定 ★ */
 [data-testid="stNotification"] {
     position: fixed !important;
     top: 10px !important;
@@ -32,6 +31,16 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     z-index: 1000000 !important;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
     border-radius: 10px !important;
+}
+
+/* TOP画面のメニューボタン */
+div.stButton > button.top-menu-btn {
+    height: 8em !important;
+    font-size: 1.5rem !important;
+    border-radius: 20px !important;
+    background-color: #f0f2f6 !important;
+    color: #31333F !important;
+    border: 2px solid #d1d5db !important;
 }
 
 /* スマホ用：保存ボタンを右下固定 */
@@ -112,21 +121,29 @@ elif st.session_state["page"] == "input":
 
         st.subheader("🎙️ 音声入力")
         audio_value = st.audio_input("マイクをタップして話してください", key=f"a_{fid}")
+        
+        # --- 💡 AI文章生成ロジックの改善 ---
         if audio_value:
             if st.button("✨ AIで文章にする"):
                 with st.spinner("文章を作成中..."):
                     try:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                            f.write(audio_value.read())
-                            temp_path = f.name
-                        model = genai.GenerativeModel("gemini-2.5-flash")
-                        sample_file = genai.upload_file(path=temp_path)
-                        prompt = f"{user_name}さんの介護記録を簡潔に作成してください。"
-                        response = model.generate_content([sample_file, prompt])
+                        # 安定版の1.5-flashモデルを使用
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        
+                        # 音声データをファイル保存せずに、直接メモリからAIへ送信
+                        audio_data = {"mime_type": "audio/wav", "data": audio_value.read()}
+                        prompt = f"{user_name}さんの介護記録を簡潔な申し送り形式で作成してください。"
+                        
+                        # 生成実行
+                        response = model.generate_content([audio_data, prompt])
+                        
+                        # 成功したらテキストエリアに反映
                         st.session_state["edit_content"] = response.text
-                        os.remove(temp_path)
                         st.rerun()
-                    except: st.error("AI生成失敗")
+                        
+                    except Exception as e:
+                        # エラーが起きた場合は詳細を画面最上部に表示
+                        st.error(f"❌ AI生成エラー: {e}")
 
     with col2:
         st.subheader("📝 記録内容の確認")
@@ -136,7 +153,6 @@ elif st.session_state["page"] == "input":
     # 保存処理
     if btn_save:
         if user_name:
-            # 画面最上部にメッセージを表示
             st.info("⏳ クラウドへ保存中...")
             try:
                 image_url = None
@@ -153,11 +169,9 @@ elif st.session_state["page"] == "input":
                 }
                 supabase.table("records").insert(record_data).execute()
                 
-                # 成功メッセージを最上部に表示
                 st.success(f"✅ 【{user_name}様】の記録を正常に保存しました！")
                 time.sleep(1.8)
                 
-                # リセット
                 st.session_state["edit_content"] = ""
                 st.session_state["form_id"] += 1
                 st.rerun()
