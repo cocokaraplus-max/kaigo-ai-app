@@ -37,7 +37,7 @@ except Exception as e:
     st.stop()
 
 # --- 3. メイン画面 ---
-st.title("📓 AIケース記録 (完成版)")
+st.title("📓 AIケース記録 (運用版)")
 
 user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
 target_date = st.date_input("記録対象日", value=date.today())
@@ -52,27 +52,33 @@ if audio_value:
     if st.button("音声から文章を生成"):
         with st.spinner("AIが文章を作成中..."):
             try:
+                # 一時ファイルに保存
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     f.write(audio_value.read())
                     temp_path = f.name
                 
-                # 【大成功の鍵】あなたのアカウントで使える最新モデルを指定！
+                # アカウントで利用可能な最新の高速モデル
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
+                # ファイルアップロード
                 sample_file = genai.upload_file(path=temp_path)
                 
+                # 【最終調整】ありのまま・申し送り口調・水増し禁止
                 prompt = f"""
-                優秀な介護職として、以下の音声から{target_date.strftime('%Y/%m/%d')}のケース記録を作成してください。
-                対象者：{user_name}
+                以下の音声データから、{target_date.strftime('%Y/%m/%d')}のケース記録（対象者：{user_name}）を作成してください。
                 
-                【ルール】
-                ・丁寧な敬語を使用し、プロフェッショナルな介護記録にする。
-                ・300文字程度にまとめる。
+                【厳守するルール】
+                1. 音声で話された内容を「なるべくありのまま」抽出し、絶対に勝手な推測や事実の追加（話の膨張）をしないでください。
+                2. 現場の介護職員同士で情報共有（申し送り）をする際の、分かりやすく自然な口調（「〜でした」「〜とのことです」「〜の様子です」など）でまとめてください。
+                3. 無駄な前置きや挨拶、AIとしての感想は一切不要です。結果だけを出力してください。
+                4. 話された内容が短い場合は、無理に文字数を増やさず、短いまま出力してください。
                 """
                 
+                # 生成実行
                 response = model.generate_content([sample_file, prompt])
                 st.session_state["edit_content"] = response.text
                 
+                # 一時ファイルの削除
                 os.remove(temp_path)
                 
             except Exception as e:
