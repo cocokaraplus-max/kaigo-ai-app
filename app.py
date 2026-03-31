@@ -13,7 +13,7 @@ import time
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
-# --- 1. 接続設定とUIカスタム ---
+# --- 1. 接続設定とUIカスタム（LINE WORKS風デザイン） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
 st.markdown("""
@@ -21,6 +21,43 @@ st.markdown("""
 /* 共通：Streamlitパーツ非表示 */
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
+
+/* アプリ全体の背景色をLINE WORKS風の薄いグレーに */
+.stApp {
+    background-color: #F5F6F8 !important;
+}
+
+/* メイン画面を白枠のカード風に */
+.block-container {
+    background-color: #FFFFFF !important;
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+
+/* ★ タイトルをシンプル＆クリーンに ★ */
+.block-container h1 {
+    font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif !important;
+    font-weight: 700 !important;
+    color: #111111 !important;
+    font-size: 1.6rem !important;
+    border-bottom: 1px solid #EBECEF !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 24px !important;
+    background: none !important; /* グラデーション廃止 */
+    -webkit-text-fill-color: initial !important;
+}
+/* タイトルの左側にLINE WORKS風の緑のアクセントライン */
+.block-container h1::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 1.4rem;
+    background-color: #00B900; /* LINE Green */
+    margin-right: 10px;
+    vertical-align: middle;
+    border-radius: 2px;
+}
 
 /* メッセージ（Status/Success/Error）を画面最上部に固定 */
 [data-testid="stNotification"] {
@@ -30,35 +67,69 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     right: 5% !important;
     width: 90% !important;
     z-index: 1000000 !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
-    border-radius: 10px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+    border-radius: 8px !important;
+    border: none !important;
 }
 
-/* TOP画面のメニューボタン */
-div.stButton > button.top-menu-btn {
-    height: 8em !important;
-    font-size: 1.5rem !important;
-    border-radius: 20px !important;
-    background-color: #f0f2f6 !important;
-    color: #31333F !important;
-    border: 2px solid #d1d5db !important;
+/* 一般的なボタン（メニューやTOPに戻るなど） */
+div.stButton > button {
+    background-color: #FFFFFF !important;
+    color: #333333 !important;
+    border: 1px solid #D1D5DB !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+    transition: all 0.2s !important;
+}
+div.stButton > button:hover {
+    border-color: #00B900 !important;
+    color: #00B900 !important;
+}
+
+/* ★ 保存ボタン（LINE WORKSの送信ボタンのような緑色） ★ */
+div.stButton > button:has(div p:contains("クラウド保存")) {
+    background-color: #00B900 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: 0 2px 6px rgba(0, 185, 0, 0.2) !important;
+}
+div.stButton > button:has(div p:contains("クラウド保存")):hover {
+    background-color: #00A000 !important;
+    color: #FFFFFF !important;
+}
+div.stButton > button:has(div p:contains("クラウド保存")):active {
+    background-color: #008800 !important;
+    transform: scale(0.98) !important;
 }
 
 /* スマホ用：保存ボタンを右下固定 */
 @media (max-width: 768px) {
     div.stButton > button:has(div p:contains("クラウド保存")) {
         position: fixed !important;
-        bottom: 30px !important;
+        bottom: 20px !important;
         right: 20px !important;
-        width: 150px !important;
-        height: 70px !important;
-        border-radius: 35px !important;
+        width: 140px !important;
+        height: 60px !important;
+        border-radius: 30px !important; /* スッキリした丸み */
         z-index: 999999 !important;
-        background-color: #FF4B4B !important;
-        color: white !important;
-        border: 2px solid white !important;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.4) !important;
+        font-size: 1.1rem !important;
     }
+    .main .block-container {
+        padding-bottom: 100px !important;
+    }
+}
+
+/* 入力フォーム（テキストや日付）のスタイリング */
+.stTextInput input, .stTextArea textarea, .stDateInput input {
+    border-radius: 6px !important;
+    border: 1px solid #D1D5DB !important;
+    background-color: #FAFAFA !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
+    border-color: #00B900 !important;
+    box-shadow: 0 0 0 1px #00B900 !important;
+    background-color: #FFFFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -87,7 +158,7 @@ if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 # 🏠 TOP画面
 # ==========================================
 if st.session_state["page"] == "top":
-    st.title("📓 AIケース記録システム")
+    st.title("AIケース記録システム")
     st.subheader("メニューを選択してください")
     st.write("---")
     
@@ -110,7 +181,7 @@ elif st.session_state["page"] == "input":
         st.session_state["page"] = "top"
         st.rerun()
 
-    st.title("✍️ ケース記録入力")
+    st.title("ケース記録入力")
     fid = st.session_state["form_id"]
 
     col1, col2 = st.columns([1, 1])
@@ -134,7 +205,6 @@ elif st.session_state["page"] == "input":
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
                         
-                        # 💡 AIへの命令（プロンプト）を厳格に修正
                         prompt = f"""
                         以下の音声データの内容を元に、{user_name}さんの介護記録（申し送り）を簡潔にまとめてください。
                         
@@ -197,7 +267,7 @@ elif st.session_state["page"] == "history":
         st.session_state["page"] = "top"
         st.rerun()
 
-    st.title("📊 履歴表示")
+    st.title("履歴表示")
     c3, c4, c5 = st.columns([2, 1, 1])
     with c3:
         users = get_user_list()
