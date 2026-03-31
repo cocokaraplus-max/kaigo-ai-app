@@ -2,11 +2,13 @@ import streamlit as st
 import google.generativeai as genai
 import tempfile
 import os
-from datetime import date
+import pandas as pd
+from datetime import date, datetime
 from supabase import create_client, Client # type: ignore
+from fpdf import FPDF
 
-# --- 1. パスワード認証 ---
-PASSWORD = "admin"  
+# --- 1. 初期設定・認証 ---
+PASSWORD = "admin"
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -25,95 +27,100 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定（Secrets） ---
-st.set_page_config(page_title="AIケース記録", page_icon="📓")
+# --- 2. 接続設定 ---
+st.set_page_config(page_title="AI介護マネージャー", page_icon="📋", layout="wide")
 
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    st.sidebar.success("✅ システム接続完了")
+    model = genai.GenerativeModel("gemini-2.5-flash")
 except Exception as e:
-    st.sidebar.error("❌ 接続エラー：Secretsを確認してください")
+    st.error("接続設定に問題があります。")
     st.stop()
 
-# --- 3. メイン画面 ---
-st.title("📓 AIケース記録 (運用版)")
+# --- 3. メイン画面のタブ構成 ---
+tab1, tab2 = st.tabs(["✍️ ケース記録入力", "📊 履歴閲覧・モニタリング"])
 
-user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
-target_date = st.date_input("記録対象日", value=date.today())
-
-st.divider()
-
-# --- 4. 音声入力セクション ---
-st.subheader("🎙️ 音声で入力")
-audio_value = st.audio_input("マイクをタップして話してください")
-
-if audio_value:
-    if st.button("音声から文章を生成"):
-        with st.spinner("AIが文章を作成中..."):
-            try:
-                # 一時ファイルに保存
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                    f.write(audio_value.read())
-                    temp_path = f.name
-                
-                # アカウントで利用可能な最新の高速モデル
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                
-                # ファイルアップロード
-                sample_file = genai.upload_file(path=temp_path)
-                
-                # 【最終調整】ありのまま・申し送り口調・水増し禁止
-                prompt = f"""
-                以下の音声データから、{target_date.strftime('%Y/%m/%d')}のケース記録（対象者：{user_name}）を作成してください。
-                
-                【厳守するルール】
-                1. 音声で話された内容を「なるべくありのまま」抽出し、絶対に勝手な推測や事実の追加（話の膨張）をしないでください。
-                2. 現場の介護職員同士で情報共有（申し送り）をする際の、分かりやすく自然な口調（「〜でした」「〜とのことです」「〜の様子です」など）でまとめてください。
-                3. 無駄な前置きや挨拶、AIとしての感想は一切不要です。結果だけを出力してください。
-                4. 話された内容が短い場合は、無理に文字数を増やさず、短いまま出力してください。
-                """
-                
-                # 生成実行
-                response = model.generate_content([sample_file, prompt])
-                st.session_state["edit_content"] = response.text
-                
-                # 一時ファイルの削除
-                os.remove(temp_path)
-                
-            except Exception as e:
-                st.error(f"AI解析エラーが発生しました。")
-                st.info(f"詳細ログ: {e}")
-
-st.divider()
-
-# --- 5. 手入力・修正エリア ---
-st.subheader("📝 記録内容（手入力・修正）")
-final_content = st.text_area(
-    "内容を確認・修正してください", 
-    value=st.session_state.get("edit_content", ""), 
-    height=300,
-    placeholder="ここに直接入力するか、音声入力を利用してください..."
-)
-
-# --- 6. 保存ボタン ---
-if st.button("クラウド(Supabase)に保存"):
-    if user_name and final_content:
-        save_date = target_date.isoformat()
+# ==========================================
+# タブ1: ケース記録入力 (既存機能の強化)
+# ==========================================
+with tab1:
+    st.title("📓 ケース記録入力")
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        user_name = st.text_input("利用者名", placeholder="例：山田 太郎")
+        target_date = st.date_input("記録対象日", value=date.today(), key="input_date")
+        st.subheader("🎙️ 音声入力")
+        audio_value = st.audio_input("録音ボタンを押して話してください")
         
-        record_data = {
-            "user_name": user_name,
-            "content": final_content,
-            "category": "ケース記録",
-            "created_at": save_date
-        }
-        
-        try:
-            supabase.table("records").insert(record_data).execute()
-            st.success(f"✅ {save_date} の記録として保存しました！")
-            if "edit_content" in st.session_state:
-                del st.session_state["edit_content"]
-        except Exception as e:
-            st.error(f"保存エラー: {e}")
-    else:
-        st.warning("「利用者名」と「記録内容」を入力してください。")
+        if audio_value:
+            if st.button("音声から文章を生成"):
+                with st.spinner("AI解析中..."):
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                        f.write(audio_value.read())
+                        temp_path = f.name
+                    sample_file = genai.upload_file(path=temp_path)
+                    prompt = f"以下の音声から{user_name}さんの介護記録を、スタッフ間の申し送り口調で簡潔に作成してください。"
+                    response = model.generate_content([sample_file, prompt])
+                    st.session_state["current_content"] = response.text
+                    os.remove(temp_path)
+
+    with col2:
+        st.subheader("📝 記録内容の確認")
+        final_content = st.text_area("内容を修正して保存してください", value=st.session_state.get("current_content", ""), height=250)
+        if st.button("クラウドに保存"):
+            if user_name and final_content:
+                data = {"user_name": user_name, "content": final_content, "created_at": target_date.isoformat(), "category": "case"}
+                supabase.table("records").insert(data).execute()
+                st.success("保存完了！")
+                st.session_state["current_content"] = ""
+            else:
+                st.warning("項目を埋めてください。")
+
+# ==========================================
+# タブ2: 履歴閲覧・モニタリング (新機能)
+# ==========================================
+with tab2:
+    st.title("📊 履歴・レポート生成")
+    
+    # 検索フィルター
+    search_user = st.text_input("検索する利用者名", value=user_name)
+    search_month = st.month_input("対象月を選択", value=date.today())
+    
+    if search_user:
+        # Supabaseからデータ取得
+        response = supabase.table("records").select("*").eq("user_name", search_user).execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df['created_at'] = pd.to_datetime(df['created_at'])
+            
+            # 選択された月のデータに絞り込み
+            df_filtered = df[(df['created_at'].dt.year == search_month.year) & (df['created_at'].dt.month == search_month.month)]
+            df_filtered = df_filtered.sort_values("created_at")
+
+            st.write(f"### {search_user} 様の記録 ({search_month.strftime('%Y/%m')})")
+            
+            # --- モニタリング生成 ---
+            if st.button("✨ 1ヶ月のモニタリング報告書を生成"):
+                all_text = "\n".join(df_filtered['content'].tolist())
+                with st.spinner("1ヶ月の記録を集約中..."):
+                    m_prompt = f"以下の1ヶ月分のケース記録を分析し、ケアプランの進捗状況として200文字程度のモニタリング報告書を作成してください。利用者は{search_user}さんです。\n\n記録内容:\n{all_text}"
+                    m_response = model.generate_content(m_prompt)
+                    st.info(m_response.text)
+                    st.session_state["monitoring_report"] = m_response.text
+
+            st.divider()
+
+            # --- 履歴表示・印刷用レイアウト ---
+            for d in df_filtered['created_at'].dt.date.unique():
+                day_records = df_filtered[df_filtered['created_at'].dt.date == d]
+                with st.expander(f"📅 {d} の記録 ({len(day_records)}件)"):
+                    for _, row in day_records.iterrows():
+                        st.write(f"・ {row['content']}")
+
+            # --- PDF/印刷ボタン ---
+            st.button("🖨️ 画面を印刷 (Ctrl+P)", on_click=lambda: st.write('<script>window.print();</script>', unsafe_allow_html=True))
+            
+        else:
+            st.write("記録が見つかりません。")
