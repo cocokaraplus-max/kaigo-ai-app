@@ -13,175 +13,20 @@ import time
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 
-# --- 1. 接続設定とUIカスタム（機能変更なし・コントラスト修正版） ---
+# --- 1. 接続設定とUIカスタム（CSS分離版） ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-st.markdown("""
-<style>
-/* 共通：Streamlitパーツ非表示 */
-[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
-footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
+# ★ 外部のデザインファイル(style.css)を読み込む魔法 ★
+def load_css(file_name):
+    try:
+        with open(file_name, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except Exception:
+        pass
 
-/* アプリ全体の背景色をLINE WORKS風の薄いグレーに */
-.stApp {
-    background-color: #F5F6F8 !important;
-}
+load_css("style.css")
 
-/* メイン画面を白枠のカード風に */
-.block-container {
-    background-color: #FFFFFF !important;
-    padding-top: 2rem !important;
-    padding-bottom: 2rem !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
-}
-
-/* ★ タイトルをシンプル＆クリーンに ★ */
-.block-container h1 {
-    font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif !important;
-    font-weight: 700 !important;
-    color: #111111 !important; /* 濃い黒 */
-    font-size: 1.6rem !important;
-    border-bottom: 1px solid #EBECEF !important;
-    padding-bottom: 12px !important;
-    margin-bottom: 24px !important;
-}
-.block-container h1::before {
-    content: '';
-    display: inline-block;
-    width: 4px;
-    height: 1.4rem;
-    background-color: #00B900; /* LINE Green */
-    margin-right: 10px;
-    vertical-align: middle;
-    border-radius: 2px;
-}
-
-/* メッセージ（Status/Success/Error）を画面最上部に固定 */
-[data-testid="stNotification"] {
-    position: fixed !important;
-    top: 10px !important;
-    left: 5% !important;
-    right: 5% !important;
-    width: 90% !important;
-    z-index: 1000000 !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
-    border-radius: 8px !important;
-    border: none !important;
-}
-
-/* 一般的なボタン */
-div.stButton > button {
-    background-color: #FFFFFF !important;
-    color: #111111 !important; /* 濃い黒 */
-    border: 1px solid #D1D5DB !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-}
-div.stButton > button:hover {
-    border-color: #00B900 !important;
-    color: #00B900 !important;
-}
-
-/* ★ 保存ボタン（緑色） ★ */
-div.stButton > button:has(div p:contains("クラウド保存")) {
-    background-color: #00B900 !important;
-    color: #FFFFFF !important; /* 文字色は白でOK */
-    border: none !important;
-}
-div.stButton > button:has(div p:contains("クラウド保存")):hover {
-    background-color: #00A000 !important;
-}
-
-/* スマホ用：保存ボタンを右下固定 */
-@media (max-width: 768px) {
-    div.stButton > button:has(div p:contains("クラウド保存")) {
-        position: fixed !important;
-        bottom: 20px !important;
-        right: 20px !important;
-        width: 140px !important;
-        height: 60px !important;
-        border-radius: 30px !important;
-        z-index: 999999 !important;
-        font-size: 1.1rem !important;
-    }
-    .main .block-container {
-        padding-bottom: 100px !important;
-    }
-}
-
-/* ★ 入力フォーム・セレクトボックスの見出し色 ★ */
-.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, .stSelectbox label, div.subheader p {
-    color: #111111 !important; /* 濃い黒 */
-    font-weight: 600 !important;
-}
-h2, h3, .subheader {
-    color: #111111 !important; 
-}
-
-/* 入力欄の背景と文字色 */
-.stTextInput input, .stTextArea textarea, .stDateInput input {
-    border-radius: 6px !important;
-    border: 1px solid #D1D5DB !important;
-    background-color: #FAFAFA !important; 
-    color: #111111 !important; 
-}
-.stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
-    color: #888888 !important; 
-}
-.stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
-    border-color: #00B900 !important;
-    box-shadow: 0 0 0 1px #00B900 !important;
-    background-color: #FFFFFF !important;
-}
-
-/* ★ セレクトボックス（履歴検索など）の文字色修正 ★ */
-.stSelectbox div[data-baseweb="select"] {
-    background-color: #FAFAFA !important;
-    border-radius: 6px !important;
-    border: 1px solid #D1D5DB !important;
-}
-.stSelectbox div[data-baseweb="select"] span {
-    color: #111111 !important; /* 選択されている文字を黒に */
-}
-
-/* ★ 履歴閲覧エリア（Expander）と一般テキストの色飛び防止 ★ */
-.stMarkdown p, .stMarkdown span {
-    color: #111111 !important; /* 抽出されたデータテキストを確実に黒にする */
-}
-[data-testid="stExpander"] {
-    background-color: #FFFFFF !important;
-    border: 1px solid #D1D5DB !important;
-    border-radius: 8px !important;
-}
-[data-testid="stExpander"] summary {
-    background-color: #F5F6F8 !important; /* タイトル背景を少しグレーに */
-}
-[data-testid="stExpander"] summary p {
-    color: #111111 !important; /* 日付などの文字色を黒に */
-    font-weight: 600 !important;
-}
-[data-testid="stExpander"] summary svg {
-    fill: #111111 !important; /* 矢印アイコンを黒に */
-}
-
-/* ★ ファイルアップローダー ★ */
-[data-testid="stFileUploader"] {
-    border: 2px dashed #D1D5DB !important;
-    border-radius: 8px !important;
-}
-[data-testid="stFileUploader"] > div > div > span,
-[data-testid="stFileUploader"] > div > div > small {
-    color: #333333 !important; 
-}
-[data-testid="stFileUploader"] button {
-    background-color: #FAFAFA !important;
-    color: #333333 !important;
-    border: 1px solid #D1D5DB !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Supabase & Gemini 接続（機能変更なし）
+# Supabase & Gemini 接続
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
