@@ -92,10 +92,8 @@ elif st.session_state["page"] == "input":
         if img_file: st.image(img_file, width=250)
         st.subheader("🎙️ 音声入力")
         audio_value = st.audio_input("マイクをタップして話してください", key=f"a_{fid}")
-        
         if audio_value:
             if st.button("✨ AIで文章にする"):
-                # メッセージを確実に出すためにwithブロックを適切に配置
                 with st.spinner("文章を作成中。しばらくお待ちください..."):
                     try:
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
@@ -104,18 +102,17 @@ elif st.session_state["page"] == "input":
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         sample_file = genai.upload_file(path=temp_path)
                         prompt = f"""
-                        あなたはプロの介護職員です。{user_name}さんの以下の音声を、正確な「申し送り記録」としてまとめてください。
-                        1. 介護専門用語を用い、丁寧かつ簡潔な口調にすること。
-                        2. 事実を忠実に再現し、虚偽は含めないこと。
-                        3. 返事などは含めないこと。
+                        あなたはプロの介護職員です。{user_name}さんの以下の音声を、他の職員への正確な「申し送り記録」としてまとめてください。
+                        【ルール】
+                        1. 介護現場で使われる専門的かつ簡潔な口調（です・ます調）にすること。
+                        2. 音声の内容を忠実に再現し、虚偽や過度な脚色は一切行わないこと。
+                        3. 「はい、承知いたしました」などの不要な返事は含めないこと。
                         """
                         response = model.generate_content([sample_file, prompt])
                         st.session_state["edit_content"] = response.text
                         st.session_state[f"t_{fid}"] = response.text
                         os.remove(temp_path)
-                        st.rerun() # 生成後に画面を更新して反映
                     except Exception as e: st.error(f"❌ AI生成エラー: {e}")
-
     with col2:
         st.subheader("📝 記録内容の確認")
         final_content = st.text_area("修正があればここを書き換えてください", value=st.session_state["edit_content"], height=350, key=f"t_{fid}")
@@ -151,16 +148,14 @@ elif st.session_state["page"] == "history":
     with c5: s_month = st.selectbox("月", range(1, 13), index=now_tokyo.month - 1)
     
     cb1, cb2 = st.columns(2)
-    # ここでボタンが押されたかどうかをまず判定する
-    search_clicked = cb1.button("🔍 履歴を検索", use_container_width=True)
-    moni_clicked = cb2.button("📈 モニタリング生成(AI)", use_container_width=True)
+    with cb1: search_btn = st.button("🔍 履歴を検索", use_container_width=True)
+    with cb2: moni_btn = st.button("📈 モニタリング生成(AI)", use_container_width=True)
     
     res_area = st.container()
-    
-    if search_clicked or moni_clicked:
+    if search_btn or moni_btn:
         if s_user and s_user != "（未選択）":
-            # メッセージを出すために明示的にspinnerを開始
-            loading_msg = "モニタリングを生成しています。しばらくお待ちください..." if moni_clicked else "検索中。しばらくお待ちください..."
+            # ★ 検索時とモニタリング生成時のスピナーメッセージを修正 ★
+            loading_msg = "モニタリングを生成しています。しばらくお待ちください..." if moni_btn else "検索中。しばらくお待ちください..."
             with st.spinner(loading_msg):
                 try:
                     res = supabase.table("records").select("*").eq("user_name", s_user).execute()
@@ -168,25 +163,27 @@ elif st.session_state["page"] == "history":
                         df = pd.DataFrame(res.data)
                         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce').dropna()
                         df_f = df[(df['created_at'].dt.year == s_year) & (df['created_at'].dt.month == s_month)].sort_values("created_at")
-                        
                         with res_area:
-                            if moni_clicked:
+                            if moni_btn:
                                 if not df_f.empty:
-                                    st.subheader(f"📋 ケアマネ提出用モニタリング要約 ({s_year}/{s_month})")
+                                    st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
                                     all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
                                     model = genai.GenerativeModel("gemini-2.5-flash")
                                     prompt = f"""
-                                    熟練の介護職員としてケアマネジャー向けの月間モニタリング（経過報告）を作成してください。
-                                    1. 200文字程度の要約として、ADLや生活の様子を専門用語を用いて記述すること。
-                                    2. 事実のみを書き、虚偽は含めないこと。
-                                    3. 冒頭に「【{s_year}年{s_month}月度 モニタリング要約】」と記載。
-                                    データ:\n{all_text}
+                                    あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
+                                    【指示】
+                                    1. 200文字程度の要約として、ADL、心身状態、生活の様子を専門用語を用いて記述すること。
+                                    2. 用語は「離床」「ADL」「不穏」「傾眠」「摂取量」などの専門用語を適切に使うこと。
+                                    3. 記録にある事実のみを書き、推測や虚偽の内容は絶対に含めないこと。
+                                    4. 冒頭に「【{s_year}年{s_month}月度 モニタリング要約】」と記載すること。
+                                    データ:
+                                    {all_text}
                                     """
                                     moni_text = model.generate_content(prompt).text
                                     st.info(moni_text)
                                     st.button("🖨️ レポートを印刷 / PDF保存", on_click=lambda: st.components.v1.html("<script>window.print();</script>", height=0))
                                 else: st.warning("対象期間の記録がありません")
-                            elif search_clicked:
+                            elif search_btn:
                                 if not df_f.empty:
                                     for d in sorted(df_f['created_at'].dt.date.unique(), reverse=True):
                                         with st.expander(f"📅 {d}"):
@@ -194,4 +191,4 @@ elif st.session_state["page"] == "history":
                                                 st.write(r['content'])
                                                 if r.get("image_url"): st.image(r["image_url"], width=250)
                                 else: st.info("記録なし")
-                except Exception as e: st.error(f"エラー: {e}")
+                except Exception as e: st.error(f"検索エラー: {e}")
