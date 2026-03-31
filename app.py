@@ -26,15 +26,26 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定（Secrets） ---
+# --- 2. 接続設定とUI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
+
+# ▼▼▼ Streamlitのロゴやメニューを隠す魔法のCSS ▼▼▼
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+.stDeployButton {display:none;}
+header {visibility: hidden;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# ▲▲▲ ここまで ▲▲▲
 
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    st.sidebar.success("✅ システム接続完了")
 except Exception as e:
-    st.sidebar.error("❌ 接続エラー：Secretsを確認してください")
+    st.error("❌ 接続エラー：Secretsを確認してください")
     st.stop()
 
 # --- 3. メイン画面のタブ構成 ---
@@ -169,6 +180,7 @@ with tab2:
                             {all_text}
                             """
                             m_response = model.generate_content(m_prompt)
+                            st.success("✅ モニタリング報告書の生成が完了しました！")
                             st.info(m_response.text)
                     
                     st.divider()
