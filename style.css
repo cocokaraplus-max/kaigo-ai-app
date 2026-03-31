@@ -2,12 +2,21 @@
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* アプリ全体の背景色を薄いグレーに */
-.stApp {
-    background-color: #F5F6F8 !important;
+/* 印刷用設定：ボタンやサイドメニューを印刷しない */
+@media print {
+    div.stButton, .stTabs [data-baseweb="tab-list"], [data-testid="stSidebar"], .print-hide {
+        display: none !important;
+    }
+    .block-container {
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
 }
 
-/* メイン画面を白枠のカード風に */
+/* アプリ全体の背景色 */
+.stApp { background-color: #F5F6F8 !important; }
+
+/* メイン画面のカード風デザイン */
 .block-container {
     background-color: #FFFFFF !important;
     padding-top: 2rem !important;
@@ -15,37 +24,28 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
 }
 
-/* ★ タイトルをシンプル＆クリーンに ★ */
+/* タイトルデザイン */
 .block-container h1 {
-    font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif !important;
+    font-family: 'Helvetica Neue', Arial, sans-serif !important;
     font-weight: 700 !important;
     color: #111111 !important; 
     font-size: 1.6rem !important;
     border-bottom: 1px solid #EBECEF !important;
     padding-bottom: 12px !important;
-    margin-bottom: 15px !important; /* 少し間隔を詰める */
+    margin-bottom: 24px !important;
 }
 .block-container h1::before {
     content: '';
     display: inline-block;
     width: 4px;
     height: 1.4rem;
-    background-color: #00B900; /* LINE Green */
+    background-color: #00B900;
     margin-right: 10px;
     vertical-align: middle;
     border-radius: 2px;
 }
 
-/* ★ サブタイトル（メニューを選択してください等）の改行・デザイン調整 ★ */
-.block-container h3 {
-    color: #555555 !important; /* 少し優しいグレーに */
-    font-size: 1.1rem !important; /* スマホでも1行に収まるサイズ */
-    font-weight: 500 !important;
-    word-break: keep-all !important; /* 単語の途中で変な改行をさせない魔法 */
-    margin-bottom: 24px !important;
-}
-
-/* メッセージ（Status/Success/Error）を画面最上部に固定 */
+/* 通知メッセージ固定 */
 [data-testid="stNotification"] {
     position: fixed !important;
     top: 10px !important;
@@ -55,64 +55,32 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     z-index: 1000000 !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
     border-radius: 8px !important;
-    border: none !important;
 }
 
-/* ★ 一般的なボタン（TOP画面のメニューボタンをスタイリッシュに） ★ */
+/* TOP画面メニューボタン */
 div.stHorizontalBlock > div.stColumn div.stButton > button {
     height: 6em !important; 
-    font-size: 1.1rem !important; /* スマホでも綺麗に収まるように微調整 */
+    font-size: 1.1rem !important;
     border-radius: 12px !important; 
     border: 2px solid #D1D5DB !important; 
     background-color: #FFFFFF !important;
-    color: #111111 !important;
     font-weight: 600 !important;
-    text-align: center !important; 
-    justify-content: center !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important; 
-    box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important; 
     transition: all 0.3s ease !important; 
 }
-
-/* ホバー時の設定（TOP画面） */
 div.stHorizontalBlock > div.stColumn div.stButton > button:hover {
     border-color: #00B900 !important; 
     color: #00B900 !important; 
-    box-shadow: 0 6px 12px rgba(0,185,0,0.15) !important; 
     transform: translateY(-3px) !important; 
 }
 
-/* 押した時の反応（TOP画面） */
-div.stHorizontalBlock > div.stColumn div.stButton > button:active {
-    transform: translateY(-1px) !important; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
-}
-
-/* それ以外のボタン（TOP画面以外やTOPに戻るボタンなど） */
-[data-testid="stExpander"] div.stButton > button, 
-[data-testid="stMain"] div.stButton > button[kind="secondaryFormSubmit"] {
-    background-color: #FFFFFF !important;
-    color: #111111 !important; 
-    border: 1px solid #D1D5DB !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-}
-
-/* ★ 保存ボタン（緑色） ★ */
+/* 保存ボタン（緑） */
 div.stButton > button:has(div p:contains("クラウド保存")) {
     background-color: #00B900 !important;
-    color: #FFFFFF !important; 
-    border: none !important;
-    box-shadow: none !important;
-    transform: none !important;
-}
-div.stButton > button:has(div p:contains("クラウド保存")):hover {
-    background-color: #00A000 !important;
+    color: #FFFFFF !important;
+    border-radius: 30px !important;
 }
 
-/* スマホ用：保存ボタンを右下固定 */
+/* スマホ用保存ボタン固定 */
 @media (max-width: 768px) {
     div.stButton > button:has(div p:contains("クラウド保存")) {
         position: fixed !important;
@@ -120,81 +88,12 @@ div.stButton > button:has(div p:contains("クラウド保存")):hover {
         right: 20px !important;
         width: 140px !important;
         height: 60px !important;
-        border-radius: 30px !important;
         z-index: 999999 !important;
-        font-size: 1.1rem !important;
-    }
-    .main .block-container {
-        padding-bottom: 100px !important;
     }
 }
 
-/* ★ 入力フォーム・セレクトボックスの見出し色 ★ */
-.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, .stSelectbox label, div.subheader p {
-    color: #111111 !important; 
-    font-weight: 600 !important;
-}
-h2, .subheader {
-    color: #111111 !important; 
-}
-
-/* 入力欄の背景と文字色 */
+/* フォーム・テキスト入力 */
 .stTextInput input, .stTextArea textarea, .stDateInput input {
     border-radius: 6px !important;
-    border: 1px solid #D1D5DB !important;
-    background-color: #FAFAFA !important; 
     color: #111111 !important; 
-}
-.stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
-    color: #888888 !important; 
-}
-.stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
-    border-color: #00B900 !important;
-    box-shadow: 0 0 0 1px #00B900 !important;
-    background-color: #FFFFFF !important;
-}
-
-/* ★ セレクトボックス（履歴検索など）の文字色修正 ★ */
-.stSelectbox div[data-baseweb="select"] {
-    background-color: #FAFAFA !important;
-    border-radius: 6px !important;
-    border: 1px solid #D1D5DB !important;
-}
-.stSelectbox div[data-baseweb="select"] span {
-    color: #111111 !important; 
-}
-
-/* ★ 履歴閲覧エリア（Expander）と一般テキストの色飛び防止 ★ */
-.stMarkdown p, .stMarkdown span {
-    color: #111111 !important; 
-}
-[data-testid="stExpander"] {
-    background-color: #FFFFFF !important;
-    border: 1px solid #D1D5DB !important;
-    border-radius: 8px !important;
-}
-[data-testid="stExpander"] summary {
-    background-color: #F5F6F8 !important; 
-}
-[data-testid="stExpander"] summary p {
-    color: #111111 !important; 
-    font-weight: 600 !important;
-}
-[data-testid="stExpander"] summary svg {
-    fill: #111111 !important; 
-}
-
-/* ★ ファイルアップローダー ★ */
-[data-testid="stFileUploader"] {
-    border: 2px dashed #D1D5DB !important;
-    border-radius: 8px !important;
-}
-[data-testid="stFileUploader"] > div > div > span,
-[data-testid="stFileUploader"] > div > div > small {
-    color: #333333 !important; 
-}
-[data-testid="stFileUploader"] button {
-    background-color: #FAFAFA !important;
-    color: #333333 !important;
-    border: 1px solid #D1D5DB !important;
 }
