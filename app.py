@@ -26,30 +26,17 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. 接続設定とUI絶対非表示設定 ---
+# --- 2. 接続設定とUI非表示設定 ---
 st.set_page_config(page_title="AIケース記録", page_icon="📓", layout="wide")
 
-# ▼▼▼ StreamlitのUIを根こそぎ消し去る究極のCSS ▼▼▼
+# ▼▼▼ アプリ内部のメニューやヘッダーをスッキリ消すCSS ▼▼▼
 hide_streamlit_style = """
 <style>
-/* 1. ヘッダー全体（上の余白やメニュー、Deployボタンなどを完全に消す） */
-header {display: none !important;}
+/* 上部のヘッダーと右上のメニューボタンを消す */
 [data-testid="stHeader"] {display: none !important;}
-
-/* 2. 右上のツールバー（赤いDeployボタンやアバターなどを完全に消す） */
 [data-testid="stToolbar"] {display: none !important;}
-[data-testid="stAppDeployButton"] {display: none !important;}
-
-/* 3. フッター（下部のMade with Streamlitを完全に消す） */
-footer {display: none !important;}
-
-/* 4. 右下のフローティングバッジ（王冠やアバター）を完全に消す */
-.viewerBadge_container {display: none !important;}
-
-/* 5. 古い仕様のメインメニューも念のため消す */
 #MainMenu {visibility: hidden !important;}
-
-/* 6. 上部の余白を詰めてアプリを上まで引き上げる */
+/* アプリ上部の不要な余白を詰める */
 .block-container {padding-top: 2rem !important;}
 </style>
 """
