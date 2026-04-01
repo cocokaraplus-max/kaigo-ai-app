@@ -3,3 +3,4 @@ google-generativeai
 supabase
 pandas
 fpdf2
+pytz
