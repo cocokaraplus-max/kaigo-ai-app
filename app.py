@@ -97,7 +97,7 @@ if st.session_state["page"] == "top":
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（申し送り口調対応）
+# ✍️ 記録入力（忠実整理版）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
@@ -115,7 +115,7 @@ elif st.session_state["page"] == "input":
     
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする"):
-        with st.spinner("申し送り文を作成中..."):
+        with st.spinner("音声を整理中..."):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     tmp.write(aud.getvalue()); tmp_path = tmp.name
@@ -126,11 +126,13 @@ elif st.session_state["page"] == "input":
                     if f_up.state.name == "ACTIVE": break
                     time.sleep(1)
                 
-                # 【口調の指示を強化】
+                # 【指示を厳格化】
                 prompt = (
-                    "あなたは介護職員です。仲間のスタッフに状況を伝えるための『申し送り文』を作成してください。"
-                    "「〜です」「〜でした」「〜そうです」といった、丁寧ながらも現場の仲間へ話しかけるような柔らかい口調でお願いします。"
-                    "重要な変化や注意点は見逃さないように、自然な文章でまとめてください。"
+                    "あなたは介護現場の記録作成アシスタントです。以下のルールで音声をテキスト化し、整えてください：\n"
+                    "1. 話していない内容を付け加えたり、推測で情報を補完したりしないでください。\n"
+                    "2. 「えーっと」「あー」などの不要な言葉（フィラー）はすべて削除してください。\n"
+                    "3. 口調は介護職員が仲間に申し送るような、自然な話し言葉（〜でした、〜のようです、等）にしてください。\n"
+                    "4. 箇条書きなどの報告書形式ではなく、一続きの「記録」としての文章にまとめてください。"
                 )
                 
                 response = model.generate_content([f_up, prompt])
@@ -153,7 +155,7 @@ elif st.session_state["page"] == "input":
             except Exception as e: st.error(f"保存エラー: {e}")
 
 # ==========================================
-# 📊 履歴 / ⚙️ 設定
+# 📊 履歴 / ⚙️ 設定（変更なし）
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
