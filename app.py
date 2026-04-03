@@ -56,33 +56,46 @@ if "show_history_list" not in st.session_state: st.session_state["show_history_l
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
 
 # ==========================================
-# 🔐 ログイン & Cookie同期
+# 🔐 ログイン & Cookie同期（スマホ最適化版）
 # ==========================================
 cookie_manager.get_all()
-time.sleep(0.5)
-saved_f = cookie_manager.get("saved_f_code")
-saved_n = cookie_manager.get("saved_my_name")
 
+# スマホの低速なCookie読み込みに対応するため、少し長めに待機
 if not st.session_state.get("is_authenticated"):
+    time.sleep(1.2)  # 0.5から1.2に延長
+    saved_f = cookie_manager.get("saved_f_code")
+    saved_n = cookie_manager.get("saved_my_name")
+
     if saved_f and saved_n:
         st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
         st.rerun()
+    
+    # ログインしていない時だけ表示
     display_logo()
     with st.container(border=True):
-        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526")
-        n_in = st.text_input("👤 あなたのお名前") # 自由入力に変更してCookieに保存
+        st.markdown("<h3 style='text-align: center;'>🔐 ログイン</h3>", unsafe_allow_html=True)
+        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="login_f_v20")
+        n_in = st.text_input("👤 あなたのお名前", key="login_n_v20")
         if st.button("利用を開始する", use_container_width=True):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in); cookie_manager.set("saved_my_name", n_in)
+                cookie_manager.set("saved_f_code", f_in, key="set_f_v20")
+                cookie_manager.set("saved_my_name", n_in, key="set_n_v20")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
+                # Cookieが書き込まれるのを待ってからリロード
+                time.sleep(0.5)
                 st.rerun()
     st.stop()
 
-f_code = st.session_state["facility_code"]
-my_name = st.session_state["my_name"]
+# 認証情報の最終確認
+f_code = st.session_state.get("facility_code")
+my_name = st.session_state.get("my_name")
+
+if not f_code or not my_name:
+    st.info("認証情報を確認中...")
+    st.stop()
 
 # ==========================================
-# 🏠 TOP 
+# 🏠 TOP画面
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -95,17 +108,18 @@ if st.session_state["page"] == "top":
             st.session_state["page"] = "history"; st.session_state["show_history_list"] = False; st.session_state["monitoring_result"] = ""; st.rerun()
     if st.button("⚙️ マスター登録", use_container_width=True): st.session_state["page"] = "settings"; st.rerun()
     if st.button("🚪 ログアウト"):
-        cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
-        st.session_state.clear(); st.rerun()
+        cookie_manager.delete("saved_f_code")
+        cookie_manager.delete("saved_my_name")
+        st.session_state.clear()
+        time.sleep(0.5)
+        st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（記入者自動固定版）
+# ✍️ 記録入力（スマホ対応）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("✍️ ケース記録入力")
-    
-    # 記入者はログイン名で固定（表示のみ）
     st.info(f"✍️ 記入者: {my_name}")
 
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
@@ -124,7 +138,7 @@ elif st.session_state["page"] == "input":
                 for _ in range(10):
                     f_up = genai.get_file(f_up.name); 
                     if f_up.state.name == "ACTIVE": break
-                    time.sleep(1)
+                    time.sleep(1.5)
                 prompt = ("不要な言葉を削除し、介護職員が仲間に送る自然な口調で、話した内容のみを正確に記録として整えてください。")
                 response = model.generate_content([f_up, prompt])
                 st.session_state["edit_content"] = response.text
@@ -136,11 +150,10 @@ elif st.session_state["page"] == "input":
         if sel != "(未選択)" and content:
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no = match.group(1); u_name = match.group(2)
-            # staff_name にログイン中の my_name をそのまま入れる
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
-# --- 履歴・モニタリング（以前の最強プロンプトを維持） ---
+# --- 履歴・モニタリング等（変更なし） ---
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("📊 履歴・モニタリング")
@@ -150,10 +163,8 @@ elif st.session_state["page"] == "history":
     
     if sel != "---":
         u_name = re.search(r'\) (.*)', sel).group(1)
-        st.markdown("#### 📅 記録の集計・モニタリング生成")
         col_date, col_btn = st.columns([2, 2])
-        with col_date:
-            target_date = st.date_input("集計する日を選択", value=date.today())
+        with col_date: target_date = st.date_input("集集計する日を選択", value=date.today())
         with col_btn:
             if st.button("✨ 指定日の記録をまとめる", use_container_width=True):
                 date_str = target_date.strftime('%Y-%m-%d')
@@ -177,21 +188,15 @@ elif st.session_state["page"] == "history":
                     prompt = "あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を200字程度で作成してください。【最重要ルール】: ケース記録に含まれる『具体的な支援内容』『介入した事柄』は、漏れなくすべて文章に盛り込んでください。飛躍した推測は禁止し、専門的な報告書口調で、コピペして使うための純粋な本文のみを出力してください。"
                     resp = model.generate_content(prompt + "\n\n" + all_txt)
                     st.session_state["monitoring_result"] = resp.text
-            else: st.warning("集計に必要なデータが足りません。")
 
         if st.session_state["monitoring_result"]:
             st.markdown("---")
-            st.markdown("### 📈 生成されたモニタリング文")
             with st.container(border=True):
                 st.write(st.session_state["monitoring_result"])
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.caption("📋 以下の枠内の右上のボタンでコピーできます")
                 st.code(st.session_state["monitoring_result"], language=None)
 
-        st.divider()
         if st.button("📜 過去の履歴を表示する" if not st.session_state["show_history_list"] else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state["show_history_list"]
-
         if st.session_state["show_history_list"]:
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
             if res.data:
@@ -199,15 +204,14 @@ elif st.session_state["page"] == "history":
                     with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')} - 記: {r.get('staff_name','--')}"):
                         st.write(r['content'])
 
-# --- 設定 ---
 elif st.session_state["page"] == "settings":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("⚙️ 利用者マスター登録")
-    with st.form("reg_master"):
+    with st.form("reg_master_v20"):
         c_no = st.text_input("カルテ番号")
         u_na = st.text_input("氏名 (漢字)")
         u_ka = st.text_input("ふりがな (カタカナ)")
         if st.form_submit_button("登録"):
             if c_no and u_na and u_ka:
                 supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute()
-                st.success("完了"); time.sleep(1); st.rerun()
+                st.success("完了"); st.rerun()
