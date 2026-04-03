@@ -32,6 +32,11 @@ st.markdown("""
         width: 100% !important; height: 50px !important; font-weight: bold !important;
         margin-top: 10px !important; margin-bottom: 10px !important; border: none !important;
     }
+    /* ラジオボタンエリアの装飾 */
+    div[data-testid="stRadio"] > label {
+        font-weight: bold !important;
+        color: #ff4b4b !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -55,19 +60,17 @@ def display_logo(show_line=False):
 # --- 2. 状態管理 ---
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
-if "show_history_list" not in st.session_state: st.session_state["show_history_list"] = False
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 端末ブロック & 認証
+# 🔐 セキュリティ・端末チェック
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.2)
 device_id = cookie_manager.get("device_id")
 if not device_id:
-    device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id)
+    device_id = str(uuid.uuid4()); cookie_manager.set("device_id", device_id)
 
 res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
 if res_block.data:
@@ -121,20 +124,18 @@ elif st.session_state["page"] == "admin_menu":
     st.markdown("<div class='admin-title'>🛠️ 管理者設定メニュー</div>", unsafe_allow_html=True)
     tab1, tab2, tab3, tab4 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除", "🔑 パスワード変更"])
     with tab1:
-        with st.form("reg_v14"):
+        with st.form("reg_v16"):
             c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな(ひらがな)")
             if st.form_submit_button("登録"):
                 if c_no and u_na and u_ka:
                     supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute(); st.rerun()
-    # (中略: tab2, 3, 4)
     with tab2:
         res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         staff_names = list(set([r['staff_name'] for r in res_staff.data])) if res_staff.data else []
         target_staff = st.selectbox("ブロック対象", ["(未選択)"] + staff_names)
         if st.button("🚨 この端末をブロック", type="primary", use_container_width=True):
             if target_staff != "(未選択)":
-                supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target_staff, "facility_code": f_code, "is_active": True}).execute()
-                st.session_state.clear(); st.rerun()
+                supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target_staff, "facility_code": f_code, "is_active": True}).execute(); st.session_state.clear(); st.rerun()
     with tab3:
         res_list = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
         for b in res_list.data:
@@ -153,7 +154,7 @@ elif st.session_state["page"] == "admin_menu":
     st.divider(); st.button("◀ TOPに戻る", key="adm_down")
 
 # ==========================================
-# ✍️ 記録入力（カメラ機能搭載）
+# ✍️ 記録入力（三択カメラ起動）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOPに戻る", key="inp_up"): st.session_state["page"] = "top"; st.rerun()
@@ -165,27 +166,34 @@ elif st.session_state["page"] == "input":
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("👤 利用者を選択", patient_options)
 
-    # --- 📸 カメラ & 画像アップロード ---
     st.markdown("---")
-    img_file = st.camera_input("📷 写真を撮る (背面カメラ推奨)")
-    up_file = st.file_uploader("📁 または画像を選択", type=["jpg", "png", "jpeg"])
+    
+    # 📸 入力方法の選択（ここが重要：選択肢を分けることで勝手な起動を防ぐ）
+    input_method = st.radio(
+        "📷 記録に画像を含めますか？",
+        ["入力なし（音声・テキストのみ）", "📁 画像を選択してアップロード", "📸 今すぐ写真を撮る"],
+        index=0
+    )
+    
+    target_img = None
+    
+    if input_method == "📁 画像を選択してアップロード":
+        target_img = st.file_uploader("画像を選択", type=["jpg", "png", "jpeg"])
+    
+    elif input_method == "📸 今すぐ写真を撮る":
+        st.warning("⚠️ カメラを起動します。背面・前面の切り替えは画面内のアイコンで行ってください。")
+        target_img = st.camera_input("カメラ撮影")
+    
     aud_file = st.audio_input("🎙️ 声で入力")
     
-    target_img = img_file if img_file else up_file
-
     if (target_img or aud_file) and st.button("✨ AIで文章を整理する"):
-        with st.spinner("AIが内容を確認中..."):
+        with st.spinner("AI解析中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 inputs = []
-                
-                # 画像があれば追加
                 if target_img:
-                    img = Image.open(target_img)
-                    inputs.append(img)
-                    inputs.append("画像に写っている状況（食事の量、皮膚の状態、書類の内容など）を介護記録として客観的に説明してください。")
-
-                # 音声があれば追加
+                    inputs.append(Image.open(target_img))
+                    inputs.append("画像に写っている状況を、介護職の視点で客観的に説明してください。")
                 if aud_file:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         tmp.write(aud_file.getvalue()); tmp_path = tmp.name
@@ -199,7 +207,7 @@ elif st.session_state["page"] == "input":
                 st.session_state["edit_content"] = response.text
                 if aud_file: os.remove(tmp_path)
                 st.rerun()
-            except Exception as e: st.error(f"解析エラー: {e}")
+            except Exception as e: st.error(f"エラー: {e}")
 
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
     if st.button("💾 クラウド保存", use_container_width=True):
@@ -211,7 +219,7 @@ elif st.session_state["page"] == "input":
     st.divider(); st.button("◀ TOPに戻る", key="inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング
+# 📊 履歴・モニタリング (省略なし)
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOPに戻る", key="his_up"): st.session_state["page"] = "top"; st.rerun()
@@ -230,7 +238,7 @@ elif st.session_state["page"] == "history":
                 if res.data:
                     all_txt = "\n".join([r['content'] for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    resp = model.generate_content(f"以下の介護記録を200字程度で要約。支援内容は漏らさず記載せよ。\n\n{all_txt}")
+                    resp = model.generate_content(f"介護記録を200字程度で要約。支援内容は漏らさず記載。\n\n{all_txt}")
                     st.info(f"📅 要約:\n\n{resp.text}")
         if st.button("📈 1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
