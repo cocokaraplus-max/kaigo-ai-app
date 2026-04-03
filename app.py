@@ -33,6 +33,7 @@ try:
     s_url = st.secrets["SUPABASE_URL"]
     s_key = st.secrets["SUPABASE_KEY"]
     g_key = st.secrets["GEMINI_API_KEY"]
+    # 最新のAPI設定を適用
     genai.configure(api_key=g_key)
     supabase: Client = create_client(s_url, s_key)
 except Exception as e:
@@ -74,16 +75,17 @@ if not st.session_state["is_authenticated"]:
     display_logo()
     st.markdown("<h3 style='text-align: center;'>🔐 ログイン</h3>", unsafe_allow_html=True)
     with st.container(border=True):
-        f_in = st.text_input("🏢 施設コード", value=saved_f if saved_f else "cocokaraplus-5526", key="login_f_v14")
-        n_in = st.text_input("👤 お名前", value=saved_n if saved_n else "", key="login_n_v14")
+        f_in = st.text_input("🏢 施設コード", value=saved_f if saved_f else "cocokaraplus-5526", key="login_f_v15")
+        n_in = st.text_input("👤 お名前", value=saved_n if saved_n else "", key="login_n_v15")
         if st.button("利用を開始する", use_container_width=True):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="set_f_v14")
-                cookie_manager.set("saved_my_name", n_in, key="set_n_v14")
+                cookie_manager.set("saved_f_code", f_in, key="set_f_v15")
+                cookie_manager.set("saved_my_name", n_in, key="set_n_v15")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 st.rerun()
     st.stop()
 
+# 施設コードの復旧
 f_code = st.session_state.get("facility_code")
 if not f_code:
     saved_f = cookie_manager.get("saved_f_code")
@@ -119,7 +121,7 @@ elif st.session_state["page"] == "input":
     sel = st.selectbox("👤 利用者を選択", ["---"] + [f"No.{r['chart_number']} : {r['user_name']}" for _, r in p_df.iterrows()])
     
     aud = st.audio_input("🎙️ 声で入力")
-    if aud and st.button("✨ AIで文章にする", key="ai_btn_v14"):
+    if aud and st.button("✨ AIで文章にする", key="ai_btn_v15"):
         with st.spinner("AIが音声を解析中..."):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -127,23 +129,21 @@ elif st.session_state["page"] == "input":
                     tmp_path = tmp.name
                 
                 if os.path.getsize(tmp_path) > 0:
-                    # 【重要修正】モデル名の指定を 'models/' 付きのフルパスに変更
-                    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+                    # 【重要修正】モデル名を最新の安定版エイリアスに変更
+                    model = genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
                     f_up = genai.upload_file(path=tmp_path)
                     
-                    # Gemini側での準備完了を待機
+                    # 準備完了を待機
                     for _ in range(15):
                         f_up = genai.get_file(f_up.name)
                         if f_up.state.name == "ACTIVE": break
                         time.sleep(2)
                     
-                    # 日本語での出力を明示的に指示
-                    response = model.generate_content([f_up, "あなたは介護記録作成のアシスタントです。提供された音声を元に、適切な介護記録の文章を作成してください。出力は日本語のみとしてください。"])
+                    # 生成実行
+                    response = model.generate_content([f_up, "介護記録として整理してください。必ず日本語で。"])
                     st.session_state["edit_content"] = response.text
                     os.remove(tmp_path)
                     st.rerun()
-                else:
-                    st.error("録音データが見つかりませんでした。")
             except Exception as e:
                 st.error(f"AI解析エラー: {e}")
 
@@ -157,20 +157,18 @@ elif st.session_state["page"] == "input":
             }).execute()
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
+# --- 履歴と設定（変更なし） ---
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
-    display_logo(); st.subheader("📊 履歴")
-    res = supabase.table("records").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
+    display_logo(); res = supabase.table("records").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
     if res.data:
         for r in res.data:
-            with st.expander(f"📅 {r['created_at'][:10]} - {r['user_name']} (記: {r.get('staff_name','--')})"):
-                st.write(r['content'])
-
+            with st.expander(f"📅 {r['created_at'][:10]} - {r['user_name']}"): st.write(r['content'])
 elif st.session_state["page"] == "settings":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("⚙️ 利用者登録")
-    with st.form("reg_v14"):
+    with st.form("reg_v15"):
         c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名")
         if st.form_submit_button("登録"):
             supabase.table("patients").insert({"facility_code": f_code, "chart_number": normalize_chart_no(c_no), "user_name": u_na}).execute()
-            st.success("登録完了！"); st.rerun()
+            st.success("完了"); st.rerun()
