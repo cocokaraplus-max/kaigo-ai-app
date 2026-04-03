@@ -41,7 +41,7 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
 
-    /* 🎙️ 録音用ウィジェットのカスタマイズ（指サイズを意識） */
+    /* 🎙️ 録音用ウィジェットのカスタマイズ */
     section[data-testid="stAudioInput"] {
         border: 2px solid #ff4b4b !important;
         border-radius: 20px !important;
@@ -78,7 +78,6 @@ components.html("""
 
     const videoElement = createNoSleepVideo();
 
-    // 画面に触れている間、スリープを防止し続ける
     document.addEventListener('touchstart', function() {
         videoElement.play();
         requestWakeLock();
@@ -165,7 +164,7 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（大型ボタン＆タッチスリープ防止）
+# ✍️ 記録入力（文言変更済み）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
@@ -180,8 +179,7 @@ elif st.session_state["page"] == "input":
     target_img = st.file_uploader("📷 写真（背面カメラ）/ 画像", type=["jpg", "png", "jpeg"])
     
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
-    st.caption("※ボタンに触れている間は画面が消えません。")
-    # Streamlit標準のaudio_inputを使用（CSSで指サイズに強調）
+    st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud_file = st.audio_input("録音ボタン")
     
     if (target_img or aud_file) and st.button("✨ AIで文章にする", type="primary"):
@@ -208,7 +206,7 @@ elif st.session_state["page"] == "input":
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no, u_name = match.group(1), match.group(2)
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
-            st.success(f"✅ {u_name}さんの記録を保存。続けて入力できます。")
+            st.success(f"✅ {u_name}さんの記録を保存しました。続けて入力できます。")
             st.session_state["edit_content"] = ""; time.sleep(1.2); st.rerun()
     
     back_to_top_button("inp_down")
