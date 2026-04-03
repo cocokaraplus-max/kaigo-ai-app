@@ -20,7 +20,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS & 背面カメラ強制JS ---
 st.markdown("""
     <style>
     .admin-title { font-size: 22px; font-weight: bold; color: #ff4b4b !important; padding-bottom: 10px; border-bottom: 2px solid #ff4b4b; margin-bottom: 20px; display: block; }
@@ -32,12 +32,13 @@ st.markdown("""
         width: 100% !important; height: 50px !important; font-weight: bold !important;
         margin-top: 10px !important; margin-bottom: 10px !important; border: none !important;
     }
-    /* ラジオボタンエリアの装飾 */
-    div[data-testid="stRadio"] > label {
-        font-weight: bold !important;
-        color: #ff4b4b !important;
-    }
     </style>
+    
+    <script>
+    // 背面カメラを優先的に選ばせるためのハック
+    const videoConstraints = { video: { facingMode: { ideal: "environment" } } };
+    navigator.mediaDevices.getUserMedia(videoConstraints).catch(e => console.log(e));
+    </script>
     """, unsafe_allow_html=True)
 
 try:
@@ -124,8 +125,8 @@ elif st.session_state["page"] == "admin_menu":
     st.markdown("<div class='admin-title'>🛠️ 管理者設定メニュー</div>", unsafe_allow_html=True)
     tab1, tab2, tab3, tab4 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除", "🔑 パスワード変更"])
     with tab1:
-        with st.form("reg_v16"):
-            c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな(ひらがな)")
+        with st.form("reg_v17"):
+            c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな")
             if st.form_submit_button("登録"):
                 if c_no and u_na and u_ka:
                     supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute(); st.rerun()
@@ -154,7 +155,7 @@ elif st.session_state["page"] == "admin_menu":
     st.divider(); st.button("◀ TOPに戻る", key="adm_down")
 
 # ==========================================
-# ✍️ 記録入力（三択カメラ起動）
+# ✍️ 記録入力（背面カメラ優先リクエスト版）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOPに戻る", key="inp_up"): st.session_state["page"] = "top"; st.rerun()
@@ -168,20 +169,17 @@ elif st.session_state["page"] == "input":
 
     st.markdown("---")
     
-    # 📸 入力方法の選択（ここが重要：選択肢を分けることで勝手な起動を防ぐ）
     input_method = st.radio(
-        "📷 記録に画像を含めますか？",
-        ["入力なし（音声・テキストのみ）", "📁 画像を選択してアップロード", "📸 今すぐ写真を撮る"],
+        "📷 画像の入力方法を選択してください",
+        ["画像なし", "📁 ファイルから選ぶ", "📸 写真を撮る"],
         index=0
     )
     
     target_img = None
-    
-    if input_method == "📁 画像を選択してアップロード":
+    if input_method == "📁 ファイルから選ぶ":
         target_img = st.file_uploader("画像を選択", type=["jpg", "png", "jpeg"])
-    
-    elif input_method == "📸 今すぐ写真を撮る":
-        st.warning("⚠️ カメラを起動します。背面・前面の切り替えは画面内のアイコンで行ってください。")
+    elif input_method == "📸 写真を撮る":
+        st.info("💡 背面カメラをリクエストしました。自撮りになる場合はカメラ切替ボタンを押してください。")
         target_img = st.camera_input("カメラ撮影")
     
     aud_file = st.audio_input("🎙️ 声で入力")
@@ -193,7 +191,7 @@ elif st.session_state["page"] == "input":
                 inputs = []
                 if target_img:
                     inputs.append(Image.open(target_img))
-                    inputs.append("画像に写っている状況を、介護職の視点で客観的に説明してください。")
+                    inputs.append("この画像から読み取れる情報を介護記録の材料として説明してください。")
                 if aud_file:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         tmp.write(aud_file.getvalue()); tmp_path = tmp.name
@@ -201,7 +199,7 @@ elif st.session_state["page"] == "input":
                     while f_up.state.name != "ACTIVE":
                         time.sleep(1); f_up = genai.get_file(f_up.name)
                     inputs.append(f_up)
-                    inputs.append("音声の内容を、介護職員が仲間に送る自然な口調で整理してください。")
+                    inputs.append("音声の内容を介護職員の口調で整理してください。")
 
                 response = model.generate_content(inputs)
                 st.session_state["edit_content"] = response.text
@@ -238,7 +236,7 @@ elif st.session_state["page"] == "history":
                 if res.data:
                     all_txt = "\n".join([r['content'] for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    resp = model.generate_content(f"介護記録を200字程度で要約。支援内容は漏らさず記載。\n\n{all_txt}")
+                    resp = model.generate_content(f"介護記録を200字要約。支援内容は漏らさず。\n\n{all_txt}")
                     st.info(f"📅 要約:\n\n{resp.text}")
         if st.button("📈 1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
