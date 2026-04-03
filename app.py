@@ -84,7 +84,7 @@ f_code = st.session_state["facility_code"]
 my_name = st.session_state["my_name"]
 
 # ==========================================
-# 🏠 TOP / ✍️ 入力（前回同様）
+# 🏠 TOP / ✍️ 入力
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -136,7 +136,7 @@ elif st.session_state["page"] == "input":
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
 # ==========================================
-# 📊 履歴・モニタリング（UI改善版）
+# 📊 履歴・モニタリング（支援内容重視版）
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
@@ -162,7 +162,12 @@ elif st.session_state["page"] == "history":
                     with st.spinner("AIで指定日の記録を統合中..."):
                         all_txt = "\n".join([r['content'] for r in res.data])
                         model = genai.GenerativeModel("models/gemini-2.5-flash")
-                        prompt = f"以下の{target_date}の介護記録を、1日のまとめとして200字程度で要約してください。口調は介護職員が報告書で使う丁寧な口調（〜です、〜でした）とし、推測や飛躍した内容は一切含めず、記載されている事実のみを整理してください。"
+                        # 【日次まとめ：支援内容を漏らさない指示】
+                        prompt = (
+                            f"以下の{target_date}の介護記録を、1日のまとめとして200字程度で要約してください。\n"
+                            "特に『支援内容』『実施した対応』については、一言も漏らさず全て記述に含めてください。\n"
+                            "口調は介護職員が報告書で使う丁寧な口調（〜です、〜でした）とし、事実のみを正確に整理してください。"
+                        )
                         resp = model.generate_content(prompt + "\n\n" + all_txt)
                         st.info(f"📅 {target_date} の要約:\n\n{resp.text}")
                 else: st.warning(f"{target_date} の記録は見つかりませんでした。")
@@ -173,20 +178,22 @@ elif st.session_state["page"] == "history":
                 with st.spinner("モニタリング文を作成中..."):
                     all_txt = "\n".join([f"{r['created_at'][:10]}: {r['content']}" for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    prompt = f"あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を作成してください。ルール：1.提供された事実のみを扱うこと 2.200字程度の簡潔な文章にすること 3.専門的な報告書口調であること 4.別の用紙にコピペして使うための純粋な本文のみを出力すること。"
+                    # 【月間モニタリング：支援内容を漏らさない指示】
+                    prompt = (
+                        "あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を200字程度で作成してください。\n"
+                        "【最重要ルール】: ケース記録に含まれる『具体的な支援内容』『介入した事柄』は、漏れなくすべて文章に盛り込んでください。\n"
+                        "飛躍した推測は禁止し、専門的な報告書口調で、コピペして使うための純粋な本文のみを出力してください。"
+                    )
                     resp = model.generate_content(prompt + "\n\n" + all_txt)
                     st.session_state["monitoring_result"] = resp.text
             else: st.warning("集計に必要なデータが足りません。")
 
-        # 生成結果の表示エリア
         if st.session_state["monitoring_result"]:
             st.markdown("---")
             st.markdown("### 📈 生成されたモニタリング文")
             with st.container(border=True):
-                # 閲覧用：見やすく表示
                 st.write(st.session_state["monitoring_result"])
                 st.markdown("<br>", unsafe_allow_html=True)
-                # コピー用：ボタン付きのコードブロック形式
                 st.caption("📋 以下の枠内の右上のボタンでコピーできます")
                 st.code(st.session_state["monitoring_result"], language=None)
 
