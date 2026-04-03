@@ -19,7 +19,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS（折り返し設定 & 視認性） ---
 st.markdown("""
     <style>
     .admin-title { font-size: 22px; font-weight: bold; color: #ff4b4b !important; padding-bottom: 10px; border-bottom: 2px solid #ff4b4b; margin-bottom: 20px; display: block; }
@@ -30,6 +30,11 @@ st.markdown("""
         font-weight: bold !important; font-size: 18px !important;
         margin-top: 30px !important; border: none !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    }
+    /* 🚀 コピペ枠の文字を端で折り返す設定 */
+    code {
+        white-space: pre-wrap !important;
+        word-break: break-all !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -58,7 +63,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 セキュリティ
+# 🔐 セキュリティ・認証
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.0)
@@ -92,7 +97,7 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 TOP 
+# 🏠 TOP
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -109,17 +114,19 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（解説抜き・連続入力対応）
+# ✍️ 記録入力（背面カメラ・連続入力・解説排除）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
     display_logo(); st.subheader("✍️ ケース記録入力")
+    
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("👤 利用者を選択", patient_options)
 
     st.markdown("---")
+    # 📸 背面カメラ対応アップローダー
     target_img = st.file_uploader("📷 写真を撮る / 画像を選択", type=["jpg", "png", "jpeg"])
     aud_file = st.audio_input("🎙️ 声で入力")
     
@@ -127,7 +134,8 @@ elif st.session_state["page"] == "input":
         with st.spinner("整理中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
-                inputs = ["あなたは介護記録の作成補助者です。解説（〜と言っています等）は一切書かず、話している内容や画像の状態そのものだけを、自然な記録として出力してください。"]
+                # 🛠️ プロンプト：解説抜き・事実のみ
+                inputs = ["あなたは介護記録の作成補助者です。解説やナレーション（〜と言っています、等）は一切書かず、事実と発言内容のみを、介護記録として自然な口調で出力してください。"]
                 if target_img: inputs.append(Image.open(target_img))
                 if aud_file:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -135,6 +143,7 @@ elif st.session_state["page"] == "input":
                     f_up = genai.upload_file(path=tmp_path)
                     while f_up.state.name != "ACTIVE": time.sleep(1); f_up = genai.get_file(f_up.name)
                     inputs.append(f_up)
+                
                 response = model.generate_content(inputs)
                 st.session_state["edit_content"] = response.text
                 if aud_file: os.remove(tmp_path)
@@ -149,52 +158,63 @@ elif st.session_state["page"] == "input":
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
             st.success(f"✅ {u_name}さんの記録を保存しました。")
             st.session_state["edit_content"] = ""; time.sleep(1.2); st.rerun()
-    back_to_top_button("inp_down")
+    
+    st.divider(); back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング（コピペ専用・200字文章版）
+# 📊 履歴・モニタリング（全機能統合版）
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
     display_logo(); st.subheader("📊 履歴・モニタリング")
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
+    # 🔍 検索対応の利用者選択リスト
     patient_options = ["---"] + [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for _, r in p_df.iterrows()]
-    sel = st.selectbox("利用者を選択", patient_options)
+    sel = st.selectbox("利用者を選択（ふりがな検索可）", patient_options)
     
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         
-        col_mon = st.container()
-        with col_mon:
-            if st.button("📈 ケアマネ提出用モニタリング生成", use_container_width=True):
-                res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(30).execute()
+        st.markdown("---")
+        # 📅 日ごとのまとめ機能（復活）
+        st.write("▼ 指定日のまとめ作成")
+        col_date, col_sum_btn = st.columns([2, 2])
+        with col_date:
+            target_date = st.date_input("日付を選択", value=date.today())
+        with col_sum_btn:
+            if st.button("✨ 指定日まとめ作成", use_container_width=True):
+                date_str = target_date.strftime('%Y-%m-%d')
+                res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", date_str).lt("created_at", (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')).execute()
                 if res.data:
-                    all_txt = "\n".join([f"{r['content']}" for r in res.data])
+                    all_txt = "\n".join([r['content'] for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    # 🚀 徹底的に「文章のみ」を追求したプロンプト
-                    prompt = f"""
-                    以下の介護記録に基づき、ケアマネジャー報告用の「モニタリング文章」を1つ作成してください。
-                    【最重要ルール】
-                    - タイトル、見出し、箇条書き、日付、ナレーションは一切不要。
-                    - 「200文字以内」の一続きの文章（パラグラフ）として出力してください。
-                    - 口調は「〜です」「〜されています」などの丁寧な介護報告口調。
-                    - 支援内容と本人の様子を簡潔にまとめてください。
-                    
-                    記録データ:
-                    {all_txt}
-                    """
-                    resp = model.generate_content(prompt)
+                    resp = model.generate_content(f"以下の記録を、介護職員が仲間に送る報告として、200字程度で簡潔に要約してください。\n\n{all_txt}")
                     st.session_state["monitoring_result"] = resp.text
-                else: st.warning("記録がありません。")
+                else: st.warning("該当日時の記録がありません。")
 
+        # 📈 モニタリング生成機能（200文字文章のみ）
+        if st.button("📈 ケアマネ提出用モニタリング生成", use_container_width=True):
+            res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(30).execute()
+            if res.data:
+                all_txt = "\n".join([f"{r['content']}" for r in res.data])
+                model = genai.GenerativeModel("models/gemini-2.5-flash")
+                # 🚀 プロンプト：コピペ用の文章のみ
+                prompt = f"""以下の介護記録に基づき、ケアマネジャー報告用の文章を1つ作成してください。
+                【ルール】タイトル・見出し・箇条書きは一切不要。ナレーションも不要。200文字以内の一続きの文章（〜です、〜されています）として出力してください。内容のみを出力。
+                記録データ:\n{all_txt}"""
+                resp = model.generate_content(prompt)
+                st.session_state["monitoring_result"] = resp.text
+            else: st.warning("記録がありません。")
+
+        # 📋 生成結果表示（折り返し対応・コピー用）
         if st.session_state["monitoring_result"]:
-            st.markdown("### 📋 コピペ用文章")
-            # 💡 この st.code が「最強のコピー機能」です
+            st.markdown("### 📋 生成結果 (枠内で折り返されます)")
             st.code(st.session_state["monitoring_result"], language=None)
             if st.button("🗑️ クリア"): st.session_state["monitoring_result"] = ""; st.rerun()
 
         st.divider()
+        # 📜 過去履歴表示機能
         if st.button("📜 過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
         if st.session_state.get("show_history_list"):
@@ -202,10 +222,10 @@ elif st.session_state["page"] == "history":
             for r in res.data:
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
     
-    back_to_top_button("his_down")
+    st.divider(); back_to_top_button("his_down")
 
 # ==========================================
-# 🛠️ 管理者メニュー (省略なし)
+# 🛠️ 管理者メニュー 
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("adm_up")
@@ -221,7 +241,7 @@ elif st.session_state["page"] == "admin_menu":
     t1, t2, t3, t4 = st.tabs(["👥 登録", "🚫 ブロック", "🔄 解除", "🔑 パス変更"])
     with t1:
         with st.form("reg"):
-            c_no = st.text_input("カルテNo"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな")
+            c_no = st.text_input("カルテNo"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな(ひらがな)")
             if st.form_submit_button("登録"):
                 supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute(); st.rerun()
     with t2:
@@ -242,4 +262,4 @@ elif st.session_state["page"] == "admin_menu":
                 if res_pw.data: supabase.table("admin_settings").update({"value": new_pw}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                 else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": new_pw}).execute()
                 st.success("完了"); st.rerun()
-    back_to_top_button("adm_down")
+    st.divider(); back_to_top_button("adm_down")
