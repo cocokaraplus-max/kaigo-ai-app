@@ -20,7 +20,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS（大型ボタン & 1段見出し） ---
 st.markdown("""
     <style>
     .main-title {
@@ -31,6 +31,8 @@ st.markdown("""
         overflow: hidden; text-overflow: ellipsis; display: block;
     }
     div.stButton > button { border-radius: 10px !important; }
+    
+    /* 🔴 TOPに戻るボタン（上下配置） */
     .top-back-btn button {
         background-color: #ff4b4b !important; color: white !important;
         width: 100% !important; height: 60px !important;
@@ -38,18 +40,25 @@ st.markdown("""
         margin-top: 20px !important; border: none !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
+
+    /* 🎙️ 録音用ウィジェットのカスタマイズ（指サイズを意識） */
+    section[data-testid="stAudioInput"] {
+        border: 2px solid #ff4b4b !important;
+        border-radius: 20px !important;
+        padding: 10px !important;
+        background-color: #fff5f5 !important;
+    }
+
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 超強力スリープ防止（NoSleep.js的なアプローチ）
-# 透明な動画ファイルを生成してループ再生し、OSのスリープを阻止します
+# 💡 超強力スリープ防止（Wake Lock + Video Loop）
 components.html("""
 <script>
 (function() {
     let wakeLock = null;
-    // 1. Wake Lock API (モダンブラウザ用)
     async function requestWakeLock() {
         try {
             if ('wakeLock' in navigator) {
@@ -58,21 +67,18 @@ components.html("""
         } catch (err) { console.log(err); }
     }
 
-    // 2. Video Hack (iOS / Safari / 古いAndroid用)
-    // 無音・透明のダミー動画を再生して「メディア視聴中」とOSに誤認させる
     function createNoSleepVideo() {
         const video = document.createElement('video');
         video.setAttribute('loop', '');
         video.setAttribute('playsinline', '');
         video.style.display = 'none';
-        // 超短時間の無音MP4（Base64）
         video.src = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21hdmMxbXA0MgAAAAhZy1mcmVlAAAALW1kYXQAAAHpYXZjMQEAL0AvYmxhY2stZHVtbXkAAAAIZnJlZQAAABdtb292AAAAbG12aGQAAAAA3pYpId6WKSEAAAPoAAAAKAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAGWlvZHMAAAAAEAAf/yADAAACAAABAAAAAA== ";
         return video;
     }
 
     const videoElement = createNoSleepVideo();
 
-    // 画面がクリックされたら（Streamlitの操作等）起動
+    // 画面に触れている間、スリープを防止し続ける
     document.addEventListener('touchstart', function() {
         videoElement.play();
         requestWakeLock();
@@ -159,7 +165,7 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（超強力スリープ防止）
+# ✍️ 記録入力（大型ボタン＆タッチスリープ防止）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
@@ -173,8 +179,10 @@ elif st.session_state["page"] == "input":
     st.markdown("---")
     target_img = st.file_uploader("📷 写真（背面カメラ）/ 画像", type=["jpg", "png", "jpeg"])
     
-    # 🎙️ 音声入力（このUIが出ている間、裏で無音動画を再生しスリープを阻止します）
-    aud_file = st.audio_input("🎙️ 声で入力 (30秒以上でも画面が消えません)")
+    st.write("🎙️ **指でボタンを押して録音を開始してください**")
+    st.caption("※ボタンに触れている間は画面が消えません。")
+    # Streamlit標準のaudio_inputを使用（CSSで指サイズに強調）
+    aud_file = st.audio_input("録音ボタン")
     
     if (target_img or aud_file) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
@@ -200,13 +208,13 @@ elif st.session_state["page"] == "input":
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no, u_name = match.group(1), match.group(2)
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
-            st.success(f"✅ {u_name}さんの記録を保存しました。")
+            st.success(f"✅ {u_name}さんの記録を保存。続けて入力できます。")
             st.session_state["edit_content"] = ""; time.sleep(1.2); st.rerun()
     
     back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング（機能維持）
+# 📊 履歴・モニタリング (仕様維持)
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
@@ -219,7 +227,6 @@ elif st.session_state["page"] == "history":
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.markdown("---")
-        
         # 指定日まとめ
         st.write("▼ 指定日のまとめ作成")
         col_date, col_sum_btn = st.columns([2, 2])
@@ -273,7 +280,7 @@ elif st.session_state["page"] == "history":
     back_to_top_button("his_down")
 
 # ==========================================
-# 🛠️ 管理者メニュー（機能維持）
+# 🛠️ 管理者メニュー (仕様維持)
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("adm_up")
