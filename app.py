@@ -17,7 +17,6 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# Cookieマネージャー初期化
 cookie_manager = stx.CookieManager()
 
 def load_css(file_name):
@@ -28,12 +27,10 @@ def load_css(file_name):
 
 load_css("style.css")
 
-# 接続設定
 try:
     s_url = st.secrets["SUPABASE_URL"]
     s_key = st.secrets["SUPABASE_KEY"]
     g_key = st.secrets["GEMINI_API_KEY"]
-    # 2026年の標準的な接続設定
     genai.configure(api_key=g_key)
     supabase: Client = create_client(s_url, s_key)
 except Exception as e:
@@ -85,7 +82,6 @@ if not st.session_state["is_authenticated"]:
                 st.rerun()
     st.stop()
 
-# 施設コード・名前の確保
 f_code = st.session_state.get("facility_code")
 my_name = st.session_state.get("my_name")
 
@@ -115,28 +111,20 @@ elif st.session_state["page"] == "input":
     
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする", key="ai_btn_final"):
-        with st.spinner("最新AI (Gemini 2.5) が解析中..."):
+        with st.spinner("AI解析中..."):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp.write(aud.getvalue())
-                    tmp_path = tmp.name
-                
-                # 【確定した最新モデルを使用】
+                    tmp.write(aud.getvalue()); tmp_path = tmp.name
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 f_up = genai.upload_file(path=tmp_path)
-                
-                # ファイル準備待ち
                 for _ in range(10):
                     f_up = genai.get_file(f_up.name)
                     if f_up.state.name == "ACTIVE": break
                     time.sleep(1)
-                
-                response = model.generate_content([f_up, "介護記録として整理してください。出力は日本語のみ。"])
+                response = model.generate_content([f_up, "介護記録として整理してください。"])
                 st.session_state["edit_content"] = response.text
-                os.remove(tmp_path)
-                st.rerun()
-            except Exception as e:
-                st.error(f"AI解析エラー: {e}")
+                os.remove(tmp_path); st.rerun()
+            except Exception as e: st.error(f"解析エラー: {e}")
 
     content = st.text_area("内容", value=st.session_state["edit_content"], height=300)
     if st.button("💾 クラウド保存", use_container_width=True):
@@ -148,11 +136,58 @@ elif st.session_state["page"] == "input":
             }).execute()
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
+# ==========================================
+# 📊 履歴・モニタリング (ここを大幅強化)
+# ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
-    display_logo()
-    res = supabase.table("records").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
-    if res.data:
-        for r in res.data:
-            with st.expander(f"📅 {r['created_at'][:10]} - {r['user_name']} (記: {r.get('staff_name','--')})"):
-                st.write(r['content'])
+    display_logo(); st.subheader("📊 履歴・モニタリング")
+    
+    # 利用者リストの取得
+    res_p = supabase.table("patients").select("*").eq("facility_code", f_code).execute()
+    p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
+    
+    sel = st.selectbox("利用者を選択", ["---"] + [f"No.{r['chart_number']} : {r['user_name']}" for _, r in p_df.iterrows()])
+    
+    if sel != "---":
+        u_name = sel.split(" : ")[1]
+        
+        # 表示設定
+        mode = st.radio("表示形式", ["投稿ごと (詳細)", "日ごと (まとめ)"], horizontal=True)
+        
+        # 記録の取得
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
+        
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df['created_at'] = pd.to_datetime(df['created_at'])
+            
+            # --- モニタリング生成機能 ---
+            if st.button("📈 今月のまとめをAIで作成", use_container_width=True):
+                with st.spinner("分析中..."):
+                    this_month_data = df[df['created_at'].dt.month == now_tokyo.month]
+                    if not this_month_data.empty:
+                        all_text = "\n".join(this_month_data['content'].tolist())
+                        model = genai.GenerativeModel("models/gemini-2.5-flash")
+                        resp = model.generate_content(f"{u_name}さんの最近の記録から、ケアのポイントや変化をまとめてください:\n{all_text}")
+                        st.info(resp.text)
+                    else:
+                        st.warning("今月の記録がまだありません。")
+
+            st.divider()
+
+            # --- 履歴の表示 ---
+            if mode == "日ごと (まとめ)":
+                for date, group in df.groupby(df['created_at'].dt.date):
+                    with st.expander(f"📅 {date}"):
+                        full_day_text = " ".join(group.sort_values("created_at")['content'].tolist())
+                        st.write(full_day_text)
+            else:
+                for _, r in df.iterrows():
+                    with st.container(border=True):
+                        # 日時、記入者を1行に綺麗に並べる
+                        jst_time = r['created_at'].strftime('%Y/%m/%d %H:%M')
+                        st.markdown(f"📅 **{jst_time}** ／ ✍️ **{r.get('staff_name', '---')}**")
+                        st.write(r['content'])
+        else:
+            st.info("まだ記録がありません。")
