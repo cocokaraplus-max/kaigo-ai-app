@@ -53,6 +53,7 @@ def display_logo(show_line=False):
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "show_history_list" not in st.session_state: st.session_state["show_history_list"] = False
+if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
 
 STAFF_LIST = ["管理者", "サービス提供責任者", "介護職員A", "介護職員B", "看護師"]
 
@@ -93,7 +94,7 @@ if st.session_state["page"] == "top":
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col2:
         if st.button("📊 履歴・モニタリング", use_container_width=True): 
-            st.session_state["page"] = "history"; st.session_state["show_history_list"] = False; st.rerun()
+            st.session_state["page"] = "history"; st.session_state["show_history_list"] = False; st.session_state["monitoring_result"] = ""; st.rerun()
     if st.button("⚙️ マスター登録", use_container_width=True): st.session_state["page"] = "settings"; st.rerun()
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
@@ -135,7 +136,7 @@ elif st.session_state["page"] == "input":
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
 # ==========================================
-# 📊 履歴・モニタリング（改修版）
+# 📊 履歴・モニタリング（UI改善版）
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
@@ -155,7 +156,6 @@ elif st.session_state["page"] == "history":
         with col_btn:
             if st.button("✨ 指定日の記録をまとめる", use_container_width=True):
                 date_str = target_date.strftime('%Y-%m-%d')
-                # 指定日の全記録を取得 (gteはその日の0時, ltは翌日の0時)
                 next_day = (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
                 res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", date_str).lt("created_at", next_day).execute()
                 if res.data:
@@ -175,8 +175,20 @@ elif st.session_state["page"] == "history":
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
                     prompt = f"あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を作成してください。ルール：1.提供された事実のみを扱うこと 2.200字程度の簡潔な文章にすること 3.専門的な報告書口調であること 4.別の用紙にコピペして使うための純粋な本文のみを出力すること。"
                     resp = model.generate_content(prompt + "\n\n" + all_txt)
-                    st.success("📈 生成完了 (コピーして利用してください)"); st.code(resp.text, language=None)
+                    st.session_state["monitoring_result"] = resp.text
             else: st.warning("集計に必要なデータが足りません。")
+
+        # 生成結果の表示エリア
+        if st.session_state["monitoring_result"]:
+            st.markdown("---")
+            st.markdown("### 📈 生成されたモニタリング文")
+            with st.container(border=True):
+                # 閲覧用：見やすく表示
+                st.write(st.session_state["monitoring_result"])
+                st.markdown("<br>", unsafe_allow_html=True)
+                # コピー用：ボタン付きのコードブロック形式
+                st.caption("📋 以下の枠内の右上のボタンでコピーできます")
+                st.code(st.session_state["monitoring_result"], language=None)
 
         st.divider()
         if st.button("📜 過去の履歴を表示する" if not st.session_state["show_history_list"] else "閉じる"):
