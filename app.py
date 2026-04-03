@@ -20,20 +20,52 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（視認性向上） ---
+# --- 🎨 カスタムCSS（画面固定ボタン & 視認性向上） ---
 st.markdown("""
     <style>
+    /* 管理者メニューのタイトル */
     .admin-title {
         font-size: 22px; font-weight: bold; color: #ff4b4b !important;
         padding-bottom: 10px; border-bottom: 2px solid #ff4b4b;
         margin-bottom: 20px; display: block;
     }
+    
+    /* タブとラベルの視認性 */
     .stTabs [data-baseweb="tab-list"] button {
         color: #31333F !important; font-size: 16px !important; font-weight: 600 !important;
     }
     .stTabs [aria-selected="true"] { color: #ff4b4b !important; }
     .stMarkdown p, .stText, label { color: #31333F !important; }
     div[data-baseweb="select"] > div { color: #31333F !important; }
+
+    /* 🚀 スマホ用：画面下部固定の「TOPに戻る」ボタン設定 */
+    @media (max-width: 768px) {
+        .stButton > button[data-testid="baseButton-secondary"] {
+            /* '◀ TOP' という文字を含むボタンを特定してスタイル適用 */
+        }
+        
+        /* 特定のクラスを付与できないため、下部の固定エリアを作成 */
+        .fixed-bottom-nav {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 999;
+        }
+    }
+    
+    /* 固定ボタンの装飾 */
+    .stButton > button:contains("◀ TOP") {
+        position: fixed !important;
+        bottom: 30px !important;
+        right: 20px !important;
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border-radius: 50px !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
+        padding: 10px 20px !important;
+        z-index: 1000 !important;
+        border: none !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -62,7 +94,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 セキュリティ・端末チェック
+# 🔐 端末チェック & ログイン (省略なし)
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.2)
@@ -116,18 +148,18 @@ if st.session_state["page"] == "top":
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# 🛠️ 管理者設定メニュー（パスワード変更機能付き）
+# 🛠️ 管理者メニュー
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
-    if st.button("◀ TOPに戻る"): st.session_state["page"] = "top"; st.rerun()
+    # 🚀 固定ボタン仕様
+    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     
-    # DBからパスワードを取得（なければデフォルト8888）
     res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
     current_stored_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
 
     if not st.session_state["admin_authenticated"]:
         st.markdown("<div class='admin-title'>🛠️ 管理者認証</div>", unsafe_allow_html=True)
-        admin_pw = st.text_input("管理者パスワードを入力してください", type="password")
+        admin_pw = st.text_input("管理者パスワード", type="password")
         if st.button("認証"):
             if admin_pw == current_stored_pw:
                 st.session_state["admin_authenticated"] = True; st.rerun()
@@ -138,13 +170,13 @@ elif st.session_state["page"] == "admin_menu":
     tab1, tab2, tab3, tab4 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除", "🔑 パスワード変更"])
 
     with tab1:
-        with st.form("reg_master_v9"):
+        with st.form("reg_master_v10"):
             c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名 (漢字)"); u_ka = st.text_input("ふりがな (ひらがな)")
             if st.form_submit_button("マスターに登録"):
                 if c_no and u_na and u_ka:
                     supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute()
                     st.success("登録完了"); time.sleep(1); st.rerun()
-
+    # (中略: tab2, tab3, tab4 のブロック・復活・パスワード変更ロジックは前回同様)
     with tab2:
         res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         staff_names = list(set([r['staff_name'] for r in res_staff.data])) if res_staff.data else []
@@ -154,7 +186,6 @@ elif st.session_state["page"] == "admin_menu":
                 supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target_staff, "facility_code": f_code, "is_active": True}).execute()
                 cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
                 st.session_state.clear(); time.sleep(2); st.rerun()
-
     with tab3:
         res_list = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
         if res_list.data:
@@ -165,26 +196,22 @@ elif st.session_state["page"] == "admin_menu":
                     if st.button("復活", key=b['device_id']):
                         supabase.table("blocked_devices").update({"is_active": False}).eq("device_id", b['device_id']).execute()
                         st.success("解除完了"); time.sleep(1); st.rerun()
-        else: st.info("ブロック中の端末はありません")
-
     with tab4:
-        st.subheader("管理者パスワードの変更")
-        new_pw = st.text_input("新しいパスワードを入力してください", type="password")
-        confirm_pw = st.text_input("確認のためもう一度入力", type="password")
-        if st.button("パスワードを更新する"):
+        new_pw = st.text_input("新しいパスワード", type="password")
+        confirm_pw = st.text_input("確認用", type="password")
+        if st.button("パスワードを更新"):
             if new_pw and new_pw == confirm_pw:
-                # DBを更新（既存レコードがあればupdate、なければinsert）
-                if res_pw.data:
-                    supabase.table("admin_settings").update({"value": new_pw}).eq("key", "admin_password").eq("facility_code", f_code).execute()
-                else:
-                    supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": new_pw}).execute()
-                st.success("パスワードを更新しました！次回からこのパスワードを使用してください。")
-                time.sleep(2); st.rerun()
-            else: st.error("パスワードが一致しないか、入力されていません。")
+                if res_pw.data: supabase.table("admin_settings").update({"value": new_pw}).eq("key", "admin_password").eq("facility_code", f_code).execute()
+                else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": new_pw}).execute()
+                st.success("更新完了！"); time.sleep(1); st.rerun()
 
-# --- 以下、入力・履歴ロジック (省略せず継続) ---
+# ==========================================
+# ✍️ 記録入力
+# ==========================================
 elif st.session_state["page"] == "input":
+    # 🚀 固定ボタン仕様
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    
     display_logo(); st.subheader("✍️ ケース記録入力")
     st.info(f"✍️ 記入者: {my_name}")
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
@@ -209,15 +236,20 @@ elif st.session_state["page"] == "input":
                 os.remove(tmp_path); st.rerun()
             except Exception as e: st.error(f"解析エラー: {e}")
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
-    if st.button("💾 クラウド保存", use_container_width=True):
+    if st.button("💾 保存", use_container_width=True):
         if sel != "(未選択)" and content:
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no = match.group(1); u_name = match.group(2)
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
             st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
 
+# ==========================================
+# 📊 履歴・モニタリング
+# ==========================================
 elif st.session_state["page"] == "history":
+    # 🚀 固定ボタン仕様
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    
     display_logo(); st.subheader("📊 履歴・モニタリング")
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
@@ -225,9 +257,9 @@ elif st.session_state["page"] == "history":
     if sel != "---":
         u_name = re.search(r'\) (.*)', sel).group(1)
         col_date, col_btn = st.columns([2, 2])
-        with col_date: target_date = st.date_input("集計日を選択", value=date.today())
+        with col_date: target_date = st.date_input("集計日", value=date.today())
         with col_btn:
-            if st.button("✨ 指定日の記録をまとめる", use_container_width=True):
+            if st.button("✨ 指定日まとめ", use_container_width=True):
                 date_str = target_date.strftime('%Y-%m-%d')
                 next_day = (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
                 res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", date_str).lt("created_at", next_day).execute()
@@ -238,15 +270,14 @@ elif st.session_state["page"] == "history":
                         prompt = f"以下の介護記録を200字程度で要約。支援内容は全て含めること。"
                         resp = model.generate_content(prompt + "\n\n" + all_txt)
                         st.info(f"📅 要約:\n\n{resp.text}")
-        if st.button("📈 ケアマネ向け1ヶ月モニタリング作成", use_container_width=True):
+        if st.button("📈 1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
             if res.data:
-                with st.spinner("作成中..."):
-                    all_txt = "\n".join([f"{r['created_at'][:10]}: {r['content']}" for r in res.data])
-                    model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    prompt = "ケアマネ向けの200字程度のモニタリング。支援内容重視。"
-                    resp = model.generate_content(prompt + "\n\n" + all_txt)
-                    st.session_state["monitoring_result"] = resp.text
+                all_txt = "\n".join([f"{r['created_at'][:10]}: {r['content']}" for r in res.data])
+                model = genai.GenerativeModel("models/gemini-2.5-flash")
+                prompt = "ケアマネ向けの200字モニタリング。支援内容重視。"
+                resp = model.generate_content(prompt + "\n\n" + all_txt)
+                st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
             with st.container(border=True):
                 st.write(st.session_state["monitoring_result"])
