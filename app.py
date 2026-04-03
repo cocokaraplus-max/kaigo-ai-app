@@ -43,26 +43,43 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止（Wake Lock）JavaScript
-# 録音UIが表示されている間、ブラウザに「画面を消さないよう」要求します
-st.components.v1.html("""
+# 💡 超強力スリープ防止（NoSleep.js的なアプローチ）
+# 透明な動画ファイルを生成してループ再生し、OSのスリープを阻止します
+components.html("""
 <script>
-let wakeLock = null;
-async function requestWakeLock() {
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    console.log('Wake Lock is active');
-  } catch (err) {
-    console.error(`${err.name}, ${err.message}`);
-  }
-}
-// 録音操作が想定される入力画面で実行
-document.addEventListener('visibilitychange', async () => {
-  if (wakeLock !== null && document.visibilityState === 'visible') {
-    await requestWakeLock();
-  }
-});
-requestWakeLock();
+(function() {
+    let wakeLock = null;
+    // 1. Wake Lock API (モダンブラウザ用)
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) { console.log(err); }
+    }
+
+    // 2. Video Hack (iOS / Safari / 古いAndroid用)
+    // 無音・透明のダミー動画を再生して「メディア視聴中」とOSに誤認させる
+    function createNoSleepVideo() {
+        const video = document.createElement('video');
+        video.setAttribute('loop', '');
+        video.setAttribute('playsinline', '');
+        video.style.display = 'none';
+        // 超短時間の無音MP4（Base64）
+        video.src = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21hdmMxbXA0MgAAAAhZy1mcmVlAAAALW1kYXQAAAHpYXZjMQEAL0AvYmxhY2stZHVtbXkAAAAIZnJlZQAAABdtb292AAAAbG12aGQAAAAA3pYpId6WKSEAAAPoAAAAKAABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAGWlvZHMAAAAAEAAf/yADAAACAAABAAAAAA== ";
+        return video;
+    }
+
+    const videoElement = createNoSleepVideo();
+
+    // 画面がクリックされたら（Streamlitの操作等）起動
+    document.addEventListener('touchstart', function() {
+        videoElement.play();
+        requestWakeLock();
+    }, { once: false });
+
+    requestWakeLock();
+})();
 </script>
 """, height=0)
 
@@ -91,7 +108,7 @@ if "monitoring_month" not in st.session_state: st.session_state["monitoring_mont
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 端末認証
+# 🔐 セキュリティ
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.0)
@@ -125,7 +142,7 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 TOP 画面
+# 🏠 TOP
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -142,7 +159,7 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（スリープ防止対応）
+# ✍️ 記録入力（超強力スリープ防止）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
@@ -156,8 +173,8 @@ elif st.session_state["page"] == "input":
     st.markdown("---")
     target_img = st.file_uploader("📷 写真（背面カメラ）/ 画像", type=["jpg", "png", "jpeg"])
     
-    # 🎙️ 音声入力（このUIが表示されている間、JSでスリープを抑制します）
-    aud_file = st.audio_input("🎙️ 声で入力 (録音中も画面が消えません)")
+    # 🎙️ 音声入力（このUIが出ている間、裏で無音動画を再生しスリープを阻止します）
+    aud_file = st.audio_input("🎙️ 声で入力 (30秒以上でも画面が消えません)")
     
     if (target_img or aud_file) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
@@ -189,7 +206,7 @@ elif st.session_state["page"] == "input":
     back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング（月選択・修正対応）
+# 📊 履歴・モニタリング（機能維持）
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
@@ -197,13 +214,13 @@ elif st.session_state["page"] == "history":
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["---"] + [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for _, r in p_df.iterrows()]
-    sel = st.selectbox("利用者を選択（検索可）", patient_options)
+    sel = st.selectbox("利用者を選択", patient_options)
     
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.markdown("---")
         
-        # 指定日まとめ（維持）
+        # 指定日まとめ
         st.write("▼ 指定日のまとめ作成")
         col_date, col_sum_btn = st.columns([2, 2])
         with col_date: target_date = st.date_input("日付を選択", value=date.today())
@@ -219,7 +236,7 @@ elif st.session_state["page"] == "history":
                     st.session_state["monitoring_month"] = "指定日"
                 else: st.warning("記録なし")
 
-        # モニタリング月選択（維持）
+        # モニタリング月選択
         st.write("▼ モニタリング作成")
         col_m, col_b = st.columns([2, 2])
         with col_m:
@@ -232,13 +249,13 @@ elif st.session_state["page"] == "history":
                 if m_records:
                     all_txt = "\n".join([r['content'] for r in m_records])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    prompt = f"200字以内の一続きの文章で介護報告を作成。内容のみ出力。\n記録:\n{all_txt}"
+                    prompt = f"200字以内の一続きの文章で介護報告を作成。見出し禁止。内容のみ出力。\n記録:\n{all_txt}"
                     resp = model.generate_content(prompt)
                     st.session_state["monitoring_result"] = resp.text
                     st.session_state["monitoring_month"] = selected_m
                 else: st.warning(f"{selected_m}の記録なし")
 
-        # 修正可能エディタ（維持）
+        # 修正エディタ
         if st.session_state["monitoring_result"]:
             st.markdown(f"### ✨ {st.session_state['monitoring_month']}のモニタリング")
             st.session_state["monitoring_result"] = st.text_area("修正してコピー可能", value=st.session_state["monitoring_result"], height=200)
@@ -256,7 +273,7 @@ elif st.session_state["page"] == "history":
     back_to_top_button("his_down")
 
 # ==========================================
-# 🛠️ 管理者メニュー（維持）
+# 🛠️ 管理者メニュー（機能維持）
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("adm_up")
