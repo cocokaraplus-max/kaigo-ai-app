@@ -20,24 +20,45 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（デザイン調整） ---
+# --- 🎨 カスタムCSS（文字色を強制的に見えるように修正） ---
 st.markdown("""
     <style>
-    /* 管理者メニューの見出しを小さくスタイリッシュに */
+    /* 管理者メニューの大見出しをハッキリ見える白に */
     .admin-title {
-        font-size: 20px;
+        font-size: 22px;
         font-weight: bold;
-        color: #f0f2f6;
-        padding: 10px 0;
-        border-bottom: 1px solid #444;
-        margin-bottom: 20px;
-    }
-    /* タブの文字色を見やすく修正 */
-    .stTabs [data-baseweb="tab-list"] button {
         color: #ffffff !important; 
+        padding: 10px 0;
+        border-bottom: 2px solid #ff4b4b;
+        margin-bottom: 20px;
+        display: block;
     }
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #ff4b4b !important;
+    
+    /* タブ全体の文字色を強制修正 */
+    .stTabs [data-baseweb="tab-list"] button {
+        color: #ffffff !important;
+        font-size: 16px !important;
+    }
+    
+    /* 選択されていないタブの文字を少し薄くして区別 */
+    .stTabs [data-baseweb="tab"] {
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+
+    /* 選択中のタブの文字を真っ白に */
+    .stTabs [aria-selected="true"] {
+        color: #ffffff !important;
+        font-weight: bold !important;
+    }
+
+    /* 入力フォームのラベル（ブロック対象の職員名など）も見やすく */
+    .stMarkdown p {
+        color: #ffffff !important;
+    }
+    
+    /* セレクトボックス内の文字も見やすく */
+    div[data-baseweb="select"] > div {
+        color: #333333 !important; /* 入力欄の中は白背景に黒文字で見やすく */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -67,11 +88,10 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 セキュリティ・端末チェック
+# 🔐 端末チェック（前回同様）
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.2)
-
 device_id = cookie_manager.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
@@ -88,7 +108,6 @@ if not st.session_state.get("is_authenticated"):
     if saved_f and saved_n:
         st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
         st.rerun()
-    
     display_logo()
     with st.container(border=True):
         f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526")
@@ -104,7 +123,7 @@ f_code = st.session_state["facility_code"]
 my_name = st.session_state["my_name"]
 
 # ==========================================
-# 🏠 TOP画面
+# 🏠 TOP / 🛠️ 管理者メニュー
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -113,42 +132,33 @@ if st.session_state["page"] == "top":
     with col1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col2:
-        if st.button("📊 履歴・モニタリング", use_container_width=True): 
-            st.session_state["page"] = "history"; st.rerun()
-    
+        if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
     st.divider()
     if st.button("🛠️ 管理者メニューを開く", use_container_width=True):
         st.session_state["page"] = "admin_menu"; st.session_state["admin_authenticated"] = False; st.rerun()
-
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
         st.session_state.clear(); st.rerun()
 
-# ==========================================
-# 🛠️ 管理者設定メニュー（パスワードロック版）
-# ==========================================
 elif st.session_state["page"] == "admin_menu":
     if st.button("◀ TOPに戻る"): st.session_state["page"] = "top"; st.rerun()
     
-    # パスワードチェック
     if not st.session_state["admin_authenticated"]:
         st.markdown("<div class='admin-title'>🛠️ 管理者認証</div>", unsafe_allow_html=True)
         admin_pw = st.text_input("管理者パスワードを入力してください", type="password")
         if st.button("認証"):
-            if admin_pw == "8888": # パスワードを8888に設定
-                st.session_state["admin_authenticated"] = True
-                st.rerun()
-            else:
-                st.error("パスワードが違います")
+            if admin_pw == "8888":
+                st.session_state["admin_authenticated"] = True; st.rerun()
+            else: st.error("パスワードが違います")
         st.stop()
 
-    # 認証後のメニュー
     st.markdown("<div class='admin-title'>🛠️ 管理者設定メニュー</div>", unsafe_allow_html=True)
-
+    
+    # 見えるようにタブを再構築
     tab1, tab2, tab3 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 ブロック解除"])
 
     with tab1:
-        with st.form("reg_master_v5"):
+        with st.form("reg_master_v6"):
             c_no = st.text_input("カルテ番号")
             u_na = st.text_input("氏名 (漢字)")
             u_ka = st.text_input("ふりがな (ひらがな)")
@@ -165,7 +175,7 @@ elif st.session_state["page"] == "admin_menu":
             if target_staff != "(選択してください)":
                 supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target_staff, "facility_code": f_code, "is_active": True}).execute()
                 cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
-                st.session_state.clear(); st.error("端末をブロックしました"); time.sleep(2); st.rerun()
+                st.session_state.clear(); time.sleep(2); st.rerun()
 
     with tab3:
         res_list = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
@@ -179,17 +189,15 @@ elif st.session_state["page"] == "admin_menu":
                         st.success("解除完了"); time.sleep(1); st.rerun()
         else: st.write("現在ブロック中の端末はありません")
 
-# --- ✍️ 記録入力 / 📊 履歴 (前回同様) ---
+# --- ✍️ 記録入力 / 📊 履歴 (省略せず継続) ---
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("✍️ ケース記録入力")
     st.info(f"✍️ 記入者: {my_name}")
-    # ... (以下、前回までの記録入力・履歴ロジック)
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("👤 利用者を選択", patient_options)
-    
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする"):
         with st.spinner("整理中..."):
@@ -207,7 +215,6 @@ elif st.session_state["page"] == "input":
                 st.session_state["edit_content"] = response.text
                 os.remove(tmp_path); st.rerun()
             except Exception as e: st.error(f"解析エラー: {e}")
-
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
     if st.button("💾 クラウド保存", use_container_width=True):
         if sel != "(未選択)" and content:
@@ -222,7 +229,6 @@ elif st.session_state["page"] == "history":
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     sel = st.selectbox("利用者を選択", ["---"] + [f"(No.{r['chart_number']}) {r['user_name']}" for _, r in p_df.iterrows()])
-    
     if sel != "---":
         u_name = re.search(r'\) (.*)', sel).group(1)
         col_date, col_btn = st.columns([2, 2])
@@ -239,7 +245,6 @@ elif st.session_state["page"] == "history":
                         prompt = f"以下の{target_date}の介護記録を、1日のまとめとして200字程度で要約してください。特に『支援内容』『実施した対応』については、一言も漏らさず全て記述に含めてください。口調は介護職員が報告書で使う丁寧な口調（〜です、〜でした）とし、事実のみを正確に整理してください。"
                         resp = model.generate_content(prompt + "\n\n" + all_txt)
                         st.info(f"📅 {target_date} の要約:\n\n{resp.text}")
-
         if st.button("📈 ケアマネ向け1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
             if res.data:
@@ -249,7 +254,6 @@ elif st.session_state["page"] == "history":
                     prompt = "あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を200字程度で作成してください。【最重要ルール】: ケース記録に含まれる『具体的な支援内容』『介入した事柄』は、漏れなくすべて文章に盛り込んでください。飛躍した推測は禁止し、専門的な報告書口調で、コピペして使うための純粋な本文のみを出力してください。"
                     resp = model.generate_content(prompt + "\n\n" + all_txt)
                     st.session_state["monitoring_result"] = resp.text
-
         if st.session_state["monitoring_result"]:
             with st.container(border=True):
                 st.write(st.session_state["monitoring_result"])
