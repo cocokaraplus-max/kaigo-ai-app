@@ -92,7 +92,7 @@ f_code = st.session_state["facility_code"]; my_name = st.session_state["my_name"
 def back_to_top_button(key_suffix):
     st.markdown('<div class="top-back-btn">', unsafe_allow_html=True)
     if st.button("◀ TOPに戻る", key=f"btn_back_{key_suffix}", use_container_width=True):
-        st.session_state["page"] = "top"; st.rerun()
+        st.session_state["page"] = "top"; st.session_state["edit_content"] = ""; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
@@ -113,7 +113,7 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（AI指示強化）
+# ✍️ 記録入力（連続入力対応版）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
@@ -122,6 +122,9 @@ elif st.session_state["page"] == "input":
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
+    
+    # 選択状態をリセットするために key にタイムスタンプを混ぜるなどの手法もありますが、
+    # 今回はシンプルに index を調整します。
     sel = st.selectbox("👤 利用者を選択", patient_options)
 
     st.markdown("---")
@@ -132,33 +135,18 @@ elif st.session_state["page"] == "input":
         with st.spinner("AIが内容のみを抽出中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
-                inputs = []
-                
-                # 🛠️ AIへの強力なルール設定
-                system_prompt = """
-                あなたは介護記録の作成補助者です。
-                【禁止事項】
-                ・「〜と話しています」「〜が写っています」「動画の内容は〜」といった解説やナレーションは一切書かないでください。
-                ・「テスト録音です」と言われたら、そのまま「テスト録音です」とだけ出力してください。
-                【出力ルール】
-                ・音声や画像から得られた『事実』と『発言』のみを、介護の申し送り記録として自然な口調で出力してください。
-                ・余計な挨拶や説明は不要です。
-                """
-                
-                inputs.append(system_prompt)
-
+                inputs = [
+                    "あなたは介護記録の作成補助者です。解説やナレーションは一切書かず、話している内容や画像の状態そのものだけを、介護記録として自然な口調で書き出してください。「〜と言っています」等の余計な言葉は禁止です。"
+                ]
                 if target_img:
                     inputs.append(Image.open(target_img))
-                    inputs.append("画像に写っている事実（食事量や状態など）を、解説抜きで記録として記載してください。")
-                
                 if aud_file:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         tmp.write(aud_file.getvalue()); tmp_path = tmp.name
                     f_up = genai.upload_file(path=tmp_path)
                     while f_up.state.name != "ACTIVE": time.sleep(1); f_up = genai.get_file(f_up.name)
                     inputs.append(f_up)
-                    inputs.append("音声で話している内容そのものを、介護の記録として整えて書き出してください。ナレーションは不要です。")
-
+                
                 response = model.generate_content(inputs)
                 st.session_state["edit_content"] = response.text
                 if aud_file: os.remove(tmp_path)
@@ -166,12 +154,29 @@ elif st.session_state["page"] == "input":
             except Exception as e: st.error(f"エラー: {e}")
 
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
+    
     if st.button("💾 クラウドに保存", use_container_width=True):
-        if sel != "(未選択)" and content:
+        if sel == "(未選択)":
+            st.warning("⚠️ 利用者を選択してください。")
+        elif not content:
+            st.warning("⚠️ 内容を入力してください。")
+        else:
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no = match.group(1); u_name = match.group(2)
-            supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
-            st.session_state["edit_content"] = ""; st.session_state["page"] = "top"; st.rerun()
+            supabase.table("records").insert({
+                "facility_code": f_code, 
+                "chart_number": str(c_no), 
+                "user_name": u_name, 
+                "staff_name": my_name, 
+                "content": content, 
+                "created_at": now_tokyo.isoformat()
+            }).execute()
+            
+            # 🚀 保存後の処理（TOPに戻らず内容をクリア）
+            st.success(f"✅ {u_name}さんの記録を保存しました。続けて入力できます。")
+            st.session_state["edit_content"] = ""
+            time.sleep(2)
+            st.rerun()
     
     st.divider(); back_to_top_button("inp_down")
 
