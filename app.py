@@ -97,39 +97,25 @@ if st.session_state["page"] == "top":
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（検索機能強化版）
+# ✍️ 記録入力（申し送り口調対応）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("✍️ ケース記録入力")
     
-    # マスター取得
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
+    if p_df.empty: st.warning("利用者を登録してください"); st.stop()
     
-    if p_df.empty:
-        st.warning("設定から利用者を登録してください"); st.stop()
-    
-    # 選択肢の作成
     patient_options = ["(未選択)"]
     for _, r in p_df.iterrows():
-        kana = r.get('user_kana', '')
-        name = r.get('user_name', '')
-        c_no = r.get('chart_number', '')
-        # 検索しやすくするために「氏名 かな No」を1つの文字列にする
-        patient_options.append(f"(No.{c_no}) [{name}] [{kana}]")
+        patient_options.append(f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]")
     
-    # st.selectboxは、フォーカス時に文字を入力すると自動で検索・フィルタリングされます
-    sel = st.selectbox(
-        "👤 利用者を選択または検索 (ひらがな・名前を入力)", 
-        patient_options,
-        index=0,
-        help="ここをクリックして文字を入力すると候補を絞り込めます"
-    )
+    sel = st.selectbox("👤 利用者を選択または検索", patient_options)
     
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする"):
-        with st.spinner("AI解析中..."):
+        with st.spinner("申し送り文を作成中..."):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     tmp.write(aud.getvalue()); tmp_path = tmp.name
@@ -139,7 +125,15 @@ elif st.session_state["page"] == "input":
                     f_up = genai.get_file(f_up.name)
                     if f_up.state.name == "ACTIVE": break
                     time.sleep(1)
-                response = model.generate_content([f_up, "介護記録として整理してください。"])
+                
+                # 【口調の指示を強化】
+                prompt = (
+                    "あなたは介護職員です。仲間のスタッフに状況を伝えるための『申し送り文』を作成してください。"
+                    "「〜です」「〜でした」「〜そうです」といった、丁寧ながらも現場の仲間へ話しかけるような柔らかい口調でお願いします。"
+                    "重要な変化や注意点は見逃さないように、自然な文章でまとめてください。"
+                )
+                
+                response = model.generate_content([f_up, prompt])
                 st.session_state["edit_content"] = response.text
                 os.remove(tmp_path); st.rerun()
             except Exception as e: st.error(f"解析エラー: {e}")
@@ -149,24 +143,17 @@ elif st.session_state["page"] == "input":
     if st.button("💾 クラウド保存", use_container_width=True):
         if sel != "(未選択)" and content:
             try:
-                match = re.search(r'\(No\.(.*?)\) \[(.*?)\] \[(.*?)\]', sel)
-                c_no = match.group(1)
-                u_name = match.group(2)
-                
+                match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+                c_no = match.group(1); u_name = match.group(2)
                 supabase.table("records").insert({
-                    "facility_code": f_code, 
-                    "chart_number": str(c_no), 
-                    "user_name": u_name,
-                    "staff_name": my_name, 
-                    "content": content, 
-                    "created_at": now_tokyo.isoformat()
+                    "facility_code": f_code, "chart_number": str(c_no), "user_name": u_name,
+                    "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()
                 }).execute()
                 st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
-            except Exception as e:
-                st.error(f"保存エラー: {e}")
+            except Exception as e: st.error(f"保存エラー: {e}")
 
 # ==========================================
-# 📊 履歴 / ⚙️ 設定（以前のコードを維持）
+# 📊 履歴 / ⚙️ 設定
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
@@ -190,6 +177,4 @@ elif st.session_state["page"] == "settings":
                     "facility_code": f_code, "chart_number": normalize_text(c_no), 
                     "user_name": u_na, "user_kana": u_ka
                 }).execute()
-                st.success(f"{u_na} さんを登録しました"); time.sleep(1); st.rerun()
-            else:
-                st.error("すべての項目を入力してください")
+                st.success("登録完了！"); time.sleep(1); st.rerun()
