@@ -20,7 +20,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（大型ボタン & 1段見出し） ---
+# --- 🎨 カスタムCSS（見出し・大型ボタン・視認性） ---
 st.markdown("""
     <style>
     .main-title {
@@ -51,6 +51,7 @@ st.markdown("""
 
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
+    .stMarkdown p, .stText, label { color: #31333F !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -113,7 +114,7 @@ if "monitoring_month" not in st.session_state: st.session_state["monitoring_mont
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 セキュリティ
+# 🔐 セキュリティ・端末認証
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.0)
@@ -147,11 +148,13 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 TOP
+# 🏠 TOP 画面（施設コード表示復元）
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
-    st.markdown(f"<p style='text-align: center;'>👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
+    # 🚀 施設コード（事業所ID）と名前の表示を復元
+    st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
@@ -164,12 +167,11 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（文言変更済み）
+# ✍️ 記録入力
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
-    
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
@@ -208,11 +210,10 @@ elif st.session_state["page"] == "input":
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
             st.success(f"✅ {u_name}さんの記録を保存しました。続けて入力できます。")
             st.session_state["edit_content"] = ""; time.sleep(1.2); st.rerun()
-    
     back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング (仕様維持)
+# 📊 履歴・モニタリング
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
@@ -220,11 +221,12 @@ elif st.session_state["page"] == "history":
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["---"] + [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for _, r in p_df.iterrows()]
-    sel = st.selectbox("利用者を選択", patient_options)
+    sel = st.selectbox("利用者を選択（検索可）", patient_options)
     
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.markdown("---")
+        
         # 指定日まとめ
         st.write("▼ 指定日のまとめ作成")
         col_date, col_sum_btn = st.columns([2, 2])
@@ -278,7 +280,7 @@ elif st.session_state["page"] == "history":
     back_to_top_button("his_down")
 
 # ==========================================
-# 🛠️ 管理者メニュー (仕様維持)
+# 🛠️ 管理者メニュー
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("adm_up")
