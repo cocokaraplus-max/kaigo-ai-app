@@ -20,7 +20,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（画面固定ボタン & 視認性向上） ---
+# --- 🎨 カスタムCSS（フロートボタン & UI改善） ---
 st.markdown("""
     <style>
     /* 管理者メニューのタイトル */
@@ -30,7 +30,7 @@ st.markdown("""
         margin-bottom: 20px; display: block;
     }
     
-    /* タブとラベルの視認性 */
+    /* タブとラベルの視認性（ライトモード対応） */
     .stTabs [data-baseweb="tab-list"] button {
         color: #31333F !important; font-size: 16px !important; font-weight: 600 !important;
     }
@@ -38,33 +38,43 @@ st.markdown("""
     .stMarkdown p, .stText, label { color: #31333F !important; }
     div[data-baseweb="select"] > div { color: #31333F !important; }
 
-    /* 🚀 スマホ用：画面下部固定の「TOPに戻る」ボタン設定 */
-    @media (max-width: 768px) {
-        .stButton > button[data-testid="baseButton-secondary"] {
-            /* '◀ TOP' という文字を含むボタンを特定してスタイル適用 */
-        }
-        
-        /* 特定のクラスを付与できないため、下部の固定エリアを作成 */
-        .fixed-bottom-nav {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 999;
-        }
+    /* 🚀 画面右下固定のフロートボタン（TOP戻り用） */
+    .float-top-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 25px;
+        z-index: 9999;
     }
     
-    /* 固定ボタンの装飾 */
-    .stButton > button:contains("◀ TOP") {
+    /* Streamlitのボタンを無理やりフロートスタイルにする */
+    div.stButton > button:first-child:contains("TOP") {
         position: fixed !important;
-        bottom: 30px !important;
-        right: 20px !important;
+        bottom: 40px !important;
+        right: 25px !important;
+        width: 65px !important;
+        height: 65px !important;
         background-color: #ff4b4b !important;
         color: white !important;
-        border-radius: 50px !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-        padding: 10px 20px !important;
-        z-index: 1000 !important;
-        border: none !important;
+        border-radius: 50% !important;
+        border: 2px solid white !important;
+        box-shadow: 2px 4px 15px rgba(0,0,0,0.4) !important;
+        font-weight: bold !important;
+        font-size: 14px !important;
+        z-index: 10000 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        line-height: 1.2 !important;
+        transition: transform 0.2s !important;
+    }
+
+    div.stButton > button:first-child:contains("TOP"):active {
+        transform: scale(0.9) !important;
+    }
+    
+    /* PC表示時に文字がはみ出さないための微調整 */
+    div.stButton > button:first-child:contains("TOP") p {
+        margin: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -94,11 +104,10 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 端末チェック & ログイン (省略なし)
+# 🔐 端末チェック & 認証
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.2)
-
 device_id = cookie_manager.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
@@ -151,8 +160,8 @@ if st.session_state["page"] == "top":
 # 🛠️ 管理者メニュー
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
-    # 🚀 固定ボタン仕様
-    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    # 🚀 フロートボタン (ラベルを短く "TOP" に統一)
+    if st.button("TOP"): st.session_state["page"] = "top"; st.rerun()
     
     res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
     current_stored_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
@@ -170,18 +179,17 @@ elif st.session_state["page"] == "admin_menu":
     tab1, tab2, tab3, tab4 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除", "🔑 パスワード変更"])
 
     with tab1:
-        with st.form("reg_master_v10"):
+        with st.form("reg_master_v11"):
             c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名 (漢字)"); u_ka = st.text_input("ふりがな (ひらがな)")
-            if st.form_submit_button("マスターに登録"):
+            if st.form_submit_button("登録"):
                 if c_no and u_na and u_ka:
                     supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute()
                     st.success("登録完了"); time.sleep(1); st.rerun()
-    # (中略: tab2, tab3, tab4 のブロック・復活・パスワード変更ロジックは前回同様)
     with tab2:
         res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         staff_names = list(set([r['staff_name'] for r in res_staff.data])) if res_staff.data else []
-        target_staff = st.selectbox("ブロック対象の職員名", ["(選択してください)"] + staff_names)
-        if st.button("🚨 この端末を永久ブロック", type="primary", use_container_width=True):
+        target_staff = st.selectbox("ブロック対象", ["(選択してください)"] + staff_names)
+        if st.button("🚨 この端末をブロック", type="primary", use_container_width=True):
             if target_staff != "(選択してください)":
                 supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target_staff, "facility_code": f_code, "is_active": True}).execute()
                 cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
@@ -195,22 +203,22 @@ elif st.session_state["page"] == "admin_menu":
                 with col_b2:
                     if st.button("復活", key=b['device_id']):
                         supabase.table("blocked_devices").update({"is_active": False}).eq("device_id", b['device_id']).execute()
-                        st.success("解除完了"); time.sleep(1); st.rerun()
+                        st.success("完了"); time.sleep(1); st.rerun()
     with tab4:
-        new_pw = st.text_input("新しいパスワード", type="password")
+        new_pw = st.text_input("新パスワード", type="password")
         confirm_pw = st.text_input("確認用", type="password")
-        if st.button("パスワードを更新"):
+        if st.button("更新"):
             if new_pw and new_pw == confirm_pw:
                 if res_pw.data: supabase.table("admin_settings").update({"value": new_pw}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                 else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": new_pw}).execute()
-                st.success("更新完了！"); time.sleep(1); st.rerun()
+                st.success("更新しました"); time.sleep(1); st.rerun()
 
 # ==========================================
 # ✍️ 記録入力
 # ==========================================
 elif st.session_state["page"] == "input":
-    # 🚀 固定ボタン仕様
-    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    # 🚀 フロートボタン
+    if st.button("TOP"): st.session_state["page"] = "top"; st.rerun()
     
     display_logo(); st.subheader("✍️ ケース記録入力")
     st.info(f"✍️ 記入者: {my_name}")
@@ -220,7 +228,7 @@ elif st.session_state["page"] == "input":
     sel = st.selectbox("👤 利用者を選択", patient_options)
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする"):
-        with st.spinner("整理中..."):
+        with st.spinner("分析中..."):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     tmp.write(aud.getvalue()); tmp_path = tmp.name
@@ -234,7 +242,7 @@ elif st.session_state["page"] == "input":
                 response = model.generate_content([f_up, prompt])
                 st.session_state["edit_content"] = response.text
                 os.remove(tmp_path); st.rerun()
-            except Exception as e: st.error(f"解析エラー: {e}")
+            except Exception as e: st.error(f"エラー: {e}")
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
     if st.button("💾 保存", use_container_width=True):
         if sel != "(未選択)" and content:
@@ -247,8 +255,8 @@ elif st.session_state["page"] == "input":
 # 📊 履歴・モニタリング
 # ==========================================
 elif st.session_state["page"] == "history":
-    # 🚀 固定ボタン仕様
-    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    # 🚀 フロートボタン
+    if st.button("TOP"): st.session_state["page"] = "top"; st.rerun()
     
     display_logo(); st.subheader("📊 履歴・モニタリング")
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
@@ -264,10 +272,10 @@ elif st.session_state["page"] == "history":
                 next_day = (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
                 res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", date_str).lt("created_at", next_day).execute()
                 if res.data:
-                    with st.spinner("AIで統合中..."):
+                    with st.spinner("集計中..."):
                         all_txt = "\n".join([r['content'] for r in res.data])
                         model = genai.GenerativeModel("models/gemini-2.5-flash")
-                        prompt = f"以下の介護記録を200字程度で要約。支援内容は全て含めること。"
+                        prompt = f"以下の介護記録を200字程度で要約。支援内容は漏らさず記載せよ。"
                         resp = model.generate_content(prompt + "\n\n" + all_txt)
                         st.info(f"📅 要約:\n\n{resp.text}")
         if st.button("📈 1ヶ月モニタリング作成", use_container_width=True):
