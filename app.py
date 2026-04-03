@@ -97,27 +97,35 @@ if st.session_state["page"] == "top":
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（表示形式改善版）
+# ✍️ 記録入力（検索機能強化版）
 # ==========================================
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("✍️ ケース記録入力")
     
+    # マスター取得
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     
     if p_df.empty:
         st.warning("設定から利用者を登録してください"); st.stop()
     
-    # 指示通りの形式: (No.123) [氏名] [ふりがな]
-    patient_options = ["---"]
+    # 選択肢の作成
+    patient_options = ["(未選択)"]
     for _, r in p_df.iterrows():
         kana = r.get('user_kana', '')
         name = r.get('user_name', '')
         c_no = r.get('chart_number', '')
+        # 検索しやすくするために「氏名 かな No」を1つの文字列にする
         patient_options.append(f"(No.{c_no}) [{name}] [{kana}]")
     
-    sel = st.selectbox("👤 利用者を選択", patient_options)
+    # st.selectboxは、フォーカス時に文字を入力すると自動で検索・フィルタリングされます
+    sel = st.selectbox(
+        "👤 利用者を選択または検索 (ひらがな・名前を入力)", 
+        patient_options,
+        index=0,
+        help="ここをクリックして文字を入力すると候補を絞り込めます"
+    )
     
     aud = st.audio_input("🎙️ 声で入力")
     if aud and st.button("✨ AIで文章にする"):
@@ -139,8 +147,7 @@ elif st.session_state["page"] == "input":
     content = st.text_area("内容", value=st.session_state["edit_content"], height=300)
     
     if st.button("💾 クラウド保存", use_container_width=True):
-        if sel != "---" and content:
-            # 形式 (No.xxx) [氏名] [かな] から抽出
+        if sel != "(未選択)" and content:
             try:
                 match = re.search(r'\(No\.(.*?)\) \[(.*?)\] \[(.*?)\]', sel)
                 c_no = match.group(1)
@@ -159,7 +166,7 @@ elif st.session_state["page"] == "input":
                 st.error(f"保存エラー: {e}")
 
 # ==========================================
-# 📊 履歴表示（共通）
+# 📊 履歴 / ⚙️ 設定（以前のコードを維持）
 # ==========================================
 elif st.session_state["page"] == "history":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
@@ -170,9 +177,6 @@ elif st.session_state["page"] == "history":
             with st.expander(f"📅 {r['created_at'][:10]} - {r['user_name']} (記: {r.get('staff_name','--')})"):
                 st.write(r['content'])
 
-# ==========================================
-# ⚙️ 利用者登録
-# ==========================================
 elif st.session_state["page"] == "settings":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("⚙️ 利用者マスター登録")
@@ -183,10 +187,8 @@ elif st.session_state["page"] == "settings":
         if st.form_submit_button("マスターに登録する"):
             if c_no and u_na and u_ka:
                 supabase.table("patients").insert({
-                    "facility_code": f_code, 
-                    "chart_number": normalize_text(c_no), 
-                    "user_name": u_na,
-                    "user_kana": u_ka
+                    "facility_code": f_code, "chart_number": normalize_text(c_no), 
+                    "user_name": u_na, "user_kana": u_ka
                 }).execute()
                 st.success(f"{u_na} さんを登録しました"); time.sleep(1); st.rerun()
             else:
