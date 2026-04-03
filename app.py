@@ -11,6 +11,7 @@ import time
 from PIL import Image # type: ignore
 import extra_streamlit_components as stx 
 import re
+import streamlit.components.v1 as components
 
 # --- 1. 基本設定 ---
 tokyo_tz = pytz.timezone('Asia/Tokyo')
@@ -19,7 +20,7 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（見出し・折り返し・エディタ） ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title {
@@ -38,15 +39,32 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
     code { white-space: pre-wrap !important; word-break: break-all !important; }
-    .stMarkdown p, .stText, label { color: #31333F !important; }
-    
-    /* 編集エリアの強調 */
-    .stTextArea textarea {
-        border: 2px solid #ff4b4b !important;
-        border-radius: 10px !important;
-    }
+    .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
+
+# 💡 スリープ防止（Wake Lock）JavaScript
+# 録音UIが表示されている間、ブラウザに「画面を消さないよう」要求します
+st.components.v1.html("""
+<script>
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    console.log('Wake Lock is active');
+  } catch (err) {
+    console.error(`${err.name}, ${err.message}`);
+  }
+}
+// 録音操作が想定される入力画面で実行
+document.addEventListener('visibilitychange', async () => {
+  if (wakeLock !== null && document.visibilityState === 'visible') {
+    await requestWakeLock();
+  }
+});
+requestWakeLock();
+</script>
+""", height=0)
 
 try:
     s_url = st.secrets["SUPABASE_URL"]
@@ -73,7 +91,7 @@ if "monitoring_month" not in st.session_state: st.session_state["monitoring_mont
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 セキュリティ
+# 🔐 端末認証
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.0)
@@ -107,7 +125,7 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 TOP
+# 🏠 TOP 画面
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -124,19 +142,22 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（背面カメラ・連続入力）
+# ✍️ 記録入力（スリープ防止対応）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
+    
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("👤 利用者を選択", patient_options)
 
     st.markdown("---")
-    target_img = st.file_uploader("📷 写真を撮る / 画像を選択", type=["jpg", "png", "jpeg"])
-    aud_file = st.audio_input("🎙️ 声で入力")
+    target_img = st.file_uploader("📷 写真（背面カメラ）/ 画像", type=["jpg", "png", "jpeg"])
+    
+    # 🎙️ 音声入力（このUIが表示されている間、JSでスリープを抑制します）
+    aud_file = st.audio_input("🎙️ 声で入力 (録音中も画面が消えません)")
     
     if (target_img or aud_file) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
@@ -164,10 +185,11 @@ elif st.session_state["page"] == "input":
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
             st.success(f"✅ {u_name}さんの記録を保存しました。")
             st.session_state["edit_content"] = ""; time.sleep(1.2); st.rerun()
+    
     back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング（月選択・手入力修正対応）
+# 📊 履歴・モニタリング（月選択・修正対応）
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
@@ -179,9 +201,9 @@ elif st.session_state["page"] == "history":
     
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
-        
         st.markdown("---")
-        # 📅 日ごとのまとめ
+        
+        # 指定日まとめ（維持）
         st.write("▼ 指定日のまとめ作成")
         col_date, col_sum_btn = st.columns([2, 2])
         with col_date: target_date = st.date_input("日付を選択", value=date.today())
@@ -192,12 +214,12 @@ elif st.session_state["page"] == "history":
                 if res.data:
                     all_txt = "\n".join([r['content'] for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    resp = model.generate_content(f"介護職員の口調で、200字程度に要約してください。\n\n{all_txt}")
+                    resp = model.generate_content(f"介護職の口調で200字程度に要約。\n\n{all_txt}")
                     st.session_state["monitoring_result"] = resp.text
                     st.session_state["monitoring_month"] = "指定日"
-                else: st.warning("記録がありません。")
+                else: st.warning("記録なし")
 
-        # 📈 モニタリング（月選択）
+        # モニタリング月選択（維持）
         st.write("▼ モニタリング作成")
         col_m, col_b = st.columns([2, 2])
         with col_m:
@@ -206,30 +228,25 @@ elif st.session_state["page"] == "history":
             if st.button("📈 モニタリング作成", use_container_width=True):
                 month_num = int(selected_m.replace("月", ""))
                 res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).execute()
-                # 月でフィルタリング
                 m_records = [r for r in res.data if datetime.fromisoformat(r['created_at']).month == month_num]
                 if m_records:
                     all_txt = "\n".join([r['content'] for r in m_records])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    prompt = f"以下の記録に基づき、200文字以内の一続きの文章で介護報告を作成。見出し・箇条書き禁止。内容のみ出力。\n記録:\n{all_txt}"
+                    prompt = f"200字以内の一続きの文章で介護報告を作成。内容のみ出力。\n記録:\n{all_txt}"
                     resp = model.generate_content(prompt)
                     st.session_state["monitoring_result"] = resp.text
                     st.session_state["monitoring_month"] = selected_m
-                else: st.warning(f"{selected_m}の記録がありません。")
+                else: st.warning(f"{selected_m}の記録なし")
 
-        # 📋 生成結果表示 & 手入力修正
+        # 修正可能エディタ（維持）
         if st.session_state["monitoring_result"]:
             st.markdown(f"### ✨ {st.session_state['monitoring_month']}のモニタリング")
-            st.caption("📝 内容を直接修正できます。修正後にコピーしてください。")
-            # 手入力で修正可能なテキストエリア
-            st.session_state["monitoring_result"] = st.text_area("生成結果の編集", value=st.session_state["monitoring_result"], height=200, label_visibility="collapsed")
-            
-            # コピー用枠（修正後の値を反映）
+            st.session_state["monitoring_result"] = st.text_area("修正してコピー可能", value=st.session_state["monitoring_result"], height=200)
             st.code(st.session_state["monitoring_result"], language=None)
             if st.button("🗑️ クリア"): st.session_state["monitoring_result"] = ""; st.rerun()
 
         st.divider()
-        if st.button("📜 過去の全履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
+        if st.button("📜 過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
         if st.session_state.get("show_history_list"):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
@@ -239,7 +256,7 @@ elif st.session_state["page"] == "history":
     back_to_top_button("his_down")
 
 # ==========================================
-# 🛠️ 管理者メニュー 
+# 🛠️ 管理者メニュー（維持）
 # ==========================================
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("adm_up")
