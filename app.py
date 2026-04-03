@@ -58,18 +58,15 @@ if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 
 # ==========================================
-# 🔐 ログイン（Cookie読み込み対応）
+# 🔐 ログイン（Cookie読み込み）
 # ==========================================
-# マネージャーを画面に配置
 cookie_manager.get_all()
 
 if not st.session_state["is_authenticated"]:
-    # ブラウザからの返答を待つ
     time.sleep(0.5)
     saved_f = cookie_manager.get("saved_f_code")
     saved_n = cookie_manager.get("saved_my_name")
     
-    # Cookieがあれば自動ログイン
     if saved_f and saved_n and not st.session_state["facility_code"]:
         st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
         st.rerun()
@@ -77,25 +74,21 @@ if not st.session_state["is_authenticated"]:
     display_logo()
     st.markdown("<h3 style='text-align: center;'>🔐 ログイン</h3>", unsafe_allow_html=True)
     with st.container(border=True):
-        f_in = st.text_input("🏢 施設コード", value=saved_f if saved_f else "cocokaraplus-5526", key="login_f_v8")
-        n_in = st.text_input("👤 お名前", value=saved_n if saved_n else "", key="login_n_v8")
-        
+        f_in = st.text_input("🏢 施設コード", value=saved_f if saved_f else "cocokaraplus-5526", key="login_f_v9")
+        n_in = st.text_input("👤 お名前", value=saved_n if saved_n else "", key="login_n_v9")
         if st.button("利用を開始する", use_container_width=True):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="set_f_v8")
-                cookie_manager.set("saved_my_name", n_in, key="set_n_v8")
+                cookie_manager.set("saved_f_code", f_in, key="set_f_v9")
+                cookie_manager.set("saved_my_name", n_in, key="set_n_v9")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 st.rerun()
-            else: st.warning("情報を入力してください")
     st.stop()
 
-# 安全ガード
 f_code = st.session_state.get("facility_code")
-if not f_code:
-    st.warning("同期中..."); st.stop()
+if not f_code: st.warning("同期中..."); st.stop()
 
 # ==========================================
-# 🏠 TOP / ✍️ 入力 / 📊 履歴 / ⚙️ 設定（基本機能）
+# 🏠 メイン機能
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -120,22 +113,38 @@ elif st.session_state["page"] == "input":
     sel = st.selectbox("👤 利用者を選択", ["---"] + [f"No.{r['chart_number']} : {r['user_name']}" for _, r in p_df.iterrows()])
     
     aud = st.audio_input("🎙️ 声で入力")
-    if aud and st.button("✨ AIで文章にする"):
-        with st.spinner("解析中..."):
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                f.write(aud.getvalue()); p = f.name
-            f_up = genai.upload_file(path=p)
-            for _ in range(10):
-                f_up = genai.get_file(f_up.name)
-                if f_up.state.name == "ACTIVE": break
-                time.sleep(2)
-            res = genai.GenerativeModel("gemini-1.5-flash").generate_content([f_up, "介護記録として整理してください"])
-            st.session_state["edit_content"] = res.text
-            os.remove(p); st.rerun()
+    if aud and st.button("✨ AIで文章にする", key="btn_voice_v9"):
+        with st.spinner("AIが音声を解析中..."):
+            try:
+                # 1. 一時ファイル作成
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_file.write(aud.getvalue())
+                    tmp_path = tmp_file.name
+                
+                # 2. Geminiへアップロード
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                f_up = genai.upload_file(path=tmp_path)
+                
+                # 3. ファイルがACTIVEになるまで待機（最大30秒）
+                for _ in range(15):
+                    f_up = genai.get_file(f_up.name)
+                    if f_up.state.name == "ACTIVE":
+                        break
+                    time.sleep(2)
+                
+                # 4. 生成実行
+                res = model.generate_content([f_up, "介護記録として整理してください。必ず日本語で出力してください。"])
+                st.session_state["edit_content"] = res.text
+                
+                # 5. 後片付け
+                os.remove(tmp_path)
+                st.rerun()
+            except Exception as e:
+                st.error(f"解析エラーが発生しました。もう一度録音してお試しください。")
 
     content = st.text_area("内容", value=st.session_state["edit_content"], height=300)
     if st.button("💾 クラウド保存", use_container_width=True):
-        if sel != "---":
+        if sel != "---" and content:
             u_name = sel.split(" : ")[1]; c_no = sel.split(" : ")[0].replace("No.", "")
             supabase.table("records").insert({
                 "facility_code": f_code, "chart_number": str(c_no), "user_name": u_name,
