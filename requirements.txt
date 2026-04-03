@@ -2,5 +2,5 @@ streamlit
 google-generativeai
 supabase
 pandas
-fpdf2
+extra-streamlit-components
 pytz

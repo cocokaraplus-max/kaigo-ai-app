@@ -9,203 +9,154 @@ from supabase import create_client, Client # type: ignore
 import uuid
 import time
 from PIL import Image # type: ignore
+import extra_streamlit_components as stx 
+import unicodedata
 
-# 日本時間の設定
+# --- 1. 基本設定 ---
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
+st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# --- 1. 接続設定とUIカスタム ---
-st.set_page_config(page_title="ケース記録アプリ", page_icon="logo.png", layout="wide")
+# Cookieマネージャー初期化
+cookie_manager = stx.CookieManager()
 
 def load_css(file_name):
     try:
         with open(file_name, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-    except Exception:
-        pass
+    except Exception: pass
 
 load_css("style.css")
 
-# Supabase & Gemini 接続設定
+# 接続設定
 try:
     s_url = st.secrets["SUPABASE_URL"]
     s_key = st.secrets["SUPABASE_KEY"]
     g_key = st.secrets["GEMINI_API_KEY"]
-    
     genai.configure(api_key=g_key)
     supabase: Client = create_client(s_url, s_key)
 except Exception as e:
-    st.error(f"⚠️ 接続設定エラー: {e}")
-    st.stop()
+    st.error(f"⚠️ 接続設定エラー: {e}"); st.stop()
 
-# ★ 私（AI）が名前を間違えないよう、Googleから今使えるモデルを自動で取得する関数 ★
-def get_available_flash_model():
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
-                return m.name.replace('models/', '') # 自動で正しい名前（gemini-1.5-flash等）を取得
-    except Exception:
-        pass
-    return "gemini-1.5-flash" # 万が一の予備
-
-def get_user_list():
-    try:
-        res = supabase.table("records").select("user_name").execute()
-        if res.data:
-            return sorted(list(set([r['user_name'] for r in res.data if r['user_name']])))
-        return []
-    except Exception: return []
+def normalize_chart_no(s):
+    if s is None or (isinstance(s, float) and pd.isna(s)): return ""
+    return unicodedata.normalize('NFKC', str(s).split('.')[0]).strip()
 
 def display_logo(show_line=False):
     try:
         image = Image.open('logo.png')
-        st.image(image)
-        if show_line:
-            st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.title("🦝 TASUKARU")
+        col_l, col_m, col_r = st.columns([1, 1, 1])
+        with col_m: st.image(image, use_container_width=True)
+        if show_line: st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
+    except Exception: st.markdown("<h2 style='text-align: center;'>🦝 TASUKARU</h2>", unsafe_allow_html=True)
 
+# --- 2. 状態管理 ---
+if "is_authenticated" not in st.session_state: st.session_state["is_authenticated"] = False
+if "facility_code" not in st.session_state: st.session_state["facility_code"] = ""
+if "my_name" not in st.session_state: st.session_state["my_name"] = ""
 if "page" not in st.session_state: st.session_state["page"] = "top"
-if "form_id" not in st.session_state: st.session_state["form_id"] = 0
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 
 # ==========================================
-# 🏠 TOP画面
+# 🔐 ログイン（Cookie読み込み対応）
+# ==========================================
+# マネージャーを画面に配置
+cookie_manager.get_all()
+
+if not st.session_state["is_authenticated"]:
+    # ブラウザからの返答を待つ
+    time.sleep(0.5)
+    saved_f = cookie_manager.get("saved_f_code")
+    saved_n = cookie_manager.get("saved_my_name")
+    
+    # Cookieがあれば自動ログイン
+    if saved_f and saved_n and not st.session_state["facility_code"]:
+        st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
+        st.rerun()
+
+    display_logo()
+    st.markdown("<h3 style='text-align: center;'>🔐 ログイン</h3>", unsafe_allow_html=True)
+    with st.container(border=True):
+        f_in = st.text_input("🏢 施設コード", value=saved_f if saved_f else "cocokaraplus-5526", key="login_f_v8")
+        n_in = st.text_input("👤 お名前", value=saved_n if saved_n else "", key="login_n_v8")
+        
+        if st.button("利用を開始する", use_container_width=True):
+            if f_in and n_in:
+                cookie_manager.set("saved_f_code", f_in, key="set_f_v8")
+                cookie_manager.set("saved_my_name", n_in, key="set_n_v8")
+                st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
+                st.rerun()
+            else: st.warning("情報を入力してください")
+    st.stop()
+
+# 安全ガード
+f_code = st.session_state.get("facility_code")
+if not f_code:
+    st.warning("同期中..."); st.stop()
+
+# ==========================================
+# 🏠 TOP / ✍️ 入力 / 📊 履歴 / ⚙️ 設定（基本機能）
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        if st.button("✍️ 今日の記録を書く\n(音声・写真対応)", use_container_width=True):
-            st.session_state["page"] = "input"
-            st.rerun()
-    with col_t2:
-        if st.button("📊 過去の履歴を見る\n(検索・モニタリング)", use_container_width=True):
-            st.session_state["page"] = "history"
-            st.rerun()
-
-# ==========================================
-# ✍️ 入力画面
-# ==========================================
-elif st.session_state["page"] == "input":
-    if st.button("◀ TOPに戻る"):
-        st.session_state["page"] = "top"
-        st.rerun()
-    display_logo()
-    st.title("ケース記録入力")
-    fid = st.session_state["form_id"]
-    col1, col2 = st.columns([1, 1])
+    st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{st.session_state['my_name']}</b> さん</p>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
     with col1:
-        user_name = st.text_input("利用者名", placeholder="例：山田 太郎", key=f"u_{fid}")
-        target_date = st.date_input("記録対象日", value=now_tokyo.date(), key=f"d_{fid}")
-        img_file = st.file_uploader("📸 写真を選択/撮影", type=['jpg', 'png', 'jpeg'], key=f"i_{fid}")
-        if img_file: st.image(img_file, width=250)
-        st.subheader("🎙️ 音声入力")
-        audio_value = st.audio_input("マイクをタップして話してください", key=f"a_{fid}")
-        if audio_value:
-            if st.button("✨ AIで文章にする"):
-                with st.spinner("文章を作成中。しばらくお待ちください..."):
-                    try:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                            f.write(audio_value.getvalue())
-                            temp_path = f.name
-                        
-                        # ★ もう名前でエラーにはなりません。自動で最適なAIを呼び出します ★
-                        best_model_name = get_available_flash_model()
-                        model = genai.GenerativeModel(best_model_name)
-                        sample_file = genai.upload_file(path=temp_path)
-                        
-                        prompt = f"""
-                        以下の音声を、{user_name}さんの介護記録として、です・ます調の簡潔な文章で文字起こし・要約してください。
-                        【厳守ルール】
-                        1. 音声の中で話されている事実のみを記述すること。
-                        2. 「日時」「記録者」「申し送り記録」といった見出しや、空欄のテンプレートは絶対に生成しないこと。
-                        3. AIとしての挨拶や返事（承知いたしました等）は一切含めないこと。
-                        """
-                        response = model.generate_content([sample_file, prompt])
-                        st.session_state["edit_content"] = response.text
-                        st.session_state[f"t_{fid}"] = response.text
-                        os.remove(temp_path)
-                    except Exception as e: st.error(f"❌ AI生成エラー: {e}")
+        if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col2:
-        st.subheader("📝 記録内容の確認")
-        final_content = st.text_area("修正があればここを書き換えてください", value=st.session_state["edit_content"], height=350, key=f"t_{fid}")
-        if st.button("💾 クラウド保存"):
-            if user_name:
-                try:
-                    image_url = None
-                    if img_file:
-                        file_name = f"{uuid.uuid4()}.jpg"
-                        supabase.storage.from_("case-photos").upload(file_name, img_file.getvalue())
-                        image_url = supabase.storage.from_("case-photos").get_public_url(file_name)
-                    record_data = {"user_name": user_name, "content": final_content if final_content else "（写真保存）", "image_url": image_url, "created_at": target_date.isoformat()}
-                    supabase.table("records").insert(record_data).execute()
-                    st.success(f"✅ 保存完了")
-                    time.sleep(1.2); st.session_state["edit_content"] = ""; st.session_state["form_id"] += 1; st.rerun()
-                except Exception as e: st.error(f"❌ 保存エラー: {e}")
-            else: st.warning("利用者名を入力してください")
+        if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
+    if st.button("⚙️ 設定"): st.session_state["page"] = "settings"; st.rerun()
+    if st.button("🚪 ログアウト"):
+        cookie_manager.delete("saved_f_code")
+        cookie_manager.delete("saved_my_name")
+        st.session_state.clear(); st.rerun()
 
-# ==========================================
-# 📊 履歴表示・モニタリング画面
-# ==========================================
+elif st.session_state["page"] == "input":
+    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    display_logo(); st.subheader("✍️ ケース記録入力")
+    res_p = supabase.table("patients").select("*").eq("facility_code", f_code).execute()
+    p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
+    if p_df.empty: st.warning("利用者を登録してください"); st.stop()
+    sel = st.selectbox("👤 利用者を選択", ["---"] + [f"No.{r['chart_number']} : {r['user_name']}" for _, r in p_df.iterrows()])
+    
+    aud = st.audio_input("🎙️ 声で入力")
+    if aud and st.button("✨ AIで文章にする"):
+        with st.spinner("解析中..."):
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                f.write(aud.getvalue()); p = f.name
+            f_up = genai.upload_file(path=p)
+            for _ in range(10):
+                f_up = genai.get_file(f_up.name)
+                if f_up.state.name == "ACTIVE": break
+                time.sleep(2)
+            res = genai.GenerativeModel("gemini-1.5-flash").generate_content([f_up, "介護記録として整理してください"])
+            st.session_state["edit_content"] = res.text
+            os.remove(p); st.rerun()
+
+    content = st.text_area("内容", value=st.session_state["edit_content"], height=300)
+    if st.button("💾 クラウド保存", use_container_width=True):
+        if sel != "---":
+            u_name = sel.split(" : ")[1]; c_no = sel.split(" : ")[0].replace("No.", "")
+            supabase.table("records").insert({
+                "facility_code": f_code, "chart_number": str(c_no), "user_name": u_name,
+                "staff_name": st.session_state["my_name"], "content": content, "created_at": now_tokyo.isoformat()
+            }).execute()
+            st.success("保存完了！"); st.session_state["edit_content"] = ""; time.sleep(1); st.session_state["page"] = "top"; st.rerun()
+
 elif st.session_state["page"] == "history":
-    if st.button("◀ TOPに戻る"):
-        st.session_state["page"] = "top"
-        st.rerun()
+    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo()
-    st.title("履歴表示・出力")
-    c3, c4, c5 = st.columns([2, 1, 1])
-    with c3:
-        users = get_user_list()
-        s_user = st.selectbox("利用者名を選択", ["（未選択）"] + users) if users else st.text_input("名前を入力")
-    with c4: s_year = st.selectbox("年", [2025, 2026, 2027], index=1)
-    with c5: s_month = st.selectbox("月", range(1, 13), index=now_tokyo.month - 1)
-    
-    cb1, cb2 = st.columns(2)
-    with cb1: search_btn = st.button("🔍 履歴を検索", use_container_width=True)
-    with cb2: moni_btn = st.button("📈 モニタリング生成(AI)", use_container_width=True)
-    
-    res_area = st.container()
-    if search_btn or moni_btn:
-        if s_user and s_user != "（未選択）":
-            loading_msg = "モニタリングを生成しています。しばらくお待ちください..." if moni_btn else "検索中。しばらくお待ちください..."
-            with st.spinner(loading_msg):
-                try:
-                    res = supabase.table("records").select("*").eq("user_name", s_user).execute()
-                    if res.data:
-                        df = pd.DataFrame(res.data)
-                        df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce').dropna()
-                        df_f = df[(df['created_at'].dt.year == s_year) & (df['created_at'].dt.month == s_month)].sort_values("created_at")
-                        with res_area:
-                            if moni_btn:
-                                if not df_f.empty:
-                                    st.subheader(f"📋 ケアマネージャー提出用モニタリング要約 ({s_year}/{s_month})")
-                                    all_text = "\n".join([f"・{r.created_at.date()}: {r.content}" for _, r in df_f.iterrows()])
-                                    
-                                    # ★ ここも自動取得関数を使用します ★
-                                    best_model_name = get_available_flash_model()
-                                    model = genai.GenerativeModel(best_model_name)
-                                    
-                                    prompt = f"""
-                                    あなたは熟練の介護職員です。ケアマネージャーに提出する{s_user}さんの月間モニタリング（経過報告）を作成してください。
-                                    【指示】
-                                    1. 200文字程度の要約として、ADL、心身状態、生活の様子を専門用語を用いて記述すること。
-                                    2. 用語は「離床」「ADL」「不穏」「傾眠」「摂取量」などの専門用語を適切に使うこと。
-                                    3. 記録にある事実のみを書き、推測や虚偽の内容は絶対に含めないこと。
-                                    4. 冒頭に「【{s_year}年{s_month}月度 モニタリング要約】」と記載すること。
-                                    データ:
-                                    {all_text}
-                                    """
-                                    moni_text = model.generate_content(prompt).text
-                                    st.info(moni_text)
-                                    st.button("🖨️ レポートを印刷 / PDF保存", on_click=lambda: st.components.v1.html("<script>window.print();</script>", height=0))
-                                else: st.warning("対象期間の記録がありません")
-                            elif search_btn:
-                                if not df_f.empty:
-                                    for d in sorted(df_f['created_at'].dt.date.unique(), reverse=True):
-                                        with st.expander(f"📅 {d}"):
-                                            for _, r in df_f[df_f['created_at'].dt.date == d].iterrows():
-                                                st.write(r['content'])
-                                                if r.get("image_url"): st.image(r["image_url"], width=250)
-                                else: st.info("記録なし")
-                except Exception as e: st.error(f"検索エラー: {e}")
+    res = supabase.table("records").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
+    if res.data:
+        for r in res.data:
+            with st.expander(f"📅 {r['created_at'][:10]} - {r['user_name']} (記: {r.get('staff_name','--')})"):
+                st.write(r['content'])
+
+elif st.session_state["page"] == "settings":
+    if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
+    display_logo(); st.subheader("⚙️ 利用者登録")
+    with st.form("reg"):
+        c_no = st.text_input("カルテ番号"); u_na = st.text_input("氏名")
+        if st.form_submit_button("登録"):
+            supabase.table("patients").insert({"facility_code": f_code, "chart_number": normalize_chart_no(c_no), "user_name": u_na}).execute()
+            st.success("登録完了！"); st.rerun()
