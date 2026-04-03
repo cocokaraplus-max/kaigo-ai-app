@@ -20,45 +20,43 @@ st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 cookie_manager = stx.CookieManager()
 
-# --- 🎨 カスタムCSS（文字色を強制的に見えるように修正） ---
+# --- 🎨 カスタムCSS（ライト/ダーク両対応・視認性重視） ---
 st.markdown("""
     <style>
-    /* 管理者メニューの大見出しをハッキリ見える白に */
+    /* 管理者メニュー全体の背景を少し暗くして文字を浮かせる */
+    .admin-container {
+        background-color: #262730;
+        padding: 20px;
+        border-radius: 10px;
+        color: #ffffff !important;
+        margin-bottom: 20px;
+    }
+    
+    /* 大見出しをハッキリ見える赤/白に */
     .admin-title {
         font-size: 22px;
         font-weight: bold;
-        color: #ffffff !important; 
-        padding: 10px 0;
-        border-bottom: 2px solid #ff4b4b;
+        color: #ff4b4b !important;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #555;
         margin-bottom: 20px;
-        display: block;
     }
-    
-    /* タブ全体の文字色を強制修正 */
+
+    /* タブの文字色を「黒背景なら白」「白背景なら黒」に自動調整させず、強制的に黒系にする */
     .stTabs [data-baseweb="tab-list"] button {
-        color: #ffffff !important;
-        font-size: 16px !important;
+        color: #31333F !important; /* 標準的な濃いグレー */
+        font-weight: 600 !important;
     }
     
-    /* 選択されていないタブの文字を少し薄くして区別 */
-    .stTabs [data-baseweb="tab"] {
-        color: rgba(255, 255, 255, 0.7) !important;
-    }
-
-    /* 選択中のタブの文字を真っ白に */
+    /* 選択中のタブは赤くする */
     .stTabs [aria-selected="true"] {
-        color: #ffffff !important;
-        font-weight: bold !important;
+        color: #ff4b4b !important;
+        border-bottom: 2px solid #ff4b4b !important;
     }
 
-    /* 入力フォームのラベル（ブロック対象の職員名など）も見やすく */
-    .stMarkdown p {
-        color: #ffffff !important;
-    }
-    
-    /* セレクトボックス内の文字も見やすく */
-    div[data-baseweb="select"] > div {
-        color: #333333 !important; /* 入力欄の中は白背景に黒文字で見やすく */
+    /* フォーム内のラベル文字を見やすく（黒系に固定） */
+    .stMarkdown p, .stText, label {
+        color: #31333F !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -88,7 +86,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 端末チェック（前回同様）
+# 🔐 端末ブロックチェック（DB連携）
 # ==========================================
 cookie_manager.get_all()
 time.sleep(1.2)
@@ -99,7 +97,7 @@ if not device_id:
 
 res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
 if res_block.data:
-    st.error(f"🚫 この端末は管理者によってブロックされています。")
+    st.error("🚫 この端末は管理者によってブロックされています。")
     st.stop()
 
 if not st.session_state.get("is_authenticated"):
@@ -123,7 +121,7 @@ f_code = st.session_state["facility_code"]
 my_name = st.session_state["my_name"]
 
 # ==========================================
-# 🏠 TOP / 🛠️ 管理者メニュー
+# 🏠 TOP画面
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -140,12 +138,15 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name")
         st.session_state.clear(); st.rerun()
 
+# ==========================================
+# 🛠️ 管理者メニュー（文字が見えるように修正）
+# ==========================================
 elif st.session_state["page"] == "admin_menu":
     if st.button("◀ TOPに戻る"): st.session_state["page"] = "top"; st.rerun()
     
     if not st.session_state["admin_authenticated"]:
         st.markdown("<div class='admin-title'>🛠️ 管理者認証</div>", unsafe_allow_html=True)
-        admin_pw = st.text_input("管理者パスワードを入力してください", type="password")
+        admin_pw = st.text_input("管理者パスワード (8888)", type="password")
         if st.button("認証"):
             if admin_pw == "8888":
                 st.session_state["admin_authenticated"] = True; st.rerun()
@@ -154,18 +155,18 @@ elif st.session_state["page"] == "admin_menu":
 
     st.markdown("<div class='admin-title'>🛠️ 管理者設定メニュー</div>", unsafe_allow_html=True)
     
-    # 見えるようにタブを再構築
-    tab1, tab2, tab3 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 ブロック解除"])
+    # 文字が見えやすいように、明るい背景用の配色に固定
+    tab1, tab2, tab3 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除"])
 
     with tab1:
-        with st.form("reg_master_v6"):
+        with st.form("reg_master_v7"):
             c_no = st.text_input("カルテ番号")
             u_na = st.text_input("氏名 (漢字)")
             u_ka = st.text_input("ふりがな (ひらがな)")
             if st.form_submit_button("マスターに登録"):
                 if c_no and u_na and u_ka:
                     supabase.table("patients").insert({"facility_code": f_code, "chart_number": c_no, "user_name": u_na, "user_kana": u_ka}).execute()
-                    st.success("登録完了"); time.sleep(1); st.rerun()
+                    st.success("登録しました"); time.sleep(1); st.rerun()
 
     with tab2:
         res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
@@ -187,9 +188,9 @@ elif st.session_state["page"] == "admin_menu":
                     if st.button("復活", key=b['device_id']):
                         supabase.table("blocked_devices").update({"is_active": False}).eq("device_id", b['device_id']).execute()
                         st.success("解除完了"); time.sleep(1); st.rerun()
-        else: st.write("現在ブロック中の端末はありません")
+        else: st.info("ブロック中の端末はありません")
 
-# --- ✍️ 記録入力 / 📊 履歴 (省略せず継続) ---
+# --- ✍️ 入力 / 📊 履歴 (省略せず継続) ---
 elif st.session_state["page"] == "input":
     if st.button("◀ TOP"): st.session_state["page"] = "top"; st.rerun()
     display_logo(); st.subheader("✍️ ケース記録入力")
@@ -232,26 +233,25 @@ elif st.session_state["page"] == "history":
     if sel != "---":
         u_name = re.search(r'\) (.*)', sel).group(1)
         col_date, col_btn = st.columns([2, 2])
-        with col_date: target_date = st.date_input("集計する日を選択", value=date.today())
+        with col_date: target_date = st.date_input("集計日を選択", value=date.today())
         with col_btn:
             if st.button("✨ 指定日の記録をまとめる", use_container_width=True):
                 date_str = target_date.strftime('%Y-%m-%d')
                 next_day = (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
                 res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", date_str).lt("created_at", next_day).execute()
                 if res.data:
-                    with st.spinner("AIで指定日の記録を統合中..."):
-                        all_txt = "\n".join([r['content'] for r in res.data])
-                        model = genai.GenerativeModel("models/gemini-2.5-flash")
-                        prompt = f"以下の{target_date}の介護記録を、1日のまとめとして200字程度で要約してください。特に『支援内容』『実施した対応』については、一言も漏らさず全て記述に含めてください。口調は介護職員が報告書で使う丁寧な口調（〜です、〜でした）とし、事実のみを正確に整理してください。"
-                        resp = model.generate_content(prompt + "\n\n" + all_txt)
-                        st.info(f"📅 {target_date} の要約:\n\n{resp.text}")
+                    all_txt = "\n".join([r['content'] for r in res.data])
+                    model = genai.GenerativeModel("models/gemini-2.5-flash")
+                    prompt = f"以下の介護記録を、200字程度で要約。支援内容を漏らさず記載せよ。"
+                    resp = model.generate_content(prompt + "\n\n" + all_txt)
+                    st.info(f"📅 要約:\n\n{resp.text}")
         if st.button("📈 ケアマネ向け1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
             if res.data:
-                with st.spinner("モニタリング文を作成中..."):
+                with st.spinner("作成中..."):
                     all_txt = "\n".join([f"{r['created_at'][:10]}: {r['content']}" for r in res.data])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    prompt = "あなたは介護職員です。ケアマネジャーに報告するための月間モニタリング文を200字程度で作成してください。【最重要ルール】: ケース記録に含まれる『具体的な支援内容』『介入した事柄』は、漏れなくすべて文章に盛り込んでください。飛躍した推測は禁止し、専門的な報告書口調で、コピペして使うための純粋な本文のみを出力してください。"
+                    prompt = "ケアマネ向けの200字程度の月間モニタリング文を作成してください。支援内容は全て含めること。"
                     resp = model.generate_content(prompt + "\n\n" + all_txt)
                     st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
