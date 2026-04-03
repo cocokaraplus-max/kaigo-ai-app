@@ -113,38 +113,52 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ✍️ 記録入力（検索機能 復活）
+# ✍️ 記録入力（AI指示強化）
 # ==========================================
 elif st.session_state["page"] == "input":
     back_to_top_button("inp_up")
     display_logo(); st.subheader("✍️ ケース記録入力")
     
-    # 🔍 利用者マスター取得と検索用リスト作成
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
-    # 完璧な検索用フォーマット: (No.) [氏名] [ふりがな]
     patient_options = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
-    sel = st.selectbox("👤 利用者を選択（ふりがなでも検索可）", patient_options)
+    sel = st.selectbox("👤 利用者を選択", patient_options)
 
     st.markdown("---")
     target_img = st.file_uploader("📷 写真を撮る / 画像を選択", type=["jpg", "png", "jpeg"])
     aud_file = st.audio_input("🎙️ 声で入力")
     
     if (target_img or aud_file) and st.button("✨ AIで文章にする", type="primary"):
-        with st.spinner("AIが考え中..."):
+        with st.spinner("AIが内容のみを抽出中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 inputs = []
+                
+                # 🛠️ AIへの強力なルール設定
+                system_prompt = """
+                あなたは介護記録の作成補助者です。
+                【禁止事項】
+                ・「〜と話しています」「〜が写っています」「動画の内容は〜」といった解説やナレーションは一切書かないでください。
+                ・「テスト録音です」と言われたら、そのまま「テスト録音です」とだけ出力してください。
+                【出力ルール】
+                ・音声や画像から得られた『事実』と『発言』のみを、介護の申し送り記録として自然な口調で出力してください。
+                ・余計な挨拶や説明は不要です。
+                """
+                
+                inputs.append(system_prompt)
+
                 if target_img:
                     inputs.append(Image.open(target_img))
-                    inputs.append("この画像から読み取れる状況を介護職の視点で説明してください。")
+                    inputs.append("画像に写っている事実（食事量や状態など）を、解説抜きで記録として記載してください。")
+                
                 if aud_file:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         tmp.write(aud_file.getvalue()); tmp_path = tmp.name
                     f_up = genai.upload_file(path=tmp_path)
                     while f_up.state.name != "ACTIVE": time.sleep(1); f_up = genai.get_file(f_up.name)
                     inputs.append(f_up)
-                    inputs.append("音声を介護職員が仲間に送る自然な口調で整理してください。")
+                    inputs.append("音声で話している内容そのものを、介護の記録として整えて書き出してください。ナレーションは不要です。")
+
                 response = model.generate_content(inputs)
                 st.session_state["edit_content"] = response.text
                 if aud_file: os.remove(tmp_path)
@@ -154,7 +168,6 @@ elif st.session_state["page"] == "input":
     content = st.text_area("内容", value=st.session_state["edit_content"], height=250)
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and content:
-            # 正規表現でNo.と氏名を切り出す
             match = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             c_no = match.group(1); u_name = match.group(2)
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(c_no), "user_name": u_name, "staff_name": my_name, "content": content, "created_at": now_tokyo.isoformat()}).execute()
@@ -163,14 +176,13 @@ elif st.session_state["page"] == "input":
     st.divider(); back_to_top_button("inp_down")
 
 # ==========================================
-# 📊 履歴・モニタリング
+# 📊 履歴・モニタリング (省略なし)
 # ==========================================
 elif st.session_state["page"] == "history":
     back_to_top_button("his_up")
     display_logo(); st.subheader("📊 履歴・モニタリング")
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
-    # 履歴側も検索しやすく
     patient_options = ["---"] + [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("利用者を選択", patient_options)
     
@@ -183,9 +195,8 @@ elif st.session_state["page"] == "history":
             if res.data:
                 all_txt = "\n".join([r['content'] for r in res.data])
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
-                resp = model.generate_content(f"介護記録を200字要約。支援内容は漏らさず。\n\n{all_txt}")
+                resp = model.generate_content(f"以下の介護記録を200字要約。支援内容は漏らさず。\n\n{all_txt}")
                 st.info(f"📅 要約:\n\n{resp.text}")
-        
         if st.button("📈 1ヶ月モニタリング作成", use_container_width=True):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).limit(40).execute()
             if res.data:
@@ -193,18 +204,14 @@ elif st.session_state["page"] == "history":
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 resp = model.generate_content(f"ケアマネ向けモニタリング。支援内容重視。\n\n{all_txt}")
                 st.session_state["monitoring_result"] = resp.text
-        
         if st.session_state["monitoring_result"]:
-            st.write(st.session_state["monitoring_result"])
-            st.code(st.session_state["monitoring_result"], language=None)
-        
+            st.write(st.session_state["monitoring_result"]); st.code(st.session_state["monitoring_result"], language=None)
         if st.button("📜 過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
         if st.session_state.get("show_history_list"):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
             for r in res.data:
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
-    
     st.divider(); back_to_top_button("his_down")
 
 # ==========================================
@@ -220,9 +227,8 @@ elif st.session_state["page"] == "admin_menu":
             if admin_pw == current_stored_pw: st.session_state["admin_authenticated"] = True; st.rerun()
             else: st.error("パスワードが違います")
         st.stop()
-    
     st.markdown("<div class='admin-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
-    t1, t2, t3, t4 = st.tabs(["👥 利用者登録", "🚫 端末ブロック", "🔄 復活・解除", "🔑 パスワード変更"])
+    t1, t2, t3, t4 = st.tabs(["👥 登録", "🚫 ブロック", "🔄 解除", "🔑 パス変更"])
     with t1:
         with st.form("reg"):
             c_no = st.text_input("カルテNo"); u_na = st.text_input("氏名"); u_ka = st.text_input("ふりがな(ひらがな)")
