@@ -18,10 +18,12 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# 🚀 エラー回避：CookieManagerをセッションごとに一意のIDで管理
-if "cm_key" not in st.session_state:
-    st.session_state["cm_key"] = str(uuid.uuid4())
-cookie_manager = stx.CookieManager(key=st.session_state["cm_key"])
+# 🚀 Cookieマネージャーの安定化（固定キーを使用）
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager(key="tasukaru_cookiemanager_fixed")
+
+cookie_manager = get_cookie_manager()
 
 # --- 🎨 カスタムCSS ---
 st.markdown("""
@@ -35,7 +37,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止
+# 💡 スリープ防止ハック
 components.html("""
 <script>
 (function() {
@@ -58,7 +60,7 @@ try:
     g_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=g_key)
     supabase: Client = create_client(s_url, s_key)
-except Exception as e: st.error(f"⚠️ 接続設定エラー: {e}"); st.stop()
+except Exception as e: st.error(f"⚠️ 接続エラー: {e}"); st.stop()
 
 def display_logo(show_line=False):
     try:
@@ -74,19 +76,16 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 ログイン・端末認証
+# 🔐 ログイン・端末認証（記憶保持版）
 # ==========================================
-# Cookie取得
 cookies = cookie_manager.get_all()
-# 少し待機してCookieの読み込みを安定させる
 if not cookies:
-    time.sleep(0.5)
-    st.rerun()
+    time.sleep(0.6) # Cookie読み込み待ち
 
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key=f"set_id_{st.session_state['cm_key']}")
+    cookie_manager.set("device_id", device_id, key="set_dev_id_init")
 
 res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
 if res_block.data: st.error("🚫 アクセス制限中。"); st.stop()
@@ -95,16 +94,18 @@ if not st.session_state.get("is_authenticated"):
     saved_f = cookies.get("saved_f_code")
     saved_n = cookies.get("saved_my_name")
     if saved_f and saved_n:
-        st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n}); st.rerun()
+        st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
+        st.rerun()
     
     display_logo()
     with st.container(border=True):
-        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="f_input")
-        n_in = st.text_input("👤 あなたのお名前", key="n_input")
-        if st.button("利用を開始する", use_container_width=True, key="login_btn"):
+        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="f_input_login")
+        n_in = st.text_input("👤 あなたのお名前", key="n_input_login")
+        if st.button("利用を開始する", use_container_width=True, key="login_btn_submit"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key=f"s_f_{st.session_state['cm_key']}")
-                cookie_manager.set("saved_my_name", n_in, key=f"s_n_{st.session_state['cm_key']}")
+                # 🚀 次回から自動ログインできるように保存
+                cookie_manager.set("saved_f_code", f_in, key="save_f_permanent")
+                cookie_manager.set("saved_my_name", n_in, key="save_n_permanent")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 st.rerun()
     st.stop()
@@ -117,7 +118,7 @@ def back_to_top_button(key_suffix):
         st.session_state.update({"page": "top", "edit_content": "", "monitoring_result": ""}); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 🏠 TOP / ✍️ INPUT / 📊 HISTORY / 🛠️ ADMIN (中身は維持)
+# --- 各画面のロジック（変更なし） ---
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
@@ -139,15 +140,14 @@ elif st.session_state["page"] == "input":
     p_opts = ["(未選択)"] + [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for _, r in p_df.iterrows()]
     sel = st.selectbox("👤 利用者を選択", p_opts)
     st.markdown("---")
-    t_img = st.file_uploader("📷 写真（背面カメラ）/ 画像", type=["jpg", "png", "jpeg"])
+    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
-    st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud = st.audio_input("録音ボタン")
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
-                ins = ["解説なし、内容のみを介護記録の口調で出力してください。"]
+                ins = ["解説なし、ナレーションなし。内容のみを介護記録の口調で出力。"]
                 if t_img: ins.append(Image.open(t_img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -201,10 +201,10 @@ elif st.session_state["page"] == "history":
                 if m_recs:
                     all_t = "\n".join([r['content'] for r in m_recs])
                     model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    resp = model.generate_content(f"200字以内の一続きの文章で介護報告。内容のみ出力。\n記録:\n{all_t}")
+                    resp = model.generate_content(f"200字以内の一続きの文章で介護報告。見出し禁止。内容のみ出力。\n記録:\n{all_t}")
                     st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
-            st.session_state["monitoring_result"] = st.text_area("修正", value=st.session_state["monitoring_result"], height=200)
+            st.session_state["monitoring_result"] = st.text_area("内容修正", value=st.session_state["monitoring_result"], height=200)
             st.code(st.session_state["monitoring_result"], language=None)
             if st.button("🗑️ クリア"): st.session_state["monitoring_result"] = ""; st.rerun()
         st.divider()
@@ -222,7 +222,7 @@ elif st.session_state["page"] == "admin_menu":
     res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
     cur_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
     if not st.session_state["admin_authenticated"]:
-        ad_pw = st.text_input("パスワード", type="password", key="ad_pw")
+        ad_pw = st.text_input("パスワード", type="password", key="ad_pw_field")
         if st.button("認証"):
             if ad_pw == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
             else: st.error("違います")
@@ -237,7 +237,7 @@ elif st.session_state["page"] == "admin_menu":
         res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         s_names = list(set([r['staff_name'] for r in res_s.data])) if res_s.data else []
         target = st.selectbox("ブロック対象", ["(選択)"] + s_names)
-        st.warning("※実行するとこの端末が禁止になります。自分自身で行わないよう注意！")
+        st.warning("※実行するとこの端末が禁止になります。注意！")
         if st.button("🚨 実行"):
             if target != "(選択)":
                 supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target, "facility_code": f_code, "is_active": True}).execute()
