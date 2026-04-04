@@ -18,12 +18,11 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# 🚀 CookieManager (安定版)
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v11")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v12")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（1段見出し維持） ---
+# --- 🎨 カスタムCSS（維持） ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -68,7 +67,6 @@ def display_logo(show_line=False):
         if show_line: st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
     except Exception: st.markdown("<h2 style='text-align: center;'>🦝 TASUKARU</h2>", unsafe_allow_html=True)
 
-# 状態管理
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
@@ -84,7 +82,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="set_dev_v11")
+    cookie_manager.set("device_id", device_id, key="set_dev_v12")
 
 if device_id:
     try:
@@ -103,8 +101,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v11")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v11")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v12")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v12")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -119,10 +117,8 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 画面遷移（独立化）
+# 🏠 画面遷移
 # ==========================================
-
-# --- 🏠 TOP画面 ---
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
@@ -136,17 +132,14 @@ if st.session_state["page"] == "top":
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
-# --- ✍️ 記録入力画面 ---
 elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
-    
     p_opts = ["(未選択)"]
     if f_code:
         try:
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
-            if res_p.data:
-                p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
+            if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
     
     sel = st.selectbox("👤 利用者を選択", p_opts)
@@ -159,8 +152,9 @@ elif st.session_state["page"] == "input":
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
-                model = genai.GenerativeModel("models/gemini-2.5-flash")
-                ins = ["解説なし、ナレーションなし。内容のみ。"]
+                # 🚀 モデルを最新安定版 gemini-2.0-flash に修正
+                model = genai.GenerativeModel("models/gemini-2.0-flash")
+                ins = ["解説なし、ナレーションなし。内容のみ介護記録の口調で。"]
                 if t_img: ins.append(Image.open(t_img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -182,7 +176,6 @@ elif st.session_state["page"] == "input":
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
     back_to_top_button("ip_d")
 
-# --- 📊 履歴・モニタリング画面 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
@@ -190,8 +183,7 @@ elif st.session_state["page"] == "history":
     if f_code:
         try:
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
-            if res_p.data:
-                p_opts += [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for r in res_p.data]
+            if res_p.data: p_opts += [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for r in res_p.data]
         except: pass
     
     sel = st.selectbox("利用者を選択", p_opts)
@@ -208,8 +200,8 @@ elif st.session_state["page"] == "history":
                     res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')).execute()
                     if res.data:
                         all_t = "\n".join([r['content'] for r in res.data])
-                        model = genai.GenerativeModel("models/gemini-2.5-flash")
-                        resp = model.generate_content(f"介護要約200字。\n\n{all_t}")
+                        model = genai.GenerativeModel("models/gemini-2.0-flash")
+                        resp = model.generate_content(f"200字要約。\n\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         st.write("▼ モニタリング作成")
         col_m, col_btn = st.columns([2, 2])
@@ -222,7 +214,7 @@ elif st.session_state["page"] == "history":
                     m_recs = [r for r in res.data if datetime.fromisoformat(r['created_at']).month == m_num]
                     if m_recs:
                         all_t = "\n".join([r['content'] for r in m_recs])
-                        model = genai.GenerativeModel("models/gemini-2.5-flash")
+                        model = genai.GenerativeModel("models/gemini-2.0-flash")
                         resp = model.generate_content(f"200字報告。内容のみ。\n記録:\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
@@ -238,7 +230,6 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 🛠️ 管理者メニュー画面 ---
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
