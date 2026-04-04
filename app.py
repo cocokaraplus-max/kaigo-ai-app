@@ -3,7 +3,7 @@ import google.generativeai as genai
 import tempfile
 import os
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pytz 
 from supabase import create_client, Client # type: ignore
 import uuid
@@ -19,10 +19,10 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v17")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v18")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS（1段見出し・ボタンデザイン維持） ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -34,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止
+# 💡 スリープ防止ハック（維持）
 components.html("""
 <script>
 (function() {
@@ -73,7 +73,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 ログイン・端末認証
+# 🔐 ログイン・端末認証（徹底ガード維持）
 # ==========================================
 cookies = cookie_manager.get_all()
 if not cookies:
@@ -82,7 +82,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v17")
+    cookie_manager.set("device_id", device_id, key="save_dev_v18")
 
 if device_id:
     try:
@@ -101,8 +101,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v17")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v17")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v18")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v18")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -117,21 +117,30 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 画面遷移
+# 🏠 画面遷移（各画面の独立化維持）
 # ==========================================
+
+# --- 🏠 TOP画面 ---
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1: 
+    
+    col_main1, col_main2 = st.columns(2)
+    with col_main1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
-    with c2: 
+    with col_main2:
         if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
+    
+    # 🚀 追記：新機能ボタン
+    if st.button("📅 日別記録閲覧モード", use_container_width=True):
+        st.session_state["page"] = "daily_view"; st.rerun()
+        
     st.divider()
     if st.button("🛠️ 管理者メニュー", use_container_width=True): st.session_state["page"] = "admin_menu"; st.rerun()
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
+# --- ✍️ 記録入力画面（維持） ---
 elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
@@ -141,18 +150,15 @@ elif st.session_state["page"] == "input":
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
-    
     sel = st.selectbox("👤 利用者を選択", p_opts)
     st.markdown("---")
     t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
     st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud = st.audio_input("録音ボタン")
-    
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
-                # 🚀 最新かつ安定して稼働している gemini-2.5-flash に更新
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 ins = ["解説なし、ナレーションなし。内容のみ介護記録の口調で。"]
                 if t_img: ins.append(Image.open(t_img))
@@ -167,7 +173,6 @@ elif st.session_state["page"] == "input":
                 if aud: os.remove(tmp_p)
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
-            
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200)
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and txt and f_code:
@@ -176,6 +181,7 @@ elif st.session_state["page"] == "input":
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
     back_to_top_button("ip_d")
 
+# --- 📊 履歴・モニタリング画面（維持） ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
@@ -185,7 +191,6 @@ elif st.session_state["page"] == "history":
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for r in res_p.data]
         except: pass
-    
     sel = st.selectbox("利用者を選択", p_opts)
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
@@ -197,12 +202,11 @@ elif st.session_state["page"] == "history":
             if st.button("✨ 作成", use_container_width=True):
                 if f_code:
                     d_str = t_date.strftime('%Y-%m-%d')
-                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')).execute()
+                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + timedelta(days=1)).strftime('%Y-%m-%d')).execute()
                     if res.data:
                         all_t = "\n".join([r['content'] for r in res.data])
-                        # 🚀 最新かつ安定して稼働している gemini-2.5-flash に更新
                         model = genai.GenerativeModel("models/gemini-2.5-flash")
-                        resp = model.generate_content(f"200字要約。\n\n{all_t}")
+                        resp = model.generate_content(f"介護要約200字。\n\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         st.write("▼ モニタリング作成")
         col_m, col_btn = st.columns([2, 2])
@@ -215,12 +219,11 @@ elif st.session_state["page"] == "history":
                     m_recs = [r for r in res.data if datetime.fromisoformat(r['created_at']).month == m_num]
                     if m_recs:
                         all_t = "\n".join([r['content'] for r in m_recs])
-                        # 🚀 最新かつ安定して稼働している gemini-2.5-flash に更新
                         model = genai.GenerativeModel("models/gemini-2.5-flash")
                         resp = model.generate_content(f"200字報告。内容のみ。\n記録:\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
-            st.session_state["monitoring_result"] = st.text_area("内容修正", value=st.session_state["monitoring_result"], height=200)
+            st.session_state["monitoring_result"] = st.text_area("修正", value=st.session_state["monitoring_result"], height=200)
             st.code(st.session_state["monitoring_result"], language=None)
             if st.button("🗑️ クリア"): st.session_state["monitoring_result"] = ""; st.rerun()
         st.divider()
@@ -232,8 +235,44 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
+# --- 📅 日別記録閲覧モード（🚀 新設機能） ---
+elif st.session_state["page"] == "daily_view":
+    back_to_top_button("dv_u")
+    st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
+    
+    # 1. カレンダーで日付を選択
+    selected_date = st.date_input("表示する日付を選択", value=date.today())
+    d_start = selected_date.strftime('%Y-%m-%d')
+    d_end = (selected_date + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    # 2. その日の記録がある利用者をDBから取得
+    if f_code:
+        res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", d_start).lt("created_at", d_end).order("created_at").execute()
+        
+        if res.data:
+            # 利用者名でグルーピング
+            df_day = pd.DataFrame(res.data)
+            unique_users = df_day["user_name"].unique()
+            
+            st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
+            st.divider()
+            
+            # 利用者リストを表示（クリックで展開）
+            for target_user in unique_users:
+                user_records = df_day[df_day["user_name"] == target_user]
+                with st.expander(f"👤 {target_user} ({len(user_records)}件)"):
+                    for _, row in user_records.iterrows():
+                        st.markdown(f"**🕒 {row['created_at'][11:16]}** （担当: {row['staff_name']}）")
+                        st.info(row['content'])
+                        st.write("")
+        else:
+            st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
+            
+    back_to_top_button("dv_d")
+
+# --- 🛠️ 管理者メニュー画面（維持） ---
 elif st.session_state["page"] == "admin_menu":
-    back_to_top_button("ad_up")
+    back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
     if f_code:
         res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
