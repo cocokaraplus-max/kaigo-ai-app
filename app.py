@@ -18,11 +18,12 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
+# 🚀 CookieManager (更新)
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v18")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v20")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（1段見出し・ボタンデザイン維持） ---
+# --- 🎨 カスタムCSS（維持） ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -82,7 +83,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v18")
+    cookie_manager.set("device_id", device_id, key="save_dev_v20")
 
 if device_id:
     try:
@@ -101,8 +102,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v18")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v18")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v20")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v20")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -131,11 +132,30 @@ if st.session_state["page"] == "top":
     with col_main2:
         if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
     
-    # 🚀 追記：新機能ボタン
     if st.button("📅 日別記録閲覧モード", use_container_width=True):
         st.session_state["page"] = "daily_view"; st.rerun()
         
     st.divider()
+    
+    # 🚀 修正：今日の更新履歴（エラーを隠さず、最新10件を表示する安定版）
+    st.markdown("##### 📝 今日の更新履歴 (最新10件)")
+    if f_code:
+        today_str = now_tokyo.strftime('%Y-%m-%d')
+        tomorrow_str = (now_tokyo + timedelta(days=1)).strftime('%Y-%m-%d')
+        try:
+            # データベースから今日の記録を最新順に最大10件取得
+            res_today = supabase.table("records").select("user_name, staff_name, created_at").eq("facility_code", f_code).gte("created_at", today_str).lt("created_at", tomorrow_str).order("created_at", desc=True).limit(10).execute()
+            if res_today.data:
+                for r in res_today.data:
+                    time_str = r['created_at'][11:16]
+                    st.markdown(f"- **{time_str}** | 👤 **{r['user_name']}** （担当: {r['staff_name']}）")
+            else:
+                st.info("本日の記録はまだありません。")
+        except Exception as e:
+            st.error(f"履歴の取得に失敗しました: {e}")
+            
+    st.divider()
+
     if st.button("🛠️ 管理者メニュー", use_container_width=True): st.session_state["page"] = "admin_menu"; st.rerun()
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
@@ -235,29 +255,25 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧モード（🚀 新設機能） ---
+# --- 📅 日別記録閲覧モード（維持） ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
-    # 1. カレンダーで日付を選択
     selected_date = st.date_input("表示する日付を選択", value=date.today())
     d_start = selected_date.strftime('%Y-%m-%d')
     d_end = (selected_date + timedelta(days=1)).strftime('%Y-%m-%d')
     
-    # 2. その日の記録がある利用者をDBから取得
     if f_code:
         res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", d_start).lt("created_at", d_end).order("created_at").execute()
         
         if res.data:
-            # 利用者名でグルーピング
             df_day = pd.DataFrame(res.data)
             unique_users = df_day["user_name"].unique()
             
             st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
             st.divider()
             
-            # 利用者リストを表示（クリックで展開）
             for target_user in unique_users:
                 user_records = df_day[df_day["user_name"] == target_user]
                 with st.expander(f"👤 {target_user} ({len(user_records)}件)"):
