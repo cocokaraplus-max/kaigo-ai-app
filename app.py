@@ -18,9 +18,9 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# 🚀 CookieManagerの初期化（セッションをまたいで固定）
+# 🚀 CookieManager（キーを最終固定）
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v3")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_final_v4")
 cookie_manager = st.session_state["cookie_manager"]
 
 # --- 🎨 カスタムCSS ---
@@ -74,56 +74,68 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 ログイン・端末認証（リロード対策版）
+# 🔐 ログイン・端末認証（サイレント待機版）
 # ==========================================
-# 🚀 修正ポイント: Cookieが読み込まれるまで最大2秒間待機する
-cookies = {}
-attempts = 0
-while not cookies and attempts < 10:
-    cookies = cookie_manager.get_all()
-    if not cookies:
-        time.sleep(0.2)
-        attempts += 1
+# Cookieの取得試行
+cookies = cookie_manager.get_all()
 
+# 🚀 読み込みが終わるまで何も表示せず待機（最大1秒）
+if not cookies:
+    # 待機中であることをセッションで保持
+    if "loading_start" not in st.session_state:
+        st.session_state["loading_start"] = time.time()
+    
+    if time.time() - st.session_state["loading_start"] < 1.0:
+        time.sleep(0.1)
+        st.rerun()
+
+# 待機時間をリセット
+if "loading_start" in st.session_state:
+    del st.session_state["loading_start"]
+
+# device_idの処理
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="init_device_id_v3")
+    cookie_manager.set("device_id", device_id, key="final_set_id")
 
+# ブロックチェック
 res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
 if res_block.data: st.error("🚫 アクセス制限中。"); st.stop()
 
-# 🚀 自動ログイン判定
+# 自動ログイン
 if not st.session_state.get("is_authenticated"):
     saved_f = cookies.get("saved_f_code")
     saved_n = cookies.get("saved_my_name")
+    
     if saved_f and saved_n:
         st.session_state.update({"is_authenticated": True, "facility_code": saved_f, "my_name": saved_n})
         st.rerun()
     
+    # Cookieがない場合のみログイン画面を表示
     display_logo()
     with st.container(border=True):
-        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="f_login")
-        n_in = st.text_input("👤 あなたのお名前", key="n_login")
-        if st.button("利用を開始する", use_container_width=True, key="btn_login"):
+        f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="login_f")
+        n_in = st.text_input("👤 あなたのお名前", key="login_n")
+        if st.button("利用を開始する", use_container_width=True, key="login_btn"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="c_save_f")
-                cookie_manager.set("saved_my_name", n_in, key="c_save_n")
+                cookie_manager.set("saved_f_code", f_in, key="final_f_save")
+                cookie_manager.set("saved_my_name", n_in, key="final_n_save")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
-                # Cookieが書き込まれる時間を稼ぐため少し待って再起動
                 time.sleep(0.5)
                 st.rerun()
     st.stop()
 
+# --- 認証後変数のセット ---
 f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
 
 def back_to_top_button(key_suffix):
     st.markdown('<div class="top-back-btn">', unsafe_allow_html=True)
-    if st.button("◀ TOPに戻る", key=f"back_{key_suffix}", use_container_width=True):
+    if st.button("◀ TOPに戻る", key=f"bk_{key_suffix}", use_container_width=True):
         st.session_state.update({"page": "top", "edit_content": "", "monitoring_result": ""}); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 以下、各画面ロジック（変更なし） ---
+# --- 以下、画面ロジック（完全に維持） ---
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
@@ -138,7 +150,7 @@ if st.session_state["page"] == "top":
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
 elif st.session_state["page"] == "input":
-    back_to_top_button("in_u")
+    back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
@@ -171,10 +183,10 @@ elif st.session_state["page"] == "input":
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": now_tokyo.isoformat()}).execute()
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
-    back_to_top_button("in_d")
+    back_to_top_button("ip_d")
 
 elif st.session_state["page"] == "history":
-    back_to_top_button("hi_u")
+    back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
     res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
     p_df = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
@@ -219,7 +231,7 @@ elif st.session_state["page"] == "history":
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
             for r in res.data:
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
-    back_to_top_button("hi_d")
+    back_to_top_button("hs_d")
 
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
@@ -227,14 +239,14 @@ elif st.session_state["page"] == "admin_menu":
     res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
     cur_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
     if not st.session_state["admin_authenticated"]:
-        ad_pw = st.text_input("パスワード", type="password", key="ad_pass")
+        ad_pw = st.text_input("パスワード", type="password", key="admin_pass")
         if st.button("認証"):
             if ad_pw == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
             else: st.error("違います")
         st.stop()
     t1, t2, t3, t4 = st.tabs(["👥 登録", "🚫 ブロック", "🔄 解除", "🔑 パス変更"])
     with t1:
-        with st.form("reg_form"):
+        with st.form("admin_reg"):
             c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
             if st.form_submit_button("登録"):
                 supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
@@ -250,7 +262,7 @@ elif st.session_state["page"] == "admin_menu":
     with t3:
         res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
         for b in res_l.data:
-            if st.button(f"復活: {b['staff_name']} (ID:{b['device_id'][:5]})", key=f"rev_{b['device_id'][:5]}"):
+            if st.button(f"復活: {b['staff_name']} (ID:{b['device_id'][:5]})", key=f"re_{b['device_id'][:5]}"):
                 supabase.table("blocked_devices").update({"is_active": False}).eq("device_id", b['device_id']).execute(); st.rerun()
     with t4:
         np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
