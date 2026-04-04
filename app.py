@@ -19,10 +19,10 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v13")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v14")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（維持） ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -34,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止（維持）
+# 💡 スリープ防止
 components.html("""
 <script>
 (function() {
@@ -82,7 +82,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v13")
+    cookie_manager.set("device_id", device_id, key="save_dev_v14")
 
 if device_id:
     try:
@@ -101,8 +101,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v13")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v13")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v14")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v14")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -146,15 +146,13 @@ elif st.session_state["page"] == "input":
     st.markdown("---")
     t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
-    st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud = st.audio_input("録音ボタン")
     
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
-                # 🚀 最新モデル gemini-2.0-flash-exp に更新
                 model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
-                ins = ["解説なし、ナレーションなし。内容のみ介護記録の口調で。"]
+                ins = ["ナレーションなし。内容のみ介護記録の口調で。"]
                 if t_img: ins.append(Image.open(t_img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -178,4 +176,96 @@ elif st.session_state["page"] == "input":
 
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
-    st.markdown("<div class='main
+    # 🚀 ここを修正しました
+    st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
+    p_opts = ["---"]
+    if f_code:
+        try:
+            res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+            if res_p.data: p_opts += [f"(No.{r['chart_number']}) {r['user_name']} [{r['user_kana']}]" for r in res_p.data]
+        except: pass
+    
+    sel = st.selectbox("利用者を選択", p_opts)
+    if sel != "---":
+        u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
+        st.markdown("---")
+        st.write("▼ 指定日のまとめ作成")
+        col_d, col_b = st.columns([2, 2])
+        with col_d: t_date = st.date_input("日付", value=date.today())
+        with col_b:
+            if st.button("✨ 作成", use_container_width=True):
+                if f_code:
+                    d_str = t_date.strftime('%Y-%m-%d')
+                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')).execute()
+                    if res.data:
+                        all_t = "\n".join([r['content'] for r in res.data])
+                        model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
+                        resp = model.generate_content(f"200字要約。\n\n{all_t}")
+                        st.session_state["monitoring_result"] = resp.text
+        st.write("▼ モニタリング作成")
+        col_m, col_btn = st.columns([2, 2])
+        with col_m: s_m = st.selectbox("月を選択", [f"{i}月" for i in range(1, 13)], index=now_tokyo.month-1)
+        with col_btn:
+            if st.button("📈 生成", use_container_width=True):
+                if f_code:
+                    m_num = int(s_m.replace("月", ""))
+                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).execute()
+                    m_recs = [r for r in res.data if datetime.fromisoformat(r['created_at']).month == m_num]
+                    if m_recs:
+                        all_t = "\n".join([r['content'] for r in m_recs])
+                        model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
+                        resp = model.generate_content(f"200字報告。内容のみ。\n記録:\n{all_t}")
+                        st.session_state["monitoring_result"] = resp.text
+        if st.session_state["monitoring_result"]:
+            st.session_state["monitoring_result"] = st.text_area("内容修正", value=st.session_state["monitoring_result"], height=200)
+            st.code(st.session_state["monitoring_result"], language=None)
+            if st.button("🗑️ クリア"): st.session_state["monitoring_result"] = ""; st.rerun()
+        st.divider()
+        if st.button("📜 過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
+            st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
+        if st.session_state.get("show_history_list") and f_code:
+            res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
+            for r in res.data:
+                with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
+    back_to_top_button("hs_d")
+
+elif st.session_state["page"] == "admin_menu":
+    back_to_top_button("ad_up")
+    st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
+    if f_code:
+        res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
+        cur_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
+        if not st.session_state["admin_authenticated"]:
+            ad_pw = st.text_input("パスワード", type="password", key="ad_pass")
+            if st.button("認証"):
+                if ad_pw == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
+                else: st.error("違います")
+            st.stop()
+        t1, t2, t3, t4 = st.tabs(["👥 登録", "🚫 ブロック", "🔄 解除", "🔑 パス変更"])
+        with t1:
+            with st.form("ad_reg"):
+                c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
+                if st.form_submit_button("登録"):
+                    supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
+        with t2:
+            res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
+            s_names = list(set([r['staff_name'] for r in res_s.data])) if res_s.data else []
+            target = st.selectbox("ブロック対象", ["(選択)"] + s_names)
+            st.warning("※注意！この端末がブロックされます。")
+            if st.button("🚨 実行"):
+                if target != "(選択)":
+                    supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": target, "facility_code": f_code, "is_active": True}).execute()
+                    st.session_state.clear(); st.rerun()
+        with t3:
+            res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
+            for b in res_l.data:
+                if st.button(f"復活: {b['staff_name']} (ID:{b['device_id'][:5]})", key=f"re_{b['device_id'][:5]}"):
+                    supabase.table("blocked_devices").update({"is_active": False}).eq("device_id", b['device_id']).execute(); st.rerun()
+        with t4:
+            np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
+            if st.button("更新"):
+                if np == cp:
+                    if res_pw.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
+                    else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
+                    st.success("完了"); st.rerun()
+    back_to_top_button("ad_d")
