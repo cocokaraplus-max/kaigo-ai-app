@@ -19,10 +19,10 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v21")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v22")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（スクロール枠のデザインを追加） ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -32,7 +32,6 @@ st.markdown("""
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
     
-    /* 🚀 更新履歴用のスクロール枠 */
     .scrollable-history {
         max-height: 250px;
         overflow-y: auto;
@@ -99,7 +98,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v21")
+    cookie_manager.set("device_id", device_id, key="save_dev_v22")
 
 if device_id:
     try:
@@ -118,8 +117,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v21")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v21")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v22")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v22")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -153,43 +152,28 @@ if st.session_state["page"] == "top":
         
     st.divider()
     
-    # 🚀 修正：本日の更新履歴（時差バグ修正 ＆ 利用者グループ化 ＆ 30名スクロール表示）
+    # 今日の更新履歴
     st.markdown("##### 📝 今日の更新履歴")
     if f_code:
-        # 日本時間の今日0時〜翌日0時を厳密にISO形式で指定（時差バグ完全防止）
         today_start = now_tokyo.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start + timedelta(days=1)
-        
         try:
             res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", today_end.isoformat()).execute()
-            
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
-                # 利用者ごとにグループ化して、件数と最新の入力時間を取得
-                grouped = df.groupby("user_name").agg(
-                    count=("user_name", "size"),
-                    last_time=("created_at", "max")
-                ).reset_index()
-                
-                # 時間が新しい順に並び替え、上位30名を抽出
+                grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
                 grouped = grouped.sort_values("last_time", ascending=False).head(30)
-                
-                # HTMLで安全にスクロール枠を生成
                 html_code = "<div class='scrollable-history'>"
                 for _, row in grouped.iterrows():
-                    # ISO時刻から「HH:MM」を切り出し
                     time_str = row['last_time'][11:16]
                     html_code += f"<div class='history-item'>👤 <b>{row['user_name']} 様</b> （{row['count']}件） 最終記録時間 {time_str}</div>"
                 html_code += "</div>"
-                
                 st.markdown(html_code, unsafe_allow_html=True)
             else:
                 st.info("本日の記録はまだありません。")
-        except Exception as e:
-            st.error(f"履歴の取得に失敗しました: {e}")
+        except Exception as e: st.error(f"履歴の取得に失敗しました: {e}")
             
     st.divider()
-
     if st.button("🛠️ 管理者メニュー", use_container_width=True): st.session_state["page"] = "admin_menu"; st.rerun()
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
@@ -231,7 +215,6 @@ elif st.session_state["page"] == "input":
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and txt and f_code:
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
-            # 保存時にJSTのISO形式で送信
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": now_tokyo.isoformat()}).execute()
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
     back_to_top_button("ip_d")
@@ -256,8 +239,8 @@ elif st.session_state["page"] == "history":
         with col_b:
             if st.button("✨ 作成", use_container_width=True):
                 if f_code:
-                    # 🚀 時差バグ修正: JSTの0時を基準に検索
-                    target_start = datetime(t_date.year, t_date.month, t_date.day, tzinfo=tokyo_tz)
+                    # 🚀 時差バグ修正
+                    target_start = tokyo_tz.localize(datetime.combine(t_date, datetime.min.time()))
                     res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", target_start.isoformat()).lt("created_at", (target_start + timedelta(days=1)).isoformat()).execute()
                     if res.data:
                         all_t = "\n".join([r['content'] for r in res.data])
@@ -297,29 +280,36 @@ elif st.session_state["page"] == "daily_view":
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
     selected_date = st.date_input("表示する日付を選択", value=date.today())
-    # 🚀 時差バグ修正: JSTの0時を基準に厳密検索
-    target_start = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=tokyo_tz)
+    
+    # 🚀 改善：時差バグ完全防止の厳密検索（JSTの0時を基準にする）
+    target_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
     target_end = target_start + timedelta(days=1)
     
     if f_code:
-        res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at").execute()
-        
-        if res.data:
-            df_day = pd.DataFrame(res.data)
-            unique_users = df_day["user_name"].unique()
+        try:
+            res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
             
-            st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
-            st.divider()
-            
-            for target_user in unique_users:
-                user_records = df_day[df_day["user_name"] == target_user]
-                with st.expander(f"👤 {target_user} ({len(user_records)}件)"):
-                    for _, row in user_records.iterrows():
-                        st.markdown(f"**🕒 {row['created_at'][11:16]}** （担当: {row['staff_name']}）")
-                        st.info(row['content'])
-                        st.write("")
-        else:
-            st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
+            if res.data:
+                df_day = pd.DataFrame(res.data)
+                # 🚀 利用者ごとにグループ化
+                unique_users = df_day["user_name"].unique()
+                st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
+                st.divider()
+                
+                for target_user in unique_users:
+                    user_records = df_day[df_day["user_name"] == target_user]
+                    # 利用者名をクリックすると、その日の全記録が展開される
+                    with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)"):
+                        for _, row in user_records.iterrows():
+                            # 時間を表示（日本時間に整形）
+                            time_str = row['created_at'][11:16]
+                            st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
+                            st.info(row['content'])
+                            st.write("")
+            else:
+                st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
+        except Exception as e:
+            st.error(f"データの取得に失敗しました: {e}")
             
     back_to_top_button("dv_d")
 
