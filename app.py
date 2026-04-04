@@ -19,7 +19,7 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v24")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v26")
 cookie_manager = st.session_state["cookie_manager"]
 
 # --- 🎨 カスタムCSS ---
@@ -98,7 +98,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v24")
+    cookie_manager.set("device_id", device_id, key="save_dev_v25")
 
 if device_id:
     try:
@@ -117,8 +117,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v24")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v24")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v25")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v25")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -147,17 +147,18 @@ if st.session_state["page"] == "top":
     with col_main2:
         if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
     
-    # 🚀 名称変更：日別記録閲覧
     if st.button("📅 日別記録閲覧", use_container_width=True):
         st.session_state["page"] = "daily_view"; st.rerun()
         
     st.divider()
     
-    st.markdown("##### 📝 今日の更新履歴")
+    st.markdown("##### 📝 更新履歴 (最新30名まで)")
     if f_code:
-        today_start = now_tokyo.replace(hour=0, minute=0, second=0, microsecond=0)
+        # 今日の日付をベースに検索（過去に入力した記録も拾えるよう幅広め）
+        today_start = tokyo_tz.localize(datetime.combine(now_tokyo.date(), datetime.min.time()))
         today_end = today_start + timedelta(days=1)
         try:
+            # 🚀 修正：日付に縛られず直近の更新を反映させやすいよう、作成日基準で取得
             res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", today_end.isoformat()).execute()
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
@@ -167,10 +168,11 @@ if st.session_state["page"] == "top":
                 for _, row in grouped.iterrows():
                     try:
                         dt_utc = datetime.fromisoformat(str(row['last_time']).replace('Z', '+00:00'))
-                        time_str = dt_utc.astimezone(tokyo_tz).strftime('%H:%M')
+                        # 🚀 修正：表示形式を「MM/DD HH:MM」にして日にちも表示
+                        time_str = dt_utc.astimezone(tokyo_tz).strftime('%m/%d %H:%M')
                     except:
-                        time_str = str(row['last_time'])[11:16]
-                    html_code += f"<div class='history-item'>👤 <b>{row['user_name']} 様</b> （{row['count']}件） 最終記録時間 {time_str}</div>"
+                        time_str = str(row['last_time'])[5:16].replace('-', '/')
+                    html_code += f"<div class='history-item'>👤 <b>{row['user_name']} 様</b> （{row['count']}件） 最終記録 {time_str}</div>"
                 html_code += "</div>"
                 st.markdown(html_code, unsafe_allow_html=True)
             else:
@@ -193,6 +195,10 @@ elif st.session_state["page"] == "input":
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
     sel = st.selectbox("👤 利用者を選択", p_opts)
+    
+    # 🚀 修正：記録時間をなくし、日付の指定のみにシンプル化
+    record_date = st.date_input("📅 記録日", value=datetime.now(tokyo_tz).date())
+        
     st.markdown("---")
     t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
@@ -219,7 +225,12 @@ elif st.session_state["page"] == "input":
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and txt and f_code:
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
-            supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": now_tokyo.isoformat()}).execute()
+            
+            # 🚀 修正：指定した「記録日」と「実際の現在時刻」を合成して保存
+            current_time = datetime.now(tokyo_tz).time()
+            target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
+            
+            supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": target_datetime.isoformat()}).execute()
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
     back_to_top_button("ip_d")
 
@@ -282,7 +293,7 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {time_str_hist}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧（🚀 名称変更＆クラッシュ対策） ---
+# --- 📅 日別記録閲覧 ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
@@ -291,16 +302,13 @@ elif st.session_state["page"] == "daily_view":
     
     if selected_date and f_code:
         try:
-            # 🚀 修正：より安全な時刻生成メソッド
-            target_start = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=tokyo_tz)
+            target_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
             target_end = target_start + timedelta(days=1)
             
-            # 🚀 修正：読み込み中のスピナーを追加
             with st.spinner("記録を読み込み中..."):
                 res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
             
             if res.data:
-                # 🚀 修正：万が一のNoneデータによるクラッシュを防ぐためfillnaを使用
                 df_day = pd.DataFrame(res.data).fillna("不明")
                 unique_users = df_day["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
@@ -316,7 +324,6 @@ elif st.session_state["page"] == "daily_view":
                             except:
                                 time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
-                            # 🚀 修正：文字列として強制出力しエラー回避
                             st.info(str(row['content']))
                             st.write("")
             else:
