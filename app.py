@@ -18,12 +18,11 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# 🚀 CookieManager (更新)
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v20")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v21")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（維持） ---
+# --- 🎨 カスタムCSS（スクロール枠のデザインを追加） ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -32,10 +31,27 @@ st.markdown("""
     section[data-testid="stAudioInput"] { border: 2px solid #ff4b4b !important; border-radius: 20px !important; padding: 10px !important; background-color: #fff5f5 !important; }
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
+    
+    /* 🚀 更新履歴用のスクロール枠 */
+    .scrollable-history {
+        max-height: 250px;
+        overflow-y: auto;
+        border: 2px solid #ff4b4b;
+        border-radius: 10px;
+        padding: 15px;
+        background-color: #fffaf0;
+    }
+    .history-item {
+        font-size: 16px;
+        margin-bottom: 10px;
+        border-bottom: 1px dashed #ccc;
+        padding-bottom: 5px;
+    }
+    .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止ハック（維持）
+# 💡 スリープ防止
 components.html("""
 <script>
 (function() {
@@ -74,7 +90,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 ログイン・端末認証（徹底ガード維持）
+# 🔐 ログイン・端末認証
 # ==========================================
 cookies = cookie_manager.get_all()
 if not cookies:
@@ -83,7 +99,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v20")
+    cookie_manager.set("device_id", device_id, key="save_dev_v21")
 
 if device_id:
     try:
@@ -102,8 +118,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v20")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v20")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v21")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v21")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -118,7 +134,7 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 画面遷移（各画面の独立化維持）
+# 🏠 画面遷移
 # ==========================================
 
 # --- 🏠 TOP画面 ---
@@ -137,18 +153,36 @@ if st.session_state["page"] == "top":
         
     st.divider()
     
-    # 🚀 修正：今日の更新履歴（エラーを隠さず、最新10件を表示する安定版）
-    st.markdown("##### 📝 今日の更新履歴 (最新10件)")
+    # 🚀 修正：本日の更新履歴（時差バグ修正 ＆ 利用者グループ化 ＆ 30名スクロール表示）
+    st.markdown("##### 📝 今日の更新履歴")
     if f_code:
-        today_str = now_tokyo.strftime('%Y-%m-%d')
-        tomorrow_str = (now_tokyo + timedelta(days=1)).strftime('%Y-%m-%d')
+        # 日本時間の今日0時〜翌日0時を厳密にISO形式で指定（時差バグ完全防止）
+        today_start = now_tokyo.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        
         try:
-            # データベースから今日の記録を最新順に最大10件取得
-            res_today = supabase.table("records").select("user_name, staff_name, created_at").eq("facility_code", f_code).gte("created_at", today_str).lt("created_at", tomorrow_str).order("created_at", desc=True).limit(10).execute()
+            res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", today_end.isoformat()).execute()
+            
             if res_today.data:
-                for r in res_today.data:
-                    time_str = r['created_at'][11:16]
-                    st.markdown(f"- **{time_str}** | 👤 **{r['user_name']}** （担当: {r['staff_name']}）")
+                df = pd.DataFrame(res_today.data)
+                # 利用者ごとにグループ化して、件数と最新の入力時間を取得
+                grouped = df.groupby("user_name").agg(
+                    count=("user_name", "size"),
+                    last_time=("created_at", "max")
+                ).reset_index()
+                
+                # 時間が新しい順に並び替え、上位30名を抽出
+                grouped = grouped.sort_values("last_time", ascending=False).head(30)
+                
+                # HTMLで安全にスクロール枠を生成
+                html_code = "<div class='scrollable-history'>"
+                for _, row in grouped.iterrows():
+                    # ISO時刻から「HH:MM」を切り出し
+                    time_str = row['last_time'][11:16]
+                    html_code += f"<div class='history-item'>👤 <b>{row['user_name']} 様</b> （{row['count']}件） 最終記録時間 {time_str}</div>"
+                html_code += "</div>"
+                
+                st.markdown(html_code, unsafe_allow_html=True)
             else:
                 st.info("本日の記録はまだありません。")
         except Exception as e:
@@ -160,7 +194,7 @@ if st.session_state["page"] == "top":
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
-# --- ✍️ 記録入力画面（維持） ---
+# --- ✍️ 記録入力画面 ---
 elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
@@ -197,11 +231,12 @@ elif st.session_state["page"] == "input":
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and txt and f_code:
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+            # 保存時にJSTのISO形式で送信
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": now_tokyo.isoformat()}).execute()
             st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
     back_to_top_button("ip_d")
 
-# --- 📊 履歴・モニタリング画面（維持） ---
+# --- 📊 履歴・モニタリング画面 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
@@ -221,8 +256,9 @@ elif st.session_state["page"] == "history":
         with col_b:
             if st.button("✨ 作成", use_container_width=True):
                 if f_code:
-                    d_str = t_date.strftime('%Y-%m-%d')
-                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + timedelta(days=1)).strftime('%Y-%m-%d')).execute()
+                    # 🚀 時差バグ修正: JSTの0時を基準に検索
+                    target_start = datetime(t_date.year, t_date.month, t_date.day, tzinfo=tokyo_tz)
+                    res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", target_start.isoformat()).lt("created_at", (target_start + timedelta(days=1)).isoformat()).execute()
                     if res.data:
                         all_t = "\n".join([r['content'] for r in res.data])
                         model = genai.GenerativeModel("models/gemini-2.5-flash")
@@ -255,17 +291,18 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {r['created_at'][:16].replace('T',' ')}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧モード（維持） ---
+# --- 📅 日別記録閲覧モード ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
     selected_date = st.date_input("表示する日付を選択", value=date.today())
-    d_start = selected_date.strftime('%Y-%m-%d')
-    d_end = (selected_date + timedelta(days=1)).strftime('%Y-%m-%d')
+    # 🚀 時差バグ修正: JSTの0時を基準に厳密検索
+    target_start = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=tokyo_tz)
+    target_end = target_start + timedelta(days=1)
     
     if f_code:
-        res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", d_start).lt("created_at", d_end).order("created_at").execute()
+        res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at").execute()
         
         if res.data:
             df_day = pd.DataFrame(res.data)
@@ -286,7 +323,7 @@ elif st.session_state["page"] == "daily_view":
             
     back_to_top_button("dv_d")
 
-# --- 🛠️ 管理者メニュー画面（維持） ---
+# --- 🛠️ 管理者メニュー画面 ---
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
