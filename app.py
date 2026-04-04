@@ -18,12 +18,12 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# 🚀 CookieManager (安定版)
+# 🚀 CookieManager
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v7")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v8")
 cookie_manager = st.session_state["cookie_manager"]
 
-# --- 🎨 カスタムCSS（維持） ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -35,7 +35,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止（維持）
+# 💡 スリープ防止
 components.html("""
 <script>
 (function() {
@@ -74,7 +74,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # ==========================================
-# 🔐 ログイン・端末認証（徹底ガード版）
+# 🔐 ログイン・端末認証
 # ==========================================
 cookies = cookie_manager.get_all()
 
@@ -86,16 +86,14 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v7")
+    cookie_manager.set("device_id", device_id, key="save_dev_v8")
 
-# device_id確定後のみDBチェック
 if device_id:
     try:
         res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
         if res_block.data: st.error("🚫 アクセス制限中。"); st.stop()
     except: pass
 
-# 自動ログイン
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
     if sf and sn:
@@ -107,15 +105,15 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v7")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v7")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v8")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v8")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
 
-# ⚠️ 施設コードがない場合はDB処理をさせない
+# ⚠️ 施設コードがない場合は待機
 if not st.session_state.get("facility_code"):
-    st.info("🔄 接続を待機中..."); st.stop()
+    st.rerun()
 
 f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
 
@@ -126,7 +124,7 @@ def back_to_top_button(key_suffix):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🏠 メイン画面遷移
+# 🏠 画面遷移
 # ==========================================
 if st.session_state["page"] == "top":
     display_logo(show_line=True)
@@ -145,14 +143,20 @@ elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
     
-    # 🚀 エラー回避：確実に認証済み、かつページが一致する場合のみDBへ
+    # 🚀 改善：データ取得をリスト化し、準備ができるまでループさせる
     p_opts = ["(未選択)"]
+    success_fetch = False
     try:
         res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
         if res_p.data:
             p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
-    except Exception as e:
-        st.error("データの取得に失敗しました。再読み込みしてください。")
+            success_fetch = True
+    except:
+        pass
+
+    # 🚀 準備がまだの場合は一瞬待って再試行
+    if not success_fetch and f_code:
+        time.sleep(0.2); st.rerun()
     
     sel = st.selectbox("👤 利用者を選択", p_opts)
     st.markdown("---")
