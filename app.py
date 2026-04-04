@@ -19,7 +19,7 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v14")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v15")
 cookie_manager = st.session_state["cookie_manager"]
 
 # --- 🎨 カスタムCSS ---
@@ -82,7 +82,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v14")
+    cookie_manager.set("device_id", device_id, key="save_dev_v15")
 
 if device_id:
     try:
@@ -101,8 +101,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v14")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v14")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v15")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v15")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -146,13 +146,15 @@ elif st.session_state["page"] == "input":
     st.markdown("---")
     t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
+    st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud = st.audio_input("録音ボタン")
     
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
-                model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
-                ins = ["ナレーションなし。内容のみ介護記録の口調で。"]
+                # 🚀 安定版モデル gemini-1.5-flash に更新
+                model = genai.GenerativeModel("models/gemini-1.5-flash")
+                ins = ["解説なし、ナレーションなし。内容のみ介護記録の口調で。"]
                 if t_img: ins.append(Image.open(t_img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -176,7 +178,6 @@ elif st.session_state["page"] == "input":
 
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
-    # 🚀 ここを修正しました
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
     p_opts = ["---"]
     if f_code:
@@ -199,7 +200,8 @@ elif st.session_state["page"] == "history":
                     res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", d_str).lt("created_at", (t_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')).execute()
                     if res.data:
                         all_t = "\n".join([r['content'] for r in res.data])
-                        model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
+                        # 🚀 安定版モデル gemini-1.5-flash に更新
+                        model = genai.GenerativeModel("models/gemini-1.5-flash")
                         resp = model.generate_content(f"200字要約。\n\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         st.write("▼ モニタリング作成")
@@ -213,7 +215,8 @@ elif st.session_state["page"] == "history":
                     m_recs = [r for r in res.data if datetime.fromisoformat(r['created_at']).month == m_num]
                     if m_recs:
                         all_t = "\n".join([r['content'] for r in m_recs])
-                        model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
+                        # 🚀 安定版モデル gemini-1.5-flash に更新
+                        model = genai.GenerativeModel("models/gemini-1.5-flash")
                         resp = model.generate_content(f"200字報告。内容のみ。\n記録:\n{all_t}")
                         st.session_state["monitoring_result"] = resp.text
         if st.session_state["monitoring_result"]:
