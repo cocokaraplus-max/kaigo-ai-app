@@ -3,7 +3,7 @@ import google.generativeai as genai
 import tempfile
 import os
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 import pytz 
 from supabase import create_client, Client # type: ignore
 import uuid
@@ -19,7 +19,7 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v26")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v27")
 cookie_manager = st.session_state["cookie_manager"]
 
 # --- 🎨 カスタムCSS ---
@@ -98,7 +98,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v25")
+    cookie_manager.set("device_id", device_id, key="save_dev_v26")
 
 if device_id:
     try:
@@ -117,8 +117,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v25")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v25")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v26")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v26")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -154,11 +154,9 @@ if st.session_state["page"] == "top":
     
     st.markdown("##### 📝 更新履歴 (最新30名まで)")
     if f_code:
-        # 今日の日付をベースに検索（過去に入力した記録も拾えるよう幅広め）
         today_start = tokyo_tz.localize(datetime.combine(now_tokyo.date(), datetime.min.time()))
         today_end = today_start + timedelta(days=1)
         try:
-            # 🚀 修正：日付に縛られず直近の更新を反映させやすいよう、作成日基準で取得
             res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", today_end.isoformat()).execute()
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
@@ -168,7 +166,6 @@ if st.session_state["page"] == "top":
                 for _, row in grouped.iterrows():
                     try:
                         dt_utc = datetime.fromisoformat(str(row['last_time']).replace('Z', '+00:00'))
-                        # 🚀 修正：表示形式を「MM/DD HH:MM」にして日にちも表示
                         time_str = dt_utc.astimezone(tokyo_tz).strftime('%m/%d %H:%M')
                     except:
                         time_str = str(row['last_time'])[5:16].replace('-', '/')
@@ -196,8 +193,8 @@ elif st.session_state["page"] == "input":
         except: pass
     sel = st.selectbox("👤 利用者を選択", p_opts)
     
-    # 🚀 修正：記録時間をなくし、日付の指定のみにシンプル化
-    record_date = st.date_input("📅 記録日", value=datetime.now(tokyo_tz).date())
+    # 🚀 記録日の初期値を日本時間(JST)で確実に指定
+    record_date = st.date_input("📅 記録日", value=now_tokyo.date())
         
     st.markdown("---")
     t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
@@ -226,7 +223,7 @@ elif st.session_state["page"] == "input":
         if sel != "(未選択)" and txt and f_code:
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
             
-            # 🚀 修正：指定した「記録日」と「実際の現在時刻」を合成して保存
+            # 指定した「記録日」と「実際の現在時刻(日本時間)」を合成して保存
             current_time = datetime.now(tokyo_tz).time()
             target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
             
@@ -250,7 +247,8 @@ elif st.session_state["page"] == "history":
         st.markdown("---")
         st.write("▼ 指定日のまとめ作成")
         col_d, col_b = st.columns([2, 2])
-        with col_d: t_date = st.date_input("日付", value=date.today())
+        # 🚀 日付の初期値を日本時間で指定
+        with col_d: t_date = st.date_input("日付", value=now_tokyo.date())
         with col_b:
             if st.button("✨ 作成", use_container_width=True):
                 if f_code:
@@ -298,7 +296,8 @@ elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
-    selected_date = st.date_input("表示する日付を選択", value=date.today())
+    # 🚀 カレンダーの初期値を日本時間で確実に指定
+    selected_date = st.date_input("表示する日付を選択", value=now_tokyo.date())
     
     if selected_date and f_code:
         try:
