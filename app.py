@@ -182,35 +182,56 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI生成ロジック：判明した最新モデル 'gemini-2.5-flash' を適用
+    # 🚀 AI文章生成ロジック：沈黙を打破する最新鋭構成
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
-            with st.spinner("最新鋭AIで生成中..."):
+            with st.spinner("AIが現場の声を文章化しています..."):
                 try:
-                    # 🚀 君の環境で利用可能な最新モデルに換装
+                    # 🚀 最新鋭モデル指定
                     model = genai.GenerativeModel('models/gemini-2.5-flash')
-                    prompt = """あなたはベテランの介護職員です。提供された音声や画像から事実のみを抽出し、
-                    職員間での申し送りに最適な「丁寧かつ簡潔なです・ます調」でケース記録を作成してください。
-                    挨拶や余計な解説は一切省き、記録本文のみを出力すること。"""
                     
-                    inputs = [prompt]
+                    # 🚀 構成の最適化（システムプロンプトの強化）
+                    prompt = """
+                    あなたは経験豊富な介護職員です。提供された音声や画像から事実のみを読み取り、
+                    職員間の連絡（申し送り）に最適な『丁寧かつ簡潔なです・ます調』で記録を作成してください。
+                    
+                    【厳守事項】
+                    - 挨拶、解説、推測は一切書かない。
+                    - 記録本文のみを出力する。
+                    - 500文字以内でまとめる。
+                    """
+                    
+                    # 🚀 入力リストの構築
+                    contents = [prompt]
                     if t_imgs:
-                        for img in t_imgs: inputs.append(Image.open(img))
+                        for img in t_imgs: contents.append(Image.open(img))
                     if aud:
                         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                             tmp.write(aud.getvalue()); tmp_p = tmp.name
                         f = genai.upload_file(path=tmp_p)
                         while f.state.name != "ACTIVE": time.sleep(0.5); f = genai.get_file(f.name)
-                        inputs.append(f)
+                        contents.append(f)
                     
-                    r = model.generate_content(inputs)
-                    st.session_state["edit_content"] = r.text
-                    if aud: os.remove(tmp_p)
-                    st.rerun()
+                    # 🚀 生成実行（空振りを防ぐパラメータ設定）
+                    response = model.generate_content(
+                        contents,
+                        generation_config=genai.types.GenerationConfig(
+                            temperature=0.4,
+                            max_output_tokens=1000,
+                        )
+                    )
+                    
+                    # 🚀 生成結果の反映と検証
+                    if response and response.text:
+                        st.session_state["edit_content"] = response.text
+                        if aud: os.remove(tmp_p)
+                        st.rerun()
+                    else:
+                        st.warning("AIが文章を生成できませんでした。もう一度お試しください。")
                 except Exception as e:
-                    st.error(f"AI接続エラー: {e}")
+                    st.error(f"AI生成中に予期せぬエラーが発生しました: {e}")
             
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
@@ -327,7 +348,8 @@ elif st.session_state["page"] == "admin_menu":
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
                     c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
-                    if st.form_submit_button("登録"): supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
+                    if st.form_submit_button("登録"):
+                        supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
             if res_p and res_p.data:
                 for p in res_p.data:
                     c1, c2, c3 = st.columns([3, 1, 1])
@@ -339,7 +361,8 @@ elif st.session_state["page"] == "admin_menu":
                     if st.session_state.get(f"p_edit_{p['id']}"):
                         with st.form(f"f_p_{p['id']}"):
                             un, uk, uc = st.text_input("氏名", value=p['user_name']), st.text_input("カナ", value=p['user_kana']), st.text_input("No", value=p['chart_number'])
-                            if st.form_submit_button("確定"): supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
+                            if st.form_submit_button("確定"):
+                                supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
         with t2:
             st.markdown("##### 👮 職員・端末管理")
             res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
@@ -359,7 +382,7 @@ elif st.session_state["page"] == "admin_menu":
                     res = supabase.table("admin_settings").select("*").eq("key", "admin_password").eq("facility_code", f_code).execute()
                     if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
-                    st.success("更新完了。"); st.rerun()
+                    st.success("更新しました。"); st.rerun()
             st.divider()
             try:
                 res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -368,13 +391,16 @@ elif st.session_state["page"] == "admin_menu":
             new_limit = st.slider("表示人数（名）", min_value=10, max_value=100, value=current_limit, step=5)
             if st.button("表示件数を保存"):
                 res_chk = supabase.table("admin_settings").select("*").eq("key", "history_limit").eq("facility_code", f_code).execute()
-                if res_chk.data: supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
-                else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
-                st.success(f"人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
+                if res_chk.data:
+                    supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
+                else:
+                    supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
+                st.success(f"表示件数を {new_limit} 名に変更しました。"); time.sleep(1); st.rerun()
+
         with t4:
             st.markdown("##### 🔄 ブロック解除 (復帰)")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
-                if st.button(f"復帰: {b['staff_name']} (ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
+                if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
                     supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰完了。"); time.sleep(1); st.rerun()
     back_to_top_button("ad_d")
