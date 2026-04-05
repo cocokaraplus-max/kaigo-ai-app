@@ -18,10 +18,13 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
-# CookieManagerのバージョンを更新
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v28")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v29")
 cookie_manager = st.session_state["cookie_manager"]
+
+# 🚀 フォームリセット用のカウンター（これを増やすと画面が全消去される）
+if "form_reset_counter" not in st.session_state:
+    st.session_state["form_reset_counter"] = 0
 
 # --- 🎨 カスタムCSS ---
 st.markdown("""
@@ -99,7 +102,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v28")
+    cookie_manager.set("device_id", device_id, key="save_dev_v29")
 
 if device_id:
     try:
@@ -118,8 +121,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v28")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v28")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v29")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v29")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -192,23 +195,24 @@ elif st.session_state["page"] == "input":
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
-    sel = st.selectbox("👤 利用者を選択", p_opts)
     
-    record_date = st.date_input("📅 記録日", value=now_tokyo.date())
+    # 🚀 ここに reset_counter を割り当て、保存後に完全に初期化されるように修正
+    rc = st.session_state["form_reset_counter"]
+    
+    sel = st.selectbox("👤 利用者を選択", p_opts, key=f"sel_{rc}")
+    record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{rc}")
         
     st.markdown("---")
-    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"])
+    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"], key=f"img_{rc}")
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
     st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
-    aud = st.audio_input("録音ボタン")
+    aud = st.audio_input("録音ボタン", key=f"aud_{rc}")
+    
     if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
         with st.spinner("整理中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
-                
-                # 🚀 修正：AIへの指示（プロンプト）を厳格化
                 ins = ["音声や画像にある事実のみを文章化し、推測や事実以外の追加情報は絶対に書かないこと。「え〜」「あ〜」などの無意味な言葉（フィラー）は完全に削除すること。介護職員が職場の仲間に申し送りをするような、簡潔で分かりやすい「です・ます調」で出力すること。解説や挨拶などの余計な文章は一切不要。"]
-                
                 if t_img: ins.append(Image.open(t_img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -221,16 +225,24 @@ elif st.session_state["page"] == "input":
                 if aud: os.remove(tmp_p)
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
-    txt = st.text_area("内容", value=st.session_state["edit_content"], height=200)
+            
+    # テキストエリアにもカウンターを割り当て
+    txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{rc}")
+    
     if st.button("💾 クラウドに保存", use_container_width=True):
         if sel != "(未選択)" and txt and f_code:
             m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
-            
             current_time = datetime.now(tokyo_tz).time()
             target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
             
             supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": target_datetime.isoformat()}).execute()
-            st.success("✅ 保存完了"); st.session_state["edit_content"] = ""; time.sleep(1); st.rerun()
+            
+            # 🚀 修正：保存成功時にリセットカウンターを増やし、内容をすべて消去する
+            st.session_state["edit_content"] = ""
+            st.session_state["form_reset_counter"] += 1 
+            
+            st.success("✅ 保存完了"); time.sleep(1); st.rerun()
+            
     back_to_top_button("ip_d")
 
 # --- 📊 履歴・モニタリング画面 ---
@@ -321,7 +333,7 @@ elif st.session_state["page"] == "daily_view":
                                 dt_utc = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00'))
                                 time_str = dt_utc.astimezone(tokyo_tz).strftime('%H:%M')
                             except:
-                                time_str = str(row['last_time'])[11:16]
+                                time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
                             st.info(str(row['content']))
                             st.write("")
