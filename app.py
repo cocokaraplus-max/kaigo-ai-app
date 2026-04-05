@@ -129,9 +129,7 @@ if st.session_state["page"] == "top":
     with col_m1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col_m2:
-        # 🚀 名称変更反映
         if st.button("📊 モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
-    # 🚀 名称変更反映
     if st.button("📅 ケース記録閲覧", use_container_width=True): st.session_state["page"] = "daily_view"; st.rerun()
     
     st.divider()
@@ -242,7 +240,7 @@ elif st.session_state["page"] == "input":
             except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
 
-# --- 📊 モニタリング生成 (名称変更反映) ---
+# --- 📊 モニタリング生成 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 モニタリング生成</div>", unsafe_allow_html=True)
@@ -266,8 +264,9 @@ elif st.session_state["page"] == "history":
             month_opts.append(f"{y}年{m:02d}月")
             
         selected_month_str = st.selectbox("対象月を選択", month_opts)
+        
         if st.button(f"✨ {selected_month_str} のモニタリングを生成", type="primary"):
-            with st.spinner(f"AIが分析中です..."):
+            with st.spinner(f"AIが記録を分析し、報告書を作成中です..."):
                 try:
                     t_y = int(selected_month_str[:4])
                     t_m = int(selected_month_str[5:7])
@@ -284,15 +283,44 @@ elif st.session_state["page"] == "history":
                             records_text += f"[{dt.strftime('%m/%d')} {r['staff_name']}] {r['content']}\n"
                         
                         model = genai.GenerativeModel('models/gemini-2.5-flash')
-                        prompt = f"あなたは介護のプロです。以下の{u_name}様の1ヶ月分の記録をもとに、月間モニタリング報告書を「丁寧なです・ます調」で作成してください。\n\n【記録】\n{records_text}"
+                        
+                        # 🚀 超・最適化されたプロンプト (文字数制限、口語調、事実のみ)
+                        prompt = f"""
+                        あなたは介護職員です。以下の{u_name}様の1ヶ月分のケース記録を要約し、モニタリング報告を作成してください。
+                        
+                        【厳守ルール】
+                        - 必ず「200文字以内」でまとめること。
+                        - 現場の職員が報告するような自然な「口語調（〜です、〜でした等）」で書くこと。
+                        - 細かな分析や過剰な表現は避け、毎日の記録にある事実や本人の発言をありのままに伝えること。
+                        - 挨拶や見出しは不要。本文のみを出力すること。
+                        
+                        【記録】
+                        {records_text}
+                        """
                         response = model.generate_content(prompt)
-                        if response and response.text: st.session_state["monitoring_result"] = response.text
+                        if response and response.text:
+                            st.session_state["monitoring_result"] = response.text
                         else: st.error("生成に失敗しました。")
                     else: st.warning(f"⚠️ 記録が見つかりませんでした。")
                 except Exception as e: st.error(f"エラー: {e}")
 
+        # 🚀 自由に編集できる枠 ＋ コピー機能付き専用枠
         if st.session_state.get("monitoring_result"):
-            st.text_area("生成されたモニタリング結果", value=st.session_state["monitoring_result"], height=300)
+            st.markdown("---")
+            st.markdown("##### 📝 生成されたモニタリング（編集可能）")
+            # 編集用のテキストエリア
+            edited_monitoring = st.text_area(
+                "ここで自由に文字を修正できます", 
+                value=st.session_state["monitoring_result"], 
+                height=150, 
+                label_visibility="collapsed"
+            )
+            # 状態を更新
+            st.session_state["monitoring_result"] = edited_monitoring
+            
+            # コピー用のブロック (Streamlitのst.codeは右上に自動でコピーボタンが付く仕様を活用)
+            st.markdown("##### 📋 コピー用（右上のアイコンで一発コピー！）")
+            st.code(edited_monitoring, language="text")
 
         st.divider()
 
@@ -320,7 +348,7 @@ elif st.session_state["page"] == "history":
                 st.info("まだ記録がありません。")
     back_to_top_button("hs_d")
 
-# --- 📅 ケース記録閲覧 (名称変更＆UI革新) ---
+# --- 📅 ケース記録閲覧 ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧</div>", unsafe_allow_html=True)
@@ -343,35 +371,36 @@ elif st.session_state["page"] == "daily_view":
                     is_expanded = (target_user == target_u)
                     
                     with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
-                        
-                        # 🚀 AI自動要約機能 (ボタンなしで即時表示・キャッシュ活用)
                         summary_key = f"sum_{selected_date}_{target_user}"
                         
+                        # 🚀 自動要約ロジック (Streamlitの制約上、ボタンで発火)
                         if summary_key not in st.session_state:
                             if len(user_records) > 1:
-                                with st.spinner("AIが1日のまとめを作成中..."):
-                                    try:
-                                        model = genai.GenerativeModel('models/gemini-2.5-flash')
-                                        daily_texts = "\n".join([f"[{str(row['created_at'])[11:16]} {row['staff_name']}] {row['content']}" for _, row in user_records.iterrows()])
-                                        prompt = f"あなたは介護のプロです。以下の1日分の複数回にわたる記録を、状況が直感的にわかるように「丁寧なです・ます調」で1つのまとまった申し送りに要約してください。挨拶や解説は不要です。\n\n【記録】\n{daily_texts}"
-                                        response = model.generate_content(prompt)
-                                        if response and response.text:
-                                            st.session_state[summary_key] = response.text
-                                        else:
-                                            st.session_state[summary_key] = "要約の作成に失敗しました。"
-                                    except Exception as e:
-                                        st.session_state[summary_key] = f"AIまとめエラー: {e}"
+                                if st.button("✨ 1日のまとめを作成する", key=f"btn_{summary_key}"):
+                                    with st.spinner("1日のまとめを作成しています..."):
+                                        try:
+                                            model = genai.GenerativeModel('models/gemini-2.5-flash')
+                                            daily_texts = "\n".join([f"[{str(row['created_at'])[11:16]} {row['staff_name']}] {row['content']}" for _, row in user_records.iterrows()])
+                                            prompt = f"あなたは介護のプロです。以下の1日分の記録を、直感的にわかるように「丁寧なです・ます調」で1つのまとまった申し送りに要約してください。挨拶や解説は不要です。\n\n【記録】\n{daily_texts}"
+                                            response = model.generate_content(prompt)
+                                            if response and response.text:
+                                                st.session_state[summary_key] = response.text
+                                                st.rerun()
+                                            else:
+                                                st.error("要約の作成に失敗しました。")
+                                        except Exception as e:
+                                            st.error(f"AIエラー: {e}")
                             else:
-                                # 記録が1件だけの場合は、要約せずそのまま内容を格納
+                                # 記録が1件だけの場合は要約せずそのまま表示
                                 st.session_state[summary_key] = user_records.iloc[0]['content']
                         
-                        # ✨ 一日のまとめを最上部に大きく表示
-                        st.markdown("##### ✨ 1日のまとめ")
-                        st.info(st.session_state[summary_key])
+                        # ✨ 一日のまとめを最上部に表示
+                        if summary_key in st.session_state:
+                            st.markdown("##### ✨ 1日のまとめ")
+                            st.info(st.session_state[summary_key])
+                            st.markdown("---")
                         
-                        st.markdown("---")
-                        
-                        # 📝 個別の詳細記録（クリックして展開する形式へ）
+                        # 📝 個別の詳細記録（アコーディオン形式）
                         st.markdown("##### 📝 個別の詳細記録")
                         for _, row in user_records.iterrows():
                             try: t_s = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%H:%M')
