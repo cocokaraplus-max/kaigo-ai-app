@@ -25,7 +25,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (カレンダー色分け含む全仕様維持) ---
+# --- 🎨 カスタムCSS (カレンダー色分けの強制力を大幅強化) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -39,22 +39,22 @@ st.markdown("""
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
     
-    /* カレンダーの色分け */
-    div[data-baseweb="calendar"] div[aria-label^="Sunday"], div[data-baseweb="calendar"] button[aria-label*="Sunday"] { color: #ff4b4b !important; }
-    div[data-baseweb="calendar"] div[aria-label^="Saturday"], div[data-baseweb="calendar"] button[aria-label*="Saturday"] { color: #0000ff !important; }
-    div[data-baseweb="calendar"] div[aria-label^="Monday"], div[data-baseweb="calendar"] button[aria-label*="Monday"],
-    div[data-baseweb="calendar"] div[aria-label^="Tuesday"], div[data-baseweb="calendar"] button[aria-label*="Tuesday"],
-    div[data-baseweb="calendar"] div[aria-label^="Wednesday"], div[data-baseweb="calendar"] button[aria-label*="Wednesday"],
-    div[data-baseweb="calendar"] div[aria-label^="Thursday"], div[data-baseweb="calendar"] button[aria-label*="Thursday"],
-    div[data-baseweb="calendar"] div[aria-label^="Friday"], div[data-baseweb="calendar"] button[aria-label*="Friday"] { color: #31333F !important; }
+    /* 🚀 カレンダーの色分け：より深い階層まで強制適用 */
+    /* 日曜日: 赤 */
+    div[data-baseweb="calendar"] [aria-label*="Sunday"] { color: #ff4b4b !important; font-weight: bold !important; }
+    /* 土曜日: 青 */
+    div[data-baseweb="calendar"] [aria-label*="Saturday"] { color: #0000ff !important; font-weight: bold !important; }
+    /* 平日: 黒 */
+    div[data-baseweb="calendar"] [aria-label*="Monday"], div[data-baseweb="calendar"] [aria-label*="Tuesday"],
+    div[data-baseweb="calendar"] [aria-label*="Wednesday"], div[data-baseweb="calendar"] [aria-label*="Thursday"],
+    div[data-baseweb="calendar"] [aria-label*="Friday"] { color: #31333F !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 💡 スリープ防止 & 下に引っ張ってリロード有効化JavaScript
+# 💡 スリープ防止 & リロード制御
 components.html("""
 <script>
 (function() {
-    // スリープ防止
     let wakeLock = null;
     async function requestWakeLock() { try { if ('wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); } } catch (err) { } }
     function createNoSleepVideo() {
@@ -65,8 +65,6 @@ components.html("""
     const v = createNoSleepVideo();
     document.addEventListener('touchstart', function() { v.play(); requestWakeLock(); }, { once: false });
     requestWakeLock();
-
-    // 🚀 スマホの「引っ張ってリロード」をより自然に許可する設定
     document.body.style.overscrollBehaviorY = 'contain'; 
 })();
 </script>
@@ -142,9 +140,8 @@ if st.session_state["page"] == "top":
     st.markdown("##### 📝 更新履歴 (最新30名まで)")
     if f_code:
         today_start = tokyo_tz.localize(datetime.combine(now_tokyo.date(), datetime.min.time()))
-        today_end = today_start + timedelta(days=1)
         try:
-            res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", today_end.isoformat()).execute()
+            res_today = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).gte("created_at", today_start.isoformat()).lt("created_at", (today_start + timedelta(days=1)).isoformat()).execute()
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
                 grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
@@ -271,7 +268,6 @@ elif st.session_state["page"] == "daily_view":
             res = supabase.table("records").select("*").eq("facility_code", f_code).gte("created_at", t_start.isoformat()).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at", desc=True).execute()
             if res.data:
                 df = pd.DataFrame(res.data).fillna("不明")
-                # 🚀 【エラー修正済み】変数参照の修正
                 unique_users_view = df["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users_view)}名** の記録があります")
                 st.divider()
@@ -311,7 +307,6 @@ elif st.session_state["page"] == "admin_menu":
             st.stop()
         t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 職員管理", "🔑 パス設定", "🚫 セキュリティ"])
         with t1:
-            st.markdown("##### 👤 利用者の新規登録・編集・削除")
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
@@ -330,7 +325,7 @@ elif st.session_state["page"] == "admin_menu":
                             un, uk, uc = st.text_input("氏名", value=p['user_name']), st.text_input("カナ", value=p['user_kana']), st.text_input("No", value=p['chart_number'])
                             if st.form_submit_button("確定"): supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
         with t2:
-            st.markdown("##### 👮 職員・端末管理 (退職者のブロック)")
+            st.markdown("##### 👮 職員・端末管理")
             res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
             unique_staff = sorted(list(set([r['staff_name'] for r in res_staff.data if r.get('staff_name')]))) if res_staff.data else []
             for s in unique_staff:
@@ -341,7 +336,6 @@ elif st.session_state["page"] == "admin_menu":
                         supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
                         st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
         with t3:
-            st.markdown("##### 🔑 管理パスワード変更")
             np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
             if st.button("パスワードを更新"):
                 if np == cp:
@@ -349,7 +343,6 @@ elif st.session_state["page"] == "admin_menu":
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                     st.success("更新しました。"); st.rerun()
         with t4:
-            st.markdown("##### 🔄 ブロック解除 (復帰)")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
                 if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
