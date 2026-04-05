@@ -182,50 +182,49 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI生成ロジック：沈黙打破パッチ適用
+    # 🚀 AI文章生成ロジック：ダイレクト通信（沈黙打破版）
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
-            with st.spinner("最新AIが分析中..."):
+            with st.spinner("AIが現場の声を直接読み込んでいます..."):
                 try:
-                    # 🚀 モデル設定
+                    # 🚀 君の環境の最新モデル
                     model = genai.GenerativeModel('models/gemini-2.5-flash')
                     
-                    # 🚀 システム指示の強化
-                    prompt = "あなたは介護のプロです。入力された音声や画像から、職員間の申し送りに適した「です・ます調」の記録を書いてください。挨拶や解説は一切書かず、記録内容のみを出力してください。"
+                    prompt = """あなたは介護のプロです。入力された音声や画像から事実のみを読み取り、
+                    職員間の連絡（申し送り）に適した「丁寧なです・ます調」で簡潔に記録を書いてください。
+                    挨拶や余計な解説は一切書かず、文章のみを直接出力してください。"""
                     
+                    # 🚀 入力データを直接構築（アップロードAPIの迂回）
                     contents = [prompt]
                     if t_imgs:
                         for img in t_imgs: contents.append(Image.open(img))
                     if aud:
-                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                            tmp.write(aud.getvalue()); tmp_p = tmp.name
-                        f = genai.upload_file(path=tmp_p)
-                        while f.state.name != "ACTIVE": time.sleep(0.5); f = genai.get_file(f.name)
-                        contents.append(f)
+                        # 音声データを一時保存せず、バイナリのまま直接AIに流し込む
+                        contents.append({
+                            "mime_type": "audio/wav",
+                            "data": aud.getvalue()
+                        })
                     
-                    # 🚀 セーフティ設定を緩和して「沈黙」を防止
-                    safety_settings = [
-                        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                    ]
-
-                    response = model.generate_content(contents, safety_settings=safety_settings)
+                    # 生成実行
+                    response = model.generate_content(contents)
                     
-                    # 🚀 結果のデバッグと反映
-                    if response and response.text:
-                        st.session_state["edit_content"] = response.text
-                        if aud: os.remove(tmp_p)
-                        st.rerun()
-                    else:
-                        st.error("AIからの返答が空でした。入力内容（音声や画像）に十分な情報が含まれているか確認してください。")
+                    # 🚀 結果の厳格な検証
+                    try:
+                        text_result = response.text
+                        if text_result.strip():
+                            st.session_state["edit_content"] = text_result.strip()
+                            st.rerun()
+                        else:
+                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎるか、ノイズだけの可能性があります。")
+                    except ValueError:
+                        st.error("🚫 Googleの安全フィルターにより、AIが回答の生成を停止しました。")
                         if hasattr(response, 'prompt_feedback'):
-                            st.write("拒否理由:", response.prompt_feedback)
+                            st.write("詳細:", response.prompt_feedback)
+
                 except Exception as e:
-                    st.error(f"AIエラー: {e}")
+                    st.error(f"通信エラーが発生しました: {e}")
             
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
@@ -389,10 +388,12 @@ elif st.session_state["page"] == "admin_menu":
                     supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
                 else:
                     supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
-                st.success(f"人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
+                st.success(f"表示件数を {new_limit} 名に変更しました。"); time.sleep(1); st.rerun()
+
         with t4:
+            st.markdown("##### 🔄 ブロック解除 (復帰)")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
-                if st.button(f"復帰: {b['staff_name']} (ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
+                if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
                     supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰完了。"); time.sleep(1); st.rerun()
     back_to_top_button("ad_d")
