@@ -19,7 +19,7 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v32")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v34")
 cookie_manager = st.session_state["cookie_manager"]
 
 # 🚀 保存後にウィジェットを強制リセットするための識別子
@@ -52,12 +52,12 @@ st.markdown("""
     }
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     
-    /* 🚀 追加：履歴ボタン等の文字サイズを調整し、絶対に1段（改行なし）に強制する */
-    div[data-testid="stVerticalBlockBorderWrapper"] div.stButton > button p {
-        font-size: clamp(11px, 3.2vw, 14px) !important;
+    /* すべてのボタンとその中身（p, div, span）に対して、絶対に2段にしない強制指定 */
+    div.stButton > button p, div.stButton > button div, div.stButton > button span {
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
+        font-size: clamp(10px, 3vw, 14px) !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -110,7 +110,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v32")
+    cookie_manager.set("device_id", device_id, key="save_dev_v34")
 
 if device_id:
     try:
@@ -129,8 +129,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v32")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v32")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v34")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v34")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -233,8 +233,13 @@ elif st.session_state["page"] == "input":
                     f = genai.upload_file(path=tmp_p)
                     while f.state.name != "ACTIVE": time.sleep(1); f = genai.get_file(f.name)
                     ins.append(f)
+                
                 r = model.generate_content(ins)
+                
+                # 🚀 修正：AIの生成結果を、テキストボックスの"内部キー"に直接上書きして確実に表示させる
                 st.session_state["edit_content"] = r.text
+                st.session_state[f"txt_{kid}"] = r.text
+                
                 if aud: os.remove(tmp_p)
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
