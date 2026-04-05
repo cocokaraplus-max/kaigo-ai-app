@@ -25,7 +25,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (カレンダー色分け等の全仕様維持) ---
+# --- 🎨 カスタムCSS (全仕様維持) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -134,7 +134,6 @@ if st.session_state["page"] == "top":
     
     st.divider()
     
-    # 表示人数取得
     hist_limit = 30
     try:
         res_limit = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -183,18 +182,19 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI生成ロジック：調査機能付き
+    # 🚀 AI生成ロジック：判明した最新モデル 'gemini-2.5-flash' を適用
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
-            with st.spinner("最新AIを調査して接続中..."):
+            with st.spinner("最新鋭AIで生成中..."):
                 try:
-                    # 1. まず標準的な名前で試みる
-                    model_id = 'gemini-1.5-flash'
-                    model = genai.GenerativeModel(model_id)
+                    # 🚀 君の環境で利用可能な最新モデルに換装
+                    model = genai.GenerativeModel('models/gemini-2.5-flash')
+                    prompt = """あなたはベテランの介護職員です。提供された音声や画像から事実のみを抽出し、
+                    職員間での申し送りに最適な「丁寧かつ簡潔なです・ます調」でケース記録を作成してください。
+                    挨拶や余計な解説は一切省き、記録本文のみを出力すること。"""
                     
-                    prompt = """あなたは介護職のベテランです。事実に基づき、職員間申し送り用の『丁寧なです・ます調』で記録を書いてください。挨拶は不要です。"""
                     inputs = [prompt]
                     if t_imgs:
                         for img in t_imgs: inputs.append(Image.open(img))
@@ -210,15 +210,7 @@ elif st.session_state["page"] == "input":
                     if aud: os.remove(tmp_p)
                     st.rerun()
                 except Exception as e:
-                    # 🚀 エラーが出たら即座に「今使えるモデル名」を全スキャンして表示する
-                    st.error("⚠️ AI接続エラーが発生しました。現在利用可能なモデルをリストアップします。")
-                    try:
-                        available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                        st.info(f"あなたの環境で今すぐ使えるモデル名はこちらです：\n{available}")
-                        st.write("このリストにある名前を私（Gemini）に教えてください。すぐに修正します。")
-                    except:
-                        st.warning("モデルリストの取得にも失敗しました。APIキーの権限を確認してください。")
-                    st.caption(f"技術的な詳細: {e}")
+                    st.error(f"AI接続エラー: {e}")
             
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
@@ -240,7 +232,7 @@ elif st.session_state["page"] == "input":
                     supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "image_url": urls if urls else None, "created_at": dt.isoformat()}).execute()
                 st.session_state.update({"edit_content": "", "input_key_id": str(uuid.uuid4()), "editing_record_id": None, "page": "top"})
                 time.sleep(0.5); st.rerun()
-            except Exception as e: st.error(f"保存エラー: {e}")
+            except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
 
 # --- 📊 ケース記録/モニタリング生成 ---
@@ -367,7 +359,7 @@ elif st.session_state["page"] == "admin_menu":
                     res = supabase.table("admin_settings").select("*").eq("key", "admin_password").eq("facility_code", f_code).execute()
                     if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
-                    st.success("更新しました。"); st.rerun()
+                    st.success("更新完了。"); st.rerun()
             st.divider()
             try:
                 res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
