@@ -26,7 +26,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS (これまでの仕様を完全維持 + カレンダー色分け追加) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -39,6 +39,21 @@ st.markdown("""
     .history-item { font-size: 16px; margin-bottom: 10px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
+    
+    /* 🚀 カレンダーの色分け仕様を追加 */
+    /* 日曜日を赤く */
+    div[data-baseweb="calendar"] div[aria-label^="Sunday"], 
+    div[data-baseweb="calendar"] button[aria-label*="Sunday"] { color: #ff4b4b !important; }
+    /* 土曜日を青く */
+    div[data-baseweb="calendar"] div[aria-label^="Saturday"], 
+    div[data-baseweb="calendar"] button[aria-label*="Saturday"] { color: #0000ff !important; }
+    /* 平日（月〜金）を黒く */
+    div[data-baseweb="calendar"] div[aria-label^="Monday"], div[data-baseweb="calendar"] button[aria-label*="Monday"],
+    div[data-baseweb="calendar"] div[aria-label^="Tuesday"], div[data-baseweb="calendar"] button[aria-label*="Tuesday"],
+    div[data-baseweb="calendar"] div[aria-label^="Wednesday"], div[data-baseweb="calendar"] button[aria-label*="Wednesday"],
+    div[data-baseweb="calendar"] div[aria-label^="Thursday"], div[data-baseweb="calendar"] button[aria-label*="Thursday"],
+    div[data-baseweb="calendar"] div[aria-label^="Friday"], div[data-baseweb="calendar"] button[aria-label*="Friday"] 
+    { color: #31333F !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -124,7 +139,6 @@ if st.session_state["page"] == "top":
     with col_m1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col_m2:
-        # 🚀 【表記変更】
         if st.button("📊 ケース記録/モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
     if st.button("📅 日別記録閲覧", use_container_width=True):
         st.session_state["page"] = "daily_view"; st.rerun()
@@ -226,7 +240,6 @@ elif st.session_state["page"] == "input":
 # --- 📊 記録/生成画面 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
-    # 🚀 【表記変更】
     st.markdown("<div class='main-title'>📊 ケース記録/モニタリング生成</div>", unsafe_allow_html=True)
     p_opts = ["---"]
     if f_code:
@@ -287,7 +300,7 @@ elif st.session_state["page"] == "daily_view":
                                     with cols[idx]: st.image(url, use_container_width=True)
                             if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
-                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{r['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
     back_to_top_button("dv_d")
