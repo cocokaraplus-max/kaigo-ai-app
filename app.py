@@ -19,14 +19,14 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v29")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v30")
 cookie_manager = st.session_state["cookie_manager"]
 
-# 🚀 フォームリセット用のカウンター（これを増やすと画面が全消去される）
-if "form_reset_counter" not in st.session_state:
-    st.session_state["form_reset_counter"] = 0
+# 🚀 保存後にウィジェットを強制リセットするための識別子
+if "input_key_id" not in st.session_state:
+    st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS（維持） ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -102,7 +102,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v29")
+    cookie_manager.set("device_id", device_id, key="save_dev_v30")
 
 if device_id:
     try:
@@ -121,8 +121,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v29")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v29")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v30")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v30")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -189,6 +189,10 @@ if st.session_state["page"] == "top":
 elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
+    
+    # 🚀 現在の識別子を取得
+    kid = st.session_state["input_key_id"]
+    
     p_opts = ["(未選択)"]
     if f_code:
         try:
@@ -196,19 +200,17 @@ elif st.session_state["page"] == "input":
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
     
-    # 🚀 ここに reset_counter を割り当て、保存後に完全に初期化されるように修正
-    rc = st.session_state["form_reset_counter"]
-    
-    sel = st.selectbox("👤 利用者を選択", p_opts, key=f"sel_{rc}")
-    record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{rc}")
+    # 各入力パーツに動的な識別子(kid)を付与することで、保存後に全強制リセットを可能に
+    sel = st.selectbox("👤 利用者を選択", p_opts, key=f"sel_{kid}")
+    record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{kid}")
         
     st.markdown("---")
-    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"], key=f"img_{rc}")
+    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"], key=f"img_{kid}")
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
     st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
-    aud = st.audio_input("録音ボタン", key=f"aud_{rc}")
+    aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
     
-    if (t_img or aud) and st.button("✨ AIで文章にする", type="primary"):
+    if (t_img or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
         with st.spinner("整理中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
@@ -226,26 +228,37 @@ elif st.session_state["page"] == "input":
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
             
-    # テキストエリアにもカウンターを割り当て
-    txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{rc}")
+    # テキストエリアにもkidを付与。またvalueをsession_stateから受け取る
+    txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     
-    if st.button("💾 クラウドに保存", use_container_width=True):
+    if st.button("💾 クラウドに保存", use_container_width=True, key="btn_save"):
         if sel != "(未選択)" and txt and f_code:
-            m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
-            current_time = datetime.now(tokyo_tz).time()
-            target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
-            
-            supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": target_datetime.isoformat()}).execute()
-            
-            # 🚀 修正：保存成功時にリセットカウンターを増やし、内容をすべて消去する
-            st.session_state["edit_content"] = ""
-            st.session_state["form_reset_counter"] += 1 
-            
-            st.success("✅ 保存完了"); time.sleep(1); st.rerun()
+            try:
+                m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+                current_time = datetime.now(tokyo_tz).time()
+                target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
+                
+                # DB保存
+                supabase.table("records").insert({
+                    "facility_code": f_code,
+                    "chart_number": str(m.group(1)),
+                    "user_name": m.group(2),
+                    "staff_name": my_name,
+                    "content": txt,
+                    "created_at": target_datetime.isoformat()
+                }).execute()
+                
+                # 🚀 保存成功後のリセット処理
+                st.session_state["edit_content"] = ""
+                st.session_state["input_key_id"] = str(uuid.uuid4()) # 識別子を変えることでUIを物理リセット
+                
+                st.success("✅ 保存完了"); time.sleep(0.5); st.rerun()
+            except Exception as e:
+                st.error(f"保存エラー: {e}")
             
     back_to_top_button("ip_d")
 
-# --- 📊 履歴・モニタリング画面 ---
+# --- 📊 履歴・モニタリング画面（維持） ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
@@ -304,7 +317,7 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {time_str_hist}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧 ---
+# --- 📅 日別記録閲覧（維持） ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
@@ -344,7 +357,7 @@ elif st.session_state["page"] == "daily_view":
             
     back_to_top_button("dv_d")
 
-# --- 🛠️ 管理者メニュー画面 ---
+# --- 🛠️ 管理者メニュー画面（維持） ---
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
