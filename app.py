@@ -19,14 +19,14 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v30")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v31")
 cookie_manager = st.session_state["cookie_manager"]
 
 # 🚀 保存後にウィジェットを強制リセットするための識別子
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS（維持） ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -35,22 +35,6 @@ st.markdown("""
     section[data-testid="stAudioInput"] { border: 2px solid #ff4b4b !important; border-radius: 20px !important; padding: 10px !important; background-color: #fff5f5 !important; }
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
-    
-    .scrollable-history {
-        max-height: 250px;
-        overflow-y: auto;
-        border: 2px solid #ff4b4b;
-        border-radius: 10px;
-        padding: 15px;
-        background-color: #fffaf0;
-    }
-    .history-item {
-        font-size: 16px;
-        margin-bottom: 10px;
-        border-bottom: 1px dashed #ccc;
-        padding-bottom: 5px;
-    }
-    .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -102,7 +86,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v30")
+    cookie_manager.set("device_id", device_id, key="save_dev_v31")
 
 if device_id:
     try:
@@ -121,8 +105,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v30")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v30")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v31")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v31")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -166,16 +150,23 @@ if st.session_state["page"] == "top":
                 df = pd.DataFrame(res_today.data)
                 grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
                 grouped = grouped.sort_values("last_time", ascending=False).head(30)
-                html_code = "<div class='scrollable-history'>"
-                for _, row in grouped.iterrows():
-                    try:
-                        dt_utc = datetime.fromisoformat(str(row['last_time']).replace('Z', '+00:00'))
-                        time_str = dt_utc.astimezone(tokyo_tz).strftime('%m/%d %H:%M')
-                    except:
-                        time_str = str(row['last_time'])[5:16].replace('-', '/')
-                    html_code += f"<div class='history-item'>👤 <b>{row['user_name']} 様</b> （{row['count']}件） 最終記録 {time_str}</div>"
-                html_code += "</div>"
-                st.markdown(html_code, unsafe_allow_html=True)
+                
+                # 🚀 修正：HTMLではなく、Streamlitネイティブのスクロール枠とボタンを使用しクリック可能に
+                with st.container(height=250):
+                    for _, row in grouped.iterrows():
+                        try:
+                            dt_utc = datetime.fromisoformat(str(row['last_time']).replace('Z', '+00:00'))
+                            time_str = dt_utc.astimezone(tokyo_tz).strftime('%m/%d %H:%M')
+                        except:
+                            time_str = str(row['last_time'])[5:16].replace('-', '/')
+                        
+                        # ボタン化し、クリック時に閲覧画面へデータを受け渡す
+                        btn_label = f"👤 {row['user_name']} 様 （{row['count']}件） 最終記録 {time_str}"
+                        if st.button(btn_label, key=f"hist_btn_{row['user_name']}", use_container_width=True):
+                            st.session_state["page"] = "daily_view"
+                            st.session_state["dv_target_user"] = row['user_name']
+                            st.session_state["dv_target_date"] = now_tokyo.date()
+                            st.rerun()
             else:
                 st.info("本日の記録はまだありません。")
         except Exception as e: st.error(f"履歴の取得に失敗しました: {e}")
@@ -190,7 +181,6 @@ elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
     
-    # 🚀 現在の識別子を取得
     kid = st.session_state["input_key_id"]
     
     p_opts = ["(未選択)"]
@@ -200,7 +190,6 @@ elif st.session_state["page"] == "input":
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
     
-    # 各入力パーツに動的な識別子(kid)を付与することで、保存後に全強制リセットを可能に
     sel = st.selectbox("👤 利用者を選択", p_opts, key=f"sel_{kid}")
     record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{kid}")
         
@@ -228,7 +217,6 @@ elif st.session_state["page"] == "input":
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
             
-    # テキストエリアにもkidを付与。またvalueをsession_stateから受け取る
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     
     if st.button("💾 クラウドに保存", use_container_width=True, key="btn_save"):
@@ -238,7 +226,6 @@ elif st.session_state["page"] == "input":
                 current_time = datetime.now(tokyo_tz).time()
                 target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
                 
-                # DB保存
                 supabase.table("records").insert({
                     "facility_code": f_code,
                     "chart_number": str(m.group(1)),
@@ -248,9 +235,8 @@ elif st.session_state["page"] == "input":
                     "created_at": target_datetime.isoformat()
                 }).execute()
                 
-                # 🚀 保存成功後のリセット処理
                 st.session_state["edit_content"] = ""
-                st.session_state["input_key_id"] = str(uuid.uuid4()) # 識別子を変えることでUIを物理リセット
+                st.session_state["input_key_id"] = str(uuid.uuid4())
                 
                 st.success("✅ 保存完了"); time.sleep(0.5); st.rerun()
             except Exception as e:
@@ -258,7 +244,7 @@ elif st.session_state["page"] == "input":
             
     back_to_top_button("ip_d")
 
-# --- 📊 履歴・モニタリング画面（維持） ---
+# --- 📊 履歴・モニタリング画面 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
@@ -317,12 +303,14 @@ elif st.session_state["page"] == "history":
                 with st.expander(f"📅 {time_str_hist}"): st.write(r['content'])
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧（維持） ---
+# --- 📅 日別記録閲覧 ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
-    selected_date = st.date_input("表示する日付を選択", value=now_tokyo.date())
+    # 🚀 TOP画面から飛んできた場合は、受け取った日付をデフォルトにする
+    dv_date = st.session_state.pop("dv_target_date", now_tokyo.date())
+    selected_date = st.date_input("表示する日付を選択", value=dv_date)
     
     if selected_date and f_code:
         try:
@@ -338,9 +326,16 @@ elif st.session_state["page"] == "daily_view":
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
                 st.divider()
                 
+                # 🚀 TOP画面から飛んできた対象ユーザーを取得（一度使ったら消す）
+                target_u = st.session_state.pop("dv_target_user", None)
+                
                 for target_user in unique_users:
                     user_records = df_day[df_day["user_name"] == target_user]
-                    with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)"):
+                    
+                    # 🚀 対象ユーザーなら自動的に展開(expanded=True)にする
+                    is_expanded = (target_user == target_u)
+                    
+                    with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
                         for _, row in user_records.iterrows():
                             try:
                                 dt_utc = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00'))
@@ -357,7 +352,7 @@ elif st.session_state["page"] == "daily_view":
             
     back_to_top_button("dv_d")
 
-# --- 🛠️ 管理者メニュー画面（維持） ---
+# --- 🛠️ 管理者メニュー画面 ---
 elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
