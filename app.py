@@ -26,7 +26,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS (デザイン維持) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -91,7 +91,7 @@ if not device_id:
 if device_id:
     try:
         res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
-        if res_block.data: st.error("🚫 アクセス制限中。"); st.stop()
+        if res_block.data: st.error("🚫 この端末はアクセスが制限されています。管理者にお問い合わせください。"); st.stop()
     except: pass
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
@@ -157,7 +157,6 @@ elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     is_edit = st.session_state.get("editing_record_id") is not None
     st.markdown(f"<div class='main-title'>{'📝 記録を修正' if is_edit else '✍️ ケース記録入力'}</div>", unsafe_allow_html=True)
-    
     kid = st.session_state["input_key_id"]
     p_opts = ["(未選択)"]
     if f_code:
@@ -165,13 +164,11 @@ elif st.session_state["page"] == "input":
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
-    
     default_sel = st.session_state.get("edit_user_label", "(未選択)")
     default_date = st.session_state.get("edit_date", now_tokyo.date())
     sel = st.selectbox("👤 利用者を選択", p_opts, index=p_opts.index(default_sel) if default_sel in p_opts else 0, key=f"sel_{kid}", disabled=is_edit)
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
-
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
@@ -193,7 +190,6 @@ elif st.session_state["page"] == "input":
                     if aud: os.remove(tmp_p)
                     st.rerun()
                 except Exception as e: st.error(f"エラー: {e}")
-            
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
         if sel != "(未選択)" and txt and f_code:
@@ -291,10 +287,17 @@ elif st.session_state["page"] == "admin_menu":
         res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
         cur_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
         if not st.session_state["admin_authenticated"]:
-            if st.text_input("パスワード", type="password", key="ad_pass") == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
+            ad_pw_in = st.text_input("パスワードを入力してください", type="password", key="ad_pass_field")
+            # 🚀 【復活】「認証（ログイン）」ボタン
+            if st.button("認証", key="btn_admin_auth"):
+                if ad_pw_in == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
+                else: st.error("パスワードが違います。")
             st.stop()
-        t1, t2, t3 = st.tabs(["👥 利用者マスタ管理", "🔑 設定変更", "🚫 セキュリティ"])
+            
+        t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 職員管理", "🔑 パス設定", "🚫 セキュリティ"])
+        
         with t1:
+            st.markdown("##### 👤 利用者の新規登録・編集・削除")
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
@@ -312,15 +315,38 @@ elif st.session_state["page"] == "admin_menu":
                         with st.form(f"f_p_{p['id']}"):
                             un, uk, uc = st.text_input("氏名", value=p['user_name']), st.text_input("カナ", value=p['user_kana']), st.text_input("No", value=p['chart_number'])
                             if st.form_submit_button("確定"): supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
+
         with t2:
+            st.markdown("##### 👮 職員・端末管理 (退職者のブロック)")
+            st.info("現在このアプリを利用している職員リストです。退職者の端末を『削除（ブロック）』できます。")
+            res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
+            unique_staff = sorted(list(set([r['staff_name'] for r in res_staff.data]))) if res_staff.data else []
+            for s in unique_staff:
+                c_s1, c_s2 = st.columns([3, 1])
+                with c_s1: st.write(f"👤 **{s}** さん")
+                with c_s2:
+                    # 🚀 【追加】退職者（端末）をブロックするボタン
+                    if st.button("削除 (ブロック)", key=f"blk_btn_{s}"):
+                        supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
+                        st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
+
+        with t3:
+            st.markdown("##### 🔑 管理パスワード変更")
             np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
-            if st.button("更新"):
+            if st.button("パスワードを更新"):
                 if np == cp:
                     if res_pw.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
-                    st.success("完了"); st.rerun()
-        with t3:
+                    st.success("更新しました。"); st.rerun()
+
+        with t4:
+            st.markdown("##### 🔄 ブロック解除 (復帰)")
+            st.info("ブロック（削除）した端末を再び使えるようにします。")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
-                if st.button(f"復活: {b['staff_name']}", key=f"re_{b['id']}"): supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.rerun()
+                # 🚀 【追加】復帰ボタン
+                if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
+                    supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰させました。"); time.sleep(1); st.rerun()
+            if not res_l.data: st.info("現在ブロック中の端末はありません。")
+
     back_to_top_button("ad_d")
