@@ -25,7 +25,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (カレンダー色分け維持) ---
+# --- 🎨 カスタムCSS (全仕様維持) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -37,6 +37,7 @@ st.markdown("""
     .scrollable-history { max-height: 250px; overflow-y: auto; border: 2px solid #ff4b4b; border-radius: 10px; padding: 15px; background-color: #fffaf0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
     
+    /* カレンダー色分け */
     div[data-baseweb="calendar"] [aria-label*="Sunday"] { color: #ff4b4b !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Saturday"] { color: #0000ff !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Monday"], div[data-baseweb="calendar"] [aria-label*="Tuesday"],
@@ -133,7 +134,7 @@ if st.session_state["page"] == "top":
     
     st.divider()
     
-    # 🚀 【堅牢化】設定テーブルがない場合のエラー回避
+    # 【堅牢化】表示人数取得
     hist_limit = 30
     try:
         res_limit = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -208,7 +209,6 @@ elif st.session_state["page"] == "input":
             try:
                 if is_edit:
                     supabase.table("records").update({"content": txt, "updated_at": now_tokyo.isoformat()}).eq("id", st.session_state["editing_record_id"]).execute()
-                    st.success("✅ 修正完了")
                 else:
                     m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
                     dt = tokyo_tz.localize(datetime.combine(record_date, datetime.now(tokyo_tz).time()))
@@ -221,7 +221,6 @@ elif st.session_state["page"] == "input":
                             if hasattr(res_url, 'public_url'): urls.append(res_url.public_url)
                             else: urls.append(str(res_url))
                     supabase.table("records").insert({"facility_code": f_code, "chart_number": str(m.group(1)), "user_name": m.group(2), "staff_name": my_name, "content": txt, "image_url": urls if urls else None, "created_at": dt.isoformat()}).execute()
-                    st.success("✅ 保存完了")
                 st.session_state.update({"edit_content": "", "input_key_id": str(uuid.uuid4()), "editing_record_id": None, "page": "top"})
                 time.sleep(0.5); st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
@@ -300,7 +299,6 @@ elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
     if f_code:
-        # 🚀 【堅牢化】管理者パスワード取得時のエラー回避
         cur_pw = "8888"
         try:
             res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
@@ -317,12 +315,20 @@ elif st.session_state["page"] == "admin_menu":
         t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 職員管理", "⚙️ 設定変更", "🚫 セキュリティ"])
         with t1:
             st.markdown("##### 👤 利用者の新規登録・編集・削除")
-            res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+            # 【堅牢化】名簿取得時のエラー回避
+            res_p = None
+            try:
+                res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+            except: st.error("⚠️ 利用者名簿テーブルが見つかりません。SQL Editorで作成してください。")
+            
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
                     c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
-                    if st.form_submit_button("登録"): supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
-            if res_p.data:
+                    if st.form_submit_button("登録"):
+                        try:
+                            supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute(); st.rerun()
+                        except: st.error("登録に失敗しました。テーブルの設定を確認してください。")
+            if res_p and res_p.data:
                 for p in res_p.data:
                     c1, c2, c3 = st.columns([3, 1, 1])
                     with c1: st.write(f"**No.{p['chart_number']}** {p['user_name']}")
@@ -333,7 +339,8 @@ elif st.session_state["page"] == "admin_menu":
                     if st.session_state.get(f"p_edit_{p['id']}"):
                         with st.form(f"f_p_{p['id']}"):
                             un, uk, uc = st.text_input("氏名", value=p['user_name']), st.text_input("カナ", value=p['user_kana']), st.text_input("No", value=p['chart_number'])
-                            if st.form_submit_button("確定"): supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
+                            if st.form_submit_button("確定"):
+                                supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute(); del st.session_state[f"p_edit_{p['id']}"]; st.rerun()
         with t2:
             st.markdown("##### 👮 職員・端末管理")
             res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
@@ -346,19 +353,17 @@ elif st.session_state["page"] == "admin_menu":
                         supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
                         st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
         with t3:
-            st.markdown("##### 🔑 管理パスワード変更")
+            st.markdown("##### 🔑 パスワード・表示設定")
             np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
             if st.button("パスワードを更新"):
                 if np == cp:
-                    # 🚀 【堅牢化】UPSERT処理
                     try:
                         res = supabase.table("admin_settings").select("*").eq("key", "admin_password").eq("facility_code", f_code).execute()
                         if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                         else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                         st.success("更新しました。"); st.rerun()
-                    except: st.error("設定用テーブルが見つかりません。Supabaseを確認してください。")
+                    except: st.error("設定テーブルが見つかりません。")
             st.divider()
-            st.markdown("##### 📝 更新履歴の表示人数設定")
             try:
                 current_limit_res = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
                 current_limit = int(current_limit_res.data[0]['value']) if current_limit_res.data else 30
@@ -368,15 +373,13 @@ elif st.session_state["page"] == "admin_menu":
                 try:
                     if current_limit_res.data: supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
-                    st.success(f"表示人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
-                except: st.error("設定用テーブルが見つかりません。")
+                    st.success(f"人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
+                except: st.error("設定テーブルが見つかりません。")
 
         with t4:
             st.markdown("##### 🔄 ブロック解除 (復帰)")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
                 if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
-                    supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰させました。"); time.sleep(1); st.rerun()
-            if not res_l.data: st.info("現在ブロック中の端末はありません。")
-
+                    supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰完了。"); time.sleep(1); st.rerun()
     back_to_top_button("ad_d")
