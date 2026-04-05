@@ -27,6 +27,7 @@ if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
 # --- 🎨 カスタムCSS ---
+# style.cssを読み込む設定がある場合はそちらが優先されますが、app.py内のスタイルも維持します
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -52,7 +53,6 @@ st.markdown("""
     }
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     
-    /* すべてのボタンとその中身（p, div, span）に対して、絶対に2段にしない強制指定 */
     div.stButton > button p, div.stButton > button div, div.stButton > button span {
         white-space: nowrap !important;
         overflow: hidden !important;
@@ -89,7 +89,11 @@ except Exception as e: st.error(f"⚠️ 接続エラー: {e}"); st.stop()
 
 def display_logo(show_line=False):
     try:
-        image = Image.open('logo.png')
+        # logo.png または logo.jpg に対応（君のファイルは logo.jpg だったな）
+        try:
+            image = Image.open('logo.png')
+        except:
+            image = Image.open('logo.jpg')
         col_l, col_m, col_r = st.columns([1, 1, 1])
         with col_m: st.image(image, use_container_width=True)
         if show_line: st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
@@ -136,17 +140,12 @@ if not st.session_state.get("is_authenticated"):
     st.stop()
 
 f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
-if not f_code: st.stop()
 
 def back_to_top_button(key_suffix):
     st.markdown('<div class="top-back-btn">', unsafe_allow_html=True)
     if st.button("◀ TOPに戻る", key=f"bk_{key_suffix}", use_container_width=True):
         st.session_state.update({"page": "top", "edit_content": "", "monitoring_result": ""}); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ==========================================
-# 🏠 画面遷移
-# ==========================================
 
 # --- 🏠 TOP画面 ---
 if st.session_state["page"] == "top":
@@ -204,7 +203,6 @@ elif st.session_state["page"] == "input":
     st.markdown("<div class='main-title'>✍️ ケース記録入力</div>", unsafe_allow_html=True)
     
     kid = st.session_state["input_key_id"]
-    
     p_opts = ["(未選択)"]
     if f_code:
         try:
@@ -235,11 +233,8 @@ elif st.session_state["page"] == "input":
                     ins.append(f)
                 
                 r = model.generate_content(ins)
-                
-                # 🚀 修正：AIの生成結果を、テキストボックスの"内部キー"に直接上書きして確実に表示させる
                 st.session_state["edit_content"] = r.text
                 st.session_state[f"txt_{kid}"] = r.text
-                
                 if aud: os.remove(tmp_p)
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
@@ -253,18 +248,30 @@ elif st.session_state["page"] == "input":
                 current_time = datetime.now(tokyo_tz).time()
                 target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
                 
+                # --- 📸 【修正】画像アップロードとURL取得処理を追加 ---
+                image_url = None
+                if t_img:
+                    file_ext = t_img.name.split(".")[-1]
+                    file_name = f"{uuid.uuid4()}.{file_ext}"
+                    # Storageに保存
+                    supabase.storage.from_("case-photos").upload(file_name, t_img.getvalue())
+                    # 公開URLを取得
+                    res_url = supabase.storage.from_("case-photos").get_public_url(file_name)
+                    image_url = res_url
+
+                # --- 💾 【修正】image_urlをデータベースに含めて保存 ---
                 supabase.table("records").insert({
                     "facility_code": f_code,
                     "chart_number": str(m.group(1)),
                     "user_name": m.group(2),
                     "staff_name": my_name,
                     "content": txt,
+                    "image_url": image_url, # ここが抜けていた
                     "created_at": target_datetime.isoformat()
                 }).execute()
                 
                 st.session_state["edit_content"] = ""
                 st.session_state["input_key_id"] = str(uuid.uuid4())
-                
                 st.success("✅ 保存完了"); time.sleep(0.5); st.rerun()
             except Exception as e:
                 st.error(f"保存エラー: {e}")
@@ -327,14 +334,17 @@ elif st.session_state["page"] == "history":
                     time_str_hist = dt_utc.astimezone(tokyo_tz).strftime('%Y-%m-%d %H:%M')
                 except:
                     time_str_hist = str(r['created_at'])[:16].replace('T', ' ')
-                with st.expander(f"📅 {time_str_hist}"): st.write(r['content'])
+                with st.expander(f"📅 {time_str_hist}"):
+                    st.write(r['content'])
+                    # 履歴でも写真があれば表示
+                    if r.get('image_url'):
+                        st.image(r['image_url'], use_container_width=True)
     back_to_top_button("hs_d")
 
 # --- 📅 日別記録閲覧 ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
-    
     dv_date = st.session_state.pop("dv_target_date", now_tokyo.date())
     selected_date = st.date_input("表示する日付を選択", value=dv_date)
     
@@ -342,23 +352,19 @@ elif st.session_state["page"] == "daily_view":
         try:
             target_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
             target_end = target_start + timedelta(days=1)
-            
             with st.spinner("記録を読み込み中..."):
-                res = supabase.table("records").select("user_name, content, created_at, staff_name").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
+                # 【修正】selectの中に image_url を追加
+                res = supabase.table("records").select("user_name, content, created_at, staff_name, image_url").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
             
             if res.data:
                 df_day = pd.DataFrame(res.data).fillna("不明")
                 unique_users = df_day["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
                 st.divider()
-                
                 target_u = st.session_state.pop("dv_target_user", None)
-                
                 for target_user in unique_users:
                     user_records = df_day[df_day["user_name"] == target_user]
-                    
                     is_expanded = (target_user == target_u)
-                    
                     with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
                         for _, row in user_records.iterrows():
                             try:
@@ -368,12 +374,14 @@ elif st.session_state["page"] == "daily_view":
                                 time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
                             st.info(str(row['content']))
+                            # --- 📸 【追加】画像があれば表示する ---
+                            if row.get('image_url') and row['image_url'] != "不明":
+                                st.image(row['image_url'], use_container_width=True)
                             st.write("")
             else:
                 st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
         except Exception as e:
             st.error(f"データの取得に失敗しました: {e}")
-            
     back_to_top_button("dv_d")
 
 # --- 🛠️ 管理者メニュー画面 ---
