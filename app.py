@@ -124,9 +124,13 @@ if st.session_state["page"] == "top":
     with col_m1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col_m2:
-        if st.button("📊 履歴・モニタリング", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
-    if st.button("📅 日別記録閲覧", use_container_width=True): st.session_state["page"] = "daily_view"; st.rerun()
+        # 🚀 【表記変更】
+        if st.button("📊 ケース記録/モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
+    if st.button("📅 日別記録閲覧", use_container_width=True):
+        st.session_state["page"] = "daily_view"; st.rerun()
+        
     st.divider()
+    
     st.markdown("##### 📝 更新履歴 (最新30名まで)")
     if f_code:
         today_start = tokyo_tz.localize(datetime.combine(now_tokyo.date(), datetime.min.time()))
@@ -157,6 +161,7 @@ elif st.session_state["page"] == "input":
     back_to_top_button("ip_u")
     is_edit = st.session_state.get("editing_record_id") is not None
     st.markdown(f"<div class='main-title'>{'📝 記録を修正' if is_edit else '✍️ ケース記録入力'}</div>", unsafe_allow_html=True)
+    
     kid = st.session_state["input_key_id"]
     p_opts = ["(未選択)"]
     if f_code:
@@ -164,11 +169,13 @@ elif st.session_state["page"] == "input":
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             if res_p.data: p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}] [{r['user_kana']}]" for r in res_p.data]
         except: pass
+    
     default_sel = st.session_state.get("edit_user_label", "(未選択)")
     default_date = st.session_state.get("edit_date", now_tokyo.date())
     sel = st.selectbox("👤 利用者を選択", p_opts, index=p_opts.index(default_sel) if default_sel in p_opts else 0, key=f"sel_{kid}", disabled=is_edit)
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
+
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
@@ -190,6 +197,7 @@ elif st.session_state["page"] == "input":
                     if aud: os.remove(tmp_p)
                     st.rerun()
                 except Exception as e: st.error(f"エラー: {e}")
+            
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
         if sel != "(未選択)" and txt and f_code:
@@ -215,10 +223,11 @@ elif st.session_state["page"] == "input":
             except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
 
-# --- 📊 履歴・モニタリング ---
+# --- 📊 記録/生成画面 ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
-    st.markdown("<div class='main-title'>📊 履歴・モニタリング</div>", unsafe_allow_html=True)
+    # 🚀 【表記変更】
+    st.markdown("<div class='main-title'>📊 ケース記録/モニタリング生成</div>", unsafe_allow_html=True)
     p_opts = ["---"]
     if f_code:
         try:
@@ -259,7 +268,7 @@ elif st.session_state["page"] == "daily_view":
             res = supabase.table("records").select("*").eq("facility_code", f_code).gte("created_at", t_start.isoformat()).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at", desc=True).execute()
             if res.data:
                 df = pd.DataFrame(res.data).fillna("不明")
-                unique_users = df_day["user_name"].unique() if 'df_day' in locals() else df["user_name"].unique()
+                unique_users = df["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
                 st.divider()
                 target_u = st.session_state.pop("dv_target_user", None)
@@ -323,7 +332,6 @@ elif st.session_state["page"] == "admin_menu":
             st.markdown("##### 👮 職員・端末管理 (退職者のブロック)")
             st.info("現在このアプリを利用している職員リストです。退職者の端末を『削除（ブロック）』できます。")
             res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
-            # 🚀 【修正】名前が空（None）のデータを除外して並べ替える（エラー回避）
             unique_staff = sorted(list(set([r['staff_name'] for r in res_staff.data if r.get('staff_name')]))) if res_staff.data else []
             for s in unique_staff:
                 c_s1, c_s2 = st.columns([3, 1])
