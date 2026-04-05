@@ -27,7 +27,6 @@ if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
 # --- 🎨 カスタムCSS ---
-# style.cssを読み込む設定がある場合はそちらが優先されますが、app.py内のスタイルも維持します
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -89,7 +88,6 @@ except Exception as e: st.error(f"⚠️ 接続エラー: {e}"); st.stop()
 
 def display_logo(show_line=False):
     try:
-        # logo.png または logo.jpg に対応（君のファイルは logo.jpg だったな）
         try:
             image = Image.open('logo.png')
         except:
@@ -248,7 +246,7 @@ elif st.session_state["page"] == "input":
                 current_time = datetime.now(tokyo_tz).time()
                 target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
                 
-                # --- 📸 【修正】画像アップロードとURL取得処理を追加 ---
+                # --- 📸 画像アップロードとURL抽出 (強化版) ---
                 image_url = None
                 if t_img:
                     file_ext = t_img.name.split(".")[-1]
@@ -256,17 +254,24 @@ elif st.session_state["page"] == "input":
                     # Storageに保存
                     supabase.storage.from_("case-photos").upload(file_name, t_img.getvalue())
                     # 公開URLを取得
-                    res_url = supabase.storage.from_("case-photos").get_public_url(file_name)
-                    image_url = res_url
+                    res_public_url = supabase.storage.from_("case-photos").get_public_url(file_name)
+                    
+                    # 戻り値の型に関わらずURLを抜き出す
+                    if isinstance(res_public_url, dict):
+                        image_url = res_public_url.get("publicURL") or res_public_url.get("public_url")
+                    elif hasattr(res_public_url, 'public_url'):
+                        image_url = res_public_url.public_url
+                    else:
+                        image_url = str(res_public_url)
 
-                # --- 💾 【修正】image_urlをデータベースに含めて保存 ---
+                # --- 💾 データベースへ保存 ---
                 supabase.table("records").insert({
                     "facility_code": f_code,
                     "chart_number": str(m.group(1)),
                     "user_name": m.group(2),
                     "staff_name": my_name,
                     "content": txt,
-                    "image_url": image_url, # ここが抜けていた
+                    "image_url": image_url,
                     "created_at": target_datetime.isoformat()
                 }).execute()
                 
@@ -353,7 +358,6 @@ elif st.session_state["page"] == "daily_view":
             target_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
             target_end = target_start + timedelta(days=1)
             with st.spinner("記録を読み込み中..."):
-                # 【修正】selectの中に image_url を追加
                 res = supabase.table("records").select("user_name, content, created_at, staff_name, image_url").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
             
             if res.data:
@@ -374,7 +378,7 @@ elif st.session_state["page"] == "daily_view":
                                 time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
                             st.info(str(row['content']))
-                            # --- 📸 【追加】画像があれば表示する ---
+                            # 写真があれば表示する
                             if row.get('image_url') and row['image_url'] != "不明":
                                 st.image(row['image_url'], use_container_width=True)
                             st.write("")
