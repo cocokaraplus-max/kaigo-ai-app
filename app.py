@@ -207,17 +207,13 @@ elif st.session_state["page"] == "input":
                     try:
                         text_result = response.text
                         if text_result.strip():
-                            # 🚀 Streamlitの仕様の罠を突破！テキストエリアの固有キーも直接上書きする
                             st.session_state["edit_content"] = text_result.strip()
                             st.session_state[f"txt_{kid}"] = text_result.strip()
                             st.rerun()
                         else:
-                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎるか、ノイズだけの可能性があります。")
+                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎる可能性があります。")
                     except ValueError:
-                        st.error("🚫 Googleの安全フィルターにより、AIが回答の生成を停止しました。")
-                        if hasattr(response, 'prompt_feedback'):
-                            st.write("詳細:", response.prompt_feedback)
-
+                        st.error("🚫 Googleの安全フィルターにより、生成が停止されました。")
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
             
@@ -258,22 +254,92 @@ elif st.session_state["page"] == "history":
     if sel != "---":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.divider()
-        if st.button("📜 過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
+
+        # 🚀 【完全復旧】1ヶ月分のAIモニタリング生成セクション
+        st.markdown("##### ✨ 1ヶ月分のAIモニタリング作成")
+        
+        # 過去6ヶ月の月リストを生成
+        month_opts = []
+        for i in range(6):
+            m = now_tokyo.month - i
+            y = now_tokyo.year
+            while m <= 0:
+                m += 12
+                y -= 1
+            month_opts.append(f"{y}年{m:02d}月")
+            
+        selected_month_str = st.selectbox("対象月を選択", month_opts)
+        
+        if st.button(f"✨ {selected_month_str} のモニタリングを生成", type="primary"):
+            with st.spinner(f"{selected_month_str} の記録を読み込み、AIが分析中です..."):
+                try:
+                    # 選択月の開始日と終了日を計算
+                    t_y = int(selected_month_str[:4])
+                    t_m = int(selected_month_str[5:7])
+                    s_date = tokyo_tz.localize(datetime(t_y, t_m, 1))
+                    if t_m == 12: e_date = tokyo_tz.localize(datetime(t_y + 1, 1, 1))
+                    else: e_date = tokyo_tz.localize(datetime(t_y, t_m + 1, 1))
+
+                    # データベースから対象月の記録を取得
+                    res_mon = supabase.table("records").select("created_at, staff_name, content").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).order("created_at").execute()
+
+                    if res_mon.data:
+                        records_text = ""
+                        for r in res_mon.data:
+                            dt = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz)
+                            records_text += f"[{dt.strftime('%m/%d')} {r['staff_name']}] {r['content']}\n"
+                        
+                        # AIモデル呼び出し (最新鋭2.5 Flash)
+                        model = genai.GenerativeModel('models/gemini-2.5-flash')
+                        prompt = f"""
+                        あなたはベテランの介護職員です。以下の{u_name}様の1ヶ月分のケース記録をもとに、月間モニタリング報告書を作成してください。
+                        
+                        【ルール】
+                        - 全体的な様子、身体状況の変化、生活の様子などを「丁寧なです・ます調」でまとめること。
+                        - 推測は控え、記録にある事実をベースにすること。
+                        - 挨拶や余計な解説は不要。報告書の本文のみを出力すること。
+                        
+                        【ケース記録】
+                        {records_text}
+                        """
+                        response = model.generate_content(prompt)
+                        
+                        if response and response.text:
+                            st.session_state["monitoring_result"] = response.text
+                        else:
+                            st.error("文章の生成に失敗しました。")
+                    else:
+                        st.warning(f"⚠️ {selected_month_str} の記録は見つかりませんでした。")
+                except Exception as e:
+                    st.error(f"モニタリング生成エラー: {e}")
+
+        if st.session_state.get("monitoring_result"):
+            st.text_area("生成されたモニタリング結果", value=st.session_state["monitoring_result"], height=300)
+
+        st.divider()
+
+        # 🚀 日毎のケース記録表示セクション
+        st.markdown("##### 📜 日毎のケース記録履歴")
+        if st.button("過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
+        
         if st.session_state.get("show_history_list") and f_code:
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
-            for r in res.data:
-                try: t_str = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%Y-%m-%d %H:%M')
-                except: t_str = str(r['created_at'])[:16].replace('T', ' ')
-                with st.expander(f"📅 {t_str} (担当: {r['staff_name']})"):
-                    st.write(r['content'])
-                    if r.get('image_url') and isinstance(r['image_url'], list):
-                        cols = st.columns(min(len(r['image_url']), 5))
-                        for idx, url in enumerate(r['image_url']):
-                            with cols[idx]: st.image(url, use_container_width=True)
-                    if r['staff_name'] == my_name or st.session_state["admin_authenticated"]:
-                        if st.button("✏️ 編集", key=f"ed_h_{r['id']}"):
-                            st.session_state.update({"page": "input", "editing_record_id": r['id'], "edit_content": r['content'], "edit_user_label": f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date": datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+            if res.data:
+                for r in res.data:
+                    try: t_str = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%Y-%m-%d %H:%M')
+                    except: t_str = str(r['created_at'])[:16].replace('T', ' ')
+                    with st.expander(f"📅 {t_str} (担当: {r['staff_name']})"):
+                        st.write(r['content'])
+                        if r.get('image_url') and isinstance(r['image_url'], list):
+                            cols = st.columns(min(len(r['image_url']), 5))
+                            for idx, url in enumerate(r['image_url']):
+                                with cols[idx]: st.image(url, use_container_width=True)
+                        if r['staff_name'] == my_name or st.session_state["admin_authenticated"]:
+                            if st.button("✏️ 編集", key=f"ed_h_{r['id']}"):
+                                st.session_state.update({"page": "input", "editing_record_id": r['id'], "edit_content": r['content'], "edit_user_label": f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date": datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+            else:
+                st.info("まだ記録がありません。")
     back_to_top_button("hs_d")
 
 # --- 📅 日別記録閲覧 ---
