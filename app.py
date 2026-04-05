@@ -26,7 +26,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (デザイン維持) ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -91,7 +91,7 @@ if not device_id:
 if device_id:
     try:
         res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
-        if res_block.data: st.error("🚫 この端末はアクセスが制限されています。管理者にお問い合わせください。"); st.stop()
+        if res_block.data: st.error("🚫 この端末はアクセスが制限されています。"); st.stop()
     except: pass
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
@@ -259,11 +259,15 @@ elif st.session_state["page"] == "daily_view":
             res = supabase.table("records").select("*").eq("facility_code", f_code).gte("created_at", t_start.isoformat()).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at", desc=True).execute()
             if res.data:
                 df = pd.DataFrame(res.data).fillna("不明")
-                t_u = st.session_state.pop("dv_target_user", None)
-                for user in df["user_name"].unique():
-                    u_recs = df[df["user_name"] == user]
-                    with st.expander(f"👤 {user} 様 ({len(u_recs)}件)", expanded=(user == t_u)):
-                        for _, row in u_recs.iterrows():
+                unique_users = df_day["user_name"].unique() if 'df_day' in locals() else df["user_name"].unique()
+                st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
+                st.divider()
+                target_u = st.session_state.pop("dv_target_user", None)
+                for target_user in unique_users:
+                    user_records = df[df["user_name"] == target_user]
+                    is_expanded = (target_user == target_u)
+                    with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
+                        for _, row in user_records.iterrows():
                             try: t_s = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%H:%M')
                             except: t_s = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {t_s}** (担当: {row['staff_name']})")
@@ -288,7 +292,6 @@ elif st.session_state["page"] == "admin_menu":
         cur_pw = res_pw.data[0]['value'] if res_pw.data else "8888"
         if not st.session_state["admin_authenticated"]:
             ad_pw_in = st.text_input("パスワードを入力してください", type="password", key="ad_pass_field")
-            # 🚀 【復活】「認証（ログイン）」ボタン
             if st.button("認証", key="btn_admin_auth"):
                 if ad_pw_in == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
                 else: st.error("パスワードが違います。")
@@ -320,12 +323,12 @@ elif st.session_state["page"] == "admin_menu":
             st.markdown("##### 👮 職員・端末管理 (退職者のブロック)")
             st.info("現在このアプリを利用している職員リストです。退職者の端末を『削除（ブロック）』できます。")
             res_staff = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
-            unique_staff = sorted(list(set([r['staff_name'] for r in res_staff.data]))) if res_staff.data else []
+            # 🚀 【修正】名前が空（None）のデータを除外して並べ替える（エラー回避）
+            unique_staff = sorted(list(set([r['staff_name'] for r in res_staff.data if r.get('staff_name')]))) if res_staff.data else []
             for s in unique_staff:
                 c_s1, c_s2 = st.columns([3, 1])
                 with c_s1: st.write(f"👤 **{s}** さん")
                 with c_s2:
-                    # 🚀 【追加】退職者（端末）をブロックするボタン
                     if st.button("削除 (ブロック)", key=f"blk_btn_{s}"):
                         supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
                         st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
@@ -341,10 +344,8 @@ elif st.session_state["page"] == "admin_menu":
 
         with t4:
             st.markdown("##### 🔄 ブロック解除 (復帰)")
-            st.info("ブロック（削除）した端末を再び使えるようにします。")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
-                # 🚀 【追加】復帰ボタン
                 if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
                     supabase.table("blocked_devices").update({"is_active": False}).eq("id", b['id']).execute(); st.success("復帰させました。"); time.sleep(1); st.rerun()
             if not res_l.data: st.info("現在ブロック中の端末はありません。")
