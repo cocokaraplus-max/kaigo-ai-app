@@ -129,8 +129,10 @@ if st.session_state["page"] == "top":
     with col_m1:
         if st.button("✍️ 記録を書く", use_container_width=True): st.session_state["page"] = "input"; st.rerun()
     with col_m2:
-        if st.button("📊 ケース記録/モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
-    if st.button("📅 日別記録閲覧", use_container_width=True): st.session_state["page"] = "daily_view"; st.rerun()
+        # 🚀 名称変更反映
+        if st.button("📊 モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
+    # 🚀 名称変更反映
+    if st.button("📅 ケース記録閲覧", use_container_width=True): st.session_state["page"] = "daily_view"; st.rerun()
     
     st.divider()
     
@@ -211,7 +213,7 @@ elif st.session_state["page"] == "input":
                             st.session_state[f"txt_{kid}"] = text_result.strip()
                             st.rerun()
                         else:
-                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。")
+                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎる可能性があります。")
                     except ValueError:
                         st.error("🚫 Googleの安全フィルターにより、AIが回答の生成を停止しました。")
                 except Exception as e:
@@ -240,10 +242,10 @@ elif st.session_state["page"] == "input":
             except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
 
-# --- 📊 ケース記録/モニタリング生成 ---
+# --- 📊 モニタリング生成 (名称変更反映) ---
 elif st.session_state["page"] == "history":
     back_to_top_button("hs_u")
-    st.markdown("<div class='main-title'>📊 ケース記録/モニタリング生成</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>📊 モニタリング生成</div>", unsafe_allow_html=True)
     p_opts = ["---"]
     if f_code:
         try:
@@ -255,7 +257,6 @@ elif st.session_state["page"] == "history":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.divider()
 
-        # 1ヶ月分のAIモニタリング作成
         st.markdown("##### ✨ 1ヶ月分のAIモニタリング作成")
         month_opts = []
         for i in range(6):
@@ -295,7 +296,6 @@ elif st.session_state["page"] == "history":
 
         st.divider()
 
-        # 過去の履歴表示 (厳格な編集権限ロック適用)
         st.markdown("##### 📜 過去のケース記録履歴")
         if st.button("履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
@@ -313,7 +313,6 @@ elif st.session_state["page"] == "history":
                             for idx, url in enumerate(r['image_url']):
                                 with cols[idx]: st.image(url, use_container_width=True)
                         
-                        # 🚀 【復旧】編集権限ロック (本人 or 管理者のみ)
                         if str(r['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
                             if st.button("✏️ 編集", key=f"ed_h_{r['id']}"):
                                 st.session_state.update({"page": "input", "editing_record_id": r['id'], "edit_content": r['content'], "edit_user_label": f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date": datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
@@ -321,10 +320,10 @@ elif st.session_state["page"] == "history":
                 st.info("まだ記録がありません。")
     back_to_top_button("hs_d")
 
-# --- 📅 日別記録閲覧 ---
+# --- 📅 ケース記録閲覧 (名称変更＆UI革新) ---
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
-    st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>📅 ケース記録閲覧</div>", unsafe_allow_html=True)
     dv_date = st.session_state.pop("dv_target_date", now_tokyo.date())
     selected_date = st.date_input("表示する日付を選択", value=dv_date)
     if selected_date and f_code:
@@ -336,43 +335,59 @@ elif st.session_state["page"] == "daily_view":
                 unique_users_view = df["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users_view)}名** の記録があります")
                 st.divider()
+                
                 target_u = st.session_state.pop("dv_target_user", None)
+                
                 for target_user in unique_users_view:
                     user_records = df[df["user_name"] == target_user]
                     is_expanded = (target_user == target_u)
+                    
                     with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
-                        for _, row in user_records.iterrows():
-                            try: t_s = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%H:%M')
-                            except: t_s = str(row['created_at'])[11:16]
-                            st.markdown(f"**🕒 {t_s}** (担当: {row['staff_name']})")
-                            st.info(str(row['content']))
-                            if row.get('image_url') and isinstance(row['image_url'], list):
-                                cols = st.columns(min(len(row['image_url']), 5))
-                                for idx, url in enumerate(row['image_url']):
-                                    with cols[idx]: st.image(url, use_container_width=True)
-                            
-                            # 🚀 【復旧】編集権限ロック (本人 or 管理者のみ)
-                            if str(row['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
-                                if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
-                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
                         
-                        # 🚀 【新復活】同一日の細かな記録をAIで1つにまとめる機能
-                        if len(user_records) > 1:
-                            st.markdown("---")
-                            if st.button(f"✨ この日の記録をAIでまとめる", key=f"sum_{target_user}_{selected_date}"):
-                                with st.spinner("AIが1日の記録を要約中..."):
+                        # 🚀 AI自動要約機能 (ボタンなしで即時表示・キャッシュ活用)
+                        summary_key = f"sum_{selected_date}_{target_user}"
+                        
+                        if summary_key not in st.session_state:
+                            if len(user_records) > 1:
+                                with st.spinner("AIが1日のまとめを作成中..."):
                                     try:
                                         model = genai.GenerativeModel('models/gemini-2.5-flash')
                                         daily_texts = "\n".join([f"[{str(row['created_at'])[11:16]} {row['staff_name']}] {row['content']}" for _, row in user_records.iterrows()])
-                                        prompt = f"あなたは介護のプロです。以下の1日分の複数回にわたる記録を、時系列や状況がわかるように「丁寧なです・ます調」で1つのまとまった申し送り記録に要約してください。挨拶や解説は不要です。\n\n【記録】\n{daily_texts}"
+                                        prompt = f"あなたは介護のプロです。以下の1日分の複数回にわたる記録を、状況が直感的にわかるように「丁寧なです・ます調」で1つのまとまった申し送りに要約してください。挨拶や解説は不要です。\n\n【記録】\n{daily_texts}"
                                         response = model.generate_content(prompt)
                                         if response and response.text:
-                                            st.success("✅ 1日のまとめを作成しました")
-                                            st.info(response.text)
+                                            st.session_state[summary_key] = response.text
                                         else:
-                                            st.error("要約に失敗しました。")
+                                            st.session_state[summary_key] = "要約の作成に失敗しました。"
                                     except Exception as e:
-                                        st.error(f"AIエラー: {e}")
+                                        st.session_state[summary_key] = f"AIまとめエラー: {e}"
+                            else:
+                                # 記録が1件だけの場合は、要約せずそのまま内容を格納
+                                st.session_state[summary_key] = user_records.iloc[0]['content']
+                        
+                        # ✨ 一日のまとめを最上部に大きく表示
+                        st.markdown("##### ✨ 1日のまとめ")
+                        st.info(st.session_state[summary_key])
+                        
+                        st.markdown("---")
+                        
+                        # 📝 個別の詳細記録（クリックして展開する形式へ）
+                        st.markdown("##### 📝 個別の詳細記録")
+                        for _, row in user_records.iterrows():
+                            try: t_s = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz).strftime('%H:%M')
+                            except: t_s = str(row['created_at'])[11:16]
+                            
+                            with st.expander(f"🕒 {t_s} ／ 担当: {row['staff_name']}"):
+                                st.write(str(row['content']))
+                                if row.get('image_url') and isinstance(row['image_url'], list):
+                                    cols = st.columns(min(len(row['image_url']), 5))
+                                    for idx, url in enumerate(row['image_url']):
+                                        with cols[idx]: st.image(url, use_container_width=True)
+                                
+                                # 編集権限の厳格ロック適用
+                                if str(row['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
+                                    if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
+                                        st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
 
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
