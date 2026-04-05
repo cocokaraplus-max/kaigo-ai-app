@@ -37,6 +37,7 @@ st.markdown("""
     .scrollable-history { max-height: 250px; overflow-y: auto; border: 2px solid #ff4b4b; border-radius: 10px; padding: 15px; background-color: #fffaf0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
     
+    /* カレンダー色分け */
     div[data-baseweb="calendar"] [aria-label*="Sunday"] { color: #ff4b4b !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Saturday"] { color: #0000ff !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Monday"], div[data-baseweb="calendar"] [aria-label*="Tuesday"],
@@ -181,15 +182,15 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI生成ロジックの強化換装
+    # 🚀 AI生成ロジック：404エラー回避のためのモデル名修正
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
             with st.spinner("思考中..."):
                 try:
-                    # モデルを gemini-1.5-flash に更新
-                    model = genai.GenerativeModel("models/gemini-1.5-flash")
+                    # 🚀 404回避：'gemini-1.5-flash-latest' を使用
+                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
                     prompt = """
                     あなたはベテランの介護職員です。提供された音声や画像から事実のみを抽出し、
                     職員間での申し送りに最適な「丁寧かつ簡潔なです・ます調」でケース記録を作成してください。
@@ -302,7 +303,7 @@ elif st.session_state["page"] == "daily_view":
                                     with cols[idx]: st.image(url, use_container_width=True)
                             if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
-                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{r['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
     back_to_top_button("dv_d")
@@ -331,6 +332,7 @@ elif st.session_state["page"] == "admin_menu":
             try:
                 res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             except: res_p = None
+            
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
                     c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
@@ -369,11 +371,14 @@ elif st.session_state["page"] == "admin_menu":
                     if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                     st.success("更新しました。"); st.rerun()
+            
             st.divider()
+            st.markdown("##### 📝 更新履歴の表示人数設定")
             try:
                 res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
                 current_limit = int(res_l.data[0]['value']) if res_l.data else 30
             except: current_limit = 30
+            
             new_limit = st.slider("表示人数（名）", min_value=10, max_value=100, value=current_limit, step=5)
             if st.button("表示件数を保存"):
                 res_chk = supabase.table("admin_settings").select("*").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -381,7 +386,7 @@ elif st.session_state["page"] == "admin_menu":
                     supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
                 else:
                     supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
-                st.success(f"表示人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
+                st.success(f"表示件数を {new_limit} 名に変更しました。"); time.sleep(1); st.rerun()
 
         with t4:
             st.markdown("##### 🔄 ブロック解除 (復帰)")
