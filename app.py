@@ -37,7 +37,6 @@ st.markdown("""
     .scrollable-history { max-height: 250px; overflow-y: auto; border: 2px solid #ff4b4b; border-radius: 10px; padding: 15px; background-color: #fffaf0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
     
-    /* カレンダーの色分け強制適用 */
     div[data-baseweb="calendar"] [aria-label*="Sunday"] { color: #ff4b4b !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Saturday"] { color: #0000ff !important; font-weight: bold !important; }
     div[data-baseweb="calendar"] [aria-label*="Monday"], div[data-baseweb="calendar"] [aria-label*="Tuesday"],
@@ -134,7 +133,6 @@ if st.session_state["page"] == "top":
     
     st.divider()
     
-    # 🚀 【機能拡張】設定テーブルから履歴の表示件数を取得
     hist_limit = 30
     try:
         res_limit = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -149,7 +147,6 @@ if st.session_state["page"] == "top":
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
                 grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
-                # 🚀 動的な件数制限を適用
                 grouped = grouped.sort_values("last_time", ascending=False).head(hist_limit)
                 with st.container(height=250):
                     for _, row in grouped.iterrows():
@@ -183,27 +180,42 @@ elif st.session_state["page"] == "input":
     sel = st.selectbox("👤 利用者を選択", p_opts, index=p_opts.index(default_sel) if default_sel in p_opts else 0, key=f"sel_{kid}", disabled=is_edit)
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
+    
+    # 🚀 AI生成ロジックの強化換装
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
-            with st.spinner("整理中..."):
+            with st.spinner("思考中..."):
                 try:
-                    model = genai.GenerativeModel("models/gemini-2.5-flash")
-                    ins = ["音声や画像にある事実のみを文章化し、推測や事実以外の追加情報は絶対に書かないこと。「え〜」「あ〜」などの無意味な言葉（フィラー）は完全に削除すること。介護職員が職場の仲間に申し送りをするような、簡潔で分かりやすい「です・ます調」で出力すること。解説や挨拶などの余計な文章は一切不要。"]
+                    # モデルを gemini-1.5-flash に更新
+                    model = genai.GenerativeModel("models/gemini-1.5-flash")
+                    prompt = """
+                    あなたはベテランの介護職員です。提供された音声や画像から事実のみを抽出し、
+                    職員間での申し送りに最適な「丁寧かつ簡潔なです・ます調」でケース記録を作成してください。
+                    
+                    【ルール】
+                    1. 「あー」「えー」などのフィラーは完全に削除。
+                    2. 推測は書かず、確認できた事実のみを記述。
+                    3. 挨拶や解説は一切不要。文章のみを出力すること。
+                    4. 職員同士が連絡し合う際に使う、自然なトーンにすること。
+                    """
+                    inputs = [prompt]
                     if t_imgs:
-                        for img in t_imgs: ins.append(Image.open(img))
+                        for img in t_imgs: inputs.append(Image.open(img))
                     if aud:
                         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                             tmp.write(aud.getvalue()); tmp_p = tmp.name
                         f = genai.upload_file(path=tmp_p)
-                        while f.state.name != "ACTIVE": time.sleep(1); f = genai.get_file(f.name)
-                        ins.append(f)
-                    r = model.generate_content(ins)
+                        while f.state.name != "ACTIVE": time.sleep(0.5); f = genai.get_file(f.name)
+                        inputs.append(f)
+                    
+                    r = model.generate_content(inputs)
                     st.session_state["edit_content"] = r.text
                     if aud: os.remove(tmp_p)
                     st.rerun()
-                except Exception as e: st.error(f"エラー: {e}")
+                except Exception as e: st.error(f"AI生成エラー: {e}")
+            
     txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
         if sel != "(未選択)" and txt and f_code:
@@ -290,7 +302,7 @@ elif st.session_state["page"] == "daily_view":
                                     with cols[idx]: st.image(url, use_container_width=True)
                             if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
-                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{r['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
     back_to_top_button("dv_d")
@@ -300,7 +312,6 @@ elif st.session_state["page"] == "admin_menu":
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
     if f_code:
-        # 管理者パスワード取得
         cur_pw = "8888"
         try:
             res_pw = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
@@ -320,7 +331,6 @@ elif st.session_state["page"] == "admin_menu":
             try:
                 res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             except: res_p = None
-            
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
                     c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
@@ -359,15 +369,11 @@ elif st.session_state["page"] == "admin_menu":
                     if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                     st.success("更新しました。"); st.rerun()
-            
             st.divider()
-            # 🚀 【追加】更新履歴の表示件数設定
-            st.markdown("##### 📝 更新履歴の表示人数設定")
             try:
                 res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
                 current_limit = int(res_l.data[0]['value']) if res_l.data else 30
             except: current_limit = 30
-            
             new_limit = st.slider("表示人数（名）", min_value=10, max_value=100, value=current_limit, step=5)
             if st.button("表示件数を保存"):
                 res_chk = supabase.table("admin_settings").select("*").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -375,7 +381,7 @@ elif st.session_state["page"] == "admin_menu":
                     supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
                 else:
                     supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
-                st.success(f"表示件数を {new_limit} 名に変更しました。"); time.sleep(1); st.rerun()
+                st.success(f"表示人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
 
         with t4:
             st.markdown("##### 🔄 ブロック解除 (復帰)")
