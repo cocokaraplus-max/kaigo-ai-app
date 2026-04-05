@@ -26,7 +26,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS ---
+# --- 🎨 カスタムCSS (一文字も削らず維持) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -52,6 +52,7 @@ st.markdown("""
     }
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     
+    /* すべてのボタンとその中身（p, div, span）に対して、絶対に2段にしない強制指定 */
     div.stButton > button p, div.stButton > button div, div.stButton > button span {
         white-space: nowrap !important;
         overflow: hidden !important;
@@ -138,12 +139,17 @@ if not st.session_state.get("is_authenticated"):
     st.stop()
 
 f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
+if not f_code: st.stop()
 
 def back_to_top_button(key_suffix):
     st.markdown('<div class="top-back-btn">', unsafe_allow_html=True)
     if st.button("◀ TOPに戻る", key=f"bk_{key_suffix}", use_container_width=True):
         st.session_state.update({"page": "top", "edit_content": "", "monitoring_result": ""}); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ==========================================
+# 🏠 画面遷移
+# ==========================================
 
 # --- 🏠 TOP画面 ---
 if st.session_state["page"] == "top":
@@ -212,17 +218,19 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{kid}")
         
     st.markdown("---")
-    t_img = st.file_uploader("📷 写真（背面カメラ）", type=["jpg", "png", "jpeg"], key=f"img_{kid}")
+    # 📸 複数枚対応
+    t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
     st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
     aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
     
-    if (t_img or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
+    if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
         with st.spinner("整理中..."):
             try:
                 model = genai.GenerativeModel("models/gemini-2.5-flash")
                 ins = ["音声や画像にある事実のみを文章化し、推測や事実以外の追加情報は絶対に書かないこと。「え〜」「あ〜」などの無意味な言葉（フィラー）は完全に削除すること。介護職員が職場の仲間に申し送りをするような、簡潔で分かりやすい「です・ます調」で出力すること。解説や挨拶などの余計な文章は一切不要。"]
-                if t_img: ins.append(Image.open(t_img))
+                if t_imgs:
+                    for img in t_imgs: ins.append(Image.open(img))
                 if aud:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         tmp.write(aud.getvalue()); tmp_p = tmp.name
@@ -246,23 +254,15 @@ elif st.session_state["page"] == "input":
                 current_time = datetime.now(tokyo_tz).time()
                 target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
                 
-                # --- 📸 画像アップロードとURL抽出 (強化版) ---
-                image_url = None
-                if t_img:
-                    file_ext = t_img.name.split(".")[-1]
-                    file_name = f"{uuid.uuid4()}.{file_ext}"
-                    # Storageに保存
-                    supabase.storage.from_("case-photos").upload(file_name, t_img.getvalue())
-                    # 公開URLを取得
-                    res_public_url = supabase.storage.from_("case-photos").get_public_url(file_name)
-                    
-                    # 戻り値の型に関わらずURLを抜き出す
-                    if isinstance(res_public_url, dict):
-                        image_url = res_public_url.get("publicURL") or res_public_url.get("public_url")
-                    elif hasattr(res_public_url, 'public_url'):
-                        image_url = res_public_url.public_url
-                    else:
-                        image_url = str(res_public_url)
+                # --- 📸 複数枚保存ロジック (配列形式対応) ---
+                urls = []
+                if t_imgs:
+                    for img in t_imgs[:5]: 
+                        f_name = f"{uuid.uuid4()}.{img.name.split('.')[-1]}"
+                        supabase.storage.from_("case-photos").upload(f_name, img.getvalue())
+                        res_url = supabase.storage.from_("case-photos").get_public_url(f_name)
+                        if hasattr(res_url, 'public_url'): urls.append(res_url.public_url)
+                        else: urls.append(str(res_url))
 
                 # --- 💾 データベースへ保存 ---
                 supabase.table("records").insert({
@@ -271,7 +271,7 @@ elif st.session_state["page"] == "input":
                     "user_name": m.group(2),
                     "staff_name": my_name,
                     "content": txt,
-                    "image_url": image_url,
+                    "image_url": urls if urls else None, # 配列として保存
                     "created_at": target_datetime.isoformat()
                 }).execute()
                 
@@ -341,9 +341,11 @@ elif st.session_state["page"] == "history":
                     time_str_hist = str(r['created_at'])[:16].replace('T', ' ')
                 with st.expander(f"📅 {time_str_hist}"):
                     st.write(r['content'])
-                    # 履歴でも写真があれば表示
-                    if r.get('image_url'):
-                        st.image(r['image_url'], use_container_width=True)
+                    # 複数枚対応サムネイル
+                    if r.get('image_url') and isinstance(r['image_url'], list):
+                        cols = st.columns(min(len(r['image_url']), 5))
+                        for idx, url in enumerate(r['image_url']):
+                            with cols[idx]: st.image(url, use_container_width=True)
     back_to_top_button("hs_d")
 
 # --- 📅 日別記録閲覧 ---
@@ -378,9 +380,11 @@ elif st.session_state["page"] == "daily_view":
                                 time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
                             st.info(str(row['content']))
-                            # 写真があれば表示する
-                            if row.get('image_url') and row['image_url'] != "不明":
-                                st.image(row['image_url'], use_container_width=True)
+                            # --- 📸 スマートUI：サムネイル横並び表示 ---
+                            if row.get('image_url') and isinstance(row['image_url'], list):
+                                cols = st.columns(min(len(row['image_url']), 5))
+                                for idx, url in enumerate(row['image_url']):
+                                    with cols[idx]: st.image(url, use_container_width=True)
                             st.write("")
             else:
                 st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
