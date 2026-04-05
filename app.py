@@ -211,9 +211,9 @@ elif st.session_state["page"] == "input":
                             st.session_state[f"txt_{kid}"] = text_result.strip()
                             st.rerun()
                         else:
-                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎる可能性があります。")
+                            st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。")
                     except ValueError:
-                        st.error("🚫 Googleの安全フィルターにより、生成が停止されました。")
+                        st.error("🚫 Googleの安全フィルターにより、AIが回答の生成を停止しました。")
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
             
@@ -255,32 +255,25 @@ elif st.session_state["page"] == "history":
         u_name = re.search(r'\) (.*?) \[', sel).group(1) if '[' in sel else re.search(r'\) (.*)', sel).group(1)
         st.divider()
 
-        # 🚀 【完全復旧】1ヶ月分のAIモニタリング生成セクション
+        # 1ヶ月分のAIモニタリング作成
         st.markdown("##### ✨ 1ヶ月分のAIモニタリング作成")
-        
-        # 過去6ヶ月の月リストを生成
         month_opts = []
         for i in range(6):
             m = now_tokyo.month - i
             y = now_tokyo.year
-            while m <= 0:
-                m += 12
-                y -= 1
+            while m <= 0: m += 12; y -= 1
             month_opts.append(f"{y}年{m:02d}月")
             
         selected_month_str = st.selectbox("対象月を選択", month_opts)
-        
         if st.button(f"✨ {selected_month_str} のモニタリングを生成", type="primary"):
-            with st.spinner(f"{selected_month_str} の記録を読み込み、AIが分析中です..."):
+            with st.spinner(f"AIが分析中です..."):
                 try:
-                    # 選択月の開始日と終了日を計算
                     t_y = int(selected_month_str[:4])
                     t_m = int(selected_month_str[5:7])
                     s_date = tokyo_tz.localize(datetime(t_y, t_m, 1))
                     if t_m == 12: e_date = tokyo_tz.localize(datetime(t_y + 1, 1, 1))
                     else: e_date = tokyo_tz.localize(datetime(t_y, t_m + 1, 1))
 
-                    # データベースから対象月の記録を取得
                     res_mon = supabase.table("records").select("created_at, staff_name, content").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).order("created_at").execute()
 
                     if res_mon.data:
@@ -289,38 +282,22 @@ elif st.session_state["page"] == "history":
                             dt = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz)
                             records_text += f"[{dt.strftime('%m/%d')} {r['staff_name']}] {r['content']}\n"
                         
-                        # AIモデル呼び出し (最新鋭2.5 Flash)
                         model = genai.GenerativeModel('models/gemini-2.5-flash')
-                        prompt = f"""
-                        あなたはベテランの介護職員です。以下の{u_name}様の1ヶ月分のケース記録をもとに、月間モニタリング報告書を作成してください。
-                        
-                        【ルール】
-                        - 全体的な様子、身体状況の変化、生活の様子などを「丁寧なです・ます調」でまとめること。
-                        - 推測は控え、記録にある事実をベースにすること。
-                        - 挨拶や余計な解説は不要。報告書の本文のみを出力すること。
-                        
-                        【ケース記録】
-                        {records_text}
-                        """
+                        prompt = f"あなたは介護のプロです。以下の{u_name}様の1ヶ月分の記録をもとに、月間モニタリング報告書を「丁寧なです・ます調」で作成してください。\n\n【記録】\n{records_text}"
                         response = model.generate_content(prompt)
-                        
-                        if response and response.text:
-                            st.session_state["monitoring_result"] = response.text
-                        else:
-                            st.error("文章の生成に失敗しました。")
-                    else:
-                        st.warning(f"⚠️ {selected_month_str} の記録は見つかりませんでした。")
-                except Exception as e:
-                    st.error(f"モニタリング生成エラー: {e}")
+                        if response and response.text: st.session_state["monitoring_result"] = response.text
+                        else: st.error("生成に失敗しました。")
+                    else: st.warning(f"⚠️ 記録が見つかりませんでした。")
+                except Exception as e: st.error(f"エラー: {e}")
 
         if st.session_state.get("monitoring_result"):
             st.text_area("生成されたモニタリング結果", value=st.session_state["monitoring_result"], height=300)
 
         st.divider()
 
-        # 🚀 日毎のケース記録表示セクション
-        st.markdown("##### 📜 日毎のケース記録履歴")
-        if st.button("過去の履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
+        # 過去の履歴表示 (厳格な編集権限ロック適用)
+        st.markdown("##### 📜 過去のケース記録履歴")
+        if st.button("履歴を表示" if not st.session_state.get("show_history_list") else "閉じる"):
             st.session_state["show_history_list"] = not st.session_state.get("show_history_list", False); st.rerun()
         
         if st.session_state.get("show_history_list") and f_code:
@@ -335,7 +312,9 @@ elif st.session_state["page"] == "history":
                             cols = st.columns(min(len(r['image_url']), 5))
                             for idx, url in enumerate(r['image_url']):
                                 with cols[idx]: st.image(url, use_container_width=True)
-                        if r['staff_name'] == my_name or st.session_state["admin_authenticated"]:
+                        
+                        # 🚀 【復旧】編集権限ロック (本人 or 管理者のみ)
+                        if str(r['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
                             if st.button("✏️ 編集", key=f"ed_h_{r['id']}"):
                                 st.session_state.update({"page": "input", "editing_record_id": r['id'], "edit_content": r['content'], "edit_user_label": f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date": datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else:
@@ -371,9 +350,30 @@ elif st.session_state["page"] == "daily_view":
                                 cols = st.columns(min(len(row['image_url']), 5))
                                 for idx, url in enumerate(row['image_url']):
                                     with cols[idx]: st.image(url, use_container_width=True)
-                            if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
+                            
+                            # 🚀 【復旧】編集権限ロック (本人 or 管理者のみ)
+                            if str(row['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
                                     st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+                        
+                        # 🚀 【新復活】同一日の細かな記録をAIで1つにまとめる機能
+                        if len(user_records) > 1:
+                            st.markdown("---")
+                            if st.button(f"✨ この日の記録をAIでまとめる", key=f"sum_{target_user}_{selected_date}"):
+                                with st.spinner("AIが1日の記録を要約中..."):
+                                    try:
+                                        model = genai.GenerativeModel('models/gemini-2.5-flash')
+                                        daily_texts = "\n".join([f"[{str(row['created_at'])[11:16]} {row['staff_name']}] {row['content']}" for _, row in user_records.iterrows()])
+                                        prompt = f"あなたは介護のプロです。以下の1日分の複数回にわたる記録を、時系列や状況がわかるように「丁寧なです・ます調」で1つのまとまった申し送り記録に要約してください。挨拶や解説は不要です。\n\n【記録】\n{daily_texts}"
+                                        response = model.generate_content(prompt)
+                                        if response and response.text:
+                                            st.success("✅ 1日のまとめを作成しました")
+                                            st.info(response.text)
+                                        else:
+                                            st.error("要約に失敗しました。")
+                                    except Exception as e:
+                                        st.error(f"AIエラー: {e}")
+
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
     back_to_top_button("dv_d")
