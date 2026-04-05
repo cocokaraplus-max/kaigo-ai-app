@@ -186,7 +186,7 @@ elif st.session_state["page"] == "input":
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
-            with st.spinner("AIが現場の声を直接読み込んでいます..."):
+            with st.spinner("AIが現場の声を文章に変換中..."):
                 try:
                     model = genai.GenerativeModel('models/gemini-2.5-flash')
                     prompt = """あなたは介護のプロです。入力された音声や画像から事実のみを読み取り、
@@ -207,7 +207,9 @@ elif st.session_state["page"] == "input":
                     try:
                         text_result = response.text
                         if text_result.strip():
+                            # 🚀 Streamlitの仕様の罠を突破！テキストエリアの固有キーも直接上書きする
                             st.session_state["edit_content"] = text_result.strip()
+                            st.session_state[f"txt_{kid}"] = text_result.strip()
                             st.rerun()
                         else:
                             st.error("⚠️ AIは処理を完了しましたが、文章が空っぽでした。音声が短すぎるか、ノイズだけの可能性があります。")
@@ -219,7 +221,7 @@ elif st.session_state["page"] == "input":
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
             
-    txt = st.text_area("内容", value=st.session_state["edit_content"], height=200, key=f"txt_{kid}")
+    txt = st.text_area("内容", value=st.session_state.get(f"txt_{kid}", st.session_state["edit_content"]), height=200, key=f"txt_{kid}")
     if st.button("🆙 修正を保存" if is_edit else "💾 クラウドに保存", use_container_width=True, key="btn_save"):
         if sel != "(未選択)" and txt and f_code:
             try:
@@ -304,7 +306,6 @@ elif st.session_state["page"] == "daily_view":
                                 for idx, url in enumerate(row['image_url']):
                                     with cols[idx]: st.image(url, use_container_width=True)
                             if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
-                                # 🚀 修正完了: 変数「row」に統一
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
                                     st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else: st.info("📭 記録は見つかりませんでした。")
