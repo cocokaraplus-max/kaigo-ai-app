@@ -100,7 +100,8 @@ if device_id:
     except: pass
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
-    if sf and sn: st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn}); st.rerun()
+    if sf and sn:
+        st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn}); st.rerun()
     display_logo()
     with st.container(border=True):
         f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="f_login")
@@ -182,15 +183,15 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI生成ロジック：404エラー回避のためのモデル名修正
+    # 🚀 AI生成ロジック：最終安定化のための純粋なモデル指定
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
             with st.spinner("思考中..."):
                 try:
-                    # 🚀 404回避：'gemini-1.5-flash-latest' を使用
-                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+                    # 🚀 最終修正：'gemini-1.5-flash' を直接指定（models/ プレフィックスなし）
+                    model = genai.GenerativeModel("gemini-1.5-flash")
                     prompt = """
                     あなたはベテランの介護職員です。提供された音声や画像から事実のみを抽出し、
                     職員間での申し送りに最適な「丁寧かつ簡潔なです・ます調」でケース記録を作成してください。
@@ -332,7 +333,6 @@ elif st.session_state["page"] == "admin_menu":
             try:
                 res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             except: res_p = None
-            
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
                     c, n, k = st.text_input("No"), st.text_input("氏名"), st.text_input("ふりがな")
@@ -363,7 +363,7 @@ elif st.session_state["page"] == "admin_menu":
                         supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
                         st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
         with t3:
-            st.markdown("##### 🔑 パスワード変更")
+            st.markdown("##### 🔑 パスワード設定・表示設定")
             np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
             if st.button("パスワードを更新"):
                 if np == cp:
@@ -371,14 +371,11 @@ elif st.session_state["page"] == "admin_menu":
                     if res.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                     st.success("更新しました。"); st.rerun()
-            
             st.divider()
-            st.markdown("##### 📝 更新履歴の表示人数設定")
             try:
                 res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
                 current_limit = int(res_l.data[0]['value']) if res_l.data else 30
             except: current_limit = 30
-            
             new_limit = st.slider("表示人数（名）", min_value=10, max_value=100, value=current_limit, step=5)
             if st.button("表示件数を保存"):
                 res_chk = supabase.table("admin_settings").select("*").eq("key", "history_limit").eq("facility_code", f_code).execute()
