@@ -182,35 +182,28 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=default_date, key=f"date_{kid}", disabled=is_edit)
     st.markdown("---")
     
-    # 🚀 AI文章生成ロジック：ダイレクト通信（沈黙打破版）
     if not is_edit:
         t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
         aud = st.audio_input("録音ボタン", key=f"aud_{kid}")
         if (t_imgs or aud) and st.button("✨ AIで文章にする", type="primary", key="btn_ai"):
             with st.spinner("AIが現場の声を直接読み込んでいます..."):
                 try:
-                    # 🚀 君の環境の最新モデル
                     model = genai.GenerativeModel('models/gemini-2.5-flash')
-                    
                     prompt = """あなたは介護のプロです。入力された音声や画像から事実のみを読み取り、
                     職員間の連絡（申し送り）に適した「丁寧なです・ます調」で簡潔に記録を書いてください。
                     挨拶や余計な解説は一切書かず、文章のみを直接出力してください。"""
                     
-                    # 🚀 入力データを直接構築（アップロードAPIの迂回）
                     contents = [prompt]
                     if t_imgs:
                         for img in t_imgs: contents.append(Image.open(img))
                     if aud:
-                        # 音声データを一時保存せず、バイナリのまま直接AIに流し込む
                         contents.append({
                             "mime_type": "audio/wav",
                             "data": aud.getvalue()
                         })
                     
-                    # 生成実行
                     response = model.generate_content(contents)
                     
-                    # 🚀 結果の厳格な検証
                     try:
                         text_result = response.text
                         if text_result.strip():
@@ -311,8 +304,9 @@ elif st.session_state["page"] == "daily_view":
                                 for idx, url in enumerate(row['image_url']):
                                     with cols[idx]: st.image(url, use_container_width=True)
                             if row['staff_name'] == my_name or st.session_state["admin_authenticated"]:
+                                # 🚀 修正完了: 変数「row」に統一
                                 if st.button("✏️ 編集", key=f"ed_dv_{row['id']}"):
-                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{r['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
+                                    st.session_state.update({"page": "input", "editing_record_id": row['id'], "edit_content": row['content'], "edit_user_label": f"(No.{row['chart_number']}) [{row['user_name']}]", "edit_date": datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).date()}); st.rerun()
             else: st.info("📭 記録は見つかりませんでした。")
         except Exception as e: st.error(f"失敗: {e}")
     back_to_top_button("dv_d")
