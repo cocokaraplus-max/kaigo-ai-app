@@ -25,7 +25,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (カレンダー色分けの強制力を大幅強化) ---
+# --- 🎨 カスタムCSS (カレンダー色分け・強制適用) ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -39,12 +39,9 @@ st.markdown("""
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     div.stButton > button p, div.stButton > button div, div.stButton > button span { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-size: clamp(10px, 3vw, 14px) !important; }
     
-    /* 🚀 カレンダーの色分け：より深い階層まで強制適用 */
-    /* 日曜日: 赤 */
+    /* カレンダーの色分け強制適用 */
     div[data-baseweb="calendar"] [aria-label*="Sunday"] { color: #ff4b4b !important; font-weight: bold !important; }
-    /* 土曜日: 青 */
     div[data-baseweb="calendar"] [aria-label*="Saturday"] { color: #0000ff !important; font-weight: bold !important; }
-    /* 平日: 黒 */
     div[data-baseweb="calendar"] [aria-label*="Monday"], div[data-baseweb="calendar"] [aria-label*="Tuesday"],
     div[data-baseweb="calendar"] [aria-label*="Wednesday"], div[data-baseweb="calendar"] [aria-label*="Thursday"],
     div[data-baseweb="calendar"] [aria-label*="Friday"] { color: #31333F !important; }
@@ -136,8 +133,16 @@ if st.session_state["page"] == "top":
     with col_m2:
         if st.button("📊 ケース記録/モニタリング生成", use_container_width=True): st.session_state["page"] = "history"; st.rerun()
     if st.button("📅 日別記録閲覧", use_container_width=True): st.session_state["page"] = "daily_view"; st.rerun()
+    
     st.divider()
-    st.markdown("##### 📝 更新履歴 (最新30名まで)")
+    
+    # 🚀 【機能拡張】表示人数をDBから取得
+    try:
+        res_limit = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
+        hist_limit = int(res_limit.data[0]['value']) if res_limit.data else 30
+    except: hist_limit = 30
+
+    st.markdown(f"##### 📝 更新履歴 (最新{hist_limit}名まで)")
     if f_code:
         today_start = tokyo_tz.localize(datetime.combine(now_tokyo.date(), datetime.min.time()))
         try:
@@ -145,7 +150,8 @@ if st.session_state["page"] == "top":
             if res_today.data:
                 df = pd.DataFrame(res_today.data)
                 grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
-                grouped = grouped.sort_values("last_time", ascending=False).head(30)
+                # hist_limit を適用
+                grouped = grouped.sort_values("last_time", ascending=False).head(hist_limit)
                 with st.container(height=250):
                     for _, row in grouped.iterrows():
                         try:
@@ -305,8 +311,9 @@ elif st.session_state["page"] == "admin_menu":
                 if ad_pw_in == cur_pw: st.session_state["admin_authenticated"] = True; st.rerun()
                 else: st.error("パスワードが違います。")
             st.stop()
-        t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 職員管理", "🔑 パス設定", "🚫 セキュリティ"])
+        t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 職員管理", "⚙️ 設定変更", "🚫 セキュリティ"])
         with t1:
+            st.markdown("##### 👤 利用者の新規登録・編集・削除")
             res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
             with st.expander("🆕 新規登録"):
                 with st.form("ad_reg", clear_on_submit=True):
@@ -336,13 +343,28 @@ elif st.session_state["page"] == "admin_menu":
                         supabase.table("blocked_devices").insert({"device_id": device_id, "staff_name": s, "facility_code": f_code, "is_active": True}).execute()
                         st.warning(f"{s}さんの端末をブロックしました。"); time.sleep(1); st.rerun()
         with t3:
+            st.markdown("##### 🔑 管理パスワード変更")
             np, cp = st.text_input("新パス", type="password"), st.text_input("確認", type="password")
             if st.button("パスワードを更新"):
                 if np == cp:
                     if res_pw.data: supabase.table("admin_settings").update({"value": np}).eq("key", "admin_password").eq("facility_code", f_code).execute()
                     else: supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": np}).execute()
                     st.success("更新しました。"); st.rerun()
+            st.divider()
+            # 🚀 【追加】更新履歴の表示人数設定
+            st.markdown("##### 📝 更新履歴の表示人数設定")
+            current_limit_res = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
+            current_limit = int(current_limit_res.data[0]['value']) if current_limit_res.data else 30
+            new_limit = st.slider("表示人数（名）", min_value=10, max_value=100, value=current_limit, step=5)
+            if st.button("表示人数を保存"):
+                if current_limit_res.data:
+                    supabase.table("admin_settings").update({"value": str(new_limit)}).eq("key", "history_limit").eq("facility_code", f_code).execute()
+                else:
+                    supabase.table("admin_settings").insert({"facility_code": f_code, "key": "history_limit", "value": str(new_limit)}).execute()
+                st.success(f"表示人数を{new_limit}名に変更しました。"); time.sleep(1); st.rerun()
+
         with t4:
+            st.markdown("##### 🔄 ブロック解除 (復帰)")
             res_l = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_l.data:
                 if st.button(f"復帰: {b['staff_name']} (端末ID:{b['device_id'][:5]})", key=f"re_{b['id']}"):
