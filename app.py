@@ -19,7 +19,7 @@ now_tokyo = datetime.now(tokyo_tz)
 st.set_page_config(page_title="TASUKARU", page_icon="logo.png", layout="wide")
 
 if "cookie_manager" not in st.session_state:
-    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v31")
+    st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_stable_v32")
 cookie_manager = st.session_state["cookie_manager"]
 
 # 🚀 保存後にウィジェットを強制リセットするための識別子
@@ -35,6 +35,30 @@ st.markdown("""
     section[data-testid="stAudioInput"] { border: 2px solid #ff4b4b !important; border-radius: 20px !important; padding: 10px !important; background-color: #fff5f5 !important; }
     code { white-space: pre-wrap !important; word-break: break-all !important; }
     .stTextArea textarea { border: 2px solid #ff4b4b !important; border-radius: 10px !important; }
+    
+    .scrollable-history {
+        max-height: 250px;
+        overflow-y: auto;
+        border: 2px solid #ff4b4b;
+        border-radius: 10px;
+        padding: 15px;
+        background-color: #fffaf0;
+    }
+    .history-item {
+        font-size: 16px;
+        margin-bottom: 10px;
+        border-bottom: 1px dashed #ccc;
+        padding-bottom: 5px;
+    }
+    .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    
+    /* 🚀 追加：履歴ボタン等の文字サイズを調整し、絶対に1段（改行なし）に強制する */
+    div[data-testid="stVerticalBlockBorderWrapper"] div.stButton > button p {
+        font-size: clamp(11px, 3.2vw, 14px) !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -86,7 +110,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="save_dev_v31")
+    cookie_manager.set("device_id", device_id, key="save_dev_v32")
 
 if device_id:
     try:
@@ -105,8 +129,8 @@ if not st.session_state.get("is_authenticated"):
         n_in = st.text_input("👤 あなたのお名前", key="n_login")
         if st.button("利用を開始する", use_container_width=True, key="btn_login"):
             if f_in and n_in:
-                cookie_manager.set("saved_f_code", f_in, key="f_sv_v31")
-                cookie_manager.set("saved_my_name", n_in, key="n_sv_v31")
+                cookie_manager.set("saved_f_code", f_in, key="f_sv_v32")
+                cookie_manager.set("saved_my_name", n_in, key="n_sv_v32")
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
@@ -151,7 +175,6 @@ if st.session_state["page"] == "top":
                 grouped = df.groupby("user_name").agg(count=("user_name", "size"), last_time=("created_at", "max")).reset_index()
                 grouped = grouped.sort_values("last_time", ascending=False).head(30)
                 
-                # 🚀 修正：HTMLではなく、Streamlitネイティブのスクロール枠とボタンを使用しクリック可能に
                 with st.container(height=250):
                     for _, row in grouped.iterrows():
                         try:
@@ -160,7 +183,6 @@ if st.session_state["page"] == "top":
                         except:
                             time_str = str(row['last_time'])[5:16].replace('-', '/')
                         
-                        # ボタン化し、クリック時に閲覧画面へデータを受け渡す
                         btn_label = f"👤 {row['user_name']} 様 （{row['count']}件） 最終記録 {time_str}"
                         if st.button(btn_label, key=f"hist_btn_{row['user_name']}", use_container_width=True):
                             st.session_state["page"] = "daily_view"
@@ -308,7 +330,6 @@ elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
     
-    # 🚀 TOP画面から飛んできた場合は、受け取った日付をデフォルトにする
     dv_date = st.session_state.pop("dv_target_date", now_tokyo.date())
     selected_date = st.date_input("表示する日付を選択", value=dv_date)
     
@@ -326,13 +347,11 @@ elif st.session_state["page"] == "daily_view":
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
                 st.divider()
                 
-                # 🚀 TOP画面から飛んできた対象ユーザーを取得（一度使ったら消す）
                 target_u = st.session_state.pop("dv_target_user", None)
                 
                 for target_user in unique_users:
                     user_records = df_day[df_day["user_name"] == target_user]
                     
-                    # 🚀 対象ユーザーなら自動的に展開(expanded=True)にする
                     is_expanded = (target_user == target_u)
                     
                     with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
