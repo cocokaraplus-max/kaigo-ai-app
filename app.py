@@ -26,7 +26,7 @@ cookie_manager = st.session_state["cookie_manager"]
 if "input_key_id" not in st.session_state:
     st.session_state["input_key_id"] = str(uuid.uuid4())
 
-# --- 🎨 カスタムCSS (一文字も削らず維持) ---
+# --- 🎨 カスタムCSS ---
 st.markdown("""
     <style>
     .main-title { font-size: clamp(18px, 5vw, 24px); font-weight: bold; color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 5px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -52,7 +52,6 @@ st.markdown("""
     }
     .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
     
-    /* すべてのボタンとその中身（p, div, span）に対して、絶対に2段にしない強制指定 */
     div.stButton > button p, div.stButton > button div, div.stButton > button span {
         white-space: nowrap !important;
         overflow: hidden !important;
@@ -89,10 +88,8 @@ except Exception as e: st.error(f"⚠️ 接続エラー: {e}"); st.stop()
 
 def display_logo(show_line=False):
     try:
-        try:
-            image = Image.open('logo.png')
-        except:
-            image = Image.open('logo.jpg')
+        try: image = Image.open('logo.png')
+        except: image = Image.open('logo.jpg')
         col_l, col_m, col_r = st.columns([1, 1, 1])
         with col_m: st.image(image, use_container_width=True)
         if show_line: st.markdown('<div class="has-markdown-stitle"></div>', unsafe_allow_html=True)
@@ -139,7 +136,6 @@ if not st.session_state.get("is_authenticated"):
     st.stop()
 
 f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
-if not f_code: st.stop()
 
 def back_to_top_button(key_suffix):
     st.markdown('<div class="top-back-btn">', unsafe_allow_html=True)
@@ -218,7 +214,7 @@ elif st.session_state["page"] == "input":
     record_date = st.date_input("📅 記録日", value=now_tokyo.date(), key=f"date_{kid}")
         
     st.markdown("---")
-    # 📸 複数枚対応
+    # 📸 【修正】複数枚対応 (最大5枚)
     t_imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"img_{kid}")
     st.write("🎙️ **指でボタンを押して録音を開始してください**")
     st.caption("※画面のスリープ機能がある場合には画面に触れながら話してください")
@@ -254,10 +250,10 @@ elif st.session_state["page"] == "input":
                 current_time = datetime.now(tokyo_tz).time()
                 target_datetime = tokyo_tz.localize(datetime.combine(record_date, current_time))
                 
-                # --- 📸 複数枚保存ロジック (配列形式対応) ---
+                # --- 📸 【修正】複数枚保存ロジック (配列形式対応) ---
                 urls = []
                 if t_imgs:
-                    for img in t_imgs[:5]: 
+                    for img in t_imgs[:5]: # 5枚制限
                         f_name = f"{uuid.uuid4()}.{img.name.split('.')[-1]}"
                         supabase.storage.from_("case-photos").upload(f_name, img.getvalue())
                         res_url = supabase.storage.from_("case-photos").get_public_url(f_name)
@@ -271,7 +267,7 @@ elif st.session_state["page"] == "input":
                     "user_name": m.group(2),
                     "staff_name": my_name,
                     "content": txt,
-                    "image_url": urls if urls else None, # 配列として保存
+                    "image_url": urls if urls else None, # リストとしてそのまま保存
                     "created_at": target_datetime.isoformat()
                 }).execute()
                 
@@ -341,7 +337,7 @@ elif st.session_state["page"] == "history":
                     time_str_hist = str(r['created_at'])[:16].replace('T', ' ')
                 with st.expander(f"📅 {time_str_hist}"):
                     st.write(r['content'])
-                    # 複数枚対応サムネイル
+                    # --- 📸 履歴でも複数枚表示 ---
                     if r.get('image_url') and isinstance(r['image_url'], list):
                         cols = st.columns(min(len(r['image_url']), 5))
                         for idx, url in enumerate(r['image_url']):
@@ -352,6 +348,7 @@ elif st.session_state["page"] == "history":
 elif st.session_state["page"] == "daily_view":
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 日別記録閲覧</div>", unsafe_allow_html=True)
+    
     dv_date = st.session_state.pop("dv_target_date", now_tokyo.date())
     selected_date = st.date_input("表示する日付を選択", value=dv_date)
     
@@ -359,6 +356,7 @@ elif st.session_state["page"] == "daily_view":
         try:
             target_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
             target_end = target_start + timedelta(days=1)
+            
             with st.spinner("記録を読み込み中..."):
                 res = supabase.table("records").select("user_name, content, created_at, staff_name, image_url").eq("facility_code", f_code).gte("created_at", target_start.isoformat()).lt("created_at", target_end.isoformat()).order("created_at", desc=True).execute()
             
@@ -367,10 +365,13 @@ elif st.session_state["page"] == "daily_view":
                 unique_users = df_day["user_name"].unique()
                 st.write(f"✅ {selected_date} は **{len(unique_users)}名** の記録があります")
                 st.divider()
+                
                 target_u = st.session_state.pop("dv_target_user", None)
+                
                 for target_user in unique_users:
                     user_records = df_day[df_day["user_name"] == target_user]
                     is_expanded = (target_user == target_u)
+                    
                     with st.expander(f"👤 {target_user} 様 ({len(user_records)}件)", expanded=is_expanded):
                         for _, row in user_records.iterrows():
                             try:
@@ -380,7 +381,7 @@ elif st.session_state["page"] == "daily_view":
                                 time_str = str(row['created_at'])[11:16]
                             st.markdown(f"**🕒 {time_str}** （担当: {row['staff_name']}）")
                             st.info(str(row['content']))
-                            # --- 📸 スマートUI：サムネイル横並び表示 ---
+                            # --- 📸 【修正】スマートUI：サムネイル横並び表示 (配列対応) ---
                             if row.get('image_url') and isinstance(row['image_url'], list):
                                 cols = st.columns(min(len(row['image_url']), 5))
                                 for idx, url in enumerate(row['image_url']):
@@ -390,6 +391,7 @@ elif st.session_state["page"] == "daily_view":
                 st.info(f"📭 {selected_date} の記録は見つかりませんでした。")
         except Exception as e:
             st.error(f"データの取得に失敗しました: {e}")
+            
     back_to_top_button("dv_d")
 
 # --- 🛠️ 管理者メニュー画面 ---
