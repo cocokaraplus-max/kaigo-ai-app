@@ -16,7 +16,6 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 if "input_key_id" not in st.session_state: st.session_state["input_key_id"] = str(uuid.uuid4())
 if "dv_target_user" not in st.session_state: st.session_state["dv_target_user"] = None
-if "dv_target_date" not in st.session_state: st.session_state["dv_target_date"] = None
 
 # --- 2. 端末・セキュリティチェック ---
 cookies = cookie_manager.get_all()
@@ -27,7 +26,8 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_v53_final")
+    # 🚀 ここにも明示的なキーを設定して安全に保存
+    cookie_manager.set("device_id", device_id, key="set_cookie_device_id")
 
 if device_id:
     try:
@@ -65,8 +65,11 @@ if not st.session_state.get("is_authenticated"):
                     res_n = supabase.table("blocked_devices").select("*").eq("staff_name", n_in).eq("facility_code", f_in).eq("is_active", True).execute()
                     if res_n.data: st.error("🚫 アクセス制限中です。"); st.stop()
                 except: pass
-                cookie_manager.set("saved_f_code", f_in)
-                cookie_manager.set("saved_my_name", n_in)
+                
+                # 🚀 修正：2回連続でクッキーを保存する際、システムが混乱しないように「key」を明記する！
+                cookie_manager.set("saved_f_code", f_in, key="set_cookie_f_code")
+                cookie_manager.set("saved_my_name", n_in, key="set_cookie_my_name")
+                
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
                 time.sleep(0.5); st.rerun()
     st.stop()
