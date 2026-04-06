@@ -26,7 +26,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_v47_final")
+    cookie_manager.set("device_id", device_id, key="dev_v48_final")
 
 if device_id:
     try:
