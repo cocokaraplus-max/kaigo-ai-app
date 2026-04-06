@@ -16,6 +16,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 if "input_key_id" not in st.session_state: st.session_state["input_key_id"] = str(uuid.uuid4())
 if "dv_target_user" not in st.session_state: st.session_state["dv_target_user"] = None
+if "dv_target_date" not in st.session_state: st.session_state["dv_target_date"] = None
 
 # --- 2. 端末・セキュリティチェック ---
 cookies = cookie_manager.get_all()
@@ -26,7 +27,6 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    # 🚀 ここにも明示的なキーを設定して安全に保存
     cookie_manager.set("device_id", device_id, key="set_cookie_device_id")
 
 if device_id:
@@ -37,6 +37,21 @@ if device_id:
             st.stop()
     except:
         pass
+
+# 🚀 デバイス情報をデータベースに記録する機能
+def register_device_to_db(d_id, f_code, s_name):
+    try:
+        # すでにこのデバイスIDが登録されているかチェック
+        res = supabase.table("devices").select("id").eq("device_id", d_id).execute()
+        if not res.data:
+            # 🚀 修正: 列名を「device_name」に変更して保存！
+            supabase.table("devices").insert({
+                "device_id": d_id,
+                "facility_code": f_code,
+                "device_name": s_name
+            }).execute()
+    except Exception as e:
+        pass # テーブルに列がない場合などにアプリが止まらないよう保護
 
 # --- 3. ログイン認証 ---
 if not st.session_state.get("is_authenticated"):
@@ -50,9 +65,12 @@ if not st.session_state.get("is_authenticated"):
                 st.error(f"🚫 {sn} 様は制限中のため再ログインが必要です。")
             else:
                 st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn})
+                register_device_to_db(device_id, sf, sn)
                 st.rerun()
         except:
-            st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn}); st.rerun()
+            st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn})
+            register_device_to_db(device_id, sf, sn)
+            st.rerun()
     
     apply_custom_style("#ff4b4b")
     display_logo()
@@ -66,11 +84,11 @@ if not st.session_state.get("is_authenticated"):
                     if res_n.data: st.error("🚫 アクセス制限中です。"); st.stop()
                 except: pass
                 
-                # 🚀 修正：2回連続でクッキーを保存する際、システムが混乱しないように「key」を明記する！
                 cookie_manager.set("saved_f_code", f_in, key="set_cookie_f_code")
                 cookie_manager.set("saved_my_name", n_in, key="set_cookie_my_name")
                 
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
+                register_device_to_db(device_id, f_in, n_in)
                 time.sleep(0.5); st.rerun()
     st.stop()
 
