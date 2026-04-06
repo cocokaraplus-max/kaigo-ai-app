@@ -9,7 +9,7 @@ init_config()
 supabase = init_clients()
 cookie_manager = get_cookie_manager()
 
-# セッション状態の完全維持
+# セッション状態の維持
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
@@ -27,7 +27,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_id_fixed_v40")
+    cookie_manager.set("device_id", device_id, key="dev_id_v41_stable")
 
 if device_id:
     try:
@@ -78,7 +78,6 @@ f_config = get_facility_config(supabase, f_code)
 apply_custom_style(f_config.get("primary_color", "#ff4b4b"))
 
 p = st.session_state["page"]
-# views側の関数が要求する引数(supabase, cookie_manager, f_code, my_name)に完全一致させる
 if p == "admin_menu":
     views.render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id)
 else:

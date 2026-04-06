@@ -54,8 +54,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
         if res_p.data:
             p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}]" for r in res_p.data]
-    except Exception as e:
-        st.error(f"利用者の抽出に失敗しました。")
+    except:
+        st.error("利用者の抽出に失敗しました。")
 
     sel = st.selectbox("👤 利用者を選択", p_opts, disabled=is_edit)
     record_date = st.date_input("📅 記録日", value=st.session_state.get("edit_date", now_tokyo.date()), disabled=is_edit)
@@ -65,7 +65,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         aud = st.audio_input("🎤 音声入力")
         if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
             with st.spinner("AI変換中..."):
-                model = genai.GenerativeModel('models/gemini-2.0-flash')
+                # 🚀 修正：モデル名を安定版の gemini-1.5-flash に
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名不要。主語は利用者様。"
                 contents = [prompt]
                 if imgs: [contents.append(Image.open(i)) for i in imgs]
@@ -109,7 +110,8 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                 res = supabase.table("records").select("content").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
                 if res.data:
                     recs = "\n".join([r['content'] for r in res.data])
-                    model = genai.GenerativeModel('models/gemini-2.0-flash')
+                    # 🚀 修正：モデル名を安定版の gemini-1.5-flash に
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名不要。主語は利用者様。\n\n{recs}"
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
@@ -122,12 +124,10 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧・統合</div>", unsafe_allow_html=True)
     
-    # 日付選択の初期値を修正
     target_date = st.session_state.get("dv_target_date", now_tokyo.date())
     selected_date = st.date_input("日付選択", value=target_date)
     
     if f_code:
-        # 修正：timedeltaとdatetime.min.timeを正しく適用
         t_start = tokyo_tz.localize(datetime.combine(selected_date, datetime.min.time()))
         try:
             res = supabase.table("records").select("*").eq("facility_code", f_code).gte("created_at", t_start.isoformat()).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at").execute()
@@ -139,7 +139,8 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         user_recs = df[df["user_name"] == user]
                         if st.button(f"✨ 今日のまとめを生成", key=f"gen_{user}"):
                             recs_text = "\n".join([r['content'] for _, r in user_recs.iterrows()])
-                            model = genai.GenerativeModel('models/gemini-2.0-flash')
+                            # 🚀 修正：モデル名修正
+                            model = genai.GenerativeModel('gemini-1.5-flash')
                             prompt = f"今日の介護記録を一つの文章にまとめて。職員名不要。\n\n{recs_text}"
                             st.info(model.generate_content(prompt).text)
                         for _, r in user_recs.iterrows():
@@ -185,6 +186,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                     if st.form_submit_button("確定"): supabase.table("patients").update({"user_name":un, "user_kana":uk, "chart_number":uc}).eq("id", p['id']).execute(); st.rerun()
 
     with t2:
+        st.markdown("##### 👮 スタッフ管理")
         res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         if res_s.data:
             for s in sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name']]))):
