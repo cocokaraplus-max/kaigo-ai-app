@@ -27,78 +27,60 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_v38_final")
+    cookie_manager.set("device_id", device_id, key="dev_id_fixed_v40")
 
-# 端末IDによるブラックリストチェック
 if device_id:
     try:
         res_block = supabase.table("blocked_devices").select("*").eq("device_id", device_id).eq("is_active", True).execute()
         if res_block.data:
-            st.error("🚫 この端末はアクセスが制限されています。管理者にお問い合わせください。")
+            st.error("🚫 この端末はアクセスが制限されています。")
             st.stop()
     except:
         pass
 
-# --- 3. ログイン認証ロジック ---
+# --- 3. ログイン認証 ---
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
     
-    # 保存済み情報がある場合の自動ログインチェック
     if sf and sn:
         try:
             res_c = supabase.table("blocked_devices").select("*").eq("staff_name", sn).eq("facility_code", sf).eq("is_active", True).execute()
-            if res_c and res_c.data:
+            if res_c.data:
                 cookie_manager.delete("saved_f_code")
                 cookie_manager.delete("saved_my_name")
-                st.error(f"🚫 {sn} 様はアクセス制限中のため、再ログインが必要です。")
+                st.error(f"🚫 {sn} 様は制限中のため再ログインが必要です。")
             else:
                 st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn})
                 st.rerun()
         except:
-            # DBエラー時は安全のためログインを許可
-            st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn})
-            st.rerun()
+            st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn}); st.rerun()
     
     apply_custom_style("#ff4b4b")
     display_logo()
     with st.container(border=True):
-        st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
         f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526")
         n_in = st.text_input("👤 あなたのお名前")
         if st.button("利用を開始する", use_container_width=True):
             if f_in and n_in:
                 try:
-                    # 新規ログイン時の名前ブロックチェック
                     res_n = supabase.table("blocked_devices").select("*").eq("staff_name", n_in).eq("facility_code", f_in).eq("is_active", True).execute()
-                    if res_n and res_n.data:
-                        st.error(f"🚫 {n_in} 様はアクセスが制限されています。")
-                        st.stop()
-                except:
-                    pass
-                
+                    if res_n.data: st.error("🚫 アクセス制限中です。"); st.stop()
+                except: pass
                 cookie_manager.set("saved_f_code", f_in)
                 cookie_manager.set("saved_my_name", n_in)
                 st.session_state.update({"is_authenticated": True, "facility_code": f_in, "my_name": n_in})
-                time.sleep(0.5)
-                st.rerun()
+                time.sleep(0.5); st.rerun()
     st.stop()
 
-# --- 4. メイン画面描画 ---
-f_code = st.session_state["facility_code"]
-my_name = st.session_state["my_name"]
+# --- 4. 画面描画 ---
+f_code, my_name = st.session_state["facility_code"], st.session_state["my_name"]
 f_config = get_facility_config(supabase, f_code)
-# 施設ごとのカラー適用
 apply_custom_style(f_config.get("primary_color", "#ff4b4b"))
 
-# 画面遷移ルーティング（すべての画面に一貫して4つの引数を渡す）
 p = st.session_state["page"]
+# views側の関数が要求する引数(supabase, cookie_manager, f_code, my_name)に完全一致させる
 if p == "admin_menu":
     views.render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id)
 else:
-    pages = {
-        "top": views.render_top,
-        "input": views.render_input,
-        "history": views.render_history,
-        "daily_view": views.render_daily_view
-    }
+    pages = {"top": views.render_top, "input": views.render_input, "history": views.render_history, "daily_view": views.render_daily_view}
     pages[p](supabase, cookie_manager, f_code, my_name)
