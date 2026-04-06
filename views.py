@@ -16,6 +16,12 @@ def parse_jst(iso_str, fmt='%H:%M'):
     except:
         return str(iso_str)[11:16]
 
+# 🚀 修正: 履歴から1クリックで確実に飛ぶためのコールバック関数
+def go_to_daily_view(u_name, target_d):
+    st.session_state["page"] = "daily_view"
+    st.session_state["dv_target_user"] = u_name
+    st.session_state["dv_target_date"] = target_d
+
 def render_top(supabase, cookie_manager, f_code, my_name):
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
@@ -35,7 +41,6 @@ def render_top(supabase, cookie_manager, f_code, my_name):
 
     st.markdown(f"##### 📝 更新履歴 (最新{hist_limit}件)")
     try:
-        # 履歴一覧からは「AI統合記録」を除外して表示する
         res_hist = supabase.table("records").select("id, user_name, staff_name, created_at").eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit * 2).execute()
         if res_hist.data:
             filtered_hist = [r for r in res_hist.data if r['staff_name'] != "AI統合記録"][:hist_limit]
@@ -48,9 +53,8 @@ def render_top(supabase, cookie_manager, f_code, my_name):
                     except:
                         target_d = datetime.now(tokyo_tz).date()
 
-                    if st.button(f"👤 {r['user_name']} ({time_str})", key=f"hist_btn_{r['id']}", use_container_width=True):
-                        st.session_state.update({"page": "daily_view", "dv_target_user": r['user_name'], "dv_target_date": target_d})
-                        st.rerun()
+                    # 🚀 修正: on_clickを使うことで、2回押し問題を物理的に解消
+                    st.button(f"👤 {r['user_name']} ({time_str})", key=f"hist_btn_{r['id']}", use_container_width=True, on_click=go_to_daily_view, args=(r['user_name'], target_d))
     except: pass
 
     st.divider()
@@ -131,23 +135,19 @@ def render_history(supabase, cookie_manager, f_code, my_name):
             with st.spinner("AI集計中..."):
                 t_y, t_m = int(selected_month_str[:4]), int(selected_month_str[5:7])
                 s_date = tokyo_tz.localize(datetime(t_y, t_m, 1)); e_date = (s_date + timedelta(days=32)).replace(day=1)
-                # AI統合記録を除外して純粋なケース記録のみを集計
                 res = supabase.table("records").select("content, staff_name").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
                 if res.data:
                     filtered_recs = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
                     recs = "\n".join(filtered_recs)
                     model = get_generative_model()
-                    
-                    # 🚀 修正: 「支援内容」の積極的な記載を指示
                     prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
-                    
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
         
         if st.session_state.get("monitoring_result"):
             res_txt = st.text_area("結果（編集可能）", value=st.session_state["monitoring_result"], height=200)
             st.session_state["monitoring_result"] = res_txt
-            st.caption("👇 以下の枠の右上にあるコピーボタン（📋）を押すと、一発でコピーできます。")
+            st.caption("👇 コピー用（ワンクリックでコピーできます）")
             st.code(res_txt, language="text")
 
 def render_daily_view(supabase, cookie_manager, f_code, my_name):
@@ -171,38 +171,39 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                     with st.expander(f"👤 {user} 様", expanded=(user == target_u)):
                         user_recs = df[df["user_name"] == user]
                         
-                        # 🚀 AI統合記録の分離
                         ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
                         normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
                         
-                        st.markdown("##### ✨ AI統合ケース記録")
-                        
                         if not ai_recs.empty:
-                            # 既にAI統合記録が生成・保存されている場合
                             ai_rec = ai_recs.iloc[0]
                             
-                            # 編集モードかどうか
+                            # 🚀 修正: スッキリとした「閲覧＋編集ボタン」のUIに変更
                             if st.session_state.get(f"edit_ai_{ai_rec['id']}"):
-                                new_summary = st.text_area("統合記録を直接編集", value=ai_rec['content'], height=150, key=f"ta_{ai_rec['id']}")
-                                if st.button("💾 保存して確定", key=f"save_ai_{ai_rec['id']}", type="primary"):
-                                    supabase.table("records").update({"content": new_summary}).eq("id", ai_rec['id']).execute()
-                                    st.session_state[f"edit_ai_{ai_rec['id']}"] = False
-                                    st.rerun()
+                                with st.container(border=True):
+                                    st.markdown("✨ **AI統合ケース記録（編集中）**")
+                                    new_summary = st.text_area("内容を編集", value=ai_rec['content'], height=150, label_visibility="collapsed", key=f"ta_{ai_rec['id']}")
+                                    c1, c2 = st.columns(2)
+                                    with c1:
+                                        if st.button("💾 保存して確定", key=f"save_ai_{ai_rec['id']}", type="primary", use_container_width=True):
+                                            supabase.table("records").update({"content": new_summary}).eq("id", ai_rec['id']).execute()
+                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = False
+                                            st.rerun()
+                                    with c2:
+                                        if st.button("❌ キャンセル", key=f"cancel_ai_{ai_rec['id']}", use_container_width=True):
+                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = False
+                                            st.rerun()
                             else:
-                                # 確定状態の表示
-                                html_summary = ai_rec['content'].replace('\n', '<br>')
-                                st.markdown(f"<div style='background-color:#f8faff; padding:15px; border-radius:8px; line-height:1.6; font-size:15px; color:#1a1c24; border: 1px solid #d0e2ff; margin-bottom: 10px;'>{html_summary}</div>", unsafe_allow_html=True)
-                                
-                                col_ai1, col_ai2 = st.columns([1, 4])
-                                with col_ai1:
-                                    if st.button("✏️ 編集", key=f"btn_edit_{ai_rec['id']}"):
-                                        st.session_state[f"edit_ai_{ai_rec['id']}"] = True
-                                        st.rerun()
-                                with col_ai2:
-                                    st.text_area("コピー用", value=ai_rec['content'], height=68, label_visibility="collapsed", key=f"copy_{ai_rec['id']}")
+                                with st.container(border=True):
+                                    col_txt, col_btn = st.columns([4, 1])
+                                    with col_txt:
+                                        st.markdown("✨ **AI統合ケース記録**")
+                                        st.write(ai_rec['content']) # 自然な折り返しでスッキリ表示
+                                    with col_btn:
+                                        if st.button("✏️ 編集", key=f"btn_edit_{ai_rec['id']}", use_container_width=True):
+                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = True
+                                            st.rerun()
                         
                         else:
-                            # まだAI統合記録がない場合のみ生成ボタンを表示
                             if st.button(f"✨ 今日のまとめを生成して確定", key=f"gen_{user}"):
                                 if not normal_recs.empty:
                                     with st.spinner("AIが統合して保存しています..."):
@@ -211,7 +212,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                         prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
                                         summary = model.generate_content(prompt).text
                                         
-                                        # 生成した記録をDBに「AI統合記録」として保存（23:59:59扱いにして一番下に固定）
                                         c_num = normal_recs.iloc[0]['chart_number']
                                         dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
                                         supabase.table("records").insert({
@@ -272,7 +272,9 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
         st.markdown("##### 👮 スタッフ管理")
         res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         if res_s.data:
-            for s in sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name']]))):
+            # 🚀 修正: スタッフ一覧から "AI統合記録" を除外する
+            staff_list = sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"])))
+            for s in staff_list:
                 is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", s).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
                 c1, c2 = st.columns([3, 1])
                 with c1: st.write(f"{'🚫' if is_b else '👤'} **{s}**")
