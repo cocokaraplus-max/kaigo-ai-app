@@ -1,7 +1,7 @@
 import streamlit as st
 import uuid
 import time
-from utils import init_config, init_clients, get_cookie_manager, display_logo
+from utils import init_config, init_clients, get_cookie_manager, display_logo, apply_custom_style, get_facility_config, tokyo_tz
 import views
 
 # --- 1. 初期設定とデータベース接続 ---
@@ -14,6 +14,7 @@ if "input_key_id" not in st.session_state: st.session_state["input_key_id"] = st
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
+# 🔐 管理者認証状態を保持するフラグ
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
 # --- 3. セキュリティとログイン認証 ---
@@ -37,6 +38,7 @@ if not st.session_state.get("is_authenticated"):
         st.session_state.update({"is_authenticated": True, "facility_code": sf, "my_name": sn})
         st.rerun()
     
+    apply_custom_style(primary_color="#ff4b4b")
     display_logo()
     with st.container(border=True):
         f_in = st.text_input("🏢 施設コード", value="cocokaraplus-5526", key="f_login")
@@ -49,10 +51,15 @@ if not st.session_state.get("is_authenticated"):
                 time.sleep(0.5); st.rerun()
     st.stop()
 
+# --- 4. 施設ごとのカスタム設定を適用 ---
 f_code = st.session_state["facility_code"]
 my_name = st.session_state["my_name"]
 
-# --- 4. ルーティング (画面の切り替え) ---
+f_config = get_facility_config(supabase, f_code)
+p_color = f_config.get("primary_color", "#ff4b4b")
+apply_custom_style(primary_color=p_color)
+
+# --- 5. ルーティング (画面の切り替え) ---
 if st.session_state["page"] == "top":
     views.render_top(supabase, cookie_manager, f_code, my_name)
 elif st.session_state["page"] == "input":
@@ -62,4 +69,5 @@ elif st.session_state["page"] == "history":
 elif st.session_state["page"] == "daily_view":
     views.render_daily_view(supabase, f_code, my_name)
 elif st.session_state["page"] == "admin_menu":
+    # 🚀 ここで views.py の管理者メニュー呼び出し
     views.render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id)
