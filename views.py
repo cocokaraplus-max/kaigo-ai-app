@@ -6,12 +6,8 @@ import uuid
 import time
 from PIL import Image
 import re
-from utils import tokyo_tz, display_logo, back_to_top_button
-
-# 🚀 修正: 404エラーを絶対に起こさない、最も安定したテキスト用モデル
-SAFE_TEXT_MODEL = 'gemini-pro'
-# 写真/音声入力用のマルチモーダルモデル（最新指定）
-SAFE_MULTIMODAL_MODEL = 'gemini-1.5-flash-latest'
+# 🚀 修正: get_generative_model をインポート
+from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model
 
 def render_top(supabase, cookie_manager, f_code, my_name):
     display_logo(show_line=True)
@@ -70,9 +66,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         aud = st.audio_input("🎤 音声入力")
         if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
             with st.spinner("AI変換中..."):
-                # 画像や音声がある場合はマルチモーダル、なければテキスト専用の安定モデル
-                selected_model = SAFE_MULTIMODAL_MODEL if (imgs or aud) else SAFE_TEXT_MODEL
-                model = genai.GenerativeModel(selected_model)
+                # 🚀 修正: 自動判別した確実なモデルを取得
+                model = get_generative_model()
                 prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名不要。主語は利用者様。"
                 contents = [prompt]
                 if imgs: [contents.append(Image.open(i)) for i in imgs]
@@ -116,8 +111,8 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                 res = supabase.table("records").select("content").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
                 if res.data:
                     recs = "\n".join([r['content'] for r in res.data])
-                    # 🚀 修正: エラーが出ない安定したテキスト専用モデルに固定
-                    model = genai.GenerativeModel(SAFE_TEXT_MODEL)
+                    # 🚀 修正: 自動判別モデル
+                    model = get_generative_model()
                     prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名不要。主語は利用者様。\n\n{recs}"
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
@@ -143,8 +138,8 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         user_recs = df[df["user_name"] == user]
                         if st.button(f"✨ 今日のまとめを生成", key=f"gen_{user}"):
                             recs_text = "\n".join([r['content'] for _, r in user_recs.iterrows()])
-                            # 🚀 修正: エラーが出ない安定したテキスト専用モデルに固定
-                            model = genai.GenerativeModel(SAFE_TEXT_MODEL)
+                            # 🚀 修正: 自動判別モデル
+                            model = get_generative_model()
                             prompt = f"今日の介護記録を一つの文章にまとめて。職員名不要。\n\n{recs_text}"
                             st.info(model.generate_content(prompt).text)
                         for _, r in user_recs.iterrows():

@@ -49,9 +49,34 @@ def init_clients():
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e: st.error(f"接続エラー: {e}"); st.stop()
 
+# 🚀 修正: API側に「今使えるモデル」を聞き出して確実に通るものをセットする機能
+@st.cache_resource
+def get_generative_model():
+    """環境に依存せず、確実に動作するGeminiモデルを自動取得する"""
+    try:
+        # APIが許可している利用可能なモデル一覧を取得
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 優先順位: 1.5 Flash -> 1.0 Pro -> Pro (旧名)
+        preferences = ['models/gemini-1.5-flash', 'models/gemini-1.0-pro', 'models/gemini-pro']
+        
+        for pref in preferences:
+            if pref in available_models:
+                return genai.GenerativeModel(pref)
+        
+        # 優先リストになくても、使えるモデルがあれば最初のものを返す
+        if available_models:
+            return genai.GenerativeModel(available_models[0])
+            
+        # 最終手段
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        # エラー発生時の安全なフォールバック
+        return genai.GenerativeModel('gemini-1.5-flash')
+
 def get_cookie_manager():
     if "cookie_manager" not in st.session_state:
-        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v46_prod_stable")
+        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v47_prod_stable")
     return st.session_state["cookie_manager"]
 
 def display_logo(logo_path='logo.png', show_line=False):
