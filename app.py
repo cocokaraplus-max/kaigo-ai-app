@@ -9,6 +9,7 @@ init_config()
 supabase = init_clients()
 cookie_manager = get_cookie_manager()
 
+# セッション状態の維持
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
@@ -25,7 +26,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_v45_final")
+    cookie_manager.set("device_id", device_id, key="dev_v46_final")
 
 if device_id:
     try:
