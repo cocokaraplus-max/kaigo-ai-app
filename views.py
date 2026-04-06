@@ -9,6 +9,7 @@ import re
 from utils import tokyo_tz, display_logo, back_to_top_button
 
 def render_top(supabase, cookie_manager, f_code, my_name):
+    """TOP画面"""
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
@@ -25,7 +26,8 @@ def render_top(supabase, cookie_manager, f_code, my_name):
     if st.button("🚪 ログアウト"):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
-def render_input(supabase, f_code, my_name):
+def render_input(supabase, cookie_manager, f_code, my_name):
+    """記録入力画面"""
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("ip_u")
     is_edit = st.session_state.get("editing_record_id") is not None
@@ -66,7 +68,8 @@ def render_input(supabase, f_code, my_name):
             except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
 
-def render_history(supabase, f_code, my_name):
+def render_history(supabase, cookie_manager, f_code, my_name):
+    """モニタリング生成画面"""
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 モニタリング生成</div>", unsafe_allow_html=True)
@@ -92,16 +95,15 @@ def render_history(supabase, f_code, my_name):
                     recs = "\n".join([f"[{r['staff_name']}] {r['content']}" for r in res.data])
                     model = genai.GenerativeModel('models/gemini-2.5-flash')
                     prompt_map = {
-                        "内部申し送り（簡潔）": "現場職員向けの申し送りです。事実を簡潔に要約してください。",
-                        "ご家族向け（優しい言葉）": "ご家族に安心していただけるよう、一ヶ月の様子を温かい言葉でまとめてください。",
-                        "ケアマネ向け（専門的）": "ケアマネへの報告です。ADLや変化の兆候を中心に公的な文章で要約してください。"
+                        "内部申し送り（簡潔）": "現場向けの簡潔な要約を。",
+                        "ご家族向け（優しい言葉）": "ご家族向けの温かい言葉で。",
+                        "ケアマネ向け（専門的）": "ケアマネ向けの公的な報告を。"
                     }
                     st.session_state["monitoring_result"] = model.generate_content(f"{prompt_map[summary_target]}\n\n{recs}").text
                 else: st.warning("記録なし")
         
         if st.session_state.get("monitoring_result"):
-            res_txt = st.text_area("編集結果", value=st.session_state["monitoring_result"], height=150)
-            st.code(res_txt, language="text")
+            st.text_area("生成結果", value=st.session_state["monitoring_result"], height=150)
 
         if st.button("📜 過去履歴を表示"):
             res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", u_name).order("created_at", desc=True).execute()
@@ -113,7 +115,8 @@ def render_history(supabase, f_code, my_name):
                             st.session_state.update({"page": "input", "editing_record_id": r['id'], "edit_content": r['content'], "edit_user_label": f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date": datetime.fromisoformat(r['created_at'].replace('Z', '+00:00')).date()}); st.rerun()
     back_to_top_button("hs_d")
 
-def render_daily_view(supabase, f_code, my_name):
+def render_daily_view(supabase, cookie_manager, f_code, my_name):
+    """日別閲覧画面"""
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧</div>", unsafe_allow_html=True)
@@ -139,9 +142,11 @@ def render_daily_view(supabase, f_code, my_name):
     back_to_top_button("dv_d")
 
 def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
+    """管理者メニュー"""
     back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
     if not st.session_state.get("admin_authenticated"):
+        # 🚀 修正箇所: res_pw ではなく res を使用
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
         cur_pw = res.data[0]['value'] if res.data else "8888"
         pw = st.text_input("パスワード", type="password")
@@ -152,6 +157,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
     
     t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 スタッフ管理", "⚙️ 設定", "🚫 セキュリティ"])
     with t1:
+        st.markdown("##### 👤 利用者管理")
         res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
         with st.expander("🆕 新規登録"):
             with st.form("reg"):
@@ -171,6 +177,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                     if st.form_submit_button("確定"): supabase.table("patients").update({"user_name":un, "user_kana":uk}).eq("id", p['id']).execute(); st.rerun()
 
     with t2:
+        st.markdown("##### 👮 スタッフブロック")
         res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         if res_s.data:
             for s in sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name']]))):
@@ -182,11 +189,13 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                         supabase.table("blocked_devices").insert({"staff_name":s, "facility_code":f_code, "is_active":True, "device_id":"NAME_LOCK"}).execute(); st.rerun()
     
     with t3:
+        st.markdown("##### ⚙️ 設定")
         np = st.text_input("新パスワード", type="password")
         if st.button("更新") and np:
             supabase.table("admin_settings").upsert({"facility_code":f_code, "key":"admin_password", "value":np}, on_conflict="facility_code,key").execute(); st.success("完了")
     
     with t4:
+        st.markdown("##### 🚫 ブロック解除")
         res_b = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
         for b in res_b.data:
             c1, c2 = st.columns([3, 1])
