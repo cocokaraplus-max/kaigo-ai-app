@@ -9,14 +9,12 @@ init_config()
 supabase = init_clients()
 cookie_manager = get_cookie_manager()
 
-# セッション状態の維持
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 if "input_key_id" not in st.session_state: st.session_state["input_key_id"] = str(uuid.uuid4())
 if "dv_target_user" not in st.session_state: st.session_state["dv_target_user"] = None
-if "dv_target_date" not in st.session_state: st.session_state["dv_target_date"] = None
 
 # --- 2. 端末・セキュリティチェック ---
 cookies = cookie_manager.get_all()
@@ -27,7 +25,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_id_v41_stable")
+    cookie_manager.set("device_id", device_id, key="dev_v42_stable")
 
 if device_id:
     try:
@@ -41,7 +39,6 @@ if device_id:
 # --- 3. ログイン認証 ---
 if not st.session_state.get("is_authenticated"):
     sf, sn = cookies.get("saved_f_code"), cookies.get("saved_my_name")
-    
     if sf and sn:
         try:
             res_c = supabase.table("blocked_devices").select("*").eq("staff_name", sn).eq("facility_code", sf).eq("is_active", True).execute()
