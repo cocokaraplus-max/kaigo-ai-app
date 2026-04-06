@@ -16,6 +16,7 @@ if "monitoring_result" not in st.session_state: st.session_state["monitoring_res
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 if "input_key_id" not in st.session_state: st.session_state["input_key_id"] = str(uuid.uuid4())
 if "dv_target_user" not in st.session_state: st.session_state["dv_target_user"] = None
+if "dv_target_date" not in st.session_state: st.session_state["dv_target_date"] = None
 
 # --- 2. 端末・セキュリティチェック ---
 cookies = cookie_manager.get_all()
@@ -26,7 +27,7 @@ if not cookies:
 device_id = cookies.get("device_id")
 if not device_id:
     device_id = str(uuid.uuid4())
-    cookie_manager.set("device_id", device_id, key="dev_v48_final")
+    cookie_manager.set("device_id", device_id, key="dev_v49_final")
 
 if device_id:
     try:

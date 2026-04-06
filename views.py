@@ -8,7 +8,6 @@ from PIL import Image
 import re
 from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model
 
-# 🚀 UTCから日本時間(JST)へ正確に変換する補助ツール
 def parse_jst(iso_str, fmt='%H:%M'):
     """データベースの時間を日本時間に直して表示する"""
     try:
@@ -40,10 +39,22 @@ def render_top(supabase, cookie_manager, f_code, my_name):
         if res_hist.data:
             with st.container(height=300):
                 for r in res_hist.data:
-                    # 🚀 日本時間に変換して表示
                     time_str = parse_jst(r['created_at'])
+                    
+                    # 🚀 修正: クリック時にその記録の日付もセットしてジャンプさせる
+                    try:
+                        dt_obj = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz)
+                        target_d = dt_obj.date()
+                    except:
+                        target_d = datetime.now(tokyo_tz).date()
+
                     if st.button(f"👤 {r['user_name']} ({time_str})", key=f"h_{r['created_at']}_{uuid.uuid4()}", use_container_width=True):
-                        st.session_state.update({"page": "daily_view", "dv_target_user": r['user_name']}); st.rerun()
+                        st.session_state.update({
+                            "page": "daily_view", 
+                            "dv_target_user": r['user_name'],
+                            "dv_target_date": target_d
+                        })
+                        st.rerun()
     except: pass
 
     st.divider()
@@ -77,7 +88,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
             with st.spinner("AI変換中..."):
                 model = get_generative_model()
-                prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名不要。主語は利用者様。"
+                # 🚀 修正: 「利用者様は」などの主語を入れないように指示
+                prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名や『利用者様は』などの主語は不要。"
                 contents = [prompt]
                 if imgs: [contents.append(Image.open(i)) for i in imgs]
                 if aud: contents.append({"mime_type": "audio/wav", "data": aud.getvalue()})
@@ -91,14 +103,12 @@ def render_input(supabase, cookie_manager, f_code, my_name):
                     supabase.table("records").update({"content": txt}).eq("id", st.session_state["editing_record_id"]).execute()
                 else:
                     m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
-                    # 🚀 入力時の「現在時刻」を正確に取得して保存
                     record_time = datetime.now(tokyo_tz).time()
                     dt = tokyo_tz.localize(datetime.combine(record_date, record_time))
                     supabase.table("records").insert({"facility_code": f_code, "chart_number": m.group(1), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": dt.isoformat()}).execute()
                 
-                # 🚀 保存完了メッセージと入力クリア
                 st.success("💾 保存完了しました！")
-                time.sleep(1.0) # 現場の人がメッセージを読めるように1秒待つ
+                time.sleep(1.0)
                 st.session_state.update({"page": "top", "editing_record_id": None, "edit_content": ""})
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
@@ -120,7 +130,6 @@ def render_history(supabase, cookie_manager, f_code, my_name):
         month_opts = [f"{now_tokyo.year}年{m:02d}月" for m in range(now_tokyo.month, now_tokyo.month-6, -1)]
         selected_month_str = st.selectbox("対象月", month_opts)
         
-        # 🚀 文字数選択機能
         char_limit = st.radio("生成する文字数の目安", ["100文字", "200文字", "300文字"], horizontal=True)
         
         if st.button("✨ 1ヶ月の要約を生成", type="primary"):
@@ -131,12 +140,12 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                 if res.data:
                     recs = "\n".join([r['content'] for r in res.data])
                     model = get_generative_model()
-                    prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名不要。主語は利用者様。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
+                    # 🚀 修正: 「利用者様は」などの主語を入れないように指示
+                    prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
         
         if st.session_state.get("monitoring_result"):
-            # 🚀 編集用エリアとコピー用エリアを分離
             res_txt = st.text_area("結果（編集可能）", value=st.session_state["monitoring_result"], height=200)
             st.session_state["monitoring_result"] = res_txt
             st.caption("👇 以下の枠の右上にあるコピーボタン（📋）を押すと、一発でコピーできます。")
@@ -146,7 +155,12 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧・統合</div>", unsafe_allow_html=True)
-    selected_date = st.date_input("日付選択", value=now_tokyo.date())
+    
+    # 🚀 修正: TOPから飛んできたときの日付を正確にセット
+    target_date = st.session_state.get("dv_target_date", now_tokyo.date())
+    if target_date is None: target_date = now_tokyo.date()
+    
+    selected_date = st.date_input("日付選択", value=target_date)
     
     if f_code:
         t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
@@ -161,18 +175,16 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         if st.button(f"✨ 今日のまとめを生成", key=f"gen_{user}"):
                             recs_text = "\n".join([r['content'] for _, r in user_recs.iterrows()])
                             model = get_generative_model()
-                            prompt = f"今日の介護記録を一つの文章にまとめて。職員名不要。\n\n{recs_text}"
+                            # 🚀 修正: 「利用者様は」などの主語を入れないように指示
+                            prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
                             summary = model.generate_content(prompt).text
                             st.info(f"**【AI統合ケース記録】**")
-                            # 🚀 ここも一発コピーできるようにする
                             st.code(summary, language="text")
                         
                         for _, r in user_recs.iterrows():
-                            # 🚀 日本時間に変換
                             time_str = parse_jst(r['created_at'])
                             st.caption(f"🕒 {time_str} ({r['staff_name']})")
                             st.write(r['content'])
-                            # 🚀 管理者と本人のみ編集可能
                             if str(r['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
                                 if st.button("✏️ 編集", key=f"ed_{r['id']}"):
                                     st.session_state.update({"page":"input", "editing_record_id":r['id'], "edit_content":r['content'], "edit_user_label":f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date":selected_date}); st.rerun()

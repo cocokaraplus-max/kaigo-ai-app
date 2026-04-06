@@ -64,7 +64,7 @@ def get_generative_model():
 
 def get_cookie_manager():
     if "cookie_manager" not in st.session_state:
-        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v48_prod_stable")
+        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v49_prod_stable")
     return st.session_state["cookie_manager"]
 
 def display_logo(logo_path='logo.png', show_line=False):
