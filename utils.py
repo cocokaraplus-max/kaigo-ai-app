@@ -32,7 +32,6 @@ def init_config():
     """, height=0)
 
 def apply_custom_style(primary_color="#ff4b4b"):
-    # 🚀 修正: 大見出し(.main-title)をモダンで洗練されたデザインに変更
     st.markdown(f"""
         <style>
         .main-title {{ 
@@ -76,7 +75,7 @@ def get_generative_model():
 
 def get_cookie_manager():
     if "cookie_manager" not in st.session_state:
-        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v50_prod_stable")
+        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v52_prod_stable")
     return st.session_state["cookie_manager"]
 
 def display_logo(logo_path='logo.png', show_line=False):

@@ -35,11 +35,12 @@ def render_top(supabase, cookie_manager, f_code, my_name):
 
     st.markdown(f"##### 📝 更新履歴 (最新{hist_limit}件)")
     try:
-        # 🚀 修正: 履歴リンクバグ解消のため、一意の `id` も一緒に取得する
-        res_hist = supabase.table("records").select("id, user_name, created_at").eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit).execute()
+        # 履歴一覧からは「AI統合記録」を除外して表示する
+        res_hist = supabase.table("records").select("id, user_name, staff_name, created_at").eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit * 2).execute()
         if res_hist.data:
+            filtered_hist = [r for r in res_hist.data if r['staff_name'] != "AI統合記録"][:hist_limit]
             with st.container(height=300):
-                for r in res_hist.data:
+                for r in filtered_hist:
                     time_str = parse_jst(r['created_at'])
                     try:
                         dt_obj = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz)
@@ -47,13 +48,8 @@ def render_top(supabase, cookie_manager, f_code, my_name):
                     except:
                         target_d = datetime.now(tokyo_tz).date()
 
-                    # 🚀 修正: key に uuid.uuid4() を使わず、不変の r['id'] を使うことでクリックが確実に反応する
                     if st.button(f"👤 {r['user_name']} ({time_str})", key=f"hist_btn_{r['id']}", use_container_width=True):
-                        st.session_state.update({
-                            "page": "daily_view", 
-                            "dv_target_user": r['user_name'],
-                            "dv_target_date": target_d
-                        })
+                        st.session_state.update({"page": "daily_view", "dv_target_user": r['user_name'], "dv_target_date": target_d})
                         st.rerun()
     except: pass
 
@@ -108,7 +104,7 @@ def render_input(supabase, cookie_manager, f_code, my_name):
                 
                 st.success("💾 保存完了しました！")
                 time.sleep(1.0)
-                st.session_state.update({"page": "top", "editing_record_id": None, "edit_content": ""})
+                st.session_state.update({"editing_record_id": None, "edit_content": "", "edit_user_label": "(未選択)"})
                 st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
     back_to_top_button("ip_d")
@@ -135,18 +131,23 @@ def render_history(supabase, cookie_manager, f_code, my_name):
             with st.spinner("AI集計中..."):
                 t_y, t_m = int(selected_month_str[:4]), int(selected_month_str[5:7])
                 s_date = tokyo_tz.localize(datetime(t_y, t_m, 1)); e_date = (s_date + timedelta(days=32)).replace(day=1)
-                res = supabase.table("records").select("content").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
+                # AI統合記録を除外して純粋なケース記録のみを集計
+                res = supabase.table("records").select("content, staff_name").eq("facility_code", f_code).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
                 if res.data:
-                    recs = "\n".join([r['content'] for r in res.data])
+                    filtered_recs = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
+                    recs = "\n".join(filtered_recs)
                     model = get_generative_model()
-                    prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
+                    
+                    # 🚀 修正: 「支援内容」の積極的な記載を指示
+                    prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
+                    
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
         
         if st.session_state.get("monitoring_result"):
             res_txt = st.text_area("結果（編集可能）", value=st.session_state["monitoring_result"], height=200)
             st.session_state["monitoring_result"] = res_txt
-            st.caption("👇 コピー用")
+            st.caption("👇 以下の枠の右上にあるコピーボタン（📋）を押すと、一発でコピーできます。")
             st.code(res_txt, language="text")
 
 def render_daily_view(supabase, cookie_manager, f_code, my_name):
@@ -156,7 +157,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
     
     target_date = st.session_state.get("dv_target_date", now_tokyo.date())
     if target_date is None: target_date = now_tokyo.date()
-    
     selected_date = st.date_input("日付選択", value=target_date)
     
     if f_code:
@@ -166,24 +166,66 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
             if res.data:
                 df = pd.DataFrame(res.data)
                 target_u = st.session_state.get("dv_target_user")
+                
                 for user in df["user_name"].unique():
                     with st.expander(f"👤 {user} 様", expanded=(user == target_u)):
                         user_recs = df[df["user_name"] == user]
-                        if st.button(f"✨ 今日のまとめを生成", key=f"gen_{user}"):
-                            recs_text = "\n".join([r['content'] for _, r in user_recs.iterrows()])
-                            model = get_generative_model()
-                            prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
-                            summary = model.generate_content(prompt).text
-                            
-                            # 🚀 UI修正: 横スクロールをなくし、読みやすいカードデザインで表示
-                            st.markdown("##### ✨ AI統合ケース記録")
-                            html_summary = summary.replace('\n', '<br>')
-                            st.markdown(f"<div style='background-color:#f8faff; padding:15px; border-radius:8px; line-height:1.6; font-size:15px; color:#1a1c24; border: 1px solid #d0e2ff; margin-bottom: 10px;'>{html_summary}</div>", unsafe_allow_html=True)
-                            
-                            # 🚀 コピーしやすいようにテキストエリアを併設（ラベルは隠す）
-                            st.text_area("コピー用エリア", value=summary, height=100, label_visibility="collapsed", key=f"copy_{user}")
                         
-                        for _, r in user_recs.iterrows():
+                        # 🚀 AI統合記録の分離
+                        ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
+                        normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
+                        
+                        st.markdown("##### ✨ AI統合ケース記録")
+                        
+                        if not ai_recs.empty:
+                            # 既にAI統合記録が生成・保存されている場合
+                            ai_rec = ai_recs.iloc[0]
+                            
+                            # 編集モードかどうか
+                            if st.session_state.get(f"edit_ai_{ai_rec['id']}"):
+                                new_summary = st.text_area("統合記録を直接編集", value=ai_rec['content'], height=150, key=f"ta_{ai_rec['id']}")
+                                if st.button("💾 保存して確定", key=f"save_ai_{ai_rec['id']}", type="primary"):
+                                    supabase.table("records").update({"content": new_summary}).eq("id", ai_rec['id']).execute()
+                                    st.session_state[f"edit_ai_{ai_rec['id']}"] = False
+                                    st.rerun()
+                            else:
+                                # 確定状態の表示
+                                html_summary = ai_rec['content'].replace('\n', '<br>')
+                                st.markdown(f"<div style='background-color:#f8faff; padding:15px; border-radius:8px; line-height:1.6; font-size:15px; color:#1a1c24; border: 1px solid #d0e2ff; margin-bottom: 10px;'>{html_summary}</div>", unsafe_allow_html=True)
+                                
+                                col_ai1, col_ai2 = st.columns([1, 4])
+                                with col_ai1:
+                                    if st.button("✏️ 編集", key=f"btn_edit_{ai_rec['id']}"):
+                                        st.session_state[f"edit_ai_{ai_rec['id']}"] = True
+                                        st.rerun()
+                                with col_ai2:
+                                    st.text_area("コピー用", value=ai_rec['content'], height=68, label_visibility="collapsed", key=f"copy_{ai_rec['id']}")
+                        
+                        else:
+                            # まだAI統合記録がない場合のみ生成ボタンを表示
+                            if st.button(f"✨ 今日のまとめを生成して確定", key=f"gen_{user}"):
+                                if not normal_recs.empty:
+                                    with st.spinner("AIが統合して保存しています..."):
+                                        recs_text = "\n".join([r['content'] for _, r in normal_recs.iterrows()])
+                                        model = get_generative_model()
+                                        prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
+                                        summary = model.generate_content(prompt).text
+                                        
+                                        # 生成した記録をDBに「AI統合記録」として保存（23:59:59扱いにして一番下に固定）
+                                        c_num = normal_recs.iloc[0]['chart_number']
+                                        dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
+                                        supabase.table("records").insert({
+                                            "facility_code": f_code, "chart_number": c_num, 
+                                            "user_name": user, "staff_name": "AI統合記録", 
+                                            "content": summary, "created_at": dt.isoformat()
+                                        }).execute()
+                                        st.rerun()
+                                else:
+                                    st.warning("まとめるためのケース記録がありません。")
+                        
+                        st.divider()
+                        st.markdown("###### 📝 個別のケース記録")
+                        for _, r in normal_recs.iterrows():
                             time_str = parse_jst(r['created_at'])
                             st.caption(f"🕒 {time_str} ({r['staff_name']})")
                             st.write(r['content'])
