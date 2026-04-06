@@ -35,20 +35,20 @@ def render_top(supabase, cookie_manager, f_code, my_name):
 
     st.markdown(f"##### 📝 更新履歴 (最新{hist_limit}件)")
     try:
-        res_hist = supabase.table("records").select("user_name, created_at").eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit).execute()
+        # 🚀 修正: 履歴リンクバグ解消のため、一意の `id` も一緒に取得する
+        res_hist = supabase.table("records").select("id, user_name, created_at").eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit).execute()
         if res_hist.data:
             with st.container(height=300):
                 for r in res_hist.data:
                     time_str = parse_jst(r['created_at'])
-                    
-                    # 🚀 修正: クリック時にその記録の日付もセットしてジャンプさせる
                     try:
                         dt_obj = datetime.fromisoformat(str(r['created_at']).replace('Z', '+00:00')).astimezone(tokyo_tz)
                         target_d = dt_obj.date()
                     except:
                         target_d = datetime.now(tokyo_tz).date()
 
-                    if st.button(f"👤 {r['user_name']} ({time_str})", key=f"h_{r['created_at']}_{uuid.uuid4()}", use_container_width=True):
+                    # 🚀 修正: key に uuid.uuid4() を使わず、不変の r['id'] を使うことでクリックが確実に反応する
+                    if st.button(f"👤 {r['user_name']} ({time_str})", key=f"hist_btn_{r['id']}", use_container_width=True):
                         st.session_state.update({
                             "page": "daily_view", 
                             "dv_target_user": r['user_name'],
@@ -68,8 +68,8 @@ def render_top(supabase, cookie_manager, f_code, my_name):
 def render_input(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("ip_u")
+    st.markdown(f"<div class='main-title'>{'📝 記録修正' if st.session_state.get('editing_record_id') else '✍️ 記録入力'}</div>", unsafe_allow_html=True)
     is_edit = st.session_state.get("editing_record_id") is not None
-    st.markdown(f"<div class='main-title'>{'📝 記録修正' if is_edit else '✍️ 記録入力'}</div>", unsafe_allow_html=True)
     
     p_opts = ["(未選択)"]
     try:
@@ -88,7 +88,6 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
             with st.spinner("AI変換中..."):
                 model = get_generative_model()
-                # 🚀 修正: 「利用者様は」などの主語を入れないように指示
                 prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名や『利用者様は』などの主語は不要。"
                 contents = [prompt]
                 if imgs: [contents.append(Image.open(i)) for i in imgs]
@@ -140,7 +139,6 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                 if res.data:
                     recs = "\n".join([r['content'] for r in res.data])
                     model = get_generative_model()
-                    # 🚀 修正: 「利用者様は」などの主語を入れないように指示
                     prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
                     st.session_state["monitoring_result"] = model.generate_content(prompt).text
                 else: st.warning("記録なし")
@@ -148,7 +146,7 @@ def render_history(supabase, cookie_manager, f_code, my_name):
         if st.session_state.get("monitoring_result"):
             res_txt = st.text_area("結果（編集可能）", value=st.session_state["monitoring_result"], height=200)
             st.session_state["monitoring_result"] = res_txt
-            st.caption("👇 以下の枠の右上にあるコピーボタン（📋）を押すと、一発でコピーできます。")
+            st.caption("👇 コピー用")
             st.code(res_txt, language="text")
 
 def render_daily_view(supabase, cookie_manager, f_code, my_name):
@@ -156,7 +154,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
     back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧・統合</div>", unsafe_allow_html=True)
     
-    # 🚀 修正: TOPから飛んできたときの日付を正確にセット
     target_date = st.session_state.get("dv_target_date", now_tokyo.date())
     if target_date is None: target_date = now_tokyo.date()
     
@@ -175,11 +172,16 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         if st.button(f"✨ 今日のまとめを生成", key=f"gen_{user}"):
                             recs_text = "\n".join([r['content'] for _, r in user_recs.iterrows()])
                             model = get_generative_model()
-                            # 🚀 修正: 「利用者様は」などの主語を入れないように指示
                             prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
                             summary = model.generate_content(prompt).text
-                            st.info(f"**【AI統合ケース記録】**")
-                            st.code(summary, language="text")
+                            
+                            # 🚀 UI修正: 横スクロールをなくし、読みやすいカードデザインで表示
+                            st.markdown("##### ✨ AI統合ケース記録")
+                            html_summary = summary.replace('\n', '<br>')
+                            st.markdown(f"<div style='background-color:#f8faff; padding:15px; border-radius:8px; line-height:1.6; font-size:15px; color:#1a1c24; border: 1px solid #d0e2ff; margin-bottom: 10px;'>{html_summary}</div>", unsafe_allow_html=True)
+                            
+                            # 🚀 コピーしやすいようにテキストエリアを併設（ラベルは隠す）
+                            st.text_area("コピー用エリア", value=summary, height=100, label_visibility="collapsed", key=f"copy_{user}")
                         
                         for _, r in user_recs.iterrows():
                             time_str = parse_jst(r['created_at'])

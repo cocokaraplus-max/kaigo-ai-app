@@ -32,9 +32,21 @@ def init_config():
     """, height=0)
 
 def apply_custom_style(primary_color="#ff4b4b"):
+    # 🚀 修正: 大見出し(.main-title)をモダンで洗練されたデザインに変更
     st.markdown(f"""
         <style>
-        .main-title {{ font-size: 26px; font-weight: 800; color: {primary_color}; border-bottom: 4px solid {primary_color}; margin-bottom: 25px; }}
+        .main-title {{ 
+            font-size: 18px; 
+            font-weight: 600; 
+            color: #333; 
+            background-color: #f8f9fa;
+            padding: 10px 15px; 
+            border-left: 5px solid {primary_color}; 
+            border-radius: 4px;
+            margin-bottom: 20px; 
+            display: flex;
+            align-items: center;
+        }}
         div.stButton > button {{ border-radius: 15px !important; transition: all 0.2s; }}
         .top-back-btn button {{ background-color: {primary_color} !important; color: white !important; width: 100% !important; font-weight: bold !important; height: 50px !important; }}
         div[data-baseweb="calendar"] [aria-label*="Sunday"] {{ color: {primary_color} !important; font-weight: bold !important; }}
@@ -64,7 +76,7 @@ def get_generative_model():
 
 def get_cookie_manager():
     if "cookie_manager" not in st.session_state:
-        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v49_prod_stable")
+        st.session_state["cookie_manager"] = stx.CookieManager(key="tasukaru_v50_prod_stable")
     return st.session_state["cookie_manager"]
 
 def display_logo(logo_path='logo.png', show_line=False):
