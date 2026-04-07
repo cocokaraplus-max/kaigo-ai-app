@@ -7,6 +7,7 @@ from PIL import Image
 import pytz
 import uuid
 import time
+import os  # ★エジソンが追加！環境変数を読み込むための必須パーツ
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -53,12 +54,38 @@ def apply_custom_style(primary_color="#ff4b4b"):
         </style>
         """, unsafe_allow_html=True)
 
+# ▼▼▼ エジソン特製：環境変数対応 ＆ 空白自動除去の最強関数 ▼▼▼
+def get_secret(secret_name):
+    value = os.environ.get(secret_name)
+    if value:
+        return value.strip()
+    try:
+        if secret_name in st.secrets:
+            return st.secrets[secret_name].strip()
+    except Exception:
+        pass
+    return None
+# ▲▲▲ ここまでエジソンの魔法 ▲▲▲
+
 @st.cache_resource
 def init_clients():
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e: st.error(f"接続エラー: {e}"); st.stop()
+        # 古い st.secrets をやめて、新しい魔法の関数に置き換え！
+        gemini_key = get_secret("GEMINI_API_KEY")
+        supa_url = get_secret("SUPABASE_URL")
+        supa_key = get_secret("SUPABASE_KEY")
+
+        if not supa_url or not supa_key:
+            st.error("🚨 データベースの接続情報が見つかりません。")
+            st.stop()
+
+        if gemini_key:
+            genai.configure(api_key=gemini_key)
+
+        return create_client(supa_url, supa_key)
+    except Exception as e: 
+        st.error(f"接続エラー: {e}")
+        st.stop()
 
 @st.cache_resource
 def get_generative_model():
