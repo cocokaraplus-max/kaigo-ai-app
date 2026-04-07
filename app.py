@@ -2,8 +2,6 @@ import streamlit as st
 import os
 import uuid
 import time
-import urllib.request
-import urllib.error
 from supabase import create_client
 from utils import init_config, init_clients, get_cookie_manager, display_logo, apply_custom_style, get_facility_config, tokyo_tz
 import views
@@ -11,7 +9,6 @@ import views
 # --- 1. システム初期化 ---
 init_config()
 
-# ▼▼▼ エジソン特製：環境変数対応 ＆ 記号完全除去の最強セキュリティ ▼▼▼
 def get_secret(secret_name):
     value = os.environ.get(secret_name)
     if value:
@@ -27,7 +24,7 @@ SUPABASE_URL = get_secret("SUPABASE_URL")
 SUPABASE_KEY = get_secret("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("🚨 SupabaseのURLまたは鍵が見つかりません！Cloud Runの環境変数設定を確認してください。")
+    st.error("🚨 SupabaseのURLまたは鍵が見つかりません！設定を確認してください。")
     st.stop()
 
 try:
@@ -36,36 +33,6 @@ except Exception:
     pass
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-# ▲▲▲ ここまでエジソンの魔法 ▲▲▲
-
-# 🕵️‍♂️ 究極の生身通信テスト（エジソン用）
-if st.sidebar.checkbox("🔧 究極の生身通信テスト（エジソン用）"):
-    st.sidebar.write(f"URL設定済み: {'はい' if SUPABASE_URL else 'いいえ'}")
-    st.sidebar.write(f"KEY設定済み: {'はい' if SUPABASE_KEY else 'いいえ'}")
-    
-    # 🔍 鍵の「健康診断」：見えないゴミが混じっていないか丸裸にする！
-    if SUPABASE_KEY:
-        st.sidebar.write(f"🔑 鍵の長さ: {len(SUPABASE_KEY)} 文字")
-        st.sidebar.write(f"🟢 先頭5文字: {SUPABASE_KEY[:5]}")
-        st.sidebar.write(f"🔴 末尾5文字: {SUPABASE_KEY[-5:]}")
-        
-    # 翻訳機を使わず、直接URLを組み立てる
-    url = f"{SUPABASE_URL}/rest/v1/facility_settings?select=*"
-    st.sidebar.write("🚀 送信先URL:", url)
-    
-    req = urllib.request.Request(url)
-    req.add_header("apikey", SUPABASE_KEY)
-    req.add_header("Authorization", f"Bearer {SUPABASE_KEY}")
-    
-    try:
-        # 直接、門番に鍵を突きつける！
-        with urllib.request.urlopen(req) as response:
-            st.sidebar.success(f"✅ 通信大成功！ステータス: {response.status}")
-    except urllib.error.HTTPError as e:
-        st.sidebar.error(f"❌ HTTPエラー: {e.code}")
-        st.sidebar.write("エラー詳細:", e.read().decode("utf-8"))
-    except Exception as e:
-        st.sidebar.error(f"❌ 謎のエラー: {e}")
 
 cookie_manager = get_cookie_manager()
 
