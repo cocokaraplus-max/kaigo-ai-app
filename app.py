@@ -1,12 +1,47 @@
 import streamlit as st
+import os
 import uuid
 import time
+from supabase import create_client
 from utils import init_config, init_clients, get_cookie_manager, display_logo, apply_custom_style, get_facility_config, tokyo_tz
 import views
 
 # --- 1. システム初期化 ---
 init_config()
-supabase = init_clients()
+
+# ▼▼▼ エジソン特製：環境変数対応 ＆ 空白自動除去の最強セキュリティ ▼▼▼
+def get_secret(secret_name):
+    # ① まずは Cloud Run の環境変数から探す
+    value = os.environ.get(secret_name)
+    if value:
+        return value.strip() # コピーミスの「見えない空白」を自動で破壊！
+    
+    # ② なければ Streamlit Cloud の secrets から探す
+    try:
+        if secret_name in st.secrets:
+            return st.secrets[secret_name].strip()
+    except Exception:
+        pass
+    
+    return None
+
+SUPABASE_URL = get_secret("SUPABASE_URL")
+SUPABASE_KEY = get_secret("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("🚨 SupabaseのURLまたは鍵が見つかりません！Cloud Runの環境変数設定を確認してください。")
+    st.stop()
+
+# utils.pyの初期化は他機能のために呼ぶが、エラーが起きても無視する
+try:
+    _ = init_clients()
+except Exception:
+    pass
+
+# utils.pyに頼らず、ここで確実に正しい鍵を使ってSupabase接続を上書きする！
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ▲▲▲ ここまでエジソンの魔法 ▲▲▲
+
 cookie_manager = get_cookie_manager()
 
 # セッション状態の維持
