@@ -9,14 +9,15 @@ import views
 # --- 1. システム初期化 ---
 init_config()
 
-# ▼▼▼ エジソン特製：環境変数対応 ＆ 空白自動除去の最強セキュリティ ▼▼▼
+# ▼▼▼ エジソン特製：環境変数対応 ＆ 記号完全除去の最強セキュリティ ▼▼▼
 def get_secret(secret_name):
     value = os.environ.get(secret_name)
     if value:
-        return value.strip()
+        # 空白、ダブルクォーテーション(")、シングルクォーテーション(')をすべて破壊！
+        return value.strip().strip('"').strip("'")
     try:
         if secret_name in st.secrets:
-            return st.secrets[secret_name].strip()
+            return st.secrets[secret_name].strip().strip('"').strip("'")
     except Exception:
         pass
     return None

@@ -7,7 +7,7 @@ from PIL import Image
 import pytz
 import uuid
 import time
-import os  # ★エジソンが追加！環境変数を読み込むための必須パーツ
+import os
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -54,23 +54,21 @@ def apply_custom_style(primary_color="#ff4b4b"):
         </style>
         """, unsafe_allow_html=True)
 
-# ▼▼▼ エジソン特製：環境変数対応 ＆ 空白自動除去の最強関数 ▼▼▼
+# ▼▼▼ 記号完全除去の最強関数 ▼▼▼
 def get_secret(secret_name):
     value = os.environ.get(secret_name)
     if value:
-        return value.strip()
+        return value.strip().strip('"').strip("'")
     try:
         if secret_name in st.secrets:
-            return st.secrets[secret_name].strip()
+            return st.secrets[secret_name].strip().strip('"').strip("'")
     except Exception:
         pass
     return None
-# ▲▲▲ ここまでエジソンの魔法 ▲▲▲
 
 @st.cache_resource
 def init_clients():
     try:
-        # 古い st.secrets をやめて、新しい魔法の関数に置き換え！
         gemini_key = get_secret("GEMINI_API_KEY")
         supa_url = get_secret("SUPABASE_URL")
         supa_key = get_secret("SUPABASE_KEY")
