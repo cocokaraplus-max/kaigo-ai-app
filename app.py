@@ -1,3 +1,4 @@
+# エジソン、場所を教えてくれ！
 import streamlit as st
 import os
 import uuid
