@@ -9,17 +9,23 @@ import views
 # --- 1. システム初期化 ---
 init_config()
 
-# ▼▼▼ エジソン特製：究極のベタ書きテスト ▼▼▼
-# ここにSupabaseのダッシュボードからコピーしたURLと鍵を「直接」貼り付ける！
+# ▼▼▼ エジソン特製：環境変数対応 ＆ 記号完全除去の最強セキュリティ ▼▼▼
+def get_secret(secret_name):
+    value = os.environ.get(secret_name)
+    if value:
+        return value.strip().strip('"').strip("'")
+    try:
+        if secret_name in st.secrets:
+            return st.secrets[secret_name].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
 
-# ↓ここを本物のURLに書き換える（例: "https://xxxxxx.supabase.co"）
-SUPABASE_URL = "https://abvglnkwtdeoaazyqwyd.supabase.co"
+SUPABASE_URL = get_secret("SUPABASE_URL")
+SUPABASE_KEY = get_secret("SUPABASE_KEY")
 
-# ↓ここを本物の鍵に書き換える（例: "eyJhbGciOiJIUzI1NiIs..."）
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFidmdsbmt3dGRlb2Fhenlxd3lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MzIxNzYsImV4cCI6MjA5MDQwODE3Nn0.gfL3L1gLJievtX2kFmZr0kY1YS_HKMWsQXlEWSq5N6w"
-
-if not SUPABASE_URL or not SUPABASE_KEY or SUPABASE_URL.startswith("ここ"):
-    st.error("🚨 エジソンからの警告：コードの中にURLと鍵を直接貼り付けてから保存してくれ！")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("🚨 SupabaseのURLまたは鍵が見つかりません！Cloud Runの環境変数設定を確認してください。")
     st.stop()
 
 try:
