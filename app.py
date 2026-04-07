@@ -11,18 +11,14 @@ init_config()
 
 # ▼▼▼ エジソン特製：環境変数対応 ＆ 空白自動除去の最強セキュリティ ▼▼▼
 def get_secret(secret_name):
-    # ① まずは Cloud Run の環境変数から探す
     value = os.environ.get(secret_name)
     if value:
-        return value.strip() # コピーミスの「見えない空白」を自動で破壊！
-    
-    # ② なければ Streamlit Cloud の secrets から探す
+        return value.strip()
     try:
         if secret_name in st.secrets:
             return st.secrets[secret_name].strip()
     except Exception:
         pass
-    
     return None
 
 SUPABASE_URL = get_secret("SUPABASE_URL")
@@ -41,6 +37,18 @@ except Exception:
 # utils.pyに頼らず、ここで確実に正しい鍵を使ってSupabase接続を上書きする！
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ▲▲▲ ここまでエジソンの魔法 ▲▲▲
+
+# ▼▼▼ 🕵️‍♂️ エジソンのデバッグレーダー（原因特定用） ▼▼▼
+if st.sidebar.checkbox("🔧 デバッグ情報を表示（エジソン用）"):
+    st.sidebar.write(f"URL設定済み: {'はい' if SUPABASE_URL else 'いいえ'}")
+    st.sidebar.write(f"KEY設定済み: {'はい' if SUPABASE_KEY else 'いいえ'}")
+    try:
+        # 実際にデータベースから1件だけ取れるかテスト
+        test_res = supabase.table("facility_settings").select("*").limit(1).execute()
+        st.sidebar.success("✅ データベース接続成功！エラーの原因は鍵ではありません。")
+    except Exception as e:
+        st.sidebar.error(f"❌ 接続失敗: {e}")
+# ▲▲▲ デバッグレーダー ここまで ▲▲▲
 
 cookie_manager = get_cookie_manager()
 
@@ -76,17 +84,15 @@ if device_id:
 # 🚀 デバイス情報をデータベースに記録する機能
 def register_device_to_db(d_id, f_code, s_name):
     try:
-        # すでにこのデバイスIDが登録されているかチェック
         res = supabase.table("devices").select("id").eq("device_id", d_id).execute()
         if not res.data:
-            # 🚀 修正: 列名を「device_name」に変更して保存！
             supabase.table("devices").insert({
                 "device_id": d_id,
                 "facility_code": f_code,
                 "device_name": s_name
             }).execute()
     except Exception as e:
-        pass # テーブルに列がない場合などにアプリが止まらないよう保護
+        pass
 
 # --- 3. ログイン認証 ---
 if not st.session_state.get("is_authenticated"):
