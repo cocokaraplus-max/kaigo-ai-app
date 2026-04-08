@@ -6,12 +6,30 @@ from supabase import create_client
 from utils import init_config, init_clients, get_cookie_manager, display_logo, apply_custom_style, get_facility_config, tokyo_tz
 import views
 
-# --- 1. システム初期化 ---
-init_config()
+# --- 1. PWA・アイコン設定（スマホのホーム画面用） ---
+def set_app_manifest():
+    # ロゴのURL（GitHub上のRawデータを指定）
+    # ※あなたのユーザー名とリポジトリ名に書き換えてくれ！
+    icon_url = "https://raw.githubusercontent.com/cocokaraplus-max/kaigo-ai-app/cloudrun/assets/logo.png"
+    
+    st.markdown(f"""
+        <head>
+            <title>TASUKARU</title>
+            <link rel="apple-touch-icon" href="{icon_url}">
+            <link rel="icon" type="image/png" href="{icon_url}">
+            <meta name="theme-color" content="#ff4b4b">
+            <meta name="apple-mobile-web-app-capable" content="yes">
+            <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        </head>
+    """, unsafe_allow_html=True)
 
-# 【今回の核心】OSの環境変数を最優先で取得し、不要な記号を徹底除去
+# システム初期化
+init_config()
+set_app_manifest()
+
+# --- 2. 環境変数取得（今回の勝利の鍵） ---
 def get_safe_secret(key):
-    # Cloud Runの環境変数を優先、なければStreamlit Secretsを見る
+    # Cloud Runの環境変数を最優先、次にStreamlit Secretsを確認
     val = os.environ.get(key) or st.secrets.get(key)
     if val:
         return str(val).strip().strip('"').strip("'")
@@ -21,7 +39,7 @@ SUPABASE_URL = get_safe_secret("SUPABASE_URL")
 SUPABASE_KEY = get_safe_secret("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("🚨 接続設定が読み込めません。環境変数を確認してください。")
+    st.error("🚨 接続設定（URL/KEY）が読み込めません。Cloud Runの環境変数を確認してください。")
     st.stop()
 
 # クライアント初期化
@@ -32,14 +50,14 @@ except:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- 2. セッション状態の管理 ---
+# --- 3. セッションとクッキーの管理 ---
 cookie_manager = get_cookie_manager()
 if "page" not in st.session_state: st.session_state["page"] = "top"
 if "edit_content" not in st.session_state: st.session_state["edit_content"] = ""
 if "monitoring_result" not in st.session_state: st.session_state["monitoring_result"] = ""
 if "admin_authenticated" not in st.session_state: st.session_state["admin_authenticated"] = False
 
-# クッキー読み込み待ち
+# クッキー読み込みの同期
 cookies = cookie_manager.get_all()
 if not cookies:
     time.sleep(0.5)
@@ -47,7 +65,7 @@ if not cookies:
 
 device_id = cookies.get("device_id") or str(uuid.uuid4())
 
-# --- 3. 認証・ログイン処理 ---
+# --- 4. 認証処理 ---
 if not st.session_state.get("is_authenticated"):
     display_logo()
     with st.container(border=True):
@@ -59,12 +77,12 @@ if not st.session_state.get("is_authenticated"):
                 st.rerun()
     st.stop()
 
-# --- 4. メインコンテンツ ---
+# --- 5. メイン画面の描画 ---
 f_code = st.session_state["facility_code"]
 my_name = st.session_state["my_name"]
 
 try:
-    # 施設設定の動的読み込み
+    # 施設ごとのカラー設定などをDBから取得
     f_config = get_facility_config(supabase, f_code)
     apply_custom_style(f_config.get("primary_color", "#ff4b4b"))
 except:
