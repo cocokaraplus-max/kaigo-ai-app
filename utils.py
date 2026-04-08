@@ -1,47 +1,45 @@
 import streamlit as st
-from supabase import create_client, Client
-import views
-from utils import cookie_manager, display_logo
+import pytz
+import google.generativeai as genai
+from PIL import Image
+from streamlit_cookies_manager import EncryptedCookieManager
 import os
 
-st.set_page_config(page_title="TASUKARU", page_icon="🦝", layout="centered")
+tokyo_tz = pytz.timezone('Asia/Tokyo')
 
-try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-    st.error(f"データベース接続エラー: {e}")
+cookie_manager = EncryptedCookieManager(
+    password=os.environ.get("COOKIES_PASSWORD", "ST_COOKIES_PWD_DEFAULT_12345"),
+)
+if not cookie_manager.ready():
     st.stop()
 
-if "page" not in st.session_state:
-    st.session_state["page"] = "top"
-if "admin_authenticated" not in st.session_state:
-    st.session_state["admin_authenticated"] = False
+def display_logo(show_line=True):
+    try:
+        img = Image.open("logo.png")
+        st.image(img, use_container_width=True)
+    except:
+        st.markdown("<h1 style='text-align: center;'>🦝 TASUKARU</h1>", unsafe_allow_html=True)
+    if show_line:
+        st.divider()
 
-f_code = cookie_manager.get("saved_f_code")
-my_name = cookie_manager.get("saved_my_name")
+def back_to_top_button(key):
+    if st.button("🏠 TOP画面へ", key=key):
+        st.session_state["page"] = "top"
+        st.rerun()
 
-if not f_code or not my_name:
-    display_logo(show_line=True)
-    st.info("ログインしてください。次回から自動でログインします。")
-    with st.form("login_form"):
-        f_in = st.text_input("施設コード")
-        n_in = st.text_input("名前")
-        if st.form_submit_button("ログイン"):
-            cookie_manager["saved_f_code"] = f_in
-            cookie_manager["saved_my_name"] = n_in
-            cookie_manager.save()
-            st.rerun()
-else:
-    p = st.session_state["page"]
-    if p == "admin_menu":
-        views.render_admin_menu(supabase, cookie_manager, f_code, my_name, "WEB")
-    elif p == "input":
-        views.render_input(supabase, cookie_manager, f_code, my_name)
-    elif p == "daily_view":
-        views.render_daily_view(supabase, cookie_manager, f_code, my_name)
-    elif p == "history":
-        views.render_history(supabase, cookie_manager, f_code, my_name)
-    else:
-        views.render_top(supabase, cookie_manager, f_code, my_name)
+# 🚀 魔法の仕掛け：views.pyを一切いじらずにNotFoundエラーを自動回避する！
+class SafeGeminiModel:
+    def generate_content(self, contents):
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            return model.generate_content(contents)
+        except Exception as e:
+            # NotFoundエラーが出たら、安定版の旧モデルに自動で切り替える
+            if "NotFound" in str(type(e).__name__) or "404" in str(e):
+                model = genai.GenerativeModel('gemini-pro')
+                return model.generate_content(contents)
+            raise e
+
+def get_generative_model():
+    return SafeGeminiModel()

@@ -6,7 +6,6 @@ import os
 
 st.set_page_config(page_title="TASUKARU", page_icon="🦝", layout="centered")
 
-# データベース接続
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -25,7 +24,7 @@ my_name = cookie_manager.get("saved_my_name")
 
 if not f_code or not my_name:
     display_logo(show_line=True)
-    st.info("施設コードと名前を入力してログインしてください。")
+    st.info("ログインしてください。次回から自動でログインします。")
     with st.form("login_form"):
         f_in = st.text_input("施設コード")
         n_in = st.text_input("名前")
@@ -36,19 +35,13 @@ if not f_code or not my_name:
             st.rerun()
 else:
     p = st.session_state["page"]
-    try:
-        if p == "admin_menu":
-            views.render_admin_menu(supabase, cookie_manager, f_code, my_name, "WEB")
-        elif p == "input":
-            views.render_input(supabase, cookie_manager, f_code, my_name)
-        elif p == "daily_view":
-            views.render_daily_view(supabase, cookie_manager, f_code, my_name)
-        elif p == "history":
-            views.render_history(supabase, cookie_manager, f_code, my_name)
-        else:
-            views.render_top(supabase, cookie_manager, f_code, my_name)
-    except Exception as e:
-        st.error(f"画面の表示中にエラーが発生しました: {e}")
-        if st.button("🏠 TOP画面へ戻る"):
-            st.session_state["page"] = "top"
-            st.rerun()
+    if p == "admin_menu":
+        views.render_admin_menu(supabase, cookie_manager, f_code, my_name, "WEB")
+    elif p == "input":
+        views.render_input(supabase, cookie_manager, f_code, my_name)
+    elif p == "daily_view":
+        views.render_daily_view(supabase, cookie_manager, f_code, my_name)
+    elif p == "history":
+        views.render_history(supabase, cookie_manager, f_code, my_name)
+    else:
+        views.render_top(supabase, cookie_manager, f_code, my_name)
