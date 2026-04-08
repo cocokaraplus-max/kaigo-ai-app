@@ -2,6 +2,8 @@ import streamlit as st
 import os
 import uuid
 import time
+import urllib.request
+import urllib.error
 from supabase import create_client
 from utils import init_config, init_clients, get_cookie_manager, display_logo, apply_custom_style, get_facility_config, tokyo_tz
 import views
@@ -33,6 +35,35 @@ except Exception:
     pass
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ▼▼▼ エジソンの実験室：究極の生身通信テスト ▼▼▼
+if st.sidebar.checkbox("🔧 究極の生身通信テスト（エジソン用）"):
+    st.sidebar.write("### 🧪 エジソンの実験結果")
+    st.sidebar.write(f"URL設定済み: {'はい' if SUPABASE_URL else 'いいえ'}")
+    st.sidebar.write(f"KEY設定済み: {'はい' if SUPABASE_KEY else 'いいえ'}")
+    
+    # 🔍 鍵の「健康診断」：見えないゴミが混じっていないか丸裸にする！
+    if SUPABASE_KEY:
+        st.sidebar.write(f"🔑 鍵の長さ: **{len(SUPABASE_KEY)} 文字**")
+        st.sidebar.write(f"🟢 先頭5文字: `{SUPABASE_KEY[:5]}`")
+        st.sidebar.write(f"🔴 末尾5文字: `{SUPABASE_KEY[-5:]}`")
+        
+    # 翻訳機を使わず、直接URLを組み立てて門番に突きつける！
+    url = f"{SUPABASE_URL}/rest/v1/facility_settings?select=*"
+    
+    req = urllib.request.Request(url)
+    req.add_header("apikey", SUPABASE_KEY)
+    req.add_header("Authorization", f"Bearer {SUPABASE_KEY}")
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            st.sidebar.success(f"✅ 生身の通信大成功！ステータス: {response.status}")
+    except urllib.error.HTTPError as e:
+        st.sidebar.error(f"❌ 門番に弾かれた！エラー: {e.code}")
+        st.sidebar.write("エラー詳細:", e.read().decode("utf-8"))
+    except Exception as e:
+        st.sidebar.error(f"❌ 謎のエラー: {e}")
+# ▲▲▲ 実験室ここまで ▲▲▲
 
 cookie_manager = get_cookie_manager()
 
