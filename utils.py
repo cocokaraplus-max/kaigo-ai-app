@@ -1,60 +1,47 @@
 import streamlit as st
-import pytz
-import google.generativeai as genai
-from PIL import Image
-from streamlit_cookies_manager import EncryptedCookieManager
+from supabase import create_client, Client
+import views
+from utils import cookie_manager, display_logo
 import os
 
-# タイムゾーン設定
-tokyo_tz = pytz.timezone('Asia/Tokyo')
+st.set_page_config(page_title="TASUKARU", page_icon="🦝", layout="centered")
 
-# クッキー管理
-cookie_manager = EncryptedCookieManager(
-    password=os.environ.get("COOKIES_PASSWORD", "ST_COOKIES_PWD_DEFAULT_12345"),
-)
-if not cookie_manager.ready():
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    st.error(f"データベース接続エラー: {e}")
     st.stop()
 
-def display_logo(show_line=True):
-    try:
-        img = Image.open("logo.png")
-        st.image(img, use_container_width=True)
-    except:
-        st.markdown("<h1 style='text-align: center;'>🦝 TASUKARU</h1>", unsafe_allow_html=True)
-    if show_line:
-        st.divider()
+if "page" not in st.session_state:
+    st.session_state["page"] = "top"
+if "admin_authenticated" not in st.session_state:
+    st.session_state["admin_authenticated"] = False
 
-def back_to_top_button(key):
-    if st.button("🏠 TOP画面へ", key=key, use_container_width=True):
-        st.session_state["page"] = "top"
-        st.rerun()
+f_code = cookie_manager.get("saved_f_code")
+my_name = cookie_manager.get("saved_my_name")
 
-# 🚀 【最強版】エラーを自動で回避するAI呼び出し関数
-def call_gemini_ai(contents):
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    
-    # 使える可能性のあるモデルを新しい順に試す
-    models_to_try = [
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.0-pro',
-        'gemini-pro'
-    ]
-    
-    last_error = None
-    for m_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(m_name)
-            response = model.generate_content(contents)
-            return response.text.strip()
-        except Exception as e:
-            last_error = e
-            # NotFound (404) エラーなら次のモデルを試す
-            if "NotFound" in str(type(e).__name__) or "404" in str(e):
-                continue
-            else:
-                # APIキー間違いなどの致命的エラーはそのまま出す
-                raise e
-                
-    # 全滅した場合
-    raise Exception(f"利用可能なAIモデルが見つかりませんでした。詳細: {last_error}")
+if not f_code or not my_name:
+    display_logo(show_line=True)
+    st.info("ログインしてください。次回から自動でログインします。")
+    with st.form("login_form"):
+        f_in = st.text_input("施設コード")
+        n_in = st.text_input("名前")
+        if st.form_submit_button("ログイン"):
+            cookie_manager["saved_f_code"] = f_in
+            cookie_manager["saved_my_name"] = n_in
+            cookie_manager.save()
+            st.rerun()
+else:
+    p = st.session_state["page"]
+    if p == "admin_menu":
+        views.render_admin_menu(supabase, cookie_manager, f_code, my_name, "WEB")
+    elif p == "input":
+        views.render_input(supabase, cookie_manager, f_code, my_name)
+    elif p == "daily_view":
+        views.render_daily_view(supabase, cookie_manager, f_code, my_name)
+    elif p == "history":
+        views.render_history(supabase, cookie_manager, f_code, my_name)
+    else:
+        views.render_top(supabase, cookie_manager, f_code, my_name)
