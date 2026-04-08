@@ -1,27 +1,24 @@
 import streamlit as st
-import google.generativeai as genai
 import pandas as pd
 from datetime import datetime, timedelta, time as dt_time
-import uuid
 import time
 from PIL import Image
 import re
-from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model
+from utils import tokyo_tz, display_logo, back_to_top_button, call_gemini_ai
 
 def parse_jst(iso_str, fmt='%H:%M'):
-    """データベースの時間を日本時間に直して表示する"""
     try:
         dt = datetime.fromisoformat(str(iso_str).replace('Z', '+00:00'))
         return dt.astimezone(tokyo_tz).strftime(fmt)
     except:
         return str(iso_str)[11:16]
 
-# 🚀 修正: 履歴から1クリックで確実に飛ぶためのコールバック関数
 def go_to_daily_view(u_name, target_d):
     st.session_state["page"] = "daily_view"
     st.session_state["dv_target_user"] = u_name
     st.session_state["dv_target_date"] = target_d
 
+# --- 1. TOP画面 ---
 def render_top(supabase, cookie_manager, f_code, my_name):
     display_logo(show_line=True)
     st.markdown(f"<p style='text-align: center;'>🏢 <b>{f_code}</b> ／ 👤 <b>{my_name}</b> さん</p>", unsafe_allow_html=True)
@@ -52,83 +49,93 @@ def render_top(supabase, cookie_manager, f_code, my_name):
                         target_d = dt_obj.date()
                     except:
                         target_d = datetime.now(tokyo_tz).date()
-
-                    # 🚀 修正: on_clickを使うことで、2回押し問題を物理的に解消
                     st.button(f"👤 {r['user_name']} ({time_str})", key=f"hist_btn_{r['id']}", use_container_width=True, on_click=go_to_daily_view, args=(r['user_name'], target_d))
     except: pass
 
     st.divider()
-    if st.session_state.get("admin_authenticated"):
-        if st.button("🛠️ 管理者メニュー (認証済み)", use_container_width=True): st.session_state["page"] = "admin_menu"; st.rerun()
-    else:
-        if st.button("🛠️ 管理者メニュー", use_container_width=True): st.session_state["page"] = "admin_menu"; st.rerun()
-    if st.button("🚪 ログアウト"):
+    btn_label = "🛠️ 管理者MENU" + (" (認証済)" if st.session_state.get("admin_authenticated") else "")
+    if st.button(btn_label, use_container_width=True):
+        st.session_state["page"] = "admin_menu"
+        st.rerun()
+        
+    if st.button("🚪 ログアウト", use_container_width=True):
         cookie_manager.delete("saved_f_code"); cookie_manager.delete("saved_my_name"); st.session_state.clear(); st.rerun()
 
+# --- 2. 入力画面 ---
 def render_input(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
-    back_to_top_button("ip_u")
-    st.markdown(f"<div class='main-title'>{'📝 記録修正' if st.session_state.get('editing_record_id') else '✍️ 記録入力'}</div>", unsafe_allow_html=True)
-    is_edit = st.session_state.get("editing_record_id") is not None
+    st.markdown("<div class='main-title'>✍️ 記録入力</div>", unsafe_allow_html=True)
     
     p_opts = ["(未選択)"]
     try:
         res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
         if res_p.data:
-            p_opts += [f"(No.{r['chart_number']}) [{r['user_name']}]" for r in res_p.data]
+            for r in res_p.data:
+                kana = r.get('user_kana') or ""
+                p_opts.append(f"(No.{r['chart_number']}) [{r['user_name']}] {kana}")
     except:
         st.error("利用者の抽出に失敗しました。")
 
-    sel = st.selectbox("👤 利用者を選択", p_opts, disabled=is_edit)
-    record_date = st.date_input("📅 記録日", value=st.session_state.get("edit_date", now_tokyo.date()), disabled=is_edit)
+    sel = st.selectbox("👤 利用者を選択 (ひらがな検索OK)", p_opts)
+    record_date = st.date_input("📅 記録日", value=now_tokyo.date())
     
-    if not is_edit:
-        imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg","png","jpeg"], accept_multiple_files=True)
-        aud = st.audio_input("🎤 音声入力")
-        if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
-            with st.spinner("AI変換中..."):
-                model = get_generative_model()
+    imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg","png","jpeg"], accept_multiple_files=True)
+    aud = st.audio_input("🎤 音声入力")
+    
+    if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
+        with st.spinner("AI変換中..."):
+            try:
                 prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名や『利用者様は』などの主語は不要。"
                 contents = [prompt]
                 if imgs: [contents.append(Image.open(i)) for i in imgs]
                 if aud: contents.append({"mime_type": "audio/wav", "data": aud.getvalue()})
-                st.session_state["edit_content"] = model.generate_content(contents).text.strip(); st.rerun()
+                
+                # 🚀 確実に call_gemini_ai を使う！
+                st.session_state["edit_content"] = call_gemini_ai(contents)
+                st.rerun()
+            except Exception as e:
+                st.error(f"AI変換エラー: {e}")
     
     txt = st.text_area("内容", value=st.session_state.get("edit_content", ""), height=200)
     if st.button("💾 保存", use_container_width=True):
         if sel != "(未選択)" and txt:
             try:
-                if is_edit:
-                    supabase.table("records").update({"content": txt}).eq("id", st.session_state["editing_record_id"]).execute()
-                else:
-                    m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+                m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+                if m:
                     record_time = datetime.now(tokyo_tz).time()
                     dt = tokyo_tz.localize(datetime.combine(record_date, record_time))
                     supabase.table("records").insert({"facility_code": f_code, "chart_number": m.group(1), "user_name": m.group(2), "staff_name": my_name, "content": txt, "created_at": dt.isoformat()}).execute()
-                
-                st.success("💾 保存完了しました！")
-                time.sleep(1.0)
-                st.session_state.update({"editing_record_id": None, "edit_content": "", "edit_user_label": "(未選択)"})
-                st.rerun()
+                    
+                    st.success("💾 保存完了しました！")
+                    time.sleep(1.0)
+                    st.session_state.update({"edit_content": ""})
+                    st.session_state["page"] = "daily_view"
+                    st.rerun()
             except Exception as e: st.error(f"エラー: {e}")
+            
+    st.divider()
     back_to_top_button("ip_d")
 
+# --- 3. モニタリング生成 ---
 def render_history(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
-    back_to_top_button("hs_u")
     st.markdown("<div class='main-title'>📊 モニタリング生成</div>", unsafe_allow_html=True)
     p_opts = ["---"]
     try:
         res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
-        if res_p.data: p_opts += [f"(No.{r['chart_number']}) {r['user_name']}" for r in res_p.data]
+        if res_p.data: 
+            for r in res_p.data:
+                kana = r.get('user_kana') or ""
+                p_opts.append(f"(No.{r['chart_number']}) [{r['user_name']}] {kana}")
     except: pass
     
-    sel = st.selectbox("利用者を選択", p_opts)
+    sel = st.selectbox("利用者を選択 (ひらがな検索OK)", p_opts)
     if sel != "---":
-        u_name = sel.split(") ")[1]
+        m = re.search(r'\[(.*?)\]', sel)
+        u_name = m.group(1) if m else ""
+        
         month_opts = [f"{now_tokyo.year}年{m:02d}月" for m in range(now_tokyo.month, now_tokyo.month-6, -1)]
         selected_month_str = st.selectbox("対象月", month_opts)
-        
         char_limit = st.radio("生成する文字数の目安", ["100文字", "200文字", "300文字"], horizontal=True)
         
         if st.button("✨ 1ヶ月の要約を生成", type="primary"):
@@ -139,20 +146,27 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                 if res.data:
                     filtered_recs = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
                     recs = "\n".join(filtered_recs)
-                    model = get_generative_model()
-                    prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
-                    st.session_state["monitoring_result"] = model.generate_content(prompt).text
+                    if recs.strip():
+                        prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や『利用者様は』などの主語は不要。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
+                        try:
+                            # 🚀 確実に call_gemini_ai を使う！
+                            st.session_state["monitoring_result"] = call_gemini_ai([prompt])
+                        except Exception as e:
+                            st.error(f"AI生成エラー: {e}")
+                    else: st.warning("対象の記録がありません")
                 else: st.warning("記録なし")
         
         if st.session_state.get("monitoring_result"):
             res_txt = st.text_area("結果（編集可能）", value=st.session_state["monitoring_result"], height=200)
             st.session_state["monitoring_result"] = res_txt
-            st.caption("👇 コピー用（ワンクリックでコピーできます）")
             st.code(res_txt, language="text")
 
+    st.divider()
+    back_to_top_button("hs_d")
+
+# --- 4. 閲覧・統合画面 ---
 def render_daily_view(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
-    back_to_top_button("dv_u")
     st.markdown("<div class='main-title'>📅 ケース記録閲覧・統合</div>", unsafe_allow_html=True)
     
     target_date = st.session_state.get("dv_target_date", now_tokyo.date())
@@ -170,74 +184,78 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                 for user in df["user_name"].unique():
                     with st.expander(f"👤 {user} 様", expanded=(user == target_u)):
                         user_recs = df[df["user_name"] == user]
-                        
                         ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
                         normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
                         
                         if not ai_recs.empty:
                             ai_rec = ai_recs.iloc[0]
-                            
-                            # 🚀 修正: スッキリとした「閲覧＋編集ボタン」のUIに変更
-                            if st.session_state.get(f"edit_ai_{ai_rec['id']}"):
-                                with st.container(border=True):
-                                    st.markdown("✨ **AI統合ケース記録（編集中）**")
-                                    new_summary = st.text_area("内容を編集", value=ai_rec['content'], height=150, label_visibility="collapsed", key=f"ta_{ai_rec['id']}")
-                                    c1, c2 = st.columns(2)
-                                    with c1:
-                                        if st.button("💾 保存して確定", key=f"save_ai_{ai_rec['id']}", type="primary", use_container_width=True):
-                                            supabase.table("records").update({"content": new_summary}).eq("id", ai_rec['id']).execute()
-                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = False
-                                            st.rerun()
-                                    with c2:
-                                        if st.button("❌ キャンセル", key=f"cancel_ai_{ai_rec['id']}", use_container_width=True):
-                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = False
-                                            st.rerun()
-                            else:
-                                with st.container(border=True):
-                                    col_txt, col_btn = st.columns([4, 1])
-                                    with col_txt:
-                                        st.markdown("✨ **AI統合ケース記録**")
-                                        st.write(ai_rec['content']) # 自然な折り返しでスッキリ表示
-                                    with col_btn:
-                                        if st.button("✏️ 編集", key=f"btn_edit_{ai_rec['id']}", use_container_width=True):
-                                            st.session_state[f"edit_ai_{ai_rec['id']}"] = True
-                                            st.rerun()
-                        
+                            with st.container(border=True):
+                                col_txt, col_btn = st.columns([4, 1])
+                                with col_txt:
+                                    st.markdown("✨ **AI統合ケース記録**")
+                                    st.write(ai_rec['content'])
+                                with col_btn:
+                                    if st.session_state.get("admin_authenticated"):
+                                        if st.button("🗑️", key=f"ai_del_{ai_rec['id']}", help="AI記録を削除"):
+                                            supabase.table("records").delete().eq("id", ai_rec['id']).execute(); st.rerun()
                         else:
                             if st.button(f"✨ 今日のまとめを生成して確定", key=f"gen_{user}"):
                                 if not normal_recs.empty:
-                                    with st.spinner("AIが統合して保存しています..."):
+                                    with st.spinner("AI集計中..."):
                                         recs_text = "\n".join([r['content'] for _, r in normal_recs.iterrows()])
-                                        model = get_generative_model()
                                         prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
-                                        summary = model.generate_content(prompt).text
-                                        
-                                        c_num = normal_recs.iloc[0]['chart_number']
-                                        dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
-                                        supabase.table("records").insert({
-                                            "facility_code": f_code, "chart_number": c_num, 
-                                            "user_name": user, "staff_name": "AI統合記録", 
-                                            "content": summary, "created_at": dt.isoformat()
-                                        }).execute()
-                                        st.rerun()
-                                else:
-                                    st.warning("まとめるためのケース記録がありません。")
-                        
+                                        try:
+                                            # 🚀 確実に call_gemini_ai を使う！
+                                            summary = call_gemini_ai([prompt])
+                                            c_num = normal_recs.iloc[0]['chart_number']
+                                            dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
+                                            supabase.table("records").insert({"facility_code": f_code, "chart_number": c_num, "user_name": user, "staff_name": "AI統合記録", "content": summary, "created_at": dt.isoformat()}).execute(); st.rerun()
+                                        except Exception as e:
+                                            st.error(f"AI生成エラー: {e}")
+
                         st.divider()
                         st.markdown("###### 📝 個別のケース記録")
                         for _, r in normal_recs.iterrows():
-                            time_str = parse_jst(r['created_at'])
-                            st.caption(f"🕒 {time_str} ({r['staff_name']})")
-                            st.write(r['content'])
-                            if str(r['staff_name']) == str(my_name) or st.session_state.get("admin_authenticated"):
-                                if st.button("✏️ 編集", key=f"ed_{r['id']}"):
-                                    st.session_state.update({"page":"input", "editing_record_id":r['id'], "edit_content":r['content'], "edit_user_label":f"(No.{r['chart_number']}) [{r['user_name']}]", "edit_date":selected_date}); st.rerun()
+                            with st.container():
+                                time_str = parse_jst(r['created_at'])
+                                st.caption(f"🕒 {time_str} ({r['staff_name']})")
+                                
+                                edit_key = f"edit_active_{r['id']}"
+                                if st.session_state.get(edit_key):
+                                    new_txt = st.text_area("内容を修正", value=r['content'], key=f"ta_{r['id']}")
+                                    c1, c2 = st.columns(2)
+                                    with c1:
+                                        if st.button("💾 確定", key=f"sv_{r['id']}", type="primary"):
+                                            supabase.table("records").update({"content": new_txt}).eq("id", r['id']).execute()
+                                            st.session_state[edit_key] = False
+                                            st.rerun()
+                                    with c2:
+                                        if st.button("❌ キャンセル", key=f"cc_{r['id']}"):
+                                            st.session_state[edit_key] = False
+                                            st.rerun()
+                                else:
+                                    st.write(r['content'])
+                                    is_owner = (str(r['staff_name']) == str(my_name))
+                                    is_admin = st.session_state.get("admin_authenticated")
+                                    if is_owner or is_admin:
+                                        c1, c2, _ = st.columns([1, 1, 4])
+                                        with c1:
+                                            if st.button("✏️ 編集", key=f"btn_ed_{r['id']}"):
+                                                st.session_state[edit_key] = True
+                                                st.rerun()
+                                        with c2:
+                                            if st.button("🗑️ 削除", key=f"btn_del_{r['id']}"):
+                                                supabase.table("records").delete().eq("id", r['id']).execute()
+                                                st.rerun()
+                            st.markdown("---")
             else: st.info("記録なし")
         except Exception as e: st.error(f"エラー: {e}")
+
+    st.divider()
     back_to_top_button("dv_d")
 
+# --- 5. 管理者メニュー ---
 def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
-    back_to_top_button("ad_u")
     st.markdown("<div class='main-title'>🛠️ 管理者メニュー</div>", unsafe_allow_html=True)
     if not st.session_state.get("admin_authenticated"):
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
@@ -272,7 +290,6 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
         st.markdown("##### 👮 スタッフ管理")
         res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
         if res_s.data:
-            # 🚀 修正: スタッフ一覧から "AI統合記録" を除外する
             staff_list = sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"])))
             for s in staff_list:
                 is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", s).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
@@ -299,5 +316,9 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                 if st.button("復帰", key=f"res_{b['id']}"):
                     supabase.table("blocked_devices").update({"is_active":False}).eq("id", b['id']).execute(); st.rerun()
     
-    if st.button("管理者終了"): st.session_state["admin_authenticated"] = False; st.rerun()
-    back_to_top_button("ad_d")
+    st.divider()
+    c_out, c_top = st.columns(2)
+    with c_out:
+        if st.button("管理者終了", use_container_width=True): st.session_state["admin_authenticated"] = False; st.rerun()
+    with c_top:
+        back_to_top_button("ad_d2")
