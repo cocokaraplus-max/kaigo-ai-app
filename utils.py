@@ -9,23 +9,16 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 # ==========================================
 # 🍪 クッキーの代替：session_stateで管理
 # ==========================================
-# streamlit-cookies-managerを廃止し、
-# st.session_stateで安定したログイン維持を実現
-
 def get_cookie(key):
-    """session_stateからログイン情報を取得"""
     return st.session_state.get(f"cookie_{key}", "")
 
 def set_cookie(key, value):
-    """session_stateにログイン情報を保存"""
     st.session_state[f"cookie_{key}"] = value
 
 def delete_cookie(key):
-    """session_stateからログイン情報を削除"""
     if f"cookie_{key}" in st.session_state:
         del st.session_state[f"cookie_{key}"]
 
-# 後方互換性のためのcookie_managerオブジェクト
 class SimpleCookieManager:
     def get(self, key):
         return get_cookie(key)
@@ -34,7 +27,7 @@ class SimpleCookieManager:
         set_cookie(key, value)
 
     def save(self):
-        pass  # session_stateは自動保存なので不要
+        pass
 
     def delete(self, key):
         delete_cookie(key)
@@ -72,14 +65,26 @@ class FastGeminiModel:
     def generate_content(self, contents):
         api_key = st.secrets.get("GEMINI_API_KEY")
         if not api_key:
-            raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。\n管理者に連絡してください。")
+            raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。")
 
+        # ✅ 修正：APIクライアントを新しい書き方に変更
+        client = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            generation_config={"temperature": 0.7}
+        )
         genai.configure(api_key=api_key)
+
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            return model.generate_content(contents)
+            response = client.generate_content(contents)
+            return response
         except Exception as e:
-            raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
+            # モデルが見つからない場合は別のモデルで再試行
+            try:
+                genai.configure(api_key=api_key)
+                fallback = genai.GenerativeModel("gemini-pro")
+                return fallback.generate_content(contents)
+            except Exception as e2:
+                raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
 
 def get_generative_model():
     return FastGeminiModel()
