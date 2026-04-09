@@ -5,6 +5,7 @@ from google.genai import types
 from PIL import Image
 import os
 import io
+import uuid
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -73,19 +74,41 @@ def back_to_top_button(key):
         st.rerun()
 
 # ==========================================
-# 🖼️ 画像を圧縮する関数
+# 📷 写真をSupabaseストレージに保存
 # ==========================================
-def compress_image(img, max_size=(800, 800), quality=75):
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    img.thumbnail(max_size, Image.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=quality, optimize=True)
-    return buf.getvalue()
+def upload_images_to_supabase(supabase, imgs, f_code):
+    """
+    写真をSupabaseのcase-photosバケットに保存し
+    公開URLのリストを返す
+    """
+    image_urls = []
+    for img_file in imgs:
+        try:
+            # ファイル名をユニークに生成
+            ext = img_file.name.split(".")[-1].lower()
+            file_name = f"{f_code}/{uuid.uuid4()}.{ext}"
+
+            # ファイルをバイト列として読み込む
+            img_bytes = img_file.read()
+
+            # Supabaseストレージにアップロード
+            supabase.storage.from_("case-photos").upload(
+                path=file_name,
+                file=img_bytes,
+                file_options={"content-type": img_file.type}
+            )
+
+            # 公開URLを取得
+            url = supabase.storage.from_("case-photos").get_public_url(file_name)
+            image_urls.append(url)
+
+        except Exception as e:
+            st.warning(f"⚠️ 写真のアップロードに失敗しました: {e}")
+
+    return image_urls
 
 # ==========================================
 # 🤖 Gemini レスポンスラッパー
-# 旧ライブラリと同じように .text でアクセスできるようにする
 # ==========================================
 class GeminiResponse:
     def __init__(self, text):
@@ -106,10 +129,6 @@ class FastGeminiModel:
         for item in contents:
             if isinstance(item, str):
                 parts.append(item)
-            elif isinstance(item, Image.Image):
-                # PIL画像を圧縮してバイト列に変換
-                img_bytes = compress_image(item)
-                parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
@@ -118,7 +137,6 @@ class FastGeminiModel:
                 model="gemini-2.5-flash",
                 contents=parts,
             )
-            # ✅ .text でアクセスできるラッパーに包んで返す
             text = response.candidates[0].content.parts[0].text
             return GeminiResponse(text)
         except Exception as e:

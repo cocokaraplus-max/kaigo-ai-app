@@ -5,7 +5,7 @@ import uuid
 import time
 from PIL import Image
 import re
-from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model
+from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model, upload_images_to_supabase
 
 def parse_jst(iso_str, fmt='%H:%M'):
     """データベースの時間を日本時間に直して表示する"""
@@ -119,20 +119,25 @@ def render_input(supabase, cookie_manager, f_code, my_name):
     sel = st.selectbox("👤 利用者を選択 (ひらがな検索OK)", p_opts)
     record_date = st.date_input("📅 記録日", value=now_tokyo.date())
 
+    # ✅ 写真アップロード
     imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
+
+    # アップロードした写真をプレビュー表示
+    if imgs:
+        cols = st.columns(len(imgs))
+        for i, img_file in enumerate(imgs):
+            with cols[i]:
+                st.image(img_file, use_container_width=True)
+
     aud = st.audio_input("🎤 音声入力", key="audio_input_widget")
 
-    if (imgs or aud) and st.button("✨ AI文章化", type="primary"):
+    if aud and st.button("✨ AI文章化", type="primary"):
         with st.spinner("AIが文章を作成中です..."):
             try:
                 model = get_generative_model()
                 prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名や『利用者様は』などの主語は不要。"
                 contents = [prompt]
-                if imgs:
-                    for i in imgs:
-                        contents.append(Image.open(i))
-                if aud:
-                    contents.append({"mime_type": aud.type, "data": aud.getvalue()})
+                contents.append({"mime_type": aud.type, "data": aud.getvalue()})
                 st.session_state["edit_content"] = model.generate_content(contents).text.strip()
                 st.rerun()
             except Exception as e:
@@ -145,6 +150,12 @@ def render_input(supabase, cookie_manager, f_code, my_name):
             try:
                 m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
                 if m:
+                    # 写真をSupabaseストレージにアップロード
+                    image_urls = []
+                    if imgs:
+                        with st.spinner("📷 写真をアップロード中..."):
+                            image_urls = upload_images_to_supabase(supabase, imgs, f_code)
+
                     record_time = datetime.now(tokyo_tz).time()
                     dt = tokyo_tz.localize(datetime.combine(record_date, record_time))
                     supabase.table("records").insert({
@@ -153,7 +164,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
                         "user_name": m.group(2),
                         "staff_name": my_name,
                         "content": txt,
-                        "created_at": dt.isoformat()
+                        "created_at": dt.isoformat(),
+                        "image_urls": image_urls if image_urls else None
                     }).execute()
                     st.success("💾 保存完了しました！")
                     time.sleep(1.0)
@@ -311,6 +323,16 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                             with st.container():
                                 time_str = parse_jst(r['created_at'])
                                 st.caption(f"🕒 {time_str} ({r['staff_name']})")
+                                st.write(r['content'])
+
+                                # ✅ 添付写真を表示
+                                image_urls = r.get('image_urls')
+                                if image_urls and len(image_urls) > 0:
+                                    st.markdown("📷 **添付写真**")
+                                    img_cols = st.columns(len(image_urls))
+                                    for idx, url in enumerate(image_urls):
+                                        with img_cols[idx]:
+                                            st.image(url, use_container_width=True)
 
                                 edit_key = f"edit_active_{r['id']}"
                                 if st.session_state.get(edit_key):
@@ -326,7 +348,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                             st.session_state[edit_key] = False
                                             st.rerun()
                                 else:
-                                    st.write(r['content'])
                                     is_owner = (str(r['staff_name']) == str(my_name))
                                     is_admin = st.session_state.get("admin_authenticated")
                                     if is_owner or is_admin:
