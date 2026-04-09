@@ -2,33 +2,44 @@ import streamlit as st
 import pytz
 import google.generativeai as genai
 from PIL import Image
-from streamlit_cookies_manager import EncryptedCookieManager
 import os
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
-# 🍪 クッキー管理
+# 🍪 クッキーの代替：session_stateで管理
 # ==========================================
-cookie_manager = EncryptedCookieManager(
-    prefix="tasukaru_",
-    password=st.secrets.get("COOKIES_PASSWORD", os.environ.get("COOKIES_PASSWORD", "ST_COOKIES_PWD_DEFAULT_12345")),
-)
+# streamlit-cookies-managerを廃止し、
+# st.session_stateで安定したログイン維持を実現
 
-def init_cookie_manager():
-    """
-    クッキーマネージャーの初期化。
-    ready()でない場合は最大3秒待ってリトライし、
-    それでもダメなら警告だけ出して続行する。
-    """
-    if not cookie_manager.ready():
-        # st.stop()をやめて、自動リロードで再試行する
-        st.markdown(
-            "<meta http-equiv='refresh' content='1'>",
-            unsafe_allow_html=True
-        )
-        st.warning("⏳ 読み込み中です。そのままお待ちください...")
-        st.stop()
+def get_cookie(key):
+    """session_stateからログイン情報を取得"""
+    return st.session_state.get(f"cookie_{key}", "")
+
+def set_cookie(key, value):
+    """session_stateにログイン情報を保存"""
+    st.session_state[f"cookie_{key}"] = value
+
+def delete_cookie(key):
+    """session_stateからログイン情報を削除"""
+    if f"cookie_{key}" in st.session_state:
+        del st.session_state[f"cookie_{key}"]
+
+# 後方互換性のためのcookie_managerオブジェクト
+class SimpleCookieManager:
+    def get(self, key):
+        return get_cookie(key)
+
+    def __setitem__(self, key, value):
+        set_cookie(key, value)
+
+    def save(self):
+        pass  # session_stateは自動保存なので不要
+
+    def delete(self, key):
+        delete_cookie(key)
+
+cookie_manager = SimpleCookieManager()
 
 # ==========================================
 # 🖼️ ロゴ表示
