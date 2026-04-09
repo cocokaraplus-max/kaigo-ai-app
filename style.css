@@ -1,220 +1,65 @@
-/* 共通：Streamlitパーツ非表示 */
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-/* 印刷用設定：ボタンやサイドメニューを印刷しない */
-@media print {
-    div.stButton, .stTabs [data-baseweb="tab-list"], [data-testid="stSidebar"], .print-hide {
-        display: none !important;
-    }
-    .block-container {
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
-}
-
-/* アプリ全体の背景色を洗練された薄いグレーに */
 .stApp {
-    background-color: #F8F9FA !important;
+    background: linear-gradient(135deg, #f0f4f8 0%, #e8f0fe 100%) !important;
 }
 
-/* メイン画面を白枠のエレガントなカード風に */
 .block-container {
     background-color: #FFFFFF !important;
-    padding-top: 1rem !important; 
-    padding-bottom: 2.5rem !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.03) !important;
-    border-radius: 12px !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 3rem !important;
+    box-shadow: 0 2px 20px rgba(66, 133, 244, 0.08) !important;
+    border-radius: 16px !important;
+    border-top: 3px solid #4285F4 !important;
 }
 
-/* ★ タイトル（画像）を中央に大きく配置する設定 ★ */
 [data-testid="stImage"] img {
     display: block !important;
-    margin: 0 auto !important; 
-    width: 350px !important; 
-    max-width: 90% !important; 
+    margin: 0 auto !important;
+    width: 300px !important;
+    max-width: 85% !important;
     height: auto !important;
-    margin-bottom: 15px !important; 
 }
 
-/* ★ TOP画面のタイトル（画像）の下だけにアクセントラインを入れる ★ */
-div.has-markdown-stitle::after {
-    content: '';
-    display: block;
-    width: 80px; 
-    height: 3px;
-    background-color: #C5A059; 
-    margin: -5px auto 30px !important; 
-    border-radius: 2px;
-}
-
-/* ★ 入力画面・履歴画面のタイトル（h1タグ）のデザイン ★ */
-.block-container h1 {
-    font-family: 'Helvetica Neue', Arial, sans-serif !important;
-    font-weight: 500 !important;
-    color: #333333 !important;
-    font-size: 1.6rem !important;
-    letter-spacing: 0.05em !important;
-    text-align: center !important;
-    margin-bottom: 25px !important;
-}
-
-/* メッセージ（Status/Success/Error）を画面最上部に固定 */
-[data-testid="stNotification"] {
-    position: fixed !important;
-    top: 15px !important;
-    left: 5% !important;
-    right: 5% !important;
-    width: 90% !important;
-    z-index: 1000000 !important;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.08) !important;
-    border-radius: 10px !important;
-    border: none !important;
-}
-
-/* 一般的なボタン */
 div.stButton > button {
     background-color: #FFFFFF !important;
-    color: #333333 !important;
-    border: 1px solid #E0E0E0 !important;
-    border-radius: 8px !important;
+    color: #3c4043 !important;
+    border: 1.5px solid #dadce0 !important;
+    border-radius: 10px !important;
     font-weight: 500 !important;
+    transition: all 0.2s ease !important;
 }
 div.stButton > button:hover {
-    border-color: #C5A059 !important;
-    color: #C5A059 !important;
+    border-color: #1a73e8 !important;
+    color: #1a73e8 !important;
+    box-shadow: 0 2px 8px rgba(26, 115, 232, 0.15) !important;
+    background-color: #f8f9ff !important;
 }
 
-/* ★ TOP画面のメニューボタン（タイル型カードに！） ★ */
-div.stHorizontalBlock > div.stColumn div.stButton > button {
-    width: 80% !important;
-    margin: 0 auto !important;
-    height: 80px !important;
-    font-size: 1.1rem !important;
-    border-radius: 15px !important;
-    border: 1px solid #D1D5DB !important;
-    background: #FFFFFF !important;
-    color: #111111 !important;
-    font-weight: 600 !important;
-    text-align: center !important;
-    justify-content: center !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 15px !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.02) !important;
-    transition: all 0.3s ease !important;
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #1a73e8 0%, #428    100%) !importan    background: linea !important;
+    bord    bord    bord    bord    bshadow: 0 2px 8px rgba(26, 115, 232, 0.3) !important;
 }
-
-/* ホバー時の設定（TOP画面） */
-div.stHorizontalBlock > div.stColumn div.stButton > button:hover {
-    border-color: #C5A059 !important;
-    color: #C5A059 !important; 
-    box-shadow: 0 6px 15px rgba(197, 160, 89, 0.1) !important;
+div.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #1    backgroua73e8 100%) !important;
+    color: #F    color: #F    color: #F  or    color: #F    color: #F   iv    color: #F    color: #F  th:    color: #F    color: #F t:    color: #F    color: #F   ze: 1rem !important;
+    border-ra    bordex !important;
+                                         xt                          extar                                        us:                               5px so                               kg                                       lor: #202124 !important;
 }
-
-/* ★ スマホ用：ボタンが1行に綺麗に収まるように微調整 ★ */
-@media (max-width: 768px) {
-    div.stHorizontalBlock > div.stColumn div.stButton > button {
-        width: 100% !important; 
-        font-size: 0.9rem !important; 
-        gap: 8px !important;
-        height: 70px !important;
-    }
-}
-
-/* ★ 保存ボタン（落ち着いたネイビーに） ★ */
-div.stButton > button:has(div p:contains("クラウド保存")) {
-    background-color: #2C3E50 !important;
-    color: #FFFFFF !important;
-    border: none !important;
-}
-div.stButton > button:has(div p:contains("クラウド保存")):hover {
-    background-color: #1C2E3F !important;
-}
-
-/* スマホ用：保存ボタンを右下固定（デザイン調整） */
-@media (max-width: 768px) {
-    div.stButton > button:has(div p:contains("クラウド保存")) {
-        position: fixed !important;
-        bottom: 25px !important;
-        right: 25px !important;
-        width: 130px !important;
-        height: 55px !important;
-        border-radius: 27px !important;
-        z-index: 999999 !important;
-        font-size: 1.05rem !important;
-    }
-    .main .block-container {
-        padding-bottom: 110px !important;
-    }
-}
-
-/* ★ 入力フォーム ★ */
-.stTextInput label, .stTextArea label, .stDateInput label, .stFileUploader label, .stSelectbox label, div.subheader p {
-    color: #333333 !important;
-    font-weight: 500 !important;
-}
-h2, h3, .subheader {
-    color: #333333 !important;
-}
-
-/* 入力欄（テキストや日付）の背景と文字色 */
-.stTextInput input, .stTextArea textarea, .stDateInput input {
-    border-radius: 8px !important;
-    border: 1px solid #E0E0E0 !important;
-    background-color: #FFFFFF !important;
-    color: #111111 !important;
-    caret-color: #111111 !important; /* ★ 追加：カーソルの色を黒に固定 ★ */
-}
-.stTextInput input::placeholder, .stTextArea textarea::placeholder, .stDateInput input::placeholder {
-    color: #888888 !important;
-}
-.stTextInput input:focus, .stTextArea textarea:focus, .stDateInput input:focus {
-    border-color: #C5A059 !important;
-    box-shadow: 0 0 0 1px #C5A059 !important;
-}
-
-/* ★ セレクトボックス（履歴検索など）の文字色修正 ★ */
-.stSelectbox div[data-baseweb="select"] {
-    background-color: #FFFFFF !important;
-    border-radius: 8px !important;
-    border: 1px solid #E0E0E0 !important;
-}
-.stSelectbox div[data-baseweb="select"] span {
-    color: #111111 !important;
-}
-
-/* ★ 履歴閲覧エリア（Expander）と一般テキストの色飛び防止 ★ */
-.stMarkdown p, .stMarkdown span {
-    color: #111111 !important;
-}
-[data-testid="stExpander"] {
-    background-color: #FFFFFF !important;
-    border: 1px solid #E0E0E0 !important;
+.stTextI.stTextI.stTextI.stTextI.stTextI.strea:focus {
+    border-color: #1a7    border-color: #1a7    border-color: #1a7    border-color 0.    border-color: #1a7    border-color: baseweb="select"] {
+    background-color: #FF    background-color: #FF    background-color: #FF    background-color: #FF    background-color: #FF    baclo    background-color: #FF    background-color: #FF    background-color: #FF    backgroundorta    background-color: #FF    background-colont;
+    border-radius: 12px !important;
+    margin-bottom: 0.75rem !important;
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}es}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}: 2px dashed #dadce0 !important;
     border-radius: 10px !important;
-}
-[data-testid="stExpander"] summary {
-    background-color: #F8F9FA !important;
-}
-[data-testid="stExpander"] summary p {
-    color: #333333 !important;
-    font-weight: 500 !important;
-}
-[data-testid="stExpander"] summary svg {
-    fill: #333333 !important;
+    background-color: #f8f9fa !important;
 }
 
-/* ★ ファイルアップローダーの文字色修正 ★ */
-[data-testid="stFileUploader"] {
-    border: 2px dashed #E0E0E0 !important;
-    border-radius: 10px !important;
-}
-[data-testid="stFileUploader"] > div > div > span,
-[data-testid="stFileUploader"] > div > div > small {
-    color: #333333 !important;
-}
-[data-testid="stFileUploader"] button {
-    background-color: #FFFFFF !important;
-    color: #333333 !important;
-    border: 1px solid #E0E0E0 !important;
+@media (max-width: 768px) {
+    .block-container {
+        border-radius: 0 !important;
+    }
+    div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn container { box-shadow: none !important; }
 }
