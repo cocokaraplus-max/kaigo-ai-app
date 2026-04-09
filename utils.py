@@ -68,9 +68,10 @@ def display_logo(show_line=True):
     if os.path.exists("logo.png"):
         try:
             img = Image.open("logo.png")
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.image(img, use_container_width=True)
+
+
+            img_base64 = __import__("base64").b64encode(open("logo.png","rb").read()).decode()
+            st.markdown(f'<div style="text-align:center"><img src="data:image/png;base64,{img_base64}" style="width:280px;max-width:90%;margin:0 auto;display:block"></div>', unsafe_allow_html=True)
         except:
             st.markdown("<h1 style='text-align: center;'>🦝 TASUKARU</h1>", unsafe_allow_html=True)
     else:
