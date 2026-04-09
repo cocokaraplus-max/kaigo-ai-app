@@ -119,10 +119,8 @@ def render_input(supabase, cookie_manager, f_code, my_name):
     sel = st.selectbox("👤 利用者を選択 (ひらがな検索OK)", p_opts)
     record_date = st.date_input("📅 記録日", value=now_tokyo.date())
 
-    # ✅ 写真アップロード
     imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
 
-    # アップロードした写真をプレビュー表示
     if imgs:
         cols = st.columns(len(imgs))
         for i, img_file in enumerate(imgs):
@@ -150,7 +148,6 @@ def render_input(supabase, cookie_manager, f_code, my_name):
             try:
                 m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
                 if m:
-                    # 写真をSupabaseストレージにアップロード
                     image_urls = []
                     if imgs:
                         with st.spinner("📷 写真をアップロード中..."):
@@ -282,26 +279,75 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
                         normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
 
+                        # ✅ AI統合記録の表示と再生成ボタン
                         if not ai_recs.empty:
                             ai_rec = ai_recs.iloc[0]
                             with st.container(border=True):
-                                col_txt, col_btn = st.columns([4, 1])
-                                with col_txt:
-                                    st.markdown("✨ **AI統合ケース記録**")
-                                    st.write(ai_rec['content'])
-                                with col_btn:
+                                st.markdown("✨ **本日の申し送り（AI統合）**")
+                                st.write(ai_rec['content'])
+                                c1, c2 = st.columns([1, 1])
+                                with c1:
+                                    # ✅ 再生成ボタン（後から記録が追加された場合に使用）
+                                    if st.button("🔄 申し送りを再生成", key=f"regen_{user}", use_container_width=True):
+                                        if not normal_recs.empty:
+                                            with st.spinner("AIが再生成中です..."):
+                                                try:
+                                                    recs_text = "\n".join([
+                                                        f"【{r['staff_name']}】{r['content']}"
+                                                        for _, r in normal_recs.iterrows()
+                                                    ])
+                                                    model = get_generative_model()
+                                                    prompt = (
+                                                        "以下は介護職員それぞれが記録した1日のケース記録です。\n"
+                                                        "これらを介護職員間の申し送りとして自然な口調でまとめてください。\n"
+                                                        "・「〇〇さんは」などの利用者名を主語にして記載\n"
+                                                        "・職員名は不要\n"
+                                                        "・申し送りに必要な変化や注意点を優先して記載\n"
+                                                        "・です・ます調で簡潔にまとめる\n\n"
+                                                        f"{recs_text}"
+                                                    )
+                                                    summary = model.generate_content([prompt]).text
+                                                    c_num = normal_recs.iloc[0]['chart_number']
+                                                    dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
+                                                    # 既存のAI統合記録を削除して新しく保存
+                                                    supabase.table("records").delete().eq("id", ai_rec['id']).execute()
+                                                    supabase.table("records").insert({
+                                                        "facility_code": f_code,
+                                                        "chart_number": c_num,
+                                                        "user_name": user,
+                                                        "staff_name": "AI統合記録",
+                                                        "content": summary,
+                                                        "created_at": dt.isoformat()
+                                                    }).execute()
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"🚨 再生成に失敗しました: {e}")
+                                with c2:
                                     if st.session_state.get("admin_authenticated"):
-                                        if st.button("🗑️", key=f"ai_del_{ai_rec['id']}", help="AI記録を削除"):
+                                        if st.button("🗑️ 削除", key=f"ai_del_{ai_rec['id']}", use_container_width=True):
                                             supabase.table("records").delete().eq("id", ai_rec['id']).execute()
                                             st.rerun()
                         else:
-                            if st.button(f"✨ 今日のまとめを生成して確定", key=f"gen_{user}"):
+                            # ✅ AI統合記録がない場合は新規生成ボタン
+                            if st.button(f"✨ 本日の申し送りを生成して確定", key=f"gen_{user}", use_container_width=True):
                                 if not normal_recs.empty:
-                                    with st.spinner("AIが集計中です..."):
+                                    with st.spinner("AIが生成中です..."):
                                         try:
-                                            recs_text = "\n".join([r['content'] for _, r in normal_recs.iterrows()])
+                                            recs_text = "\n".join([
+                                                f"【{r['staff_name']}】{r['content']}"
+                                                for _, r in normal_recs.iterrows()
+                                            ])
                                             model = get_generative_model()
-                                            prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
+                                            # ✅ 介護職員間の申し送り口調に特化したプロンプト
+                                            prompt = (
+                                                "以下は介護職員それぞれが記録した1日のケース記録です。\n"
+                                                "これらを介護職員間の申し送りとして自然な口調でまとめてください。\n"
+                                                "・「〇〇さんは」などの利用者名を主語にして記載\n"
+                                                "・職員名は不要\n"
+                                                "・申し送りに必要な変化や注意点を優先して記載\n"
+                                                "・です・ます調で簡潔にまとめる\n\n"
+                                                f"{recs_text}"
+                                            )
                                             summary = model.generate_content([prompt]).text
                                             c_num = normal_recs.iloc[0]['chart_number']
                                             dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
@@ -315,7 +361,9 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                             }).execute()
                                             st.rerun()
                                         except Exception as e:
-                                            st.error(f"🚨 AI生成に失敗しました: {e}")
+                                            st.error(f"🚨 生成に失敗しました: {e}")
+                                else:
+                                    st.warning("⚠️ 個別記録がありません。")
 
                         st.divider()
                         st.markdown("###### 📝 個別のケース記録")
@@ -325,7 +373,7 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                 st.caption(f"🕒 {time_str} ({r['staff_name']})")
                                 st.write(r['content'])
 
-                                # ✅ 添付写真を表示
+                                # 添付写真を表示
                                 image_urls = r.get('image_urls')
                                 if image_urls and len(image_urls) > 0:
                                     st.markdown("📷 **添付写真**")
