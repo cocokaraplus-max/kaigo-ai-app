@@ -113,3 +113,20 @@ div.stButton > button[data-testid="baseButton-secondary"]:nth-of-type(1) {
     font-size: 1.1rem !important;
     height: 70px !important;
 }
+
+div.stButton > button {
+    background: linear-gradient(135deg, #1a73e8 0%, #4285F4 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    height: 60px !important;
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3) !important;
+    transition: all 0.2s ease !important;
+}
+div.stButton > button:hover {
+    background: linear-gradient(135deg, #1557b0 0%, #1a73e8 100%) !important;
+    box-shadow: 0 4px 12px rgba(26,115,232,0.4) !important;
+    transform: translateY(-1px) !important;
+}
