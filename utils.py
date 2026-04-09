@@ -101,8 +101,19 @@ class GeminiResponse:
         self.text = text
 
 # ==========================================
-# 🤖 Gemini AI モデル（リトライ機能付き）
+# 🤖 Gemini AI モデル
+# 複数モデルを順番に試して安定性を向上
 # ==========================================
+
+# 使用するモデルの優先順位
+# 503混雑時は次のモデルに自動切り替え
+FALLBACK_MODELS = [
+    "gemini-2.5-flash",       # メイン：高性能
+    "gemini-2.5-flash-lite",  # 軽量版：混雑しにくい
+    "gemini-2.0-flash-lite",  # さらに軽量
+    "gemini-flash-latest",    # 最新フラッシュ
+]
+
 class FastGeminiModel:
     def generate_content(self, contents):
         api_key = st.secrets.get("GEMINI_API_KEY")
@@ -118,27 +129,37 @@ class FastGeminiModel:
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
-        # ✅ 503エラー時は最大3回リトライ
-        max_retries = 3
-        retry_wait = 3  # 秒
+        last_error = None
 
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=parts,
-                )
-                text = response.candidates[0].content.parts[0].text
-                return GeminiResponse(text)
-            except Exception as e:
-                error_str = str(e)
-                # 503の場合はリトライ
-                if "503" in error_str and attempt < max_retries - 1:
-                    time_module.sleep(retry_wait)
-                    retry_wait += 2  # 待ち時間を少しずつ増やす
-                    continue
-                # それ以外のエラー or リトライ上限
-                raise Exception(f"🤖 AI通信エラー: {error_str}\nしばらく待ってから再試行してください。")
+        for model_name in FALLBACK_MODELS:
+            # 各モデルで最大2回リトライ
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=parts,
+                    )
+                    text = response.candidates[0].content.parts[0].text
+                    return GeminiResponse(text)
+                except Exception as e:
+                    error_str = str(e)
+                    last_error = e
+                    if "503" in error_str:
+                        # 503は少し待ってリトライ or 次のモデルへ
+                        if attempt == 0:
+                            time_module.sleep(2)
+                            continue
+                        else:
+                            # 2回失敗したら次のモデルへ
+                            break
+                    elif "404" in error_str:
+                        # モデルが存在しない場合は即次のモデルへ
+                        break
+                    else:
+                        # その他のエラーは即エラー
+                        raise Exception(f"🤖 AI通信エラー: {error_str}\nしばらく待ってから再試行してください。")
+
+        raise Exception(f"🤖 AI通信エラー: 全モデルで失敗しました。しばらく待ってから再試行してください。\n詳細: {str(last_error)}")
 
 def get_generative_model():
     return FastGeminiModel()
