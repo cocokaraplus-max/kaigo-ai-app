@@ -13,6 +13,18 @@ import time as time_module
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
+# 🔑 Secrets / 環境変数の読み込み
+# Streamlit Cloud → st.secrets
+# Cloud Run → 環境変数
+# ==========================================
+def get_secret(key):
+    """st.secrets と環境変数の両方に対応"""
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.environ.get(key, "")
+
+# ==========================================
 # 🍪 クッキーの代替：session_stateで管理
 # ==========================================
 def get_cookie(key):
@@ -101,24 +113,21 @@ class GeminiResponse:
         self.text = text
 
 # ==========================================
-# 🤖 Gemini AI モデル
-# 複数モデルを順番に試して安定性を向上
+# 🤖 Gemini AI モデル（複数モデルフォールバック）
 # ==========================================
-
-# 使用するモデルの優先順位
-# 503混雑時は次のモデルに自動切り替え
 FALLBACK_MODELS = [
-    "gemini-2.5-flash",       # メイン：高性能
-    "gemini-2.5-flash-lite",  # 軽量版：混雑しにくい
-    "gemini-2.0-flash-lite",  # さらに軽量
-    "gemini-flash-latest",    # 最新フラッシュ
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+    "gemini-flash-latest",
 ]
 
 class FastGeminiModel:
     def generate_content(self, contents):
-        api_key = st.secrets.get("GEMINI_API_KEY")
+        # ✅ 環境変数対応
+        api_key = get_secret("GEMINI_API_KEY")
         if not api_key:
-            raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。")
+            raise Exception("🔑 GEMINI_API_KEY が設定されていません。")
 
         client = genai.Client(api_key=api_key)
 
@@ -130,9 +139,7 @@ class FastGeminiModel:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
         last_error = None
-
         for model_name in FALLBACK_MODELS:
-            # 各モデルで最大2回リトライ
             for attempt in range(2):
                 try:
                     response = client.models.generate_content(
@@ -144,22 +151,15 @@ class FastGeminiModel:
                 except Exception as e:
                     error_str = str(e)
                     last_error = e
-                    if "503" in error_str:
-                        # 503は少し待ってリトライ or 次のモデルへ
-                        if attempt == 0:
-                            time_module.sleep(2)
-                            continue
-                        else:
-                            # 2回失敗したら次のモデルへ
-                            break
+                    if "503" in error_str and attempt == 0:
+                        time_module.sleep(2)
+                        continue
                     elif "404" in error_str:
-                        # モデルが存在しない場合は即次のモデルへ
                         break
                     else:
-                        # その他のエラーは即エラー
                         raise Exception(f"🤖 AI通信エラー: {error_str}\nしばらく待ってから再試行してください。")
 
-        raise Exception(f"🤖 AI通信エラー: 全モデルで失敗しました。しばらく待ってから再試行してください。\n詳細: {str(last_error)}")
+        raise Exception(f"🤖 全モデルで失敗しました。しばらく待ってから再試行してください。\n詳細: {str(last_error)}")
 
 def get_generative_model():
     return FastGeminiModel()
