@@ -46,12 +46,12 @@ def render_top(supabase, cookie_manager, f_code, my_name):
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("✍️ 記録を書く", use_container_width=True):
+        if st.button("✍️ 記録を書く", use_container_width=True, key="btn_input"):
             st.session_state["page"] = "input"; st.rerun()
     with c2:
-        if st.button("📊 モニタリング生成", use_container_width=True):
+        if st.button("📊 モニタリング生成", use_container_width=True, key="btn_history"):
             st.session_state["page"] = "history"; st.rerun()
-    if st.button("📅 ケース記録閲覧・統合", use_container_width=True):
+    if st.button("📅 ケース記録閲覧・統合", use_container_width=True, key="btn_daily"):
         st.session_state["page"] = "daily_view"; st.rerun()
 
     st.divider()

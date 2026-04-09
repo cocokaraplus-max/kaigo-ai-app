@@ -83,3 +83,33 @@ div.stButton > button[kind="primary"]:hover {
 .stMarkdown, .stMarkdown p, .stMarkdown span {
     color: #202124 !important;
 }
+
+/* TOPメニューボタンを色分け */
+div.stButton > button[data-testid="baseButton-secondary"]:nth-of-type(1) {
+    background: linear-gradient(135deg, #1a73e8, #4285F4) !important;
+    color: white !important;
+    border: none !important;
+}
+
+
+[data-testid="stButton"][key="btn_input"] button {
+    background: linear-gradient(135deg, #1a73e8, #4285F4) !important;
+    color: white !important;
+    border: none !important;
+    font-size: 1.1rem !important;
+    height: 70px !important;
+}
+[data-testid="stButton"][key="btn_history"] button {
+    background: linear-gradient(135deg, #0f9d58, #34a853) !important;
+    color: white !important;
+    border: none !important;
+    font-size: 1.1rem !important;
+    height: 70px !important;
+}
+[data-testid="stButton"][key="btn_daily"] button {
+    background: linear-gradient(135deg, #e37400, #f9ab00) !important;
+    color: white !important;
+    border: none !important;
+    font-size: 1.1rem !important;
+    height: 70px !important;
+}
