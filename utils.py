@@ -57,7 +57,7 @@ def back_to_top_button(key):
         st.rerun()
 
 # ==========================================
-# 🤖 Gemini AI モデル
+# 🤖 Gemini AI モデル（gemini-2.5-flash使用）
 # ==========================================
 class FastGeminiModel:
     def generate_content(self, contents):
@@ -65,7 +65,6 @@ class FastGeminiModel:
         if not api_key:
             raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。")
 
-        # ✅ v1betaのまま・確認済みモデルを使用
         client = genai.Client(api_key=api_key)
 
         parts = []
@@ -79,26 +78,15 @@ class FastGeminiModel:
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
-        # ✅ 確認済みの使えるモデルリスト
-        models_to_try = [
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-001",
-            "gemini-2.0-flash-lite",
-        ]
-
-        last_error = None
-        for model_name in models_to_try:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=parts,
-                )
-                return response
-            except Exception as e:
-                last_error = e
-                continue
-
-        raise Exception(f"🤖 AI通信エラー: {str(last_error)}\nしばらく待ってから再試行してください。")
+        try:
+            # ✅ 動作確認済みモデル
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=parts,
+            )
+            return response
+        except Exception as e:
+            raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
 
 def get_generative_model():
     return FastGeminiModel()
