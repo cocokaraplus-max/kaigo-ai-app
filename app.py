@@ -12,6 +12,7 @@ def load_css():
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 load_css()
+st.markdown('<style>:root{color-scheme:light!important}</style>', unsafe_allow_html=True)
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
 from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret
