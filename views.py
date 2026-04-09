@@ -8,7 +8,6 @@ import re
 from utils import tokyo_tz, display_logo, back_to_top_button, get_generative_model, upload_images_to_supabase
 
 def parse_jst(iso_str, fmt='%H:%M'):
-    """データベースの時間を日本時間に直して表示する"""
     try:
         dt = datetime.fromisoformat(str(iso_str).replace('Z', '+00:00'))
         return dt.astimezone(tokyo_tz).strftime(fmt)
@@ -19,6 +18,23 @@ def go_to_daily_view(u_name, target_d):
     st.session_state["page"] = "daily_view"
     st.session_state["dv_target_user"] = u_name
     st.session_state["dv_target_date"] = target_d
+
+# ==========================================
+# 申し送りAI統合プロンプト（共通）
+# ==========================================
+DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日のケース記録です。
+これらを介護職員間の申し送りとして、です・ます調でまとめてください。
+
+【ルール】
+・利用者名などの主語は不要
+・職員名は不要
+・「支援内容」として記録されている事柄は必ず要約して記載すること
+・変化・気になる点・注意事項を優先して記載
+・簡潔にまとめる
+
+【記録】
+{records}
+"""
 
 # ==========================================
 # --- 1. TOP画面 ---
@@ -120,7 +136,6 @@ def render_input(supabase, cookie_manager, f_code, my_name):
     record_date = st.date_input("📅 記録日", value=now_tokyo.date())
 
     imgs = st.file_uploader("📷 写真（最大5枚）", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
-
     if imgs:
         cols = st.columns(len(imgs))
         for i, img_file in enumerate(imgs):
@@ -133,9 +148,17 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         with st.spinner("AIが文章を作成中です..."):
             try:
                 model = get_generative_model()
-                prompt = "介護職の申し送り口調で事実を簡潔にまとめて。職員名や『利用者様は』などの主語は不要。"
-                contents = [prompt]
-                contents.append({"mime_type": aud.type, "data": aud.getvalue()})
+                # ✅ 修正：話した内容を忠実に文章化するプロンプト
+                prompt = (
+                    "以下の音声を介護記録として文章に起こしてください。\n"
+                    "【ルール】\n"
+                    "・話した内容をできるだけ忠実に文章化する\n"
+                    "・「あー」「えー」「えっと」などのフィラーは省略する\n"
+                    "・職員名や「利用者様は」などの主語は不要\n"
+                    "・です・ます調に整える\n"
+                    "・事実のみを記載し、余計な装飾は不要"
+                )
+                contents = [prompt, {"mime_type": aud.type, "data": aud.getvalue()}]
                 st.session_state["edit_content"] = model.generate_content(contents).text.strip()
                 st.rerun()
             except Exception as e:
@@ -231,7 +254,7 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                         prompt = (
                             f"以下の介護記録を報告口調で一つの文章にまとめて。"
                             f"『支援内容』として記録されている事柄は積極的に盛り込んでください。"
-                            f"職員名や『利用者様は』などの主語は不要。"
+                            f"職員名や主語は不要。"
                             f"おおよそ{char_limit}程度で作成してください。\n\n{recs}"
                         )
                         st.session_state["monitoring_result"] = model.generate_content([prompt]).text
@@ -279,7 +302,7 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
                         normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
 
-                        # ✅ AI統合記録の表示と再生成ボタン
+                        # AI統合記録の表示と再生成
                         if not ai_recs.empty:
                             ai_rec = ai_recs.iloc[0]
                             with st.container(border=True):
@@ -287,7 +310,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                 st.write(ai_rec['content'])
                                 c1, c2 = st.columns([1, 1])
                                 with c1:
-                                    # ✅ 再生成ボタン（後から記録が追加された場合に使用）
                                     if st.button("🔄 申し送りを再生成", key=f"regen_{user}", use_container_width=True):
                                         if not normal_recs.empty:
                                             with st.spinner("AIが再生成中です..."):
@@ -297,19 +319,10 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                                         for _, r in normal_recs.iterrows()
                                                     ])
                                                     model = get_generative_model()
-                                                    prompt = (
-                                                        "以下は介護職員それぞれが記録した1日のケース記録です。\n"
-                                                        "これらを介護職員間の申し送りとして自然な口調でまとめてください。\n"
-                                                        "・「〇〇さんは」などの利用者名を主語にして記載\n"
-                                                        "・職員名は不要\n"
-                                                        "・申し送りに必要な変化や注意点を優先して記載\n"
-                                                        "・です・ます調で簡潔にまとめる\n\n"
-                                                        f"{recs_text}"
-                                                    )
+                                                    prompt = DAILY_SUMMARY_PROMPT.format(records=recs_text)
                                                     summary = model.generate_content([prompt]).text
                                                     c_num = normal_recs.iloc[0]['chart_number']
                                                     dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
-                                                    # 既存のAI統合記録を削除して新しく保存
                                                     supabase.table("records").delete().eq("id", ai_rec['id']).execute()
                                                     supabase.table("records").insert({
                                                         "facility_code": f_code,
@@ -328,7 +341,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                             supabase.table("records").delete().eq("id", ai_rec['id']).execute()
                                             st.rerun()
                         else:
-                            # ✅ AI統合記録がない場合は新規生成ボタン
                             if st.button(f"✨ 本日の申し送りを生成して確定", key=f"gen_{user}", use_container_width=True):
                                 if not normal_recs.empty:
                                     with st.spinner("AIが生成中です..."):
@@ -338,16 +350,7 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                                 for _, r in normal_recs.iterrows()
                                             ])
                                             model = get_generative_model()
-                                            # ✅ 介護職員間の申し送り口調に特化したプロンプト
-                                            prompt = (
-                                                "以下は介護職員それぞれが記録した1日のケース記録です。\n"
-                                                "これらを介護職員間の申し送りとして自然な口調でまとめてください。\n"
-                                                "・「〇〇さんは」などの利用者名を主語にして記載\n"
-                                                "・職員名は不要\n"
-                                                "・申し送りに必要な変化や注意点を優先して記載\n"
-                                                "・です・ます調で簡潔にまとめる\n\n"
-                                                f"{recs_text}"
-                                            )
+                                            prompt = DAILY_SUMMARY_PROMPT.format(records=recs_text)
                                             summary = model.generate_content([prompt]).text
                                             c_num = normal_recs.iloc[0]['chart_number']
                                             dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
@@ -373,7 +376,6 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                 st.caption(f"🕒 {time_str} ({r['staff_name']})")
                                 st.write(r['content'])
 
-                                # 添付写真を表示
                                 image_urls = r.get('image_urls')
                                 if image_urls and len(image_urls) > 0:
                                     st.markdown("📷 **添付写真**")

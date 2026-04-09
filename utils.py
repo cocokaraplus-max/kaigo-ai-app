@@ -24,21 +24,6 @@ def delete_cookie(key):
     if f"cookie_{key}" in st.session_state:
         del st.session_state[f"cookie_{key}"]
 
-class SimpleCookieManager:
-    def get(self, key):
-        return get_cookie(key)
-    def __setitem__(self, key, value):
-        set_cookie(key, value)
-    def save(self):
-        pass
-    def delete(self, key):
-        delete_cookie(key)
-
-cookie_manager = SimpleCookieManager()
-
-# ==========================================
-# 🔐 ログイン情報の暗号化・復号
-# ==========================================
 def encode_login_token(f_code, my_name):
     """施設コードと名前をBase64で暗号化してトークンを生成"""
     data = json.dumps({"f": f_code, "n": my_name})
@@ -52,6 +37,18 @@ def decode_login_token(token):
         return data.get("f", ""), data.get("n", "")
     except Exception:
         return "", ""
+
+class SimpleCookieManager:
+    def get(self, key):
+        return get_cookie(key)
+    def __setitem__(self, key, value):
+        set_cookie(key, value)
+    def save(self):
+        pass
+    def delete(self, key):
+        delete_cookie(key)
+
+cookie_manager = SimpleCookieManager()
 
 # ==========================================
 # 🖼️ ロゴ表示
