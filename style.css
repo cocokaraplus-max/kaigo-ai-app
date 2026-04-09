@@ -1,132 +1,58 @@
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stAppDeployButton"],
 footer, #MainMenu, header { display: none !important; visibility: hidden !important; }
 
-.stApp {
-    background: linear-gradient(135deg, #f0f4f8 0%, #e8f0fe 100%) !important;
-}
+.stApp { background-color: #F8FAFF !important; }
 
 .block-container {
     background-color: #FFFFFF !important;
     padding-top: 1.5rem !important;
     padding-bottom: 3rem !important;
-    box-shadow: 0 2px 20px rgba(66, 133, 244, 0.08) !important;
-    border-radius: 16px !important;
-    border-top: 3px solid #4285F4 !important;
-}
-
-[data-testid="stImage"] img {
-    display: block !important;
-    margin: 0 auto !important;
-    width: 300px !important;
-    max-width: 85% !important;
-    height: auto !important;
+    box-shadow: 0 1px 12px rgba(66,133,244,0.08) !important;
+    border-radius: 0 !important;
+    border-top: 3px solid #1a73e8 !important;
+    max-width: 480px !important;
 }
 
 div.stButton > button {
     background-color: #FFFFFF !important;
     color: #3c4043 !important;
-    border: 1.5px solid #dadce0 !important;
+    border: 1px solid #dadce0 !important;
     border-radius: 10px !important;
     font-weight: 500 !important;
-    transition: all 0.2s ease !important;
+    height: 52px !important;
+    font-size: 0.95rem !important;
+    box-shadow: none !important;
 }
 div.stButton > button:hover {
     border-color: #1a73e8 !important;
     color: #1a73e8 !important;
-    box-shadow: 0 2px 8px rgba(26, 115, 232, 0.15) !important;
-    background-color: #f8f9ff !important;
+    background-color: #f0f7ff !important;
 }
 
-div.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #1a73e8 0%, #428    100%) !importan    background: linea !important;
-    bord    bord    bord    bord    bshadow: 0 2px 8px rgba(26, 115, 232, 0.3) !important;
-}
-div.stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #1    backgroua73e8 100%) !important;
-    color: #F    color: #F    color: #F  or    color: #F    color: #F   iv    color: #F    color: #F  th:    color: #F    color: #F t:    color: #F    color: #F   ze: 1rem !important;
-    border-ra    bordex !important;
-                                         xt                          extar                                        us:                               5px so                               kg                                       lor: #202124 !important;
-}
-.stTextI.stTextI.stTextI.stTextI.stTextI.strea:focus {
-    border-color: #1a7    border-color: #1a7    border-color: #1a7    border-color 0.    border-color: #1a7    border-color: baseweb="select"] {
-    background-color: #FF    background-color: #FF    background-color: #FF    background-color: #FF    background-color: #FF    baclo    background-color: #FF    background-color: #FF    background-color: #FF    backgroundorta    background-color: #FF    background-colont;
-    border-radius: 12px !important;
-    margin-bottom: 0.75rem !important;
-}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}es}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}: 2px dashed #dadce0 !important;
-    border-radius: 10px !important;
-    background-color: #f8f9fa !important;
-}
-
-@media (max-width: 768px) {
-    .block-container {
-        border-radius: 0 !important;
-    }
-    div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn container { box-shadow: none !important; }
-}
-
-/* ロゴを中央に強制 */
-[data-testid="stImage"] {
-    display: flex !important;
-    justify-content: center !important;
-}
-[data-testid="stImage"] img {
-    display: block !important;
-    margin: 0 auto !important;
-    width: 300px !important;
-    max-width: 85% !important;
-}
-
-/* 文字色を強制的に黒に */
-.stApp p, .stApp span, .stApp div, .stApp label {
-    color: #202124 !important;
-}
-.stMarkdown, .stMarkdown p, .stMarkdown span {
-    color: #202124 !important;
-}
-
-/* TOPメニューボタンを色分け */
-div.stButton > button[data-testid="baseButton-secondary"]:nth-of-type(1) {
-    background: linear-gradient(135deg, #1a73e8, #4285F4) !important;
+[data-testid="stButton"]:has(button p:contains("記録を書く")) button {
+    background: #1a73e8 !important;
     color: white !important;
     border: none !important;
-}
-
-
-[data-testid="stButton"][key="btn_input"] button {
-    background: linear-gradient(135deg, #1a73e8, #4285F4) !important;
-    color: white !important;
-    border: none !important;
-    font-size: 1.1rem !important;
-    height: 70px !important;
-}
-[data-testid="stButton"][key="btn_history"] button {
-    background: linear-gradient(135deg, #0f9d58, #34a853) !important;
-    color: white !important;
-    border: none !important;
-    font-size: 1.1rem !important;
-    height: 70px !important;
-}
-[data-testid="stButton"][key="btn_daily"] button {
-    background: linear-gradient(135deg, #e37400, #f9ab00) !important;
-    color: white !important;
-    border: none !important;
-    font-size: 1.1rem !important;
-    height: 70px !important;
-}
-
-div.stButton > button {
-    background: linear-gradient(135deg, #1a73e8 0%, #4285F4 100%) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
     font-size: 1rem !important;
     font-weight: 600 !important;
-    height: 60px !important;
-    box-shadow: 0 2px 8px rgba(26,115,232,0.3) !important;
-    transition: all 0.2s ease !important;
+    height: 64px !important;    heix-shadow: 0 2px 6px rgba(26,115,232,0.25) !important;
 }
-div.stButton > button:hover {
-    background: linear-gradient(135deg, #1557b0 0%, #1a73e8 100%) !important;
-    box-shadow: 0 4px 12px rgba(26,115,232,0.4) !important;
-    transform: translateY(-1px) !important;
+[data-testid="stButton"]:has(butto[data-testid="stButton"]:has(butto[成")) button {
+    background: #0f9d58 !important;
+    color:     color:     color:     co: non    color:     color:     color:     co: ant;
+    color:     color:     colnt;
+    height: 64px !important    height: 64px !important    height57,88,0.25) !important;
 }
+[data-test[data-test[data-test[data-test[data-test��[data-test[data-test[data-test[datba[data-test[data-test[data-test    color: white !important;
+    border: none !important;
+    font-size: 1rem !important;
+    font-wei    font-wei    font-wei    gh    font-wei    font-wei    font-wei0     font-wei    font-wei    f!i    font-wei    font-wei    font-wei    Area     font-wei    font-wei    font-wei    gh    font-wei    font-wei    foadce0 !important;
+    color: #202124 !im    color: #202124 !im    cut    color: #202124 !im  area:focus {
+    border-color: #1a73e8 !important;
+    box-shadow: 0 0 0 2px rgba(26,115,232,0.15) !important;
+}
+
+.stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="selecrt.stSelectbox div[data-baseweb="s"] {.stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="select"] sn-bottom: 0.5rem !important;
+}
+
+@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@m}
