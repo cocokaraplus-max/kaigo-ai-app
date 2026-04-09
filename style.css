@@ -44,3 +44,21 @@ div.stButton > button:hover {
 @media print {
     div.stButton, [data-testid="stSidebar"] { display: none !important; }
 }
+
+p, span, div, label, caption {
+    color: #202124 !important;
+}
+
+[data-testid="stExpander"] p,
+[data-testid="stExpander"] span,
+[data-testid="stExpander"] div {
+    color: #202124 !important;
+}
+
+.stCaption, [data-testid="stCaptionContainer"] {
+    color: #5f6368 !important;
+}
+
+[data-testid="stVerticalBlock"] p {
+    color: #202124 !important;
+}
