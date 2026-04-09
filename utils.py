@@ -9,8 +9,7 @@ import io
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
-# 🍪 ログイン情報の永続化
-# localStorageを使ってリブート後もログイン維持
+# 🍪 クッキーの代替：session_stateで管理
 # ==========================================
 def get_cookie(key):
     return st.session_state.get(f"cookie_{key}", "")
@@ -22,23 +21,7 @@ def delete_cookie(key):
     if f"cookie_{key}" in st.session_state:
         del st.session_state[f"cookie_{key}"]
 
-def load_from_local_storage():
-    """localStorageからログイン情報を読み込む"""
-    st.components.v1.html("""
-        <script>
-            const fCode = localStorage.getItem('tasukaru_f_code');
-            const myName = localStorage.getItem('tasukaru_my_name');
-            if (fCode && myName) {
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: fCode + '|||' + myName
-                }, '*');
-            }
-        </script>
-    """, height=0)
-
 def save_to_local_storage(f_code, my_name):
-    """localStorageにログイン情報を保存"""
     st.components.v1.html(f"""
         <script>
             localStorage.setItem('tasukaru_f_code', '{f_code}');
@@ -47,7 +30,6 @@ def save_to_local_storage(f_code, my_name):
     """, height=0)
 
 def clear_local_storage():
-    """localStorageのログイン情報を削除"""
     st.components.v1.html("""
         <script>
             localStorage.removeItem('tasukaru_f_code');
@@ -102,6 +84,14 @@ def compress_image(img, max_size=(800, 800), quality=75):
     return buf.getvalue()
 
 # ==========================================
+# 🤖 Gemini レスポンスラッパー
+# 旧ライブラリと同じように .text でアクセスできるようにする
+# ==========================================
+class GeminiResponse:
+    def __init__(self, text):
+        self.text = text
+
+# ==========================================
 # 🤖 Gemini AI モデル
 # ==========================================
 class FastGeminiModel:
@@ -117,6 +107,7 @@ class FastGeminiModel:
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, Image.Image):
+                # PIL画像を圧縮してバイト列に変換
                 img_bytes = compress_image(item)
                 parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:
@@ -127,7 +118,9 @@ class FastGeminiModel:
                 model="gemini-2.5-flash",
                 contents=parts,
             )
-            return response
+            # ✅ .text でアクセスできるラッパーに包んで返す
+            text = response.candidates[0].content.parts[0].text
+            return GeminiResponse(text)
         except Exception as e:
             raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
 

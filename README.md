@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-09 16:45
+最終更新: 2026-04-09 16:54
 
 ---
 
@@ -71,6 +71,7 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 
 ## 📝 直近の変更履歴
 
+- fix: リブート後もログイン維持・画像圧縮追加 (2026-04-09)
 - fix: 画像を圧縮してからGeminiに送信するよう修正 (2026-04-09)
 - fix: Geminiモデルをgemini-2.5-flashに変更 (2026-04-09)
 - fix: 確認済みモデルgemini-2.0-flashに修正 (2026-04-09)
@@ -80,13 +81,11 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 - fix: views.pyの古いgoogle.generativeaiのimportを削除 (2026-04-09)
 - fix: requirements.txtを正しく修正 (2026-04-09)
 - fix: google-genaiの新ライブラリに切り替えgemini-2.0-flashを使用 (2026-04-09)
-- fix: GeminiAPIのバージョンを更新 (2026-04-09)
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
-- app.py
 - utils.py
 
 ---
