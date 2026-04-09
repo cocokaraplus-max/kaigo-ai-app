@@ -9,7 +9,8 @@ import io
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
-# 🍪 クッキーの代替：session_stateで管理
+# 🍪 ログイン情報の永続化
+# localStorageを使ってリブート後もログイン維持
 # ==========================================
 def get_cookie(key):
     return st.session_state.get(f"cookie_{key}", "")
@@ -20,6 +21,39 @@ def set_cookie(key, value):
 def delete_cookie(key):
     if f"cookie_{key}" in st.session_state:
         del st.session_state[f"cookie_{key}"]
+
+def load_from_local_storage():
+    """localStorageからログイン情報を読み込む"""
+    st.components.v1.html("""
+        <script>
+            const fCode = localStorage.getItem('tasukaru_f_code');
+            const myName = localStorage.getItem('tasukaru_my_name');
+            if (fCode && myName) {
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: fCode + '|||' + myName
+                }, '*');
+            }
+        </script>
+    """, height=0)
+
+def save_to_local_storage(f_code, my_name):
+    """localStorageにログイン情報を保存"""
+    st.components.v1.html(f"""
+        <script>
+            localStorage.setItem('tasukaru_f_code', '{f_code}');
+            localStorage.setItem('tasukaru_my_name', '{my_name}');
+        </script>
+    """, height=0)
+
+def clear_local_storage():
+    """localStorageのログイン情報を削除"""
+    st.components.v1.html("""
+        <script>
+            localStorage.removeItem('tasukaru_f_code');
+            localStorage.removeItem('tasukaru_my_name');
+        </script>
+    """, height=0)
 
 class SimpleCookieManager:
     def get(self, key):
@@ -60,19 +94,9 @@ def back_to_top_button(key):
 # 🖼️ 画像を圧縮する関数
 # ==========================================
 def compress_image(img, max_size=(800, 800), quality=75):
-    """
-    画像を圧縮してJPEGバイト列を返す
-    - max_size: 最大サイズ（これ以上は縮小）
-    - quality: JPEG品質（1-95、低いほど小さい）
-    """
-    # RGBAなどをRGBに変換
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-
-    # サイズを縮小
     img.thumbnail(max_size, Image.LANCZOS)
-
-    # JPEG圧縮
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality, optimize=True)
     return buf.getvalue()
@@ -93,7 +117,6 @@ class FastGeminiModel:
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, Image.Image):
-                # ✅ 画像を圧縮してから送信
                 img_bytes = compress_image(item)
                 parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:

@@ -15,7 +15,7 @@ st.set_page_config(
 # ==========================================
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
-from utils import cookie_manager, display_logo
+from utils import cookie_manager, display_logo, save_to_local_storage, clear_local_storage
 import uuid
 
 # ==========================================
@@ -27,7 +27,6 @@ try:
     supabase: Client = create_client(url, key)
 except KeyError as e:
     st.error(f"🚨 Secrets の設定が見つかりません: {e}")
-    st.info("👉 Streamlit Cloud の「Secrets」に SUPABASE_URL と SUPABASE_KEY を設定してください。")
     st.stop()
 except Exception as e:
     st.error("🚨 データベースへの接続に失敗しました。")
@@ -53,6 +52,27 @@ for key_name in ["edit_content", "monitoring_result", "admin_authenticated"]:
 def render_login():
     display_logo(show_line=False)
     st.markdown("<h3 style='text-align: center;'>施設コードを入力してください</h3>", unsafe_allow_html=True)
+
+    # localStorageから前回のログイン情報を復元するJS
+    st.components.v1.html("""
+        <script>
+            const fCode = localStorage.getItem('tasukaru_f_code');
+            const myName = localStorage.getItem('tasukaru_my_name');
+            if (fCode && myName) {
+                // セッションストレージに一時保存してStreamlitに渡す
+                sessionStorage.setItem('pending_f_code', fCode);
+                sessionStorage.setItem('pending_my_name', myName);
+                // URLパラメータで渡す
+                const url = new URL(window.location.href);
+                if (!url.searchParams.get('auto_login')) {
+                    url.searchParams.set('auto_login', '1');
+                    url.searchParams.set('f', fCode);
+                    url.searchParams.set('n', myName);
+                    window.location.href = url.toString();
+                }
+            }
+        </script>
+    """, height=0)
 
     saved_f_code = cookie_manager.get("saved_f_code") or ""
     saved_my_name = cookie_manager.get("saved_my_name") or ""
@@ -81,11 +101,13 @@ def render_login():
                     cookie_manager["saved_f_code"] = f_code
                     cookie_manager["saved_my_name"] = my_name
                     cookie_manager.save()
+                    # localStorageに保存
+                    save_to_local_storage(f_code, my_name)
                     st.session_state["page"] = "top"
                     st.rerun()
 
             except Exception as e:
-                st.error("🚨 ログイン中にエラーが発生しました。しばらく待ってから再試行してください。")
+                st.error("🚨 ログイン中にエラーが発生しました。")
                 st.caption(f"エラー詳細（管理者向け）: {e}")
         else:
             st.warning("⚠️ 施設コードと名前を両方入力してください。")
