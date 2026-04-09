@@ -9,7 +9,6 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     padding-bottom: 3rem !important;
     box-shadow: 0 1px 12px rgba(66,133,244,0.08) !important;
     border-top: 3px solid #1a73e8 !important;
-    max-width: 480px !important;
 }
 
 div.stButton > button {
@@ -30,21 +29,18 @@ div.stButton > button:hover {
 .stTextInput input, .stTextArea textarea {
     border-radius: 8px !important;
     border: 1.5px solid #dadce0 !important;
-    color: #202124 !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
     border-color: #1a73e8 !important;
     box-shadow: 0 0 0 2px rgba(26,115,232,0.15) !important;
 }
 
-.stSelectbox div[d.stSelectbox divect"] span { color: #202124 !important; }
-.stMarkdown p, .stMarkdown span { color: #202124 !important; }
-
 [data-testid="stExpander"] {
     border: 1px solid #e8eaed !important;
-                                             n-bottom: 0.5rem !important;
+    border-radius: 12px !important;
+    margin-bottom: 0.5rem !important;
 }
 
-@media @mint {
+@media print {
     div.stButton, [data-testid="stSidebar"] { display: none !important; }
 }
