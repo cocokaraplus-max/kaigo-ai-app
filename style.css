@@ -62,3 +62,29 @@ p, span, div, label, caption {
 [data-testid="stVerticalBlock"] p {
     color: #202124 !important;
 }
+
+input, textarea, select,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea,
+[data-baseweb="select"] input,
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stDateInput"] input,
+[data-testid="stFileUploader"],
+[data-testid="stAudioInput"],
+[data-baseweb="select"] {
+    background-color: #FFFFFF !important;
+    color: #202124 !important;
+    -webkit-text-fill-color: #202124 !important;
+}
+
+[data-baseweb="select"] div,
+[data-baseweb="select"] span {
+    background-color: #FFFFFF !important;
+    color: #202124 !important;
+}
+
+[data-testid="stFileUploader"] {
+    background-color: #f8f9fa !important;
+    color: #202124 !important;
+}
