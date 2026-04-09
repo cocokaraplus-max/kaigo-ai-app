@@ -1,3 +1,7 @@
 .streamlit/secrets.toml
 __pycache__/
 *.pyc
+.env
+.venv/
+.DS_Store
+IMG_3965.PNG

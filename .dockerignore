@@ -2,3 +2,9 @@
 .venv
 __pycache__
 .DS_Store
+.streamlit/secrets.toml
+.gitignore
+.env
+IMG_3965.PNG
+README.md
+update_readme.py
