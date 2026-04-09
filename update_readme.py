@@ -1,8 +1,51 @@
-# 🦝 TASUKARU - 介護ケース記録アプリ
+#!/usr/bin/env python3
+"""
+commit するたびに README.md を自動更新するスクリプト
+Git Hook (pre-commit) から自動で呼び出されます
+"""
+import subprocess
+from datetime import datetime
+
+# ==========================================
+# 直近のcommit履歴を取得
+# ==========================================
+def get_recent_commits(n=10):
+    try:
+        result = subprocess.run(
+            ["git", "log", f"-{n}", "--pretty=format:- %s (%ad)", "--date=short"],
+            capture_output=True, text=True
+        )
+        return result.stdout.strip()
+    except:
+        return "- （取得できませんでした）"
+
+# ==========================================
+# 最後に変更されたファイル一覧を取得
+# ==========================================
+def get_changed_files():
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True, text=True
+        )
+        files = result.stdout.strip().split("\n")
+        return "\n".join([f"- {f}" for f in files if f])
+    except:
+        return "- （取得できませんでした）"
+
+# ==========================================
+# README.md を生成
+# ==========================================
+def generate_readme():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    commits = get_recent_commits()
+    changed = get_changed_files()
+
+    content = f"""# 🦝 TASUKARU - 介護ケース記録アプリ
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-09 12:36
+最終更新: {now}
 
 ---
 
@@ -71,22 +114,13 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 
 ## 📝 直近の変更履歴
 
-- fix: gitignore追加・Geminiモデル名修正 (2026-04-09)
-- fix: Geminiモデル名をgemini-1.5-flashに修正 (2026-04-09)
-- fix: Geminiモデル名をgemini-1.5-flashに修正 (2026-04-09)
-- debug: 利用者リスト取得エラーの詳細表示を追加 (2026-04-09)
-- fix: コピペミス修正と安定版への完全なロールバック (2026-04-09)
-- fix: 安定版への完全ロールバック（AIエラー回避のためrequirements.txtを更新） (2026-04-09)
-- fix: AIのNotFoundエラー根絶とrequirementsの更新 (2026-04-09)
-- Merge pull request #2 from cocokaraplus-max/cloudrun (2026-04-08)
-- Update app.py (2026-04-08)
-- Add files via upload (2026-04-08)
+{commits}
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
-- update_readme.py
+{changed}
 
 ---
 
@@ -97,3 +131,17 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 - `app.py`
 - `views.py`
 - `utils.py`
+"""
+    return content
+
+# ==========================================
+# メイン処理
+# ==========================================
+if __name__ == "__main__":
+    readme = generate_readme()
+    with open("README.md", "w", encoding="utf-8") as f:
+        f.write(readme)
+    print("✅ README.md を更新しました")
+
+    # 更新したREADME.mdをcommitに含める
+    subprocess.run(["git", "add", "README.md"])
