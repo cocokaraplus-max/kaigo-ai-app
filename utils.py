@@ -4,7 +4,6 @@ from google import genai
 from google.genai import types
 from PIL import Image
 import os
-import base64
 import io
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
@@ -62,7 +61,7 @@ def back_to_top_button(key):
         st.rerun()
 
 # ==========================================
-# 🤖 Gemini AI モデル（新ライブラリ対応）
+# 🤖 Gemini AI モデル
 # ==========================================
 class FastGeminiModel:
     def generate_content(self, contents):
@@ -70,33 +69,38 @@ class FastGeminiModel:
         if not api_key:
             raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。")
 
-        # ✅ 新しいライブラリの書き方
         client = genai.Client(api_key=api_key)
 
         # contentsを新ライブラリ対応の形式に変換
         parts = []
         for item in contents:
             if isinstance(item, str):
-                # テキスト
                 parts.append(item)
             elif isinstance(item, Image.Image):
-                # PIL画像 → base64変換
                 buf = io.BytesIO()
                 item.save(buf, format="JPEG")
                 img_bytes = buf.getvalue()
                 parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:
-                # 音声データ
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
         try:
+            # ✅ 最新モデルに更新
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.0-flash-lite",
                 contents=parts,
             )
             return response
         except Exception as e:
-            raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
+            # フォールバック：別モデルで再試行
+            try:
+                response = client.models.generate_content(
+                    model="gemini-1.5-flash-latest",
+                    contents=parts,
+                )
+                return response
+            except Exception as e2:
+                raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
 
 def get_generative_model():
     return FastGeminiModel()
