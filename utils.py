@@ -57,7 +57,28 @@ def back_to_top_button(key):
         st.rerun()
 
 # ==========================================
-# 🤖 Gemini AI モデル（gemini-2.5-flash使用）
+# 🖼️ 画像を圧縮する関数
+# ==========================================
+def compress_image(img, max_size=(800, 800), quality=75):
+    """
+    画像を圧縮してJPEGバイト列を返す
+    - max_size: 最大サイズ（これ以上は縮小）
+    - quality: JPEG品質（1-95、低いほど小さい）
+    """
+    # RGBAなどをRGBに変換
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    # サイズを縮小
+    img.thumbnail(max_size, Image.LANCZOS)
+
+    # JPEG圧縮
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue()
+
+# ==========================================
+# 🤖 Gemini AI モデル
 # ==========================================
 class FastGeminiModel:
     def generate_content(self, contents):
@@ -72,14 +93,13 @@ class FastGeminiModel:
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, Image.Image):
-                buf = io.BytesIO()
-                item.save(buf, format="JPEG")
-                parts.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
+                # ✅ 画像を圧縮してから送信
+                img_bytes = compress_image(item)
+                parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
         try:
-            # ✅ 動作確認済みモデル
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=parts,
