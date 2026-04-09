@@ -6,6 +6,8 @@ from PIL import Image
 import os
 import io
 import uuid
+import base64
+import json
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -22,22 +24,6 @@ def delete_cookie(key):
     if f"cookie_{key}" in st.session_state:
         del st.session_state[f"cookie_{key}"]
 
-def save_to_local_storage(f_code, my_name):
-    st.components.v1.html(f"""
-        <script>
-            localStorage.setItem('tasukaru_f_code', '{f_code}');
-            localStorage.setItem('tasukaru_my_name', '{my_name}');
-        </script>
-    """, height=0)
-
-def clear_local_storage():
-    st.components.v1.html("""
-        <script>
-            localStorage.removeItem('tasukaru_f_code');
-            localStorage.removeItem('tasukaru_my_name');
-        </script>
-    """, height=0)
-
 class SimpleCookieManager:
     def get(self, key):
         return get_cookie(key)
@@ -49,6 +35,23 @@ class SimpleCookieManager:
         delete_cookie(key)
 
 cookie_manager = SimpleCookieManager()
+
+# ==========================================
+# 🔐 ログイン情報の暗号化・復号
+# ==========================================
+def encode_login_token(f_code, my_name):
+    """施設コードと名前をBase64で暗号化してトークンを生成"""
+    data = json.dumps({"f": f_code, "n": my_name})
+    token = base64.urlsafe_b64encode(data.encode()).decode()
+    return token
+
+def decode_login_token(token):
+    """トークンを復号して施設コードと名前を取得"""
+    try:
+        data = json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+        return data.get("f", ""), data.get("n", "")
+    except Exception:
+        return "", ""
 
 # ==========================================
 # 🖼️ ロゴ表示
@@ -77,34 +80,21 @@ def back_to_top_button(key):
 # 📷 写真をSupabaseストレージに保存
 # ==========================================
 def upload_images_to_supabase(supabase, imgs, f_code):
-    """
-    写真をSupabaseのcase-photosバケットに保存し
-    公開URLのリストを返す
-    """
     image_urls = []
     for img_file in imgs:
         try:
-            # ファイル名をユニークに生成
             ext = img_file.name.split(".")[-1].lower()
             file_name = f"{f_code}/{uuid.uuid4()}.{ext}"
-
-            # ファイルをバイト列として読み込む
             img_bytes = img_file.read()
-
-            # Supabaseストレージにアップロード
             supabase.storage.from_("case-photos").upload(
                 path=file_name,
                 file=img_bytes,
                 file_options={"content-type": img_file.type}
             )
-
-            # 公開URLを取得
             url = supabase.storage.from_("case-photos").get_public_url(file_name)
             image_urls.append(url)
-
         except Exception as e:
             st.warning(f"⚠️ 写真のアップロードに失敗しました: {e}")
-
     return image_urls
 
 # ==========================================

@@ -15,7 +15,7 @@ st.set_page_config(
 # ==========================================
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
-from utils import cookie_manager, display_logo
+from utils import cookie_manager, display_logo, encode_login_token, decode_login_token
 import uuid
 
 # ==========================================
@@ -47,20 +47,16 @@ for key_name in ["edit_content", "monitoring_result", "admin_authenticated"]:
         st.session_state[key_name] = "" if "content" in key_name else False
 
 # ==========================================
-# 🔑 URLパラメータからログイン情報を復元
-# リブート後もログインを維持する
+# 🔐 URLトークンからログイン情報を復元
 # ==========================================
 params = st.query_params
 
-# URLパラメータにログイン情報があればsession_stateに復元
-if "f" in params and "n" in params:
-    f_from_params = params["f"]
-    n_from_params = params["n"]
-    if f_from_params and n_from_params:
-        cookie_manager["saved_f_code"] = f_from_params
-        cookie_manager["saved_my_name"] = n_from_params
-        if st.session_state["page"] == "login":
-            st.session_state["page"] = "top"
+if "token" in params and st.session_state["page"] == "login":
+    f_from_token, n_from_token = decode_login_token(params["token"])
+    if f_from_token and n_from_token:
+        cookie_manager["saved_f_code"] = f_from_token
+        cookie_manager["saved_my_name"] = n_from_token
+        st.session_state["page"] = "top"
 
 # ==========================================
 # 🔑 ログイン画面
@@ -96,9 +92,9 @@ def render_login():
                     cookie_manager["saved_f_code"] = f_code
                     cookie_manager["saved_my_name"] = my_name
                     cookie_manager.save()
-                    # URLパラメータにログイン情報を保存
-                    st.query_params["f"] = f_code
-                    st.query_params["n"] = my_name
+                    # 暗号化トークンをURLに保存
+                    token = encode_login_token(f_code, my_name)
+                    st.query_params["token"] = token
                     st.session_state["page"] = "top"
                     st.rerun()
 
