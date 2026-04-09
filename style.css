@@ -8,7 +8,6 @@ footer, #MainMenu, header { display: none !important; visibility: hidden !import
     padding-top: 1.5rem !important;
     padding-bottom: 3rem !important;
     box-shadow: 0 1px 12px rgba(66,133,244,0.08) !important;
-    border-radius: 0 !important;
     border-top: 3px solid #1a73e8 !important;
     max-width: 480px !important;
 }
@@ -21,7 +20,6 @@ div.stButton > button {
     font-weight: 500 !important;
     height: 52px !important;
     font-size: 0.95rem !important;
-    box-shadow: none !important;
 }
 div.stButton > button:hover {
     border-color: #1a73e8 !important;
@@ -29,30 +27,24 @@ div.stButton > button:hover {
     background-color: #f0f7ff !important;
 }
 
-[data-testid="stButton"]:has(button p:contains("記録を書く")) button {
-    background: #1a73e8 !important;
-    color: white !important;
-    border: none !important;
-    font-size: 1rem !important;
-    font-weight: 600 !important;
-    height: 64px !important;    heix-shadow: 0 2px 6px rgba(26,115,232,0.25) !important;
+.stTextInput input, .stTextArea textarea {
+    border-radius: 8px !important;
+    border: 1.5px solid #dadce0 !important;
+    color: #202124 !important;
 }
-[data-testid="stButton"]:has(butto[data-testid="stButton"]:has(butto[成")) button {
-    background: #0f9d58 !important;
-    color:     color:     color:     co: non    color:     color:     color:     co: ant;
-    color:     color:     colnt;
-    height: 64px !important    height: 64px !important    height57,88,0.25) !important;
-}
-[data-test[data-test[data-test[data-test[data-test��[data-test[data-test[data-test[datba[data-test[data-test[data-test    color: white !important;
-    border: none !important;
-    font-size: 1rem !important;
-    font-wei    font-wei    font-wei    gh    font-wei    font-wei    font-wei0     font-wei    font-wei    f!i    font-wei    font-wei    font-wei    Area     font-wei    font-wei    font-wei    gh    font-wei    font-wei    foadce0 !important;
-    color: #202124 !im    color: #202124 !im    cut    color: #202124 !im  area:focus {
+.stTextInput input:focus, .stTextArea textarea:focus {
     border-color: #1a73e8 !important;
     box-shadow: 0 0 0 2px rgba(26,115,232,0.15) !important;
 }
 
-.stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="selecrt.stSelectbox div[data-baseweb="s"] {.stSelectbox div[data-baseweb="select"] span { .stSelectbox div[data-baseweb="select"] sn-bottom: 0.5rem !important;
+.stSelectbox div[d.stSelectbox divect"] span { color: #202124 !important; }
+.stMarkdown p, .stMarkdown span { color: #202124 !important; }
+
+[data-testid="stExpander"] {
+    border: 1px solid #e8eaed !important;
+                                             n-bottom: 0.5rem !important;
 }
 
-@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@me@m}
+@media @mint {
+    div.stButton, [data-testid="stSidebar"] { display: none !important; }
+}
