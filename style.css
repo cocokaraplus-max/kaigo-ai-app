@@ -63,3 +63,23 @@ div.stButton > button[kind="primary"]:hover {
     }
     div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn div.st    div.stHorizontalBlock > div.stColumn div.st    di      div.stHorizontalBlock > div.stColumn container { box-shadow: none !important; }
 }
+
+/* ロゴを中央に強制 */
+[data-testid="stImage"] {
+    display: flex !important;
+    justify-content: center !important;
+}
+[data-testid="stImage"] img {
+    display: block !important;
+    margin: 0 auto !important;
+    width: 300px !important;
+    max-width: 85% !important;
+}
+
+/* 文字色を強制的に黒に */
+.stApp p, .stApp span, .stApp div, .stApp label {
+    color: #202124 !important;
+}
+.stMarkdown, .stMarkdown p, .stMarkdown span {
+    color: #202124 !important;
+}
