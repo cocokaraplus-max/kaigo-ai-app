@@ -18,10 +18,16 @@ cookie_manager = EncryptedCookieManager(
 def init_cookie_manager():
     """
     クッキーマネージャーの初期化。
-    app.py の set_page_config の直後に呼んでください。
+    ready()でない場合は最大3秒待ってリトライし、
+    それでもダメなら警告だけ出して続行する。
     """
     if not cookie_manager.ready():
-        st.warning("⏳ クッキーを読み込み中です。少し待ってから再操作してください。")
+        # st.stop()をやめて、自動リロードで再試行する
+        st.markdown(
+            "<meta http-equiv='refresh' content='1'>",
+            unsafe_allow_html=True
+        )
+        st.warning("⏳ 読み込み中です。そのままお待ちください...")
         st.stop()
 
 # ==========================================
@@ -59,7 +65,6 @@ class FastGeminiModel:
 
         genai.configure(api_key=api_key)
         try:
-            # ✅ 修正：最新の正しいモデル名に変更
             model = genai.GenerativeModel('gemini-1.5-flash')
             return model.generate_content(contents)
         except Exception as e:
