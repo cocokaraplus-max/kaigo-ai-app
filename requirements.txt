@@ -1,7 +1,5 @@
-cat > requirements.txt << 'EOF'
 streamlit
 supabase
 google-genai
 pytz
 Pillow
-EOF
