@@ -8,9 +8,6 @@ import io
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
-# ==========================================
-# 🍪 クッキーの代替：session_stateで管理
-# ==========================================
 def get_cookie(key):
     return st.session_state.get(f"cookie_{key}", "")
 
@@ -24,21 +21,15 @@ def delete_cookie(key):
 class SimpleCookieManager:
     def get(self, key):
         return get_cookie(key)
-
     def __setitem__(self, key, value):
         set_cookie(key, value)
-
     def save(self):
         pass
-
     def delete(self, key):
         delete_cookie(key)
 
 cookie_manager = SimpleCookieManager()
 
-# ==========================================
-# 🖼️ ロゴ表示
-# ==========================================
 def display_logo(show_line=True):
     if os.path.exists("logo.png"):
         try:
@@ -48,21 +39,22 @@ def display_logo(show_line=True):
             st.markdown("<h1 style='text-align: center;'>🦝 TASUKARU</h1>", unsafe_allow_html=True)
     else:
         st.markdown("<h1 style='text-align: center;'>🦝 TASUKARU</h1>", unsafe_allow_html=True)
-
     if show_line:
         st.divider()
 
-# ==========================================
-# 🏠 TOPへ戻るボタン
-# ==========================================
 def back_to_top_button(key):
     if st.button("🏠 TOP画面へ", key=key, use_container_width=True):
         st.session_state["page"] = "top"
         st.rerun()
 
-# ==========================================
-# 🤖 Gemini AI モデル
-# ==========================================
+# 試すモデルのリスト（上から順に試す）
+MODELS_TO_TRY = [
+    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.0-flash-001",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash",
+]
+
 class FastGeminiModel:
     def generate_content(self, contents):
         api_key = st.secrets.get("GEMINI_API_KEY")
@@ -71,7 +63,6 @@ class FastGeminiModel:
 
         client = genai.Client(api_key=api_key)
 
-        # contentsを新ライブラリ対応の形式に変換
         parts = []
         for item in contents:
             if isinstance(item, str):
@@ -79,28 +70,23 @@ class FastGeminiModel:
             elif isinstance(item, Image.Image):
                 buf = io.BytesIO()
                 item.save(buf, format="JPEG")
-                img_bytes = buf.getvalue()
-                parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+                parts.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
-        try:
-            # ✅ 最新モデルに更新
-            response = client.models.generate_content(
-                model="gemini-2.0-flash-lite",
-                contents=parts,
-            )
-            return response
-        except Exception as e:
-            # フォールバック：別モデルで再試行
+        last_error = None
+        for model_name in MODELS_TO_TRY:
             try:
                 response = client.models.generate_content(
-                    model="gemini-1.5-flash-latest",
+                    model=model_name,
                     contents=parts,
                 )
                 return response
-            except Exception as e2:
-                raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
+            except Exception as e:
+                last_error = e
+                continue
+
+        raise Exception(f"🤖 AI通信エラー: {str(last_error)}\nしばらく待ってから再試行してください。")
 
 def get_generative_model():
     return FastGeminiModel()
