@@ -2,6 +2,16 @@ import streamlit as st
 
 st.set_page_config(page_title="TASUKARU", page_icon="🦝", layout="centered", initial_sidebar_state="collapsed")
 
+
+import os
+
+def load_css():
+    css_path = os.path.join(os.path.dirname(__file__), 'style.css')
+    if os.path.exists(css_path):
+        with open(css_path) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+load_css()
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
 from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret
