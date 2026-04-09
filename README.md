@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-09 14:52
+最終更新: 2026-04-09 14:56
 
 ---
 
@@ -71,6 +71,7 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 
 ## 📝 直近の変更履歴
 
+- fix: クッキー管理をsession_stateに変更して安定化 (2026-04-09)
 - fix: クッキー読み込み中で止まる問題を修正 (2026-04-09)
 - feat: README自動更新スクリプト追加 (2026-04-09)
 - fix: gitignore追加・Geminiモデル名修正 (2026-04-09)
@@ -80,14 +81,12 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 - fix: コピペミス修正と安定版への完全なロールバック (2026-04-09)
 - fix: 安定版への完全ロールバック（AIエラー回避のためrequirements.txtを更新） (2026-04-09)
 - fix: AIのNotFoundエラー根絶とrequirementsの更新 (2026-04-09)
-- Merge pull request #2 from cocokaraplus-max/cloudrun (2026-04-08)
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
-- app.py
-- utils.py
+- requirements.txt
 
 ---
 
