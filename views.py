@@ -20,17 +20,18 @@ def go_to_daily_view(u_name, target_d):
     st.session_state["dv_target_date"] = target_d
 
 # ==========================================
-# 申し送りAI統合プロンプト（共通）
+# ケース記録統合プロンプト（共通）
 # ==========================================
 DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日のケース記録です。
-これらを介護職員間の申し送りとして、です・ます調でまとめてください。
+これらを介護職員間の申し送りとして、一つの文章にまとめてください。
 
 【ルール】
+・箇条書きや「・」は絶対に使わない。必ず一つながりの文章で書く
 ・利用者名などの主語は不要
 ・職員名は不要
-・「支援内容」として記録されている事柄は必ず要約して記載すること
+・「支援内容」として記録されている事柄は必ず要約して含める
 ・変化・気になる点・注意事項を優先して記載
-・簡潔にまとめる
+・です・ます調で書く
 
 【記録】
 {records}
@@ -148,7 +149,6 @@ def render_input(supabase, cookie_manager, f_code, my_name):
         with st.spinner("AIが文章を作成中です..."):
             try:
                 model = get_generative_model()
-                # ✅ 修正：話した内容を忠実に文章化するプロンプト
                 prompt = (
                     "以下の音声を介護記録として文章に起こしてください。\n"
                     "【ルール】\n"
@@ -254,7 +254,7 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                         prompt = (
                             f"以下の介護記録を報告口調で一つの文章にまとめて。"
                             f"『支援内容』として記録されている事柄は積極的に盛り込んでください。"
-                            f"職員名や主語は不要。"
+                            f"職員名や主語は不要。箇条書きは使わず一つの文章で書いてください。"
                             f"おおよそ{char_limit}程度で作成してください。\n\n{recs}"
                         )
                         st.session_state["monitoring_result"] = model.generate_content([prompt]).text
@@ -281,6 +281,9 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
         target_date = now_tokyo.date()
     selected_date = st.date_input("日付選択", value=target_date)
 
+    # ✅ 日付を「○月○日」形式で表示
+    date_label = selected_date.strftime("%-m月%-d日")
+
     if f_code:
         t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
         try:
@@ -302,15 +305,15 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                         ai_recs = user_recs[user_recs["staff_name"] == "AI統合記録"]
                         normal_recs = user_recs[user_recs["staff_name"] != "AI統合記録"]
 
-                        # AI統合記録の表示と再生成
                         if not ai_recs.empty:
                             ai_rec = ai_recs.iloc[0]
                             with st.container(border=True):
-                                st.markdown("✨ **本日の申し送り（AI統合）**")
+                                # ✅ タイトルを「○月○日 ケース記録」に変更
+                                st.markdown(f"📋 **{date_label} ケース記録**")
                                 st.write(ai_rec['content'])
                                 c1, c2 = st.columns([1, 1])
                                 with c1:
-                                    if st.button("🔄 申し送りを再生成", key=f"regen_{user}", use_container_width=True):
+                                    if st.button("🔄 再生成", key=f"regen_{user}", use_container_width=True):
                                         if not normal_recs.empty:
                                             with st.spinner("AIが再生成中です..."):
                                                 try:
@@ -341,7 +344,7 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                             supabase.table("records").delete().eq("id", ai_rec['id']).execute()
                                             st.rerun()
                         else:
-                            if st.button(f"✨ 本日の申し送りを生成して確定", key=f"gen_{user}", use_container_width=True):
+                            if st.button(f"✨ {date_label} ケース記録を生成して確定", key=f"gen_{user}", use_container_width=True):
                                 if not normal_recs.empty:
                                     with st.spinner("AIが生成中です..."):
                                         try:
