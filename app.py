@@ -15,7 +15,7 @@ st.set_page_config(
 # ==========================================
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
-from utils import cookie_manager, display_logo, save_to_local_storage, clear_local_storage
+from utils import cookie_manager, display_logo
 import uuid
 
 # ==========================================
@@ -47,32 +47,27 @@ for key_name in ["edit_content", "monitoring_result", "admin_authenticated"]:
         st.session_state[key_name] = "" if "content" in key_name else False
 
 # ==========================================
+# 🔑 URLパラメータからログイン情報を復元
+# リブート後もログインを維持する
+# ==========================================
+params = st.query_params
+
+# URLパラメータにログイン情報があればsession_stateに復元
+if "f" in params and "n" in params:
+    f_from_params = params["f"]
+    n_from_params = params["n"]
+    if f_from_params and n_from_params:
+        cookie_manager["saved_f_code"] = f_from_params
+        cookie_manager["saved_my_name"] = n_from_params
+        if st.session_state["page"] == "login":
+            st.session_state["page"] = "top"
+
+# ==========================================
 # 🔑 ログイン画面
 # ==========================================
 def render_login():
     display_logo(show_line=False)
     st.markdown("<h3 style='text-align: center;'>施設コードを入力してください</h3>", unsafe_allow_html=True)
-
-    # localStorageから前回のログイン情報を復元するJS
-    st.components.v1.html("""
-        <script>
-            const fCode = localStorage.getItem('tasukaru_f_code');
-            const myName = localStorage.getItem('tasukaru_my_name');
-            if (fCode && myName) {
-                // セッションストレージに一時保存してStreamlitに渡す
-                sessionStorage.setItem('pending_f_code', fCode);
-                sessionStorage.setItem('pending_my_name', myName);
-                // URLパラメータで渡す
-                const url = new URL(window.location.href);
-                if (!url.searchParams.get('auto_login')) {
-                    url.searchParams.set('auto_login', '1');
-                    url.searchParams.set('f', fCode);
-                    url.searchParams.set('n', myName);
-                    window.location.href = url.toString();
-                }
-            }
-        </script>
-    """, height=0)
 
     saved_f_code = cookie_manager.get("saved_f_code") or ""
     saved_my_name = cookie_manager.get("saved_my_name") or ""
@@ -101,8 +96,9 @@ def render_login():
                     cookie_manager["saved_f_code"] = f_code
                     cookie_manager["saved_my_name"] = my_name
                     cookie_manager.save()
-                    # localStorageに保存
-                    save_to_local_storage(f_code, my_name)
+                    # URLパラメータにログイン情報を保存
+                    st.query_params["f"] = f_code
+                    st.query_params["n"] = my_name
                     st.session_state["page"] = "top"
                     st.rerun()
 
