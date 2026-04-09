@@ -1,5 +1,4 @@
 import streamlit as st
-import google.generativeai as genai
 import pandas as pd
 from datetime import datetime, timedelta, time as dt_time
 import uuid
@@ -103,7 +102,6 @@ def render_input(supabase, cookie_manager, f_code, my_name):
     back_to_top_button("ip_u")
     st.markdown("<div class='main-title'>✍️ 記録入力</div>", unsafe_allow_html=True)
 
-    # 利用者リストを取得
     p_opts = ["(未選択)"]
     try:
         res_p = supabase.table("patients") \
@@ -116,11 +114,7 @@ def render_input(supabase, cookie_manager, f_code, my_name):
                 kana = r.get('user_kana') or ""
                 p_opts.append(f"(No.{r['chart_number']}) [{r['user_name']}] {kana}")
     except Exception as e:
-        # ▼▼▼ デバッグ用：エラーの詳細を表示 ▼▼▼
-        st.error(f"🚨 利用者リストの取得に失敗しました")
-        st.error(f"エラー詳細: {e}")
-        st.warning(f"デバッグ情報 → 施設コード: [{f_code}] ／ URL先頭30文字: [{str(st.secrets.get('SUPABASE_URL', 'なし'))[:30]}...]")
-        # ▲▲▲ デバッグ用ここまで ▲▲▲
+        st.error(f"🚨 利用者リストの取得に失敗しました: {e}")
 
     sel = st.selectbox("👤 利用者を選択 (ひらがな検索OK)", p_opts)
     record_date = st.date_input("📅 記録日", value=now_tokyo.date())
@@ -231,7 +225,7 @@ def render_history(supabase, cookie_manager, f_code, my_name):
                             f"職員名や『利用者様は』などの主語は不要。"
                             f"おおよそ{char_limit}程度で作成してください。\n\n{recs}"
                         )
-                        st.session_state["monitoring_result"] = model.generate_content(prompt).text
+                        st.session_state["monitoring_result"] = model.generate_content([prompt]).text
                     else:
                         st.warning("⚠️ 対象期間に記録がありません。")
                 except Exception as e:
@@ -296,7 +290,7 @@ def render_daily_view(supabase, cookie_manager, f_code, my_name):
                                             recs_text = "\n".join([r['content'] for _, r in normal_recs.iterrows()])
                                             model = get_generative_model()
                                             prompt = f"今日の介護記録を一つの文章にまとめて。職員名や『利用者様は』などの主語は不要。\n\n{recs_text}"
-                                            summary = model.generate_content(prompt).text
+                                            summary = model.generate_content([prompt]).text
                                             c_num = normal_recs.iloc[0]['chart_number']
                                             dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
                                             supabase.table("records").insert({
