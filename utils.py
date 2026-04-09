@@ -57,7 +57,7 @@ def back_to_top_button(key):
         st.rerun()
 
 # ==========================================
-# 🤖 Gemini AI モデル（v1 API使用）
+# 🤖 Gemini AI モデル
 # ==========================================
 class FastGeminiModel:
     def generate_content(self, contents):
@@ -65,11 +65,8 @@ class FastGeminiModel:
         if not api_key:
             raise Exception("🔑 Secrets に GEMINI_API_KEY が設定されていません。")
 
-        # ✅ v1 APIを明示的に指定
-        client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(api_version="v1")
-        )
+        # ✅ v1betaのまま・確認済みモデルを使用
+        client = genai.Client(api_key=api_key)
 
         parts = []
         for item in contents:
@@ -82,11 +79,11 @@ class FastGeminiModel:
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
-        # v1で使えるモデルを順番に試す
+        # ✅ 確認済みの使えるモデルリスト
         models_to_try = [
             "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
+            "gemini-2.0-flash-001",
+            "gemini-2.0-flash-lite",
         ]
 
         last_error = None
