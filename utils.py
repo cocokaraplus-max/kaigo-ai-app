@@ -8,6 +8,7 @@ import io
 import uuid
 import base64
 import json
+import time as time_module
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -25,13 +26,11 @@ def delete_cookie(key):
         del st.session_state[f"cookie_{key}"]
 
 def encode_login_token(f_code, my_name):
-    """施設コードと名前をBase64で暗号化してトークンを生成"""
     data = json.dumps({"f": f_code, "n": my_name})
     token = base64.urlsafe_b64encode(data.encode()).decode()
     return token
 
 def decode_login_token(token):
-    """トークンを復号して施設コードと名前を取得"""
     try:
         data = json.loads(base64.urlsafe_b64decode(token.encode()).decode())
         return data.get("f", ""), data.get("n", "")
@@ -102,7 +101,7 @@ class GeminiResponse:
         self.text = text
 
 # ==========================================
-# 🤖 Gemini AI モデル
+# 🤖 Gemini AI モデル（リトライ機能付き）
 # ==========================================
 class FastGeminiModel:
     def generate_content(self, contents):
@@ -119,15 +118,27 @@ class FastGeminiModel:
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=parts,
-            )
-            text = response.candidates[0].content.parts[0].text
-            return GeminiResponse(text)
-        except Exception as e:
-            raise Exception(f"🤖 AI通信エラー: {str(e)}\nしばらく待ってから再試行してください。")
+        # ✅ 503エラー時は最大3回リトライ
+        max_retries = 3
+        retry_wait = 3  # 秒
+
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=parts,
+                )
+                text = response.candidates[0].content.parts[0].text
+                return GeminiResponse(text)
+            except Exception as e:
+                error_str = str(e)
+                # 503の場合はリトライ
+                if "503" in error_str and attempt < max_retries - 1:
+                    time_module.sleep(retry_wait)
+                    retry_wait += 2  # 待ち時間を少しずつ増やす
+                    continue
+                # それ以外のエラー or リトライ上限
+                raise Exception(f"🤖 AI通信エラー: {error_str}\nしばらく待ってから再試行してください。")
 
 def get_generative_model():
     return FastGeminiModel()
