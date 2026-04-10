@@ -167,3 +167,20 @@ class FastGeminiModel:
 
 def get_generative_model():
     return FastGeminiModel()
+def save_session(supabase, token, facility_code, staff_name):
+    try:
+        supabase.table("sessions").upsert({"token": token, "facility_code": facility_code, "staff_name": staff_name}, on_conflict="token").execute()
+    except Exception:
+        pass
+
+def load_session(supabase, token):
+    try:
+        from datetime import datetime, timezone
+        res = supabase.table("sessions").select("facility_code, staff_name, expires_at").eq("token", token).execute()
+        if res.data:
+            expires = datetime.fromisoformat(res.data[0]["expires_at"].replace("Z", "+00:00"))
+            if expires > datetime.now(timezone.utc):
+                return res.data[0]["facility_code"], res.data[0]["staff_name"]
+    except Exception:
+        pass
+    return "", ""
