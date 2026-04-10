@@ -588,52 +588,53 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
     back_to_top_button("ad_d")
 def render_super_admin(supabase):
     from collections import Counter
-    st.markdown("<div class='main-title'>Super Admin</div>", unsafe_allow_html=True)
-    t1, t2 = st.tabs(["Facilities", "Usage"])
+    st.markdown("<div class='main-title'>👑 開発者管理画面</div>", unsafe_allow_html=True)
+    t1, t2 = st.tabs(["🏢 施設管理", "📊 利用状況"])
     with t1:
         try:
             res = supabase.table("facilities").select("*").execute()
             for f in res.data:
                 fcode = f["facility_code"]
                 with st.expander(f["facility_name"] + " (" + fcode + ")"):
-                    st.write("expires: " + str(f.get("expires_at",""))[:10])
-                    st.write("plan: " + str(f.get("plan_limit","")))
+                    st.write("有効期限: " + str(f.get("expires_at",""))[:10])
+                    st.write("プラン上限: " + str(f.get("plan_limit","")))
                     active = f.get("is_active", True)
-                    st.write("status: " + ("active" if active else "inactive"))
+                    st.write("状態: " + ("有効" if active else "無効"))
                     c1, c2 = st.columns(2)
                     with c1:
-                        if active and st.button("Deactivate", key="deact_"+fcode):
+                        if active and st.button("無効化", key="deact_"+fcode):
                             supabase.table("facilities").update({"is_active": False}).eq("facility_code", fcode).execute()
                             st.rerun()
                     with c2:
-                        if not active and st.button("Activate", key="act_"+fcode):
+                        if not active and st.button("有効化", key="act_"+fcode):
                             supabase.table("facilities").update({"is_active": True}).eq("facility_code", fcode).execute()
                             st.rerun()
         except Exception as e:
-            st.error("Error: " + str(e))
+            st.error("エラー: " + str(e))
         st.divider()
-        new_code = st.text_input("Facility Code", key="new_fac_code")
-        new_name = st.text_input("Facility Name", key="new_fac_name")
-        new_plan = st.number_input("Plan Limit", value=99999, key="new_fac_plan")
-        new_pw = st.text_input("Admin Password", key="new_fac_pw")
-        if st.button("Register", key="new_fac_btn", type="primary"):
+        st.markdown("##### 新規施設登録")
+        new_code = st.text_input("施設コード", key="new_fac_code")
+        new_name = st.text_input("施設名", key="new_fac_name")
+        new_plan = st.number_input("プラン上限", value=99999, key="new_fac_plan")
+        new_pw = st.text_input("管理者パスワード", key="new_fac_pw")
+        if st.button("登録", key="new_fac_btn", type="primary"):
             if new_code and new_name:
                 try:
                     supabase.table("facilities").insert({"facility_code": new_code, "facility_name": new_name, "plan_limit": new_plan, "admin_password": new_pw, "is_active": True}).execute()
-                    st.success("Registered: " + new_name)
+                    st.success("登録完了: " + new_name)
                     st.rerun()
                 except Exception as e:
-                    st.error("Error: " + str(e))
+                    st.error("エラー: " + str(e))
             else:
-                st.warning("Code and Name required.")
+                st.warning("施設コードと施設名は必須です。")
     with t2:
         try:
             res = supabase.table("records").select("facility_code").execute()
-            counts = Counter([r["facility_code"] for r in res.data])
+            counts = Counter([r["facility_code"] for r in res.data if r["facility_code"]])
             for c, n in sorted(counts.items(), key=lambda x: -x[1]):
-                st.write(c + ": " + str(n))
+                st.write(c + ": " + str(n) + "件")
         except Exception as e:
-            st.error("Error: " + str(e))
-    if st.button("Exit", key="super_exit"):
+            st.error("エラー: " + str(e))
+    if st.button("閉じる", key="super_exit"):
         st.session_state["super_authenticated"] = False
         st.rerun()
