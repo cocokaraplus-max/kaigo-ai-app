@@ -84,3 +84,18 @@ html, body, .stApp {
     font-size: 0.8rem !important;
     padding: 0 8px !important;
 }
+
+[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+}
+[data-testid="stHorizontalBlock"] > div {
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+}
+[data-testid="stHorizontalBlock"] div.stButton > button {
+    height: 36px !important;
+    font-size: 0.75rem !important;
+    padding: 0 4px !important;
+    white-space: nowrap !important;
+}
