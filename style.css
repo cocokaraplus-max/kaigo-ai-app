@@ -73,3 +73,14 @@ div.stMarkdown p, [data-testid="stText"] {
 @media print {
     div.stButton,[data-testid="stSidebar"]{display:none!important}
 }
+
+html, body, .stApp {
+    color-scheme: light only !important;
+    forced-color-adjust: none !important;
+}
+
+[data-testid="stHorizontalBlock"] div.stButton > button {
+    height: 36px !important;
+    font-size: 0.8rem !important;
+    padding: 0 8px !important;
+}
