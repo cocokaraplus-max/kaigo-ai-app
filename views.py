@@ -447,7 +447,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                 st.error("⚠️ パスワードが違います。")
         st.stop()
 
-    t1, t2, t3, t4 = st.tabs(["👥 利用者管理", "👮 スタッフ管理", "⚙️ 設定", "🚫 セキュリティ"])
+    t1, t2, t3, t4, t5 = st.tabs(["👥 利用者管理", "👋 職員招待", "⚙️ 設定", "🚫 セキュリティ", "👮 スタッフ管理"])
 
     with t1:
         try:

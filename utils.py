@@ -188,9 +188,13 @@ def load_session(supabase, token):
 def send_temp_password_email(to_email, facility_name, facility_code, temp_password):
     try:
         import sendgrid
-        from sendgrid.helpers.mail import Mail
+        import qrcode
+        import io
+        import base64
+        from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
         sg = sendgrid.SendGridAPIClient(api_key=get_secret("SENDGRID_API_KEY"))
         from_email = get_secret("SENDGRID_FROM_EMAIL")
+        login_url = "https://tasukaru-39.web.app"
         subject = "【TASUKARU】施設登録が完了しました"
         body = f"""施設登録完了
 
@@ -198,13 +202,33 @@ def send_temp_password_email(to_email, facility_name, facility_code, temp_passwo
 施設コード: {facility_code}
 仮パスワード: {temp_password}
 
-ログインURL: https://tasukaru-39.web.app
+ログインURL: {login_url}
 
 初回ログイン後、パスワードを変更してください。
 
-メール内のリンクをタップするとうまく開けない場合は
-URLをコピーしてSafariに貼り付けてください。"""
-        message = Mail(from_email=from_email, to_emails=to_email, subject=subject, plain_text_content=body)
+添付のQRコードをiPhoneのカメラで読み取るとSafariで開けます。"""
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(login_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+        message = Mail(
+            from_email=from_email,
+            to_emails=to_email,
+            subject=subject,
+            plain_text_content=body
+        )
+        attachment = Attachment(
+            FileContent(qr_base64),
+            FileName("tasukaru_login_qr.png"),
+            FileType("image/png"),
+            Disposition("attachment")
+        )
+        message.attachment = attachment
         sg.send(message)
         return True
     except Exception as e:
