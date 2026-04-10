@@ -14,7 +14,7 @@ def load_css():
 load_css()
 st.markdown('<style>:root{color-scheme:light!important}</style>', unsafe_allow_html=True)
 from supabase import create_client, Client
-from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
+from views import render_top, render_input, render_history, render_daily_view, render_admin_menu, render_super_admin
 from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session
 import uuid
 
@@ -58,6 +58,25 @@ def render_login():
     if st.button("ログイン", use_container_width=True, type="primary"):
         if f_code and my_name:
             try:
+                fac = supabase.table("facilities").select("facility_name,is_active,expires_at").eq("facility_code", f_code).execute()
+                if not fac.data:
+                    st.error("この施設コードは登録されていません。")
+                    st.stop()
+                from datetime import datetime, timezone
+                fac_data = fac.data[0]
+                if not fac_data.get("is_active", True):
+                    st.error("この施設コードは無効です。")
+                    st.stop()
+                expires = datetime.fromisoformat(str(fac_data.get("expires_at","")).replace("Z","+00:00"))
+                if expires < datetime.now(timezone.utc):
+                    st.error("この施設コードの有効期限が切れています。")
+                    st.stop()
+            except st.exceptions.StopException:
+                raise
+            except Exception:
+                st.error("施設コードの確認中にエラーが発生しました。")
+                st.stop()
+            try:
                 res = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
                 blocked = any(b.get("device_id") == st.session_state.get("device_id") or b.get("staff_name") == my_name for b in res.data)
                 if blocked:
@@ -97,6 +116,18 @@ else:
     elif p == "admin":
         render_admin_menu(supabase, cookie_manager, f_code, my_name, st.session_state.get("device_id"))
     st.divider()
-    if st.button("管理者メニュー", key="admin_access_btn"):
+    params_now = st.query_params
+    if "superadmin" in params_now:
+        if not st.session_state.get("super_authenticated"):
+            pw = st.text_input("開発者パスワード", type="password", key="super_pw")
+            if st.button("認証", key="super_auth_btn"):
+                if pw == get_secret("SUPER_ADMIN_PASSWORD"):
+                    st.session_state["super_authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("パスワードが違います。")
+        else:
+            render_super_admin(supabase)
+    elif st.button("管理者MENU", key="admin_access_btn"):
         st.session_state["page"] = "admin"
         st.rerun()
