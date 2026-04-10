@@ -67,6 +67,9 @@ def render_register():
                     result = send_temp_password_email(admin_email, facility_name, facility_code, temp_pw)
                     if result:
                         st.success("登録完了！仮パスワードをメールで送信しました。")
+                    if st.button("ログイン画面へ", type="primary", use_container_width=True):
+                        st.query_params.clear()
+                        st.rerun()
                     else:
                         st.success("登録完了！")
                         st.info(f"仮パスワード: {temp_pw}")
