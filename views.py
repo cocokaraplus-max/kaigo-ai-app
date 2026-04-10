@@ -327,30 +327,32 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                     else:
                         st.warning("⚠️ NoとNo氏名は必須です。")
         with st.expander("✏️ 編集"):
-            for p in res_p.data:
-                st.markdown(f"**No.{p['chart_number']} {p['user_name']}**")
-                if st.session_state.get(f"pedit_{p['id']}"):
-                    with st.form(f"f_{p['id']}"):
-                        un = st.text_input("氏名", p['user_name'])
-                        uk = st.text_input("かな", p['user_kana'])
-                        uc = st.text_input("No", p['chart_number'])
-                        if st.form_submit_button("確定"):
-                            supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute()
-                            st.session_state[f"pedit_{p['id']}"] = False
+            edit_sel = st.selectbox("利用者を選択", ["---"] + [f"No.{p['chart_number']} {p['user_name']}" for p in res_p.data], key="edit_sel")
+            if edit_sel != "---":
+                selected_p = next((p for p in res_p.data if f"No.{p['chart_number']} {p['user_name']}" == edit_sel), None)
+                if selected_p:
+                    with st.form("edit_form"):
+                        un = st.text_input("氏名", selected_p['user_name'])
+                        uk = st.text_input("かな", selected_p['user_kana'])
+                        uc = st.text_input("No", selected_p['chart_number'])
+                        if st.form_submit_button("確定", type="primary"):
+                            supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", selected_p['id']).execute()
+                            st.success("✅ 更新しました！")
                             st.rerun()
-                else:
-                    if st.button("修正する", key=f"pe_{p['id']}"):
-                        st.session_state[f"pedit_{p['id']}"] = True
-                        st.rerun()
-                st.divider()
         with st.expander("🗑️ 削除"):
-            for p in res_p.data:
-                c1, c2 = st.columns([4, 1])
+            del_sel = st.selectbox("利用者を選択", ["---"] + [f"No.{p['chart_number']} {p['user_name']}" for p in res_p.data], key="del_sel")
+            if del_sel != "---":
+                st.warning(f"⚠️ 本当に「{del_sel}」を削除しますか？")
+                c1, c2 = st.columns(2)
                 with c1:
-                    st.markdown(f"No.{p['chart_number']} {p['user_name']}")
+                    if st.button("OK（削除する）", type="primary", use_container_width=True, key="del_ok"):
+                        selected_p = next((p for p in res_p.data if f"No.{p['chart_number']} {p['user_name']}" == del_sel), None)
+                        if selected_p:
+                            supabase.table("patients").delete().eq("id", selected_p['id']).execute()
+                            st.success("削除しました。")
+                            st.rerun()
                 with c2:
-                    if st.button("削除", key=f"pd_{p['id']}"):
-                        supabase.table("patients").delete().eq("id", p['id']).execute()
+                    if st.button("キャンセル", use_container_width=True, key="del_cancel"):
                         st.rerun()
     with t2:
         st.markdown("##### 👋 職員招待")
