@@ -3,3 +3,4 @@ supabase
 google-genai
 pytz
 Pillow
+sendgrid

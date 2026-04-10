@@ -15,7 +15,7 @@ load_css()
 st.markdown('<style>:root{color-scheme:light!important}</style>', unsafe_allow_html=True)
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu, render_super_admin
-from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session
+from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session, send_temp_password_email
 import uuid
 
 try:
@@ -48,6 +48,32 @@ if "token" in params and st.session_state["page"] == "login":
         cookie_manager["saved_my_name"] = n
         st.session_state["page"] = "top"
 
+def render_register():
+    import random, string
+    display_logo(show_line=False)
+    st.markdown("<h3 style='text-align:center'>施設新規登録</h3>", unsafe_allow_html=True)
+    facility_code = st.text_input("施設コード（自分で決めてください）")
+    facility_name = st.text_input("施設名")
+    admin_email = st.text_input("管理者メールアドレス")
+    if st.button("登録する", type="primary", use_container_width=True):
+        if facility_code and facility_name and admin_email:
+            try:
+                existing = supabase.table("facilities").select("facility_code").eq("facility_code", facility_code).execute()
+                if existing.data:
+                    st.error("この施設コードはすでに使われています。別のコードを入力してください。")
+                else:
+                    temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=10))
+                    supabase.table("facilities").insert({"facility_code": facility_code, "facility_name": facility_name, "admin_password": temp_pw, "plan_limit": 99999, "is_active": True}).execute()
+                    result = send_temp_password_email(admin_email, facility_name, facility_code, temp_pw)
+                    if result:
+                        st.success("登録完了！仮パスワードをメールで送信しました。")
+                    else:
+                        st.success("登録完了！")
+                        st.info(f"仮パスワード: {temp_pw}")
+            except Exception as e:
+                st.error(f"登録エラー: {e}")
+        else:
+            st.warning("全項目を入力してください。")
 def render_login():
     display_logo(show_line=False)
     st.markdown("<h3 style='text-align: center;'>施設コードを入力してください</h3>", unsafe_allow_html=True)
@@ -94,6 +120,10 @@ def render_login():
                 st.caption(f"エラー詳細: {e}")
         else:
             st.warning("施設コードと名前を入力してください。")
+params_now = st.query_params
+if "register" in params_now:
+    render_register()
+    st.stop()
 
 f_code = cookie_manager.get("saved_f_code")
 my_name = cookie_manager.get("saved_my_name")

@@ -184,3 +184,17 @@ def load_session(supabase, token):
     except Exception:
         pass
     return "", ""
+
+def send_temp_password_email(to_email, facility_name, facility_code, temp_password):
+    try:
+        import sendgrid
+        from sendgrid.helpers.mail import Mail
+        sg = sendgrid.SendGridAPIClient(api_key=get_secret("SENDGRID_API_KEY"))
+        from_email = get_secret("SENDGRID_FROM_EMAIL")
+        subject = "【TASUKARU】施設登録が完了しました"
+        body = f"施設登録完了\n\n施設名: {facility_name}\n施設コード: {facility_code}\n仮パスワード: {temp_password}\n\nログインURL: https://tasukaru-191764727533.asia-northeast1.run.app\n\n初回ログイン後、パスワードを変更してください。"
+        message = Mail(from_email=from_email, to_emails=to_email, subject=subject, plain_text_content=body)
+        sg.send(message)
+        return True
+    except Exception as e:
+        return False
