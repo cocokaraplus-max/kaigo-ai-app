@@ -112,11 +112,9 @@ def render_login():
                 save_session(supabase, token, f_code, my_name)
                 st.session_state["page"] = "top"
                 st.rerun()
-            except Exception as e:
+            except Exception as stop_e:
                 if "StopException" in str(type(e).__name__):
                     raise
-                raise
-            except Exception as e:
                 st.error("ログイン中にエラーが発生しました。")
                 st.caption(f"エラー詳細: {e}")
         else:
