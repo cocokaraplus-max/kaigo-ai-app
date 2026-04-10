@@ -19,3 +19,13 @@ label, .stTextInput label, .stSelectbox label {
     color: #202124 !important;
     -webkit-text-fill-color: #202124 !important;
 }
+
+* {
+    color: #202124 !important;
+    -webkit-text-fill-color: #202124 !important;
+}
+input, textarea, select {
+    background-color: #FFFFFF !important;
+    color: #202124 !important;
+    -webkit-text-fill-color: #202124 !important;
+}
