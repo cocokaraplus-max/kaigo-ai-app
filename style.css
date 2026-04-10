@@ -8,7 +8,7 @@ p,span,label,h1,h2,h3,h4,h5,h6{color:#202124!important;-webkit-text-fill-color:#
 
 input,textarea,select{background-color:#FFFFFF!important;color:#202124!important;-webkit-text-fill-color:#202124!important;border-radius:8px!important}
 
-div.stButton > button{background-color:#FFFFFF!important;color:#202124!important;-webkit-text-fill-color:#202124!important;border-radius:10px!important}
+div.stButton > button{background-color:#FFFFFF!important;color:#202124!important;-webkit-text-fill-color:#202124!important;border-radius:10px!important;height:52px!important;font-size:1rem!important}
 
 div.stButton > button[kind="primary"]{background:#1a73e8!important;color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important;border:none!important}
 
