@@ -192,7 +192,18 @@ def send_temp_password_email(to_email, facility_name, facility_code, temp_passwo
         sg = sendgrid.SendGridAPIClient(api_key=get_secret("SENDGRID_API_KEY"))
         from_email = get_secret("SENDGRID_FROM_EMAIL")
         subject = "【TASUKARU】施設登録が完了しました"
-        body = f"施設登録完了\n\n施設名: {facility_name}\n施設コード: {facility_code}\n仮パスワード: {temp_password}\n\nログインURL: https://tasukaru-191764727533.asia-northeast1.run.app\n\n初回ログイン後、パスワードを変更してください。"
+        body = f"""施設登録完了
+
+施設名: {facility_name}
+施設コード: {facility_code}
+仮パスワード: {temp_password}
+
+ログインURL: https://tasukaru-39.web.app
+
+初回ログイン後、パスワードを変更してください。
+
+メール内のリンクをタップするとうまく開けない場合は
+URLをコピーしてSafariに貼り付けてください。"""
         message = Mail(from_email=from_email, to_emails=to_email, subject=subject, plain_text_content=body)
         sg.send(message)
         return True
