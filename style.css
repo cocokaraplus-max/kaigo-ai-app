@@ -15,9 +15,9 @@ div.stButton > button[kind="primary"]{background:#1a73e8!important;color:#FFFFFF
 div[data-testid="stHorizontalBlock"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important}
 
 div[data-testid="stHorizontalBlock"] > div{flex:1!important;min-width:0!important}
-div[data-testid="stHorizontalBlock"] div.stButton > button {
-    font-size:0.7rem!important;
-    padding:2px 4px!important;
-    height:32px!important;
-    min-width:0!important;
-}
+
+div[data-testid="stHorizontalBlock"] > div:first-child{flex:4!important}
+
+div[data-testid="stHorizontalBlock"] > div:not(:first-child){flex:0 0 48px!important;min-width:48px!important;max-width:48px!important}
+
+div[data-testid="stHorizontalBlock"] div.stButton > button{font-size:0.7rem!important;padding:2px 4px!important;height:32px!important;width:44px!important}
