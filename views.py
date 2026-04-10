@@ -587,40 +587,53 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
         st.rerun()
     back_to_top_button("ad_d")
 def render_super_admin(supabase):
-    st.markdown("<div class='main-title'>👑 開発者管理画面</div>", unsafe_allow_html=True)
-    t1, t2 = st.tabs(["🏢 施設管理", "📊 利用状況"])
+    from collections import Counter
+    st.markdown("<div class='main-title'>Super Admin</div>", unsafe_allow_html=True)
+    t1, t2 = st.tabs(["Facilities", "Usage"])
     with t1:
-        st.markdown("##### 施設一覧")
         try:
             res = supabase.table("facilities").select("*").execute()
             for f in res.data:
-                with st.expander(f"{f['facility_name']} ({f['facility_code']})"):
-                    st.write(f"有効期限: {str(f.get('expires_at',''))[:10]}")
-                    st.write(f"プラン: {f.get('plan_limit','')}")
-                    active = f.get('is_active', True)
-                    st.write(f"状態: {'✅ 有効' if active else '🚫 無効'}")
+                fcode = f["facility_code"]
+                with st.expander(f["facility_name"] + " (" + fcode + ")"):
+                    st.write("expires: " + str(f.get("expires_at",""))[:10])
+                    st.write("plan: " + str(f.get("plan_limit","")))
+                    active = f.get("is_active", True)
+                    st.write("status: " + ("active" if active else "inactive"))
                     c1, c2 = st.columns(2)
                     with c1:
-                        if active and st.button("無効化", key=f"deact_{f['facility_code']}"):
-                            supabase.table("facilities").update({"is_active": False}).eq("facility_code", f['facility_code']).execute()
+                        if active and st.button("Deactivate", key="deact_"+fcode):
+                            supabase.table("facilities").update({"is_active": False}).eq("facility_code", fcode).execute()
                             st.rerun()
                     with c2:
-                        if not active and st.button("有効化", key=f"act_{f['facility_code']}"):
-                            supabase.table("facilities").update({"is_active": True}).eq("facility_code", f['facility_code']).execute()
-                                    ()
-                                                                                      ider()
-        st.markdown("##### 新規施設登録")
-        new_code = st.text_in        new_code = st.text_in        new_code = st.text_in        nxt        new_code = st.text_in   _name")
-        new_plan = st.number_input("プラン上限", value=99999, key="new_fac_plan")
-        new_        new_        new_        new_     �        new_        new_             new_        new_        new_        new_     �        new_        new_             newe:        new_        new_        new_        new_     �        new_        new_             new_        new_        new_        new_            new_        new_        new new        new_        new_       "plan_limit": new_plan,
-                        "admin_password": new_pw,
-                        "is_active": True
-                    }).execute()
-                    st.success(f"✅ {new_name} を登録しました！")
+                        if not active and st.button("Activate", key="act_"+fcode):
+                            supabase.table("facilities").update({"is_active": True}).eq("facility_code", fcode).execute()
+                            st.rerun()
+        except Exception as e:
+            st.error("Error: " + str(e))
+        st.divider()
+        new_code = st.text_input("Facility Code", key="new_fac_code")
+        new_name = st.text_input("Facility Name", key="new_fac_name")
+        new_plan = st.number_input("Plan Limit", value=99999, key="new_fac_plan")
+        new_pw = st.text_input("Admin Password", key="new_fac_pw")
+        if st.button("Register", key="new_fac_btn", type="primary"):
+            if new_code and new_name:
+                try:
+                    supabase.table("facilities").insert({"facility_code": new_code, "facility_name": new_name, "plan_limit": new_plan, "admin_password": new_pw, "is_active": True}).execute()
+                    st.success("Registered: " + new_name)
                     st.rerun()
                 except Exception as e:
-                    st.error(f"登録失敗: {e}")
+                    st.error("Error: " + str(e))
             else:
-                                              施                                              施                                              施                                      s").select("facility_code").execute()
-            from collections import Counter
-                                                                                                                                                                                                                                                                                                                                                                                                                                
+                st.warning("Code and Name required.")
+    with t2:
+        try:
+            res = supabase.table("records").select("facility_code").execute()
+            counts = Counter([r["facility_code"] for r in res.data])
+            for c, n in sorted(counts.items(), key=lambda x: -x[1]):
+                st.write(c + ": " + str(n))
+        except Exception as e:
+            st.error("Error: " + str(e))
+    if st.button("Exit", key="super_exit"):
+        st.session_state["super_authenticated"] = False
+        st.rerun()
