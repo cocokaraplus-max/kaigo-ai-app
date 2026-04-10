@@ -464,7 +464,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                         st.warning("⚠️ NoとNo氏名は必須です。")
 
         for p in res_p.data:
-            c1, c2, c3 = st.columns([4, 1, 1])
+            c1, c2, c3 = st.columns([5, 1, 1])
             with c1:
                 st.markdown(f"<p style='margin:8px 0;font-size:0.95rem'>No.{p['chart_number']} {p['user_name']}</p>", unsafe_allow_html=True)
             with c2:
