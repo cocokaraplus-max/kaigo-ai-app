@@ -10,10 +10,14 @@ input,textarea,select{background-color:#FFFFFF!important;color:#202124!important
 
 div.stButton > button{background-color:#FFFFFF!important;color:#202124!important;-webkit-text-fill-color:#202124!important;border-radius:10px!important;height:52px!important;font-size:1rem!important;border:1.5px solid #E0E0E0!important}
 
-div.stButton > button[kind="primary"]{background:#1a73e8!important;color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important;border:none!important}
+div.stButton > button[kind="primary"]{background:#1a73e8!important;color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important;border:none!important} .stButton button[data-baseweb="button"][kind="primary"] span{color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important}
 
 div[data-testid="stHorizontalBlock"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important}
 
 div[data-testid="stHorizontalBlock"] > div{flex:1!important;min-width:0!important}
 
 div[data-testid="stHorizontalBlock"] div.stButton > button{font-size:0.75rem!important;height:36px!important;padding:2px 6px!important}
+button[kind="primary"] p, button[kind="primary"] span, div.stButton > button[kind="primary"] p {
+    color:#FFFFFF!important;
+    -webkit-text-fill-color:#FFFFFF!important;
+}

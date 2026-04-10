@@ -326,23 +326,31 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                         st.rerun()
                     else:
                         st.warning("⚠️ NoとNo氏名は必須です。")
-        for p in res_p.data:
-            st.markdown(f"<div style='display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0'><span style='font-size:0.95rem;color:#202124;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;margin-right:8px'>No.{p['chart_number']} {p['user_name']}</span></div>", unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("✏️ 修正", key=f"pe_{p['id']}", use_container_width=True):
-                    st.session_state[f"pedit_{p['id']}"] = True
-            with c2:
-                if st.button("🗑️ 削除", key=f"pd_{p['id']}", use_container_width=True):
-                    supabase.table("patients").delete().eq("id", p['id']).execute()
-                    st.rerun()
-            if st.session_state.get(f"pedit_{p['id']}"):
-                with st.form(f"f_{p['id']}"):
-                    un = st.text_input("氏名", p['user_name'])
-                    uk = st.text_input("かな", p['user_kana'])
-                    uc = st.text_input("No", p['chart_number'])
-                    if st.form_submit_button("確定"):
-                        supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute()
+        with st.expander("✏️ 編集"):
+            for p in res_p.data:
+                st.markdown(f"**No.{p['chart_number']} {p['user_name']}**")
+                if st.session_state.get(f"pedit_{p['id']}"):
+                    with st.form(f"f_{p['id']}"):
+                        un = st.text_input("氏名", p['user_name'])
+                        uk = st.text_input("かな", p['user_kana'])
+                        uc = st.text_input("No", p['chart_number'])
+                        if st.form_submit_button("確定"):
+                            supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute()
+                            st.session_state[f"pedit_{p['id']}"] = False
+                            st.rerun()
+                else:
+                    if st.button("修正する", key=f"pe_{p['id']}"):
+                        st.session_state[f"pedit_{p['id']}"] = True
+                        st.rerun()
+                st.divider()
+        with st.expander("🗑️ 削除"):
+            for p in res_p.data:
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.markdown(f"No.{p['chart_number']} {p['user_name']}")
+                with c2:
+                    if st.button("削除", key=f"pd_{p['id']}"):
+                        supabase.table("patients").delete().eq("id", p['id']).execute()
                         st.rerun()
     with t2:
         st.markdown("##### 👋 職員招待")
