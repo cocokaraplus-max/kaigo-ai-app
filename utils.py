@@ -198,3 +198,11 @@ def send_temp_password_email(to_email, facility_name, facility_code, temp_passwo
         return True
     except Exception as e:
         return False
+
+def hash_password(password):
+    import hashlib
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password, hashed):
+    import hashlib
+    return hashlib.sha256(password.encode()).hexdigest() == hashed

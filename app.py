@@ -72,15 +72,14 @@ def render_register():
             st.warning("全項目を入力してください。")
 def render_login():
     display_logo(show_line=False)
-    st.markdown("<h3 style='text-align: center;'>施設コードを入力してください</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
     saved_f = cookie_manager.get("saved_f_code") or ""
-    saved_n = cookie_manager.get("saved_my_name") or ""
     f_code = st.text_input("施設コード", value=saved_f)
-    my_name = st.text_input("あなたの名前", value=saved_n)
+    password = st.text_input("パスワード", type="password")
     if st.button("ログイン", use_container_width=True, type="primary"):
-        if f_code and my_name:
+        if f_code and password:
             try:
-                fac = supabase.table("facilities").select("facility_name,is_active,expires_at").eq("facility_code", f_code).execute()
+                fac = supabase.table("facilities").select("facility_name,is_active,expires_at,admin_password").eq("facility_code", f_code).execute()
                 if not fac.data:
                     st.error("この施設コードは登録されていません。")
                     st.stop()
@@ -93,29 +92,33 @@ def render_login():
                 if expires < datetime.now(timezone.utc):
                     st.error("この施設コードの有効期限が切れています。")
                     st.stop()
+                from utils import hash_password, verify_password
+                admin_pw = fac_data.get("admin_password", "")
+                staff = supabase.table("staffs").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
+                matched_staff = None
+                for s in staff.data:
+                    if verify_password(password, s["password_hash"]):
+                        matched_staff = s
+                        break
+                is_admin = (password == admin_pw)
+                if not is_admin and not matched_staff:
+                    st.error("パスワードが違います。")
+                    st.stop()
+                my_name = "管理者" if is_admin else matched_staff["staff_name"]
+                cookie_manager["saved_f_code"] = f_code
+                cookie_manager["saved_my_name"] = my_name
+                token = encode_login_token(f_code, my_name)
+                st.query_params["token"] = token
+                save_session(supabase, token, f_code, my_name)
+                st.session_state["page"] = "top"
+                st.rerun()
             except st.exceptions.StopException:
                 raise
-            except Exception:
-                st.error("施設コードの確認中にエラーが発生しました。")
-                st.stop()
-            try:
-                res = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
-                blocked = any(b.get("device_id") == st.session_state.get("device_id") or b.get("staff_name") == my_name for b in res.data)
-                if blocked:
-                    st.error("この端末またはユーザーは利用できません。")
-                else:
-                    cookie_manager["saved_f_code"] = f_code
-                    cookie_manager["saved_my_name"] = my_name
-                    token = encode_login_token(f_code, my_name)
-                    st.query_params["token"] = token
-                    save_session(supabase, token, f_code, my_name)
-                    st.session_state["page"] = "top"
-                    st.rerun()
             except Exception as e:
                 st.error("ログイン中にエラーが発生しました。")
                 st.caption(f"エラー詳細: {e}")
         else:
-            st.warning("施設コードと名前を入力してください。")
+            st.warning("施設コードとパスワードを入力してください。")
 params_now = st.query_params
 if "register" in params_now:
     render_register()
