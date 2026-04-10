@@ -597,15 +597,33 @@ def render_super_admin(supabase):
                 fcode = f["facility_code"]
                 with st.expander(f["facility_name"] + " (" + fcode + ")"):
                     st.write("有効期限: " + str(f.get("expires_at",""))[:10])
-                    st.write("プラン上限: " + str(f.get("plan_limit","")))
+                    plan = f.get("plan_limit", 99999)
+                    st.write("プラン上限: " + ("♾️ 無制限" if plan >= 99999 else str(plan) + "人"))
                     active = f.get("is_active", True)
-                    st.write("状態: " + ("有効" if active else "無効"))
-                    c1, c2 = st.columns(2)
+                    st.write("状態: " + ("✅ 有効" if active else "🚫 無効"))
+                    st.divider()
+                    st.markdown("**編集**")
+                    new_expires = st.date_input("有効期限", key="exp_"+fcode)
+                    plan_type = st.radio("プラン", ["♾️ 無制限", "カスタム"], horizontal=True, key="pt_"+fcode)
+                    if plan_type == "カスタム":
+                        new_plan = st.number_input("上限人数", value=int(plan), key="pl_"+fcode)
+                    else:
+                        new_plan = 99999
+                    new_pw = st.text_input("管理者パスワード（変更する場合）", key="pw_"+fcode)
+                    c1, c2, c3 = st.columns(3)
                     with c1:
+                        if st.button("保存", key="save_"+fcode, type="primary"):
+                            update_data = {"expires_at": new_expires.isoformat(), "plan_limit": new_plan, "is_active": active}
+                            if new_pw:
+                                update_data["admin_password"] = new_pw
+                            supabase.table("facilities").update(update_data).eq("facility_code", fcode).execute()
+                            st.success("保存しました！")
+                            st.rerun()
+                    with c2:
                         if active and st.button("無効化", key="deact_"+fcode):
                             supabase.table("facilities").update({"is_active": False}).eq("facility_code", fcode).execute()
                             st.rerun()
-                    with c2:
+                    with c3:
                         if not active and st.button("有効化", key="act_"+fcode):
                             supabase.table("facilities").update({"is_active": True}).eq("facility_code", fcode).execute()
                             st.rerun()
@@ -615,7 +633,11 @@ def render_super_admin(supabase):
         st.markdown("##### 新規施設登録")
         new_code = st.text_input("施設コード", key="new_fac_code")
         new_name = st.text_input("施設名", key="new_fac_name")
-        new_plan = st.number_input("プラン上限", value=99999, key="new_fac_plan")
+        new_plan_type = st.radio("プラン", ["♾️ 無制限", "カスタム"], horizontal=True, key="new_pt")
+        if new_plan_type == "カスタム":
+            new_plan = st.number_input("上限人数", value=50, key="new_fac_plan")
+        else:
+            new_plan = 99999
         new_pw = st.text_input("管理者パスワード", key="new_fac_pw")
         if st.button("登録", key="new_fac_btn", type="primary"):
             if new_code and new_name:
