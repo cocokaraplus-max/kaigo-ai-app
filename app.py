@@ -54,6 +54,7 @@ for k in ["edit_content", "monitoring_result", "admin_authenticated"]:
 
 params = st.query_params
 if "token" in params and st.session_state["page"] == "login":
+    st.write(f"DEBUG: token={params['token'][:20]}...")
     f, n = load_session(supabase, params["token"])
     if f and n:
         cookie_manager["saved_f_code"] = f
