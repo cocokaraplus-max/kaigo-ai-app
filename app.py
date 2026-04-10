@@ -64,15 +64,8 @@ def render_register():
                 else:
                     temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=10))
                     supabase.table("facilities").insert({"facility_code": facility_code, "facility_name": facility_name, "admin_password": temp_pw, "plan_limit": 99999, "is_active": True}).execute()
-                    result = send_temp_password_email(admin_email, facility_name, facility_code, temp_pw)
-                    if result:
-                        st.success("登録完了！仮パスワードをメールで送信しました。")
-                    if st.button("ログイン画面へ", type="primary", use_container_width=True):
-                        st.query_params.clear()
-                        st.rerun()
-                    else:
-                        st.success("登録完了！")
-                        st.info(f"仮パスワード: {temp_pw}")
+                    send_temp_password_email(admin_email, facility_name, facility_code, temp_pw)
+                    st.success("登録完了！メールをご確認ください。")
             except Exception as e:
                 st.error(f"登録エラー: {e}")
         else:
