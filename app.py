@@ -12,7 +12,7 @@ def load_css():
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 load_css()
-st.markdown('<style>:root{color-scheme:light!important}</style>', unsafe_allow_html=True)
+st.markdown('<style>:root,html,body,.stApp{color-scheme:light!important;background-color:#FFFFFF!important}p,span,label,h1,h2,h3{color:#202124!important;-webkit-text-fill-color:#202124!important}</style>', unsafe_allow_html=True)
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu, render_super_admin
 from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session, send_temp_password_email
@@ -112,7 +112,7 @@ def render_login():
                 save_session(supabase, token, f_code, my_name)
                 st.session_state["page"] = "top"
                 st.rerun()
-            except Exception as stop_e:
+            except Exception as e:
                 if "StopException" in str(type(e).__name__):
                     raise
                 st.error("ログイン中にエラーが発生しました。")
