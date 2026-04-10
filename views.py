@@ -476,17 +476,16 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                         st.rerun()
                     else:
                         st.warning("⚠️ NoとNo氏名は必須です。")
-
-        for p in res_p.data:
-            c1, c2, c3 = st.columns([3, 1, 1])
+for p in res_p.data:
+            st.markdown(f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px'><span style='flex:1;color:#202124'>No.{p['chart_number']} {p['user_name']}</span></div>", unsafe_allow_html=True)
+            c1, c2 = st.columns([1, 1])
             with c1:
-                st.write(f"No.{p['chart_number']} {p['user_name']}")
-            with c2:
-                if st.button("修正", key=f"pe_{p['id']}"):
+                if st.button("✏️ 修正", key=f"pe_{p['id']}", use_container_width=True):
                     st.session_state[f"pedit_{p['id']}"] = True
-            with c3:
-                if st.button("削除", key=f"pd_{p['id']}"):
+            with c2:
+                if st.button("🗑️ 削除", key=f"pd_{p['id']}", use_container_width=True):
                     supabase.table("patients").delete().eq("id", p['id']).execute()
+                    st.rerun()
                     st.rerun()
             if st.session_state.get(f"pedit_{p['id']}"):
                 with st.form(f"f_{p['id']}"):
