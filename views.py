@@ -51,7 +51,7 @@ def render_top(supabase, cookie_manager, f_code, my_name):
     with c2:
         if st.button("📊 モニタリング生成", use_container_width=True, key="btn_history"):
             st.session_state["page"] = "history"; st.rerun()
-    if st.button("📅 ケース記録閲覧・統合", use_container_width=True, key="btn_daily"):
+    if st.button("📅 ケース記録閲覧", use_container_width=True, key="btn_daily"):
         st.session_state["page"] = "daily_view"; st.rerun()
 
     st.divider()
@@ -274,7 +274,7 @@ def render_history(supabase, cookie_manager, f_code, my_name):
 def render_daily_view(supabase, cookie_manager, f_code, my_name):
     now_tokyo = datetime.now(tokyo_tz)
     back_to_top_button("dv_u")
-    st.markdown("<div class='main-title'>📅 ケース記録閲覧・統合</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>📅 ケース記録閲覧</div>", unsafe_allow_html=True)
 
     target_date = st.session_state.get("dv_target_date", now_tokyo.date())
     if target_date is None:
