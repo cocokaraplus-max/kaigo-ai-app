@@ -429,15 +429,10 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
 
     if not st.session_state.get("admin_authenticated"):
         try:
-            res = supabase.table("admin_settings") \
-                .select("value") \
-                .eq("key", "admin_password") \
-                .eq("facility_code", f_code) \
-                .execute()
+            res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
             cur_pw = res.data[0]['value'] if res.data else "8888"
         except:
             cur_pw = "8888"
-
         pw = st.text_input("パスワード", type="password")
         if st.button("認証"):
             if pw == cur_pw:
@@ -451,11 +446,7 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
 
     with t1:
         try:
-            res_p = supabase.table("patients") \
-                .select("*") \
-                .eq("facility_code", f_code) \
-                .order("user_kana") \
-                .execute()
+            res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
         except Exception as e:
             st.error(f"🚨 利用者データの取得に失敗しました: {e}")
             res_p = type('obj', (object,), {'data': []})()
@@ -467,25 +458,21 @@ def render_admin_menu(supabase, cookie_manager, f_code, my_name, device_id):
                 k = st.text_input("かな")
                 if st.form_submit_button("登録"):
                     if c and n:
-                        supabase.table("patients").insert({
-                            "facility_code": f_code,
-                            "chart_number": c,
-                            "user_name": n,
-                            "user_kana": k
-                        }).execute()
+                        supabase.table("patients").insert({"facility_code": f_code, "chart_number": c, "user_name": n, "user_kana": k}).execute()
                         st.rerun()
                     else:
                         st.warning("⚠️ NoとNo氏名は必須です。")
-for p in res_p.data:
-            st.markdown(f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px'><span style='flex:1;color:#202124'>No.{p['chart_number']} {p['user_name']}</span></div>", unsafe_allow_html=True)
-            c1, c2 = st.columns([1, 1])
+
+        for p in res_p.data:
+            c1, c2, c3 = st.columns([3, 1, 1])
             with c1:
-                if st.button("✏️ 修正", key=f"pe_{p['id']}", use_container_width=True):
-                    st.session_state[f"pedit_{p['id']}"] = True
+                st.write(f"No.{p['chart_number']} {p['user_name']}")
             with c2:
-                if st.button("🗑️ 削除", key=f"pd_{p['id']}", use_container_width=True):
+                if st.button("✏️修正", key=f"pe_{p['id']}", use_container_width=True):
+                    st.session_state[f"pedit_{p['id']}"] = True
+            with c3:
+                if st.button("🗑️削除", key=f"pd_{p['id']}", use_container_width=True):
                     supabase.table("patients").delete().eq("id", p['id']).execute()
-                    st.rerun()
                     st.rerun()
             if st.session_state.get(f"pedit_{p['id']}"):
                 with st.form(f"f_{p['id']}"):
@@ -493,83 +480,31 @@ for p in res_p.data:
                     uk = st.text_input("かな", p['user_kana'])
                     uc = st.text_input("No", p['chart_number'])
                     if st.form_submit_button("確定"):
-                        supabase.table("patients").update({
-                            "user_name": un,
-                            "user_kana": uk,
-                            "chart_number": uc
-                        }).eq("id", p['id']).execute()
+                        supabase.table("patients").update({"user_name": un, "user_kana": uk, "chart_number": uc}).eq("id", p['id']).execute()
                         st.rerun()
 
     with t2:
-        st.markdown("##### 👮 スタッフ管理")
-        try:
-            res_s = supabase.table("records") \
-                .select("staff_name") \
-                .eq("facility_code", f_code) \
-                .execute()
-            if res_s.data:
-                staff_list = sorted(list(set([
-                    r['staff_name'] for r in res_s.data
-                    if r['staff_name'] and r['staff_name'] != "AI統合記録"
-                ])))
-                for s in staff_list:
-                    is_b = len(
-                        supabase.table("blocked_devices")
-                        .select("id")
-                        .eq("staff_name", s)
-                        .eq("facility_code", f_code)
-                        .eq("is_active", True)
-                        .execute().data
-                    ) > 0
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        st.write(f"{'🚫' if is_b else '👤'} **{s}**")
-                    with c2:
-                        if not is_b and st.button("ブロック", key=f"blk_{s}"):
-                            supabase.table("blocked_devices").insert({
-                                "staff_name": s,
-                                "facility_code": f_code,
-                                "is_active": True,
-                                "device_id": "NAME_LOCK"
-                            }).execute()
-                            st.rerun()
-        except Exception as e:
-            st.error(f"🚨 スタッフ情報の取得に失敗しました: {e}")
+        st.markdown("##### 👋 職員招待")
+        st.info("職員招待機能は近日公開予定です。")
 
     with t3:
         np_val = st.text_input("新パスワード", type="password")
         if st.button("更新") and np_val:
-            supabase.table("admin_settings").upsert(
-                {"facility_code": f_code, "key": "admin_password", "value": np_val},
-                on_conflict="facility_code,key"
-            ).execute()
+            supabase.table("admin_settings").upsert({"facility_code": f_code, "key": "admin_password", "value": np_val}, on_conflict="facility_code,key").execute()
             st.success("✅ パスワードを更新しました。")
-
         try:
-            res_l = supabase.table("admin_settings") \
-                .select("value") \
-                .eq("key", "history_limit") \
-                .eq("facility_code", f_code) \
-                .execute()
+            res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
             cur_l = int(res_l.data[0]['value']) if res_l.data else 30
         except:
             cur_l = 30
-
         new_l = st.slider("履歴の表示件数", 10, 100, cur_l)
         if st.button("件数保存"):
-            supabase.table("admin_settings").upsert(
-                {"facility_code": f_code, "key": "history_limit", "value": str(new_l)},
-                on_conflict="facility_code,key"
-            ).execute()
+            supabase.table("admin_settings").upsert({"facility_code": f_code, "key": "history_limit", "value": str(new_l)}, on_conflict="facility_code,key").execute()
             st.rerun()
 
     with t4:
         try:
-            res_b = supabase.table("blocked_devices") \
-                .select("*") \
-                .eq("facility_code", f_code) \
-                .eq("is_active", True) \
-                .execute()
+            res_b = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             for b in res_b.data:
                 c1, c2 = st.columns([3, 1])
                 with c1:
@@ -580,6 +515,24 @@ for p in res_p.data:
                         st.rerun()
         except Exception as e:
             st.error(f"🚨 セキュリティ情報の取得に失敗しました: {e}")
+
+    with t5:
+        st.markdown("##### 👮 スタッフ管理")
+        try:
+            res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
+            if res_s.data:
+                staff_list = sorted(list(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"])))
+                for s in staff_list:
+                    is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", s).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.write(f"{'🚫' if is_b else '👤'} **{s}**")
+                    with c2:
+                        if not is_b and st.button("ブロック", key=f"blk_{s}"):
+                            supabase.table("blocked_devices").insert({"staff_name": s, "facility_code": f_code, "is_active": True, "device_id": "NAME_LOCK"}).execute()
+                            st.rerun()
+        except Exception as e:
+            st.error(f"🚨 スタッフ情報の取得に失敗しました: {e}")
 
     if st.button("管理者終了"):
         st.session_state["admin_authenticated"] = False
