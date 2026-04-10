@@ -10,3 +10,12 @@ input,textarea,[data-baseweb="input"],[data-baseweb="textarea"],[data-testid="st
 [da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[da[ata-testid="stVerticalBlock"] p{color:#333333!important}
 .stCaption,[data-testid="stCaptionContainer"]{color:#888888!im.stCaption,[data-testid="stCaptionContainer"]{color:#888888!im.stCaption,[data-testid="stCaptionContainer"]{color:#888888!im.stCaption,[data-testid="stCaptionContscheme:dark){.stApp,.block-container,input,textarea,[data-baseweb="select"]>div,[data-testid="stExpander"]{background-color:#FFFFFF!important;color:#333333!important}p,span,label{color:#333333!important}}
 @media print{div.stButton,[data-testid="stSidebar"]{display:none!important}}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #202124 !important;
+    -webkit-text-fill-color: #202124 !important;
+}
+label, .stTextInput label, .stSelectbox label {
+    color: #202124 !important;
+    -webkit-text-fill-color: #202124 !important;
+}
