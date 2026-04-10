@@ -13,6 +13,18 @@ def load_css():
 
 load_css()
 st.markdown('<style>:root{color-scheme:light!important}</style>', unsafe_allow_html=True)
+st.components.v1.html("""
+<script>
+const saved = localStorage.getItem('tasukaru_token');
+if (saved) {
+    const url = new URL(window.parent.location.href);
+    if (!url.searchParams.get('token')) {
+        url.searchParams.set('token', saved);
+        window.parent.location.replace(url.toString());
+    }
+}
+</script>
+""", height=0)
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
 from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret
@@ -67,6 +79,7 @@ def render_login():
                     cookie_manager["saved_my_name"] = my_name
                     token = encode_login_token(f_code, my_name)
                     st.query_params["token"] = token
+                    st.components.v1.html(f"""<script>localStorage.setItem('tasukaru_token', '{token}');</script>""", height=0)
                     st.session_state["page"] = "top"
                     st.rerun()
             except Exception as e:
