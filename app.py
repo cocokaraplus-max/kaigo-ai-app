@@ -27,7 +27,7 @@ if (saved) {
 """, height=0)
 from supabase import create_client, Client
 from views import render_top, render_input, render_history, render_daily_view, render_admin_menu
-from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret
+from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session
 import uuid
 
 try:
@@ -54,7 +54,7 @@ for k in ["edit_content", "monitoring_result", "admin_authenticated"]:
 
 params = st.query_params
 if "token" in params and st.session_state["page"] == "login":
-    f, n = decode_login_token(params["token"])
+    f, n = load_session(supabase, params["token"])
     if f and n:
         cookie_manager["saved_f_code"] = f
         cookie_manager["saved_my_name"] = n
@@ -79,6 +79,7 @@ def render_login():
                     cookie_manager["saved_my_name"] = my_name
                     token = encode_login_token(f_code, my_name)
                     st.query_params["token"] = token
+                    save_session(supabase, token, f_code, my_name)
                     st.components.v1.html(f"""<script>localStorage.setItem('tasukaru_token', '{token}');</script>""", height=0)
                     st.session_state["page"] = "top"
                     st.rerun()
