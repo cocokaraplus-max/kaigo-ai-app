@@ -248,18 +248,20 @@
         <span class="material-symbols-outlined">lock</span>
         パスワード
     </label>
-    <input type="password" id="admin-pw" class="form-control">
+    <form method="POST" action="/admin_auth">
+        <input type="password" name="admin_pw" class="form-control" style="margin-bottom:12px;" placeholder="管理者パスワード">
+        {% if error %}
+        <div class="alert alert-error" style="margin-bottom:12px;">
+            <span class="material-symbols-outlined">error</span>
+            {{ error }}
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">
+            <span class="material-symbols-outlined">login</span>
+            認証
+        </button>
+    </form>
 </div>
-{% if error %}
-<div class="alert alert-error">
-    <span class="material-symbols-outlined">error</span>
-    {{ error }}
-</div>
-{% endif %}
-<button class="btn btn-primary" onclick="adminLogin()">
-    <span class="material-symbols-outlined">login</span>
-    認証
-</button>
 
 {% else %}
 

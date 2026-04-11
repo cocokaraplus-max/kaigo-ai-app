@@ -622,6 +622,30 @@ def history():
         months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
     return render("history.html", patients=patients, months=months, result="")
 
+@app.route('/admin_auth', methods=['POST'])
+@login_required
+def admin_auth():
+    f_code = session["f_code"]
+    pw = request.form.get("admin_pw", "")
+    try:
+        supabase = get_supabase()
+        res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
+        cur_pw = res.data[0]['value'] if res.data else "8888"
+    except:
+        cur_pw = "8888"
+    if pw == cur_pw:
+        session["admin_authenticated"] = True
+        return redirect(url_for("admin"))
+    else:
+        return render_template("admin.html",
+            authenticated=False,
+            patients=[],
+            blocked=[],
+            staff_list=[],
+            hist_limit=30,
+            error="パスワードが違います。"
+        )
+
 @app.route('/admin')
 @login_required
 def admin():
