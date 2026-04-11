@@ -1,4 +1,3 @@
-
 // ========== 誕生日入力パース ==========
 const WAREKI = {
     'R': [2019, '令和'], '令': [2019, '令和'],
@@ -256,11 +255,53 @@ async function saveStaffBirth(name, idx) {
     if ((await res.json()).status === 'success') location.reload();
     else alert('保存に失敗しました');
 }
-async function unblockDevice(id) {
     const res = await fetch('/api/unblock_device', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id })
     });
     if ((await res.json()).status === 'success') location.reload();
+}
+
+// ========== スタッフ管理 ==========
+async function addStaff() {
+    const name = document.getElementById('new-staff-name').value.trim();
+    const pw = document.getElementById('new-staff-pw').value;
+    const pw2 = document.getElementById('new-staff-pw2').value;
+    const errEl = document.getElementById('new-staff-error');
+    const errMsg = document.getElementById('new-staff-error-msg');
+
+    const showErr = (msg) => {
+        errMsg.textContent = msg;
+        errEl.style.display = 'flex';
+    };
+
+    errEl.style.display = 'none';
+    if (!name) return showErr('スタッフ名を入力してください');
+    if (!pw) return showErr('パスワードを入力してください');
+    if (pw.length < 4) return showErr('パスワードは4文字以上にしてください');
+    if (pw !== pw2) return showErr('パスワードが一致しません');
+
+    const res = await fetch('/api/add_staff', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, password: pw })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        location.reload();
+    } else {
+        showErr(data.message || '登録に失敗しました');
+    }
+}
+
+async function deleteStaff(id, name) {
+    if (!confirm(`${name} を削除しますか？\nこの操作は取り消せません。`)) return;
+    const res = await fetch('/api/delete_staff', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+    else alert('削除に失敗しました');
 }

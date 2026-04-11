@@ -697,6 +697,14 @@ def admin():
             if res_l.data: hist_limit = int(res_l.data[0]['value'])
         except: pass
 
+    # 登録済みスタッフ一覧（招待タブ用）
+    registered_staffs = []
+    if authenticated:
+        try:
+            res_rs = supabase.table("staffs").select("id,staff_name,created_at").eq("facility_code", f_code).eq("is_active", True).order("created_at").execute()
+            registered_staffs = res_rs.data
+        except: pass
+
     claude_url = session.pop("claude_url", None)
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
@@ -708,7 +716,9 @@ def admin():
         staff_list=staff_list,
         hist_limit=hist_limit,
         error=None,
-        claude_url=claude_url
+        claude_url=claude_url,
+        registered_staffs=registered_staffs,
+        f_code=f_code
     )
 
 # ==========================================
@@ -1025,6 +1035,43 @@ def claude_view():
         return f"エラー: {e}", 500
 
 
+@app.route('/api/add_staff', methods=['POST'])
+@login_required
+def api_add_staff():
+    try:
+        import hashlib
+        data = request.json
+        f_code = session["f_code"]
+        name = data["name"].strip()
+        password = data["password"]
+        supabase = get_supabase()
+        existing = supabase.table("staffs").select("id").eq("facility_code", f_code).eq("staff_name", name).eq("is_active", True).execute()
+        if existing.data:
+            return jsonify({"status": "error", "message": "同じ名前のスタッフが既に登録されています"})
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        supabase.table("staffs").insert({
+            "facility_code": f_code,
+            "staff_name": name,
+            "password_hash": pw_hash,
+            "is_active": True
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delete_staff', methods=['POST'])
+@login_required
+def api_delete_staff():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("staffs").update({"is_active": False}).eq("id", data["id"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_birth', methods=['POST'])
 @login_required
 def api_update_staff_birth():
     try:

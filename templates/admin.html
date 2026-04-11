@@ -412,9 +412,79 @@
 
 <!-- 職員招待 -->
 <div class="tab-panel" id="tab-invite">
-    <div class="alert alert-info">
-        <span class="material-symbols-outlined">info</span>
-        職員招待機能は近日公開予定です。
+    <!-- 新規スタッフ登録 -->
+    <div class="accordion-block">
+        <div class="accordion-head" onclick="toggleAcc('new-staff')">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#34a853;font-size:18px;">person_add</span>
+                <span style="font-weight:700;font-size:0.92rem;">新規スタッフ登録</span>
+            </div>
+            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new-staff">expand_more</span>
+        </div>
+        <div class="accordion-body" id="acc-body-new-staff">
+            <div class="form-group">
+                <label class="form-label">スタッフ名</label>
+                <input type="text" id="new-staff-name" class="form-control" placeholder="例：田中 花子">
+            </div>
+            <div class="form-group">
+                <label class="form-label">パスワード</label>
+                <input type="password" id="new-staff-pw" class="form-control" placeholder="ログイン用パスワード">
+            </div>
+            <div class="form-group">
+                <label class="form-label">パスワード確認</label>
+                <input type="password" id="new-staff-pw2" class="form-control" placeholder="もう一度入力">
+            </div>
+            <div id="new-staff-error" class="alert alert-error" style="display:none;margin-bottom:12px;">
+                <span class="material-symbols-outlined">error</span>
+                <span id="new-staff-error-msg"></span>
+            </div>
+            <button class="btn btn-primary" onclick="addStaff()">
+                <span class="material-symbols-outlined">person_add</span>登録する
+            </button>
+        </div>
+    </div>
+
+    <!-- 登録済みスタッフ一覧 -->
+    <div class="accordion-block" style="margin-top:12px;">
+        <div class="accordion-head" onclick="toggleAcc('staff-list')">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">group</span>
+                <span style="font-weight:700;font-size:0.92rem;">登録済みスタッフ</span>
+            </div>
+            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-staff-list">expand_more</span>
+        </div>
+        <div class="accordion-body" id="acc-body-staff-list">
+            {% if registered_staffs %}
+            {% for s in registered_staffs %}
+            <div class="staff-card">
+                <span class="material-symbols-outlined" style="color:#1a73e8;">person</span>
+                <div style="flex:1;font-weight:600;">{{ s.staff_name }}</div>
+                <div style="font-size:0.75rem;color:#80868b;">{{ s.created_at[:10] if s.created_at else '' }}</div>
+                <button class="btn btn-sm delete-btn" style="margin-left:8px;" onclick="deleteStaff('{{ s.id }}', '{{ s.staff_name }}')">
+                    <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
+                </button>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="alert alert-info" style="margin:0;">
+                <span class="material-symbols-outlined">info</span>
+                登録済みスタッフはいません。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ログイン情報の案内 -->
+    <div class="section-box" style="margin-top:12px;background:#f8f9fa;">
+        <div class="section-box-title">
+            <span class="material-symbols-outlined">info</span>スタッフへの案内
+        </div>
+        <div style="font-size:0.85rem;color:#5f6368;line-height:1.8;">
+            スタッフには以下を伝えてください：<br>
+            <b>ログインURL：</b>アプリのURL<br>
+            <b>施設コード：</b>{{ f_code }}<br>
+            <b>パスワード：</b>登録時に設定したもの
+        </div>
     </div>
 </div>
 
