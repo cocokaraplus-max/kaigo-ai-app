@@ -218,19 +218,30 @@
 const NAV_PAGES = ['/top','/input','/daily_view','/history','/chat','/birthday','/numerology','/admin'];
 
 async function navigateTo(url, pushState = true) {
-    // ローディング表示
+    console.log('[SPA] navigateTo:', url);
     const wrapper = document.querySelector('.page-wrapper');
+    if (!wrapper) {
+        console.log('[SPA] page-wrapper not found, fallback');
+        window.location.href = url;
+        return;
+    }
     wrapper.style.opacity = '0.6';
 
     try {
-        const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'partial=1', {
+        const fetchUrl = url + (url.includes('?') ? '&' : '?') + 'partial=1';
+        console.log('[SPA] fetching:', fetchUrl);
+        const res = await fetch(fetchUrl, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
 
-        if (!res.ok) throw new Error('fetch failed');
-        const data = await res.json();
+        if (!res.ok) {
+            console.log('[SPA] fetch failed, status:', res.status);
+            throw new Error('fetch failed');
+        }
 
-        // リダイレクト指示があれば通常遷移
+        const data = await res.json();
+        console.log('[SPA] got response, content length:', (data.content || '').length);
+
         if (data.redirect) {
             window.location.href = data.redirect;
             return;
@@ -251,26 +262,25 @@ async function navigateTo(url, pushState = true) {
 
         // スクリプト実行
         if (data.script) {
-            const scriptContent = (data.script || '').replace(/<\/?script>/g, '');
+            const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
             const scriptEl = document.createElement('script');
             scriptEl.textContent = scriptContent;
-            document.head.appendChild(scriptEl);
-            setTimeout(() => scriptEl.remove(), 100);
+            document.body.appendChild(scriptEl);
+            setTimeout(() => { try { scriptEl.remove(); } catch(e){} }, 500);
         }
 
-        // URL更新
         if (pushState) {
             history.pushState({ url }, '', url);
         }
 
-        // ナビのactiveを更新
         updateNavActive(url);
+        console.log('[SPA] navigation complete:', url);
 
     } catch(e) {
-        // fetchが失敗したら通常遷移
+        console.log('[SPA] error, fallback:', e);
         window.location.href = url;
     } finally {
-        wrapper.style.opacity = '1';
+        if (wrapper) wrapper.style.opacity = '1';
     }
 }
 
@@ -289,8 +299,11 @@ function updateNavActive(url) {
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.bottom-nav-item[href]').forEach(link => {
         link.addEventListener('click', e => {
+            const href = link.getAttribute('href');
+            // adminは通常遷移（認証フローが複雑なため）
+            if (href === '/admin') return;
             e.preventDefault();
-            navigateTo(link.getAttribute('href'));
+            navigateTo(href);
         });
     });
 });
