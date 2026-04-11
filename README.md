@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-12 06:42
+最終更新: 2026-04-12 06:44
 
 ---
 
@@ -92,6 +92,7 @@ gcloud run deploy tasukaru \
 
 ## 📝 直近の変更履歴
 
+- fix: admin_standalone.html追加 (2026-04-12)
 - fix: adminページをスタンドアロンHTMLに変更・SPA非依存化 (2026-04-12)
 - fix: admin・historyを完全に通常遷移に変更 (2026-04-12)
 - fix: adminページのSPA無効化・通常遷移に変更 (2026-04-12)
@@ -101,7 +102,6 @@ gcloud run deploy tasukaru \
 - fix: モニタリングNot Found・カレンダー・誕生日クリック・数秘検索の不具合修正 (2026-04-11)
 - fix: モニタリングNot Found・カレンダー・誕生日クリック・数秘検索の不具合修正 (2026-04-11)
 - fix: manifest.json追加・PWA完全対応 (2026-04-11)
-- fix: manifest.jsonをGitに追加・PWA対応 (2026-04-11)
 
 ---
 

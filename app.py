@@ -642,13 +642,14 @@ def admin_auth():
         session["admin_authenticated"] = True
         return redirect(url_for("admin"))
     else:
-        return render_template("admin_standalone.html",
+        return render_template("admin.html",
             authenticated=False,
             patients=[],
             blocked=[],
             staff_list=[],
             hist_limit=30,
-            error="パスワードが違います。"
+            error="パスワードが違います。",
+            claude_url=None
         )
 
 @app.route('/admin')
@@ -666,8 +667,7 @@ def admin():
 
     if authenticated:
         try:
-            res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
-            patients = res_p.data
+            patients = get_patients(supabase, f_code)
         except: pass
         try:
             res_b = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
@@ -701,7 +701,7 @@ def admin():
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
 
-    return render_template("admin_standalone.html",
+    return render_template("admin.html",
         authenticated=authenticated,
         patients=patients,
         blocked=blocked,
