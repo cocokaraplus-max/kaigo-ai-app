@@ -43,25 +43,62 @@ def render(template, **kwargs):
         import re as _re
         html = render_template(template, **kwargs)
 
-        # <style>タグを抽出
+        # <style>タグを抽出（base.htmlのものは除く）
         styles = _re.findall(r'<style[^>]*>(.*?)</style>', html, _re.DOTALL)
-        style = '<style>' + '\n'.join(styles) + '</style>' if styles else ''
+        # 最初のstyleはbase.htmlの共通CSS、2つ目以降がページ固有
+        page_styles = styles[1:] if len(styles) > 1 else []
+        style = '<style>' + '\n'.join(page_styles) + '</style>' if page_styles else ''
 
-        # page-wrapperの中身を抽出
+        # page-wrapperの中身を抽出（終了タグまで）
         content_match = _re.search(
-            r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>\s*\n?\s*<(?:nav|script)',
+            r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>\s*\n\s*\n\s*(?:<!--.*?-->)?\s*\{%',
             html, _re.DOTALL
         )
-        if content_match:
-            content = content_match.group(1).strip()
+        if not content_match:
+            # 別パターン：page-wrapperからnavタグまで
+            content_match = _re.search(
+                r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>(?:\s|\n)*<(?:nav|script)',
+                html, _re.DOTALL
+            )
+        if not content_match:
+            # フォールバック：bodyの最初のdivの中身
+            content_match = _re.search(
+                r'<div class=["\']page-wrapper["\'][^>]*>(.*)',
+                html, _re.DOTALL
+            )
+            if content_match:
+                raw = content_match.group(1)
+                # page-wrapperの閉じタグを探す
+                depth = 1
+                pos = 0
+                result = []
+                while pos < len(raw) and depth > 0:
+                    open_tag = raw.find('<div', pos)
+                    close_tag = raw.find('</div>', pos)
+                    if close_tag == -1:
+                        break
+                    if open_tag != -1 and open_tag < close_tag:
+                        depth += 1
+                        result.append(raw[pos:open_tag + 4])
+                        pos = open_tag + 4
+                    else:
+                        depth -= 1
+                        if depth > 0:
+                            result.append(raw[pos:close_tag + 6])
+                        else:
+                            result.append(raw[pos:close_tag])
+                        pos = close_tag + 6
+                content = ''.join(result).strip()
+            else:
+                content = html
         else:
-            # フォールバック：bodyの中身
-            body_match = _re.search(r'<body[^>]*>(.*?)</body>', html, _re.DOTALL)
-            content = body_match.group(1).strip() if body_match else html
+            content = content_match.group(1).strip()
 
-        # <script>タグを抽出（最後のものをメインスクリプトとして使用）
+        # <script>タグを抽出（SPAルーター以外の最後のもの）
         scripts = _re.findall(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL)
-        script = '<script>' + scripts[-1] + '</script>' if scripts else ''
+        # SPAルーターを含まないスクリプトのみ
+        page_scripts = [s for s in scripts if 'navigateTo' not in s and 'SPAルーター' not in s]
+        script = '<script>' + page_scripts[-1] + '</script>' if page_scripts else ''
 
         return jsonify({
             "style": style,
