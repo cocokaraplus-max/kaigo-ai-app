@@ -642,7 +642,7 @@ def admin_auth():
         session["admin_authenticated"] = True
         return redirect(url_for("admin"))
     else:
-        return render_template("admin.html",
+        return render_template("admin_standalone.html",
             authenticated=False,
             patients=[],
             blocked=[],
@@ -701,7 +701,7 @@ def admin():
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
 
-    return render("admin.html",
+    return render_template("admin_standalone.html",
         authenticated=authenticated,
         patients=patients,
         blocked=blocked,
