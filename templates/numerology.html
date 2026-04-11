@@ -220,12 +220,14 @@ function searchPerson(query) {
     if (filtered.length === 0) {
         el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
     } else {
-        el.innerHTML = filtered.map(p =>
-            `<div class="search-candidate-item" onclick="selectPerson(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)}, ${JSON.stringify(p.type)})">
+        el.innerHTML = filtered.map((p, i) => {
+            const key = 'np_' + i;
+            window[key] = p;
+            return `<div class="search-candidate-item" onclick="selectPerson(window['${key}'].name, window['${key}'].birth, window['${key}'].type)">
                 ${p.name}
                 <span style="color:#80868b;font-size:0.78rem;margin-left:6px;">${p.type === 'staff' ? '職員' : 'No.' + p.chart}</span>
-            </div>`
-        ).join('');
+            </div>`;
+        }).join('');
     }
     el.classList.add('show');
 }

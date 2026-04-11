@@ -390,11 +390,13 @@ function searchNumerology(query) {
     if (filtered.length === 0) {
         el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
     } else {
-        el.innerHTML = filtered.map(p =>
-            `<div class="search-candidate-item" onclick="selectNumerology(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)})">
+        el.innerHTML = filtered.map((p, i) => {
+            const key = 'bp_' + i;
+            window[key] = p;
+            return `<div class="search-candidate-item" onclick="selectNumerology(window['${key}'].name, window['${key}'].birth)">
                 ${p.name} <span style="color:#80868b;font-size:0.8rem;">No.${p.chart}</span>
-            </div>`
-        ).join('');
+            </div>`;
+        }).join('');
     }
     el.classList.add('show');
 }
