@@ -167,32 +167,46 @@
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
             display: flex;
-            justify-content: space-around;
-            align-items: center;
-            padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 6px 4px max(6px, env(safe-area-inset-bottom));
             z-index: 500;
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+            gap: 2px;
         }
+        .bottom-nav::-webkit-scrollbar { display: none; }
         .bottom-nav-item {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 3px;
+            gap: 2px;
             text-decoration: none;
             color: #80868b;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             font-weight: 600;
-            padding: 4px 16px;
-            border-radius: 12px;
+            padding: 4px 12px;
+            border-radius: 10px;
             transition: color 0.15s, background 0.15s;
             cursor: pointer;
             background: none;
             border: none;
             -webkit-tap-highlight-color: transparent;
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 56px;
         }
-        .bottom-nav-item .material-symbols-outlined { font-size: 24px; }
+        .bottom-nav-item .material-symbols-outlined { font-size: 22px; }
         .bottom-nav-item.active { color: #1a73e8; }
+        .bottom-nav-item.active .material-symbols-outlined {
+            background: #e8f0fe;
+            border-radius: 8px;
+            padding: 2px 10px;
+        }
         .bottom-nav-item:active { background: #f0f4ff; }
+        .bottom-nav-item.logout-item { color: #ea4335; }
+        .bottom-nav-item.logout-item:active { background: #fce8e6; }
 
         /* ボトムナビの分、ページ下部に余白 */
         .page-wrapper { padding-bottom: 5rem !important; }
@@ -210,6 +224,12 @@
     <!-- ボトムナビ（ログイン・登録画面以外で表示） -->
     {% block bottom_nav %}
     <nav class="bottom-nav">
+        <form method="POST" action="/logout" style="display:contents;">
+            <button type="submit" class="bottom-nav-item logout-item">
+                <span class="material-symbols-outlined">logout</span>
+                ログアウト
+            </button>
+        </form>
         <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}">
             <span class="material-symbols-outlined">home</span>
             TOP
@@ -225,6 +245,10 @@
         <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}">
             <span class="material-symbols-outlined">monitoring</span>
             モニタリング
+        </a>
+        <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}">
+            <span class="material-symbols-outlined">cake</span>
+            誕生日
         </a>
         <a href="/admin" class="bottom-nav-item {% block nav_admin %}{% endblock %}">
             <span class="material-symbols-outlined">admin_panel_settings</span>

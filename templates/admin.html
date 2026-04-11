@@ -185,7 +185,23 @@
     gap: 8px;
 }
 
-.staff-card {
+.birth-input-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+.birth-text { font-size: 0.9rem !important; }
+.birth-date { width: 44px !important; padding: 10px 6px !important; text-align: center; cursor: pointer; }
+.birth-result {
+    font-size: 0.78rem;
+    margin-top: 5px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    display: none;
+}
+.birth-result.ok { display: block; background: #e6f4ea; color: #1e7e34; }
+.birth-result.err { display: block; background: #fce8e6; color: #c5221f; }
     display: flex;
     align-items: center;
     padding: 12px 14px;
@@ -295,7 +311,15 @@
                     <span class="material-symbols-outlined">cake</span>
                     誕生日
                 </label>
-                <input type="date" id="new-birth" class="form-control">
+                <div class="birth-input-wrap">
+                    <input type="text" id="new-birth-text" class="form-control birth-text"
+                        placeholder="例：S20.3.15 / 昭和20年3月15日 / 1945/3/15"
+                        oninput="parseBirthInput(this.value, 'new-birth-date', 'new-birth-result')"
+                        autocomplete="off">
+                    <input type="date" id="new-birth-date" class="form-control birth-date"
+                        onchange="syncDateToText(this.value, 'new-birth-text', 'new-birth-result')">
+                </div>
+                <div class="birth-result" id="new-birth-result"></div>
             </div>
             <button class="btn btn-primary" onclick="addPatient()">
                 <span class="material-symbols-outlined">add</span>登録する
@@ -351,7 +375,17 @@
                     <label class="form-label" style="font-size:0.75rem;">
                         <span class="material-symbols-outlined">cake</span>誕生日
                     </label>
-                    <input type="date" id="ef-birth-{{ p.id }}" class="form-control" value="{{ p.birth_date or '' }}">
+                    <div class="birth-input-wrap">
+                        <input type="text" id="ef-birth-text-{{ p.id }}" class="form-control birth-text"
+                            placeholder="例：S20.3.15 / 1945/3/15"
+                            value="{{ p.birth_text or '' }}"
+                            oninput="parseBirthInput(this.value, 'ef-birth-date-{{ p.id }}', 'ef-birth-result-{{ p.id }}')"
+                            autocomplete="off">
+                        <input type="date" id="ef-birth-date-{{ p.id }}" class="form-control birth-date"
+                            value="{{ p.birth_date or '' }}"
+                            onchange="syncDateToText(this.value, 'ef-birth-text-{{ p.id }}', 'ef-birth-result-{{ p.id }}')">
+                    </div>
+                    <div class="birth-result" id="ef-birth-result-{{ p.id }}"></div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                     <button class="btn btn-primary btn-sm" onclick="savePatientEdit('{{ p.id }}')">
@@ -483,6 +517,106 @@
 
 {% block extra_script %}
 <script>
+// ========== 誕生日入力パース ==========
+const WAREKI = {
+    'R': [2019, '令和'], '令': [2019, '令和'],
+    'H': [1989, '平成'], '平': [1989, '平成'],
+    'S': [1926, '昭和'], '昭': [1926, '昭和'],
+    'T': [1912, '大正'], '大': [1912, '大正'],
+    'M': [1868, '明治'], '明': [1868, '明治'],
+};
+
+function parseBirthInput(val, dateId, resultId) {
+    if (!val.trim()) {
+        showBirthResult(resultId, '', '');
+        document.getElementById(dateId).value = '';
+        return;
+    }
+    const iso = parseBirthToISO(val.trim());
+    if (iso) {
+        document.getElementById(dateId).value = iso;
+        const [y, m, d] = iso.split('-');
+        const wareki = toWareki(parseInt(y));
+        showBirthResult(resultId, `${wareki}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
+    } else {
+        document.getElementById(dateId).value = '';
+        showBirthResult(resultId, '形式を確認してください（例：S20.3.15 / 昭和20年3月15日 / 1945/3/15）', 'err');
+    }
+}
+
+function parseBirthToISO(val) {
+    // 西暦パターン: 1945/3/15, 1945-3-15, 1945.3.15, 19450315
+    let m = val.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (m) return fmt(m[1], m[2], m[3]);
+
+    m = val.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (m) return fmt(m[1], m[2], m[3]);
+
+    m = val.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m) return fmt(m[1], m[2], m[3]);
+
+    // 和暦パターン: S20.3.15, H1.1.8, R5.4.1
+    m = val.match(/^([RHSTMrHstm令平昭大明])(\d{1,2})[\/\-\.\s年](\d{1,2})[\/\-\.\s月](\d{1,2})日?$/);
+    if (m) {
+        const key = m[1].toUpperCase();
+        const base = WAREKI[key] || WAREKI[m[1]];
+        if (base) {
+            const year = base[0] + parseInt(m[2]) - 1;
+            return fmt(year, m[3], m[4]);
+        }
+    }
+
+    // 「昭和20年3月15日」形式
+    for (const [k, v] of Object.entries(WAREKI)) {
+        if (k.length > 1) continue; // 漢字キーはスキップ（別処理）
+    }
+    m = val.match(/^(令和|平成|昭和|大正|明治)(\d{1,2})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m) {
+        const eraMap = {'令和': 2019, '平成': 1989, '昭和': 1926, '大正': 1912, '明治': 1868};
+        const year = eraMap[m[1]] + parseInt(m[2]) - 1;
+        return fmt(year, m[3], m[4]);
+    }
+
+    return null;
+}
+
+function fmt(y, m, d) {
+    const year = parseInt(y), month = parseInt(m), day = parseInt(d);
+    if (year < 1868 || year > 2030) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+
+function toWareki(year) {
+    if (year >= 2019) return `令和${year - 2018}年`;
+    if (year >= 1989) return `平成${year - 1988}年`;
+    if (year >= 1926) return `昭和${year - 1925}年`;
+    if (year >= 1912) return `大正${year - 1911}年`;
+    if (year >= 1868) return `明治${year - 1867}年`;
+    return `${year}年`;
+}
+
+function syncDateToText(isoVal, textId, resultId) {
+    if (!isoVal) { showBirthResult(resultId, '', ''); return; }
+    const [y, m, d] = isoVal.split('-');
+    const wareki = toWareki(parseInt(y));
+    document.getElementById(textId).value = `${wareki.replace('年','')}年${parseInt(m)}月${parseInt(d)}日`;
+    showBirthResult(resultId, `${wareki}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
+}
+
+function showBirthResult(id, msg, type) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'birth-result' + (type ? ' ' + type : '');
+}
+
+function getBirthValue(dateId) {
+    return document.getElementById(dateId)?.value || '';
+}
+// ========================================
+
 function switchTab(name, el) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
@@ -517,7 +651,7 @@ async function addPatient() {
     const chart = document.getElementById('new-chart').value.trim();
     const name  = document.getElementById('new-name').value.trim();
     const kana  = document.getElementById('new-kana').value.trim();
-    const birth = document.getElementById('new-birth').value;
+    const birth = getBirthValue('new-birth-date');
     if (!chart || !name) { alert('カルテNoと氏名は必須です'); return; }
     const res = await fetch('/api/add_patient', {
         method: 'POST',
@@ -538,7 +672,7 @@ async function savePatientEdit(id) {
     const chart = document.getElementById('ef-chart-' + id).value.trim();
     const name  = document.getElementById('ef-name-' + id).value.trim();
     const kana  = document.getElementById('ef-kana-' + id).value.trim();
-    const birth = document.getElementById('ef-birth-' + id).value;
+    const birth = getBirthValue('ef-birth-date-' + id);
     const res = await fetch('/api/update_patient', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},

@@ -52,6 +52,21 @@ def parse_jst_date(iso_str):
     except:
         return datetime.now(tokyo_tz).date()
 
+def birth_to_wareki_text(birth_date_str):
+    if not birth_date_str:
+        return ""
+    try:
+        bd = datetime.strptime(str(birth_date_str), "%Y-%m-%d")
+        y = bd.year
+        if y >= 2019: era, base = "令和", 2018
+        elif y >= 1989: era, base = "平成", 1988
+        elif y >= 1926: era, base = "昭和", 1925
+        elif y >= 1912: era, base = "大正", 1911
+        else: era, base = "明治", 1867
+        return f"{era}{y - base}年{bd.month}月{bd.day}日"
+    except:
+        return ""
+
 def get_patients(supabase, f_code):
     try:
         res = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
@@ -68,6 +83,7 @@ def get_patients(supabase, f_code):
                 "user_name": name,
                 "user_kana": kana,
                 "birth_date": r.get("birth_date") or "",
+                "birth_text": birth_to_wareki_text(r.get("birth_date")),
             })
         return patients
     except:
@@ -355,6 +371,58 @@ def daily_view():
         records=records,
         is_admin=is_admin
     )
+
+@app.route('/birthday')
+@login_required
+def birthday():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    now = datetime.now(tokyo_tz)
+
+    try:
+        res = supabase.table("patients").select("user_name, birth_date").eq("facility_code", f_code).execute()
+    except:
+        res = type('obj', (object,), {'data': []})()
+
+    # 月ごとに整理（今月から始まる12ヶ月）
+    months_data = {}
+    for r in res.data:
+        if not r.get("birth_date"):
+            continue
+        try:
+            bd = datetime.strptime(str(r["birth_date"]), "%Y-%m-%d")
+            age = now.year - bd.year
+            if (now.month, now.day) < (bd.month, bd.day):
+                age -= 1
+            is_today = (bd.month == now.month and bd.day == now.day)
+            wareki = birth_to_wareki_text(r["birth_date"])
+            m = bd.month
+            if m not in months_data:
+                months_data[m] = []
+            months_data[m].append({
+                "user_name": r["user_name"],
+                "month": bd.month,
+                "day": bd.day,
+                "age": age,
+                "wareki": wareki,
+                "is_today": is_today,
+            })
+        except:
+            continue
+
+    # 今月から始まる順に並べる
+    all_birthdays = []
+    for i in range(12):
+        m = (now.month - 1 + i) % 12 + 1
+        if m in months_data:
+            users = sorted(months_data[m], key=lambda x: x["day"])
+            all_birthdays.append({
+                "month": m,
+                "is_current": (m == now.month),
+                "users": users
+            })
+
+    return render_template("birthday.html", all_birthdays=all_birthdays)
 
 @app.route('/history')
 @login_required

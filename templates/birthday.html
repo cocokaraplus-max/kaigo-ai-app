@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}誕生日一覧 - TASUKARU{% endblock %}
+{% block nav_birthday %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.month-section {
+    margin-bottom: 1.4rem;
+}
+.month-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #5f6368;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+.month-header .material-symbols-outlined { font-size: 17px; color: #1a73e8; }
+.month-header.current-month {
+    background: linear-gradient(135deg, #fff0f6, #fce4ec);
+    color: #c2185b;
+}
+.month-header.current-month .material-symbols-outlined { color: #e91e8c; }
+
+.birthday-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    margin-bottom: 6px;
+    background: #fff;
+    gap: 12px;
+}
+.birthday-card.today {
+    border-color: #f8bbd9;
+    background: linear-gradient(135deg, #fff8fb, #fce4ec);
+}
+.birthday-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e8f0fe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.birthday-avatar .material-symbols-outlined { font-size: 20px; color: #1a73e8; }
+.birthday-avatar.today-avatar { background: #fce4ec; }
+.birthday-avatar.today-avatar .material-symbols-outlined { color: #e91e8c; }
+.birthday-info { flex: 1; }
+.birthday-card-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #202124;
+}
+.birthday-card-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 3px;
+}
+.birthday-card-date {
+    font-size: 0.78rem;
+    color: #5f6368;
+}
+.birthday-card-wareki {
+    font-size: 0.75rem;
+    color: #80868b;
+}
+.birthday-age-badge {
+    background: #1a73e8;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+.birthday-age-badge.today-badge {
+    background: #e91e8c;
+}
+.today-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #e91e8c;
+    background: #fce4ec;
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+.no-birthday {
+    text-align: center;
+    color: #80868b;
+    font-size: 0.88rem;
+    padding: 20px 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">cake</span>
+    誕生日一覧
+</div>
+
+{% if not all_birthdays %}
+<div class="alert alert-info">
+    <span class="material-symbols-outlined">info</span>
+    誕生日が登録されている利用者がいません。管理者MENUから登録できます。
+</div>
+{% else %}
+
+{% for month_data in all_birthdays %}
+<div class="month-section">
+    <div class="month-header {% if month_data.is_current %}current-month{% endif %}">
+        <span class="material-symbols-outlined">{% if month_data.is_current %}cake{% else %}calendar_month{% endif %}</span>
+        {{ month_data.month }}月
+        {% if month_data.is_current %}<span style="font-size:0.75rem;margin-left:4px;">今月</span>{% endif %}
+    </div>
+
+    {% for b in month_data.users %}
+    <div class="birthday-card {% if b.is_today %}today{% endif %}">
+        <div class="birthday-avatar {% if b.is_today %}today-avatar{% endif %}">
+            <span class="material-symbols-outlined">{% if b.is_today %}celebration{% else %}person{% endif %}</span>
+        </div>
+        <div class="birthday-info">
+            <div class="birthday-card-name">
+                {{ b.user_name }}
+                {% if b.is_today %}<span class="today-label">🎂 今日</span>{% endif %}
+            </div>
+            <div class="birthday-card-detail">
+                <span class="birthday-card-date">{{ b.month }}月{{ b.day }}日</span>
+                <span class="birthday-card-wareki">{{ b.wareki }}</span>
+            </div>
+        </div>
+        <div class="birthday-age-badge {% if b.is_today %}today-badge{% endif %}">
+            {{ b.age }}歳
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}
