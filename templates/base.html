@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="TASUKARU">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="/static/apple-touch-icon.jpg">
+    <link rel="apple-touch-icon" href="/static/logo.png">
     <title>{% block title %}TASUKARU{% endblock %}</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0" />
     <style>
@@ -125,7 +125,7 @@
             scrollbar-width: none;
             /* iPhoneのジェスチャーエリアと被らないよう下に余白 */
             padding: 6px 4px;
-            padding-bottom: max(18px, env(safe-area-inset-bottom));
+            padding-bottom: max(56px, env(safe-area-inset-bottom));
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 2px;
             flex-shrink: 0;
@@ -212,5 +212,101 @@
     {% endblock %}
 
     {% block extra_script %}{% endblock %}
+
+<script>
+// ========== SPAルーター ==========
+const NAV_PAGES = ['/top','/input','/daily_view','/history','/chat','/birthday','/numerology','/admin'];
+
+async function navigateTo(url, pushState = true) {
+    // ローディング表示
+    const wrapper = document.querySelector('.page-wrapper');
+    wrapper.style.opacity = '0.6';
+
+    try {
+        const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'partial=1', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+
+        // リダイレクト指示があれば通常遷移
+        if (data.redirect) {
+            window.location.href = data.redirect;
+            return;
+        }
+
+        // スタイル更新
+        let styleEl = document.getElementById('spa-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'spa-style';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = (data.style || '').replace(/<\/?style>/g, '');
+
+        // コンテンツ差し替え
+        wrapper.innerHTML = data.content || '';
+        wrapper.scrollTop = 0;
+
+        // スクリプト実行
+        if (data.script) {
+            const scriptContent = (data.script || '').replace(/<\/?script>/g, '');
+            const scriptEl = document.createElement('script');
+            scriptEl.textContent = scriptContent;
+            document.head.appendChild(scriptEl);
+            setTimeout(() => scriptEl.remove(), 100);
+        }
+
+        // URL更新
+        if (pushState) {
+            history.pushState({ url }, '', url);
+        }
+
+        // ナビのactiveを更新
+        updateNavActive(url);
+
+    } catch(e) {
+        // fetchが失敗したら通常遷移
+        window.location.href = url;
+    } finally {
+        wrapper.style.opacity = '1';
+    }
+}
+
+function updateNavActive(url) {
+    const basePath = url.split('?')[0];
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+        item.classList.remove('active');
+        const href = item.getAttribute('href');
+        if (href && basePath === href) {
+            item.classList.add('active');
+        }
+    });
+}
+
+// ナビリンクのクリックをSPAに変換
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.bottom-nav-item[href]').forEach(link => {
+        link.addEventListener('click', e => {
+            e.preventDefault();
+            navigateTo(link.getAttribute('href'));
+        });
+    });
+});
+
+// ブラウザの戻る/進むに対応
+window.addEventListener('popstate', e => {
+    if (e.state && e.state.url) {
+        navigateTo(e.state.url, false);
+    }
+});
+
+// 初期状態をhistoryに登録
+window.addEventListener('load', () => {
+    history.replaceState({ url: window.location.pathname }, '', window.location.pathname);
+    updateNavActive(window.location.pathname);
+});
+</script>
 </body>
 </html>

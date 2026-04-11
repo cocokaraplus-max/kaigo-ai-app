@@ -31,9 +31,44 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("f_code") or not session.get("my_name"):
+            if request.args.get("partial"):
+                return jsonify({"redirect": "/login"})
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
+
+def render(template, **kwargs):
+    """partialパラメータがあればJSON形式でコンテンツのみ返す"""
+    if request.args.get("partial"):
+        import re as _re
+        html = render_template(template, **kwargs)
+
+        # <style>タグを抽出
+        styles = _re.findall(r'<style[^>]*>(.*?)</style>', html, _re.DOTALL)
+        style = '<style>' + '\n'.join(styles) + '</style>' if styles else ''
+
+        # page-wrapperの中身を抽出
+        content_match = _re.search(
+            r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>\s*\n?\s*<(?:nav|script)',
+            html, _re.DOTALL
+        )
+        if content_match:
+            content = content_match.group(1).strip()
+        else:
+            # フォールバック：bodyの中身
+            body_match = _re.search(r'<body[^>]*>(.*?)</body>', html, _re.DOTALL)
+            content = body_match.group(1).strip() if body_match else html
+
+        # <script>タグを抽出（最後のものをメインスクリプトとして使用）
+        scripts = _re.findall(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL)
+        script = '<script>' + scripts[-1] + '</script>' if scripts else ''
+
+        return jsonify({
+            "style": style,
+            "content": content,
+            "script": script,
+        })
+    return render_template(template, **kwargs)
 
 # ==========================================
 # 共通ヘルパー
@@ -267,7 +302,7 @@ def top():
     except:
         pass
 
-    return render_template("top.html", f_code=f_code, my_name=my_name, records=records, birthday_users=get_birthday_users(supabase, f_code))
+    return render("top.html", f_code=f_code, my_name=my_name, records=records, birthday_users=get_birthday_users(supabase, f_code))
 
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
@@ -320,7 +355,7 @@ def input_view():
             except Exception as e:
                 error = f"保存に失敗しました: {e}"
 
-    return render_template("input.html",
+    return render("input.html",
         patients=patients, today=today, content=content,
         selected_patient=selected_patient, error=error, success=success
     )
@@ -364,7 +399,7 @@ def daily_view():
     except Exception as e:
         pass
 
-    return render_template("daily_view.html",
+    return render("daily_view.html",
         selected_date=selected_date_str,
         date_label=date_label,
         target_user=target_user,
@@ -441,7 +476,7 @@ def birthday():
                 "users": users
             })
 
-    return render_template("birthday.html",
+    return render("birthday.html",
         all_birthdays=all_birthdays,
         patients=patients_list
     )
@@ -467,7 +502,7 @@ def chat():
             })
     except Exception as e:
         pass
-    return render_template("chat.html", messages=messages, my_name=my_name, is_admin=is_admin)
+    return render("chat.html", messages=messages, my_name=my_name, is_admin=is_admin)
 
 @app.route('/api/send_message', methods=['POST'])
 @login_required
@@ -532,7 +567,7 @@ def numerology():
     except:
         pass
     all_persons.sort(key=lambda x: x["name"])
-    return render_template("numerology.html", all_persons=all_persons)
+    return render("numerology.html", all_persons=all_persons)
 
 
 @login_required
@@ -548,7 +583,7 @@ def history():
         while m <= 0:
             m += 12; y -= 1
         months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
-    return render_template("history.html", patients=patients, months=months, result="")
+    return render("history.html", patients=patients, months=months, result="")
 
 @app.route('/admin')
 @login_required
@@ -596,7 +631,7 @@ def admin():
             if res_l.data: hist_limit = int(res_l.data[0]['value'])
         except: pass
 
-    return render_template("admin.html",
+    return render("admin.html",
         authenticated=authenticated,
         patients=patients,
         blocked=blocked,
