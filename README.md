@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-11 17:27
+最終更新: 2026-04-11 17:32
 
 ---
 
@@ -92,6 +92,7 @@ gcloud run deploy tasukaru \
 
 ## 📝 直近の変更履歴
 
+- fix: manifest.jsonをGitに追加・PWA対応 (2026-04-11)
 - fix: ボトムナビをSafariツールバーより上に表示 (2026-04-11)
 - feat: manifest.json追加・PWA完全対応 (2026-04-11)
 - fix: SPAナビをonclick属性方式に変更・iPhone Safari対応 (2026-04-11)
@@ -101,7 +102,6 @@ gcloud run deploy tasukaru \
 - feat: Claude閲覧許可機能追加 (2026-04-11)
 - fix: SPAのpartialコンテンツ抽出ロジック改善 (2026-04-11)
 - feat: SPA化・ページ遷移時のSafariツールバー非表示 (2026-04-11)
-- docs: 本日の開発まとめ・SPA化は次回対応予定 (2026-04-11)
 
 ---
 
