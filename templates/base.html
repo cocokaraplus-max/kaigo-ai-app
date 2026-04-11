@@ -173,11 +173,49 @@
             font-weight: 600;
             cursor: pointer;
             margin-top: 1.5rem;
+            margin-bottom: 1rem;
             text-decoration: none;
             transition: background 0.15s;
         }
         .back-btn .material-symbols-outlined { font-size: 18px; }
         .back-btn:active { background: #f5f5f5; }
+
+        /* ボトムナビ */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+            z-index: 500;
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+        }
+        .bottom-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            text-decoration: none;
+            color: #80868b;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 4px 16px;
+            border-radius: 12px;
+            transition: color 0.15s, background 0.15s;
+            cursor: pointer;
+            background: none;
+            border: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .bottom-nav-item .material-symbols-outlined { font-size: 24px; }
+        .bottom-nav-item.active { color: #1a73e8; }
+        .bottom-nav-item:active { background: #f0f4ff; }
+
+        /* ボトムナビの分、ページ下部に余白 */
+        .page-wrapper { padding-bottom: 5rem !important; }
 
         /* フラッシュメッセージ */
         .flash-messages { margin-bottom: 1rem; }
@@ -188,6 +226,33 @@
     <div class="page-wrapper">
         {% block content %}{% endblock %}
     </div>
+
+    <!-- ボトムナビ（ログイン・登録画面以外で表示） -->
+    {% block bottom_nav %}
+    <nav class="bottom-nav">
+        <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}">
+            <span class="material-symbols-outlined">home</span>
+            TOP
+        </a>
+        <a href="/input" class="bottom-nav-item {% block nav_input %}{% endblock %}">
+            <span class="material-symbols-outlined">edit_note</span>
+            記録入力
+        </a>
+        <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}">
+            <span class="material-symbols-outlined">calendar_month</span>
+            記録閲覧
+        </a>
+        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}">
+            <span class="material-symbols-outlined">monitoring</span>
+            モニタリング
+        </a>
+        <a href="/admin" class="bottom-nav-item {% block nav_admin %}{% endblock %}">
+            <span class="material-symbols-outlined">admin_panel_settings</span>
+            管理者
+        </a>
+    </nav>
+    {% endblock %}
+
     {% block extra_script %}{% endblock %}
 </body>
 </html>

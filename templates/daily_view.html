@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}ケース記録閲覧 - TASUKARU{% endblock %}
+{% block nav_daily %}active{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -89,8 +90,8 @@
     color: #80868b;
     padding: 8px 0;
 }
-.cal-dow.sun { color: #1a73e8; }
-.cal-dow.sat { color: #e8453c; }
+.cal-dow.sun { color: #c62828; }  /* 日曜ヘッダー：赤 */
+.cal-dow.sat { color: #2e7d32; }  /* 土曜ヘッダー：緑 */
 
 .calendar-days {
     display: grid;
@@ -249,13 +250,13 @@
             </button>
         </div>
         <div class="calendar-grid">
-            <div class="cal-dow sat">日</div>
+            <div class="cal-dow sun">日</div>
             <div class="cal-dow">月</div>
             <div class="cal-dow">火</div>
             <div class="cal-dow">水</div>
             <div class="cal-dow">木</div>
             <div class="cal-dow">金</div>
-            <div class="cal-dow sun">土</div>
+            <div class="cal-dow sat">土</div>
         </div>
         <div class="calendar-days" id="cal-days"></div>
     </div>
@@ -394,23 +395,21 @@ function renderCalendar() {
     const daysEl = document.getElementById('cal-days');
     title.textContent = `${currentYear}年${currentMonth + 1}月`;
 
-    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0=日
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
-    // 日曜始まり→月曜始まりに調整
-    const startOffset = (firstDay + 6) % 7;
-
-    let html = '';
-    for (let i = 0; i < startOffset; i++) {
-        html += '<div class="cal-day empty"></div>';
-    }
 
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
+    let html = '';
+    // 日曜始まりなのでfirstDayがそのままオフセット
+    for (let i = 0; i < firstDay; i++) {
+        html += '<div class="cal-day empty"></div>';
+    }
+
     for (let d = 1; d <= lastDate; d++) {
         const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay();
-        // 0=日, 6=土
+        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay(); // 0=日, 6=土
         let cls = 'cal-day ';
         if (dayOfWeek === 0) cls += 'sunday';
         else if (dayOfWeek === 6) cls += 'saturday';
