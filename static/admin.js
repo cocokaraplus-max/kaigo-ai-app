@@ -26,46 +26,29 @@ function parseBirthInput(val, dateId, resultId) {
 }
 
 function parseBirthToISO(val) {
-    // 西暦パターン: 1945/3/15, 1945-3-15, 1945.3.15, 19450315
     let m = val.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
     if (m) return fmt(m[1], m[2], m[3]);
-
     m = val.match(/^(\d{4})(\d{2})(\d{2})$/);
     if (m) return fmt(m[1], m[2], m[3]);
-
     m = val.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
     if (m) return fmt(m[1], m[2], m[3]);
-
-    // 和暦パターン: S20.3.15, H1.1.8, R5.4.1
     m = val.match(/^([RHSTMrHstm令平昭大明])(\d{1,2})[\/\-\.\s年](\d{1,2})[\/\-\.\s月](\d{1,2})日?$/);
     if (m) {
         const key = m[1].toUpperCase();
         const base = WAREKI[key] || WAREKI[m[1]];
-        if (base) {
-            const year = base[0] + parseInt(m[2]) - 1;
-            return fmt(year, m[3], m[4]);
-        }
-    }
-
-    // 「昭和20年3月15日」形式
-    for (const [k, v] of Object.entries(WAREKI)) {
-        if (k.length > 1) continue; // 漢字キーはスキップ（別処理）
+        if (base) return fmt(base[0] + parseInt(m[2]) - 1, m[3], m[4]);
     }
     m = val.match(/^(令和|平成|昭和|大正|明治)(\d{1,2})年(\d{1,2})月(\d{1,2})日?$/);
     if (m) {
         const eraMap = {'令和': 2019, '平成': 1989, '昭和': 1926, '大正': 1912, '明治': 1868};
-        const year = eraMap[m[1]] + parseInt(m[2]) - 1;
-        return fmt(year, m[3], m[4]);
+        return fmt(eraMap[m[1]] + parseInt(m[2]) - 1, m[3], m[4]);
     }
-
     return null;
 }
 
 function fmt(y, m, d) {
     const year = parseInt(y), month = parseInt(m), day = parseInt(d);
-    if (year < 1868 || year > 2030) return null;
-    if (month < 1 || month > 12) return null;
-    if (day < 1 || day > 31) return null;
+    if (year < 1868 || year > 2030 || month < 1 || month > 12 || day < 1 || day > 31) return null;
     return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
@@ -81,9 +64,8 @@ function toWareki(year) {
 function syncDateToText(isoVal, textId, resultId) {
     if (!isoVal) { showBirthResult(resultId, '', ''); return; }
     const [y, m, d] = isoVal.split('-');
-    const wareki = toWareki(parseInt(y));
-    document.getElementById(textId).value = `${wareki.replace('年','')}年${parseInt(m)}月${parseInt(d)}日`;
-    showBirthResult(resultId, `${wareki}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
+    document.getElementById(textId).value = `${toWareki(parseInt(y)).replace('年','')}年${parseInt(m)}月${parseInt(d)}日`;
+    showBirthResult(resultId, `${toWareki(parseInt(y))}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
 }
 
 function showBirthResult(id, msg, type) {
@@ -96,8 +78,8 @@ function showBirthResult(id, msg, type) {
 function getBirthValue(dateId) {
     return document.getElementById(dateId)?.value || '';
 }
-// ========================================
 
+// ========== タブ・アコーディオン ==========
 function switchTab(name, el) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
@@ -108,26 +90,21 @@ function switchTab(name, el) {
 function toggleAcc(name) {
     const body = document.getElementById('acc-body-' + name);
     const arrow = document.getElementById('acc-arrow-' + name);
-    body.classList.toggle('open');
-    arrow.classList.toggle('open');
+    if (!body) return;
+    const isOpen = body.style.display !== 'none' && body.style.display !== '';
+    body.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
 }
 
-async function adminLogin() {
-    const pw = document.getElementById('admin-pw').value;
-    const res = await fetch('/api/admin_login', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ password: pw })
-    });
-    if ((await res.json()).status === 'success') location.reload();
-    else alert('パスワードが違います');
+function openEditForm(id) {
+    document.getElementById('ef-' + id).style.display = 'block';
 }
 
-async function adminLogout() {
-    await fetch('/api/admin_logout', { method: 'POST' });
-    location.reload();
+function closeEditForm(id) {
+    document.getElementById('ef-' + id).style.display = 'none';
 }
 
+// ========== 利用者管理 ==========
 async function addPatient() {
     const chart = document.getElementById('new-chart').value.trim();
     const name  = document.getElementById('new-name').value.trim();
@@ -140,13 +117,6 @@ async function addPatient() {
         body: JSON.stringify({ chart, name, kana, birth })
     });
     if ((await res.json()).status === 'success') location.reload();
-}
-
-function openEditForm(id) {
-    document.getElementById('ef-' + id).style.display = 'block';
-}
-function closeEditForm(id) {
-    document.getElementById('ef-' + id).style.display = 'none';
 }
 
 async function savePatientEdit(id) {
@@ -166,13 +136,15 @@ async function savePatientEdit(id) {
 let deleteTargetId = null;
 function confirmDelete(id, name) {
     deleteTargetId = id;
-    document.getElementById('modal-title').textContent = `「${name}」を削除しますか？`;
+    document.getElementById('modal-patient-name').textContent = name;
     document.getElementById('delete-modal').style.display = 'flex';
 }
+
 function closeModal() {
-    deleteTargetId = null;
     document.getElementById('delete-modal').style.display = 'none';
+    deleteTargetId = null;
 }
+
 async function executeDelete() {
     if (!deleteTargetId) return;
     const res = await fetch('/api/delete_patient', {
@@ -183,6 +155,7 @@ async function executeDelete() {
     if ((await res.json()).status === 'success') { closeModal(); location.reload(); }
 }
 
+// ========== 設定 ==========
 async function issueClaude() {
     const res = await fetch('/api/issue_claude_session', {
         method: 'POST',
@@ -211,27 +184,31 @@ function copyClaudeUrl() {
 
 async function updatePassword() {
     const pw = document.getElementById('new-pw').value;
-    if (!pw) return;
+    if (!pw) { alert('パスワードを入力してください'); return; }
     const res = await fetch('/api/update_password', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ password: pw })
     });
-    if ((await res.json()).status === 'success') alert('パスワードを更新しました');
+    if ((await res.json()).status === 'success') {
+        alert('パスワードを更新しました');
+        document.getElementById('new-pw').value = '';
+    }
 }
 
 async function updateHistLimit() {
     const limit = document.getElementById('hist-limit').value;
-    await fetch('/api/update_hist_limit', {
+    const res = await fetch('/api/update_hist_limit', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ limit })
+        body: JSON.stringify({ limit: parseInt(limit) })
     });
-    alert('保存しました');
+    if ((await res.json()).status === 'success') alert('保存しました');
 }
 
+// ========== スタッフ管理 ==========
 async function blockStaff(name) {
-    if (!confirm(`「${name}」をブロックしますか？`)) return;
+    if (!confirm(`${name} をブロックしますか？`)) return;
     const res = await fetch('/api/block_staff', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -255,6 +232,8 @@ async function saveStaffBirth(name, idx) {
     if ((await res.json()).status === 'success') location.reload();
     else alert('保存に失敗しました');
 }
+
+async function unblockDevice(id) {
     const res = await fetch('/api/unblock_device', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -263,7 +242,7 @@ async function saveStaffBirth(name, idx) {
     if ((await res.json()).status === 'success') location.reload();
 }
 
-// ========== スタッフ管理 ==========
+// ========== 職員招待 ==========
 async function addStaff() {
     const name = document.getElementById('new-staff-name').value.trim();
     const pw = document.getElementById('new-staff-pw').value;
@@ -319,7 +298,6 @@ async function issueInviteQR() {
     document.getElementById('invite-url-text').textContent = url;
     document.getElementById('invite-qr-area').style.display = 'block';
 
-    // QRコード生成（qrcode.jsを動的ロード）
     const qrEl = document.getElementById('invite-qr-code');
     qrEl.innerHTML = '';
     if (typeof QRCode === 'undefined') {
