@@ -94,11 +94,11 @@ def render(template, **kwargs):
         else:
             content = content_match.group(1).strip()
 
-        # <script>タグを抽出（SPAルーター以外の最後のもの）
+        # <script>タグを抽出（SPAルーター以外を全部結合）
         scripts = _re.findall(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL)
-        # SPAルーターを含まないスクリプトのみ
+        # SPAルーターを含まないスクリプトのみ全部結合
         page_scripts = [s for s in scripts if 'navigateTo' not in s and 'SPAルーター' not in s]
-        script = '<script>' + page_scripts[-1] + '</script>' if page_scripts else ''
+        script = '<script>' + '\n'.join(page_scripts) + '</script>' if page_scripts else ''
 
         return jsonify({
             "style": style,
