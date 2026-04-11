@@ -39,7 +39,105 @@
 .user-accordion-body.open { display: block; }
 .user-accordion-arrow.open { transform: rotate(180deg); }
 
-/* AI統合記録カード */
+/* カスタムカレンダー */
+.calendar-wrapper {
+    background: #fff;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #1a73e8;
+}
+.cal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+.cal-nav-btn {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+    color: white;
+}
+.cal-nav-btn:active { background: rgba(255,255,255,0.35); }
+.cal-nav-btn .material-symbols-outlined { font-size: 20px; color: white; }
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+.cal-dow {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #80868b;
+    padding: 8px 0;
+}
+.cal-dow.sun { color: #1a73e8; }
+.cal-dow.sat { color: #e8453c; }
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 4px;
+    gap: 2px;
+}
+.cal-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.12s;
+    position: relative;
+}
+.cal-day:active { opacity: 0.7; }
+.cal-day.empty { cursor: default; }
+.cal-day.sunday { background: #fff0f0; color: #c62828; }
+.cal-day.saturday { background: #e8f5e9; color: #2e7d32; }
+.cal-day.weekday { background: #fff; color: #202124; }
+.cal-day.today {
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1.5px #1a73e8;
+}
+.cal-day.selected {
+    background: #1a73e8 !important;
+    color: #fff !important;
+    font-weight: 700;
+}
+.cal-day.has-record::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #1a73e8;
+}
+.cal-day.selected::after { background: #fff; }
+
+
 .ai-record-card {
     background: #e8f0fe;
     border-radius: 10px;
@@ -140,11 +238,27 @@
 </div>
 
 <div class="form-group">
-    <label class="form-label">
-        <span class="material-symbols-outlined">today</span>
-        日付選択
-    </label>
-    <input type="date" id="date-picker" class="form-control" value="{{ selected_date }}" onchange="location.href='/daily_view?date='+this.value">
+    <div class="calendar-wrapper">
+        <div class="calendar-header">
+            <button class="cal-nav-btn" onclick="changeMonth(-1)">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <span class="cal-title" id="cal-title"></span>
+            <button class="cal-nav-btn" onclick="changeMonth(1)">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+        </div>
+        <div class="calendar-grid">
+            <div class="cal-dow sat">日</div>
+            <div class="cal-dow">月</div>
+            <div class="cal-dow">火</div>
+            <div class="cal-dow">水</div>
+            <div class="cal-dow">木</div>
+            <div class="cal-dow">金</div>
+            <div class="cal-dow sun">土</div>
+        </div>
+        <div class="calendar-days" id="cal-days"></div>
+    </div>
 </div>
 
 {% if not records %}
@@ -257,6 +371,63 @@
 <script>
 const selectedDate = "{{ selected_date }}";
 const targetUser = "{{ target_user }}";
+
+// ========== カスタムカレンダー ==========
+let currentYear, currentMonth;
+
+function initCalendar() {
+    const parts = selectedDate.split('-');
+    currentYear = parseInt(parts[0]);
+    currentMonth = parseInt(parts[1]) - 1;
+    renderCalendar();
+}
+
+function changeMonth(delta) {
+    currentMonth += delta;
+    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+    if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
+    renderCalendar();
+}
+
+function renderCalendar() {
+    const title = document.getElementById('cal-title');
+    const daysEl = document.getElementById('cal-days');
+    title.textContent = `${currentYear}年${currentMonth + 1}月`;
+
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
+    // 日曜始まり→月曜始まりに調整
+    const startOffset = (firstDay + 6) % 7;
+
+    let html = '';
+    for (let i = 0; i < startOffset; i++) {
+        html += '<div class="cal-day empty"></div>';
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+    for (let d = 1; d <= lastDate; d++) {
+        const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay();
+        // 0=日, 6=土
+        let cls = 'cal-day ';
+        if (dayOfWeek === 0) cls += 'sunday';
+        else if (dayOfWeek === 6) cls += 'saturday';
+        else cls += 'weekday';
+        if (dateStr === todayStr) cls += ' today';
+        if (dateStr === selectedDate) cls += ' selected';
+        html += `<div class="${cls}" onclick="selectDate('${dateStr}')">${d}</div>`;
+    }
+    daysEl.innerHTML = html;
+}
+
+function selectDate(dateStr) {
+    window.location.href = '/daily_view?date=' + dateStr + (targetUser ? '&user=' + encodeURIComponent(targetUser) : '');
+}
+
+initCalendar();
+// ========================================
 
 // ページ読み込み時、対象ユーザーのアコーディオンに自動スクロール
 window.addEventListener('load', function() {
