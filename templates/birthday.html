@@ -1,12 +1,38 @@
 {% extends "base.html" %}
-{% block title %}誕生日一覧 - TASUKARU{% endblock %}
+{% block title %}誕生日・数秘術 - TASUKARU{% endblock %}
 {% block nav_birthday %}active{% endblock %}
 
 {% block extra_style %}
 <style>
-.month-section {
-    margin-bottom: 1.4rem;
+/* タブ */
+.page-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.2rem;
 }
+.page-tab {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1.5px solid #e0e0e0;
+    background: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+}
+.page-tab.active {
+    background: #e8f0fe;
+    color: #1a73e8;
+    border-color: #1a73e8;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* 誕生日一覧 */
+.month-section { margin-bottom: 1.4rem; }
 .month-header {
     display: flex;
     align-items: center;
@@ -35,69 +61,151 @@
     margin-bottom: 6px;
     background: #fff;
     gap: 12px;
+    cursor: pointer;
+    transition: background 0.12s;
 }
+.birthday-card:active { background: #f5f5f5; }
 .birthday-card.today {
     border-color: #f8bbd9;
     background: linear-gradient(135deg, #fff8fb, #fce4ec);
 }
 .birthday-avatar {
-    width: 40px;
-    height: 40px;
+    width: 40px; height: 40px;
     border-radius: 50%;
     background: #e8f0fe;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
 }
 .birthday-avatar .material-symbols-outlined { font-size: 20px; color: #1a73e8; }
 .birthday-avatar.today-avatar { background: #fce4ec; }
 .birthday-avatar.today-avatar .material-symbols-outlined { color: #e91e8c; }
 .birthday-info { flex: 1; }
-.birthday-card-name {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #202124;
-}
+.birthday-card-name { font-size: 0.95rem; font-weight: 700; color: #202124; }
 .birthday-card-detail {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 3px;
+    display: flex; align-items: center; gap: 8px; margin-top: 3px;
 }
-.birthday-card-date {
-    font-size: 0.78rem;
-    color: #5f6368;
-}
-.birthday-card-wareki {
-    font-size: 0.75rem;
-    color: #80868b;
+.birthday-card-date { font-size: 0.78rem; color: #5f6368; }
+.birthday-card-wareki { font-size: 0.75rem; color: #80868b; }
+.birthday-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
 }
 .birthday-age-badge {
-    background: #1a73e8;
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 3px 10px;
-    border-radius: 12px;
-    flex-shrink: 0;
+    background: #1a73e8; color: white;
+    font-size: 0.75rem; font-weight: 700;
+    padding: 3px 10px; border-radius: 12px;
 }
-.birthday-age-badge.today-badge {
-    background: #e91e8c;
+.birthday-age-badge.today-badge { background: #e91e8c; }
+.numerology-mini {
+    font-size: 0.72rem; color: #80868b;
+    background: #f8f9fa;
+    padding: 2px 8px; border-radius: 8px;
 }
 .today-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: #e91e8c;
-    background: #fce4ec;
-    padding: 2px 8px;
-    border-radius: 8px;
+    font-size: 0.7rem; font-weight: 700;
+    color: #e91e8c; background: #fce4ec;
+    padding: 2px 8px; border-radius: 8px;
 }
-.no-birthday {
+
+/* 数秘術検索 */
+.search-wrapper { position: relative; margin-bottom: 1rem; }
+.search-candidates {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: #fff;
+    border: 1.5px solid #1a73e8;
+    border-radius: 10px;
+    z-index: 100;
+    max-height: 220px; overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: none;
+}
+.search-candidates.show { display: block; }
+.search-candidate-item {
+    padding: 12px 14px; font-size: 0.9rem;
+    cursor: pointer; border-bottom: 1px solid #f0f0f0; color: #202124;
+}
+.search-candidate-item:last-child { border-bottom: none; }
+.search-candidate-item:active { background: #e8f0fe; }
+.selected-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #e8f0fe;
+    border-radius: 10px; font-size: 0.88rem;
+    font-weight: 600; color: #1557b0; margin-bottom: 1rem;
+}
+
+/* 数秘結果カード */
+.numerology-result {
+    background: linear-gradient(135deg, #f8f0ff, #ede7f6);
+    border: 1.5px solid #ce93d8;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 1rem;
+}
+.numerology-header {
     text-align: center;
-    color: #80868b;
-    font-size: 0.88rem;
-    padding: 20px 0;
+    margin-bottom: 16px;
+}
+.numerology-name {
+    font-size: 1.1rem; font-weight: 700; color: #202124;
+    margin-bottom: 4px;
+}
+.numerology-birth {
+    font-size: 0.82rem; color: #5f6368;
+}
+.numerology-number-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 16px 0;
+}
+.numerology-circle {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: #7b1fa2;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(123,31,162,0.3);
+}
+.numerology-circle.master {
+    background: linear-gradient(135deg, #c62828, #e53935);
+    box-shadow: 0 4px 16px rgba(198,40,40,0.3);
+}
+.numerology-circle-num {
+    font-size: 2rem; font-weight: 800; color: white;
+    line-height: 1;
+}
+.numerology-label {
+    font-size: 0.82rem; font-weight: 700; color: #6a1b9a;
+}
+.numerology-label.master { color: #b71c1c; }
+.numerology-calc {
+    text-align: center;
+    font-size: 0.75rem; color: #80868b;
+    background: rgba(255,255,255,0.6);
+    border-radius: 8px; padding: 6px 12px;
+    margin: 0 0 16px;
+}
+.numerology-traits {
+    background: white;
+    border-radius: 12px;
+    padding: 14px;
+}
+.numerology-traits-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 700;
+    color: #6a1b9a; margin-bottom: 10px;
+}
+.numerology-traits-title .material-symbols-outlined { font-size: 17px; }
+.trait-tag {
+    display: inline-block;
+    background: #f3e5f5; color: #6a1b9a;
+    font-size: 0.78rem; font-weight: 600;
+    padding: 4px 10px; border-radius: 12px;
+    margin: 3px 3px 3px 0;
+}
+.trait-tag.master { background: #ffebee; color: #b71c1c; }
+.numerology-desc {
+    font-size: 0.85rem; color: #5f6368;
+    line-height: 1.7; margin-top: 10px;
 }
 </style>
 {% endblock %}
@@ -105,46 +213,276 @@
 {% block content %}
 <div class="page-title">
     <span class="material-symbols-outlined">cake</span>
-    誕生日一覧
+    誕生日・数秘術
 </div>
 
-{% if not all_birthdays %}
-<div class="alert alert-info">
-    <span class="material-symbols-outlined">info</span>
-    誕生日が登録されている利用者がいません。管理者MENUから登録できます。
+<div class="page-tabs">
+    <button class="page-tab active" onclick="switchPageTab('list', this)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">list</span>
+        誕生日一覧
+    </button>
+    <button class="page-tab" onclick="switchPageTab('numerology', this)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">auto_awesome</span>
+        数秘術
+    </button>
 </div>
-{% else %}
 
-{% for month_data in all_birthdays %}
-<div class="month-section">
-    <div class="month-header {% if month_data.is_current %}current-month{% endif %}">
-        <span class="material-symbols-outlined">{% if month_data.is_current %}cake{% else %}calendar_month{% endif %}</span>
-        {{ month_data.month }}月
-        {% if month_data.is_current %}<span style="font-size:0.75rem;margin-left:4px;">今月</span>{% endif %}
+<!-- 誕生日一覧タブ -->
+<div class="tab-content active" id="tab-list">
+    {% if not all_birthdays %}
+    <div class="alert alert-info">
+        <span class="material-symbols-outlined">info</span>
+        誕生日が登録されている利用者がいません。管理者MENUから登録できます。
     </div>
-
-    {% for b in month_data.users %}
-    <div class="birthday-card {% if b.is_today %}today{% endif %}">
-        <div class="birthday-avatar {% if b.is_today %}today-avatar{% endif %}">
-            <span class="material-symbols-outlined">{% if b.is_today %}celebration{% else %}person{% endif %}</span>
+    {% else %}
+    {% for month_data in all_birthdays %}
+    <div class="month-section">
+        <div class="month-header {% if month_data.is_current %}current-month{% endif %}">
+            <span class="material-symbols-outlined">{% if month_data.is_current %}cake{% else %}calendar_month{% endif %}</span>
+            {{ month_data.month }}月
+            {% if month_data.is_current %}<span style="font-size:0.75rem;margin-left:4px;">今月</span>{% endif %}
         </div>
-        <div class="birthday-info">
-            <div class="birthday-card-name">
-                {{ b.user_name }}
-                {% if b.is_today %}<span class="today-label">🎂 今日</span>{% endif %}
+        {% for b in month_data.users %}
+        <div class="birthday-card {% if b.is_today %}today{% endif %}"
+             onclick="showNumerologyById('{{ b.user_name }}', '{{ b.birth_iso }}')">
+            <div class="birthday-avatar {% if b.is_today %}today-avatar{% endif %}">
+                <span class="material-symbols-outlined">{% if b.is_today %}celebration{% else %}person{% endif %}</span>
             </div>
-            <div class="birthday-card-detail">
-                <span class="birthday-card-date">{{ b.month }}月{{ b.day }}日</span>
-                <span class="birthday-card-wareki">{{ b.wareki }}</span>
+            <div class="birthday-info">
+                <div class="birthday-card-name">
+                    {{ b.user_name }}
+                    {% if b.is_today %}<span class="today-label">🎂 今日</span>{% endif %}
+                </div>
+                <div class="birthday-card-detail">
+                    <span class="birthday-card-date">{{ b.month }}月{{ b.day }}日</span>
+                    <span class="birthday-card-wareki">{{ b.wareki }}</span>
+                </div>
+            </div>
+            <div class="birthday-right">
+                <div class="birthday-age-badge {% if b.is_today %}today-badge{% endif %}">{{ b.age }}歳</div>
+                <div class="numerology-mini">No.{{ b.numerology }}</div>
             </div>
         </div>
-        <div class="birthday-age-badge {% if b.is_today %}today-badge{% endif %}">
-            {{ b.age }}歳
-        </div>
+        {% endfor %}
     </div>
     {% endfor %}
+    {% endif %}
 </div>
-{% endfor %}
 
-{% endif %}
+<!-- 数秘術タブ -->
+<div class="tab-content" id="tab-numerology">
+    <div class="search-wrapper">
+        <input type="text" id="num-search" class="form-control"
+            placeholder="名前・ふりがな・カルテ番号で検索"
+            oninput="searchNumerology(this.value)"
+            onfocus="searchNumerology(this.value)"
+            autocomplete="off">
+        <div class="search-candidates" id="num-candidates"></div>
+    </div>
+
+    <div id="num-selected-badge" style="display:none;" class="selected-badge">
+        <span class="material-symbols-outlined">person</span>
+        <span id="num-selected-label"></span>
+        <span style="margin-left:auto;cursor:pointer;font-size:0.78rem;color:#80868b;" onclick="clearNumerologySearch()">変更</span>
+    </div>
+
+    <div id="numerology-result-area"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ========== タブ切り替え ==========
+function switchPageTab(name, el) {
+    document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ========== 利用者データ ==========
+const PATIENTS = [
+    {% for p in patients %}
+    { name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }}, birth: {{ p.birth_date | tojson }} },
+    {% endfor %}
+];
+
+// ========== 数秘術計算 ==========
+const MASTER_NUMBERS = [11, 22, 33];
+
+function calcNumerology(birthIso) {
+    if (!birthIso) return null;
+    const digits = birthIso.replace(/-/g, '').split('').map(Number);
+    let sum = digits.reduce((a, b) => a + b, 0);
+    const steps = [`${digits.join('+')} = ${sum}`];
+    while (sum > 9 && !MASTER_NUMBERS.includes(sum)) {
+        const d = String(sum).split('').map(Number);
+        const next = d.reduce((a, b) => a + b, 0);
+        steps.push(`${d.join('+')} = ${next}`);
+        sum = next;
+    }
+    return { number: sum, steps, isMaster: MASTER_NUMBERS.includes(sum) };
+}
+
+// ========== 数秘の特性データ ==========
+const NUMEROLOGY_DATA = {
+    1: {
+        tags: ['リーダーシップ', '独立心', '開拓者', '強い意志'],
+        desc: '強いリーダーシップと独立心を持ち、自分の道を切り開く力があります。困難にも果敢に挑む開拓者精神の持ち主です。'
+    },
+    2: {
+        tags: ['協調性', '思いやり', '平和主義', '繊細さ'],
+        desc: '思いやり深く、人と人との橋渡し役が得意です。周囲の気持ちに敏感で、場の雰囲気を和やかにする天性の才能があります。'
+    },
+    3: {
+        tags: ['創造性', '表現力', '社交性', '楽観的'],
+        desc: '明るく社交的で、豊かな表現力と創造性の持ち主。コミュニケーション能力が高く、周りの人を元気にする力があります。'
+    },
+    4: {
+        tags: ['誠実さ', '努力家', '安定志向', '堅実'],
+        desc: '誠実で責任感が強く、コツコツと努力を続ける堅実な性格。信頼される存在で、着実に物事を積み上げていく力があります。'
+    },
+    5: {
+        tags: ['自由', '変化好き', '好奇心旺盛', '冒険家'],
+        desc: '自由を愛し、変化と冒険を楽しむ活動的な性格。好奇心が旺盛で、多様な経験から成長していく柔軟さを持っています。'
+    },
+    6: {
+        tags: ['奉仕精神', '家族愛', '責任感', '面倒見がよい'],
+        desc: '深い愛情と奉仕の精神で人を支える、頼もしい存在。家族や周囲の人を大切にし、調和のある環境を作る力があります。'
+    },
+    7: {
+        tags: ['探究心', '知性', '内省的', '直感力'],
+        desc: '深い洞察力と探究心を持ち、物事の本質を見抜く力があります。内省的で精神的な深みがあり、独自の哲学を持っています。'
+    },
+    8: {
+        tags: ['実行力', 'リーダー', '野心', '達成力'],
+        desc: '強い実行力と達成への意志を持つ、パワフルな人物。現実的な判断力と組織力で大きな目標を実現していく力があります。'
+    },
+    9: {
+        tags: ['博愛', '寛大さ', '理想主義', '人道的'],
+        desc: '広い視野と深い愛で人類全体を思いやる、寛大な心の持ち主。理想を高く持ち、周囲に影響を与える存在感があります。'
+    },
+    11: {
+        tags: ['直感力', '精神性', 'インスピレーション', 'マスターナンバー'],
+        desc: '【マスターナンバー】高い精神性と鋭い直感力を持つ、特別な使命を持った魂。周囲に霊感やインスピレーションを与える存在です。'
+    },
+    22: {
+        tags: ['実現力', '大きなビジョン', '建設者', 'マスターナンバー'],
+        desc: '【マスターナンバー】大きなビジョンを現実に変える力を持つ「マスタービルダー」。夢を具体的な形にする稀有な才能があります。'
+    },
+    33: {
+        tags: ['無条件の愛', '癒し', '奉仕', 'マスターナンバー'],
+        desc: '【マスターナンバー】無条件の愛と癒しをもたらす、最も精神的に進化した魂。人々を深く癒し、愛で包む使命を持っています。'
+    }
+};
+
+// ========== 検索 ==========
+function searchNumerology(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = q === ''
+        ? PATIENTS.filter(p => p.birth)
+        : PATIENTS.filter(p => p.birth && (
+            p.name.toLowerCase().includes(q) ||
+            p.kana.toLowerCase().includes(q) ||
+            p.chart.toLowerCase().includes(q)
+        ));
+    const el = document.getElementById('num-candidates');
+    if (filtered.length === 0) {
+        el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
+    } else {
+        el.innerHTML = filtered.map(p =>
+            `<div class="search-candidate-item" onmousedown="selectNumerology(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)})">
+                ${p.name} <span style="color:#80868b;font-size:0.8rem;">No.${p.chart}</span>
+            </div>`
+        ).join('');
+    }
+    el.classList.add('show');
+}
+
+function selectNumerology(name, birth) {
+    document.getElementById('num-search').style.display = 'none';
+    document.getElementById('num-selected-label').textContent = name;
+    document.getElementById('num-selected-badge').style.display = 'flex';
+    document.getElementById('num-candidates').classList.remove('show');
+    renderNumerology(name, birth);
+}
+
+function clearNumerologySearch() {
+    document.getElementById('num-search').style.display = 'block';
+    document.getElementById('num-search').value = '';
+    document.getElementById('num-selected-badge').style.display = 'none';
+    document.getElementById('numerology-result-area').innerHTML = '';
+    document.getElementById('num-candidates').classList.remove('show');
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrapper')) {
+        document.getElementById('num-candidates').classList.remove('show');
+    }
+});
+
+// 誕生日一覧からの遷移
+function showNumerologyById(name, birth) {
+    switchPageTab('numerology', document.querySelectorAll('.page-tab')[1]);
+    selectNumerology(name, birth);
+}
+
+// ========== 数秘結果表示 ==========
+function renderNumerology(name, birthIso) {
+    const result = calcNumerology(birthIso);
+    if (!result) {
+        document.getElementById('numerology-result-area').innerHTML =
+            '<div class="alert alert-warning"><span class="material-symbols-outlined">warning</span>誕生日が登録されていません。</div>';
+        return;
+    }
+
+    const data = NUMEROLOGY_DATA[result.number];
+    const [y, m, d] = birthIso.split('-');
+    const wareki = toWareki(parseInt(y));
+    const birthStr = `${wareki} ${parseInt(m)}月${parseInt(d)}日`;
+
+    const tags = data.tags.map(t =>
+        `<span class="trait-tag ${result.isMaster ? 'master' : ''}">${t}</span>`
+    ).join('');
+
+    document.getElementById('numerology-result-area').innerHTML = `
+        <div class="numerology-result">
+            <div class="numerology-header">
+                <div class="numerology-name">${name}</div>
+                <div class="numerology-birth">${birthStr}（${birthIso}）</div>
+            </div>
+            <div class="numerology-number-display">
+                <div>
+                    <div class="numerology-circle ${result.isMaster ? 'master' : ''}">
+                        <span class="numerology-circle-num">${result.number}</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="numerology-label ${result.isMaster ? 'master' : ''}">
+                        ライフパスナンバー<br>
+                        ${result.isMaster ? '✨ マスターナンバー' : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="numerology-calc">計算式：${result.steps.join(' → ')}</div>
+            <div class="numerology-traits">
+                <div class="numerology-traits-title">
+                    <span class="material-symbols-outlined">psychology</span>
+                    特性・キーワード
+                </div>
+                <div>${tags}</div>
+                <div class="numerology-desc">${data.desc}</div>
+            </div>
+        </div>
+    `;
+}
+
+function toWareki(year) {
+    if (year >= 2019) return `令和${year - 2018}年`;
+    if (year >= 1989) return `平成${year - 1988}年`;
+    if (year >= 1926) return `昭和${year - 1925}年`;
+    if (year >= 1912) return `大正${year - 1911}年`;
+    return `明治${year - 1867}年`;
+}
+</script>
 {% endblock %}

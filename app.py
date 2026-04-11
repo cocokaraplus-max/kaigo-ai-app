@@ -380,13 +380,30 @@ def birthday():
     now = datetime.now(tokyo_tz)
 
     try:
-        res = supabase.table("patients").select("user_name, birth_date").eq("facility_code", f_code).execute()
+        res = supabase.table("patients").select("user_name, user_kana, chart_number, birth_date").eq("facility_code", f_code).execute()
     except:
         res = type('obj', (object,), {'data': []})()
 
-    # 月ごとに整理（今月から始まる12ヶ月）
+    def calc_numerology(birth_str):
+        if not birth_str:
+            return None
+        digits = [int(c) for c in birth_str.replace('-', '') if c.isdigit()]
+        s = sum(digits)
+        while s > 9 and s not in [11, 22, 33]:
+            s = sum(int(c) for c in str(s))
+        return s
+
     months_data = {}
+    patients_list = []
     for r in res.data:
+        chart = str(r.get('chart_number', ''))
+        kana = r.get('user_kana') or ''
+        patients_list.append({
+            "user_name": r["user_name"],
+            "user_kana": kana,
+            "chart_number": chart,
+            "birth_date": r.get("birth_date") or "",
+        })
         if not r.get("birth_date"):
             continue
         try:
@@ -396,6 +413,7 @@ def birthday():
                 age -= 1
             is_today = (bd.month == now.month and bd.day == now.day)
             wareki = birth_to_wareki_text(r["birth_date"])
+            num = calc_numerology(r["birth_date"])
             m = bd.month
             if m not in months_data:
                 months_data[m] = []
@@ -406,11 +424,12 @@ def birthday():
                 "age": age,
                 "wareki": wareki,
                 "is_today": is_today,
+                "numerology": num,
+                "birth_iso": r["birth_date"],
             })
         except:
             continue
 
-    # 今月から始まる順に並べる
     all_birthdays = []
     for i in range(12):
         m = (now.month - 1 + i) % 12 + 1
@@ -422,7 +441,10 @@ def birthday():
                 "users": users
             })
 
-    return render_template("birthday.html", all_birthdays=all_birthdays)
+    return render_template("birthday.html",
+        all_birthdays=all_birthdays,
+        patients=patients_list
+    )
 
 @app.route('/history')
 @login_required
