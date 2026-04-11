@@ -28,15 +28,45 @@
 }
 .upload-area:hover { border-color: #1a73e8; color: #1a73e8; }
 .upload-area .material-symbols-outlined { font-size: 32px; display: block; margin-bottom: 6px; }
-
 .ai-btn-wrap { margin: 0.8rem 0; }
 
-.record-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 1rem;
+.search-wrapper { position: relative; }
+.search-candidates {
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    background: #fff;
+    border: 1.5px solid #1a73e8;
+    border-radius: 10px;
+    z-index: 100;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: none;
 }
+.search-candidates.show { display: block; }
+.search-candidate-item {
+    padding: 12px 14px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    color: #202124;
+}
+.search-candidate-item:last-child { border-bottom: none; }
+.search-candidate-item:active { background: #e8f0fe; }
+.selected-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #e8f0fe;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #1557b0;
+    margin-top: 6px;
+}
+.selected-badge .material-symbols-outlined { font-size: 16px; }
 </style>
 {% endblock %}
 
@@ -53,14 +83,12 @@
 
 {% if error %}
 <div class="alert alert-error">
-    <span class="material-symbols-outlined">error</span>
-    {{ error }}
+    <span class="material-symbols-outlined">error</span>{{ error }}
 </div>
 {% endif %}
 {% if success %}
 <div class="alert alert-success">
-    <span class="material-symbols-outlined">check_circle</span>
-    {{ success }}
+    <span class="material-symbols-outlined">check_circle</span>{{ success }}
 </div>
 {% endif %}
 
@@ -69,14 +97,22 @@
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">person</span>
-            利用者を選択（ひらがな検索OK）
+            利用者を選択（ひらがな・漢字・カルテ番号で検索）
         </label>
-        <select name="patient" class="form-control" id="patient-select">
-            <option value="">(未選択)</option>
-            {% for p in patients %}
-            <option value="{{ p.value }}" {% if selected_patient == p.value %}selected{% endif %}>{{ p.label }}</option>
-            {% endfor %}
-        </select>
+        <div class="search-wrapper">
+            <input type="text" id="patient-search" class="form-control"
+                placeholder="例：やまだ / 山田 / 001"
+                autocomplete="off"
+                oninput="searchPatient(this.value)"
+                onfocus="searchPatient(this.value)">
+            <div class="search-candidates" id="candidates"></div>
+        </div>
+        <div id="selected-badge" style="display:none;" class="selected-badge">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span id="selected-label"></span>
+            <span style="margin-left:auto; cursor:pointer; font-size:0.78rem; color:#80868b;" onclick="clearPatient()">変更</span>
+        </div>
+        <input type="hidden" name="patient" id="patient-value">
     </div>
 
     <div class="form-group">
@@ -145,13 +181,58 @@
     <span class="material-symbols-outlined">home</span>
     TOP画面へ
 </a>
-{% endblock %}
 
-{% block extra_script %}
 <script>
-let mediaRecorder = null;
-let audioChunks = [];
-let isRecording = false;
+const PATIENTS = [
+    {% for p in patients %}
+    { value: {{ p.value | tojson }}, label: {{ p.label | tojson }}, name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
+    {% endfor %}
+];
+
+function searchPatient(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = q === '' ? PATIENTS : PATIENTS.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.kana.toLowerCase().includes(q) ||
+        p.chart.toLowerCase().includes(q)
+    );
+    renderCandidates(filtered);
+}
+
+function renderCandidates(list) {
+    const candidates = document.getElementById('candidates');
+    if (list.length === 0) {
+        candidates.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし</div>';
+    } else {
+        candidates.innerHTML = list.map(p =>
+            `<div class="search-candidate-item" onmousedown="selectPatient(${JSON.stringify(p.value)}, ${JSON.stringify(p.label)})">${p.label}</div>`
+        ).join('');
+    }
+    candidates.classList.add('show');
+}
+
+function selectPatient(value, label) {
+    document.getElementById('patient-value').value = value;
+    document.getElementById('selected-label').textContent = label;
+    document.getElementById('selected-badge').style.display = 'flex';
+    document.getElementById('patient-search').style.display = 'none';
+    document.getElementById('candidates').classList.remove('show');
+}
+
+function clearPatient() {
+    document.getElementById('patient-value').value = '';
+    document.getElementById('selected-badge').style.display = 'none';
+    document.getElementById('patient-search').style.display = 'block';
+    document.getElementById('patient-search').value = '';
+    document.getElementById('candidates').classList.remove('show');
+    document.getElementById('patient-search').focus();
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-wrapper')) {
+        document.getElementById('candidates').classList.remove('show');
+    }
+});
 
 function previewPhotos(input) {
     const preview = document.getElementById('photo-preview');
@@ -167,11 +248,11 @@ function previewPhotos(input) {
     });
 }
 
+let mediaRecorder = null, audioChunks = [], isRecording = false;
+
 async function toggleRecording() {
     const btn = document.getElementById('rec-btn');
     const status = document.getElementById('rec-status');
-    const aiBtn = document.getElementById('ai-btn');
-
     if (!isRecording) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -184,7 +265,7 @@ async function toggleRecording() {
                 reader.onload = e => {
                     document.getElementById('audio-data').value = e.target.result.split(',')[1];
                     document.getElementById('audio-mime').value = blob.type;
-                    aiBtn.style.display = 'flex';
+                    document.getElementById('ai-btn').style.display = 'flex';
                 };
                 reader.readAsDataURL(blob);
                 stream.getTracks().forEach(t => t.stop());
@@ -210,10 +291,8 @@ async function aiTranscribe() {
     const audioData = document.getElementById('audio-data').value;
     const audioMime = document.getElementById('audio-mime').value;
     if (!audioData) return;
-
     document.getElementById('ai-btn').style.display = 'none';
     document.getElementById('ai-loading').style.display = 'flex';
-
     try {
         const res = await fetch('/api/transcribe', {
             method: 'POST',
@@ -221,9 +300,7 @@ async function aiTranscribe() {
             body: JSON.stringify({ audio_data: audioData, audio_mime: audioMime })
         });
         const data = await res.json();
-        if (data.text) {
-            document.getElementById('content-area').value = data.text;
-        }
+        if (data.text) document.getElementById('content-area').value = data.text;
     } catch(e) {
         alert('AI変換に失敗しました');
     } finally {

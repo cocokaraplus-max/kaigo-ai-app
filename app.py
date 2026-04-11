@@ -58,12 +58,14 @@ def get_patients(supabase, f_code):
         patients = []
         for r in res.data:
             kana = r.get('user_kana') or ""
+            chart = str(r['chart_number'])
+            name = r['user_name']
             patients.append({
-                "value": f"(No.{r['chart_number']}) [{r['user_name']}] {kana}",
-                "label": f"(No.{r['chart_number']}) [{r['user_name']}] {kana}",
+                "value": f"(No.{chart}) [{name}] {kana}",
+                "label": f"(No.{chart}) [{name}] {kana}",
                 "id": r["id"],
-                "chart_number": r["chart_number"],
-                "user_name": r["user_name"],
+                "chart_number": chart,
+                "user_name": name,
                 "user_kana": kana,
             })
         return patients

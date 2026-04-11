@@ -154,7 +154,7 @@
 </div>
 {% else %}
 {% for user, data in records.items() %}
-<div class="user-accordion" id="accordion-{{ loop.index }}">
+<div class="user-accordion" id="accordion-{{ loop.index }}" {% if user == target_user %}data-target="true"{% endif %}>
     <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
         <div class="user-accordion-title">
             <span class="material-symbols-outlined">person</span>
@@ -256,6 +256,19 @@
 {% block extra_script %}
 <script>
 const selectedDate = "{{ selected_date }}";
+const targetUser = "{{ target_user }}";
+
+// ページ読み込み時、対象ユーザーのアコーディオンに自動スクロール
+window.addEventListener('load', function() {
+    if (targetUser) {
+        const target = document.querySelector('[data-target="true"]');
+        if (target) {
+            setTimeout(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 200);
+        }
+    }
+});
 
 function toggleAccordion(idx, user) {
     const body = document.getElementById('body-' + idx);
