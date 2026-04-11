@@ -611,6 +611,7 @@ def numerology():
     return render("numerology.html", all_persons=all_persons)
 
 
+@app.route('/history')
 @login_required
 def history():
     f_code = session["f_code"]

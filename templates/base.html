@@ -127,7 +127,7 @@
             scrollbar-width: none;
             /* iPhoneのジェスチャーエリアと被らないよう下に余白 */
             padding: 6px 4px;
-            padding-bottom: max(56px, env(safe-area-inset-bottom));
+            padding-bottom: max(80px, calc(env(safe-area-inset-bottom) + 56px));
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 2px;
             flex-shrink: 0;
@@ -269,17 +269,28 @@ async function navigateTo(url, pushState = true) {
 
         // スクリプト実行
         if (data.script) {
-            // 古いSPAスクリプトを削除
             document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
             if (scriptContent.trim()) {
-                const scriptEl = document.createElement('script');
-                scriptEl.className = 'spa-injected-script';
-                scriptEl.textContent = scriptContent;
-                document.body.appendChild(scriptEl);
-                console.log('[SPA] script injected, length:', scriptContent.length);
+                try {
+                    // グローバルスコープで実行
+                    (0, eval)(scriptContent);
+                } catch(e) {
+                    console.log('[SPA] eval error:', e);
+                    // evalが失敗したらscriptタグ注入にフォールバック
+                    const scriptEl = document.createElement('script');
+                    scriptEl.className = 'spa-injected-script';
+                    scriptEl.textContent = scriptContent;
+                    document.body.appendChild(scriptEl);
+                }
             }
         }
+
+        // ページ別の初期化関数を呼ぶ
+        setTimeout(() => {
+            if (typeof initCalendar === 'function') initCalendar();
+            if (typeof initPage === 'function') initPage();
+        }, 50);
 
         if (pushState) {
             history.pushState({ url }, '', url);
