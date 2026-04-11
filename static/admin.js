@@ -305,3 +305,40 @@ async function deleteStaff(id, name) {
     if ((await res.json()).status === 'success') location.reload();
     else alert('削除に失敗しました');
 }
+
+// ========== 招待QRコード ==========
+async function issueInviteQR() {
+    const res = await fetch('/api/issue_invite', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    });
+    const data = await res.json();
+    if (data.status !== 'success') { alert('発行に失敗しました'); return; }
+
+    const url = window.location.origin + '/invite?token=' + data.token;
+    document.getElementById('invite-url-text').textContent = url;
+    document.getElementById('invite-qr-area').style.display = 'block';
+
+    // QRコード生成（qrcode.jsを動的ロード）
+    const qrEl = document.getElementById('invite-qr-code');
+    qrEl.innerHTML = '';
+    if (typeof QRCode === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        script.onload = () => generateQR(qrEl, url);
+        document.head.appendChild(script);
+    } else {
+        generateQR(qrEl, url);
+    }
+}
+
+function generateQR(el, url) {
+    new QRCode(el, {
+        text: url,
+        width: 200,
+        height: 200,
+        colorDark: '#202124',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+    });
+}

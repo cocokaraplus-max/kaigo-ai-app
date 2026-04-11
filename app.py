@@ -1011,6 +1011,79 @@ def api_issue_claude_session():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+@app.route('/api/issue_invite', methods=['POST'])
+@login_required
+def api_issue_invite():
+    try:
+        import secrets as _secrets
+        f_code = session['f_code']
+        supabase = get_supabase()
+        token = _secrets.token_urlsafe(32)
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+        supabase.table('invite_tokens').delete().eq('facility_code', f_code).execute()
+        supabase.table('invite_tokens').insert({
+            'facility_code': f_code,
+            'token': token,
+            'expires_at': expires_at
+        }).execute()
+        return jsonify({'status': 'success', 'token': token})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/invite', methods=['GET', 'POST'])
+def invite():
+    token = request.args.get('token') or request.form.get('token')
+    if not token:
+        return render_template('invite.html', expired=True)
+    try:
+        supabase = get_supabase()
+        res = supabase.table('invite_tokens').select('*').eq('token', token).execute()
+        if not res.data:
+            return render_template('invite.html', expired=True)
+        row = res.data[0]
+        expires = datetime.fromisoformat(str(row['expires_at']).replace('Z', '+00:00'))
+        if expires < datetime.now(timezone.utc):
+            return render_template('invite.html', expired=True)
+        f_code = row['facility_code']
+        # 施設名取得
+        fac = supabase.table('facilities').select('facility_name').eq('facility_code', f_code).execute()
+        facility_name = fac.data[0]['facility_name'] if fac.data else f_code
+
+        if request.method == 'POST':
+            import hashlib
+            staff_name = request.form.get('staff_name', '').strip()
+            password = request.form.get('password', '')
+            password2 = request.form.get('password2', '')
+            error = None
+            if not staff_name:
+                error = '名前を入力してください'
+            elif len(password) < 4:
+                error = 'パスワードは4文字以上にしてください'
+            elif password != password2:
+                error = 'パスワードが一致しません'
+            else:
+                existing = supabase.table('staffs').select('id').eq('facility_code', f_code).eq('staff_name', staff_name).eq('is_active', True).execute()
+                if existing.data:
+                    error = 'この名前は既に登録されています'
+            if error:
+                return render_template('invite.html', expired=False, token=token,
+                    facility_name=facility_name, error=error, success=False)
+            pw_hash = hashlib.sha256(password.encode()).hexdigest()
+            supabase.table('staffs').insert({
+                'facility_code': f_code,
+                'staff_name': staff_name,
+                'password_hash': pw_hash,
+                'is_active': True
+            }).execute()
+            return render_template('invite.html', expired=False, token=token,
+                facility_name=facility_name, error=None, success=True)
+
+        return render_template('invite.html', expired=False, token=token,
+            facility_name=facility_name, error=None, success=False)
+    except Exception as e:
+        return render_template('invite.html', expired=True)
+
 @app.route('/claude_view')
 def claude_view():
     """Claude用の閲覧ページ - トークン認証"""
