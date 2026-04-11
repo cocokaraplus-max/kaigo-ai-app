@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-11 11:17
+最終更新: 2026-04-11 11:43
 
 ---
 
@@ -92,6 +92,7 @@ gcloud run deploy tasukaru \
 
 ## 📝 直近の変更履歴
 
+- deploy: 2026-04-11 11:15 (2026-04-11)
 - feat: 利用者管理をセレクトボックス方式に変更 (2026-04-11)
 - feat: 利用者管理UIをアコーディオン方式に変更・ログインボタン文字白 (2026-04-11)
 - fix: TOPボタン統一・利用者名1行表示・ケース記録閲覧に変更 (2026-04-11)
@@ -101,28 +102,13 @@ gcloud run deploy tasukaru \
 - fix: ボタンをコンパクトにして名前が1行に収まるよう調整 (2026-04-11)
 - fix: 利用者名の幅を広げて2段になるのを防止 (2026-04-11)
 - fix: style.cssを完全リセット・横並びCSS追加 (2026-04-11)
-- fix: 利用者リストのボタンを横並びにスッキリ表示 (2026-04-11)
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
 - .DS_Store
-- Dockerfile
 - README.md
-- app.py
-- requirements.txt
-- static/logo.png
-- templates/admin.html
-- templates/base.html
-- templates/daily_view.html
-- templates/history.html
-- templates/input.html
-- templates/login.html
-- templates/register.html
-- templates/top.html
-- update_readme.py
-- utils.py
 
 ---
 
