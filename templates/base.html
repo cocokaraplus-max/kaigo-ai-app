@@ -262,11 +262,16 @@ async function navigateTo(url, pushState = true) {
 
         // スクリプト実行
         if (data.script) {
+            // 古いSPAスクリプトを削除
+            document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
-            const scriptEl = document.createElement('script');
-            scriptEl.textContent = scriptContent;
-            document.body.appendChild(scriptEl);
-            setTimeout(() => { try { scriptEl.remove(); } catch(e){} }, 500);
+            if (scriptContent.trim()) {
+                const scriptEl = document.createElement('script');
+                scriptEl.className = 'spa-injected-script';
+                scriptEl.textContent = scriptContent;
+                document.body.appendChild(scriptEl);
+                console.log('[SPA] script injected, length:', scriptContent.length);
+            }
         }
 
         if (pushState) {
@@ -295,17 +300,15 @@ function updateNavActive(url) {
     });
 }
 
-// ナビリンクのクリックをSPAに変換
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.bottom-nav-item[href]').forEach(link => {
-        link.addEventListener('click', e => {
-            const href = link.getAttribute('href');
-            // adminは通常遷移（認証フローが複雑なため）
-            if (href === '/admin') return;
-            e.preventDefault();
-            navigateTo(href);
-        });
-    });
+// ナビリンクのクリックをSPAに変換（イベント委譲）
+document.addEventListener('click', e => {
+    const link = e.target.closest('.bottom-nav-item[href]');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    // adminは通常遷移
+    if (href === '/admin') return;
+    e.preventDefault();
+    navigateTo(href);
 });
 
 // ブラウザの戻る/進むに対応
