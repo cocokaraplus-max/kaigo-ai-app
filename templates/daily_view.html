@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}ケース記録閲覧 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.user-accordion {
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+.user-accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: #f8f9fa;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.user-accordion-header:active { background: #f0f0f0; }
+.user-accordion-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+.user-accordion-title .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
+.user-accordion-arrow {
+    font-size: 20px;
+    color: #80868b;
+    transition: transform 0.2s;
+}
+.user-accordion-body {
+    padding: 14px 16px;
+    display: none;
+}
+.user-accordion-body.open { display: block; }
+.user-accordion-arrow.open { transform: rotate(180deg); }
+
+/* AI統合記録カード */
+.ai-record-card {
+    background: #e8f0fe;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    border-left: 4px solid #1a73e8;
+}
+.ai-record-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1557b0;
+    margin-bottom: 8px;
+}
+.ai-record-label .material-symbols-outlined { font-size: 16px; }
+.ai-record-content {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: #202124;
+    margin-bottom: 12px;
+}
+.ai-record-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+/* 個別記録 */
+.record-item {
+    padding: 12px 0;
+    border-bottom: 1px dashed #f0f0f0;
+}
+.record-item:last-child { border-bottom: none; }
+.record-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: #80868b;
+    margin-bottom: 6px;
+}
+.record-meta .material-symbols-outlined { font-size: 15px; }
+.record-content { font-size: 0.9rem; line-height: 1.7; }
+.record-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+/* 写真グリッド */
+.photo-grid {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.photo-grid img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+/* 編集エリア */
+.edit-area { margin-top: 8px; }
+.edit-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.section-subtitle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #5f6368;
+    margin-bottom: 10px;
+}
+.section-subtitle .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+
+<div class="page-title">
+    <span class="material-symbols-outlined">calendar_month</span>
+    ケース記録閲覧
+</div>
+
+<div class="form-group">
+    <label class="form-label">
+        <span class="material-symbols-outlined">today</span>
+        日付選択
+    </label>
+    <input type="date" id="date-picker" class="form-control" value="{{ selected_date }}" onchange="location.href='/daily_view?date='+this.value">
+</div>
+
+{% if not records %}
+<div class="alert alert-info">
+    <span class="material-symbols-outlined">info</span>
+    この日の記録はありません。
+</div>
+{% else %}
+{% for user, data in records.items() %}
+<div class="user-accordion" id="accordion-{{ loop.index }}">
+    <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
+        <div class="user-accordion-title">
+            <span class="material-symbols-outlined">person</span>
+            {{ user }} 様
+        </div>
+        <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
+    </div>
+    <div class="user-accordion-body {% if user == target_user %}open{% endif %}" id="body-{{ loop.index }}">
+
+        {% if data.ai_record %}
+        <div class="ai-record-card">
+            <div class="ai-record-label">
+                <span class="material-symbols-outlined">description</span>
+                {{ date_label }} ケース記録
+            </div>
+            <div class="ai-record-content">{{ data.ai_record.content }}</div>
+            <div class="ai-record-actions">
+                <button class="btn btn-sm" style="background:#1a73e8;color:white;border:none;" onclick="regenAI('{{ user }}', '{{ data.ai_record.id }}', {{ loop.index }})">
+                    <span class="material-symbols-outlined" style="color:white;">refresh</span>
+                    再生成
+                </button>
+                {% if is_admin %}
+                <button class="btn btn-sm btn-danger" onclick="deleteRecord('{{ data.ai_record.id }}')">
+                    <span class="material-symbols-outlined" style="color:white;">delete</span>
+                    削除
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <button class="btn btn-primary" style="margin-bottom:14px;" onclick="generateAI('{{ user }}', {{ loop.index }})">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            {{ date_label }} ケース記録を生成して確定
+        </button>
+        {% endif %}
+
+        <hr class="divider" style="margin:0 0 12px;">
+        <div class="section-subtitle">
+            <span class="material-symbols-outlined">notes</span>
+            個別のケース記録
+        </div>
+
+        {% for r in data.normal_records %}
+        <div class="record-item" id="record-{{ r.id }}">
+            <div class="record-meta">
+                <span class="material-symbols-outlined">schedule</span>
+                {{ r.time }} （{{ r.staff_name }}）
+            </div>
+            <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
+
+            {% if r.image_urls %}
+            <div class="photo-grid">
+                {% for url in r.image_urls %}
+                <img src="{{ url }}" alt="添付写真">
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if r.can_edit %}
+            <div class="record-actions">
+                <button class="btn btn-sm" onclick="startEdit('{{ r.id }}', `{{ r.content | replace('`', '\\`') }}`)">
+                    <span class="material-symbols-outlined">edit</span>
+                    編集
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRecord('{{ r.id }}')">
+                    <span class="material-symbols-outlined" style="color:white;">delete</span>
+                    削除
+                </button>
+            </div>
+            {% endif %}
+
+            <div class="edit-area" id="edit-area-{{ r.id }}" style="display:none;">
+                <textarea class="form-control" id="edit-text-{{ r.id }}" style="min-height:120px;"></textarea>
+                <div class="edit-actions">
+                    <button class="btn btn-primary btn-sm" onclick="saveEdit('{{ r.id }}')">
+                        <span class="material-symbols-outlined" style="color:white;">save</span>
+                        確定
+                    </button>
+                    <button class="btn btn-sm" onclick="cancelEdit('{{ r.id }}')">
+                        <span class="material-symbols-outlined">close</span>
+                        キャンセル
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const selectedDate = "{{ selected_date }}";
+
+function toggleAccordion(idx, user) {
+    const body = document.getElementById('body-' + idx);
+    const arrow = document.getElementById('arrow-' + idx);
+    body.classList.toggle('open');
+    arrow.classList.toggle('open');
+}
+
+function startEdit(id, content) {
+    document.getElementById('edit-text-' + id).value = content;
+    document.getElementById('edit-area-' + id).style.display = 'block';
+}
+function cancelEdit(id) {
+    document.getElementById('edit-area-' + id).style.display = 'none';
+}
+async function saveEdit(id) {
+    const content = document.getElementById('edit-text-' + id).value;
+    const res = await fetch('/api/update_record', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id, content })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+async function deleteRecord(id) {
+    if (!confirm('削除しますか？')) return;
+    const res = await fetch('/api/delete_record', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+async function generateAI(user, idx) {
+    const btn = document.querySelector(`#accordion-${idx} .btn-primary`);
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...';
+    btn.disabled = true;
+    const res = await fetch('/api/generate_daily', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ user, date: selectedDate })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+    else { btn.innerHTML = '再試行'; btn.disabled = false; }
+}
+async function regenAI(user, aiId, idx) {
+    const btn = document.querySelector(`#accordion-${idx} .ai-record-actions .btn`);
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...';
+    btn.disabled = true;
+    const res = await fetch('/api/regenerate_daily', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ user, date: selectedDate, ai_record_id: aiId })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+</script>
+{% endblock %}

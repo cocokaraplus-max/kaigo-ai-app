@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-11 07:56
+最終更新: 2026-04-11 11:17
 
 ---
 
@@ -16,23 +16,17 @@
 
 ---
 
-## ✨ 主要機能
-
-- **AI文章化** : 音声・画像から介護記録を自動生成（Gemini 1.5 Flash）
-- **AI統合** : 1日の断片的な記録を1つのケース記録に統合
-- **モニタリング生成** : 1ヶ月の記録を解析して要約作成
-- **現場特化UI** : ひらがな検索・直感的操作・端末制限セキュリティ
-
----
-
 ## 🛠️ 技術スタック
 
 | 種類 | 内容 |
 |------|------|
-| 言語 / FW | Python / Streamlit |
+| 言語 / FW | Python / Flask |
+| テンプレート | Jinja2 |
+| アイコン | Material Symbols (Google Fonts) |
 | データベース | Supabase (PostgreSQL) |
-| AI エンジン | Google Gemini 1.5 Flash |
-| インフラ | GitHub + Streamlit Cloud |
+| AI エンジン | Google Gemini 2.5 Flash |
+| インフラ | Cloud Run (asia-northeast1) |
+| コンテナ | Docker / gunicorn |
 
 ---
 
@@ -40,37 +34,65 @@
 
 | ファイル | 役割 |
 |---------|------|
-| `app.py` | メイン・ページルーティング・ログイン処理 |
-| `views.py` | 各画面の描画（TOP・入力・履歴・統合・管理） |
-| `utils.py` | 共通関数・Gemini AI・クッキー管理 |
+| `app.py` | Flask メイン・ルーティング・API |
+| `utils.py` | Gemini AI・Supabase画像アップロード |
+| `Dockerfile` | Cloud Run用コンテナ設定 |
 | `requirements.txt` | 使用ライブラリ一覧 |
 | `update_readme.py` | README自動更新スクリプト |
+| `templates/base.html` | 共通レイアウト・Material Symbols読み込み |
+| `templates/login.html` | ログイン画面 |
+| `templates/register.html` | 施設新規登録画面 |
+| `templates/top.html` | TOP画面・更新履歴 |
+| `templates/input.html` | 記録入力・音声AI文章化 |
+| `templates/daily_view.html` | ケース記録閲覧・AI統合 |
+| `templates/history.html` | モニタリング生成 |
+| `templates/admin.html` | 管理者メニュー |
+| `static/logo.png` | TASUKARUロゴ |
 
 ---
 
-## ⚙️ Streamlit Secrets 設定項目
+## 🌐 アプリURL
 
-```toml
-SUPABASE_URL = "https://xxxxxxxxxx.supabase.co"
-SUPABASE_KEY = "eyJhbGci...（anonキー・1行で）"
-GEMINI_API_KEY = "AIzaSy..."
-COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）"
+| 環境 | URL |
+|------|-----|
+| 本番 (Streamlit) | https://tasukaru-39.web.app |
+| Cloud Run | https://tasukaru-191764727533.asia-northeast1.run.app |
+| 登録ページ | https://tasukaru-191764727533.asia-northeast1.run.app/register |
+
+---
+
+## ⚙️ 環境変数 (Cloud Run)
+
+```
+SUPABASE_URL
+SUPABASE_KEY
+GEMINI_API_KEY
+SECRET_KEY
+SENDGRID_API_KEY
+SENDGRID_FROM_EMAIL
 ```
 
 ---
 
-## ✅ 解決済みのバグ
+## 🚀 デプロイ手順
 
-- `set_page_config` をファイルの先頭に移動（Streamlitのルール）
-- `SUPABASE_KEY` の改行混入を `.strip()` で自動除去
-- Gemini モデル名を `gemini-pro` → `gemini-1.5-flash` に修正
-- `.gitignore` を作成して `secrets.toml` をGitHub非公開に設定
-- `views.py` の変数名衝突（`m`）を修正
+```bash
+# 1. README更新 → commit → Cloud Runデプロイ を一発で実行
+python update_readme.py
+
+# 手動でデプロイのみ実行したい場合
+gcloud run deploy tasukaru \
+  --source . \
+  --region asia-northeast1 \
+  --platform managed \
+  --allow-unauthenticated
+```
 
 ---
 
 ## 📝 直近の変更履歴
 
+- feat: 利用者管理をセレクトボックス方式に変更 (2026-04-11)
 - feat: 利用者管理UIをアコーディオン方式に変更・ログインボタン文字白 (2026-04-11)
 - fix: TOPボタン統一・利用者名1行表示・ケース記録閲覧に変更 (2026-04-11)
 - fix: ログインボタン文字白・TOPボタン統一・テキスト修正 (2026-04-11)
@@ -80,13 +102,27 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 - fix: 利用者名の幅を広げて2段になるのを防止 (2026-04-11)
 - fix: style.cssを完全リセット・横並びCSS追加 (2026-04-11)
 - fix: 利用者リストのボタンを横並びにスッキリ表示 (2026-04-11)
-- fix: render_admin_menu を正しく復元・インデントエラー修正 (2026-04-11)
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
-- views.py
+- .DS_Store
+- Dockerfile
+- README.md
+- app.py
+- requirements.txt
+- static/logo.png
+- templates/admin.html
+- templates/base.html
+- templates/daily_view.html
+- templates/history.html
+- templates/input.html
+- templates/login.html
+- templates/register.html
+- templates/top.html
+- update_readme.py
+- utils.py
 
 ---
 
@@ -95,5 +131,13 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 新しい会話を始めるときはこのREADME.mdを貼り付けてください。
 以下のファイルも一緒に共有すると素早く再開できます：
 - `app.py`
-- `views.py`
 - `utils.py`
+- 修正したテンプレートHTML
+
+## 🗂️ ブランチ構成
+
+| ブランチ | 役割 |
+|----------|------|
+| `main` | Streamlit版・本番稼働中 |
+| `develop` | mainの裏操作・修正用 |
+| `cloudrun` | Flask版・開発中 ← 現在作業中 |

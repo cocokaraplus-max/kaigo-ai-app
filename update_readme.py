@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-commit するたびに README.md を自動更新するスクリプト
-Git Hook (pre-commit) から自動で呼び出されます
+commit & deploy するたびに README.md を自動更新するスクリプト
+使い方: python update_readme.py
 """
 import subprocess
 from datetime import datetime
 
-# ==========================================
-# 直近のcommit履歴を取得
-# ==========================================
 def get_recent_commits(n=10):
     try:
         result = subprocess.run(
@@ -19,9 +16,6 @@ def get_recent_commits(n=10):
     except:
         return "- （取得できませんでした）"
 
-# ==========================================
-# 最後に変更されたファイル一覧を取得
-# ==========================================
 def get_changed_files():
     try:
         result = subprocess.run(
@@ -33,9 +27,6 @@ def get_changed_files():
     except:
         return "- （取得できませんでした）"
 
-# ==========================================
-# README.md を生成
-# ==========================================
 def generate_readme():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     commits = get_recent_commits()
@@ -59,23 +50,17 @@ def generate_readme():
 
 ---
 
-## ✨ 主要機能
-
-- **AI文章化** : 音声・画像から介護記録を自動生成（Gemini 1.5 Flash）
-- **AI統合** : 1日の断片的な記録を1つのケース記録に統合
-- **モニタリング生成** : 1ヶ月の記録を解析して要約作成
-- **現場特化UI** : ひらがな検索・直感的操作・端末制限セキュリティ
-
----
-
 ## 🛠️ 技術スタック
 
 | 種類 | 内容 |
 |------|------|
-| 言語 / FW | Python / Streamlit |
+| 言語 / FW | Python / Flask |
+| テンプレート | Jinja2 |
+| アイコン | Material Symbols (Google Fonts) |
 | データベース | Supabase (PostgreSQL) |
-| AI エンジン | Google Gemini 1.5 Flash |
-| インフラ | GitHub + Streamlit Cloud |
+| AI エンジン | Google Gemini 2.5 Flash |
+| インフラ | Cloud Run (asia-northeast1) |
+| コンテナ | Docker / gunicorn |
 
 ---
 
@@ -83,32 +68,59 @@ def generate_readme():
 
 | ファイル | 役割 |
 |---------|------|
-| `app.py` | メイン・ページルーティング・ログイン処理 |
-| `views.py` | 各画面の描画（TOP・入力・履歴・統合・管理） |
-| `utils.py` | 共通関数・Gemini AI・クッキー管理 |
+| `app.py` | Flask メイン・ルーティング・API |
+| `utils.py` | Gemini AI・Supabase画像アップロード |
+| `Dockerfile` | Cloud Run用コンテナ設定 |
 | `requirements.txt` | 使用ライブラリ一覧 |
 | `update_readme.py` | README自動更新スクリプト |
+| `templates/base.html` | 共通レイアウト・Material Symbols読み込み |
+| `templates/login.html` | ログイン画面 |
+| `templates/register.html` | 施設新規登録画面 |
+| `templates/top.html` | TOP画面・更新履歴 |
+| `templates/input.html` | 記録入力・音声AI文章化 |
+| `templates/daily_view.html` | ケース記録閲覧・AI統合 |
+| `templates/history.html` | モニタリング生成 |
+| `templates/admin.html` | 管理者メニュー |
+| `static/logo.png` | TASUKARUロゴ |
 
 ---
 
-## ⚙️ Streamlit Secrets 設定項目
+## 🌐 アプリURL
 
-```toml
-SUPABASE_URL = "https://xxxxxxxxxx.supabase.co"
-SUPABASE_KEY = "eyJhbGci...（anonキー・1行で）"
-GEMINI_API_KEY = "AIzaSy..."
-COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）"
+| 環境 | URL |
+|------|-----|
+| 本番 (Streamlit) | https://tasukaru-39.web.app |
+| Cloud Run | https://tasukaru-191764727533.asia-northeast1.run.app |
+| 登録ページ | https://tasukaru-191764727533.asia-northeast1.run.app/register |
+
+---
+
+## ⚙️ 環境変数 (Cloud Run)
+
+```
+SUPABASE_URL
+SUPABASE_KEY
+GEMINI_API_KEY
+SECRET_KEY
+SENDGRID_API_KEY
+SENDGRID_FROM_EMAIL
 ```
 
 ---
 
-## ✅ 解決済みのバグ
+## 🚀 デプロイ手順
 
-- `set_page_config` をファイルの先頭に移動（Streamlitのルール）
-- `SUPABASE_KEY` の改行混入を `.strip()` で自動除去
-- Gemini モデル名を `gemini-pro` → `gemini-1.5-flash` に修正
-- `.gitignore` を作成して `secrets.toml` をGitHub非公開に設定
-- `views.py` の変数名衝突（`m`）を修正
+```bash
+# 1. README更新 → commit → Cloud Runデプロイ を一発で実行
+python update_readme.py
+
+# 手動でデプロイのみ実行したい場合
+gcloud run deploy tasukaru \\
+  --source . \\
+  --region asia-northeast1 \\
+  --platform managed \\
+  --allow-unauthenticated
+```
 
 ---
 
@@ -129,19 +141,52 @@ COOKIES_PASSWORD = "任意の長い文字列（一度決めたら変えない）
 新しい会話を始めるときはこのREADME.mdを貼り付けてください。
 以下のファイルも一緒に共有すると素早く再開できます：
 - `app.py`
-- `views.py`
 - `utils.py`
+- 修正したテンプレートHTML
+
+## 🗂️ ブランチ構成
+
+| ブランチ | 役割 |
+|----------|------|
+| `main` | Streamlit版・本番稼働中 |
+| `develop` | mainの裏操作・修正用 |
+| `cloudrun` | Flask版・開発中 ← 現在作業中 |
 """
     return content
 
-# ==========================================
-# メイン処理
-# ==========================================
 if __name__ == "__main__":
+    import sys
+
+    print("📝 README.md を更新中...")
     readme = generate_readme()
     with open("README.md", "w", encoding="utf-8") as f:
         f.write(readme)
     print("✅ README.md を更新しました")
 
-    # 更新したREADME.mdをcommitに含める
-    subprocess.run(["git", "add", "README.md"])
+    # コミットメッセージはコマンドライン引数から受け取る
+    # 使い方: python update_readme.py "メッセージ"
+    if len(sys.argv) > 1:
+        msg = " ".join(sys.argv[1:])
+    else:
+        msg = f"deploy: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+    print(f"\n💬 コミットメッセージ: {msg}")
+    print("\n📦 git add & commit...")
+    subprocess.run(["git", "add", "."])
+    subprocess.run(["git", "commit", "-m", msg])
+    subprocess.run(["git", "push", "origin", "cloudrun"])
+
+    print("\n🚀 Cloud Run にデプロイ中...")
+    result = subprocess.run([
+        "gcloud", "run", "deploy", "tasukaru",
+        "--source", ".",
+        "--region", "asia-northeast1",
+        "--platform", "managed",
+        "--allow-unauthenticated"
+    ])
+
+    if result.returncode == 0:
+        print("\n✅ デプロイ完了！")
+        print("🌐 https://tasukaru-191764727533.asia-northeast1.run.app")
+    else:
+        print("\n❌ デプロイに失敗しました。エラーを確認してください。")

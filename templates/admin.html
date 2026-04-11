@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}管理者MENU - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.tab-bar {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    margin-bottom: 1.2rem;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-item {
+    white-space: nowrap;
+    padding: 8px 14px;
+    border-radius: 20px;
+    border: 1.5px solid #E0E0E0;
+    background: #FFFFFF;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.tab-item .material-symbols-outlined { font-size: 15px; }
+.tab-item.active {
+    background: #e8f0fe;
+    color: #1a73e8;
+    border-color: #1a73e8;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.patient-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    gap: 10px;
+}
+.patient-card .material-symbols-outlined { color: #5f6368; font-size: 18px; }
+.patient-info { flex: 1; }
+.patient-name { font-weight: 600; font-size: 0.9rem; }
+.patient-kana { font-size: 0.78rem; color: #80868b; }
+
+.staff-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    gap: 10px;
+}
+.staff-card .material-symbols-outlined { font-size: 18px; }
+
+.section-box {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+}
+.section-box-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #202124;
+    margin-bottom: 12px;
+}
+.section-box-title .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+
+<div class="page-title">
+    <span class="material-symbols-outlined">admin_panel_settings</span>
+    管理者MENU
+</div>
+
+{% if not authenticated %}
+<div class="form-group">
+    <label class="form-label">
+        <span class="material-symbols-outlined">lock</span>
+        パスワード
+    </label>
+    <input type="password" id="admin-pw" class="form-control">
+</div>
+{% if error %}
+<div class="alert alert-error">
+    <span class="material-symbols-outlined">error</span>
+    {{ error }}
+</div>
+{% endif %}
+<button class="btn btn-primary" onclick="adminLogin()">
+    <span class="material-symbols-outlined">login</span>
+    認証
+</button>
+
+{% else %}
+
+<div class="tab-bar">
+    <button class="tab-item active" onclick="switchTab('patients', this)">
+        <span class="material-symbols-outlined">group</span>利用者管理
+    </button>
+    <button class="tab-item" onclick="switchTab('invite', this)">
+        <span class="material-symbols-outlined">person_add</span>職員招待
+    </button>
+    <button class="tab-item" onclick="switchTab('settings', this)">
+        <span class="material-symbols-outlined">settings</span>設定
+    </button>
+    <button class="tab-item" onclick="switchTab('security', this)">
+        <span class="material-symbols-outlined">security</span>セキュリティ
+    </button>
+    <button class="tab-item" onclick="switchTab('staff', this)">
+        <span class="material-symbols-outlined">manage_accounts</span>スタッフ管理
+    </button>
+</div>
+
+<!-- 利用者管理 -->
+<div class="tab-panel active" id="tab-patients">
+    <div class="section-box">
+        <div class="section-box-title">
+            <span class="material-symbols-outlined">person_add</span>新規登録
+        </div>
+        <div class="form-group">
+            <label class="form-label">No</label>
+            <input type="text" id="new-chart" class="form-control">
+        </div>
+        <div class="form-group">
+            <label class="form-label">氏名</label>
+            <input type="text" id="new-name" class="form-control">
+        </div>
+        <div class="form-group">
+            <label class="form-label">かな</label>
+            <input type="text" id="new-kana" class="form-control">
+        </div>
+        <button class="btn btn-primary" onclick="addPatient()">
+            <span class="material-symbols-outlined">add</span>登録
+        </button>
+    </div>
+
+    <div id="patient-list">
+        {% for p in patients %}
+        <div class="patient-card" id="pc-{{ p.id }}">
+            <span class="material-symbols-outlined">person</span>
+            <div class="patient-info">
+                <div class="patient-name">No.{{ p.chart_number }} {{ p.user_name }}</div>
+                <div class="patient-kana">{{ p.user_kana }}</div>
+            </div>
+            <button class="btn btn-sm" onclick="deletePatient('{{ p.id }}', '{{ p.user_name }}')">
+                <span class="material-symbols-outlined" style="color:#ea4335;">delete</span>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 職員招待 -->
+<div class="tab-panel" id="tab-invite">
+    <div class="alert alert-info">
+        <span class="material-symbols-outlined">info</span>
+        職員招待機能は近日公開予定です。
+    </div>
+</div>
+
+<!-- 設定 -->
+<div class="tab-panel" id="tab-settings">
+    <div class="section-box">
+        <div class="section-box-title">
+            <span class="material-symbols-outlined">lock_reset</span>パスワード変更
+        </div>
+        <div class="form-group">
+            <input type="password" id="new-pw" class="form-control" placeholder="新しいパスワード">
+        </div>
+        <button class="btn btn-primary" onclick="updatePassword()">
+            <span class="material-symbols-outlined">save</span>更新
+        </button>
+    </div>
+
+    <div class="section-box">
+        <div class="section-box-title">
+            <span class="material-symbols-outlined">format_list_numbered</span>履歴の表示件数
+        </div>
+        <input type="range" id="hist-limit" min="10" max="100" value="{{ hist_limit }}" style="width:100%;" oninput="document.getElementById('hist-val').textContent=this.value">
+        <div style="text-align:center; font-weight:700; margin:8px 0;" id="hist-val">{{ hist_limit }}</div>
+        <button class="btn btn-primary" onclick="updateHistLimit()">
+            <span class="material-symbols-outlined">save</span>保存
+        </button>
+    </div>
+</div>
+
+<!-- セキュリティ -->
+<div class="tab-panel" id="tab-security">
+    {% if blocked %}
+    {% for b in blocked %}
+    <div class="staff-card">
+        <span class="material-symbols-outlined" style="color:#ea4335;">block</span>
+        <div style="flex:1; font-weight:600;">{{ b.staff_name or b.device_id }}</div>
+        <button class="btn btn-sm" onclick="unblockDevice('{{ b.id }}')">
+            <span class="material-symbols-outlined">lock_open</span>復帰
+        </button>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="alert alert-info">
+        <span class="material-symbols-outlined">info</span>
+        ブロック中のスタッフはいません。
+    </div>
+    {% endif %}
+</div>
+
+<!-- スタッフ管理 -->
+<div class="tab-panel" id="tab-staff">
+    {% for s in staff_list %}
+    <div class="staff-card">
+        <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
+            {% if s.blocked %}block{% else %}person{% endif %}
+        </span>
+        <div style="flex:1; font-weight:600;">{{ s.name }}</div>
+        {% if not s.blocked %}
+        <button class="btn btn-sm btn-danger" onclick="blockStaff('{{ s.name }}')">
+            <span class="material-symbols-outlined" style="color:white;">block</span>
+            ブロック
+        </button>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<button class="btn" style="margin-top:1.5rem;" onclick="adminLogout()">
+    <span class="material-symbols-outlined">logout</span>
+    管理者終了
+</button>
+
+{% endif %}
+
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function switchTab(name, el) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    el.classList.add('active');
+}
+
+async function adminLogin() {
+    const pw = document.getElementById('admin-pw').value;
+    const res = await fetch('/api/admin_login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    if (data.status === 'success') location.reload();
+    else alert('パスワードが違います');
+}
+
+async function adminLogout() {
+    await fetch('/api/admin_logout', { method: 'POST' });
+    location.reload();
+}
+
+async function addPatient() {
+    const chart = document.getElementById('new-chart').value;
+    const name = document.getElementById('new-name').value;
+    const kana = document.getElementById('new-kana').value;
+    if (!chart || !name) { alert('NoとNo氏名は必須です'); return; }
+    const res = await fetch('/api/add_patient', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ chart, name, kana })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+
+async function deletePatient(id, name) {
+    if (!confirm(`「${name}」を削除しますか？`)) return;
+    const res = await fetch('/api/delete_patient', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') document.getElementById('pc-' + id).remove();
+}
+
+async function updatePassword() {
+    const pw = document.getElementById('new-pw').value;
+    if (!pw) return;
+    const res = await fetch('/api/update_password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ password: pw })
+    });
+    if ((await res.json()).status === 'success') alert('パスワードを更新しました');
+}
+
+async function updateHistLimit() {
+    const limit = document.getElementById('hist-limit').value;
+    await fetch('/api/update_hist_limit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ limit })
+    });
+    alert('保存しました');
+}
+
+async function blockStaff(name) {
+    if (!confirm(`「${name}」をブロックしますか？`)) return;
+    const res = await fetch('/api/block_staff', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+
+async function unblockDevice(id) {
+    const res = await fetch('/api/unblock_device', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+}
+</script>
+{% endblock %}

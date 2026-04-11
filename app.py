@@ -1,162 +1,630 @@
-import streamlit as st
-
-st.set_page_config(page_title="TASUKARU", page_icon="🦝", layout="centered", initial_sidebar_state="collapsed")
-
-
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from supabase import create_client
+from datetime import datetime, timedelta, time as dt_time, timezone
 import os
+import pytz
+import re
+import base64
+import json
 
-def load_css():
-    css_path = os.path.join(os.path.dirname(__file__), 'style.css')
-    if os.path.exists(css_path):
-        with open(css_path) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
 
-load_css()
-st.markdown('<style>:root,html,body,.stApp{color-scheme:light!important;background-color:#FFFFFF!important}p,span,label,h1,h2,h3{color:#202124!important;-webkit-text-fill-color:#202124!important}</style>', unsafe_allow_html=True)
-from supabase import create_client, Client
-from views import render_top, render_input, render_history, render_daily_view, render_admin_menu, render_super_admin
-from utils import cookie_manager, display_logo, encode_login_token, decode_login_token, get_secret, save_session, load_session, send_temp_password_email
-import uuid
+tokyo_tz = pytz.timezone('Asia/Tokyo')
 
-try:
+# ==========================================
+# 設定・DB接続
+# ==========================================
+def get_secret(key):
+    return os.environ.get(key, "")
+
+def get_supabase():
     url = get_secret("SUPABASE_URL").strip()
     key = get_secret("SUPABASE_KEY").strip()
-    if not url or not key:
-        raise KeyError("SUPABASE_URL or SUPABASE_KEY not set")
-    supabase = create_client(url, key)
-except KeyError as e:
-    st.error(f"設定が見つかりません: {e}")
-    st.stop()
-except Exception as e:
-    st.error("データベースへの接続に失敗しました。")
-    st.info(f"エラー詳細: {e}")
-    st.stop()
+    return create_client(url, key)
 
-if "page" not in st.session_state:
-    st.session_state["page"] = "login"
-if "device_id" not in st.session_state:
-    st.session_state["device_id"] = str(uuid.uuid4())
-for k in ["edit_content", "monitoring_result", "admin_authenticated"]:
-    if k not in st.session_state:
-        st.session_state[k] = "" if "content" in k else False
+# ==========================================
+# ログイン必須デコレータ
+# ==========================================
+from functools import wraps
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("f_code") or not session.get("my_name"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
 
-params = st.query_params
-if "token" in params and st.session_state["page"] == "login":
-    f, n = load_session(supabase, params["token"])
-    if f and n:
-        cookie_manager["saved_f_code"] = f
-        cookie_manager["saved_my_name"] = n
-        st.session_state["page"] = "top"
+# ==========================================
+# 共通ヘルパー
+# ==========================================
+def parse_jst(iso_str, fmt='%H:%M'):
+    try:
+        dt = datetime.fromisoformat(str(iso_str).replace('Z', '+00:00'))
+        return dt.astimezone(tokyo_tz).strftime(fmt)
+    except:
+        return str(iso_str)[11:16]
 
-def render_register():
-    import random, string
-    display_logo(show_line=False)
-    st.markdown("<h3 style='text-align:center'>施設新規登録</h3>", unsafe_allow_html=True)
-    facility_code = st.text_input("施設コード（自分で決めてください）")
-    facility_name = st.text_input("施設名")
-    admin_email = st.text_input("管理者メールアドレス")
-    if st.button("登録する", type="primary", use_container_width=True):
-        if facility_code and facility_name and admin_email:
+def parse_jst_date(iso_str):
+    try:
+        dt = datetime.fromisoformat(str(iso_str).replace('Z', '+00:00'))
+        return dt.astimezone(tokyo_tz).date()
+    except:
+        return datetime.now(tokyo_tz).date()
+
+def get_patients(supabase, f_code):
+    try:
+        res = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+        patients = []
+        for r in res.data:
+            kana = r.get('user_kana') or ""
+            patients.append({
+                "value": f"(No.{r['chart_number']}) [{r['user_name']}] {kana}",
+                "label": f"(No.{r['chart_number']}) [{r['user_name']}] {kana}",
+                "id": r["id"],
+                "chart_number": r["chart_number"],
+                "user_name": r["user_name"],
+                "user_kana": kana,
+            })
+        return patients
+    except:
+        return []
+
+DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日のケース記録です。
+これらを介護職員間の申し送りとして、一つの文章にまとめてください。
+
+【ルール】
+・箇条書きや「・」は絶対に使わない。必ず一つながりの文章で書く
+・利用者名などの主語は不要
+・職員名は不要
+・「支援内容」として記録されている事柄は必ず要約して含める
+・変化・気になる点・注意事項を優先して記載
+・です・ます調で書く
+
+【記録】
+{records}
+"""
+
+# ==========================================
+# ページルート
+# ==========================================
+
+@app.route('/')
+def index():
+    if session.get("f_code"):
+        return redirect(url_for("top"))
+    return redirect(url_for("login"))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    saved_f_code = session.get("saved_f_code", "")
+
+    if request.method == 'POST':
+        f_code = request.form.get("f_code", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not f_code or not password:
+            error = "施設コードとパスワードを入力してください。"
+        else:
             try:
+                supabase = get_supabase()
+                fac = supabase.table("facilities").select(
+                    "facility_name,is_active,expires_at,admin_password"
+                ).eq("facility_code", f_code).execute()
+
+                if not fac.data:
+                    error = "この施設コードは登録されていません。"
+                else:
+                    fac_data = fac.data[0]
+                    if not fac_data.get("is_active", True):
+                        error = "この施設コードは無効です。"
+                    else:
+                        expires = datetime.fromisoformat(
+                            str(fac_data.get("expires_at", "")).replace("Z", "+00:00")
+                        )
+                        if expires < datetime.now(timezone.utc):
+                            error = "この施設コードの有効期限が切れています。"
+                        else:
+                            import hashlib
+                            def verify_password(pw, hashed):
+                                return hashlib.sha256(pw.encode()).hexdigest() == hashed
+
+                            admin_pw = fac_data.get("admin_password", "")
+                            staff = supabase.table("staffs").select("*").eq(
+                                "facility_code", f_code
+                            ).eq("is_active", True).execute()
+
+                            matched_staff = None
+                            for s in staff.data:
+                                if verify_password(password, s["password_hash"]):
+                                    matched_staff = s
+                                    break
+
+                            is_admin = (password == admin_pw)
+                            if not is_admin and not matched_staff:
+                                error = "パスワードが違います。"
+                            else:
+                                my_name = "管理者" if is_admin else matched_staff["staff_name"]
+                                session["f_code"] = f_code
+                                session["my_name"] = my_name
+                                session["saved_f_code"] = f_code
+                                return redirect(url_for("top"))
+            except Exception as e:
+                error = f"ログイン中にエラーが発生しました: {e}"
+
+    return render_template("login.html", error=error, saved_f_code=saved_f_code)
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    error = None
+    success = None
+    if request.method == 'POST':
+        facility_code = request.form.get("facility_code", "").strip()
+        facility_name = request.form.get("facility_name", "").strip()
+        admin_email = request.form.get("admin_email", "").strip()
+        if not facility_code or not facility_name or not admin_email:
+            error = "全項目を入力してください。"
+        else:
+            try:
+                import random, string
+                supabase = get_supabase()
                 existing = supabase.table("facilities").select("facility_code").eq("facility_code", facility_code).execute()
                 if existing.data:
-                    st.error("この施設コードはすでに使われています。別のコードを入力してください。")
+                    error = "この施設コードはすでに使われています。"
                 else:
                     temp_pw = "".join(random.choices(string.ascii_letters + string.digits, k=10))
-                    supabase.table("facilities").insert({"facility_code": facility_code, "facility_name": facility_name, "admin_password": temp_pw, "plan_limit": 99999, "is_active": True}).execute()
-                    send_temp_password_email(admin_email, facility_name, facility_code, temp_pw)
-                    st.success("登録完了！メールをご確認ください。")
+                    supabase.table("facilities").insert({
+                        "facility_code": facility_code,
+                        "facility_name": facility_name,
+                        "admin_password": temp_pw,
+                        "plan_limit": 99999,
+                        "is_active": True
+                    }).execute()
+                    success = "登録完了！メールをご確認ください。"
             except Exception as e:
-                st.error(f"登録エラー: {e}")
+                error = f"登録エラー: {e}"
+    return render_template("register.html", error=error, success=success)
+
+@app.route('/top')
+@login_required
+def top():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+
+    hist_limit = 30
+    try:
+        res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
+        if res_l.data:
+            hist_limit = int(res_l.data[0]['value'])
+    except:
+        pass
+
+    records = []
+    try:
+        res_hist = supabase.table("records").select(
+            "id, user_name, staff_name, created_at"
+        ).eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit * 2).execute()
+        if res_hist.data:
+            filtered = [r for r in res_hist.data if r['staff_name'] != "AI統合記録"][:hist_limit]
+            for r in filtered:
+                records.append({
+                    "user_name": r["user_name"],
+                    "time": parse_jst(r["created_at"]),
+                    "date": str(parse_jst_date(r["created_at"])),
+                })
+    except:
+        pass
+
+    return render_template("top.html", f_code=f_code, my_name=my_name, records=records)
+
+@app.route('/input', methods=['GET', 'POST'])
+@login_required
+def input_view():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    error = None
+    success = None
+    content = ""
+    selected_patient = ""
+
+    if request.method == 'POST':
+        sel = request.form.get("patient", "")
+        record_date = request.form.get("record_date", today)
+        content = request.form.get("content", "").strip()
+        photos = request.files.getlist("photos")
+
+        if not sel or sel == "" or not content:
+            error = "利用者と内容を入力してください。"
         else:
-            st.warning("全項目を入力してください。")
-def render_login():
-    display_logo(show_line=False)
-    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
-    saved_f = cookie_manager.get("saved_f_code") or ""
-    f_code = st.text_input("施設コード", value=saved_f)
-    password = st.text_input("パスワード", type="password")
-    if st.button("ログイン", use_container_width=True, type="primary"):
-        if f_code and password:
             try:
-                fac = supabase.table("facilities").select("facility_name,is_active,expires_at,admin_password").eq("facility_code", f_code).execute()
-                if not fac.data:
-                    st.error("この施設コードは登録されていません。")
-                    st.stop()
-                from datetime import datetime, timezone
-                fac_data = fac.data[0]
-                if not fac_data.get("is_active", True):
-                    st.error("この施設コードは無効です。")
-                    st.stop()
-                expires = datetime.fromisoformat(str(fac_data.get("expires_at","")).replace("Z","+00:00"))
-                if expires < datetime.now(timezone.utc):
-                    st.error("この施設コードの有効期限が切れています。")
-                    st.stop()
-                from utils import hash_password, verify_password
-                admin_pw = fac_data.get("admin_password", "")
-                staff = supabase.table("staffs").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
-                matched_staff = None
-                for s in staff.data:
-                    if verify_password(password, s["password_hash"]):
-                        matched_staff = s
-                        break
-                is_admin = (password == admin_pw)
-                if not is_admin and not matched_staff:
-                    st.error("パスワードが違います。")
-                    st.stop()
-                my_name = "管理者" if is_admin else matched_staff["staff_name"]
-                cookie_manager["saved_f_code"] = f_code
-                cookie_manager["saved_my_name"] = my_name
-                token = encode_login_token(f_code, my_name)
-                st.query_params["token"] = token
-                save_session(supabase, token, f_code, my_name)
-                st.session_state["page"] = "top"
-                st.rerun()
+                m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
+                if m:
+                    from utils import upload_images_to_supabase
+                    image_urls = []
+                    if photos and photos[0].filename:
+                        image_urls = upload_images_to_supabase(supabase, photos, f_code)
+
+                    from datetime import time as dt_time
+                    record_time = datetime.now(tokyo_tz).time()
+                    dt_record = tokyo_tz.localize(datetime.combine(
+                        datetime.strptime(record_date, "%Y-%m-%d").date(),
+                        record_time
+                    ))
+                    supabase.table("records").insert({
+                        "facility_code": f_code,
+                        "chart_number": m.group(1),
+                        "user_name": m.group(2),
+                        "staff_name": my_name,
+                        "content": content,
+                        "created_at": dt_record.isoformat(),
+                        "image_urls": image_urls if image_urls else None
+                    }).execute()
+                    content = ""
+                    selected_patient = ""
+                    return redirect(url_for("daily_view"))
             except Exception as e:
-                if "StopException" in str(type(e).__name__):
-                    raise
-                st.error("ログイン中にエラーが発生しました。")
-                st.caption(f"エラー詳細: {e}")
-        else:
-            st.warning("施設コードとパスワードを入力してください。")
-params_now = st.query_params
-if "register" in params_now:
-    render_register()
-    st.stop()
+                error = f"保存に失敗しました: {e}"
 
-f_code = cookie_manager.get("saved_f_code")
-my_name = cookie_manager.get("saved_my_name")
+    return render_template("input.html",
+        patients=patients, today=today, content=content,
+        selected_patient=selected_patient, error=error, success=success
+    )
 
-if st.session_state["page"] == "login":
-    render_login()
-elif not f_code or not my_name:
-    st.session_state["page"] = "login"
-    st.rerun()
-else:
-    p = st.session_state["page"]
-    if p == "top":
-        render_top(supabase, cookie_manager, f_code, my_name)
-    elif p == "input":
-        render_input(supabase, cookie_manager, f_code, my_name)
-    elif p == "history":
-        render_history(supabase, cookie_manager, f_code, my_name)
-    elif p == "daily_view":
-        render_daily_view(supabase, cookie_manager, f_code, my_name)
-    elif p == "admin":
-        render_admin_menu(supabase, cookie_manager, f_code, my_name, st.session_state.get("device_id"))
-    st.divider()
-    params_now = st.query_params
-    if "superadmin" in params_now:
-        if not st.session_state.get("super_authenticated"):
-            pw = st.text_input("開発者パスワード", type="password", key="super_pw")
-            if st.button("認証", key="super_auth_btn"):
-                if pw == get_secret("SUPER_ADMIN_PASSWORD"):
-                    st.session_state["super_authenticated"] = True
-                    st.rerun()
+@app.route('/daily_view')
+@login_required
+def daily_view():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    is_admin = session.get("admin_authenticated", False)
+    supabase = get_supabase()
+
+    selected_date_str = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
+    target_user = request.args.get("user", "")
+
+    try:
+        selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+    except:
+        selected_date = datetime.now(tokyo_tz).date()
+
+    date_label = selected_date.strftime("%-m月%-d日")
+    t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
+
+    records = {}
+    try:
+        res = supabase.table("records").select("*").eq("facility_code", f_code).gte(
+            "created_at", t_start.isoformat()
+        ).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at").execute()
+
+        if res.data:
+            for r in res.data:
+                user = r["user_name"]
+                if user not in records:
+                    records[user] = {"ai_record": None, "normal_records": []}
+                if r["staff_name"] == "AI統合記録":
+                    records[user]["ai_record"] = r
                 else:
-                    st.error("パスワードが違います。")
-        else:
-            render_super_admin(supabase)
-    elif st.button("管理者MENU", key="admin_access_btn"):
-        st.session_state["page"] = "admin"
-        st.rerun()
+                    r["time"] = parse_jst(r["created_at"])
+                    r["can_edit"] = (str(r["staff_name"]) == str(my_name)) or is_admin
+                    records[user]["normal_records"].append(r)
+    except Exception as e:
+        pass
+
+    return render_template("daily_view.html",
+        selected_date=selected_date_str,
+        date_label=date_label,
+        target_user=target_user,
+        records=records,
+        is_admin=is_admin
+    )
+
+@app.route('/history')
+@login_required
+def history():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    now = datetime.now(tokyo_tz)
+    months = []
+    for i in range(6):
+        m = now.month - i
+        y = now.year
+        while m <= 0:
+            m += 12; y -= 1
+        months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
+    return render_template("history.html", patients=patients, months=months, result="")
+
+@app.route('/admin')
+@login_required
+def admin():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    authenticated = session.get("admin_authenticated", False)
+    supabase = get_supabase()
+
+    patients = []
+    blocked = []
+    staff_list = []
+    hist_limit = 30
+
+    if authenticated:
+        try:
+            res_p = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+            patients = res_p.data
+        except: pass
+        try:
+            res_b = supabase.table("blocked_devices").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
+            blocked = res_b.data
+        except: pass
+        try:
+            res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
+            if res_s.data:
+                names = sorted(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"]))
+                for name in names:
+                    is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
+                    staff_list.append({"name": name, "blocked": is_b})
+        except: pass
+        try:
+            res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
+            if res_l.data: hist_limit = int(res_l.data[0]['value'])
+        except: pass
+
+    return render_template("admin.html",
+        authenticated=authenticated,
+        patients=patients,
+        blocked=blocked,
+        staff_list=staff_list,
+        hist_limit=hist_limit,
+        error=None
+    )
+
+# ==========================================
+# API エンドポイント
+# ==========================================
+
+@app.route('/api/transcribe', methods=['POST'])
+@login_required
+def api_transcribe():
+    try:
+        data = request.json
+        from utils import get_generative_model
+        model = get_generative_model()
+        prompt = "以下の音声を介護記録として文章に起こしてください。\n【ルール】\n・話した内容をできるだけ忠実に文章化する\n・「あー」「えー」「えっと」などのフィラーは省略する\n・職員名や「利用者様は」などの主語は不要\n・です・ます調に整える\n・事実のみを記載し、余計な装飾は不要"
+        audio_bytes = base64.b64decode(data["audio_data"])
+        contents = [prompt, {"mime_type": data["audio_mime"], "data": audio_bytes}]
+        result = model.generate_content(contents)
+        return jsonify({"text": result.text.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate_daily', methods=['POST'])
+@login_required
+def api_generate_daily():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user = data["user"]
+        selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq(
+            "user_name", user
+        ).gte("created_at", t_start.isoformat()).lt(
+            "created_at", (t_start + timedelta(days=1)).isoformat()
+        ).execute()
+        normal_recs = [r for r in res.data if r["staff_name"] != "AI統合記録"]
+        if not normal_recs:
+            return jsonify({"status": "error", "message": "個別記録がありません"})
+        recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
+        from utils import get_generative_model
+        model = get_generative_model()
+        summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
+        c_num = normal_recs[0]["chart_number"]
+        dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
+        supabase.table("records").insert({
+            "facility_code": f_code, "chart_number": c_num, "user_name": user,
+            "staff_name": "AI統合記録", "content": summary, "created_at": dt.isoformat()
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/regenerate_daily', methods=['POST'])
+@login_required
+def api_regenerate_daily():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user = data["user"]
+        selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq(
+            "user_name", user
+        ).gte("created_at", t_start.isoformat()).lt(
+            "created_at", (t_start + timedelta(days=1)).isoformat()
+        ).execute()
+        normal_recs = [r for r in res.data if r["staff_name"] != "AI統合記録"]
+        recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
+        from utils import get_generative_model
+        model = get_generative_model()
+        summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
+        c_num = normal_recs[0]["chart_number"]
+        dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
+        supabase.table("records").delete().eq("id", data["ai_record_id"]).execute()
+        supabase.table("records").insert({
+            "facility_code": f_code, "chart_number": c_num, "user_name": user,
+            "staff_name": "AI統合記録", "content": summary, "created_at": dt.isoformat()
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/update_record', methods=['POST'])
+@login_required
+def api_update_record():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("records").update({"content": data["content"]}).eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/delete_record', methods=['POST'])
+@login_required
+def api_delete_record():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("records").delete().eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/generate_monitoring', methods=['POST'])
+@login_required
+def api_generate_monitoring():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        patient_val = data["patient"]
+        month_val = data["month"]
+        char_limit = data["char_limit"]
+        name_match = re.search(r'\[(.*?)\]', patient_val)
+        u_name = name_match.group(1) if name_match else ""
+        y, m = map(int, month_val.split("-"))
+        s_date = tokyo_tz.localize(datetime(y, m, 1))
+        e_date = (s_date + timedelta(days=32)).replace(day=1)
+        res = supabase.table("records").select("content, staff_name").eq(
+            "facility_code", f_code
+        ).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt(
+            "created_at", e_date.isoformat()
+        ).execute()
+        if not res.data:
+            return jsonify({"error": "対象期間に記録がありません。"})
+        filtered = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
+        recs = "\n".join(filtered)
+        from utils import get_generative_model
+        model = get_generative_model()
+        prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や主語は不要。箇条書きは使わず一つの文章で書いてください。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
+        result = model.generate_content([prompt]).text
+        return jsonify({"text": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin_login', methods=['POST'])
+@login_required
+def api_admin_login():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
+        cur_pw = res.data[0]['value'] if res.data else "8888"
+        if data["password"] == cur_pw:
+            session["admin_authenticated"] = True
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/admin_logout', methods=['POST'])
+def api_admin_logout():
+    session["admin_authenticated"] = False
+    return jsonify({"status": "success"})
+
+@app.route('/api/add_patient', methods=['POST'])
+@login_required
+def api_add_patient():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("patients").insert({
+            "facility_code": f_code,
+            "chart_number": data["chart"],
+            "user_name": data["name"],
+            "user_kana": data["kana"]
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/delete_patient', methods=['POST'])
+@login_required
+def api_delete_patient():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("patients").delete().eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_password', methods=['POST'])
+@login_required
+def api_update_password():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("admin_settings").upsert({
+            "facility_code": f_code, "key": "admin_password", "value": data["password"]
+        }, on_conflict="facility_code,key").execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_hist_limit', methods=['POST'])
+@login_required
+def api_update_hist_limit():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("admin_settings").upsert({
+            "facility_code": f_code, "key": "history_limit", "value": str(data["limit"])
+        }, on_conflict="facility_code,key").execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/block_staff', methods=['POST'])
+@login_required
+def api_block_staff():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("blocked_devices").insert({
+            "staff_name": data["name"], "facility_code": f_code,
+            "is_active": True, "device_id": "NAME_LOCK"
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/unblock_device', methods=['POST'])
+@login_required
+def api_unblock_device():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("blocked_devices").update({"is_active": False}).eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=False)

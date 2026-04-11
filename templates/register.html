@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}施設新規登録 - TASUKARU{% endblock %}
+
+{% block content %}
+<div class="logo-area">
+    <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
+    <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
+</div>
+
+<h2 style="text-align:center; font-size:1.1rem; font-weight:700; margin-bottom:1.5rem;">施設新規登録</h2>
+
+{% if error %}
+<div class="alert alert-error">
+    <span class="material-symbols-outlined">error</span>{{ error }}
+</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success">
+    <span class="material-symbols-outlined">check_circle</span>{{ success }}
+</div>
+{% endif %}
+
+<form method="POST" action="/register">
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">business</span>施設コード（自分で決めてください）
+        </label>
+        <input type="text" name="facility_code" class="form-control" autocapitalize="none">
+    </div>
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">apartment</span>施設名
+        </label>
+        <input type="text" name="facility_name" class="form-control">
+    </div>
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">mail</span>管理者メールアドレス
+        </label>
+        <input type="email" name="admin_email" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">
+        <span class="material-symbols-outlined">how_to_reg</span>登録する
+    </button>
+</form>
+
+<div style="text-align:center; margin-top:1.2rem;">
+    <a href="/login" style="font-size:0.82rem; color:#1a73e8; text-decoration:none;">ログインに戻る</a>
+</div>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}モニタリング生成 - TASUKARU{% endblock %}
+
+{% block content %}
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+
+<div class="page-title">
+    <span class="material-symbols-outlined">monitoring</span>
+    モニタリング生成
+</div>
+
+<div class="form-group">
+    <label class="form-label">
+        <span class="material-symbols-outlined">person</span>
+        利用者を選択（ひらがな検索OK）
+    </label>
+    <select class="form-control" id="patient-select" onchange="onPatientChange()">
+        <option value="">---</option>
+        {% for p in patients %}
+        <option value="{{ p.value }}" {% if selected_patient == p.value %}selected{% endif %}>{{ p.label }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<div id="options-area" style="display:{% if selected_patient %}block{% else %}none{% endif %};">
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">calendar_month</span>
+            対象月
+        </label>
+        <select class="form-control" id="month-select">
+            {% for m in months %}
+            <option value="{{ m.value }}">{{ m.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">text_fields</span>
+            生成する文字数の目安
+        </label>
+        <div style="display:flex; gap:8px;">
+            {% for c in ['100文字', '200文字', '300文字'] %}
+            <label style="flex:1; display:flex; align-items:center; justify-content:center; padding:10px; border:1.5px solid #E0E0E0; border-radius:10px; cursor:pointer; font-size:0.88rem; font-weight:600;">
+                <input type="radio" name="char_limit" value="{{ c }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="updateCharBtn(this)">
+                {{ c }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <button class="btn btn-primary" id="gen-btn" onclick="generateMonitoring()">
+        <span class="material-symbols-outlined">auto_awesome</span>
+        1ヶ月の要約を生成
+    </button>
+</div>
+
+<div id="loading" style="display:none;" class="alert alert-info" style="margin-top:1rem;">
+    <span class="material-symbols-outlined">hourglass_top</span>
+    AIが集計中です...
+</div>
+
+<div id="result-area" style="display:{% if result %}block{% else %}none{% endif %}; margin-top:1.2rem;">
+    <hr class="divider">
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">description</span>
+            生成結果（編集可能）
+        </label>
+        <textarea class="form-control" id="result-text" style="min-height:200px;">{{ result }}</textarea>
+    </div>
+    <button class="btn" onclick="copyResult()">
+        <span class="material-symbols-outlined">content_copy</span>
+        コピー
+    </button>
+</div>
+
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function onPatientChange() {
+    const v = document.getElementById('patient-select').value;
+    document.getElementById('options-area').style.display = v ? 'block' : 'none';
+}
+
+function updateCharBtn(el) {
+    document.querySelectorAll('input[name="char_limit"]').forEach(r => {
+        r.parentElement.style.borderColor = r.checked ? '#1a73e8' : '#E0E0E0';
+        r.parentElement.style.color = r.checked ? '#1a73e8' : '#202124';
+        r.parentElement.style.background = r.checked ? '#e8f0fe' : '#fff';
+    });
+}
+// 初期化
+document.querySelectorAll('input[name="char_limit"]').forEach(r => { if(r.checked) updateCharBtn(r); });
+
+async function generateMonitoring() {
+    const patient = document.getElementById('patient-select').value;
+    const month = document.getElementById('month-select').value;
+    const charLimit = document.querySelector('input[name="char_limit"]:checked').value;
+    if (!patient) return;
+
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('result-area').style.display = 'none';
+
+    try {
+        const res = await fetch('/api/generate_monitoring', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ patient, month, char_limit: charLimit })
+        });
+        const data = await res.json();
+        if (data.text) {
+            document.getElementById('result-text').value = data.text;
+            document.getElementById('result-area').style.display = 'block';
+        } else {
+            alert(data.error || '生成に失敗しました');
+        }
+    } catch(e) {
+        alert('生成に失敗しました');
+    } finally {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('gen-btn').disabled = false;
+    }
+}
+
+function copyResult() {
+    const text = document.getElementById('result-text').value;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target.closest('button');
+        btn.innerHTML = '<span class="material-symbols-outlined">check</span> コピーしました';
+        setTimeout(() => {
+            btn.innerHTML = '<span class="material-symbols-outlined">content_copy</span> コピー';
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

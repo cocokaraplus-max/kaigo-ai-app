@@ -1,7 +1,8 @@
-streamlit
+flask
 supabase
 google-genai
 pytz
 Pillow
 sendgrid
 qrcode[pil]
+gunicorn

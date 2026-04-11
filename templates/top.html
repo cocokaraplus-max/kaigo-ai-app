@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}TOP - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.user-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #5f6368;
+    margin-bottom: 1.2rem;
+    padding: 8px 14px;
+    background: #f8f9fa;
+    border-radius: 20px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+}
+.user-info .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+
+.menu-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.menu-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px 10px;
+    border-radius: 14px;
+    border: 1.5px solid #E0E0E0;
+    background: #FFFFFF;
+    color: #202124;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+.menu-btn:active { transform: scale(0.97); background: #f5f5f5; }
+.menu-btn .material-symbols-outlined {
+    font-size: 28px;
+    color: #1a73e8;
+}
+
+.history-section {
+    margin-top: 1.2rem;
+}
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #5f6368;
+    margin-bottom: 0.8rem;
+}
+.section-title .material-symbols-outlined { font-size: 17px; color: #1a73e8; }
+
+.history-list {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+}
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #f5f5f5;
+    text-decoration: none;
+    color: #202124;
+    transition: background 0.1s;
+}
+.history-item:last-child { border-bottom: none; }
+.history-item:active { background: #f5f5f5; }
+.history-item .material-symbols-outlined { font-size: 17px; color: #5f6368; flex-shrink: 0; }
+.history-item-name { font-size: 0.9rem; font-weight: 500; flex: 1; }
+.history-item-time { font-size: 0.78rem; color: #80868b; }
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 13px;
+    border-radius: 12px;
+    border: 1.5px solid #E0E0E0;
+    background: #FFFFFF;
+    color: #80868b;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1.2rem;
+    transition: background 0.15s;
+}
+.logout-btn .material-symbols-outlined { font-size: 18px; }
+.logout-btn:active { background: #f5f5f5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="logo-area">
+    <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
+    <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
+</div>
+
+<div class="user-info">
+    <span class="material-symbols-outlined">business</span>
+    <b>{{ f_code }}</b>
+    <span style="color:#e0e0e0">／</span>
+    <span class="material-symbols-outlined">person</span>
+    <b>{{ my_name }}</b> さん
+</div>
+
+<div class="menu-grid">
+    <a href="/input" class="menu-btn">
+        <span class="material-symbols-outlined">edit_note</span>
+        記録を書く
+    </a>
+    <a href="/history" class="menu-btn">
+        <span class="material-symbols-outlined">monitoring</span>
+        モニタリング生成
+    </a>
+</div>
+<a href="/daily_view" class="btn" style="margin-bottom:0;">
+    <span class="material-symbols-outlined">calendar_month</span>
+    ケース記録閲覧
+</a>
+
+<hr class="divider">
+
+<div class="history-section">
+    <div class="section-title">
+        <span class="material-symbols-outlined">history</span>
+        更新履歴（最新{{ records|length }}件）
+    </div>
+
+    {% if records %}
+    <div class="history-list">
+        {% for r in records %}
+        <a href="/daily_view?user={{ r.user_name|urlencode }}&date={{ r.date }}" class="history-item">
+            <span class="material-symbols-outlined">person</span>
+            <span class="history-item-name">{{ r.user_name }}</span>
+            <span class="history-item-time">{{ r.time }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <span class="material-symbols-outlined">info</span>
+        まだ記録がありません。
+    </div>
+    {% endif %}
+</div>
+
+<form method="POST" action="/logout">
+    <button type="submit" class="logout-btn">
+        <span class="material-symbols-outlined">logout</span>
+        ログアウト
+    </button>
+</form>
+{% endblock %}

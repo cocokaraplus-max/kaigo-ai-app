@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}記録入力 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.photo-preview {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.photo-preview img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+.upload-area {
+    border: 2px dashed #E0E0E0;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    color: #80868b;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.upload-area:hover { border-color: #1a73e8; color: #1a73e8; }
+.upload-area .material-symbols-outlined { font-size: 32px; display: block; margin-bottom: 6px; }
+
+.ai-btn-wrap { margin: 0.8rem 0; }
+
+.record-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 1rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+
+<div class="page-title">
+    <span class="material-symbols-outlined">edit_note</span>
+    記録入力
+</div>
+
+{% if error %}
+<div class="alert alert-error">
+    <span class="material-symbols-outlined">error</span>
+    {{ error }}
+</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success">
+    <span class="material-symbols-outlined">check_circle</span>
+    {{ success }}
+</div>
+{% endif %}
+
+<form method="POST" action="/input" enctype="multipart/form-data" id="input-form">
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">person</span>
+            利用者を選択（ひらがな検索OK）
+        </label>
+        <select name="patient" class="form-control" id="patient-select">
+            <option value="">(未選択)</option>
+            {% for p in patients %}
+            <option value="{{ p.value }}" {% if selected_patient == p.value %}selected{% endif %}>{{ p.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">calendar_today</span>
+            記録日
+        </label>
+        <input type="date" name="record_date" class="form-control" value="{{ today }}">
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">photo_camera</span>
+            写真（最大5枚）
+        </label>
+        <label class="upload-area" for="photo-input">
+            <span class="material-symbols-outlined">add_photo_alternate</span>
+            タップして写真を選択
+        </label>
+        <input type="file" id="photo-input" name="photos" accept="image/*" multiple style="display:none" onchange="previewPhotos(this)">
+        <div class="photo-preview" id="photo-preview"></div>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">mic</span>
+            音声入力
+        </label>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" class="btn btn-primary btn-sm" id="rec-btn" onclick="toggleRecording()">
+                <span class="material-symbols-outlined">mic</span>
+                録音開始
+            </button>
+            <span id="rec-status" style="font-size:0.82rem; color:#5f6368;"></span>
+        </div>
+        <input type="hidden" name="audio_data" id="audio-data">
+        <input type="hidden" name="audio_mime" id="audio-mime">
+    </div>
+
+    <div class="ai-btn-wrap">
+        <button type="button" class="btn btn-primary" id="ai-btn" onclick="aiTranscribe()" style="display:none;">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            AI文章化
+        </button>
+        <div id="ai-loading" style="display:none;" class="alert alert-info">
+            <span class="material-symbols-outlined">hourglass_top</span>
+            AIが文章を作成中です...
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">description</span>
+            内容
+        </label>
+        <textarea name="content" class="form-control" id="content-area" placeholder="記録内容を入力してください">{{ content }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+        <span class="material-symbols-outlined">save</span>
+        保存
+    </button>
+</form>
+
+<a href="/top" class="back-btn">
+    <span class="material-symbols-outlined">home</span>
+    TOP画面へ
+</a>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+function previewPhotos(input) {
+    const preview = document.getElementById('photo-preview');
+    preview.innerHTML = '';
+    Array.from(input.files).slice(0, 5).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function toggleRecording() {
+    const btn = document.getElementById('rec-btn');
+    const status = document.getElementById('rec-status');
+    const aiBtn = document.getElementById('ai-btn');
+
+    if (!isRecording) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                reader.onload = e => {
+                    document.getElementById('audio-data').value = e.target.result.split(',')[1];
+                    document.getElementById('audio-mime').value = blob.type;
+                    aiBtn.style.display = 'flex';
+                };
+                reader.readAsDataURL(blob);
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mediaRecorder.start();
+            isRecording = true;
+            btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音停止';
+            btn.style.background = '#ea4335';
+            status.textContent = '録音中...';
+        } catch(e) {
+            status.textContent = 'マイクのアクセスを許可してください';
+        }
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.innerHTML = '<span class="material-symbols-outlined">mic</span> 録音開始';
+        btn.style.background = '';
+        status.textContent = '録音完了';
+    }
+}
+
+async function aiTranscribe() {
+    const audioData = document.getElementById('audio-data').value;
+    const audioMime = document.getElementById('audio-mime').value;
+    if (!audioData) return;
+
+    document.getElementById('ai-btn').style.display = 'none';
+    document.getElementById('ai-loading').style.display = 'flex';
+
+    try {
+        const res = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio_data: audioData, audio_mime: audioMime })
+        });
+        const data = await res.json();
+        if (data.text) {
+            document.getElementById('content-area').value = data.text;
+        }
+    } catch(e) {
+        alert('AI変換に失敗しました');
+    } finally {
+        document.getElementById('ai-loading').style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

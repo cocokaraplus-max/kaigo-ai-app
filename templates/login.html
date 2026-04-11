@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}ログイン - TASUKARU{% endblock %}
+
+{% block content %}
+<div class="logo-area">
+    <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
+    <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
+</div>
+
+<h2 style="text-align:center; font-size:1.1rem; font-weight:700; color:#202124; margin-bottom:1.5rem;">ログイン</h2>
+
+{% if error %}
+<div class="alert alert-error">
+    <span class="material-symbols-outlined">error</span>
+    {{ error }}
+</div>
+{% endif %}
+
+<form method="POST" action="/login">
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">business</span>
+            施設コード
+        </label>
+        <input type="text" name="f_code" class="form-control" value="{{ saved_f_code }}" autocomplete="off" autocapitalize="none">
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">lock</span>
+            パスワード
+        </label>
+        <input type="password" name="password" class="form-control">
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">
+        <span class="material-symbols-outlined">login</span>
+        ログイン
+    </button>
+</form>
+
+<div style="text-align:center; margin-top:1.5rem;">
+    <a href="/register" style="font-size:0.82rem; color:#1a73e8; text-decoration:none;">施設の新規登録はこちら</a>
+</div>
+{% endblock %}
