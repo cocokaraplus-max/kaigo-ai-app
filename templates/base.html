@@ -184,7 +184,7 @@
             <span class="material-symbols-outlined">calendar_month</span>
             ケース記録
         </a>
-        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}">
+        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}" onclick="spaNav(event,'/history')">
             <span class="material-symbols-outlined">monitoring</span>
             モニタリング
         </a>
@@ -220,6 +220,10 @@
 
 // onclick属性から直接呼ばれる関数（iPhoneでも確実に動く）
 function spaNav(event, url) {
+    // adminとhistoryは通常遷移（JSが複雑なためSPA非対応）
+    if (url === '/admin' || url === '/history') {
+        return; // デフォルトのリンク動作を許可
+    }
     event.preventDefault();
     navigateTo(url);
 }
