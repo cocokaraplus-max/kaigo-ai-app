@@ -45,14 +45,9 @@
     -webkit-tap-highlight-color: transparent;
 }
 .menu-btn:active { transform: scale(0.97); background: #f5f5f5; }
-.menu-btn .material-symbols-outlined {
-    font-size: 28px;
-    color: #1a73e8;
-}
+.menu-btn .material-symbols-outlined { font-size: 28px; color: #1a73e8; }
 
-.history-section {
-    margin-top: 1.2rem;
-}
+.history-section { margin-top: 1.2rem; }
 .section-title {
     display: flex;
     align-items: center;
@@ -79,6 +74,7 @@
     text-decoration: none;
     color: #202124;
     transition: background 0.1s;
+    cursor: pointer;
 }
 .history-item:last-child { border-bottom: none; }
 .history-item:active { background: #f5f5f5; }
@@ -86,6 +82,31 @@
 .history-item-name { font-size: 0.9rem; font-weight: 500; flex: 1; }
 .history-item-time { font-size: 0.78rem; color: #80868b; }
 
+.bottom-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 1.2rem;
+}
+.admin-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 13px;
+    border-radius: 12px;
+    border: 1.5px solid #E0E0E0;
+    background: #FFFFFF;
+    color: #5f6368;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+.admin-btn .material-symbols-outlined { font-size: 18px; }
+.admin-btn:active { background: #f5f5f5; }
 .logout-btn {
     display: flex;
     align-items: center;
@@ -100,7 +121,6 @@
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    margin-top: 1.2rem;
     transition: background 0.15s;
 }
 .logout-btn .material-symbols-outlined { font-size: 18px; }
@@ -136,6 +156,10 @@
     <span class="material-symbols-outlined">calendar_month</span>
     ケース記録閲覧
 </a>
+<a href="/admin" class="admin-btn" style="margin-top:10px;">
+    <span class="material-symbols-outlined">admin_panel_settings</span>
+    管理者MENU
+</a>
 
 <hr class="divider">
 
@@ -146,13 +170,13 @@
     </div>
 
     {% if records %}
-    <div class="history-list">
+    <div class="history-list" style="max-height:180px;">
         {% for r in records %}
-        <a href="/daily_view?user={{ r.user_name|urlencode }}&date={{ r.date }}" class="history-item">
+        <div class="history-item" onclick="goToRecord('{{ r.user_name }}', '{{ r.date }}')">
             <span class="material-symbols-outlined">person</span>
             <span class="history-item-name">{{ r.user_name }}</span>
             <span class="history-item-time">{{ r.time }}</span>
-        </a>
+        </div>
         {% endfor %}
     </div>
     {% else %}
@@ -163,10 +187,22 @@
     {% endif %}
 </div>
 
-<form method="POST" action="/logout">
-    <button type="submit" class="logout-btn">
-        <span class="material-symbols-outlined">logout</span>
-        ログアウト
-    </button>
-</form>
+<hr class="divider">
+
+<div class="bottom-actions">
+    <form method="POST" action="/logout">
+        <button type="submit" class="logout-btn">
+            <span class="material-symbols-outlined">logout</span>
+            ログアウト
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function goToRecord(userName, date) {
+    window.location.href = '/daily_view?user=' + encodeURIComponent(userName) + '&date=' + date;
+}
+</script>
 {% endblock %}
