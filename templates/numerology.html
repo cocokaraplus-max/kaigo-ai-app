@@ -221,7 +221,7 @@ function searchPerson(query) {
         el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
     } else {
         el.innerHTML = filtered.map(p =>
-            `<div class="search-candidate-item" onmousedown="selectPerson(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)}, ${JSON.stringify(p.type)})">
+            `<div class="search-candidate-item" onclick="selectPerson(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)}, ${JSON.stringify(p.type)})">
                 ${p.name}
                 <span style="color:#80868b;font-size:0.78rem;margin-left:6px;">${p.type === 'staff' ? '職員' : 'No.' + p.chart}</span>
             </div>`

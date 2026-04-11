@@ -184,7 +184,7 @@
             <span class="material-symbols-outlined">calendar_month</span>
             ケース記録
         </a>
-        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}" onclick="spaNav(event,'/history')">
+        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}">
             <span class="material-symbols-outlined">monitoring</span>
             モニタリング
         </a>
@@ -267,30 +267,17 @@ async function navigateTo(url, pushState = true) {
         wrapper.innerHTML = data.content || '';
         wrapper.scrollTop = 0;
 
-        // スクリプト実行
+        // スクリプト実行 - scriptタグ追加方式（確実にグローバルスコープで実行）
+        document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
         if (data.script) {
-            document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
             if (scriptContent.trim()) {
-                try {
-                    // グローバルスコープで実行
-                    (0, eval)(scriptContent);
-                } catch(e) {
-                    console.log('[SPA] eval error:', e);
-                    // evalが失敗したらscriptタグ注入にフォールバック
-                    const scriptEl = document.createElement('script');
-                    scriptEl.className = 'spa-injected-script';
-                    scriptEl.textContent = scriptContent;
-                    document.body.appendChild(scriptEl);
-                }
+                const scriptEl = document.createElement('script');
+                scriptEl.className = 'spa-injected-script';
+                scriptEl.textContent = scriptContent;
+                document.head.appendChild(scriptEl);
             }
         }
-
-        // ページ別の初期化関数を呼ぶ
-        setTimeout(() => {
-            if (typeof initCalendar === 'function') initCalendar();
-            if (typeof initPage === 'function') initPage();
-        }, 50);
 
         if (pushState) {
             history.pushState({ url }, '', url);

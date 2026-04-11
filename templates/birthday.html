@@ -391,7 +391,7 @@ function searchNumerology(query) {
         el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
     } else {
         el.innerHTML = filtered.map(p =>
-            `<div class="search-candidate-item" onmousedown="selectNumerology(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)})">
+            `<div class="search-candidate-item" onclick="selectNumerology(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)})">
                 ${p.name} <span style="color:#80868b;font-size:0.8rem;">No.${p.chart}</span>
             </div>`
         ).join('');
