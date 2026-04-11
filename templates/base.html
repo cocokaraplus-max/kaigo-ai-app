@@ -271,19 +271,14 @@ async function navigateTo(url, pushState = true) {
         wrapper.innerHTML = data.content || '';
         wrapper.scrollTop = 0;
 
-        // スクリプト実行 - scriptタグ追加方式（確実にグローバルスコープで実行）
+        // スクリプト実行 - scriptタグ追加方式
         document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
         if (data.script) {
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
             if (scriptContent.trim()) {
-                // iframeで独立したスコープで実行して重複定義を防ぐ
                 const scriptEl = document.createElement('script');
                 scriptEl.className = 'spa-injected-script';
-                // constをvarに変換してグローバル再定義を許可
-                const safeScript = scriptContent
-                    .replace(/\bconst\s+(?=[A-Z_][A-Z_0-9]*\s*=)/g, 'var ')
-                    .replace(/\bconst\s+/g, 'let ');
-                scriptEl.textContent = safeScript;
+                scriptEl.textContent = scriptContent;
                 document.head.appendChild(scriptEl);
             }
         }

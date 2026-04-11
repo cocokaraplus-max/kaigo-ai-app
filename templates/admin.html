@@ -576,12 +576,6 @@
 
 {% block extra_script %}
 <script>
-// SPA経由で来た場合は強制フルリロード
-if (window.__SPA_NAVIGATED__) {
-    window.location.replace('/admin');
-}
-</script>
-<script>
 // ========== 誕生日入力パース ==========
 const WAREKI = {
     'R': [2019, '令和'], '令': [2019, '令和'],
