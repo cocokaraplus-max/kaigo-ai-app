@@ -36,19 +36,153 @@
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-.patient-card {
+/* アコーディオン */
+.accordion-block {
+    border: 1.5px solid #e0e0e0;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.accordion-head {
     display: flex;
     align-items: center;
-    padding: 12px 14px;
-    border: 1px solid #e0e0e0;
-    border-radius: 10px;
-    margin-bottom: 8px;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: #f8f9fa;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.accordion-head:active { background: #f0f0f0; }
+.acc-arrow {
+    font-size: 20px;
+    color: #80868b;
+    transition: transform 0.2s;
+}
+.acc-arrow.open { transform: rotate(180deg); }
+.accordion-body {
+    display: none;
+    padding: 16px;
+    border-top: 1px solid #e0e0e0;
+}
+.accordion-body.open { display: block; }
+
+/* 利用者編集カード */
+.patient-edit-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
     gap: 10px;
 }
-.patient-card .material-symbols-outlined { color: #5f6368; font-size: 18px; }
-.patient-info { flex: 1; }
-.patient-name { font-weight: 600; font-size: 0.9rem; }
-.patient-kana { font-size: 0.78rem; color: #80868b; }
+.patient-edit-card:last-of-type { border-bottom: none; }
+.patient-edit-info { flex: 1; min-width: 0; }
+.patient-edit-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #202124;
+}
+.patient-edit-kana {
+    font-size: 0.75rem;
+    color: #80868b;
+    margin-top: 2px;
+    padding-left: 21px;
+}
+.patient-edit-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.edit-btn {
+    background: #e8f0fe !important;
+    color: #1a73e8 !important;
+    border-color: #c5d8f8 !important;
+    font-size: 0.78rem !important;
+    padding: 7px 10px !important;
+    height: auto !important;
+}
+.delete-btn {
+    background: #ea4335 !important;
+    color: white !important;
+    border: none !important;
+    font-size: 0.78rem !important;
+    padding: 7px 10px !important;
+    height: auto !important;
+}
+
+/* 編集フォーム */
+.edit-form-area {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 14px;
+    margin: 4px 0 8px;
+    border: 1.5px solid #e0e0e0;
+}
+
+/* 削除確認モーダル */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.modal-box {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.modal-icon {
+    width: 52px;
+    height: 52px;
+    background: #fce8e6;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+}
+.modal-icon .material-symbols-outlined { font-size: 28px; color: #ea4335; }
+.modal-title {
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #202124;
+    margin-bottom: 12px;
+}
+.modal-warning {
+    background: #fef7e0;
+    border: 1.5px solid #f9d71c;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 0.82rem;
+    color: #7c4a00;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5;
+}
+.modal-warning .material-symbols-outlined {
+    font-size: 18px;
+    color: #f9ab00;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
 
 .staff-card {
     display: flex;
@@ -132,40 +266,96 @@
 
 <!-- 利用者管理 -->
 <div class="tab-panel active" id="tab-patients">
-    <div class="section-box">
-        <div class="section-box-title">
-            <span class="material-symbols-outlined">person_add</span>新規登録
-        </div>
-        <div class="form-group">
-            <label class="form-label">No</label>
-            <input type="text" id="new-chart" class="form-control">
-        </div>
-        <div class="form-group">
-            <label class="form-label">氏名</label>
-            <input type="text" id="new-name" class="form-control">
-        </div>
-        <div class="form-group">
-            <label class="form-label">かな</label>
-            <input type="text" id="new-kana" class="form-control">
-        </div>
-        <button class="btn btn-primary" onclick="addPatient()">
-            <span class="material-symbols-outlined">add</span>登録
-        </button>
-    </div>
 
-    <div id="patient-list">
-        {% for p in patients %}
-        <div class="patient-card" id="pc-{{ p.id }}">
-            <span class="material-symbols-outlined">person</span>
-            <div class="patient-info">
-                <div class="patient-name">No.{{ p.chart_number }} {{ p.user_name }}</div>
-                <div class="patient-kana">{{ p.user_kana }}</div>
+    <!-- 新規登録 -->
+    <div class="accordion-block">
+        <div class="accordion-head" onclick="toggleAcc('new')">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#34a853;font-size:18px;">person_add</span>
+                <span style="font-weight:700;font-size:0.92rem;">新規登録</span>
             </div>
-            <button class="btn btn-sm" onclick="deletePatient('{{ p.id }}', '{{ p.user_name }}')">
-                <span class="material-symbols-outlined" style="color:#ea4335;">delete</span>
+            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new">expand_more</span>
+        </div>
+        <div class="accordion-body" id="acc-body-new">
+            <div class="form-group">
+                <label class="form-label">カルテNo</label>
+                <input type="text" id="new-chart" class="form-control" placeholder="例：001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">氏名</label>
+                <input type="text" id="new-name" class="form-control" placeholder="例：山田 太郎">
+            </div>
+            <div class="form-group">
+                <label class="form-label">かな</label>
+                <input type="text" id="new-kana" class="form-control" placeholder="例：やまだ たろう">
+            </div>
+            <button class="btn btn-primary" onclick="addPatient()">
+                <span class="material-symbols-outlined">add</span>登録する
             </button>
         </div>
-        {% endfor %}
+    </div>
+
+    <!-- 利用者編集 -->
+    <div class="accordion-block">
+        <div class="accordion-head" onclick="toggleAcc('edit')">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">manage_accounts</span>
+                <span style="font-weight:700;font-size:0.92rem;">利用者編集</span>
+            </div>
+            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-edit">expand_more</span>
+        </div>
+        <div class="accordion-body" id="acc-body-edit">
+            {% if patients %}
+            {% for p in patients %}
+            <div class="patient-edit-card" id="pec-{{ p.id }}">
+                <div class="patient-edit-info">
+                    <div class="patient-edit-name">
+                        <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
+                        No.{{ p.chart_number }}　{{ p.user_name }}
+                    </div>
+                    <div class="patient-edit-kana">{{ p.user_kana }}</div>
+                </div>
+                <div class="patient-edit-actions">
+                    <button class="btn btn-sm edit-btn" onclick="openEditForm('{{ p.id }}')">
+                        <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
+                        編集
+                    </button>
+                    <button class="btn btn-sm delete-btn" onclick="confirmDelete('{{ p.id }}', '{{ p.user_name }}')">
+                        <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
+                        削除
+                    </button>
+                </div>
+            </div>
+            <div class="edit-form-area" id="ef-{{ p.id }}" style="display:none;">
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label" style="font-size:0.75rem;">カルテNo</label>
+                    <input type="text" id="ef-chart-{{ p.id }}" class="form-control" value="{{ p.chart_number }}">
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label" style="font-size:0.75rem;">氏名</label>
+                    <input type="text" id="ef-name-{{ p.id }}" class="form-control" value="{{ p.user_name }}">
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:0.75rem;">かな</label>
+                    <input type="text" id="ef-kana-{{ p.id }}" class="form-control" value="{{ p.user_kana }}">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <button class="btn btn-primary btn-sm" onclick="savePatientEdit('{{ p.id }}')">
+                        <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>確定
+                    </button>
+                    <button class="btn btn-sm" onclick="closeEditForm('{{ p.id }}')">
+                        <span class="material-symbols-outlined" style="font-size:15px;">close</span>キャンセル
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="alert alert-info" style="margin:0;">
+                <span class="material-symbols-outlined">info</span>
+                利用者が登録されていません。
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 
@@ -190,7 +380,6 @@
             <span class="material-symbols-outlined">save</span>更新
         </button>
     </div>
-
     <div class="section-box">
         <div class="section-box-title">
             <span class="material-symbols-outlined">format_list_numbered</span>履歴の表示件数
@@ -232,8 +421,8 @@
         </span>
         <div style="flex:1; font-weight:600;">{{ s.name }}</div>
         {% if not s.blocked %}
-        <button class="btn btn-sm btn-danger" onclick="blockStaff('{{ s.name }}')">
-            <span class="material-symbols-outlined" style="color:white;">block</span>
+        <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')">
+            <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
             ブロック
         </button>
         {% endif %}
@@ -241,12 +430,36 @@
     {% endfor %}
 </div>
 
-<button class="btn" style="margin-top:1.5rem;" onclick="adminLogout()">
+<button class="btn" style="margin-top:1.5rem; color:#80868b;" onclick="adminLogout()">
     <span class="material-symbols-outlined">logout</span>
     管理者終了
 </button>
 
 {% endif %}
+
+<!-- 削除確認モーダル -->
+<div class="modal-overlay" id="delete-modal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-icon">
+            <span class="material-symbols-outlined">delete_forever</span>
+        </div>
+        <div class="modal-title" id="modal-title">削除の確認</div>
+        <div class="modal-warning">
+            <span class="material-symbols-outlined">warning</span>
+            <span>この操作は取り消せません。削除するとすべての記録から利用者情報が参照できなくなります。</span>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-sm" style="background:#ea4335;color:white;border:none;height:auto;padding:12px;" onclick="executeDelete()">
+                <span class="material-symbols-outlined" style="font-size:16px;color:white;">delete</span>
+                削除する
+            </button>
+            <button class="btn btn-sm" style="height:auto;padding:12px;" onclick="closeModal()">
+                <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+                キャンセル
+            </button>
+        </div>
+    </div>
+</div>
 
 <a href="/top" class="back-btn">
     <span class="material-symbols-outlined">home</span>
@@ -263,6 +476,13 @@ function switchTab(name, el) {
     el.classList.add('active');
 }
 
+function toggleAcc(name) {
+    const body = document.getElementById('acc-body-' + name);
+    const arrow = document.getElementById('acc-arrow-' + name);
+    body.classList.toggle('open');
+    arrow.classList.toggle('open');
+}
+
 async function adminLogin() {
     const pw = document.getElementById('admin-pw').value;
     const res = await fetch('/api/admin_login', {
@@ -270,8 +490,7 @@ async function adminLogin() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ password: pw })
     });
-    const data = await res.json();
-    if (data.status === 'success') location.reload();
+    if ((await res.json()).status === 'success') location.reload();
     else alert('パスワードが違います');
 }
 
@@ -281,10 +500,10 @@ async function adminLogout() {
 }
 
 async function addPatient() {
-    const chart = document.getElementById('new-chart').value;
-    const name = document.getElementById('new-name').value;
-    const kana = document.getElementById('new-kana').value;
-    if (!chart || !name) { alert('NoとNo氏名は必須です'); return; }
+    const chart = document.getElementById('new-chart').value.trim();
+    const name  = document.getElementById('new-name').value.trim();
+    const kana  = document.getElementById('new-kana').value.trim();
+    if (!chart || !name) { alert('カルテNoと氏名は必須です'); return; }
     const res = await fetch('/api/add_patient', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -293,14 +512,44 @@ async function addPatient() {
     if ((await res.json()).status === 'success') location.reload();
 }
 
-async function deletePatient(id, name) {
-    if (!confirm(`「${name}」を削除しますか？`)) return;
+function openEditForm(id) {
+    document.getElementById('ef-' + id).style.display = 'block';
+}
+function closeEditForm(id) {
+    document.getElementById('ef-' + id).style.display = 'none';
+}
+
+async function savePatientEdit(id) {
+    const chart = document.getElementById('ef-chart-' + id).value.trim();
+    const name  = document.getElementById('ef-name-' + id).value.trim();
+    const kana  = document.getElementById('ef-kana-' + id).value.trim();
+    const res = await fetch('/api/update_patient', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id, chart, name, kana })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+    else alert('更新に失敗しました');
+}
+
+let deleteTargetId = null;
+function confirmDelete(id, name) {
+    deleteTargetId = id;
+    document.getElementById('modal-title').textContent = `「${name}」を削除しますか？`;
+    document.getElementById('delete-modal').style.display = 'flex';
+}
+function closeModal() {
+    deleteTargetId = null;
+    document.getElementById('delete-modal').style.display = 'none';
+}
+async function executeDelete() {
+    if (!deleteTargetId) return;
     const res = await fetch('/api/delete_patient', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id })
+        body: JSON.stringify({ id: deleteTargetId })
     });
-    if ((await res.json()).status === 'success') document.getElementById('pc-' + id).remove();
+    if ((await res.json()).status === 'success') { closeModal(); location.reload(); }
 }
 
 async function updatePassword() {

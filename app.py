@@ -574,6 +574,21 @@ def api_delete_patient():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
+@app.route('/api/update_patient', methods=['POST'])
+@login_required
+def api_update_patient():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("patients").update({
+            "chart_number": data["chart"],
+            "user_name": data["name"],
+            "user_kana": data["kana"]
+        }).eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
 @app.route('/api/update_password', methods=['POST'])
 @login_required
 def api_update_password():
