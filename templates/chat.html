@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block title %}連絡ツール - TASUKARU{% endblock %}
+{% block nav_chat %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 120px);
+}
+
+/* メッセージ一覧 */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.chat-date-divider {
+    text-align: center;
+    font-size: 0.72rem;
+    color: #80868b;
+    margin: 8px 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.chat-date-divider::before,
+.chat-date-divider::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid #e0e0e0;
+}
+
+.chat-bubble-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+.chat-bubble-wrap.mine {
+    flex-direction: row-reverse;
+}
+
+.chat-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: #e8f0fe;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #1a73e8;
+}
+.chat-avatar.mine-avatar {
+    background: #e8f5e9;
+    color: #34a853;
+}
+
+.chat-bubble-content { max-width: 75%; }
+
+.chat-name {
+    font-size: 0.7rem;
+    color: #80868b;
+    font-weight: 600;
+    margin-bottom: 3px;
+    padding: 0 4px;
+}
+.chat-bubble-wrap.mine .chat-name { text-align: right; }
+
+.chat-bubble {
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    word-break: break-word;
+    background: #f0f2f5;
+    color: #202124;
+    border-bottom-left-radius: 4px;
+}
+.chat-bubble-wrap.mine .chat-bubble {
+    background: #1a73e8;
+    color: white;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 3px;
+    padding: 0 4px;
+}
+.chat-bubble-wrap.mine .chat-meta { flex-direction: row-reverse; }
+.chat-time {
+    font-size: 0.68rem;
+    color: #b0b8c1;
+}
+.chat-delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    color: #ccc;
+    display: none;
+}
+.chat-bubble-wrap:hover .chat-delete-btn { display: block; }
+.chat-delete-btn .material-symbols-outlined { font-size: 14px; }
+
+/* 入力エリア */
+.chat-input-area {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 0 4px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+.chat-textarea {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 22px;
+    border: 1.5px solid #e0e0e0;
+    font-size: 0.92rem;
+    resize: none;
+    min-height: 42px;
+    max-height: 120px;
+    line-height: 1.4;
+    color: #202124;
+    background: #f8f9fa;
+    transition: border-color 0.15s;
+    font-family: inherit;
+}
+.chat-textarea:focus {
+    outline: none;
+    border-color: #1a73e8;
+    background: #fff;
+}
+.chat-send-btn {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: #1a73e8;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.chat-send-btn:active { background: #1557b0; }
+.chat-send-btn .material-symbols-outlined { font-size: 20px; color: white; }
+.chat-send-btn:disabled { background: #e0e0e0; }
+.chat-send-btn:disabled .material-symbols-outlined { color: #bbb; }
+
+.no-messages {
+    text-align: center;
+    color: #80868b;
+    font-size: 0.88rem;
+    padding: 40px 0;
+}
+.no-messages .material-symbols-outlined {
+    font-size: 48px;
+    display: block;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">forum</span>
+    連絡ツール
+</div>
+
+<div class="chat-wrapper">
+    <div class="chat-messages" id="chat-messages">
+        {% if not messages %}
+        <div class="no-messages">
+            <span class="material-symbols-outlined">chat_bubble_outline</span>
+            まだメッセージがありません。<br>最初のメッセージを送りましょう！
+        </div>
+        {% else %}
+        {% set ns = namespace(prev_date='') %}
+        {% for msg in messages %}
+            {% set msg_date = msg.date_label %}
+            {% if msg_date != ns.prev_date %}
+            <div class="chat-date-divider">{{ msg_date }}</div>
+            {% set ns.prev_date = msg_date %}
+            {% endif %}
+            <div class="chat-bubble-wrap {% if msg.staff_name == my_name %}mine{% endif %}" id="msg-{{ msg.id }}">
+                <div class="chat-avatar {% if msg.staff_name == my_name %}mine-avatar{% endif %}">
+                    {{ msg.staff_name[:1] }}
+                </div>
+                <div class="chat-bubble-content">
+                    <div class="chat-name">{{ msg.staff_name }}</div>
+                    <div class="chat-bubble">{{ msg.content }}</div>
+                    <div class="chat-meta">
+                        <span class="chat-time">{{ msg.time_label }}</span>
+                        {% if msg.staff_name == my_name or is_admin %}
+                        <button class="chat-delete-btn" onclick="deleteMessage('{{ msg.id }}')">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="chat-input-area">
+        <textarea class="chat-textarea" id="chat-input"
+            placeholder="メッセージを入力..."
+            rows="1"
+            onkeydown="handleKeydown(event)"
+            oninput="autoResize(this)"></textarea>
+        <button class="chat-send-btn" id="send-btn" onclick="sendMessage()">
+            <span class="material-symbols-outlined">send</span>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// 最下部にスクロール
+window.addEventListener('load', () => {
+    const el = document.getElementById('chat-messages');
+    el.scrollTop = el.scrollHeight;
+});
+
+// テキストエリア自動リサイズ
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// Enterで送信（Shift+Enterは改行）
+function handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+// メッセージ送信
+async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/send_message', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ content })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            input.value = '';
+            input.style.height = 'auto';
+            location.reload();
+        }
+    } catch(e) {
+        alert('送信に失敗しました');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// メッセージ削除
+async function deleteMessage(id) {
+    if (!confirm('このメッセージを削除しますか？')) return;
+    const res = await fetch('/api/delete_message', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') {
+        document.getElementById('msg-' + id)?.remove();
+    }
+}
+
+// 30秒ごとに自動更新
+setInterval(() => { location.reload(); }, 30000);
+</script>
+{% endblock %}

@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+{% block title %}数秘確認 - TASUKARU{% endblock %}
+{% block nav_numerology %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* 入力モード切り替え */
+.mode-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.2rem;
+}
+.mode-tab {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1.5px solid #e0e0e0;
+    background: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+}
+.mode-tab.active { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; }
+
+.mode-content { display: none; }
+.mode-content.active { display: block; }
+
+/* 検索 */
+.search-wrapper { position: relative; margin-bottom: 1rem; }
+.search-candidates {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: #fff; border: 1.5px solid #1a73e8;
+    border-radius: 10px; z-index: 100;
+    max-height: 220px; overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none;
+}
+.search-candidates.show { display: block; }
+.search-candidate-item {
+    padding: 12px 14px; font-size: 0.9rem;
+    cursor: pointer; border-bottom: 1px solid #f0f0f0; color: #202124;
+}
+.search-candidate-item:last-child { border-bottom: none; }
+.search-candidate-item:active { background: #e8f0fe; }
+.selected-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #e8f0fe;
+    border-radius: 10px; font-size: 0.88rem;
+    font-weight: 600; color: #1557b0; margin-bottom: 1rem;
+}
+
+/* 手入力エリア */
+.manual-input-area {
+    background: #f8f9fa;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 1rem;
+}
+.birth-input-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+.birth-date { width: 44px !important; padding: 10px 6px !important; text-align: center; cursor: pointer; }
+.birth-result {
+    font-size: 0.78rem; margin-top: 5px;
+    padding: 5px 10px; border-radius: 8px; display: none;
+}
+.birth-result.ok { display: block; background: #e6f4ea; color: #1e7e34; }
+.birth-result.err { display: block; background: #fce8e6; color: #c5221f; }
+
+/* 数秘結果 */
+.numerology-result {
+    background: linear-gradient(135deg, #f8f0ff, #ede7f6);
+    border: 1.5px solid #ce93d8;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 1rem;
+}
+.numerology-header { text-align: center; margin-bottom: 16px; }
+.numerology-name { font-size: 1.1rem; font-weight: 700; color: #202124; margin-bottom: 4px; }
+.numerology-birth { font-size: 0.82rem; color: #5f6368; }
+.numerology-number-display {
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px; margin: 16px 0;
+}
+.numerology-circle {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: #7b1fa2;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(123,31,162,0.3);
+}
+.numerology-circle.master {
+    background: linear-gradient(135deg, #c62828, #e53935);
+    box-shadow: 0 4px 16px rgba(198,40,40,0.3);
+}
+.numerology-circle-num { font-size: 2.2rem; font-weight: 800; color: white; line-height: 1; }
+.numerology-label { font-size: 0.85rem; font-weight: 700; color: #6a1b9a; line-height: 1.5; }
+.numerology-label.master { color: #b71c1c; }
+.numerology-calc {
+    text-align: center; font-size: 0.75rem; color: #80868b;
+    background: rgba(255,255,255,0.6); border-radius: 8px;
+    padding: 6px 12px; margin: 0 0 16px;
+}
+.numerology-traits { background: white; border-radius: 12px; padding: 14px; }
+.numerology-traits-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 700; color: #6a1b9a; margin-bottom: 10px;
+}
+.numerology-traits-title .material-symbols-outlined { font-size: 17px; }
+.trait-tag {
+    display: inline-block; background: #f3e5f5; color: #6a1b9a;
+    font-size: 0.78rem; font-weight: 600;
+    padding: 4px 10px; border-radius: 12px; margin: 3px 3px 3px 0;
+}
+.trait-tag.master { background: #ffebee; color: #b71c1c; }
+.numerology-desc { font-size: 0.85rem; color: #5f6368; line-height: 1.7; margin-top: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">auto_awesome</span>
+    数秘確認
+</div>
+
+<div class="mode-tabs">
+    <button class="mode-tab active" onclick="switchMode('search', this)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">search</span>
+        人から探す
+    </button>
+    <button class="mode-tab" onclick="switchMode('manual', this)">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">edit_calendar</span>
+        誕生日から調べる
+    </button>
+</div>
+
+<!-- 人から探す -->
+<div class="mode-content active" id="mode-search">
+    <div class="search-wrapper">
+        <input type="text" id="num-search" class="form-control"
+            placeholder="名前・ふりがな・カルテ番号で検索"
+            oninput="searchPerson(this.value)"
+            onfocus="searchPerson(this.value)"
+            autocomplete="off">
+        <div class="search-candidates" id="num-candidates"></div>
+    </div>
+    <div id="search-selected" style="display:none;" class="selected-badge">
+        <span class="material-symbols-outlined">person</span>
+        <span id="search-selected-label"></span>
+        <span style="margin-left:auto;cursor:pointer;font-size:0.78rem;color:#80868b;" onclick="clearSearch()">変更</span>
+    </div>
+    <div id="search-result"></div>
+</div>
+
+<!-- 誕生日から調べる -->
+<div class="mode-content" id="mode-manual">
+    <div class="manual-input-area">
+        <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">person</span>
+                お名前（任意）
+            </label>
+            <input type="text" id="manual-name" class="form-control" placeholder="例：山田 太郎">
+        </div>
+        <div class="form-group" style="margin-bottom:4px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">cake</span>
+                生年月日
+            </label>
+            <div class="birth-input-wrap">
+                <input type="text" id="manual-birth-text" class="form-control"
+                    placeholder="例：S20.3.15 / 昭和20年3月15日 / 1945/3/15"
+                    oninput="parseBirthInput(this.value, 'manual-birth-date', 'manual-birth-result')"
+                    autocomplete="off">
+                <input type="date" id="manual-birth-date" class="form-control birth-date"
+                    onchange="syncDateToText(this.value, 'manual-birth-text', 'manual-birth-result')">
+            </div>
+            <div class="birth-result" id="manual-birth-result"></div>
+        </div>
+    </div>
+    <button class="btn btn-primary" onclick="calcManual()">
+        <span class="material-symbols-outlined">auto_awesome</span>
+        数秘を計算する
+    </button>
+    <div id="manual-result" style="margin-top:1rem;"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function switchMode(name, el) {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('mode-' + name).classList.add('active');
+}
+
+// ========== 全利用者・職員データ ==========
+const ALL_PERSONS = [
+    {% for p in all_persons %}
+    { name: {{ p.name | tojson }}, kana: {{ p.kana | tojson }}, chart: {{ p.chart | tojson }}, birth: {{ p.birth | tojson }}, type: {{ p.type | tojson }} },
+    {% endfor %}
+];
+
+// ========== 検索 ==========
+function searchPerson(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = q === ''
+        ? ALL_PERSONS.filter(p => p.birth)
+        : ALL_PERSONS.filter(p => p.birth && (
+            p.name.toLowerCase().includes(q) ||
+            p.kana.toLowerCase().includes(q) ||
+            p.chart.toLowerCase().includes(q)
+        ));
+    const el = document.getElementById('num-candidates');
+    if (filtered.length === 0) {
+        el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
+    } else {
+        el.innerHTML = filtered.map(p =>
+            `<div class="search-candidate-item" onmousedown="selectPerson(${JSON.stringify(p.name)}, ${JSON.stringify(p.birth)}, ${JSON.stringify(p.type)})">
+                ${p.name}
+                <span style="color:#80868b;font-size:0.78rem;margin-left:6px;">${p.type === 'staff' ? '職員' : 'No.' + p.chart}</span>
+            </div>`
+        ).join('');
+    }
+    el.classList.add('show');
+}
+
+function selectPerson(name, birth, type) {
+    document.getElementById('num-search').style.display = 'none';
+    document.getElementById('search-selected-label').textContent = name + (type === 'staff' ? '（職員）' : '');
+    document.getElementById('search-selected').style.display = 'flex';
+    document.getElementById('num-candidates').classList.remove('show');
+    renderNumerology(name, birth, 'search-result');
+}
+
+function clearSearch() {
+    document.getElementById('num-search').style.display = 'block';
+    document.getElementById('num-search').value = '';
+    document.getElementById('search-selected').style.display = 'none';
+    document.getElementById('search-result').innerHTML = '';
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrapper'))
+        document.getElementById('num-candidates').classList.remove('show');
+});
+
+// ========== 手入力計算 ==========
+function calcManual() {
+    const name = document.getElementById('manual-name').value.trim() || '（名前未入力）';
+    const birth = document.getElementById('manual-birth-date').value;
+    if (!birth) { alert('生年月日を入力してください'); return; }
+    renderNumerology(name, birth, 'manual-result');
+}
+
+// ========== 数秘術計算 ==========
+const MASTER_NUMBERS = [11, 22, 33];
+function calcNumerology(birthIso) {
+    if (!birthIso) return null;
+    const digits = birthIso.replace(/-/g, '').split('').map(Number);
+    let sum = digits.reduce((a, b) => a + b, 0);
+    const steps = [`${digits.join('+')} = ${sum}`];
+    while (sum > 9 && !MASTER_NUMBERS.includes(sum)) {
+        const d = String(sum).split('').map(Number);
+        const next = d.reduce((a, b) => a + b, 0);
+        steps.push(`${d.join('+')} = ${next}`);
+        sum = next;
+    }
+    return { number: sum, steps, isMaster: MASTER_NUMBERS.includes(sum) };
+}
+
+const NUMEROLOGY_DATA = {
+    1: { tags: ['リーダーシップ','独立心','開拓者','強い意志'], desc: '強いリーダーシップと独立心を持ち、自分の道を切り開く力があります。困難にも果敢に挑む開拓者精神の持ち主です。' },
+    2: { tags: ['協調性','思いやり','平和主義','繊細さ'], desc: '思いやり深く、人と人との橋渡し役が得意です。周囲の気持ちに敏感で、場の雰囲気を和やかにする天性の才能があります。' },
+    3: { tags: ['創造性','表現力','社交性','楽観的'], desc: '明るく社交的で、豊かな表現力と創造性の持ち主。コミュニケーション能力が高く、周りの人を元気にする力があります。' },
+    4: { tags: ['誠実さ','努力家','安定志向','堅実'], desc: '誠実で責任感が強く、コツコツと努力を続ける堅実な性格。信頼される存在で、着実に物事を積み上げていく力があります。' },
+    5: { tags: ['自由','変化好き','好奇心旺盛','冒険家'], desc: '自由を愛し、変化と冒険を楽しむ活動的な性格。好奇心が旺盛で、多様な経験から成長していく柔軟さを持っています。' },
+    6: { tags: ['奉仕精神','家族愛','責任感','面倒見がよい'], desc: '深い愛情と奉仕の精神で人を支える、頼もしい存在。家族や周囲の人を大切にし、調和のある環境を作る力があります。' },
+    7: { tags: ['探究心','知性','内省的','直感力'], desc: '深い洞察力と探究心を持ち、物事の本質を見抜く力があります。内省的で精神的な深みがあり、独自の哲学を持っています。' },
+    8: { tags: ['実行力','リーダー','野心','達成力'], desc: '強い実行力と達成への意志を持つ、パワフルな人物。現実的な判断力と組織力で大きな目標を実現していく力があります。' },
+    9: { tags: ['博愛','寛大さ','理想主義','人道的'], desc: '広い視野と深い愛で人類全体を思いやる、寛大な心の持ち主。理想を高く持ち、周囲に影響を与える存在感があります。' },
+    11: { tags: ['直感力','精神性','インスピレーション','マスターナンバー'], desc: '【マスターナンバー】高い精神性と鋭い直感力を持つ、特別な使命を持った魂。周囲に霊感やインスピレーションを与える存在です。' },
+    22: { tags: ['実現力','大きなビジョン','建設者','マスターナンバー'], desc: '【マスターナンバー】大きなビジョンを現実に変える力を持つ「マスタービルダー」。夢を具体的な形にする稀有な才能があります。' },
+    33: { tags: ['無条件の愛','癒し','奉仕','マスターナンバー'], desc: '【マスターナンバー】無条件の愛と癒しをもたらす、最も精神的に進化した魂。人々を深く癒し、愛で包む使命を持っています。' }
+};
+
+function renderNumerology(name, birthIso, targetId) {
+    const result = calcNumerology(birthIso);
+    if (!result) return;
+    const data = NUMEROLOGY_DATA[result.number];
+    const [y, m, d] = birthIso.split('-');
+    const wareki = toWareki(parseInt(y));
+    const birthStr = `${wareki} ${parseInt(m)}月${parseInt(d)}日`;
+    const tags = data.tags.map(t => `<span class="trait-tag ${result.isMaster ? 'master' : ''}">${t}</span>`).join('');
+    document.getElementById(targetId).innerHTML = `
+        <div class="numerology-result">
+            <div class="numerology-header">
+                <div class="numerology-name">${name}</div>
+                <div class="numerology-birth">${birthStr}（${birthIso}）</div>
+            </div>
+            <div class="numerology-number-display">
+                <div class="numerology-circle ${result.isMaster ? 'master' : ''}">
+                    <span class="numerology-circle-num">${result.number}</span>
+                </div>
+                <div>
+                    <div class="numerology-label ${result.isMaster ? 'master' : ''}">
+                        ライフパスナンバー${result.isMaster ? '<br>✨ マスターナンバー' : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="numerology-calc">計算式：${result.steps.join(' → ')}</div>
+            <div class="numerology-traits">
+                <div class="numerology-traits-title">
+                    <span class="material-symbols-outlined">psychology</span>特性・キーワード
+                </div>
+                <div>${tags}</div>
+                <div class="numerology-desc">${data.desc}</div>
+            </div>
+        </div>`;
+}
+
+function toWareki(year) {
+    if (year >= 2019) return `令和${year - 2018}年`;
+    if (year >= 1989) return `平成${year - 1988}年`;
+    if (year >= 1926) return `昭和${year - 1925}年`;
+    if (year >= 1912) return `大正${year - 1911}年`;
+    return `明治${year - 1867}年`;
+}
+
+// ========== 誕生日パース（admin.htmlと共通） ==========
+const WAREKI = { 'R':[2019],'令':[2019],'H':[1989],'平':[1989],'S':[1926],'昭':[1926],'T':[1912],'大':[1912],'M':[1868],'明':[1868] };
+function parseBirthInput(val, dateId, resultId) {
+    if (!val.trim()) { showBirthResult(resultId,'',''); document.getElementById(dateId).value=''; return; }
+    const iso = parseBirthToISO(val.trim());
+    if (iso) {
+        document.getElementById(dateId).value = iso;
+        const [y,m,d] = iso.split('-');
+        showBirthResult(resultId, `${toWareki(parseInt(y))}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
+    } else {
+        document.getElementById(dateId).value = '';
+        showBirthResult(resultId, '形式を確認してください（例：S20.3.15 / 昭和20年3月15日 / 1945/3/15）', 'err');
+    }
+}
+function parseBirthToISO(val) {
+    let m = val.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (m) return fmt(m[1],m[2],m[3]);
+    m = val.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (m) return fmt(m[1],m[2],m[3]);
+    m = val.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m) return fmt(m[1],m[2],m[3]);
+    m = val.match(/^([RHSTMrHstm令平昭大明])(\d{1,2})[\/\-\.\s年](\d{1,2})[\/\-\.\s月](\d{1,2})日?$/);
+    if (m) { const k=m[1].toUpperCase(); const base=WAREKI[k]||WAREKI[m[1]]; if(base) return fmt(base[0]+parseInt(m[2])-1,m[3],m[4]); }
+    m = val.match(/^(令和|平成|昭和|大正|明治)(\d{1,2})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m) { const em={'令和':2019,'平成':1989,'昭和':1926,'大正':1912,'明治':1868}; return fmt(em[m[1]]+parseInt(m[2])-1,m[3],m[4]); }
+    return null;
+}
+function fmt(y,m,d) {
+    const year=parseInt(y),month=parseInt(m),day=parseInt(d);
+    if(year<1868||year>2030||month<1||month>12||day<1||day>31) return null;
+    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function syncDateToText(isoVal,textId,resultId) {
+    if(!isoVal){showBirthResult(resultId,'','');return;}
+    const [y,m,d]=isoVal.split('-');
+    document.getElementById(textId).value=`${toWareki(parseInt(y)).replace('年','')}年${parseInt(m)}月${parseInt(d)}日`;
+    showBirthResult(resultId,`${toWareki(parseInt(y))}　${y}年${parseInt(m)}月${parseInt(d)}日`,'ok');
+}
+function showBirthResult(id,msg,type) {
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.textContent=msg;
+    el.className='birth-result'+(type?' '+type:'');
+}
+</script>
+{% endblock %}

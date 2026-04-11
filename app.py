@@ -446,7 +446,95 @@ def birthday():
         patients=patients_list
     )
 
-@app.route('/history')
+@app.route('/chat')
+@login_required
+def chat():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    is_admin = session.get("admin_authenticated", False)
+    supabase = get_supabase()
+    messages = []
+    try:
+        res = supabase.table("messages").select("*").eq("facility_code", f_code).order("created_at").execute()
+        for r in res.data:
+            dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+            messages.append({
+                "id": r["id"],
+                "staff_name": r["staff_name"],
+                "content": r["content"],
+                "date_label": dt.strftime("%-m月%-d日"),
+                "time_label": dt.strftime("%H:%M"),
+            })
+    except Exception as e:
+        pass
+    return render_template("chat.html", messages=messages, my_name=my_name, is_admin=is_admin)
+
+@app.route('/api/send_message', methods=['POST'])
+@login_required
+def api_send_message():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        supabase.table("messages").insert({
+            "facility_code": f_code,
+            "staff_name": my_name,
+            "content": data["content"]
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/delete_message', methods=['POST'])
+@login_required
+def api_delete_message():
+    try:
+        data = request.json
+        supabase = get_supabase()
+        supabase.table("messages").delete().eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/numerology')
+@login_required
+def numerology():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    all_persons = []
+    # 利用者
+    try:
+        res_p = supabase.table("patients").select("user_name,user_kana,chart_number,birth_date").eq("facility_code", f_code).execute()
+        for r in res_p.data:
+            if r.get("birth_date"):
+                all_persons.append({
+                    "name": r["user_name"],
+                    "kana": r.get("user_kana") or "",
+                    "chart": str(r["chart_number"]),
+                    "birth": r["birth_date"],
+                    "type": "patient"
+                })
+    except:
+        pass
+    # 職員
+    try:
+        res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
+        for r in res_s.data:
+            if r.get("birth_date"):
+                all_persons.append({
+                    "name": r["staff_name"],
+                    "kana": "",
+                    "chart": "",
+                    "birth": r["birth_date"],
+                    "type": "staff"
+                })
+    except:
+        pass
+    all_persons.sort(key=lambda x: x["name"])
+    return render_template("numerology.html", all_persons=all_persons)
+
+
 @login_required
 def history():
     f_code = session["f_code"]
@@ -485,12 +573,23 @@ def admin():
             blocked = res_b.data
         except: pass
         try:
+            res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
+            staff_with_birth = {r["staff_name"]: r.get("birth_date") for r in res_s.data}
+        except:
+            staff_with_birth = {}
+        try:
             res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
             if res_s.data:
                 names = sorted(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"]))
                 for name in names:
                     is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
-                    staff_list.append({"name": name, "blocked": is_b})
+                    bd = staff_with_birth.get(name)
+                    staff_list.append({
+                        "name": name,
+                        "blocked": is_b,
+                        "birth_date": bd or "",
+                        "birth_text": birth_to_wareki_text(bd) if bd else ""
+                    })
         except: pass
         try:
             res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
@@ -751,6 +850,18 @@ def api_block_staff():
             "staff_name": data["name"], "facility_code": f_code,
             "is_active": True, "device_id": "NAME_LOCK"
         }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_birth', methods=['POST'])
+@login_required
+def api_update_staff_birth():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("staffs").update({"birth_date": data["birth"] or None}).eq("staff_name", data["name"]).eq("facility_code", f_code).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500

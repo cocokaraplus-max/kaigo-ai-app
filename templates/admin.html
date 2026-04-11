@@ -463,17 +463,52 @@
 <!-- スタッフ管理 -->
 <div class="tab-panel" id="tab-staff">
     {% for s in staff_list %}
-    <div class="staff-card">
+    <div class="staff-card" id="sc-{{ loop.index }}">
         <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
             {% if s.blocked %}block{% else %}person{% endif %}
         </span>
-        <div style="flex:1; font-weight:600;">{{ s.name }}</div>
-        {% if not s.blocked %}
-        <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')">
-            <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
-            ブロック
-        </button>
-        {% endif %}
+        <div style="flex:1;">
+            <div style="font-weight:600;">{{ s.name }}</div>
+            {% if s.birth_date %}
+            <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
+            {% endif %}
+        </div>
+        <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}', '{{ s.name }}', '{{ s.birth_date or '' }}')">
+                <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
+            </button>
+            {% if not s.blocked %}
+            <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')">
+                <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="edit-form-area" id="sbf-{{ loop.index }}" style="display:none;">
+        <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">
+                <span class="material-symbols-outlined">cake</span>{{ s.name }}の誕生日
+            </label>
+            <div class="birth-input-wrap">
+                <input type="text" id="sbf-text-{{ loop.index }}" class="form-control birth-text"
+                    placeholder="例：S20.3.15 / 1945/3/15"
+                    value="{{ s.birth_text or '' }}"
+                    oninput="parseBirthInput(this.value, 'sbf-date-{{ loop.index }}', 'sbf-result-{{ loop.index }}')"
+                    autocomplete="off">
+                <input type="date" id="sbf-date-{{ loop.index }}" class="form-control birth-date"
+                    value="{{ s.birth_date or '' }}"
+                    onchange="syncDateToText(this.value, 'sbf-text-{{ loop.index }}', 'sbf-result-{{ loop.index }}')">
+            </div>
+            <div class="birth-result" id="sbf-result-{{ loop.index }}"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="saveStaffBirth('{{ s.name }}', '{{ loop.index }}')">
+                <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
+            </button>
+            <button class="btn btn-sm" onclick="document.getElementById('sbf-{{ loop.index }}').style.display='none'">
+                <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
+            </button>
+        </div>
     </div>
     {% endfor %}
 </div>
@@ -733,7 +768,21 @@ async function blockStaff(name) {
     if ((await res.json()).status === 'success') location.reload();
 }
 
-async function unblockDevice(id) {
+function toggleStaffBirth(idx, name, currentBirth) {
+    const el = document.getElementById('sbf-' + idx);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveStaffBirth(name, idx) {
+    const birth = document.getElementById('sbf-date-' + idx).value;
+    const res = await fetch('/api/update_staff_birth', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, birth })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+    else alert('保存に失敗しました');
+}
     const res = await fetch('/api/unblock_device', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
