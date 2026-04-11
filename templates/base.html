@@ -220,9 +220,10 @@
 
 // onclick属性から直接呼ばれる関数（iPhoneでも確実に動く）
 function spaNav(event, url) {
-    // adminとhistoryは通常遷移（JSが複雑なためSPA非対応）
-    if (url === '/admin' || url === '/history') {
-        return; // デフォルトのリンク動作を許可
+    // admin・history・numerologyは通常遷移（JSが複雑なためSPA非対応）
+    // Jinja2タグを含むページは通常遷移（SPA非対応）
+    if (['/admin', '/history', '/numerology', '/birthday', '/input', '/daily_view'].includes(url)) {
+        return;
     }
     event.preventDefault();
     navigateTo(url);
@@ -271,7 +272,7 @@ async function navigateTo(url, pushState = true) {
         wrapper.innerHTML = data.content || '';
         wrapper.scrollTop = 0;
 
-        // スクリプト実行 - scriptタグ追加方式
+        // スクリプト実行 - 古いSPA注入スクリプトを全て削除してから追加
         document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
         if (data.script) {
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
