@@ -129,13 +129,15 @@ function searchPatient(query) {
     if (filtered.length === 0) {
         candidates.innerHTML = '<div style="padding:12px 14px;color:#80868b;font-size:0.88rem;">該当なし</div>';
     } else {
-        candidates.innerHTML = filtered.map(p =>
-            `<div onclick="selectPatient(${JSON.stringify(p.value)}, ${JSON.stringify(p.label)})"
+        candidates.innerHTML = filtered.map((p, i) => {
+            const key = 'hp_' + i;
+            window[key] = p;
+            return `<div onclick="selectPatient(window['${key}'].value, window['${key}'].label)"
                 style="padding:12px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;"
                 ontouchstart="this.style.background='#e8f0fe'" ontouchend="this.style.background=''">
                 ${p.label}
-            </div>`
-        ).join('');
+            </div>`;
+        }).join('');
     }
     candidates.style.display = 'block';
 }

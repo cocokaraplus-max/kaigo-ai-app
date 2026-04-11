@@ -426,7 +426,16 @@ function selectDate(dateStr) {
     window.location.href = '/daily_view?date=' + dateStr + (targetUser ? '&user=' + encodeURIComponent(targetUser) : '');
 }
 
-initCalendar();
+// ページ読み込み時の処理
+document.addEventListener('DOMContentLoaded', function() {
+    initCalendar();
+});
+
+// DOMContentLoadedが既に発火済みの場合も対応
+if (document.readyState !== 'loading') {
+    initCalendar();
+}
+
 // ========================================
 
 // ページ読み込み時の処理
