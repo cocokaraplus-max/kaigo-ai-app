@@ -438,6 +438,32 @@
             <span class="material-symbols-outlined">save</span>保存
         </button>
     </div>
+
+    <!-- Claude閲覧許可 -->
+    <div class="section-box" style="background:linear-gradient(135deg,#f8f0ff,#ede7f6);border:1.5px solid #ce93d8;">
+        <div class="section-box-title" style="color:#6a1b9a;">
+            <span class="material-symbols-outlined" style="color:#7b1fa2;">smart_toy</span>
+            Claude閲覧許可
+        </div>
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+            Claudeにアプリを一時的に閲覧させて、不具合確認や改善提案を受けられます。有効時間は<b>30分</b>です。
+        </div>
+        <button class="btn" style="background:#7b1fa2;color:white;border:none;" onclick="issueClaude()">
+            <span class="material-symbols-outlined" style="color:white;">key</span>
+            閲覧URLを発行する
+        </button>
+        <div id="claude-url-result" style="display:none;margin-top:12px;">
+            <div style="font-size:0.78rem;color:#6a1b9a;font-weight:700;margin-bottom:6px;">
+                ✅ このURLをClaudeに貼り付けてください：
+            </div>
+            <div style="background:white;border-radius:8px;padding:10px 12px;font-size:0.78rem;word-break:break-all;color:#202124;border:1px solid #ce93d8;" id="claude-url-text"></div>
+            <button class="btn btn-sm" style="margin-top:8px;background:#e8f0fe;color:#1a73e8;border:none;" onclick="copyClaudeUrl()">
+                <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+                コピー
+            </button>
+            <div style="font-size:0.72rem;color:#80868b;margin-top:6px;">⏰ 30分後に自動失効します</div>
+        </div>
+    </div>
 </div>
 
 <!-- セキュリティ -->
@@ -735,6 +761,32 @@ async function executeDelete() {
         body: JSON.stringify({ id: deleteTargetId })
     });
     if ((await res.json()).status === 'success') { closeModal(); location.reload(); }
+}
+
+async function issueClaude() {
+    const res = await fetch('/api/issue_claude_session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        const url = `${window.location.origin}/claude_view?token=${data.token}`;
+        document.getElementById('claude-url-text').textContent = url;
+        document.getElementById('claude-url-result').style.display = 'block';
+    } else {
+        alert('発行に失敗しました');
+    }
+}
+
+function copyClaudeUrl() {
+    const text = document.getElementById('claude-url-text').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target.closest('button');
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px;">check</span> コピーしました';
+        setTimeout(() => {
+            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px;">content_copy</span> コピー';
+        }, 2000);
+    });
 }
 
 async function updatePassword() {

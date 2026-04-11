@@ -926,7 +926,51 @@ def api_block_staff():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
-@app.route('/api/update_staff_birth', methods=['POST'])
+@app.route('/api/issue_claude_session', methods=['POST'])
+@login_required
+def api_issue_claude_session():
+    try:
+        import secrets
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        # 既存トークンを削除
+        supabase.table("claude_sessions").delete().eq("facility_code", f_code).execute()
+        # 新しいトークンを発行
+        supabase.table("claude_sessions").insert({
+            "facility_code": f_code,
+            "token": token,
+            "expires_at": expires_at.isoformat()
+        }).execute()
+        return jsonify({"status": "success", "token": token})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/claude_view')
+def claude_view():
+    """Claude用の閲覧ページ - トークン認証"""
+    token = request.args.get("token")
+    if not token:
+        return "アクセストークンが必要です", 403
+    try:
+        supabase = get_supabase()
+        res = supabase.table("claude_sessions").select("*").eq("token", token).execute()
+        if not res.data:
+            return "トークンが無効です", 403
+        expires = datetime.fromisoformat(res.data[0]["expires_at"].replace("Z", "+00:00"))
+        if expires < datetime.now(timezone.utc):
+            return "トークンの有効期限が切れています", 403
+        f_code = res.data[0]["facility_code"]
+        # セッションにClaude閲覧用フラグをセット
+        session["f_code"] = f_code
+        session["my_name"] = "Claude"
+        session["is_claude"] = True
+        return redirect(url_for("top"))
+    except Exception as e:
+        return f"エラー: {e}", 500
+
+
 @login_required
 def api_update_staff_birth():
     try:
