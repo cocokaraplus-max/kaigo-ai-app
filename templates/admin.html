@@ -4,6 +4,7 @@
 
 {% block extra_style %}
 <style>
+/* adminページではSPAを無効化 */
 .tab-bar {
     display: flex;
     overflow-x: auto;
@@ -450,21 +451,16 @@
         <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
             Claudeにアプリを一時的に閲覧させて、不具合確認や改善提案を受けられます。有効時間は<b>30分</b>です。
         </div>
-        <button class="btn" style="background:#7b1fa2;color:white;border:none;" onclick="issueClaude()">
-            <span class="material-symbols-outlined" style="color:white;">key</span>
-            閲覧URLを発行する
-        </button>
-        <div id="claude-url-result" style="display:none;margin-top:12px;">
-            <div style="font-size:0.78rem;color:#6a1b9a;font-weight:700;margin-bottom:6px;">
-                ✅ このURLをClaudeに貼り付けてください：
-            </div>
-            <div style="background:white;border-radius:8px;padding:10px 12px;font-size:0.78rem;word-break:break-all;color:#202124;border:1px solid #ce93d8;" id="claude-url-text"></div>
-            <button class="btn btn-sm" style="margin-top:8px;background:#e8f0fe;color:#1a73e8;border:none;" onclick="copyClaudeUrl()">
-                <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
-                コピー
+        {% if claude_url %}
+        <div style="background:white;border-radius:8px;padding:10px 12px;font-size:0.78rem;word-break:break-all;color:#202124;border:1px solid #ce93d8;margin-bottom:8px;">{{ claude_url }}</div>
+        <div style="font-size:0.72rem;color:#80868b;margin-bottom:10px;">⏰ 30分後に自動失効します</div>
+        {% endif %}
+        <form method="POST" action="/api/issue_claude_session_form">
+            <button type="submit" class="btn" style="background:#7b1fa2;color:white;border:none;">
+                <span class="material-symbols-outlined" style="color:white;">key</span>
+                閲覧URLを発行する
             </button>
-            <div style="font-size:0.72rem;color:#80868b;margin-top:6px;">⏰ 30分後に自動失効します</div>
-        </div>
+        </form>
     </div>
 </div>
 
@@ -844,5 +840,13 @@ async function saveStaffBirth(name, idx) {
     });
     if ((await res.json()).status === 'success') location.reload();
 }
+
+// ========== adminページはSPAを無効化 ==========
+// 全ナビリンクのonclickを削除して通常遷移にする
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.bottom-nav-item[href]').forEach(link => {
+        link.removeAttribute('onclick');
+    });
+});
 </script>
 {% endblock %}
