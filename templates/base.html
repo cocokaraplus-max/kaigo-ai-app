@@ -170,31 +170,31 @@
 
     {% block bottom_nav %}
     <nav class="bottom-nav">
-        <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}">
+        <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
             <span class="material-symbols-outlined">home</span>
             TOP
         </a>
-        <a href="/input" class="bottom-nav-item {% block nav_input %}{% endblock %}">
+        <a href="/input" class="bottom-nav-item {% block nav_input %}{% endblock %}" onclick="spaNav(event,'/input')">
             <span class="material-symbols-outlined">edit_note</span>
             記録入力
         </a>
-        <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}">
+        <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}" onclick="spaNav(event,'/daily_view')">
             <span class="material-symbols-outlined">calendar_month</span>
             ケース記録
         </a>
-        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}">
+        <a href="/history" class="bottom-nav-item {% block nav_history %}{% endblock %}" onclick="spaNav(event,'/history')">
             <span class="material-symbols-outlined">monitoring</span>
             モニタリング
         </a>
-        <a href="/chat" class="bottom-nav-item {% block nav_chat %}{% endblock %}">
+        <a href="/chat" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/chat')">
             <span class="material-symbols-outlined">forum</span>
             トーク
         </a>
-        <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}">
+        <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
             <span class="material-symbols-outlined">cake</span>
             誕生日
         </a>
-        <a href="/numerology" class="bottom-nav-item {% block nav_numerology %}{% endblock %}">
+        <a href="/numerology" class="bottom-nav-item {% block nav_numerology %}{% endblock %}" onclick="spaNav(event,'/numerology')">
             <span class="material-symbols-outlined">auto_awesome</span>
             数秘
         </a>
@@ -215,7 +215,12 @@
 
 <script>
 // ========== SPAルーター ==========
-const NAV_PAGES = ['/top','/input','/daily_view','/history','/chat','/birthday','/numerology','/admin'];
+
+// onclick属性から直接呼ばれる関数（iPhoneでも確実に動く）
+function spaNav(event, url) {
+    event.preventDefault();
+    navigateTo(url);
+}
 
 async function navigateTo(url, pushState = true) {
     console.log('[SPA] navigateTo:', url);
