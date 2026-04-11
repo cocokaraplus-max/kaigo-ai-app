@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}TOP - TASUKARU{% endblock %}
+{% block nav_top %}active{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -82,11 +83,53 @@
 .history-item-name { font-size: 0.9rem; font-weight: 500; flex: 1; }
 .history-item-time { font-size: 0.78rem; color: #80868b; }
 
-.bottom-actions {
+.birthday-section {
+    background: linear-gradient(135deg, #fff0f6 0%, #fce4ec 100%);
+    border: 1.5px solid #f8bbd9;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 1rem;
+}
+.birthday-header {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 1.2rem;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #c2185b;
+    margin-bottom: 10px;
+}
+.birthday-header .material-symbols-outlined { font-size: 18px; }
+.birthday-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f8bbd9;
+}
+.birthday-item:last-child { border-bottom: none; }
+.birthday-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.birthday-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #202124;
+}
+.birthday-date {
+    font-size: 0.78rem;
+    color: #c2185b;
+    font-weight: 600;
+    background: #fce4ec;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.birthday-age {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #c2185b;
 }
 .admin-btn {
     display: flex;
@@ -142,26 +185,25 @@
     <b>{{ my_name }}</b> さん
 </div>
 
-<div class="menu-grid">
-    <a href="/input" class="menu-btn">
-        <span class="material-symbols-outlined">edit_note</span>
-        記録を書く
-    </a>
-    <a href="/history" class="menu-btn">
-        <span class="material-symbols-outlined">monitoring</span>
-        モニタリング生成
-    </a>
+{% if birthday_users %}
+<div class="birthday-section">
+    <div class="birthday-header">
+        <span class="material-symbols-outlined">cake</span>
+        今月お誕生日の利用者
+    </div>
+    {% for b in birthday_users %}
+    <div class="birthday-item">
+        <div class="birthday-left">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#e91e8c;">favorite</span>
+            <span class="birthday-name">{{ b.user_name }}</span>
+            <span class="birthday-date">{{ b.month }}月{{ b.day }}日</span>
+        </div>
+        <div class="birthday-age">{{ b.age }}歳</div>
+    </div>
+    {% endfor %}
 </div>
-<a href="/daily_view" class="btn" style="margin-bottom:0;">
-    <span class="material-symbols-outlined">calendar_month</span>
-    ケース記録閲覧
-</a>
-<a href="/admin" class="admin-btn" style="margin-top:10px;">
-    <span class="material-symbols-outlined">admin_panel_settings</span>
-    管理者MENU
-</a>
-
 <hr class="divider">
+{% endif %}
 
 <div class="history-section">
     <div class="section-title">
@@ -170,7 +212,7 @@
     </div>
 
     {% if records %}
-    <div class="history-list" style="max-height:180px;">
+    <div class="history-list" style="max-height:220px;">
         {% for r in records %}
         <div class="history-item" onclick="goToRecord('{{ r.user_name }}', '{{ r.date }}')">
             <span class="material-symbols-outlined">person</span>
@@ -187,9 +229,7 @@
     {% endif %}
 </div>
 
-<hr class="divider">
-
-<div class="bottom-actions">
+<div style="margin-top:1.5rem;">
     <form method="POST" action="/logout">
         <button type="submit" class="logout-btn">
             <span class="material-symbols-outlined">logout</span>

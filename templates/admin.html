@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}管理者MENU - TASUKARU{% endblock %}
+{% block nav_admin %}active{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -289,6 +290,13 @@
                 <label class="form-label">かな</label>
                 <input type="text" id="new-kana" class="form-control" placeholder="例：やまだ たろう">
             </div>
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="material-symbols-outlined">cake</span>
+                    誕生日
+                </label>
+                <input type="date" id="new-birth" class="form-control">
+            </div>
             <button class="btn btn-primary" onclick="addPatient()">
                 <span class="material-symbols-outlined">add</span>登録する
             </button>
@@ -338,6 +346,12 @@
                 <div class="form-group" style="margin-bottom:12px;">
                     <label class="form-label" style="font-size:0.75rem;">かな</label>
                     <input type="text" id="ef-kana-{{ p.id }}" class="form-control" value="{{ p.user_kana }}">
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:0.75rem;">
+                        <span class="material-symbols-outlined">cake</span>誕生日
+                    </label>
+                    <input type="date" id="ef-birth-{{ p.id }}" class="form-control" value="{{ p.birth_date or '' }}">
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                     <button class="btn btn-primary btn-sm" onclick="savePatientEdit('{{ p.id }}')">
@@ -503,11 +517,12 @@ async function addPatient() {
     const chart = document.getElementById('new-chart').value.trim();
     const name  = document.getElementById('new-name').value.trim();
     const kana  = document.getElementById('new-kana').value.trim();
+    const birth = document.getElementById('new-birth').value;
     if (!chart || !name) { alert('カルテNoと氏名は必須です'); return; }
     const res = await fetch('/api/add_patient', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ chart, name, kana })
+        body: JSON.stringify({ chart, name, kana, birth })
     });
     if ((await res.json()).status === 'success') location.reload();
 }
@@ -523,10 +538,11 @@ async function savePatientEdit(id) {
     const chart = document.getElementById('ef-chart-' + id).value.trim();
     const name  = document.getElementById('ef-name-' + id).value.trim();
     const kana  = document.getElementById('ef-kana-' + id).value.trim();
+    const birth = document.getElementById('ef-birth-' + id).value;
     const res = await fetch('/api/update_patient', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id, chart, name, kana })
+        body: JSON.stringify({ id, chart, name, kana, birth })
     });
     if ((await res.json()).status === 'success') location.reload();
     else alert('更新に失敗しました');

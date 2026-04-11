@@ -67,8 +67,35 @@ def get_patients(supabase, f_code):
                 "chart_number": chart,
                 "user_name": name,
                 "user_kana": kana,
+                "birth_date": r.get("birth_date") or "",
             })
         return patients
+    except:
+        return []
+
+def get_birthday_users(supabase, f_code):
+    try:
+        now = datetime.now(tokyo_tz)
+        res = supabase.table("patients").select("user_name, birth_date").eq("facility_code", f_code).execute()
+        birthday_users = []
+        for r in res.data:
+            if not r.get("birth_date"):
+                continue
+            try:
+                bd = datetime.strptime(str(r["birth_date"]), "%Y-%m-%d")
+                if bd.month == now.month:
+                    age = now.year - bd.year
+                    if (now.month, now.day) < (bd.month, bd.day):
+                        age -= 1
+                    birthday_users.append({
+                        "user_name": r["user_name"],
+                        "month": bd.month,
+                        "day": bd.day,
+                        "age": age
+                    })
+            except:
+                continue
+        return sorted(birthday_users, key=lambda x: x["day"])
     except:
         return []
 
@@ -224,7 +251,7 @@ def top():
     except:
         pass
 
-    return render_template("top.html", f_code=f_code, my_name=my_name, records=records)
+    return render_template("top.html", f_code=f_code, my_name=my_name, records=records, birthday_users=get_birthday_users(supabase, f_code))
 
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
@@ -553,12 +580,15 @@ def api_add_patient():
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
-        supabase.table("patients").insert({
+        insert_data = {
             "facility_code": f_code,
             "chart_number": data["chart"],
             "user_name": data["name"],
             "user_kana": data["kana"]
-        }).execute()
+        }
+        if data.get("birth"):
+            insert_data["birth_date"] = data["birth"]
+        supabase.table("patients").insert(insert_data).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
@@ -580,11 +610,14 @@ def api_update_patient():
     try:
         data = request.json
         supabase = get_supabase()
-        supabase.table("patients").update({
+        update_data = {
             "chart_number": data["chart"],
             "user_name": data["name"],
             "user_kana": data["kana"]
-        }).eq("id", data["id"]).execute()
+        }
+        if data.get("birth"):
+            update_data["birth_date"] = data["birth"]
+        supabase.table("patients").update(update_data).eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
