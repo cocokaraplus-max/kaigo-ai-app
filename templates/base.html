@@ -12,16 +12,22 @@
             font-family: -apple-system, 'Helvetica Neue', sans-serif;
             background-color: #F5F5F5;
             color: #202124;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         .page-wrapper {
             max-width: 480px;
+            width: 100%;
             margin: 0 auto;
             background: #FFFFFF;
-            min-height: 100vh;
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem 4rem;
+            padding: 1.5rem 1.2rem 1.5rem;
         }
 
         /* Material Symbols */
@@ -162,8 +168,6 @@
 
         /* ボトムナビ */
         .bottom-nav {
-            position: fixed;
-            bottom: 0; left: 0; right: 0;
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
             display: flex;
@@ -172,9 +176,12 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
             padding: 6px 4px max(6px, env(safe-area-inset-bottom));
-            z-index: 500;
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 2px;
+            flex-shrink: 0;
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
         .bottom-nav-item {
@@ -208,9 +215,6 @@
         .bottom-nav-item.logout-item { color: #ea4335; }
         .bottom-nav-item.logout-item:active { background: #fce8e6; }
 
-        /* ボトムナビの分、ページ下部に余白 */
-        .page-wrapper { padding-bottom: 5rem !important; }
-
         /* フラッシュメッセージ */
         .flash-messages { margin-bottom: 1rem; }
     </style>
@@ -221,7 +225,6 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- ボトムナビ（ログイン・登録画面以外で表示） -->
     {% block bottom_nav %}
     <nav class="bottom-nav">
         <form method="POST" action="/logout" style="display:contents;">
