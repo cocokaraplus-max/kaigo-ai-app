@@ -256,6 +256,7 @@ async function saveStaffBirth(name, idx) {
     if ((await res.json()).status === 'success') location.reload();
     else alert('保存に失敗しました');
 }
+async function unblockDevice(id) {
     const res = await fetch('/api/unblock_device', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
