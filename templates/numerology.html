@@ -1,138 +1,181 @@
 {% extends "base.html" %}
-{% block title %}数秘確認 - TASUKARU{% endblock %}
+{% block title %}数秘 - TASUKARU{% endblock %}
 {% block nav_numerology %}active{% endblock %}
 
 {% block extra_style %}
 <style>
-/* 入力モード切り替え */
-.mode-tabs {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 1.2rem;
-}
+.mode-tabs { display:flex; gap:6px; margin-bottom:1.2rem; }
 .mode-tab {
-    flex: 1;
-    padding: 10px;
-    border-radius: 10px;
-    border: 1.5px solid #e0e0e0;
-    background: #fff;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #5f6368;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.15s;
+    flex:1; padding:10px; border-radius:10px; border:1.5px solid #e0e0e0;
+    background:#fff; font-size:0.85rem; font-weight:600; color:#5f6368;
+    cursor:pointer; text-align:center; transition:all 0.15s;
 }
-.mode-tab.active { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; }
+.mode-tab.active { background:#e8f0fe; color:#1a73e8; border-color:#1a73e8; }
+.mode-content { display:none; }
+.mode-content.active { display:block; }
 
-.mode-content { display: none; }
-.mode-content.active { display: block; }
-
-/* 検索 */
-.search-wrapper { position: relative; margin-bottom: 1rem; }
+.search-wrapper { position:relative; margin-bottom:1rem; }
 .search-candidates {
-    position: absolute; top: 100%; left: 0; right: 0;
-    background: #fff; border: 1.5px solid #1a73e8;
-    border-radius: 10px; z-index: 100;
-    max-height: 220px; overflow-y: auto;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none;
+    position:absolute; top:100%; left:0; right:0;
+    background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
+    z-index:100; max-height:220px; overflow-y:auto;
+    box-shadow:0 4px 12px rgba(0,0,0,0.1); display:none;
 }
-.search-candidates.show { display: block; }
+.search-candidates.show { display:block; }
 .search-candidate-item {
-    padding: 12px 14px; font-size: 0.9rem;
-    cursor: pointer; border-bottom: 1px solid #f0f0f0; color: #202124;
+    padding:12px 14px; font-size:0.9rem;
+    cursor:pointer; border-bottom:1px solid #f0f0f0; color:#202124;
 }
-.search-candidate-item:last-child { border-bottom: none; }
-.search-candidate-item:active { background: #e8f0fe; }
+.search-candidate-item:last-child { border-bottom:none; }
+.search-candidate-item:active { background:#e8f0fe; }
 .selected-badge {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 14px; background: #e8f0fe;
-    border-radius: 10px; font-size: 0.88rem;
-    font-weight: 600; color: #1557b0; margin-bottom: 1rem;
+    display:flex; align-items:center; gap:8px;
+    padding:10px 14px; background:#e8f0fe;
+    border-radius:10px; font-size:0.88rem;
+    font-weight:600; color:#1557b0; margin-bottom:1rem;
 }
+.manual-input-area { background:#f8f9fa; border-radius:14px; padding:16px; margin-bottom:1rem; }
+.birth-input-wrap { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
+.birth-date { width:44px !important; padding:10px 6px !important; text-align:center; cursor:pointer; }
+.birth-result { font-size:0.78rem; margin-top:5px; padding:5px 10px; border-radius:8px; display:none; }
+.birth-result.ok { display:block; background:#e6f4ea; color:#1e7e34; }
+.birth-result.err { display:block; background:#fce8e6; color:#c5221f; }
 
-/* 手入力エリア */
-.manual-input-area {
-    background: #f8f9fa;
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 1rem;
+/* ===== 結果カード全体 ===== */
+.sushi-result {
+    background:#fff; border-radius:18px;
+    border:1.5px solid #e0e0e0;
+    overflow:hidden; margin-top:1rem;
+    box-shadow:0 4px 16px rgba(0,0,0,0.06);
 }
-.birth-input-wrap {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-    align-items: center;
+.sushi-result-header {
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    padding:18px 20px; color:#fff;
 }
-.birth-date { width: 44px !important; padding: 10px 6px !important; text-align: center; cursor: pointer; }
-.birth-result {
-    font-size: 0.78rem; margin-top: 5px;
-    padding: 5px 10px; border-radius: 8px; display: none;
-}
-.birth-result.ok { display: block; background: #e6f4ea; color: #1e7e34; }
-.birth-result.err { display: block; background: #fce8e6; color: #c5221f; }
+.sushi-result-name { font-size:1.1rem; font-weight:800; margin-bottom:2px; }
+.sushi-result-birth { font-size:0.78rem; opacity:0.85; }
 
-/* 数秘結果 */
-.numerology-result {
-    background: linear-gradient(135deg, #f8f0ff, #ede7f6);
-    border: 1.5px solid #ce93d8;
-    border-radius: 16px;
-    padding: 20px;
-    margin-bottom: 1rem;
+/* グリッドレイアウト */
+.sushi-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:1px; background:#e0e0e0;
 }
-.numerology-header { text-align: center; margin-bottom: 16px; }
-.numerology-name { font-size: 1.1rem; font-weight: 700; color: #202124; margin-bottom: 4px; }
-.numerology-birth { font-size: 0.82rem; color: #5f6368; }
-.numerology-number-display {
-    display: flex; align-items: center; justify-content: center;
-    gap: 16px; margin: 16px 0;
+.sushi-grid-bottom {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1px; background:#e0e0e0;
 }
-.numerology-circle {
-    width: 80px; height: 80px; border-radius: 50%;
-    background: #7b1fa2;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 16px rgba(123,31,162,0.3);
+.sushi-cell {
+    background:#fff; padding:14px 12px;
+    display:flex; flex-direction:column; align-items:center;
+    gap:4px; cursor:pointer; transition:background 0.15s;
+    -webkit-tap-highlight-color:transparent;
+    position:relative;
 }
-.numerology-circle.master {
-    background: linear-gradient(135deg, #c62828, #e53935);
-    box-shadow: 0 4px 16px rgba(198,40,40,0.3);
+.sushi-cell:active { background:#f0f4ff; }
+.sushi-cell-code {
+    font-size:0.65rem; font-weight:800; letter-spacing:1px;
+    color:#9c27b0; text-transform:uppercase;
 }
-.numerology-circle-num { font-size: 2.2rem; font-weight: 800; color: white; line-height: 1; }
-.numerology-label { font-size: 0.85rem; font-weight: 700; color: #6a1b9a; line-height: 1.5; }
-.numerology-label.master { color: #b71c1c; }
-.numerology-calc {
-    text-align: center; font-size: 0.75rem; color: #80868b;
-    background: rgba(255,255,255,0.6); border-radius: 8px;
-    padding: 6px 12px; margin: 0 0 16px;
+.sushi-cell-num {
+    font-size:1.8rem; font-weight:900; line-height:1;
+    font-family:'Arial Black',sans-serif;
 }
-.numerology-traits { background: white; border-radius: 12px; padding: 14px; }
-.numerology-traits-title {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 0.85rem; font-weight: 700; color: #6a1b9a; margin-bottom: 10px;
+.sushi-cell-label {
+    font-size:0.62rem; color:#80868b; font-weight:600;
+    text-align:center; line-height:1.3;
 }
-.numerology-traits-title .material-symbols-outlined { font-size: 17px; }
-.trait-tag {
-    display: inline-block; background: #f3e5f5; color: #6a1b9a;
-    font-size: 0.78rem; font-weight: 600;
-    padding: 4px 10px; border-radius: 12px; margin: 3px 3px 3px 0;
+.sushi-cell.master .sushi-cell-num { color:#ff6f00; }
+.sushi-cell.master .sushi-cell-code { color:#ff6f00; }
+.sushi-cell-ll .sushi-cell-num { color:#ef5350; font-size:1.4rem; }
+.sushi-cell-ll .sushi-cell-code { color:#ef5350; }
+.sushi-cell-it .sushi-cell-code { color:#0288d1; }
+.sushi-cell-it .sushi-cell-num { color:#0288d1; }
+.sushi-cell-m .sushi-cell-code { color:#2e7d32; }
+.sushi-cell-m .sushi-cell-num { color:#2e7d32; }
+
+/* 詳細パネル */
+.sushi-detail {
+    padding:16px 20px;
+    border-top:1px solid #f0f0f0;
+    display:none;
+    animation: fadeIn 0.2s ease;
 }
-.trait-tag.master { background: #ffebee; color: #b71c1c; }
-.numerology-desc { font-size: 0.85rem; color: #5f6368; line-height: 1.7; margin-top: 10px; }
+.sushi-detail.show { display:block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.sushi-detail-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    background:#f3e5f5; color:#7b1fa2;
+    border-radius:20px; padding:4px 12px;
+    font-size:0.75rem; font-weight:700; margin-bottom:10px;
+}
+.sushi-detail-badge.ll { background:#fce4ec; color:#c62828; }
+.sushi-detail-badge.it { background:#e1f5fe; color:#01579b; }
+.sushi-detail-badge.m  { background:#e8f5e9; color:#1b5e20; }
+.sushi-detail-title {
+    font-size:0.9rem; font-weight:800; color:#202124;
+    margin-bottom:6px;
+}
+.sushi-detail-desc {
+    font-size:0.85rem; line-height:1.75; color:#3c4043;
+    margin-bottom:10px;
+}
+.sushi-detail-tags {
+    display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px;
+}
+.sushi-tag {
+    background:#f0f4ff; color:#1a73e8;
+    border-radius:20px; padding:3px 10px;
+    font-size:0.72rem; font-weight:600;
+}
+.sushi-tag.master { background:#fff3e0; color:#e65100; }
+.sushi-tag.ll { background:#fce4ec; color:#c62828; }
+.sushi-tag.it { background:#e1f5fe; color:#01579b; }
+.sushi-tag.m  { background:#e8f5e9; color:#1b5e20; }
+.sushi-detail-hint {
+    background:#f8f9fa; border-radius:10px;
+    padding:10px 12px; font-size:0.8rem;
+    color:#5f6368; line-height:1.65;
+    border-left:3px solid #9c27b0;
+}
+.sushi-detail-hint.ll { border-color:#ef5350; }
+.sushi-detail-hint.it { border-color:#0288d1; }
+.sushi-detail-hint.m  { border-color:#2e7d32; }
+
+/* LL説明 */
+.ll-note {
+    padding:12px 20px; background:#fce4ec;
+    font-size:0.78rem; color:#b71c1c; line-height:1.6;
+    display:none;
+}
+.ll-note.show { display:block; }
+
+/* 名前入力（D/S/P計算用） */
+.name-roman-area {
+    background:#fff8e1; border-radius:12px;
+    padding:14px 16px; margin-bottom:1rem;
+    border:1.5px solid #ffe082;
+}
+.name-roman-title {
+    font-size:0.78rem; font-weight:700; color:#f57f17;
+    margin-bottom:8px; display:flex; align-items:center; gap:4px;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-title">
     <span class="material-symbols-outlined">auto_awesome</span>
-    数秘確認
+    数秘
 </div>
 
 <div class="mode-tabs">
-    <button class="mode-tab active" onclick="switchMode('search', this)">
+    <button class="mode-tab active" onclick="switchMode('search',this)">
         <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">search</span>
         人から探す
     </button>
-    <button class="mode-tab" onclick="switchMode('manual', this)">
+    <button class="mode-tab" onclick="switchMode('manual',this)">
         <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">edit_calendar</span>
         誕生日から調べる
     </button>
@@ -166,20 +209,32 @@
             </label>
             <input type="text" id="manual-name" class="form-control" placeholder="例：山田 太郎">
         </div>
-        <div class="form-group" style="margin-bottom:4px;">
+        <div class="form-group" style="margin-bottom:8px;">
             <label class="form-label">
                 <span class="material-symbols-outlined">cake</span>
                 生年月日
             </label>
             <div class="birth-input-wrap">
                 <input type="text" id="manual-birth-text" class="form-control"
-                    placeholder="例：S20.3.15 / 昭和20年3月15日 / 1945/3/15"
-                    oninput="parseBirthInput(this.value, 'manual-birth-date', 'manual-birth-result')"
+                    placeholder="例：S20.3.15 / 1945/3/15"
+                    oninput="parseBirthInput(this.value,'manual-birth-date','manual-birth-result')"
                     autocomplete="off">
                 <input type="date" id="manual-birth-date" class="form-control birth-date"
-                    onchange="syncDateToText(this.value, 'manual-birth-text', 'manual-birth-result')">
+                    onchange="syncDateToText(this.value,'manual-birth-text','manual-birth-result')">
             </div>
             <div class="birth-result" id="manual-birth-result"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">translate</span>
+                ローマ字のお名前（任意・D/S/P/IT/LL計算用）
+            </label>
+            <input type="text" id="manual-roman" class="form-control"
+                placeholder="例：YAMADA TARO（半角大文字）"
+                oninput="this.value=this.value.toUpperCase()">
+            <div style="font-size:0.72rem;color:#80868b;margin-top:4px;">
+                ヘボン式ローマ字。未入力の場合はLP・Bのみ計算します。
+            </div>
         </div>
     </div>
     <button class="btn btn-primary" onclick="calcManual()">
@@ -192,199 +247,390 @@
 
 {% block extra_script %}
 <script>
-function switchMode(name, el) {
-    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+(function(){
+
+// ========== タブ切り替え ==========
+window.switchMode = function(name, el) {
+    document.querySelectorAll('.mode-content').forEach(c=>c.classList.remove('active'));
+    document.querySelectorAll('.mode-tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('mode-'+name).classList.add('active');
     el.classList.add('active');
-    document.getElementById('mode-' + name).classList.add('active');
-}
-
-// ========== 全利用者・職員データ ==========
-const ALL_PERSONS = [
-    {% for p in all_persons %}
-    { name: {{ p.name | tojson }}, kana: {{ p.kana | tojson }}, chart: {{ p.chart | tojson }}, birth: {{ p.birth | tojson }}, type: {{ p.type | tojson }} },
-    {% endfor %}
-];
-
-// ========== 検索 ==========
-function searchPerson(query) {
-    const q = query.trim().toLowerCase();
-    const filtered = q === ''
-        ? ALL_PERSONS
-        : ALL_PERSONS.filter(p =>
-            p.name.toLowerCase().includes(q) ||
-            p.kana.toLowerCase().includes(q) ||
-            p.chart.toLowerCase().includes(q)
-        );
-    const el = document.getElementById('num-candidates');
-    if (filtered.length === 0) {
-        el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
-    } else {
-        el.innerHTML = filtered.map((p, i) => {
-            const key = 'np_' + i;
-            window[key] = p;
-            return `<div class="search-candidate-item" onclick="selectPerson(window['${key}'].name, window['${key}'].birth, window['${key}'].type)">
-                ${p.name}
-                <span style="color:#80868b;font-size:0.78rem;margin-left:6px;">${p.type === 'staff' ? '職員' : 'No.' + p.chart}</span>
-            </div>`;
-        }).join('');
-    }
-    el.classList.add('show');
-}
-
-function selectPerson(name, birth, type) {
-    document.getElementById('num-search').style.display = 'none';
-    document.getElementById('search-selected-label').textContent = name + (type === 'staff' ? '（職員）' : '');
-    document.getElementById('search-selected').style.display = 'flex';
-    document.getElementById('num-candidates').classList.remove('show');
-    if (!birth) {
-        document.getElementById('search-result').innerHTML =
-            `<div style="background:#fef7e0;border-radius:10px;padding:12px 14px;font-size:0.85rem;color:#b06000;margin-top:8px;">
-                <span style="font-weight:700;">誕生日が登録されていません。</span><br>
-                「誕生日から調べる」タブで手入力して計算できます。
-            </div>`;
-    } else {
-        renderNumerology(name, birth, 'search-result');
-    }
-}
-
-function clearSearch() {
-    document.getElementById('num-search').style.display = 'block';
-    document.getElementById('num-search').value = '';
-    document.getElementById('search-selected').style.display = 'none';
-    document.getElementById('search-result').innerHTML = '';
-}
-
-document.addEventListener('click', e => {
-    if (!e.target.closest('.search-wrapper'))
-        setTimeout(() => document.getElementById('num-candidates').classList.remove('show'), 200);
-});
-
-// ========== 手入力計算 ==========
-function calcManual() {
-    const name = document.getElementById('manual-name').value.trim() || '（名前未入力）';
-    const birth = document.getElementById('manual-birth-date').value;
-    if (!birth) { alert('生年月日を入力してください'); return; }
-    renderNumerology(name, birth, 'manual-result');
-}
-
-// ========== 数秘術計算 ==========
-const MASTER_NUMBERS = [11, 22, 33];
-function calcNumerology(birthIso) {
-    if (!birthIso) return null;
-    const digits = birthIso.replace(/-/g, '').split('').map(Number);
-    let sum = digits.reduce((a, b) => a + b, 0);
-    const steps = [`${digits.join('+')} = ${sum}`];
-    while (sum > 9 && !MASTER_NUMBERS.includes(sum)) {
-        const d = String(sum).split('').map(Number);
-        const next = d.reduce((a, b) => a + b, 0);
-        steps.push(`${d.join('+')} = ${next}`);
-        sum = next;
-    }
-    return { number: sum, steps, isMaster: MASTER_NUMBERS.includes(sum) };
-}
-
-const NUMEROLOGY_DATA = {
-    1: { tags: ['リーダーシップ','独立心','開拓者','強い意志'], desc: '強いリーダーシップと独立心を持ち、自分の道を切り開く力があります。困難にも果敢に挑む開拓者精神の持ち主です。' },
-    2: { tags: ['協調性','思いやり','平和主義','繊細さ'], desc: '思いやり深く、人と人との橋渡し役が得意です。周囲の気持ちに敏感で、場の雰囲気を和やかにする天性の才能があります。' },
-    3: { tags: ['創造性','表現力','社交性','楽観的'], desc: '明るく社交的で、豊かな表現力と創造性の持ち主。コミュニケーション能力が高く、周りの人を元気にする力があります。' },
-    4: { tags: ['誠実さ','努力家','安定志向','堅実'], desc: '誠実で責任感が強く、コツコツと努力を続ける堅実な性格。信頼される存在で、着実に物事を積み上げていく力があります。' },
-    5: { tags: ['自由','変化好き','好奇心旺盛','冒険家'], desc: '自由を愛し、変化と冒険を楽しむ活動的な性格。好奇心が旺盛で、多様な経験から成長していく柔軟さを持っています。' },
-    6: { tags: ['奉仕精神','家族愛','責任感','面倒見がよい'], desc: '深い愛情と奉仕の精神で人を支える、頼もしい存在。家族や周囲の人を大切にし、調和のある環境を作る力があります。' },
-    7: { tags: ['探究心','知性','内省的','直感力'], desc: '深い洞察力と探究心を持ち、物事の本質を見抜く力があります。内省的で精神的な深みがあり、独自の哲学を持っています。' },
-    8: { tags: ['実行力','リーダー','野心','達成力'], desc: '強い実行力と達成への意志を持つ、パワフルな人物。現実的な判断力と組織力で大きな目標を実現していく力があります。' },
-    9: { tags: ['博愛','寛大さ','理想主義','人道的'], desc: '広い視野と深い愛で人類全体を思いやる、寛大な心の持ち主。理想を高く持ち、周囲に影響を与える存在感があります。' },
-    11: { tags: ['直感力','精神性','インスピレーション','マスターナンバー'], desc: '【マスターナンバー】高い精神性と鋭い直感力を持つ、特別な使命を持った魂。周囲に霊感やインスピレーションを与える存在です。' },
-    22: { tags: ['実現力','大きなビジョン','建設者','マスターナンバー'], desc: '【マスターナンバー】大きなビジョンを現実に変える力を持つ「マスタービルダー」。夢を具体的な形にする稀有な才能があります。' },
-    33: { tags: ['無条件の愛','癒し','奉仕','マスターナンバー'], desc: '【マスターナンバー】無条件の愛と癒しをもたらす、最も精神的に進化した魂。人々を深く癒し、愛で包む使命を持っています。' }
 };
 
-function renderNumerology(name, birthIso, targetId) {
-    const result = calcNumerology(birthIso);
-    if (!result) return;
-    const data = NUMEROLOGY_DATA[result.number];
-    const [y, m, d] = birthIso.split('-');
-    const wareki = toWareki(parseInt(y));
-    const birthStr = `${wareki} ${parseInt(m)}月${parseInt(d)}日`;
-    const tags = data.tags.map(t => `<span class="trait-tag ${result.isMaster ? 'master' : ''}">${t}</span>`).join('');
-    document.getElementById(targetId).innerHTML = `
-        <div class="numerology-result">
-            <div class="numerology-header">
-                <div class="numerology-name">${name}</div>
-                <div class="numerology-birth">${birthStr}（${birthIso}）</div>
-            </div>
-            <div class="numerology-number-display">
-                <div class="numerology-circle ${result.isMaster ? 'master' : ''}">
-                    <span class="numerology-circle-num">${result.number}</span>
-                </div>
-                <div>
-                    <div class="numerology-label ${result.isMaster ? 'master' : ''}">
-                        ライフパスナンバー${result.isMaster ? '<br>✨ マスターナンバー' : ''}
-                    </div>
-                </div>
-            </div>
-            <div class="numerology-calc">計算式：${result.steps.join(' → ')}</div>
-            <div class="numerology-traits">
-                <div class="numerology-traits-title">
-                    <span class="material-symbols-outlined">psychology</span>特性・キーワード
-                </div>
-                <div>${tags}</div>
-                <div class="numerology-desc">${data.desc}</div>
-            </div>
-        </div>`;
-}
+// ========== 利用者検索 ==========
+const PATIENTS = {{ patients | tojson }};
 
-function toWareki(year) {
-    if (year >= 2019) return `令和${year - 2018}年`;
-    if (year >= 1989) return `平成${year - 1988}年`;
-    if (year >= 1926) return `昭和${year - 1925}年`;
-    if (year >= 1912) return `大正${year - 1911}年`;
-    return `明治${year - 1867}年`;
-}
+window.searchPerson = function(q) {
+    const cands = document.getElementById('num-candidates');
+    if (!q.trim()) { cands.classList.remove('show'); return; }
+    const hits = PATIENTS.filter(p =>
+        p.label.toLowerCase().includes(q.toLowerCase()) ||
+        (p.user_kana||'').includes(q)
+    ).slice(0,10);
+    if (!hits.length) { cands.classList.remove('show'); return; }
+    cands.innerHTML = hits.map(p =>
+        `<div class="search-candidate-item" onclick="selectPerson('${p.value.replace(/'/g,"\\'")}','${p.user_name}','${p.birth_date||''}','${p.user_kana||''}')">
+            ${p.label}
+        </div>`
+    ).join('');
+    cands.classList.add('show');
+};
 
-// ========== 誕生日パース（admin.htmlと共通） ==========
-const WAREKI = { 'R':[2019],'令':[2019],'H':[1989],'平':[1989],'S':[1926],'昭':[1926],'T':[1912],'大':[1912],'M':[1868],'明':[1868] };
-function parseBirthInput(val, dateId, resultId) {
-    if (!val.trim()) { showBirthResult(resultId,'',''); document.getElementById(dateId).value=''; return; }
-    const iso = parseBirthToISO(val.trim());
-    if (iso) {
-        document.getElementById(dateId).value = iso;
-        const [y,m,d] = iso.split('-');
-        showBirthResult(resultId, `${toWareki(parseInt(y))}　${y}年${parseInt(m)}月${parseInt(d)}日`, 'ok');
+window.selectPerson = function(val, name, birth, kana) {
+    document.getElementById('num-candidates').classList.remove('show');
+    document.getElementById('num-search').value = '';
+    document.getElementById('search-selected').style.display = 'flex';
+    document.getElementById('search-selected-label').textContent = name;
+    if (birth) {
+        renderSushi(name, birth, '', 'search-result');
     } else {
-        document.getElementById(dateId).value = '';
-        showBirthResult(resultId, '形式を確認してください（例：S20.3.15 / 昭和20年3月15日 / 1945/3/15）', 'err');
+        document.getElementById('search-result').innerHTML =
+            '<div class="alert alert-warning"><span class="material-symbols-outlined">warning</span>生年月日が登録されていません。</div>';
     }
+};
+
+window.clearSearch = function() {
+    document.getElementById('search-selected').style.display = 'none';
+    document.getElementById('search-result').innerHTML = '';
+};
+
+// ========== 手入力 ==========
+window.calcManual = function() {
+    const name  = document.getElementById('manual-name').value.trim() || '（名前未入力）';
+    const birth = document.getElementById('manual-birth-date').value;
+    const roman = document.getElementById('manual-roman').value.replace(/\s+/g,'').toUpperCase();
+    if (!birth) { alert('生年月日を入力してください'); return; }
+    renderSushi(name, birth, roman, 'manual-result');
+};
+
+// ========== ローマ字→数字変換表 ==========
+const CHAR_MAP = {
+    A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,I:9,
+    J:1,K:2,L:3,M:4,N:5,O:6,P:7,Q:8,R:9,
+    S:1,T:2,U:3,V:4,W:5,X:6,Y:7,Z:8
+};
+const VOWELS = new Set(['A','E','I','O','U']);
+const MASTER = new Set([11,22,33]);
+
+function reduceNum(n) {
+    while (n > 9 && !MASTER.has(n)) {
+        n = String(n).split('').reduce((a,c)=>a+parseInt(c),0);
+    }
+    return n;
 }
-function parseBirthToISO(val) {
-    let m = val.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-    if (m) return fmt(m[1],m[2],m[3]);
-    m = val.match(/^(\d{4})(\d{2})(\d{2})$/);
-    if (m) return fmt(m[1],m[2],m[3]);
-    m = val.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
-    if (m) return fmt(m[1],m[2],m[3]);
-    m = val.match(/^([RHSTMrHstm令平昭大明])(\d{1,2})[\/\-\.\s年](\d{1,2})[\/\-\.\s月](\d{1,2})日?$/);
-    if (m) { const k=m[1].toUpperCase(); const base=WAREKI[k]||WAREKI[m[1]]; if(base) return fmt(base[0]+parseInt(m[2])-1,m[3],m[4]); }
-    m = val.match(/^(令和|平成|昭和|大正|明治)(\d{1,2})年(\d{1,2})月(\d{1,2})日?$/);
-    if (m) { const em={'令和':2019,'平成':1989,'昭和':1926,'大正':1912,'明治':1868}; return fmt(em[m[1]]+parseInt(m[2])-1,m[3],m[4]); }
-    return null;
+
+// ========== 生年月日計算 ==========
+function calcLP(birthIso) {
+    const digits = birthIso.replace(/-/g,'').split('').map(Number);
+    let sum = digits.reduce((a,b)=>a+b,0);
+    const steps = [`${digits.join('+')}=${sum}`];
+    while (sum > 9 && !MASTER.has(sum)) {
+        const d = String(sum).split('').map(Number);
+        const next = d.reduce((a,b)=>a+b,0);
+        steps.push(`${d.join('+')}=${next}`);
+        sum = next;
+    }
+    return { num: sum, steps };
 }
-function fmt(y,m,d) {
-    const year=parseInt(y),month=parseInt(m),day=parseInt(d);
-    if(year<1868||year>2030||month<1||month>12||day<1||day>31) return null;
-    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+function calcB(birthIso) {
+    const day = parseInt(birthIso.split('-')[2]);
+    if (day === 11 || day === 22) return day;
+    return reduceNum(day);
 }
-function syncDateToText(isoVal,textId,resultId) {
-    if(!isoVal){showBirthResult(resultId,'','');return;}
-    const [y,m,d]=isoVal.split('-');
-    document.getElementById(textId).value=`${toWareki(parseInt(y)).replace('年','')}年${parseInt(m)}月${parseInt(d)}日`;
-    showBirthResult(resultId,`${toWareki(parseInt(y))}　${y}年${parseInt(m)}月${parseInt(d)}日`,'ok');
+
+// ========== 名前計算 ==========
+function calcFromName(roman) {
+    if (!roman) return null;
+    const letters = roman.split('').filter(c => CHAR_MAP[c]);
+    if (!letters.length) return null;
+    const nums = letters.map(c => CHAR_MAP[c]);
+    const vowelNums  = letters.filter(c=>VOWELS.has(c)).map(c=>CHAR_MAP[c]);
+    const consonNums = letters.filter(c=>!VOWELS.has(c)).map(c=>CHAR_MAP[c]);
+
+    const D = reduceNum(nums.reduce((a,b)=>a+b,0));
+    const S = reduceNum(vowelNums.length ? vowelNums.reduce((a,b)=>a+b,0) : 0);
+    const P = reduceNum(consonNums.length ? consonNums.reduce((a,b)=>a+b,0) : 0);
+
+    // IT: 1〜9で最も多く出る数
+    const freq = {};
+    for (let i=1;i<=9;i++) freq[i]=0;
+    nums.forEach(n => { if(n>=1&&n<=9) freq[n]++; });
+    const maxFreq = Math.max(...Object.values(freq));
+    const IT = maxFreq > 0 ? parseInt(Object.keys(freq).find(k=>freq[k]===maxFreq)) : null;
+
+    // LL: 1〜9で一度も出ない数
+    const present = new Set(nums.filter(n=>n>=1&&n<=9));
+    const LL = [];
+    for (let i=1;i<=9;i++) { if (!present.has(i)) LL.push(i); }
+
+    return { D, S, P, IT, LL };
 }
-function showBirthResult(id,msg,type) {
-    const el=document.getElementById(id);
-    if(!el)return;
-    el.textContent=msg;
-    el.className='birth-result'+(type?' '+type:'');
+
+// ========== メインレンダリング ==========
+function renderSushi(name, birthIso, roman, targetId) {
+    const lp = calcLP(birthIso);
+    const b  = calcB(birthIso);
+    const nm = roman ? calcFromName(roman) : null;
+    const [y,m,d] = birthIso.split('-');
+    const birthStr = `${toWareki(parseInt(y))} ${parseInt(m)}月${parseInt(d)}日`;
+
+    // M = LP + D（名前あり時のみ）
+    const M = nm ? reduceNum(lp.num + nm.D) : null;
+
+    // メインメンバー（LP・D・S・P・B・M）
+    const mainMembers = [lp.num, nm?.D, nm?.S, nm?.P, b, M].filter(v=>v!=null);
+
+    // LL解釈: メインにある→「手放そうとするのをやめよう」、ない→「追い求めるのをやめよう」
+    const llWithNote = nm ? nm.LL.map(n => ({
+        num: n,
+        inMain: mainMembers.includes(n),
+    })) : [];
+
+    // セルHTML生成
+    function cell(code, num, label, extra='') {
+        const isMaster = MASTER.has(num);
+        return `<div class="sushi-cell ${isMaster?'master':''} ${extra}" onclick="toggleDetail('detail-${code}')">
+            <div class="sushi-cell-code">${code}</div>
+            <div class="sushi-cell-num">${num??'—'}</div>
+            <div class="sushi-cell-label">${label}</div>
+        </div>`;
+    }
+
+    const hasName = nm !== null;
+    const lpCell  = cell('LP', lp.num, '考え方の傾向');
+    const dCell   = hasName ? cell('D',  nm.D, '行動パターン') : cell('D','—','行動パターン');
+    const sCell   = hasName ? cell('S',  nm.S, 'エネルギー源') : cell('S','—','エネルギー源');
+    const pCell   = hasName ? cell('P',  nm.P, '周囲への印象') : cell('P','—','周囲への印象');
+    const bCell   = cell('B',   b,   '補助特性');
+    const mCell   = hasName ? `<div class="sushi-cell sushi-cell-m" onclick="toggleDetail('detail-M')">
+        <div class="sushi-cell-code" style="color:#2e7d32;">M</div>
+        <div class="sushi-cell-num" style="color:#2e7d32;">${M??'—'}</div>
+        <div class="sushi-cell-label">成熟とともに</div>
+    </div>` : `<div class="sushi-cell"><div class="sushi-cell-code">M</div><div class="sushi-cell-num">—</div><div class="sushi-cell-label">成熟とともに</div></div>`;
+
+    const itNum = nm?.IT ?? '—';
+    const llNums = llWithNote.length ? llWithNote.map(l=>l.num).join('・') : 'なし';
+    const itCell = `<div class="sushi-cell sushi-cell-it" onclick="toggleDetail('detail-IT')">
+        <div class="sushi-cell-code" style="color:#0288d1;">IT</div>
+        <div class="sushi-cell-num" style="color:#0288d1;">${itNum}</div>
+        <div class="sushi-cell-label">意識的に磨く傾向</div>
+    </div>`;
+    const llCell = `<div class="sushi-cell sushi-cell-ll" onclick="toggleDetail('detail-LL')">
+        <div class="sushi-cell-code" style="color:#ef5350;">LL</div>
+        <div class="sushi-cell-num" style="color:#ef5350;font-size:${llNums.length>4?'1.1rem':'1.4rem'}">${llNums}</div>
+        <div class="sushi-cell-label">力を抜けるところ</div>
+    </div>`;
+
+    // 詳細パネル
+    function detail(code, num, badgeClass, badgeLabel, title, desc, tags, hint) {
+        if (num === null || num === undefined) return `<div class="sushi-detail" id="detail-${code}"></div>`;
+        const isMaster = MASTER.has(num);
+        const tagClass = badgeClass || (isMaster ? 'master' : '');
+        const tagsHtml = tags.map(t=>`<span class="sushi-tag ${tagClass}">${t}</span>`).join('');
+        return `<div class="sushi-detail" id="detail-${code}">
+            <div class="sushi-detail-badge ${badgeClass}">${badgeLabel}：${num}</div>
+            <div class="sushi-detail-title">${title}</div>
+            <div class="sushi-detail-desc">${desc}</div>
+            <div class="sushi-detail-tags">${tagsHtml}</div>
+            <div class="sushi-detail-hint ${badgeClass}">${hint}</div>
+        </div>`;
+    }
+
+    const lpData  = DATA[lp.num]  || {};
+    const dData   = nm ? (DATA[nm.D]  || {}) : {};
+    const sData   = nm ? (DATA[nm.S]  || {}) : {};
+    const pData   = nm ? (DATA[nm.P]  || {}) : {};
+    const bData   = DATA[b]   || {};
+    const mData   = M ? (DATA[M]  || {}) : {};
+    const itData  = nm?.IT ? (DATA[nm.IT] || {}) : {};
+
+    const lpDetail = detail('LP', lp.num, '', 'LP（考え方の傾向）',
+        lpData.title||'', lpData.desc||'', lpData.tags||[],
+        lpData.hint || 'この数字はあなたの「ものごとのとらえ方のクセ」を表しています。自然とこう考えやすい、というフィルターのようなものです。');
+    const dDetail  = hasName ? detail('D', nm.D, '', 'D（行動パターン）',
+        dData.title||'', dData.desc||'', dData.tags||[],
+        'この数字は「ついついこう動いてしまう」という行動のクセ。やる気が出ないときにこの傾向に沿って動くと、エンジンがかかりやすくなります。') : '<div id="detail-D"></div>';
+    const sDetail  = hasName ? detail('S', nm.S, '', 'S（エネルギー源）',
+        sData.title||'', sData.desc||'', sData.tags||[],
+        'この数字は「心が元気になる源泉」。疲れたとき、ここに立ち返ると回復しやすくなります。') : '<div id="detail-S"></div>';
+    const pDetail  = hasName ? detail('P', nm.P, '', 'P（周囲への印象）',
+        pData.title||'', pData.desc||'', pData.tags||[],
+        '周りから見るとこういう人に映りやすい、という数字です。自分の自覚とのギャップに気づくヒントになります。') : '<div id="detail-P"></div>';
+    const bDetail  = detail('B', b, '', 'B（補助特性）',
+        bData.title||'', bData.desc||'', bData.tags||[],
+        'LP（考え方の傾向）をサポートする、もう一つの特性です。LPと同じ数字の場合、その傾向がより強く出ます。');
+    const mDetail  = hasName ? detail('M', M, 'm', 'M（成熟とともに）',
+        mData.title||'', mData.desc||'', mData.tags||[],
+        '30代後半以降に徐々に加わってくる特性です。「最近こういう面が出てきた」と感じるときに参考にしてみてください。') : '<div id="detail-M"></div>';
+    const itDetail = hasName && nm.IT ? detail('IT', nm.IT, 'it', 'IT（意識的に磨く傾向）',
+        itData.title||'', itData.desc||'', itData.tags||[],
+        '意識的・後天的に身につけようとしやすい傾向です。「こうなりたい」という向上心が向きやすい方向を表します。') : '<div id="detail-IT"></div>';
+
+    // LL詳細
+    let llDetailHtml = '<div class="sushi-detail" id="detail-LL">';
+    if (!hasName) {
+        llDetailHtml += '</div>';
+    } else if (llWithNote.length === 0) {
+        llDetailHtml += `<div class="sushi-detail-badge ll">LL（力を抜けるところ）：なし</div>
+            <div class="sushi-detail-desc">1〜9の数字がすべて名前に含まれています。特定の「手放しポイント」はありません。</div>
+            </div>`;
+    } else {
+        llDetailHtml += `<div class="sushi-detail-badge ll">LL（力を抜けるところ）：${llNums}</div>
+            <div class="sushi-detail-title">力を抜いていい場所</div>
+            <div class="sushi-detail-desc">`;
+        llWithNote.forEach(ll => {
+            const ld = DATA[ll.num] || {};
+            if (ll.inMain) {
+                llDetailHtml += `<b>【${ll.num}】</b>${ld.title||''} ─ この特性はすでに持っています。「いらない、なくしたい」と思いやすいですが、実は自分の一部。無理に消そうとせず、受け入れると楽になります。<br><br>`;
+            } else {
+                llDetailHtml += `<b>【${ll.num}】</b>${ld.title||''} ─ この方向に追い求めなくてOK。「こうでなければ」と無理に近づこうとするより、他の特性を活かすほうが自然体でいられます。<br><br>`;
+            }
+        });
+        llDetailHtml += `</div><div class="sushi-detail-hint ll">LL（力を抜けるところ）は「ダメなところ」ではありません。「そこに全力を注がなくていいよ」というサインです。</div></div>`;
+    }
+
+    document.getElementById(targetId).innerHTML = `
+    <div class="sushi-result">
+        <div class="sushi-result-header">
+            <div class="sushi-result-name">✨ ${name}</div>
+            <div class="sushi-result-birth">${birthStr}${roman?'　ローマ字：'+roman:''}</div>
+        </div>
+        <div class="sushi-grid">
+            ${lpCell}${dCell}${sCell}
+            ${pCell}${bCell}${mCell}
+        </div>
+        ${hasName ? `<div class="sushi-grid-bottom">${itCell}${llCell}</div>` : ''}
+        ${lpDetail}${dDetail}${sDetail}${pDetail}${bDetail}${mDetail}${itDetail}${llDetailHtml}
+    </div>`;
 }
+
+// ========== 詳細トグル ==========
+window.toggleDetail = function(id) {
+    const el = document.getElementById(id);
+    if (!el || !el.innerHTML.trim()) return;
+    // 同じ親の中のdetailを全部閉じる
+    const parent = el.closest('.sushi-result');
+    parent.querySelectorAll('.sushi-detail.show').forEach(d => { if(d.id !== id) d.classList.remove('show'); });
+    el.classList.toggle('show');
+    if (el.classList.contains('show')) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
+// ========== 数秘データ（TASUKARUオリジナル表現） ==========
+const DATA = {
+    1: {
+        title: '自分の道を切り開く力',
+        desc: '新しいアイデアを生み出すことが得意で、前例のない状況でも自分なりの答えを見つけていきます。「こうすればいい」という直感が強く、リードすることへの自然な意欲があります。',
+        tags: ['発想力','独自性','前進','意欲的'],
+        hint: '一人で突き進みすぎず、周囲と共有することで力がさらに活きます。'
+    },
+    2: {
+        title: '場を和らげる調整力',
+        desc: '細かな変化や空気の揺れを敏感にキャッチします。人と人の間に入って橋渡しするのが自然で、話し合いの場をまとめる力があります。',
+        tags: ['協調性','気配り','橋渡し','繊細さ'],
+        hint: '自分の気持ちも大切にしてください。気遣いすぎると消耗します。'
+    },
+    3: {
+        title: '場を明るくする表現力',
+        desc: '言葉や表情、ちょっとしたユーモアで場の雰囲気を変える力があります。人に元気を与えることが得意で、コミュニケーションが自然と豊かになります。',
+        tags: ['明るさ','表現力','創造性','社交的'],
+        hint: '楽しさの中にも、深みを加えるとさらに伝わるものがあります。'
+    },
+    4: {
+        title: '着実に積み上げる基盤力',
+        desc: '手順を大切にしながら、一歩一歩確実に進むことが得意。「こうすると決めたら最後までやり遂げる」という粘り強さで、周囲の信頼を得ます。',
+        tags: ['誠実さ','丁寧さ','安定感','責任感'],
+        hint: '急な変化にはペースを落として対応するのが自然体。焦らなくてOK。'
+    },
+    5: {
+        title: '変化の中で輝く適応力',
+        desc: '新しい場面や変化を柔軟に受け入れ、そこから面白さを見つけます。さまざまな人と関わる中で刺激を受け、行動の幅が広がっていきます。',
+        tags: ['柔軟性','好奇心','行動力','多様性'],
+        hint: '変化を楽しみながら、軸足は一つ持っておくと安定します。'
+    },
+    6: {
+        title: '人を支える深い思いやり',
+        desc: '目の前の人が安心できるよう、自然と手を差し伸べます。家族的なあたたかさで周囲をまとめ、「この人がいると場が整う」と感じさせる存在感があります。',
+        tags: ['愛情深い','面倒見','調和','責任感'],
+        hint: '「してあげたい」気持ちが強くなりすぎると疲弊します。自分も大切に。'
+    },
+    7: {
+        title: '本質を見抜く洞察力',
+        desc: '表面だけでなく、その奥にあるものを感じ取ります。一人で考える時間を大切にし、納得できるまで探求を続ける丁寧さがあります。',
+        tags: ['探究心','内省','直感力','こだわり'],
+        hint: '一人の時間はエネルギー補給の場。孤立でなく、充電として捉えて。'
+    },
+    8: {
+        title: '成果を生み出す実現力',
+        desc: '目標を定めたら、現実的な手段で着実に達成します。「できる」という確信を持って動く推進力と、物事の価値を見極める判断力があります。',
+        tags: ['実行力','達成志向','判断力','スケール感'],
+        hint: '結果だけでなく、プロセスや関係性も大切にすると長続きします。'
+    },
+    9: {
+        title: '広い視野で包み込む力',
+        desc: '自分だけでなく、周囲全体のことを自然と考えます。過去の経験から学び、それを次の人に伝える橋渡し役になることが多い存在です。',
+        tags: ['寛大さ','博愛','受容力','使命感'],
+        hint: '手放すことが得意な数字。こだわりすぎず、流れに任せても大丈夫。'
+    },
+    11: {
+        title: '深い感受性と先見性（マスター）',
+        desc: '普通の人が気づかない微妙なニュアンスや予兆を感じ取る力があります。直感とインスピレーションが豊かで、周囲に独特の影響を与えます。',
+        tags: ['直感力','感受性','先見性','✨マスター'],
+        hint: '感じすぎて疲れやすい面も。意識的に「流す」練習も大切です。'
+    },
+    22: {
+        title: '大きなビジョンを形にする力（マスター）',
+        desc: '壮大な理想を現実の形に落とし込む稀有な力があります。夢物語で終わらせず、実際に動かして形にすることができます。',
+        tags: ['構想力','実現力','スケール','✨マスター'],
+        hint: 'プレッシャーを感じやすい数字。「完璧でなくていい」を自分に許して。'
+    },
+    33: {
+        title: '無条件のあたたかさで包む力（マスター）',
+        desc: 'ジャッジなしに人を受け入れ、ただそこにいるだけで場が和む存在感があります。介護の現場での天性の共感力を持っています。',
+        tags: ['無条件の愛','癒し','共感力','✨マスター'],
+        hint: '自分も癒されることを忘れずに。与えるばかりでは枯れてしまいます。'
+    }
+};
+
+// ========== 生年月日パーサー ==========
+window.parseBirthInput = function(val, dateId, resultId) {
+    if (!val.trim()) { showBirthResult(resultId,'',''); document.getElementById(dateId).value=''; return; }
+    const m = val.match(/(\d{2,4})[.\-\/年](\d{1,2})[.\-\/月](\d{1,2})/);
+    if (!m) { showBirthResult(resultId,'形式が認識できません（例：S20.3.15）','err'); return; }
+    let y=parseInt(m[1]), mo=parseInt(m[2]), d=parseInt(m[3]);
+    if (y < 100) {
+        const era = val.replace(/\d/g,'').replace(/[.\-\/年月日\s]/g,'').toUpperCase();
+        if (/^[RrＲｒ令]/.test(era)||/^令/.test(val)) y+=2018;
+        else if (/^[HhＨｈ平]/.test(era)||/^平/.test(val)) y+=1988;
+        else if (/^[SsＳｓ昭]/.test(era)||/^昭/.test(val)) y+=1925;
+        else if (/^[TtＴｔ大]/.test(era)||/^大/.test(val)) y+=1911;
+        else if (/^[MmＭｍ明]/.test(era)||/^明/.test(val)) y+=1867;
+    }
+    const iso = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dt = new Date(iso);
+    if (isNaN(dt)) { showBirthResult(resultId,'日付が正しくありません','err'); return; }
+    document.getElementById(dateId).value = iso;
+    showBirthResult(resultId, `${toWareki(y)} ${mo}月${d}日`, 'ok');
+};
+window.syncDateToText = function(iso, textId, resultId) {
+    if (!iso) return;
+    const [y,m,d] = iso.split('-').map(Number);
+    document.getElementById(textId).value = `${y}/${m}/${d}`;
+    showBirthResult(resultId, `${toWareki(y)} ${m}月${d}日`, 'ok');
+};
+function showBirthResult(id, msg, cls) {
+    const el = document.getElementById(id);
+    el.className = 'birth-result' + (cls ? ' '+cls : '');
+    el.textContent = msg;
+}
+function toWareki(y) {
+    if (y>=2019) return `令和${y-2018}年`;
+    if (y>=1989) return `平成${y-1988}年`;
+    if (y>=1926) return `昭和${y-1925}年`;
+    if (y>=1912) return `大正${y-1911}年`;
+    return `明治${y-1867}年`;
+}
+
+})();
 </script>
 {% endblock %}
