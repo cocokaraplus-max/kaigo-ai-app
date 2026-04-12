@@ -185,10 +185,29 @@
     <!-- 利用者一覧 -->
     <div id="patient-vitals-list"></div>
 
-    <!-- 臨時追加ボタン -->
-    <div class="add-today-btn" onclick="openAddPatient()">
-        <span class="material-symbols-outlined">person_add</span>
-        本日のみ追加
+    <!-- 臨時追加 -->
+    <div style="margin-bottom:10px;">
+        <div class="add-today-btn" onclick="toggleTempSearch()" id="temp-add-btn">
+            <span class="material-symbols-outlined">person_add</span>
+            本日のみ追加（臨時・体験）
+        </div>
+        <div id="temp-search-area" style="display:none; background:#f0f6ff; border:1.5px solid #1a73e8; border-radius:12px; padding:12px; margin-top:6px;">
+            <div style="font-size:0.8rem; font-weight:700; color:#1a73e8; margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">person_search</span>
+                既存利用者から選ぶ、または新しい名前を入力
+            </div>
+            <div style="position:relative; margin-bottom:8px;">
+                <input type="text" class="form-control" id="temp-patient-search"
+                    placeholder="名前・ふりがなで検索、または新しい名前を入力"
+                    oninput="searchTempPatient(this.value)" autocomplete="off">
+                <div id="temp-candidates" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1.5px solid #1a73e8; border-radius:10px; z-index:100; max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                </div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addTempPatient()">
+                <span class="material-symbols-outlined" style="color:white;">add</span>
+                追加する
+            </button>
+        </div>
     </div>
 </div>
 
@@ -285,8 +304,22 @@
             </label>
         </div>
         <div class="form-group">
-            <label class="form-label">通知時刻</label>
-            <input type="time" class="form-control" id="s-recheck-time" value="{{ settings.recheck_time }}">
+            <label class="form-label">通知時刻（複数設定可・最大5件）</label>
+            <div id="recheck-times-list">
+                {% set times = settings.recheck_times.split(',') if settings.recheck_times else ['10:00'] %}
+                {% for t in times %}
+                <div class="recheck-time-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <input type="time" class="form-control recheck-time-input" value="{{ t.strip() }}" style="flex:1;">
+                    <button type="button" onclick="removeRecheckTime(this)" style="background:none;border:none;color:#ea4335;cursor:pointer;padding:4px;">
+                        <span class="material-symbols-outlined" style="font-size:20px;">remove_circle</span>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" onclick="addRecheckTime()" style="background:none;border:1.5px dashed #1a73e8;border-radius:8px;color:#1a73e8;font-size:0.8rem;font-weight:700;padding:6px 12px;cursor:pointer;width:100%;margin-top:4px;">
+                <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">add</span>
+                通知時刻を追加
+            </button>
         </div>
         <button class="btn btn-primary" onclick="saveSettings()">
             <span class="material-symbols-outlined" style="color:white;">save</span>
@@ -716,6 +749,8 @@ window.saveVisitDay = async function(pid, name) {
 
 // ========== 設定保存 ==========
 window.saveSettings = async function() {
+    const recheckTimes = [...document.querySelectorAll('.recheck-time-input')]
+        .map(el => el.value).filter(Boolean).join(',');
     const payload = {
         bp_high_max: parseInt(document.getElementById('s-bp-high-max').value),
         bp_high_min: parseInt(document.getElementById('s-bp-high-min').value),
@@ -727,7 +762,8 @@ window.saveSettings = async function() {
         temp_min:    parseFloat(document.getElementById('s-temp-min').value),
         spo2_min:    parseInt(document.getElementById('s-spo2-min').value),
         recheck_notify: document.getElementById('s-recheck-notify').checked,
-        recheck_time:   document.getElementById('s-recheck-time').value,
+        recheck_time:   recheckTimes.split(',')[0] || '10:00',
+        recheck_times:  recheckTimes,
     };
     const res = await fetch('/api/save_vital_settings', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -740,17 +776,112 @@ window.saveSettings = async function() {
 };
 
 // ========== 臨時追加 ==========
-window.openAddPatient = function() {
-    const name = prompt('追加する利用者名を入力してください');
-    if (!name) return;
-    const p = PATIENTS.find(x => x.user_name === name);
-    if (!p) { alert('利用者が見つかりません'); return; }
-    // 強制的に今日のリストに追加
-    const existing = VISIT_DAYS[p.id] || '';
-    if (!existing.includes(String(currentWeekday))) {
-        VISIT_DAYS[p.id] = existing + String(currentWeekday);
+window.toggleTempSearch = function() {
+    const area = document.getElementById('temp-search-area');
+    area.style.display = area.style.display === 'none' ? 'block' : 'none';
+    if (area.style.display === 'block') {
+        setTimeout(() => document.getElementById('temp-patient-search').focus(), 100);
     }
+};
+
+window.searchTempPatient = function(q) {
+    const cands = document.getElementById('temp-candidates');
+    if (!q.trim()) { cands.style.display = 'none'; return; }
+    const ql = q.toLowerCase();
+    const hits = PATIENTS.filter(p =>
+        p.user_name.includes(q) || (p.user_kana||'').includes(q) ||
+        p.user_name.toLowerCase().includes(ql) || (p.user_kana||'').toLowerCase().includes(ql)
+    ).slice(0, 8);
+    if (!hits.length) { cands.style.display = 'none'; return; }
+    cands.innerHTML = hits.map(p =>
+        `<div style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;"
+            data-name="${p.user_name}" data-id="${p.id}">${p.user_name}（${p.user_kana||''}）</div>`
+    ).join('');
+    cands.style.display = 'block';
+    cands.querySelectorAll('[data-name]').forEach(el => {
+        el.addEventListener('mousedown', e => {
+            e.preventDefault();
+            document.getElementById('temp-patient-search').value = el.dataset.name;
+            document.getElementById('temp-patient-search').dataset.selectedId = el.dataset.id;
+            cands.style.display = 'none';
+        });
+        el.addEventListener('touchend', e => {
+            e.preventDefault();
+            document.getElementById('temp-patient-search').value = el.dataset.name;
+            document.getElementById('temp-patient-search').dataset.selectedId = el.dataset.id;
+            cands.style.display = 'none';
+        });
+    });
+};
+
+window.addTempPatient = async function() {
+    const input = document.getElementById('temp-patient-search');
+    const name = input.value.trim();
+    if (!name) { alert('名前を入力してください'); return; }
+    const selectedId = input.dataset.selectedId;
+
+    // 既存利用者として選択されている場合
+    if (selectedId) {
+        const p = PATIENTS.find(x => x.id === selectedId);
+        if (p) {
+            if (!VISIT_DAYS[p.id] || !VISIT_DAYS[p.id].includes(String(currentWeekday))) {
+                VISIT_DAYS[p.id] = (VISIT_DAYS[p.id] || '') + String(currentWeekday);
+            }
+            renderPatientList();
+            document.getElementById('temp-search-area').style.display = 'none';
+            input.value = ''; input.dataset.selectedId = '';
+            return;
+        }
+    }
+
+    // 新規臨時利用者 → 同名の過去バイタルチェック
+    const res = await fetch(`/api/check_temp_vital?name=${encodeURIComponent(name)}`);
+    const data = await res.json();
+
+    if (data.exists) {
+        const confirm_link = confirm(
+            `「${name}」様の過去のバイタル記録（${data.date}）があります。\n同一人物ですか？\n\n[OK] 同一人物として紐づける\n[キャンセル] 別の人として追加`
+        );
+        if (confirm_link) {
+            await fetch('/api/link_temp_vital', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ temp_name: name, link_to_id: data.patient_id })
+            });
+        }
+    }
+
+    // 臨時利用者として今日のリストに追加
+    const tempId = 'temp_' + Date.now();
+    PATIENTS.push({ id: tempId, user_name: name, user_kana: '', chart_number: '臨時', weekdays: '' });
+    VISIT_DAYS[tempId] = String(currentWeekday);
     renderPatientList();
+    document.getElementById('temp-search-area').style.display = 'none';
+    input.value = ''; input.dataset.selectedId = '';
+};
+
+// ========== 再検査通知時刻の追加・削除 ==========
+window.addRecheckTime = function() {
+    const list = document.getElementById('recheck-times-list');
+    if (list.querySelectorAll('.recheck-time-row').length >= 5) {
+        alert('通知時刻は最大5件まで設定できます');
+        return;
+    }
+    const row = document.createElement('div');
+    row.className = 'recheck-time-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    row.innerHTML = `
+        <input type="time" class="form-control recheck-time-input" value="12:00" style="flex:1;">
+        <button type="button" onclick="removeRecheckTime(this)" style="background:none;border:none;color:#ea4335;cursor:pointer;padding:4px;">
+            <span class="material-symbols-outlined" style="font-size:20px;">remove_circle</span>
+        </button>`;
+    list.appendChild(row);
+};
+
+window.removeRecheckTime = function(btn) {
+    const rows = document.querySelectorAll('.recheck-time-row');
+    if (rows.length <= 1) { alert('通知時刻は最低1件必要です'); return; }
+    btn.closest('.recheck-time-row').remove();
 };
 
 })();

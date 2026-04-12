@@ -1001,6 +1001,7 @@ DEFAULT_VITAL_SETTINGS = {
     "spo2_min": 94,
     "recheck_notify": True,
     "recheck_time": "10:00",
+    "recheck_times": "10:00",
 }
 
 def get_vital_settings(supabase, f_code):
@@ -1211,6 +1212,195 @@ def api_save_vital_settings():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/check_temp_vital')
+@login_required
+def api_check_temp_vital():
+    """臨時利用者追加時に同名の過去バイタルがあるか確認"""
+    try:
+        f_code = session["f_code"]
+        name = request.args.get("name", "").strip()
+        supabase = get_supabase()
+        res = supabase.table("vitals").select("id,user_name,measured_date,patient_id").eq("facility_code", f_code).eq("user_name", name).order("measured_date", desc=True).limit(1).execute()
+        if res.data:
+            r = res.data[0]
+            return jsonify({"exists": True, "date": r["measured_date"], "patient_id": r.get("patient_id")})
+        return jsonify({"exists": False})
+    except Exception as e:
+        return jsonify({"exists": False})
+
+@app.route('/api/link_temp_vital', methods=['POST'])
+@login_required
+def api_link_temp_vital():
+    """臨時利用者のバイタルを既存利用者に紐づける"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        # 同名の臨時バイタルを本利用者IDに紐づけ
+        supabase.table("vitals").update({"patient_id": data["link_to_id"]}).eq("facility_code", f_code).eq("user_name", data["temp_name"]).is_("patient_id", "null").execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+# ==========================================
+# カレンダー
+# ==========================================
+
+STICKERS = [
+    {"emoji": "🎂", "label": "誕生日"},
+    {"emoji": "🎉", "label": "記念日"},
+    {"emoji": "🏥", "label": "医療"},
+    {"emoji": "💊", "label": "薬"},
+    {"emoji": "🌸", "label": "春"},
+    {"emoji": "☀️", "label": "晴れ"},
+    {"emoji": "🌙", "label": "休み"},
+    {"emoji": "⭐", "label": "重要"},
+    {"emoji": "📋", "label": "会議"},
+    {"emoji": "👥", "label": "担当者会議"},
+    {"emoji": "🏢", "label": "運営推進会議"},
+    {"emoji": "📞", "label": "電話"},
+    {"emoji": "🚗", "label": "外出"},
+    {"emoji": "✈️", "label": "旅行"},
+    {"emoji": "🎵", "label": "イベント"},
+    {"emoji": "💪", "label": "訓練"},
+    {"emoji": "🍽️", "label": "食事"},
+    {"emoji": "😴", "label": "休養"},
+    {"emoji": "❤️", "label": "大切"},
+    {"emoji": "✅", "label": "完了"},
+    {"emoji": "⚠️", "label": "注意"},
+    {"emoji": "🔔", "label": "通知"},
+    {"emoji": "📅", "label": "予定"},
+    {"emoji": "🎯", "label": "目標"},
+]
+
+EVENT_COLORS = [
+    "#1a73e8", "#ea4335", "#34a853", "#fbbc04",
+    "#9c27b0", "#00bcd4", "#ff5722", "#607d8b",
+    "#e91e63", "#4caf50", "#ff9800", "#795548",
+]
+
+@app.route('/calendar')
+@login_required
+def calendar_view():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+
+    # カレンダー一覧取得
+    calendars = []
+    try:
+        res = supabase.table("calendars").select("*").eq("facility_code", f_code).order("created_at").execute()
+        calendars = res.data or []
+        # デフォルトカレンダーがなければ作成
+        if not calendars:
+            default_cals = [
+                {"facility_code": f_code, "name": "仕事", "color": "#1a73e8", "is_shared": True, "owner_name": session["my_name"]},
+                {"facility_code": f_code, "name": "希望休", "color": "#ea4335", "is_shared": True, "owner_name": session["my_name"]},
+            ]
+            for dc in default_cals:
+                r = supabase.table("calendars").insert(dc).execute()
+                if r.data: calendars.append(r.data[0])
+    except Exception as e:
+        print(f"calendar error: {e}")
+
+    # 今月のイベント取得（前後1ヶ月も含む）
+    events = []
+    try:
+        now = datetime.now(tokyo_tz)
+        date_from = (now.replace(day=1) - timedelta(days=31)).strftime("%Y-%m-%d")
+        date_to   = (now.replace(day=1) + timedelta(days=62)).strftime("%Y-%m-%d")
+        res = supabase.table("calendar_events").select("*").eq("facility_code", f_code).gte("event_date", date_from).lte("event_date", date_to).order("event_date").execute()
+        events = res.data or []
+    except Exception as e:
+        print(f"events error: {e}")
+
+    return render("calendar.html",
+        calendars=calendars,
+        events=events,
+        stickers=STICKERS,
+        event_colors=EVENT_COLORS,
+    )
+
+@app.route('/api/save_calendar_event', methods=['POST'])
+@login_required
+def api_save_calendar_event():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        payload = {
+            "facility_code": f_code,
+            "calendar_id":   data.get("calendar_id"),
+            "title":         data.get("title", ""),
+            "event_date":    data.get("event_date"),
+            "end_date":      data.get("end_date") or data.get("event_date"),
+            "start_time":    data.get("start_time"),
+            "end_time":      data.get("end_time"),
+            "all_day":       data.get("all_day", True),
+            "color":         data.get("color"),
+            "sticker":       data.get("sticker", ""),
+            "memo":          data.get("memo", ""),
+            "repeat_type":   data.get("repeat_type", "none"),
+            "repeat_until":  data.get("repeat_until"),
+            "notify_before": data.get("notify_before", 0),
+            "created_by":    my_name,
+        }
+        event_id = data.get("id")
+        if event_id:
+            supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
+            return jsonify({"status": "success", "id": event_id})
+        else:
+            res = supabase.table("calendar_events").insert(payload).execute()
+            new_id = res.data[0]["id"] if res.data else None
+            return jsonify({"status": "success", "id": new_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delete_calendar_event', methods=['POST'])
+@login_required
+def api_delete_calendar_event():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("calendar_events").delete().eq("id", data["id"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/save_calendar', methods=['POST'])
+@login_required
+def api_save_calendar():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        res = supabase.table("calendars").insert({
+            "facility_code": f_code,
+            "name":  data["name"],
+            "color": data.get("color", "#1a73e8"),
+            "is_shared": True,
+            "owner_name": my_name,
+        }).execute()
+        return jsonify({"status": "success", "id": res.data[0]["id"] if res.data else None})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/calendar_events')
+@login_required
+def api_calendar_events():
+    """月移動時のイベント取得"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        date_from = request.args.get("from")
+        date_to   = request.args.get("to")
+        res = supabase.table("calendar_events").select("*").eq("facility_code", f_code).gte("event_date", date_from).lte("event_date", date_to).order("event_date").execute()
+        return jsonify({"events": res.data or []})
+    except Exception as e:
+        return jsonify({"events": [], "error": str(e)})
 
 # ==========================================
 
