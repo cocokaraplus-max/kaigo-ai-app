@@ -193,27 +193,51 @@ const PATIENTS = [
 ];
 
 window.searchPatient = function(query) {
-    const q = query.trim().toLowerCase();
-    const filtered = q === '' ? PATIENTS : PATIENTS.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        p.kana.toLowerCase().includes(q) ||
-        p.chart.toLowerCase().includes(q)
-    );
+    const q = query.trim();
+    const candidates = document.getElementById('candidates');
+    if (!q) { candidates.classList.remove('show'); return; }
+    const ql = q.toLowerCase();
+    // ひらがな→カタカナ変換（カタカナで保存されている場合に対応）
+    const qKata = q.replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = q.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const filtered = PATIENTS.filter(p => {
+        const name  = (p.name  || '');
+        const kana  = (p.kana  || '');
+        const chart = String(p.chart || '');
+        const label = (p.label || '');
+        return name.includes(q) || name.toLowerCase().includes(ql) ||
+               kana.includes(q) || kana.includes(qKata) || kana.includes(qHira) ||
+               kana.toLowerCase().includes(ql) ||
+               chart.includes(q) || chart.toLowerCase().includes(ql) ||
+               label.includes(q) || label.toLowerCase().includes(ql);
+    });
     renderCandidates(filtered);
+    candidates.classList.add('show');
 }
 
 window.renderCandidates = function(list) {
     const candidates = document.getElementById('candidates');
     if (list.length === 0) {
         candidates.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし</div>';
+        candidates.classList.add('show');
     } else {
-        candidates.innerHTML = list.map((p, i) => {
-            const key = 'ip_' + i;
-            window[key] = p;
-            return `<div class="search-candidate-item" onclick="selectPatient(window['${key}'].value, window['${key}'].label)">${p.label}</div>`;
-        }).join('');
+        candidates.innerHTML = list.map((p, i) =>
+            `<div class="search-candidate-item" data-idx="${i}">${p.label}</div>`
+        ).join('');
+        // イベント委譲で確実にタップを拾う
+        candidates.querySelectorAll('.search-candidate-item[data-idx]').forEach((el, i) => {
+            const p = list[i];
+            el.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                selectPatient(p.value, p.label);
+            });
+            el.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                selectPatient(p.value, p.label);
+            });
+        });
+        candidates.classList.add('show');
     }
-    candidates.classList.add('show');
 }
 
 window.selectPatient = function(value, label) {
