@@ -933,12 +933,15 @@ def api_update_password():
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
-        supabase.table("admin_settings").upsert({
-            "facility_code": f_code, "key": "admin_password", "value": data["password"]
-        }, on_conflict="facility_code,key").execute()
+        # 既存レコードを確認
+        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "admin_password").execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": data["password"]}).eq("facility_code", f_code).eq("key", "admin_password").execute()
+        else:
+            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": data["password"]}).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/update_hist_limit', methods=['POST'])
 @login_required
