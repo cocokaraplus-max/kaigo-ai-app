@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}ログイン - TASUKARU{% endblock %}
+{% block bottom_nav %}{% endblock %}
 
 {% block content %}
 <div class="logo-area">
@@ -39,7 +40,13 @@
     </button>
 </form>
 
-<div style="text-align:center; margin-top:1.5rem;">
+<div style="text-align:center; margin-top:1rem;">
+    <a href="/reset_password" style="font-size:0.82rem; color:#80868b; text-decoration:none;">
+        パスワードを忘れた方はこちら
+    </a>
+</div>
+
+<div style="text-align:center; margin-top:1rem;">
     <a href="/register" style="font-size:0.82rem; color:#1a73e8; text-decoration:none;">施設の新規登録はこちら</a>
 </div>
 {% endblock %}
