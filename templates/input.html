@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}記録入力 - TASUKARU{% endblock %}
+{% block nav_input %}active{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -204,9 +205,11 @@ function renderCandidates(list) {
     if (list.length === 0) {
         candidates.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし</div>';
     } else {
-        candidates.innerHTML = list.map(p =>
-            `<div class="search-candidate-item" onmousedown="selectPatient(${JSON.stringify(p.value)}, ${JSON.stringify(p.label)})">${p.label}</div>`
-        ).join('');
+        candidates.innerHTML = list.map((p, i) => {
+            const key = 'ip_' + i;
+            window[key] = p;
+            return `<div class="search-candidate-item" onclick="selectPatient(window['${key}'].value, window['${key}'].label)">${p.label}</div>`;
+        }).join('');
     }
     candidates.classList.add('show');
 }
@@ -230,7 +233,7 @@ function clearPatient() {
 
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.search-wrapper')) {
-        document.getElementById('candidates').classList.remove('show');
+        setTimeout(() => document.getElementById('candidates').classList.remove('show'), 200);
     }
 });
 
