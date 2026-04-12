@@ -320,3 +320,11 @@ function generateQR(el, url) {
         correctLevel: QRCode.CorrectLevel.M
     });
 }
+// ========== 管理者ログアウト ==========
+async function adminLogout() {
+    await fetch('/api/admin_logout', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    });
+    location.reload();
+}
