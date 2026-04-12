@@ -258,14 +258,33 @@
 
         <!-- PC：ファイルドロップ -->
         <div id="pc-input-area">
+            <!-- 音声モード選択（音声ファイル時のみ有効） -->
+            <div id="audio-mode-select" style="display:none;margin-bottom:10px;">
+                <div class="form-label" style="margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
+                    録音の種類を選んでください
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div class="type-btn active" id="mode-solo" onclick="selectAudioMode('solo')">
+                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">person</span>
+                        <span style="font-size:0.8rem;font-weight:700;">独り言メモ</span>
+                        <span style="font-size:0.7rem;color:#80868b;display:block;">スタッフが1人で話した録音</span>
+                    </div>
+                    <div class="type-btn" id="mode-dialog" onclick="selectAudioMode('dialog')">
+                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">forum</span>
+                        <span style="font-size:0.8rem;font-weight:700;">対話形式</span>
+                        <span style="font-size:0.7rem;color:#80868b;display:block;">利用者との会話録音</span>
+                    </div>
+                </div>
+            </div>
             <div class="drop-zone" id="drop-zone"
                 onclick="document.getElementById('file-input').click()"
                 ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
                 <span class="material-symbols-outlined">upload_file</span>
                 <p>ファイルをドロップ または クリックして選択</p>
-                <small>PDF・Word・テキストファイル対応</small>
+                <small>PDF・テキスト・MP3・M4A・WAV対応</small>
             </div>
-            <input type="file" id="file-input" accept=".pdf,.doc,.docx,.txt" style="display:none"
+            <input type="file" id="file-input" accept=".pdf,.txt,.mp3,.m4a,.wav,.aac,.ogg,.webm" style="display:none"
                 onchange="handleFileSelect(event)">
             <div id="file-status" style="font-size:0.8rem;color:#34a853;margin-bottom:8px;display:none;">
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">check_circle</span>
@@ -275,6 +294,38 @@
 
         <!-- スマホ：音声入力 -->
         <div id="sp-input-area" style="display:none;">
+            <!-- 音声モード選択 -->
+            <div style="margin-bottom:10px;">
+                <div class="form-label" style="margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
+                    録音の種類を選んでください
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div class="type-btn active" id="sp-mode-solo" onclick="selectAudioMode('solo')">
+                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">person</span>
+                        <span style="font-size:0.8rem;font-weight:700;">独り言メモ</span>
+                        <span style="font-size:0.7rem;color:#80868b;display:block;">1人で話した録音</span>
+                    </div>
+                    <div class="type-btn" id="sp-mode-dialog" onclick="selectAudioMode('dialog')">
+                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">forum</span>
+                        <span style="font-size:0.8rem;font-weight:700;">対話形式</span>
+                        <span style="font-size:0.7rem;color:#80868b;display:block;">利用者との会話録音</span>
+                    </div>
+                </div>
+            </div>
+            <!-- MP3アップロード -->
+            <button class="voice-btn" style="background:linear-gradient(135deg,#9c27b0,#6a1b9a);"
+                onclick="document.getElementById('audio-file-input').click()">
+                <span class="material-symbols-outlined">audio_file</span>
+                <span>録音ファイルをアップロード</span>
+            </button>
+            <input type="file" id="audio-file-input" accept=".mp3,.m4a,.wav,.aac,.ogg,.webm" style="display:none"
+                onchange="handleFileSelect(event)">
+            <div id="sp-file-status" style="font-size:0.8rem;color:#34a853;margin-bottom:8px;display:none;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">check_circle</span>
+                <span id="sp-file-name"></span>
+            </div>
+            <div style="font-size:0.75rem;color:#80868b;text-align:center;margin:8px 0;">または リアルタイム音声入力</div>
             <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">
                 <span class="material-symbols-outlined">mic</span>
                 <span id="voice-btn-label">タップして音声入力</span>
@@ -417,6 +468,29 @@ if (isMobile) {
     document.getElementById('pc-input-area').style.display = 'none';
 }
 
+// ========== 音声モード選択（独り言 / 対話） ==========
+let audioMode = 'solo'; // デフォルト：独り言
+
+function selectAudioMode(mode) {
+    audioMode = mode;
+    // PC側
+    const soloPC   = document.getElementById('mode-solo');
+    const dialogPC = document.getElementById('mode-dialog');
+    if (soloPC)   soloPC.classList.toggle('active',   mode === 'solo');
+    if (dialogPC) dialogPC.classList.toggle('active', mode === 'dialog');
+    // スマホ側
+    const soloSP   = document.getElementById('sp-mode-solo');
+    const dialogSP = document.getElementById('sp-mode-dialog');
+    if (soloSP)   soloSP.classList.toggle('active',   mode === 'solo');
+    if (dialogSP) dialogSP.classList.toggle('active', mode === 'dialog');
+}
+
+// 音声ファイル選択時にモード選択UIを表示
+function showAudioModeSelector(show) {
+    const el = document.getElementById('audio-mode-select');
+    if (el) el.style.display = show ? 'block' : 'none';
+}
+
 // ========== 利用者選択 ==========
 function onPatientSelect() {
     const sel = document.getElementById('patient-select');
@@ -431,6 +505,7 @@ function onPatientSelect() {
 
 // ========== ファイルドロップ（PC） ==========
 let uploadedFileText = '';
+const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
 
 function dragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
 function dragLeave(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
@@ -438,31 +513,51 @@ async function dropFile(e) {
     e.preventDefault();
     document.getElementById('drop-zone').classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file) await readFile(file);
+    if (file) {
+        const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
+        showAudioModeSelector(isAudio);
+        await readFile(file);
+    }
 }
 async function handleFileSelect(e) {
     const file = e.target.files[0];
-    if (file) await readFile(file);
+    if (file) {
+        const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
+        showAudioModeSelector(isAudio);
+        await readFile(file);
+    }
 }
 async function readFile(file) {
     const formData = new FormData();
     formData.append('file', file);
-    document.getElementById('file-status').style.display = 'block';
-    document.getElementById('file-name').textContent = `読み込み中: ${file.name}`;
+    formData.append('audio_mode', audioMode); // solo or dialog
+
+    // ステータス表示（PC/スマホ両対応）
+    const statusEl  = document.getElementById('file-status') || document.getElementById('sp-file-status');
+    const nameEl    = document.getElementById('file-name')   || document.getElementById('sp-file-name');
+    if (statusEl) statusEl.style.display = 'block';
+    if (nameEl)   nameEl.textContent = `読み込み中: ${file.name}`;
+
     try {
         const res = await fetch('/api/parse_assessment_file', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.status === 'success') {
-            uploadedFileText = data.text;
-            document.getElementById('file-name').textContent = `✓ ${file.name} 読み込み完了`;
-            // テキストを各フィールドに分配
-            document.getElementById('achievement').value = data.achievement || '';
-            document.getElementById('home-effort').value = data.home_effort || '';
-            document.getElementById('training-progress').value = data.training_progress || '';
-            document.getElementById('other-notes').value = data.other_notes || '';
+            uploadedFileText = data.text || '';
+            if (nameEl) nameEl.textContent = `✓ ${file.name} 読み込み完了`;
+            document.getElementById('achievement').value        = data.achievement || '';
+            document.getElementById('home-effort').value        = data.home_effort || '';
+            document.getElementById('training-progress').value  = data.training_progress || '';
+            document.getElementById('other-notes').value        = data.other_notes || '';
+            // 文字起こし全文があれば表示
+            if (data.transcript) {
+                const ta = document.getElementById('voice-transcript');
+                if (ta) { ta.classList.add('show'); ta.textContent = data.transcript; }
+            }
+        } else {
+            if (nameEl) nameEl.textContent = `エラー: ${data.message || '読み込みに失敗しました'}`;
         }
     } catch(e) {
-        document.getElementById('file-name').textContent = '読み込みに失敗しました';
+        if (nameEl) nameEl.textContent = '読み込みに失敗しました';
     }
 }
 

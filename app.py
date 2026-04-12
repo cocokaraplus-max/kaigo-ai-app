@@ -1118,7 +1118,7 @@ def api_get_assessment():
 @app.route('/api/parse_assessment_file', methods=['POST'])
 @login_required
 def api_parse_assessment_file():
-    """PC用：アップロードファイルをGeminiで読み取り各フィールドに分配"""
+    """PC/スマホ用：アップロードファイル（テキスト・PDF・音声）をGeminiで解析"""
     try:
         from utils import get_generative_model
         file = request.files.get('file')
@@ -1126,28 +1126,77 @@ def api_parse_assessment_file():
             return jsonify({"status": "error", "message": "ファイルなし"})
         filename = file.filename.lower()
         file_bytes = file.read()
-        mime = "application/pdf" if filename.endswith('.pdf') else "text/plain"
-        prompt = """以下のドキュメントから介護記録・評価に関する情報を読み取り、JSON形式で返してください。
+        audio_mode = request.form.get('audio_mode', 'solo')  # solo or dialog
+
+        # MIMEタイプ判定
+        audio_exts = ('.mp3', '.m4a', '.wav', '.aac', '.ogg', '.webm')
+        is_audio = any(filename.endswith(ext) for ext in audio_exts)
+        is_pdf   = filename.endswith('.pdf')
+
+        json_schema = """{
+  "transcript": "文字起こし全文",
+  "achievement": "今月の訓練達成度に関する内容",
+  "home_effort": "自宅での取り組みに関する内容",
+  "training_progress": "デイでの訓練進捗に関する内容",
+  "other_notes": "その他・気づき・本人の様子など"
+}"""
+
+        if is_audio:
+            ext_mime = {
+                '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+                '.wav': 'audio/wav',  '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
+            }
+            mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/mpeg')
+
+            if audio_mode == 'dialog':
+                prompt = f"""これはデイサービスのスタッフと利用者の対話録音です。
+会話を正確に文字起こしし、スタッフの発言・利用者の返答から
+介護評価に必要な情報を読み取って以下の4項目に整理してください。
+利用者本人の言葉や様子も積極的に反映してください。
 該当する情報がない項目は空文字にしてください。
+JSON形式のみで返してください（説明文不要）：
 
-{"achievement": "訓練達成度に関する内容",
- "home_effort": "自宅での取り組みに関する内容",
- "training_progress": "デイでの訓練進捗に関する内容",
- "other_notes": "その他の情報"}
+{json_schema}"""
+            else:
+                prompt = f"""これはデイサービスの介護スタッフが利用者の状況について自分一人で話したメモ録音です。
+スタッフの独り言・口述メモとして内容を正確に文字起こしし、
+介護評価の観点から以下の4項目に分類・整理してください。
+該当する情報がない項目は空文字にしてください。
+JSON形式のみで返してください（説明文不要）：
 
-JSONのみを返してください。"""
-        model = get_generative_model()
-        if filename.endswith('.pdf'):
+{json_schema}"""
+
+            model = get_generative_model()
             resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
+
+        elif is_pdf:
+            prompt = f"""以下のPDF文書から介護記録・評価に関する情報を読み取り、JSON形式のみで返してください。
+
+{json_schema}"""
+            model = get_generative_model()
+            resp = model.generate_content([{"mime_type": "application/pdf", "data": file_bytes}, prompt])
+
         else:
             text = file_bytes.decode('utf-8', errors='ignore')
-            resp = model.generate_content([text + "\n\n" + prompt])
+            prompt = f"""以下のテキストから介護評価に関する情報を整理し、JSON形式のみで返してください。
+
+{text}
+
+{json_schema}"""
+            model = get_generative_model()
+            resp = model.generate_content([prompt])
+
         import re as _re, json as _json
         m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
         if m:
             result = _json.loads(m.group())
-            return jsonify({"status": "success", "text": resp.text, **result})
-        return jsonify({"status": "success", "text": resp.text, "achievement": "", "home_effort": "", "training_progress": "", "other_notes": resp.text})
+            return jsonify({"status": "success", "is_audio": is_audio, "audio_mode": audio_mode, **result})
+        return jsonify({
+            "status": "success", "is_audio": is_audio, "audio_mode": audio_mode,
+            "transcript": resp.text, "achievement": "",
+            "home_effort": "", "training_progress": "", "other_notes": resp.text
+        })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
