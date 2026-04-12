@@ -551,12 +551,33 @@ def daily_view():
     except Exception as e:
         pass
 
+    # 当月の記録がある日付リストを取得（カレンダーのドット表示用）
+    record_dates = []
+    try:
+        month_start = tokyo_tz.localize(datetime(selected_date.year, selected_date.month, 1))
+        if selected_date.month == 12:
+            next_month = tokyo_tz.localize(datetime(selected_date.year + 1, 1, 1))
+        else:
+            next_month = tokyo_tz.localize(datetime(selected_date.year, selected_date.month + 1, 1))
+        month_res = supabase.table("records").select("created_at").eq("facility_code", f_code).gte(
+            "created_at", month_start.isoformat()
+        ).lt("created_at", next_month.isoformat()).execute()
+        if month_res.data:
+            dates_set = set()
+            for r in month_res.data:
+                d = parse_jst_date(r["created_at"])
+                dates_set.add(d.strftime("%Y-%m-%d"))
+            record_dates = list(dates_set)
+    except Exception as e:
+        pass
+
     return render("daily_view.html",
         selected_date=selected_date_str,
         date_label=date_label,
         target_user=target_user,
         records=records,
-        is_admin=is_admin
+        is_admin=is_admin,
+        record_dates=record_dates
     )
 
 @app.route('/birthday')
@@ -834,6 +855,32 @@ def admin():
 # ==========================================
 # API エンドポイント
 # ==========================================
+
+@app.route('/api/record_dates')
+@login_required
+def api_record_dates():
+    """カレンダーのドット表示用：指定月の記録がある日付一覧を返す"""
+    try:
+        f_code = session["f_code"]
+        year = int(request.args.get("year", datetime.now(tokyo_tz).year))
+        month = int(request.args.get("month", datetime.now(tokyo_tz).month))
+        supabase = get_supabase()
+        month_start = tokyo_tz.localize(datetime(year, month, 1))
+        if month == 12:
+            next_month = tokyo_tz.localize(datetime(year + 1, 1, 1))
+        else:
+            next_month = tokyo_tz.localize(datetime(year, month + 1, 1))
+        res = supabase.table("records").select("created_at").eq("facility_code", f_code).gte(
+            "created_at", month_start.isoformat()
+        ).lt("created_at", next_month.isoformat()).execute()
+        dates_set = set()
+        if res.data:
+            for r in res.data:
+                d = parse_jst_date(r["created_at"])
+                dates_set.add(d.strftime("%Y-%m-%d"))
+        return jsonify({"dates": list(dates_set)})
+    except Exception as e:
+        return jsonify({"dates": [], "error": str(e)})
 
 @app.route('/api/transcribe', methods=['POST'])
 @login_required

@@ -374,6 +374,8 @@
 <script>
 const selectedDate = "{{ selected_date }}";
 const targetUser = "{{ target_user }}";
+// サーバーから渡された当月の記録日リスト
+const recordDates = new Set({{ record_dates | tojson }});
 
 // ========== カスタムカレンダー ==========
 let currentYear, currentMonth;
@@ -395,6 +397,18 @@ function changeMonth(delta) {
     currentMonth += delta;
     if (currentMonth > 11) { currentMonth = 0; currentYear++; }
     if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
+    // 移動先の月の記録日を取得してからカレンダーを再描画
+    fetchRecordDatesAndRender(currentYear, currentMonth + 1);
+}
+
+async function fetchRecordDatesAndRender(year, month) {
+    try {
+        const res = await fetch(`/api/record_dates?year=${year}&month=${month}`);
+        const data = await res.json();
+        if (data.dates) {
+            data.dates.forEach(d => recordDates.add(d));
+        }
+    } catch(e) { /* 失敗してもカレンダーは表示する */ }
     renderCalendar();
 }
 
@@ -404,27 +418,26 @@ function renderCalendar() {
     if (!title || !daysEl) return;
     title.textContent = `${currentYear}年${currentMonth + 1}月`;
 
-    const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0=日
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
 
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
     let html = '';
-    // 日曜始まりなのでfirstDayがそのままオフセット
     for (let i = 0; i < firstDay; i++) {
         html += '<div class="cal-day empty"></div>';
     }
-
     for (let d = 1; d <= lastDate; d++) {
         const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay(); // 0=日, 6=土
+        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay();
         let cls = 'cal-day ';
         if (dayOfWeek === 0) cls += 'sunday';
         else if (dayOfWeek === 6) cls += 'saturday';
         else cls += 'weekday';
         if (dateStr === todayStr) cls += ' today';
         if (dateStr === selectedDate) cls += ' selected';
+        if (recordDates.has(dateStr)) cls += ' has-record';
         html += `<div class="${cls}" onclick="selectDate('${dateStr}')">${d}</div>`;
     }
     daysEl.innerHTML = html;
@@ -434,23 +447,26 @@ function selectDate(dateStr) {
     window.location.href = '/daily_view?date=' + dateStr + (targetUser ? '&user=' + encodeURIComponent(targetUser) : '');
 }
 
-// ページ読み込み時の処理
-document.addEventListener('DOMContentLoaded', function() {
-    initCalendar();
-});
-
-// DOMContentLoadedが既に発火済みの場合も対応
-if (document.readyState !== 'loading') {
-    initCalendar();
-}
-
-// 念のため500ms後にも確認（iPhoneの遅延対応）
-setTimeout(function() {
+// ========== 確実な初期化（SPA・通常遷移どちらでも動く） ==========
+function ensureCalendar() {
     const title = document.getElementById('cal-title');
-    if (title && !title.textContent.trim()) {
+    const daysEl = document.getElementById('cal-days');
+    if (title && daysEl && !title.textContent.trim()) {
         initCalendar();
     }
-}, 500);
+}
+
+// 即時実行（SPA経由でscriptが注入された場合、DOMは既に存在する）
+initCalendar();
+
+// 通常遷移のフォールバック
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCalendar);
+}
+
+// iPhoneのレンダリング遅延対策（二重呼び出しでもrenderCalendarは冪等なので安全）
+setTimeout(ensureCalendar, 200);
+setTimeout(ensureCalendar, 800);
 
 // ========================================
 
