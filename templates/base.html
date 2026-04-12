@@ -171,6 +171,7 @@
     </div>
 
     {% block bottom_nav %}
+    {% if session.get('f_code') %}
     <nav class="bottom-nav">
         <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
             <span class="material-symbols-outlined">home</span>
@@ -211,6 +212,7 @@
             </button>
         </form>
     </nav>
+    {% endif %}
     {% endblock %}
 
     {% block extra_script %}{% endblock %}
