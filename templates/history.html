@@ -119,28 +119,34 @@ const HISTORY_PATIENTS = [
 
 function searchPatient(query) {
     const q = query.trim().toLowerCase();
+    const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
     const candidates = document.getElementById('patient-candidates');
     const filtered = q === '' ? HISTORY_PATIENTS :
         HISTORY_PATIENTS.filter(p =>
             p.name.toLowerCase().includes(q) ||
             p.kana.toLowerCase().includes(q) ||
+            p.kana.includes(qKata) || p.kana.includes(qHira) ||
             p.chart.toLowerCase().includes(q)
         );
     if (filtered.length === 0) {
         candidates.innerHTML = '<div style="padding:12px 14px;color:#80868b;font-size:0.88rem;">該当なし</div>';
     } else {
-        candidates.innerHTML = filtered.map((p, i) => {
-            const key = 'hp_' + i;
-            window[key] = p;
-            return `<div onclick="selectPatient(window['${key}'].value, window['${key}'].label)"
-                style="padding:12px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;"
-                ontouchstart="this.style.background='#e8f0fe'" ontouchend="this.style.background=''">
+        candidates.innerHTML = filtered.map((p, i) =>
+            `<div data-idx="${i}"
+                style="padding:12px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;">
                 ${p.label}
-            </div>`;
-        }).join('');
+            </div>`
+        ).join('');
+        candidates.querySelectorAll('[data-idx]').forEach((el, i) => {
+            const p = filtered[i];
+            el.addEventListener('mousedown', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+            el.addEventListener('touchend', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+        });
     }
     candidates.style.display = 'block';
 }
+window.searchPatient = searchPatient;
 
 function selectPatient(value, label) {
     document.getElementById('patient-search').style.display = 'none';
@@ -148,11 +154,11 @@ function selectPatient(value, label) {
     const badge = document.getElementById('patient-selected-badge');
     badge.style.display = 'flex';
     document.getElementById('patient-candidates').style.display = 'none';
-    // 隠しselectに値をセット
     const sel = document.getElementById('patient-select');
     sel.value = value;
     onPatientChange();
 }
+window.selectPatient = selectPatient;
 
 function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
@@ -161,6 +167,7 @@ function clearPatient() {
     document.getElementById('patient-select').value = '';
     onPatientChange();
 }
+window.clearPatient = clearPatient;
 
 document.addEventListener('click', e => {
     if (!e.target.closest('[id^="patient"]')) {
@@ -173,6 +180,7 @@ function onPatientChange() {
     const v = document.getElementById('patient-select').value;
     document.getElementById('options-area').style.display = v ? 'block' : 'none';
 }
+window.onPatientChange = onPatientChange;
 
 function updateCharBtn(el) {
     document.querySelectorAll('input[name="char_limit"]').forEach(r => {
@@ -214,6 +222,7 @@ async function generateMonitoring() {
         document.getElementById('gen-btn').disabled = false;
     }
 }
+window.generateMonitoring = generateMonitoring;
 
 function copyResult() {
     const text = document.getElementById('result-text').value;
@@ -225,6 +234,7 @@ function copyResult() {
         }, 2000);
     });
 }
+window.copyResult = copyResult;
 })();
 </script>
 {% endblock %}
