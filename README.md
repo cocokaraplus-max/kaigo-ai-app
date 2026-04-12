@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-12 21:00
+最終更新: 2026-04-12 23:10
 
 ---
 
@@ -38,15 +38,21 @@
 | `utils.py` | Gemini AI・Supabase画像アップロード |
 | `Dockerfile` | Cloud Run用コンテナ設定 |
 | `requirements.txt` | 使用ライブラリ一覧 |
-| `update_readme.py` | README自動更新スクリプト |
-| `templates/base.html` | 共通レイアウト・Material Symbols読み込み |
+| `templates/base.html` | 共通レイアウト・SPAルーター |
 | `templates/login.html` | ログイン画面 |
 | `templates/register.html` | 施設新規登録画面 |
-| `templates/top.html` | TOP画面・更新履歴 |
+| `templates/top.html` | TOP画面 |
 | `templates/input.html` | 記録入力・音声AI文章化 |
-| `templates/daily_view.html` | ケース記録閲覧・AI統合 |
+| `templates/daily_view.html` | ケース記録閲覧・カレンダー |
 | `templates/history.html` | モニタリング生成 |
-| `templates/admin.html` | 管理者メニュー |
+| `templates/assessment.html` | 評価・AI報告書生成 |
+| `templates/admin.html` | 管理者MENU |
+| `templates/dev_menu.html` | 開発者MENU |
+| `templates/chat_rooms.html` | トーク一覧（LINE風） |
+| `templates/chat_room.html` | トーク個別チャット |
+| `templates/birthday.html` | 誕生日一覧 |
+| `templates/numerology.html` | 数秘（LP/B/D/S/P/M/IT/LL） |
+| `static/admin.js` | 管理者MENU用JS |
 | `static/logo.png` | TASUKARUロゴ |
 
 ---
@@ -70,6 +76,15 @@ GEMINI_API_KEY
 SECRET_KEY
 SENDGRID_API_KEY
 SENDGRID_FROM_EMAIL
+DEV_PASSWORD        ← 開発者MENUのパスワード（未設定時: tasukaru-dev-2024）
+```
+
+⚠️ 環境変数を更新する際は必ず `--update-env-vars` を使用（`--set-env-vars` は既存変数が消えるので禁止）
+
+```bash
+gcloud run services update tasukaru \
+  --region asia-northeast1 \
+  --update-env-vars KEY="value"
 ```
 
 ---
@@ -92,8 +107,14 @@ gcloud run deploy tasukaru \
 
 ## 📝 直近の変更履歴
 
+- feat: バイタル機能追加（カメラ自動読み取り・アラート・再検査通知・曜日別表示・履歴閲覧） (2026-04-12)
+- fix: asyncキーワード抜けによりトーク右上ボタン等が動かない問題を修正 (2026-04-12)
+- fix: 管理者MENUから退出ボタンが効かない問題修正・adminLogout関数をadmin.jsに追加 (2026-04-12)
+- fix: ボタンラベル「管理者終了」→「管理者MENUから退出」に変更 (2026-04-12)
+- feat: Claude閲覧許可を管理者MENUから開発者MENUへ移動 (2026-04-12)
 - feat: 管理者MENUと開発者MENUを分離・横並び選択UI・施設一覧/環境変数/アクティビティログ (2026-04-12)
 - feat: 数秘ページをLP・B・D・S・P・M・IT・LL全8項目対応に全面刷新・TASUKARUオリジナル表現 (2026-04-12)
+- fix: 数秘ページ500エラー修正（all_persons→patients変数名不一致） (2026-04-12)
 - fix: SPA遷移でconst/let重複宣言エラー全8件修正・全ページスクリプトをIIFEで囲む (2026-04-12)
 - fix: ケース記録カレンダー白問題を根本修正・rAF2重で描画後に初期化 (2026-04-12)
 - feat: 評価の音声ファイル解析に独り言/対話モード選択を追加 (2026-04-12)
@@ -101,25 +122,23 @@ gcloud run deploy tasukaru \
 - feat: トーク機能をLINE風に全面刷新・1:1/グループ作成・職員アイコン・既読人数表示 (2026-04-12)
 - fix: ケース記録カレンダーがSPA遷移時に白くなるバグを修正・initCalendar即時実行に変更 (2026-04-12)
 - feat: カレンダーに記録のある日付のドット表示を追加・/api/record_datesエンドポイント追加 (2026-04-12)
-- fix: 未ログイン時のボトムナビを非表示に修正 (2026-04-12)
-- feat: SendGridメール送信・パスワードリセット機能実装 (2026-04-12)
-- fix: パスワード変更のupsertをupdate/insertに修正 (2026-04-12)
-- feat: 誕生日ページから数秘タブ削除・数秘7表記・モーダル表示・数秘検索を全利用者対応 (2026-04-12)
-- fix: カレンダーが表示されない問題を修正・nullチェックとフォールバック追加 (2026-04-12)
-- fix: 記録入力の利用者選択クリック問題を修正 (2026-04-12)
-- fix: iPhone検索候補クリックの競合問題を修正 (2026-04-12)
-- fix: admin.jsを完全版に書き直し・全関数の構文エラー修正 (2026-04-12)
-- docs: 本日の開発内容をREADMEに記録 (2026-04-12)
-- fix: モニタリング選択・カレンダー表示の不具合修正 (2026-04-12)
 
 ---
 
 ## 🔄 今回のcommitで変更したファイル
 
-- `app.py` - 評価ルート・generate_assessment・save_assessment・parse_assessment_file API追加
-- `templates/assessment.html` - 新規追加：評価入力・AI生成・報告書プレビュー・印刷
-- `templates/base.html` - ボトムナビに「評価」追加
-- `assessment_tables.sql` - Supabase用テーブル追加SQL（要実行）
+- `app.py` - 管理者/開発者MENU分離・評価機能・数秘ルート修正・Claude閲覧許可API
+- `templates/admin.html` - 管理者/開発者選択UI・Claude閲覧許可を開発者MENUへ移動・退出ボタン修正
+- `templates/dev_menu.html` - 新規追加：開発者MENU（施設一覧・環境変数・アクティビティ・Claude閲覧許可）
+- `templates/numerology.html` - 全8項目対応に全面刷新
+- `templates/assessment.html` - 新規追加：評価入力・AI報告書生成・独り言/対話モード選択
+- `templates/chat_rooms.html` - asyncキーワード修正
+- `templates/chat_room.html` - asyncキーワード修正
+- `templates/base.html` - ボトムナビに「評価」追加・SPA修正（IIFE・rAF）
+- `templates/daily_view.html` - カレンダー白問題修正・記録ドット表示
+- `static/admin.js` - adminLogout関数追加
+- `chat_tables.sql` - トーク用テーブル（要実行済み）
+- `assessment_tables.sql` - 評価用テーブル（要実行済み）
 
 ---
 

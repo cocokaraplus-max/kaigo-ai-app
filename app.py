@@ -990,6 +990,229 @@ def api_delete_message():
 # ==========================================
 # 評価（個別機能訓練 月次評価報告書）
 # ==========================================
+# バイタル
+# ==========================================
+
+DEFAULT_VITAL_SETTINGS = {
+    "bp_high_max": 140, "bp_high_min": 90,
+    "bp_low_max": 90,   "bp_low_min": 60,
+    "pulse_max": 100,   "pulse_min": 50,
+    "temp_max": 37.5,   "temp_min": 35.0,
+    "spo2_min": 94,
+    "recheck_notify": True,
+    "recheck_time": "10:00",
+}
+
+def get_vital_settings(supabase, f_code):
+    try:
+        res = supabase.table("vital_alert_settings").select("*").eq("facility_code", f_code).execute()
+        if res.data:
+            d = res.data[0]
+            return {k: d.get(k, v) for k, v in DEFAULT_VITAL_SETTINGS.items()}
+    except: pass
+    return DEFAULT_VITAL_SETTINGS.copy()
+
+@app.route('/vitals')
+@login_required
+def vitals():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+
+    patients = get_patients(supabase, f_code)
+
+    # 各患者のweekdays取得
+    visit_days = {}
+    try:
+        res = supabase.table("patient_visit_days").select("patient_id,weekdays").eq("facility_code", f_code).execute()
+        for r in (res.data or []):
+            visit_days[r["patient_id"]] = r.get("weekdays") or ""
+        for p in patients:
+            p["weekdays"] = visit_days.get(p["id"], "")
+    except:
+        for p in patients: p["weekdays"] = ""
+
+    # 今日のバイタルデータ取得
+    vitals_data = {}
+    try:
+        res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("measured_date", today).execute()
+        for r in (res.data or []):
+            vitals_data[r["patient_id"]] = r
+    except: pass
+
+    settings = get_vital_settings(supabase, f_code)
+    visit_days_map = {p["id"]: p["weekdays"] for p in patients}
+
+    return render("vitals.html",
+        patients=patients,
+        visit_days=visit_days_map,
+        vitals_data=vitals_data,
+        settings=settings,
+        today=today,
+    )
+
+@app.route('/api/save_vital', methods=['POST'])
+@login_required
+def api_save_vital():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": data.get("patient_id"),
+            "user_name": data.get("user_name", ""),
+            "measured_date": data.get("measured_date"),
+            "measured_at": now_iso,
+            "bp_high": data.get("bp_high"),
+            "bp_low": data.get("bp_low"),
+            "pulse": data.get("pulse"),
+            "temperature": data.get("temperature"),
+            "spo2": data.get("spo2"),
+            "note": data.get("note", ""),
+            "recheck": data.get("recheck", False),
+            "staff_name": my_name,
+        }
+        # 既存レコードがあればupdate、なければinsert
+        existing = supabase.table("vitals").select("id").eq("facility_code", f_code).eq("patient_id", data["patient_id"]).eq("measured_date", data["measured_date"]).execute()
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("vitals").update(payload).eq("id", rid).execute()
+        else:
+            res = supabase.table("vitals").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        # 再検査通知（トークの全員チャンネルに送信）
+        settings = get_vital_settings(supabase, f_code)
+        if data.get("recheck") and settings.get("recheck_notify"):
+            # 今すぐトークに通知（時刻設定は将来対応）
+            alert_items = []
+            if data.get("bp_high") and (data["bp_high"] >= settings["bp_high_max"] or data["bp_high"] <= settings["bp_high_min"]):
+                alert_items.append("血圧")
+            if data.get("pulse") and (data["pulse"] >= settings["pulse_max"] or data["pulse"] <= settings["pulse_min"]):
+                alert_items.append("脈拍")
+            if data.get("temperature") and (float(data["temperature"]) >= settings["temp_max"] or float(data["temperature"]) <= settings["temp_min"]):
+                alert_items.append("体温")
+            if data.get("spo2") and data["spo2"] <= settings["spo2_min"]:
+                alert_items.append("SpO2")
+            if alert_items:
+                msg = f"⚠️ 【再検査】{data['user_name']} 様の {'・'.join(alert_items)} の再検査が必要です。（記録者：{my_name}）"
+                # 全スタッフ共有のチャットルームを探して通知
+                try:
+                    rooms = supabase.table("chat_rooms").select("id").eq("facility_code", f_code).eq("is_group", True).execute()
+                    if rooms.data:
+                        room_id = rooms.data[0]["id"]
+                        supabase.table("chat_messages").insert({
+                            "room_id": room_id,
+                            "facility_code": f_code,
+                            "staff_name": "バイタルアラート",
+                            "content": msg,
+                        }).execute()
+                        supabase.table("chat_rooms").update({"last_message_at": now_iso}).eq("id", room_id).execute()
+                except: pass
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/read_vital_image', methods=['POST'])
+@login_required
+def api_read_vital_image():
+    try:
+        from utils import get_generative_model
+        img = request.files.get('image')
+        if not img:
+            return jsonify({"status": "error", "message": "画像なし"})
+        img_bytes = img.read()
+        prompt = """この画像には血圧計・体温計・パルスオキシメーターのいずれかが写っています。
+画面に表示されている数値を正確に読み取り、JSON形式のみで返してください（説明文不要）：
+
+{
+  "bp_high": 収縮期血圧の数値（整数）または null,
+  "bp_low": 拡張期血圧の数値（整数）または null,
+  "pulse": 脈拍の数値（整数）または null,
+  "temperature": 体温の数値（小数点1桁）または null,
+  "spo2": SpO2の数値（整数）または null
+}
+
+読み取れない項目はnullにしてください。"""
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": "image/jpeg", "data": img_bytes}, prompt])
+        import re as _re, json as _json
+        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        if m:
+            result = _json.loads(m.group())
+            return jsonify({"status": "success", **result})
+        return jsonify({"status": "error", "message": "数値を読み取れませんでした"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/vitals_daily')
+@login_required
+def api_vitals_daily():
+    try:
+        f_code = session["f_code"]
+        date = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
+        supabase = get_supabase()
+        res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("measured_date", date).order("user_name").execute()
+        return jsonify({"vitals": res.data or []})
+    except Exception as e:
+        return jsonify({"vitals": [], "error": str(e)})
+
+@app.route('/api/vitals_history')
+@login_required
+def api_vitals_history():
+    try:
+        f_code = session["f_code"]
+        patient_id = request.args.get("patient_id")
+        supabase = get_supabase()
+        res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("patient_id", patient_id).order("measured_date", desc=True).limit(60).execute()
+        return jsonify({"vitals": res.data or []})
+    except Exception as e:
+        return jsonify({"vitals": [], "error": str(e)})
+
+@app.route('/api/save_visit_day', methods=['POST'])
+@login_required
+def api_save_visit_day():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        existing = supabase.table("patient_visit_days").select("id").eq("facility_code", f_code).eq("patient_id", data["patient_id"]).execute()
+        if existing.data:
+            supabase.table("patient_visit_days").update({"weekdays": data["weekdays"]}).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.table("patient_visit_days").insert({
+                "facility_code": f_code,
+                "patient_id": data["patient_id"],
+                "user_name": data["user_name"],
+                "weekdays": data["weekdays"],
+            }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+@app.route('/api/save_vital_settings', methods=['POST'])
+@login_required
+def api_save_vital_settings():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        payload = {**data, "facility_code": f_code}
+        existing = supabase.table("vital_alert_settings").select("id").eq("facility_code", f_code).execute()
+        if existing.data:
+            supabase.table("vital_alert_settings").update(payload).eq("facility_code", f_code).execute()
+        else:
+            supabase.table("vital_alert_settings").insert(payload).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+# ==========================================
 
 @app.route('/assessment')
 @login_required

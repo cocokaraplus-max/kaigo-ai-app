@@ -1,0 +1,758 @@
+{% extends "base.html" %}
+{% block title %}バイタル - TASUKARU{% endblock %}
+{% block nav_vitals %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ===== タブ ===== */
+.tab-bar { display:flex; gap:6px; margin-bottom:1rem; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
+.tab-bar::-webkit-scrollbar { display:none; }
+.tab-item { white-space:nowrap; padding:8px 14px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.8rem; font-weight:600; color:#5f6368; cursor:pointer; transition:all 0.15s; }
+.tab-item.active { background:#e8f0fe; color:#1a73e8; border-color:#1a73e8; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+
+/* ===== 曜日タブ ===== */
+.weekday-tabs { display:flex; gap:4px; margin-bottom:1rem; }
+.wd-tab { flex:1; padding:8px 4px; border-radius:10px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.78rem; font-weight:700; color:#80868b; cursor:pointer; text-align:center; transition:all 0.15s; }
+.wd-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+.wd-tab.sun { color:#c62828; }
+.wd-tab.sat { color:#2e7d32; }
+.wd-tab.active.sun, .wd-tab.active.sat { color:#fff; }
+
+/* ===== 利用者カード ===== */
+.patient-vital-card {
+    border:1.5px solid #e0e0e0; border-radius:14px;
+    margin-bottom:10px; overflow:hidden;
+    transition: border-color 0.15s;
+}
+.patient-vital-card.alert { border-color:#ea4335; }
+.patient-vital-card.recheck { border-color:#ff6f00; background:#fff8e1; }
+.patient-vital-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; cursor:pointer; background:#f8f9fa;
+    -webkit-tap-highlight-color:transparent;
+}
+.patient-vital-card.alert .patient-vital-header { background:#fce8e6; }
+.patient-vital-card.recheck .patient-vital-header { background:#fff3e0; }
+.patient-vital-name { font-weight:700; font-size:0.92rem; display:flex; align-items:center; gap:6px; }
+.vital-alert-badge { background:#ea4335; color:#fff; border-radius:10px; padding:2px 8px; font-size:0.68rem; font-weight:700; }
+.vital-recheck-badge { background:#ff6f00; color:#fff; border-radius:10px; padding:2px 8px; font-size:0.68rem; font-weight:700; }
+.vital-summary { font-size:0.75rem; color:#80868b; display:flex; gap:8px; flex-wrap:wrap; margin-top:3px; }
+.vital-summary span.ng { color:#ea4335; font-weight:700; }
+
+.patient-vital-body { padding:14px 16px; display:none; }
+.patient-vital-body.open { display:block; }
+
+/* ===== バイタル入力エリア ===== */
+.vital-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.vital-field label { font-size:0.72rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.vital-field input { width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0; font-size:1rem; font-weight:700; text-align:center; }
+.vital-field input.alert-val { border-color:#ea4335; background:#fce8e6; color:#c5221f; }
+.vital-field input:focus { outline:none; border-color:#1a73e8; }
+
+.camera-btn {
+    width:100%; padding:12px; border-radius:12px; border:none;
+    background:linear-gradient(135deg, #1a73e8, #1557b0);
+    color:#fff; font-size:0.88rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    cursor:pointer; margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(26,115,232,0.3);
+}
+.camera-btn .material-symbols-outlined { font-size:20px; }
+
+.save-vital-btn {
+    width:100%; padding:12px; border-radius:12px; border:none;
+    background:linear-gradient(135deg,#34a853,#2d8f47);
+    color:#fff; font-size:0.88rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    cursor:pointer; box-shadow:0 2px 8px rgba(52,168,83,0.3);
+}
+
+/* ===== 過去データ表示 ===== */
+.vital-history-row {
+    display:flex; align-items:center; gap:8px;
+    padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:0.8rem;
+}
+.vital-history-row:last-child { border-bottom:none; }
+.vital-date { color:#80868b; font-size:0.72rem; min-width:60px; }
+.vital-val-chip {
+    display:inline-flex; align-items:center; gap:2px;
+    background:#f0f4ff; color:#1a73e8; border-radius:8px;
+    padding:2px 7px; font-size:0.75rem; font-weight:700;
+}
+.vital-val-chip.ng { background:#fce8e6; color:#c5221f; }
+
+/* ===== 全員一覧 ===== */
+.daily-overview-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.daily-overview-table th { background:#f0f0f0; padding:8px 6px; text-align:center; font-weight:700; color:#5f6368; }
+.daily-overview-table td { padding:8px 6px; text-align:center; border-bottom:1px solid #f5f5f5; }
+.daily-overview-table td.name { text-align:left; font-weight:600; }
+.daily-overview-table td.ng { color:#c5221f; font-weight:700; background:#fce8e6; }
+.daily-overview-table tr.recheck-row { background:#fff8e1; }
+
+/* ===== 追加ボタン ===== */
+.add-today-btn {
+    width:100%; padding:10px; border-radius:10px;
+    border:2px dashed #1a73e8; background:#f0f6ff;
+    color:#1a73e8; font-size:0.82rem; font-weight:700;
+    cursor:pointer; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+}
+
+/* ===== カメラモーダル ===== */
+.camera-modal {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,0.8); z-index:2000;
+    flex-direction:column; align-items:center; justify-content:center;
+}
+.camera-modal.show { display:flex; }
+.camera-preview { width:100%; max-width:480px; border-radius:12px; overflow:hidden; position:relative; }
+.camera-preview video { width:100%; display:block; }
+.camera-capture-btn {
+    width:70px; height:70px; border-radius:50%; background:#fff;
+    border:4px solid #1a73e8; margin:16px auto 0;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.camera-capture-btn .material-symbols-outlined { font-size:32px; color:#1a73e8; }
+.camera-close-btn {
+    position:absolute; top:12px; right:12px;
+    background:rgba(0,0,0,0.5); border:none; color:#fff;
+    border-radius:50%; width:36px; height:36px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.camera-result { width:100%; max-width:480px; text-align:center; padding:16px; }
+.camera-result img { width:100%; border-radius:12px; margin-bottom:10px; }
+.ai-reading-indicator {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    color:#fff; font-size:0.9rem; font-weight:700; padding:10px;
+}
+.ai-reading-indicator .material-symbols-outlined { animation:spin 1s linear infinite; font-size:22px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ===== 設定 ===== */
+.setting-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.setting-field label { font-size:0.72rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.setting-field input { width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #e0e0e0; font-size:0.9rem; text-align:center; }
+.setting-section-title { font-size:0.82rem; font-weight:700; color:#1a73e8; margin:12px 0 8px; display:flex; align-items:center; gap:4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">monitor_heart</span>
+    バイタル
+</div>
+
+<!-- メインタブ -->
+<div class="tab-bar" id="main-tab-bar">
+    <div class="tab-item active" onclick="switchMainTab('record', this)">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">edit_note</span>
+        記録
+    </div>
+    <div class="tab-item" onclick="switchMainTab('daily', this)">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">groups</span>
+        全員確認
+    </div>
+    <div class="tab-item" onclick="switchMainTab('history', this)">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">history</span>
+        履歴
+    </div>
+    <div class="tab-item" onclick="switchMainTab('settings', this)">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">tune</span>
+        設定
+    </div>
+</div>
+
+<!-- ========== 記録タブ ========== -->
+<div class="tab-panel active" id="tab-record">
+    <!-- 日付選択 -->
+    <div class="form-group" style="margin-bottom:10px;">
+        <input type="date" class="form-control" id="vital-date" value="{{ today }}">
+    </div>
+
+    <!-- 曜日タブ -->
+    <div class="weekday-tabs" id="weekday-tabs">
+        <div class="wd-tab sun" data-day="0" onclick="selectWeekday(0)">日</div>
+        <div class="wd-tab" data-day="1" onclick="selectWeekday(1)">月</div>
+        <div class="wd-tab" data-day="2" onclick="selectWeekday(2)">火</div>
+        <div class="wd-tab" data-day="3" onclick="selectWeekday(3)">水</div>
+        <div class="wd-tab" data-day="4" onclick="selectWeekday(4)">木</div>
+        <div class="wd-tab" data-day="5" onclick="selectWeekday(5)">金</div>
+        <div class="wd-tab sat" data-day="6" onclick="selectWeekday(6)">土</div>
+    </div>
+
+    <!-- 利用者一覧 -->
+    <div id="patient-vitals-list"></div>
+
+    <!-- 臨時追加ボタン -->
+    <div class="add-today-btn" onclick="openAddPatient()">
+        <span class="material-symbols-outlined">person_add</span>
+        本日のみ追加
+    </div>
+</div>
+
+<!-- ========== 全員確認タブ ========== -->
+<div class="tab-panel" id="tab-daily">
+    <div class="form-group" style="margin-bottom:10px;">
+        <input type="date" class="form-control" id="daily-date" value="{{ today }}" onchange="loadDailyOverview()">
+    </div>
+    <div id="daily-overview-area">
+        <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
+            <span class="material-symbols-outlined">info</span>
+            日付を選択してください
+        </div>
+    </div>
+</div>
+
+<!-- ========== 履歴タブ ========== -->
+<div class="tab-panel" id="tab-history">
+    <div class="form-group" style="margin-bottom:10px;">
+        <div class="search-wrapper">
+            <input type="text" class="form-control" id="history-search"
+                placeholder="利用者名で検索" oninput="searchHistoryPatient(this.value)"
+                onfocus="searchHistoryPatient(this.value)" autocomplete="off">
+            <div class="search-candidates" id="history-candidates" style="display:none;"></div>
+        </div>
+    </div>
+    <div id="history-area">
+        <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
+            <span class="material-symbols-outlined">info</span>
+            利用者を選んでください
+        </div>
+    </div>
+</div>
+
+<!-- ========== 設定タブ ========== -->
+<div class="tab-panel" id="tab-settings">
+    <div class="input-section" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:14px;padding:16px;margin-bottom:1rem;">
+        <div class="setting-section-title">
+            <span class="material-symbols-outlined" style="font-size:16px;">favorite</span>
+            血圧・脈拍アラート設定
+        </div>
+        <div class="setting-grid">
+            <div class="setting-field">
+                <label>血圧（上）最大</label>
+                <input type="number" id="s-bp-high-max" value="{{ settings.bp_high_max }}">
+            </div>
+            <div class="setting-field">
+                <label>血圧（上）最小</label>
+                <input type="number" id="s-bp-high-min" value="{{ settings.bp_high_min }}">
+            </div>
+            <div class="setting-field">
+                <label>血圧（下）最大</label>
+                <input type="number" id="s-bp-low-max" value="{{ settings.bp_low_max }}">
+            </div>
+            <div class="setting-field">
+                <label>血圧（下）最小</label>
+                <input type="number" id="s-bp-low-min" value="{{ settings.bp_low_min }}">
+            </div>
+            <div class="setting-field">
+                <label>脈拍 最大</label>
+                <input type="number" id="s-pulse-max" value="{{ settings.pulse_max }}">
+            </div>
+            <div class="setting-field">
+                <label>脈拍 最小</label>
+                <input type="number" id="s-pulse-min" value="{{ settings.pulse_min }}">
+            </div>
+        </div>
+        <div class="setting-section-title">
+            <span class="material-symbols-outlined" style="font-size:16px;">thermostat</span>
+            体温・SpO2アラート設定
+        </div>
+        <div class="setting-grid">
+            <div class="setting-field">
+                <label>体温 最大（℃）</label>
+                <input type="number" step="0.1" id="s-temp-max" value="{{ settings.temp_max }}">
+            </div>
+            <div class="setting-field">
+                <label>体温 最小（℃）</label>
+                <input type="number" step="0.1" id="s-temp-min" value="{{ settings.temp_min }}">
+            </div>
+            <div class="setting-field">
+                <label>SpO2 最小（%）</label>
+                <input type="number" id="s-spo2-min" value="{{ settings.spo2_min }}">
+            </div>
+        </div>
+        <div class="setting-section-title">
+            <span class="material-symbols-outlined" style="font-size:16px;">notifications</span>
+            再検査通知設定
+        </div>
+        <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
+                <input type="checkbox" id="s-recheck-notify" {{ 'checked' if settings.recheck_notify }} style="accent-color:#1a73e8;width:16px;height:16px;">
+                再検査が必要な場合にトークで通知する
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label">通知時刻</label>
+            <input type="time" class="form-control" id="s-recheck-time" value="{{ settings.recheck_time }}">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">
+            <span class="material-symbols-outlined" style="color:white;">save</span>
+            設定を保存
+        </button>
+    </div>
+
+    <!-- 利用曜日設定 -->
+    <div class="input-section" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:14px;padding:16px;">
+        <div class="setting-section-title">
+            <span class="material-symbols-outlined" style="font-size:16px;">calendar_month</span>
+            利用者の利用曜日設定
+        </div>
+        <div id="visit-days-list">
+            {% for p in patients %}
+            <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">
+                <div style="font-size:0.85rem;font-weight:700;margin-bottom:6px;">{{ p.user_name }}</div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    {% for day, label, cls in [('0','日','sun'),('1','月',''),('2','火',''),('3','水',''),('4','木',''),('5','金',''),('6','土','sat')] %}
+                    <label style="display:flex;align-items:center;gap:3px;font-size:0.78rem;font-weight:600;cursor:pointer;">
+                        <input type="checkbox" name="wd-{{ p.id }}" value="{{ day }}"
+                            {{ 'checked' if day in (p.weekdays or '') }}
+                            style="accent-color:#1a73e8;"
+                            onchange="saveVisitDay('{{ p.id }}', '{{ p.user_name }}')">
+                        <span style="color:{{ '#c62828' if cls=='sun' else ('#2e7d32' if cls=='sat' else '#202124') }}">{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ========== カメラモーダル ========== -->
+<div class="camera-modal" id="camera-modal">
+    <div style="width:100%;max-width:480px;padding:16px;position:relative;">
+        <button class="camera-close-btn" onclick="closeCamera()" style="position:fixed;top:16px;right:16px;">
+            <span class="material-symbols-outlined">close</span>
+        </button>
+        <div style="color:#fff;font-size:0.85rem;font-weight:700;text-align:center;margin-bottom:10px;" id="camera-label">
+            血圧計・体温計・パルスオキシメーターを画面内に収めて撮影
+        </div>
+        <div id="camera-view">
+            <video id="camera-video" autoplay playsinline style="width:100%;border-radius:12px;"></video>
+            <div style="text-align:center;margin-top:12px;">
+                <button class="camera-capture-btn" onclick="capturePhoto()">
+                    <span class="material-symbols-outlined">camera</span>
+                </button>
+            </div>
+        </div>
+        <div id="camera-result-view" style="display:none;">
+            <canvas id="camera-canvas" style="width:100%;border-radius:12px;"></canvas>
+            <div class="ai-reading-indicator" id="ai-indicator">
+                <span class="material-symbols-outlined">sync</span>
+                AIが数値を読み取っています...
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+(function(){
+const PATIENTS    = {{ patients | tojson }};
+const VISIT_DAYS  = {{ visit_days | tojson }};
+const VITALS_DATA = {{ vitals_data | tojson }};
+const SETTINGS    = {{ settings | tojson }};
+const TODAY       = "{{ today }}";
+
+let currentWeekday = new Date().getDay();
+let cameraStream   = null;
+let currentCameraPatient = null;
+
+// ========== タブ切り替え ==========
+window.switchMainTab = function(name, el) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#main-tab-bar .tab-item').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-'+name).classList.add('active');
+    el.classList.add('active');
+    if (name === 'daily') loadDailyOverview();
+};
+
+// ========== 曜日選択 ==========
+window.selectWeekday = function(day) {
+    currentWeekday = day;
+    document.querySelectorAll('.wd-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.wd-tab[data-day="${day}"]`).classList.add('active');
+    renderPatientList();
+};
+
+// ページ読み込み時に今日の曜日をアクティブに
+requestAnimationFrame(() => {
+    document.querySelector(`.wd-tab[data-day="${currentWeekday}"]`)?.classList.add('active');
+    renderPatientList();
+});
+
+// ========== アラートチェック ==========
+function checkAlert(v) {
+    const alerts = [];
+    if (v.bp_high != null) {
+        if (v.bp_high >= SETTINGS.bp_high_max) alerts.push(`血圧上 ${v.bp_high}`);
+        if (v.bp_high <= SETTINGS.bp_high_min) alerts.push(`血圧上 ${v.bp_high}(低)`);
+    }
+    if (v.bp_low != null) {
+        if (v.bp_low >= SETTINGS.bp_low_max) alerts.push(`血圧下 ${v.bp_low}`);
+        if (v.bp_low <= SETTINGS.bp_low_min) alerts.push(`血圧下 ${v.bp_low}(低)`);
+    }
+    if (v.pulse != null) {
+        if (v.pulse >= SETTINGS.pulse_max) alerts.push(`脈拍 ${v.pulse}`);
+        if (v.pulse <= SETTINGS.pulse_min) alerts.push(`脈拍 ${v.pulse}(低)`);
+    }
+    if (v.temperature != null) {
+        if (v.temperature >= SETTINGS.temp_max) alerts.push(`体温 ${v.temperature}`);
+        if (v.temperature <= SETTINGS.temp_min) alerts.push(`体温 ${v.temperature}(低)`);
+    }
+    if (v.spo2 != null && v.spo2 <= SETTINGS.spo2_min) alerts.push(`SpO2 ${v.spo2}`);
+    return alerts;
+}
+
+function isAlertVal(key, val) {
+    if (val == null || val === '') return false;
+    const v = parseFloat(val);
+    const s = SETTINGS;
+    if (key === 'bp_high') return v >= s.bp_high_max || v <= s.bp_high_min;
+    if (key === 'bp_low')  return v >= s.bp_low_max  || v <= s.bp_low_min;
+    if (key === 'pulse')   return v >= s.pulse_max   || v <= s.pulse_min;
+    if (key === 'temperature') return v >= s.temp_max || v <= s.temp_min;
+    if (key === 'spo2')    return v <= s.spo2_min;
+    return false;
+}
+
+// ========== 利用者リスト描画 ==========
+function renderPatientList() {
+    const dateStr = document.getElementById('vital-date').value || TODAY;
+    const list = document.getElementById('patient-vitals-list');
+
+    // 今日の曜日の利用者を絞り込み
+    const targets = PATIENTS.filter(p => {
+        const wd = VISIT_DAYS[p.id] || '';
+        return wd.includes(String(currentWeekday));
+    });
+
+    if (!targets.length) {
+        list.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
+            <span class="material-symbols-outlined">info</span>
+            この曜日の利用者は登録されていません。
+        </div>`;
+        return;
+    }
+
+    list.innerHTML = targets.map(p => {
+        const v = VITALS_DATA[p.id] || {};
+        const alerts = checkAlert(v);
+        const hasAlert = alerts.length > 0;
+        const isRecheck = v.recheck;
+        const cardClass = isRecheck ? 'recheck' : (hasAlert ? 'alert' : '');
+
+        const summaryParts = [];
+        if (v.bp_high || v.bp_low) summaryParts.push(`血圧 ${v.bp_high||'?'}/${v.bp_low||'?'}`);
+        if (v.pulse) summaryParts.push(`脈拍 ${v.pulse}`);
+        if (v.temperature) summaryParts.push(`体温 ${v.temperature}℃`);
+        if (v.spo2) summaryParts.push(`SpO2 ${v.spo2}%`);
+
+        return `
+        <div class="patient-vital-card ${cardClass}" id="vcard-${p.id}">
+            <div class="patient-vital-header" onclick="toggleVitalCard('${p.id}')">
+                <div>
+                    <div class="patient-vital-name">
+                        <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
+                        ${p.user_name} 様
+                        ${isRecheck ? '<span class="vital-recheck-badge">再検査</span>' : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '')}
+                    </div>
+                    <div class="vital-summary">
+                        ${summaryParts.length ? summaryParts.join(' ／ ') : '<span>未記録</span>'}
+                    </div>
+                </div>
+                <span class="material-symbols-outlined" style="color:#80868b;transition:transform 0.2s;" id="varrow-${p.id}">expand_more</span>
+            </div>
+            <div class="patient-vital-body" id="vbody-${p.id}">
+                ${buildVitalForm(p, v, dateStr)}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function buildVitalForm(p, v, dateStr) {
+    function field(key, label, unit, val) {
+        const alertCls = isAlertVal(key, val) ? 'alert-val' : '';
+        return `<div class="vital-field">
+            <label>${label}（${unit}）</label>
+            <input type="number" step="${key==='temperature'?'0.1':'1'}"
+                id="v-${key}-${p.id}" value="${val||''}"
+                class="${alertCls}"
+                oninput="onVitalInput('${p.id}','${key}',this.value)"
+                placeholder="--">
+        </div>`;
+    }
+    return `
+        <button class="camera-btn" onclick="openCamera('${p.id}')">
+            <span class="material-symbols-outlined">photo_camera</span>
+            カメラで数値を自動読み取り
+        </button>
+        <div class="vital-grid">
+            ${field('bp_high','血圧（上）','mmHg', v.bp_high)}
+            ${field('bp_low','血圧（下）','mmHg', v.bp_low)}
+            ${field('pulse','脈拍','bpm', v.pulse)}
+            ${field('temperature','体温','℃', v.temperature)}
+        </div>
+        <div class="vital-grid" style="grid-template-columns:1fr 1fr;">
+            ${field('spo2','SpO2','%', v.spo2)}
+            <div class="vital-field">
+                <label>メモ</label>
+                <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項">
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <input type="checkbox" id="v-recheck-${p.id}" ${v.recheck?'checked':''} style="accent-color:#ff6f00;width:16px;height:16px;">
+            <label for="v-recheck-${p.id}" style="font-size:0.82rem;font-weight:600;color:#e65100;">再検査が必要</label>
+        </div>
+        <button class="save-vital-btn" onclick="saveVital('${p.id}','${p.user_name}','${dateStr}')">
+            <span class="material-symbols-outlined">save</span>
+            記録を保存
+        </button>
+        ${v.id ? `<div style="font-size:0.72rem;color:#34a853;margin-top:6px;text-align:center;">✅ 本日記録済み</div>` : ''}
+    `;
+}
+
+function onVitalInput(pid, key, val) {
+    const el = document.getElementById(`v-${key}-${pid}`);
+    if (el) el.className = isAlertVal(key, val) ? 'alert-val' : '';
+}
+
+window.toggleVitalCard = function(pid) {
+    const body = document.getElementById('vbody-'+pid);
+    const arrow = document.getElementById('varrow-'+pid);
+    body.classList.toggle('open');
+    arrow.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+};
+
+// ========== バイタル保存 ==========
+window.saveVital = async function(pid, name, dateStr) {
+    const get = id => document.getElementById(id)?.value || null;
+    const payload = {
+        patient_id: pid,
+        user_name: name,
+        measured_date: dateStr,
+        bp_high:     get(`v-bp_high-${pid}`)     ? parseInt(get(`v-bp_high-${pid}`))     : null,
+        bp_low:      get(`v-bp_low-${pid}`)      ? parseInt(get(`v-bp_low-${pid}`))      : null,
+        pulse:       get(`v-pulse-${pid}`)       ? parseInt(get(`v-pulse-${pid}`))       : null,
+        temperature: get(`v-temperature-${pid}`) ? parseFloat(get(`v-temperature-${pid}`)) : null,
+        spo2:        get(`v-spo2-${pid}`)        ? parseInt(get(`v-spo2-${pid}`))        : null,
+        note:        get(`v-note-${pid}`) || '',
+        recheck:     document.getElementById(`v-recheck-${pid}`)?.checked || false,
+    };
+    const res = await fetch('/api/save_vital', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        // VITALS_DATAを更新してカード再描画
+        VITALS_DATA[pid] = {...VITALS_DATA[pid], ...payload, id: data.id};
+        const card = document.getElementById('vcard-'+pid);
+        if (card) {
+            const alerts = checkAlert(payload);
+            card.className = 'patient-vital-card ' + (payload.recheck ? 'recheck' : (alerts.length ? 'alert' : ''));
+        }
+        const savedMsg = document.createElement('div');
+        savedMsg.style.cssText = 'font-size:0.72rem;color:#34a853;text-align:center;margin-top:4px;';
+        savedMsg.textContent = '✅ 保存しました';
+        const btn = document.querySelector(`#vbody-${pid} .save-vital-btn`);
+        if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2000); }
+    } else {
+        alert('保存に失敗しました');
+    }
+};
+
+// ========== カメラ ========== 
+window.openCamera = async function(pid) {
+    currentCameraPatient = pid;
+    document.getElementById('camera-modal').classList.add('show');
+    document.getElementById('camera-view').style.display = 'block';
+    document.getElementById('camera-result-view').style.display = 'none';
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} }
+        });
+        document.getElementById('camera-video').srcObject = cameraStream;
+    } catch(e) {
+        alert('カメラへのアクセスが許可されていません');
+        closeCamera();
+    }
+};
+
+window.closeCamera = function() {
+    if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+    document.getElementById('camera-modal').classList.remove('show');
+};
+
+window.capturePhoto = function() {
+    const video = document.getElementById('camera-video');
+    const canvas = document.getElementById('camera-canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    document.getElementById('camera-view').style.display = 'none';
+    document.getElementById('camera-result-view').style.display = 'block';
+    if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+    // AIに送信
+    canvas.toBlob(blob => sendToAI(blob), 'image/jpeg', 0.9);
+};
+
+async function sendToAI(blob) {
+    const formData = new FormData();
+    formData.append('image', blob, 'vital.jpg');
+    document.getElementById('ai-indicator').style.display = 'flex';
+    try {
+        const res = await fetch('/api/read_vital_image', { method:'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('ai-indicator').style.display = 'none';
+        if (data.status === 'success') {
+            const pid = currentCameraPatient;
+            if (data.bp_high)      { document.getElementById(`v-bp_high-${pid}`).value = data.bp_high; onVitalInput(pid,'bp_high',data.bp_high); }
+            if (data.bp_low)       { document.getElementById(`v-bp_low-${pid}`).value = data.bp_low; onVitalInput(pid,'bp_low',data.bp_low); }
+            if (data.pulse)        { document.getElementById(`v-pulse-${pid}`).value = data.pulse; onVitalInput(pid,'pulse',data.pulse); }
+            if (data.temperature)  { document.getElementById(`v-temperature-${pid}`).value = data.temperature; onVitalInput(pid,'temperature',data.temperature); }
+            if (data.spo2)         { document.getElementById(`v-spo2-${pid}`).value = data.spo2; onVitalInput(pid,'spo2',data.spo2); }
+            closeCamera();
+            // アラートがあれば再検査チェックを自動ON
+            const vals = {bp_high:data.bp_high,bp_low:data.bp_low,pulse:data.pulse,temperature:data.temperature,spo2:data.spo2};
+            if (checkAlert(vals).length > 0) {
+                document.getElementById(`v-recheck-${pid}`).checked = true;
+            }
+        } else {
+            alert('読み取りに失敗しました。手動で入力してください。\n'+( data.message||''));
+            closeCamera();
+        }
+    } catch(e) {
+        alert('通信エラーが発生しました');
+        closeCamera();
+    }
+}
+
+// ========== 全員確認 ==========
+window.loadDailyOverview = async function() {
+    const date = document.getElementById('daily-date').value;
+    if (!date) return;
+    const res = await fetch(`/api/vitals_daily?date=${date}`);
+    const data = await res.json();
+    const area = document.getElementById('daily-overview-area');
+    if (!data.vitals || !data.vitals.length) {
+        area.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;"><span class="material-symbols-outlined">info</span>${date} の記録はありません。</div>`;
+        return;
+    }
+    const rows = data.vitals.map(v => {
+        const alerts = checkAlert(v);
+        const ng = key => isAlertVal(key, v[key]) ? 'ng' : '';
+        return `<tr class="${v.recheck?'recheck-row':''}">
+            <td class="name">${v.user_name}${v.recheck?'<span class="vital-recheck-badge" style="margin-left:4px;font-size:0.62rem;">再検査</span>':''}</td>
+            <td class="${ng('bp_high')}">${v.bp_high||'—'}</td>
+            <td class="${ng('bp_low')}">${v.bp_low||'—'}</td>
+            <td class="${ng('pulse')}">${v.pulse||'—'}</td>
+            <td class="${ng('temperature')}">${v.temperature||'—'}</td>
+            <td class="${ng('spo2')}">${v.spo2||'—'}</td>
+        </tr>`;
+    }).join('');
+    area.innerHTML = `
+        <div style="overflow-x:auto;">
+        <table class="daily-overview-table">
+            <thead><tr>
+                <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>`;
+};
+
+// ========== 履歴 ==========
+window.searchHistoryPatient = function(q) {
+    const cands = document.getElementById('history-candidates');
+    if (!q.trim()) { cands.style.display='none'; return; }
+    const hits = PATIENTS.filter(p => p.user_name.includes(q) || (p.user_kana||'').includes(q)).slice(0,8);
+    if (!hits.length) { cands.style.display='none'; return; }
+    cands.innerHTML = hits.map(p =>
+        `<div class="search-candidate-item" onclick="loadHistory('${p.id}','${p.user_name}')">${p.user_name}</div>`
+    ).join('');
+    cands.style.display = 'block';
+};
+
+window.loadHistory = async function(pid, name) {
+    document.getElementById('history-candidates').style.display='none';
+    document.getElementById('history-search').value = name;
+    const res = await fetch(`/api/vitals_history?patient_id=${pid}`);
+    const data = await res.json();
+    const area = document.getElementById('history-area');
+    if (!data.vitals || !data.vitals.length) {
+        area.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;"><span class="material-symbols-outlined">info</span>${name} 様のバイタル記録はありません。</div>`;
+        return;
+    }
+    const rows = data.vitals.map(v => {
+        const chip = (key, val, unit) => val ? `<span class="vital-val-chip ${isAlertVal(key,val)?'ng':''}">${val}${unit}</span>` : '';
+        return `<div class="vital-history-row">
+            <span class="vital-date">${v.measured_date}</span>
+            ${chip('bp_high',v.bp_high,'')}${v.bp_high&&v.bp_low?`<span style="font-size:0.72rem;color:#80868b;">/</span>`:''}${chip('bp_low',v.bp_low,'mmHg')}
+            ${chip('pulse',v.pulse,'bpm')}
+            ${chip('temperature',v.temperature,'℃')}
+            ${chip('spo2',v.spo2,'%')}
+            ${v.recheck?'<span class="vital-recheck-badge" style="font-size:0.62rem;">再検査</span>':''}
+        </div>`;
+    }).join('');
+    area.innerHTML = `
+        <div style="font-weight:700;font-size:0.9rem;margin-bottom:10px;">${name} 様のバイタル履歴</div>
+        <div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:12px;padding:12px 14px;">${rows}</div>`;
+};
+
+// ========== 利用曜日保存 ==========
+window.saveVisitDay = async function(pid, name) {
+    const checks = document.querySelectorAll(`input[name="wd-${pid}"]:checked`);
+    const days = [...checks].map(c => c.value).join('');
+    await fetch('/api/save_visit_day', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({patient_id: pid, user_name: name, weekdays: days})
+    });
+    VISIT_DAYS[pid] = days;
+};
+
+// ========== 設定保存 ==========
+window.saveSettings = async function() {
+    const payload = {
+        bp_high_max: parseInt(document.getElementById('s-bp-high-max').value),
+        bp_high_min: parseInt(document.getElementById('s-bp-high-min').value),
+        bp_low_max:  parseInt(document.getElementById('s-bp-low-max').value),
+        bp_low_min:  parseInt(document.getElementById('s-bp-low-min').value),
+        pulse_max:   parseInt(document.getElementById('s-pulse-max').value),
+        pulse_min:   parseInt(document.getElementById('s-pulse-min').value),
+        temp_max:    parseFloat(document.getElementById('s-temp-max').value),
+        temp_min:    parseFloat(document.getElementById('s-temp-min').value),
+        spo2_min:    parseInt(document.getElementById('s-spo2-min').value),
+        recheck_notify: document.getElementById('s-recheck-notify').checked,
+        recheck_time:   document.getElementById('s-recheck-time').value,
+    };
+    const res = await fetch('/api/save_vital_settings', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    if ((await res.json()).status === 'success') {
+        Object.assign(SETTINGS, payload);
+        alert('設定を保存しました');
+    }
+};
+
+// ========== 臨時追加 ==========
+window.openAddPatient = function() {
+    const name = prompt('追加する利用者名を入力してください');
+    if (!name) return;
+    const p = PATIENTS.find(x => x.user_name === name);
+    if (!p) { alert('利用者が見つかりません'); return; }
+    // 強制的に今日のリストに追加
+    const existing = VISIT_DAYS[p.id] || '';
+    if (!existing.includes(String(currentWeekday))) {
+        VISIT_DAYS[p.id] = existing + String(currentWeekday);
+    }
+    renderPatientList();
+};
+
+})();
+</script>
+{% endblock %}
