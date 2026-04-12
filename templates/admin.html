@@ -244,25 +244,107 @@
 </div>
 
 {% if not authenticated %}
+<style>
+.auth-type-select {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; margin-bottom: 16px;
+}
+.auth-type-btn {
+    padding: 16px 10px; border-radius: 14px;
+    border: 2px solid #e0e0e0; background: #f8f9fa;
+    text-align: center; cursor: pointer;
+    transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.auth-type-btn.active-admin { border-color: #1a73e8; background: #e8f0fe; }
+.auth-type-btn.active-dev   { border-color: #9c27b0; background: #f3e5f5; }
+.auth-type-btn .material-symbols-outlined { font-size: 28px; display: block; margin-bottom: 6px; }
+.auth-type-btn.active-admin .material-symbols-outlined { color: #1a73e8; }
+.auth-type-btn.active-dev   .material-symbols-outlined { color: #9c27b0; }
+.auth-type-btn .auth-btn-label { font-size: 0.85rem; font-weight: 700; color: #5f6368; }
+.auth-type-btn.active-admin .auth-btn-label { color: #1a73e8; }
+.auth-type-btn.active-dev   .auth-btn-label { color: #9c27b0; }
+.auth-type-btn .auth-btn-sub { font-size: 0.7rem; color: #b0b8c1; margin-top: 2px; }
+.auth-submit-admin { background: #1a73e8 !important; }
+.auth-submit-dev   { background: #9c27b0 !important; }
+</style>
+
 <div class="form-group">
-    <label class="form-label">
-        <span class="material-symbols-outlined">lock</span>
-        パスワード
-    </label>
-    <form method="POST" action="/admin_auth">
-        <input type="password" name="admin_pw" class="form-control" style="margin-bottom:12px;" placeholder="管理者パスワード">
+    <div class="page-title" style="margin-bottom:1rem;">
+        <span class="material-symbols-outlined">admin_panel_settings</span>
+        メニュー選択
+    </div>
+
+    <div class="auth-type-select">
+        <div class="auth-type-btn active-admin" id="btn-admin" onclick="selectAuthType('admin')">
+            <span class="material-symbols-outlined">manage_accounts</span>
+            <div class="auth-btn-label">管理者MENU</div>
+            <div class="auth-btn-sub">施設の管理者向け</div>
+        </div>
+        <div class="auth-type-btn" id="btn-dev" onclick="selectAuthType('dev')">
+            <span class="material-symbols-outlined">code</span>
+            <div class="auth-btn-label">開発者MENU</div>
+            <div class="auth-btn-sub">開発者専用</div>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin_auth" id="auth-form">
+        <input type="hidden" name="mode" id="auth-mode" value="admin">
+        <label class="form-label">
+            <span class="material-symbols-outlined">lock</span>
+            <span id="auth-pw-label">管理者パスワード</span>
+        </label>
+        <input type="password" name="admin_pw" class="form-control"
+            style="margin-bottom:12px;" id="auth-pw-input"
+            placeholder="パスワードを入力">
         {% if error %}
         <div class="alert alert-error" style="margin-bottom:12px;">
             <span class="material-symbols-outlined">error</span>
             {{ error }}
         </div>
         {% endif %}
-        <button type="submit" class="btn btn-primary">
+        <button type="submit" class="btn btn-primary auth-submit-admin" id="auth-submit-btn">
             <span class="material-symbols-outlined">login</span>
-            認証
+            <span id="auth-submit-label">管理者MENUへ</span>
         </button>
     </form>
 </div>
+
+<script>
+(function(){
+    // {% if dev_mode is defined and dev_mode %}
+    var initMode = '{{ "dev" if dev_mode else "admin" }}';
+    // {% endif %}
+    window.selectAuthType = function(type) {
+        const btnAdmin = document.getElementById('btn-admin');
+        const btnDev   = document.getElementById('btn-dev');
+        const mode     = document.getElementById('auth-mode');
+        const label    = document.getElementById('auth-pw-label');
+        const submit   = document.getElementById('auth-submit-btn');
+        const submitLbl= document.getElementById('auth-submit-label');
+        const input    = document.getElementById('auth-pw-input');
+
+        btnAdmin.className = 'auth-type-btn' + (type==='admin' ? ' active-admin' : '');
+        btnDev.className   = 'auth-type-btn' + (type==='dev'   ? ' active-dev'   : '');
+        mode.value = type;
+
+        if (type === 'dev') {
+            label.textContent = '開発者パスワード';
+            submit.className = 'btn btn-primary auth-submit-dev';
+            submitLbl.textContent = '開発者MENUへ';
+            input.placeholder = '開発者パスワードを入力';
+        } else {
+            label.textContent = '管理者パスワード';
+            submit.className = 'btn btn-primary auth-submit-admin';
+            submitLbl.textContent = '管理者MENUへ';
+            input.placeholder = 'パスワードを入力';
+        }
+    };
+    // エラー時に前回のモードを復元
+    if (typeof initMode !== 'undefined' && initMode === 'dev') {
+        selectAuthType('dev');
+    }
+})();
+</script>
 
 {% else %}
 

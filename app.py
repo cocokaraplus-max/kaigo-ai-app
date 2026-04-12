@@ -1265,6 +1265,23 @@ def history():
 def admin_auth():
     f_code = session["f_code"]
     pw = request.form.get("admin_pw", "")
+    mode = request.form.get("mode", "admin")  # admin or dev
+
+    # 開発者認証
+    if mode == "dev":
+        dev_pw = get_secret("DEV_PASSWORD") or "tasukaru-dev-2024"
+        if pw == dev_pw:
+            session["dev_authenticated"] = True
+            return redirect(url_for("dev_menu"))
+        else:
+            return render_template("admin.html",
+                authenticated=False, dev_mode=True,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30, error="開発者パスワードが違います。",
+                claude_url=None, registered_staffs=[], f_code=f_code
+            )
+
+    # 管理者認証
     try:
         supabase = get_supabase()
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
@@ -1276,13 +1293,10 @@ def admin_auth():
         return redirect(url_for("admin"))
     else:
         return render_template("admin.html",
-            authenticated=False,
-            patients=[],
-            blocked=[],
-            staff_list=[],
-            hist_limit=30,
-            error="パスワードが違います。",
-            claude_url=None
+            authenticated=False, dev_mode=False,
+            patients=[], blocked=[], staff_list=[],
+            hist_limit=30, error="パスワードが違います。",
+            claude_url=None, registered_staffs=[], f_code=f_code
         )
 
 @app.route('/admin')
@@ -1344,6 +1358,7 @@ def admin():
 
     return render_template("admin.html",
         authenticated=authenticated,
+        dev_mode=False,
         patients=patients,
         blocked=blocked,
         staff_list=staff_list,
@@ -1522,12 +1537,21 @@ def api_admin_login():
     try:
         data = request.json
         f_code = session["f_code"]
+        mode = data.get("mode", "admin")
+
+        if mode == "dev":
+            dev_pw = get_secret("DEV_PASSWORD") or "tasukaru-dev-2024"
+            if data["password"] == dev_pw:
+                session["dev_authenticated"] = True
+                return jsonify({"status": "success", "redirect": "/dev"})
+            return jsonify({"status": "error"})
+
         supabase = get_supabase()
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
         cur_pw = res.data[0]['value'] if res.data else "8888"
         if data["password"] == cur_pw:
             session["admin_authenticated"] = True
-            return jsonify({"status": "success"})
+            return jsonify({"status": "success", "redirect": "/admin"})
         return jsonify({"status": "error"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
@@ -1535,6 +1559,74 @@ def api_admin_login():
 @app.route('/api/admin_logout', methods=['POST'])
 def api_admin_logout():
     session["admin_authenticated"] = False
+    session["dev_authenticated"] = False
+    return jsonify({"status": "success"})
+
+@app.route('/dev')
+@login_required
+def dev_menu():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("admin"))
+    supabase = get_supabase()
+    f_code = session["f_code"]
+
+    # 全施設一覧
+    facilities = []
+    try:
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,created_at").order("created_at", desc=True).execute()
+        facilities = res.data or []
+    except: pass
+
+    # 各施設のレコード数・スタッフ数
+    stats = []
+    for fac in facilities:
+        fc = fac["facility_code"]
+        try:
+            rec_count = supabase.table("records").select("id", count="exact").eq("facility_code", fc).execute().count or 0
+            staff_count = supabase.table("staffs").select("id", count="exact").eq("facility_code", fc).eq("is_active", True).execute().count or 0
+            patient_count = supabase.table("patients").select("id", count="exact").eq("facility_code", fc).execute().count or 0
+            stats.append({
+                "facility_code": fc,
+                "facility_name": fac.get("facility_name", fc),
+                "is_active": fac.get("is_active", True),
+                "created_at": fac.get("created_at", "")[:10],
+                "records": rec_count,
+                "staffs": staff_count,
+                "patients": patient_count,
+            })
+        except:
+            stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
+
+    # 環境変数チェック（値は隠す）
+    env_keys = ["SUPABASE_URL","SUPABASE_KEY","GEMINI_API_KEY","SECRET_KEY","SENDGRID_API_KEY","SENDGRID_FROM_EMAIL","DEV_PASSWORD"]
+    env_status = {k: "✅ 設定済み" if get_secret(k) else "❌ 未設定" for k in env_keys}
+
+    # 直近エラーログ（recordsの最新など）
+    recent_records = []
+    try:
+        res = supabase.table("records").select("facility_code,user_name,staff_name,created_at").order("created_at", desc=True).limit(20).execute()
+        recent_records = res.data or []
+    except: pass
+
+    import sys
+    runtime_info = {
+        "python": sys.version.split()[0],
+        "flask": "Flask",
+        "current_facility": f_code,
+        "total_facilities": len(facilities),
+    }
+
+    return render_template("dev_menu.html",
+        stats=stats,
+        env_status=env_status,
+        recent_records=recent_records,
+        runtime_info=runtime_info,
+        current_f_code=f_code,
+    )
+
+@app.route('/api/dev_logout', methods=['POST'])
+def api_dev_logout():
+    session["dev_authenticated"] = False
     return jsonify({"status": "success"})
 
 @app.route('/api/add_patient', methods=['POST'])
