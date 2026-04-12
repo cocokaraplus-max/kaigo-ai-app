@@ -579,18 +579,17 @@ def numerology():
     f_code = session["f_code"]
     supabase = get_supabase()
     all_persons = []
-    # 利用者
+    # 利用者（誕生日なしでも全員表示）
     try:
         res_p = supabase.table("patients").select("user_name,user_kana,chart_number,birth_date").eq("facility_code", f_code).execute()
         for r in res_p.data:
-            if r.get("birth_date"):
-                all_persons.append({
-                    "name": r["user_name"],
-                    "kana": r.get("user_kana") or "",
-                    "chart": str(r["chart_number"]),
-                    "birth": r["birth_date"],
-                    "type": "patient"
-                })
+            all_persons.append({
+                "name": r["user_name"],
+                "kana": r.get("user_kana") or "",
+                "chart": str(r["chart_number"]),
+                "birth": r.get("birth_date") or "",
+                "type": "patient"
+            })
     except:
         pass
     # 職員

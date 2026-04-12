@@ -210,12 +210,12 @@ const ALL_PERSONS = [
 function searchPerson(query) {
     const q = query.trim().toLowerCase();
     const filtered = q === ''
-        ? ALL_PERSONS.filter(p => p.birth)
-        : ALL_PERSONS.filter(p => p.birth && (
+        ? ALL_PERSONS
+        : ALL_PERSONS.filter(p =>
             p.name.toLowerCase().includes(q) ||
             p.kana.toLowerCase().includes(q) ||
             p.chart.toLowerCase().includes(q)
-        ));
+        );
     const el = document.getElementById('num-candidates');
     if (filtered.length === 0) {
         el.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし（誕生日未登録の方は表示されません）</div>';
@@ -237,7 +237,15 @@ function selectPerson(name, birth, type) {
     document.getElementById('search-selected-label').textContent = name + (type === 'staff' ? '（職員）' : '');
     document.getElementById('search-selected').style.display = 'flex';
     document.getElementById('num-candidates').classList.remove('show');
-    renderNumerology(name, birth, 'search-result');
+    if (!birth) {
+        document.getElementById('search-result').innerHTML =
+            `<div style="background:#fef7e0;border-radius:10px;padding:12px 14px;font-size:0.85rem;color:#b06000;margin-top:8px;">
+                <span style="font-weight:700;">誕生日が登録されていません。</span><br>
+                「誕生日から調べる」タブで手入力して計算できます。
+            </div>`;
+    } else {
+        renderNumerology(name, birth, 'search-result');
+    }
 }
 
 function clearSearch() {

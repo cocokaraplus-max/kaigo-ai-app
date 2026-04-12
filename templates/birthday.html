@@ -213,22 +213,11 @@
 {% block content %}
 <div class="page-title">
     <span class="material-symbols-outlined">cake</span>
-    誕生日・数秘術
+    誕生日一覧
 </div>
 
-<div class="page-tabs">
-    <button class="page-tab active" onclick="switchPageTab('list', this)">
-        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">list</span>
-        誕生日一覧
-    </button>
-    <button class="page-tab" onclick="switchPageTab('numerology', this)">
-        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">auto_awesome</span>
-        数秘術
-    </button>
-</div>
-
-<!-- 誕生日一覧タブ -->
-<div class="tab-content active" id="tab-list">
+<!-- 誕生日一覧 -->
+<div id="tab-list">
     {% if not all_birthdays %}
     <div class="alert alert-info">
         <span class="material-symbols-outlined">info</span>
@@ -260,7 +249,7 @@
             </div>
             <div class="birthday-right">
                 <div class="birthday-age-badge {% if b.is_today %}today-badge{% endif %}">{{ b.age }}歳</div>
-                <div class="numerology-mini">No.{{ b.numerology }}</div>
+                <div class="numerology-mini">数秘{{ b.numerology }}</div>
             </div>
         </div>
         {% endfor %}
@@ -269,24 +258,14 @@
     {% endif %}
 </div>
 
-<!-- 数秘術タブ -->
-<div class="tab-content" id="tab-numerology">
-    <div class="search-wrapper">
-        <input type="text" id="num-search" class="form-control"
-            placeholder="名前・ふりがな・カルテ番号で検索"
-            oninput="searchNumerology(this.value)"
-            onfocus="searchNumerology(this.value)"
-            autocomplete="off">
-        <div class="search-candidates" id="num-candidates"></div>
+<!-- 数秘説明モーダル -->
+<div id="numerology-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;padding:20px;overflow-y:auto;" onclick="closeNumerologyModal(event)">
+    <div style="max-width:480px;margin:40px auto;" onclick="event.stopPropagation()">
+        <div id="numerology-modal-content"></div>
+        <button onclick="closeNumerologyModal()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#f0f0f0;color:#202124;font-size:1rem;font-weight:600;margin-top:12px;cursor:pointer;">
+            閉じる
+        </button>
     </div>
-
-    <div id="num-selected-badge" style="display:none;" class="selected-badge">
-        <span class="material-symbols-outlined">person</span>
-        <span id="num-selected-label"></span>
-        <span style="margin-left:auto;cursor:pointer;font-size:0.78rem;color:#80868b;" onclick="clearNumerologySearch()">変更</span>
-    </div>
-
-    <div id="numerology-result-area"></div>
 </div>
 {% endblock %}
 
@@ -423,10 +402,49 @@ document.addEventListener('click', e => {
     }
 });
 
-// 誕生日一覧からの遷移
+// 誕生日一覧からモーダルで数秘表示
 function showNumerologyById(name, birth) {
-    switchPageTab('numerology', document.querySelectorAll('.page-tab')[1]);
-    selectNumerology(name, birth);
+    const result = calcNumerology(birth);
+    if (!result) return;
+    const data = NUMEROLOGY_DATA[result.number];
+    const [y, m, d] = birth.split('-');
+    const wareki = toWareki(parseInt(y));
+    const birthStr = `${wareki} ${parseInt(m)}月${parseInt(d)}日`;
+    const tags = data.tags.map(t =>
+        `<span class="trait-tag ${result.isMaster ? 'master' : ''}">${t}</span>`
+    ).join('');
+    document.getElementById('numerology-modal-content').innerHTML = `
+        <div class="numerology-result">
+            <div class="numerology-header">
+                <div class="numerology-name">${name}</div>
+                <div class="numerology-birth">${birthStr}</div>
+            </div>
+            <div class="numerology-number-display">
+                <div class="numerology-circle ${result.isMaster ? 'master' : ''}">
+                    <span class="numerology-circle-num">${result.number}</span>
+                </div>
+                <div>
+                    <div class="numerology-label ${result.isMaster ? 'master' : ''}">
+                        ライフパスナンバー${result.isMaster ? '<br>✨ マスターナンバー' : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="numerology-calc">計算式：${result.steps.join(' → ')}</div>
+            <div class="numerology-traits">
+                <div class="numerology-traits-title">
+                    <span class="material-symbols-outlined">psychology</span>特性・キーワード
+                </div>
+                <div>${tags}</div>
+                <div class="numerology-desc">${data.desc}</div>
+            </div>
+        </div>`;
+    document.getElementById('numerology-modal').style.display = 'block';
+}
+
+function closeNumerologyModal(event) {
+    if (!event || event.target === document.getElementById('numerology-modal')) {
+        document.getElementById('numerology-modal').style.display = 'none';
+    }
 }
 
 // ========== 数秘結果表示 ==========
