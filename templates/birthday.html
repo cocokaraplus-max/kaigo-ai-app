@@ -419,7 +419,7 @@ function clearNumerologySearch() {
 
 document.addEventListener('click', e => {
     if (!e.target.closest('.search-wrapper')) {
-        document.getElementById('num-candidates').classList.remove('show');
+        setTimeout(() => document.getElementById('num-candidates').classList.remove('show'), 200);
     }
 });
 

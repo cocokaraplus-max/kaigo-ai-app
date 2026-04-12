@@ -164,7 +164,7 @@ function clearPatient() {
 
 document.addEventListener('click', e => {
     if (!e.target.closest('[id^="patient"]')) {
-        document.getElementById('patient-candidates').style.display = 'none';
+        setTimeout(() => { const c = document.getElementById('patient-candidates'); if(c) c.style.display = 'none'; }, 200);
     }
 });
 // ========================================
