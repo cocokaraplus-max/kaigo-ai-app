@@ -302,7 +302,7 @@ setTimeout(() => {
     if (el) el.scrollTop = el.scrollHeight;
 }, 100);
 
-window.markRead = function() {
+window.markRead = async function() {
     await fetch('/api/mark_read', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -321,7 +321,7 @@ window.handleKeydown = function(e) {
     }
 }
 
-window.sendMessage = function() {
+window.sendMessage = async function() {
     const input = document.getElementById('chat-input');
     const content = input.value.trim();
     if (!content) return;
@@ -346,7 +346,7 @@ window.sendMessage = function() {
     }
 }
 
-window.deleteMessage = function(id) {
+window.deleteMessage = async function(id) {
     if (!confirm('このメッセージを削除しますか？')) return;
     const res = await fetch('/api/delete_room_message', {
         method: 'POST',

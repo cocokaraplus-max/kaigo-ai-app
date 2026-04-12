@@ -510,7 +510,7 @@ const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
 
 window.dragOver = function(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
 window.dragLeave = function(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
-window.dropFile = function(e) {
+window.dropFile = async function(e) {
     e.preventDefault();
     document.getElementById('drop-zone').classList.remove('dragover');
     const file = e.dataTransfer.files[0];
@@ -520,7 +520,7 @@ window.dropFile = function(e) {
         await readFile(file);
     }
 }
-window.handleFileSelect = function(e) {
+window.handleFileSelect = async function(e) {
     const file = e.target.files[0];
     if (file) {
         const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
@@ -528,7 +528,7 @@ window.handleFileSelect = function(e) {
         await readFile(file);
     }
 }
-window.readFile = function(file) {
+window.readFile = async function(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('audio_mode', audioMode); // solo or dialog
@@ -684,7 +684,7 @@ window.showReport = function(payload, data) {
 }
 
 // ========== 保存 ==========
-window.saveAssessment = function() {
+window.saveAssessment = async function() {
     if (!window._reportPayload) return;
     const payload = {
         ...window._reportPayload,
@@ -710,7 +710,7 @@ window.printReport = function() {
 }
 
 // ========== 過去評価を読み込む ==========
-window.loadAssessment = function(id) {
+window.loadAssessment = async function(id) {
     const res = await fetch('/api/get_assessment?id=' + id);
     const data = await res.json();
     if (!data.data) return;

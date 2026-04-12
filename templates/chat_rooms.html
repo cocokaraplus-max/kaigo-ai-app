@@ -316,7 +316,7 @@ window.selectType = function(type) {
     });
 }
 
-window.createRoom = function() {
+window.createRoom = async function() {
     const selected = [...document.querySelectorAll('input[name=member]:checked')].map(el => el.value);
     if (selected.length === 0) {
         alert(roomType === 'dm' ? '相手を選んでください' : 'メンバーを選んでください');
