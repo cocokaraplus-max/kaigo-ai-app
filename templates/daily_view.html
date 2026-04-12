@@ -47,6 +47,7 @@
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    min-height: 280px;
 }
 .calendar-header {
     display: flex;
@@ -378,9 +379,15 @@ const targetUser = "{{ target_user }}";
 let currentYear, currentMonth;
 
 function initCalendar() {
-    const parts = selectedDate.split('-');
-    currentYear = parseInt(parts[0]);
-    currentMonth = parseInt(parts[1]) - 1;
+    const today = new Date();
+    if (!selectedDate || selectedDate === 'None' || selectedDate.trim() === '') {
+        currentYear = today.getFullYear();
+        currentMonth = today.getMonth();
+    } else {
+        const parts = selectedDate.split('-');
+        currentYear = parseInt(parts[0]) || today.getFullYear();
+        currentMonth = (parseInt(parts[1]) - 1) || today.getMonth();
+    }
     renderCalendar();
 }
 
@@ -394,6 +401,7 @@ function changeMonth(delta) {
 function renderCalendar() {
     const title = document.getElementById('cal-title');
     const daysEl = document.getElementById('cal-days');
+    if (!title || !daysEl) return;
     title.textContent = `${currentYear}年${currentMonth + 1}月`;
 
     const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0=日
@@ -435,6 +443,14 @@ document.addEventListener('DOMContentLoaded', function() {
 if (document.readyState !== 'loading') {
     initCalendar();
 }
+
+// 念のため500ms後にも確認（iPhoneの遅延対応）
+setTimeout(function() {
+    const title = document.getElementById('cal-title');
+    if (title && !title.textContent.trim()) {
+        initCalendar();
+    }
+}, 500);
 
 // ========================================
 
