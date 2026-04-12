@@ -279,7 +279,7 @@ window.previewPhotos = function(input) {
 
 let mediaRecorder = null, audioChunks = [], isRecording = false;
 
-window.toggleRecording = function() {
+window.toggleRecording = async function() {
     const btn = document.getElementById('rec-btn');
     const status = document.getElementById('rec-status');
     if (!isRecording) {
@@ -316,7 +316,7 @@ window.toggleRecording = function() {
     }
 }
 
-window.aiTranscribe = function() {
+window.aiTranscribe = async function() {
     const audioData = document.getElementById('audio-data').value;
     const audioMime = document.getElementById('audio-mime').value;
     if (!audioData) return;
