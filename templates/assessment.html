@@ -453,8 +453,9 @@
 
 {% block extra_script %}
 <script>
+(function(){
 // ========== タブ切り替え ==========
-function switchTab(name) {
+window.switchTab = function(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
@@ -471,7 +472,7 @@ if (isMobile) {
 // ========== 音声モード選択（独り言 / 対話） ==========
 let audioMode = 'solo'; // デフォルト：独り言
 
-function selectAudioMode(mode) {
+window.selectAudioMode = function(mode) {
     audioMode = mode;
     // PC側
     const soloPC   = document.getElementById('mode-solo');
@@ -486,13 +487,13 @@ function selectAudioMode(mode) {
 }
 
 // 音声ファイル選択時にモード選択UIを表示
-function showAudioModeSelector(show) {
+window.showAudioModeSelector = function(show) {
     const el = document.getElementById('audio-mode-select');
     if (el) el.style.display = show ? 'block' : 'none';
 }
 
 // ========== 利用者選択 ==========
-function onPatientSelect() {
+window.onPatientSelect = function() {
     const sel = document.getElementById('patient-select');
     const opt = sel.options[sel.selectedIndex];
     if (!opt.value) {
@@ -507,9 +508,9 @@ function onPatientSelect() {
 let uploadedFileText = '';
 const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
 
-function dragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
-function dragLeave(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
-async function dropFile(e) {
+window.dragOver = function(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
+window.dragLeave = function(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
+window.dropFile = function(e) {
     e.preventDefault();
     document.getElementById('drop-zone').classList.remove('dragover');
     const file = e.dataTransfer.files[0];
@@ -519,7 +520,7 @@ async function dropFile(e) {
         await readFile(file);
     }
 }
-async function handleFileSelect(e) {
+window.handleFileSelect = function(e) {
     const file = e.target.files[0];
     if (file) {
         const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
@@ -527,7 +528,7 @@ async function handleFileSelect(e) {
         await readFile(file);
     }
 }
-async function readFile(file) {
+window.readFile = function(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('audio_mode', audioMode); // solo or dialog
@@ -566,7 +567,7 @@ let recognition = null;
 let isRecording = false;
 let fullTranscript = '';
 
-function toggleVoice() {
+window.toggleVoice = function() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         alert('このブラウザは音声入力に対応していません。Chromeをお試しください。');
         return;
@@ -578,7 +579,7 @@ function toggleVoice() {
     }
 }
 
-function startVoice() {
+window.startVoice = function() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
     recognition.lang = 'ja-JP';
@@ -606,7 +607,7 @@ function startVoice() {
     document.getElementById('voice-btn-label').textContent = 'タップして停止';
 }
 
-function stopVoice() {
+window.stopVoice = function() {
     if (recognition) recognition.stop();
     isRecording = false;
     document.getElementById('voice-btn').classList.remove('recording');
@@ -618,7 +619,7 @@ function stopVoice() {
 }
 
 // ========== AI報告書生成 ==========
-async function generateReport() {
+window.generateReport = function() {
     const patientSel = document.getElementById('patient-select');
     if (!patientSel.value) { alert('利用者を選択してください'); return; }
     const opt = patientSel.options[patientSel.selectedIndex];
@@ -666,7 +667,7 @@ async function generateReport() {
     }
 }
 
-function showReport(payload, data) {
+window.showReport = function(payload, data) {
     const preview = document.getElementById('report-preview');
     const monthStr = payload.target_month.replace('-', '年') + '月';
     document.getElementById('rpt-meta').textContent = `${monthStr} ／ 作成日: ${new Date().toLocaleDateString('ja-JP')}`;
@@ -683,7 +684,7 @@ function showReport(payload, data) {
 }
 
 // ========== 保存 ==========
-async function saveAssessment() {
+window.saveAssessment = function() {
     if (!window._reportPayload) return;
     const payload = {
         ...window._reportPayload,
@@ -704,12 +705,12 @@ async function saveAssessment() {
 }
 
 // ========== 印刷 ==========
-function printReport() {
+window.printReport = function() {
     window.print();
 }
 
 // ========== 過去評価を読み込む ==========
-async function loadAssessment(id) {
+window.loadAssessment = function(id) {
     const res = await fetch('/api/get_assessment?id=' + id);
     const data = await res.json();
     if (!data.data) return;
@@ -740,5 +741,6 @@ async function loadAssessment(id) {
         { ai_change: a.ai_change || '', ai_challenge: a.ai_challenge || '' }
     );
 }
+})();
 </script>
 {% endblock %}

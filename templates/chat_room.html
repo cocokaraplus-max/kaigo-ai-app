@@ -283,6 +283,7 @@
 
 {% block extra_script %}
 <script>
+(function(){
 const roomId = "{{ room_id }}";
 
 window.addEventListener('load', () => {
@@ -301,7 +302,7 @@ setTimeout(() => {
     if (el) el.scrollTop = el.scrollHeight;
 }, 100);
 
-async function markRead() {
+window.markRead = function() {
     await fetch('/api/mark_read', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -309,18 +310,18 @@ async function markRead() {
     });
 }
 
-function autoResize(el) {
+window.autoResize = function(el) {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
-function handleKeydown(e) {
+window.handleKeydown = function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
     }
 }
 
-async function sendMessage() {
+window.sendMessage = function() {
     const input = document.getElementById('chat-input');
     const content = input.value.trim();
     if (!content) return;
@@ -345,7 +346,7 @@ async function sendMessage() {
     }
 }
 
-async function deleteMessage(id) {
+window.deleteMessage = function(id) {
     if (!confirm('このメッセージを削除しますか？')) return;
     const res = await fetch('/api/delete_room_message', {
         method: 'POST',
@@ -357,10 +358,10 @@ async function deleteMessage(id) {
     }
 }
 
-function toggleMembers() {
+window.toggleMembers = function() {
     document.getElementById('members-drawer').classList.toggle('show');
 }
-function closeDrawerOutside(e) {
+window.closeDrawerOutside = function(e) {
     if (e.target === document.getElementById('members-drawer')) {
         document.getElementById('members-drawer').classList.remove('show');
     }
@@ -368,5 +369,6 @@ function closeDrawerOutside(e) {
 
 // 30秒ごと自動更新
 setInterval(() => location.reload(), 30000);
+})();
 </script>
 {% endblock %}

@@ -291,19 +291,20 @@
 
 {% block extra_script %}
 <script>
+(function(){
 let roomType = 'dm';
 
-function openModal() {
+window.openModal = function() {
     document.getElementById('new-room-modal').classList.add('show');
 }
-function closeModal() {
+window.closeModal = function() {
     document.getElementById('new-room-modal').classList.remove('show');
 }
-function closeModalOutside(e) {
+window.closeModalOutside = function(e) {
     if (e.target === document.getElementById('new-room-modal')) closeModal();
 }
 
-function selectType(type) {
+window.selectType = function(type) {
     roomType = type;
     document.getElementById('type-dm').classList.toggle('active', type === 'dm');
     document.getElementById('type-group').classList.toggle('active', type === 'group');
@@ -315,7 +316,7 @@ function selectType(type) {
     });
 }
 
-async function createRoom() {
+window.createRoom = function() {
     const selected = [...document.querySelectorAll('input[name=member]:checked')].map(el => el.value);
     if (selected.length === 0) {
         alert(roomType === 'dm' ? '相手を選んでください' : 'メンバーを選んでください');
@@ -338,5 +339,6 @@ async function createRoom() {
         alert(data.message || '作成に失敗しました');
     }
 }
+})();
 </script>
 {% endblock %}

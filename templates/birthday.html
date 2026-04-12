@@ -271,8 +271,9 @@
 
 {% block extra_script %}
 <script>
+(function(){
 // ========== タブ切り替え ==========
-function switchPageTab(name, el) {
+window.switchPageTab = function(name, el) {
     document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
@@ -289,7 +290,7 @@ const PATIENTS = [
 // ========== 数秘術計算 ==========
 const MASTER_NUMBERS = [11, 22, 33];
 
-function calcNumerology(birthIso) {
+window.calcNumerology = function(birthIso) {
     if (!birthIso) return null;
     const digits = birthIso.replace(/-/g, '').split('').map(Number);
     let sum = digits.reduce((a, b) => a + b, 0);
@@ -356,7 +357,7 @@ const NUMEROLOGY_DATA = {
 };
 
 // ========== 検索 ==========
-function searchNumerology(query) {
+window.searchNumerology = function(query) {
     const q = query.trim().toLowerCase();
     const filtered = q === ''
         ? PATIENTS.filter(p => p.birth)
@@ -380,7 +381,7 @@ function searchNumerology(query) {
     el.classList.add('show');
 }
 
-function selectNumerology(name, birth) {
+window.selectNumerology = function(name, birth) {
     document.getElementById('num-search').style.display = 'none';
     document.getElementById('num-selected-label').textContent = name;
     document.getElementById('num-selected-badge').style.display = 'flex';
@@ -388,7 +389,7 @@ function selectNumerology(name, birth) {
     renderNumerology(name, birth);
 }
 
-function clearNumerologySearch() {
+window.clearNumerologySearch = function() {
     document.getElementById('num-search').style.display = 'block';
     document.getElementById('num-search').value = '';
     document.getElementById('num-selected-badge').style.display = 'none';
@@ -403,7 +404,7 @@ document.addEventListener('click', e => {
 });
 
 // 誕生日一覧からモーダルで数秘表示
-function showNumerologyById(name, birth) {
+window.showNumerologyById = function(name, birth) {
     const result = calcNumerology(birth);
     if (!result) return;
     const data = NUMEROLOGY_DATA[result.number];
@@ -441,14 +442,14 @@ function showNumerologyById(name, birth) {
     document.getElementById('numerology-modal').style.display = 'block';
 }
 
-function closeNumerologyModal(event) {
+window.closeNumerologyModal = function(event) {
     if (!event || event.target === document.getElementById('numerology-modal')) {
         document.getElementById('numerology-modal').style.display = 'none';
     }
 }
 
 // ========== 数秘結果表示 ==========
-function renderNumerology(name, birthIso) {
+window.renderNumerology = function(name, birthIso) {
     const result = calcNumerology(birthIso);
     if (!result) {
         document.getElementById('numerology-result-area').innerHTML =
@@ -497,12 +498,13 @@ function renderNumerology(name, birthIso) {
     `;
 }
 
-function toWareki(year) {
+window.toWareki = function(year) {
     if (year >= 2019) return `令和${year - 2018}年`;
     if (year >= 1989) return `平成${year - 1988}年`;
     if (year >= 1926) return `昭和${year - 1925}年`;
     if (year >= 1912) return `大正${year - 1911}年`;
     return `明治${year - 1867}年`;
 }
+})();
 </script>
 {% endblock %}

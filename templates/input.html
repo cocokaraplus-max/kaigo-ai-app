@@ -184,13 +184,15 @@
 </a>
 
 <script>
+(function(){
+
 const PATIENTS = [
     {% for p in patients %}
     { value: {{ p.value | tojson }}, label: {{ p.label | tojson }}, name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
     {% endfor %}
 ];
 
-function searchPatient(query) {
+window.searchPatient = function(query) {
     const q = query.trim().toLowerCase();
     const filtered = q === '' ? PATIENTS : PATIENTS.filter(p =>
         p.name.toLowerCase().includes(q) ||
@@ -200,7 +202,7 @@ function searchPatient(query) {
     renderCandidates(filtered);
 }
 
-function renderCandidates(list) {
+window.renderCandidates = function(list) {
     const candidates = document.getElementById('candidates');
     if (list.length === 0) {
         candidates.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし</div>';
@@ -214,7 +216,7 @@ function renderCandidates(list) {
     candidates.classList.add('show');
 }
 
-function selectPatient(value, label) {
+window.selectPatient = function(value, label) {
     document.getElementById('patient-value').value = value;
     document.getElementById('selected-label').textContent = label;
     document.getElementById('selected-badge').style.display = 'flex';
@@ -222,7 +224,7 @@ function selectPatient(value, label) {
     document.getElementById('candidates').classList.remove('show');
 }
 
-function clearPatient() {
+window.clearPatient = function() {
     document.getElementById('patient-value').value = '';
     document.getElementById('selected-badge').style.display = 'none';
     document.getElementById('patient-search').style.display = 'block';
@@ -237,7 +239,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
-function previewPhotos(input) {
+window.previewPhotos = function(input) {
     const preview = document.getElementById('photo-preview');
     preview.innerHTML = '';
     Array.from(input.files).slice(0, 5).forEach(file => {
@@ -253,7 +255,7 @@ function previewPhotos(input) {
 
 let mediaRecorder = null, audioChunks = [], isRecording = false;
 
-async function toggleRecording() {
+window.toggleRecording = function() {
     const btn = document.getElementById('rec-btn');
     const status = document.getElementById('rec-status');
     if (!isRecording) {
@@ -290,7 +292,7 @@ async function toggleRecording() {
     }
 }
 
-async function aiTranscribe() {
+window.aiTranscribe = function() {
     const audioData = document.getElementById('audio-data').value;
     const audioMime = document.getElementById('audio-mime').value;
     if (!audioData) return;
@@ -310,5 +312,7 @@ async function aiTranscribe() {
         document.getElementById('ai-loading').style.display = 'none';
     }
 }
+
+})();
 </script>
 {% endblock %}

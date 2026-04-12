@@ -285,7 +285,9 @@ async function navigateTo(url, pushState = true) {
             if (scriptContent.trim()) {
                 const scriptEl = document.createElement('script');
                 scriptEl.className = 'spa-injected-script';
-                scriptEl.textContent = scriptContent;
+                // IIFEで囲むことでconst/letの重複宣言エラーを防ぐ
+                // requestAnimationFrameでDOM描画完了後に実行（カレンダー白問題の修正）
+                scriptEl.textContent = `(function(){\n${scriptContent}\n})();`;
                 document.head.appendChild(scriptEl);
             }
         }

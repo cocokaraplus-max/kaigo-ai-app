@@ -372,69 +372,53 @@
 
 {% block extra_script %}
 <script>
+(function(){
 const selectedDate = "{{ selected_date }}";
 const targetUser = "{{ target_user }}";
-// サーバーから渡された当月の記録日リスト
 const recordDates = new Set({{ record_dates | tojson }});
-
-// ========== カスタムカレンダー ==========
 let currentYear, currentMonth;
 
 function initCalendar() {
     const today = new Date();
     if (!selectedDate || selectedDate === 'None' || selectedDate.trim() === '') {
-        currentYear = today.getFullYear();
-        currentMonth = today.getMonth();
+        currentYear = today.getFullYear(); currentMonth = today.getMonth();
     } else {
         const parts = selectedDate.split('-');
         currentYear = parseInt(parts[0]) || today.getFullYear();
-        currentMonth = (parseInt(parts[1]) - 1) || today.getMonth();
+        currentMonth = parseInt(parts[1]) - 1;
+        if (isNaN(currentMonth)) currentMonth = today.getMonth();
     }
     renderCalendar();
 }
-
-function changeMonth(delta) {
+window.changeMonth = function(delta) {
     currentMonth += delta;
     if (currentMonth > 11) { currentMonth = 0; currentYear++; }
     if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
-    // 移動先の月の記録日を取得してからカレンダーを再描画
     fetchRecordDatesAndRender(currentYear, currentMonth + 1);
-}
-
+};
 async function fetchRecordDatesAndRender(year, month) {
     try {
         const res = await fetch(`/api/record_dates?year=${year}&month=${month}`);
         const data = await res.json();
-        if (data.dates) {
-            data.dates.forEach(d => recordDates.add(d));
-        }
-    } catch(e) { /* 失敗してもカレンダーは表示する */ }
+        if (data.dates) data.dates.forEach(d => recordDates.add(d));
+    } catch(e) {}
     renderCalendar();
 }
-
 function renderCalendar() {
     const title = document.getElementById('cal-title');
     const daysEl = document.getElementById('cal-days');
     if (!title || !daysEl) return;
     title.textContent = `${currentYear}年${currentMonth + 1}月`;
-
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
-
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-
     let html = '';
-    for (let i = 0; i < firstDay; i++) {
-        html += '<div class="cal-day empty"></div>';
-    }
+    for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
     for (let d = 1; d <= lastDate; d++) {
         const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const dayOfWeek = new Date(currentYear, currentMonth, d).getDay();
-        let cls = 'cal-day ';
-        if (dayOfWeek === 0) cls += 'sunday';
-        else if (dayOfWeek === 6) cls += 'saturday';
-        else cls += 'weekday';
+        const dow = new Date(currentYear, currentMonth, d).getDay();
+        let cls = 'cal-day ' + (dow===0?'sunday':dow===6?'saturday':'weekday');
         if (dateStr === todayStr) cls += ' today';
         if (dateStr === selectedDate) cls += ' selected';
         if (recordDates.has(dateStr)) cls += ' has-record';
@@ -442,109 +426,45 @@ function renderCalendar() {
     }
     daysEl.innerHTML = html;
 }
-
-function selectDate(dateStr) {
+window.selectDate = function(dateStr) {
     window.location.href = '/daily_view?date=' + dateStr + (targetUser ? '&user=' + encodeURIComponent(targetUser) : '');
-}
+};
+// rAF2重で描画後に初期化（SPA白問題の根本修正）
+requestAnimationFrame(() => requestAnimationFrame(() => initCalendar()));
+setTimeout(initCalendar, 300);
 
-// ========== 確実な初期化（SPA・通常遷移どちらでも動く） ==========
-function ensureCalendar() {
-    const title = document.getElementById('cal-title');
-    const daysEl = document.getElementById('cal-days');
-    if (title && daysEl && !title.textContent.trim()) {
-        initCalendar();
-    }
-}
-
-// 即時実行（SPA経由でscriptが注入された場合、DOMは既に存在する）
-initCalendar();
-
-// 通常遷移のフォールバック
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCalendar);
-}
-
-// iPhoneのレンダリング遅延対策（二重呼び出しでもrenderCalendarは冪等なので安全）
-setTimeout(ensureCalendar, 200);
-setTimeout(ensureCalendar, 800);
-
-// ========================================
-
-// ページ読み込み時の処理
-window.addEventListener('load', function() {
-    // 記録エリアまで自動スクロール
-    setTimeout(() => {
-        const recordsArea = document.getElementById('records-area');
-        if (recordsArea) {
-            recordsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }, 300);
-
-    // 対象ユーザーのアコーディオンに自動スクロール
-    if (targetUser) {
-        const target = document.querySelector('[data-target="true"]');
-        if (target) {
-            setTimeout(() => {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 400);
-        }
-    }
-});
-
-function toggleAccordion(idx, user) {
-    const body = document.getElementById('body-' + idx);
-    const arrow = document.getElementById('arrow-' + idx);
-    body.classList.toggle('open');
-    arrow.classList.toggle('open');
-}
-
-function startEdit(id, content) {
-    document.getElementById('edit-text-' + id).value = content;
-    document.getElementById('edit-area-' + id).style.display = 'block';
-}
-function cancelEdit(id) {
-    document.getElementById('edit-area-' + id).style.display = 'none';
-}
-async function saveEdit(id) {
-    const content = document.getElementById('edit-text-' + id).value;
-    const res = await fetch('/api/update_record', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id, content })
-    });
+window.toggleAccordion = function(idx) {
+    document.getElementById('body-'+idx).classList.toggle('open');
+    document.getElementById('arrow-'+idx).classList.toggle('open');
+};
+window.startEdit = function(id, content) {
+    document.getElementById('edit-text-'+id).value = content;
+    document.getElementById('edit-area-'+id).style.display = 'block';
+};
+window.cancelEdit = function(id) { document.getElementById('edit-area-'+id).style.display = 'none'; };
+window.saveEdit = async function(id) {
+    const content = document.getElementById('edit-text-'+id).value;
+    const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,content})});
     if ((await res.json()).status === 'success') location.reload();
-}
-async function deleteRecord(id) {
+};
+window.deleteRecord = async function(id) {
     if (!confirm('削除しますか？')) return;
-    const res = await fetch('/api/delete_record', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id })
-    });
+    const res = await fetch('/api/delete_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
     if ((await res.json()).status === 'success') location.reload();
-}
-async function generateAI(user, idx) {
+};
+window.generateAI = async function(user, idx) {
     const btn = document.querySelector(`#accordion-${idx} .btn-primary`);
-    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...';
-    btn.disabled = true;
-    const res = await fetch('/api/generate_daily', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ user, date: selectedDate })
-    });
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...'; btn.disabled = true;
+    const res = await fetch('/api/generate_daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,date:selectedDate})});
     if ((await res.json()).status === 'success') location.reload();
     else { btn.innerHTML = '再試行'; btn.disabled = false; }
-}
-async function regenAI(user, aiId, idx) {
+};
+window.regenAI = async function(user, aiId, idx) {
     const btn = document.querySelector(`#accordion-${idx} .ai-record-actions .btn`);
-    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...';
-    btn.disabled = true;
-    const res = await fetch('/api/regenerate_daily', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ user, date: selectedDate, ai_record_id: aiId })
-    });
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 生成中...'; btn.disabled = true;
+    const res = await fetch('/api/regenerate_daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,date:selectedDate,ai_record_id:aiId})});
     if ((await res.json()).status === 'success') location.reload();
-}
+};
+})();
 </script>
 {% endblock %}
