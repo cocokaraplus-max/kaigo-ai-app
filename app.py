@@ -1284,33 +1284,78 @@ EVENT_COLORS = [
 @login_required
 def calendar_view():
     f_code = session["f_code"]
+    my_name = session["my_name"]
     supabase = get_supabase()
 
-    # カレンダー一覧取得
+    # 自分が作成したカレンダー OR メンバーとして招待されたカレンダーを取得
     calendars = []
     try:
-        res = supabase.table("calendars").select("*").eq("facility_code", f_code).order("created_at").execute()
-        calendars = res.data or []
-        # デフォルトカレンダーがなければ作成
+        # 自分が作ったカレンダー
+        own_res = supabase.table("calendars").select("*").eq("facility_code", f_code).eq("owner_name", my_name).order("created_at").execute()
+        own_cals = own_res.data or []
+
+        # 招待されているカレンダーのIDを取得
+        mem_res = supabase.table("calendar_members").select("calendar_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        invited_ids = [r["calendar_id"] for r in (mem_res.data or [])]
+
+        # 招待されているカレンダーを取得
+        invited_cals = []
+        if invited_ids:
+            inv_res = supabase.table("calendars").select("*").in_("id", invited_ids).execute()
+            invited_cals = inv_res.data or []
+
+        # 重複排除してマージ
+        seen = set()
+        for cal in own_cals + invited_cals:
+            if cal["id"] not in seen:
+                cal["is_owner"] = (cal.get("owner_name") == my_name)
+                calendars.append(cal)
+                seen.add(cal["id"])
+
+        # デフォルトカレンダーがなければ作成（初回のみ）
         if not calendars:
             default_cals = [
-                {"facility_code": f_code, "name": "仕事", "color": "#1a73e8", "is_shared": True, "owner_name": session["my_name"]},
-                {"facility_code": f_code, "name": "希望休", "color": "#ea4335", "is_shared": True, "owner_name": session["my_name"]},
+                {"facility_code": f_code, "name": "マイカレンダー", "color": "#1a73e8", "is_private": True, "is_shared": False, "owner_name": my_name},
+                {"facility_code": f_code, "name": "仕事", "color": "#34a853", "is_private": False, "is_shared": True, "owner_name": my_name},
             ]
             for dc in default_cals:
                 r = supabase.table("calendars").insert(dc).execute()
-                if r.data: calendars.append(r.data[0])
+                if r.data:
+                    cal = r.data[0]
+                    cal["is_owner"] = True
+                    calendars.append(cal)
     except Exception as e:
         print(f"calendar error: {e}")
 
-    # 今月のイベント取得（前後1ヶ月も含む）
+    # スタッフ一覧（招待用）
+    staffs = []
+    try:
+        st_res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
+        staffs = [s["staff_name"] for s in (st_res.data or []) if s["staff_name"] != my_name]
+    except: pass
+
+    # カレンダーメンバー一覧（招待済みメンバー）
+    cal_members = {}
+    try:
+        cal_ids = [c["id"] for c in calendars]
+        if cal_ids:
+            mem_res = supabase.table("calendar_members").select("calendar_id,staff_name,role").in_("calendar_id", cal_ids).execute()
+            for m in (mem_res.data or []):
+                if m["calendar_id"] not in cal_members:
+                    cal_members[m["calendar_id"]] = []
+                cal_members[m["calendar_id"]].append(m["staff_name"])
+    except: pass
+
+    # 今月のイベント取得（自分が見られるカレンダーのみ）
     events = []
     try:
-        now = datetime.now(tokyo_tz)
-        date_from = (now.replace(day=1) - timedelta(days=31)).strftime("%Y-%m-%d")
-        date_to   = (now.replace(day=1) + timedelta(days=62)).strftime("%Y-%m-%d")
-        res = supabase.table("calendar_events").select("*").eq("facility_code", f_code).gte("event_date", date_from).lte("event_date", date_to).order("event_date").execute()
-        events = res.data or []
+        cal_ids = [c["id"] for c in calendars]
+        if cal_ids:
+            now = datetime.now(tokyo_tz)
+            date_from = (now.replace(day=1) - timedelta(days=31)).strftime("%Y-%m-%d")
+            date_to   = (now.replace(day=1) + timedelta(days=62)).strftime("%Y-%m-%d")
+            res = supabase.table("calendar_events").select("*").in_("calendar_id", cal_ids).gte("event_date", date_from).lte("event_date", date_to).order("event_date").execute()
+            events = res.data or []
     except Exception as e:
         print(f"events error: {e}")
 
@@ -1319,6 +1364,9 @@ def calendar_view():
         events=events,
         stickers=STICKERS,
         event_colors=EVENT_COLORS,
+        staffs=staffs,
+        cal_members=cal_members,
+        my_name=my_name,
     )
 
 @app.route('/api/save_calendar_event', methods=['POST'])
@@ -1377,16 +1425,57 @@ def api_save_calendar():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
+        is_private = data.get("is_private", False)
         res = supabase.table("calendars").insert({
             "facility_code": f_code,
-            "name":  data["name"],
-            "color": data.get("color", "#1a73e8"),
-            "is_shared": True,
+            "name":       data["name"],
+            "color":      data.get("color", "#1a73e8"),
+            "is_private": is_private,
+            "is_shared":  not is_private,
             "owner_name": my_name,
         }).execute()
         return jsonify({"status": "success", "id": res.data[0]["id"] if res.data else None})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/invite_calendar_member', methods=['POST'])
+@login_required
+def api_invite_calendar_member():
+    """共有カレンダーにメンバーを招待"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        # 自分が所有者かチェック
+        cal = supabase.table("calendars").select("owner_name").eq("id", data["calendar_id"]).execute()
+        if not cal.data or cal.data[0]["owner_name"] != session["my_name"]:
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        # メンバー追加（重複は無視）
+        for staff_name in data.get("staff_names", []):
+            try:
+                supabase.table("calendar_members").insert({
+                    "calendar_id":   data["calendar_id"],
+                    "facility_code": f_code,
+                    "staff_name":    staff_name,
+                    "role":          "member",
+                }).execute()
+            except: pass
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/remove_calendar_member', methods=['POST'])
+@login_required
+def api_remove_calendar_member():
+    """メンバーをカレンダーから削除"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("calendar_members").delete().eq("calendar_id", data["calendar_id"]).eq("staff_name", data["staff_name"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
 
 @app.route('/api/calendar_events')
 @login_required

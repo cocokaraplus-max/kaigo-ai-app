@@ -188,11 +188,24 @@
         すべて
     </div>
     {% for cal in calendars %}
-    <div class="cal-chip active" data-id="{{ cal.id }}"
-        style="background:{{ cal.color }}22;border-color:{{ cal.color }};"
-        onclick="toggleCalendar('{{ cal.id }}')">
-        <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
-        <span style="color:{{ cal.color }};">{{ cal.name }}</span>
+    <div style="display:flex;align-items:center;gap:2px;">
+        <div class="cal-chip active" data-id="{{ cal.id }}"
+            style="background:{{ cal.color }}22;border-color:{{ cal.color }};"
+            onclick="toggleCalendar('{{ cal.id }}')">
+            <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
+            <span style="color:{{ cal.color }};">{{ cal.name }}</span>
+            {% if cal.is_private %}
+            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">lock</span>
+            {% else %}
+            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">group</span>
+            {% endif %}
+        </div>
+        {% if cal.is_owner %}
+        <div onclick="openInviteModal('{{ cal.id }}','{{ cal.name }}')"
+            style="cursor:pointer;padding:2px 4px;color:#80868b;">
+            <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
     <div class="cal-chip-add" onclick="openNewCalendar()">＋ 追加</div>
@@ -354,7 +367,24 @@
         <div class="modal-title">カレンダーを追加</div>
         <div class="form-group">
             <label class="form-label">カレンダー名</label>
-            <input type="text" class="form-control" id="new-cal-name" placeholder="例：仕事・希望休・プライベート">
+            <input type="text" class="form-control" id="new-cal-name" placeholder="例：マイカレンダー・希望休・会議">
+        </div>
+        <div class="form-group">
+            <label class="form-label">種類</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div id="type-private" onclick="selectCalType('private')"
+                    style="border:2px solid #1a73e8;background:#e8f0fe;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">lock</span>
+                    <div style="font-size:0.8rem;font-weight:700;color:#1a73e8;">プライベート</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">自分だけ見える</div>
+                </div>
+                <div id="type-shared" onclick="selectCalType('shared')"
+                    style="border:2px solid #e0e0e0;background:#fff;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="color:#80868b;font-size:20px;">group</span>
+                    <div style="font-size:0.8rem;font-weight:700;color:#80868b;">共有</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">招待した人と共有</div>
+                </div>
+            </div>
         </div>
         <div class="form-group">
             <label class="form-label">色</label>
@@ -375,15 +405,36 @@
         </div>
     </div>
 </div>
+
+<!-- ========== メンバー招待モーダル ========== -->
+<div class="modal-overlay" id="invite-modal" onclick="closeModalOutside(event,'invite-modal')">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" id="invite-modal-title">メンバーを招待</div>
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;">招待したいスタッフを選んでください</div>
+        <div id="invite-staff-list" style="margin-bottom:16px;"></div>
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">招待済みメンバー</div>
+        <div id="current-members-list" style="margin-bottom:16px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn" onclick="closeModal('invite-modal')">閉じる</button>
+            <button class="btn btn-primary" onclick="inviteMembers()">
+                <span class="material-symbols-outlined" style="color:white;">person_add</span>招待する
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
 <script>
 (function(){
 
-const CALENDARS  = {{ calendars | tojson }};
-const ALL_EVENTS = {{ events | tojson }};
-const STICKERS   = {{ stickers | tojson }};
+const CALENDARS    = {{ calendars | tojson }};
+const ALL_EVENTS   = {{ events | tojson }};
+const STICKERS     = {{ stickers | tojson }};
+const STAFFS       = {{ staffs | tojson }};
+const CAL_MEMBERS  = {{ cal_members | tojson }};
+const MY_NAME      = {{ my_name | tojson }};
 
 let currentYear  = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
@@ -393,7 +444,9 @@ let editingEventId = null;
 let selectedSticker = '';
 let selectedColor = '{{ event_colors[0] if event_colors else "#1a73e8" }}';
 let selectedNewCalColor = '{{ event_colors[0] if event_colors else "#1a73e8" }}';
-let clickedDate = '';
+let newCalIsPrivate = true;
+let invitingCalendarId = null;
+let selectedInviteStaffs = new Set();
 
 // ===== カレンダー表示 =====
 function renderCalendar() {
@@ -685,9 +738,33 @@ window.deleteEvent = async function() {
     }
 };
 
+// ===== カレンダー種類選択 =====
+window.selectCalType = function(type) {
+    newCalIsPrivate = (type === 'private');
+    const priv = document.getElementById('type-private');
+    const shared = document.getElementById('type-shared');
+    if (newCalIsPrivate) {
+        priv.style.borderColor = '#1a73e8'; priv.style.background = '#e8f0fe';
+        priv.querySelector('.material-symbols-outlined').style.color = '#1a73e8';
+        priv.querySelector('div').style.color = '#1a73e8';
+        shared.style.borderColor = '#e0e0e0'; shared.style.background = '#fff';
+        shared.querySelector('.material-symbols-outlined').style.color = '#80868b';
+        shared.querySelector('div').style.color = '#80868b';
+    } else {
+        shared.style.borderColor = '#1a73e8'; shared.style.background = '#e8f0fe';
+        shared.querySelector('.material-symbols-outlined').style.color = '#1a73e8';
+        shared.querySelector('div').style.color = '#1a73e8';
+        priv.style.borderColor = '#e0e0e0'; priv.style.background = '#fff';
+        priv.querySelector('.material-symbols-outlined').style.color = '#80868b';
+        priv.querySelector('div').style.color = '#80868b';
+    }
+};
+
 // ===== 新規カレンダー =====
 window.openNewCalendar = function() {
     document.getElementById('new-cal-name').value = '';
+    newCalIsPrivate = true;
+    selectCalType('private');
     document.getElementById('cal-modal').classList.add('show');
 };
 window.saveNewCalendar = async function() {
@@ -695,12 +772,77 @@ window.saveNewCalendar = async function() {
     if (!name) { alert('カレンダー名を入力してください'); return; }
     const res = await fetch('/api/save_calendar', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({name, color: selectedNewCalColor})
+        body: JSON.stringify({name, color: selectedNewCalColor, is_private: newCalIsPrivate})
     });
     const data = await res.json();
     if (data.status === 'success') {
         location.reload();
     } else { alert('作成に失敗しました'); }
+};
+
+// ===== メンバー招待 =====
+window.openInviteModal = function(calId, calName) {
+    invitingCalendarId = calId;
+    selectedInviteStaffs = new Set();
+    document.getElementById('invite-modal-title').textContent = `「${calName}」にメンバーを招待`;
+
+    // 招待可能なスタッフ一覧
+    const currentMembers = CAL_MEMBERS[calId] || [];
+    const invitable = STAFFS.filter(s => !currentMembers.includes(s));
+    const staffList = document.getElementById('invite-staff-list');
+    if (!invitable.length) {
+        staffList.innerHTML = '<div style="font-size:0.82rem;color:#80868b;">招待できるスタッフがいません</div>';
+    } else {
+        staffList.innerHTML = invitable.map(s => `
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:0.88rem;cursor:pointer;">
+                <input type="checkbox" value="${s}" style="accent-color:#1a73e8;width:16px;height:16px;"
+                    onchange="toggleInviteStaff('${s}', this.checked)">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
+                ${s}
+            </label>`).join('');
+    }
+
+    // 招待済みメンバー
+    const memberList = document.getElementById('current-members-list');
+    if (!currentMembers.length) {
+        memberList.innerHTML = '<div style="font-size:0.82rem;color:#80868b;">まだメンバーがいません</div>';
+    } else {
+        memberList.innerHTML = currentMembers.map(s => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;">
+                <span style="font-size:0.88rem;">${s}</span>
+                <button onclick="removeMember('${calId}','${s}')" style="background:none;border:none;color:#ea4335;cursor:pointer;font-size:0.78rem;">
+                    <span class="material-symbols-outlined" style="font-size:16px;">person_remove</span>
+                </button>
+            </div>`).join('');
+    }
+    document.getElementById('invite-modal').classList.add('show');
+};
+
+window.toggleInviteStaff = function(name, checked) {
+    if (checked) selectedInviteStaffs.add(name);
+    else selectedInviteStaffs.delete(name);
+};
+
+window.inviteMembers = async function() {
+    if (!selectedInviteStaffs.size) { alert('スタッフを選んでください'); return; }
+    const res = await fetch('/api/invite_calendar_member', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({calendar_id: invitingCalendarId, staff_names: [...selectedInviteStaffs]})
+    });
+    if ((await res.json()).status === 'success') {
+        location.reload();
+    } else { alert('招待に失敗しました'); }
+};
+
+window.removeMember = async function(calId, staffName) {
+    if (!confirm(`${staffName} をカレンダーから削除しますか？`)) return;
+    const res = await fetch('/api/remove_calendar_member', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({calendar_id: calId, staff_name: staffName})
+    });
+    if ((await res.json()).status === 'success') {
+        location.reload();
+    }
 };
 
 // ===== モーダル =====
