@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}{{ room_name }} - TASUKARU{% endblock %}
+{% block nav_chat %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.chat-room-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 12px;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 0;
+}
+.chat-back-btn {
+    background: none; border: none; cursor: pointer;
+    color: #1a73e8; padding: 4px;
+    display: flex; align-items: center;
+}
+.chat-back-btn .material-symbols-outlined { font-size: 24px; }
+.chat-room-title {
+    flex: 1; font-size: 1rem; font-weight: 700; color: #202124;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-room-members-btn {
+    background: none; border: none; cursor: pointer;
+    color: #80868b; padding: 4px;
+    display: flex; align-items: center;
+}
+
+.chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 190px);
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-date-divider {
+    text-align: center;
+    font-size: 0.72rem;
+    color: #80868b;
+    margin: 6px 0;
+    display: flex; align-items: center; gap: 8px;
+}
+.chat-date-divider::before,
+.chat-date-divider::after {
+    content: ''; flex: 1; border-top: 1px solid #e0e0e0;
+}
+
+.chat-bubble-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+.chat-bubble-wrap.mine { flex-direction: row-reverse; }
+
+/* アバター */
+.chat-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: white;
+}
+/* 自分のアバターはDM時非表示 */
+.chat-bubble-wrap.mine .chat-avatar { display: none; }
+
+.chat-bubble-content { max-width: 72%; }
+
+.chat-name {
+    font-size: 0.68rem; color: #80868b; font-weight: 600;
+    margin-bottom: 3px; padding: 0 4px;
+}
+.chat-bubble-wrap.mine .chat-name { display: none; }
+
+.chat-bubble {
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    word-break: break-word;
+    background: #f0f2f5;
+    color: #202124;
+    border-bottom-left-radius: 4px;
+}
+.chat-bubble-wrap.mine .chat-bubble {
+    background: #1a73e8;
+    color: white;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 4px;
+}
+
+/* 既読・時刻エリア */
+.chat-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 3px;
+    padding: 0 4px;
+}
+.chat-bubble-wrap.mine .chat-meta { flex-direction: row-reverse; }
+.chat-time { font-size: 0.68rem; color: #b0b8c1; }
+.chat-read-count {
+    font-size: 0.68rem;
+    color: #1a73e8;
+    font-weight: 600;
+}
+
+.chat-delete-btn {
+    background: none; border: none; cursor: pointer;
+    padding: 0; color: #ccc; display: none;
+}
+.chat-bubble-wrap:hover .chat-delete-btn { display: block; }
+.chat-delete-btn .material-symbols-outlined { font-size: 14px; }
+
+/* 入力エリア */
+.chat-input-area {
+    position: sticky; bottom: 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 0 4px;
+    display: flex; gap: 8px; align-items: flex-end;
+}
+.chat-textarea {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 22px;
+    border: 1.5px solid #e0e0e0;
+    font-size: 0.92rem;
+    resize: none;
+    min-height: 42px; max-height: 120px;
+    line-height: 1.4; color: #202124;
+    background: #f8f9fa;
+    transition: border-color 0.15s;
+    font-family: inherit;
+}
+.chat-textarea:focus { outline: none; border-color: #1a73e8; background: #fff; }
+.chat-send-btn {
+    width: 42px; height: 42px;
+    border-radius: 50%; background: #1a73e8;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.chat-send-btn:active { background: #1557b0; }
+.chat-send-btn .material-symbols-outlined { font-size: 20px; color: white; }
+.chat-send-btn:disabled { background: #e0e0e0; }
+.chat-send-btn:disabled .material-symbols-outlined { color: #bbb; }
+
+.no-messages {
+    text-align: center; color: #80868b;
+    font-size: 0.88rem; padding: 40px 0;
+}
+.no-messages .material-symbols-outlined {
+    font-size: 48px; display: block; color: #e0e0e0; margin-bottom: 8px;
+}
+
+/* メンバー表示ドロワー */
+.members-drawer {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 900;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+.members-drawer.show { display: flex; }
+.members-panel {
+    background: #fff;
+    width: 240px;
+    height: 100%;
+    padding: 56px 16px 24px;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+    overflow-y: auto;
+}
+.members-panel-title {
+    font-size: 0.82rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 4px;
+}
+.member-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+}
+.member-row:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-room-header">
+    <button class="chat-back-btn" onclick="navigateTo('/chat')">
+        <span class="material-symbols-outlined">arrow_back</span>
+    </button>
+    {% if is_group %}
+    <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">group</span>
+    {% else %}
+    <div class="staff-avatar chat-avatar" style="background:{{ other_color }};width:32px;height:32px;font-size:0.8rem;">{{ other_initial }}</div>
+    {% endif %}
+    <span class="chat-room-title">{{ room_name }}</span>
+    {% if is_group %}
+    <button class="chat-room-members-btn" onclick="toggleMembers()">
+        <span class="material-symbols-outlined">people</span>
+    </button>
+    {% endif %}
+</div>
+
+<div class="chat-wrapper">
+    <div class="chat-messages" id="chat-messages">
+        {% if not messages %}
+        <div class="no-messages">
+            <span class="material-symbols-outlined">chat_bubble_outline</span>
+            まだメッセージがありません。
+        </div>
+        {% else %}
+        {% set ns = namespace(prev_date='') %}
+        {% for msg in messages %}
+            {% if msg.date_label != ns.prev_date %}
+            <div class="chat-date-divider">{{ msg.date_label }}</div>
+            {% set ns.prev_date = msg.date_label %}
+            {% endif %}
+            <div class="chat-bubble-wrap {% if msg.is_mine %}mine{% endif %}" id="msg-{{ msg.id }}">
+                <div class="chat-avatar" style="background:{{ msg.color }};">{{ msg.initial }}</div>
+                <div class="chat-bubble-content">
+                    <div class="chat-name">{{ msg.staff_name }}</div>
+                    <div class="chat-bubble">{{ msg.content }}</div>
+                    <div class="chat-meta">
+                        <span class="chat-time">{{ msg.time_label }}</span>
+                        {% if msg.is_mine and msg.read_count > 0 %}
+                        <span class="chat-read-count">既読 {{ msg.read_count }}</span>
+                        {% endif %}
+                        {% if msg.is_mine or is_admin %}
+                        <button class="chat-delete-btn" onclick="deleteMessage('{{ msg.id }}')">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="chat-input-area">
+        <textarea class="chat-textarea" id="chat-input"
+            placeholder="メッセージを入力..."
+            rows="1"
+            onkeydown="handleKeydown(event)"
+            oninput="autoResize(this)"></textarea>
+        <button class="chat-send-btn" id="send-btn" onclick="sendMessage()">
+            <span class="material-symbols-outlined">send</span>
+        </button>
+    </div>
+</div>
+
+{% if is_group %}
+<!-- メンバードロワー -->
+<div class="members-drawer" id="members-drawer" onclick="closeDrawerOutside(event)">
+    <div class="members-panel">
+        <div class="members-panel-title">
+            <span class="material-symbols-outlined" style="font-size:15px;">people</span>
+            メンバー（{{ members|length }}人）
+        </div>
+        {% for m in members %}
+        <div class="member-row">
+            <div class="chat-avatar" style="background:{{ m.color }};width:34px;height:34px;font-size:0.82rem;">{{ m.initial }}</div>
+            <span style="font-size:0.9rem;font-weight:600;">{{ m.staff_name }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const roomId = "{{ room_id }}";
+
+window.addEventListener('load', () => {
+    const el = document.getElementById('chat-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+    markRead();
+});
+
+// SPA経由での初期化
+if (document.readyState !== 'loading') {
+    const el = document.getElementById('chat-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+}
+setTimeout(() => {
+    const el = document.getElementById('chat-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+}, 100);
+
+async function markRead() {
+    await fetch('/api/mark_read', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ room_id: roomId })
+    });
+}
+
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const content = input.value.trim();
+    if (!content) return;
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/send_room_message', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ room_id: roomId, content })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            input.value = '';
+            input.style.height = 'auto';
+            location.reload();
+        }
+    } catch(e) {
+        alert('送信に失敗しました');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function deleteMessage(id) {
+    if (!confirm('このメッセージを削除しますか？')) return;
+    const res = await fetch('/api/delete_room_message', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    });
+    if ((await res.json()).status === 'success') {
+        document.getElementById('msg-' + id)?.remove();
+    }
+}
+
+function toggleMembers() {
+    document.getElementById('members-drawer').classList.toggle('show');
+}
+function closeDrawerOutside(e) {
+    if (e.target === document.getElementById('members-drawer')) {
+        document.getElementById('members-drawer').classList.remove('show');
+    }
+}
+
+// 30秒ごと自動更新
+setInterval(() => location.reload(), 30000);
+</script>
+{% endblock %}

@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}トーク - TASUKARU{% endblock %}
+{% block nav_chat %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.chat-rooms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+.page-title { margin-bottom: 0; }
+
+.new-room-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #1a73e8;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+}
+.new-room-btn .material-symbols-outlined { font-size: 22px; color: white; }
+
+/* ルーム一覧 */
+.room-list { display: flex; flex-direction: column; gap: 2px; }
+
+.room-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 4px;
+    cursor: pointer;
+    border-radius: 12px;
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid #f0f0f0;
+}
+.room-item:active { background: #f0f4ff; }
+
+/* グループアイコン */
+.room-icon {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    position: relative;
+}
+.room-icon.group-icon {
+    background: #e8f0fe;
+    color: #1a73e8;
+    font-size: 1.4rem;
+}
+/* 1:1アイコン → スタッフアバター */
+.staff-avatar {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: white;
+}
+
+.room-body { flex: 1; min-width: 0; }
+.room-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+}
+.room-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #202124;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+.room-time {
+    font-size: 0.7rem;
+    color: #b0b8c1;
+    flex-shrink: 0;
+}
+.room-last-msg {
+    font-size: 0.82rem;
+    color: #80868b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.room-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+    min-width: 28px;
+}
+.unread-badge {
+    background: #ea4335;
+    color: white;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 5px;
+}
+
+/* モーダル */
+.modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: flex-end;
+    justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-sheet {
+    background: #fff;
+    border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 20px 32px;
+    animation: slideUp 0.22s ease;
+}
+@keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.modal-handle {
+    width: 36px; height: 4px;
+    background: #e0e0e0; border-radius: 2px;
+    margin: 0 auto 16px;
+}
+.modal-title {
+    font-size: 1rem; font-weight: 700;
+    color: #202124; margin-bottom: 16px;
+    text-align: center;
+}
+.type-select {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.type-btn {
+    padding: 14px;
+    border-radius: 12px;
+    border: 2px solid #e0e0e0;
+    background: #f8f9fa;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.type-btn.active { border-color: #1a73e8; background: #e8f0fe; }
+.type-btn .material-symbols-outlined { font-size: 28px; color: #80868b; display: block; margin-bottom: 4px; }
+.type-btn.active .material-symbols-outlined { color: #1a73e8; }
+.type-btn span.label { font-size: 0.82rem; font-weight: 600; color: #5f6368; }
+.type-btn.active span.label { color: #1a73e8; }
+
+.member-select-area { margin-bottom: 14px; }
+.member-select-label {
+    font-size: 0.8rem; font-weight: 600; color: #5f6368; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 4px;
+}
+.member-list {
+    display: flex; flex-direction: column; gap: 4px;
+    max-height: 180px; overflow-y: auto;
+    border: 1.5px solid #e0e0e0; border-radius: 10px;
+    padding: 4px;
+}
+.member-check-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.member-check-item:active { background: #f0f4ff; }
+.member-check-item input[type=checkbox] { accent-color: #1a73e8; width: 16px; height: 16px; }
+
+.group-name-area { margin-bottom: 16px; }
+.group-name-area.hidden { display: none; }
+
+.no-rooms {
+    text-align: center; color: #80868b;
+    font-size: 0.88rem; padding: 48px 0;
+}
+.no-rooms .material-symbols-outlined {
+    font-size: 52px; display: block; color: #e0e0e0; margin-bottom: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-rooms-header">
+    <div class="page-title" style="margin-bottom:0;">
+        <span class="material-symbols-outlined">forum</span>
+        トーク
+    </div>
+    <button class="new-room-btn" onclick="openModal()">
+        <span class="material-symbols-outlined">edit_square</span>
+    </button>
+</div>
+
+<div class="room-list">
+{% if not rooms %}
+<div class="no-rooms">
+    <span class="material-symbols-outlined">chat_bubble_outline</span>
+    まだトークがありません。<br>右上のボタンから作成しましょう！
+</div>
+{% else %}
+{% for room in rooms %}
+<a class="room-item" href="/chat/{{ room.id }}">
+    {% if room.is_group %}
+    <div class="room-icon group-icon">
+        <span class="material-symbols-outlined" style="font-size:26px;">group</span>
+    </div>
+    {% else %}
+    <div class="staff-avatar" style="background:{{ room.other_color }};">
+        {{ room.other_initial }}
+    </div>
+    {% endif %}
+    <div class="room-body">
+        <div class="room-name-row">
+            <span class="room-name">{{ room.name }}</span>
+            <span class="room-time">{{ room.last_time }}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span class="room-last-msg">{{ room.last_msg }}</span>
+            {% if room.unread > 0 %}
+            <span class="unread-badge">{{ room.unread }}</span>
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% endfor %}
+{% endif %}
+</div>
+
+<!-- 新規作成モーダル -->
+<div class="modal-overlay" id="new-room-modal" onclick="closeModalOutside(event)">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">新しいトークを作成</div>
+        <div class="type-select">
+            <div class="type-btn active" id="type-dm" onclick="selectType('dm')">
+                <span class="material-symbols-outlined">person</span>
+                <span class="label">1 : 1</span>
+            </div>
+            <div class="type-btn" id="type-group" onclick="selectType('group')">
+                <span class="material-symbols-outlined">group</span>
+                <span class="label">グループ</span>
+            </div>
+        </div>
+        <div class="group-name-area hidden" id="group-name-area">
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">グループ名</label>
+                <input type="text" class="form-control" id="group-name-input" placeholder="例：夜勤チーム">
+            </div>
+        </div>
+        <div class="member-select-area">
+            <div class="member-select-label">
+                <span class="material-symbols-outlined" style="font-size:15px;">person_add</span>
+                <span id="member-label">相手を選ぶ（1人）</span>
+            </div>
+            <div class="member-list" id="member-list">
+                {% for s in staffs %}
+                <label class="member-check-item">
+                    <input type="checkbox" name="member" value="{{ s.staff_name }}"
+                        {% if not loop.first or true %}{% endif %}>
+                    <div class="staff-avatar" style="background:{{ s.color }};width:30px;height:30px;font-size:0.8rem;flex-shrink:0;">{{ s.initial }}</div>
+                    <span style="font-size:0.9rem;font-weight:600;">{{ s.staff_name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="createRoom()">
+            <span class="material-symbols-outlined" style="color:white;">check</span>
+            作成する
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let roomType = 'dm';
+
+function openModal() {
+    document.getElementById('new-room-modal').classList.add('show');
+}
+function closeModal() {
+    document.getElementById('new-room-modal').classList.remove('show');
+}
+function closeModalOutside(e) {
+    if (e.target === document.getElementById('new-room-modal')) closeModal();
+}
+
+function selectType(type) {
+    roomType = type;
+    document.getElementById('type-dm').classList.toggle('active', type === 'dm');
+    document.getElementById('type-group').classList.toggle('active', type === 'group');
+    document.getElementById('group-name-area').classList.toggle('hidden', type === 'dm');
+    document.getElementById('member-label').textContent = type === 'dm' ? '相手を選ぶ（1人）' : 'メンバーを選ぶ（複数可）';
+    // DM時はチェックボックスを1つだけ選べるように
+    document.querySelectorAll('input[name=member]').forEach(cb => {
+        cb.type = type === 'dm' ? 'radio' : 'checkbox';
+    });
+}
+
+async function createRoom() {
+    const selected = [...document.querySelectorAll('input[name=member]:checked')].map(el => el.value);
+    if (selected.length === 0) {
+        alert(roomType === 'dm' ? '相手を選んでください' : 'メンバーを選んでください');
+        return;
+    }
+    const groupName = document.getElementById('group-name-input').value.trim();
+    if (roomType === 'group' && !groupName) {
+        alert('グループ名を入力してください');
+        return;
+    }
+    const res = await fetch('/api/create_room', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ type: roomType, members: selected, group_name: groupName })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        window.location.href = '/chat/' + data.room_id;
+    } else {
+        alert(data.message || '作成に失敗しました');
+    }
+}
+</script>
+{% endblock %}
