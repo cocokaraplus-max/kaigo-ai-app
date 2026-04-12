@@ -2,7 +2,7 @@
 
 > 介護現場の「書く」負担をゼロにするAI支援ツール
 
-最終更新: 2026-04-12 19:54
+最終更新: 2026-04-12 21:00
 
 ---
 
@@ -92,6 +92,10 @@ gcloud run deploy tasukaru \
 
 ## 📝 直近の変更履歴
 
+- feat: 評価メニュー追加・個別機能訓練月次評価報告書のAI自動生成・PC/スマホ対応・印刷/PDF出力 (2026-04-12)
+- feat: トーク機能をLINE風に全面刷新・1:1/グループ作成・職員アイコン・既読人数表示 (2026-04-12)
+- fix: ケース記録カレンダーがSPA遷移時に白くなるバグを修正・initCalendar即時実行に変更 (2026-04-12)
+- feat: カレンダーに記録のある日付のドット表示を追加・/api/record_datesエンドポイント追加 (2026-04-12)
 - fix: 未ログイン時のボトムナビを非表示に修正 (2026-04-12)
 - feat: SendGridメール送信・パスワードリセット機能実装 (2026-04-12)
 - fix: パスワード変更のupsertをupdate/insertに修正 (2026-04-12)
@@ -107,7 +111,10 @@ gcloud run deploy tasukaru \
 
 ## 🔄 今回のcommitで変更したファイル
 
-
+- `app.py` - 評価ルート・generate_assessment・save_assessment・parse_assessment_file API追加
+- `templates/assessment.html` - 新規追加：評価入力・AI生成・報告書プレビュー・印刷
+- `templates/base.html` - ボトムナビに「評価」追加
+- `assessment_tables.sql` - Supabase用テーブル追加SQL（要実行）
 
 ---
 

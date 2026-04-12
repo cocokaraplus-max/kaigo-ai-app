@@ -1,0 +1,649 @@
+{% extends "base.html" %}
+{% block title %}評価 - TASUKARU{% endblock %}
+{% block nav_assessment %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ========== タブ ========== */
+.tab-bar {
+    display: flex; gap: 6px; margin-bottom: 1.2rem;
+    overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-item {
+    white-space: nowrap; padding: 8px 16px;
+    border-radius: 20px; border: 1.5px solid #e0e0e0;
+    background: #fff; font-size: 0.82rem; font-weight: 600;
+    color: #5f6368; cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 4px;
+}
+.tab-item.active { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ========== 利用者選択 ========== */
+.patient-select-card {
+    background: #f8f9fa; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 1rem;
+    border: 1.5px solid #e0e0e0;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.patient-select-card.selected { background: #e8f0fe; border-color: #1a73e8; }
+.patient-select-card .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
+.patient-select-name { font-weight: 700; font-size: 0.95rem; color: #202124; }
+.patient-select-sub { font-size: 0.75rem; color: #80868b; margin-top: 2px; }
+
+/* ========== 入力フォーム ========== */
+.input-section {
+    background: #fff; border-radius: 14px;
+    border: 1.5px solid #e0e0e0;
+    padding: 16px; margin-bottom: 1rem;
+}
+.input-section-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 700; color: #1a73e8;
+    margin-bottom: 12px;
+}
+.input-section-title .material-symbols-outlined { font-size: 18px; }
+
+/* ファイルドロップゾーン（PC用） */
+.drop-zone {
+    border: 2px dashed #1a73e8; border-radius: 12px;
+    padding: 28px 16px; text-align: center;
+    color: #1a73e8; cursor: pointer;
+    transition: background 0.15s; margin-bottom: 12px;
+    background: #f0f6ff;
+}
+.drop-zone.dragover { background: #dbeafe; }
+.drop-zone .material-symbols-outlined { font-size: 36px; display: block; margin-bottom: 6px; }
+.drop-zone p { font-size: 0.85rem; font-weight: 600; margin: 0; }
+.drop-zone small { font-size: 0.75rem; color: #80868b; }
+
+/* 音声ボタン（スマホ用） */
+.voice-btn {
+    width: 100%; padding: 16px;
+    border-radius: 14px; border: none;
+    background: linear-gradient(135deg, #1a73e8, #1557b0);
+    color: white; font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(26,115,232,0.3);
+}
+.voice-btn.recording {
+    background: linear-gradient(135deg, #ea4335, #c5221f);
+    animation: pulse 1s infinite;
+}
+@keyframes pulse { 0%,100% { box-shadow: 0 4px 12px rgba(234,67,53,0.3); } 50% { box-shadow: 0 4px 24px rgba(234,67,53,0.6); } }
+.voice-btn .material-symbols-outlined { font-size: 24px; }
+
+.voice-transcript {
+    background: #f8f9fa; border-radius: 10px;
+    padding: 12px 14px; font-size: 0.88rem;
+    color: #202124; min-height: 60px; line-height: 1.6;
+    margin-bottom: 8px; border: 1.5px solid #e0e0e0;
+    display: none;
+}
+.voice-transcript.show { display: block; }
+
+/* ========== AI生成ボタン ========== */
+.generate-btn {
+    width: 100%; padding: 16px;
+    border-radius: 14px; border: none;
+    background: linear-gradient(135deg, #34a853, #2d8f47);
+    color: white; font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; margin-bottom: 1.2rem;
+    box-shadow: 0 4px 12px rgba(52,168,83,0.3);
+    transition: opacity 0.15s;
+}
+.generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.generate-btn .material-symbols-outlined { font-size: 22px; }
+
+/* ========== 報告書プレビュー ========== */
+.report-preview {
+    background: #fff; border-radius: 14px;
+    border: 1.5px solid #e0e0e0; overflow: hidden;
+    margin-bottom: 1rem;
+}
+.report-header {
+    background: linear-gradient(135deg, #1a73e8, #1557b0);
+    padding: 16px 20px; color: white;
+}
+.report-header h2 {
+    font-size: 1rem; font-weight: 800; margin: 0 0 4px;
+    letter-spacing: 0.5px;
+}
+.report-header p { font-size: 0.8rem; opacity: 0.85; margin: 0; }
+.report-body { padding: 16px 20px; }
+.report-field { margin-bottom: 16px; }
+.report-field-label {
+    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
+}
+.report-field-label .material-symbols-outlined { font-size: 15px; }
+.report-field-value {
+    font-size: 0.9rem; line-height: 1.8; color: #202124;
+    background: #f8f9fa; border-radius: 8px;
+    padding: 10px 12px; border: 1px solid #e0e0e0;
+    min-height: 60px;
+}
+.report-field-value[contenteditable="true"] {
+    outline: none; border-color: #1a73e8; background: #fff;
+}
+.report-field-value[contenteditable="true"]:focus { background: #fff; }
+.report-divider {
+    border: none; border-top: 2px solid #e8f0fe; margin: 16px 0;
+}
+.report-actions {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; padding: 0 20px 20px;
+}
+
+/* ========== 過去評価一覧 ========== */
+.assessment-card {
+    border: 1.5px solid #e0e0e0; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 10px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.15s;
+}
+.assessment-card:active { border-color: #1a73e8; background: #f0f6ff; }
+.assessment-card-header {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 6px;
+}
+.assessment-card-name { font-weight: 700; font-size: 0.92rem; }
+.assessment-card-month {
+    font-size: 0.75rem; color: #80868b;
+    background: #f0f0f0; padding: 2px 8px; border-radius: 10px;
+}
+.assessment-card-preview {
+    font-size: 0.8rem; color: #80868b;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* ========== ローディング ========== */
+.ai-loading {
+    display: none; text-align: center;
+    padding: 24px; color: #1a73e8;
+}
+.ai-loading.show { display: block; }
+.ai-loading .material-symbols-outlined {
+    font-size: 36px; animation: spin 1s linear infinite; display: block; margin-bottom: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ========== 印刷用 ========== */
+@media print {
+    .bottom-nav, .tab-bar, .generate-btn, .voice-btn,
+    .drop-zone, .report-actions, .back-btn, .page-title,
+    .tab-panel:not(.active) { display: none !important; }
+    .report-preview { border: none; box-shadow: none; }
+    .report-header { background: #1a73e8 !important; -webkit-print-color-adjust: exact; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">assignment</span>
+    評価
+</div>
+
+<!-- タブ -->
+<div class="tab-bar">
+    <div class="tab-item active" onclick="switchTab('input')">
+        <span class="material-symbols-outlined" style="font-size:15px;">edit_note</span>
+        新規評価
+    </div>
+    <div class="tab-item" onclick="switchTab('history')">
+        <span class="material-symbols-outlined" style="font-size:15px;">history</span>
+        過去の評価
+    </div>
+</div>
+
+<!-- ========== 新規評価タブ ========== -->
+<div class="tab-panel active" id="tab-input">
+
+    <!-- 利用者選択 -->
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">person</span>
+            利用者を選ぶ
+        </label>
+        <select class="form-control" id="patient-select" onchange="onPatientSelect()">
+            <option value="">-- 利用者を選択 --</option>
+            {% for p in patients %}
+            <option value="{{ p.id }}"
+                data-name="{{ p.user_name }}"
+                data-kana="{{ p.user_kana }}"
+                data-birth="{{ p.birth_text }}"
+                data-disease="{{ p.disease_name or '' }}"
+                data-goal="{{ p.training_goal or '' }}"
+                data-cm="{{ p.care_manager or '' }}">
+                {{ p.user_name }}（{{ p.user_kana }}）
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- 対象月 -->
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">calendar_month</span>
+            対象月
+        </label>
+        <input type="month" class="form-control" id="target-month" value="{{ this_month }}">
+    </div>
+
+    <!-- 訓練目標（編集可） -->
+    <div class="input-section" id="goal-section" style="display:none;">
+        <div class="input-section-title">
+            <span class="material-symbols-outlined">flag</span>
+            訓練目標
+        </div>
+        <textarea class="form-control" id="training-goal" rows="2"
+            placeholder="例：歩行距離を伸ばして自宅内の移動を安全に行なう"></textarea>
+    </div>
+
+    <!-- 情報入力エリア -->
+    <div class="input-section">
+        <div class="input-section-title">
+            <span class="material-symbols-outlined">mic</span>
+            聴取内容の入力
+        </div>
+
+        <!-- PC：ファイルドロップ -->
+        <div id="pc-input-area">
+            <div class="drop-zone" id="drop-zone"
+                onclick="document.getElementById('file-input').click()"
+                ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+                <span class="material-symbols-outlined">upload_file</span>
+                <p>ファイルをドロップ または クリックして選択</p>
+                <small>PDF・Word・テキストファイル対応</small>
+            </div>
+            <input type="file" id="file-input" accept=".pdf,.doc,.docx,.txt" style="display:none"
+                onchange="handleFileSelect(event)">
+            <div id="file-status" style="font-size:0.8rem;color:#34a853;margin-bottom:8px;display:none;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">check_circle</span>
+                <span id="file-name"></span>
+            </div>
+        </div>
+
+        <!-- スマホ：音声入力 -->
+        <div id="sp-input-area" style="display:none;">
+            <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">
+                <span class="material-symbols-outlined">mic</span>
+                <span id="voice-btn-label">タップして音声入力</span>
+            </button>
+            <div class="voice-transcript" id="voice-transcript"></div>
+        </div>
+
+        <div style="font-size:0.75rem;color:#80868b;text-align:center;margin-bottom:12px;">または</div>
+
+        <!-- 共通テキストエリア -->
+        <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">trending_up</span>
+                今月の訓練達成度
+            </label>
+            <textarea class="form-control" id="achievement" rows="3"
+                placeholder="例：歩行訓練を週3回実施。当初の目標距離の80%を達成。"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">home</span>
+                自宅での取り組み
+            </label>
+            <textarea class="form-control" id="home-effort" rows="3"
+                placeholder="例：毎朝10分のストレッチを継続。家族のサポートで階段昇降を練習中。"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">fitness_center</span>
+                デイでの訓練進捗
+            </label>
+            <textarea class="form-control" id="training-progress" rows="3"
+                placeholder="例：平行棒歩行から歩行器歩行へ移行。バランス訓練も開始。"></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">
+                <span class="material-symbols-outlined">notes</span>
+                その他・気づき
+            </label>
+            <textarea class="form-control" id="other-notes" rows="2"
+                placeholder="例：本人のモチベーションが高く、訓練への参加態度も良好。"></textarea>
+        </div>
+    </div>
+
+    <!-- AI生成ボタン -->
+    <button class="generate-btn" id="generate-btn" onclick="generateReport()">
+        <span class="material-symbols-outlined">auto_awesome</span>
+        AI報告書を生成する
+    </button>
+
+    <!-- ローディング -->
+    <div class="ai-loading" id="ai-loading">
+        <span class="material-symbols-outlined">sync</span>
+        AIが報告書を生成しています...
+    </div>
+
+    <!-- 報告書プレビュー -->
+    <div class="report-preview" id="report-preview" style="display:none;">
+        <div class="report-header">
+            <h2>📋 個別機能訓練 月次評価報告書</h2>
+            <p id="rpt-meta"></p>
+        </div>
+        <div class="report-body">
+            <div class="report-field">
+                <div class="report-field-label">
+                    <span class="material-symbols-outlined">person</span>利用者情報
+                </div>
+                <div class="report-field-value" id="rpt-patient-info"></div>
+            </div>
+            <div class="report-field">
+                <div class="report-field-label">
+                    <span class="material-symbols-outlined">flag</span>訓練目標
+                </div>
+                <div class="report-field-value" id="rpt-goal"></div>
+            </div>
+            <hr class="report-divider">
+            <div class="report-field">
+                <div class="report-field-label">
+                    <span class="material-symbols-outlined">trending_up</span>
+                    個別機能訓練実施による変化
+                </div>
+                <div class="report-field-value" id="rpt-change" contenteditable="true"></div>
+            </div>
+            <div class="report-field">
+                <div class="report-field-label">
+                    <span class="material-symbols-outlined">warning</span>
+                    個別機能訓練実施における課題とその要因
+                </div>
+                <div class="report-field-value" id="rpt-challenge" contenteditable="true"></div>
+            </div>
+        </div>
+        <div class="report-actions">
+            <button class="btn btn-primary" onclick="saveAssessment()">
+                <span class="material-symbols-outlined" style="color:white;">save</span>
+                保存
+            </button>
+            <button class="btn" onclick="printReport()" style="background:#34a853;color:white;border:none;">
+                <span class="material-symbols-outlined" style="color:white;">print</span>
+                印刷/PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 過去の評価タブ ========== -->
+<div class="tab-panel" id="tab-history">
+    {% if assessments %}
+    {% for a in assessments %}
+    <div class="assessment-card" onclick="loadAssessment('{{ a.id }}')">
+        <div class="assessment-card-header">
+            <span class="assessment-card-name">{{ a.user_name }}</span>
+            <span class="assessment-card-month">{{ a.target_month }}</span>
+        </div>
+        <div class="assessment-card-preview">{{ a.ai_change or '（生成なし）' }}</div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
+        <span class="material-symbols-outlined">info</span>
+        まだ評価が保存されていません。
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ========== タブ切り替え ==========
+function switchTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+// ========== PC/スマホ判定 ==========
+const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+if (isMobile) {
+    document.getElementById('sp-input-area').style.display = 'block';
+    document.getElementById('pc-input-area').style.display = 'none';
+}
+
+// ========== 利用者選択 ==========
+function onPatientSelect() {
+    const sel = document.getElementById('patient-select');
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt.value) {
+        document.getElementById('goal-section').style.display = 'none';
+        return;
+    }
+    document.getElementById('goal-section').style.display = 'block';
+    document.getElementById('training-goal').value = opt.dataset.goal || '';
+}
+
+// ========== ファイルドロップ（PC） ==========
+let uploadedFileText = '';
+
+function dragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
+function dragLeave(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
+async function dropFile(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) await readFile(file);
+}
+async function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) await readFile(file);
+}
+async function readFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    document.getElementById('file-status').style.display = 'block';
+    document.getElementById('file-name').textContent = `読み込み中: ${file.name}`;
+    try {
+        const res = await fetch('/api/parse_assessment_file', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.status === 'success') {
+            uploadedFileText = data.text;
+            document.getElementById('file-name').textContent = `✓ ${file.name} 読み込み完了`;
+            // テキストを各フィールドに分配
+            document.getElementById('achievement').value = data.achievement || '';
+            document.getElementById('home-effort').value = data.home_effort || '';
+            document.getElementById('training-progress').value = data.training_progress || '';
+            document.getElementById('other-notes').value = data.other_notes || '';
+        }
+    } catch(e) {
+        document.getElementById('file-name').textContent = '読み込みに失敗しました';
+    }
+}
+
+// ========== 音声入力（スマホ） ==========
+let recognition = null;
+let isRecording = false;
+let fullTranscript = '';
+
+function toggleVoice() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert('このブラウザは音声入力に対応していません。Chromeをお試しください。');
+        return;
+    }
+    if (isRecording) {
+        stopVoice();
+    } else {
+        startVoice();
+    }
+}
+
+function startVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+                fullTranscript += e.results[i][0].transcript;
+            } else {
+                interim = e.results[i][0].transcript;
+            }
+        }
+        const el = document.getElementById('voice-transcript');
+        el.classList.add('show');
+        el.textContent = fullTranscript + interim;
+    };
+    recognition.onend = () => {
+        if (isRecording) recognition.start(); // 継続
+    };
+    recognition.start();
+    isRecording = true;
+    document.getElementById('voice-btn').classList.add('recording');
+    document.getElementById('voice-btn-label').textContent = 'タップして停止';
+}
+
+function stopVoice() {
+    if (recognition) recognition.stop();
+    isRecording = false;
+    document.getElementById('voice-btn').classList.remove('recording');
+    document.getElementById('voice-btn-label').textContent = 'タップして音声入力';
+    // 音声テキストをその他欄にセット
+    if (fullTranscript.trim()) {
+        document.getElementById('other-notes').value = fullTranscript.trim();
+    }
+}
+
+// ========== AI報告書生成 ==========
+async function generateReport() {
+    const patientSel = document.getElementById('patient-select');
+    if (!patientSel.value) { alert('利用者を選択してください'); return; }
+    const opt = patientSel.options[patientSel.selectedIndex];
+
+    const payload = {
+        patient_id:   patientSel.value,
+        patient_name: opt.dataset.name,
+        patient_kana: opt.dataset.kana,
+        patient_birth: opt.dataset.birth,
+        disease_name: opt.dataset.disease,
+        care_manager: opt.dataset.cm,
+        training_goal: document.getElementById('training-goal').value,
+        target_month: document.getElementById('target-month').value,
+        achievement:  document.getElementById('achievement').value,
+        home_effort:  document.getElementById('home-effort').value,
+        training_progress: document.getElementById('training-progress').value,
+        other_notes:  document.getElementById('other-notes').value,
+    };
+
+    if (!payload.achievement && !payload.home_effort && !payload.training_progress && !payload.other_notes) {
+        alert('聴取内容を入力してください'); return;
+    }
+
+    document.getElementById('generate-btn').disabled = true;
+    document.getElementById('ai-loading').classList.add('show');
+    document.getElementById('report-preview').style.display = 'none';
+
+    try {
+        const res = await fetch('/api/generate_assessment', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showReport(payload, data);
+        } else {
+            alert('生成に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) {
+        alert('通信エラーが発生しました');
+    } finally {
+        document.getElementById('generate-btn').disabled = false;
+        document.getElementById('ai-loading').classList.remove('show');
+    }
+}
+
+function showReport(payload, data) {
+    const preview = document.getElementById('report-preview');
+    const monthStr = payload.target_month.replace('-', '年') + '月';
+    document.getElementById('rpt-meta').textContent = `${monthStr} ／ 作成日: ${new Date().toLocaleDateString('ja-JP')}`;
+    document.getElementById('rpt-patient-info').textContent =
+        `${payload.patient_name}（${payload.patient_kana}）　${payload.patient_birth}　疾患名：${payload.disease_name || '未入力'}　担当CM：${payload.care_manager || '未入力'}`;
+    document.getElementById('rpt-goal').textContent = payload.training_goal || '未入力';
+    document.getElementById('rpt-change').textContent = data.ai_change;
+    document.getElementById('rpt-challenge').textContent = data.ai_challenge;
+    // 保存用に一時保持
+    window._reportPayload = payload;
+    window._reportData = data;
+    preview.style.display = 'block';
+    preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ========== 保存 ==========
+async function saveAssessment() {
+    if (!window._reportPayload) return;
+    const payload = {
+        ...window._reportPayload,
+        ai_change:    document.getElementById('rpt-change').textContent,
+        ai_challenge: document.getElementById('rpt-challenge').textContent,
+    };
+    const res = await fetch('/api/save_assessment', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        alert('保存しました');
+    } else {
+        alert('保存に失敗しました');
+    }
+}
+
+// ========== 印刷 ==========
+function printReport() {
+    window.print();
+}
+
+// ========== 過去評価を読み込む ==========
+async function loadAssessment(id) {
+    const res = await fetch('/api/get_assessment?id=' + id);
+    const data = await res.json();
+    if (!data.data) return;
+    const a = data.data;
+    // 新規評価タブに切り替えて表示
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-input').classList.add('active');
+    document.querySelector('.tab-item').classList.add('active');
+
+    document.getElementById('target-month').value = a.target_month || '';
+    document.getElementById('training-goal').value = a.training_goal || '';
+    document.getElementById('achievement').value = a.achievement || '';
+    document.getElementById('home-effort').value = a.home_effort || '';
+    document.getElementById('training-progress').value = a.training_progress || '';
+    document.getElementById('other-notes').value = a.other_notes || '';
+
+    // 利用者選択
+    const sel = document.getElementById('patient-select');
+    for (let opt of sel.options) {
+        if (opt.dataset.name === a.user_name) { sel.value = opt.value; break; }
+    }
+    document.getElementById('goal-section').style.display = 'block';
+
+    // 報告書表示
+    showReport(
+        { patient_name: a.user_name, patient_kana: '', patient_birth: '', disease_name: '', care_manager: '', training_goal: a.training_goal || '', target_month: a.target_month },
+        { ai_change: a.ai_change || '', ai_challenge: a.ai_challenge || '' }
+    );
+}
+</script>
+{% endblock %}

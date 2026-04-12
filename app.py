@@ -654,56 +654,502 @@ def birthday():
         patients=patients_list
     )
 
+# ==========================================
+# トーク (LINE風チャット)
+# ==========================================
+
+# スタッフ名からアイコンカラーを決定（固定カラーパレット）
+AVATAR_COLORS = [
+    "#1a73e8","#34a853","#ea4335","#fbbc04","#9c27b0",
+    "#00bcd4","#ff5722","#607d8b","#e91e63","#4caf50",
+]
+def staff_color(name):
+    return AVATAR_COLORS[hash(name) % len(AVATAR_COLORS)]
+
+def staff_initial(name):
+    return name[:1] if name else "?"
+
+def get_staff_icons(supabase, f_code):
+    """施設の全スタッフアイコン情報を取得 {staff_name: {color, initial, emoji}}"""
+    icons = {}
+    try:
+        res = supabase.table("staffs").select("staff_name,icon_emoji").eq("facility_code", f_code).eq("is_active", True).execute()
+        for s in (res.data or []):
+            name = s["staff_name"]
+            icons[name] = {
+                "color": staff_color(name),
+                "initial": staff_initial(name),
+                "emoji": s.get("icon_emoji") or "",
+            }
+    except:
+        pass
+    return icons
+
+def staff_icon_data(icons, name):
+    """get_staff_iconsの結果から1名分のアイコンデータを取得（なければデフォルト）"""
+    if name in icons:
+        return icons[name]
+    return {"color": staff_color(name), "initial": staff_initial(name), "emoji": ""}
+
 @app.route('/chat')
 @login_required
 def chat():
     f_code = session["f_code"]
     my_name = session["my_name"]
+    supabase = get_supabase()
+    # スタッフアイコン情報を一括取得
+    icons = get_staff_icons(supabase, f_code)
+    rooms = []
+    try:
+        mem_res = supabase.table("chat_members").select("room_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        room_ids = [r["room_id"] for r in (mem_res.data or [])]
+        if room_ids:
+            room_res = supabase.table("chat_rooms").select("*").in_("id", room_ids).order("last_message_at", desc=True).execute()
+            for room in (room_res.data or []):
+                rid = room["id"]
+                is_group = room["is_group"]
+                if is_group:
+                    name = room.get("name") or "グループ"
+                    other_color = "#1a73e8"
+                    other_initial = "G"
+                    other_emoji = ""
+                    # グループ：メンバー最大3人分のアイコンをスタックで表示用
+                    all_mem = supabase.table("chat_members").select("staff_name").eq("room_id", rid).execute()
+                    group_members_icons = [staff_icon_data(icons, m["staff_name"]) | {"staff_name": m["staff_name"]} for m in (all_mem.data or [])]
+                else:
+                    all_mem = supabase.table("chat_members").select("staff_name").eq("room_id", rid).execute()
+                    others = [m["staff_name"] for m in (all_mem.data or []) if m["staff_name"] != my_name]
+                    other_name = others[0] if others else "?"
+                    name = other_name
+                    icon = staff_icon_data(icons, other_name)
+                    other_color = icon["color"]
+                    other_initial = icon["initial"]
+                    other_emoji = icon["emoji"]
+                    group_members_icons = []
+                last_msg_res = supabase.table("chat_messages").select("content,created_at").eq("room_id", rid).order("created_at", desc=True).limit(1).execute()
+                last_msg = ""
+                last_time = ""
+                if last_msg_res.data:
+                    lm = last_msg_res.data[0]
+                    last_msg = lm["content"][:30] + ("…" if len(lm["content"]) > 30 else "")
+                    dt = datetime.fromisoformat(str(lm["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+                    today = datetime.now(tokyo_tz).date()
+                    last_time = dt.strftime("%H:%M") if dt.date() == today else dt.strftime("%-m/%-d")
+                my_mem = supabase.table("chat_members").select("last_read_at").eq("room_id", rid).eq("staff_name", my_name).execute()
+                unread = 0
+                if my_mem.data:
+                    last_read = my_mem.data[0].get("last_read_at")
+                    if last_read:
+                        unread_res = supabase.table("chat_messages").select("id", count="exact").eq("room_id", rid).gt("created_at", last_read).neq("staff_name", my_name).execute()
+                        unread = unread_res.count or 0
+                    else:
+                        unread_res = supabase.table("chat_messages").select("id", count="exact").eq("room_id", rid).neq("staff_name", my_name).execute()
+                        unread = unread_res.count or 0
+                rooms.append({
+                    "id": rid,
+                    "name": name,
+                    "is_group": is_group,
+                    "other_color": other_color,
+                    "other_initial": other_initial,
+                    "other_emoji": other_emoji,
+                    "group_members_icons": group_members_icons,
+                    "last_msg": last_msg,
+                    "last_time": last_time,
+                    "unread": unread,
+                })
+    except Exception as e:
+        print(f"chat rooms error: {e}")
+
+    # スタッフ一覧（自分以外）- アイコン情報付き
+    staffs = []
+    for name, icon in icons.items():
+        if name != my_name:
+            staffs.append({
+                "staff_name": name,
+                "color": icon["color"],
+                "initial": icon["initial"],
+                "emoji": icon["emoji"],
+            })
+
+    return render("chat_rooms.html", rooms=rooms, staffs=staffs)
+
+@app.route('/chat/<room_id>')
+@login_required
+def chat_room(room_id):
+    f_code = session["f_code"]
+    my_name = session["my_name"]
     is_admin = session.get("admin_authenticated", False)
     supabase = get_supabase()
-    messages = []
-    try:
-        res = supabase.table("messages").select("*").eq("facility_code", f_code).order("created_at").execute()
-        for r in res.data:
-            dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
-            messages.append({
-                "id": r["id"],
-                "staff_name": r["staff_name"],
-                "content": r["content"],
-                "date_label": dt.strftime("%-m月%-d日"),
-                "time_label": dt.strftime("%H:%M"),
-            })
-    except Exception as e:
-        pass
-    return render("chat.html", messages=messages, my_name=my_name, is_admin=is_admin)
 
-@app.route('/api/send_message', methods=['POST'])
+    # 参加確認
+    mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("facility_code", f_code).eq("staff_name", my_name).execute()
+    if not mem_check.data:
+        return redirect(url_for("chat"))
+
+    room_res = supabase.table("chat_rooms").select("*").eq("id", room_id).execute()
+    if not room_res.data:
+        return redirect(url_for("chat"))
+    room = room_res.data[0]
+    is_group = room["is_group"]
+
+    # スタッフアイコン情報を一括取得
+    icons = get_staff_icons(supabase, f_code)
+
+    # ルーム名・アイコン
+    if is_group:
+        room_name = room.get("name") or "グループ"
+        other_color = "#1a73e8"
+        other_initial = "G"
+        other_emoji = ""
+    else:
+        all_mem = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
+        others = [m["staff_name"] for m in (all_mem.data or []) if m["staff_name"] != my_name]
+        other_name = others[0] if others else "?"
+        room_name = other_name
+        icon = staff_icon_data(icons, other_name)
+        other_color = icon["color"]
+        other_initial = icon["initial"]
+        other_emoji = icon["emoji"]
+
+    # メンバー一覧（グループ用）
+    members = []
+    if is_group:
+        all_mem2 = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
+        for m in (all_mem2.data or []):
+            ic = staff_icon_data(icons, m["staff_name"])
+            members.append({"staff_name": m["staff_name"], "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
+
+    # メッセージ取得
+    msg_res = supabase.table("chat_messages").select("*").eq("room_id", room_id).order("created_at").execute()
+    messages = []
+    # 全メンバーのlast_read_at取得
+    mem_reads = {}
+    try:
+        all_reads = supabase.table("chat_members").select("staff_name,last_read_at").eq("room_id", room_id).execute()
+        for m in (all_reads.data or []):
+            mem_reads[m["staff_name"]] = m.get("last_read_at")
+    except:
+        pass
+
+    for r in (msg_res.data or []):
+        dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+        today = datetime.now(tokyo_tz).date()
+        # 既読者リスト（自分のメッセージのみ・自分以外で既読済みの人）
+        readers = []
+        if r["staff_name"] == my_name:
+            for mn, last_read in mem_reads.items():
+                if mn == my_name:
+                    continue
+                if last_read and last_read >= r["created_at"]:
+                    ic = staff_icon_data(icons, mn)
+                    readers.append({"staff_name": mn, "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
+        ic = staff_icon_data(icons, r["staff_name"])
+        messages.append({
+            "id": r["id"],
+            "staff_name": r["staff_name"],
+            "content": r["content"],
+            "is_mine": r["staff_name"] == my_name,
+            "color": ic["color"],
+            "initial": ic["initial"],
+            "emoji": ic["emoji"],
+            "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
+            "time_label": dt.strftime("%H:%M"),
+            "readers": readers,
+        })
+
+    return render("chat_room.html",
+        room_id=room_id,
+        room_name=room_name,
+        is_group=is_group,
+        other_color=other_color,
+        other_initial=other_initial,
+        other_emoji=other_emoji,
+        members=members,
+        messages=messages,
+        my_name=my_name,
+        is_admin=is_admin,
+    )
+
+@app.route('/api/create_room', methods=['POST'])
 @login_required
-def api_send_message():
+def api_create_room():
     try:
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
-        supabase.table("messages").insert({
+        room_type = data.get("type", "dm")
+        members = data.get("members", [])
+        if not members:
+            return jsonify({"status": "error", "message": "メンバーを選択してください"})
+
+        all_members = list(set([my_name] + members))
+        is_group = (room_type == "group")
+
+        # DM：既存ルームチェック（同じ2人の1:1が既にあれば再利用）
+        if not is_group and len(all_members) == 2:
+            my_rooms = supabase.table("chat_members").select("room_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            my_room_ids = [r["room_id"] for r in (my_rooms.data or [])]
+            other_rooms = supabase.table("chat_members").select("room_id").eq("facility_code", f_code).eq("staff_name", members[0]).execute()
+            other_room_ids = [r["room_id"] for r in (other_rooms.data or [])]
+            common = set(my_room_ids) & set(other_room_ids)
+            for rid in common:
+                r_check = supabase.table("chat_rooms").select("is_group").eq("id", rid).execute()
+                if r_check.data and not r_check.data[0]["is_group"]:
+                    return jsonify({"status": "success", "room_id": rid})
+
+        # 新規ルーム作成
+        room_data = {
+            "facility_code": f_code,
+            "is_group": is_group,
+            "name": data.get("group_name", "") if is_group else None,
+            "created_by": my_name,
+            "last_message_at": datetime.now(timezone.utc).isoformat(),
+        }
+        room_res = supabase.table("chat_rooms").insert(room_data).execute()
+        room_id = room_res.data[0]["id"]
+
+        # メンバー追加
+        for m in all_members:
+            supabase.table("chat_members").insert({
+                "room_id": room_id,
+                "facility_code": f_code,
+                "staff_name": m,
+            }).execute()
+
+        return jsonify({"status": "success", "room_id": room_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/send_room_message', methods=['POST'])
+@login_required
+def api_send_room_message():
+    try:
+        data = request.json
+        my_name = session["my_name"]
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        room_id = data["room_id"]
+        # 参加確認
+        mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("staff_name", my_name).execute()
+        if not mem_check.data:
+            return jsonify({"status": "error"}), 403
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("chat_messages").insert({
+            "room_id": room_id,
             "facility_code": f_code,
             "staff_name": my_name,
-            "content": data["content"]
+            "content": data["content"],
         }).execute()
+        supabase.table("chat_rooms").update({"last_message_at": now_iso}).eq("id", room_id).execute()
+        # 送信者は既読済みにする
+        supabase.table("chat_members").update({"last_read_at": now_iso}).eq("room_id", room_id).eq("staff_name", my_name).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
-@app.route('/api/delete_message', methods=['POST'])
+@app.route('/api/mark_read', methods=['POST'])
 @login_required
-def api_delete_message():
+def api_mark_read():
     try:
         data = request.json
+        my_name = session["my_name"]
         supabase = get_supabase()
-        supabase.table("messages").delete().eq("id", data["id"]).execute()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("chat_members").update({"last_read_at": now_iso}).eq("room_id", data["room_id"]).eq("staff_name", my_name).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/delete_room_message', methods=['POST'])
+@login_required
+def api_delete_room_message():
+    try:
+        data = request.json
+        my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False)
+        supabase = get_supabase()
+        msg = supabase.table("chat_messages").select("staff_name").eq("id", data["id"]).execute()
+        if msg.data and (msg.data[0]["staff_name"] == my_name or is_admin):
+            supabase.table("chat_messages").delete().eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error"}), 500
+
+# 旧APIの後方互換（既存messagesテーブルへのアクセスは念のため残す）
+@app.route('/api/send_message', methods=['POST'])
+@login_required
+def api_send_message():
+    return jsonify({"status": "error", "message": "deprecated"}), 410
+
+@app.route('/api/delete_message', methods=['POST'])
+@login_required
+def api_delete_message():
+    return jsonify({"status": "error", "message": "deprecated"}), 410
+
+# ==========================================
+# 評価（個別機能訓練 月次評価報告書）
+# ==========================================
+
+@app.route('/assessment')
+@login_required
+def assessment():
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    # patientsにdisease_name/care_manager/training_goalを追加
+    try:
+        res = supabase.table("patients").select("id,disease_name,care_manager,training_goal").eq("facility_code", f_code).execute()
+        extra = {r["id"]: r for r in (res.data or [])}
+        for p in patients:
+            e = extra.get(p["id"], {})
+            p["disease_name"] = e.get("disease_name") or ""
+            p["care_manager"]  = e.get("care_manager") or ""
+            p["training_goal"] = e.get("training_goal") or ""
+    except:
+        for p in patients:
+            p["disease_name"] = p["care_manager"] = p["training_goal"] = ""
+    # 過去評価一覧
+    assessments = []
+    try:
+        a_res = supabase.table("assessments").select("id,user_name,target_month,ai_change").eq("facility_code", f_code).order("target_month", desc=True).limit(50).execute()
+        assessments = a_res.data or []
+    except:
+        pass
+    this_month = datetime.now(tokyo_tz).strftime("%Y-%m")
+    return render("assessment.html", patients=patients, assessments=assessments, this_month=this_month)
+
+@app.route('/api/generate_assessment', methods=['POST'])
+@login_required
+def api_generate_assessment():
+    try:
+        from utils import get_generative_model
+        data = request.json
+        name       = data.get("patient_name", "")
+        birth      = data.get("patient_birth", "")
+        disease    = data.get("disease_name", "未記載")
+        goal       = data.get("training_goal", "未記載")
+        month      = data.get("target_month", "")
+        achievement       = data.get("achievement", "")
+        home_effort       = data.get("home_effort", "")
+        training_progress = data.get("training_progress", "")
+        other_notes       = data.get("other_notes", "")
+
+        prompt = f"""あなたは介護施設の機能訓練指導員です。
+以下の情報をもとに、ケアマネジャーへ提出する「個別機能訓練 月次評価報告書」の2項目を生成してください。
+
+【利用者情報】
+氏名: {name}　生年月日: {birth}　疾患名: {disease}
+訓練目標: {goal}
+対象月: {month}
+
+【聴取内容】
+・今月の訓練達成度: {achievement or '（記載なし）'}
+・自宅での取り組み: {home_effort or '（記載なし）'}
+・デイでの訓練進捗: {training_progress or '（記載なし）'}
+・その他・気づき: {other_notes or '（記載なし）'}
+
+以下の2項目をそれぞれ3〜5文で、専門的かつ具体的に記述してください。
+箇条書きは使わず、流れのある文章で書いてください。
+
+【個別機能訓練実施による変化】
+（訓練を通じて利用者の身体機能・ADL・意欲などにどのような変化があったかを記述）
+
+【個別機能訓練実施における課題とその要因】
+（現在の課題、その背景にある要因、今後の方針を記述）
+
+回答はJSON形式で返してください：
+{{"ai_change": "変化の文章", "ai_challenge": "課題の文章"}}"""
+
+        model = get_generative_model()
+        resp = model.generate_content([prompt])
+        text = resp.text.strip()
+        # JSON抽出
+        import re as _re
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if m:
+            import json as _json
+            result = _json.loads(m.group())
+            return jsonify({"status": "success", "ai_change": result.get("ai_change",""), "ai_challenge": result.get("ai_challenge","")})
+        # フォールバック：テキストをそのまま返す
+        return jsonify({"status": "success", "ai_change": text, "ai_challenge": ""})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/save_assessment', methods=['POST'])
+@login_required
+def api_save_assessment():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        supabase.table("assessments").insert({
+            "facility_code":    f_code,
+            "patient_id":       data.get("patient_id") or None,
+            "user_name":        data.get("patient_name",""),
+            "target_month":     data.get("target_month",""),
+            "achievement":      data.get("achievement",""),
+            "home_effort":      data.get("home_effort",""),
+            "training_progress":data.get("training_progress",""),
+            "other_notes":      data.get("other_notes",""),
+            "ai_change":        data.get("ai_change",""),
+            "ai_challenge":     data.get("ai_challenge",""),
+            "created_by":       my_name,
+        }).execute()
+        # 訓練目標をpatientsに保存
+        if data.get("patient_id") and data.get("training_goal"):
+            supabase.table("patients").update({"training_goal": data["training_goal"]}).eq("id", data["patient_id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/get_assessment')
+@login_required
+def api_get_assessment():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("assessments").select("*").eq("id", request.args.get("id")).eq("facility_code", f_code).execute()
+        return jsonify({"data": res.data[0] if res.data else None})
+    except Exception as e:
+        return jsonify({"data": None}), 500
+
+@app.route('/api/parse_assessment_file', methods=['POST'])
+@login_required
+def api_parse_assessment_file():
+    """PC用：アップロードファイルをGeminiで読み取り各フィールドに分配"""
+    try:
+        from utils import get_generative_model
+        file = request.files.get('file')
+        if not file:
+            return jsonify({"status": "error", "message": "ファイルなし"})
+        filename = file.filename.lower()
+        file_bytes = file.read()
+        mime = "application/pdf" if filename.endswith('.pdf') else "text/plain"
+        prompt = """以下のドキュメントから介護記録・評価に関する情報を読み取り、JSON形式で返してください。
+該当する情報がない項目は空文字にしてください。
+
+{"achievement": "訓練達成度に関する内容",
+ "home_effort": "自宅での取り組みに関する内容",
+ "training_progress": "デイでの訓練進捗に関する内容",
+ "other_notes": "その他の情報"}
+
+JSONのみを返してください。"""
+        model = get_generative_model()
+        if filename.endswith('.pdf'):
+            resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
+        else:
+            text = file_bytes.decode('utf-8', errors='ignore')
+            resp = model.generate_content([text + "\n\n" + prompt])
+        import re as _re, json as _json
+        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        if m:
+            result = _json.loads(m.group())
+            return jsonify({"status": "success", "text": resp.text, **result})
+        return jsonify({"status": "success", "text": resp.text, "achievement": "", "home_effort": "", "training_progress": "", "other_notes": resp.text})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/numerology')
 @login_required
@@ -1305,6 +1751,19 @@ def api_delete_staff():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_icon', methods=['POST'])
+@login_required
+def api_update_staff_icon():
+    """スタッフの絵文字アイコンを更新"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("staffs").update({"icon_emoji": data.get("emoji") or None}).eq("staff_name", data["name"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/update_staff_birth', methods=['POST'])
 @login_required

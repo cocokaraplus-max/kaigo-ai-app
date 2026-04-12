@@ -189,6 +189,10 @@
             <span class="material-symbols-outlined">monitoring</span>
             モニタリング
         </a>
+        <a href="/assessment" class="bottom-nav-item {% block nav_assessment %}{% endblock %}" onclick="spaNav(event,'/assessment')">
+            <span class="material-symbols-outlined">assignment</span>
+            評価
+        </a>
         <a href="/chat" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/chat')">
             <span class="material-symbols-outlined">forum</span>
             トーク
@@ -307,7 +311,11 @@ function updateNavActive(url) {
     document.querySelectorAll('.bottom-nav-item').forEach(item => {
         item.classList.remove('active');
         const href = item.getAttribute('href');
-        if (href && basePath === href) {
+        if (!href) return;
+        // /chat/<room_id> でもトークナビをアクティブに
+        if (href === '/chat' && (basePath === '/chat' || basePath.startsWith('/chat/'))) {
+            item.classList.add('active');
+        } else if (href === basePath) {
             item.classList.add('active');
         }
     });
