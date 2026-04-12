@@ -119,22 +119,20 @@
 
         /* ボトムナビ */
         .bottom-nav {
-            background: #dbeafe;
-            border-top: 2px solid #93c5fd;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
             display: flex;
             overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: none;
-            /* iPhoneのジェスチャーエリアと被らないよう下に余白 */
-            padding: 6px 4px;
-            padding-bottom: max(80px, calc(env(safe-area-inset-bottom) + 56px));
+            padding: 0;
+            padding-bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
-            gap: 2px;
+            gap: 0;
             flex-shrink: 0;
             max-width: 480px;
             width: 100%;
             margin: 0 auto;
-            /* エッジスワイプをナビに渡さない */
             touch-action: pan-x;
             overscroll-behavior-x: contain;
         }
@@ -142,21 +140,28 @@
 
         .bottom-nav-item {
             display: flex; flex-direction: column;
-            align-items: center; gap: 2px;
+            align-items: center; justify-content: center; gap: 3px;
             text-decoration: none; color: #80868b;
             font-size: 0.6rem; font-weight: 600;
-            padding: 4px 10px; border-radius: 10px;
+            padding: 7px 6px 6px;
             transition: color 0.15s, background 0.15s;
             cursor: pointer; background: none; border: none;
+            border-right: 0.5px solid #e0e0e0;
             -webkit-tap-highlight-color: transparent;
             white-space: nowrap; flex-shrink: 0; min-width: 52px;
+            flex: 1;
         }
+        .bottom-nav-item:last-child { border-right: none; }
         .bottom-nav-item .material-symbols-outlined { font-size: 22px; }
-        .bottom-nav-item.active { color: #1d4ed8; }
-        .bottom-nav-item.active .material-symbols-outlined {
-            background: #93c5fd; border-radius: 8px; padding: 2px 8px;
+        .bottom-nav-item.active {
+            color: #1d4ed8;
+            background: #dbeafe;
+            border-right: 0.5px solid #93c5fd;
         }
-        .bottom-nav-item:active { background: #93c5fd; border-radius: 8px; }
+        .bottom-nav-item.active .material-symbols-outlined {
+            background: none; border-radius: 0; padding: 0;
+        }
+        .bottom-nav-item:active { background: #eff6ff; }
         .bottom-nav-item.logout-item { color: #ea4335; }
         .bottom-nav-item.logout-item:active { background: #fce8e6; }
 
