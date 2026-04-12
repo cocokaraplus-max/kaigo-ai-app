@@ -240,6 +240,27 @@
     </div>
 </div>
 
+<!-- Claude閲覧許可 -->
+<div class="dev-section">
+    <div class="dev-section-title">
+        <span class="material-symbols-outlined">smart_toy</span>
+        Claude閲覧許可
+    </div>
+    <div class="dev-section-body">
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+            Claudeにアプリを一時的に閲覧させて、不具合確認や改善提案を受けられます。有効時間は<b>30分</b>です。
+        </div>
+        <div id="claude-url-display" style="display:none;">
+            <div style="background:#f3e5f5;border-radius:8px;padding:10px 12px;font-size:0.78rem;word-break:break-all;color:#202124;border:1px solid #ce93d8;margin-bottom:8px;" id="claude-url-text"></div>
+            <div style="font-size:0.72rem;color:#80868b;margin-bottom:10px;">⏰ 30分後に自動失効します</div>
+        </div>
+        <button class="btn" style="background:#7b1fa2;color:white;border:none;width:100%;" onclick="issueClaudeSession()">
+            <span class="material-symbols-outlined" style="color:white;">key</span>
+            閲覧URLを発行する
+        </button>
+    </div>
+</div>
+
 <button class="logout-dev-btn" onclick="logoutDev()">
     <span class="material-symbols-outlined">lock</span>
     開発者MENUからログアウト
@@ -268,6 +289,22 @@ window.clearAllSessions = async function() {
 window.copyFacilityCode = function() {
     const fc = '{{ current_f_code }}';
     navigator.clipboard.writeText(fc).then(() => alert('施設コードをコピーしました：' + fc));
+};
+
+window.issueClaudeSession = async function() {
+    const res = await fetch('/api/issue_claude_session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        const url = location.origin + '/claude_view?token=' + data.token;
+        document.getElementById('claude-url-text').textContent = url;
+        document.getElementById('claude-url-display').style.display = 'block';
+        navigator.clipboard.writeText(url).then(() => alert('URLを発行してクリップボードにコピーしました！\n\n' + url));
+    } else {
+        alert('発行に失敗しました');
+    }
 };
 
 window.logoutDev = async function() {

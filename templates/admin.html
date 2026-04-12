@@ -614,26 +614,7 @@
         </button>
     </div>
 
-    <!-- Claude閲覧許可 -->
-    <div class="section-box" style="background:linear-gradient(135deg,#f8f0ff,#ede7f6);border:1.5px solid #ce93d8;">
-        <div class="section-box-title" style="color:#6a1b9a;">
-            <span class="material-symbols-outlined" style="color:#7b1fa2;">smart_toy</span>
-            Claude閲覧許可
-        </div>
-        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-            Claudeにアプリを一時的に閲覧させて、不具合確認や改善提案を受けられます。有効時間は<b>30分</b>です。
-        </div>
-        {% if claude_url %}
-        <div style="background:white;border-radius:8px;padding:10px 12px;font-size:0.78rem;word-break:break-all;color:#202124;border:1px solid #ce93d8;margin-bottom:8px;">{{ claude_url }}</div>
-        <div style="font-size:0.72rem;color:#80868b;margin-bottom:10px;">⏰ 30分後に自動失効します</div>
-        {% endif %}
-        <form method="POST" action="/api/issue_claude_session_form">
-            <button type="submit" class="btn" style="background:#7b1fa2;color:white;border:none;">
-                <span class="material-symbols-outlined" style="color:white;">key</span>
-                閲覧URLを発行する
-            </button>
-        </form>
-    </div>
+    <!-- Claude閲覧許可は開発者MENUへ移動 -->
 </div>
 
 <!-- セキュリティ -->
