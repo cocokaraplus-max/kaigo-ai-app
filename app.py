@@ -1205,36 +1205,43 @@ JSON形式のみで返してください（説明文不要）：
 def numerology():
     f_code = session["f_code"]
     supabase = get_supabase()
-    all_persons = []
-    # 利用者（誕生日なしでも全員表示）
+    patients = []
     try:
         res_p = supabase.table("patients").select("user_name,user_kana,chart_number,birth_date").eq("facility_code", f_code).execute()
         for r in res_p.data:
-            all_persons.append({
-                "name": r["user_name"],
-                "kana": r.get("user_kana") or "",
-                "chart": str(r["chart_number"]),
-                "birth": r.get("birth_date") or "",
+            name  = r["user_name"]
+            kana  = r.get("user_kana") or ""
+            chart = str(r["chart_number"])
+            birth = r.get("birth_date") or ""
+            label = f"(No.{chart}) [{name}] {kana}"
+            patients.append({
+                "value": label,
+                "label": label,
+                "user_name": name,
+                "user_kana": kana,
+                "birth_date": birth,
                 "type": "patient"
             })
     except:
         pass
-    # 職員
     try:
         res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
         for r in res_s.data:
-            if r.get("birth_date"):
-                all_persons.append({
-                    "name": r["staff_name"],
-                    "kana": "",
-                    "chart": "",
-                    "birth": r["birth_date"],
-                    "type": "staff"
-                })
+            name  = r["staff_name"]
+            birth = r.get("birth_date") or ""
+            label = f"[職員] {name}"
+            patients.append({
+                "value": label,
+                "label": label,
+                "user_name": name,
+                "user_kana": "",
+                "birth_date": birth,
+                "type": "staff"
+            })
     except:
         pass
-    all_persons.sort(key=lambda x: x["name"])
-    return render("numerology.html", all_persons=all_persons)
+    patients.sort(key=lambda x: x["user_name"])
+    return render("numerology.html", patients=patients)
 
 
 @app.route('/history')
