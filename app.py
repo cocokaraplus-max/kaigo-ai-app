@@ -810,9 +810,10 @@ def chat():
 @app.route('/chat/<room_id>')
 @login_required
 def chat_room(room_id):
-    f_code = session["f_code"]
-    my_name = session["my_name"]
-    is_admin = session.get("admin_authenticated", False)
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False)
     supabase = get_supabase()
 
     # 参加確認
@@ -913,6 +914,11 @@ def chat_room(room_id):
         my_name=my_name,
         is_admin=is_admin,
     )
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        print(f"chat_room error: {err}", flush=True)
+        return f"<pre>Error: {err}</pre>", 500
 
 @app.route('/api/create_room', methods=['POST'])
 @login_required
