@@ -811,114 +811,112 @@ def chat():
 @login_required
 def chat_room(room_id):
     try:
-        f_code = session["f_code"]
-        my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False)
-        supabase = get_supabase()
+            f_code = session["f_code"]
+            my_name = session["my_name"]
+            is_admin = session.get("admin_authenticated", False)
+            supabase = get_supabase()
 
-    # 参加確認
-    mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("facility_code", f_code).eq("staff_name", my_name).execute()
-    if not mem_check.data:
-        return redirect(url_for("chat"))
+            # 参加確認
+            mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            if not mem_check.data:
+                return redirect(url_for("chat"))
 
-    room_res = supabase.table("chat_rooms").select("*").eq("id", room_id).execute()
-    if not room_res.data:
-        return redirect(url_for("chat"))
-    room = room_res.data[0]
-    is_group = room["is_group"]
+            room_res = supabase.table("chat_rooms").select("*").eq("id", room_id).execute()
+            if not room_res.data:
+                return redirect(url_for("chat"))
+            room = room_res.data[0]
+            is_group = room["is_group"]
 
-    # スタッフアイコン情報を一括取得
-    icons = get_staff_icons(supabase, f_code)
+            # スタッフアイコン情報を一括取得
+            icons = get_staff_icons(supabase, f_code)
 
-    # ルーム名・アイコン
-    if is_group:
-        room_name = room.get("name") or "グループ"
-        other_color = "#1a73e8"
-        other_initial = "G"
-        other_emoji = ""
-    else:
-        all_mem = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
-        others = [m["staff_name"] for m in (all_mem.data or []) if m["staff_name"] != my_name]
-        other_name = others[0] if others else "?"
-        room_name = other_name
-        icon = staff_icon_data(icons, other_name)
-        other_color = icon["color"]
-        other_initial = icon["initial"]
-        other_emoji = icon["emoji"]
+            # ルーム名・アイコン
+            if is_group:
+                room_name = room.get("name") or "グループ"
+                other_color = "#1a73e8"
+                other_initial = "G"
+                other_emoji = ""
+            else:
+                all_mem = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
+                others = [m["staff_name"] for m in (all_mem.data or []) if m["staff_name"] != my_name]
+                other_name = others[0] if others else "?"
+                room_name = other_name
+                icon = staff_icon_data(icons, other_name)
+                other_color = icon["color"]
+                other_initial = icon["initial"]
+                other_emoji = icon["emoji"]
 
-    # メンバー一覧（グループ用）
-    members = []
-    if is_group:
-        all_mem2 = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
-        for m in (all_mem2.data or []):
-            ic = staff_icon_data(icons, m["staff_name"])
-            members.append({"staff_name": m["staff_name"], "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
+            # メンバー一覧（グループ用）
+            members = []
+            if is_group:
+                all_mem2 = supabase.table("chat_members").select("staff_name").eq("room_id", room_id).execute()
+                for m in (all_mem2.data or []):
+                    ic = staff_icon_data(icons, m["staff_name"])
+                    members.append({"staff_name": m["staff_name"], "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
 
-    # メッセージ取得
-    msg_res = supabase.table("chat_messages").select("*").eq("room_id", room_id).order("created_at").execute()
-    messages = []
-    # 全メンバーのlast_read_at取得
-    mem_reads = {}
-    try:
-        all_reads = supabase.table("chat_members").select("staff_name,last_read_at").eq("room_id", room_id).execute()
-        for m in (all_reads.data or []):
-            mem_reads[m["staff_name"]] = m.get("last_read_at")
-    except:
-        pass
+            # メッセージ取得
+            msg_res = supabase.table("chat_messages").select("*").eq("room_id", room_id).order("created_at").execute()
+            messages = []
 
-    for r in (msg_res.data or []):
-        try:
-            dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
-            today = datetime.now(tokyo_tz).date()
-            # 既読者リスト
-            readers = []
-            if r["staff_name"] == my_name:
-                msg_dt_str = str(r["created_at"])
-                for mn, last_read in mem_reads.items():
-                    if mn == my_name:
-                        continue
-                    try:
-                        if last_read:
-                            # 文字列比較（どちらもISO形式なので辞書順で比較可能）
-                            if str(last_read) >= msg_dt_str:
-                                ic = staff_icon_data(icons, mn)
-                                readers.append({"staff_name": mn, "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
-                    except:
-                        pass
-            ic = staff_icon_data(icons, r["staff_name"])
-            messages.append({
-                "id": r["id"],
-                "staff_name": r["staff_name"],
-                "content": r.get("content", ""),
-                "is_mine": r["staff_name"] == my_name,
-                "color": ic["color"],
-                "initial": ic["initial"],
-                "emoji": ic["emoji"],
-                "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
-                "time_label": dt.strftime("%H:%M"),
-                "readers": readers,
-            })
-        except Exception as e:
-            print(f"message parse error: {e}", flush=True)
-            continue
+            # 全メンバーのlast_read_at取得
+            mem_reads = {}
+            try:
+                all_reads = supabase.table("chat_members").select("staff_name,last_read_at").eq("room_id", room_id).execute()
+                for m in (all_reads.data or []):
+                    mem_reads[m["staff_name"]] = m.get("last_read_at")
+            except:
+                pass
 
-    return render("chat_room.html",
-        room_id=room_id,
-        room_name=room_name,
-        is_group=is_group,
-        other_color=other_color,
-        other_initial=other_initial,
-        other_emoji=other_emoji,
-        members=members,
-        messages=messages,
-        my_name=my_name,
-        is_admin=is_admin,
-    )
+            for r in (msg_res.data or []):
+                try:
+                    dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+                    today = datetime.now(tokyo_tz).date()
+                    readers = []
+                    if r["staff_name"] == my_name:
+                        msg_dt_str = str(r["created_at"])
+                        for mn, last_read in mem_reads.items():
+                            if mn == my_name:
+                                continue
+                            try:
+                                if last_read and str(last_read) >= msg_dt_str:
+                                    ic = staff_icon_data(icons, mn)
+                                    readers.append({"staff_name": mn, "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
+                            except:
+                                pass
+                        ic = staff_icon_data(icons, r["staff_name"])
+                    messages.append({
+                        "id": r["id"],
+                        "staff_name": r["staff_name"],
+                        "content": r.get("content", ""),
+                        "is_mine": r["staff_name"] == my_name,
+                        "color": ic["color"],
+                        "initial": ic["initial"],
+                        "emoji": ic["emoji"],
+                        "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
+                        "time_label": dt.strftime("%H:%M"),
+                        "readers": readers,
+                    })
+                except Exception as e:
+                    print(f"message parse error: {e}", flush=True)
+                    continue
+
+            return render("chat_room.html",
+                room_id=room_id,
+                room_name=room_name,
+                is_group=is_group,
+                other_color=other_color,
+                other_initial=other_initial,
+                other_emoji=other_emoji,
+                members=members,
+                messages=messages,
+                my_name=my_name,
+                is_admin=is_admin,
+            )
     except Exception as e:
         import traceback
         err = traceback.format_exc()
         print(f"chat_room error: {err}", flush=True)
-        return f"<pre>Error: {err}</pre>", 500
+        return f"<pre style='padding:20px;'>エラー詳細:\n{err}</pre>", 500
 
 @app.route('/api/create_room', methods=['POST'])
 @login_required
