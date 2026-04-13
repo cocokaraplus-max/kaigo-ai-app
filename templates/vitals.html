@@ -133,8 +133,11 @@
 /* ===== カメラモーダル ===== */
 .camera-modal {
     display:none; position:fixed; inset:0;
-    background:rgba(0,0,0,0.8); z-index:2000;
-    flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.9); z-index:99999;
+    flex-direction:column; align-items:center; justify-content:flex-start;
+    overflow-y:auto;
+    padding: 16px;
+    box-sizing: border-box;
 }
 .camera-modal.show { display:flex; }
 .camera-preview { width:100%; max-width:480px; border-radius:12px; overflow:hidden; position:relative; }
@@ -402,26 +405,28 @@
 
 <!-- ========== カメラモーダル ========== -->
 <div class="camera-modal" id="camera-modal">
-    <div style="width:100%;max-width:480px;padding:16px;position:relative;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="color:#fff;font-size:0.85rem;font-weight:700;" id="camera-label">
+    <div style="width:100%;max-width:480px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="color:#fff;font-size:0.85rem;font-weight:700;flex:1;" id="camera-label">
                 血圧計・体温計・パルスオキシメーターを画面内に収めて撮影
             </div>
-            <button class="camera-close-btn" onclick="closeCamera()" style="position:static;flex-shrink:0;margin-left:8px;">
+            <button class="camera-close-btn" onclick="closeCamera()"
+                style="position:static;flex-shrink:0;margin-left:8px;width:36px;height:36px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
         <div id="camera-view">
-            <video id="camera-video" autoplay playsinline style="width:100%;border-radius:12px;"></video>
-            <div style="text-align:center;margin-top:16px;">
-                <button class="camera-capture-btn" onclick="capturePhoto()">
-                    <span class="material-symbols-outlined">camera</span>
+            <video id="camera-video" autoplay playsinline style="width:100%;border-radius:12px;display:block;"></video>
+            <div style="text-align:center;margin-top:20px;padding-bottom:20px;">
+                <button class="camera-capture-btn" onclick="capturePhoto()"
+                    style="width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid #1a73e8;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:34px;color:#1a73e8;">camera</span>
                 </button>
-                <div style="color:#fff;font-size:0.75rem;margin-top:8px;opacity:0.8;">タップして撮影</div>
+                <div style="color:#fff;font-size:0.82rem;margin-top:10px;opacity:0.9;font-weight:700;">タップして撮影</div>
             </div>
         </div>
         <div id="camera-result-view" style="display:none;">
-            <canvas id="camera-canvas" style="width:100%;border-radius:12px;"></canvas>
+            <canvas id="camera-canvas" style="width:100%;border-radius:12px;display:block;"></canvas>
             <div class="ai-reading-indicator" id="ai-indicator">
                 <span class="material-symbols-outlined">sync</span>
                 AIが数値を読み取っています...
@@ -444,6 +449,14 @@ const TODAY       = "{{ today }}";
 let currentWeekday = new Date().getDay();
 let cameraStream   = null;
 let currentCameraPatient = null;
+
+// カメラモーダルをbody直下に移動（page-wrapperのoverflow問題を回避）
+requestAnimationFrame(() => {
+    const modal = document.getElementById('camera-modal');
+    if (modal && modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+});
 
 // ========== タブ切り替え ==========
 window.switchMainTab = function(name, el) {
