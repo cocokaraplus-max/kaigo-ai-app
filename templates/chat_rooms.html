@@ -5,167 +5,89 @@
 {% block extra_style %}
 <style>
 .chat-rooms-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 1rem;
 }
 .page-title { margin-bottom: 0; }
-
 .new-room-btn {
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: #1a73e8;
-    border: none;
-    cursor: pointer;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #1a73e8; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+    flex-shrink: 0; box-shadow: 0 2px 8px rgba(26,115,232,0.3);
 }
 .new-room-btn .material-symbols-outlined { font-size: 22px; color: white; }
-
-/* ルーム一覧 */
 .room-list { display: flex; flex-direction: column; gap: 2px; }
-
 .room-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 4px;
-    cursor: pointer;
-    border-radius: 12px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 4px; cursor: pointer; border-radius: 12px;
     -webkit-tap-highlight-color: transparent;
-    text-decoration: none;
-    color: inherit;
+    text-decoration: none; color: inherit;
     border-bottom: 1px solid #f0f0f0;
 }
 .room-item:active { background: #f0f4ff; }
-
-/* グループアイコン */
 .room-icon {
-    width: 48px; height: 48px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem;
-    font-weight: 700;
-    position: relative;
+    width: 48px; height: 48px; border-radius: 50%;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; font-weight: 700; position: relative;
 }
-.room-icon.group-icon {
-    background: #e8f0fe;
-    color: #1a73e8;
-    font-size: 1.4rem;
-}
-/* 1:1アイコン → スタッフアバター */
+.room-icon.group-icon { background: #e8f0fe; color: #1a73e8; font-size: 1.4rem; }
 .staff-avatar {
-    width: 48px; height: 48px;
-    border-radius: 50%;
+    width: 48px; height: 48px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem;
-    font-weight: 700;
-    flex-shrink: 0;
-    color: white;
+    font-size: 1.1rem; font-weight: 700; flex-shrink: 0; color: white;
 }
-
 .room-body { flex: 1; min-width: 0; }
 .room-name-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 3px;
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 3px;
 }
 .room-name {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #202124;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
+    font-size: 0.95rem; font-weight: 700; color: #202124;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
 }
-.room-time {
-    font-size: 0.7rem;
-    color: #b0b8c1;
-    flex-shrink: 0;
-}
+.room-time { font-size: 0.7rem; color: #b0b8c1; flex-shrink: 0; }
 .room-last-msg {
-    font-size: 0.82rem;
-    color: #80868b;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.room-badge-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    justify-content: flex-end;
-    min-width: 28px;
+    font-size: 0.82rem; color: #80868b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .unread-badge {
-    background: #ea4335;
-    color: white;
-    border-radius: 10px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    min-width: 18px;
-    height: 18px;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0 5px;
+    background: #ea4335; color: white; border-radius: 10px;
+    font-size: 0.7rem; font-weight: 700; min-width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center; padding: 0 5px;
 }
-
-/* モーダル */
 .modal-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: 1000;
-    align-items: flex-end;
-    justify-content: center;
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 1000;
+    align-items: flex-end; justify-content: center;
 }
 .modal-overlay.show { display: flex; }
 .modal-sheet {
-    background: #fff;
-    border-radius: 20px 20px 0 0;
+    background: #fff; border-radius: 20px 20px 0 0;
     width: 100%; max-width: 480px;
-    padding: 20px 20px 32px;
-    animation: slideUp 0.22s ease;
+    padding: 20px 20px 32px; animation: slideUp 0.22s ease;
 }
 @keyframes slideUp {
     from { transform: translateY(40px); opacity: 0; }
     to   { transform: translateY(0);    opacity: 1; }
 }
 .modal-handle {
-    width: 36px; height: 4px;
-    background: #e0e0e0; border-radius: 2px;
-    margin: 0 auto 16px;
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 0 auto 16px;
 }
 .modal-title {
-    font-size: 1rem; font-weight: 700;
-    color: #202124; margin-bottom: 16px;
-    text-align: center;
+    font-size: 1rem; font-weight: 700; color: #202124;
+    margin-bottom: 16px; text-align: center;
 }
-.type-select {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 16px;
-}
+.type-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .type-btn {
-    padding: 14px;
-    border-radius: 12px;
-    border: 2px solid #e0e0e0;
-    background: #f8f9fa;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.15s;
+    padding: 14px; border-radius: 12px; border: 2px solid #e0e0e0;
+    background: #f8f9fa; text-align: center; cursor: pointer; transition: all 0.15s;
 }
 .type-btn.active { border-color: #1a73e8; background: #e8f0fe; }
 .type-btn .material-symbols-outlined { font-size: 28px; color: #80868b; display: block; margin-bottom: 4px; }
 .type-btn.active .material-symbols-outlined { color: #1a73e8; }
 .type-btn span.label { font-size: 0.82rem; font-weight: 600; color: #5f6368; }
 .type-btn.active span.label { color: #1a73e8; }
-
 .member-select-area { margin-bottom: 14px; }
 .member-select-label {
     font-size: 0.8rem; font-weight: 600; color: #5f6368; margin-bottom: 8px;
@@ -174,8 +96,7 @@
 .member-list {
     display: flex; flex-direction: column; gap: 4px;
     max-height: 180px; overflow-y: auto;
-    border: 1.5px solid #e0e0e0; border-radius: 10px;
-    padding: 4px;
+    border: 1.5px solid #e0e0e0; border-radius: 10px; padding: 4px;
 }
 .member-check-item {
     display: flex; align-items: center; gap: 10px;
@@ -184,17 +105,33 @@
 }
 .member-check-item:active { background: #f0f4ff; }
 .member-check-item input[type=checkbox] { accent-color: #1a73e8; width: 16px; height: 16px; }
-
 .group-name-area { margin-bottom: 16px; }
 .group-name-area.hidden { display: none; }
-
 .no-rooms {
     text-align: center; color: #80868b;
     font-size: 0.88rem; padding: 48px 0;
 }
-.no-rooms .material-symbols-outlined {
-    font-size: 52px; display: block; color: #e0e0e0; margin-bottom: 10px;
+.no-rooms .material-symbols-outlined { font-size: 52px; display: block; color: #e0e0e0; margin-bottom: 10px; }
+
+/* ★ サウンドオプション */
+.sound-opt {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px; border-radius: 12px;
+    border: 2px solid #e0e0e0; cursor: pointer;
+    background: #fff; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
 }
+.sound-opt.active { border-color: #1a73e8; background: #e8f0fe; }
+/* ★ 試聴ボタン */
+.preview-btn {
+    margin-left: auto; background: #f0f4ff; border: none;
+    border-radius: 20px; padding: 4px 10px; cursor: pointer;
+    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
+    display: flex; align-items: center; gap: 3px;
+    flex-shrink: 0;
+}
+.preview-btn:active { background: #e8f0fe; }
+.preview-btn .material-symbols-outlined { font-size: 14px; }
 </style>
 {% endblock %}
 
@@ -205,10 +142,10 @@
         トーク
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-        <button class="new-room-btn" style="background:#f0f4ff;box-shadow:none;" onclick="openSoundSettings()">
+        <button class="new-room-btn" style="background:#f0f4ff;box-shadow:none;" id="sound-settings-btn">
             <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">settings</span>
         </button>
-        <button class="new-room-btn" onclick="openModal()">
+        <button class="new-room-btn" id="new-room-btn">
             <span class="material-symbols-outlined">edit_square</span>
         </button>
     </div>
@@ -224,7 +161,7 @@
         autocomplete="off">
 </div>
 
-<!-- サウンド設定モーダル -->
+<!-- ★ サウンド設定モーダル（試聴ボタン付き） -->
 <div id="sound-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:flex-end;justify-content:center;">
     <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 32px;">
         <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
@@ -233,43 +170,55 @@
                 <span class="material-symbols-outlined" style="color:#1a73e8;">notifications</span>
                 通知サウンド設定
             </div>
-            <button onclick="closeSoundSettings()" style="background:none;border:none;cursor:pointer;">
+            <button id="close-sound-btn" style="background:none;border:none;cursor:pointer;">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
-        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;">新着メッセージが届いたときの通知音を選択</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sound-options-modal">
-            <div class="sound-opt" data-sound="pop" onclick="selectSoundModal('pop')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;">タップして選択・▶で試聴できます</div>
+        <div style="display:flex;flex-direction:column;gap:8px;" id="sound-options-modal">
+            <div class="sound-opt" data-sound="pop">
                 <span style="font-size:22px;">🔔</span>
-                <div>
+                <div style="flex:1;">
                     <div style="font-size:0.85rem;font-weight:700;">ポップ</div>
                     <div style="font-size:0.7rem;color:#80868b;">軽快な音</div>
                 </div>
+                <button class="preview-btn" data-preview="pop">
+                    <span class="material-symbols-outlined">play_arrow</span>試聴
+                </button>
             </div>
-            <div class="sound-opt" data-sound="chime" onclick="selectSoundModal('chime')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+            <div class="sound-opt" data-sound="chime">
                 <span style="font-size:22px;">🎵</span>
-                <div>
+                <div style="flex:1;">
                     <div style="font-size:0.85rem;font-weight:700;">チャイム</div>
                     <div style="font-size:0.7rem;color:#80868b;">3音チャイム</div>
                 </div>
+                <button class="preview-btn" data-preview="chime">
+                    <span class="material-symbols-outlined">play_arrow</span>試聴
+                </button>
             </div>
-            <div class="sound-opt" data-sound="pico" onclick="selectSoundModal('pico')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+            <div class="sound-opt" data-sound="pico">
                 <span style="font-size:22px;">📯</span>
-                <div>
+                <div style="flex:1;">
                     <div style="font-size:0.85rem;font-weight:700;">ピコン</div>
                     <div style="font-size:0.7rem;color:#80868b;">電子音</div>
                 </div>
+                <button class="preview-btn" data-preview="pico">
+                    <span class="material-symbols-outlined">play_arrow</span>試聴
+                </button>
             </div>
-            <div class="sound-opt" data-sound="tasukaru" onclick="selectSoundModal('tasukaru')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+            <div class="sound-opt" data-sound="tasukaru">
                 <span style="font-size:22px;">🦝</span>
-                <div>
+                <div style="flex:1;">
                     <div style="font-size:0.85rem;font-weight:700;">タスカル</div>
                     <div style="font-size:0.7rem;color:#80868b;">音声で通知</div>
                 </div>
+                <button class="preview-btn" data-preview="tasukaru">
+                    <span class="material-symbols-outlined">play_arrow</span>試聴
+                </button>
             </div>
-            <div class="sound-opt" data-sound="none" onclick="selectSoundModal('none')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;grid-column:span 2;">
+            <div class="sound-opt" data-sound="none">
                 <span style="font-size:22px;">🔕</span>
-                <div>
+                <div style="flex:1;">
                     <div style="font-size:0.85rem;font-weight:700;">なし</div>
                     <div style="font-size:0.7rem;color:#80868b;">サウンドOFF</div>
                 </div>
@@ -314,16 +263,16 @@
 </div>
 
 <!-- 新規作成モーダル -->
-<div class="modal-overlay" id="new-room-modal" onclick="closeModalOutside(event)">
+<div class="modal-overlay" id="new-room-modal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">新しいトークを作成</div>
         <div class="type-select">
-            <div class="type-btn active" id="type-dm" onclick="selectType('dm')">
+            <div class="type-btn active" id="type-dm">
                 <span class="material-symbols-outlined">person</span>
                 <span class="label">1 : 1</span>
             </div>
-            <div class="type-btn" id="type-group" onclick="selectType('group')">
+            <div class="type-btn" id="type-group">
                 <span class="material-symbols-outlined">group</span>
                 <span class="label">グループ</span>
             </div>
@@ -342,15 +291,14 @@
             <div class="member-list" id="member-list">
                 {% for s in staffs %}
                 <label class="member-check-item">
-                    <input type="checkbox" name="member" value="{{ s.staff_name }}"
-                        {% if not loop.first or true %}{% endif %}>
+                    <input type="checkbox" name="member" value="{{ s.staff_name }}">
                     <div class="staff-avatar" style="background:{{ s.color }};width:30px;height:30px;font-size:0.8rem;flex-shrink:0;">{{ s.initial }}</div>
                     <span style="font-size:0.9rem;font-weight:600;">{{ s.staff_name }}</span>
                 </label>
                 {% endfor %}
             </div>
         </div>
-        <button class="btn btn-primary" style="width:100%;" onclick="createRoom()">
+        <button class="btn btn-primary" style="width:100%;" id="create-room-btn">
             <span class="material-symbols-outlined" style="color:white;">check</span>
             作成する
         </button>
@@ -361,65 +309,151 @@
 {% block extra_script %}
 <script>
 (function(){
-let roomType = 'dm';
+var roomType = 'dm';
+var SOUND_KEY = 'tasukaru_sound';
 
 // ========== 検索 ==========
 window.filterRooms = function(q) {
-    const ql = q.trim().toLowerCase();
-    document.querySelectorAll('.room-item').forEach(item => {
-        const name = item.querySelector('.room-name')?.textContent.toLowerCase() || '';
-        const last = item.querySelector('.room-last-msg')?.textContent.toLowerCase() || '';
+    var ql = q.trim().toLowerCase();
+    document.querySelectorAll('.room-item').forEach(function(item) {
+        var name = (item.querySelector('.room-name')?.textContent || '').toLowerCase();
+        var last = (item.querySelector('.room-last-msg')?.textContent || '').toLowerCase();
         item.style.display = (!ql || name.includes(ql) || last.includes(ql)) ? '' : 'none';
     });
 };
 
-// ========== サウンド設定 ==========
-const SOUND_KEY = 'tasukaru_sound';
+// ========== サウンド再生（Web Audio API） ==========
+function playSound(type) {
+    try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (type === 'pop') {
+            var o = ctx.createOscillator();
+            var g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.frequency.setValueAtTime(1200, ctx.currentTime);
+            o.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
+            g.gain.setValueAtTime(0.4, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+            o.start(); o.stop(ctx.currentTime + 0.12);
+        } else if (type === 'chime') {
+            [523, 659, 784].forEach(function(freq, i) {
+                var o2 = ctx.createOscillator();
+                var g2 = ctx.createGain();
+                o2.connect(g2); g2.connect(ctx.destination);
+                o2.frequency.value = freq;
+                g2.gain.setValueAtTime(0, ctx.currentTime + i * 0.15);
+                g2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i * 0.15 + 0.02);
+                g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.25);
+                o2.start(ctx.currentTime + i * 0.15);
+                o2.stop(ctx.currentTime + i * 0.15 + 0.25);
+            });
+        } else if (type === 'pico') {
+            var o3 = ctx.createOscillator();
+            var g3 = ctx.createGain();
+            o3.type = 'square';
+            o3.connect(g3); g3.connect(ctx.destination);
+            o3.frequency.setValueAtTime(880, ctx.currentTime);
+            o3.frequency.setValueAtTime(1760, ctx.currentTime + 0.05);
+            g3.gain.setValueAtTime(0.2, ctx.currentTime);
+            g3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+            o3.start(); o3.stop(ctx.currentTime + 0.15);
+        } else if (type === 'tasukaru') {
+            var o4 = ctx.createOscillator();
+            var g4 = ctx.createGain();
+            o4.connect(g4); g4.connect(ctx.destination);
+            o4.frequency.setValueAtTime(440, ctx.currentTime);
+            o4.frequency.setValueAtTime(554, ctx.currentTime + 0.1);
+            o4.frequency.setValueAtTime(659, ctx.currentTime + 0.2);
+            g4.gain.setValueAtTime(0.3, ctx.currentTime);
+            g4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+            o4.start(); o4.stop(ctx.currentTime + 0.4);
+        }
+    } catch(e) {}
+}
 
-window.openSoundSettings = function() {
-    const modal = document.getElementById('sound-modal');
-    modal.style.display = 'flex';
-    // 現在の設定をハイライト
-    const current = localStorage.getItem(SOUND_KEY) || 'pop';
-    document.querySelectorAll('.sound-opt').forEach(el => {
-        const selected = el.dataset.sound === current;
-        el.style.borderColor = selected ? '#1a73e8' : '#e0e0e0';
-        el.style.background  = selected ? '#e8f0fe' : '#fff';
-    });
+// base.htmlのplayNotificationSoundを上書き（最新の選択を反映）
+window.playNotificationSound = function() {
+    var sound = localStorage.getItem(SOUND_KEY) || 'pop';
+    playSound(sound);
 };
 
+// ========== サウンド設定モーダル ==========
+window.openSoundSettings = function() {
+    var modal = document.getElementById('sound-modal');
+    modal.style.display = 'flex';
+    var current = localStorage.getItem(SOUND_KEY) || 'pop';
+    document.querySelectorAll('.sound-opt').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.sound === current);
+    });
+};
 window.closeSoundSettings = function() {
     document.getElementById('sound-modal').style.display = 'none';
 };
 
-window.selectSoundModal = function(sound) {
-    localStorage.setItem(SOUND_KEY, sound);
-    // ハイライト更新
-    document.querySelectorAll('.sound-opt').forEach(el => {
-        const selected = el.dataset.sound === sound;
-        el.style.borderColor = selected ? '#1a73e8' : '#e0e0e0';
-        el.style.background  = selected ? '#e8f0fe' : '#fff';
+// 歯車ボタン
+document.getElementById('sound-settings-btn').addEventListener('click', openSoundSettings);
+document.getElementById('sound-settings-btn').addEventListener('touchend', function(e) {
+    e.preventDefault(); openSoundSettings();
+});
+
+// 閉じるボタン
+document.getElementById('close-sound-btn').addEventListener('click', closeSoundSettings);
+
+// サウンドオプション選択（試聴ボタン以外をタップで選択）
+document.querySelectorAll('.sound-opt').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+        if (e.target.closest('.preview-btn')) return; // 試聴ボタンは別処理
+        var sound = el.dataset.sound;
+        localStorage.setItem(SOUND_KEY, sound);
+        document.querySelectorAll('.sound-opt').forEach(function(s) {
+            s.classList.toggle('active', s.dataset.sound === sound);
+        });
+        // 選択時も1回再生
+        playSound(sound);
+        setTimeout(closeSoundSettings, 600);
     });
-    // プレビュー再生
-    if (window.playNotificationSound) window.playNotificationSound();
-    // 少し待って閉じる
-    setTimeout(closeSoundSettings, 800);
-};
+});
+
+// ★ 試聴ボタン
+document.querySelectorAll('.preview-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        playSound(btn.dataset.preview);
+    });
+    btn.addEventListener('touchend', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        playSound(btn.dataset.preview);
+    });
+});
 
 // モーダル外タップで閉じる
 document.getElementById('sound-modal').addEventListener('click', function(e) {
     if (e.target === this) closeSoundSettings();
 });
 
+// ========== 新規作成モーダル ==========
+document.getElementById('new-room-btn').addEventListener('click', function() {
+    document.getElementById('new-room-modal').classList.add('show');
+});
+document.getElementById('new-room-btn').addEventListener('touchend', function(e) {
+    e.preventDefault();
+    document.getElementById('new-room-modal').classList.add('show');
+});
+
 window.openModal = function() {
     document.getElementById('new-room-modal').classList.add('show');
-}
+};
 window.closeModal = function() {
     document.getElementById('new-room-modal').classList.remove('show');
-}
-window.closeModalOutside = function(e) {
-    if (e.target === document.getElementById('new-room-modal')) closeModal();
-}
+};
+
+document.getElementById('new-room-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+document.getElementById('type-dm').addEventListener('click', function() { selectType('dm'); });
+document.getElementById('type-group').addEventListener('click', function() { selectType('group'); });
 
 window.selectType = function(type) {
     roomType = type;
@@ -427,29 +461,30 @@ window.selectType = function(type) {
     document.getElementById('type-group').classList.toggle('active', type === 'group');
     document.getElementById('group-name-area').classList.toggle('hidden', type === 'dm');
     document.getElementById('member-label').textContent = type === 'dm' ? '相手を選ぶ（1人）' : 'メンバーを選ぶ（複数可）';
-    // DM時はチェックボックスを1つだけ選べるように
-    document.querySelectorAll('input[name=member]').forEach(cb => {
+    document.querySelectorAll('input[name=member]').forEach(function(cb) {
         cb.type = type === 'dm' ? 'radio' : 'checkbox';
     });
-}
+};
 
-window.createRoom = async function() {
-    const selected = [...document.querySelectorAll('input[name=member]:checked')].map(el => el.value);
-    if (selected.length === 0) {
+document.getElementById('create-room-btn').addEventListener('click', createRoom);
+document.getElementById('create-room-btn').addEventListener('touchend', function(e) {
+    e.preventDefault(); createRoom();
+});
+
+async function createRoom() {
+    var selected = [...document.querySelectorAll('input[name=member]:checked')].map(function(el) { return el.value; });
+    if (!selected.length) {
         alert(roomType === 'dm' ? '相手を選んでください' : 'メンバーを選んでください');
         return;
     }
-    const groupName = document.getElementById('group-name-input').value.trim();
-    if (roomType === 'group' && !groupName) {
-        alert('グループ名を入力してください');
-        return;
-    }
-    const res = await fetch('/api/create_room', {
+    var groupName = document.getElementById('group-name-input').value.trim();
+    if (roomType === 'group' && !groupName) { alert('グループ名を入力してください'); return; }
+    var res = await fetch('/api/create_room', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ type: roomType, members: selected, group_name: groupName })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.status === 'success') {
         window.location.href = '/chat/' + data.room_id;
     } else {

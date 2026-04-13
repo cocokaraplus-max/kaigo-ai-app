@@ -718,8 +718,8 @@ window.saveAssessment = async function() {
     if (!window._reportPayload) return;
     const payload = {
         ...window._reportPayload,
-        ai_change:    document.getElementById('rpt-change').textContent,
-        ai_challenge: document.getElementById('rpt-challenge').textContent,
+        ai_change:    document.getElementById('rpt-change').innerText.trim(),
+        ai_challenge: document.getElementById('rpt-challenge').innerText.trim(),
         audio_url:    currentAudioUrl,
     };
     const res = await fetch('/api/save_assessment', {
