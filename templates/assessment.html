@@ -704,7 +704,7 @@ window.stopVoice = function() {
 }
 
 // ========== AI報告書生成 ==========
-window.generateReport = function() {
+window.generateReport = async function() {
     const patientSel = document.getElementById('patient-select');
     if (!patientSel.value) { alert('利用者を選択してください'); return; }
     const opt = patientSel.options[patientSel.selectedIndex];
