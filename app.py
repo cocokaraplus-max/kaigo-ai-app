@@ -530,7 +530,9 @@ def input_view():
                     }).execute()
                     content = ""
                     selected_patient = ""
-                    return redirect(url_for("daily_view"))
+                    user_name = m.group(2)
+                    record_date_str = record_date
+                    return redirect(url_for("daily_view", user=user_name, date=record_date_str))
             except Exception as e:
                 error = f"保存に失敗しました: {e}"
 

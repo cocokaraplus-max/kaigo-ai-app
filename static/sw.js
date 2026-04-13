@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v1';
+const CACHE_VERSION = 'tasukaru-v2';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const DATA_CACHE    = `${CACHE_VERSION}-data`;
 
@@ -45,10 +45,26 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
-    // APIリクエストの処理
-    if (url.pathname.startsWith('/api/')) {
-        event.respondWith(networkFirstWithOfflineQueue(event.request));
+    // POSTリクエスト（フォーム送信など）は必ずネットワーク優先・Service Worker非介入
+    if (event.request.method !== 'GET') {
+        event.respondWith(
+            fetch(event.request.clone()).catch(() => {
+                // オフライン時のみキューに保存（APIのみ）
+                if (url.pathname.startsWith('/api/')) {
+                    return networkFirstWithOfflineQueue(event.request);
+                }
+                return new Response(JSON.stringify({
+                    status: 'offline',
+                    message: 'オフラインです'
+                }), { headers: { 'Content-Type': 'application/json' } });
+            })
+        );
         return;
+    }
+
+    // GETのAPIリクエスト
+    if (url.pathname.startsWith('/api/')) {
+        return; // Service Worker非介入でそのままネットワークへ
     }
 
     // 静的ファイル・ページはキャッシュファースト
@@ -56,14 +72,12 @@ self.addEventListener('fetch', event => {
         caches.match(event.request).then(cached => {
             if (cached) return cached;
             return fetch(event.request).then(response => {
-                // 成功したらキャッシュを更新
                 if (response.ok && event.request.method === 'GET') {
                     const clone = response.clone();
                     caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone));
                 }
                 return response;
             }).catch(() => {
-                // オフライン時はキャッシュを返す
                 return caches.match('/top') || new Response(
                     getOfflinePage(),
                     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
