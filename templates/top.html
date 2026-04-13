@@ -430,33 +430,30 @@
         const size = 200;
         ctx.clearRect(0, 0, size, size);
 
-        // 背景
-        ctx.fillStyle = '#e0e0e0';
-        ctx.fillRect(0, 0, size, size);
-
-        // 画像描画
+        // ① 画像を描画
+        ctx.save();
         const imgW = cropImage.width * cropZoom;
         const imgH = cropImage.height * cropZoom;
         const drawX = size / 2 - imgW / 2 + cropOffsetX;
         const drawY = size / 2 - imgH / 2 + cropOffsetY;
         ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
-
-        // 円の外側を半透明の暗いオーバーレイで覆う
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(0, 0, size, size);
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.beginPath();
-        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2);
-        ctx.fill();
         ctx.restore();
 
-        // 円の枠線
+        // ② 円の外側を暗いオーバーレイで覆う（source-over）
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.rect(0, 0, size, size);
+        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2, true); // 反時計回りで穴を開ける
+        ctx.fill('evenodd');
+        ctx.restore();
+
+        // ③ 円の枠線
         ctx.save();
         ctx.strokeStyle = '#1a73e8';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2);
+        ctx.arc(size/2, size/2, size/2 - 1.5, 0, Math.PI*2);
         ctx.stroke();
         ctx.restore();
     }
