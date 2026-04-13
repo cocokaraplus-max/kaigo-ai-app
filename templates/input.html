@@ -246,10 +246,14 @@ window.saveRecord = async function() {
         formData.append('content', content);
         formData.append('record_date', recordDate);
 
-        // 写真があれば追加
-        const photos = document.querySelector('input[name="photos"]');
-        if (photos && photos.files.length > 0) {
-            [...photos.files].forEach(f => formData.append('photos', f));
+        // 写真を圧縮してから追加
+        const photoInput = document.querySelector('input[name="photos"]');
+        if (photoInput && photoInput.files.length > 0) {
+            const files = Array.from(photoInput.files).slice(0, 5);
+            const compressed = await Promise.all(files.map(f => compressImage(f)));
+            compressed.forEach((blob, i) => {
+                formData.append('photos', blob, `photo_${i+1}.jpg`);
+            });
         }
         // 音声データがあれば追加
         const audioData = document.getElementById('audio-data')?.value;
@@ -355,6 +359,27 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ========== 画像圧縮 ==========
+// 最大幅1280px・JPEG品質70%に圧縮（スマホ写真3MBを約200KBに削減）
+function compressImage(file, maxWidth = 1280, quality = 0.7) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 window.previewPhotos = function(input) {
     const preview = document.getElementById('photo-preview');
     preview.innerHTML = '';
@@ -363,6 +388,9 @@ window.previewPhotos = function(input) {
         reader.onload = e => {
             const img = document.createElement('img');
             img.src = e.target.result;
+            // 元サイズと圧縮後の表示
+            const size = (file.size / 1024 / 1024).toFixed(1);
+            img.title = `${file.name} (${size}MB → 圧縮済み)`;
             preview.appendChild(img);
         };
         reader.readAsDataURL(file);
