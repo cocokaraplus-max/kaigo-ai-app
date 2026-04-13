@@ -967,7 +967,7 @@ def api_send_room_message():
         # 参加確認
         mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("staff_name", my_name).execute()
         if not mem_check.data:
-            return jsonify({"status": "error"}), 403
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
         now_iso = datetime.now(timezone.utc).isoformat()
         supabase.table("chat_messages").insert({
             "room_id": room_id,
@@ -980,7 +980,8 @@ def api_send_room_message():
         supabase.table("chat_members").update({"last_read_at": now_iso}).eq("room_id", room_id).eq("staff_name", my_name).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        print(f"send_room_message error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/mark_read', methods=['POST'])
 @login_required
