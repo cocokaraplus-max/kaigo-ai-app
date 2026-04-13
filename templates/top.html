@@ -177,12 +177,109 @@
     <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
 </div>
 
-<div class="user-info">
-    <span class="material-symbols-outlined">business</span>
-    <b>{{ f_code }}</b>
-    <span style="color:#e0e0e0">／</span>
-    <span class="material-symbols-outlined">person</span>
-    <b>{{ my_name }}</b> さん
+<div class="user-info" style="display:flex;align-items:center;gap:10px;">
+    <!-- アイコン -->
+    <div id="my-icon-btn" onclick="openIconEdit()"
+        style="width:44px;height:44px;border-radius:50%;flex-shrink:0;cursor:pointer;overflow:hidden;
+               background:{{ my_color }};display:flex;align-items:center;justify-content:center;
+               border:2px solid rgba(255,255,255,0.5);position:relative;">
+        {% if my_icon_image_url %}
+            <img src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
+        {% elif my_icon_emoji %}
+            <span style="font-size:22px;line-height:1;">{{ my_icon_emoji }}</span>
+        {% else %}
+            <span style="font-size:18px;font-weight:800;color:#fff;">{{ my_initial }}</span>
+        {% endif %}
+        <div style="position:absolute;bottom:0;right:0;background:#1a73e8;border-radius:50%;width:16px;height:16px;
+                    display:flex;align-items:center;justify-content:center;">
+            <span class="material-symbols-outlined" style="font-size:11px;color:#fff;">edit</span>
+        </div>
+    </div>
+    <div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:0.82rem;color:#5f6368;">
+            <span class="material-symbols-outlined" style="font-size:14px;">business</span>
+            <b>{{ f_code }}</b>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+            <span class="material-symbols-outlined" style="font-size:14px;color:#5f6368;">person</span>
+            <b>{{ my_name }}</b> さん
+        </div>
+    </div>
+</div>
+
+<!-- アイコン編集モーダル -->
+<div id="icon-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 36px;">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="font-size:1rem;font-weight:800;color:#202124;">アイコンを変更</div>
+            <button onclick="closeIconEdit()" style="background:none;border:none;cursor:pointer;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        <!-- 現在のアイコンプレビュー -->
+        <div style="text-align:center;margin-bottom:16px;">
+            <div id="icon-preview" style="width:72px;height:72px;border-radius:50%;margin:0 auto;
+                background:{{ my_color }};display:flex;align-items:center;justify-content:center;overflow:hidden;
+                border:3px solid #e8f0fe;">
+                {% if my_icon_image_url %}
+                    <img id="icon-preview-img" src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
+                {% elif my_icon_emoji %}
+                    <span id="icon-preview-text" style="font-size:32px;">{{ my_icon_emoji }}</span>
+                {% else %}
+                    <span id="icon-preview-text" style="font-size:28px;font-weight:800;color:#fff;">{{ my_initial }}</span>
+                {% endif %}
+            </div>
+            <div style="font-size:0.75rem;color:#5f6368;margin-top:6px;">タップして変更</div>
+        </div>
+
+        <!-- 写真アップロード -->
+        <div style="margin-bottom:14px;">
+            <div style="font-size:0.82rem;font-weight:700;color:#202124;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">photo_camera</span>
+                写真から選ぶ
+            </div>
+            <input type="file" id="icon-photo-input" accept="image/*" style="display:none;" onchange="onIconPhotoSelect(this)">
+            <button onclick="document.getElementById('icon-photo-input').click()"
+                style="width:100%;padding:10px;border:1.5px dashed #1a73e8;border-radius:10px;
+                       background:#f0f6ff;color:#1a73e8;font-weight:700;cursor:pointer;font-size:0.85rem;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">upload</span>
+                写真を選択
+            </button>
+        </div>
+
+        <!-- 絵文字選択 -->
+        <div style="margin-bottom:16px;">
+            <div style="font-size:0.82rem;font-weight:700;color:#202124;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">emoji_emotions</span>
+                絵文字から選ぶ
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;">
+                {% for emoji in ['😊','😄','🤗','😎','🥰','🤩','😇','🦊','🐱','🐶','🐼','🐨','🐸','🦁','🐯','🐺','🌸','🌺','🌻','🌈','⭐','🔥','💫','🎵','🎨','🎯','💪','👑'] %}
+                <button onclick="selectEmoji('{{ emoji }}')"
+                    style="padding:6px;border:1.5px solid #e0e0e0;border-radius:8px;background:#fff;
+                           cursor:pointer;font-size:18px;line-height:1.2;transition:all 0.1s;"
+                    class="emoji-btn" data-emoji="{{ emoji }}">{{ emoji }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- リセット -->
+        <button onclick="resetIcon()" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:10px;
+            background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;margin-bottom:12px;">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">refresh</span>
+            イニシャルに戻す
+        </button>
+
+        <!-- 保存ボタン -->
+        <button id="icon-save-btn" onclick="saveIcon()"
+            style="width:100%;padding:12px;background:#1a73e8;color:#fff;border:none;
+                   border-radius:12px;font-weight:800;font-size:0.95rem;cursor:pointer;">
+            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span>
+            保存する
+        </button>
+    </div>
 </div>
 
 {% if birthday_users %}
@@ -234,6 +331,136 @@
 {% block extra_script %}
 <script>
 (function(){
+    let selectedEmoji = '';
+    let selectedPhotoFile = null;
+    let clearImage = false;
+
+    window.openIconEdit = function() {
+        document.getElementById('icon-edit-modal').style.display = 'flex';
+    };
+    window.closeIconEdit = function() {
+        document.getElementById('icon-edit-modal').style.display = 'none';
+    };
+    // モーダル外タップで閉じる
+    document.getElementById('icon-edit-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeIconEdit();
+    });
+
+    window.selectEmoji = function(emoji) {
+        selectedEmoji = emoji;
+        selectedPhotoFile = null;
+        clearImage = true;
+        // プレビュー更新
+        const preview = document.getElementById('icon-preview');
+        preview.innerHTML = `<span id="icon-preview-text" style="font-size:32px;">${emoji}</span>`;
+        // ハイライト
+        document.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.style.borderColor = btn.dataset.emoji === emoji ? '#1a73e8' : '#e0e0e0';
+            btn.style.background = btn.dataset.emoji === emoji ? '#e8f0fe' : '#fff';
+        });
+    };
+
+    window.onIconPhotoSelect = function(input) {
+        const file = input.files[0];
+        if (!file) return;
+        selectedPhotoFile = file;
+        selectedEmoji = '';
+        clearImage = false;
+        const reader = new FileReader();
+        reader.onload = e => {
+            const preview = document.getElementById('icon-preview');
+            preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    window.resetIcon = function() {
+        selectedEmoji = '';
+        selectedPhotoFile = null;
+        clearImage = true;
+        const initial = '{{ my_initial }}';
+        const color = '{{ my_color }}';
+        const preview = document.getElementById('icon-preview');
+        preview.style.background = color;
+        preview.innerHTML = `<span style="font-size:28px;font-weight:800;color:#fff;">${initial}</span>`;
+        document.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.style.borderColor = '#e0e0e0';
+            btn.style.background = '#fff';
+        });
+    };
+
+    window.saveIcon = async function() {
+        const btn = document.getElementById('icon-save-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">hourglass_top</span> 保存中...';
+
+        try {
+            const formData = new FormData();
+            formData.append('icon_emoji', selectedEmoji);
+            if (selectedPhotoFile) {
+                // 写真を圧縮
+                const compressed = await compressIconImage(selectedPhotoFile);
+                formData.append('photo', compressed, 'icon.jpg');
+            }
+            if (clearImage && !selectedPhotoFile) {
+                formData.append('clear_image', '1');
+            }
+
+            const res = await fetch('/api/update_my_icon', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                // ページ上のアイコンも更新
+                const myBtn = document.getElementById('my-icon-btn');
+                if (selectedPhotoFile && data.icon_image_url) {
+                    myBtn.innerHTML = `<img src="${data.icon_image_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                } else if (selectedEmoji) {
+                    myBtn.innerHTML = `<span style="font-size:22px;line-height:1;">${selectedEmoji}</span>`;
+                } else {
+                    myBtn.innerHTML = `<span style="font-size:18px;font-weight:800;color:#fff;">{{ my_initial }}</span>`;
+                }
+                closeIconEdit();
+                // 保存完了トースト
+                const toast = document.createElement('div');
+                toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+                toast.textContent = '✅ アイコンを更新しました';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2500);
+            } else {
+                alert('保存に失敗しました');
+            }
+        } catch(e) {
+            alert('エラー: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 保存する';
+        }
+    };
+
+    // アイコン画像圧縮（150px正方形）
+    function compressIconImage(file) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 150; canvas.height = 150;
+                    const ctx = canvas.getContext('2d');
+                    // 正方形にクロップ
+                    const size = Math.min(img.width, img.height);
+                    const sx = (img.width - size) / 2;
+                    const sy = (img.height - size) / 2;
+                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 150, 150);
+                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // 更新履歴クリック
     document.querySelectorAll('.history-item[data-user]').forEach(el => {
         el.addEventListener('click', function() {
             const user = this.dataset.user;

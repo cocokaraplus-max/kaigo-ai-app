@@ -320,6 +320,37 @@ def manual():
         updated=datetime.now(tokyo_tz).strftime("%Y-%m-%d"),
     )
 
+@app.route('/api/update_my_icon', methods=['POST'])
+@login_required
+def api_update_my_icon():
+    """スタッフ自身のアイコンを更新"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+
+        icon_emoji = request.form.get("icon_emoji", "")
+        photo = request.files.get("photo")
+
+        image_url = ""
+        if photo and photo.filename:
+            from utils import upload_images_to_supabase
+            urls = upload_images_to_supabase(supabase, [photo], f_code)
+            if urls:
+                image_url = urls[0]
+
+        update_data = {"icon_emoji": icon_emoji}
+        if image_url:
+            update_data["icon_image_url"] = image_url
+        elif request.form.get("clear_image") == "1":
+            update_data["icon_image_url"] = ""
+
+        supabase.table("staffs").update(update_data).eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        return jsonify({"status": "success", "icon_emoji": icon_emoji, "icon_image_url": image_url})
+    except Exception as e:
+        print(f"update_my_icon error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/patients_cache')
 @login_required
 def api_patients_cache():
@@ -481,7 +512,24 @@ def top():
     except:
         pass
 
-    return render("top.html", f_code=f_code, my_name=my_name, records=records, birthday_users=get_birthday_users(supabase, f_code))
+    # 自分のアイコン情報を取得
+    my_icon_emoji = ""
+    my_icon_image_url = ""
+    try:
+        icon_res = supabase.table("staffs").select("icon_emoji,icon_image_url").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        if icon_res.data:
+            my_icon_emoji = icon_res.data[0].get("icon_emoji") or ""
+            my_icon_image_url = icon_res.data[0].get("icon_image_url") or ""
+    except:
+        pass
+
+    return render("top.html", f_code=f_code, my_name=my_name, records=records,
+        birthday_users=get_birthday_users(supabase, f_code),
+        my_icon_emoji=my_icon_emoji,
+        my_icon_image_url=my_icon_image_url,
+        my_color=staff_color(my_name),
+        my_initial=staff_initial(my_name),
+    )
 
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
@@ -699,21 +747,23 @@ def staff_initial(name):
     return name[:1] if name else "?"
 
 def get_staff_icons(supabase, f_code):
-    """施設の全スタッフアイコン情報を取得 {staff_name: {color, initial, emoji}}"""
+    """施設の全スタッフアイコン情報を取得 {staff_name: {color, initial, emoji, image_url}}"""
     icons = {}
     try:
-        # まずicon_emojiあり
         try:
-            res = supabase.table("staffs").select("staff_name,icon_emoji").eq("facility_code", f_code).eq("is_active", True).execute()
+            res = supabase.table("staffs").select("staff_name,icon_emoji,icon_image_url").eq("facility_code", f_code).eq("is_active", True).execute()
         except:
-            # icon_emojiカラムがない場合はstaff_nameだけ取得
-            res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
+            try:
+                res = supabase.table("staffs").select("staff_name,icon_emoji").eq("facility_code", f_code).eq("is_active", True).execute()
+            except:
+                res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
         for s in (res.data or []):
             name = s["staff_name"]
             icons[name] = {
                 "color": staff_color(name),
                 "initial": staff_initial(name),
                 "emoji": s.get("icon_emoji") or "",
+                "image_url": s.get("icon_image_url") or "",
             }
     except:
         pass
@@ -723,7 +773,7 @@ def staff_icon_data(icons, name):
     """get_staff_iconsの結果から1名分のアイコンデータを取得（なければデフォルト）"""
     if name in icons:
         return icons[name]
-    return {"color": staff_color(name), "initial": staff_initial(name), "emoji": ""}
+    return {"color": staff_color(name), "initial": staff_initial(name), "emoji": "", "image_url": ""}
 
 @app.route('/chat')
 @login_required
@@ -891,7 +941,8 @@ def chat_room(room_id):
                         "is_mine": r["staff_name"] == my_name,
                         "color": ic["color"],
                         "initial": ic["initial"],
-                        "emoji": ic["emoji"],
+                        "emoji": ic.get("emoji", ""),
+                        "image_url": ic.get("image_url", ""),
                         "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
                         "time_label": dt.strftime("%H:%M"),
                         "readers": readers,

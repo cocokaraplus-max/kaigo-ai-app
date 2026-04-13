@@ -204,7 +204,10 @@
     {% if is_group %}
     <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">group</span>
     {% else %}
-    <div class="staff-avatar chat-avatar" style="background:{{ other_color }};width:32px;height:32px;font-size:0.8rem;">{{ other_initial }}</div>
+    <div class="staff-avatar chat-avatar" style="background:{{ other_color }};width:32px;height:32px;font-size:0.8rem;overflow:hidden;">
+        {% if other_emoji %}<span style="font-size:18px;">{{ other_emoji }}</span>
+        {% else %}{{ other_initial }}{% endif %}
+    </div>
     {% endif %}
     <span class="chat-room-title">{{ room_name }}</span>
     {% if is_group %}
@@ -229,7 +232,11 @@
             {% set ns.prev_date = msg.date_label %}
             {% endif %}
             <div class="chat-bubble-wrap {% if msg.is_mine %}mine{% endif %}" id="msg-{{ msg.id }}">
-                <div class="chat-avatar" style="background:{{ msg.color }};">{{ msg.initial }}</div>
+                <div class="chat-avatar" style="background:{{ msg.color }};overflow:hidden;">
+                    {% if msg.image_url %}<img src="{{ msg.image_url }}" style="width:100%;height:100%;object-fit:cover;">
+                    {% elif msg.emoji %}<span style="font-size:18px;">{{ msg.emoji }}</span>
+                    {% else %}{{ msg.initial }}{% endif %}
+                </div>
                 <div class="chat-bubble-content">
                     <div class="chat-name">{{ msg.staff_name }}</div>
                     <div class="chat-bubble">{{ msg.content }}</div>
