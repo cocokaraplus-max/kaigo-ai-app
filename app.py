@@ -866,30 +866,40 @@ def chat_room(room_id):
         pass
 
     for r in (msg_res.data or []):
-        dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
-        today = datetime.now(tokyo_tz).date()
-        # 既読者リスト（自分のメッセージのみ・自分以外で既読済みの人）
-        readers = []
-        if r["staff_name"] == my_name:
-            for mn, last_read in mem_reads.items():
-                if mn == my_name:
-                    continue
-                if last_read and last_read >= r["created_at"]:
-                    ic = staff_icon_data(icons, mn)
-                    readers.append({"staff_name": mn, "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
-        ic = staff_icon_data(icons, r["staff_name"])
-        messages.append({
-            "id": r["id"],
-            "staff_name": r["staff_name"],
-            "content": r["content"],
-            "is_mine": r["staff_name"] == my_name,
-            "color": ic["color"],
-            "initial": ic["initial"],
-            "emoji": ic["emoji"],
-            "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
-            "time_label": dt.strftime("%H:%M"),
-            "readers": readers,
-        })
+        try:
+            dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+            today = datetime.now(tokyo_tz).date()
+            # 既読者リスト
+            readers = []
+            if r["staff_name"] == my_name:
+                msg_dt_str = str(r["created_at"])
+                for mn, last_read in mem_reads.items():
+                    if mn == my_name:
+                        continue
+                    try:
+                        if last_read:
+                            # 文字列比較（どちらもISO形式なので辞書順で比較可能）
+                            if str(last_read) >= msg_dt_str:
+                                ic = staff_icon_data(icons, mn)
+                                readers.append({"staff_name": mn, "color": ic["color"], "initial": ic["initial"], "emoji": ic["emoji"]})
+                    except:
+                        pass
+            ic = staff_icon_data(icons, r["staff_name"])
+            messages.append({
+                "id": r["id"],
+                "staff_name": r["staff_name"],
+                "content": r.get("content", ""),
+                "is_mine": r["staff_name"] == my_name,
+                "color": ic["color"],
+                "initial": ic["initial"],
+                "emoji": ic["emoji"],
+                "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
+                "time_label": dt.strftime("%H:%M"),
+                "readers": readers,
+            })
+        except Exception as e:
+            print(f"message parse error: {e}", flush=True)
+            continue
 
     return render("chat_room.html",
         room_id=room_id,
@@ -1887,27 +1897,27 @@ def api_scan_patients_from_image():
         from utils import get_generative_model
         model = get_generative_model()
 
-        prompt = """この画像には利用者名簿・介護ソフト画面・紙の表など、人の名前と情報が含まれています。
-画像から全ての人の情報を読み取り、以下のJSON形式のみで返してください（説明文・コードブロック不要）：
+        prompt = """この画像を詳しく解析してください。利用者名簿・介護ソフトの画面・紙の名簿・Excel表など、人の名前と情報が含まれている可能性があります。
+
+画像に含まれる全ての人物の情報を読み取り、以下のJSON形式のみで返してください（前置きや説明文は一切不要）：
 
 {"patients": [
   {
-    "name": "氏名（漢字）",
-    "kana": "ふりがな（ひらがなまたはカタカナ）",
-    "birth_date": "生年月日（YYYY-MM-DD形式、西暦に変換）",
-    "chart": "カルテ番号や利用者番号（あれば）",
-    "weekdays": "利用曜日（月=1,火=2,水=3,木=4,金=5,土=6,日=0 の数字を連結。例：月水金なら「135」）",
-    "ampm": "利用時間帯（AM/PM/BOTHのいずれか。午前ならAM、午後ならPM、両方またはわからなければBOTH）"
+    "name": "氏名（漢字。姓と名の間のスペースは除去）",
+    "kana": "ふりがな（ひらがな。読み取れなければ空文字）",
+    "birth_date": "生年月日をYYYY-MM-DD形式で（和暦も西暦に変換。例：昭和30年3月15日→1955-03-15、S30.3.15→1955-03-15）",
+    "chart": "カルテ番号・利用者番号・IDなど（なければ空文字）",
+    "weekdays": "利用曜日の数字を連結（月=1,火=2,水=3,木=4,金=5,土=6,日=0。例：月水金→135。わからなければ空文字）",
+    "ampm": "AM（午前）かPM（午後）かBOTH（両方/不明）"
   }
 ]}
 
-注意事項：
-- 生年月日は必ず西暦YYYY-MM-DD形式に変換してください（例：昭和30年3月15日 → 1955-03-15）
-- ふりがなが読み取れない場合は空文字にしてください
-- カルテ番号がない場合は空文字にしてください
-- 利用曜日・時間帯が読み取れない場合は空文字にしてください
-- 読み取れない項目はnullではなく空文字にしてください
-- 1人でも複数人でも全員読み取ってください"""
+重要な注意：
+- 表の中の全ての行を漏れなく読み取ること
+- 生年月日は必ず西暦YYYY-MM-DDに変換すること
+- 昭和元年=1926年、平成元年=1989年、令和元年=2019年
+- 読み取れない文字はそのままにせず、前後の文脈から推測すること
+- 絶対にJSON以外の文字を返さないこと"""
 
         import json as _json
         import re as _re
