@@ -224,16 +224,18 @@
             </div>
             <div class="birth-result" id="manual-birth-result"></div>
         </div>
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group" style="margin-bottom:8px;">
             <label class="form-label">
                 <span class="material-symbols-outlined">translate</span>
-                ローマ字のお名前（任意・D/S/P/IT/LL計算用）
+                ふりがな（D/S/P/IT/LL計算用）
             </label>
-            <input type="text" id="manual-roman" class="form-control"
-                placeholder="例：YAMADA TARO（半角大文字）"
-                oninput="this.value=this.value.toUpperCase()">
-            <div style="font-size:0.72rem;color:#80868b;margin-top:4px;">
-                ヘボン式ローマ字。未入力の場合はLP・Bのみ計算します。
+            <input type="text" id="manual-kana" class="form-control"
+                placeholder="例：やまだ たろう（ひらがな）"
+                oninput="onKanaInput(this.value)">
+            <div id="manual-roman-preview" style="font-size:0.78rem;color:#1a73e8;margin-top:4px;font-weight:700;min-height:18px;"></div>
+            <input type="hidden" id="manual-roman">
+            <div style="font-size:0.72rem;color:#80868b;margin-top:2px;">
+                ひらがなを入力するとヘボン式ローマ字に自動変換されます
             </div>
         </div>
     </div>
@@ -260,19 +262,75 @@ window.switchMode = function(name, el) {
 // ========== 利用者検索 ==========
 const PATIENTS = {{ patients | tojson }};
 
+// ========== ひらがな→ヘボン式ローマ字変換 ==========
+function kanaToRomaji(kana) {
+    if (!kana) return '';
+    // カタカナをひらがなに統一
+    const hira = kana.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const map = [
+        // 特殊（順序重要）
+        ['しゃ','sha'],['しゅ','shu'],['しょ','sho'],
+        ['ちゃ','cha'],['ちゅ','chu'],['ちょ','cho'],
+        ['つぁ','tsa'],['てぃ','ti'],['とぅ','tu'],
+        ['にゃ','nya'],['にゅ','nyu'],['にょ','nyo'],
+        ['ひゃ','hya'],['ひゅ','hyu'],['ひょ','hyo'],
+        ['みゃ','mya'],['みゅ','myu'],['みょ','myo'],
+        ['りゃ','rya'],['りゅ','ryu'],['りょ','ryo'],
+        ['ぎゃ','gya'],['ぎゅ','gyu'],['ぎょ','gyo'],
+        ['じゃ','ja'], ['じゅ','ju'], ['じょ','jo'],
+        ['びゃ','bya'],['びゅ','byu'],['びょ','byo'],
+        ['ぴゃ','pya'],['ぴゅ','pyu'],['ぴょ','pyo'],
+        ['きゃ','kya'],['きゅ','kyu'],['きょ','kyo'],
+        // 基本
+        ['あ','a'],['い','i'],['う','u'],['え','e'],['お','o'],
+        ['か','ka'],['き','ki'],['く','ku'],['け','ke'],['こ','ko'],
+        ['さ','sa'],['し','shi'],['す','su'],['せ','se'],['そ','so'],
+        ['た','ta'],['ち','chi'],['つ','tsu'],['て','te'],['と','to'],
+        ['な','na'],['に','ni'],['ぬ','nu'],['ね','ne'],['の','no'],
+        ['は','ha'],['ひ','hi'],['ふ','fu'],['へ','he'],['ほ','ho'],
+        ['ま','ma'],['み','mi'],['む','mu'],['め','me'],['も','mo'],
+        ['や','ya'],['ゆ','yu'],['よ','yo'],
+        ['ら','ra'],['り','ri'],['る','ru'],['れ','re'],['ろ','ro'],
+        ['わ','wa'],['を','wo'],['ん','n'],
+        ['が','ga'],['ぎ','gi'],['ぐ','gu'],['げ','ge'],['ご','go'],
+        ['ざ','za'],['じ','ji'],['ず','zu'],['ぜ','ze'],['ぞ','zo'],
+        ['だ','da'],['ぢ','di'],['づ','du'],['で','de'],['ど','do'],
+        ['ば','ba'],['び','bi'],['ぶ','bu'],['べ','be'],['ぼ','bo'],
+        ['ぱ','pa'],['ぴ','pi'],['ぷ','pu'],['ぺ','pe'],['ぽ','po'],
+        ['ぁ','a'],['ぃ','i'],['ぅ','u'],['ぇ','e'],['ぉ','o'],
+        ['っ','tsu'],['ー',''],['　',' '],[' ',' '],
+    ];
+    let result = hira;
+    for (const [k, r] of map) result = result.split(k).join(r);
+    return result.toUpperCase().replace(/[^A-Z ]/g, '');
+}
+
+window.onKanaInput = function(val) {
+    const roman = kanaToRomaji(val);
+    document.getElementById('manual-roman').value = roman;
+    document.getElementById('manual-roman-preview').textContent =
+        roman ? '→ ローマ字: ' + roman : '';
+};
+
 window.searchPerson = function(q) {
     const cands = document.getElementById('num-candidates');
     if (!q.trim()) { cands.classList.remove('show'); return; }
-    const hits = PATIENTS.filter(p =>
-        p.label.toLowerCase().includes(q.toLowerCase()) ||
-        (p.user_kana||'').includes(q)
-    ).slice(0,10);
+    const ql = q.toLowerCase();
+    const hits = PATIENTS.filter(p => {
+        const name  = (p.user_name || '').toLowerCase();
+        const kana  = (p.user_kana || '').toLowerCase();
+        const label = (p.label    || '').toLowerCase();
+        return name.includes(ql) || kana.includes(ql) || label.includes(ql);
+    }).slice(0,10);
     if (!hits.length) { cands.classList.remove('show'); return; }
-    cands.innerHTML = hits.map(p =>
-        `<div class="search-candidate-item" onclick="selectPerson('${p.value.replace(/'/g,"\\'")}','${p.user_name}','${p.birth_date||''}','${p.user_kana||''}')">
-            ${p.label}
-        </div>`
+    cands.innerHTML = hits.map((p,i) =>
+        `<div class="search-candidate-item" data-idx="${i}">${p.label}</div>`
     ).join('');
+    cands.querySelectorAll('[data-idx]').forEach((el, i) => {
+        const p = hits[i];
+        el.addEventListener('mousedown', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||''); });
+        el.addEventListener('touchend', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||''); });
+    });
     cands.classList.add('show');
 };
 
@@ -281,11 +339,13 @@ window.selectPerson = function(val, name, birth, kana) {
     document.getElementById('num-search').value = '';
     document.getElementById('search-selected').style.display = 'flex';
     document.getElementById('search-selected-label').textContent = name;
+    // ふりがなからローマ字を自動生成
+    const roman = kanaToRomaji(kana);
     if (birth) {
-        renderSushi(name, birth, '', 'search-result');
+        renderSushi(name, birth, roman, 'search-result');
     } else {
         document.getElementById('search-result').innerHTML =
-            '<div class="alert alert-warning"><span class="material-symbols-outlined">warning</span>生年月日が登録されていません。</div>';
+            `<div class="alert alert-warning" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;"><span class="material-symbols-outlined">warning</span><div><b>${name}</b>さんの生年月日が登録されていません。<br><span style="font-size:0.82rem;color:#5f6368;">管理者MENUの利用者管理から登録してください。</span></div></div>`;
     }
 };
 
