@@ -80,7 +80,6 @@
     background: #f0f2f5;
     color: #202124;
     border-bottom-left-radius: 4px;
-    /* ★ 吹き出しアニメーション */
     animation: bubbleIn 0.18s ease;
 }
 @keyframes bubbleIn {
@@ -136,7 +135,6 @@
 .chat-send-btn .material-symbols-outlined { font-size: 20px; color: white; }
 .chat-send-btn:disabled { background: #e0e0e0; }
 .chat-send-btn:disabled .material-symbols-outlined { color: #bbb; }
-/* ★ 接続状態インジケーター */
 .realtime-dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: #ccc; display: inline-block;
@@ -279,7 +277,6 @@ const MY_INITIAL = {{ my_initial | tojson }};
 const SUPA_URL   = {{ supabase_url | tojson }};
 const SUPA_KEY   = {{ supabase_anon_key | tojson }};
 
-// ===== ユーティリティ =====
 function escapeHtml(str) {
     return String(str)
         .replace(/&/g, '&amp;')
@@ -340,7 +337,6 @@ scrollToBottom(false);
 setTimeout(function() { scrollToBottom(false); }, 100);
 markRead();
 
-// ===== 既読マーク =====
 function markRead() {
     fetch('/api/mark_read', {
         method: 'POST',
@@ -381,21 +377,26 @@ window.sendMessage = async function() {
     var btn = document.getElementById('send-btn');
     btn.disabled = true;
 
-    // 楽観的UI
+    // 楽観的UI：先に自分の吹き出しを表示
     var tempId = 'temp-' + Date.now();
     var msgArea = document.getElementById('chat-messages');
     var noMsg = msgArea.querySelector('.no-messages');
     if (noMsg) noMsg.remove();
 
     msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
-        id: tempId, staff_name: MY_NAME, content: content,
-        is_mine: true, color: MY_COLOR, initial: MY_INITIAL,
-        emoji: '', image_url: '', time_label: nowTimeLabel()
+        id: tempId,
+        staff_name: MY_NAME,
+        content: content,
+        is_mine: true,
+        color: MY_COLOR,
+        initial: MY_INITIAL,
+        emoji: '',
+        image_url: '',
+        time_label: nowTimeLabel()
     }));
     input.value = '';
     input.style.height = 'auto';
     scrollToBottom(true);
-    // 通知サウンド（自分の送信時は鳴らさない）
 
     try {
         var res = await fetch('/api/send_room_message', {
@@ -408,7 +409,6 @@ window.sendMessage = async function() {
             document.getElementById(tempId)?.remove();
             alert('送信に失敗しました: ' + (data.message || res.status));
         }
-        // tempメッセージはRealtimeで本メッセージに置き換わる
     } catch(e) {
         document.getElementById(tempId)?.remove();
         alert('通信エラー: ' + e.message);
@@ -464,21 +464,18 @@ if (drawer) {
     });
 }
 
-// ===== ★ Supabase Realtime =====
+// ===== Supabase Realtime =====
 var realtimeChannel = null;
 
 function startRealtime() {
-    if (!SUPA_URL || !SUPA_KEY) {
-        // フォールバック：ポーリング1秒
+    if (!SUPA_URL || !SUPA_KEY || typeof supabase === 'undefined') {
         setDot('connecting');
         setInterval(pollFallback, 1000);
         return;
     }
-
     try {
         var client = supabase.createClient(SUPA_URL, SUPA_KEY);
         setDot('connecting');
-
         realtimeChannel = client
             .channel('chat_messages:room_id=eq.' + ROOM_ID)
             .on('postgres_changes', {
@@ -494,29 +491,30 @@ function startRealtime() {
                     setDot('connected');
                 } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
                     setDot('disconnected');
-                    // 切断時はポーリングにフォールバック
                     setTimeout(startRealtime, 3000);
                 }
             });
     } catch(e) {
-        console.log('[Realtime] 初期化失敗:', e);
         setDot('connecting');
         setInterval(pollFallback, 1000);
     }
 }
 
-// Realtimeから新着メッセージを受信したとき
+// ===== ★ 修正済み：新着メッセージ処理 =====
 async function handleNewMessage(row) {
-    // 自分が送ったメッセージはtempで既に表示済みなのでtempを本IDに置換
-    var tempEls = document.querySelectorAll('[id^="temp-"]');
-    if (row.staff_name === MY_NAME && tempEls.length > 0) {
-        tempEls[0].id = 'msg-' + row.id;
+    // ★ 自分のメッセージはtempを本IDに置き換えるだけ・絶対に追加しない
+    if (row.staff_name === MY_NAME) {
+        var tempEls = document.querySelectorAll('[id^="temp-"]');
+        if (tempEls.length > 0) {
+            tempEls[0].id = 'msg-' + row.id;
+        }
         return;
     }
+
     // 既に表示済みならスキップ
     if (document.getElementById('msg-' + row.id)) return;
 
-    // アイコン情報をAPIから取得（キャッシュ利用）
+    // 相手のメッセージをアイコン情報付きで表示
     var iconInfo = await getIconInfo(row.staff_name);
     var msgArea = document.getElementById('chat-messages');
     var wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
@@ -547,7 +545,6 @@ async function handleNewMessage(row) {
 var iconCache = {};
 async function getIconInfo(staffName) {
     if (iconCache[staffName]) return iconCache[staffName];
-    // デフォルト値を先に設定
     var colors = ["#1a73e8","#34a853","#ea4335","#fbbc04","#9c27b0","#00bcd4","#ff5722","#607d8b","#e91e63","#4caf50"];
     var h = 0;
     for (var i = 0; i < staffName.length; i++) h = staffName.charCodeAt(i) + ((h << 5) - h);
@@ -557,7 +554,7 @@ async function getIconInfo(staffName) {
     return info;
 }
 
-// ===== フォールバック：ポーリング（Realtime失敗時） =====
+// ===== フォールバック：ポーリング1秒 =====
 async function pollFallback() {
     try {
         var lastId = getLastMsgId();
@@ -578,10 +575,8 @@ async function pollFallback() {
     } catch(e) {}
 }
 
-// Realtime開始
 startRealtime();
 
-// ページを離れるときにチャンネルを切断
 window.addEventListener('beforeunload', function() {
     if (realtimeChannel) realtimeChannel.unsubscribe();
 });
