@@ -700,7 +700,12 @@ def get_staff_icons(supabase, f_code):
     """施設の全スタッフアイコン情報を取得 {staff_name: {color, initial, emoji}}"""
     icons = {}
     try:
-        res = supabase.table("staffs").select("staff_name,icon_emoji").eq("facility_code", f_code).eq("is_active", True).execute()
+        # まずicon_emojiあり
+        try:
+            res = supabase.table("staffs").select("staff_name,icon_emoji").eq("facility_code", f_code).eq("is_active", True).execute()
+        except:
+            # icon_emojiカラムがない場合はstaff_nameだけ取得
+            res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
         for s in (res.data or []):
             name = s["staff_name"]
             icons[name] = {
