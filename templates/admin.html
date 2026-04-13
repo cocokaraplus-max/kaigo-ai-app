@@ -293,9 +293,15 @@
             <span class="material-symbols-outlined">lock</span>
             <span id="auth-pw-label">管理者パスワード</span>
         </label>
-        <input type="password" name="admin_pw" class="form-control"
-            style="margin-bottom:12px;" id="auth-pw-input"
-            placeholder="パスワードを入力">
+        <div style="position:relative;">
+            <input type="password" name="admin_pw" class="form-control"
+                style="margin-bottom:12px;padding-right:44px;" id="auth-pw-input"
+                placeholder="パスワードを入力">
+            <span onclick="togglePw('auth-pw-input','auth-pw-eye')"
+                style="position:absolute;right:12px;top:calc(50% - 6px);transform:translateY(-50%);cursor:pointer;color:#80868b;">
+                <span class="material-symbols-outlined" id="auth-pw-eye" style="font-size:20px;">visibility</span>
+            </span>
+        </div>
         {% if error %}
         <div class="alert alert-error" style="margin-bottom:12px;">
             <span class="material-symbols-outlined">error</span>

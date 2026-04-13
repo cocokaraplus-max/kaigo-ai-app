@@ -31,7 +31,13 @@
             <span class="material-symbols-outlined">lock</span>
             パスワード
         </label>
-        <input type="password" name="password" class="form-control">
+        <div style="position:relative;">
+            <input type="password" name="password" class="form-control" id="login-password" style="padding-right:44px;">
+            <span onclick="togglePw('login-password','login-eye')"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:#80868b;user-select:none;">
+                <span class="material-symbols-outlined" id="login-eye" style="font-size:20px;">visibility</span>
+            </span>
+        </div>
     </div>
 
     <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">
@@ -49,4 +55,20 @@
 <div style="text-align:center; margin-top:1rem;">
     <a href="/register" style="font-size:0.82rem; color:#1a73e8; text-decoration:none;">施設の新規登録はこちら</a>
 </div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function togglePw(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.textContent = 'visibility_off';
+    } else {
+        input.type = 'password';
+        icon.textContent = 'visibility';
+    }
+}
+</script>
 {% endblock %}
