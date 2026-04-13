@@ -1,0 +1,885 @@
+{% extends "base.html" %}
+{% block title %}使い方ガイド - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
+
+:root {
+    --c-blue:    #1a73e8;
+    --c-green:   #34a853;
+    --c-orange:  #fb8c00;
+    --c-red:     #ea4335;
+    --c-purple:  #9c27b0;
+    --c-teal:    #00897b;
+    --c-pink:    #e91e63;
+    --c-amber:   #f9a825;
+    --c-bg:      #f8f9fa;
+    --c-card:    #ffffff;
+    --c-text:    #202124;
+    --c-sub:     #5f6368;
+}
+
+.manual-wrap {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--c-bg);
+    padding-bottom: 40px;
+}
+
+/* ===== ヒーロー ===== */
+.manual-hero {
+    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 50%, #311b92 100%);
+    padding: 40px 20px 48px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.manual-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.hero-logo {
+    width: 80px; height: 80px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255,255,255,0.3);
+}
+.hero-title {
+    font-family: 'Zen Maru Gothic', sans-serif;
+    font-size: 1.8rem; font-weight: 700;
+    color: #fff; margin-bottom: 8px;
+    letter-spacing: 0.05em;
+}
+.hero-sub {
+    font-size: 0.88rem; color: rgba(255,255,255,0.8);
+    line-height: 1.6;
+}
+.hero-version {
+    display: inline-block;
+    margin-top: 12px;
+    background: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.9);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.25);
+}
+
+/* ===== 目次 ===== */
+.toc {
+    background: #fff;
+    margin: 0 16px 20px;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    transform: translateY(-20px);
+}
+.toc-title {
+    font-size: 0.78rem; font-weight: 700;
+    color: var(--c-sub); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 4px;
+}
+.toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.toc-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--c-bg);
+    text-decoration: none;
+    font-size: 0.78rem; font-weight: 600;
+    color: var(--c-text);
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.toc-item:active { transform: scale(0.97); }
+.toc-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ===== セクション ===== */
+.manual-section {
+    margin: 0 16px 20px;
+    background: var(--c-card);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+.section-header {
+    padding: 16px 18px 14px;
+    display: flex; align-items: center; gap: 12px;
+}
+.section-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.section-title { font-size: 1rem; font-weight: 800; color: var(--c-text); }
+.section-desc  { font-size: 0.78rem; color: var(--c-sub); margin-top: 2px; }
+.section-body  { padding: 0 18px 18px; }
+
+/* ===== イラスト ===== */
+.illust-box {
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    background: var(--c-bg);
+}
+
+/* ===== ステップ ===== */
+.step-list { list-style: none; padding: 0; margin: 0 0 12px; }
+.step-item {
+    display: flex; gap: 12px; margin-bottom: 12px;
+    align-items: flex-start;
+}
+.step-num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 800;
+    color: #fff; flex-shrink: 0; margin-top: 1px;
+}
+.step-content { flex: 1; }
+.step-label  { font-size: 0.88rem; font-weight: 700; margin-bottom: 2px; }
+.step-detail { font-size: 0.78rem; color: var(--c-sub); line-height: 1.5; }
+
+/* ===== ポイント ===== */
+.point-box {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin-bottom: 10px;
+    display: flex; gap: 8px; align-items: flex-start;
+}
+.point-box .material-symbols-outlined { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+/* ===== 機能バッジ ===== */
+.feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.feature-badge {
+    background: var(--c-bg);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+}
+.feature-emoji { font-size: 24px; display: block; margin-bottom: 4px; }
+.feature-name  { font-size: 0.72rem; font-weight: 700; color: var(--c-text); }
+.feature-note  { font-size: 0.65rem; color: var(--c-sub); margin-top: 2px; }
+
+/* ===== 注意 ===== */
+.caution-box {
+    background: #fff8e1;
+    border: 1.5px solid #f9a825;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: #e65100;
+    display: flex; gap: 6px; align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+/* ===== フッター ===== */
+.manual-footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.75rem;
+    color: var(--c-sub);
+}
+
+/* ===== アニメーション ===== */
+@keyframes fadeInUp {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+.manual-section { animation: fadeInUp 0.4s ease both; }
+.manual-section:nth-child(2)  { animation-delay: 0.05s; }
+.manual-section:nth-child(3)  { animation-delay: 0.10s; }
+.manual-section:nth-child(4)  { animation-delay: 0.15s; }
+.manual-section:nth-child(5)  { animation-delay: 0.20s; }
+.manual-section:nth-child(6)  { animation-delay: 0.25s; }
+.manual-section:nth-child(7)  { animation-delay: 0.30s; }
+.manual-section:nth-child(8)  { animation-delay: 0.35s; }
+.manual-section:nth-child(9)  { animation-delay: 0.40s; }
+.manual-section:nth-child(10) { animation-delay: 0.45s; }
+.manual-section:nth-child(11) { animation-delay: 0.50s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="manual-wrap">
+
+<!-- ===== ヒーロー ===== -->
+<div class="manual-hero">
+    <div class="hero-logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="18" r="10" fill="white" opacity="0.9"/>
+            <circle cx="18" cy="14" r="4" fill="#1a73e8"/>
+            <circle cx="30" cy="14" r="4" fill="#1a73e8"/>
+            <ellipse cx="24" cy="32" rx="14" ry="10" fill="white" opacity="0.9"/>
+            <circle cx="19" cy="30" r="2" fill="#1a73e8"/>
+            <circle cx="29" cy="30" r="2" fill="#1a73e8"/>
+            <path d="M20 35 Q24 38 28 35" stroke="#1a73e8" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+    </div>
+    <div class="hero-title">🦝 TASUKARU</div>
+    <div class="hero-sub">介護ケース記録アプリ<br>かんたん使い方ガイド</div>
+    <div class="hero-version">Ver. {{ version }} ・ 最終更新 {{ updated }}</div>
+</div>
+
+<!-- ===== 目次 ===== -->
+<div class="toc">
+    <div class="toc-title">
+        <span class="material-symbols-outlined" style="font-size:14px;">menu_book</span>
+        もくじ
+    </div>
+    <div class="toc-grid">
+        <a href="#sec-login"    class="toc-item"><div class="toc-dot" style="background:#1a73e8;"></div>ログイン</a>
+        <a href="#sec-input"    class="toc-item"><div class="toc-dot" style="background:#34a853;"></div>記録入力</a>
+        <a href="#sec-daily"    class="toc-item"><div class="toc-dot" style="background:#00897b;"></div>ケース記録</a>
+        <a href="#sec-vitals"   class="toc-item"><div class="toc-dot" style="background:#e91e63;"></div>バイタル</a>
+        <a href="#sec-calendar" class="toc-item"><div class="toc-dot" style="background:#fb8c00;"></div>カレンダー</a>
+        <a href="#sec-chat"     class="toc-item"><div class="toc-dot" style="background:#9c27b0;"></div>トーク</a>
+        <a href="#sec-monitor"  class="toc-item"><div class="toc-dot" style="background:#0288d1;"></div>モニタリング</a>
+        <a href="#sec-assess"   class="toc-item"><div class="toc-dot" style="background:#f4511e;"></div>評価</a>
+        <a href="#sec-birthday" class="toc-item"><div class="toc-dot" style="background:#d81b60;"></div>誕生日</a>
+        <a href="#sec-numerology" class="toc-item"><div class="toc-dot" style="background:#7b1fa2;"></div>数秘</a>
+        <a href="#sec-admin"    class="toc-item"><div class="toc-dot" style="background:#455a64;"></div>管理者MENU</a>
+        <a href="#sec-offline"  class="toc-item"><div class="toc-dot" style="background:#f9a825;"></div>オフライン</a>
+    </div>
+</div>
+
+<!-- ===== 1. ログイン ===== -->
+<div id="sec-login" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#e8f0fe;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;font-size:24px;">login</span>
+        </div>
+        <div>
+            <div class="section-title">ログイン</div>
+            <div class="section-desc">アプリにサインインする</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <!-- イラスト -->
+        <div class="illust-box" style="padding:20px;">
+            <svg viewBox="0 0 320 140" xmlns="http://www.w3.org/2000/svg">
+                <rect width="320" height="140" fill="#f0f4ff" rx="12"/>
+                <!-- スマホ -->
+                <rect x="110" y="10" width="100" height="120" rx="12" fill="#fff" stroke="#1a73e8" stroke-width="2"/>
+                <rect x="130" y="30" width="60" height="8" rx="4" fill="#e8f0fe"/>
+                <rect x="122" y="28" width="6" height="12" rx="3" fill="#1a73e8" opacity="0.4"/>
+                <rect x="130" y="50" width="60" height="8" rx="4" fill="#e8f0fe"/>
+                <rect x="122" y="48" width="6" height="12" rx="3" fill="#1a73e8" opacity="0.4"/>
+                <rect x="130" y="70" width="60" height="14" rx="7" fill="#1a73e8"/>
+                <text x="160" y="81" text-anchor="middle" fill="#fff" font-size="8" font-weight="bold">ログイン</text>
+                <!-- 吹き出し -->
+                <rect x="10" y="30" width="88" height="36" rx="8" fill="#1a73e8"/>
+                <polygon points="94,42 106,48 94,54" fill="#1a73e8"/>
+                <text x="54" y="44" text-anchor="middle" fill="#fff" font-size="8" font-weight="bold">施設コードと</text>
+                <text x="54" y="56" text-anchor="middle" fill="#fff" font-size="8" font-weight="bold">パスワードを入力</text>
+                <!-- 目のアイコン -->
+                <circle cx="185" cy="54" r="5" fill="#34a853" opacity="0.8"/>
+                <text x="185" y="57" text-anchor="middle" fill="#fff" font-size="7">👁</text>
+                <text x="185" y="66" text-anchor="middle" fill="#34a853" font-size="6" font-weight="bold">表示</text>
+            </svg>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#1a73e8;">1</div>
+                <div class="step-content">
+                    <div class="step-label">施設コードを入力</div>
+                    <div class="step-detail">管理者から教えてもらった施設コード（例：cocokaraplus-5526）を入力します</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#1a73e8;">2</div>
+                <div class="step-content">
+                    <div class="step-label">パスワードを入力</div>
+                    <div class="step-detail">右側の目のアイコン👁をタップするとパスワードが見えます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#1a73e8;">3</div>
+                <div class="step-content">
+                    <div class="step-label">ログインボタンをタップ</div>
+                    <div class="step-detail">TOPページに移動します</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#e8f0fe;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">tips_and_updates</span>
+            <div>パスワードを忘れた場合は「パスワードを忘れた方はこちら」からメールでリセットできます</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 2. 記録入力 ===== -->
+<div id="sec-input" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#e6f4ea;">
+            <span class="material-symbols-outlined" style="color:#34a853;font-size:24px;">edit_note</span>
+        </div>
+        <div>
+            <div class="section-title">記録入力</div>
+            <div class="section-desc">利用者のケース記録を書く</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="illust-box" style="padding:16px;">
+            <svg viewBox="0 0 320 130" xmlns="http://www.w3.org/2000/svg">
+                <rect width="320" height="130" fill="#f1f8e9" rx="12"/>
+                <!-- 音声入力 -->
+                <circle cx="60" cy="65" r="35" fill="#34a853" opacity="0.15"/>
+                <circle cx="60" cy="65" r="22" fill="#34a853" opacity="0.3"/>
+                <circle cx="60" cy="65" r="14" fill="#34a853"/>
+                <text x="60" y="70" text-anchor="middle" fill="#fff" font-size="18">🎙</text>
+                <text x="60" y="108" text-anchor="middle" fill="#2e7d32" font-size="9" font-weight="bold">音声入力</text>
+                <!-- 矢印 -->
+                <path d="M98 65 L128 65" stroke="#34a853" stroke-width="2" marker-end="url(#arr)"/>
+                <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34a853"/></marker></defs>
+                <!-- AI変換 -->
+                <rect x="130" y="45" width="60" height="40" rx="8" fill="#fff" stroke="#34a853" stroke-width="1.5"/>
+                <text x="160" y="62" text-anchor="middle" fill="#34a853" font-size="8" font-weight="bold">AIが</text>
+                <text x="160" y="74" text-anchor="middle" fill="#34a853" font-size="8" font-weight="bold">文章に変換</text>
+                <text x="160" y="108" text-anchor="middle" fill="#2e7d32" font-size="9" font-weight="bold">自動変換</text>
+                <!-- 矢印 -->
+                <path d="M198 65 L228 65" stroke="#34a853" stroke-width="2" marker-end="url(#arr)"/>
+                <!-- 記録完成 -->
+                <rect x="230" y="35" width="70" height="60" rx="8" fill="#fff" stroke="#34a853" stroke-width="1.5"/>
+                <text x="265" y="55" text-anchor="middle" fill="#34a853" font-size="8">○○様は午前中</text>
+                <text x="265" y="66" text-anchor="middle" fill="#34a853" font-size="8">リハビリを行い</text>
+                <text x="265" y="77" text-anchor="middle" fill="#34a853" font-size="8">良好でした...</text>
+                <text x="265" y="108" text-anchor="middle" fill="#2e7d32" font-size="9" font-weight="bold">記録完成</text>
+            </svg>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#34a853;">1</div>
+                <div class="step-content">
+                    <div class="step-label">利用者を検索して選択</div>
+                    <div class="step-detail">名前・ふりがな・カルテ番号で検索できます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#34a853;">2</div>
+                <div class="step-content">
+                    <div class="step-label">記録方法を選ぶ</div>
+                    <div class="step-detail">①マイクボタンで音声入力 → AIが文章に変換<br>②直接テキストを入力</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#34a853;">3</div>
+                <div class="step-content">
+                    <div class="step-label">写真を添付（任意）</div>
+                    <div class="step-detail">カメラで撮影した写真を最大5枚まで添付できます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#34a853;">4</div>
+                <div class="step-content">
+                    <div class="step-label">保存する</div>
+                    <div class="step-detail">「記録を保存」ボタンをタップして完了</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#e6f4ea;">
+            <span class="material-symbols-outlined" style="color:#34a853;">mic</span>
+            <div>音声入力は周りに聞こえない場所でご利用ください。録音ボタンを押してから話し始め、停止ボタンで終了します</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 3. ケース記録閲覧 ===== -->
+<div id="sec-daily" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#e0f2f1;">
+            <span class="material-symbols-outlined" style="color:#00897b;font-size:24px;">calendar_month</span>
+        </div>
+        <div>
+            <div class="section-title">ケース記録</div>
+            <div class="section-desc">過去の記録を確認・AI日誌を生成</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="feature-grid">
+            <div class="feature-badge">
+                <span class="feature-emoji">📅</span>
+                <div class="feature-name">カレンダー表示</div>
+                <div class="feature-note">記録のある日に●表示</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🤖</span>
+                <div class="feature-name">AI日誌生成</div>
+                <div class="feature-note">1日の記録をまとめる</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">✏️</span>
+                <div class="feature-name">記録の編集</div>
+                <div class="feature-note">自分の記録を修正</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🗑️</span>
+                <div class="feature-name">記録の削除</div>
+                <div class="feature-note">自分の記録のみ削除可</div>
+            </div>
+        </div>
+        <div class="point-box" style="background:#e0f2f1;">
+            <span class="material-symbols-outlined" style="color:#00897b;">info</span>
+            <div>編集・削除は「自分が書いた記録」か「管理者」のみできます。他のスタッフの記録は変更できません</div>
+        </div>
+        <div class="caution-box">
+            <span class="material-symbols-outlined">warning</span>
+            削除した記録は元に戻せません。「本当に削除しますか？」の確認が出たら慎重に判断してください
+        </div>
+    </div>
+</div>
+
+<!-- ===== 4. バイタル ===== -->
+<div id="sec-vitals" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#fce4ec;">
+            <span class="material-symbols-outlined" style="color:#e91e63;font-size:24px;">monitor_heart</span>
+        </div>
+        <div>
+            <div class="section-title">バイタル</div>
+            <div class="section-desc">体温・血圧・SpO2を記録</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="illust-box" style="padding:16px;">
+            <svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+                <rect width="320" height="120" fill="#fce4ec" rx="12"/>
+                <!-- 血圧計 -->
+                <rect x="20" y="25" width="70" height="70" rx="10" fill="#fff" stroke="#e91e63" stroke-width="2"/>
+                <text x="55" y="52" text-anchor="middle" fill="#e91e63" font-size="16" font-weight="bold">120</text>
+                <text x="55" y="65" text-anchor="middle" fill="#e91e63" font-size="10">/80</text>
+                <text x="55" y="80" text-anchor="middle" fill="#e91e63" font-size="8">mmHg</text>
+                <text x="55" y="105" text-anchor="middle" fill="#c2185b" font-size="8" font-weight="bold">血圧計</text>
+                <!-- カメラ矢印 -->
+                <text x="105" y="65" text-anchor="middle" font-size="20">📱</text>
+                <text x="105" y="108" text-anchor="middle" fill="#c2185b" font-size="8" font-weight="bold">カメラで</text>
+                <text x="105" y="118" text-anchor="middle" fill="#c2185b" font-size="7">撮影するだけ</text>
+                <!-- AI読み取り -->
+                <path d="M126 60 L150 60" stroke="#e91e63" stroke-width="2" marker-end="url(#arr2)"/>
+                <defs><marker id="arr2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#e91e63"/></marker></defs>
+                <!-- 自動入力 -->
+                <rect x="155" y="30" width="75" height="60" rx="8" fill="#fff" stroke="#e91e63" stroke-width="1.5"/>
+                <text x="192" y="50" text-anchor="middle" fill="#e91e63" font-size="8" font-weight="bold">AIが自動入力</text>
+                <rect x="165" y="56" width="55" height="6" rx="3" fill="#fce4ec"/>
+                <text x="173" y="61" fill="#c2185b" font-size="6">血圧上: 120</text>
+                <rect x="165" y="66" width="55" height="6" rx="3" fill="#fce4ec"/>
+                <text x="173" y="71" fill="#c2185b" font-size="6">血圧下: 80</text>
+                <rect x="165" y="76" width="55" height="6" rx="3" fill="#fce4ec"/>
+                <text x="173" y="81" fill="#c2185b" font-size="6">脈拍: 72</text>
+                <!-- アラート -->
+                <rect x="245" y="30" width="60" height="35" rx="8" fill="#ffcdd2" stroke="#e91e63" stroke-width="1.5"/>
+                <text x="275" y="48" text-anchor="middle" fill="#c62828" font-size="8" font-weight="bold">⚠️ アラート</text>
+                <text x="275" y="59" text-anchor="middle" fill="#c62828" font-size="7">基準値超過!</text>
+                <text x="275" y="108" text-anchor="middle" fill="#c2185b" font-size="8" font-weight="bold">自動通知</text>
+            </svg>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#e91e63;">1</div>
+                <div class="step-content">
+                    <div class="step-label">曜日タブで利用者を絞り込む</div>
+                    <div class="step-detail">今日来所している利用者が表示されます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#e91e63;">2</div>
+                <div class="step-content">
+                    <div class="step-label">「カメラで自動読み取り」をタップ</div>
+                    <div class="step-detail">血圧計・体温計・パルスオキシメーターをカメラで撮影するだけで自動入力されます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#e91e63;">3</div>
+                <div class="step-content">
+                    <div class="step-label">アラートを確認して保存</div>
+                    <div class="step-detail">基準値を超えると赤くアラート表示。再検査が必要な場合はチェックをONにします</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#fce4ec;">
+            <span class="material-symbols-outlined" style="color:#e91e63;">notifications_active</span>
+            <div>再検査フラグをONにすると、設定した時刻にグループトークへ通知が自動送信されます（通知時刻は設定タブで複数設定可能）</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 5. カレンダー ===== -->
+<div id="sec-calendar" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#fff3e0;">
+            <span class="material-symbols-outlined" style="color:#fb8c00;font-size:24px;">event</span>
+        </div>
+        <div>
+            <div class="section-title">カレンダー</div>
+            <div class="section-desc">予定・シフト・希望休を管理</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="feature-grid">
+            <div class="feature-badge">
+                <span class="feature-emoji">🔒</span>
+                <div class="feature-name">プライベート</div>
+                <div class="feature-note">自分だけ見える</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">👥</span>
+                <div class="feature-name">共有カレンダー</div>
+                <div class="feature-note">招待した人と共有</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🎂</span>
+                <div class="feature-name">シール機能</div>
+                <div class="feature-note">24種類から選択</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🔁</span>
+                <div class="feature-name">繰り返し設定</div>
+                <div class="feature-note">毎日〜毎年</div>
+            </div>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#fb8c00;">1</div>
+                <div class="step-content">
+                    <div class="step-label">日付をタップして予定を追加</div>
+                    <div class="step-detail">タイトル・シール・日時・繰り返し・通知を設定</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#fb8c00;">2</div>
+                <div class="step-content">
+                    <div class="step-label">カレンダーを追加・切り替え</div>
+                    <div class="step-detail">上部のチップをタップして表示/非表示を切り替え。「すべて」で全カレンダーを同時表示</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#fb8c00;">3</div>
+                <div class="step-content">
+                    <div class="step-label">共有カレンダーにメンバーを招待</div>
+                    <div class="step-detail">チップ横の👤アイコンから招待。招待されたスタッフのみ閲覧・編集できます</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#fff3e0;">
+            <span class="material-symbols-outlined" style="color:#fb8c00;">bookmark</span>
+            <div>シールは🎂誕生日・📋担当者会議・🏢運営推進会議・🌙休み・⭐重要など24種類！予定の種類が一目でわかります</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 6. トーク ===== -->
+<div id="sec-chat" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#f3e5f5;">
+            <span class="material-symbols-outlined" style="color:#9c27b0;font-size:24px;">forum</span>
+        </div>
+        <div>
+            <div class="section-title">トーク</div>
+            <div class="section-desc">スタッフ間でLINE風メッセージ</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="illust-box" style="padding:16px;">
+            <svg viewBox="0 0 320 100" xmlns="http://www.w3.org/2000/svg">
+                <rect width="320" height="100" fill="#f3e5f5" rx="12"/>
+                <!-- 1:1トーク -->
+                <rect x="15" y="15" width="85" height="70" rx="10" fill="#fff" stroke="#9c27b0" stroke-width="1.5"/>
+                <text x="57" y="35" text-anchor="middle" fill="#9c27b0" font-size="8" font-weight="bold">1:1トーク</text>
+                <rect x="25" y="42" width="50" height="10" rx="5" fill="#9c27b0"/>
+                <text x="50" y="50" text-anchor="middle" fill="#fff" font-size="7">こんにちは</text>
+                <rect x="35" y="58" width="50" height="10" rx="5" fill="#e8d5f5"/>
+                <text x="60" y="66" text-anchor="middle" fill="#6a1b9a" font-size="7">了解です！</text>
+                <text x="40" y="77" fill="#9c27b0" font-size="7">既読 1</text>
+                <!-- グループ -->
+                <rect x="117" y="15" width="85" height="70" rx="10" fill="#fff" stroke="#9c27b0" stroke-width="1.5"/>
+                <text x="160" y="35" text-anchor="middle" fill="#9c27b0" font-size="8" font-weight="bold">グループトーク</text>
+                <rect x="127" y="42" width="55" height="10" rx="5" fill="#9c27b0"/>
+                <text x="154" y="50" text-anchor="middle" fill="#fff" font-size="7">本日の連絡です</text>
+                <rect x="137" y="58" width="55" height="10" rx="5" fill="#e8d5f5"/>
+                <text x="164" y="66" text-anchor="middle" fill="#6a1b9a" font-size="7">ありがとうございます</text>
+                <text x="140" y="77" fill="#9c27b0" font-size="7">既読 3</text>
+                <!-- 通知 -->
+                <rect x="218" y="15" width="85" height="70" rx="10" fill="#fff" stroke="#9c27b0" stroke-width="1.5"/>
+                <text x="260" y="35" text-anchor="middle" fill="#9c27b0" font-size="8" font-weight="bold">バッジ通知</text>
+                <circle cx="275" cy="45" r="8" fill="#ea4335"/>
+                <text x="275" y="49" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">3</text>
+                <text x="260" y="62" text-anchor="middle" fill="#6a1b9a" font-size="7">未読メッセージ</text>
+                <text x="260" y="74" text-anchor="middle" fill="#6a1b9a" font-size="7">があると赤バッジ表示</text>
+            </svg>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#9c27b0;">1</div>
+                <div class="step-content">
+                    <div class="step-label">右上の✏️アイコンで新しいトーク作成</div>
+                    <div class="step-detail">1:1（個別）かグループを選んでスタッフを選択</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#9c27b0;">2</div>
+                <div class="step-content">
+                    <div class="step-label">メッセージを送信</div>
+                    <div class="step-detail">テキスト入力後に送信ボタンをタップ。Enterキーでも送信できます</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#f3e5f5;">
+            <span class="material-symbols-outlined" style="color:#9c27b0;">notifications</span>
+            <div>新着メッセージはボトムナビに赤いバッジで表示されます。通知サウンドは管理者MENUの設定から「タスカル」など5種類から選べます🦝</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 7. モニタリング ===== -->
+<div id="sec-monitor" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#e3f2fd;">
+            <span class="material-symbols-outlined" style="color:#0288d1;font-size:24px;">monitoring</span>
+        </div>
+        <div>
+            <div class="section-title">モニタリング</div>
+            <div class="section-desc">AIが月次モニタリングを自動生成</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#0288d1;">1</div>
+                <div class="step-content">
+                    <div class="step-label">利用者を検索して選択</div>
+                    <div class="step-detail">名前・ふりがなで検索できます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#0288d1;">2</div>
+                <div class="step-content">
+                    <div class="step-label">対象月を選ぶ</div>
+                    <div class="step-detail">モニタリングしたい月を選択します</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#0288d1;">3</div>
+                <div class="step-content">
+                    <div class="step-label">「生成する」をタップ</div>
+                    <div class="step-detail">その月のケース記録をAIが分析して自動でモニタリング文を作成します</div>
+                </div>
+            </li>
+        </ul>
+        <div class="point-box" style="background:#e3f2fd;">
+            <span class="material-symbols-outlined" style="color:#0288d1;">auto_awesome</span>
+            <div>生成されたモニタリング文はコピーして介護ソフトに貼り付けて活用できます</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 8. 評価 ===== -->
+<div id="sec-assess" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#fbe9e7;">
+            <span class="material-symbols-outlined" style="color:#f4511e;font-size:24px;">assignment</span>
+        </div>
+        <div>
+            <div class="section-title">評価</div>
+            <div class="section-desc">AI個別機能訓練月次評価報告書</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="feature-grid">
+            <div class="feature-badge">
+                <span class="feature-emoji">📱</span>
+                <div class="feature-name">スマホ</div>
+                <div class="feature-note">音声入力で記録</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">💻</span>
+                <div class="feature-name">PC</div>
+                <div class="feature-note">ファイルをドロップ</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🤖</span>
+                <div class="feature-name">AI生成</div>
+                <div class="feature-note">報告書を自動作成</div>
+            </div>
+            <div class="feature-badge">
+                <span class="feature-emoji">🖨️</span>
+                <div class="feature-name">印刷/PDF</div>
+                <div class="feature-note">そのまま提出可能</div>
+            </div>
+        </div>
+        <div class="point-box" style="background:#fbe9e7;">
+            <span class="material-symbols-outlined" style="color:#f4511e;">description</span>
+            <div>PCではPDFや音声ファイルをドロップするだけでAIが内容を読み取り、評価書を自動作成します。「独り言モード」「対話モード」が選択できます</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 9. 誕生日 ===== -->
+<div id="sec-birthday" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#fce4ec;">
+            <span class="material-symbols-outlined" style="color:#d81b60;font-size:24px;">cake</span>
+        </div>
+        <div>
+            <div class="section-title">誕生日</div>
+            <div class="section-desc">今月・来月の誕生日を確認</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="point-box" style="background:#fce4ec;">
+            <span class="material-symbols-outlined" style="color:#d81b60;">cake</span>
+            <div>今月・来月が誕生日の利用者・スタッフが一覧で確認できます。お祝いの準備を忘れずに🎂</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 10. 数秘 ===== -->
+<div id="sec-numerology" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#ede7f6;">
+            <span class="material-symbols-outlined" style="color:#7b1fa2;font-size:24px;">auto_awesome</span>
+        </div>
+        <div>
+            <div class="section-title">数秘</div>
+            <div class="section-desc">生年月日から8つの数字を計算</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="feature-grid">
+            <div class="feature-badge"><span class="feature-emoji">✨</span><div class="feature-name">LP（ライフパス）</div></div>
+            <div class="feature-badge"><span class="feature-emoji">🎂</span><div class="feature-name">B（バースデー）</div></div>
+            <div class="feature-badge"><span class="feature-emoji">🎯</span><div class="feature-name">D（デスティニー）</div></div>
+            <div class="feature-badge"><span class="feature-emoji">💫</span><div class="feature-name">S・P・M・IT・LL</div></div>
+        </div>
+        <div class="point-box" style="background:#ede7f6;">
+            <span class="material-symbols-outlined" style="color:#7b1fa2;">search</span>
+            <div>利用者名・スタッフ名を検索して数秘を確認できます。各数字をタップするとTASUKARUオリジナルの詳しい解説が表示されます</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 11. 管理者MENU ===== -->
+<div id="sec-admin" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#eceff1;">
+            <span class="material-symbols-outlined" style="color:#455a64;font-size:24px;">admin_panel_settings</span>
+        </div>
+        <div>
+            <div class="section-title">管理者MENU</div>
+            <div class="section-desc">施設管理・スタッフ管理</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="feature-grid">
+            <div class="feature-badge"><span class="feature-emoji">👤</span><div class="feature-name">スタッフ管理</div><div class="feature-note">追加・削除・ブロック</div></div>
+            <div class="feature-badge"><span class="feature-emoji">🔗</span><div class="feature-name">招待QR</div><div class="feature-note">新スタッフを招待</div></div>
+            <div class="feature-badge"><span class="feature-emoji">🔑</span><div class="feature-name">パスワード変更</div><div class="feature-note">施設パスワードを更新</div></div>
+            <div class="feature-badge"><span class="feature-emoji">🔔</span><div class="feature-name">通知サウンド</div><div class="feature-note">5種類から選択</div></div>
+        </div>
+        <div class="point-box" style="background:#eceff1;">
+            <span class="material-symbols-outlined" style="color:#455a64;">lock</span>
+            <div>管理者MENUには専用のパスワードが必要です。パスワードは管理者のみ知っている情報です</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 12. オフライン・災害時モード ===== -->
+<div id="sec-offline" class="manual-section">
+    <div class="section-header">
+        <div class="section-icon" style="background:#fff8e1;">
+            <span class="material-symbols-outlined" style="color:#f9a825;font-size:24px;">emergency</span>
+        </div>
+        <div>
+            <div class="section-title">災害時モード</div>
+            <div class="section-desc">ネットがなくても記録できる</div>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="illust-box" style="padding:16px;">
+            <svg viewBox="0 0 320 90" xmlns="http://www.w3.org/2000/svg">
+                <rect width="320" height="90" fill="#fff8e1" rx="12"/>
+                <!-- WiFiオフ -->
+                <circle cx="50" cy="45" r="28" fill="#ffecb3"/>
+                <text x="50" y="38" text-anchor="middle" font-size="18">📵</text>
+                <text x="50" y="58" text-anchor="middle" fill="#e65100" font-size="8" font-weight="bold">オフライン</text>
+                <text x="50" y="70" text-anchor="middle" fill="#e65100" font-size="7">WiFi/通信なし</text>
+                <!-- 矢印 -->
+                <path d="M82 45 L110 45" stroke="#f9a825" stroke-width="2" marker-end="url(#arr3)"/>
+                <defs><marker id="arr3" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#f9a825"/></marker></defs>
+                <!-- 端末保存 -->
+                <rect x="114" y="17" width="80" height="56" rx="10" fill="#fff" stroke="#f9a825" stroke-width="1.5"/>
+                <text x="154" y="37" text-anchor="middle" fill="#e65100" font-size="8" font-weight="bold">端末に保存</text>
+                <text x="154" y="50" text-anchor="middle" fill="#f9a825" font-size="16">💾</text>
+                <text x="154" y="66" text-anchor="middle" fill="#e65100" font-size="7">オレンジバナー</text>
+                <text x="154" y="75" text-anchor="middle" fill="#e65100" font-size="7">→「災害モード」</text>
+                <!-- 矢印 -->
+                <path d="M198 45 L226 45" stroke="#f9a825" stroke-width="2" marker-end="url(#arr3)"/>
+                <!-- 復旧後自動送信 -->
+                <rect x="228" y="17" width="78" height="56" rx="10" fill="#fff" stroke="#34a853" stroke-width="1.5"/>
+                <text x="267" y="37" text-anchor="middle" fill="#2e7d32" font-size="8" font-weight="bold">ネット復旧後</text>
+                <text x="267" y="50" text-anchor="middle" fill="#34a853" font-size="16">✅</text>
+                <text x="267" y="66" text-anchor="middle" fill="#2e7d32" font-size="7">自動で</text>
+                <text x="267" y="75" text-anchor="middle" fill="#2e7d32" font-size="7">同期・送信</text>
+            </svg>
+        </div>
+        <ul class="step-list">
+            <li class="step-item">
+                <div class="step-num" style="background:#f9a825;">1</div>
+                <div class="step-content">
+                    <div class="step-label">オレンジのバナーが表示されたらオフライン</div>
+                    <div class="step-detail">「災害モード」ボタンをタップします</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#f9a825;">2</div>
+                <div class="step-content">
+                    <div class="step-label">利用者を選んで記録を入力・保存</div>
+                    <div class="step-detail">端末内に一時保存されます。キャッシュされた利用者一覧から選べます</div>
+                </div>
+            </li>
+            <li class="step-item">
+                <div class="step-num" style="background:#f9a825;">3</div>
+                <div class="step-content">
+                    <div class="step-label">ネット接続後に自動同期</div>
+                    <div class="step-detail">緑のバナーで「同期完了」と表示されます</div>
+                </div>
+            </li>
+        </ul>
+        <div class="caution-box">
+            <span class="material-symbols-outlined">info</span>
+            利用者情報のキャッシュは、一度オンラインでアプリを開いたときに自動で端末に保存されます。事前にアプリを開いておくことをお勧めします
+        </div>
+    </div>
+</div>
+
+<!-- ===== フッター ===== -->
+<div class="manual-footer">
+    <div style="font-size:32px;margin-bottom:8px;">🦝</div>
+    <div style="font-weight:700;color:#202124;margin-bottom:4px;">TASUKARU</div>
+    <div>介護現場の「書く」負担をゼロに</div>
+    <div style="margin-top:8px;">© {{ updated[:4] }} ZIMAX / cocokaraplus</div>
+</div>
+
+</div><!-- /manual-wrap -->
+{% endblock %}

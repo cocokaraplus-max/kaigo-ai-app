@@ -286,6 +286,10 @@
             <span class="material-symbols-outlined">admin_panel_settings</span>
             管理者MENU
         </a>
+        <a href="/manual" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/manual')">
+            <span class="material-symbols-outlined">menu_book</span>
+            ガイド
+        </a>
         <form method="POST" action="/logout" style="display:contents;">
             <button type="submit" class="bottom-nav-item logout-item">
                 <span class="material-symbols-outlined">logout</span>

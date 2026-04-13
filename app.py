@@ -312,6 +312,14 @@ def service_worker():
     response.headers['Cache-Control'] = 'no-cache'
     return response
 
+@app.route('/manual')
+@login_required
+def manual():
+    return render("manual.html",
+        version="2.0",
+        updated=datetime.now(tokyo_tz).strftime("%Y-%m-%d"),
+    )
+
 @app.route('/api/patients_cache')
 @login_required
 def api_patients_cache():
