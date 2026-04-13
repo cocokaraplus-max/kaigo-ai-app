@@ -305,6 +305,25 @@ def new_password():
 def manifest():
     return app.send_static_file('manifest.json')
 
+@app.route('/static/sw.js')
+def service_worker():
+    response = app.send_static_file('sw.js')
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+@app.route('/api/patients_cache')
+@login_required
+def api_patients_cache():
+    """PWAオフラインキャッシュ用：利用者一覧を返す"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        patients = get_patients(supabase, f_code)
+        return jsonify({"patients": patients})
+    except Exception as e:
+        return jsonify({"patients": [], "error": str(e)})
+
 @app.route('/')
 def index():
     if session.get("f_code"):
