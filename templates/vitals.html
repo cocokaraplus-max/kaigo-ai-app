@@ -477,6 +477,7 @@ const TODAY       = "{{ today }}";
 let currentWeekday = new Date().getDay();
 let cameraStream   = null;
 let currentCameraPatient = null;
+let cameraStream = null;
 
 // カメラモーダルをbody直下に移動（page-wrapperのoverflow問題を回避）
 requestAnimationFrame(() => {
@@ -842,6 +843,7 @@ window.openCamera = async function(pid) {
         cameraStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} }
         });
+        window.cameraStream = cameraStream;
         document.getElementById('camera-video').srcObject = cameraStream;
         // ズームリセット
         const video = document.getElementById('camera-video');
@@ -855,8 +857,13 @@ window.openCamera = async function(pid) {
 };
 
 window.closeCamera = function() {
-    if (cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
-    document.getElementById('camera-modal').classList.remove('show');
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+        window.cameraStream = null;
+    }
+    const modal = document.getElementById('camera-modal');
+    if (modal) modal.classList.remove('show');
 };
 
 window.capturePhoto = function() {
