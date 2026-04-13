@@ -48,7 +48,7 @@
 }
 .input-section-title .material-symbols-outlined { font-size: 18px; }
 
-/* ファイルドロップゾーン（PC用） */
+/* ファイルドロップゾーン */
 .drop-zone {
     border: 2px dashed #1a73e8; border-radius: 12px;
     padding: 28px 16px; text-align: center;
@@ -61,7 +61,7 @@
 .drop-zone p { font-size: 0.85rem; font-weight: 600; margin: 0; }
 .drop-zone small { font-size: 0.75rem; color: #80868b; }
 
-/* 音声ボタン（スマホ用） */
+/* 音声ボタン */
 .voice-btn {
     width: 100%; padding: 16px;
     border-radius: 14px; border: none;
@@ -111,10 +111,7 @@
     background: linear-gradient(135deg, #1a73e8, #1557b0);
     padding: 16px 20px; color: white;
 }
-.report-header h2 {
-    font-size: 1rem; font-weight: 800; margin: 0 0 4px;
-    letter-spacing: 0.5px;
-}
+.report-header h2 { font-size: 1rem; font-weight: 800; margin: 0 0 4px; letter-spacing: 0.5px; }
 .report-header p { font-size: 0.8rem; opacity: 0.85; margin: 0; }
 .report-body { padding: 16px 20px; }
 .report-field { margin-bottom: 16px; }
@@ -130,13 +127,9 @@
     padding: 10px 12px; border: 1px solid #e0e0e0;
     min-height: 60px;
 }
-.report-field-value[contenteditable="true"] {
-    outline: none; border-color: #1a73e8; background: #fff;
-}
+.report-field-value[contenteditable="true"] { outline: none; border-color: #1a73e8; background: #fff; }
 .report-field-value[contenteditable="true"]:focus { background: #fff; }
-.report-divider {
-    border: none; border-top: 2px solid #e8f0fe; margin: 16px 0;
-}
+.report-divider { border: none; border-top: 2px solid #e8f0fe; margin: 16px 0; }
 .report-actions {
     display: grid; grid-template-columns: 1fr 1fr;
     gap: 10px; padding: 0 20px 20px;
@@ -165,32 +158,37 @@
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 
+/* ========== ★ 音声プレイヤー ========== */
+.audio-player-wrap {
+    display: flex; align-items: center; gap: 10px;
+    background: #f0f6ff; border-radius: 12px;
+    padding: 10px 14px; margin-top: 8px;
+    border: 1.5px solid #1a73e8;
+}
+.audio-player-wrap .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
+.audio-player-wrap audio { flex: 1; height: 32px; }
+.audio-play-btn {
+    background: #1a73e8; border: none; border-radius: 50%;
+    width: 36px; height: 36px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.audio-play-btn .material-symbols-outlined { color: white; font-size: 20px; }
+
 /* ========== ローディング ========== */
-.ai-loading {
-    display: none; text-align: center;
-    padding: 24px; color: #1a73e8;
-}
+.ai-loading { display: none; text-align: center; padding: 24px; color: #1a73e8; }
 .ai-loading.show { display: block; }
-.ai-loading .material-symbols-outlined {
-    font-size: 36px; animation: spin 1s linear infinite; display: block; margin-bottom: 8px;
-}
+.ai-loading .material-symbols-outlined { font-size: 36px; animation: spin 1s linear infinite; display: block; margin-bottom: 8px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ========== 選択ボタン ==========*/
+/* ========== 選択ボタン ========== */
 .type-btn {
-    padding: 12px 10px;
-    border-radius: 12px;
-    border: 2px solid #e0e0e0;
-    background: #f8f9fa;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.15s;
-    -webkit-tap-highlight-color: transparent;
+    padding: 12px 10px; border-radius: 12px;
+    border: 2px solid #e0e0e0; background: #f8f9fa;
+    text-align: center; cursor: pointer;
+    transition: all 0.15s; -webkit-tap-highlight-color: transparent;
 }
-.type-btn.active {
-    border-color: #1a73e8;
-    background: #e8f0fe;
-}
+.type-btn.active { border-color: #1a73e8; background: #e8f0fe; }
 .type-btn.active span { color: #1a73e8; }
 
 /* ========== 印刷用 ========== */
@@ -231,7 +229,6 @@
             <span class="material-symbols-outlined">person</span>
             利用者を選ぶ
         </label>
-        <!-- 検索窓 -->
         <div style="position:relative;margin-bottom:6px;">
             <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#80868b;font-size:18px;">search</span>
             <input type="text" id="patient-search-input" class="form-control"
@@ -240,17 +237,14 @@
                 oninput="filterAssessmentPatients(this.value)"
                 autocomplete="off">
         </div>
-        <!-- 選択バッジ -->
-        <div id="patient-selected-badge" style="display:none;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;padding:8px 12px;margin-bottom:6px;display:none;align-items:center;gap:8px;">
+        <div id="patient-selected-badge" style="display:none;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;padding:8px 12px;margin-bottom:6px;align-items:center;gap:8px;">
             <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">person</span>
             <span id="patient-selected-label" style="font-weight:700;font-size:0.9rem;flex:1;"></span>
             <button onclick="clearAssessmentPatient()" style="background:none;border:none;cursor:pointer;padding:0;">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#80868b;">close</span>
             </button>
         </div>
-        <!-- 候補リスト -->
         <div id="patient-candidates-assess" style="display:none;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
-        <!-- 隠しselect（既存ロジックとの互換性維持） -->
         <select id="patient-select" style="display:none;" onchange="onPatientSelect()">
             <option value="">-- 利用者を選択 --</option>
             {% for p in patients %}
@@ -276,7 +270,7 @@
         <input type="month" class="form-control" id="target-month" value="{{ this_month }}">
     </div>
 
-    <!-- 訓練目標（編集可） -->
+    <!-- 訓練目標 -->
     <div class="input-section" id="goal-section" style="display:none;">
         <div class="input-section-title">
             <span class="material-symbols-outlined">flag</span>
@@ -293,9 +287,8 @@
             聴取内容の入力
         </div>
 
-        <!-- PC：ファイルドロップ -->
+        <!-- PC -->
         <div id="pc-input-area">
-            <!-- 音声モード選択（音声ファイル時のみ有効） -->
             <div id="audio-mode-select" style="display:none;margin-bottom:10px;">
                 <div class="form-label" style="margin-bottom:6px;">
                     <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
@@ -329,9 +322,8 @@
             </div>
         </div>
 
-        <!-- スマホ：音声入力 -->
+        <!-- スマホ -->
         <div id="sp-input-area" style="display:none;">
-            <!-- 音声モード選択 -->
             <div style="margin-bottom:10px;">
                 <div class="form-label" style="margin-bottom:6px;">
                     <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
@@ -350,7 +342,6 @@
                     </div>
                 </div>
             </div>
-            <!-- MP3アップロード -->
             <button class="voice-btn" style="background:linear-gradient(135deg,#9c27b0,#6a1b9a);"
                 onclick="document.getElementById('audio-file-input').click()">
                 <span class="material-symbols-outlined">audio_file</span>
@@ -372,38 +363,21 @@
 
         <div style="font-size:0.75rem;color:#80868b;text-align:center;margin-bottom:12px;">または</div>
 
-        <!-- 共通テキストエリア -->
         <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">
-                <span class="material-symbols-outlined">trending_up</span>
-                今月の訓練達成度
-            </label>
-            <textarea class="form-control" id="achievement" rows="3"
-                placeholder="例：歩行訓練を週3回実施。当初の目標距離の80%を達成。"></textarea>
+            <label class="form-label"><span class="material-symbols-outlined">trending_up</span>今月の訓練達成度</label>
+            <textarea class="form-control" id="achievement" rows="3" placeholder="例：歩行訓練を週3回実施。当初の目標距離の80%を達成。"></textarea>
         </div>
         <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">
-                <span class="material-symbols-outlined">home</span>
-                自宅での取り組み
-            </label>
-            <textarea class="form-control" id="home-effort" rows="3"
-                placeholder="例：毎朝10分のストレッチを継続。家族のサポートで階段昇降を練習中。"></textarea>
+            <label class="form-label"><span class="material-symbols-outlined">home</span>自宅での取り組み</label>
+            <textarea class="form-control" id="home-effort" rows="3" placeholder="例：毎朝10分のストレッチを継続。家族のサポートで階段昇降を練習中。"></textarea>
         </div>
         <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label">
-                <span class="material-symbols-outlined">fitness_center</span>
-                デイでの訓練進捗
-            </label>
-            <textarea class="form-control" id="training-progress" rows="3"
-                placeholder="例：平行棒歩行から歩行器歩行へ移行。バランス訓練も開始。"></textarea>
+            <label class="form-label"><span class="material-symbols-outlined">fitness_center</span>デイでの訓練進捗</label>
+            <textarea class="form-control" id="training-progress" rows="3" placeholder="例：平行棒歩行から歩行器歩行へ移行。バランス訓練も開始。"></textarea>
         </div>
         <div class="form-group">
-            <label class="form-label">
-                <span class="material-symbols-outlined">notes</span>
-                その他・気づき
-            </label>
-            <textarea class="form-control" id="other-notes" rows="2"
-                placeholder="例：本人のモチベーションが高く、訓練への参加態度も良好。"></textarea>
+            <label class="form-label"><span class="material-symbols-outlined">notes</span>その他・気づき</label>
+            <textarea class="form-control" id="other-notes" rows="2" placeholder="例：本人のモチベーションが高く、訓練への参加態度も良好。"></textarea>
         </div>
     </div>
 
@@ -413,7 +387,6 @@
         AI報告書を生成する
     </button>
 
-    <!-- ローディング -->
     <div class="ai-loading" id="ai-loading">
         <span class="material-symbols-outlined">sync</span>
         AIが報告書を生成しています...
@@ -427,41 +400,39 @@
         </div>
         <div class="report-body">
             <div class="report-field">
-                <div class="report-field-label">
-                    <span class="material-symbols-outlined">person</span>利用者情報
-                </div>
+                <div class="report-field-label"><span class="material-symbols-outlined">person</span>利用者情報</div>
                 <div class="report-field-value" id="rpt-patient-info"></div>
             </div>
             <div class="report-field">
-                <div class="report-field-label">
-                    <span class="material-symbols-outlined">flag</span>訓練目標
-                </div>
+                <div class="report-field-label"><span class="material-symbols-outlined">flag</span>訓練目標</div>
                 <div class="report-field-value" id="rpt-goal"></div>
             </div>
             <hr class="report-divider">
             <div class="report-field">
-                <div class="report-field-label">
-                    <span class="material-symbols-outlined">trending_up</span>
-                    個別機能訓練実施による変化
-                </div>
+                <div class="report-field-label"><span class="material-symbols-outlined">trending_up</span>個別機能訓練実施による変化</div>
                 <div class="report-field-value" id="rpt-change" contenteditable="true"></div>
             </div>
             <div class="report-field">
-                <div class="report-field-label">
-                    <span class="material-symbols-outlined">warning</span>
-                    個別機能訓練実施における課題とその要因
-                </div>
+                <div class="report-field-label"><span class="material-symbols-outlined">warning</span>個別機能訓練実施における課題とその要因</div>
                 <div class="report-field-value" id="rpt-challenge" contenteditable="true"></div>
+            </div>
+            <!-- ★ 音声プレイヤー（音声がある場合に表示） -->
+            <div id="rpt-audio-wrap" style="display:none;margin-top:8px;">
+                <div class="report-field-label">
+                    <span class="material-symbols-outlined">mic</span>録音音声
+                </div>
+                <div class="audio-player-wrap">
+                    <span class="material-symbols-outlined">headphones</span>
+                    <audio id="rpt-audio-player" controls style="flex:1;height:36px;"></audio>
+                </div>
             </div>
         </div>
         <div class="report-actions">
             <button class="btn btn-primary" onclick="saveAssessment()">
-                <span class="material-symbols-outlined" style="color:white;">save</span>
-                保存
+                <span class="material-symbols-outlined" style="color:white;">save</span>保存
             </button>
             <button class="btn" onclick="printReport()" style="background:#34a853;color:white;border:none;">
-                <span class="material-symbols-outlined" style="color:white;">print</span>
-                印刷/PDF
+                <span class="material-symbols-outlined" style="color:white;">print</span>印刷/PDF
             </button>
         </div>
     </div>
@@ -477,6 +448,14 @@
             <span class="assessment-card-month">{{ a.target_month }}</span>
         </div>
         <div class="assessment-card-preview">{{ a.ai_change or '（生成なし）' }}</div>
+        {% if a.audio_url %}
+        <div class="audio-player-wrap" style="margin-top:8px;" onclick="event.stopPropagation()">
+            <span class="material-symbols-outlined">mic</span>
+            <audio controls style="flex:1;height:32px;">
+                <source src="{{ a.audio_url }}">
+            </audio>
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
     {% else %}
@@ -491,7 +470,6 @@
 {% block extra_script %}
 <script>
 (function(){
-// ========== タブ切り替え ==========
 window.switchTab = function(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
@@ -499,42 +477,34 @@ window.switchTab = function(name) {
     event.currentTarget.classList.add('active');
 }
 
-// ========== PC/スマホ判定 ==========
 const isMobile = /iPhone|Android/i.test(navigator.userAgent);
 if (isMobile) {
     document.getElementById('sp-input-area').style.display = 'block';
     document.getElementById('pc-input-area').style.display = 'none';
 }
 
-// ========== 音声モード選択（独り言 / 対話） ==========
-let audioMode = 'solo'; // デフォルト：独り言
+let audioMode = 'solo';
+let currentAudioUrl = ''; // ★ 現在の音声URL保持
 
 window.selectAudioMode = function(mode) {
     audioMode = mode;
-    // PC側
-    const soloPC   = document.getElementById('mode-solo');
-    const dialogPC = document.getElementById('mode-dialog');
-    if (soloPC)   soloPC.classList.toggle('active',   mode === 'solo');
-    if (dialogPC) dialogPC.classList.toggle('active', mode === 'dialog');
-    // スマホ側
-    const soloSP   = document.getElementById('sp-mode-solo');
-    const dialogSP = document.getElementById('sp-mode-dialog');
-    if (soloSP)   soloSP.classList.toggle('active',   mode === 'solo');
-    if (dialogSP) dialogSP.classList.toggle('active', mode === 'dialog');
+    ['mode-solo','mode-dialog'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', (id === 'mode-solo') === (mode === 'solo'));
+    });
+    ['sp-mode-solo','sp-mode-dialog'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', (id === 'sp-mode-solo') === (mode === 'solo'));
+    });
 }
 
-// 音声ファイル選択時にモード選択UIを表示
 window.showAudioModeSelector = function(show) {
     const el = document.getElementById('audio-mode-select');
     if (el) el.style.display = show ? 'block' : 'none';
 }
 
-// ========== 利用者選択（検索型） ==========
 const ASSESS_PATIENTS = [...document.querySelectorAll('#patient-select option')].filter(o => o.value).map(o => ({
-    id: o.value,
-    name: o.dataset.name,
-    kana: o.dataset.kana,
-    label: o.text,
+    id: o.value, name: o.dataset.name, kana: o.dataset.kana, label: o.text,
 }));
 
 window.filterAssessmentPatients = function(q) {
@@ -544,8 +514,7 @@ window.filterAssessmentPatients = function(q) {
     const cands = document.getElementById('patient-candidates-assess');
     if (!ql) { cands.style.display = 'none'; return; }
     const hits = ASSESS_PATIENTS.filter(p =>
-        p.name.toLowerCase().includes(ql) ||
-        p.kana.toLowerCase().includes(ql) ||
+        p.name.toLowerCase().includes(ql) || p.kana.toLowerCase().includes(ql) ||
         p.kana.includes(qKata) || p.kana.includes(qHira)
     ).slice(0, 15);
     if (!hits.length) {
@@ -567,16 +536,13 @@ window.filterAssessmentPatients = function(q) {
 };
 
 window.selectAssessmentPatient = function(id, name) {
-    // 隠しselectに値をセット
     const sel = document.getElementById('patient-select');
     sel.value = id;
-    // 検索窓を隠してバッジ表示
     document.getElementById('patient-search-input').style.display = 'none';
     const badge = document.getElementById('patient-selected-badge');
     badge.style.display = 'flex';
     document.getElementById('patient-selected-label').textContent = name;
     document.getElementById('patient-candidates-assess').style.display = 'none';
-    // 既存のonPatientSelectを呼ぶ
     onPatientSelect();
 };
 
@@ -588,7 +554,6 @@ window.clearAssessmentPatient = function() {
     document.getElementById('goal-section').style.display = 'none';
 };
 
-// 候補リスト外タップで閉じる
 document.addEventListener('click', e => {
     if (!e.target.closest('#patient-search-input') && !e.target.closest('#patient-candidates-assess')) {
         document.getElementById('patient-candidates-assess').style.display = 'none';
@@ -598,16 +563,11 @@ document.addEventListener('click', e => {
 window.onPatientSelect = function() {
     const sel = document.getElementById('patient-select');
     const opt = sel.options[sel.selectedIndex];
-    if (!opt.value) {
-        document.getElementById('goal-section').style.display = 'none';
-        return;
-    }
+    if (!opt.value) { document.getElementById('goal-section').style.display = 'none'; return; }
     document.getElementById('goal-section').style.display = 'block';
     document.getElementById('training-goal').value = opt.dataset.goal || '';
 }
 
-// ========== ファイルドロップ（PC） ==========
-let uploadedFileText = '';
 const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
 
 window.dragOver = function(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
@@ -616,28 +576,19 @@ window.dropFile = async function(e) {
     e.preventDefault();
     document.getElementById('drop-zone').classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file) {
-        const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
-        showAudioModeSelector(isAudio);
-        await readFile(file);
-    }
+    if (file) { showAudioModeSelector(audioExts.some(ext => file.name.toLowerCase().endsWith(ext))); await readFile(file); }
 }
 window.handleFileSelect = async function(e) {
     const file = e.target.files[0];
-    if (file) {
-        const isAudio = audioExts.some(ext => file.name.toLowerCase().endsWith(ext));
-        showAudioModeSelector(isAudio);
-        await readFile(file);
-    }
+    if (file) { showAudioModeSelector(audioExts.some(ext => file.name.toLowerCase().endsWith(ext))); await readFile(file); }
 }
 window.readFile = async function(file) {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('audio_mode', audioMode); // solo or dialog
+    formData.append('audio_mode', audioMode);
 
-    // ステータス表示（PC/スマホ両対応）
-    const statusEl  = document.getElementById('file-status') || document.getElementById('sp-file-status');
-    const nameEl    = document.getElementById('file-name')   || document.getElementById('sp-file-name');
+    const statusEl = document.getElementById('file-status') || document.getElementById('sp-file-status');
+    const nameEl   = document.getElementById('file-name')   || document.getElementById('sp-file-name');
     if (statusEl) statusEl.style.display = 'block';
     if (nameEl)   nameEl.textContent = `読み込み中: ${file.name}`;
 
@@ -645,13 +596,13 @@ window.readFile = async function(file) {
         const res = await fetch('/api/parse_assessment_file', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.status === 'success') {
-            uploadedFileText = data.text || '';
+            // ★ 音声URLを保持
+            currentAudioUrl = data.audio_url || '';
             if (nameEl) nameEl.textContent = `✓ ${file.name} 読み込み完了`;
             document.getElementById('achievement').value        = data.achievement || '';
             document.getElementById('home-effort').value        = data.home_effort || '';
             document.getElementById('training-progress').value  = data.training_progress || '';
             document.getElementById('other-notes').value        = data.other_notes || '';
-            // 文字起こし全文があれば表示
             if (data.transcript) {
                 const ta = document.getElementById('voice-transcript');
                 if (ta) { ta.classList.add('show'); ta.textContent = data.transcript; }
@@ -664,106 +615,73 @@ window.readFile = async function(file) {
     }
 }
 
-// ========== 音声入力（スマホ） ==========
-let recognition = null;
-let isRecording = false;
-let fullTranscript = '';
+let recognition = null; let isRecording = false; let fullTranscript = '';
 
 window.toggleVoice = function() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        alert('このブラウザは音声入力に対応していません。Chromeをお試しください。');
-        return;
+        alert('このブラウザは音声入力に対応していません。'); return;
     }
-    if (isRecording) {
-        stopVoice();
-    } else {
-        startVoice();
-    }
+    isRecording ? stopVoice() : startVoice();
 }
 
 window.startVoice = function() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.lang = 'ja-JP';
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.lang = 'ja-JP'; recognition.continuous = true; recognition.interimResults = true;
     recognition.onresult = (e) => {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
-            if (e.results[i].isFinal) {
-                fullTranscript += e.results[i][0].transcript;
-            } else {
-                interim = e.results[i][0].transcript;
-            }
+            if (e.results[i].isFinal) fullTranscript += e.results[i][0].transcript;
+            else interim = e.results[i][0].transcript;
         }
         const el = document.getElementById('voice-transcript');
-        el.classList.add('show');
-        el.textContent = fullTranscript + interim;
+        el.classList.add('show'); el.textContent = fullTranscript + interim;
     };
-    recognition.onend = () => {
-        if (isRecording) recognition.start(); // 継続
-    };
-    recognition.start();
-    isRecording = true;
+    recognition.onend = () => { if (isRecording) recognition.start(); };
+    recognition.start(); isRecording = true;
     document.getElementById('voice-btn').classList.add('recording');
     document.getElementById('voice-btn-label').textContent = 'タップして停止';
 }
 
 window.stopVoice = function() {
-    if (recognition) recognition.stop();
-    isRecording = false;
+    if (recognition) recognition.stop(); isRecording = false;
     document.getElementById('voice-btn').classList.remove('recording');
     document.getElementById('voice-btn-label').textContent = 'タップして音声入力';
-    // 音声テキストをその他欄にセット
-    if (fullTranscript.trim()) {
-        document.getElementById('other-notes').value = fullTranscript.trim();
-    }
+    if (fullTranscript.trim()) document.getElementById('other-notes').value = fullTranscript.trim();
 }
 
-// ========== AI報告書生成 ==========
 window.generateReport = async function() {
     const patientSel = document.getElementById('patient-select');
     if (!patientSel.value) { alert('利用者を選択してください'); return; }
     const opt = patientSel.options[patientSel.selectedIndex];
-
     const payload = {
-        patient_id:   patientSel.value,
-        patient_name: opt.dataset.name,
-        patient_kana: opt.dataset.kana,
-        patient_birth: opt.dataset.birth,
-        disease_name: opt.dataset.disease,
-        care_manager: opt.dataset.cm,
+        patient_id: patientSel.value, patient_name: opt.dataset.name,
+        patient_kana: opt.dataset.kana, patient_birth: opt.dataset.birth,
+        disease_name: opt.dataset.disease, care_manager: opt.dataset.cm,
         training_goal: document.getElementById('training-goal').value,
         target_month: document.getElementById('target-month').value,
-        achievement:  document.getElementById('achievement').value,
-        home_effort:  document.getElementById('home-effort').value,
+        achievement: document.getElementById('achievement').value,
+        home_effort: document.getElementById('home-effort').value,
         training_progress: document.getElementById('training-progress').value,
-        other_notes:  document.getElementById('other-notes').value,
+        other_notes: document.getElementById('other-notes').value,
+        audio_url: currentAudioUrl, // ★ 音声URLも含める
     };
-
     if (!payload.achievement && !payload.home_effort && !payload.training_progress && !payload.other_notes) {
         alert('聴取内容を入力してください'); return;
     }
-
     document.getElementById('generate-btn').disabled = true;
     document.getElementById('ai-loading').classList.add('show');
     document.getElementById('report-preview').style.display = 'none';
-
     try {
         const res = await fetch('/api/generate_assessment', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (data.status === 'success') {
-            showReport(payload, data);
-        } else {
-            alert('生成に失敗しました: ' + (data.message || ''));
-        }
-    } catch(e) {
-        alert('通信エラーが発生しました');
-    } finally {
+        if (data.status === 'success') showReport(payload, data);
+        else alert('生成に失敗しました: ' + (data.message || ''));
+    } catch(e) { alert('通信エラーが発生しました'); }
+    finally {
         document.getElementById('generate-btn').disabled = false;
         document.getElementById('ai-loading').classList.remove('show');
     }
@@ -778,68 +696,68 @@ window.showReport = function(payload, data) {
     document.getElementById('rpt-goal').textContent = payload.training_goal || '未入力';
     document.getElementById('rpt-change').textContent = data.ai_change;
     document.getElementById('rpt-challenge').textContent = data.ai_challenge;
-    // 保存用に一時保持
+
+    // ★ 音声プレイヤーを表示
+    const audioUrl = payload.audio_url || currentAudioUrl || '';
+    const audioWrap = document.getElementById('rpt-audio-wrap');
+    const audioPlayer = document.getElementById('rpt-audio-player');
+    if (audioUrl) {
+        audioPlayer.src = audioUrl;
+        audioWrap.style.display = 'block';
+    } else {
+        audioWrap.style.display = 'none';
+    }
+
     window._reportPayload = payload;
     window._reportData = data;
     preview.style.display = 'block';
     preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ========== 保存 ==========
 window.saveAssessment = async function() {
     if (!window._reportPayload) return;
     const payload = {
         ...window._reportPayload,
         ai_change:    document.getElementById('rpt-change').textContent,
         ai_challenge: document.getElementById('rpt-challenge').textContent,
+        audio_url:    currentAudioUrl,
     };
     const res = await fetch('/api/save_assessment', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (data.status === 'success') {
-        alert('保存しました');
-    } else {
-        alert('保存に失敗しました');
-    }
+    if (data.status === 'success') alert('保存しました');
+    else alert('保存に失敗しました');
 }
 
-// ========== 印刷 ==========
-window.printReport = function() {
-    window.print();
-}
+window.printReport = function() { window.print(); }
 
-// ========== 過去評価を読み込む ==========
 window.loadAssessment = async function(id) {
     const res = await fetch('/api/get_assessment?id=' + id);
     const data = await res.json();
     if (!data.data) return;
     const a = data.data;
-    // 新規評価タブに切り替えて表示
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-input').classList.add('active');
     document.querySelector('.tab-item').classList.add('active');
-
     document.getElementById('target-month').value = a.target_month || '';
     document.getElementById('training-goal').value = a.training_goal || '';
     document.getElementById('achievement').value = a.achievement || '';
     document.getElementById('home-effort').value = a.home_effort || '';
     document.getElementById('training-progress').value = a.training_progress || '';
     document.getElementById('other-notes').value = a.other_notes || '';
-
-    // 利用者選択
     const sel = document.getElementById('patient-select');
     for (let opt of sel.options) {
         if (opt.dataset.name === a.user_name) { sel.value = opt.value; break; }
     }
     document.getElementById('goal-section').style.display = 'block';
-
-    // 報告書表示
+    // ★ 過去評価の音声URLを復元
+    currentAudioUrl = a.audio_url || '';
     showReport(
-        { patient_name: a.user_name, patient_kana: '', patient_birth: '', disease_name: '', care_manager: '', training_goal: a.training_goal || '', target_month: a.target_month },
+        { patient_name: a.user_name, patient_kana: '', patient_birth: '', disease_name: '', care_manager: '',
+          training_goal: a.training_goal || '', target_month: a.target_month, audio_url: currentAudioUrl },
         { ai_change: a.ai_change || '', ai_challenge: a.ai_challenge || '' }
     );
 }

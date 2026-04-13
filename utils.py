@@ -91,3 +91,21 @@ def hash_password(password):
 def verify_password(password, hashed):
     import hashlib
     return hashlib.sha256(password.encode()).hexdigest() == hashed
+# ==========================================
+# 音声をSupabaseストレージに保存
+# ==========================================
+def upload_audio_to_supabase(supabase, audio_bytes, filename, f_code):
+    try:
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp3'
+        file_name = f"{f_code}/{uuid.uuid4()}.{ext}"
+        mime_map = {'mp3':'audio/mpeg','m4a':'audio/mp4','wav':'audio/wav','aac':'audio/aac','ogg':'audio/ogg','webm':'audio/webm'}
+        content_type = mime_map.get(ext, 'audio/mpeg')
+        supabase.storage.from_("assessment-audio").upload(
+            path=file_name,
+            file=audio_bytes,
+            file_options={"content-type": content_type}
+        )
+        return supabase.storage.from_("assessment-audio").get_public_url(file_name)
+    except Exception as e:
+        print(f"音声アップロードエラー: {e}")
+        return ""

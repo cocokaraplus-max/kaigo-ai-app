@@ -1298,7 +1298,7 @@ def api_save_vital():
 @login_required
 def api_read_vital_image():
     try:
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         img = request.files.get('image')
         if not img:
             return jsonify({"status": "error", "message": "画像なし"})
@@ -1750,7 +1750,7 @@ def assessment():
 @login_required
 def api_generate_assessment():
     try:
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         data = request.json
         name       = data.get("patient_name", "")
         birth      = data.get("patient_birth", "")
@@ -1822,6 +1822,7 @@ def api_save_assessment():
             "other_notes":      data.get("other_notes",""),
             "ai_change":        data.get("ai_change",""),
             "ai_challenge":     data.get("ai_challenge",""),
+            "audio_url":          data.get("audio_url",""),
             "created_by":       my_name,
         }).execute()
         # 訓練目標をpatientsに保存
@@ -1847,7 +1848,7 @@ def api_get_assessment():
 def api_parse_assessment_file():
     """PC/スマホ用：アップロードファイル（テキスト・PDF・音声）をGeminiで解析"""
     try:
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         file = request.files.get('file')
         if not file:
             return jsonify({"status": "error", "message": "ファイルなし"})
@@ -1914,15 +1915,22 @@ JSON形式のみで返してください（説明文不要）：
             model = get_generative_model()
             resp = model.generate_content([prompt])
 
+        audio_url = ""
+        if is_audio:
+            try:
+                supabase_s = get_supabase()
+                audio_url = upload_audio_to_supabase(supabase_s, file_bytes, filename, session.get("f_code","unknown"))
+            except Exception as _ae:
+                print(f"音声保存エラー: {_ae}")
         import re as _re, json as _json
         m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
         if m:
             result = _json.loads(m.group())
-            return jsonify({"status": "success", "is_audio": is_audio, "audio_mode": audio_mode, **result})
+            return jsonify({"status": "success", "is_audio": is_audio, "audio_mode": audio_mode, "audio_url": audio_url, **result})
         return jsonify({
             "status": "success", "is_audio": is_audio, "audio_mode": audio_mode,
             "transcript": resp.text, "achievement": "",
-            "home_effort": "", "training_progress": "", "other_notes": resp.text
+            "home_effort": "", "training_progress": "", "other_notes": resp.text, "audio_url": audio_url
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2035,7 +2043,7 @@ def api_scan_patients_from_image():
         image_base64 = data.get('image', '')
         mime_type    = data.get('mime_type', 'image/jpeg')
 
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
 
         prompt = """この画像を詳しく解析してください。利用者名簿・介護ソフトの画面・紙の名簿・Excel表など、人の名前と情報が含まれている可能性があります。
@@ -2262,7 +2270,7 @@ def api_record_dates():
 def api_transcribe():
     try:
         data = request.json
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
         prompt = "以下の音声を介護記録として文章に起こしてください。\n【ルール】\n・話した内容をできるだけ忠実に文章化する\n・「あー」「えー」「えっと」などのフィラーは省略する\n・職員名や「利用者様は」などの主語は不要\n・です・ます調に整える\n・事実のみを記載し、余計な装飾は不要"
         audio_bytes = base64.b64decode(data["audio_data"])
@@ -2291,7 +2299,7 @@ def api_generate_daily():
         if not normal_recs:
             return jsonify({"status": "error", "message": "個別記録がありません"})
         recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
         summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
         c_num = normal_recs[0]["chart_number"]
@@ -2321,7 +2329,7 @@ def api_regenerate_daily():
         ).execute()
         normal_recs = [r for r in res.data if r["staff_name"] != "AI統合記録"]
         recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
         summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
         c_num = normal_recs[0]["chart_number"]
@@ -2393,7 +2401,7 @@ def api_generate_monitoring():
             return jsonify({"error": "対象期間に記録がありません。"})
         filtered = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
         recs = "\n".join(filtered)
-        from utils import get_generative_model
+        from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
         prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や主語は不要。箇条書きは使わず一つの文章で書いてください。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
         result = model.generate_content([prompt]).text
