@@ -433,6 +433,18 @@ window.selectDate = function(dateStr) {
 requestAnimationFrame(() => requestAnimationFrame(() => initCalendar()));
 setTimeout(initCalendar, 300);
 
+// ターゲット利用者に自動スクロール
+if (targetUser) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const target = document.querySelector('[data-target="true"]');
+        if (target) {
+            setTimeout(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 400);
+        }
+    }));
+}
+
 window.toggleAccordion = function(idx) {
     document.getElementById('body-'+idx).classList.toggle('open');
     document.getElementById('arrow-'+idx).classList.toggle('open');

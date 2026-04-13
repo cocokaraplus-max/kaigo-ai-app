@@ -116,6 +116,9 @@ const HISTORY_PATIENTS = [
       name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
     {% endfor %}
 ];
+</script>
+<script>
+(function(){
 
 function searchPatient(query) {
     const q = query.trim().toLowerCase();
