@@ -260,7 +260,7 @@
                 <!-- ズームスライダー -->
                 <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
                     <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_out</span>
-                    <input type="range" id="icon-zoom-slider" min="1" max="3" step="0.01" value="1"
+                    <input type="range" id="icon-zoom-slider" min="0.1" max="3" step="0.01" value="1"
                         style="flex:1;accent-color:#1a73e8;" oninput="onZoomChange(this.value)">
                     <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_in</span>
                 </div>
@@ -406,10 +406,17 @@
         selectedPhotoFile = null;
         cropImage = new Image();
         cropImage.onload = () => {
-            cropZoom = 1;
+            const size = 200;
+            // 画像が円にちょうど収まる初期ズームを計算（短辺=円の直径）
+            const fitZoom = size / Math.min(cropImage.width, cropImage.height);
+            cropZoom = fitZoom;
             cropOffsetX = 0;
             cropOffsetY = 0;
-            document.getElementById('icon-zoom-slider').value = 1;
+            // スライダーの範囲を動的に設定
+            const slider = document.getElementById('icon-zoom-slider');
+            slider.min = Math.max(0.05, fitZoom * 0.3).toFixed(3);
+            slider.max = (fitZoom * 4).toFixed(3);
+            slider.value = cropZoom;
             document.getElementById('icon-cropper-area').style.display = 'block';
             renderCrop();
         };
@@ -424,23 +431,33 @@
         ctx.clearRect(0, 0, size, size);
 
         // 背景
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = '#e0e0e0';
         ctx.fillRect(0, 0, size, size);
 
-        // ズームと位置を適用して描画
+        // 画像描画
         const imgW = cropImage.width * cropZoom;
         const imgH = cropImage.height * cropZoom;
-        // 初期は中央に配置
         const drawX = size / 2 - imgW / 2 + cropOffsetX;
         const drawY = size / 2 - imgH / 2 + cropOffsetY;
         ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
 
-        // 円形マスク（外側を暗くする）
+        // 円の外側を半透明の暗いオーバーレイで覆う
         ctx.save();
-        ctx.globalCompositeOperation = 'destination-in';
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(0, 0, size, size);
+        ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
-        ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2);
         ctx.fill();
+        ctx.restore();
+
+        // 円の枠線
+        ctx.save();
+        ctx.strokeStyle = '#1a73e8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2);
+        ctx.stroke();
         ctx.restore();
     }
 
@@ -450,16 +467,36 @@
     };
 
     window.applyCrop = function() {
-        const canvas = document.getElementById('icon-crop-canvas');
-        canvas.toBlob(blob => {
+        // 円形にクロップした最終画像を生成
+        const srcCanvas = document.getElementById('icon-crop-canvas');
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = 200; outCanvas.height = 200;
+        const ctx = outCanvas.getContext('2d');
+
+        // まず画像部分だけ（オーバーレイなし）を再描画
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, 200, 200);
+        if (cropImage) {
+            const imgW = cropImage.width * cropZoom;
+            const imgH = cropImage.height * cropZoom;
+            const drawX = 100 - imgW / 2 + cropOffsetX;
+            const drawY = 100 - imgH / 2 + cropOffsetY;
+            ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
+        }
+        // 円形マスク
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        ctx.arc(100, 100, 99, 0, Math.PI*2);
+        ctx.fill();
+
+        outCanvas.toBlob(blob => {
             selectedPhotoFile = blob;
             clearImage = false;
-            // プレビュー更新
             const url = URL.createObjectURL(blob);
             const preview = document.getElementById('icon-preview');
             preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
             document.getElementById('icon-cropper-area').style.display = 'none';
-        }, 'image/jpeg', 0.9);
+        }, 'image/png', 0.95);
     };
 
     // ドラッグ操作（マウス）
@@ -512,9 +549,10 @@
                 e.touches[0].clientY - e.touches[1].clientY
             );
             const delta = dist / lastTouchDist;
-            cropZoom = Math.min(3, Math.max(1, cropZoom * delta));
+            const slider = document.getElementById('icon-zoom-slider');
+            cropZoom = Math.min(parseFloat(slider.max), Math.max(parseFloat(slider.min), cropZoom * delta));
             lastTouchDist = dist;
-            document.getElementById('icon-zoom-slider').value = cropZoom;
+            slider.value = cropZoom;
             renderCrop();
         }
     }, { passive: false });
