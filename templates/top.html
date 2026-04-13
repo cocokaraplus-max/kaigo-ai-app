@@ -247,6 +247,30 @@
                 <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">upload</span>
                 写真を選択
             </button>
+
+            <!-- クロッパー -->
+            <div id="icon-cropper-area" style="display:none;margin-top:12px;">
+                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;text-align:center;">
+                    ドラッグで位置調整・ピンチまたはスライダーでズーム
+                </div>
+                <!-- キャンバス -->
+                <div style="position:relative;width:200px;height:200px;margin:0 auto;border-radius:50%;overflow:hidden;border:3px solid #1a73e8;cursor:grab;touch-action:none;">
+                    <canvas id="icon-crop-canvas" width="200" height="200" style="display:block;"></canvas>
+                </div>
+                <!-- ズームスライダー -->
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_out</span>
+                    <input type="range" id="icon-zoom-slider" min="1" max="3" step="0.01" value="1"
+                        style="flex:1;accent-color:#1a73e8;" oninput="onZoomChange(this.value)">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_in</span>
+                </div>
+                <button onclick="applyCrop()"
+                    style="width:100%;margin-top:8px;padding:8px;background:#34a853;color:#fff;
+                           border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.85rem;">
+                    <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">crop</span>
+                    この位置でトリミング
+                </button>
+            </div>
         </div>
 
         <!-- 絵文字選択 -->
@@ -363,16 +387,138 @@
     window.onIconPhotoSelect = function(input) {
         const file = input.files[0];
         if (!file) return;
-        selectedPhotoFile = file;
-        selectedEmoji = '';
-        clearImage = false;
         const reader = new FileReader();
         reader.onload = e => {
-            const preview = document.getElementById('icon-preview');
-            preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+            initCropper(e.target.result);
         };
         reader.readAsDataURL(file);
     };
+
+    // ========== クロッパー ==========
+    let cropImage = null;
+    let cropOffsetX = 0, cropOffsetY = 0;
+    let cropZoom = 1;
+    let cropDragging = false;
+    let cropLastX = 0, cropLastY = 0;
+
+    function initCropper(src) {
+        selectedEmoji = '';
+        selectedPhotoFile = null;
+        cropImage = new Image();
+        cropImage.onload = () => {
+            cropZoom = 1;
+            cropOffsetX = 0;
+            cropOffsetY = 0;
+            document.getElementById('icon-zoom-slider').value = 1;
+            document.getElementById('icon-cropper-area').style.display = 'block';
+            renderCrop();
+        };
+        cropImage.src = src;
+    }
+
+    function renderCrop() {
+        const canvas = document.getElementById('icon-crop-canvas');
+        if (!canvas || !cropImage) return;
+        const ctx = canvas.getContext('2d');
+        const size = 200;
+        ctx.clearRect(0, 0, size, size);
+
+        // 背景
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, size, size);
+
+        // ズームと位置を適用して描画
+        const imgW = cropImage.width * cropZoom;
+        const imgH = cropImage.height * cropZoom;
+        // 初期は中央に配置
+        const drawX = size / 2 - imgW / 2 + cropOffsetX;
+        const drawY = size / 2 - imgH / 2 + cropOffsetY;
+        ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
+
+        // 円形マスク（外側を暗くする）
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    window.onZoomChange = function(val) {
+        cropZoom = parseFloat(val);
+        renderCrop();
+    };
+
+    window.applyCrop = function() {
+        const canvas = document.getElementById('icon-crop-canvas');
+        canvas.toBlob(blob => {
+            selectedPhotoFile = blob;
+            clearImage = false;
+            // プレビュー更新
+            const url = URL.createObjectURL(blob);
+            const preview = document.getElementById('icon-preview');
+            preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+            document.getElementById('icon-cropper-area').style.display = 'none';
+        }, 'image/jpeg', 0.9);
+    };
+
+    // ドラッグ操作（マウス）
+    const cropCanvas = document.getElementById('icon-crop-canvas');
+    cropCanvas.addEventListener('mousedown', e => {
+        cropDragging = true;
+        cropLastX = e.clientX;
+        cropLastY = e.clientY;
+        cropCanvas.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', e => {
+        if (!cropDragging) return;
+        cropOffsetX += e.clientX - cropLastX;
+        cropOffsetY += e.clientY - cropLastY;
+        cropLastX = e.clientX;
+        cropLastY = e.clientY;
+        renderCrop();
+    });
+    document.addEventListener('mouseup', () => {
+        cropDragging = false;
+        cropCanvas.style.cursor = 'grab';
+    });
+
+    // タッチ操作（スマホ）
+    let lastTouchDist = 0;
+    cropCanvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+            cropDragging = true;
+            cropLastX = e.touches[0].clientX;
+            cropLastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            cropDragging = false;
+            lastTouchDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        }
+    }, { passive: true });
+    cropCanvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && cropDragging) {
+            cropOffsetX += e.touches[0].clientX - cropLastX;
+            cropOffsetY += e.touches[0].clientY - cropLastY;
+            cropLastX = e.touches[0].clientX;
+            cropLastY = e.touches[0].clientY;
+            renderCrop();
+        } else if (e.touches.length === 2) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            const delta = dist / lastTouchDist;
+            cropZoom = Math.min(3, Math.max(1, cropZoom * delta));
+            lastTouchDist = dist;
+            document.getElementById('icon-zoom-slider').value = cropZoom;
+            renderCrop();
+        }
+    }, { passive: false });
+    cropCanvas.addEventListener('touchend', () => { cropDragging = false; }, { passive: true });
 
     window.resetIcon = function() {
         selectedEmoji = '';
@@ -398,9 +544,8 @@
             const formData = new FormData();
             formData.append('icon_emoji', selectedEmoji);
             if (selectedPhotoFile) {
-                // 写真を圧縮
-                const compressed = await compressIconImage(selectedPhotoFile);
-                formData.append('photo', compressed, 'icon.jpg');
+                // クロッパーで切り出したBlobをそのまま使用
+                formData.append('photo', selectedPhotoFile, 'icon.jpg');
             }
             if (clearImage && !selectedPhotoFile) {
                 formData.append('clear_image', '1');
@@ -436,29 +581,6 @@
             btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 保存する';
         }
     };
-
-    // アイコン画像圧縮（150px正方形）
-    function compressIconImage(file) {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onload = e => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 150; canvas.height = 150;
-                    const ctx = canvas.getContext('2d');
-                    // 正方形にクロップ
-                    const size = Math.min(img.width, img.height);
-                    const sx = (img.width - size) / 2;
-                    const sy = (img.height - size) / 2;
-                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 150, 150);
-                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-    }
 
     // 更新履歴クリック
     document.querySelectorAll('.history-item[data-user]').forEach(el => {
