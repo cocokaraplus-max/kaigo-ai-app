@@ -439,6 +439,13 @@ const MY_NAME      = {{ my_name | tojson }};
 let currentYear  = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
 let currentView  = 'month';
+let currentWeekStart = (() => {
+    const today = new Date();
+    const d = new Date(today);
+    d.setDate(today.getDate() - today.getDay());
+    d.setHours(0,0,0,0);
+    return d;
+})();
 let activeCalIds = new Set(['all', ...CALENDARS.map(c => c.id)]);
 let editingEventId = null;
 let selectedSticker = '';
@@ -506,14 +513,10 @@ function renderMonth() {
 
 function renderWeek() {
     const today = new Date();
-    const startOfWeek = new Date(currentYear, currentMonth, 1);
-    // 今週の日曜から
-    const todayDay = today.getDay();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - todayDay);
+    const weekStart = new Date(currentWeekStart);
 
     const title = document.getElementById('cal-month-title');
-    title.textContent = `${weekStart.getMonth()+1}/${weekStart.getDate()} 〜`;
+    title.textContent = `${weekStart.getMonth()+1}/${weekStart.getDate()} 〜 ${weekStart.getMonth()+1}/${weekStart.getDate()+6}`;
 
     const grid = document.getElementById('cal-days');
     grid.style.gridTemplateColumns = 'repeat(7,1fr)';
@@ -522,12 +525,13 @@ function renderWeek() {
     grid.style.padding = '8px';
 
     const filteredEvents = getFilteredEvents();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     let html = '';
     for (let i=0; i<7; i++) {
         const d = new Date(weekStart);
         d.setDate(weekStart.getDate()+i);
         const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        const isToday = dateStr === todayStr;
         const dow = ['日','月','火','水','木','金','土'][i];
         const evs = filteredEvents.filter(e=>e.event_date===dateStr);
         const bars = evs.map(e=>
@@ -554,15 +558,23 @@ function getCalColor(calId) {
 
 // ===== ナビゲーション =====
 window.changeMonth = function(delta) {
-    currentMonth += delta;
-    if (currentMonth > 11) { currentMonth=0; currentYear++; }
-    if (currentMonth < 0)  { currentMonth=11; currentYear--; }
+    if (currentView === 'week') {
+        // 週表示は7日単位で移動
+        currentWeekStart.setDate(currentWeekStart.getDate() + delta * 7);
+    } else {
+        currentMonth += delta;
+        if (currentMonth > 11) { currentMonth=0; currentYear++; }
+        if (currentMonth < 0)  { currentMonth=11; currentYear--; }
+    }
     renderCalendar();
 };
 window.goToday = function() {
     const today = new Date();
     currentYear = today.getFullYear();
     currentMonth = today.getMonth();
+    currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - today.getDay());
+    currentWeekStart.setHours(0,0,0,0);
     renderCalendar();
 };
 window.switchView = function(view) {

@@ -969,12 +969,21 @@ def api_send_room_message():
         if not mem_check.data:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         now_iso = datetime.now(timezone.utc).isoformat()
-        supabase.table("chat_messages").insert({
-            "room_id": room_id,
-            "facility_code": f_code,
-            "staff_name": my_name,
-            "content": data["content"],
-        }).execute()
+        # facility_codeカラムがない場合も考慮して最小限のカラムで挿入
+        try:
+            supabase.table("chat_messages").insert({
+                "room_id": room_id,
+                "facility_code": f_code,
+                "staff_name": my_name,
+                "content": data["content"],
+            }).execute()
+        except Exception:
+            # facility_codeカラムがない場合はなしで試みる
+            supabase.table("chat_messages").insert({
+                "room_id": room_id,
+                "staff_name": my_name,
+                "content": data["content"],
+            }).execute()
         supabase.table("chat_rooms").update({"last_message_at": now_iso}).eq("id", room_id).execute()
         # 送信者は既読済みにする
         supabase.table("chat_members").update({"last_read_at": now_iso}).eq("room_id", room_id).eq("staff_name", my_name).execute()
