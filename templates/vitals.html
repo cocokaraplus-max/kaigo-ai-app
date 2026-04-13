@@ -20,6 +20,36 @@
 .wd-tab.sat { color:#2e7d32; }
 .wd-tab.active.sun, .wd-tab.active.sat { color:#fff; }
 
+/* スワイプ削除 */
+.patient-vital-card {
+    position: relative;
+    overflow: hidden;
+}
+.swipe-delete-bg {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 80px;
+    background: #ea4335;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 0;
+    border-radius: 0 14px 14px 0;
+}
+.swipe-delete-bg .material-symbols-outlined { font-size: 22px; }
+.patient-vital-card-inner {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 14px;
+    transition: transform 0.2s ease;
+}
+
 /* ===== 利用者カード ===== */
 .patient-vital-card {
     border:1.5px solid #e0e0e0; border-radius:14px;
@@ -180,6 +210,22 @@
         <div class="wd-tab" data-day="4" onclick="selectWeekday(4)">木</div>
         <div class="wd-tab" data-day="5" onclick="selectWeekday(5)">金</div>
         <div class="wd-tab sat" data-day="6" onclick="selectWeekday(6)">土</div>
+    </div>
+
+    <!-- AM/PMタブ -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button id="ampm-tab-all" onclick="selectAmpm('ALL')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #1a73e8;background:#1a73e8;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌞🌇 全員
+        </button>
+        <button id="ampm-tab-AM" onclick="selectAmpm('AM')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌅 午前（AM）
+        </button>
+        <button id="ampm-tab-PM" onclick="selectAmpm('PM')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌇 午後（PM）
+        </button>
     </div>
 
     <!-- 利用者一覧 -->
@@ -357,18 +403,21 @@
 <!-- ========== カメラモーダル ========== -->
 <div class="camera-modal" id="camera-modal">
     <div style="width:100%;max-width:480px;padding:16px;position:relative;">
-        <button class="camera-close-btn" onclick="closeCamera()" style="position:fixed;top:16px;right:16px;">
-            <span class="material-symbols-outlined">close</span>
-        </button>
-        <div style="color:#fff;font-size:0.85rem;font-weight:700;text-align:center;margin-bottom:10px;" id="camera-label">
-            血圧計・体温計・パルスオキシメーターを画面内に収めて撮影
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="color:#fff;font-size:0.85rem;font-weight:700;" id="camera-label">
+                血圧計・体温計・パルスオキシメーターを画面内に収めて撮影
+            </div>
+            <button class="camera-close-btn" onclick="closeCamera()" style="position:static;flex-shrink:0;margin-left:8px;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
         </div>
         <div id="camera-view">
             <video id="camera-video" autoplay playsinline style="width:100%;border-radius:12px;"></video>
-            <div style="text-align:center;margin-top:12px;">
+            <div style="text-align:center;margin-top:16px;">
                 <button class="camera-capture-btn" onclick="capturePhoto()">
                     <span class="material-symbols-outlined">camera</span>
                 </button>
+                <div style="color:#fff;font-size:0.75rem;margin-top:8px;opacity:0.8;">タップして撮影</div>
             </div>
         </div>
         <div id="camera-result-view" style="display:none;">
@@ -387,6 +436,7 @@
 (function(){
 const PATIENTS    = {{ patients | tojson }};
 const VISIT_DAYS  = {{ visit_days | tojson }};
+const AMPM_DATA   = {{ ampm_data | tojson }};
 const VITALS_DATA = {{ vitals_data | tojson }};
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
@@ -405,6 +455,21 @@ window.switchMainTab = function(name, el) {
 };
 
 // ========== 曜日選択 ==========
+let currentAmpm = 'ALL';
+
+window.selectAmpm = function(ampm) {
+    currentAmpm = ampm;
+    ['ALL','AM','PM'].forEach(a => {
+        const btn = document.getElementById('ampm-tab-' + a);
+        if (!btn) return;
+        const active = a === ampm;
+        btn.style.background = active ? '#1a73e8' : '#fff';
+        btn.style.color = active ? '#fff' : '#5f6368';
+        btn.style.borderColor = active ? '#1a73e8' : '#e0e0e0';
+    });
+    renderPatientList();
+};
+
 window.selectWeekday = function(day) {
     currentWeekday = day;
     document.querySelectorAll('.wd-tab').forEach(t => t.classList.remove('active'));
@@ -458,10 +523,13 @@ function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
     const list = document.getElementById('patient-vitals-list');
 
-    // 今日の曜日の利用者を絞り込み
+    // 今日の曜日の利用者を絞り込み（AM/PMフィルタも適用）
     const targets = PATIENTS.filter(p => {
         const wd = VISIT_DAYS[p.id] || '';
-        return wd.includes(String(currentWeekday));
+        if (!wd.includes(String(currentWeekday))) return false;
+        if (currentAmpm === 'ALL') return true;
+        const ampm = AMPM_DATA[p.id] || 'BOTH';
+        return ampm === currentAmpm || ampm === 'BOTH';
     });
 
     if (!targets.length) {
@@ -486,25 +554,34 @@ function renderPatientList() {
         if (v.spo2) summaryParts.push(`SpO2 ${v.spo2}%`);
 
         return `
-        <div class="patient-vital-card ${cardClass}" id="vcard-${p.id}">
-            <div class="patient-vital-header" onclick="toggleVitalCard('${p.id}')">
-                <div>
-                    <div class="patient-vital-name">
-                        <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
-                        ${p.user_name} 様
-                        ${isRecheck ? '<span class="vital-recheck-badge">再検査</span>' : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '')}
-                    </div>
-                    <div class="vital-summary">
-                        ${summaryParts.length ? summaryParts.join(' ／ ') : '<span>未記録</span>'}
-                    </div>
-                </div>
-                <span class="material-symbols-outlined" style="color:#80868b;transition:transform 0.2s;" id="varrow-${p.id}">expand_more</span>
+        <div class="patient-vital-card ${cardClass}" id="vcard-${p.id}" style="position:relative;overflow:hidden;margin-bottom:10px;border-radius:14px;">
+            <div class="swipe-delete-bg">
+                <span class="material-symbols-outlined">delete</span>
+                <span>削除</span>
             </div>
-            <div class="patient-vital-body" id="vbody-${p.id}">
-                ${buildVitalForm(p, v, dateStr)}
+            <div class="patient-vital-card-inner" id="vcard-inner-${p.id}">
+                <div class="patient-vital-header" onclick="toggleVitalCard('${p.id}')">
+                    <div>
+                        <div class="patient-vital-name">
+                            <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
+                            ${p.user_name} 様
+                            ${isRecheck ? '<span class="vital-recheck-badge">再検査</span>' : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '')}
+                        </div>
+                        <div class="vital-summary">
+                            ${summaryParts.length ? summaryParts.join(' ／ ') : '<span>未記録</span>'}
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined" style="color:#80868b;transition:transform 0.2s;" id="varrow-${p.id}">expand_more</span>
+                </div>
+                <div class="patient-vital-body" id="vbody-${p.id}">
+                    ${buildVitalForm(p, v, dateStr)}
+                </div>
             </div>
         </div>`;
     }).join('');
+
+    // スワイプ削除の初期化
+    targets.forEach(p => initSwipeDelete(p.id, p.id, p.user_name));
 }
 
 function buildVitalForm(p, v, dateStr) {
@@ -552,6 +629,72 @@ function buildVitalForm(p, v, dateStr) {
 function onVitalInput(pid, key, val) {
     const el = document.getElementById(`v-${key}-${pid}`);
     if (el) el.className = isAlertVal(key, val) ? 'alert-val' : '';
+}
+
+// ========== スワイプ削除 ==========
+function initSwipeDelete(cardId, patientId, patientName) {
+    const inner = document.getElementById('vcard-inner-' + cardId);
+    if (!inner) return;
+    let startX = 0, currentX = 0, isDragging = false;
+    const THRESHOLD = 80;
+
+    function onStart(x) {
+        startX = x; currentX = 0; isDragging = true;
+    }
+    function onMove(x) {
+        if (!isDragging) return;
+        currentX = Math.min(0, x - startX);
+        inner.style.transform = `translateX(${currentX}px)`;
+    }
+    function onEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (currentX < -THRESHOLD) {
+            inner.style.transform = `translateX(-80px)`;
+            // 削除確認
+            setTimeout(() => {
+                if (confirm(`本当に「${patientName}」を本日の一覧から取り消しますか？`)) {
+                    removePatientFromDay(patientId);
+                } else {
+                    inner.style.transform = '';
+                }
+            }, 100);
+        } else {
+            inner.style.transform = '';
+        }
+    }
+
+    // タッチ
+    inner.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passive: true });
+    inner.addEventListener('touchmove', e => onMove(e.touches[0].clientX), { passive: true });
+    inner.addEventListener('touchend', onEnd, { passive: true });
+    // マウス
+    inner.addEventListener('mousedown', e => onStart(e.clientX));
+    inner.addEventListener('mousemove', e => { if (isDragging) onMove(e.clientX); });
+    inner.addEventListener('mouseup', onEnd);
+    inner.addEventListener('mouseleave', onEnd);
+}
+
+async function removePatientFromDay(patientId) {
+    try {
+        const res = await fetch('/api/remove_visit_day', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patient_id: patientId, weekday: currentWeekday })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            // VISIT_DAYSから該当曜日を削除
+            if (VISIT_DAYS[patientId]) {
+                VISIT_DAYS[patientId] = VISIT_DAYS[patientId].replace(String(currentWeekday), '');
+            }
+            renderPatientList();
+        } else {
+            alert('削除に失敗しました');
+        }
+    } catch(e) {
+        alert('エラー: ' + e.message);
+    }
 }
 
 window.toggleVitalCard = function(pid) {

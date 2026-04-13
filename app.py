@@ -1188,16 +1188,21 @@ def vitals():
 
     patients = get_patients(supabase, f_code)
 
-    # 各患者のweekdays取得
+    # 各患者のweekdays・ampm取得
     visit_days = {}
+    ampm_data = {}
     try:
-        res = supabase.table("patient_visit_days").select("patient_id,weekdays").eq("facility_code", f_code).execute()
+        res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm").eq("facility_code", f_code).execute()
         for r in (res.data or []):
             visit_days[r["patient_id"]] = r.get("weekdays") or ""
+            ampm_data[r["patient_id"]] = r.get("ampm") or "BOTH"
         for p in patients:
             p["weekdays"] = visit_days.get(p["id"], "")
+            p["ampm"] = ampm_data.get(p["id"], "BOTH")
     except:
-        for p in patients: p["weekdays"] = ""
+        for p in patients:
+            p["weekdays"] = ""
+            p["ampm"] = "BOTH"
 
     # 今日のバイタルデータ取得
     vitals_data = {}
@@ -1209,10 +1214,12 @@ def vitals():
 
     settings = get_vital_settings(supabase, f_code)
     visit_days_map = {p["id"]: p["weekdays"] for p in patients}
+    ampm_map = {p["id"]: p["ampm"] for p in patients}
 
     return render("vitals.html",
         patients=patients,
         visit_days=visit_days_map,
+        ampm_data=ampm_map,
         vitals_data=vitals_data,
         settings=settings,
         today=today,
@@ -1361,6 +1368,26 @@ def api_save_visit_day():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/remove_visit_day', methods=['POST'])
+@login_required
+def api_remove_visit_day():
+    """指定曜日を利用者の利用曜日から削除する"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        patient_id = str(data["patient_id"])
+        weekday = str(data["weekday"])
+        supabase = get_supabase()
+        existing = supabase.table("patient_visit_days").select("id,weekdays").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
+        if existing.data:
+            old_days = existing.data[0].get("weekdays") or ""
+            new_days = old_days.replace(weekday, "")
+            supabase.table("patient_visit_days").update({"weekdays": new_days}).eq("id", existing.data[0]["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"remove_visit_day error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/save_vital_settings', methods=['POST'])
 @login_required
