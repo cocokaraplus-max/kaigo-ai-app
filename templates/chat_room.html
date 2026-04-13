@@ -27,13 +27,11 @@
     color: #80868b; padding: 4px;
     display: flex; align-items: center;
 }
-
 .chat-wrapper {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 190px);
 }
-
 .chat-messages {
     flex: 1;
     overflow-y: auto;
@@ -42,7 +40,6 @@
     flex-direction: column;
     gap: 8px;
 }
-
 .chat-date-divider {
     text-align: center;
     font-size: 0.72rem;
@@ -54,33 +51,26 @@
 .chat-date-divider::after {
     content: ''; flex: 1; border-top: 1px solid #e0e0e0;
 }
-
 .chat-bubble-wrap {
     display: flex;
     align-items: flex-end;
     gap: 8px;
 }
 .chat-bubble-wrap.mine { flex-direction: row-reverse; }
-
 .chat-avatar {
     width: 34px; height: 34px;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.82rem;
-    font-weight: 700;
-    flex-shrink: 0;
-    color: white;
+    font-size: 0.82rem; font-weight: 700;
+    flex-shrink: 0; color: white;
 }
 .chat-bubble-wrap.mine .chat-avatar { display: none; }
-
 .chat-bubble-content { max-width: 72%; }
-
 .chat-name {
     font-size: 0.68rem; color: #80868b; font-weight: 600;
     margin-bottom: 3px; padding: 0 4px;
 }
 .chat-bubble-wrap.mine .chat-name { display: none; }
-
 .chat-bubble {
     padding: 10px 14px;
     border-radius: 18px;
@@ -90,6 +80,12 @@
     background: #f0f2f5;
     color: #202124;
     border-bottom-left-radius: 4px;
+    /* ★ 吹き出しアニメーション */
+    animation: bubbleIn 0.18s ease;
+}
+@keyframes bubbleIn {
+    from { opacity: 0; transform: scale(0.92) translateY(4px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0);    }
 }
 .chat-bubble-wrap.mine .chat-bubble {
     background: #1a73e8;
@@ -97,29 +93,19 @@
     border-bottom-left-radius: 18px;
     border-bottom-right-radius: 4px;
 }
-
 .chat-meta {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 3px;
-    padding: 0 4px;
+    display: flex; align-items: center; gap: 4px;
+    margin-top: 3px; padding: 0 4px;
 }
 .chat-bubble-wrap.mine .chat-meta { flex-direction: row-reverse; }
 .chat-time { font-size: 0.68rem; color: #b0b8c1; }
-.chat-read-count {
-    font-size: 0.68rem;
-    color: #1a73e8;
-    font-weight: 600;
-}
-
+.chat-read-count { font-size: 0.68rem; color: #1a73e8; font-weight: 600; }
 .chat-delete-btn {
     background: none; border: none; cursor: pointer;
     padding: 0; color: #ccc; display: none;
 }
 .chat-bubble-wrap:hover .chat-delete-btn { display: block; }
 .chat-delete-btn .material-symbols-outlined { font-size: 14px; }
-
 .chat-input-area {
     position: sticky; bottom: 0;
     background: #fff;
@@ -128,12 +114,9 @@
     display: flex; gap: 8px; align-items: flex-end;
 }
 .chat-textarea {
-    flex: 1;
-    padding: 10px 14px;
-    border-radius: 22px;
-    border: 1.5px solid #e0e0e0;
-    font-size: 0.92rem;
-    resize: none;
+    flex: 1; padding: 10px 14px;
+    border-radius: 22px; border: 1.5px solid #e0e0e0;
+    font-size: 0.92rem; resize: none;
     min-height: 42px; max-height: 120px;
     line-height: 1.4; color: #202124;
     background: #f8f9fa;
@@ -147,12 +130,22 @@
     border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
+    transition: transform 0.1s;
 }
-.chat-send-btn:active { background: #1557b0; }
+.chat-send-btn:active { background: #1557b0; transform: scale(0.92); }
 .chat-send-btn .material-symbols-outlined { font-size: 20px; color: white; }
 .chat-send-btn:disabled { background: #e0e0e0; }
 .chat-send-btn:disabled .material-symbols-outlined { color: #bbb; }
-
+/* ★ 接続状態インジケーター */
+.realtime-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #ccc; display: inline-block;
+    margin-left: 6px; vertical-align: middle;
+    transition: background 0.3s;
+}
+.realtime-dot.connected { background: #34a853; }
+.realtime-dot.connecting { background: #fbbc04; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .no-messages {
     text-align: center; color: #80868b;
     font-size: 0.88rem; padding: 40px 0;
@@ -160,28 +153,20 @@
 .no-messages .material-symbols-outlined {
     font-size: 48px; display: block; color: #e0e0e0; margin-bottom: 8px;
 }
-
 .members-drawer {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 900;
-    align-items: flex-start;
-    justify-content: flex-end;
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 900;
+    align-items: flex-start; justify-content: flex-end;
 }
 .members-drawer.show { display: flex; }
 .members-panel {
-    background: #fff;
-    width: 240px;
-    height: 100%;
+    background: #fff; width: 240px; height: 100%;
     padding: 56px 16px 24px;
-    box-shadow: -4px 0 16px rgba(0,0,0,0.12);
-    overflow-y: auto;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.12); overflow-y: auto;
 }
 .members-panel-title {
     font-size: 0.82rem; font-weight: 700; color: #5f6368;
-    margin-bottom: 12px;
-    display: flex; align-items: center; gap: 4px;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 4px;
 }
 .member-row {
     display: flex; align-items: center; gap: 10px;
@@ -204,7 +189,10 @@
         {% else %}{{ other_initial }}{% endif %}
     </div>
     {% endif %}
-    <span class="chat-room-title">{{ room_name }}</span>
+    <span class="chat-room-title">
+        {{ room_name }}
+        <span class="realtime-dot connecting" id="realtime-dot" title="接続中..."></span>
+    </span>
     {% if is_group %}
     <button class="chat-room-members-btn" id="members-btn">
         <span class="material-symbols-outlined">people</span>
@@ -281,12 +269,15 @@
 {% endblock %}
 
 {% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 (function(){
-const ROOM_ID   = {{ room_id | tojson }};
-const MY_NAME   = {{ my_name | tojson }};
-const MY_COLOR  = {{ my_color | tojson }};
+const ROOM_ID    = {{ room_id    | tojson }};
+const MY_NAME    = {{ my_name    | tojson }};
+const MY_COLOR   = {{ my_color   | tojson }};
 const MY_INITIAL = {{ my_initial | tojson }};
+const SUPA_URL   = {{ supabase_url | tojson }};
+const SUPA_KEY   = {{ supabase_anon_key | tojson }};
 
 // ===== ユーティリティ =====
 function escapeHtml(str) {
@@ -299,24 +290,29 @@ function escapeHtml(str) {
 }
 
 function scrollToBottom(smooth) {
-    const el = document.getElementById('chat-messages');
+    var el = document.getElementById('chat-messages');
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 function getLastMsgId() {
-    const msgs = document.querySelectorAll('[id^="msg-"]');
+    var msgs = document.querySelectorAll('[id^="msg-"]');
     if (!msgs.length) return '';
     return msgs[msgs.length - 1].id.replace('msg-', '');
 }
 
+function nowTimeLabel() {
+    var now = new Date();
+    return String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+
 function buildMsgHTML(msg) {
-    const mine = msg.is_mine;
-    const avatarHTML = msg.image_url
+    var mine = msg.is_mine;
+    var avatarHTML = msg.image_url
         ? '<img src="' + escapeHtml(msg.image_url) + '" style="width:100%;height:100%;object-fit:cover;">'
         : msg.emoji
             ? '<span style="font-size:18px;">' + escapeHtml(msg.emoji) + '</span>'
             : escapeHtml(msg.initial || '?');
-    const deleteBtnHTML = mine
+    var deleteBtnHTML = mine
         ? '<button class="chat-delete-btn" data-id="' + escapeHtml(msg.id) + '"><span class="material-symbols-outlined">close</span></button>'
         : '';
     return '<div class="chat-bubble-wrap ' + (mine ? 'mine' : '') + '" id="msg-' + escapeHtml(msg.id) + '">'
@@ -325,11 +321,18 @@ function buildMsgHTML(msg) {
         + (!mine ? '<div class="chat-name">' + escapeHtml(msg.staff_name) + '</div>' : '')
         + '<div class="chat-bubble">' + escapeHtml(msg.content) + '</div>'
         + '<div class="chat-meta">'
-        + '<span class="chat-time">' + escapeHtml(msg.time_label) + '</span>'
+        + '<span class="chat-time">' + escapeHtml(msg.time_label || nowTimeLabel()) + '</span>'
         + deleteBtnHTML
         + '</div>'
         + '</div>'
         + '</div>';
+}
+
+function setDot(state) {
+    var dot = document.getElementById('realtime-dot');
+    if (!dot) return;
+    dot.className = 'realtime-dot ' + state;
+    dot.title = state === 'connected' ? 'リアルタイム接続中' : state === 'connecting' ? '接続中...' : '切断';
 }
 
 // ===== 初期化 =====
@@ -347,7 +350,7 @@ function markRead() {
 }
 window.markRead = markRead;
 
-// ===== テキストエリア自動リサイズ =====
+// ===== テキストエリア =====
 var textarea = document.getElementById('chat-input');
 if (textarea) {
     textarea.addEventListener('input', function() {
@@ -365,13 +368,8 @@ if (textarea) {
 // ===== 送信ボタン =====
 var sendBtn = document.getElementById('send-btn');
 if (sendBtn) {
-    sendBtn.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        sendMessage();
-    });
-    sendBtn.addEventListener('click', function() {
-        sendMessage();
-    });
+    sendBtn.addEventListener('touchend', function(e) { e.preventDefault(); sendMessage(); });
+    sendBtn.addEventListener('click', function() { sendMessage(); });
 }
 
 // ===== メッセージ送信 =====
@@ -383,31 +381,21 @@ window.sendMessage = async function() {
     var btn = document.getElementById('send-btn');
     btn.disabled = true;
 
-    // 楽観的UI：先に表示
+    // 楽観的UI
     var tempId = 'temp-' + Date.now();
-    var now = new Date();
-    var timeLabel = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     var msgArea = document.getElementById('chat-messages');
-
-    // 「まだメッセージがありません」を消す
     var noMsg = msgArea.querySelector('.no-messages');
     if (noMsg) noMsg.remove();
 
     msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
-        id: tempId,
-        staff_name: MY_NAME,
-        content: content,
-        is_mine: true,
-        color: MY_COLOR,
-        initial: MY_INITIAL,
-        emoji: '',
-        image_url: '',
-        time_label: timeLabel
+        id: tempId, staff_name: MY_NAME, content: content,
+        is_mine: true, color: MY_COLOR, initial: MY_INITIAL,
+        emoji: '', image_url: '', time_label: nowTimeLabel()
     }));
-
     input.value = '';
     input.style.height = 'auto';
     scrollToBottom(true);
+    // 通知サウンド（自分の送信時は鳴らさない）
 
     try {
         var res = await fetch('/api/send_room_message', {
@@ -417,21 +405,19 @@ window.sendMessage = async function() {
         });
         var data = await res.json();
         if (data.status !== 'success') {
-            var tempEl = document.getElementById(tempId);
-            if (tempEl) tempEl.remove();
+            document.getElementById(tempId)?.remove();
             alert('送信に失敗しました: ' + (data.message || res.status));
         }
-        await pollNewMessages();
+        // tempメッセージはRealtimeで本メッセージに置き換わる
     } catch(e) {
-        var tempEl = document.getElementById(tempId);
-        if (tempEl) tempEl.remove();
+        document.getElementById(tempId)?.remove();
         alert('通信エラー: ' + e.message);
     } finally {
         btn.disabled = false;
     }
 };
 
-// ===== メッセージ削除（イベント委譲） =====
+// ===== メッセージ削除 =====
 document.getElementById('chat-messages').addEventListener('click', async function(e) {
     var btn = e.target.closest('.chat-delete-btn');
     if (!btn) return;
@@ -443,8 +429,7 @@ document.getElementById('chat-messages').addEventListener('click', async functio
         body: JSON.stringify({ id: id })
     });
     if ((await res.json()).status === 'success') {
-        var el = document.getElementById('msg-' + id);
-        if (el) el.remove();
+        document.getElementById('msg-' + id)?.remove();
     }
 });
 
@@ -465,18 +450,13 @@ if (backBtn) {
 // ===== グループメンバードロワー =====
 var membersBtn = document.getElementById('members-btn');
 if (membersBtn) {
-    membersBtn.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        toggleMembers();
-    });
+    membersBtn.addEventListener('touchend', function(e) { e.preventDefault(); toggleMembers(); });
     membersBtn.addEventListener('click', toggleMembers);
 }
-
 window.toggleMembers = function() {
     var drawer = document.getElementById('members-drawer');
     if (drawer) drawer.classList.toggle('show');
 };
-
 var drawer = document.getElementById('members-drawer');
 if (drawer) {
     drawer.addEventListener('click', function(e) {
@@ -484,8 +464,101 @@ if (drawer) {
     });
 }
 
-// ===== 差分ポーリング =====
-async function pollNewMessages() {
+// ===== ★ Supabase Realtime =====
+var realtimeChannel = null;
+
+function startRealtime() {
+    if (!SUPA_URL || !SUPA_KEY) {
+        // フォールバック：ポーリング1秒
+        setDot('connecting');
+        setInterval(pollFallback, 1000);
+        return;
+    }
+
+    try {
+        var client = supabase.createClient(SUPA_URL, SUPA_KEY);
+        setDot('connecting');
+
+        realtimeChannel = client
+            .channel('chat_messages:room_id=eq.' + ROOM_ID)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_messages',
+                filter: 'room_id=eq.' + ROOM_ID
+            }, function(payload) {
+                handleNewMessage(payload.new);
+            })
+            .subscribe(function(status) {
+                if (status === 'SUBSCRIBED') {
+                    setDot('connected');
+                } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                    setDot('disconnected');
+                    // 切断時はポーリングにフォールバック
+                    setTimeout(startRealtime, 3000);
+                }
+            });
+    } catch(e) {
+        console.log('[Realtime] 初期化失敗:', e);
+        setDot('connecting');
+        setInterval(pollFallback, 1000);
+    }
+}
+
+// Realtimeから新着メッセージを受信したとき
+async function handleNewMessage(row) {
+    // 自分が送ったメッセージはtempで既に表示済みなのでtempを本IDに置換
+    var tempEls = document.querySelectorAll('[id^="temp-"]');
+    if (row.staff_name === MY_NAME && tempEls.length > 0) {
+        tempEls[0].id = 'msg-' + row.id;
+        return;
+    }
+    // 既に表示済みならスキップ
+    if (document.getElementById('msg-' + row.id)) return;
+
+    // アイコン情報をAPIから取得（キャッシュ利用）
+    var iconInfo = await getIconInfo(row.staff_name);
+    var msgArea = document.getElementById('chat-messages');
+    var wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
+
+    var now = new Date(row.created_at);
+    var timeLabel = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+
+    msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
+        id: row.id,
+        staff_name: row.staff_name,
+        content: row.content,
+        is_mine: false,
+        color: iconInfo.color,
+        initial: iconInfo.initial,
+        emoji: iconInfo.emoji,
+        image_url: iconInfo.image_url,
+        time_label: timeLabel
+    }));
+
+    if (wasAtBottom) scrollToBottom(true);
+    markRead();
+
+    // 通知サウンド再生
+    if (window.playNotificationSound) window.playNotificationSound();
+}
+
+// アイコン情報キャッシュ
+var iconCache = {};
+async function getIconInfo(staffName) {
+    if (iconCache[staffName]) return iconCache[staffName];
+    // デフォルト値を先に設定
+    var colors = ["#1a73e8","#34a853","#ea4335","#fbbc04","#9c27b0","#00bcd4","#ff5722","#607d8b","#e91e63","#4caf50"];
+    var h = 0;
+    for (var i = 0; i < staffName.length; i++) h = staffName.charCodeAt(i) + ((h << 5) - h);
+    var color = colors[Math.abs(h) % colors.length];
+    var info = { color: color, initial: staffName[0] || '?', emoji: '', image_url: '' };
+    iconCache[staffName] = info;
+    return info;
+}
+
+// ===== フォールバック：ポーリング（Realtime失敗時） =====
+async function pollFallback() {
     try {
         var lastId = getLastMsgId();
         if (!lastId || lastId.startsWith('temp-')) return;
@@ -493,25 +566,25 @@ async function pollNewMessages() {
         if (!res.ok) return;
         var data = await res.json();
         if (!data.messages || !data.messages.length) return;
-
         var msgArea = document.getElementById('chat-messages');
         var wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
-
-        // tempメッセージを削除
         document.querySelectorAll('[id^="temp-"]').forEach(function(el) { el.remove(); });
-
         data.messages.forEach(function(msg) {
             if (document.getElementById('msg-' + msg.id)) return;
             msgArea.insertAdjacentHTML('beforeend', buildMsgHTML(msg));
         });
-
         if (wasAtBottom) scrollToBottom(true);
         markRead();
     } catch(e) {}
 }
 
-// 3秒ごとにポーリング
-setInterval(pollNewMessages, 3000);
+// Realtime開始
+startRealtime();
+
+// ページを離れるときにチャンネルを切断
+window.addEventListener('beforeunload', function() {
+    if (realtimeChannel) realtimeChannel.unsubscribe();
+});
 
 })();
 </script>
