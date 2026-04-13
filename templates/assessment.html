@@ -176,6 +176,23 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ========== 選択ボタン ==========*/
+.type-btn {
+    padding: 12px 10px;
+    border-radius: 12px;
+    border: 2px solid #e0e0e0;
+    background: #f8f9fa;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.type-btn.active {
+    border-color: #1a73e8;
+    background: #e8f0fe;
+}
+.type-btn.active span { color: #1a73e8; }
+
 /* ========== 印刷用 ========== */
 @media print {
     .bottom-nav, .tab-bar, .generate-btn, .voice-btn,
