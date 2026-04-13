@@ -62,7 +62,6 @@
 }
 .chat-bubble-wrap.mine { flex-direction: row-reverse; }
 
-/* アバター */
 .chat-avatar {
     width: 34px; height: 34px;
     border-radius: 50%;
@@ -72,7 +71,6 @@
     flex-shrink: 0;
     color: white;
 }
-/* 自分のアバターはDM時非表示 */
 .chat-bubble-wrap.mine .chat-avatar { display: none; }
 
 .chat-bubble-content { max-width: 72%; }
@@ -100,7 +98,6 @@
     border-bottom-right-radius: 4px;
 }
 
-/* 既読・時刻エリア */
 .chat-meta {
     display: flex;
     align-items: center;
@@ -123,7 +120,6 @@
 .chat-bubble-wrap:hover .chat-delete-btn { display: block; }
 .chat-delete-btn .material-symbols-outlined { font-size: 14px; }
 
-/* 入力エリア */
 .chat-input-area {
     position: sticky; bottom: 0;
     background: #fff;
@@ -165,7 +161,6 @@
     font-size: 48px; display: block; color: #e0e0e0; margin-bottom: 8px;
 }
 
-/* メンバー表示ドロワー */
 .members-drawer {
     display: none;
     position: fixed; inset: 0;
@@ -198,7 +193,7 @@
 
 {% block content %}
 <div class="chat-room-header">
-    <button class="chat-back-btn" onclick="navigateTo('/chat')">
+    <button class="chat-back-btn" id="back-btn">
         <span class="material-symbols-outlined">arrow_back</span>
     </button>
     {% if is_group %}
@@ -211,7 +206,7 @@
     {% endif %}
     <span class="chat-room-title">{{ room_name }}</span>
     {% if is_group %}
-    <button class="chat-room-members-btn" onclick="toggleMembers()">
+    <button class="chat-room-members-btn" id="members-btn">
         <span class="material-symbols-outlined">people</span>
     </button>
     {% endif %}
@@ -246,7 +241,7 @@
                         <span class="chat-read-count">既読 {{ msg.read_count }}</span>
                         {% endif %}
                         {% if msg.is_mine or is_admin %}
-                        <button class="chat-delete-btn" onclick="deleteMessage('{{ msg.id }}')">
+                        <button class="chat-delete-btn" data-id="{{ msg.id }}">
                             <span class="material-symbols-outlined">close</span>
                         </button>
                         {% endif %}
@@ -260,18 +255,15 @@
     <div class="chat-input-area">
         <textarea class="chat-textarea" id="chat-input"
             placeholder="メッセージを入力..."
-            rows="1"
-            onkeydown="handleKeydown(event)"
-            oninput="autoResize(this)"></textarea>
-        <button class="chat-send-btn" id="send-btn" onclick="sendMessage()">
+            rows="1"></textarea>
+        <button class="chat-send-btn" id="send-btn">
             <span class="material-symbols-outlined">send</span>
         </button>
     </div>
 </div>
 
 {% if is_group %}
-<!-- メンバードロワー -->
-<div class="members-drawer" id="members-drawer" onclick="closeDrawerOutside(event)">
+<div class="members-drawer" id="members-drawer">
     <div class="members-panel">
         <div class="members-panel-title">
             <span class="material-symbols-outlined" style="font-size:15px;">people</span>
@@ -291,10 +283,25 @@
 {% block extra_script %}
 <script>
 (function(){
-const roomId = "{{ room_id }}";
-const myName = "{{ my_name }}";
-const myColor = "{{ my_color }}";
-const myInitial = "{{ my_initial }}";
+const ROOM_ID   = {{ room_id | tojson }};
+const MY_NAME   = {{ my_name | tojson }};
+const MY_COLOR  = {{ my_color | tojson }};
+const MY_INITIAL = {{ my_initial | tojson }};
+
+// ===== ユーティリティ =====
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/\n/g, '<br>');
+}
+
+function scrollToBottom(smooth) {
+    const el = document.getElementById('chat-messages');
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+}
 
 function getLastMsgId() {
     const msgs = document.querySelectorAll('[id^="msg-"]');
@@ -302,142 +309,208 @@ function getLastMsgId() {
     return msgs[msgs.length - 1].id.replace('msg-', '');
 }
 
-function scrollToBottom(smooth = false) {
-    const el = document.getElementById('chat-messages');
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-}
-
-window.addEventListener('load', () => { scrollToBottom(); markRead(); });
-if (document.readyState !== 'loading') scrollToBottom();
-setTimeout(scrollToBottom, 100);
-
-window.markRead = async function() {
-    await fetch('/api/mark_read', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ room_id: roomId })
-    }).catch(() => {});
-}
-
-window.autoResize = function(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-window.handleKeydown = function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-}
-
-function escapeHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/
-/g,'<br>');
-}
-
 function buildMsgHTML(msg) {
     const mine = msg.is_mine;
     const avatarHTML = msg.image_url
-        ? `<img src="${msg.image_url}" style="width:100%;height:100%;object-fit:cover;">`
+        ? '<img src="' + escapeHtml(msg.image_url) + '" style="width:100%;height:100%;object-fit:cover;">'
         : msg.emoji
-            ? `<span style="font-size:18px;">${msg.emoji}</span>`
-            : escapeHtml(msg.initial);
-    return `<div class="chat-bubble-wrap ${mine ? 'mine' : ''}" id="msg-${msg.id}">
-        <div class="chat-avatar" style="background:${msg.color};overflow:hidden;">${avatarHTML}</div>
-        <div class="chat-bubble-content">
-            ${!mine ? `<div class="chat-name">${escapeHtml(msg.staff_name)}</div>` : ''}
-            <div class="chat-bubble">${escapeHtml(msg.content)}</div>
-            <div class="chat-meta">
-                <span class="chat-time">${msg.time_label}</span>
-                ${mine ? `<button class="chat-delete-btn" onclick="deleteMessage('${msg.id}')"><span class="material-symbols-outlined">close</span></button>` : ''}
-            </div>
-        </div>
-    </div>`;
+            ? '<span style="font-size:18px;">' + escapeHtml(msg.emoji) + '</span>'
+            : escapeHtml(msg.initial || '?');
+    const deleteBtnHTML = mine
+        ? '<button class="chat-delete-btn" data-id="' + escapeHtml(msg.id) + '"><span class="material-symbols-outlined">close</span></button>'
+        : '';
+    return '<div class="chat-bubble-wrap ' + (mine ? 'mine' : '') + '" id="msg-' + escapeHtml(msg.id) + '">'
+        + '<div class="chat-avatar" style="background:' + escapeHtml(msg.color) + ';overflow:hidden;">' + avatarHTML + '</div>'
+        + '<div class="chat-bubble-content">'
+        + (!mine ? '<div class="chat-name">' + escapeHtml(msg.staff_name) + '</div>' : '')
+        + '<div class="chat-bubble">' + escapeHtml(msg.content) + '</div>'
+        + '<div class="chat-meta">'
+        + '<span class="chat-time">' + escapeHtml(msg.time_label) + '</span>'
+        + deleteBtnHTML
+        + '</div>'
+        + '</div>'
+        + '</div>';
 }
 
+// ===== 初期化 =====
+scrollToBottom(false);
+setTimeout(function() { scrollToBottom(false); }, 100);
+markRead();
+
+// ===== 既読マーク =====
+function markRead() {
+    fetch('/api/mark_read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: ROOM_ID })
+    }).catch(function() {});
+}
+window.markRead = markRead;
+
+// ===== テキストエリア自動リサイズ =====
+var textarea = document.getElementById('chat-input');
+if (textarea) {
+    textarea.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+    textarea.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+}
+
+// ===== 送信ボタン =====
+var sendBtn = document.getElementById('send-btn');
+if (sendBtn) {
+    sendBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        sendMessage();
+    });
+    sendBtn.addEventListener('click', function() {
+        sendMessage();
+    });
+}
+
+// ===== メッセージ送信 =====
 window.sendMessage = async function() {
-    const input = document.getElementById('chat-input');
-    const content = input.value.trim();
+    var input = document.getElementById('chat-input');
+    var content = input.value.trim();
     if (!content) return;
-    const btn = document.getElementById('send-btn');
+
+    var btn = document.getElementById('send-btn');
     btn.disabled = true;
 
     // 楽観的UI：先に表示
-    const tempId = 'temp-' + Date.now();
-    const now = new Date();
-    const timeLabel = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-    const msgArea = document.getElementById('chat-messages');
+    var tempId = 'temp-' + Date.now();
+    var now = new Date();
+    var timeLabel = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var msgArea = document.getElementById('chat-messages');
+
+    // 「まだメッセージがありません」を消す
+    var noMsg = msgArea.querySelector('.no-messages');
+    if (noMsg) noMsg.remove();
+
     msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
-        id: tempId, staff_name: myName, content, is_mine: true,
-        color: myColor, initial: myInitial, emoji: '', image_url: '', time_label: timeLabel
+        id: tempId,
+        staff_name: MY_NAME,
+        content: content,
+        is_mine: true,
+        color: MY_COLOR,
+        initial: MY_INITIAL,
+        emoji: '',
+        image_url: '',
+        time_label: timeLabel
     }));
+
     input.value = '';
     input.style.height = 'auto';
     scrollToBottom(true);
 
     try {
-        const res = await fetch('/api/send_room_message', {
+        var res = await fetch('/api/send_room_message', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ room_id: roomId, content })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room_id: ROOM_ID, content: content })
         });
-        const data = await res.json();
+        var data = await res.json();
         if (data.status !== 'success') {
-            document.getElementById(tempId)?.remove();
+            var tempEl = document.getElementById(tempId);
+            if (tempEl) tempEl.remove();
             alert('送信に失敗しました: ' + (data.message || res.status));
         }
         await pollNewMessages();
     } catch(e) {
-        document.getElementById(tempId)?.remove();
+        var tempEl = document.getElementById(tempId);
+        if (tempEl) tempEl.remove();
         alert('通信エラー: ' + e.message);
     } finally {
         btn.disabled = false;
     }
-}
+};
 
-window.deleteMessage = async function(id) {
-    if (!confirm('このメッセージを削除しますか？')) return;
-    const res = await fetch('/api/delete_room_message', {
+// ===== メッセージ削除（イベント委譲） =====
+document.getElementById('chat-messages').addEventListener('click', async function(e) {
+    var btn = e.target.closest('.chat-delete-btn');
+    if (!btn) return;
+    var id = btn.dataset.id;
+    if (!id || !confirm('このメッセージを削除しますか？')) return;
+    var res = await fetch('/api/delete_room_message', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id })
     });
     if ((await res.json()).status === 'success') {
-        document.getElementById('msg-' + id)?.remove();
+        var el = document.getElementById('msg-' + id);
+        if (el) el.remove();
     }
+});
+
+// ===== 戻るボタン =====
+var backBtn = document.getElementById('back-btn');
+if (backBtn) {
+    backBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        if (window.navigateTo) navigateTo('/chat');
+        else window.location.href = '/chat';
+    });
+    backBtn.addEventListener('click', function() {
+        if (window.navigateTo) navigateTo('/chat');
+        else window.location.href = '/chat';
+    });
+}
+
+// ===== グループメンバードロワー =====
+var membersBtn = document.getElementById('members-btn');
+if (membersBtn) {
+    membersBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        toggleMembers();
+    });
+    membersBtn.addEventListener('click', toggleMembers);
 }
 
 window.toggleMembers = function() {
-    document.getElementById('members-drawer').classList.toggle('show');
-}
-window.closeDrawerOutside = function(e) {
-    if (e.target === document.getElementById('members-drawer')) {
-        document.getElementById('members-drawer').classList.remove('show');
-    }
+    var drawer = document.getElementById('members-drawer');
+    if (drawer) drawer.classList.toggle('show');
+};
+
+var drawer = document.getElementById('members-drawer');
+if (drawer) {
+    drawer.addEventListener('click', function(e) {
+        if (e.target === drawer) drawer.classList.remove('show');
+    });
 }
 
-// 差分ポーリング（新着メッセージ取得）
+// ===== 差分ポーリング =====
 async function pollNewMessages() {
     try {
-        const lastId = getLastMsgId();
+        var lastId = getLastMsgId();
         if (!lastId || lastId.startsWith('temp-')) return;
-        const res = await fetch(`/api/new_messages?room_id=${roomId}&after_id=${lastId}`);
+        var res = await fetch('/api/new_messages?room_id=' + ROOM_ID + '&after_id=' + lastId);
         if (!res.ok) return;
-        const data = await res.json();
-        if (!data.messages?.length) return;
-        const msgArea = document.getElementById('chat-messages');
-        const wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
-        document.querySelectorAll('[id^="temp-"]').forEach(el => el.remove());
-        data.messages.forEach(msg => {
+        var data = await res.json();
+        if (!data.messages || !data.messages.length) return;
+
+        var msgArea = document.getElementById('chat-messages');
+        var wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
+
+        // tempメッセージを削除
+        document.querySelectorAll('[id^="temp-"]').forEach(function(el) { el.remove(); });
+
+        data.messages.forEach(function(msg) {
             if (document.getElementById('msg-' + msg.id)) return;
             msgArea.insertAdjacentHTML('beforeend', buildMsgHTML(msg));
         });
+
         if (wasAtBottom) scrollToBottom(true);
         markRead();
     } catch(e) {}
 }
 
-// 3秒ごとに差分ポーリング
+// 3秒ごとにポーリング
 setInterval(pollNewMessages, 3000);
 
 })();
