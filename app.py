@@ -814,7 +814,7 @@ def chat_room(room_id):
         f_code = session["f_code"]
         my_name = session["my_name"]
         is_admin = session.get("admin_authenticated", False)
-    supabase = get_supabase()
+        supabase = get_supabase()
 
     # 参加確認
     mem_check = supabase.table("chat_members").select("id").eq("room_id", room_id).eq("facility_code", f_code).eq("staff_name", my_name).execute()
