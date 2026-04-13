@@ -895,6 +895,7 @@ def chat_room(room_id):
                         "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
                         "time_label": dt.strftime("%H:%M"),
                         "readers": readers,
+                        "read_count": len(readers),
                     })
                 except Exception as e:
                     print(f"message parse error: {e}", flush=True)
