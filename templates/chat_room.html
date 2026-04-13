@@ -292,29 +292,31 @@
 <script>
 (function(){
 const roomId = "{{ room_id }}";
+const myName = "{{ my_name }}";
+const myColor = "{{ my_color }}";
+const myInitial = "{{ my_initial }}";
 
-window.addEventListener('load', () => {
-    const el = document.getElementById('chat-messages');
-    if (el) el.scrollTop = el.scrollHeight;
-    markRead();
-});
-
-// SPA経由での初期化
-if (document.readyState !== 'loading') {
-    const el = document.getElementById('chat-messages');
-    if (el) el.scrollTop = el.scrollHeight;
+function getLastMsgId() {
+    const msgs = document.querySelectorAll('[id^="msg-"]');
+    if (!msgs.length) return '';
+    return msgs[msgs.length - 1].id.replace('msg-', '');
 }
-setTimeout(() => {
+
+function scrollToBottom(smooth = false) {
     const el = document.getElementById('chat-messages');
-    if (el) el.scrollTop = el.scrollHeight;
-}, 100);
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+window.addEventListener('load', () => { scrollToBottom(); markRead(); });
+if (document.readyState !== 'loading') scrollToBottom();
+setTimeout(scrollToBottom, 100);
 
 window.markRead = async function() {
     await fetch('/api/mark_read', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ room_id: roomId })
-    });
+    }).catch(() => {});
 }
 
 window.autoResize = function(el) {
@@ -328,12 +330,51 @@ window.handleKeydown = function(e) {
     }
 }
 
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/
+/g,'<br>');
+}
+
+function buildMsgHTML(msg) {
+    const mine = msg.is_mine;
+    const avatarHTML = msg.image_url
+        ? `<img src="${msg.image_url}" style="width:100%;height:100%;object-fit:cover;">`
+        : msg.emoji
+            ? `<span style="font-size:18px;">${msg.emoji}</span>`
+            : escapeHtml(msg.initial);
+    return `<div class="chat-bubble-wrap ${mine ? 'mine' : ''}" id="msg-${msg.id}">
+        <div class="chat-avatar" style="background:${msg.color};overflow:hidden;">${avatarHTML}</div>
+        <div class="chat-bubble-content">
+            ${!mine ? `<div class="chat-name">${escapeHtml(msg.staff_name)}</div>` : ''}
+            <div class="chat-bubble">${escapeHtml(msg.content)}</div>
+            <div class="chat-meta">
+                <span class="chat-time">${msg.time_label}</span>
+                ${mine ? `<button class="chat-delete-btn" onclick="deleteMessage('${msg.id}')"><span class="material-symbols-outlined">close</span></button>` : ''}
+            </div>
+        </div>
+    </div>`;
+}
+
 window.sendMessage = async function() {
     const input = document.getElementById('chat-input');
     const content = input.value.trim();
     if (!content) return;
     const btn = document.getElementById('send-btn');
     btn.disabled = true;
+
+    // 楽観的UI：先に表示
+    const tempId = 'temp-' + Date.now();
+    const now = new Date();
+    const timeLabel = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+    const msgArea = document.getElementById('chat-messages');
+    msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
+        id: tempId, staff_name: myName, content, is_mine: true,
+        color: myColor, initial: myInitial, emoji: '', image_url: '', time_label: timeLabel
+    }));
+    input.value = '';
+    input.style.height = 'auto';
+    scrollToBottom(true);
+
     try {
         const res = await fetch('/api/send_room_message', {
             method: 'POST',
@@ -341,15 +382,14 @@ window.sendMessage = async function() {
             body: JSON.stringify({ room_id: roomId, content })
         });
         const data = await res.json();
-        if (data.status === 'success') {
-            input.value = '';
-            input.style.height = 'auto';
-            location.reload();
-        } else {
+        if (data.status !== 'success') {
+            document.getElementById(tempId)?.remove();
             alert('送信に失敗しました: ' + (data.message || res.status));
         }
+        await pollNewMessages();
     } catch(e) {
-        alert('通信エラーが発生しました: ' + e.message);
+        document.getElementById(tempId)?.remove();
+        alert('通信エラー: ' + e.message);
     } finally {
         btn.disabled = false;
     }
@@ -376,8 +416,30 @@ window.closeDrawerOutside = function(e) {
     }
 }
 
-// 30秒ごと自動更新
-setInterval(() => location.reload(), 30000);
+// 差分ポーリング（新着メッセージ取得）
+async function pollNewMessages() {
+    try {
+        const lastId = getLastMsgId();
+        if (!lastId || lastId.startsWith('temp-')) return;
+        const res = await fetch(`/api/new_messages?room_id=${roomId}&after_id=${lastId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.messages?.length) return;
+        const msgArea = document.getElementById('chat-messages');
+        const wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
+        document.querySelectorAll('[id^="temp-"]').forEach(el => el.remove());
+        data.messages.forEach(msg => {
+            if (document.getElementById('msg-' + msg.id)) return;
+            msgArea.insertAdjacentHTML('beforeend', buildMsgHTML(msg));
+        });
+        if (wasAtBottom) scrollToBottom(true);
+        markRead();
+    } catch(e) {}
+}
+
+// 3秒ごとに差分ポーリング
+setInterval(pollNewMessages, 3000);
+
 })();
 </script>
 {% endblock %}

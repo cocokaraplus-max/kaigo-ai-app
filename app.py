@@ -962,6 +962,8 @@ def chat_room(room_id):
                 members=members,
                 messages=messages,
                 my_name=my_name,
+                my_color=staff_color(my_name),
+                my_initial=staff_initial(my_name),
                 is_admin=is_admin,
             )
     except Exception as e:
@@ -1070,6 +1072,60 @@ def api_mark_read():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/new_messages')
+@login_required
+def api_new_messages():
+    """最後に取得したメッセージIDより新しいメッセージを返す（差分ポーリング）"""
+    try:
+        room_id  = request.args.get("room_id")
+        after_id = request.args.get("after_id", "")  # 最後のメッセージID
+        f_code   = session["f_code"]
+        my_name  = session["my_name"]
+        supabase = get_supabase()
+
+        # after_idより新しいメッセージを取得
+        if after_id:
+            # created_atを使って差分取得
+            after_res = supabase.table("chat_messages").select("created_at").eq("id", after_id).execute()
+            if after_res.data:
+                after_time = after_res.data[0]["created_at"]
+                res = supabase.table("chat_messages").select("*").eq("room_id", room_id).gt("created_at", after_time).order("created_at").execute()
+            else:
+                res = supabase.table("chat_messages").select("*").eq("room_id", room_id).order("created_at").limit(50).execute()
+        else:
+            res = supabase.table("chat_messages").select("*").eq("room_id", room_id).order("created_at").limit(50).execute()
+
+        icons = get_staff_icons(supabase, f_code)
+        messages = []
+        today = datetime.now(tokyo_tz).date()
+        for r in (res.data or []):
+            try:
+                dt = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(tokyo_tz)
+                ic = staff_icon_data(icons, r["staff_name"])
+                messages.append({
+                    "id": r["id"],
+                    "staff_name": r["staff_name"],
+                    "content": r.get("content", ""),
+                    "is_mine": r["staff_name"] == my_name,
+                    "color": ic["color"],
+                    "initial": ic["initial"],
+                    "emoji": ic.get("emoji", ""),
+                    "image_url": ic.get("image_url", ""),
+                    "date_label": dt.strftime("%-m月%-d日") if dt.date() != today else "今日",
+                    "time_label": dt.strftime("%H:%M"),
+                })
+            except:
+                continue
+
+        # 既読を更新
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("chat_members").update({"last_read_at": now_iso}).eq("room_id", room_id).eq("staff_name", my_name).execute()
+
+        return jsonify({"status": "success", "messages": messages})
+    except Exception as e:
+        print(f"new_messages error: {e}", flush=True)
+        return jsonify({"status": "error", "messages": []}), 500
 
 @app.route('/api/delete_room_message', methods=['POST'])
 @login_required
