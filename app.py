@@ -1317,8 +1317,7 @@ def api_read_vital_image():
 読み取れない項目はnullにしてください。"""
         model = get_generative_model()
         resp = model.generate_content([{"mime_type": "image/jpeg", "data": img_bytes}, prompt])
-        import re as _re, json as _json
-        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        
         if m:
             result = _json.loads(m.group())
             return jsonify({"status": "success", **result})
