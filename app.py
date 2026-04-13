@@ -1875,6 +1875,137 @@ def admin_auth():
             claude_url=None, registered_staffs=[], f_code=f_code
         )
 
+@app.route('/api/scan_patients_from_image', methods=['POST'])
+@login_required
+def api_scan_patients_from_image():
+    """写真から利用者の名前・生年月日をGeminiで読み取る"""
+    try:
+        data = request.json
+        image_base64 = data.get('image', '')
+        mime_type    = data.get('mime_type', 'image/jpeg')
+
+        from utils import get_generative_model
+        model = get_generative_model()
+
+        prompt = """この画像には利用者名簿・介護ソフト画面・紙の表など、人の名前と情報が含まれています。
+画像から全ての人の情報を読み取り、以下のJSON形式のみで返してください（説明文・コードブロック不要）：
+
+{"patients": [
+  {
+    "name": "氏名（漢字）",
+    "kana": "ふりがな（ひらがなまたはカタカナ）",
+    "birth_date": "生年月日（YYYY-MM-DD形式、西暦に変換）",
+    "chart": "カルテ番号や利用者番号（あれば）",
+    "weekdays": "利用曜日（月=1,火=2,水=3,木=4,金=5,土=6,日=0 の数字を連結。例：月水金なら「135」）",
+    "ampm": "利用時間帯（AM/PM/BOTHのいずれか。午前ならAM、午後ならPM、両方またはわからなければBOTH）"
+  }
+]}
+
+注意事項：
+- 生年月日は必ず西暦YYYY-MM-DD形式に変換してください（例：昭和30年3月15日 → 1955-03-15）
+- ふりがなが読み取れない場合は空文字にしてください
+- カルテ番号がない場合は空文字にしてください
+- 利用曜日・時間帯が読み取れない場合は空文字にしてください
+- 読み取れない項目はnullではなく空文字にしてください
+- 1人でも複数人でも全員読み取ってください"""
+
+        import json as _json
+        import re as _re
+
+        resp = model.generate_content([
+            {"mime_type": mime_type, "data": image_base64},
+            prompt
+        ])
+
+        text = resp.text.strip()
+        # JSONを抽出
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "JSONを取得できませんでした", "patients": []})
+
+        result = _json.loads(m.group())
+        patients = result.get("patients", [])
+
+        if not patients:
+            return jsonify({"status": "error", "message": "利用者情報が見つかりませんでした", "patients": []})
+
+        return jsonify({"status": "success", "patients": patients, "count": len(patients)})
+
+    except Exception as e:
+        print(f"scan_patients error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e), "patients": []}), 500
+
+@app.route('/api/bulk_register_patients', methods=['POST'])
+@login_required
+def api_bulk_register_patients():
+    """読み取った利用者を一括登録"""
+    try:
+        data = request.json
+        f_code   = session["f_code"]
+        patients = data.get("patients", [])
+        supabase = get_supabase()
+
+        # 既存のカルテ番号の最大値を取得
+        existing = supabase.table("patients").select("chart_number").eq("facility_code", f_code).execute()
+        existing_nums = []
+        for p in (existing.data or []):
+            try: existing_nums.append(int(p["chart_number"]))
+            except: pass
+        next_num = max(existing_nums, default=0) + 1
+
+        registered = 0
+        for p in patients:
+            name = p.get("name", "").strip()
+            if not name:
+                continue
+            # カルテ番号
+            chart = p.get("chart", "").strip()
+            if not chart:
+                chart = str(next_num).zfill(3)
+                next_num += 1
+
+            # 生年月日の整形
+            birth_date = p.get("birth_date", "") or None
+            if birth_date and len(birth_date) == 10:
+                try:
+                    from datetime import datetime as dt
+                    dt.strptime(birth_date, "%Y-%m-%d")
+                except:
+                    birth_date = None
+
+            supabase.table("patients").insert({
+                "facility_code": f_code,
+                "user_name":     name,
+                "user_kana":     p.get("kana", "") or "",
+                "birth_date":    birth_date,
+                "chart_number":  chart,
+            }).execute()
+
+            # 利用曜日・AM/PMをpatient_visit_daysに保存
+            weekdays = p.get("weekdays", "") or ""
+            ampm     = p.get("ampm", "BOTH") or "BOTH"
+            if weekdays:
+                # 登録したpatientsのIDを取得
+                new_p = supabase.table("patients").select("id").eq("facility_code", f_code).eq("user_name", name).eq("chart_number", chart).execute()
+                if new_p.data:
+                    pid = str(new_p.data[0]["id"])
+                    try:
+                        supabase.table("patient_visit_days").insert({
+                            "facility_code": f_code,
+                            "patient_id":    pid,
+                            "user_name":     name,
+                            "weekdays":      weekdays,
+                            "ampm":          ampm,
+                        }).execute()
+                    except:
+                        pass
+            registered += 1
+
+        return jsonify({"status": "success", "count": registered})
+    except Exception as e:
+        print(f"bulk_register error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/admin')
 @login_required
 def admin():

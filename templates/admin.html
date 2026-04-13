@@ -375,6 +375,67 @@
 <!-- 利用者管理 -->
 <div class="tab-panel active" id="tab-patients">
 
+    <!-- 写真から一括読み取り -->
+    <div class="accordion-block" style="border:1.5px solid #1a73e8;background:#f0f6ff;">
+        <div class="accordion-head" onclick="toggleAcc('scan')" style="background:#f0f6ff;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">document_scanner</span>
+                <span style="font-weight:700;font-size:0.92rem;color:#1a73e8;">📷 写真から一括読み取り（AI）</span>
+            </div>
+            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-scan">expand_more</span>
+        </div>
+        <div class="accordion-body" id="acc-body-scan">
+            <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+                利用者名簿・介護ソフト画面・紙の名簿など、名前と生年月日が載っている表の写真をアップロードするとAIが自動で読み取ります。
+            </div>
+
+            <!-- 画像アップロードエリア -->
+            <div id="scan-drop-zone"
+                style="border:2px dashed #1a73e8;border-radius:12px;padding:24px;text-align:center;cursor:pointer;background:#fff;margin-bottom:12px;"
+                onclick="document.getElementById('scan-photo-input').click()"
+                ondragover="event.preventDefault();this.style.background='#e8f0fe';"
+                ondragleave="this.style.background='#fff';"
+                ondrop="onScanDrop(event)">
+                <span class="material-symbols-outlined" style="font-size:36px;color:#1a73e8;">upload_file</span>
+                <div style="font-size:0.85rem;font-weight:700;color:#1a73e8;margin-top:8px;">写真をタップして選択</div>
+                <div style="font-size:0.75rem;color:#80868b;margin-top:4px;">または画像をここにドロップ</div>
+            </div>
+            <input type="file" id="scan-photo-input" accept="image/*" style="display:none;" onchange="onScanFileSelect(this)">
+
+            <!-- プレビュー -->
+            <div id="scan-preview" style="display:none;margin-bottom:12px;">
+                <img id="scan-preview-img" style="width:100%;border-radius:8px;border:1px solid #e0e0e0;">
+            </div>
+
+            <!-- 読み取りボタン -->
+            <button class="btn btn-primary" id="scan-btn" onclick="scanPatients()" style="display:none;width:100%;margin-bottom:12px;">
+                <span class="material-symbols-outlined" style="color:white;">auto_awesome</span>
+                AIで名前・生年月日を読み取る
+            </button>
+
+            <!-- ローディング -->
+            <div id="scan-loading" style="display:none;text-align:center;padding:16px;">
+                <span class="material-symbols-outlined" style="font-size:32px;color:#1a73e8;animation:spin 1s linear infinite;">sync</span>
+                <div style="font-size:0.85rem;color:#1a73e8;margin-top:8px;font-weight:700;">AIが読み取り中...</div>
+            </div>
+
+            <!-- 読み取り結果 -->
+            <div id="scan-results" style="display:none;">
+                <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">
+                    読み取り結果（確認・修正してから登録してください）
+                </div>
+                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:10px;">
+                    ✅チェックした利用者のみ登録されます
+                </div>
+                <div id="scan-results-list"></div>
+                <button class="btn btn-primary" onclick="registerScannedPatients()" style="width:100%;margin-top:10px;">
+                    <span class="material-symbols-outlined" style="color:white;">group_add</span>
+                    チェックした利用者を一括登録
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 新規登録 -->
     <div class="accordion-block">
         <div class="accordion-head" onclick="toggleAcc('new')">

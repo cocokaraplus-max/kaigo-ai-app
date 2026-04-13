@@ -342,3 +342,177 @@ function togglePw(inputId, iconId) {
         icon.textContent = 'visibility';
     }
 }
+
+// ========== 写真から利用者一括読み取り ==========
+let scanImageData = null;
+
+window.onScanDrop = function(e) {
+    e.preventDefault();
+    document.getElementById('scan-drop-zone').style.background = '#fff';
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) loadScanImage(file);
+};
+
+window.onScanFileSelect = function(input) {
+    const file = input.files[0];
+    if (file) loadScanImage(file);
+};
+
+function loadScanImage(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        scanImageData = e.target.result;
+        document.getElementById('scan-preview-img').src = scanImageData;
+        document.getElementById('scan-preview').style.display = 'block';
+        document.getElementById('scan-btn').style.display = 'block';
+        document.getElementById('scan-results').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+window.scanPatients = async function() {
+    if (!scanImageData) return;
+    document.getElementById('scan-btn').style.display = 'none';
+    document.getElementById('scan-loading').style.display = 'block';
+    document.getElementById('scan-results').style.display = 'none';
+
+    try {
+        // base64データを取得（data:image/...;base64, の後ろ）
+        const base64 = scanImageData.split(',')[1];
+        const mimeType = scanImageData.split(';')[0].split(':')[1];
+
+        const res = await fetch('/api/scan_patients_from_image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64, mime_type: mimeType })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success' && data.patients.length > 0) {
+            renderScanResults(data.patients);
+        } else {
+            alert('利用者情報を読み取れませんでした。\n別の写真でお試しください。\n\n' + (data.message || ''));
+            document.getElementById('scan-btn').style.display = 'block';
+        }
+    } catch(e) {
+        alert('エラーが発生しました: ' + e.message);
+        document.getElementById('scan-btn').style.display = 'block';
+    } finally {
+        document.getElementById('scan-loading').style.display = 'none';
+    }
+};
+
+function renderScanResults(patients) {
+    const list = document.getElementById('scan-results-list');
+    const DAYS = ['月','火','水','木','金','土','日'];
+    list.innerHTML = '';
+
+    // 件数表示
+    const countEl = document.createElement('div');
+    countEl.style.cssText = 'font-size:0.82rem;color:#34a853;font-weight:700;margin-bottom:8px;';
+    countEl.textContent = `✅ ${patients.length}名を読み取りました。内容を確認・修正してから登録してください。`;
+    list.appendChild(countEl);
+
+    patients.forEach((p, i) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:12px;margin-bottom:8px;';
+
+        // 利用曜日チェックボックス
+        const dayChecks = DAYS.map((d, di) => {
+            const dayVal = String(di + 1 === 7 ? 0 : di + 1); // 月=1...土=6,日=0
+            const checked = (p.weekdays || '').includes(dayVal) ? 'checked' : '';
+            return `<label style="display:flex;align-items:center;gap:2px;font-size:0.75rem;font-weight:700;cursor:pointer;">
+                <input type="checkbox" name="scan-day-${i}" value="${dayVal}" ${checked} style="accent-color:#1a73e8;">
+                <span style="color:${d==='日'?'#c62828':d==='土'?'#2e7d32':'#202124'}">${d}</span>
+            </label>`;
+        }).join('');
+
+        div.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <input type="checkbox" id="scan-check-${i}" checked style="accent-color:#1a73e8;width:16px;height:16px;">
+                <span style="font-size:0.82rem;font-weight:700;color:#34a853;">読み取り結果 ${i+1}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+                <div>
+                    <label style="font-size:0.72rem;color:#5f6368;font-weight:700;">氏名</label>
+                    <input type="text" class="form-control" id="scan-name-${i}" value="${p.name||''}" placeholder="氏名">
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;color:#5f6368;font-weight:700;">かな</label>
+                    <input type="text" class="form-control" id="scan-kana-${i}" value="${p.kana||''}" placeholder="かな">
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;color:#5f6368;font-weight:700;">生年月日</label>
+                    <input type="date" class="form-control" id="scan-birth-${i}" value="${p.birth_date||''}">
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;color:#5f6368;font-weight:700;">カルテNo</label>
+                    <input type="text" class="form-control" id="scan-chart-${i}" value="${p.chart||''}" placeholder="自動採番">
+                </div>
+            </div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:0.72rem;color:#5f6368;font-weight:700;display:block;margin-bottom:4px;">利用曜日</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">${dayChecks}</div>
+            </div>
+            <div>
+                <label style="font-size:0.72rem;color:#5f6368;font-weight:700;display:block;margin-bottom:4px;">利用時間</label>
+                <div style="display:flex;gap:8px;">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;">
+                        <input type="radio" name="scan-ampm-${i}" value="AM" ${p.ampm==='AM'?'checked':''} style="accent-color:#1a73e8;">
+                        🌅 午前（AM）
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;">
+                        <input type="radio" name="scan-ampm-${i}" value="PM" ${p.ampm==='PM'?'checked':''} style="accent-color:#1a73e8;">
+                        🌇 午後（PM）
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;">
+                        <input type="radio" name="scan-ampm-${i}" value="BOTH" ${(!p.ampm||p.ampm==='BOTH')?'checked':''} style="accent-color:#1a73e8;">
+                        全日
+                    </label>
+                </div>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+    document.getElementById('scan-results').style.display = 'block';
+}
+
+window.registerScannedPatients = async function() {
+    const items = document.querySelectorAll('[id^="scan-check-"]');
+    const toRegister = [];
+    items.forEach((cb, i) => {
+        if (cb.checked) {
+            // 利用曜日
+            const days = [...document.querySelectorAll(`input[name="scan-day-${i}"]:checked`)].map(el => el.value).join('');
+            // AM/PM
+            const ampmEl = document.querySelector(`input[name="scan-ampm-${i}"]:checked`);
+            const ampm = ampmEl ? ampmEl.value : 'BOTH';
+            toRegister.push({
+                name:       document.getElementById(`scan-name-${i}`).value.trim(),
+                kana:       document.getElementById(`scan-kana-${i}`).value.trim(),
+                birth_date: document.getElementById(`scan-birth-${i}`).value,
+                chart:      document.getElementById(`scan-chart-${i}`).value.trim(),
+                weekdays:   days,
+                ampm:       ampm,
+            });
+        }
+    });
+
+    if (!toRegister.length) { alert('登録する利用者を選択してください'); return; }
+    const valid = toRegister.filter(p => p.name);
+    if (!valid.length) { alert('氏名が入力されていません'); return; }
+    if (!confirm(`${valid.length}名を登録します。よろしいですか？`)) return;
+
+    const res = await fetch('/api/bulk_register_patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patients: valid })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        alert(`✅ ${data.count}名を登録しました！`);
+        location.reload();
+    } else {
+        alert('登録に失敗しました: ' + (data.message || ''));
+    }
+};
