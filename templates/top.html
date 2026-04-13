@@ -5,181 +5,175 @@
 {% block extra_style %}
 <style>
 .user-info {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 0.85rem;
-    color: #5f6368;
-    margin-bottom: 1.2rem;
-    padding: 8px 14px;
-    background: #f8f9fa;
-    border-radius: 20px;
-    width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; font-size: 0.85rem; color: #5f6368;
+    margin-bottom: 1.2rem; padding: 8px 14px;
+    background: #f8f9fa; border-radius: 20px;
+    width: fit-content; margin-left: auto; margin-right: auto;
 }
 .user-info .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
-
-.menu-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-.menu-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 20px 10px;
-    border-radius: 14px;
-    border: 1.5px solid #E0E0E0;
-    background: #FFFFFF;
-    color: #202124;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-    transition: background 0.15s, transform 0.1s;
-    -webkit-tap-highlight-color: transparent;
-}
-.menu-btn:active { transform: scale(0.97); background: #f5f5f5; }
-.menu-btn .material-symbols-outlined { font-size: 28px; color: #1a73e8; }
-
 .history-section { margin-top: 1.2rem; }
 .section-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: #5f6368;
-    margin-bottom: 0.8rem;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.88rem; font-weight: 700; color: #5f6368; margin-bottom: 0.8rem;
 }
 .section-title .material-symbols-outlined { font-size: 17px; color: #1a73e8; }
-
 .history-list {
-    max-height: 280px;
-    overflow-y: auto;
-    border: 1px solid #f0f0f0;
-    border-radius: 12px;
+    max-height: 280px; overflow-y: auto;
+    border: 1px solid #f0f0f0; border-radius: 12px;
 }
 .history-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 14px;
-    border-bottom: 1px solid #f5f5f5;
-    text-decoration: none;
-    color: #202124;
-    transition: background 0.1s;
-    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px; border-bottom: 1px solid #f5f5f5;
+    text-decoration: none; color: #202124; transition: background 0.1s; cursor: pointer;
 }
 .history-item:last-child { border-bottom: none; }
 .history-item:active { background: #f5f5f5; }
 .history-item .material-symbols-outlined { font-size: 17px; color: #5f6368; flex-shrink: 0; }
 .history-item-name { font-size: 0.9rem; font-weight: 500; flex: 1; }
 .history-item-time { font-size: 0.78rem; color: #80868b; }
-
 .birthday-section {
     background: linear-gradient(135deg, #fff0f6 0%, #fce4ec 100%);
-    border: 1.5px solid #f8bbd9;
-    border-radius: 14px;
-    padding: 14px 16px;
-    margin-bottom: 1rem;
+    border: 1.5px solid #f8bbd9; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 1rem;
 }
 .birthday-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #c2185b;
-    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 700; color: #c2185b; margin-bottom: 10px;
 }
 .birthday-header .material-symbols-outlined { font-size: 18px; }
 .birthday-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #f8bbd9;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid #f8bbd9;
 }
 .birthday-item:last-child { border-bottom: none; }
-.birthday-left {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.birthday-name {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #202124;
-}
+.birthday-left { display: flex; align-items: center; gap: 6px; }
+.birthday-name { font-size: 0.9rem; font-weight: 600; color: #202124; }
 .birthday-date {
-    font-size: 0.78rem;
-    color: #c2185b;
-    font-weight: 600;
-    background: #fce4ec;
-    padding: 2px 8px;
-    border-radius: 10px;
+    font-size: 0.78rem; color: #c2185b; font-weight: 600;
+    background: #fce4ec; padding: 2px 8px; border-radius: 10px;
 }
-.birthday-age {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: #c2185b;
+.birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
+
+/* ★ 歯車ボタン */
+.settings-fab {
+    position: fixed; top: 16px; right: 16px;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #f0f4ff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    -webkit-tap-highlight-color: transparent;
 }
-.admin-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    width: 100%;
-    padding: 13px;
-    border-radius: 12px;
-    border: 1.5px solid #E0E0E0;
-    background: #FFFFFF;
-    color: #5f6368;
-    font-size: 0.88rem;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-    transition: background 0.15s;
+.settings-fab .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
+
+/* ★ 設定モーダル */
+.settings-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 2000;
+    align-items: flex-end; justify-content: center;
 }
-.admin-btn .material-symbols-outlined { font-size: 18px; }
-.admin-btn:active { background: #f5f5f5; }
-.logout-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    width: 100%;
-    padding: 13px;
-    border-radius: 12px;
-    border: 1.5px solid #E0E0E0;
-    background: #FFFFFF;
-    color: #80868b;
-    font-size: 0.88rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
+.settings-modal.show { display: flex; }
+.settings-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 20px 40px; animation: slideUp 0.22s ease;
+    max-height: 90vh; overflow-y: auto;
 }
-.logout-btn .material-symbols-outlined { font-size: 18px; }
-.logout-btn:active { background: #f5f5f5; }
+@keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.settings-handle {
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 0 auto 16px;
+}
+.settings-title-row {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.settings-title {
+    font-size: 1rem; font-weight: 800; color: #202124;
+    display: flex; align-items: center; gap: 8px;
+}
+.settings-title .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
+.settings-close-btn { background: none; border: none; cursor: pointer; padding: 4px; }
+
+/* 設定セクション */
+.setting-section { margin-bottom: 24px; }
+.setting-section-label {
+    font-size: 0.8rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.setting-section-label .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+
+/* 文字サイズスライダー */
+.font-size-wrap {
+    background: #f8f9fa; border-radius: 12px; padding: 14px 16px;
+}
+.font-size-preview {
+    text-align: center; font-weight: 600; color: #202124;
+    margin-bottom: 12px; padding: 10px;
+    background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;
+    transition: font-size 0.2s;
+}
+.font-size-controls {
+    display: flex; align-items: center; gap: 10px;
+}
+.font-size-controls .material-symbols-outlined { color: #5f6368; }
+.font-slider {
+    flex: 1; accent-color: #1a73e8;
+    height: 4px; cursor: pointer;
+}
+.font-size-value {
+    font-size: 0.82rem; font-weight: 700; color: #1a73e8;
+    min-width: 36px; text-align: center;
+}
+
+/* サウンド選択 */
+.sound-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1.5px solid #e0e0e0; cursor: pointer;
+    background: #fff; transition: all 0.15s; margin-bottom: 6px;
+    -webkit-tap-highlight-color: transparent;
+}
+.sound-opt.active { border-color: #1a73e8; background: #e8f0fe; }
+.sound-opt-info { flex: 1; }
+.sound-opt-name { font-size: 0.85rem; font-weight: 700; }
+.sound-opt-desc { font-size: 0.7rem; color: #80868b; }
+.preview-btn {
+    background: #f0f4ff; border: none; border-radius: 20px;
+    padding: 4px 10px; cursor: pointer;
+    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
+    display: flex; align-items: center; gap: 3px; flex-shrink: 0;
+}
+.preview-btn .material-symbols-outlined { font-size: 14px; }
+
+/* アイコン設定ボタン */
+.icon-setting-row {
+    display: flex; align-items: center; gap: 12px;
+    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.icon-setting-row:active { background: #e8f0fe; }
+.icon-setting-arrow { margin-left: auto; color: #80868b; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+<!-- ★ 歯車ボタン（右上固定） -->
+<button class="settings-fab" id="settings-fab-btn">
+    <span class="material-symbols-outlined">settings</span>
+</button>
+
 <div class="logo-area">
     <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
     <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
 </div>
 
 <div class="user-info" style="display:flex;align-items:center;gap:10px;">
-    <!-- アイコン -->
-    <div id="my-icon-btn" onclick="openIconEdit()"
+    <div id="my-icon-btn"
         style="width:44px;height:44px;border-radius:50%;flex-shrink:0;cursor:pointer;overflow:hidden;
                background:{{ my_color }};display:flex;align-items:center;justify-content:center;
                border:2px solid rgba(255,255,255,0.5);position:relative;">
@@ -207,18 +201,135 @@
     </div>
 </div>
 
-<!-- アイコン編集モーダル -->
-<div id="icon-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:flex-end;justify-content:center;">
-    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 36px;">
-        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <div style="font-size:1rem;font-weight:800;color:#202124;">アイコンを変更</div>
-            <button onclick="closeIconEdit()" style="background:none;border:none;cursor:pointer;">
+<!-- ★ ユーザー設定モーダル -->
+<div class="settings-modal" id="user-settings-modal">
+    <div class="settings-sheet">
+        <div class="settings-handle"></div>
+        <div class="settings-title-row">
+            <div class="settings-title">
+                <span class="material-symbols-outlined">tune</span>
+                ユーザー設定
+            </div>
+            <button class="settings-close-btn" id="settings-close-btn">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
 
-        <!-- 現在のアイコンプレビュー -->
+        <!-- 文字サイズ -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">text_fields</span>
+                文字サイズ
+            </div>
+            <div class="font-size-wrap">
+                <div class="font-size-preview" id="font-preview">
+                    文字サイズのプレビュー（介護記録アプリ TASUKARU）
+                </div>
+                <div class="font-size-controls">
+                    <span class="material-symbols-outlined" style="font-size:16px;">text_decrease</span>
+                    <input type="range" class="font-slider" id="font-slider"
+                        min="90" max="130" step="5" value="100">
+                    <span class="material-symbols-outlined" style="font-size:22px;">text_increase</span>
+                    <span class="font-size-value" id="font-size-label">100%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 通知サウンド -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">notifications</span>
+                通知サウンド
+            </div>
+            <div id="sound-opts">
+                <div class="sound-opt" data-sound="pop">
+                    <span style="font-size:20px;">🔔</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">ポップ</div>
+                        <div class="sound-opt-desc">軽快な音</div>
+                    </div>
+                    <button class="preview-btn" data-preview="pop">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="chime">
+                    <span style="font-size:20px;">🎵</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">チャイム</div>
+                        <div class="sound-opt-desc">3音チャイム</div>
+                    </div>
+                    <button class="preview-btn" data-preview="chime">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="pico">
+                    <span style="font-size:20px;">📯</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">ピコン</div>
+                        <div class="sound-opt-desc">電子音</div>
+                    </div>
+                    <button class="preview-btn" data-preview="pico">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="tasukaru">
+                    <span style="font-size:20px;">🦝</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">タスカル</div>
+                        <div class="sound-opt-desc">音声で通知</div>
+                    </div>
+                    <button class="preview-btn" data-preview="tasukaru">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="none">
+                    <span style="font-size:20px;">🔕</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">なし</div>
+                        <div class="sound-opt-desc">サウンドOFF</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- アイコン設定 -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">account_circle</span>
+                アイコン
+            </div>
+            <div class="icon-setting-row" id="open-icon-edit-btn">
+                <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;
+                    background:{{ my_color }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    {% if my_icon_image_url %}
+                        <img src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
+                    {% elif my_icon_emoji %}
+                        <span style="font-size:20px;">{{ my_icon_emoji }}</span>
+                    {% else %}
+                        <span style="font-size:16px;font-weight:800;color:#fff;">{{ my_initial }}</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <div style="font-size:0.88rem;font-weight:700;">{{ my_name }}</div>
+                    <div style="font-size:0.75rem;color:#5f6368;">タップしてアイコンを変更</div>
+                </div>
+                <span class="material-symbols-outlined icon-setting-arrow">chevron_right</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- アイコン編集モーダル（既存をそのまま） -->
+<div id="icon-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:3000;align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 36px;max-height:90vh;overflow-y:auto;">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="font-size:1rem;font-weight:800;color:#202124;">アイコンを変更</div>
+            <button id="close-icon-edit-btn" style="background:none;border:none;cursor:pointer;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
         <div style="text-align:center;margin-bottom:16px;">
             <div id="icon-preview" style="width:72px;height:72px;border-radius:50%;margin:0 auto;
                 background:{{ my_color }};display:flex;align-items:center;justify-content:center;overflow:hidden;
@@ -233,38 +344,32 @@
             </div>
             <div style="font-size:0.75rem;color:#5f6368;margin-top:6px;">タップして変更</div>
         </div>
-
-        <!-- 写真アップロード -->
         <div style="margin-bottom:14px;">
             <div style="font-size:0.82rem;font-weight:700;color:#202124;margin-bottom:8px;">
                 <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">photo_camera</span>
                 写真から選ぶ
             </div>
-            <input type="file" id="icon-photo-input" accept="image/*" style="display:none;" onchange="onIconPhotoSelect(this)">
-            <button onclick="document.getElementById('icon-photo-input').click()"
+            <input type="file" id="icon-photo-input" accept="image/*" style="display:none;">
+            <button id="icon-photo-btn"
                 style="width:100%;padding:10px;border:1.5px dashed #1a73e8;border-radius:10px;
                        background:#f0f6ff;color:#1a73e8;font-weight:700;cursor:pointer;font-size:0.85rem;">
                 <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">upload</span>
                 写真を選択
             </button>
-
-            <!-- クロッパー -->
             <div id="icon-cropper-area" style="display:none;margin-top:12px;">
                 <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;text-align:center;">
                     ドラッグで位置調整・ピンチまたはスライダーでズーム
                 </div>
-                <!-- キャンバス -->
                 <div style="position:relative;width:200px;height:200px;margin:0 auto;border-radius:50%;overflow:hidden;border:3px solid #1a73e8;cursor:grab;touch-action:none;">
                     <canvas id="icon-crop-canvas" width="200" height="200" style="display:block;"></canvas>
                 </div>
-                <!-- ズームスライダー -->
                 <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
                     <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_out</span>
                     <input type="range" id="icon-zoom-slider" min="0.1" max="3" step="0.01" value="1"
-                        style="flex:1;accent-color:#1a73e8;" oninput="onZoomChange(this.value)">
+                        style="flex:1;accent-color:#1a73e8;">
                     <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">zoom_in</span>
                 </div>
-                <button onclick="applyCrop()"
+                <button id="apply-crop-btn"
                     style="width:100%;margin-top:8px;padding:8px;background:#34a853;color:#fff;
                            border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.85rem;">
                     <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">crop</span>
@@ -272,8 +377,6 @@
                 </button>
             </div>
         </div>
-
-        <!-- 絵文字選択 -->
         <div style="margin-bottom:16px;">
             <div style="font-size:0.82rem;font-weight:700;color:#202124;margin-bottom:8px;">
                 <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">emoji_emotions</span>
@@ -281,23 +384,18 @@
             </div>
             <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;">
                 {% for emoji in ['😊','😄','🤗','😎','🥰','🤩','😇','🦊','🐱','🐶','🐼','🐨','🐸','🦁','🐯','🐺','🌸','🌺','🌻','🌈','⭐','🔥','💫','🎵','🎨','🎯','💪','👑'] %}
-                <button onclick="selectEmoji('{{ emoji }}')"
-                    style="padding:6px;border:1.5px solid #e0e0e0;border-radius:8px;background:#fff;
-                           cursor:pointer;font-size:18px;line-height:1.2;transition:all 0.1s;"
+                <button style="padding:6px;border:1.5px solid #e0e0e0;border-radius:8px;background:#fff;
+                       cursor:pointer;font-size:18px;line-height:1.2;transition:all 0.1s;"
                     class="emoji-btn" data-emoji="{{ emoji }}">{{ emoji }}</button>
                 {% endfor %}
             </div>
         </div>
-
-        <!-- リセット -->
-        <button onclick="resetIcon()" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:10px;
+        <button id="reset-icon-btn" style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:10px;
             background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;margin-bottom:12px;">
             <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">refresh</span>
             イニシャルに戻す
         </button>
-
-        <!-- 保存ボタン -->
-        <button id="icon-save-btn" onclick="saveIcon()"
+        <button id="icon-save-btn"
             style="width:100%;padding:12px;background:#1a73e8;color:#fff;border:none;
                    border-radius:12px;font-weight:800;font-size:0.95rem;cursor:pointer;">
             <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span>
@@ -331,7 +429,6 @@
         <span class="material-symbols-outlined">history</span>
         更新履歴（最新{{ records|length }}件）
     </div>
-
     {% if records %}
     <div class="history-list" style="max-height:220px;">
         {% for r in records %}
@@ -355,277 +452,268 @@
 {% block extra_script %}
 <script>
 (function(){
-    let selectedEmoji = '';
-    let selectedPhotoFile = null;
-    let clearImage = false;
+var SOUND_KEY    = 'tasukaru_sound';
+var FONT_KEY     = 'tasukaru_font_size';
+var MY_INITIAL   = {{ my_initial | tojson }};
+var MY_COLOR     = {{ my_color | tojson }};
 
-    window.openIconEdit = function() {
-        document.getElementById('icon-edit-modal').style.display = 'flex';
-    };
-    window.closeIconEdit = function() {
-        document.getElementById('icon-edit-modal').style.display = 'none';
-    };
-    // モーダル外タップで閉じる
-    document.getElementById('icon-edit-modal').addEventListener('click', function(e) {
-        if (e.target === this) closeIconEdit();
+// ===== 文字サイズ適用（ページロード時） =====
+function applyFontSize(pct) {
+    document.documentElement.style.fontSize = pct + '%';
+    var preview = document.getElementById('font-preview');
+    if (preview) preview.style.fontSize = '0.95rem';
+    var label = document.getElementById('font-size-label');
+    if (label) label.textContent = pct + '%';
+    var slider = document.getElementById('font-slider');
+    if (slider) slider.value = pct;
+}
+var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
+applyFontSize(savedFont);
+
+// ===== 歯車ボタン =====
+var fabBtn = document.getElementById('settings-fab-btn');
+var modal  = document.getElementById('user-settings-modal');
+var closeBtn = document.getElementById('settings-close-btn');
+
+fabBtn.addEventListener('click', openSettings);
+fabBtn.addEventListener('touchend', function(e) { e.preventDefault(); openSettings(); });
+closeBtn.addEventListener('click', closeSettings);
+modal.addEventListener('click', function(e) { if (e.target === modal) closeSettings(); });
+
+function openSettings() {
+    modal.classList.add('show');
+    // 現在の文字サイズをスライダーに反映
+    var cur = parseInt(localStorage.getItem(FONT_KEY) || '100');
+    document.getElementById('font-slider').value = cur;
+    document.getElementById('font-size-label').textContent = cur + '%';
+    // 現在のサウンドをハイライト
+    var curSound = localStorage.getItem(SOUND_KEY) || 'pop';
+    document.querySelectorAll('.sound-opt').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.sound === curSound);
     });
+}
+function closeSettings() { modal.classList.remove('show'); }
 
-    window.selectEmoji = function(emoji) {
-        selectedEmoji = emoji;
-        selectedPhotoFile = null;
-        clearImage = true;
-        // プレビュー更新
-        const preview = document.getElementById('icon-preview');
-        preview.innerHTML = `<span id="icon-preview-text" style="font-size:32px;">${emoji}</span>`;
-        // ハイライト
-        document.querySelectorAll('.emoji-btn').forEach(btn => {
-            btn.style.borderColor = btn.dataset.emoji === emoji ? '#1a73e8' : '#e0e0e0';
-            btn.style.background = btn.dataset.emoji === emoji ? '#e8f0fe' : '#fff';
+// ===== 文字サイズスライダー =====
+var slider = document.getElementById('font-slider');
+slider.addEventListener('input', function() {
+    var pct = parseInt(this.value);
+    applyFontSize(pct);
+    localStorage.setItem(FONT_KEY, pct);
+});
+
+// ===== サウンド再生 =====
+function playSound(type) {
+    try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (type === 'pop') {
+            var o = ctx.createOscillator(); var g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.frequency.setValueAtTime(1200, ctx.currentTime);
+            o.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
+            g.gain.setValueAtTime(0.4, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+            o.start(); o.stop(ctx.currentTime + 0.12);
+        } else if (type === 'chime') {
+            [523, 659, 784].forEach(function(freq, i) {
+                var o2 = ctx.createOscillator(); var g2 = ctx.createGain();
+                o2.connect(g2); g2.connect(ctx.destination);
+                o2.frequency.value = freq;
+                g2.gain.setValueAtTime(0, ctx.currentTime + i * 0.15);
+                g2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i * 0.15 + 0.02);
+                g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.25);
+                o2.start(ctx.currentTime + i * 0.15); o2.stop(ctx.currentTime + i * 0.15 + 0.25);
+            });
+        } else if (type === 'pico') {
+            var o3 = ctx.createOscillator(); var g3 = ctx.createGain();
+            o3.type = 'square'; o3.connect(g3); g3.connect(ctx.destination);
+            o3.frequency.setValueAtTime(880, ctx.currentTime);
+            o3.frequency.setValueAtTime(1760, ctx.currentTime + 0.05);
+            g3.gain.setValueAtTime(0.2, ctx.currentTime);
+            g3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+            o3.start(); o3.stop(ctx.currentTime + 0.15);
+        } else if (type === 'tasukaru') {
+            var o4 = ctx.createOscillator(); var g4 = ctx.createGain();
+            o4.connect(g4); g4.connect(ctx.destination);
+            o4.frequency.setValueAtTime(440, ctx.currentTime);
+            o4.frequency.setValueAtTime(554, ctx.currentTime + 0.1);
+            o4.frequency.setValueAtTime(659, ctx.currentTime + 0.2);
+            g4.gain.setValueAtTime(0.3, ctx.currentTime);
+            g4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+            o4.start(); o4.stop(ctx.currentTime + 0.4);
+        }
+    } catch(e) {}
+}
+window.playNotificationSound = function() { playSound(localStorage.getItem(SOUND_KEY) || 'pop'); };
+
+// サウンド選択
+document.querySelectorAll('.sound-opt').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+        if (e.target.closest('.preview-btn')) return;
+        var sound = el.dataset.sound;
+        localStorage.setItem(SOUND_KEY, sound);
+        document.querySelectorAll('.sound-opt').forEach(function(s) {
+            s.classList.toggle('active', s.dataset.sound === sound);
         });
-    };
+        playSound(sound);
+    });
+});
+// 試聴ボタン
+document.querySelectorAll('.preview-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); playSound(btn.dataset.preview); });
+    btn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); playSound(btn.dataset.preview); });
+});
 
-    window.onIconPhotoSelect = function(input) {
-        const file = input.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-            initCropper(e.target.result);
-        };
-        reader.readAsDataURL(file);
-    };
+// ===== アイコン設定 =====
+var openIconBtn = document.getElementById('open-icon-edit-btn');
+var iconModal   = document.getElementById('icon-edit-modal');
+var closeIconBtn = document.getElementById('close-icon-edit-btn');
 
-    // ========== クロッパー ==========
-    let cropImage = null;
-    let cropOffsetX = 0, cropOffsetY = 0;
-    let cropZoom = 1;
-    let cropDragging = false;
-    let cropLastX = 0, cropLastY = 0;
+openIconBtn.addEventListener('click', function() { closeSettings(); iconModal.style.display = 'flex'; });
+openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); closeSettings(); iconModal.style.display = 'flex'; });
+closeIconBtn.addEventListener('click', function() { iconModal.style.display = 'none'; });
+document.getElementById('my-icon-btn').addEventListener('click', function() { iconModal.style.display = 'flex'; });
+iconModal.addEventListener('click', function(e) { if (e.target === iconModal) iconModal.style.display = 'none'; });
 
-    function initCropper(src) {
-        selectedEmoji = '';
-        selectedPhotoFile = null;
-        cropImage = new Image();
-        cropImage.onload = () => {
-            const size = 200;
-            // 画像が円にちょうど収まる初期ズームを計算（短辺=円の直径）
-            const fitZoom = size / Math.min(cropImage.width, cropImage.height);
-            cropZoom = fitZoom;
-            cropOffsetX = 0;
-            cropOffsetY = 0;
-            // スライダーの範囲を動的に設定
-            const slider = document.getElementById('icon-zoom-slider');
-            slider.min = Math.max(0.05, fitZoom * 0.3).toFixed(3);
-            slider.max = (fitZoom * 4).toFixed(3);
-            slider.value = cropZoom;
-            document.getElementById('icon-cropper-area').style.display = 'block';
-            renderCrop();
-        };
-        cropImage.src = src;
-    }
+// 写真選択
+var photoInput = document.getElementById('icon-photo-input');
+document.getElementById('icon-photo-btn').addEventListener('click', function() { photoInput.click(); });
+photoInput.addEventListener('change', function() { if (this.files[0]) { var r = new FileReader(); r.onload = function(e) { initCropper(e.target.result); }; r.readAsDataURL(this.files[0]); } });
 
-    function renderCrop() {
-        const canvas = document.getElementById('icon-crop-canvas');
-        if (!canvas || !cropImage) return;
-        const ctx = canvas.getContext('2d');
-        const size = 200;
-        ctx.clearRect(0, 0, size, size);
+// 絵文字選択
+var selectedEmoji = '', selectedPhotoFile = null, clearImage = false;
+document.querySelectorAll('.emoji-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        selectedEmoji = btn.dataset.emoji;
+        selectedPhotoFile = null; clearImage = true;
+        document.getElementById('icon-preview').innerHTML = '<span style="font-size:32px;">' + selectedEmoji + '</span>';
+        document.querySelectorAll('.emoji-btn').forEach(function(b) {
+            b.style.borderColor = b.dataset.emoji === selectedEmoji ? '#1a73e8' : '#e0e0e0';
+            b.style.background  = b.dataset.emoji === selectedEmoji ? '#e8f0fe' : '#fff';
+        });
+    });
+});
 
-        // ① 画像を描画
-        ctx.save();
-        const imgW = cropImage.width * cropZoom;
-        const imgH = cropImage.height * cropZoom;
-        const drawX = size / 2 - imgW / 2 + cropOffsetX;
-        const drawY = size / 2 - imgH / 2 + cropOffsetY;
-        ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
-        ctx.restore();
+// リセット
+document.getElementById('reset-icon-btn').addEventListener('click', function() {
+    selectedEmoji = ''; selectedPhotoFile = null; clearImage = true;
+    var preview = document.getElementById('icon-preview');
+    preview.style.background = MY_COLOR;
+    preview.innerHTML = '<span style="font-size:28px;font-weight:800;color:#fff;">' + MY_INITIAL + '</span>';
+});
 
-        // ② 円の外側を暗いオーバーレイで覆う（source-over）
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.beginPath();
-        ctx.rect(0, 0, size, size);
-        ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI*2, true); // 反時計回りで穴を開ける
-        ctx.fill('evenodd');
-        ctx.restore();
+// クロッパー
+var cropImage = null, cropOffsetX = 0, cropOffsetY = 0;
+var cropZoom = 1, cropDragging = false, cropLastX = 0, cropLastY = 0;
 
-        // ③ 円の枠線
-        ctx.save();
-        ctx.strokeStyle = '#1a73e8';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(size/2, size/2, size/2 - 1.5, 0, Math.PI*2);
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    window.onZoomChange = function(val) {
-        cropZoom = parseFloat(val);
+function initCropper(src) {
+    selectedEmoji = ''; selectedPhotoFile = null;
+    cropImage = new Image();
+    cropImage.onload = function() {
+        var size = 200;
+        var fitZoom = size / Math.min(cropImage.width, cropImage.height);
+        cropZoom = fitZoom; cropOffsetX = 0; cropOffsetY = 0;
+        var slider2 = document.getElementById('icon-zoom-slider');
+        slider2.min = Math.max(0.05, fitZoom * 0.3).toFixed(3);
+        slider2.max = (fitZoom * 4).toFixed(3);
+        slider2.value = cropZoom;
+        document.getElementById('icon-cropper-area').style.display = 'block';
         renderCrop();
     };
+    cropImage.src = src;
+}
+function renderCrop() {
+    var canvas = document.getElementById('icon-crop-canvas');
+    if (!canvas || !cropImage) return;
+    var ctx = canvas.getContext('2d'); var size = 200;
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    var imgW = cropImage.width * cropZoom, imgH = cropImage.height * cropZoom;
+    ctx.drawImage(cropImage, size/2 - imgW/2 + cropOffsetX, size/2 - imgH/2 + cropOffsetY, imgW, imgH);
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.rect(0,0,size,size);
+    ctx.arc(size/2, size/2, size/2-1, 0, Math.PI*2, true);
+    ctx.fill('evenodd'); ctx.restore();
+    ctx.save(); ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(size/2, size/2, size/2-1.5, 0, Math.PI*2); ctx.stroke(); ctx.restore();
+}
+document.getElementById('icon-zoom-slider').addEventListener('input', function() { cropZoom = parseFloat(this.value); renderCrop(); });
+document.getElementById('apply-crop-btn').addEventListener('click', function() {
+    var out = document.createElement('canvas'); out.width = out.height = 200;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0,0,200,200);
+    if (cropImage) {
+        var imgW = cropImage.width * cropZoom, imgH = cropImage.height * cropZoom;
+        ctx.drawImage(cropImage, 100-imgW/2+cropOffsetX, 100-imgH/2+cropOffsetY, imgW, imgH);
+    }
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.beginPath(); ctx.arc(100,100,99,0,Math.PI*2); ctx.fill();
+    out.toBlob(function(blob) {
+        selectedPhotoFile = blob; clearImage = false;
+        var url = URL.createObjectURL(blob);
+        document.getElementById('icon-preview').innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;">';
+        document.getElementById('icon-cropper-area').style.display = 'none';
+    }, 'image/png', 0.95);
+});
+var cropCanvas = document.getElementById('icon-crop-canvas');
+cropCanvas.addEventListener('mousedown', function(e) { cropDragging=true; cropLastX=e.clientX; cropLastY=e.clientY; });
+document.addEventListener('mousemove', function(e) { if(!cropDragging) return; cropOffsetX+=e.clientX-cropLastX; cropOffsetY+=e.clientY-cropLastY; cropLastX=e.clientX; cropLastY=e.clientY; renderCrop(); });
+document.addEventListener('mouseup', function() { cropDragging=false; });
+var lastTouchDist = 0;
+cropCanvas.addEventListener('touchstart', function(e) {
+    if(e.touches.length===1){cropDragging=true;cropLastX=e.touches[0].clientX;cropLastY=e.touches[0].clientY;}
+    else if(e.touches.length===2){cropDragging=false;lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);}
+}, {passive:true});
+cropCanvas.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    if(e.touches.length===1&&cropDragging){cropOffsetX+=e.touches[0].clientX-cropLastX;cropOffsetY+=e.touches[0].clientY-cropLastY;cropLastX=e.touches[0].clientX;cropLastY=e.touches[0].clientY;renderCrop();}
+    else if(e.touches.length===2){var dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);var sl=document.getElementById('icon-zoom-slider');cropZoom=Math.min(parseFloat(sl.max),Math.max(parseFloat(sl.min),cropZoom*dist/lastTouchDist));lastTouchDist=dist;sl.value=cropZoom;renderCrop();}
+}, {passive:false});
+cropCanvas.addEventListener('touchend', function() { cropDragging=false; }, {passive:true});
 
-    window.applyCrop = function() {
-        // 円形にクロップした最終画像を生成
-        const srcCanvas = document.getElementById('icon-crop-canvas');
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = 200; outCanvas.height = 200;
-        const ctx = outCanvas.getContext('2d');
-
-        // まず画像部分だけ（オーバーレイなし）を再描画
-        ctx.fillStyle = '#f0f0f0';
-        ctx.fillRect(0, 0, 200, 200);
-        if (cropImage) {
-            const imgW = cropImage.width * cropZoom;
-            const imgH = cropImage.height * cropZoom;
-            const drawX = 100 - imgW / 2 + cropOffsetX;
-            const drawY = 100 - imgH / 2 + cropOffsetY;
-            ctx.drawImage(cropImage, drawX, drawY, imgW, imgH);
-        }
-        // 円形マスク
-        ctx.globalCompositeOperation = 'destination-in';
-        ctx.beginPath();
-        ctx.arc(100, 100, 99, 0, Math.PI*2);
-        ctx.fill();
-
-        outCanvas.toBlob(blob => {
-            selectedPhotoFile = blob;
-            clearImage = false;
-            const url = URL.createObjectURL(blob);
-            const preview = document.getElementById('icon-preview');
-            preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
-            document.getElementById('icon-cropper-area').style.display = 'none';
-        }, 'image/png', 0.95);
-    };
-
-    // ドラッグ操作（マウス）
-    const cropCanvas = document.getElementById('icon-crop-canvas');
-    cropCanvas.addEventListener('mousedown', e => {
-        cropDragging = true;
-        cropLastX = e.clientX;
-        cropLastY = e.clientY;
-        cropCanvas.style.cursor = 'grabbing';
-    });
-    document.addEventListener('mousemove', e => {
-        if (!cropDragging) return;
-        cropOffsetX += e.clientX - cropLastX;
-        cropOffsetY += e.clientY - cropLastY;
-        cropLastX = e.clientX;
-        cropLastY = e.clientY;
-        renderCrop();
-    });
-    document.addEventListener('mouseup', () => {
-        cropDragging = false;
-        cropCanvas.style.cursor = 'grab';
-    });
-
-    // タッチ操作（スマホ）
-    let lastTouchDist = 0;
-    cropCanvas.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) {
-            cropDragging = true;
-            cropLastX = e.touches[0].clientX;
-            cropLastY = e.touches[0].clientY;
-        } else if (e.touches.length === 2) {
-            cropDragging = false;
-            lastTouchDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        }
-    }, { passive: true });
-    cropCanvas.addEventListener('touchmove', e => {
-        e.preventDefault();
-        if (e.touches.length === 1 && cropDragging) {
-            cropOffsetX += e.touches[0].clientX - cropLastX;
-            cropOffsetY += e.touches[0].clientY - cropLastY;
-            cropLastX = e.touches[0].clientX;
-            cropLastY = e.touches[0].clientY;
-            renderCrop();
-        } else if (e.touches.length === 2) {
-            const dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            const delta = dist / lastTouchDist;
-            const slider = document.getElementById('icon-zoom-slider');
-            cropZoom = Math.min(parseFloat(slider.max), Math.max(parseFloat(slider.min), cropZoom * delta));
-            lastTouchDist = dist;
-            slider.value = cropZoom;
-            renderCrop();
-        }
-    }, { passive: false });
-    cropCanvas.addEventListener('touchend', () => { cropDragging = false; }, { passive: true });
-
-    window.resetIcon = function() {
-        selectedEmoji = '';
-        selectedPhotoFile = null;
-        clearImage = true;
-        const initial = '{{ my_initial }}';
-        const color = '{{ my_color }}';
-        const preview = document.getElementById('icon-preview');
-        preview.style.background = color;
-        preview.innerHTML = `<span style="font-size:28px;font-weight:800;color:#fff;">${initial}</span>`;
-        document.querySelectorAll('.emoji-btn').forEach(btn => {
-            btn.style.borderColor = '#e0e0e0';
-            btn.style.background = '#fff';
-        });
-    };
-
-    window.saveIcon = async function() {
-        const btn = document.getElementById('icon-save-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">hourglass_top</span> 保存中...';
-
-        try {
-            const formData = new FormData();
-            formData.append('icon_emoji', selectedEmoji);
-            if (selectedPhotoFile) {
-                // クロッパーで切り出したBlobをそのまま使用
-                formData.append('photo', selectedPhotoFile, 'icon.jpg');
-            }
-            if (clearImage && !selectedPhotoFile) {
-                formData.append('clear_image', '1');
-            }
-
-            const res = await fetch('/api/update_my_icon', { method: 'POST', body: formData });
-            const data = await res.json();
-
-            if (data.status === 'success') {
-                // ページ上のアイコンも更新
-                const myBtn = document.getElementById('my-icon-btn');
-                if (selectedPhotoFile && data.icon_image_url) {
-                    myBtn.innerHTML = `<img src="${data.icon_image_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-                } else if (selectedEmoji) {
-                    myBtn.innerHTML = `<span style="font-size:22px;line-height:1;">${selectedEmoji}</span>`;
-                } else {
-                    myBtn.innerHTML = `<span style="font-size:18px;font-weight:800;color:#fff;">{{ my_initial }}</span>`;
-                }
-                closeIconEdit();
-                // 保存完了トースト
-                const toast = document.createElement('div');
-                toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
-                toast.textContent = '✅ アイコンを更新しました';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 2500);
+// 保存
+document.getElementById('icon-save-btn').addEventListener('click', async function() {
+    var btn = this; btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">hourglass_top</span> 保存中...';
+    try {
+        var formData = new FormData();
+        formData.append('icon_emoji', selectedEmoji);
+        if (selectedPhotoFile) formData.append('photo', selectedPhotoFile, 'icon.jpg');
+        if (clearImage && !selectedPhotoFile) formData.append('clear_image', '1');
+        var res = await fetch('/api/update_my_icon', { method: 'POST', body: formData });
+        var data = await res.json();
+        if (data.status === 'success') {
+            var myBtn = document.getElementById('my-icon-btn');
+            if (selectedPhotoFile && data.icon_image_url) {
+                myBtn.innerHTML = '<img src="' + data.icon_image_url + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+            } else if (selectedEmoji) {
+                myBtn.innerHTML = '<span style="font-size:22px;line-height:1;">' + selectedEmoji + '</span>';
             } else {
-                alert('保存に失敗しました');
+                myBtn.innerHTML = '<span style="font-size:18px;font-weight:800;color:#fff;">' + MY_INITIAL + '</span>';
             }
-        } catch(e) {
-            alert('エラー: ' + e.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 保存する';
-        }
-    };
+            iconModal.style.display = 'none';
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+            toast.textContent = '✅ アイコンを更新しました';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 2500);
+        } else { alert('保存に失敗しました'); }
+    } catch(e) { alert('エラー: ' + e.message); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 保存する';
+    }
+});
 
-    // 更新履歴クリック
-    document.querySelectorAll('.history-item[data-user]').forEach(el => {
-        el.addEventListener('click', function() {
-            const user = this.dataset.user;
-            const date = this.dataset.date;
-            window.location.href = '/daily_view?user=' + encodeURIComponent(user) + '&date=' + date;
-        });
-        el.style.cursor = 'pointer';
+// 更新履歴クリック
+document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
+    el.addEventListener('click', function() {
+        window.location.href = '/daily_view?user=' + encodeURIComponent(this.dataset.user) + '&date=' + this.dataset.date;
     });
+});
+
 })();
 </script>
 {% endblock %}
