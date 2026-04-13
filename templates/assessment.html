@@ -214,7 +214,27 @@
             <span class="material-symbols-outlined">person</span>
             利用者を選ぶ
         </label>
-        <select class="form-control" id="patient-select" onchange="onPatientSelect()">
+        <!-- 検索窓 -->
+        <div style="position:relative;margin-bottom:6px;">
+            <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#80868b;font-size:18px;">search</span>
+            <input type="text" id="patient-search-input" class="form-control"
+                placeholder="名前・ふりがなで検索..."
+                style="padding-left:36px;"
+                oninput="filterAssessmentPatients(this.value)"
+                autocomplete="off">
+        </div>
+        <!-- 選択バッジ -->
+        <div id="patient-selected-badge" style="display:none;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;padding:8px 12px;margin-bottom:6px;display:none;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">person</span>
+            <span id="patient-selected-label" style="font-weight:700;font-size:0.9rem;flex:1;"></span>
+            <button onclick="clearAssessmentPatient()" style="background:none;border:none;cursor:pointer;padding:0;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#80868b;">close</span>
+            </button>
+        </div>
+        <!-- 候補リスト -->
+        <div id="patient-candidates-assess" style="display:none;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        <!-- 隠しselect（既存ロジックとの互換性維持） -->
+        <select id="patient-select" style="display:none;" onchange="onPatientSelect()">
             <option value="">-- 利用者を選択 --</option>
             {% for p in patients %}
             <option value="{{ p.id }}"
@@ -492,7 +512,72 @@ window.showAudioModeSelector = function(show) {
     if (el) el.style.display = show ? 'block' : 'none';
 }
 
-// ========== 利用者選択 ==========
+// ========== 利用者選択（検索型） ==========
+const ASSESS_PATIENTS = [...document.querySelectorAll('#patient-select option')].filter(o => o.value).map(o => ({
+    id: o.value,
+    name: o.dataset.name,
+    kana: o.dataset.kana,
+    label: o.text,
+}));
+
+window.filterAssessmentPatients = function(q) {
+    const ql = q.trim().toLowerCase();
+    const qKata = q.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = q.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const cands = document.getElementById('patient-candidates-assess');
+    if (!ql) { cands.style.display = 'none'; return; }
+    const hits = ASSESS_PATIENTS.filter(p =>
+        p.name.toLowerCase().includes(ql) ||
+        p.kana.toLowerCase().includes(ql) ||
+        p.kana.includes(qKata) || p.kana.includes(qHira)
+    ).slice(0, 15);
+    if (!hits.length) {
+        cands.innerHTML = '<div style="padding:10px 14px;color:#80868b;font-size:0.85rem;">該当なし</div>';
+    } else {
+        cands.innerHTML = hits.map(p =>
+            `<div data-id="${p.id}" data-name="${p.name}"
+                style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;"
+                ontouchstart="this.style.background='#e8f0fe'" ontouchend="this.style.background=''">
+                ${p.label}
+            </div>`
+        ).join('');
+        cands.querySelectorAll('[data-id]').forEach(el => {
+            el.addEventListener('mousedown', e => { e.preventDefault(); selectAssessmentPatient(el.dataset.id, el.dataset.name); });
+            el.addEventListener('touchend', e => { e.preventDefault(); selectAssessmentPatient(el.dataset.id, el.dataset.name); });
+        });
+    }
+    cands.style.display = 'block';
+};
+
+window.selectAssessmentPatient = function(id, name) {
+    // 隠しselectに値をセット
+    const sel = document.getElementById('patient-select');
+    sel.value = id;
+    // 検索窓を隠してバッジ表示
+    document.getElementById('patient-search-input').style.display = 'none';
+    const badge = document.getElementById('patient-selected-badge');
+    badge.style.display = 'flex';
+    document.getElementById('patient-selected-label').textContent = name;
+    document.getElementById('patient-candidates-assess').style.display = 'none';
+    // 既存のonPatientSelectを呼ぶ
+    onPatientSelect();
+};
+
+window.clearAssessmentPatient = function() {
+    document.getElementById('patient-select').value = '';
+    document.getElementById('patient-search-input').style.display = 'block';
+    document.getElementById('patient-search-input').value = '';
+    document.getElementById('patient-selected-badge').style.display = 'none';
+    document.getElementById('goal-section').style.display = 'none';
+};
+
+// 候補リスト外タップで閉じる
+document.addEventListener('click', e => {
+    if (!e.target.closest('#patient-search-input') && !e.target.closest('#patient-candidates-assess')) {
+        document.getElementById('patient-candidates-assess').style.display = 'none';
+    }
+});
+
 window.onPatientSelect = function() {
     const sel = document.getElementById('patient-select');
     const opt = sel.options[sel.selectedIndex];
