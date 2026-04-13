@@ -214,7 +214,7 @@
     {% if records %}
     <div class="history-list" style="max-height:220px;">
         {% for r in records %}
-        <div class="history-item" onclick="goToRecord('{{ r.user_name }}', '{{ r.date }}')">
+        <div class="history-item" data-user="{{ r.user_name }}" data-date="{{ r.date }}">
             <span class="material-symbols-outlined">person</span>
             <span class="history-item-name">{{ r.user_name }}</span>
             <span class="history-item-time">{{ r.time }}</span>
@@ -233,8 +233,15 @@
 
 {% block extra_script %}
 <script>
-function goToRecord(userName, date) {
-    window.location.href = '/daily_view?user=' + encodeURIComponent(userName) + '&date=' + date;
-}
+(function(){
+    document.querySelectorAll('.history-item[data-user]').forEach(el => {
+        el.addEventListener('click', function() {
+            const user = this.dataset.user;
+            const date = this.dataset.date;
+            window.location.href = '/daily_view?user=' + encodeURIComponent(user) + '&date=' + date;
+        });
+        el.style.cursor = 'pointer';
+    });
+})();
 </script>
 {% endblock %}

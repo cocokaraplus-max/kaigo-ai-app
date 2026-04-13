@@ -536,7 +536,7 @@ def input_view():
 def daily_view():
     f_code = session["f_code"]
     my_name = session["my_name"]
-    is_admin = session.get("admin_authenticated", False)
+    is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
     supabase = get_supabase()
 
     selected_date_str = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
@@ -2014,7 +2014,19 @@ def api_update_record():
 def api_delete_record():
     try:
         data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
         supabase = get_supabase()
+        # 権限チェック：自分の記録か管理者のみ削除可能
+        rec = supabase.table("records").select("staff_name,facility_code").eq("id", data["id"]).execute()
+        if not rec.data:
+            return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
+        r = rec.data[0]
+        if r["facility_code"] != f_code:
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        if not is_admin and r["staff_name"] != my_name:
+            return jsonify({"status": "error", "message": "この記録を削除する権限がありません"}), 403
         supabase.table("records").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:

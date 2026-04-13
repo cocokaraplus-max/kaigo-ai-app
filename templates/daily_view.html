@@ -448,7 +448,7 @@ window.saveEdit = async function(id) {
     if ((await res.json()).status === 'success') location.reload();
 };
 window.deleteRecord = async function(id) {
-    if (!confirm('削除しますか？')) return;
+    if (!confirm('本当に削除しますか？\nこの操作は取り消せません。')) return;
     const res = await fetch('/api/delete_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
     if ((await res.json()).status === 'success') location.reload();
 };
