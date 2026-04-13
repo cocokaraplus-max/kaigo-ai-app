@@ -965,6 +965,8 @@ def chat_room(room_id):
                 my_color=staff_color(my_name),
                 my_initial=staff_initial(my_name),
                 is_admin=is_admin,
+                supabase_url=get_secret("SUPABASE_URL"),
+                supabase_anon_key=get_secret("SUPABASE_KEY"),
             )
     except Exception as e:
         import traceback
