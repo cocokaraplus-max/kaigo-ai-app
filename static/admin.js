@@ -342,32 +342,3 @@ function togglePw(inputId, iconId) {
         icon.textContent = 'visibility';
     }
 }
-
-// ========== 通知サウンド設定 ==========
-const SOUND_KEY = 'tasukaru_sound';
-
-function initSoundOptions() {
-    const current = localStorage.getItem(SOUND_KEY) || 'pop';
-    document.querySelectorAll('.sound-option').forEach(el => {
-        const isSelected = el.dataset.sound === current;
-        el.style.cssText = `
-            display:flex; align-items:center; gap:8px; padding:10px 12px;
-            border-radius:10px; cursor:pointer; border:2px solid;
-            border-color:${isSelected ? '#1a73e8' : '#e0e0e0'};
-            background:${isSelected ? '#e8f0fe' : '#fff'};
-        `;
-    });
-}
-
-window.selectSound = function(sound) {
-    localStorage.setItem(SOUND_KEY, sound);
-    initSoundOptions();
-    // プレビュー再生
-    if (window.playNotificationSound) {
-        window.playNotificationSound();
-    }
-};
-
-// ページ読み込み時に初期化
-document.addEventListener('DOMContentLoaded', initSoundOptions);
-setTimeout(initSoundOptions, 500);
