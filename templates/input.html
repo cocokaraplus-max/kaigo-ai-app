@@ -68,10 +68,40 @@
     margin-top: 6px;
 }
 .selected-badge .material-symbols-outlined { font-size: 16px; }
+
+/* 保存完了トースト */
+.save-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: #34a853;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(52,168,83,0.4);
+    z-index: 9999;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+}
+.save-toast.show {
+    transform: translateX(-50%) translateY(0);
+}
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- 保存完了トースト -->
+<div class="save-toast" id="save-toast">
+    <span class="material-symbols-outlined" style="font-size:20px;">check_circle</span>
+    保存しました！
+</div>
+
 <a href="/top" class="back-btn">
     <span class="material-symbols-outlined">home</span>
     TOP画面へ
@@ -121,7 +151,7 @@
             <span class="material-symbols-outlined">calendar_today</span>
             記録日
         </label>
-        <input type="date" name="record_date" class="form-control" value="{{ today }}">
+        <input type="date" name="record_date" id="record-date" class="form-control" value="{{ today }}">
     </div>
 
     <div class="form-group">
@@ -172,7 +202,7 @@
         <textarea name="content" class="form-control" id="content-area" placeholder="記録内容を入力してください">{{ content }}</textarea>
     </div>
 
-    <button type="submit" class="btn btn-primary">
+    <button type="button" class="btn btn-primary" onclick="saveRecord()">
         <span class="material-symbols-outlined">save</span>
         保存
     </button>
@@ -191,6 +221,68 @@ const PATIENTS = [
     { value: {{ p.value | tojson }}, label: {{ p.label | tojson }}, name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
     {% endfor %}
 ];
+
+// ========== 記録保存 ==========
+window.saveRecord = async function() {
+    const patientValue = document.getElementById('patient-value').value;
+    const content = document.getElementById('content-area').value.trim();
+    const recordDate = document.getElementById('record-date')?.value || '{{ today }}';
+
+    if (!patientValue) {
+        alert('利用者を選択してください');
+        return;
+    }
+    if (!content) {
+        alert('内容を入力してください');
+        return;
+    }
+
+    const btn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 保存中...'; }
+
+    try {
+        const formData = new FormData();
+        formData.append('patient', patientValue);
+        formData.append('content', content);
+        formData.append('record_date', recordDate);
+
+        // 写真があれば追加
+        const photos = document.querySelector('input[name="photos"]');
+        if (photos && photos.files.length > 0) {
+            [...photos.files].forEach(f => formData.append('photos', f));
+        }
+        // 音声データがあれば追加
+        const audioData = document.getElementById('audio-data')?.value;
+        const audioMime = document.getElementById('audio-mime')?.value;
+        if (audioData) { formData.append('audio_data', audioData); formData.append('audio_mime', audioMime); }
+
+        const res = await fetch('/input', { method: 'POST', body: formData });
+
+        if (res.ok) {
+            // トースト表示
+            const toast = document.getElementById('save-toast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+
+            // フォームをクリア
+            clearPatient();
+            document.getElementById('content-area').value = '';
+            document.getElementById('photo-preview').innerHTML = '';
+            if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
+            if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
+            if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
+
+            // ページ先頭にスクロール
+            window.scrollTo(0, 0);
+        } else {
+            alert('保存に失敗しました。もう一度お試しください。');
+        }
+    } catch(e) {
+        alert('通信エラーが発生しました: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined">save</span> 保存'; }
+    }
+};
 
 window.searchPatient = function(query) {
     const q = query.trim();
