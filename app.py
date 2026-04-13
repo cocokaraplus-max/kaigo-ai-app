@@ -301,6 +301,10 @@ def new_password():
     except Exception as e:
         return render_template('new_password.html', expired=True)
 
+@app.route('/sound_test')
+def sound_test():
+    return app.send_static_file('sound_test.html')
+
 @app.route('/manifest.json')
 def manifest():
     return app.send_static_file('manifest.json')
