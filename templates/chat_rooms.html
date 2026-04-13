@@ -204,9 +204,78 @@
         <span class="material-symbols-outlined">forum</span>
         トーク
     </div>
-    <button class="new-room-btn" onclick="openModal()">
-        <span class="material-symbols-outlined">edit_square</span>
-    </button>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <button class="new-room-btn" style="background:#f0f4ff;box-shadow:none;" onclick="openSoundSettings()">
+            <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">settings</span>
+        </button>
+        <button class="new-room-btn" onclick="openModal()">
+            <span class="material-symbols-outlined">edit_square</span>
+        </button>
+    </div>
+</div>
+
+<!-- 検索窓 -->
+<div style="position:relative;margin-bottom:12px;">
+    <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#80868b;font-size:20px;">search</span>
+    <input type="text" id="room-search" class="form-control"
+        placeholder="トークを検索..."
+        style="padding-left:38px;"
+        oninput="filterRooms(this.value)"
+        autocomplete="off">
+</div>
+
+<!-- サウンド設定モーダル -->
+<div id="sound-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 32px;">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="font-size:1rem;font-weight:800;color:#202124;display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;">notifications</span>
+                通知サウンド設定
+            </div>
+            <button onclick="closeSoundSettings()" style="background:none;border:none;cursor:pointer;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;">新着メッセージが届いたときの通知音を選択</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sound-options-modal">
+            <div class="sound-opt" data-sound="pop" onclick="selectSoundModal('pop')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+                <span style="font-size:22px;">🔔</span>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;">ポップ</div>
+                    <div style="font-size:0.7rem;color:#80868b;">軽快な音</div>
+                </div>
+            </div>
+            <div class="sound-opt" data-sound="chime" onclick="selectSoundModal('chime')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+                <span style="font-size:22px;">🎵</span>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;">チャイム</div>
+                    <div style="font-size:0.7rem;color:#80868b;">3音チャイム</div>
+                </div>
+            </div>
+            <div class="sound-opt" data-sound="pico" onclick="selectSoundModal('pico')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+                <span style="font-size:22px;">📯</span>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;">ピコン</div>
+                    <div style="font-size:0.7rem;color:#80868b;">電子音</div>
+                </div>
+            </div>
+            <div class="sound-opt" data-sound="tasukaru" onclick="selectSoundModal('tasukaru')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;">
+                <span style="font-size:22px;">🦝</span>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;">タスカル</div>
+                    <div style="font-size:0.7rem;color:#80868b;">音声で通知</div>
+                </div>
+            </div>
+            <div class="sound-opt" data-sound="none" onclick="selectSoundModal('none')" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:2px solid #e0e0e0;cursor:pointer;background:#fff;grid-column:span 2;">
+                <span style="font-size:22px;">🔕</span>
+                <div>
+                    <div style="font-size:0.85rem;font-weight:700;">なし</div>
+                    <div style="font-size:0.7rem;color:#80868b;">サウンドOFF</div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="room-list">
@@ -293,6 +362,54 @@
 <script>
 (function(){
 let roomType = 'dm';
+
+// ========== 検索 ==========
+window.filterRooms = function(q) {
+    const ql = q.trim().toLowerCase();
+    document.querySelectorAll('.room-item').forEach(item => {
+        const name = item.querySelector('.room-name')?.textContent.toLowerCase() || '';
+        const last = item.querySelector('.room-last-msg')?.textContent.toLowerCase() || '';
+        item.style.display = (!ql || name.includes(ql) || last.includes(ql)) ? '' : 'none';
+    });
+};
+
+// ========== サウンド設定 ==========
+const SOUND_KEY = 'tasukaru_sound';
+
+window.openSoundSettings = function() {
+    const modal = document.getElementById('sound-modal');
+    modal.style.display = 'flex';
+    // 現在の設定をハイライト
+    const current = localStorage.getItem(SOUND_KEY) || 'pop';
+    document.querySelectorAll('.sound-opt').forEach(el => {
+        const selected = el.dataset.sound === current;
+        el.style.borderColor = selected ? '#1a73e8' : '#e0e0e0';
+        el.style.background  = selected ? '#e8f0fe' : '#fff';
+    });
+};
+
+window.closeSoundSettings = function() {
+    document.getElementById('sound-modal').style.display = 'none';
+};
+
+window.selectSoundModal = function(sound) {
+    localStorage.setItem(SOUND_KEY, sound);
+    // ハイライト更新
+    document.querySelectorAll('.sound-opt').forEach(el => {
+        const selected = el.dataset.sound === sound;
+        el.style.borderColor = selected ? '#1a73e8' : '#e0e0e0';
+        el.style.background  = selected ? '#e8f0fe' : '#fff';
+    });
+    // プレビュー再生
+    if (window.playNotificationSound) window.playNotificationSound();
+    // 少し待って閉じる
+    setTimeout(closeSoundSettings, 800);
+};
+
+// モーダル外タップで閉じる
+document.getElementById('sound-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeSoundSettings();
+});
 
 window.openModal = function() {
     document.getElementById('new-room-modal').classList.add('show');
