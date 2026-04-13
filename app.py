@@ -1496,6 +1496,36 @@ def api_remove_calendar_member():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
+@app.route('/api/unread_count')
+@login_required
+def api_unread_count():
+    """トークの未読メッセージ数を返す"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+
+        # 自分が参加しているルームを取得
+        rooms_res = supabase.table("chat_members").select("room_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        room_ids = [r["room_id"] for r in (rooms_res.data or [])]
+        if not room_ids:
+            return jsonify({"count": 0})
+
+        # 各ルームの未読数を合計
+        total = 0
+        for room_id in room_ids:
+            # 自分の最後の既読時刻を取得
+            read_res = supabase.table("chat_members").select("last_read_at").eq("room_id", room_id).eq("staff_name", my_name).execute()
+            last_read = read_res.data[0]["last_read_at"] if read_res.data and read_res.data[0].get("last_read_at") else "2000-01-01T00:00:00+00:00"
+
+            # 未読メッセージ数をカウント
+            unread_res = supabase.table("chat_messages").select("id", count="exact").eq("room_id", room_id).gt("created_at", last_read).neq("staff_name", my_name).execute()
+            total += unread_res.count or 0
+
+        return jsonify({"count": total})
+    except Exception as e:
+        return jsonify({"count": 0})
+
 @app.route('/api/calendar_events')
 @login_required
 def api_calendar_events():

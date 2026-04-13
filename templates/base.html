@@ -171,6 +171,67 @@
     {% block extra_style %}{% endblock %}
 </head>
 <body>
+
+<!-- オフラインバナー -->
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+    <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">wifi_off</span>
+    オフラインです｜保存した記録はネット接続後に自動送信されます
+    <button onclick="openDisasterMode()" style="margin-left:8px;background:#fff;color:#ff6f00;border:none;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:700;cursor:pointer;">災害モード</button>
+</div>
+
+<!-- 同期完了バナー -->
+<div id="sync-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+    <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">sync</span>
+    オフライン記録を同期しました
+</div>
+
+<!-- 災害時モードモーダル -->
+<div id="disaster-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;padding:20px;width:calc(100% - 40px);max-width:440px;max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+            <span class="material-symbols-outlined" style="color:#ff6f00;font-size:24px;">emergency</span>
+            <span style="font-size:1rem;font-weight:800;color:#202124;">災害時モード</span>
+            <button onclick="closeDisasterMode()" style="margin-left:auto;background:none;border:none;cursor:pointer;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        <!-- 利用者一覧（キャッシュ） -->
+        <div style="margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">people</span>
+                利用者一覧（オフラインキャッシュ）
+            </div>
+            <div id="offline-patients" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
+        </div>
+
+        <!-- オフライン記録入力 -->
+        <div style="background:#fff8e1;border:1.5px solid #ff6f00;border-radius:12px;padding:14px;margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#e65100;margin-bottom:10px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">edit_note</span>
+                緊急記録入力（オフライン保存）
+            </div>
+            <select class="form-control" id="disaster-patient" style="margin-bottom:8px;">
+                <option value="">利用者を選択</option>
+            </select>
+            <textarea class="form-control" id="disaster-content" rows="3" placeholder="記録内容を入力..." style="margin-bottom:8px;"></textarea>
+            <button onclick="saveDisasterRecord()" style="width:100%;padding:10px;background:#ff6f00;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span>
+                端末に保存する
+            </button>
+        </div>
+
+        <!-- 未送信記録一覧 -->
+        <div>
+            <div style="font-size:0.85rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">pending</span>
+                未送信の記録
+            </div>
+            <div id="offline-queue" style="font-size:0.82rem;color:#5f6368;">確認中...</div>
+        </div>
+    </div>
+</div>
+
     <div class="page-wrapper">
         {% block content %}{% endblock %}
     </div>
@@ -207,7 +268,10 @@
             評価
         </a>
         <a href="/chat" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/chat')">
-            <span class="material-symbols-outlined">forum</span>
+            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined">forum</span>
+                <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
+            </div>
             トーク
         </a>
         <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
@@ -359,6 +423,346 @@ window.addEventListener('load', () => {
     history.replaceState({ url: window.location.pathname }, '', window.location.pathname);
     updateNavActive(window.location.pathname);
 });
+</script>
+
+<script>
+// ========== トーク通知サウンド ==========
+const SOUND_KEY = 'tasukaru_sound';
+
+// サウンド種類
+const SOUNDS = {
+    'pop':     { label: '🔔 ポップ',   fn: soundPop },
+    'chime':   { label: '🎵 チャイム', fn: soundChime },
+    'pico':    { label: '📯 ピコン',   fn: soundPico },
+    'tasukaru':{ label: '🦝 タスカル', fn: soundTasukaru },
+    'none':    { label: '🔕 なし',     fn: null },
+};
+
+function getSoundSetting() {
+    return localStorage.getItem(SOUND_KEY) || 'pop';
+}
+
+// ポップ音
+function soundPop() {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+}
+
+// チャイム音
+function soundChime() {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [523, 659, 784].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.15;
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+        osc.start(t); osc.stop(t + 0.4);
+    });
+}
+
+// ピコン音
+function soundPico() {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(); osc.stop(ctx.currentTime + 0.1);
+}
+
+// タスカル音声
+function soundTasukaru() {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance('タスカル！');
+    utter.lang = 'ja-JP';
+    utter.rate = 1.8;
+    utter.pitch = 1.3;
+    const voices = window.speechSynthesis.getVoices();
+    const jpVoice = voices.find(v => v.lang.includes('ja'));
+    if (jpVoice) utter.voice = jpVoice;
+    window.speechSynthesis.speak(utter);
+}
+
+// 通知音を鳴らす
+window.playNotificationSound = function() {
+    const setting = getSoundSetting();
+    const sound = SOUNDS[setting];
+    if (sound && sound.fn) {
+        try { sound.fn(); } catch(e) {}
+    }
+};
+
+// ========== 未読チェック・バッジ ==========
+let lastUnreadCount = 0;
+let chatPollingTimer = null;
+
+async function checkUnreadMessages() {
+    try {
+        const res = await fetch('/api/unread_count');
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = data.count || 0;
+        const badge = document.getElementById('chat-badge');
+        if (badge) {
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+        // 新着があったら通知音
+        if (count > lastUnreadCount && lastUnreadCount >= 0) {
+            // トーク画面を開いていないときだけ鳴らす
+            const isOnChat = location.pathname.startsWith('/chat');
+            if (!isOnChat) window.playNotificationSound();
+        }
+        lastUnreadCount = count;
+    } catch(e) {}
+}
+
+// ログイン済みのときだけポーリング開始
+{% if session.get('f_code') %}
+// 初回チェック
+setTimeout(checkUnreadMessages, 2000);
+// 30秒ごとにチェック
+chatPollingTimer = setInterval(checkUnreadMessages, 30000);
+// トーク画面を開いたら即座にバッジをクリア
+document.addEventListener('click', e => {
+    const link = e.target.closest('a[href="/chat"], a[href^="/chat/"]');
+    if (link) {
+        setTimeout(() => {
+            const badge = document.getElementById('chat-badge');
+            if (badge) badge.style.display = 'none';
+            lastUnreadCount = 0;
+        }, 1000);
+    }
+});
+{% endif %}
+
+// ========== PWA Service Worker登録 ==========
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js')
+        .then(reg => {
+            console.log('[PWA] Service Worker登録成功');
+            // バックグラウンド同期の登録
+            if ('sync' in reg) {
+                reg.sync.register('sync-offline-records').catch(() => {});
+            }
+        })
+        .catch(err => console.log('[PWA] Service Worker登録失敗:', err));
+}
+
+// ========== オンライン/オフライン検知 ==========
+function updateOnlineStatus() {
+    const banner = document.getElementById('offline-banner');
+    if (!banner) return;
+    if (!navigator.onLine) {
+        banner.style.display = 'block';
+        document.body.style.paddingTop = '36px';
+    } else {
+        banner.style.display = 'none';
+        document.body.style.paddingTop = '';
+        // ネット復帰時に未送信記録を同期
+        syncOfflineQueue();
+    }
+}
+window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+
+// ========== オフラインキャッシュ ==========
+const OFFLINE_DB = 'tasukaru-offline';
+
+function openOfflineDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(OFFLINE_DB, 1);
+        req.onupgradeneeded = e => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('queue'))
+                db.createObjectStore('queue', { autoIncrement: true, keyPath: 'id' });
+            if (!db.objectStoreNames.contains('cache'))
+                db.createObjectStore('cache', { keyPath: 'key' });
+        };
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = reject;
+    });
+}
+
+// 利用者情報をローカルにキャッシュ
+async function cachePatients() {
+    try {
+        const res = await fetch('/api/patients_cache');
+        if (!res.ok) return;
+        const data = await res.json();
+        const db = await openOfflineDB();
+        const tx = db.transaction('cache', 'readwrite');
+        tx.objectStore('cache').put({ key: 'patients', value: data.patients, updated: new Date().toISOString() });
+    } catch(e) {}
+}
+
+// キャッシュから利用者取得
+async function getCachedPatients() {
+    try {
+        const db = await openOfflineDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction('cache', 'readonly');
+            const req = tx.objectStore('cache').get('patients');
+            req.onsuccess = e => resolve(e.target.result?.value || []);
+            req.onerror = () => resolve([]);
+        });
+    } catch(e) { return []; }
+}
+
+// ========== 災害時モード ==========
+window.openDisasterMode = async function() {
+    document.getElementById('disaster-modal').style.display = 'flex';
+    const patients = await getCachedPatients();
+    const listEl = document.getElementById('offline-patients');
+    const selectEl = document.getElementById('disaster-patient');
+
+    if (!patients.length) {
+        listEl.innerHTML = '<span style="color:#ea4335;">キャッシュなし（一度オンラインで開いてください）</span>';
+    } else {
+        listEl.innerHTML = patients.map(p =>
+            `<span style="display:inline-block;background:#f0f4ff;border-radius:8px;padding:3px 8px;margin:2px;font-size:0.8rem;">${p.user_name}</span>`
+        ).join('');
+        selectEl.innerHTML = '<option value="">利用者を選択</option>' +
+            patients.map(p => `<option value="${p.id}">${p.user_name}</option>`).join('');
+    }
+
+    // 未送信記録を表示
+    loadOfflineQueue();
+};
+
+window.closeDisasterMode = function() {
+    document.getElementById('disaster-modal').style.display = 'none';
+};
+
+// オフライン記録を端末に保存
+window.saveDisasterRecord = async function() {
+    const patientId = document.getElementById('disaster-patient').value;
+    const content   = document.getElementById('disaster-content').value.trim();
+    const patients  = await getCachedPatients();
+    const patient   = patients.find(p => p.id === patientId);
+
+    if (!patientId || !content) { alert('利用者と記録内容を入力してください'); return; }
+
+    const record = {
+        url: '/api/save_record',
+        method: 'POST',
+        body: JSON.stringify({
+            patient: patient?.value || patientId,
+            content: content,
+            record_date: new Date().toISOString().slice(0,10),
+            offline: true
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        timestamp: new Date().toISOString(),
+        label: `${patient?.user_name || '不明'} - ${content.slice(0,20)}...`
+    };
+
+    try {
+        const db = await openOfflineDB();
+        const tx = db.transaction('queue', 'readwrite');
+        tx.objectStore('queue').add(record);
+        tx.oncomplete = () => {
+            alert('✅ 端末に保存しました\nネット接続後に自動送信されます');
+            document.getElementById('disaster-content').value = '';
+            loadOfflineQueue();
+        };
+    } catch(e) {
+        alert('保存に失敗しました');
+    }
+};
+
+// 未送信キューを表示
+async function loadOfflineQueue() {
+    try {
+        const db = await openOfflineDB();
+        const items = await new Promise(resolve => {
+            const list = [];
+            const tx = db.transaction('queue', 'readonly');
+            const req = tx.objectStore('queue').openCursor();
+            req.onsuccess = e => {
+                const c = e.target.result;
+                if (c) { list.push(c.value); c.continue(); }
+                else resolve(list);
+            };
+        });
+        const el = document.getElementById('offline-queue');
+        if (!items.length) {
+            el.innerHTML = '<span style="color:#34a853;">未送信の記録はありません ✅</span>';
+        } else {
+            el.innerHTML = items.map(item =>
+                `<div style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:0.8rem;">
+                    <span class="material-symbols-outlined" style="font-size:14px;color:#ff6f00;vertical-align:middle;">pending</span>
+                    ${item.label || item.url} <span style="color:#80868b;">${item.timestamp?.slice(0,16).replace('T',' ')}</span>
+                </div>`
+            ).join('');
+        }
+    } catch(e) {}
+}
+
+// ネット復帰時に未送信記録を自動同期
+async function syncOfflineQueue() {
+    try {
+        const db = await openOfflineDB();
+        const items = await new Promise(resolve => {
+            const list = [];
+            const tx = db.transaction('queue', 'readonly');
+            const req = tx.objectStore('queue').openCursor();
+            req.onsuccess = e => {
+                const c = e.target.result;
+                if (c) { list.push({key: c.key, data: c.value}); c.continue(); }
+                else resolve(list);
+            };
+        });
+        if (!items.length) return;
+
+        let synced = 0;
+        for (const item of items) {
+            try {
+                const res = await fetch(item.data.url, {
+                    method: item.data.method,
+                    body: item.data.body,
+                    headers: item.data.headers
+                });
+                if (res.ok) {
+                    const tx = db.transaction('queue', 'readwrite');
+                    tx.objectStore('queue').delete(item.key);
+                    synced++;
+                }
+            } catch(e) {}
+        }
+        if (synced > 0) {
+            const banner = document.getElementById('sync-banner');
+            banner.style.display = 'block';
+            setTimeout(() => { banner.style.display = 'none'; }, 3000);
+        }
+    } catch(e) {}
+}
+
+// ページ読み込み時に利用者情報をキャッシュ
+if (navigator.onLine) {
+    setTimeout(cachePatients, 3000);
+}
 </script>
 </body>
 </html>
