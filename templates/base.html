@@ -321,9 +321,9 @@ async function navigateTo(url, pushState = true) {
 
     // SPA遷移時にカメラモーダルを閉じる（バイタルページから離れる場合）
     const camModal = document.getElementById('camera-modal');
-    if (camModal && camModal.classList.contains('show')) {
+    if (camModal) {
+        camModal.style.display = 'none';
         camModal.classList.remove('show');
-        // カメラストリームを停止
         if (window.cameraStream) {
             window.cameraStream.getTracks().forEach(t => t.stop());
             window.cameraStream = null;
