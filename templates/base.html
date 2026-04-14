@@ -368,6 +368,10 @@ async function navigateTo(url, pushState = true) {
 
         // コンテンツ差し替え
         wrapper.innerHTML = data.content || '';
+        // カメラモーダルを確実に閉じる
+        const cam = document.getElementById('camera-modal');
+        if (cam) { cam.style.display = 'none'; cam.classList.remove('show'); }
+        if (window.cameraStream) { window.cameraStream.getTracks().forEach(t => t.stop()); window.cameraStream = null; }
         wrapper.scrollTop = 0;
 
         // スクリプト実行 - 古いSPA注入スクリプトを全て削除してから追加
