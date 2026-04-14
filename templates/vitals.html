@@ -480,6 +480,7 @@ let currentCameraPatient = null;
 
 // カメラモーダルをbody直下に移動（page-wrapperのoverflow問題を回避）
 requestAnimationFrame(() => {
+    selectAmpm('ALL');
     const modal = document.getElementById('camera-modal');
     if (modal && modal.parentElement !== document.body) {
         document.body.appendChild(modal);
@@ -563,6 +564,7 @@ window.selectWeekday = function(day) {
 
 // ページ読み込み時に今日の曜日をアクティブに
 requestAnimationFrame(() => {
+    selectAmpm('ALL');
     document.querySelector(`.wd-tab[data-day="${currentWeekday}"]`)?.classList.add('active');
     renderPatientList();
 });
