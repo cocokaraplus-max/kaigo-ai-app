@@ -483,6 +483,23 @@
     </div>
 </div>
 
+<!-- 投稿編集モーダル -->
+<div class="post-modal" id="edit-modal">
+    <div class="post-sheet">
+        <div class="post-sheet-handle"></div>
+        <div class="post-sheet-title">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">edit</span>
+            投稿を編集
+        </div>
+        <textarea class="post-textarea" id="edit-textarea" placeholder="内容を編集..."></textarea>
+        <input type="hidden" id="edit-post-id">
+        <div style="display:flex;gap:10px;">
+            <button onclick="closeEditModal()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;color:#5f6368;">キャンセル</button>
+            <button id="edit-submit-btn" style="flex:2;padding:12px;border-radius:12px;border:none;background:#1a73e8;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">保存する</button>
+        </div>
+    </div>
+</div>
+
 <!-- リアクション選択 -->
 <div class="reaction-picker" id="reaction-picker">
     <div class="reaction-picker-sheet">
@@ -804,15 +821,77 @@ document.querySelectorAll('.post-menu-btn').forEach(function(btn) {
 });
 
 function showPostMenu(postId, isMine) {
-    // シンプルなconfirmダイアログで対応
-    var actions = [];
-    if (isMine) actions.push('削除');
-    actions.push('キャンセル');
-    var msg = actions.includes('削除') ? 'この投稿を削除しますか？' : '';
-    if (isMine && confirm('この投稿を削除しますか？')) {
-        deletePost(postId);
+    // ボトムシート形式のメニューを表示
+    var existing = document.getElementById('post-action-sheet');
+    if (existing) existing.remove();
+
+    var sheet = document.createElement('div');
+    sheet.id = 'post-action-sheet';
+    sheet.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1500;display:flex;align-items:flex-end;justify-content:center;';
+    sheet.innerHTML = '<div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px 32px;">'
+        + '<div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>'
+        + (isMine ? '<button id="menu-edit-btn" style="width:100%;padding:14px;border:none;border-radius:12px;background:#f0f6ff;color:#1a73e8;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span class="material-symbols-outlined">edit</span>編集する</button>' : '')
+        + (isMine ? '<button id="menu-delete-btn" style="width:100%;padding:14px;border:none;border-radius:12px;background:#fff5f5;color:#ea4335;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span class="material-symbols-outlined">delete</span>削除する</button>' : '')
+        + '<button id="menu-cancel-btn" style="width:100%;padding:14px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;color:#5f6368;font-size:0.95rem;font-weight:700;cursor:pointer;">キャンセル</button>'
+        + '</div>';
+
+    document.body.appendChild(sheet);
+
+    // イベント
+    sheet.addEventListener('click', function(e) { if (e.target === sheet) sheet.remove(); });
+    document.getElementById('menu-cancel-btn').addEventListener('click', function() { sheet.remove(); });
+    if (isMine) {
+        document.getElementById('menu-edit-btn').addEventListener('click', function() {
+            sheet.remove();
+            openEditModal(postId);
+        });
+        document.getElementById('menu-delete-btn').addEventListener('click', function() {
+            sheet.remove();
+            if (confirm('この投稿を削除しますか？')) deletePost(postId);
+        });
     }
 }
+
+function openEditModal(postId) {
+    // 現在の投稿内容を取得
+    var card = document.getElementById('post-' + postId);
+    var contentEl = card ? card.querySelector('.post-content') : null;
+    var currentContent = contentEl ? contentEl.textContent.trim() : '';
+    document.getElementById('edit-textarea').value = currentContent;
+    document.getElementById('edit-post-id').value = postId;
+    document.getElementById('edit-modal').classList.add('show');
+}
+
+window.closeEditModal = function() {
+    document.getElementById('edit-modal').classList.remove('show');
+};
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditModal();
+});
+
+document.getElementById('edit-submit-btn').addEventListener('click', async function() {
+    var postId = document.getElementById('edit-post-id').value;
+    var content = document.getElementById('edit-textarea').value.trim();
+    if (!content) { alert('内容を入力してください'); return; }
+    this.disabled = true; this.textContent = '保存中...';
+    try {
+        var res = await fetch('/api/board/update_post', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: parseInt(postId), content: content })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            // カード上の内容を更新
+            var card = document.getElementById('post-' + postId);
+            var contentEl = card ? card.querySelector('.post-content') : null;
+            if (contentEl) contentEl.textContent = content;
+            closeEditModal();
+        } else {
+            alert('更新に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) { alert('通信エラー'); }
+    finally { this.disabled = false; this.textContent = '保存する'; }
+});
 
 async function deletePost(postId) {
     try {
