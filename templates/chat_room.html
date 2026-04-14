@@ -5,12 +5,17 @@
 {% block extra_style %}
 <style>
 .chat-room-header {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 0 12px; border-bottom: 1px solid #f0f0f0; margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 12px;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 0;
 }
 .chat-back-btn {
     background: none; border: none; cursor: pointer;
-    color: #1a73e8; padding: 4px; display: flex; align-items: center;
+    color: #1a73e8; padding: 4px;
+    display: flex; align-items: center;
 }
 .chat-back-btn .material-symbols-outlined { font-size: 24px; }
 .chat-room-title {
@@ -19,83 +24,133 @@
 }
 .chat-room-members-btn {
     background: none; border: none; cursor: pointer;
-    color: #80868b; padding: 4px; display: flex; align-items: center;
+    color: #80868b; padding: 4px;
+    display: flex; align-items: center;
 }
-.chat-wrapper { display: flex; flex-direction: column; height: calc(100vh - 190px); }
+.chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 190px);
+}
 .chat-messages {
-    flex: 1; overflow-y: auto; padding: 10px 0;
-    display: flex; flex-direction: column; gap: 8px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 .chat-date-divider {
-    text-align: center; font-size: 0.72rem; color: #80868b;
-    margin: 6px 0; display: flex; align-items: center; gap: 8px;
+    text-align: center;
+    font-size: 0.72rem;
+    color: #80868b;
+    margin: 6px 0;
+    display: flex; align-items: center; gap: 8px;
 }
-.chat-date-divider::before, .chat-date-divider::after {
+.chat-date-divider::before,
+.chat-date-divider::after {
     content: ''; flex: 1; border-top: 1px solid #e0e0e0;
 }
-.chat-bubble-wrap { display: flex; align-items: flex-end; gap: 8px; }
+.chat-bubble-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
 .chat-bubble-wrap.mine { flex-direction: row-reverse; }
 .chat-avatar {
-    width: 34px; height: 34px; border-radius: 50%;
+    width: 34px; height: 34px;
+    border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.82rem; font-weight: 700; flex-shrink: 0; color: white;
+    font-size: 0.82rem; font-weight: 700;
+    flex-shrink: 0; color: white;
 }
 .chat-bubble-wrap.mine .chat-avatar { display: none; }
 .chat-bubble-content { max-width: 72%; }
-.chat-name { font-size: 0.68rem; color: #80868b; font-weight: 600; margin-bottom: 3px; padding: 0 4px; }
+.chat-name {
+    font-size: 0.68rem; color: #80868b; font-weight: 600;
+    margin-bottom: 3px; padding: 0 4px;
+}
 .chat-bubble-wrap.mine .chat-name { display: none; }
 .chat-bubble {
-    padding: 10px 14px; border-radius: 18px; font-size: 0.9rem;
-    line-height: 1.55; word-break: break-word;
-    background: #f0f2f5; color: #202124; border-bottom-left-radius: 4px;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    word-break: break-word;
+    background: #f0f2f5;
+    color: #202124;
+    border-bottom-left-radius: 4px;
     animation: bubbleIn 0.18s ease;
 }
 @keyframes bubbleIn {
     from { opacity: 0; transform: scale(0.92) translateY(4px); }
-    to   { opacity: 1; transform: scale(1)    translateY(0); }
+    to   { opacity: 1; transform: scale(1)    translateY(0);    }
 }
 .chat-bubble-wrap.mine .chat-bubble {
-    background: #1a73e8; color: white;
-    border-bottom-left-radius: 18px; border-bottom-right-radius: 4px;
+    background: #1a73e8;
+    color: white;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 4px;
 }
-.chat-meta { display: flex; align-items: center; gap: 4px; margin-top: 3px; padding: 0 4px; }
+.chat-meta {
+    display: flex; align-items: center; gap: 4px;
+    margin-top: 3px; padding: 0 4px;
+}
 .chat-bubble-wrap.mine .chat-meta { flex-direction: row-reverse; }
 .chat-time { font-size: 0.68rem; color: #b0b8c1; }
 .chat-read-count { font-size: 0.68rem; color: #1a73e8; font-weight: 600; }
-.chat-delete-btn { background: none; border: none; cursor: pointer; padding: 0; color: #ccc; display: none; }
+.chat-delete-btn {
+    background: none; border: none; cursor: pointer;
+    padding: 0; color: #ccc; display: none;
+}
 .chat-bubble-wrap:hover .chat-delete-btn { display: block; }
 .chat-delete-btn .material-symbols-outlined { font-size: 14px; }
 .chat-input-area {
-    position: sticky; bottom: 0; background: #fff;
-    border-top: 1px solid #e0e0e0; padding: 10px 0 4px;
+    position: sticky; bottom: 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 0 4px;
     display: flex; gap: 8px; align-items: flex-end;
 }
 .chat-textarea {
-    flex: 1; padding: 10px 14px; border-radius: 22px;
-    border: 1.5px solid #e0e0e0; font-size: 0.92rem; resize: none;
-    min-height: 42px; max-height: 120px; line-height: 1.4; color: #202124;
-    background: #f8f9fa; transition: border-color 0.15s; font-family: inherit;
+    flex: 1; padding: 10px 14px;
+    border-radius: 22px; border: 1.5px solid #e0e0e0;
+    font-size: 0.92rem; resize: none;
+    min-height: 42px; max-height: 120px;
+    line-height: 1.4; color: #202124;
+    background: #f8f9fa;
+    transition: border-color 0.15s;
+    font-family: inherit;
 }
 .chat-textarea:focus { outline: none; border-color: #1a73e8; background: #fff; }
 .chat-send-btn {
-    width: 42px; height: 42px; border-radius: 50%; background: #1a73e8;
+    width: 42px; height: 42px;
+    border-radius: 50%; background: #1a73e8;
     border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; transition: transform 0.1s;
+    flex-shrink: 0;
+    transition: transform 0.1s;
 }
 .chat-send-btn:active { background: #1557b0; transform: scale(0.92); }
 .chat-send-btn .material-symbols-outlined { font-size: 20px; color: white; }
 .chat-send-btn:disabled { background: #e0e0e0; }
 .chat-send-btn:disabled .material-symbols-outlined { color: #bbb; }
 .realtime-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #ccc;
-    display: inline-block; margin-left: 6px; vertical-align: middle; transition: background 0.3s;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #ccc; display: inline-block;
+    margin-left: 6px; vertical-align: middle;
+    transition: background 0.3s;
 }
 .realtime-dot.connected { background: #34a853; }
 .realtime-dot.connecting { background: #fbbc04; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.no-messages { text-align: center; color: #80868b; font-size: 0.88rem; padding: 40px 0; }
-.no-messages .material-symbols-outlined { font-size: 48px; display: block; color: #e0e0e0; margin-bottom: 8px; }
+.no-messages {
+    text-align: center; color: #80868b;
+    font-size: 0.88rem; padding: 40px 0;
+}
+.no-messages .material-symbols-outlined {
+    font-size: 48px; display: block; color: #e0e0e0; margin-bottom: 8px;
+}
 .members-drawer {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.4); z-index: 900;
@@ -104,13 +159,17 @@
 .members-drawer.show { display: flex; }
 .members-panel {
     background: #fff; width: 240px; height: 100%;
-    padding: 56px 16px 24px; box-shadow: -4px 0 16px rgba(0,0,0,0.12); overflow-y: auto;
+    padding: 56px 16px 24px;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.12); overflow-y: auto;
 }
 .members-panel-title {
     font-size: 0.82rem; font-weight: 700; color: #5f6368;
     margin-bottom: 12px; display: flex; align-items: center; gap: 4px;
 }
-.member-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+.member-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+}
 .member-row:last-child { border-bottom: none; }
 </style>
 {% endblock %}
@@ -180,7 +239,9 @@
     </div>
 
     <div class="chat-input-area">
-        <textarea class="chat-textarea" id="chat-input" placeholder="メッセージを入力..." rows="1"></textarea>
+        <textarea class="chat-textarea" id="chat-input"
+            placeholder="メッセージを入力..."
+            rows="1"></textarea>
         <button class="chat-send-btn" id="send-btn">
             <span class="material-symbols-outlined">send</span>
         </button>
@@ -216,26 +277,13 @@ const MY_INITIAL = {{ my_initial | tojson }};
 const SUPA_URL   = {{ supabase_url | tojson }};
 const SUPA_KEY   = {{ supabase_anon_key | tojson }};
 
-// ===== ★ 送信音（Web Audio API） =====
-function playSendSound() {
-    try {
-        var ctx = new (window.AudioContext || window.webkitAudioContext)();
-        var o = ctx.createOscillator();
-        var g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        o.frequency.setValueAtTime(880, ctx.currentTime);
-        o.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.06);
-        g.gain.setValueAtTime(0.25, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-        o.start(ctx.currentTime);
-        o.stop(ctx.currentTime + 0.1);
-    } catch(e) {}
-}
-
 function escapeHtml(str) {
     return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/\n/g, '<br>');
 }
 
 function scrollToBottom(smooth) {
@@ -258,8 +306,9 @@ function buildMsgHTML(msg) {
     var mine = msg.is_mine;
     var avatarHTML = msg.image_url
         ? '<img src="' + escapeHtml(msg.image_url) + '" style="width:100%;height:100%;object-fit:cover;">'
-        : msg.emoji ? '<span style="font-size:18px;">' + escapeHtml(msg.emoji) + '</span>'
-        : escapeHtml(msg.initial || '?');
+        : msg.emoji
+            ? '<span style="font-size:18px;">' + escapeHtml(msg.emoji) + '</span>'
+            : escapeHtml(msg.initial || '?');
     var deleteBtnHTML = mine
         ? '<button class="chat-delete-btn" data-id="' + escapeHtml(msg.id) + '"><span class="material-symbols-outlined">close</span></button>'
         : '';
@@ -268,8 +317,12 @@ function buildMsgHTML(msg) {
         + '<div class="chat-bubble-content">'
         + (!mine ? '<div class="chat-name">' + escapeHtml(msg.staff_name) + '</div>' : '')
         + '<div class="chat-bubble">' + escapeHtml(msg.content) + '</div>'
-        + '<div class="chat-meta"><span class="chat-time">' + escapeHtml(msg.time_label || nowTimeLabel()) + '</span>' + deleteBtnHTML + '</div>'
-        + '</div></div>';
+        + '<div class="chat-meta">'
+        + '<span class="chat-time">' + escapeHtml(msg.time_label || nowTimeLabel()) + '</span>'
+        + deleteBtnHTML
+        + '</div>'
+        + '</div>'
+        + '</div>';
 }
 
 function setDot(state) {
@@ -279,18 +332,21 @@ function setDot(state) {
     dot.title = state === 'connected' ? 'リアルタイム接続中' : state === 'connecting' ? '接続中...' : '切断';
 }
 
+// ===== 初期化 =====
 scrollToBottom(false);
 setTimeout(function() { scrollToBottom(false); }, 100);
 markRead();
 
 function markRead() {
     fetch('/api/mark_read', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_id: ROOM_ID })
     }).catch(function() {});
 }
 window.markRead = markRead;
 
+// ===== テキストエリア =====
 var textarea = document.getElementById('chat-input');
 if (textarea) {
     textarea.addEventListener('input', function() {
@@ -298,16 +354,21 @@ if (textarea) {
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
     textarea.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
     });
 }
 
+// ===== 送信ボタン =====
 var sendBtn = document.getElementById('send-btn');
 if (sendBtn) {
     sendBtn.addEventListener('touchend', function(e) { e.preventDefault(); sendMessage(); });
     sendBtn.addEventListener('click', function() { sendMessage(); });
 }
 
+// ===== メッセージ送信 =====
 window.sendMessage = async function() {
     var input = document.getElementById('chat-input');
     var content = input.value.trim();
@@ -316,25 +377,31 @@ window.sendMessage = async function() {
     var btn = document.getElementById('send-btn');
     btn.disabled = true;
 
-    // ★ 送信音を鳴らす
-    playSendSound();
-
+    // 楽観的UI：先に自分の吹き出しを表示
     var tempId = 'temp-' + Date.now();
     var msgArea = document.getElementById('chat-messages');
     var noMsg = msgArea.querySelector('.no-messages');
     if (noMsg) noMsg.remove();
 
     msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
-        id: tempId, staff_name: MY_NAME, content: content,
-        is_mine: true, color: MY_COLOR, initial: MY_INITIAL,
-        emoji: '', image_url: '', time_label: nowTimeLabel()
+        id: tempId,
+        staff_name: MY_NAME,
+        content: content,
+        is_mine: true,
+        color: MY_COLOR,
+        initial: MY_INITIAL,
+        emoji: '',
+        image_url: '',
+        time_label: nowTimeLabel()
     }));
-    input.value = ''; input.style.height = 'auto';
+    input.value = '';
+    input.style.height = 'auto';
     scrollToBottom(true);
 
     try {
         var res = await fetch('/api/send_room_message', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ room_id: ROOM_ID, content: content })
         });
         var data = await res.json();
@@ -350,13 +417,15 @@ window.sendMessage = async function() {
     }
 };
 
+// ===== メッセージ削除 =====
 document.getElementById('chat-messages').addEventListener('click', async function(e) {
     var btn = e.target.closest('.chat-delete-btn');
     if (!btn) return;
     var id = btn.dataset.id;
     if (!id || !confirm('このメッセージを削除しますか？')) return;
     var res = await fetch('/api/delete_room_message', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: id })
     });
     if ((await res.json()).status === 'success') {
@@ -364,17 +433,21 @@ document.getElementById('chat-messages').addEventListener('click', async functio
     }
 });
 
+// ===== 戻るボタン =====
 var backBtn = document.getElementById('back-btn');
 if (backBtn) {
     backBtn.addEventListener('touchend', function(e) {
         e.preventDefault();
-        if (window.navigateTo) navigateTo('/chat'); else window.location.href = '/chat';
+        if (window.navigateTo) navigateTo('/chat');
+        else window.location.href = '/chat';
     });
     backBtn.addEventListener('click', function() {
-        if (window.navigateTo) navigateTo('/chat'); else window.location.href = '/chat';
+        if (window.navigateTo) navigateTo('/chat');
+        else window.location.href = '/chat';
     });
 }
 
+// ===== グループメンバードロワー =====
 var membersBtn = document.getElementById('members-btn');
 if (membersBtn) {
     membersBtn.addEventListener('touchend', function(e) { e.preventDefault(); toggleMembers(); });
@@ -396,7 +469,9 @@ var realtimeChannel = null;
 
 function startRealtime() {
     if (!SUPA_URL || !SUPA_KEY || typeof supabase === 'undefined') {
-        setDot('connecting'); setInterval(pollFallback, 1000); return;
+        setDot('connecting');
+        setInterval(pollFallback, 1000);
+        return;
     }
     try {
         var client = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -404,55 +479,82 @@ function startRealtime() {
         realtimeChannel = client
             .channel('chat_messages:room_id=eq.' + ROOM_ID)
             .on('postgres_changes', {
-                event: 'INSERT', schema: 'public', table: 'chat_messages',
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_messages',
                 filter: 'room_id=eq.' + ROOM_ID
-            }, function(payload) { handleNewMessage(payload.new); })
+            }, function(payload) {
+                handleNewMessage(payload.new);
+            })
             .subscribe(function(status) {
-                if (status === 'SUBSCRIBED') setDot('connected');
-                else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-                    setDot('disconnected'); setTimeout(startRealtime, 3000);
+                if (status === 'SUBSCRIBED') {
+                    setDot('connected');
+                } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                    setDot('disconnected');
+                    setTimeout(startRealtime, 3000);
                 }
             });
-    } catch(e) { setDot('connecting'); setInterval(pollFallback, 1000); }
+    } catch(e) {
+        setDot('connecting');
+        setInterval(pollFallback, 1000);
+    }
 }
 
+// ===== ★ 修正済み：新着メッセージ処理 =====
 async function handleNewMessage(row) {
     // ★ 自分のメッセージはtempを本IDに置き換えるだけ・絶対に追加しない
     if (row.staff_name === MY_NAME) {
         var tempEls = document.querySelectorAll('[id^="temp-"]');
-        if (tempEls.length > 0) tempEls[0].id = 'msg-' + row.id;
+        if (tempEls.length > 0) {
+            tempEls[0].id = 'msg-' + row.id;
+        }
         return;
     }
+
+    // 既に表示済みならスキップ
     if (document.getElementById('msg-' + row.id)) return;
 
+    // 相手のメッセージをアイコン情報付きで表示
     var iconInfo = await getIconInfo(row.staff_name);
     var msgArea = document.getElementById('chat-messages');
     var wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 80;
+
     var now = new Date(row.created_at);
     var timeLabel = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
 
     msgArea.insertAdjacentHTML('beforeend', buildMsgHTML({
-        id: row.id, staff_name: row.staff_name, content: row.content,
-        is_mine: false, color: iconInfo.color, initial: iconInfo.initial,
-        emoji: iconInfo.emoji, image_url: iconInfo.image_url, time_label: timeLabel
+        id: row.id,
+        staff_name: row.staff_name,
+        content: row.content,
+        is_mine: false,
+        color: iconInfo.color,
+        initial: iconInfo.initial,
+        emoji: iconInfo.emoji,
+        image_url: iconInfo.image_url,
+        time_label: timeLabel
     }));
 
     if (wasAtBottom) scrollToBottom(true);
     markRead();
+
+    // 通知サウンド再生
     if (window.playNotificationSound) window.playNotificationSound();
 }
 
+// アイコン情報キャッシュ
 var iconCache = {};
 async function getIconInfo(staffName) {
     if (iconCache[staffName]) return iconCache[staffName];
     var colors = ["#1a73e8","#34a853","#ea4335","#fbbc04","#9c27b0","#00bcd4","#ff5722","#607d8b","#e91e63","#4caf50"];
     var h = 0;
     for (var i = 0; i < staffName.length; i++) h = staffName.charCodeAt(i) + ((h << 5) - h);
-    var info = { color: colors[Math.abs(h) % colors.length], initial: staffName[0] || '?', emoji: '', image_url: '' };
+    var color = colors[Math.abs(h) % colors.length];
+    var info = { color: color, initial: staffName[0] || '?', emoji: '', image_url: '' };
     iconCache[staffName] = info;
     return info;
 }
 
+// ===== フォールバック：ポーリング1秒 =====
 async function pollFallback() {
     try {
         var lastId = getLastMsgId();
