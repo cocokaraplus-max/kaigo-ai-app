@@ -444,7 +444,13 @@
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">alternate_email</span>
                 メンション（特定のスタッフに通知）
             </div>
-            <div class="mention-chips" id="mention-chips">
+            <div style="position:relative;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#80868b;font-size:16px;">search</span>
+                <input type="text" id="mention-search" placeholder="名前で検索..."
+                    style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;"
+                    oninput="filterMentions(this.value)">
+            </div>
+            <div class="mention-chips" id="mention-chips" style="max-height:120px;overflow-y:auto;">
                 {% for s in staffs %}
                 <div class="mention-chip" data-name="{{ s }}">{{ s }}</div>
                 {% endfor %}
@@ -515,6 +521,15 @@ var currentPostId = null;
 var selectedPhotos = [];
 var selectedAudio = null;
 var selectedMentions = [];
+
+// メンション検索
+window.filterMentions = function(q) {
+    var ql = q.trim().toLowerCase();
+    document.querySelectorAll('.mention-chip').forEach(function(chip) {
+        var name = chip.dataset.name.toLowerCase();
+        chip.style.display = (!ql || name.includes(ql)) ? '' : 'none';
+    });
+};
 
 // ===== 画像ビューワー =====
 window.openImageViewer = function(url) {
