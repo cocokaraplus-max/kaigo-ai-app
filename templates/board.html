@@ -438,23 +438,43 @@
         </div>
         <textarea class="post-textarea" id="post-textarea" placeholder="連絡事項やお知らせを入力..."></textarea>
 
+        <!-- 公開範囲 -->
+        <div style="margin-bottom:12px;">
+            <div style="font-size:0.8rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">lock</span>
+                公開範囲
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div id="scope-all" style="padding:10px;border-radius:10px;border:2px solid #1a73e8;background:#e8f0fe;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                    <span class="material-symbols-outlined" style="font-size:18px;display:block;color:#1a73e8;">public</span>
+                    <span style="font-size:0.78rem;font-weight:700;color:#1a73e8;">全員に公開</span>
+                </div>
+                <div id="scope-mention" style="padding:10px;border-radius:10px;border:2px solid #e0e0e0;background:#fff;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                    <span class="material-symbols-outlined" style="font-size:18px;display:block;color:#80868b;">group</span>
+                    <span style="font-size:0.78rem;font-weight:700;color:#80868b;">メンションのみ</span>
+                </div>
+            </div>
+        </div>
+
         <!-- メンション -->
         <div class="mention-area">
             <div class="mention-label">
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">alternate_email</span>
                 メンション（特定のスタッフに通知）
             </div>
+            <!-- 選択済みメンション表示 -->
+            <div id="mention-selected-area" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
             <div style="position:relative;margin-bottom:8px;">
                 <span class="material-symbols-outlined" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#80868b;font-size:16px;">search</span>
-                <input type="text" id="mention-search" placeholder="名前で検索..."
-                    style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;"
-                    oninput="filterMentions(this.value)">
+                <input type="text" id="mention-search" placeholder="名前を入力して検索..."
+                    style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;">
             </div>
-            <div class="mention-chips" id="mention-chips" style="max-height:120px;overflow-y:auto;">
+            <div class="mention-chips" id="mention-chips" style="max-height:120px;overflow-y:auto;display:none;">
                 {% for s in staffs %}
                 <div class="mention-chip" data-name="{{ s }}">{{ s }}</div>
                 {% endfor %}
             </div>
+            <div id="mention-empty" style="font-size:0.78rem;color:#80868b;padding:4px 0;display:none;">該当するスタッフが見つかりません</div>
         </div>
 
         <!-- 添付 -->
@@ -534,19 +554,100 @@ const SUPA_URL     = {{ supabase_url | tojson }};
 const SUPA_KEY     = {{ supabase_anon_key | tojson }};
 const STAFFS       = {{ staffs | tojson }};
 
+// ページ読み込み時にカメラモーダルを確実に閉じる
+var _cam = document.getElementById('camera-modal');
+if (_cam) { _cam.style.display = 'none'; _cam.classList.remove('show'); }
+if (window.cameraStream) { window.cameraStream.getTracks().forEach(function(t){t.stop();}); window.cameraStream = null; }
+
+// 公開範囲
+var currentScope = 'all';
+window.setScope = function(scope) {
+    currentScope = scope;
+    var allEl = document.getElementById('scope-all');
+    var mentEl = document.getElementById('scope-mention');
+    if (!allEl || !mentEl) return;
+    if (scope === 'all') {
+        allEl.style.borderColor='#1a73e8'; allEl.style.background='#e8f0fe';
+        allEl.querySelectorAll('span')[0].style.color='#1a73e8';
+        allEl.querySelectorAll('span')[1].style.color='#1a73e8';
+        mentEl.style.borderColor='#e0e0e0'; mentEl.style.background='#fff';
+        mentEl.querySelectorAll('span')[0].style.color='#80868b';
+        mentEl.querySelectorAll('span')[1].style.color='#80868b';
+    } else {
+        mentEl.style.borderColor='#1a73e8'; mentEl.style.background='#e8f0fe';
+        mentEl.querySelectorAll('span')[0].style.color='#1a73e8';
+        mentEl.querySelectorAll('span')[1].style.color='#1a73e8';
+        allEl.style.borderColor='#e0e0e0'; allEl.style.background='#fff';
+        allEl.querySelectorAll('span')[0].style.color='#80868b';
+        allEl.querySelectorAll('span')[1].style.color='#80868b';
+    }
+};
+document.getElementById('scope-all')?.addEventListener('click', function(){ setScope('all'); });
+document.getElementById('scope-all')?.addEventListener('touchend', function(e){ e.preventDefault(); setScope('all'); });
+document.getElementById('scope-mention')?.addEventListener('click', function(){ setScope('mention'); });
+document.getElementById('scope-mention')?.addEventListener('touchend', function(e){ e.preventDefault(); setScope('mention'); });
+
 var currentPostId = null;
 var selectedPhotos = [];
 var selectedAudio = null;
 var selectedMentions = [];
 
-// メンション検索
+// メンション検索（入力時のみ候補表示）
 window.filterMentions = function(q) {
     var ql = q.trim().toLowerCase();
+    var chips = document.getElementById('mention-chips');
+    var empty = document.getElementById('mention-empty');
+    if (!ql) {
+        chips.style.display = 'none';
+        if (empty) empty.style.display = 'none';
+        return;
+    }
+    var hits = 0;
     document.querySelectorAll('.mention-chip').forEach(function(chip) {
         var name = chip.dataset.name.toLowerCase();
-        chip.style.display = (!ql || name.includes(ql)) ? '' : 'none';
+        var show = name.includes(ql) && !selectedMentions.includes(chip.dataset.name);
+        chip.style.display = show ? '' : 'none';
+        if (show) hits++;
     });
+    chips.style.display = hits > 0 ? 'flex' : 'none';
+    if (empty) empty.style.display = hits === 0 ? 'block' : 'none';
 };
+
+// メンション選択後に選択済みバッジを更新
+function updateMentionSelectedArea() {
+    var area = document.getElementById('mention-selected-area');
+    if (!area) return;
+    area.innerHTML = '';
+    selectedMentions.forEach(function(name) {
+        var badge = document.createElement('div');
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:20px;font-size:0.78rem;font-weight:700;color:#1a73e8;cursor:pointer;';
+        badge.innerHTML = '@' + name + ' <span style="font-size:14px;line-height:1;">×</span>';
+        badge.addEventListener('click', function() {
+            var idx = selectedMentions.indexOf(name);
+            if (idx >= 0) selectedMentions.splice(idx, 1);
+            updateMentionSelectedArea();
+            // チップの選択解除
+            document.querySelectorAll('.mention-chip').forEach(function(c) {
+                if (c.dataset.name === name) c.classList.remove('selected');
+            });
+        });
+        area.appendChild(badge);
+    });
+}
+
+// iPhone対応
+var mentionSearchEl = document.getElementById('mention-search');
+if (mentionSearchEl) {
+    mentionSearchEl.addEventListener('input', function() { filterMentions(this.value); });
+    mentionSearchEl.addEventListener('compositionend', function() { filterMentions(this.value); });
+    // フォーカスを外したら候補を非表示
+    mentionSearchEl.addEventListener('blur', function() {
+        setTimeout(function() {
+            document.getElementById('mention-chips').style.display = 'none';
+            if (document.getElementById('mention-empty')) document.getElementById('mention-empty').style.display = 'none';
+        }, 200);
+    });
+}
 
 // ===== 画像ビューワー =====
 window.openImageViewer = function(url) {
@@ -571,7 +672,11 @@ function closePostModal() {
     selectedPhotos = []; selectedAudio = null; selectedMentions = [];
     document.getElementById('photo-preview').innerHTML = '';
     document.getElementById('audio-preview').style.display = 'none';
-    document.querySelectorAll('.mention-chip').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.mention-chip').forEach(function(c) { c.classList.remove('selected'); });
+    document.getElementById('mention-selected-area').innerHTML = '';
+    document.getElementById('mention-search').value = '';
+    document.getElementById('mention-chips').style.display = 'none';
+    setScope('all'); currentScope = 'all';
 }
 document.getElementById('post-modal').addEventListener('click', function(e) {
     if (e.target === this) closePostModal();
@@ -582,8 +687,19 @@ document.querySelectorAll('.mention-chip').forEach(function(chip) {
     chip.addEventListener('click', function() {
         var name = this.dataset.name;
         var idx = selectedMentions.indexOf(name);
-        if (idx >= 0) { selectedMentions.splice(idx, 1); this.classList.remove('selected'); }
-        else { selectedMentions.push(name); this.classList.add('selected'); }
+        if (idx >= 0) {
+            selectedMentions.splice(idx, 1);
+            this.classList.remove('selected');
+        } else {
+            selectedMentions.push(name);
+            this.classList.add('selected');
+        }
+        // 選択後に検索窓をクリアして候補を非表示
+        var searchEl = document.getElementById('mention-search');
+        if (searchEl) { searchEl.value = ''; }
+        document.getElementById('mention-chips').style.display = 'none';
+        if (document.getElementById('mention-empty')) document.getElementById('mention-empty').style.display = 'none';
+        updateMentionSelectedArea();
     });
 });
 
@@ -630,6 +746,7 @@ async function submitPost() {
         var formData = new FormData();
         formData.append('content', content);
         formData.append('mention_names', JSON.stringify(selectedMentions));
+        formData.append('is_private', currentScope === 'mention' ? '1' : '0');
         selectedPhotos.forEach(function(f) { formData.append('photos', f); });
         if (selectedAudio) formData.append('audio', selectedAudio);
 
