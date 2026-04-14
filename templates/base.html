@@ -267,12 +267,12 @@
             <span class="material-symbols-outlined">assignment</span>
             評価
         </a>
-        <a href="/chat" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/chat')">
+        <a href="/board" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/board')">
             <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined">forum</span>
+                <span class="material-symbols-outlined">campaign</span>
                 <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
             </div>
-            トーク
+            掲示板
         </a>
         <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
             <span class="material-symbols-outlined">cake</span>
@@ -411,7 +411,7 @@ function updateNavActive(url) {
         const href = item.getAttribute('href');
         if (!href) return;
         // /chat/<room_id> でもトークナビをアクティブに
-        if (href === '/chat' && (basePath === '/chat' || basePath.startsWith('/chat/'))) {
+        if (href === '/board' && (basePath === '/board' || basePath.startsWith('/board/'))) {
             item.classList.add('active');
         } else if (href === basePath) {
             item.classList.add('active');
@@ -533,7 +533,7 @@ let chatPollingTimer = null;
 
 async function checkUnreadMessages() {
     try {
-        const res = await fetch('/api/unread_count');
+        const res = await fetch('/api/board/unread_count');
         if (!res.ok) return;
         const data = await res.json();
         const count = data.count || 0;

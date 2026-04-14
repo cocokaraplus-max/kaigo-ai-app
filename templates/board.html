@@ -1,0 +1,845 @@
+{% extends "base.html" %}
+{% block title %}掲示板 - TASUKARU{% endblock %}
+{% block nav_chat %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ========== 掲示板ヘッダー ========== */
+.board-header {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 1rem;
+}
+.board-title { margin-bottom: 0; }
+.new-post-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #1a73e8; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+    -webkit-tap-highlight-color: transparent;
+}
+.new-post-btn .material-symbols-outlined { font-size: 22px; color: white; }
+
+/* ========== 投稿カード ========== */
+.post-card {
+    background: #fff; border-radius: 16px;
+    border: 1.5px solid #e0e0e0; margin-bottom: 12px;
+    overflow: hidden; transition: border-color 0.15s;
+}
+.post-card.pinned {
+    border-color: #1a73e8;
+    background: linear-gradient(180deg, #f0f6ff 0%, #fff 60px);
+}
+.post-card-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 14px 8px;
+}
+.post-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.88rem; font-weight: 700; color: white; flex-shrink: 0; overflow: hidden;
+}
+.post-meta { flex: 1; min-width: 0; }
+.post-author { font-size: 0.88rem; font-weight: 700; color: #202124; }
+.post-time { font-size: 0.72rem; color: #80868b; }
+.post-pin-badge {
+    font-size: 0.68rem; background: #1a73e8; color: white;
+    padding: 2px 8px; border-radius: 10px; font-weight: 700;
+    display: flex; align-items: center; gap: 3px;
+}
+.post-menu-btn {
+    background: none; border: none; cursor: pointer;
+    color: #80868b; padding: 4px;
+    display: flex; align-items: center;
+}
+
+.post-content {
+    padding: 0 14px 10px;
+    font-size: 0.92rem; line-height: 1.7; color: #202124;
+    white-space: pre-wrap; word-break: break-word;
+}
+.post-content .mention {
+    color: #1a73e8; font-weight: 700;
+}
+
+/* 画像グリッド */
+.post-images {
+    display: grid; gap: 3px;
+    padding: 0 14px 10px;
+}
+.post-images.count-1 { grid-template-columns: 1fr; }
+.post-images.count-2 { grid-template-columns: 1fr 1fr; }
+.post-images.count-3 { grid-template-columns: 1fr 1fr 1fr; }
+.post-images img {
+    width: 100%; border-radius: 8px;
+    aspect-ratio: 1; object-fit: cover; cursor: pointer;
+}
+
+/* 音声 */
+.post-audio {
+    margin: 0 14px 10px;
+    background: #f0f6ff; border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid #1a73e8;
+}
+.post-audio .material-symbols-outlined { color: #1a73e8; }
+.post-audio audio { flex: 1; height: 32px; }
+
+/* リアクション */
+.post-reactions {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 0 14px 10px;
+}
+.reaction-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 20px;
+    border: 1.5px solid #e0e0e0; background: #fff;
+    font-size: 0.82rem; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.15s;
+}
+.reaction-chip.mine { border-color: #1a73e8; background: #e8f0fe; }
+.reaction-chip .emoji { font-size: 16px; }
+.reaction-chip .count { font-weight: 700; color: #5f6368; font-size: 0.78rem; }
+.reaction-chip.mine .count { color: #1a73e8; }
+
+/* アクションバー */
+.post-actions {
+    display: flex; border-top: 1px solid #f0f0f0;
+    padding: 6px 8px;
+}
+.post-action-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    gap: 5px; padding: 8px 4px; border: none; background: none;
+    cursor: pointer; border-radius: 8px; color: #5f6368;
+    font-size: 0.8rem; font-weight: 600;
+    -webkit-tap-highlight-color: transparent; transition: background 0.15s;
+}
+.post-action-btn:active { background: #f0f0f0; }
+.post-action-btn .material-symbols-outlined { font-size: 18px; }
+.post-action-btn.checked { color: #1a73e8; }
+.post-action-btn .badge {
+    background: #ea4335; color: white; border-radius: 10px;
+    font-size: 0.65rem; font-weight: 700; padding: 1px 5px; min-width: 16px;
+    text-align: center;
+}
+
+/* 既読表示 */
+.post-reads {
+    padding: 4px 14px 10px;
+    font-size: 0.72rem; color: #80868b;
+    display: flex; align-items: center; gap: 4px;
+}
+
+/* ========== コメントドロワー ========== */
+.comments-drawer {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 900;
+    align-items: flex-end; justify-content: center;
+}
+.comments-drawer.show { display: flex; }
+.comments-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    height: 70vh; display: flex; flex-direction: column;
+    animation: slideUp 0.22s ease;
+}
+@keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.comments-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+}
+.comments-title { font-size: 0.95rem; font-weight: 800; color: #202124; }
+.comments-close { background: none; border: none; cursor: pointer; }
+.comments-list {
+    flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px;
+}
+.comment-item { display: flex; gap: 8px; align-items: flex-start; }
+.comment-avatar {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; color: white; overflow: hidden;
+}
+.comment-body { flex: 1; }
+.comment-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.comment-author { font-size: 0.8rem; font-weight: 700; }
+.comment-time { font-size: 0.68rem; color: #80868b; }
+.comment-text {
+    font-size: 0.88rem; line-height: 1.6; color: #202124;
+    background: #f0f2f5; border-radius: 0 12px 12px 12px;
+    padding: 8px 12px; word-break: break-word;
+}
+.comment-text .mention { color: #1a73e8; font-weight: 700; }
+.comment-delete-btn {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; padding: 0; display: none;
+}
+.comment-item:hover .comment-delete-btn { display: block; }
+
+.comments-input-area {
+    border-top: 1px solid #e0e0e0; padding: 10px 14px;
+    display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0;
+}
+.comments-textarea {
+    flex: 1; padding: 10px 14px; border-radius: 20px;
+    border: 1.5px solid #e0e0e0; font-size: 0.9rem;
+    resize: none; min-height: 40px; max-height: 100px;
+    line-height: 1.4; font-family: inherit; background: #f8f9fa;
+}
+.comments-textarea:focus { outline: none; border-color: #1a73e8; background: #fff; }
+.comments-send-btn {
+    width: 38px; height: 38px; border-radius: 50%; background: #1a73e8;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.comments-send-btn .material-symbols-outlined { font-size: 18px; color: white; }
+
+/* ========== 投稿作成モーダル ========== */
+.post-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 1000;
+    align-items: flex-end; justify-content: center;
+}
+.post-modal.show { display: flex; }
+.post-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    max-height: 90vh; overflow-y: auto;
+    padding: 20px 20px 32px; animation: slideUp 0.22s ease;
+}
+.post-sheet-handle {
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 0 auto 16px;
+}
+.post-sheet-title {
+    font-size: 1rem; font-weight: 800; color: #202124;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 6px;
+}
+.post-textarea {
+    width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 1.5px solid #e0e0e0; font-size: 0.92rem;
+    resize: none; min-height: 100px; line-height: 1.6;
+    font-family: inherit; margin-bottom: 12px; box-sizing: border-box;
+}
+.post-textarea:focus { outline: none; border-color: #1a73e8; }
+
+/* メンション */
+.mention-area { margin-bottom: 12px; }
+.mention-label { font-size: 0.8rem; font-weight: 700; color: #5f6368; margin-bottom: 6px; }
+.mention-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mention-chip {
+    padding: 4px 10px; border-radius: 20px; border: 1.5px solid #e0e0e0;
+    background: #fff; font-size: 0.78rem; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; transition: all 0.15s;
+}
+.mention-chip.selected { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; font-weight: 700; }
+
+/* 添付ボタン */
+.attach-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.attach-btn {
+    flex: 1; padding: 10px; border-radius: 10px;
+    border: 1.5px dashed #e0e0e0; background: #f8f9fa;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 0.8rem; font-weight: 700; color: #5f6368; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.attach-btn:active { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+.attach-btn .material-symbols-outlined { font-size: 20px; }
+.attach-preview { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.attach-preview img {
+    width: 70px; height: 70px; object-fit: cover;
+    border-radius: 8px; border: 1px solid #e0e0e0;
+}
+.post-submit-btn {
+    width: 100%; padding: 14px; border-radius: 14px; border: none;
+    background: linear-gradient(135deg, #1a73e8, #1557b0);
+    color: white; font-size: 1rem; font-weight: 800; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(26,115,232,0.3);
+}
+.post-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* リアクション選択 */
+.reaction-picker {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3); z-index: 1100;
+    align-items: flex-end; justify-content: center;
+}
+.reaction-picker.show { display: flex; }
+.reaction-picker-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 16px 16px 32px;
+}
+.reaction-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+.reaction-item {
+    font-size: 28px; text-align: center; padding: 8px;
+    border-radius: 12px; cursor: pointer; border: 2px solid transparent;
+    -webkit-tap-highlight-color: transparent;
+}
+.reaction-item:active { background: #f0f0f0; }
+
+/* 空状態 */
+.empty-board {
+    text-align: center; padding: 60px 20px; color: #80868b;
+}
+.empty-board .material-symbols-outlined {
+    font-size: 64px; display: block; color: #e0e0e0; margin-bottom: 12px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="board-header">
+    <div class="page-title board-title" style="margin-bottom:0;">
+        <span class="material-symbols-outlined">campaign</span>
+        掲示板
+    </div>
+    <button class="new-post-btn" id="new-post-btn">
+        <span class="material-symbols-outlined">edit_square</span>
+    </button>
+</div>
+
+<!-- 投稿一覧 -->
+<div id="posts-container">
+{% if not posts %}
+<div class="empty-board">
+    <span class="material-symbols-outlined">campaign</span>
+    まだ投稿がありません。<br>右上のボタンから投稿しましょう！
+</div>
+{% else %}
+{% for post in posts %}
+<div class="post-card {% if post.is_pinned %}pinned{% endif %}" id="post-{{ post.id }}" data-post-id="{{ post.id }}">
+    <div class="post-card-header">
+        <!-- アバター -->
+        {% set ic = icons.get(post.staff_name, {}) %}
+        <div class="post-avatar" style="background:{{ ic.get('color','#1a73e8') }};">
+            {% if ic.get('image_url') %}<img src="{{ ic.image_url }}" style="width:100%;height:100%;object-fit:cover;">
+            {% elif ic.get('emoji') %}<span style="font-size:20px;">{{ ic.emoji }}</span>
+            {% else %}{{ ic.get('initial', post.staff_name[:1]) }}{% endif %}
+        </div>
+        <div class="post-meta">
+            <div class="post-author">{{ post.staff_name }}</div>
+            <div class="post-time">{{ post.created_at[5:10].replace('-','月') }}日 {{ post.created_at[11:16] }}</div>
+        </div>
+        {% if post.is_pinned %}
+        <div class="post-pin-badge">
+            <span class="material-symbols-outlined" style="font-size:12px;">push_pin</span>固定
+        </div>
+        {% endif %}
+        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-mine="{{ 'true' if post.staff_name == my_name else 'false' }}">
+            <span class="material-symbols-outlined">more_vert</span>
+        </button>
+    </div>
+
+    <!-- 本文 -->
+    {% if post.content %}
+    <div class="post-content">{{ post.content }}</div>
+    {% endif %}
+
+    <!-- 画像 -->
+    {% if post.image_urls %}
+    <div class="post-images count-{{ post.image_urls|length }}">
+        {% for url in post.image_urls %}
+        <img src="{{ url }}" onclick="openImageViewer('{{ url }}')" loading="lazy">
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 音声 -->
+    {% if post.audio_url %}
+    <div class="post-audio">
+        <span class="material-symbols-outlined">mic</span>
+        <audio controls><source src="{{ post.audio_url }}"></audio>
+    </div>
+    {% endif %}
+
+    <!-- リアクション -->
+    {% set post_reactions = reactions_data.get(post.id, {}) %}
+    {% if post_reactions %}
+    <div class="post-reactions" id="reactions-{{ post.id }}">
+        {% for emoji, names in post_reactions.items() %}
+        <div class="reaction-chip {% if my_name in names %}mine{% endif %}"
+            onclick="toggleReaction({{ post.id }}, '{{ emoji }}')"
+            title="{{ names|join('、') }}">
+            <span class="emoji">{{ emoji }}</span>
+            <span class="count">{{ names|length }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="post-reactions" id="reactions-{{ post.id }}"></div>
+    {% endif %}
+
+    <!-- 既読 -->
+    {% set readers = read_data.get(post.id, []) %}
+    {% if readers %}
+    <div class="post-reads">
+        <span class="material-symbols-outlined" style="font-size:13px;">visibility</span>
+        {{ readers|join('、') }}
+    </div>
+    {% endif %}
+
+    <!-- アクションバー -->
+    {% set checked = my_name in reactions_data.get(post.id, {}).get('✅', []) %}
+    <div class="post-actions">
+        <button class="post-action-btn {% if checked %}checked{% endif %}" onclick="toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
+            <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}check_circle{% endif %}</span>
+            確認済み
+            {% set check_count = reactions_data.get(post.id, {}).get('✅', [])|length %}
+            {% if check_count > 0 %}<span class="badge">{{ check_count }}</span>{% endif %}
+        </button>
+        <button class="post-action-btn" onclick="openReactionPicker({{ post.id }})">
+            <span class="material-symbols-outlined">add_reaction</span>
+            リアクション
+        </button>
+        <button class="post-action-btn" onclick="openComments({{ post.id }})">
+            <span class="material-symbols-outlined">chat_bubble_outline</span>
+            コメント
+            {% set cnt = comments_count.get(post.id, 0) %}
+            {% if cnt > 0 %}<span class="badge">{{ cnt }}</span>{% endif %}
+        </button>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+</div>
+
+<!-- コメントドロワー -->
+<div class="comments-drawer" id="comments-drawer">
+    <div class="comments-sheet">
+        <div class="comments-header">
+            <div class="comments-title">💬 コメント</div>
+            <button class="comments-close" id="comments-close-btn">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="comments-list" id="comments-list"></div>
+        <div class="comments-input-area">
+            <textarea class="comments-textarea" id="comment-input" placeholder="コメントを入力..." rows="1"></textarea>
+            <button class="comments-send-btn" id="comment-send-btn">
+                <span class="material-symbols-outlined">send</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 投稿作成モーダル -->
+<div class="post-modal" id="post-modal">
+    <div class="post-sheet">
+        <div class="post-sheet-handle"></div>
+        <div class="post-sheet-title">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">campaign</span>
+            新しい投稿
+        </div>
+        <textarea class="post-textarea" id="post-textarea" placeholder="連絡事項やお知らせを入力..."></textarea>
+
+        <!-- メンション -->
+        <div class="mention-area">
+            <div class="mention-label">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">alternate_email</span>
+                メンション（特定のスタッフに通知）
+            </div>
+            <div class="mention-chips" id="mention-chips">
+                {% for s in staffs %}
+                <div class="mention-chip" data-name="{{ s }}">{{ s }}</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 添付 -->
+        <div class="attach-row">
+            <div class="attach-btn" id="photo-attach-btn">
+                <span class="material-symbols-outlined">photo_camera</span>
+                写真
+            </div>
+            <div class="attach-btn" id="audio-attach-btn">
+                <span class="material-symbols-outlined">mic</span>
+                音声
+            </div>
+        </div>
+        <div class="attach-preview" id="photo-preview"></div>
+        <input type="file" id="photo-input" accept="image/*" multiple style="display:none">
+        <input type="file" id="audio-input" accept=".mp3,.m4a,.wav,.aac,.ogg,.webm" style="display:none">
+        <div id="audio-preview" style="font-size:0.8rem;color:#34a853;margin-bottom:10px;display:none;">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">mic</span>
+            <span id="audio-filename"></span>
+        </div>
+
+        <button class="post-submit-btn" id="post-submit-btn">
+            <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">send</span>
+            投稿する
+        </button>
+    </div>
+</div>
+
+<!-- リアクション選択 -->
+<div class="reaction-picker" id="reaction-picker">
+    <div class="reaction-picker-sheet">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 14px;"></div>
+        <div class="reaction-grid" id="reaction-grid">
+            {% for emoji in ['✅','👍','❤️','😊','👏','🙏','💪','😄','🤔','👀','⭐','🎉'] %}
+            <div class="reaction-item" data-emoji="{{ emoji }}">{{ emoji }}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 画像ビューワー -->
+<div id="image-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:2000;align-items:center;justify-content:center;">
+    <img id="image-viewer-img" style="max-width:100%;max-height:100%;object-fit:contain;">
+    <button onclick="document.getElementById('image-viewer').style.display='none'"
+        style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;">
+        <span class="material-symbols-outlined" style="color:white;font-size:20px;">close</span>
+    </button>
+</div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+(function(){
+const MY_NAME      = {{ my_name | tojson }};
+const MY_COLOR     = {{ my_color | tojson }};
+const MY_INITIAL   = {{ my_initial | tojson }};
+const SUPA_URL     = {{ supabase_url | tojson }};
+const SUPA_KEY     = {{ supabase_anon_key | tojson }};
+const STAFFS       = {{ staffs | tojson }};
+
+var currentPostId = null;
+var selectedPhotos = [];
+var selectedAudio = null;
+var selectedMentions = [];
+
+// ===== 画像ビューワー =====
+window.openImageViewer = function(url) {
+    document.getElementById('image-viewer-img').src = url;
+    document.getElementById('image-viewer').style.display = 'flex';
+};
+document.getElementById('image-viewer').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+
+// ===== 投稿作成モーダル =====
+document.getElementById('new-post-btn').addEventListener('click', openPostModal);
+document.getElementById('new-post-btn').addEventListener('touchend', function(e) { e.preventDefault(); openPostModal(); });
+
+function openPostModal() {
+    document.getElementById('post-modal').classList.add('show');
+    document.getElementById('post-textarea').focus();
+}
+function closePostModal() {
+    document.getElementById('post-modal').classList.remove('show');
+    document.getElementById('post-textarea').value = '';
+    selectedPhotos = []; selectedAudio = null; selectedMentions = [];
+    document.getElementById('photo-preview').innerHTML = '';
+    document.getElementById('audio-preview').style.display = 'none';
+    document.querySelectorAll('.mention-chip').forEach(c => c.classList.remove('selected'));
+}
+document.getElementById('post-modal').addEventListener('click', function(e) {
+    if (e.target === this) closePostModal();
+});
+
+// メンション選択
+document.querySelectorAll('.mention-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+        var name = this.dataset.name;
+        var idx = selectedMentions.indexOf(name);
+        if (idx >= 0) { selectedMentions.splice(idx, 1); this.classList.remove('selected'); }
+        else { selectedMentions.push(name); this.classList.add('selected'); }
+    });
+});
+
+// 写真添付
+document.getElementById('photo-attach-btn').addEventListener('click', function() {
+    document.getElementById('photo-input').click();
+});
+document.getElementById('photo-input').addEventListener('change', function() {
+    selectedPhotos = Array.from(this.files);
+    var preview = document.getElementById('photo-preview');
+    preview.innerHTML = '';
+    selectedPhotos.slice(0, 5).forEach(function(f) {
+        var img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        preview.appendChild(img);
+    });
+});
+
+// 音声添付
+document.getElementById('audio-attach-btn').addEventListener('click', function() {
+    document.getElementById('audio-input').click();
+});
+document.getElementById('audio-input').addEventListener('change', function() {
+    if (this.files[0]) {
+        selectedAudio = this.files[0];
+        document.getElementById('audio-filename').textContent = selectedAudio.name;
+        document.getElementById('audio-preview').style.display = 'block';
+    }
+});
+
+// 投稿送信
+document.getElementById('post-submit-btn').addEventListener('click', submitPost);
+document.getElementById('post-submit-btn').addEventListener('touchend', function(e) { e.preventDefault(); submitPost(); });
+
+async function submitPost() {
+    var content = document.getElementById('post-textarea').value.trim();
+    if (!content && selectedPhotos.length === 0 && !selectedAudio) {
+        alert('内容を入力してください'); return;
+    }
+    var btn = document.getElementById('post-submit-btn');
+    btn.disabled = true; btn.textContent = '投稿中...';
+
+    try {
+        var formData = new FormData();
+        formData.append('content', content);
+        formData.append('mention_names', JSON.stringify(selectedMentions));
+        selectedPhotos.forEach(function(f) { formData.append('photos', f); });
+        if (selectedAudio) formData.append('audio', selectedAudio);
+
+        var res = await fetch('/api/board/create_post', { method: 'POST', body: formData });
+        var data = await res.json();
+        if (data.status === 'success') {
+            closePostModal();
+            // ページをリロードして新しい投稿を表示
+            window.location.reload();
+        } else {
+            alert('投稿に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) {
+        alert('通信エラー: ' + e.message);
+    } finally {
+        btn.disabled = false; btn.textContent = '投稿する';
+    }
+}
+
+// ===== リアクション =====
+window.toggleReaction = async function(postId, emoji) {
+    try {
+        var res = await fetch('/api/board/react', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ post_id: postId, reaction: emoji })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            updateReactionsUI(postId, data.reactions);
+            // 確認済みボタンの更新
+            if (emoji === '✅') {
+                var btn = document.getElementById('check-btn-' + postId);
+                var names = data.reactions['✅'] || [];
+                var isMine = names.includes(MY_NAME);
+                if (btn) {
+                    btn.classList.toggle('checked', isMine);
+                    var badge = btn.querySelector('.badge');
+                    if (names.length > 0) {
+                        if (!badge) { badge = document.createElement('span'); badge.className = 'badge'; btn.appendChild(badge); }
+                        badge.textContent = names.length;
+                    } else if (badge) {
+                        badge.remove();
+                    }
+                }
+            }
+        }
+    } catch(e) {}
+};
+
+function updateReactionsUI(postId, reactions) {
+    var container = document.getElementById('reactions-' + postId);
+    if (!container) return;
+    container.innerHTML = '';
+    Object.entries(reactions).forEach(function([emoji, names]) {
+        if (emoji === '✅') return; // 確認済みは別ボタンで表示
+        if (names.length === 0) return;
+        var chip = document.createElement('div');
+        chip.className = 'reaction-chip' + (names.includes(MY_NAME) ? ' mine' : '');
+        chip.title = names.join('、');
+        chip.innerHTML = '<span class="emoji">' + emoji + '</span><span class="count">' + names.length + '</span>';
+        chip.addEventListener('click', function() { toggleReaction(postId, emoji); });
+        container.appendChild(chip);
+    });
+}
+
+// ===== リアクション選択ピッカー =====
+var pickerPostId = null;
+window.openReactionPicker = function(postId) {
+    pickerPostId = postId;
+    document.getElementById('reaction-picker').classList.add('show');
+};
+document.getElementById('reaction-picker').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+});
+document.querySelectorAll('.reaction-item').forEach(function(item) {
+    item.addEventListener('click', function() {
+        if (pickerPostId) {
+            toggleReaction(pickerPostId, this.dataset.emoji);
+            document.getElementById('reaction-picker').classList.remove('show');
+        }
+    });
+});
+
+// ===== コメント =====
+window.openComments = async function(postId) {
+    currentPostId = postId;
+    document.getElementById('comments-drawer').classList.add('show');
+    await loadComments(postId);
+};
+
+document.getElementById('comments-close-btn').addEventListener('click', function() {
+    document.getElementById('comments-drawer').classList.remove('show');
+    currentPostId = null;
+});
+document.getElementById('comments-drawer').addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.classList.remove('show');
+        currentPostId = null;
+    }
+});
+
+async function loadComments(postId) {
+    try {
+        var res = await fetch('/api/board/get_comments?post_id=' + postId);
+        var data = await res.json();
+        var list = document.getElementById('comments-list');
+        list.innerHTML = '';
+        if (!data.comments || !data.comments.length) {
+            list.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;font-size:0.85rem;">まだコメントがありません</div>';
+            return;
+        }
+        data.comments.forEach(function(c) {
+            var el = document.createElement('div');
+            el.className = 'comment-item';
+            el.id = 'comment-' + c.id;
+            var avatarHTML = c.image_url
+                ? '<img src="' + c.image_url + '" style="width:100%;height:100%;object-fit:cover;">'
+                : c.emoji ? '<span style="font-size:16px;">' + c.emoji + '</span>'
+                : c.initial || '?';
+            var deleteBtn = (c.is_mine) ? '<button class="comment-delete-btn" data-id="' + c.id + '"><span class="material-symbols-outlined" style="font-size:14px;">close</span></button>' : '';
+            var contentHTML = c.content.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
+            el.innerHTML = '<div class="comment-avatar" style="background:' + c.color + ';">' + avatarHTML + '</div>'
+                + '<div class="comment-body">'
+                + '<div class="comment-header"><span class="comment-author">' + c.staff_name + '</span>'
+                + '<span class="comment-time">' + c.time_label + '</span>' + deleteBtn + '</div>'
+                + '<div class="comment-text">' + contentHTML + '</div>'
+                + '</div>';
+            list.appendChild(el);
+        });
+        // 削除ボタン
+        list.querySelectorAll('.comment-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                if (!confirm('削除しますか？')) return;
+                var r = await fetch('/api/board/delete_comment', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: parseInt(this.dataset.id) })
+                });
+                if ((await r.json()).status === 'success') {
+                    document.getElementById('comment-' + this.dataset.id)?.remove();
+                }
+            });
+        });
+        list.scrollTop = list.scrollHeight;
+    } catch(e) {}
+}
+
+// コメント送信
+var commentTextarea = document.getElementById('comment-input');
+commentTextarea.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+});
+
+document.getElementById('comment-send-btn').addEventListener('click', sendComment);
+document.getElementById('comment-send-btn').addEventListener('touchend', function(e) { e.preventDefault(); sendComment(); });
+
+async function sendComment() {
+    var content = commentTextarea.value.trim();
+    if (!content || !currentPostId) return;
+    commentTextarea.value = ''; commentTextarea.style.height = 'auto';
+    try {
+        var res = await fetch('/api/board/add_comment', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ post_id: currentPostId, content: content, mention_names: [] })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            await loadComments(currentPostId);
+            // コメント数バッジ更新
+            var btn = document.querySelector('[data-post-id="' + currentPostId + '"] .post-action-btn:last-child');
+        }
+    } catch(e) {}
+}
+
+// ===== 投稿メニュー =====
+document.querySelectorAll('.post-menu-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var postId = this.dataset.postId;
+        var isMine = this.dataset.mine === 'true';
+        var isAdmin = false; // サーバーサイドで判定
+        showPostMenu(postId, isMine);
+    });
+    btn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        var postId = this.dataset.postId;
+        var isMine = this.dataset.mine === 'true';
+        showPostMenu(postId, isMine);
+    });
+});
+
+function showPostMenu(postId, isMine) {
+    // シンプルなconfirmダイアログで対応
+    var actions = [];
+    if (isMine) actions.push('削除');
+    actions.push('キャンセル');
+    var msg = actions.includes('削除') ? 'この投稿を削除しますか？' : '';
+    if (isMine && confirm('この投稿を削除しますか？')) {
+        deletePost(postId);
+    }
+}
+
+async function deletePost(postId) {
+    try {
+        var res = await fetch('/api/board/delete_post', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: parseInt(postId) })
+        });
+        if ((await res.json()).status === 'success') {
+            document.getElementById('post-' + postId)?.remove();
+        }
+    } catch(e) {}
+}
+
+// ===== Supabase Realtime（新着投稿を即時表示） =====
+function startRealtime() {
+    if (!SUPA_URL || !SUPA_KEY || typeof supabase === 'undefined') return;
+    try {
+        var client = supabase.createClient(SUPA_URL, SUPA_KEY);
+        client.channel('board_posts')
+            .on('postgres_changes', {
+                event: 'INSERT', schema: 'public', table: 'board_posts'
+            }, function(payload) {
+                // 自分の投稿以外が来たらリロード
+                if (payload.new.staff_name !== MY_NAME) {
+                    // トースト表示
+                    showToast('📋 ' + payload.new.staff_name + 'さんが投稿しました');
+                    setTimeout(function() { window.location.reload(); }, 2000);
+                }
+            })
+            .subscribe();
+    } catch(e) {}
+}
+startRealtime();
+
+function showToast(msg) {
+    var toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1a73e8;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;white-space:nowrap;';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+}
+
+})();
+</script>
+{% endblock %}
