@@ -469,9 +469,13 @@
                 <input type="text" id="mention-search" placeholder="名前を入力して検索..."
                     style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;">
             </div>
-            <div class="mention-chips" id="mention-chips" style="max-height:120px;overflow-y:auto;display:none;">
+            <div id="mention-chips" style="display:none;border:1.5px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:160px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
                 {% for s in staffs %}
-                <div class="mention-chip" data-name="{{ s }}">{{ s }}</div>
+                <div class="mention-chip" data-name="{{ s }}"
+                    style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;border-radius:0;">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#80868b;">person</span>
+                    {{ s }}
+                </div>
                 {% endfor %}
             </div>
             <div id="mention-empty" style="font-size:0.78rem;color:#80868b;padding:4px 0;display:none;">該当するスタッフが見つかりません</div>
@@ -609,7 +613,7 @@ window.filterMentions = function(q) {
         chip.style.display = show ? '' : 'none';
         if (show) hits++;
     });
-    chips.style.display = hits > 0 ? 'flex' : 'none';
+    chips.style.display = hits > 0 ? 'block' : 'none';
     if (empty) empty.style.display = hits === 0 ? 'block' : 'none';
 };
 
