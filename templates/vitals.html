@@ -545,7 +545,7 @@ let currentAmpm = 'ALL';
 window.selectAmpm = function(ampm) {
     currentAmpm = ampm;
     ['ALL','AM','PM'].forEach(a => {
-        const btn = document.getElementById('ampm-tab-' + a);
+        const btn = document.getElementById('ampm-tab-' + a.toLowerCase());
         if (!btn) return;
         const active = a === ampm;
         btn.style.background = active ? '#1a73e8' : '#fff';
