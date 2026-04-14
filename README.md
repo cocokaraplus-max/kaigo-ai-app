@@ -2373,3 +2373,616 @@ sed -i '' 's/変更前/変更後/' app.py
 10. sw.jsを修正したら **CACHE_VERSION** を上げる（現在v4）
 11. Pythonコードをターミナルに直接貼らない（bash構文エラーになる）
 12. ターミナルコマンドを教えるときは **sedコマンド** か **ZIPファイル** で渡す
+
+# TASUKARU 開発記録 🦝
+
+## プロジェクト概要
+- **アプリ名**：TASUKARU（タスカル）
+- **目的**：介護現場の記録業務をAIで自動化
+- **技術スタック**：Python/Flask, Supabase(PostgreSQL), Gemini AI, Cloud Run
+- **本番URL**：https://tasukaru-191764727533.asia-northeast1.run.app
+- **開発URL**：https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- **GCPプロジェクト**：tasukaru-production（PROJECT_NUMBER: 191764727533）
+- **Supabaseプロジェクト**：abvglnkwtdeoaazyqwyd（ap-northeast-1）
+- **施設コード**：cocokaraplus-5526
+
+---
+
+## 開発ルール（必ず守ること）
+
+1. `patients.id`は**bigint型** → patient_idはTEXT型で持つ
+2. 環境変数更新は`--update-env-vars`のみ（`--set-env-vars`は厳禁）
+3. スクリプトはすべて**IIFE**で囲む
+4. `await`を使う関数には**`async`**を必ずつける
+5. 全関数を`window.xxx`で公開する
+6. `onclick`ではなく**`addEventListener`**を使う（iPhone対応）
+7. Jinja2データ（PATIENTS等）は**IIFEの外**で定義する
+8. 開発は`cloudrun-dev`で行い、確認後に`cloudrun`にマージ
+9. sw.jsを修正したら**CACHE_VERSION**を上げる（現在v4）
+10. カメラモーダルは**body直下**に移動する
+11. **ZIPで書き出し**か**ターミナルコマンド**で修正を指示する
+
+---
+
+## ブランチ運用
+
+```
+cloudrun-dev  → 開発・確認用（tasukaru-dev）
+cloudrun      → 本番用（tasukaru）
+```
+
+### デプロイコマンド
+
+```bash
+# 開発版
+git add . && git commit -m "変更内容" && git push origin cloudrun-dev
+gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --platform managed --allow-unauthenticated
+
+# 本番同期
+git stash && git checkout cloudrun && git merge cloudrun-dev && git push origin cloudrun
+gcloud run deploy tasukaru --source . --region asia-northeast1 --platform managed --allow-unauthenticated && git checkout cloudrun-dev && git stash pop
+```
+
+---
+
+## パスワード管理
+
+| 種類 | 場所 | 形式 |
+|------|------|------|
+| スタッフ | staffs.password_hash | SHA-256 |
+| 施設管理者 | facilities.admin_password | 平文 |
+| 管理者MENU | admin_settings key='admin_password' | 平文（デフォルト:8888）|
+| 開発者MENU | 環境変数DEV_PASSWORD | 平文（デフォルト:tasukaru-dev-2024）|
+
+---
+
+## Supabaseテーブル（重要）
+
+- `patients.id`は**bigint型**（外部キーはTEXT型）
+- `staffs`に`icon_emoji`, `icon_image_url`カラムあり
+- `patient_visit_days`に`ampm`カラムあり
+- `chat_messages`は`supabase_realtime` publicationに登録済み
+- `assessments`テーブルに`audio_url`カラムあり（音声保存用）
+- Storageバケット：`case-photos`（写真）、`assessment-audio`（評価音声）
+
+---
+
+## ファイル構成
+
+```
+kaigo-ai-app/
+├── app.py（Flask メイン・全ルーティング・全API）
+├── utils.py（Gemini AI・Supabase画像/音声アップロード）
+├── templates/
+│   ├── base.html（SPAルーター・ボトムナビ・PWA・未読バッジ・通知サウンド）
+│   ├── chat_room.html（★Realtime対応・二重表示修正・送信音付き）
+│   ├── chat_rooms.html（★試聴ボタン付きサウンド設定）
+│   ├── assessment.html（★録音モードCSS・音声保存再生・保存バグ修正）
+│   ├── top.html（★歯車ボタン・ユーザー設定モーダル）
+│   ├── vitals.html（★cameraStream重複修正・全員ボタン点灯バグ修正）
+│   ├── login.html（★お名前入力欄追加済み）
+│   └── ...その他テンプレート
+└── static/
+    ├── sw.js（★PWA Service Worker v4・バッジAPI対応）
+    └── manifest.json
+```
+
+---
+
+## 今セッションで完了した作業
+
+### ✅ ログイン時に名前を任意入力できる機能
+- 管理者パスワードでログイン時、`login_name`入力欄に名前を入力するとその名前でログインできる
+
+### ✅ Supabase Realtimeによるトーク即時受信
+- ポーリング3秒 → Supabase WebSocketで即時受信に変更
+- ルーム名横に🟡→🟢の接続状態ドット表示
+- `chat_messages`テーブルをsupabase_realtime publicationに登録済み
+
+### ✅ トーク二重表示バグ修正
+- 自分のメッセージをRealtimeで受信した際の二重表示を修正
+
+### ✅ 評価ページの録音モード選択ボタンCSS追加
+- `.type-btn`と`.type-btn.active`のCSSを`assessment.html`に追加
+
+### ✅ ホーム画面バッジ対応（PWA Badging API）
+- `sw.js`にpushイベント受信・`navigator.setAppBadge()`追加
+- CACHE_VERSION：v4に更新
+- 動作条件：iPhone iOS 16.4以上、ホーム画面に追加済み、通知許可ON
+
+### ✅ 評価ページに音声保存・再生機能を追加
+- `utils.py`に`upload_audio_to_supabase()`関数を追加
+- 音声をSupabaseの`assessment-audio`バケットに保存
+- 報告書プレビューと過去の評価に音声プレイヤーを追加
+
+### ✅ TOPページにユーザー設定を追加
+- 右上に歯車ボタン追加
+- 文字サイズ（90〜130%スライダー）・通知サウンド・アイコン設定をまとめた設定モーダル
+
+### ✅ 送信音追加（Web Audio API）
+- トーク送信時に「シュッ」という音が鳴る
+- サウンド設定に「▶試聴」ボタンを追加
+
+### ✅ 評価保存バグ修正
+- contenteditable要素の取得を`textContent`→`innerText`に変更
+
+### ✅ 通知許可ポップアップ追加
+- base.htmlに初回のみ通知許可リクエストを追加（3秒後）
+
+### ✅ バイタル画面のボタンが動かないバグ修正
+- `vitals.html`の`cameraStream`変数が2回宣言されていたのを修正
+
+### ✅ カメラボタンがSPA遷移で残るバグ修正
+- `base.html`のnavigateTo関数でカメラモーダルを確実に閉じる処理を追加
+- ページコンテンツ入れ替え後にも`camera-modal`を閉じる
+
+### ✅ バイタル「全員」ボタンが常に点灯するバグ修正
+- 初期化時に`selectAmpm('ALL')`を呼ぶように修正
+
+---
+
+## PENDING（未完了・次回対応）
+
+- [ ] 「たすかる」音声（mp3ファイルが必要 → TTSmaker等で生成）
+- [ ] 利用者の曜日設定を現場で登録・確認
+- [ ] バイタルの動作を現場で最終確認
+- [ ] サウンドテストページの削除（/sound_test）
+
+---
+
+## gcloud CLIとは
+
+TASUKARUをCloud Runサーバーにデプロイするためのコマンドラインツール。
+
+```
+あなたのMac
+    ↓ gcloud run deploy
+Google Cloud（インターネット上のサーバー）
+    ↓
+Cloud Run（TASUKARUが動いている場所）
+    ↓
+https://tasukaru-dev-...run.app
+```
+
+---
+
+## よくあるエラーと対処法
+
+| エラー | 原因 | 対処 |
+|--------|------|------|
+| `cd: kaigo-ai-app: No such file or directory` | すでにkaigo-ai-appにいる | そのまま実行 |
+| `error: Your local changes would be overwritten` | .DS_Storeが変更されている | `git stash`してから実行 |
+| `INVALID_ARGUMENT` デプロイエラー | 認証切れ | `gcloud auth login`で再認証 |
+| Pylance `undefined variable` | 変数の定義順序の問題 | 変数初期化を関数の上に追加 |
+
+---
+
+*最終更新：2026-04-14*
+
+# TASUKARU 開発記録 🦝
+
+## プロジェクト概要
+- **アプリ名**：TASUKARU（タスカル）
+- **目的**：介護現場の記録業務をAIで自動化
+- **技術スタック**：Python/Flask, Supabase(PostgreSQL), Gemini AI, Cloud Run
+- **本番URL**：https://tasukaru-191764727533.asia-northeast1.run.app
+- **開発URL**：https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- **GCPプロジェクト**：tasukaru-production（PROJECT_NUMBER: 191764727533）
+- **Supabaseプロジェクト**：abvglnkwtdeoaazyqwyd（ap-northeast-1）
+- **施設コード**：cocokaraplus-5526
+
+---
+
+## 開発ルール（必ず守ること）
+
+1. `patients.id`は**bigint型** → patient_idはTEXT型で持つ
+2. 環境変数更新は`--update-env-vars`のみ（`--set-env-vars`は厳禁）
+3. スクリプトはすべて**IIFE**で囲む
+4. `await`を使う関数には**`async`**を必ずつける
+5. 全関数を`window.xxx`で公開する
+6. `onclick`ではなく**`addEventListener`**を使う（iPhone対応）
+7. Jinja2データ（PATIENTS等）は**IIFEの外**で定義する
+8. 開発は`cloudrun-dev`で行い、確認後に`cloudrun`にマージ
+9. sw.jsを修正したら**CACHE_VERSION**を上げる（現在v4）
+10. カメラモーダルは**body直下**に移動する
+11. **ZIPで書き出し**か**Pythonスクリプト**で修正を指示する
+
+---
+
+## ブランチ運用
+
+```
+cloudrun-dev  → 開発・確認用（tasukaru-dev）
+cloudrun      → 本番用（tasukaru）
+```
+
+### デプロイコマンド
+
+```bash
+# 開発版
+git add . && git commit -m "変更内容" && git push origin cloudrun-dev
+gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --platform managed --allow-unauthenticated
+
+# 本番同期（.DS_Storeエラーが出たらgit stashを先に）
+git stash && git checkout cloudrun && git merge cloudrun-dev && git push origin cloudrun
+gcloud run deploy tasukaru --source . --region asia-northeast1 --platform managed --allow-unauthenticated && git checkout cloudrun-dev && git stash pop
+```
+
+---
+
+## パスワード管理
+
+| 種類 | 場所 | 形式 |
+|------|------|------|
+| スタッフ | staffs.password_hash | SHA-256 |
+| 施設管理者 | facilities.admin_password | 平文 |
+| 管理者MENU | admin_settings key='admin_password' | 平文（デフォルト:8888）|
+| 開発者MENU | 環境変数DEV_PASSWORD | 平文（デフォルト:tasukaru-dev-2024）|
+
+---
+
+## Supabaseテーブル（重要）
+
+- `patients.id`は**bigint型**（外部キーはTEXT型）
+- `staffs`に`icon_emoji`, `icon_image_url`カラムあり
+- `patient_visit_days`に`ampm`カラムあり
+- `chat_messages`は`supabase_realtime` publicationに登録済み
+- `assessments`テーブルに`audio_url`カラムあり（音声保存用）
+- Storageバケット：`case-photos`（写真）、`assessment-audio`（評価音声）
+
+### 掲示板テーブル（新規）
+```sql
+board_posts      -- 投稿本体（is_privateカラムあり）
+board_comments   -- コメント
+board_reactions  -- リアクション（✅👍など）
+board_reads      -- 既読管理
+```
+- `board_posts.is_private` → TRUE=メンションした人のみ表示
+- Realtime有効化済み（board_posts/board_comments/board_reactions）
+
+---
+
+## ファイル構成
+
+```
+kaigo-ai-app/
+├── app.py（Flask メイン・全ルーティング・全API 約3100行）
+│   └── 掲示板API追加：/board, /api/board/* 各種
+├── utils.py（Gemini AI・Supabase画像/音声アップロード）
+├── templates/
+│   ├── base.html（SPAルーター・ボトムナビ・PWA・カメラ修正済み）
+│   ├── board.html（★NEW 掲示板ページ 約1060行）
+│   ├── chat_room.html（Realtime対応・送信音付き）
+│   ├── chat_rooms.html（試聴ボタン付きサウンド設定）
+│   ├── assessment.html（録音モードCSS・音声保存再生）
+│   ├── top.html（歯車ボタン・ユーザー設定モーダル）
+│   ├── vitals.html（cameraStream重複修正・全員ボタン修正済み）
+│   └── login.html（お名前入力欄追加済み）
+└── static/
+    └── sw.js（PWA Service Worker v4・バッジAPI対応）
+```
+
+---
+
+## 完了した全作業
+
+### ✅ Supabase Realtimeによるトーク即時受信
+- ポーリング → WebSocket即時受信に変更
+
+### ✅ 評価ページに音声保存・再生機能
+- utils.pyに`upload_audio_to_supabase()`追加
+- assessmentsテーブルに`audio_url`カラム追加
+- assessment-audioバケット作成（Supabase Storage）
+
+### ✅ TOPページにユーザー設定（歯車ボタン）
+- 文字サイズ（90〜130%スライダー）
+- 通知サウンド（試聴ボタン付き）
+- アイコン設定（絵文字・写真）
+
+### ✅ トーク送信音追加・サウンド試聴ボタン
+- Web Audio APIで「シュッ」音
+- chat_rooms.htmlの歯車→試聴ボタン付きサウンド設定
+
+### ✅ バイタル画面の複数バグ修正
+- cameraStream重複宣言（480行目削除）
+- 全員ボタンID大文字小文字不一致修正（`ampm-tab-ALL`→`ampm-tab-all`）
+- 初期化時`selectAmpm('ALL')`追加
+
+### ✅ カメラボタンSPA遷移バグ修正
+- base.htmlのnavigateTo関数で`camera-modal`を確実に閉じる
+- wrapper.innerHTML差し替え後にもカメラクリア処理追加
+
+### ✅ 通知許可ポップアップ（base.html）
+- 初回のみ3秒後に`Notification.requestPermission()`
+
+### ✅ 掲示板機能（トークを完全置き換え）
+- ボトムナビ「トーク」→「掲示板」に変更
+- **投稿**：テキスト・写真・音声・ファイル添付
+- **公開範囲**：全員に公開 / メンションした人のみ
+- **メンション**：検索窓から候補ドロップダウンで選択、選択済みバッジ表示
+- **コメント**：スレッド形式で返信
+- **リアクション**：✅👍❤️など12種類
+- **確認済み**：押した人数をバッジ表示
+- **既読**：誰が見たか表示
+- **編集・削除**：本人と管理者が可能（ボトムシート形式メニュー）
+- **Realtime**：新着投稿をトースト通知で即時表示
+- **未読バッジ**：ボトムナビにリアルタイム表示
+
+---
+
+## PENDING（未完了・次回対応）
+
+- [ ] メニュー並び順カスタマイズ（ユーザー設定から）
+- [ ] アップデートログ表示（TOPの歯車横にベルアイコン）
+- [ ] 取扱説明書（マニュアル）の充実
+- [ ] 「たすかる」音声（mp3ファイルが必要）
+- [ ] 利用者の曜日設定を現場で登録・確認
+- [ ] サウンドテストページの削除（/sound_test）
+- [ ] 掲示板の`is_private`投稿をapp.pyでフィルタリング（メンション外の人に非表示）
+- [ ] 本番（cloudrun）への最終同期
+
+---
+
+## よくあるエラーと対処法
+
+| エラー | 原因 | 対処 |
+|--------|------|------|
+| `cd: kaigo-ai-app: No such file or directory` | すでにkaigo-ai-appにいる | そのまま実行 |
+| `error: Your local changes would be overwritten` | .DS_Storeが変更されている | `git stash`してから実行 |
+| `INVALID_ARGUMENT` デプロイエラー | 認証切れ | `gcloud auth login`で再認証 |
+| `--allow-unauthenticatedpython3` エラー | コマンドが繋がって貼られた | 1コマンドずつ実行する |
+| Pylance `undefined variable` | 変数の定義順序の問題 | 変数初期化を関数の上に追加 |
+| SyntaxError in heredoc | クォートがネストして壊れる | Pythonスクリプトファイルを作って実行する |
+
+---
+
+## gcloud CLIとは
+
+TASUKARUをCloud Runサーバーにデプロイするためのコマンドラインツール。
+
+```
+あなたのMac
+    ↓ gcloud run deploy
+Google Cloud（インターネット上のサーバー）
+    ↓
+Cloud Run（TASUKARUが動いている場所）
+    ↓
+https://tasukaru-...run.app
+```
+
+- `git add/commit/push` = コードをGitHubに保存
+- `gcloud run deploy` = そのコードをCloud Runサーバーに反映
+
+---
+
+*最終更新：2026-04-14*
+
+# TASUKARU 開発記録 🦝
+
+## プロジェクト概要
+- **アプリ名**：TASUKARU（タスカル）
+- **目的**：介護現場の記録業務をAIで自動化
+- **技術スタック**：Python/Flask, Supabase(PostgreSQL), Gemini AI, Cloud Run
+- **本番URL**：https://tasukaru-191764727533.asia-northeast1.run.app
+- **開発URL**：https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- **GCPプロジェクト**：tasukaru-production（PROJECT_NUMBER: 191764727533）
+- **Supabaseプロジェクト**：abvglnkwtdeoaazyqwyd（ap-northeast-1）
+- **施設コード**：cocokaraplus-5526
+
+---
+
+## 開発ルール（必ず守ること）
+
+1. `patients.id`は**bigint型** → patient_idはTEXT型で持つ
+2. 環境変数更新は`--update-env-vars`のみ（`--set-env-vars`は厳禁）
+3. スクリプトはすべて**IIFE**で囲む
+4. `await`を使う関数には**`async`**を必ずつける
+5. 全関数を`window.xxx`で公開する
+6. `onclick`ではなく**`addEventListener`**を使う（iPhone対応）
+7. Jinja2データ（PATIENTS等）は**IIFEの外**で定義する
+8. 開発は`cloudrun-dev`で行い、確認後に`cloudrun`にマージ
+9. sw.jsを修正したら**CACHE_VERSION**を上げる（現在v4）
+10. カメラモーダルは**body直下**に移動する
+11. **ZIPで書き出し**か**Pythonスクリプト**で修正を指示する
+
+---
+
+## ブランチ運用
+
+```
+cloudrun-dev  → 開発・確認用（tasukaru-dev）
+cloudrun      → 本番用（tasukaru）
+```
+
+### デプロイコマンド
+
+```bash
+# 開発版
+git add . && git commit -m "変更内容" && git push origin cloudrun-dev
+gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --platform managed --allow-unauthenticated
+
+# 本番同期（.DS_Storeエラーが出たらgit stashを先に）
+git stash && git checkout cloudrun && git merge cloudrun-dev && git push origin cloudrun
+gcloud run deploy tasukaru --source . --region asia-northeast1 --platform managed --allow-unauthenticated && git checkout cloudrun-dev && git stash pop
+```
+
+---
+
+## パスワード管理
+
+| 種類 | 場所 | 形式 |
+|------|------|------|
+| スタッフ | staffs.password_hash | SHA-256 |
+| 施設管理者 | facilities.admin_password | 平文 |
+| 管理者MENU | admin_settings key='admin_password' | 平文（デフォルト:8888）|
+| 開発者MENU | 環境変数DEV_PASSWORD | 平文（デフォルト:tasukaru-dev-2024）|
+
+---
+
+## Supabaseテーブル（重要）
+
+- `patients.id`は**bigint型**（外部キーはTEXT型）
+- `staffs`に`icon_emoji`, `icon_image_url`カラムあり
+- `patient_visit_days`に`ampm`カラムあり
+- `chat_messages`は`supabase_realtime` publicationに登録済み
+- `assessments`テーブルに`audio_url`カラムあり（音声保存用）
+- Storageバケット：`case-photos`（写真）、`assessment-audio`（評価音声）
+
+### 取説（manual.html）使用画像
+```
+tasukaru_top.png       → 通常・笑顔（ヒーローフワフワ・挨拶・記録入力・掲示板・設定）
+tasukaru_sestumei.png  → 説明（ケース記録・モニタリング・評価・カレンダー・バイタル）
+tasukaru_odoroki2.png  → 驚き（ログイン・バイタル警告・災害時）
+tasukaru_onegai.png    → お願い（ヒント・注意ボックス全般）
+tasukaru_ooyorokobi.png → 大喜び（締め・フッター）
+```
+- ヒーロー画像は青背景(#1558d0)で合成済み（透過なし）
+- フッター画像は背景色(#f2f4f8)で合成済み
+
+
+```sql
+board_posts      -- 投稿本体（is_privateカラムあり）
+board_comments   -- コメント
+board_reactions  -- リアクション（✅👍など）
+board_reads      -- 既読管理
+```
+- `board_posts.is_private` → TRUE=メンションした人のみ表示
+- Realtime有効化済み（board_posts/board_comments/board_reactions）
+
+---
+
+## ファイル構成
+
+```
+kaigo-ai-app/
+├── app.py（Flask メイン・全ルーティング・全API 約3100行）
+│   └── 掲示板API追加：/board, /api/board/* 各種
+├── utils.py（Gemini AI・Supabase画像/音声アップロード）
+├── templates/
+│   ├── base.html（SPAルーター・ボトムナビ・PWA・カメラ修正済み）
+│   ├── board.html（★NEW 掲示板ページ 約1060行）
+│   ├── manual.html（★取説 Ver.3.0 ※要デプロイ→下記PENDING参照）
+│   ├── chat_room.html（Realtime対応・送信音付き）
+│   ├── chat_rooms.html（試聴ボタン付きサウンド設定）
+│   ├── assessment.html（録音モードCSS・音声保存再生）
+│   ├── top.html（歯車ボタン・ユーザー設定モーダル）
+│   ├── vitals.html（cameraStream重複修正・全員ボタン修正済み）
+│   └── login.html（お名前入力欄追加済み）
+└── static/
+    └── sw.js（PWA Service Worker v4・バッジAPI対応）
+```
+
+---
+
+## 完了した全作業
+
+### ✅ Supabase Realtimeによるトーク即時受信
+- ポーリング → WebSocket即時受信に変更
+
+### ✅ 評価ページに音声保存・再生機能
+- utils.pyに`upload_audio_to_supabase()`追加
+- assessmentsテーブルに`audio_url`カラム追加
+- assessment-audioバケット作成（Supabase Storage）
+
+### ✅ TOPページにユーザー設定（歯車ボタン）
+- 文字サイズ（90〜130%スライダー）
+- 通知サウンド（試聴ボタン付き）
+- アイコン設定（絵文字・写真）
+
+### ✅ トーク送信音追加・サウンド試聴ボタン
+- Web Audio APIで「シュッ」音
+- chat_rooms.htmlの歯車→試聴ボタン付きサウンド設定
+
+### ✅ バイタル画面の複数バグ修正
+- cameraStream重複宣言（480行目削除）
+- 全員ボタンID大文字小文字不一致修正（`ampm-tab-ALL`→`ampm-tab-all`）
+- 初期化時`selectAmpm('ALL')`追加
+
+### ✅ カメラボタンSPA遷移バグ修正
+- base.htmlのnavigateTo関数で`camera-modal`を確実に閉じる
+- wrapper.innerHTML差し替え後にもカメラクリア処理追加
+
+### ✅ 通知許可ポップアップ（base.html）
+- 初回のみ3秒後に`Notification.requestPermission()`
+
+### ✅ 取説（manual.html）Ver.3.0 リニューアル
+- タスカルくんの本物スタンプ画像5種類を使用（tasukaru_top / sestumei / odoroki2 / onegai / ooyorokobi）
+- ヒーロー：タスカルくんフワフワアニメ（青背景合成で透過なし）
+- セクション横：Material Symbolsアイコン（lock / edit_note / monitor_heart / campaign 等）
+- 吹き出し：タスカルくん画像（場面別5種類使い分け）
+- フロー図：Material Symbolsアイコン付き丸番号
+- 掲示板セクション追加（旧「トーク」→「掲示板」に対応済み）
+- 目次：色付き丸アイコン＋スムーススクロール
+- 「タスカルくん」青文字ラベル：挨拶吹き出しのみ表示
+
+
+- ボトムナビ「トーク」→「掲示板」に変更
+- **投稿**：テキスト・写真・音声・ファイル添付
+- **公開範囲**：全員に公開 / メンションした人のみ
+- **メンション**：検索窓から候補ドロップダウンで選択、選択済みバッジ表示
+- **コメント**：スレッド形式で返信
+- **リアクション**：✅👍❤️など12種類
+- **確認済み**：押した人数をバッジ表示
+- **既読**：誰が見たか表示
+- **編集・削除**：本人と管理者が可能（ボトムシート形式メニュー）
+- **Realtime**：新着投稿をトースト通知で即時表示
+- **未読バッジ**：ボトムナビにリアルタイム表示
+
+---
+
+## PENDING（未完了・次回対応）
+
+### 🔴 最優先（次回チャット冒頭でやること）
+- [ ] **manual.html Ver.3.0 をデプロイ**（現在まだ古いVer.2.0が表示中）
+  - outputsからダウンロードして`templates/manual.html`に置き換えてデプロイ
+  - または新チャットで再生成してデプロイ
+- [ ] **ヒーローのタスカルくんを新画像に差し替え**
+  - ユーザーが画像をアップロードしようとしたが上限で送れず→次チャットで受け取る
+  - 処理：白背景透明化→青背景(#1558d0)で合成→Base64埋め込み
+
+### 🟡 機能追加
+- [ ] メニュー並び順カスタマイズ（ユーザー設定から）
+- [ ] アップデートログ表示（TOPの歯車横にベルアイコン）
+- [ ] 掲示板の`is_private`投稿をapp.pyでフィルタリング（メンション外の人に非表示）
+- [ ] 本番（cloudrun）への最終同期
+
+### 🟢 軽微
+- [ ] 「たすかる」音声（mp3ファイルが必要）
+- [ ] 利用者の曜日設定を現場で登録・確認
+- [ ] サウンドテストページの削除（/sound_test）
+
+---
+
+## よくあるエラーと対処法
+
+| エラー | 原因 | 対処 |
+|--------|------|------|
+| `cd: kaigo-ai-app: No such file or directory` | すでにkaigo-ai-appにいる | そのまま実行 |
+| `error: Your local changes would be overwritten` | .DS_Storeが変更されている | `git stash`してから実行 |
+| `INVALID_ARGUMENT` デプロイエラー | 認証切れ | `gcloud auth login`で再認証 |
+| `--allow-unauthenticatedpython3` エラー | コマンドが繋がって貼られた | 1コマンドずつ実行する |
+| Pylance `undefined variable` | 変数の定義順序の問題 | 変数初期化を関数の上に追加 |
+| SyntaxError in heredoc | クォートがネストして壊れる | Pythonスクリプトファイルを作って実行する |
+
+---
+
+## gcloud CLIとは
+
+TASUKARUをCloud Runサーバーにデプロイするためのコマンドラインツール。
+
+```
+あなたのMac
+    ↓ gcloud run deploy
+Google Cloud（インターネット上のサーバー）
+    ↓
+Cloud Run（TASUKARUが動いている場所）
+    ↓
+https://tasukaru-...run.app
+```
+
+- `git add/commit/push` = コードをGitHubに保存
+- `gcloud run deploy` = そのコードをCloud Runサーバーに反映
+
+---
+
+*最終更新：2026-04-14（取説リニューアル・掲示板機能追加・バイタル修正）*
