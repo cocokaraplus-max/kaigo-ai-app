@@ -331,7 +331,7 @@
             <span class="material-symbols-outlined" style="font-size:12px;">push_pin</span>固定
         </div>
         {% endif %}
-        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-mine="{{ 'true' if post.staff_name == my_name else 'false' }}">
+        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-mine="{{ 'true' if post.staff_name == my_name else 'false' }}" onclick="showPostMenu(this.dataset.postId, this.dataset.mine==='true')">
             <span class="material-symbols-outlined">more_vert</span>
         </button>
     </div>
@@ -820,7 +820,7 @@ document.querySelectorAll('.post-menu-btn').forEach(function(btn) {
     });
 });
 
-function showPostMenu(postId, isMine) {
+window.showPostMenu = function(postId, isMine) {
     // ボトムシート形式のメニューを表示
     var existing = document.getElementById('post-action-sheet');
     if (existing) existing.remove();
@@ -852,7 +852,7 @@ function showPostMenu(postId, isMine) {
     }
 }
 
-function openEditModal(postId) {
+window.openEditModal = function(postId) {
     // 現在の投稿内容を取得
     var card = document.getElementById('post-' + postId);
     var contentEl = card ? card.querySelector('.post-content') : null;
@@ -893,7 +893,7 @@ document.getElementById('edit-submit-btn').addEventListener('click', async funct
     finally { this.disabled = false; this.textContent = '保存する'; }
 });
 
-async function deletePost(postId) {
+window.deletePost = async function(postId) {
     try {
         var res = await fetch('/api/board/delete_post', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
