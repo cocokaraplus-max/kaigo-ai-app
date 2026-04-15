@@ -715,5 +715,31 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
 });
 
 })();
+<script>
+var _lastHistHtml = '';
+async function checkNewRecords() {
+    try {
+        var r = await fetch('/top?partial=1');
+        var d = await r.json();
+        var tmp = document.createElement('div');
+        tmp.innerHTML = d.content;
+        var newList = tmp.querySelector('.history-list');
+        var newTitle = tmp.querySelector('.section-title');
+        var curList = document.querySelector('.history-list');
+        var curTitle = document.querySelector('.section-title');
+        if (newList && curList && newList.innerHTML !== _lastHistHtml) {
+            _lastHistHtml = newList.innerHTML;
+            curList.innerHTML = newList.innerHTML;
+            if (newTitle && curTitle) curTitle.innerHTML = newTitle.innerHTML;
+            document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
+                el.addEventListener('click', function() {
+                    window.location.href = '/daily_view?user=' + encodeURIComponent(this.dataset.user) + '&date=' + this.dataset.date;
+                });
+            });
+        }
+    } catch(e) {}
+}
+setInterval(checkNewRecords, 30000);
+</script>
 </script>
 {% endblock %}
