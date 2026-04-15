@@ -1188,7 +1188,7 @@ async function loadUrgentTasks() {
         list.innerHTML = tasks.map(function(t) {
             var diffText = t.due_diff === 0 ? '今日' : t.due_diff < 0 ? Math.abs(t.due_diff) + '日超過' : t.due_diff + '日後';
             var urgent = t.due_diff <= 1;
-            return '<div class="history-item" onclick="window.location.href='/tasks'" style="' + (urgent ? 'border-left:3px solid #ea4335;' : '') + '">' +
+            return '<div class="history-item" onclick="window.location.href=&quot;/tasks&quot;" style="' + (urgent ? 'border-left:3px solid #ea4335;' : '') + '">' +
                 '<span style="font-size:16px;">' + t.priority_icon + '</span>' +
                 '<span class="history-item-name">' + t.title + '</span>' +
                 '<span class="history-item-time" style="' + (urgent ? 'color:#ea4335;font-weight:700;' : '') + '">' + diffText + '</span>' +
