@@ -562,15 +562,23 @@ async function checkUnreadMessages() {
 setTimeout(checkUnreadMessages, 2000);
 // 30秒ごとにチェック
 chatPollingTimer = setInterval(checkUnreadMessages, 30000);
-// トーク画面を開いたら即座にバッジをクリア
+// 掲示板・トーク画面を開いたら即座にバッジをクリア
 document.addEventListener('click', e => {
-    const link = e.target.closest('a[href="/chat"], a[href^="/chat/"]');
+    const link = e.target.closest('a[href="/board"], a[href="/chat"], a[href^="/chat/"]');
     if (link) {
         setTimeout(() => {
             const badge = document.getElementById('chat-badge');
             if (badge) badge.style.display = 'none';
             lastUnreadCount = 0;
-        }, 1000);
+        }, 500);
+    }
+});
+// SPA遷移で掲示板に来たときもバッジをクリア
+window.addEventListener('popstate', function() {
+    if (location.pathname === '/board') {
+        const badge = document.getElementById('chat-badge');
+        if (badge) badge.style.display = 'none';
+        lastUnreadCount = 0;
     }
 });
 {% endif %}
