@@ -361,8 +361,10 @@
                 <span class="material-symbols-outlined">menu</span>
                 メニュー並び順
             </div>
-            <div style="font-size:0.75rem;color:#80868b;margin-bottom:10px;">
-                アイコンを長押しドラッグで並び替えできます
+            <!-- ガイド -->
+            <div style="display:flex;align-items:center;gap:6px;background:#e8f0fe;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:0.78rem;color:#1a73e8;font-weight:600;">
+                <span class="material-symbols-outlined" style="font-size:15px;">info</span>
+                左上の①から右へ順番に並びます。長押しドラッグで入れ替えできます。
             </div>
             <div class="nav-grid" id="nav-sort-grid"></div>
             <button id="nav-order-reset-btn" style="width:100%;margin-top:10px;padding:8px;border:1px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;">
@@ -962,7 +964,9 @@ function renderNavSortGrid() {
         var cell = document.createElement('div');
         cell.className = 'nav-grid-item';
         cell.dataset.key = key;
+        var num = order.indexOf(key) + 1;
         cell.innerHTML =
+            '<span data-num="1" style="position:absolute;top:3px;left:5px;width:14px;height:14px;border-radius:50%;background:#1a73e8;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;">' + num + '</span>' +
             '<span class="material-symbols-outlined">' + def.icon + '</span>' +
             '<span class="label">' + def.label + '</span>';
         grid.appendChild(cell);
@@ -1023,7 +1027,6 @@ function setupGridDrag(cell, grid) {
         grid.querySelectorAll('.nav-grid-item').forEach(function(c) { c.classList.remove('drag-over'); });
 
         if (target) {
-            // セルを入れ替え
             var allCells = Array.from(grid.querySelectorAll('.nav-grid-item'));
             var fromIdx = allCells.indexOf(cell);
             var toIdx   = allCells.indexOf(target);
@@ -1036,6 +1039,11 @@ function setupGridDrag(cell, grid) {
                 var newOrder = Array.from(grid.querySelectorAll('.nav-grid-item')).map(function(c) { return c.dataset.key; });
                 saveNavOrder(newOrder);
                 applyNavOrder();
+                // 番号バッジを振り直す
+                grid.querySelectorAll('.nav-grid-item').forEach(function(c, i) {
+                    var badge = c.querySelector('[data-num]');
+                    if (badge) badge.textContent = i + 1;
+                });
                 showToastMsg('メニューを並び替えました ✅');
             }
         }
