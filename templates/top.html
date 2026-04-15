@@ -714,8 +714,7 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
     });
 });
 
-})();
-<script>
+// 更新履歴の自動更新（10秒ごと）
 var _lastHistHtml = '';
 async function checkNewRecords() {
     try {
@@ -731,6 +730,7 @@ async function checkNewRecords() {
             _lastHistHtml = newList.innerHTML;
             curList.innerHTML = newList.innerHTML;
             if (newTitle && curTitle) curTitle.innerHTML = newTitle.innerHTML;
+            // クリックイベントを再バインド
             document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
                 el.addEventListener('click', function() {
                     window.location.href = '/daily_view?user=' + encodeURIComponent(this.dataset.user) + '&date=' + this.dataset.date;
@@ -739,7 +739,8 @@ async function checkNewRecords() {
         }
     } catch(e) {}
 }
-setInterval(checkNewRecords, 30000);
-</script>
-</script>
+setInterval(checkNewRecords, 10000);
+checkNewRecords(); // 初回即時実行
+
+})();
 {% endblock %}

@@ -1027,6 +1027,8 @@ window.deletePost = async function(postId) {
 }
 
 // ===== Supabase Realtime（新着投稿を即時表示） =====
+var _lastBoardCheck = Date.now();
+
 function startRealtime() {
     if (!SUPA_URL || !SUPA_KEY || typeof supabase === 'undefined') return;
     try {
@@ -1035,17 +1037,36 @@ function startRealtime() {
             .on('postgres_changes', {
                 event: 'INSERT', schema: 'public', table: 'board_posts'
             }, function(payload) {
-                // 自分の投稿以外が来たらリロード
+                _lastBoardCheck = Date.now();
                 if (payload.new.staff_name !== MY_NAME) {
-                    // トースト表示
                     showToast('📋 ' + payload.new.staff_name + 'さんが投稿しました');
-                    setTimeout(function() { window.location.reload(); }, 2000);
                 }
+                setTimeout(function() { window.location.reload(); }, 1000);
+            })
+            .on('postgres_changes', {
+                event: 'DELETE', schema: 'public', table: 'board_posts'
+            }, function() {
+                _lastBoardCheck = Date.now();
+                setTimeout(function() { window.location.reload(); }, 1000);
             })
             .subscribe();
     } catch(e) {}
 }
 startRealtime();
+
+// ポーリング（Realtimeが切れた場合のバックアップ・15秒ごと）
+async function checkNewBoardPosts() {
+    try {
+        var r = await fetch('/api/board/unread_count');
+        var d = await r.json();
+        var badge = document.getElementById('board-unread-badge');
+        if (badge) {
+            badge.textContent = d.count > 0 ? d.count : '';
+            badge.style.display = d.count > 0 ? 'flex' : 'none';
+        }
+    } catch(e) {}
+}
+setInterval(checkNewBoardPosts, 15000);
 
 function showToast(msg) {
     var toast = document.createElement('div');
