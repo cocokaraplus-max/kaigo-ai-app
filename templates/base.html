@@ -120,12 +120,7 @@
         .back-btn { display: none; }
 
         /* ★ 右上固定ボタン（page-wrapper外） */
-        .top-fab-area {
-            position: fixed; top: 16px; right: 16px;
-            display: flex; flex-direction: row; gap: 8px;
-            z-index: 1000; pointer-events: auto;
-            width: 88px; height: 40px;
-        }
+        .top-fab-area { display: block; }
         .settings-fab {
             width: 40px; height: 40px; border-radius: 50%;
             background: #f0f4ff; border: none; cursor: pointer;
@@ -155,6 +150,131 @@
             overscroll-behavior-x: contain;
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
+
+/* ★ 設定モーダル */
+.settings-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 2000;
+    align-items: flex-end; justify-content: center;
+}
+.settings-modal.show { display: flex; }
+.settings-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 20px 40px; animation: slideUp 0.22s ease;
+    max-height: 90vh; overflow-y: auto;
+}
+@keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.settings-handle {
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 0 auto 16px;
+}
+.settings-title-row {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.settings-title {
+    font-size: 1rem; font-weight: 800; color: #202124;
+    display: flex; align-items: center; gap: 8px;
+}
+.settings-title .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
+.settings-close-btn { background: none; border: none; cursor: pointer; padding: 4px; }
+
+/* 設定セクション */
+.setting-section { margin-bottom: 24px; }
+.setting-section-label {
+    font-size: 0.8rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.setting-section-label .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+
+/* 文字サイズスライダー */
+.font-size-wrap {
+    background: #f8f9fa; border-radius: 12px; padding: 14px 16px;
+}
+.font-size-preview {
+    text-align: center; font-weight: 600; color: #202124;
+    margin-bottom: 12px; padding: 10px;
+    background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;
+    transition: font-size 0.2s;
+}
+.font-size-controls {
+    display: flex; align-items: center; gap: 10px;
+}
+.font-size-controls .material-symbols-outlined { color: #5f6368; }
+.font-slider {
+    flex: 1; accent-color: #1a73e8;
+    height: 4px; cursor: pointer;
+}
+.font-size-value {
+    font-size: 0.82rem; font-weight: 700; color: #1a73e8;
+    min-width: 36px; text-align: center;
+}
+
+/* サウンド選択 */
+.sound-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1.5px solid #e0e0e0; cursor: pointer;
+    background: #fff; transition: all 0.15s; margin-bottom: 6px;
+    -webkit-tap-highlight-color: transparent;
+}
+.sound-opt.active { border-color: #1a73e8; background: #e8f0fe; }
+.sound-opt-info { flex: 1; }
+.sound-opt-name { font-size: 0.85rem; font-weight: 700; }
+.sound-opt-desc { font-size: 0.7rem; color: #80868b; }
+.preview-btn {
+    background: #f0f4ff; border: none; border-radius: 20px;
+    padding: 4px 10px; cursor: pointer;
+    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
+    display: flex; align-items: center; gap: 3px; flex-shrink: 0;
+}
+.preview-btn .material-symbols-outlined { font-size: 14px; }
+
+/* アイコン設定ボタン */
+.icon-setting-row {
+    display: flex; align-items: center; gap: 12px;
+    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.icon-setting-row:active { background: #e8f0fe; }
+.icon-setting-arrow { margin-left: auto; color: #80868b; }
+
+/* ロック設定 */
+.lock-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
+    margin-bottom: 8px;
+}
+.lock-toggle-label { font-size: 0.88rem; font-weight: 600; color: #202124; display: flex; align-items: center; gap: 8px; }
+.lock-toggle-label .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
+.toggle-switch {
+    position: relative; width: 44px; height: 24px; cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s;
+}
+.toggle-slider:before {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #1a73e8; }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+.passcode-input-row {
+    display: flex; gap: 8px; margin-top: 10px; justify-content: center;
+}
+.passcode-digit {
+    width: 44px; height: 54px; border: 2px solid #e0e0e0; border-radius: 10px;
+    font-size: 1.4rem; font-weight: 800; text-align: center;
+    color: #202124; background: #fff; -webkit-appearance: none;
+    transition: border-color 0.15s;
+}
+.passcode-digit:focus { outline: none; border-color: #1a73e8; }
+
 
         /* ★ ナビ編集モード（プルプル並び替え）*/
         @keyframes navWiggle {
@@ -292,6 +412,194 @@
     </div>
 </div>
 
+    <!-- ユーザー設定モーダル -->
+<div class="settings-modal" id="user-settings-modal">
+    <div class="settings-sheet">
+        <div class="settings-handle"></div>
+        <div class="settings-title-row">
+            <div class="settings-title">
+                <span class="material-symbols-outlined">tune</span>
+                ユーザー設定
+            </div>
+            <button class="settings-close-btn" id="settings-close-btn">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        <!-- 文字サイズ -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">text_fields</span>
+                文字サイズ
+            </div>
+            <div class="font-size-wrap">
+                <div class="font-size-preview" id="font-preview">
+                    文字サイズのプレビュー（介護記録アプリ TASUKARU）
+                </div>
+                <div class="font-size-controls">
+                    <span class="material-symbols-outlined" style="font-size:16px;">text_decrease</span>
+                    <input type="range" class="font-slider" id="font-slider"
+                        min="90" max="130" step="5" value="100">
+                    <span class="material-symbols-outlined" style="font-size:22px;">text_increase</span>
+                    <span class="font-size-value" id="font-size-label">100%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 通知サウンド -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">notifications</span>
+                通知サウンド
+            </div>
+            <div id="sound-opts">
+                <div class="sound-opt" data-sound="pop">
+                    <span style="font-size:20px;">🔔</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">ポップ</div>
+                        <div class="sound-opt-desc">軽快な音</div>
+                    </div>
+                    <button class="preview-btn" data-preview="pop">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="chime">
+                    <span style="font-size:20px;">🎵</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">チャイム</div>
+                        <div class="sound-opt-desc">3音チャイム</div>
+                    </div>
+                    <button class="preview-btn" data-preview="chime">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="pico">
+                    <span style="font-size:20px;">📯</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">ピコン</div>
+                        <div class="sound-opt-desc">電子音</div>
+                    </div>
+                    <button class="preview-btn" data-preview="pico">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="tasukaru">
+                    <span style="font-size:20px;">🦝</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">タスカル</div>
+                        <div class="sound-opt-desc">音声で通知</div>
+                    </div>
+                    <button class="preview-btn" data-preview="tasukaru">
+                        <span class="material-symbols-outlined">play_arrow</span>試聴
+                    </button>
+                </div>
+                <div class="sound-opt" data-sound="none">
+                    <span style="font-size:20px;">🔕</span>
+                    <div class="sound-opt-info">
+                        <div class="sound-opt-name">なし</div>
+                        <div class="sound-opt-desc">サウンドOFF</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ナビ表示モード -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">view_quilt</span>
+                メニュー表示モード
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button class="nav-mode-btn" data-mode="scroll" id="mode-btn-scroll"
+                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
+                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">view_agenda</span>
+                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">横スクロール</span>
+                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">←→ 1列で横にスクロール</div>
+                </button>
+                <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-row"
+                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
+                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">grid_view</span>
+                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">2段表示</span>
+                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">4列×2段で全部見える</div>
+                </button>
+            </div>
+        </div>
+
+        <!-- ナビカスタマイズ -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">menu</span>
+                メニュー並び順
+            </div>
+            <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>
+                並び替えモードを開始
+            </button>
+            <div style="font-size:0.75rem;color:#80868b;margin-top:8px;text-align:center;">
+                メニューアイコンを直接ドラッグして並び替えられます
+            </div>
+        </div>
+
+        <!-- ロック設定 -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">lock</span>
+                アプリロック
+            </div>
+            <!-- パスコード -->
+            <div class="lock-toggle-row">
+                <div class="lock-toggle-label">
+                    <span class="material-symbols-outlined">pin</span>
+                    パスコードロック
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="passcode-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div id="passcode-setting-area" style="display:none;padding:10px 4px 4px;">
+                <div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;text-align:center;">4桁のパスコードを設定してください</div>
+                <div class="passcode-input-row">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc0">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc1">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc2">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc3">
+                </div>
+                <button id="save-passcode-btn" style="width:100%;margin-top:12px;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.88rem;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">save</span>
+                    パスコードを保存
+                </button>
+            </div>
+        </div>
+
+        <!-- アイコン設定（一番下に移動） -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">account_circle</span>
+                アイコン
+            </div>
+            <div class="icon-setting-row" id="open-icon-edit-btn">
+                <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;
+                    background:{{ my_color }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    {% if my_icon_image_url %}
+                        <img src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
+                    {% elif my_icon_emoji %}
+                        <span style="font-size:20px;">{{ my_icon_emoji }}</span>
+                    {% else %}
+                        <span style="font-size:16px;font-weight:800;color:#fff;">{{ my_initial }}</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <div style="font-size:0.88rem;font-weight:700;">{{ my_name }}</div>
+                    <div style="font-size:0.75rem;color:#5f6368;">タップしてアイコンを変更</div>
+                </div>
+                <span class="material-symbols-outlined icon-setting-arrow">chevron_right</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
     <!-- ナビ編集完了バー -->
     <div class="nav-edit-bar" id="nav-edit-bar">
         <span>✏️ ドラッグでメニューを並び替え</span>
@@ -299,11 +607,13 @@
     </div>
 
     {% if session.get('f_code') %}
-    <div class="top-fab-area" id="top-fab-area">
-        <button class="settings-fab" id="update-log-btn">
+    <div id="top-fab-area">
+        <button class="settings-fab" id="update-log-btn"
+            style="position:fixed;top:16px;right:64px;z-index:1000;width:40px;height:40px;">
             <span class="material-symbols-outlined">notifications</span>
         </button>
-        <button class="settings-fab" id="settings-fab-btn">
+        <button class="settings-fab" id="settings-fab-btn"
+            style="position:fixed;top:16px;right:16px;z-index:1000;width:40px;height:40px;">
             <span class="material-symbols-outlined">settings</span>
         </button>
     </div>
@@ -901,7 +1211,275 @@ function applyNavMode() {
 }
 applyNavMode();
 
+// ===== 設定モーダル関連JS（全ページで動作）=====
 
+function applyFontSize(pct) {
+    document.documentElement.style.fontSize = pct + '%';
+    var preview = document.getElementById('font-preview');
+    if (preview) preview.style.fontSize = '0.95rem';
+    var label = document.getElementById('font-size-label');
+    if (label) label.textContent = pct + '%';
+    var slider = document.getElementById('font-slider');
+    if (slider) slider.value = pct;
+}
+var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
+applyFontSize(savedFont);
+
+// fab buttons handled in base.html
+
+window.openSettings = function() {
+    var m = document.getElementById('user-settings-modal');
+    if (!m) return;
+    hideBottomNav();
+    m.classList.add('show');
+    var cur = parseInt(localStorage.getItem('tasukaru_font_size') || '100');
+    var slider = document.getElementById('font-slider');
+    var label = document.getElementById('font-size-label');
+    if (slider) slider.value = cur;
+    if (label) label.textContent = cur + '%';
+    var curSound = localStorage.getItem('tasukaru_sound') || 'pop';
+    document.querySelectorAll('.sound-opt').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.sound === curSound);
+    });
+};
+function openSettings() { window.openSettings(); }
+window.closeSettings = function() {
+    var m = document.getElementById('user-settings-modal');
+    if (m) m.classList.remove('show');
+    showBottomNav();
+};
+function closeSettings() { window.closeSettings(); }
+
+// ===== 文字サイズスライダー =====
+var slider = document.getElementById('font-slider');
+slider.addEventListener('input', function() {
+    var pct = parseInt(this.value);
+    applyFontSize(pct);
+    localStorage.setItem(FONT_KEY, pct);
+});
+
+// ===== サウンド再生 =====
+function playSound(type) {
+    try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (type === 'pop') {
+            var o = ctx.createOscillator(); var g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.frequency.setValueAtTime(1200, ctx.currentTime);
+            o.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
+            g.gain.setValueAtTime(0.4, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+            o.start(); o.stop(ctx.currentTime + 0.12);
+        } else if (type === 'chime') {
+            [523, 659, 784].forEach(function(freq, i) {
+                var o2 = ctx.createOscillator(); var g2 = ctx.createGain();
+                o2.connect(g2); g2.connect(ctx.destination);
+                o2.frequency.value = freq;
+                g2.gain.setValueAtTime(0, ctx.currentTime + i * 0.15);
+                g2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i * 0.15 + 0.02);
+                g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.25);
+                o2.start(ctx.currentTime + i * 0.15); o2.stop(ctx.currentTime + i * 0.15 + 0.25);
+            });
+        } else if (type === 'pico') {
+            var o3 = ctx.createOscillator(); var g3 = ctx.createGain();
+            o3.type = 'square'; o3.connect(g3); g3.connect(ctx.destination);
+            o3.frequency.setValueAtTime(880, ctx.currentTime);
+            o3.frequency.setValueAtTime(1760, ctx.currentTime + 0.05);
+            g3.gain.setValueAtTime(0.2, ctx.currentTime);
+            g3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+            o3.start(); o3.stop(ctx.currentTime + 0.15);
+        } else if (type === 'tasukaru') {
+            var o4 = ctx.createOscillator(); var g4 = ctx.createGain();
+            o4.connect(g4); g4.connect(ctx.destination);
+            o4.frequency.setValueAtTime(440, ctx.currentTime);
+            o4.frequency.setValueAtTime(554, ctx.currentTime + 0.1);
+            o4.frequency.setValueAtTime(659, ctx.currentTime + 0.2);
+            g4.gain.setValueAtTime(0.3, ctx.currentTime);
+            g4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+            o4.start(); o4.stop(ctx.currentTime + 0.4);
+        }
+    } catch(e) {}
+}
+window.playNotificationSound = function() { playSound(localStorage.getItem(SOUND_KEY) || 'pop'); };
+
+// サウンド選択
+document.querySelectorAll('.sound-opt').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+        if (e.target.closest('.preview-btn')) return;
+        var sound = el.dataset.sound;
+        localStorage.setItem(SOUND_KEY, sound);
+        document.querySelectorAll('.sound-opt').forEach(function(s) {
+            s.classList.toggle('active', s.dataset.sound === sound);
+        });
+        playSound(sound);
+    });
+});
+// 試聴ボタン
+document.querySelectorAll('.preview-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); playSound(btn.dataset.preview); });
+    btn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); playSound(btn.dataset.preview); });
+});
+
+// ===== アイコン設定 =====
+var openIconBtn = document.getElementById('open-icon-edit-btn');
+var iconModal   = document.getElementById('icon-edit-modal');
+var closeIconBtn = document.getElementById('close-icon-edit-btn');
+
+function openIconModal() {
+    closeSettings();
+    hideBottomNav();
+    iconModal.style.display = 'flex';
+}
+function closeIconModal() {
+    iconModal.style.display = 'none';
+    showBottomNav();
+}
+function hideBottomNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = 'none';
+}
+function showBottomNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = '';
+}
+
+openIconBtn.addEventListener('click', openIconModal);
+openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); openIconModal(); });
+closeIconBtn.addEventListener('click', closeIconModal);
+document.getElementById('my-icon-btn').addEventListener('click', openIconModal);
+iconModal.addEventListener('click', function(e) { if (e.target === iconModal) closeIconModal(); });
+
+// 写真選択
+var photoInput = document.getElementById('icon-photo-input');
+document.getElementById('icon-photo-btn').addEventListener('click', function() { photoInput.click(); });
+photoInput.addEventListener('change', function() { if (this.files[0]) { var r = new FileReader(); r.onload = function(e) { initCropper(e.target.result); }; r.readAsDataURL(this.files[0]); } });
+
+// 絵文字選択
+var selectedEmoji = '', selectedPhotoFile = null, clearImage = false;
+document.querySelectorAll('.emoji-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        selectedEmoji = btn.dataset.emoji;
+        selectedPhotoFile = null; clearImage = true;
+        document.getElementById('icon-preview').innerHTML = '<span style="font-size:32px;">' + selectedEmoji + '</span>';
+        document.querySelectorAll('.emoji-btn').forEach(function(b) {
+            b.style.borderColor = b.dataset.emoji === selectedEmoji ? '#1a73e8' : '#e0e0e0';
+            b.style.background  = b.dataset.emoji === selectedEmoji ? '#e8f0fe' : '#fff';
+        });
+    });
+});
+
+// リセット
+document.getElementById('reset-icon-btn').addEventListener('click', function() {
+    selectedEmoji = ''; selectedPhotoFile = null; clearImage = true;
+    var preview = document.getElementById('icon-preview');
+    preview.style.background = MY_COLOR;
+    preview.innerHTML = '<span style="font-size:28px;font-weight:800;color:#fff;">' + MY_INITIAL + '</span>';
+});
+
+// クロッパー
+var cropImage = null, cropOffsetX = 0, cropOffsetY = 0;
+var cropZoom = 1, cropDragging = false, cropLastX = 0, cropLastY = 0;
+
+function initCropper(src) {
+    selectedEmoji = ''; selectedPhotoFile = null;
+    cropImage = new Image();
+    cropImage.onload = function() {
+        var size = 200;
+        var fitZoom = size / Math.min(cropImage.width, cropImage.height);
+        cropZoom = fitZoom; cropOffsetX = 0; cropOffsetY = 0;
+        var slider2 = document.getElementById('icon-zoom-slider');
+        slider2.min = Math.max(0.05, fitZoom * 0.3).toFixed(3);
+        slider2.max = (fitZoom * 4).toFixed(3);
+        slider2.value = cropZoom;
+        document.getElementById('icon-cropper-area').style.display = 'block';
+        renderCrop();
+    };
+    cropImage.src = src;
+}
+function renderCrop() {
+    var canvas = document.getElementById('icon-crop-canvas');
+    if (!canvas || !cropImage) return;
+    var ctx = canvas.getContext('2d'); var size = 200;
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    var imgW = cropImage.width * cropZoom, imgH = cropImage.height * cropZoom;
+    ctx.drawImage(cropImage, size/2 - imgW/2 + cropOffsetX, size/2 - imgH/2 + cropOffsetY, imgW, imgH);
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.rect(0,0,size,size);
+    ctx.arc(size/2, size/2, size/2-1, 0, Math.PI*2, true);
+    ctx.fill('evenodd'); ctx.restore();
+    ctx.save(); ctx.strokeStyle = '#1a73e8'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(size/2, size/2, size/2-1.5, 0, Math.PI*2); ctx.stroke(); ctx.restore();
+}
+document.getElementById('icon-zoom-slider').addEventListener('input', function() { cropZoom = parseFloat(this.value); renderCrop(); });
+document.getElementById('apply-crop-btn').addEventListener('click', function() {
+    var out = document.createElement('canvas'); out.width = out.height = 200;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0,0,200,200);
+    if (cropImage) {
+        var imgW = cropImage.width * cropZoom, imgH = cropImage.height * cropZoom;
+        ctx.drawImage(cropImage, 100-imgW/2+cropOffsetX, 100-imgH/2+cropOffsetY, imgW, imgH);
+    }
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.beginPath(); ctx.arc(100,100,99,0,Math.PI*2); ctx.fill();
+    out.toBlob(function(blob) {
+        selectedPhotoFile = blob; clearImage = false;
+        var url = URL.createObjectURL(blob);
+        document.getElementById('icon-preview').innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;">';
+        document.getElementById('icon-cropper-area').style.display = 'none';
+    }, 'image/png', 0.95);
+});
+var cropCanvas = document.getElementById('icon-crop-canvas');
+cropCanvas.addEventListener('mousedown', function(e) { cropDragging=true; cropLastX=e.clientX; cropLastY=e.clientY; });
+document.addEventListener('mousemove', function(e) { if(!cropDragging) return; cropOffsetX+=e.clientX-cropLastX; cropOffsetY+=e.clientY-cropLastY; cropLastX=e.clientX; cropLastY=e.clientY; renderCrop(); });
+document.addEventListener('mouseup', function() { cropDragging=false; });
+var lastTouchDist = 0;
+cropCanvas.addEventListener('touchstart', function(e) {
+    if(e.touches.length===1){cropDragging=true;cropLastX=e.touches[0].clientX;cropLastY=e.touches[0].clientY;}
+    else if(e.touches.length===2){cropDragging=false;lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);}
+}, {passive:true});
+cropCanvas.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    if(e.touches.length===1&&cropDragging){cropOffsetX+=e.touches[0].clientX-cropLastX;cropOffsetY+=e.touches[0].clientY-cropLastY;cropLastX=e.touches[0].clientX;cropLastY=e.touches[0].clientY;renderCrop();}
+    else if(e.touches.length===2){var dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);var sl=document.getElementById('icon-zoom-slider');cropZoom=Math.min(parseFloat(sl.max),Math.max(parseFloat(sl.min),cropZoom*dist/lastTouchDist));lastTouchDist=dist;sl.value=cropZoom;renderCrop();}
+}, {passive:false});
+cropCanvas.addEventListener('touchend', function() { cropDragging=false; }, {passive:true});
+
+// 保存
+document.getElementById('icon-save-btn').addEventListener('click', async function() {
+    var btn = this; btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">hourglass_top</span> 保存中...';
+    try {
+        var formData = new FormData();
+        formData.append('icon_emoji', selectedEmoji);
+        if (selectedPhotoFile) formData.append('photo', selectedPhotoFile, 'icon.jpg');
+        if (clearImage && !selectedPhotoFile) formData.append('clear_image', '1');
+        var res = await fetch('/api/update_my_icon', { method: 'POST', body: formData });
+        var data = await res.json();
+        if (data.status === 'success') {
+            var myBtn = document.getElementById('my-icon-btn');
+            if (selectedPhotoFile && data.icon_image_url) {
+                myBtn.innerHTML = '<img src="' + data.icon_image_url + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+            } else if (selectedEmoji) {
+                myBtn.innerHTML = '<span style="font-size:22px;line-height:1;">' + selectedEmoji + '</span>';
+            } else {
+                myBtn.innerHTML = '<span style="font-size:18px;font-weight:800;color:#fff;">' + MY_INITIAL + '</span>';
+            }
+            closeIconModal();
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+            toast.textContent = '✅ アイコンを更新しました';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 2500);
+        } else { alert('保存に失敗しました'); }
+    } catch(e) { alert('エラー: ' + e.message); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 保存する';
+    }
+});
 
 // ===== 歯車・ベル・並び替えボタンのイベント（全てdocument委譲）=====
 document.addEventListener('click', function(e) {
