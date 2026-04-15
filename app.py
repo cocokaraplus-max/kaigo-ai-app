@@ -553,8 +553,12 @@ def input_view():
         record_date = request.form.get("record_date", today)
         content = request.form.get("content", "").strip()
         photos = request.files.getlist("photos")
+        is_fetch = request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
+                   request.accept_mimetypes.accept_json
 
         if not sel or sel == "" or not content:
+            if is_fetch:
+                return jsonify({"status": "error", "message": "利用者と内容を入力してください。"}), 400
             error = "利用者と内容を入力してください。"
         else:
             try:
@@ -565,27 +569,30 @@ def input_view():
                     if photos and photos[0].filename:
                         image_urls = upload_images_to_supabase(supabase, photos, f_code)
 
-                    from datetime import time as dt_time
-                    record_time = datetime.now(tokyo_tz).time()
-                    dt_record = tokyo_tz.localize(datetime.combine(
-                        datetime.strptime(record_date, "%Y-%m-%d").date(),
-                        record_time
-                    ))
+                    # created_atは常に現在日時（記録日は参考情報のみ）
+                    now_jst = datetime.now(tokyo_tz)
                     supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
                         "user_name": m.group(2),
                         "staff_name": my_name,
                         "content": content,
-                        "created_at": dt_record.isoformat(),
+                        "created_at": now_jst.isoformat(),
                         "image_urls": image_urls if image_urls else None
                     }).execute()
-                    content = ""
-                    selected_patient = ""
                     user_name = m.group(2)
-                    record_date_str = record_date
-                    return redirect(url_for("daily_view", user=user_name, date=record_date_str))
+                    redirect_url = url_for("daily_view", user=user_name, date=record_date)
+                    if is_fetch:
+                        return jsonify({"status": "success", "redirect": redirect_url})
+                    return redirect(redirect_url)
+                else:
+                    if is_fetch:
+                        return jsonify({"status": "error", "message": "利用者の選択が正しくありません。"}), 400
+                    error = "利用者の選択が正しくありません。"
             except Exception as e:
+                print(f"input_view save error: {e}", flush=True)
+                if is_fetch:
+                    return jsonify({"status": "error", "message": f"保存に失敗しました: {e}"}), 500
                 error = f"保存に失敗しました: {e}"
 
     return render("input.html",

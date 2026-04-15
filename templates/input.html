@@ -260,9 +260,14 @@ window.saveRecord = async function() {
         const audioMime = document.getElementById('audio-mime')?.value;
         if (audioData) { formData.append('audio_data', audioData); formData.append('audio_mime', audioMime); }
 
-        const res = await fetch('/input', { method: 'POST', body: formData });
+        const res = await fetch('/input', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        });
+        const data = await res.json();
 
-        if (res.ok) {
+        if (data.status === 'success') {
             // トースト表示
             const toast = document.getElementById('save-toast');
             toast.classList.add('show');
@@ -278,8 +283,13 @@ window.saveRecord = async function() {
 
             // ページ先頭にスクロール
             window.scrollTo(0, 0);
+
+            // サーバー指定のリダイレクト先があれば遷移
+            if (data.redirect) {
+                setTimeout(() => { window.location.href = data.redirect; }, 1000);
+            }
         } else {
-            alert('保存に失敗しました。もう一度お試しください。');
+            alert(data.message || '保存に失敗しました。もう一度お試しください。');
         }
     } catch(e) {
         alert('通信エラーが発生しました: ' + e.message);
