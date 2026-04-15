@@ -706,6 +706,10 @@
 
 <!-- スタッフ管理 -->
 <div class="tab-panel" id="tab-staff">
+    <div style="background:#e8f0fe;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.8rem;color:#1557b0;display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">edit_note</span>
+        <span><b>📋 掲示板権限</b>（ペンアイコン）をONにすると、他のスタッフの投稿も編集・削除できます</span>
+    </div>
     {% for s in staff_list %}
     <div class="staff-card" id="sc-{{ loop.index }}">
         <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
@@ -717,7 +721,16 @@
             <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
             {% endif %}
         </div>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:center;">
+            <!-- 掲示板編集権限トグル -->
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.75rem;color:#5f6368;background:#f8f9fa;border-radius:8px;padding:4px 8px;border:1px solid #e0e0e0;"
+                title="掲示板の編集・削除権限">
+                <input type="checkbox" id="board-edit-{{ loop.index }}"
+                    {% if s.name in board_editors %}checked{% endif %}
+                    onchange="toggleBoardEditor('{{ s.name }}', this.checked)"
+                    style="accent-color:#1a73e8;width:14px;height:14px;">
+                <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
+            </label>
             <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}', '{{ s.name }}', '{{ s.birth_date or '' }}')">
                 <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
             </button>
@@ -796,4 +809,37 @@
 
 {% block extra_script %}
 <script src="/static/admin.js"></script>
+<script>
+// 掲示板編集権限トグル
+var _boardEditors = {{ board_editors | tojson }};
+
+async function toggleBoardEditor(staffName, checked) {
+    if (checked) {
+        if (!_boardEditors.includes(staffName)) _boardEditors.push(staffName);
+    } else {
+        _boardEditors = _boardEditors.filter(function(n) { return n !== staffName; });
+    }
+    try {
+        var res = await fetch('/api/board/set_editors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ editors: _boardEditors })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+            toast.textContent = checked
+                ? '✅ ' + staffName + ' に掲示板編集権限を付与しました'
+                : '🚫 ' + staffName + ' の掲示板編集権限を解除しました';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3000);
+        } else {
+            alert('保存に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) {
+        alert('エラー: ' + e.message);
+    }
+}
+</script>
 {% endblock %}

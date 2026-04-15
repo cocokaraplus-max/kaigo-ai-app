@@ -332,7 +332,7 @@
             <span class="material-symbols-outlined" style="font-size:12px;">push_pin</span>固定
         </div>
         {% endif %}
-        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-mine="{{ 'true' if post.staff_name == my_name else 'false' }}" onclick="showPostMenu(this.dataset.postId, this.dataset.mine==='true')">
+        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-can-edit="{{ 'true' if post.staff_name == my_name or is_board_editor else 'false' }}" onclick="showPostMenu(this.dataset.postId, this.dataset.canEdit==='true')">
             <span class="material-symbols-outlined">more_vert</span>
         </button>
     </div>

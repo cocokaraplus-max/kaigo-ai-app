@@ -553,12 +553,8 @@ def input_view():
         record_date = request.form.get("record_date", today)
         content = request.form.get("content", "").strip()
         photos = request.files.getlist("photos")
-        is_fetch = request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
-                   request.accept_mimetypes.accept_json
 
         if not sel or sel == "" or not content:
-            if is_fetch:
-                return jsonify({"status": "error", "message": "利用者と内容を入力してください。"}), 400
             error = "利用者と内容を入力してください。"
         else:
             try:
@@ -569,30 +565,27 @@ def input_view():
                     if photos and photos[0].filename:
                         image_urls = upload_images_to_supabase(supabase, photos, f_code)
 
-                    # created_atは常に現在日時（記録日は参考情報のみ）
-                    now_jst = datetime.now(tokyo_tz)
+                    from datetime import time as dt_time
+                    record_time = datetime.now(tokyo_tz).time()
+                    dt_record = tokyo_tz.localize(datetime.combine(
+                        datetime.strptime(record_date, "%Y-%m-%d").date(),
+                        record_time
+                    ))
                     supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
                         "user_name": m.group(2),
                         "staff_name": my_name,
                         "content": content,
-                        "created_at": now_jst.isoformat(),
+                        "created_at": dt_record.isoformat(),
                         "image_urls": image_urls if image_urls else None
                     }).execute()
+                    content = ""
+                    selected_patient = ""
                     user_name = m.group(2)
-                    redirect_url = url_for("daily_view", user=user_name, date=record_date)
-                    if is_fetch:
-                        return jsonify({"status": "success", "redirect": redirect_url})
-                    return redirect(redirect_url)
-                else:
-                    if is_fetch:
-                        return jsonify({"status": "error", "message": "利用者の選択が正しくありません。"}), 400
-                    error = "利用者の選択が正しくありません。"
+                    record_date_str = record_date
+                    return redirect(url_for("daily_view", user=user_name, date=record_date_str))
             except Exception as e:
-                print(f"input_view save error: {e}", flush=True)
-                if is_fetch:
-                    return jsonify({"status": "error", "message": f"保存に失敗しました: {e}"}), 500
                 error = f"保存に失敗しました: {e}"
 
     return render("input.html",
@@ -2230,6 +2223,15 @@ def admin():
             registered_staffs = res_rs.data
         except: pass
 
+    board_editors = []
+    if authenticated:
+        try:
+            import json as _json
+            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
+            if res_be.data:
+                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
+        except: pass
+
     claude_url = session.pop("claude_url", None)
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
@@ -2244,7 +2246,8 @@ def admin():
         error=None,
         claude_url=claude_url,
         registered_staffs=registered_staffs,
-        f_code=f_code
+        f_code=f_code,
+        board_editors=board_editors,
     )
 
 # ==========================================
@@ -2868,6 +2871,15 @@ def board():
     except Exception as e:
         print(f"board detail error: {e}")
     staffs = [name for name in icons.keys()]
+    # 掲示板編集権限を持つ職員リストを取得
+    board_editors = []
+    try:
+        res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
+        if res_be.data:
+            import json as _json
+            board_editors = _json.loads(res_be.data[0]["value"] or "[]")
+    except: pass
+    is_board_editor = my_name in board_editors
     return render("board.html",
         posts=posts, icons=icons, my_name=my_name,
         my_color=staff_color(my_name), my_initial=staff_initial(my_name),
@@ -2875,6 +2887,8 @@ def board():
         read_data=read_data, staffs=staffs,
         supabase_url=get_secret("SUPABASE_URL"),
         supabase_anon_key=get_secret("SUPABASE_KEY"),
+        is_board_editor=is_board_editor,
+        board_editors=board_editors,
     )
 
 @app.route("/api/board/create_post", methods=["POST"])
@@ -2915,13 +2929,20 @@ def api_board_update_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
         supabase = get_supabase()
+        import json as _json
+        board_editors = []
+        try:
+            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
+            if res_be.data:
+                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
+        except: pass
+        is_board_editor = my_name in board_editors
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error", "message": "見つかりません"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        if not is_admin and p["staff_name"] != my_name:
+        if not is_board_editor and p["staff_name"] != my_name:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_posts").update({
             "content": data.get("content", ""),
@@ -2938,13 +2959,20 @@ def api_board_delete_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
         supabase = get_supabase()
+        import json as _json
+        board_editors = []
+        try:
+            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
+            if res_be.data:
+                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
+        except: pass
+        is_board_editor = my_name in board_editors
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        if not is_admin and p["staff_name"] != my_name: return jsonify({"status": "error", "message": "権限がありません"}), 403
+        if not is_board_editor and p["staff_name"] != my_name: return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_posts").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -2964,6 +2992,28 @@ def api_board_pin_post():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route("/api/board/set_editors", methods=["POST"])
+@login_required
+def api_board_set_editors():
+    """掲示板編集権限の職員リストを更新（管理者のみ）"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        if not session.get("admin_authenticated", False):
+            return jsonify({"status": "error", "message": "管理者権限が必要です"}), 403
+        import json as _json
+        data = request.json
+        editors = data.get("editors", [])
+        supabase = get_supabase()
+        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "board_editors").execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": _json.dumps(editors, ensure_ascii=False)}).eq("facility_code", f_code).eq("key", "board_editors").execute()
+        else:
+            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "board_editors", "value": _json.dumps(editors, ensure_ascii=False)}).execute()
+        return jsonify({"status": "success", "editors": editors})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/board/get_comments")
 @login_required
