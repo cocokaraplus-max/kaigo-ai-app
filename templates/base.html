@@ -911,16 +911,17 @@ if (navigator.onLine) {
         // 初回表示時のみロック
         checkLock();
 
-        // バックグラウンドから3秒以上経って戻ったときだけ再ロック
-        var _hiddenAt = null;
+        // バックグラウンドに行ったフラグを管理
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'hidden') {
-                _hiddenAt = Date.now();
+                // バックグラウンドに入ったことを記録
+                window.__wentBackground = true;
             } else if (document.visibilityState === 'visible') {
-                if (_hiddenAt && (Date.now() - _hiddenAt) > 3000) {
+                // バックグラウンドから戻ったら必ずロック
+                if (window.__wentBackground) {
+                    window.__wentBackground = false;
                     checkLock();
                 }
-                _hiddenAt = null;
             }
         });
     }
