@@ -345,8 +345,6 @@
     {% endif %}
     {% endblock %}
 
-    {% block extra_script %}{% endblock %}
-
 <script>
 // ========== SPAルーター ==========
 
@@ -1063,5 +1061,8 @@ bindUpdateLogClose();
     });
 })();
 </script>
+
+{% block extra_script %}{% endblock %}
+
 </body>
 </html>
