@@ -637,39 +637,7 @@ function applyFontSize(pct) {
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
 
-// ===== 更新ログボタン =====
-var updateLogBtn = document.getElementById('update-log-btn');
-var updateLogModal = document.getElementById('update-log-modal');
-var closeUpdateLogBtn = document.getElementById('close-update-log-btn');
-updateLogBtn.addEventListener('click', function() {
-    hideBottomNav();
-    updateLogModal.style.display = 'flex';
-});
-updateLogBtn.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    hideBottomNav();
-    updateLogModal.style.display = 'flex';
-});
-closeUpdateLogBtn.addEventListener('click', function() {
-    updateLogModal.style.display = 'none';
-    showBottomNav();
-});
-updateLogModal.addEventListener('click', function(e) {
-    if (e.target === updateLogModal) {
-        updateLogModal.style.display = 'none';
-        showBottomNav();
-    }
-});
-
-// ===== 歯車ボタン =====
-var fabBtn = document.getElementById('settings-fab-btn');
-var modal  = document.getElementById('user-settings-modal');
-var closeBtn = document.getElementById('settings-close-btn');
-
-fabBtn.addEventListener('click', openSettings);
-fabBtn.addEventListener('touchend', function(e) { e.preventDefault(); openSettings(); });
-closeBtn.addEventListener('click', closeSettings);
-modal.addEventListener('click', function(e) { if (e.target === modal) closeSettings(); });
+// fab buttons handled in base.html
 
 function openSettings() {
     hideBottomNav();

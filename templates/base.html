@@ -864,6 +864,47 @@ function applyNavMode() {
     }
 }
 applyNavMode();
+
+// ===== 歯車・ベルボタンのイベントバインド =====
+function bindFabButtons() {
+    var updateLogBtn = document.getElementById('update-log-btn');
+    var settingsFabBtn = document.getElementById('settings-fab-btn');
+
+    if (updateLogBtn && !updateLogBtn._bound) {
+        updateLogBtn._bound = true;
+        updateLogBtn.addEventListener('click', function() {
+            var modal = document.getElementById('update-log-modal');
+            if (!modal) return;
+            var nav = document.querySelector('.bottom-nav');
+            if (nav) nav.style.display = 'none';
+            modal.style.display = 'flex';
+        });
+        updateLogBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            var modal = document.getElementById('update-log-modal');
+            if (!modal) return;
+            var nav = document.querySelector('.bottom-nav');
+            if (nav) nav.style.display = 'none';
+            modal.style.display = 'flex';
+        });
+    }
+
+    if (settingsFabBtn && !settingsFabBtn._bound) {
+        settingsFabBtn._bound = true;
+        settingsFabBtn.addEventListener('click', function() {
+            if (typeof openSettings === 'function') openSettings();
+        });
+        settingsFabBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            if (typeof openSettings === 'function') openSettings();
+        });
+    }
+}
+
+// 初回バインド + SPA遷移後に再バインド
+bindFabButtons();
+var _fabObserver = new MutationObserver(function() { bindFabButtons(); });
+_fabObserver.observe(document.querySelector('.page-wrapper') || document.body, { childList: true });
 </script>
 
 <!-- ========== アプリロック画面 ========== -->
