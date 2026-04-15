@@ -874,60 +874,40 @@ applyNavMode();
 })();
 
 // ===== 歯車・ベルボタンのイベントバインド =====
-// ベル：クリック→モーダル表示
-document.getElementById('update-log-btn').addEventListener('click', function() {
-    var modal = document.getElementById('update-log-modal');
-    if (!modal) return;
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = 'none';
-    modal.style.display = 'flex';
-});
-document.getElementById('update-log-btn').addEventListener('touchend', function(e) {
-    e.preventDefault();
-    var modal = document.getElementById('update-log-modal');
-    if (!modal) return;
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = 'none';
-    modal.style.display = 'flex';
-});
-
-// 歯車：クリック→openSettingsを遅延呼び出し（IIFEより後に実行されるため）
-document.getElementById('settings-fab-btn').addEventListener('click', function() {
-    setTimeout(function() {
-        if (typeof openSettings === 'function') openSettings();
-    }, 0);
-});
-document.getElementById('settings-fab-btn').addEventListener('touchend', function(e) {
-    e.preventDefault();
-    setTimeout(function() {
-        if (typeof openSettings === 'function') openSettings();
-    }, 0);
-});
-
-// ベルモーダルの閉じるボタン（モーダルはtop.htmlにあるため遅延バインド）
-function bindUpdateLogClose() {
-    var closeBtn = document.getElementById('close-update-log-btn');
-    var modal = document.getElementById('update-log-modal');
-    if (closeBtn && modal && !closeBtn._bound) {
-        closeBtn._bound = true;
-        closeBtn.addEventListener('click', function() {
-            modal.style.display = 'none';
-            var nav = document.querySelector('.bottom-nav');
-            if (nav) nav.style.display = '';
-        });
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                modal.style.display = 'none';
-                var nav = document.querySelector('.bottom-nav');
-                if (nav) nav.style.display = '';
-            }
-        });
+// イベントはdocumentに委譲して確実に動作させる
+document.addEventListener('click', function(e) {
+    // ベルボタン
+    if (e.target.closest('#update-log-btn')) {
+        var modal = document.getElementById('update-log-modal');
+        if (!modal) return;
+        var nav = document.querySelector('.bottom-nav');
+        if (nav) nav.style.display = 'none';
+        modal.style.display = 'flex';
+        return;
     }
-}
-// SPA遷移でtop.htmlが読み込まれたときに閉じるボタンをバインド
-var _closeObserver = new MutationObserver(function() { bindUpdateLogClose(); });
-_closeObserver.observe(document.querySelector('.page-wrapper') || document.body, { childList: true });
-bindUpdateLogClose();
+    // 歯車ボタン
+    if (e.target.closest('#settings-fab-btn')) {
+        if (typeof window.openSettings === 'function') {
+            window.openSettings();
+        }
+        return;
+    }
+    // ベルモーダルの閉じるボタン
+    if (e.target.closest('#close-update-log-btn')) {
+        var modal = document.getElementById('update-log-modal');
+        if (modal) modal.style.display = 'none';
+        var nav = document.querySelector('.bottom-nav');
+        if (nav) nav.style.display = '';
+        return;
+    }
+    // ベルモーダルの背景タップ
+    var updateModal = document.getElementById('update-log-modal');
+    if (updateModal && e.target === updateModal) {
+        updateModal.style.display = 'none';
+        var nav = document.querySelector('.bottom-nav');
+        if (nav) nav.style.display = '';
+    }
+});
 </script>
 
 <!-- ========== アプリロック画面 ========== -->

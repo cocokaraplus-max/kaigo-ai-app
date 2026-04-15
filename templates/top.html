@@ -1071,8 +1071,8 @@ document.addEventListener('click', function(e) {
 });
 
 // 設定モーダルを開いたときにグリッド描画
-var _origOpenSettings = openSettings;
-openSettings = function() {
+var _origOpenSettings = window.openSettings;
+window.openSettings = function() {
     _origOpenSettings();
     renderNavSortGrid();
     applyNavModeUI();
