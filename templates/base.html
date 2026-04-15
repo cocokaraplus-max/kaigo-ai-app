@@ -36,6 +36,8 @@
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
             padding: 1.5rem 1.2rem 1.5rem;
+            position: relative;
+            z-index: 0;
         }
 
         /* Material Symbols */
@@ -120,7 +122,7 @@
         /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
             position: fixed; top: 16px; right: 16px;
-            display: flex; gap: 8px; z-index: 500;
+            display: flex; gap: 8px; z-index: 1000;
             pointer-events: auto;
         }
         .settings-fab {
@@ -865,46 +867,69 @@ function applyNavMode() {
 }
 applyNavMode();
 
-// ===== 歯車・ベルボタンのイベントバインド =====
-function bindFabButtons() {
-    var updateLogBtn = document.getElementById('update-log-btn');
-    var settingsFabBtn = document.getElementById('settings-fab-btn');
-
-    if (updateLogBtn && !updateLogBtn._bound) {
-        updateLogBtn._bound = true;
-        updateLogBtn.addEventListener('click', function() {
-            var modal = document.getElementById('update-log-modal');
-            if (!modal) return;
-            var nav = document.querySelector('.bottom-nav');
-            if (nav) nav.style.display = 'none';
-            modal.style.display = 'flex';
-        });
-        updateLogBtn.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            var modal = document.getElementById('update-log-modal');
-            if (!modal) return;
-            var nav = document.querySelector('.bottom-nav');
-            if (nav) nav.style.display = 'none';
-            modal.style.display = 'flex';
-        });
+// ★ top-fab-areaをbody最後尾に移動（iOSのoverflow scrollingによるタップ阻害を回避）
+(function moveFabToBody() {
+    var fab = document.getElementById('top-fab-area');
+    if (fab && fab.parentNode !== document.body) {
+        document.body.appendChild(fab);
     }
+})();
 
-    if (settingsFabBtn && !settingsFabBtn._bound) {
-        settingsFabBtn._bound = true;
-        settingsFabBtn.addEventListener('click', function() {
-            if (typeof openSettings === 'function') openSettings();
+// ===== 歯車・ベルボタンのイベントバインド =====
+// ベル：クリック→モーダル表示
+document.getElementById('update-log-btn').addEventListener('click', function() {
+    var modal = document.getElementById('update-log-modal');
+    if (!modal) return;
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = 'none';
+    modal.style.display = 'flex';
+});
+document.getElementById('update-log-btn').addEventListener('touchend', function(e) {
+    e.preventDefault();
+    var modal = document.getElementById('update-log-modal');
+    if (!modal) return;
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = 'none';
+    modal.style.display = 'flex';
+});
+
+// 歯車：クリック→openSettingsを遅延呼び出し（IIFEより後に実行されるため）
+document.getElementById('settings-fab-btn').addEventListener('click', function() {
+    setTimeout(function() {
+        if (typeof openSettings === 'function') openSettings();
+    }, 0);
+});
+document.getElementById('settings-fab-btn').addEventListener('touchend', function(e) {
+    e.preventDefault();
+    setTimeout(function() {
+        if (typeof openSettings === 'function') openSettings();
+    }, 0);
+});
+
+// ベルモーダルの閉じるボタン（モーダルはtop.htmlにあるため遅延バインド）
+function bindUpdateLogClose() {
+    var closeBtn = document.getElementById('close-update-log-btn');
+    var modal = document.getElementById('update-log-modal');
+    if (closeBtn && modal && !closeBtn._bound) {
+        closeBtn._bound = true;
+        closeBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            var nav = document.querySelector('.bottom-nav');
+            if (nav) nav.style.display = '';
         });
-        settingsFabBtn.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            if (typeof openSettings === 'function') openSettings();
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+                var nav = document.querySelector('.bottom-nav');
+                if (nav) nav.style.display = '';
+            }
         });
     }
 }
-
-// 初回バインド + SPA遷移後に再バインド
-bindFabButtons();
-var _fabObserver = new MutationObserver(function() { bindFabButtons(); });
-_fabObserver.observe(document.querySelector('.page-wrapper') || document.body, { childList: true });
+// SPA遷移でtop.htmlが読み込まれたときに閉じるボタンをバインド
+var _closeObserver = new MutationObserver(function() { bindUpdateLogClose(); });
+_closeObserver.observe(document.querySelector('.page-wrapper') || document.body, { childList: true });
+bindUpdateLogClose();
 </script>
 
 <!-- ========== アプリロック画面 ========== -->
