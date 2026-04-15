@@ -8,6 +8,7 @@
 .board-header {
     display: flex; align-items: center;
     justify-content: space-between; margin-bottom: 1rem;
+    position: relative; z-index: 1;
 }
 .board-title { margin-bottom: 0; }
 .new-post-btn {
@@ -134,7 +135,7 @@
 /* ========== コメントドロワー ========== */
 .comments-drawer {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4); z-index: 900;
+    background: rgba(0,0,0,0.4); z-index: 1200;
     align-items: flex-end; justify-content: center;
 }
 .comments-drawer.show { display: flex; }
@@ -200,7 +201,7 @@
 /* ========== 投稿作成モーダル ========== */
 .post-modal {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45); z-index: 1000;
+    background: rgba(0,0,0,0.45); z-index: 1200;
     align-items: flex-end; justify-content: center;
 }
 .post-modal.show { display: flex; }
@@ -667,10 +668,12 @@ document.getElementById('new-post-btn').addEventListener('click', openPostModal)
 document.getElementById('new-post-btn').addEventListener('touchend', function(e) { e.preventDefault(); openPostModal(); });
 
 function openPostModal() {
+    hideNav();
     document.getElementById('post-modal').classList.add('show');
     document.getElementById('post-textarea').focus();
 }
 function closePostModal() {
+    showNav();
     document.getElementById('post-modal').classList.remove('show');
     document.getElementById('post-textarea').value = '';
     selectedPhotos = []; selectedAudio = null; selectedMentions = [];
@@ -835,21 +838,32 @@ document.querySelectorAll('.reaction-item').forEach(function(item) {
 });
 
 // ===== コメント =====
+// モーダル開閉時にボトムナビを隠す/戻すヘルパー
+function hideNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = 'none';
+}
+function showNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = '';
+}
+
 window.openComments = async function(postId) {
     currentPostId = postId;
+    hideNav();
     document.getElementById('comments-drawer').classList.add('show');
     await loadComments(postId);
 };
 
-document.getElementById('comments-close-btn').addEventListener('click', function() {
+function closeComments() {
     document.getElementById('comments-drawer').classList.remove('show');
     currentPostId = null;
-});
+    showNav();
+}
+
+document.getElementById('comments-close-btn').addEventListener('click', closeComments);
 document.getElementById('comments-drawer').addEventListener('click', function(e) {
-    if (e.target === this) {
-        this.classList.remove('show');
-        currentPostId = null;
-    }
+    if (e.target === this) closeComments();
 });
 
 async function loadComments(postId) {
