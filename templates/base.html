@@ -896,7 +896,7 @@ if (navigator.onLine) {
 
 
 
-    // ロックチェック・初回のみ実行（window変数でグローバル管理）
+    // ロックチェック
     function checkLock() {
         if (localStorage.getItem(LOCK_ENABLED_KEY) === '1' &&
             localStorage.getItem(LOCK_PASSCODE_KEY)) {
@@ -904,27 +904,35 @@ if (navigator.onLine) {
         }
     }
 
-    // window.__lockInitialized でページ全体で一度だけ初期化
-    if (!window.__lockInitialized) {
-        window.__lockInitialized = true;
+    // sessionStorageで「このタブセッションで既にロック解除済み」を管理
+    // → SPA遷移・フルリロード問わず、一度解除したらタブを閉じるまでロックしない
+    var SESSION_UNLOCKED_KEY = 'tasukaru_session_unlocked';
 
-        // 初回表示時のみロック
+    // hideLockをオーバーライドして解除時にsessionStorageに記録
+    var _origHideLock = hideLock;
+    hideLock = function() {
+        _origHideLock();
+        sessionStorage.setItem(SESSION_UNLOCKED_KEY, '1');
+    };
+
+    // 初回表示：sessionStorageに解除記録がなければロック
+    if (!sessionStorage.getItem(SESSION_UNLOCKED_KEY)) {
         checkLock();
-
-        // バックグラウンドに行ったフラグを管理
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') {
-                // バックグラウンドに入ったことを記録
-                window.__wentBackground = true;
-            } else if (document.visibilityState === 'visible') {
-                // バックグラウンドから戻ったら必ずロック
-                if (window.__wentBackground) {
-                    window.__wentBackground = false;
-                    checkLock();
-                }
-            }
-        });
     }
+
+    // バックグラウンドから戻ったら再ロック（sessionStorageもクリア）
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            window.__wentBackground = true;
+        } else if (document.visibilityState === 'visible') {
+            if (window.__wentBackground) {
+                window.__wentBackground = false;
+                // 再ロック：sessionStorageをクリアしてからロック画面を出す
+                sessionStorage.removeItem(SESSION_UNLOCKED_KEY);
+                checkLock();
+            }
+        }
+    });
 })();
 </script>
 </body>
