@@ -324,29 +324,20 @@
             </div>
         </div>
 
-        <!-- アイコン設定 -->
+        <!-- ナビカスタマイズ -->
         <div class="setting-section">
             <div class="setting-section-label">
-                <span class="material-symbols-outlined">account_circle</span>
-                アイコン
+                <span class="material-symbols-outlined">menu</span>
+                メニュー並び順
             </div>
-            <div class="icon-setting-row" id="open-icon-edit-btn">
-                <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;
-                    background:{{ my_color }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    {% if my_icon_image_url %}
-                        <img src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
-                    {% elif my_icon_emoji %}
-                        <span style="font-size:20px;">{{ my_icon_emoji }}</span>
-                    {% else %}
-                        <span style="font-size:16px;font-weight:800;color:#fff;">{{ my_initial }}</span>
-                    {% endif %}
-                </div>
-                <div>
-                    <div style="font-size:0.88rem;font-weight:700;">{{ my_name }}</div>
-                    <div style="font-size:0.75rem;color:#5f6368;">タップしてアイコンを変更</div>
-                </div>
-                <span class="material-symbols-outlined icon-setting-arrow">chevron_right</span>
+            <div style="font-size:0.75rem;color:#80868b;margin-bottom:10px;">
+                ☰ を長押しドラッグで並び替え。👁 で表示/非表示を切り替え。
             </div>
+            <div id="nav-sort-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+            <button id="nav-order-reset-btn" style="width:100%;margin-top:10px;padding:8px;border:1px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">refresh</span>
+                デフォルトに戻す
+            </button>
         </div>
 
         <!-- ロック設定 -->
@@ -379,10 +370,30 @@
                     パスコードを保存
                 </button>
             </div>
-            <!-- 顔認証・指紋認証の案内 -->
-            <div id="biometric-row" style="display:none;background:#f0f6ff;border-radius:10px;padding:10px 12px;font-size:0.78rem;color:#1557b0;line-height:1.6;">
-                <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">info</span>
-                iPhoneのホーム画面に追加（PWA）すると、次回起動時にFace IDが自動で起動します。
+        </div>
+
+        <!-- アイコン設定（一番下に移動） -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">account_circle</span>
+                アイコン
+            </div>
+            <div class="icon-setting-row" id="open-icon-edit-btn">
+                <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;
+                    background:{{ my_color }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    {% if my_icon_image_url %}
+                        <img src="{{ my_icon_image_url }}" style="width:100%;height:100%;object-fit:cover;">
+                    {% elif my_icon_emoji %}
+                        <span style="font-size:20px;">{{ my_icon_emoji }}</span>
+                    {% else %}
+                        <span style="font-size:16px;font-weight:800;color:#fff;">{{ my_initial }}</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <div style="font-size:0.88rem;font-weight:700;">{{ my_name }}</div>
+                    <div style="font-size:0.75rem;color:#5f6368;">タップしてアイコンを変更</div>
+                </div>
+                <span class="material-symbols-outlined icon-setting-arrow">chevron_right</span>
             </div>
         </div>
 
@@ -798,6 +809,209 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
     }
 });
 
+// ========== ナビカスタマイズ ==========
+var NAV_ORDER_KEY = 'tasukaru_nav_order';
+var NAV_HIDDEN_KEY = 'tasukaru_nav_hidden';
+
+// 全ナビ項目の定義
+var ALL_NAV_ITEMS = [
+    { key: 'top',        label: 'TOP',        icon: 'home',                  href: '/top',        spa: true  },
+    { key: 'input',      label: '記録入力',   icon: 'edit_note',             href: '/input',      spa: true  },
+    { key: 'daily_view', label: 'ケース記録', icon: 'calendar_month',        href: '/daily_view', spa: true  },
+    { key: 'vitals',     label: 'バイタル',   icon: 'monitor_heart',         href: '/vitals',     spa: true  },
+    { key: 'calendar',   label: 'カレンダー', icon: 'calendar_month',        href: '/calendar',   spa: true  },
+    { key: 'history',    label: 'モニタリング', icon: 'monitoring',          href: '/history',    spa: true  },
+    { key: 'assessment', label: '評価',       icon: 'assignment',            href: '/assessment', spa: true  },
+    { key: 'board',      label: '掲示板',     icon: 'campaign',              href: '/board',      spa: true  },
+    { key: 'birthday',   label: '誕生日',     icon: 'cake',                  href: '/birthday',   spa: true  },
+    { key: 'numerology', label: '数秘',       icon: 'auto_awesome',          href: '/numerology', spa: false },
+    { key: 'admin',      label: '管理者MENU', icon: 'admin_panel_settings',  href: '/admin',      spa: false },
+    { key: 'manual',     label: 'ガイド',     icon: 'menu_book',             href: '/manual',     spa: true  },
+];
+
+function getNavOrder() {
+    try {
+        var saved = localStorage.getItem(NAV_ORDER_KEY);
+        if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return ALL_NAV_ITEMS.map(function(i) { return i.key; });
+}
+
+function getNavHidden() {
+    try {
+        var saved = localStorage.getItem(NAV_HIDDEN_KEY);
+        if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return [];
+}
+
+function saveNavOrder(order) {
+    localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order));
+}
+
+function saveNavHidden(hidden) {
+    localStorage.setItem(NAV_HIDDEN_KEY, JSON.stringify(hidden));
+}
+
+// ナビを実際に並び替え・表示制御
+function applyNavOrder() {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var order = getNavOrder();
+    var hidden = getNavHidden();
+
+    // ログアウトボタンを一旦保存
+    var logoutForm = nav.querySelector('form[action="/logout"]');
+
+    // 順番通りにナビ項目を並び替え
+    order.forEach(function(key) {
+        var item = nav.querySelector('a[href="/' + key + '"], a[href="' + (key === 'daily_view' ? '/daily_view' : '/' + key) + '"]');
+        if (!item) {
+            // daily_viewなど特殊なhrefを持つ場合
+            item = nav.querySelector('a[href="/daily_view"]');
+            if (key !== 'daily_view') item = null;
+        }
+        if (item) {
+            item.style.display = hidden.includes(key) ? 'none' : '';
+            nav.appendChild(item);
+        }
+    });
+
+    // ログアウトは常に最後
+    if (logoutForm) nav.appendChild(logoutForm);
+}
+
+// 設定UIを描画
+function renderNavSortList() {
+    var list = document.getElementById('nav-sort-list');
+    if (!list) return;
+    var order = getNavOrder();
+    var hidden = getNavHidden();
+    list.innerHTML = '';
+
+    order.forEach(function(key, idx) {
+        var item = ALL_NAV_ITEMS.find(function(i) { return i.key === key; });
+        if (!item) return;
+        var isHidden = hidden.includes(key);
+
+        var row = document.createElement('div');
+        row.dataset.key = key;
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;background:' +
+            (isHidden ? '#f8f8f8' : '#fff') +
+            ';border:1.5px solid ' + (isHidden ? '#e0e0e0' : '#e8f0fe') +
+            ';border-radius:10px;padding:10px 12px;touch-action:none;';
+
+        // ドラッグハンドル
+        var handle = document.createElement('span');
+        handle.textContent = '☰';
+        handle.style.cssText = 'font-size:18px;color:#bbb;cursor:grab;padding:0 4px;user-select:none;';
+        handle.setAttribute('data-handle', '1');
+
+        // アイコン
+        var icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.textContent = item.icon;
+        icon.style.cssText = 'font-size:18px;color:' + (isHidden ? '#bbb' : '#1a73e8') + ';';
+
+        // ラベル
+        var label = document.createElement('span');
+        label.textContent = item.label;
+        label.style.cssText = 'font-size:0.88rem;font-weight:600;flex:1;color:' + (isHidden ? '#aaa' : '#202124') + ';';
+
+        // 表示トグルボタン
+        var toggleBtn = document.createElement('button');
+        toggleBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px;font-size:18px;';
+        toggleBtn.textContent = isHidden ? '🙈' : '👁';
+        toggleBtn.addEventListener('click', function() {
+            var h = getNavHidden();
+            if (h.includes(key)) {
+                h = h.filter(function(k) { return k !== key; });
+            } else {
+                h.push(key);
+            }
+            saveNavHidden(h);
+            applyNavOrder();
+            renderNavSortList();
+            showToastMsg(isHidden ? item.label + ' を表示しました' : item.label + ' を非表示にしました');
+        });
+
+        row.appendChild(handle);
+        row.appendChild(icon);
+        row.appendChild(label);
+        row.appendChild(toggleBtn);
+        list.appendChild(row);
+
+        // タッチドラッグ
+        setupDrag(row, list);
+    });
+}
+
+function setupDrag(row, list) {
+    var handle = row.querySelector('[data-handle]');
+    if (!handle) return;
+
+    var dragging = false, startY = 0, origIdx = 0, clone = null;
+
+    handle.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        dragging = true;
+        startY = e.touches[0].clientY;
+        origIdx = Array.from(list.children).indexOf(row);
+        row.style.opacity = '0.5';
+        row.style.background = '#e8f0fe';
+    }, { passive: false });
+
+    handle.addEventListener('touchmove', function(e) {
+        if (!dragging) return;
+        e.preventDefault();
+        var y = e.touches[0].clientY;
+        var dy = y - startY;
+        var rows = Array.from(list.children);
+        var curIdx = rows.indexOf(row);
+        var rowH = row.offsetHeight + 6;
+        if (dy > rowH / 2 && curIdx < rows.length - 1) {
+            list.insertBefore(rows[curIdx + 1], row);
+            startY += rowH;
+        } else if (dy < -rowH / 2 && curIdx > 0) {
+            list.insertBefore(row, rows[curIdx - 1]);
+            startY -= rowH;
+        }
+    }, { passive: false });
+
+    handle.addEventListener('touchend', function() {
+        if (!dragging) return;
+        dragging = false;
+        row.style.opacity = '';
+        row.style.background = '';
+        // 新しい順序を保存
+        var newOrder = Array.from(list.children).map(function(r) { return r.dataset.key; });
+        saveNavOrder(newOrder);
+        applyNavOrder();
+        showToastMsg('メニューの順番を保存しました');
+    });
+}
+
+// リセットボタン
+document.addEventListener('click', function(e) {
+    if (e.target.closest('#nav-order-reset-btn')) {
+        localStorage.removeItem(NAV_ORDER_KEY);
+        localStorage.removeItem(NAV_HIDDEN_KEY);
+        applyNavOrder();
+        renderNavSortList();
+        showToastMsg('メニューをデフォルトに戻しました');
+    }
+});
+
+// 設定モーダルを開いたときにリスト描画
+var _origOpenSettings = openSettings;
+openSettings = function() {
+    _origOpenSettings();
+    renderNavSortList();
+};
+
+// ページ読み込み時にナビ順序を適用
+applyNavOrder();
+
 // ========== アプリロック設定 ==========
 var LOCK_PASSCODE_KEY = 'tasukaru_passcode';
 var LOCK_ENABLED_KEY  = 'tasukaru_lock_enabled';
@@ -806,22 +1020,17 @@ var BIOMETRIC_KEY     = 'tasukaru_biometric_enabled';
 // パスコードトグル
 var passcodeToggle = document.getElementById('passcode-toggle');
 var passcodeArea   = document.getElementById('passcode-setting-area');
-var biometricRow = document.getElementById('biometric-row');
-
 // 保存済み設定を読み込む
 if (localStorage.getItem(LOCK_ENABLED_KEY) === '1') {
     passcodeToggle.checked = true;
     passcodeArea.style.display = 'block';
-    biometricRow.style.display = 'block';
 }
 
 passcodeToggle.addEventListener('change', function() {
     if (this.checked) {
         passcodeArea.style.display = 'block';
-        biometricRow.style.display = 'block';
     } else {
         passcodeArea.style.display = 'none';
-        biometricRow.style.display = 'none';
         localStorage.removeItem(LOCK_ENABLED_KEY);
         localStorage.removeItem(LOCK_PASSCODE_KEY);
         showToastMsg('🔓 パスコードロックを解除しました');
