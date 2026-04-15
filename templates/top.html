@@ -157,6 +157,38 @@
 }
 .icon-setting-row:active { background: #e8f0fe; }
 .icon-setting-arrow { margin-left: auto; color: #80868b; }
+
+/* ロック設定 */
+.lock-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
+    margin-bottom: 8px;
+}
+.lock-toggle-label { font-size: 0.88rem; font-weight: 600; color: #202124; display: flex; align-items: center; gap: 8px; }
+.lock-toggle-label .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
+.toggle-switch {
+    position: relative; width: 44px; height: 24px; cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s;
+}
+.toggle-slider:before {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #1a73e8; }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+.passcode-input-row {
+    display: flex; gap: 8px; margin-top: 10px; justify-content: center;
+}
+.passcode-digit {
+    width: 44px; height: 54px; border: 2px solid #e0e0e0; border-radius: 10px;
+    font-size: 1.4rem; font-weight: 800; text-align: center;
+    color: #202124; background: #fff; -webkit-appearance: none;
+    transition: border-color 0.15s;
+}
+.passcode-digit:focus { outline: none; border-color: #1a73e8; }
 </style>
 {% endblock %}
 
@@ -314,6 +346,52 @@
                     <div style="font-size:0.75rem;color:#5f6368;">タップしてアイコンを変更</div>
                 </div>
                 <span class="material-symbols-outlined icon-setting-arrow">chevron_right</span>
+            </div>
+        </div>
+
+        <!-- ロック設定 -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">lock</span>
+                アプリロック
+            </div>
+            <!-- パスコード -->
+            <div class="lock-toggle-row">
+                <div class="lock-toggle-label">
+                    <span class="material-symbols-outlined">pin</span>
+                    パスコードロック
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="passcode-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div id="passcode-setting-area" style="display:none;padding:10px 4px 4px;">
+                <div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;text-align:center;">4桁のパスコードを設定してください</div>
+                <div class="passcode-input-row">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc0">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc1">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc2">
+                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc3">
+                </div>
+                <button id="save-passcode-btn" style="width:100%;margin-top:12px;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.88rem;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">save</span>
+                    パスコードを保存
+                </button>
+            </div>
+            <!-- 顔認証・指紋認証 -->
+            <div class="lock-toggle-row" id="biometric-row" style="display:none;">
+                <div class="lock-toggle-label">
+                    <span class="material-symbols-outlined">face</span>
+                    顔認証 / 指紋認証（Face ID / Touch ID）
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="biometric-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div id="biometric-unsupported" style="display:none;font-size:0.75rem;color:#80868b;padding:6px 4px;">
+                ※ このデバイスは生体認証に対応していません
             </div>
         </div>
 
@@ -707,7 +785,99 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
     }
 });
 
-// 更新履歴クリック
+// ========== アプリロック設定 ==========
+var LOCK_PASSCODE_KEY = 'tasukaru_passcode';
+var LOCK_ENABLED_KEY  = 'tasukaru_lock_enabled';
+var BIOMETRIC_KEY     = 'tasukaru_biometric_enabled';
+
+// パスコードトグル
+var passcodeToggle = document.getElementById('passcode-toggle');
+var passcodeArea   = document.getElementById('passcode-setting-area');
+var biometricRow   = document.getElementById('biometric-row');
+var biometricToggle = document.getElementById('biometric-toggle');
+var biometricUnsupported = document.getElementById('biometric-unsupported');
+
+// 保存済み設定を読み込む
+if (localStorage.getItem(LOCK_ENABLED_KEY) === '1') {
+    passcodeToggle.checked = true;
+    passcodeArea.style.display = 'block';
+    biometricRow.style.display = 'flex';
+}
+if (localStorage.getItem(BIOMETRIC_KEY) === '1') {
+    biometricToggle.checked = true;
+}
+
+passcodeToggle.addEventListener('change', function() {
+    if (this.checked) {
+        passcodeArea.style.display = 'block';
+        biometricRow.style.display = 'flex';
+        checkBiometricSupport();
+    } else {
+        passcodeArea.style.display = 'none';
+        biometricRow.style.display = 'none';
+        localStorage.removeItem(LOCK_ENABLED_KEY);
+        localStorage.removeItem(LOCK_PASSCODE_KEY);
+        localStorage.removeItem(BIOMETRIC_KEY);
+        biometricToggle.checked = false;
+        showToastMsg('🔓 パスコードロックを解除しました');
+    }
+});
+
+// 4桁入力→次へ自動フォーカス
+for (var i = 0; i < 4; i++) {
+    (function(idx) {
+        var el = document.getElementById('pc' + idx);
+        el.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '').slice(-1);
+            if (this.value && idx < 3) document.getElementById('pc' + (idx+1)).focus();
+        });
+        el.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && !this.value && idx > 0) {
+                document.getElementById('pc' + (idx-1)).focus();
+            }
+        });
+    })(i);
+}
+
+// パスコード保存
+document.getElementById('save-passcode-btn').addEventListener('click', function() {
+    var code = ['pc0','pc1','pc2','pc3'].map(function(id) { return document.getElementById(id).value; }).join('');
+    if (code.length !== 4) { alert('4桁を入力してください'); return; }
+    localStorage.setItem(LOCK_PASSCODE_KEY, btoa(code)); // base64で保存
+    localStorage.setItem(LOCK_ENABLED_KEY, '1');
+    ['pc0','pc1','pc2','pc3'].forEach(function(id) { document.getElementById(id).value = ''; });
+    showToastMsg('🔒 パスコードを設定しました');
+});
+
+// 顔認証・指紋認証対応チェック
+async function checkBiometricSupport() {
+    if (window.PublicKeyCredential &&
+        await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
+        biometricRow.style.display = 'flex';
+    } else {
+        biometricRow.style.display = 'none';
+        biometricUnsupported.style.display = 'block';
+    }
+}
+
+biometricToggle.addEventListener('change', function() {
+    localStorage.setItem(BIOMETRIC_KEY, this.checked ? '1' : '0');
+    if (this.checked) {
+        showToastMsg('🔐 顔認証 / 指紋認証を有効にしました');
+    } else {
+        showToastMsg('顔認証 / 指紋認証を無効にしました');
+    }
+});
+
+function showToastMsg(msg) {
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.remove(); }, 2500);
+}
+
+// ========== 更新履歴クリック
 function bindHistoryClicks() {
     document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
         el.addEventListener('click', function() {

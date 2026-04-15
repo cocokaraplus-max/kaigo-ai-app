@@ -10,6 +10,11 @@ import json
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
 
+# セッション永続化設定（デプロイしてもログインが切れないように）
+app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(days=365)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
@@ -424,6 +429,7 @@ def login():
                                 error = "パスワードが違います。"
                             else:
                                 my_name = "管理者" if is_admin else matched_staff["staff_name"]
+                                session.permanent = True  # 365日間セッション維持
                                 session["f_code"] = f_code
                                 session["my_name"] = my_name
                                 session["saved_f_code"] = f_code

@@ -808,5 +808,145 @@ if (navigator.onLine) {
     setTimeout(cachePatients, 3000);
 }
 </script>
+
+<!-- ========== アプリロック画面 ========== -->
+<div id="app-lock-screen" style="display:none;position:fixed;inset:0;background:#1a73e8;z-index:99999;
+    flex-direction:column;align-items:center;justify-content:center;color:#fff;">
+    <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+    <div style="font-size:1.1rem;font-weight:800;margin-bottom:8px;">TASUKARUにアクセス</div>
+    <div style="font-size:0.85rem;opacity:0.8;margin-bottom:32px;" id="lock-msg">パスコードを入力してください</div>
+    <div style="display:flex;gap:12px;margin-bottom:24px;" id="lock-dots">
+        <div style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.3);" id="ld0"></div>
+        <div style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.3);" id="ld1"></div>
+        <div style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.3);" id="ld2"></div>
+        <div style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.3);" id="ld3"></div>
+    </div>
+    <!-- 数字パッド -->
+    <div style="display:grid;grid-template-columns:repeat(3,72px);gap:12px;margin-bottom:16px;" id="lock-numpad">
+        <button onclick="lockInput('1')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">1</button>
+        <button onclick="lockInput('2')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">2</button>
+        <button onclick="lockInput('3')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">3</button>
+        <button onclick="lockInput('4')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">4</button>
+        <button onclick="lockInput('5')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">5</button>
+        <button onclick="lockInput('6')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">6</button>
+        <button onclick="lockInput('7')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">7</button>
+        <button onclick="lockInput('8')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">8</button>
+        <button onclick="lockInput('9')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">9</button>
+        <div></div>
+        <button onclick="lockInput('0')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">0</button>
+        <button onclick="lockDelete()" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:1.1rem;cursor:pointer;">⌫</button>
+    </div>
+    <button id="biometric-btn" onclick="tryBiometric()" style="display:none;margin-top:8px;background:rgba(255,255,255,0.15);border:none;color:#fff;padding:12px 24px;border-radius:20px;font-size:0.88rem;font-weight:700;cursor:pointer;">
+        <span style="font-size:20px;vertical-align:middle;">🔐</span> 顔認証 / 指紋認証
+    </button>
+</div>
+
+<script>
+(function() {
+    var LOCK_PASSCODE_KEY = 'tasukaru_passcode';
+    var LOCK_ENABLED_KEY  = 'tasukaru_lock_enabled';
+    var BIOMETRIC_KEY     = 'tasukaru_biometric_enabled';
+    var lockInput_val = '';
+
+    function showLock() {
+        var screen = document.getElementById('app-lock-screen');
+        screen.style.display = 'flex';
+        lockInput_val = '';
+        updateDots();
+        // 顔認証ボタンを表示するか
+        if (localStorage.getItem(BIOMETRIC_KEY) === '1') {
+            document.getElementById('biometric-btn').style.display = 'block';
+            setTimeout(tryBiometric, 500); // 自動で顔認証を試みる
+        }
+    }
+
+    function hideLock() {
+        document.getElementById('app-lock-screen').style.display = 'none';
+    }
+
+    function updateDots() {
+        for (var i = 0; i < 4; i++) {
+            var dot = document.getElementById('ld' + i);
+            dot.style.background = i < lockInput_val.length
+                ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.3)';
+        }
+    }
+
+    window.lockInput = function(digit) {
+        if (lockInput_val.length >= 4) return;
+        lockInput_val += digit;
+        updateDots();
+        if (lockInput_val.length === 4) {
+            setTimeout(checkPasscode, 100);
+        }
+    };
+
+    window.lockDelete = function() {
+        lockInput_val = lockInput_val.slice(0, -1);
+        updateDots();
+    };
+
+    function checkPasscode() {
+        var saved = localStorage.getItem(LOCK_PASSCODE_KEY);
+        if (saved && atob(saved) === lockInput_val) {
+            hideLock();
+        } else {
+            document.getElementById('lock-msg').textContent = '❌ パスコードが違います';
+            lockInput_val = '';
+            updateDots();
+            setTimeout(function() {
+                document.getElementById('lock-msg').textContent = 'パスコードを入力してください';
+            }, 1500);
+        }
+    }
+
+    window.tryBiometric = async function() {
+        try {
+            var result = await navigator.credentials.get({
+                publicKey: {
+                    challenge: new Uint8Array(32),
+                    timeout: 60000,
+                    userVerification: 'required',
+                    rpId: location.hostname,
+                }
+            }).catch(function() { return null; });
+            // WebAuthn登録済みなら認証、なければシンプルなplatform認証にフォールバック
+            if (result) {
+                hideLock();
+                return;
+            }
+        } catch(e) {}
+        // フォールバック: credential管理APIでplatform認証
+        try {
+            if (window.PublicKeyCredential) {
+                var ok = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+                if (ok) {
+                    // iOSのFace ID/Touch IDはpasskeyの登録が必要なため、
+                    // パスコードフォールバックを案内
+                    document.getElementById('lock-msg').textContent = 'パスコードでロック解除してください';
+                }
+            }
+        } catch(e) {}
+    };
+
+    // ページ表示時にロックチェック
+    function checkLock() {
+        if (localStorage.getItem(LOCK_ENABLED_KEY) === '1' &&
+            localStorage.getItem(LOCK_PASSCODE_KEY)) {
+            showLock();
+        }
+    }
+
+    // 初回表示
+    checkLock();
+
+    // バックグラウンドから戻ったときも再ロック
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            checkLock();
+        }
+    });
+})();
+</script>
 </body>
 </html>
