@@ -25,7 +25,9 @@
 9. sw.jsを修正したら**CACHE_VERSION**を上げる（現在v4）
 10. カメラモーダルは**body直下**に移動する
 11. **ZIPで書き出し**か**Pythonスクリプト**で修正を指示する
-12. TOPページの自動更新関数（checkNewRecords等）は**IIFEの外**に定義する
+12. TOPページの自動更新関数（checkNewRecords等）は**IIFEの内側**に定義する（※重要：外に定義するとSPA遷移時にエラー）
+13. モーダル・ドロワーを開くときは**ボトムナビを非表示**にする（`hideBottomNav()`/`showBottomNav()`）
+14. `fetch`でPOSTする場合は`X-Requested-With: XMLHttpRequest`ヘッダーを付け、サーバーはJSONで返す
 
 ---
 
@@ -50,6 +52,31 @@ gcloud run deploy tasukaru --source . --region asia-northeast1 --platform manage
 
 ---
 
+## 環境変数（重要）
+
+| キー | 説明 | 注意 |
+|------|------|------|
+| `SECRET_KEY` | Flaskセッション暗号化キー | **絶対に変えない**・変えるとログアウトされる |
+| `SUPABASE_URL` | SupabaseプロジェクトURL | |
+| `SUPABASE_KEY` | Supabase anon key | |
+| `GEMINI_API_KEY` | Gemini AI APIキー | |
+| `SENDGRID_API_KEY` | メール送信APIキー | |
+| `SENDGRID_FROM_EMAIL` | 送信元メールアドレス | |
+| `DEV_PASSWORD` | 開発者MENUパスワード | デフォルト:tasukaru-dev-2024 |
+
+### SECRET_KEY固定コマンド（初回のみ）
+```bash
+gcloud run services update tasukaru-dev \
+  --update-env-vars SECRET_KEY=tasukaru-fixed-2024-cocokaraplus \
+  --region asia-northeast1
+
+gcloud run services update tasukaru \
+  --update-env-vars SECRET_KEY=tasukaru-fixed-2024-cocokaraplus \
+  --region asia-northeast1
+```
+
+---
+
 ## パスワード管理
 
 | 種類 | 場所 | 形式 |
@@ -70,6 +97,7 @@ gcloud run deploy tasukaru --source . --region asia-northeast1 --platform manage
 - `assessments`テーブルに`audio_url`カラムあり（音声保存用）
 - Storageバケット：`case-photos`（写真）、`assessment-audio`（評価音声）
 - `records`テーブルに**`record_date`カラムは存在しない**（insertに含めるとエラー）
+- `admin_settings`の`board_editors`キー：掲示板編集権限を持つ職員名のJSON配列
 
 ### 取説（manual.html）使用画像
 ```
@@ -93,14 +121,15 @@ board_reads      -- 既読管理
 
 ```
 kaigo-ai-app/
-├── app.py（Flask メイン・全ルーティング・全API 約3100行）
+├── app.py（Flask メイン・全ルーティング・全API 約3200行）
 ├── utils.py（Gemini AI・Supabase画像/音声アップロード）
 ├── templates/
-│   ├── base.html（SPAルーター・ボトムナビ・PWA・カメラ修正済み）
-│   ├── board.html（掲示板ページ 約1060行）
+│   ├── base.html（SPAルーター・ボトムナビ・PWA・アプリロック画面）
+│   ├── board.html（掲示板ページ・Realtime対応・権限制御済み）
+│   ├── admin.html（管理者MENU・掲示板編集権限設定UI追加済み）
 │   ├── manual.html（取説 Ver.3.0）
-│   ├── top.html（歯車ボタン・ユーザー設定・履歴自動更新）
-│   ├── input.html（記録入力・fetch保存・redirect:manual対応）
+│   ├── top.html（歯車ボタン・ユーザー設定・パスコードロック・履歴自動更新）
+│   ├── input.html（記録入力・fetch JSON対応・長文保存対応）
 │   ├── chat_room.html（Realtime対応・送信音付き）
 │   ├── chat_rooms.html（試聴ボタン付きサウンド設定）
 │   ├── assessment.html（録音モードCSS・音声保存再生）
@@ -114,49 +143,71 @@ kaigo-ai-app/
 
 ## 完了した全作業
 
-### ✅ 2026-04-15 更新履歴バグ修正・自動更新追加
+### ✅ 2026-04-15 大規模バグ修正・機能追加セッション
 
-**問題の経緯：**
-- TOPページの更新履歴に先の日付を指定した記録が常に先頭に表示される問題があった
-- 原因：`input_view`で`created_at`に指定日付を入れていたため
+#### 記録入力（input.html / app.py）
+- **長文保存エラーを修正**：fetchでPOSTするとサーバーの302リダイレクトを失敗と判定していた
+  - `X-Requested-With: XMLHttpRequest`ヘッダーを追加
+  - サーバー側をJSON応答に変更（`{"status":"success","redirect":"/daily_view?..."}`）
+- `created_at`を常に現在日時に固定（記録日付を別途`record_date`に入れるとエラーになるため）
+- `records`テーブルに存在しない`record_date`カラムへのinsertを削除
 
-**修正内容：**
-1. `app.py` / `input_view`：`created_at`を常に現在日時（`datetime.now(tokyo_tz).isoformat()`）に固定
-2. `app.py` / `input_view`：`records`テーブルに存在しない`record_date`カラムへのinsertを削除（これがinsert失敗の原因だった）
-3. `app.py` / `top`ルート：SELECTから`record_date`を除外（存在しないカラムでエラーになり履歴が0件になっていた）
-4. `app.py` / `top`ルート：ソートを`created_at`降順から`id`降順に変更（入力順に並ぶ）
-5. `templates/input.html`：`fetch`に`redirect: 'manual'`を追加し、`res.type === 'opaqueredirect'`で保存成功を正確に判定
-6. `templates/top.html`：`checkNewRecords`関数を追加（30秒ごとに差分チェックして更新があれば履歴リストを自動更新）
+#### TOPページ（top.html）
+- **更新履歴の自動更新**：10秒ポーリングで差分チェック→自動リフレッシュ
+- **履歴クリック**：`bindHistoryClicks()`関数化し自動更新後も再バインド
+- **重要な修正**：`checkNewRecords`をIIFEの**内側**に正しく配置（外に出すと`<script>`タグが二重になりJS全体が壊れる）
+- **パスコードロック機能追加**（歯車 → アプリロック）
+  - 4桁パスコード設定・ローカルストレージに保存
+  - アプリ起動・バックグラウンドから復帰時にロック画面表示
+  - 生体認証（Face ID）はWebブラウザでは正しく実装できないため廃止（PWAでホーム画面追加するとiOSがFace IDを自動適用）
+- 設定モーダル・アイコンモーダル開閉時にボトムナビを非表示
 
-**重要な教訓：**
-- `records`テーブルに`record_date`カラムは**存在しない** → insertに含めると保存失敗
-- TOPページの自動更新関数はIIFEの**外**に定義する必要がある
-- `fetch`でPOSTしてサーバーがリダイレクトを返すと`res.ok=true`になるが保存失敗していることがある → `redirect: 'manual'`で正確に判定
+#### 掲示板（board.html / app.py）
+- **Realtime改善**：DELETE投稿も検知・自動リロード
+- **コメントドロワー**：開閉時にボトムナビを非表示（アイコンフワフワ問題解消）
+- **投稿モーダル**：開閉時にボトムナビを非表示
+- **コメント数バッジ**：コメントを開いたら即消去（querySelectorAllで全一致）
+- **未読バッジ（ボトムナビ）**：掲示板SPA遷移時に即クリア（navigateTo内に追加）
+- **掲示板編集・削除権限の設計変更**：
+  - 旧：`is_admin`（管理者フラグ）または自分の投稿
+  - 新：**自分の投稿** OR **管理者MENUで権限付与された職員**のみ
+  - `admin_settings`テーブルの`board_editors`キーにJSON配列で管理
+  - `/api/board/set_editors` APIを新規追加
+  - `admin.html`のスタッフ管理タブにペンアイコンのトグルを追加
 
-### ✅ Supabase Realtimeによるトーク即時受信
-### ✅ 評価ページに音声保存・再生機能
-### ✅ TOPページにユーザー設定（歯車ボタン）
-### ✅ トーク送信音追加・サウンド試聴ボタン
-### ✅ バイタル画面の複数バグ修正
-### ✅ カメラボタンSPA遷移バグ修正
-### ✅ 通知許可ポップアップ（base.html）
-### ✅ 取説（manual.html）Ver.3.0 リニューアル
-### ✅ 掲示板機能追加（board.html）
+#### ベース（base.html）
+- **アプリロック画面**追加：テンキーUIでパスコード入力
+- **ボトムナビのz-index問題**：モーダル開閉時に`display:none`で制御（z-index調整は副作用が多いため廃止）
+
+#### ログイン永続化（app.py）
+- `session.permanent = True`（365日間セッション維持）
+- `PERMANENT_SESSION_LIFETIME = timedelta(days=365)`
+- `SESSION_COOKIE_SECURE = True`
+- **SECRET_KEYを環境変数で固定**（これをしないとデプロイごとにログアウトされる）
+
+### ✅ 2026-04-15（以前）更新履歴バグ修正
+- TOPページ更新履歴ソートを`id`降順に変更
+- Supabase Realtimeによるトーク即時受信
+- 評価ページに音声保存・再生機能
+- TOPページにユーザー設定（歯車ボタン）
+- トーク送信音追加・サウンド試聴ボタン
+- バイタル画面の複数バグ修正
+- カメラボタンSPA遷移バグ修正
+- 通知許可ポップアップ（base.html）
+- 取説（manual.html）Ver.3.0 リニューアル
+- 掲示板機能追加（board.html）
 
 ---
 
 ## PENDING（未完了・次回対応）
 
 ### 🔴 最優先
-- [ ] **cloudrun-devのtop.html自動更新を本番（cloudrun）にマージ**
-  - `checkNewRecords`関数がIIFEの外に定義済み（cloudrun-devのみ）
-  - 本番はまだ古い状態
-- [ ] **掲示板にも同様の自動更新を追加**（cloudrun-devで対応予定）
+- [ ] 本番（cloudrun）の`SECRET_KEY`固定（`gcloud run services update tasukaru --update-env-vars SECRET_KEY=tasukaru-fixed-2024-cocokaraplus --region asia-northeast1`）
 
 ### 🟡 機能追加
+- [ ] 掲示板の`is_private`投稿をapp.pyでフィルタリング（メンション外の人に非表示）
 - [ ] メニュー並び順カスタマイズ（ユーザー設定から）
 - [ ] アップデートログ表示（TOPの歯車横にベルアイコン）
-- [ ] 掲示板の`is_private`投稿をapp.pyでフィルタリング（メンション外の人に非表示）
 
 ### 🟢 軽微
 - [ ] 「たすかる」音声（mp3ファイルが必要）
@@ -178,6 +229,9 @@ kaigo-ai-app/
 | ターミナルが止まる | ヒアドキュメント`<< 'EOF'`が入力待ち | `Ctrl+C`で抜ける |
 | Python -cコマンドが文字化け | 日本語コメントがUTF-8エラー | 日本語コメントなしのスクリプトファイルを使う |
 | スクリプトファイルが開けない | パスにスペース（`ZIMAX 1`） | `~/Downloads/`に置いて`python3 ~/Downloads/xxx.py`で実行 |
+| デプロイ後にログアウトされる | SECRET_KEYが未固定 | `gcloud run services update`で固定する |
+| モーダルの下にナビが見える | ボトムナビのz-index問題 | モーダル開閉時に`hideBottomNav()`/`showBottomNav()`を呼ぶ |
+| 保存ボタンを押しても失敗する | fetchのリダイレクト判定ミス | `X-Requested-With`ヘッダーを追加・サーバーをJSON返却に変更 |
 
 ---
 
@@ -195,4 +249,4 @@ https://tasukaru-...run.app
 
 ---
 
-*最終更新：2026-04-15（更新履歴バグ修正・自動更新追加）*
+*最終更新：2026-04-15（大規模バグ修正・掲示板権限・パスコードロック・ログイン永続化）*

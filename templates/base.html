@@ -896,7 +896,7 @@ if (navigator.onLine) {
 
 
 
-    // ページ表示時にロックチェック
+    // ロックチェック
     function checkLock() {
         if (localStorage.getItem(LOCK_ENABLED_KEY) === '1' &&
             localStorage.getItem(LOCK_PASSCODE_KEY)) {
@@ -904,13 +904,25 @@ if (navigator.onLine) {
         }
     }
 
-    // 初回表示
-    checkLock();
+    // 初回表示のみロック（SPA遷移では発動しない）
+    var _initialLoad = true;
+    if (_initialLoad) {
+        _initialLoad = false;
+        checkLock();
+    }
 
-    // バックグラウンドから戻ったときも再ロック
+    // バックグラウンドから戻ったときだけ再ロック
+    // （SPA遷移はvisibilitychangeを発生させないので問題なし）
+    var _hiddenAt = null;
     document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            checkLock();
+        if (document.visibilityState === 'hidden') {
+            _hiddenAt = Date.now();
+        } else if (document.visibilityState === 'visible') {
+            // 3秒以上バックグラウンドにいた場合のみ再ロック
+            if (_hiddenAt && (Date.now() - _hiddenAt) > 3000) {
+                checkLock();
+            }
+            _hiddenAt = null;
         }
     });
 })();
