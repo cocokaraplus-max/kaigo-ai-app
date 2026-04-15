@@ -896,7 +896,7 @@ if (navigator.onLine) {
 
 
 
-    // ロックチェック
+    // ロックチェック・初回のみ実行（window変数でグローバル管理）
     function checkLock() {
         if (localStorage.getItem(LOCK_ENABLED_KEY) === '1' &&
             localStorage.getItem(LOCK_PASSCODE_KEY)) {
@@ -904,27 +904,26 @@ if (navigator.onLine) {
         }
     }
 
-    // 初回表示のみロック（SPA遷移では発動しない）
-    var _initialLoad = true;
-    if (_initialLoad) {
-        _initialLoad = false;
-        checkLock();
-    }
+    // window.__lockInitialized でページ全体で一度だけ初期化
+    if (!window.__lockInitialized) {
+        window.__lockInitialized = true;
 
-    // バックグラウンドから戻ったときだけ再ロック
-    // （SPA遷移はvisibilitychangeを発生させないので問題なし）
-    var _hiddenAt = null;
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'hidden') {
-            _hiddenAt = Date.now();
-        } else if (document.visibilityState === 'visible') {
-            // 3秒以上バックグラウンドにいた場合のみ再ロック
-            if (_hiddenAt && (Date.now() - _hiddenAt) > 3000) {
-                checkLock();
+        // 初回表示時のみロック
+        checkLock();
+
+        // バックグラウンドから3秒以上経って戻ったときだけ再ロック
+        var _hiddenAt = null;
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                _hiddenAt = Date.now();
+            } else if (document.visibilityState === 'visible') {
+                if (_hiddenAt && (Date.now() - _hiddenAt) > 3000) {
+                    checkLock();
+                }
+                _hiddenAt = null;
             }
-            _hiddenAt = null;
-        }
-    });
+        });
+    }
 })();
 </script>
 </body>
