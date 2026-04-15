@@ -579,6 +579,15 @@
 <hr class="divider">
 {% endif %}
 
+<!-- 期限タスクセクション -->
+<div class="history-section" id="urgent-tasks-section" style="display:none;">
+    <div class="section-title">
+        <span class="material-symbols-outlined" style="color:#ea4335;">task_alt</span>
+        期限が近いタスク
+    </div>
+    <div class="history-list" id="urgent-tasks-list"></div>
+</div>
+
 <div class="history-section">
     <div class="section-title">
         <span class="material-symbols-outlined">history</span>
@@ -1163,6 +1172,30 @@ async function checkNewRecords() {
 }
 setInterval(checkNewRecords, 10000);
 checkNewRecords();
+
+// ===== 期限タスク読み込み =====
+async function loadUrgentTasks() {
+    try {
+        var res = await fetch('/api/tasks/urgent');
+        var data = await res.json();
+        var tasks = data.tasks || [];
+        var section = document.getElementById('urgent-tasks-section');
+        var list = document.getElementById('urgent-tasks-list');
+        if (!tasks.length) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        list.innerHTML = tasks.map(function(t) {
+            var diffText = t.due_diff === 0 ? '今日' : t.due_diff < 0 ? Math.abs(t.due_diff) + '日超過' : t.due_diff + '日後';
+            var urgent = t.due_diff <= 1;
+            return '<div class="history-item" onclick="window.location.href='/tasks'" style="' + (urgent ? 'border-left:3px solid #ea4335;' : '') + '">' +
+                '<span style="font-size:16px;">' + t.priority_icon + '</span>' +
+                '<span class="history-item-name">' + t.title + '</span>' +
+                '<span class="history-item-time" style="' + (urgent ? 'color:#ea4335;font-weight:700;' : '') + '">' + diffText + '</span>' +
+                '</div>';
+        }).join('');
+    } catch(e) {}
+}
+loadUrgentTasks();
+setInterval(loadUrgentTasks, 60000);
 
 })();
 </script>

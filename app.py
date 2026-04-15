@@ -10,11 +10,6 @@ import json
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
 
-# セッション永続化設定（デプロイしてもログインが切れないように）
-app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(days=365)
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
 # ==========================================
@@ -429,7 +424,6 @@ def login():
                                 error = "パスワードが違います。"
                             else:
                                 my_name = "管理者" if is_admin else matched_staff["staff_name"]
-                                session.permanent = True  # 365日間セッション維持
                                 session["f_code"] = f_code
                                 session["my_name"] = my_name
                                 session["saved_f_code"] = f_code
@@ -2229,15 +2223,6 @@ def admin():
             registered_staffs = res_rs.data
         except: pass
 
-    board_editors = []
-    if authenticated:
-        try:
-            import json as _json
-            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
-            if res_be.data:
-                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
-        except: pass
-
     claude_url = session.pop("claude_url", None)
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
@@ -2252,8 +2237,7 @@ def admin():
         error=None,
         claude_url=claude_url,
         registered_staffs=registered_staffs,
-        f_code=f_code,
-        board_editors=board_editors,
+        f_code=f_code
     )
 
 # ==========================================
@@ -2877,15 +2861,6 @@ def board():
     except Exception as e:
         print(f"board detail error: {e}")
     staffs = [name for name in icons.keys()]
-    # 掲示板編集権限を持つ職員リストを取得
-    board_editors = []
-    try:
-        res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
-        if res_be.data:
-            import json as _json
-            board_editors = _json.loads(res_be.data[0]["value"] or "[]")
-    except: pass
-    is_board_editor = my_name in board_editors
     return render("board.html",
         posts=posts, icons=icons, my_name=my_name,
         my_color=staff_color(my_name), my_initial=staff_initial(my_name),
@@ -2893,8 +2868,6 @@ def board():
         read_data=read_data, staffs=staffs,
         supabase_url=get_secret("SUPABASE_URL"),
         supabase_anon_key=get_secret("SUPABASE_KEY"),
-        is_board_editor=is_board_editor,
-        board_editors=board_editors,
     )
 
 @app.route("/api/board/create_post", methods=["POST"])
@@ -2935,20 +2908,13 @@ def api_board_update_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
         supabase = get_supabase()
-        import json as _json
-        board_editors = []
-        try:
-            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
-            if res_be.data:
-                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
-        except: pass
-        is_board_editor = my_name in board_editors
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error", "message": "見つかりません"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        if not is_board_editor and p["staff_name"] != my_name:
+        if not is_admin and p["staff_name"] != my_name:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_posts").update({
             "content": data.get("content", ""),
@@ -2965,20 +2931,13 @@ def api_board_delete_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
         supabase = get_supabase()
-        import json as _json
-        board_editors = []
-        try:
-            res_be = supabase.table("admin_settings").select("value").eq("key", "board_editors").eq("facility_code", f_code).execute()
-            if res_be.data:
-                board_editors = _json.loads(res_be.data[0]["value"] or "[]")
-        except: pass
-        is_board_editor = my_name in board_editors
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        if not is_board_editor and p["staff_name"] != my_name: return jsonify({"status": "error", "message": "権限がありません"}), 403
+        if not is_admin and p["staff_name"] != my_name: return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_posts").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -2998,28 +2957,6 @@ def api_board_pin_post():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
-
-@app.route("/api/board/set_editors", methods=["POST"])
-@login_required
-def api_board_set_editors():
-    """掲示板編集権限の職員リストを更新（管理者のみ）"""
-    try:
-        f_code = session["f_code"]
-        my_name = session["my_name"]
-        if not session.get("admin_authenticated", False):
-            return jsonify({"status": "error", "message": "管理者権限が必要です"}), 403
-        import json as _json
-        data = request.json
-        editors = data.get("editors", [])
-        supabase = get_supabase()
-        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "board_editors").execute()
-        if existing.data:
-            supabase.table("admin_settings").update({"value": _json.dumps(editors, ensure_ascii=False)}).eq("facility_code", f_code).eq("key", "board_editors").execute()
-        else:
-            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "board_editors", "value": _json.dumps(editors, ensure_ascii=False)}).execute()
-        return jsonify({"status": "success", "editors": editors})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/board/get_comments")
 @login_required
@@ -3126,6 +3063,259 @@ def api_board_unread_count():
         return jsonify({"count": len([i for i in all_ids if i not in read_ids])})
     except Exception as e:
         return jsonify({"count": 0})
+
+
+# ==========================================
+# タスク管理
+# ==========================================
+
+@app.route('/tasks')
+@login_required
+def tasks():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    staffs = []
+    try:
+        res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
+        staffs = [r["staff_name"] for r in (res.data or [])]
+    except: pass
+    projects = []
+    try:
+        res = supabase.table("task_projects").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
+        projects = res.data or []
+    except: pass
+    return render("tasks.html",
+        my_name=my_name,
+        staffs=staffs,
+        projects=projects,
+        my_color=staff_color(my_name),
+        my_initial=staff_initial(my_name),
+    )
+
+@app.route("/api/tasks/list")
+@login_required
+def api_tasks_list():
+    """タスク一覧取得（自分が関わるタスク）"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        filter_type = request.args.get("filter", "all")  # all/assigned/created/project
+        project_id = request.args.get("project_id")
+
+        res = supabase.table("tasks").select("*").eq("facility_code", f_code).order("due_date").order("priority").execute()
+        tasks = res.data or []
+
+        # フィルタ
+        if filter_type == "assigned":
+            tasks = [t for t in tasks if my_name in (t.get("assigned_to") or [])]
+        elif filter_type == "created":
+            tasks = [t for t in tasks if t.get("created_by") == my_name]
+        elif filter_type == "project" and project_id:
+            tasks = [t for t in tasks if str(t.get("project_id")) == str(project_id)]
+        else:
+            # 自分が作成 or 自分がアサインされているもの
+            tasks = [t for t in tasks if
+                t.get("created_by") == my_name or
+                my_name in (t.get("assigned_to") or []) or
+                not t.get("assigned_to")  # 全体タスク
+            ]
+
+        # 期限の日本語変換・優先度ラベル
+        now_date = datetime.now(tokyo_tz).date()
+        priority_map = {"high": "🔴 高", "medium": "🟡 中", "low": "🟢 低"}
+        status_map = {"todo": "未着手", "in_progress": "進行中", "done": "完了"}
+
+        for t in tasks:
+            t["priority_label"] = priority_map.get(t.get("priority", "medium"), "🟡 中")
+            t["status_label"] = status_map.get(t.get("status", "todo"), "未着手")
+            t["is_mine"] = t.get("created_by") == my_name
+            t["is_assigned"] = my_name in (t.get("assigned_to") or [])
+            if t.get("due_date"):
+                try:
+                    due = datetime.strptime(str(t["due_date"]), "%Y-%m-%d").date()
+                    diff = (due - now_date).days
+                    t["due_label"] = str(t["due_date"])
+                    t["due_diff"] = diff
+                    t["due_urgent"] = diff <= 7 and t.get("status") != "done"
+                except: pass
+
+        return jsonify({"status": "success", "tasks": tasks})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/urgent")
+@login_required
+def api_tasks_urgent():
+    """TOPページ用：期限3日以内の自分のタスク"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        now_date = datetime.now(tokyo_tz).date()
+        limit_date = (now_date + timedelta(days=7)).isoformat()
+
+        res = supabase.table("tasks").select("id,title,due_date,priority,status,assigned_to").eq(
+            "facility_code", f_code
+        ).lte("due_date", limit_date).neq("status", "done").order("due_date").limit(5).execute()
+
+        tasks = []
+        priority_map = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        for t in (res.data or []):
+            assigned = t.get("assigned_to") or []
+            if my_name in assigned or not assigned:
+                due = datetime.strptime(str(t["due_date"]), "%Y-%m-%d").date()
+                diff = (due - now_date).days
+                tasks.append({
+                    "id": t["id"],
+                    "title": t["title"],
+                    "due_date": t["due_date"],
+                    "due_diff": diff,
+                    "priority_icon": priority_map.get(t.get("priority","medium"), "🟡"),
+                })
+        return jsonify({"status": "success", "tasks": tasks})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/create", methods=["POST"])
+@login_required
+def api_tasks_create():
+    """タスク作成"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        import json as _json
+
+        assigned_to = data.get("assigned_to", [])
+        # 全体タスクの場合は空配列
+        if data.get("assign_type") == "all":
+            assigned_to = []
+
+        insert_data = {
+            "facility_code": f_code,
+            "title": data.get("title", "").strip(),
+            "description": data.get("description", "").strip(),
+            "created_by": my_name,
+            "assigned_to": assigned_to,
+            "priority": data.get("priority", "medium"),
+            "status": "todo",
+        }
+        if data.get("due_date"):
+            insert_data["due_date"] = data["due_date"]
+        if data.get("project_id"):
+            insert_data["project_id"] = int(data["project_id"])
+
+        res = supabase.table("tasks").insert(insert_data).execute()
+        return jsonify({"status": "success", "task": res.data[0] if res.data else None})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/update", methods=["POST"])
+@login_required
+def api_tasks_update():
+    """タスク更新（ステータス・内容）"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        task_id = data.get("id")
+
+        # 権限チェック
+        task = supabase.table("tasks").select("created_by,assigned_to").eq("id", task_id).eq("facility_code", f_code).execute()
+        if not task.data:
+            return jsonify({"status": "error", "message": "タスクが見つかりません"}), 404
+        t = task.data[0]
+        assigned = t.get("assigned_to") or []
+        if t["created_by"] != my_name and my_name not in assigned:
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+
+        update_data = {"updated_at": datetime.now(tokyo_tz).isoformat()}
+        for field in ["title", "description", "priority", "status", "due_date", "assigned_to", "project_id"]:
+            if field in data:
+                update_data[field] = data[field]
+
+        supabase.table("tasks").update(update_data).eq("id", task_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/delete", methods=["POST"])
+@login_required
+def api_tasks_delete():
+    """タスク削除（作成者のみ）"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        task_id = data.get("id")
+
+        task = supabase.table("tasks").select("created_by").eq("id", task_id).eq("facility_code", f_code).execute()
+        if not task.data:
+            return jsonify({"status": "error"}), 404
+        if task.data[0]["created_by"] != my_name:
+            return jsonify({"status": "error", "message": "作成者のみ削除できます"}), 403
+
+        supabase.table("tasks").delete().eq("id", task_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/projects", methods=["GET"])
+@login_required
+def api_tasks_projects():
+    """プロジェクト一覧"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("task_projects").select("*").eq("facility_code", f_code).order("created_at", desc=True).execute()
+        return jsonify({"status": "success", "projects": res.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/projects/create", methods=["POST"])
+@login_required
+def api_tasks_projects_create():
+    """プロジェクト作成"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        res = supabase.table("task_projects").insert({
+            "facility_code": f_code,
+            "name": data.get("name", "").strip(),
+            "members": data.get("members", []),
+            "created_by": my_name,
+        }).execute()
+        return jsonify({"status": "success", "project": res.data[0] if res.data else None})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/tasks/projects/delete", methods=["POST"])
+@login_required
+def api_tasks_projects_delete():
+    """プロジェクト削除（作成者のみ）"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        project_id = data.get("id")
+        proj = supabase.table("task_projects").select("created_by").eq("id", project_id).eq("facility_code", f_code).execute()
+        if not proj.data:
+            return jsonify({"status": "error"}), 404
+        if proj.data[0]["created_by"] != my_name:
+            return jsonify({"status": "error", "message": "作成者のみ削除できます"}), 403
+        supabase.table("tasks").update({"project_id": None}).eq("project_id", project_id).execute()
+        supabase.table("task_projects").delete().eq("id", project_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
