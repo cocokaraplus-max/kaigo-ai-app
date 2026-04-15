@@ -379,19 +379,10 @@
                     パスコードを保存
                 </button>
             </div>
-            <!-- 顔認証・指紋認証 -->
-            <div class="lock-toggle-row" id="biometric-row" style="display:none;">
-                <div class="lock-toggle-label">
-                    <span class="material-symbols-outlined">face</span>
-                    顔認証 / 指紋認証（Face ID / Touch ID）
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="biometric-toggle">
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-            <div id="biometric-unsupported" style="display:none;font-size:0.75rem;color:#80868b;padding:6px 4px;">
-                ※ このデバイスは生体認証に対応していません
+            <!-- 顔認証・指紋認証の案内 -->
+            <div id="biometric-row" style="display:none;background:#f0f6ff;border-radius:10px;padding:10px 12px;font-size:0.78rem;color:#1557b0;line-height:1.6;">
+                <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">info</span>
+                iPhoneのホーム画面に追加（PWA）すると、次回起動時にFace IDが自動で起動します。
             </div>
         </div>
 
@@ -815,32 +806,24 @@ var BIOMETRIC_KEY     = 'tasukaru_biometric_enabled';
 // パスコードトグル
 var passcodeToggle = document.getElementById('passcode-toggle');
 var passcodeArea   = document.getElementById('passcode-setting-area');
-var biometricRow   = document.getElementById('biometric-row');
-var biometricToggle = document.getElementById('biometric-toggle');
-var biometricUnsupported = document.getElementById('biometric-unsupported');
+var biometricRow = document.getElementById('biometric-row');
 
 // 保存済み設定を読み込む
 if (localStorage.getItem(LOCK_ENABLED_KEY) === '1') {
     passcodeToggle.checked = true;
     passcodeArea.style.display = 'block';
-    biometricRow.style.display = 'flex';
-}
-if (localStorage.getItem(BIOMETRIC_KEY) === '1') {
-    biometricToggle.checked = true;
+    biometricRow.style.display = 'block';
 }
 
 passcodeToggle.addEventListener('change', function() {
     if (this.checked) {
         passcodeArea.style.display = 'block';
-        biometricRow.style.display = 'flex';
-        checkBiometricSupport();
+        biometricRow.style.display = 'block';
     } else {
         passcodeArea.style.display = 'none';
         biometricRow.style.display = 'none';
         localStorage.removeItem(LOCK_ENABLED_KEY);
         localStorage.removeItem(LOCK_PASSCODE_KEY);
-        localStorage.removeItem(BIOMETRIC_KEY);
-        biometricToggle.checked = false;
         showToastMsg('🔓 パスコードロックを解除しました');
     }
 });
@@ -871,25 +854,7 @@ document.getElementById('save-passcode-btn').addEventListener('click', function(
     showToastMsg('🔒 パスコードを設定しました');
 });
 
-// 顔認証・指紋認証対応チェック
-async function checkBiometricSupport() {
-    if (window.PublicKeyCredential &&
-        await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
-        biometricRow.style.display = 'flex';
-    } else {
-        biometricRow.style.display = 'none';
-        biometricUnsupported.style.display = 'block';
-    }
-}
 
-biometricToggle.addEventListener('change', function() {
-    localStorage.setItem(BIOMETRIC_KEY, this.checked ? '1' : '0');
-    if (this.checked) {
-        showToastMsg('🔐 顔認証 / 指紋認証を有効にしました');
-    } else {
-        showToastMsg('顔認証 / 指紋認証を無効にしました');
-    }
-});
 
 function showToastMsg(msg) {
     var t = document.createElement('div');

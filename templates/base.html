@@ -836,9 +836,7 @@ if (navigator.onLine) {
         <button onclick="lockInput('0')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">0</button>
         <button onclick="lockDelete()" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:1.1rem;cursor:pointer;">⌫</button>
     </div>
-    <button id="biometric-btn" onclick="tryBiometric()" style="display:none;margin-top:8px;background:rgba(255,255,255,0.15);border:none;color:#fff;padding:12px 24px;border-radius:20px;font-size:0.88rem;font-weight:700;cursor:pointer;">
-        <span style="font-size:20px;vertical-align:middle;">🔐</span> 顔認証 / 指紋認証
-    </button>
+
 </div>
 
 <script>
@@ -853,10 +851,7 @@ if (navigator.onLine) {
         screen.style.display = 'flex';
         lockInput_val = '';
         updateDots();
-        // 顔認証ボタンを表示するか（自動起動はしない・ボタンタップ時のみ）
-        if (localStorage.getItem(BIOMETRIC_KEY) === '1') {
-            document.getElementById('biometric-btn').style.display = 'block';
-        }
+
     }
 
     function hideLock() {
@@ -899,29 +894,7 @@ if (navigator.onLine) {
         }
     }
 
-    window.tryBiometric = async function() {
-        // iOSのFace ID / Touch ID / Android指紋認証を使う
-        // Web標準のCredential APIではなくUserActivationを利用したシンプルな方式
-        try {
-            if (!window.PublicKeyCredential) {
-                document.getElementById('lock-msg').textContent = 'このデバイスは生体認証に対応していません';
-                return;
-            }
-            var available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-            if (!available) {
-                document.getElementById('lock-msg').textContent = 'このデバイスは生体認証に対応していません';
-                return;
-            }
-            // iOSでは生体認証が利用可能な場合、パスコード入力を免除してロック解除
-            // （WebAuthnのパスキー登録は不要 — 端末の生体認証が通ればOKとする）
-            document.getElementById('lock-msg').textContent = '🔐 生体認証を確認中...';
-            // ユーザーアクティベーションが必要なため少し待つ
-            await new Promise(function(r) { setTimeout(r, 300); });
-            hideLock();
-        } catch(e) {
-            document.getElementById('lock-msg').textContent = 'パスコードを入力してください';
-        }
-    };
+
 
     // ページ表示時にロックチェック
     function checkLock() {
