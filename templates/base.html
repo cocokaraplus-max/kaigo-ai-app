@@ -155,6 +155,35 @@
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
+        /* ★ ナビ編集モード（プルプル並び替え）*/
+        @keyframes navWiggle {
+            0%,100% { transform: rotate(-2deg); }
+            50%      { transform: rotate(2deg); }
+        }
+        .bottom-nav.edit-mode .bottom-nav-item {
+            animation: navWiggle 0.25s infinite ease-in-out;
+            cursor: grab; touch-action: none;
+        }
+        .bottom-nav.edit-mode .bottom-nav-item.dragging {
+            animation: none; opacity: 0.5; transform: scale(1.1);
+        }
+        .bottom-nav.edit-mode .bottom-nav-item.drag-over {
+            background: #e8f0fe;
+        }
+        .nav-edit-bar {
+            display: none; position: fixed; top: 0; left: 0; right: 0;
+            background: #1a73e8; color: #fff; z-index: 9000;
+            padding: 12px 16px; justify-content: space-between; align-items: center;
+            font-size: 0.9rem; font-weight: 700;
+            padding-top: max(12px, env(safe-area-inset-top));
+        }
+        .nav-edit-bar.show { display: flex; }
+        .nav-edit-bar-done {
+            background: #fff; color: #1a73e8; border: none;
+            border-radius: 20px; padding: 6px 20px;
+            font-weight: 800; font-size: 0.88rem; cursor: pointer;
+        }
+
         /* ★ 2段表示モード */
         .bottom-nav.two-row {
             flex-wrap: wrap;
@@ -261,6 +290,12 @@
         </div>
     </div>
 </div>
+
+    <!-- ナビ編集完了バー -->
+    <div class="nav-edit-bar" id="nav-edit-bar">
+        <span>✏️ ドラッグでメニューを並び替え</span>
+        <button class="nav-edit-bar-done" id="nav-edit-done-btn">✅ 完了</button>
+    </div>
 
     {% if session.get('f_code') %}
     <div class="top-fab-area" id="top-fab-area">
@@ -873,10 +908,10 @@ applyNavMode();
     }
 })();
 
-// ===== 歯車・ベルボタンのイベントバインド =====
-// イベントはdocumentに委譲して確実に動作させる
+// ===== 歯車・ベル・並び替えボタンのイベント（全てdocument委譲）=====
 document.addEventListener('click', function(e) {
-    // ベルボタン
+
+    // ① ベルボタン → 更新ログモーダルを開く
     if (e.target.closest('#update-log-btn')) {
         var modal = document.getElementById('update-log-modal');
         if (!modal) return;
@@ -885,14 +920,27 @@ document.addEventListener('click', function(e) {
         modal.style.display = 'flex';
         return;
     }
-    // 歯車ボタン
+
+    // ② 歯車ボタン → 設定モーダルを開く
     if (e.target.closest('#settings-fab-btn')) {
-        if (typeof window.openSettings === 'function') {
-            window.openSettings();
-        }
+        if (typeof window.openSettings === 'function') window.openSettings();
         return;
     }
-    // ベルモーダルの閉じるボタン
+
+    // ③ 設定モーダルの閉じるボタン
+    if (e.target.closest('#settings-close-btn')) {
+        if (typeof window.closeSettings === 'function') window.closeSettings();
+        return;
+    }
+
+    // ④ 設定モーダルの背景タップで閉じる
+    var settingsModal = document.getElementById('user-settings-modal');
+    if (settingsModal && e.target === settingsModal) {
+        if (typeof window.closeSettings === 'function') window.closeSettings();
+        return;
+    }
+
+    // ⑤ ベルモーダルの閉じるボタン
     if (e.target.closest('#close-update-log-btn')) {
         var modal = document.getElementById('update-log-modal');
         if (modal) modal.style.display = 'none';
@@ -900,12 +948,26 @@ document.addEventListener('click', function(e) {
         if (nav) nav.style.display = '';
         return;
     }
-    // ベルモーダルの背景タップ
+
+    // ⑥ ベルモーダルの背景タップで閉じる
     var updateModal = document.getElementById('update-log-modal');
     if (updateModal && e.target === updateModal) {
         updateModal.style.display = 'none';
         var nav = document.querySelector('.bottom-nav');
         if (nav) nav.style.display = '';
+        return;
+    }
+
+    // ⑦ メニュー並び替えモードを開始
+    if (e.target.closest('#start-nav-edit-btn')) {
+        if (typeof window.startNavEditMode === 'function') window.startNavEditMode();
+        return;
+    }
+
+    // ⑧ メニュー並び替え完了
+    if (e.target.closest('#nav-edit-done-btn')) {
+        if (typeof window.stopNavEditMode === 'function') window.stopNavEditMode();
+        return;
     }
 });
 </script>
