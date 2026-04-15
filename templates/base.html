@@ -138,6 +138,19 @@
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
+        /* ★ 2段表示モード */
+        .bottom-nav.two-row {
+            flex-wrap: wrap;
+            overflow-x: hidden;
+            padding-bottom: max(100px, calc(env(safe-area-inset-bottom) + 80px));
+        }
+        .bottom-nav.two-row .bottom-nav-item {
+            flex: 0 0 25%;
+            max-width: 25%;
+            border-right: none;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
         .bottom-nav-item {
             display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 3px;
@@ -811,6 +824,20 @@ async function syncOfflineQueue() {
 if (navigator.onLine) {
     setTimeout(cachePatients, 3000);
 }
+
+// ===== ナビ表示モード適用 =====
+var NAV_MODE_KEY = 'tasukaru_nav_mode';
+function applyNavMode() {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var mode = localStorage.getItem(NAV_MODE_KEY) || 'scroll';
+    if (mode === 'two-row') {
+        nav.classList.add('two-row');
+    } else {
+        nav.classList.remove('two-row');
+    }
+}
+applyNavMode();
 </script>
 
 <!-- ========== アプリロック画面 ========== -->

@@ -355,6 +355,28 @@
             </div>
         </div>
 
+        <!-- ナビ表示モード -->
+        <div class="setting-section">
+            <div class="setting-section-label">
+                <span class="material-symbols-outlined">view_quilt</span>
+                メニュー表示モード
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button class="nav-mode-btn" data-mode="scroll" id="mode-btn-scroll"
+                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
+                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">view_agenda</span>
+                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">横スクロール</span>
+                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">←→ 1列で横にスクロール</div>
+                </button>
+                <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-row"
+                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
+                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">grid_view</span>
+                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">2段表示</span>
+                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">4列×2段で全部見える</div>
+                </button>
+            </div>
+        </div>
+
         <!-- ナビカスタマイズ -->
         <div class="setting-section">
             <div class="setting-section-label">
@@ -918,6 +940,36 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
 });
 
 // ========== ナビカスタマイズ ==========
+// ===== ナビ表示モード =====
+var NAV_MODE_KEY = 'tasukaru_nav_mode';
+
+function applyNavModeUI() {
+    var currentMode = localStorage.getItem(NAV_MODE_KEY) || 'scroll';
+    document.querySelectorAll('.nav-mode-btn').forEach(function(btn) {
+        var isActive = btn.dataset.mode === currentMode;
+        btn.style.borderColor = isActive ? '#1a73e8' : '#e0e0e0';
+        btn.style.background = isActive ? '#e8f0fe' : '#fff';
+    });
+}
+
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.nav-mode-btn');
+    if (!btn) return;
+    var mode = btn.dataset.mode;
+    localStorage.setItem(NAV_MODE_KEY, mode);
+    // ナビに即時反映
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) {
+        if (mode === 'two-row') {
+            nav.classList.add('two-row');
+        } else {
+            nav.classList.remove('two-row');
+        }
+    }
+    applyNavModeUI();
+    showToastMsg(mode === 'two-row' ? '2段表示に変更しました' : '横スクロールに変更しました');
+});
+
 var NAV_ORDER_KEY = 'tasukaru_nav_order';
 
 var ALL_NAV_ITEMS = [
@@ -1074,6 +1126,7 @@ var _origOpenSettings = openSettings;
 openSettings = function() {
     _origOpenSettings();
     renderNavSortGrid();
+    applyNavModeUI();
 };
 
 // ページ読み込み時に順序を適用
