@@ -55,19 +55,7 @@
 }
 .birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
 
-/* ★ 右上ボタンエリア */
-.top-fab-area {
-    position: fixed; top: 16px; right: 16px;
-    display: flex; gap: 8px; z-index: 500;
-}
-.settings-fab {
-    width: 40px; height: 40px; border-radius: 50%;
-    background: #f0f4ff; border: none; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    -webkit-tap-highlight-color: transparent; position: relative;
-}
-.settings-fab .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
+
 
 /* ★ ナビ並び替えグリッド */
 .nav-grid {
@@ -220,15 +208,7 @@
 
 {% block content %}
 
-<!-- ★ 右上ボタンエリア -->
-<div class="top-fab-area" id="top-fab-area">
-    <button class="settings-fab" id="update-log-btn">
-        <span class="material-symbols-outlined">notifications</span>
-    </button>
-    <button class="settings-fab" id="settings-fab-btn">
-        <span class="material-symbols-outlined">settings</span>
-    </button>
-</div>
+
 
 <div class="logo-area">
     <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
@@ -656,12 +636,6 @@ function applyFontSize(pct) {
 }
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
-
-// ★ top-fab-areaをbody直下に移動（page-wrapperのoverflow影響を回避）
-(function() {
-    var fab = document.getElementById('top-fab-area');
-    if (fab) document.body.appendChild(fab);
-})();
 
 // ===== 更新ログボタン =====
 var updateLogBtn = document.getElementById('update-log-btn');
