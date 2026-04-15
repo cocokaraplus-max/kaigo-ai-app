@@ -1,13 +1,6 @@
-// TASUKARU Service Worker - キャッシュ無効化バージョン
-const CACHE_VERSION = 'tasukaru-v6';
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
-const DATA_CACHE = `${CACHE_VERSION}-data`;
-
-self.addEventListener('install', e => { self.skipWaiting(); });
+// TASUKARU Service Worker v7 - 完全パススルー
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => {
-    e.waitUntil(
-        caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
-        .then(() => self.clients.claim())
-    );
+    e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-self.addEventListener('fetch', e => { e.respondWith(fetch(e.request)); });
+self.addEventListener('fetch', e => e.respondWith(fetch(e.request.clone())));
