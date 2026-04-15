@@ -122,8 +122,9 @@
         /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
             position: fixed; top: 16px; right: 16px;
-            display: flex; gap: 8px; z-index: 1000;
-            pointer-events: auto;
+            display: flex; flex-direction: row; gap: 8px;
+            z-index: 1000; pointer-events: auto;
+            width: auto; height: auto;
         }
         .settings-fab {
             width: 40px; height: 40px; border-radius: 50%;
@@ -900,13 +901,7 @@ function applyNavMode() {
 }
 applyNavMode();
 
-// ★ top-fab-areaをbody最後尾に移動（iOSのoverflow scrollingによるタップ阻害を回避）
-(function moveFabToBody() {
-    var fab = document.getElementById('top-fab-area');
-    if (fab && fab.parentNode !== document.body) {
-        document.body.appendChild(fab);
-    }
-})();
+
 
 // ===== 歯車・ベル・並び替えボタンのイベント（全てdocument委譲）=====
 document.addEventListener('click', function(e) {
