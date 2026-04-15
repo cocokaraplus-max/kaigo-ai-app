@@ -55,16 +55,42 @@
 }
 .birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
 
-/* ★ 歯車ボタン */
-.settings-fab {
+/* ★ 右上ボタンエリア */
+.top-fab-area {
     position: fixed; top: 16px; right: 16px;
+    display: flex; gap: 8px; z-index: 100;
+}
+.settings-fab {
     width: 40px; height: 40px; border-radius: 50%;
     background: #f0f4ff; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    -webkit-tap-highlight-color: transparent; position: relative;
 }
 .settings-fab .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
+
+/* ★ ナビ並び替えグリッド */
+.nav-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; padding: 4px;
+}
+.nav-grid-item {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 10px 4px; border-radius: 12px;
+    background: #f8f9fa; border: 2px solid #e8f0fe;
+    cursor: grab; user-select: none; touch-action: none;
+    transition: transform 0.1s, box-shadow 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+.nav-grid-item.dragging {
+    opacity: 0.5; transform: scale(0.95);
+    box-shadow: 0 4px 16px rgba(26,115,232,0.3);
+}
+.nav-grid-item.drag-over {
+    border-color: #1a73e8; background: #e8f0fe;
+}
+.nav-grid-item .material-symbols-outlined { font-size: 24px; color: #1a73e8; }
+.nav-grid-item span.label { font-size: 0.65rem; font-weight: 700; color: #5f6368; text-align: center; }
 
 /* ★ 設定モーダル */
 .settings-modal {
@@ -194,10 +220,15 @@
 
 {% block content %}
 
-<!-- ★ 歯車ボタン（右上固定） -->
-<button class="settings-fab" id="settings-fab-btn">
-    <span class="material-symbols-outlined">settings</span>
-</button>
+<!-- ★ 右上ボタンエリア -->
+<div class="top-fab-area">
+    <button class="settings-fab" id="update-log-btn">
+        <span class="material-symbols-outlined">notifications</span>
+    </button>
+    <button class="settings-fab" id="settings-fab-btn">
+        <span class="material-symbols-outlined">settings</span>
+    </button>
+</div>
 
 <div class="logo-area">
     <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
@@ -331,9 +362,9 @@
                 メニュー並び順
             </div>
             <div style="font-size:0.75rem;color:#80868b;margin-bottom:10px;">
-                ☰ を長押しドラッグで並び替え。👁 で表示/非表示を切り替え。
+                アイコンを長押しドラッグで並び替えできます
             </div>
-            <div id="nav-sort-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+            <div class="nav-grid" id="nav-sort-grid"></div>
             <button id="nav-order-reset-btn" style="width:100%;margin-top:10px;padding:8px;border:1px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;">
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">refresh</span>
                 デフォルトに戻す
@@ -397,6 +428,55 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- 更新ログモーダル -->
+<div id="update-log-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2500;align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 40px;max-height:85vh;overflow-y:auto;">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="font-size:1rem;font-weight:800;color:#202124;display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;">notifications</span>
+                アップデート情報
+            </div>
+            <button id="close-update-log-btn" style="background:none;border:none;cursor:pointer;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div id="update-log-content">
+            <!-- 更新ログ一覧 -->
+            <div style="display:flex;flex-direction:column;gap:12px;">
+
+                <div style="border-left:3px solid #1a73e8;padding:8px 12px;background:#f8f9fa;border-radius:0 10px 10px 0;">
+                    <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-04-15</div>
+                    <div style="font-size:0.88rem;font-weight:700;color:#202124;margin-bottom:6px;">🎉 大規模アップデート</div>
+                    <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;">
+                        ✅ 音声入力の長文保存エラーを修正<br>
+                        ✅ 更新履歴の自動更新（10秒ごと）<br>
+                        ✅ 掲示板のリアルタイム更新改善<br>
+                        ✅ 掲示板コメント入力エリアの改善<br>
+                        ✅ 掲示板の編集・削除権限を管理者MENUで設定可能に<br>
+                        ✅ パスコードロック機能を追加<br>
+                        ✅ デプロイ後もログインが維持されるように改善<br>
+                        ✅ メニュー並び順カスタマイズ機能を追加
+                    </div>
+                </div>
+
+                <div style="border-left:3px solid #34a853;padding:8px 12px;background:#f8f9fa;border-radius:0 10px 10px 0;">
+                    <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-04-15（以前）</div>
+                    <div style="font-size:0.88rem;font-weight:700;color:#202124;margin-bottom:6px;">📋 掲示板・評価機能追加</div>
+                    <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;">
+                        ✅ 掲示板機能追加<br>
+                        ✅ 評価ページに音声保存・再生機能<br>
+                        ✅ トーク送信音・サウンド設定<br>
+                        ✅ バイタル画面のバグ修正<br>
+                        ✅ 取説 Ver.3.0 リニューアル
+                    </div>
+                </div>
+
+            </div>
+        </div>
     </div>
 </div>
 
@@ -549,6 +629,30 @@ function applyFontSize(pct) {
 }
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
+
+// ===== 更新ログボタン =====
+var updateLogBtn = document.getElementById('update-log-btn');
+var updateLogModal = document.getElementById('update-log-modal');
+var closeUpdateLogBtn = document.getElementById('close-update-log-btn');
+updateLogBtn.addEventListener('click', function() {
+    hideBottomNav();
+    updateLogModal.style.display = 'flex';
+});
+updateLogBtn.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    hideBottomNav();
+    updateLogModal.style.display = 'flex';
+});
+closeUpdateLogBtn.addEventListener('click', function() {
+    updateLogModal.style.display = 'none';
+    showBottomNav();
+});
+updateLogModal.addEventListener('click', function(e) {
+    if (e.target === updateLogModal) {
+        updateLogModal.style.display = 'none';
+        showBottomNav();
+    }
+});
 
 // ===== 歯車ボタン =====
 var fabBtn = document.getElementById('settings-fab-btn');
@@ -811,183 +915,137 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
 
 // ========== ナビカスタマイズ ==========
 var NAV_ORDER_KEY = 'tasukaru_nav_order';
-var NAV_HIDDEN_KEY = 'tasukaru_nav_hidden';
 
-// 全ナビ項目の定義
 var ALL_NAV_ITEMS = [
-    { key: 'top',        label: 'TOP',        icon: 'home',                  href: '/top',        spa: true  },
-    { key: 'input',      label: '記録入力',   icon: 'edit_note',             href: '/input',      spa: true  },
-    { key: 'daily_view', label: 'ケース記録', icon: 'calendar_month',        href: '/daily_view', spa: true  },
-    { key: 'vitals',     label: 'バイタル',   icon: 'monitor_heart',         href: '/vitals',     spa: true  },
-    { key: 'calendar',   label: 'カレンダー', icon: 'calendar_month',        href: '/calendar',   spa: true  },
-    { key: 'history',    label: 'モニタリング', icon: 'monitoring',          href: '/history',    spa: true  },
-    { key: 'assessment', label: '評価',       icon: 'assignment',            href: '/assessment', spa: true  },
-    { key: 'board',      label: '掲示板',     icon: 'campaign',              href: '/board',      spa: true  },
-    { key: 'birthday',   label: '誕生日',     icon: 'cake',                  href: '/birthday',   spa: true  },
-    { key: 'numerology', label: '数秘',       icon: 'auto_awesome',          href: '/numerology', spa: false },
-    { key: 'admin',      label: '管理者MENU', icon: 'admin_panel_settings',  href: '/admin',      spa: false },
-    { key: 'manual',     label: 'ガイド',     icon: 'menu_book',             href: '/manual',     spa: true  },
+    { key: 'top',        label: 'TOP',        icon: 'home'                 },
+    { key: 'input',      label: '記録入力',   icon: 'edit_note'            },
+    { key: 'daily_view', label: 'ケース記録', icon: 'calendar_month'       },
+    { key: 'vitals',     label: 'バイタル',   icon: 'monitor_heart'        },
+    { key: 'calendar',   label: 'カレンダー', icon: 'event'                },
+    { key: 'history',    label: 'モニタリング',icon: 'monitoring'           },
+    { key: 'assessment', label: '評価',       icon: 'assignment'           },
+    { key: 'board',      label: '掲示板',     icon: 'campaign'             },
+    { key: 'birthday',   label: '誕生日',     icon: 'cake'                 },
+    { key: 'numerology', label: '数秘',       icon: 'auto_awesome'         },
+    { key: 'admin',      label: '管理者MENU', icon: 'admin_panel_settings' },
+    { key: 'manual',     label: 'ガイド',     icon: 'menu_book'            },
 ];
 
 function getNavOrder() {
     try {
-        var saved = localStorage.getItem(NAV_ORDER_KEY);
-        if (saved) return JSON.parse(saved);
+        var s = localStorage.getItem(NAV_ORDER_KEY);
+        if (s) return JSON.parse(s);
     } catch(e) {}
     return ALL_NAV_ITEMS.map(function(i) { return i.key; });
-}
-
-function getNavHidden() {
-    try {
-        var saved = localStorage.getItem(NAV_HIDDEN_KEY);
-        if (saved) return JSON.parse(saved);
-    } catch(e) {}
-    return [];
 }
 
 function saveNavOrder(order) {
     localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order));
 }
 
-function saveNavHidden(hidden) {
-    localStorage.setItem(NAV_HIDDEN_KEY, JSON.stringify(hidden));
-}
-
-// ナビを実際に並び替え・表示制御
+// ナビを実際に並び替え
 function applyNavOrder() {
     var nav = document.querySelector('.bottom-nav');
     if (!nav) return;
     var order = getNavOrder();
-    var hidden = getNavHidden();
-
-    // ログアウトボタンを一旦保存
     var logoutForm = nav.querySelector('form[action="/logout"]');
-
-    // 順番通りにナビ項目を並び替え
     order.forEach(function(key) {
-        var item = nav.querySelector('a[href="/' + key + '"], a[href="' + (key === 'daily_view' ? '/daily_view' : '/' + key) + '"]');
-        if (!item) {
-            // daily_viewなど特殊なhrefを持つ場合
-            item = nav.querySelector('a[href="/daily_view"]');
-            if (key !== 'daily_view') item = null;
-        }
-        if (item) {
-            item.style.display = hidden.includes(key) ? 'none' : '';
-            nav.appendChild(item);
-        }
+        var item = nav.querySelector('a[href="/' + key + '"]');
+        if (item) nav.appendChild(item);
     });
-
-    // ログアウトは常に最後
     if (logoutForm) nav.appendChild(logoutForm);
 }
 
-// 設定UIを描画
-function renderNavSortList() {
-    var list = document.getElementById('nav-sort-list');
-    if (!list) return;
+// グリッドUIを描画
+function renderNavSortGrid() {
+    var grid = document.getElementById('nav-sort-grid');
+    if (!grid) return;
     var order = getNavOrder();
-    var hidden = getNavHidden();
-    list.innerHTML = '';
+    grid.innerHTML = '';
 
-    order.forEach(function(key, idx) {
-        var item = ALL_NAV_ITEMS.find(function(i) { return i.key === key; });
-        if (!item) return;
-        var isHidden = hidden.includes(key);
-
-        var row = document.createElement('div');
-        row.dataset.key = key;
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;background:' +
-            (isHidden ? '#f8f8f8' : '#fff') +
-            ';border:1.5px solid ' + (isHidden ? '#e0e0e0' : '#e8f0fe') +
-            ';border-radius:10px;padding:10px 12px;touch-action:none;';
-
-        // ドラッグハンドル
-        var handle = document.createElement('span');
-        handle.textContent = '☰';
-        handle.style.cssText = 'font-size:18px;color:#bbb;cursor:grab;padding:0 4px;user-select:none;';
-        handle.setAttribute('data-handle', '1');
-
-        // アイコン
-        var icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = item.icon;
-        icon.style.cssText = 'font-size:18px;color:' + (isHidden ? '#bbb' : '#1a73e8') + ';';
-
-        // ラベル
-        var label = document.createElement('span');
-        label.textContent = item.label;
-        label.style.cssText = 'font-size:0.88rem;font-weight:600;flex:1;color:' + (isHidden ? '#aaa' : '#202124') + ';';
-
-        // 表示トグルボタン
-        var toggleBtn = document.createElement('button');
-        toggleBtn.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px;font-size:18px;';
-        toggleBtn.textContent = isHidden ? '🙈' : '👁';
-        toggleBtn.addEventListener('click', function() {
-            var h = getNavHidden();
-            if (h.includes(key)) {
-                h = h.filter(function(k) { return k !== key; });
-            } else {
-                h.push(key);
-            }
-            saveNavHidden(h);
-            applyNavOrder();
-            renderNavSortList();
-            showToastMsg(isHidden ? item.label + ' を表示しました' : item.label + ' を非表示にしました');
-        });
-
-        row.appendChild(handle);
-        row.appendChild(icon);
-        row.appendChild(label);
-        row.appendChild(toggleBtn);
-        list.appendChild(row);
-
-        // タッチドラッグ
-        setupDrag(row, list);
+    order.forEach(function(key) {
+        var def = ALL_NAV_ITEMS.find(function(i) { return i.key === key; });
+        if (!def) return;
+        var cell = document.createElement('div');
+        cell.className = 'nav-grid-item';
+        cell.dataset.key = key;
+        cell.innerHTML =
+            '<span class="material-symbols-outlined">' + def.icon + '</span>' +
+            '<span class="label">' + def.label + '</span>';
+        grid.appendChild(cell);
+        setupGridDrag(cell, grid);
     });
 }
 
-function setupDrag(row, list) {
-    var handle = row.querySelector('[data-handle]');
-    if (!handle) return;
+// グリッドのドラッグ＆ドロップ（タッチ）
+function setupGridDrag(cell, grid) {
+    var startX, startY, dragging = false, clone = null;
 
-    var dragging = false, startY = 0, origIdx = 0, clone = null;
-
-    handle.addEventListener('touchstart', function(e) {
+    cell.addEventListener('touchstart', function(e) {
         e.preventDefault();
         dragging = true;
+        startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
-        origIdx = Array.from(list.children).indexOf(row);
-        row.style.opacity = '0.5';
-        row.style.background = '#e8f0fe';
+        cell.classList.add('dragging');
+
+        // ドラッグ中の視覚クローンを作成
+        clone = cell.cloneNode(true);
+        var rect = cell.getBoundingClientRect();
+        clone.style.cssText = 'position:fixed;z-index:9999;width:' + rect.width + 'px;opacity:0.85;pointer-events:none;' +
+            'left:' + rect.left + 'px;top:' + rect.top + 'px;background:#e8f0fe;border:2px solid #1a73e8;border-radius:12px;' +
+            'display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;';
+        document.body.appendChild(clone);
     }, { passive: false });
 
-    handle.addEventListener('touchmove', function(e) {
-        if (!dragging) return;
+    cell.addEventListener('touchmove', function(e) {
+        if (!dragging || !clone) return;
         e.preventDefault();
-        var y = e.touches[0].clientY;
-        var dy = y - startY;
-        var rows = Array.from(list.children);
-        var curIdx = rows.indexOf(row);
-        var rowH = row.offsetHeight + 6;
-        if (dy > rowH / 2 && curIdx < rows.length - 1) {
-            list.insertBefore(rows[curIdx + 1], row);
-            startY += rowH;
-        } else if (dy < -rowH / 2 && curIdx > 0) {
-            list.insertBefore(row, rows[curIdx - 1]);
-            startY -= rowH;
-        }
+        var touch = e.touches[0];
+        var dx = touch.clientX - startX;
+        var dy = touch.clientY - startY;
+        var rect = cell.getBoundingClientRect();
+        clone.style.left = (rect.left + dx) + 'px';
+        clone.style.top  = (rect.top  + dy) + 'px';
+
+        // ホバー中のセルを検出
+        var els = document.elementsFromPoint(touch.clientX, touch.clientY);
+        var target = els.find(function(el) {
+            return el.classList.contains('nav-grid-item') && el !== cell && el !== clone;
+        });
+        grid.querySelectorAll('.nav-grid-item').forEach(function(c) { c.classList.remove('drag-over'); });
+        if (target) target.classList.add('drag-over');
     }, { passive: false });
 
-    handle.addEventListener('touchend', function() {
+    cell.addEventListener('touchend', function(e) {
         if (!dragging) return;
         dragging = false;
-        row.style.opacity = '';
-        row.style.background = '';
-        // 新しい順序を保存
-        var newOrder = Array.from(list.children).map(function(r) { return r.dataset.key; });
-        saveNavOrder(newOrder);
-        applyNavOrder();
-        showToastMsg('メニューの順番を保存しました');
+        cell.classList.remove('dragging');
+        if (clone) { clone.remove(); clone = null; }
+
+        var touch = e.changedTouches[0];
+        var els = document.elementsFromPoint(touch.clientX, touch.clientY);
+        var target = els.find(function(el) {
+            return el.classList.contains('nav-grid-item') && el !== cell;
+        });
+        grid.querySelectorAll('.nav-grid-item').forEach(function(c) { c.classList.remove('drag-over'); });
+
+        if (target) {
+            // セルを入れ替え
+            var allCells = Array.from(grid.querySelectorAll('.nav-grid-item'));
+            var fromIdx = allCells.indexOf(cell);
+            var toIdx   = allCells.indexOf(target);
+            if (fromIdx !== toIdx) {
+                if (fromIdx < toIdx) {
+                    grid.insertBefore(cell, target.nextSibling);
+                } else {
+                    grid.insertBefore(cell, target);
+                }
+                var newOrder = Array.from(grid.querySelectorAll('.nav-grid-item')).map(function(c) { return c.dataset.key; });
+                saveNavOrder(newOrder);
+                applyNavOrder();
+                showToastMsg('メニューを並び替えました ✅');
+            }
+        }
     });
 }
 
@@ -995,21 +1053,20 @@ function setupDrag(row, list) {
 document.addEventListener('click', function(e) {
     if (e.target.closest('#nav-order-reset-btn')) {
         localStorage.removeItem(NAV_ORDER_KEY);
-        localStorage.removeItem(NAV_HIDDEN_KEY);
         applyNavOrder();
-        renderNavSortList();
+        renderNavSortGrid();
         showToastMsg('メニューをデフォルトに戻しました');
     }
 });
 
-// 設定モーダルを開いたときにリスト描画
+// 設定モーダルを開いたときにグリッド描画
 var _origOpenSettings = openSettings;
 openSettings = function() {
     _origOpenSettings();
-    renderNavSortList();
+    renderNavSortGrid();
 };
 
-// ページ読み込み時にナビ順序を適用
+// ページ読み込み時に順序を適用
 applyNavOrder();
 
 // ========== アプリロック設定 ==========
