@@ -639,23 +639,23 @@ applyFontSize(savedFont);
 
 // fab buttons handled in base.html
 
-function openSettings() {
+window.openSettings = function() {
     hideBottomNav();
     modal.classList.add('show');
-    // 現在の文字サイズをスライダーに反映
     var cur = parseInt(localStorage.getItem(FONT_KEY) || '100');
     document.getElementById('font-slider').value = cur;
     document.getElementById('font-size-label').textContent = cur + '%';
-    // 現在のサウンドをハイライト
     var curSound = localStorage.getItem(SOUND_KEY) || 'pop';
     document.querySelectorAll('.sound-opt').forEach(function(el) {
         el.classList.toggle('active', el.dataset.sound === curSound);
     });
-}
-function closeSettings() {
+};
+function openSettings() { window.openSettings(); }
+window.closeSettings = function() {
     modal.classList.remove('show');
     showBottomNav();
-}
+};
+function closeSettings() { window.closeSettings(); }
 
 // ===== 文字サイズスライダー =====
 var slider = document.getElementById('font-slider');
