@@ -220,8 +220,8 @@
 
 {% block content %}
 
-<!-- ★ 右上ボタンエリア -->
-<div class="top-fab-area">
+<!-- ★ 右上ボタン（fab-portalに移動済み） -->
+<div id="top-fab-src" style="display:none;">
     <button class="settings-fab" id="update-log-btn">
         <span class="material-symbols-outlined">notifications</span>
     </button>
@@ -656,6 +656,17 @@ function applyFontSize(pct) {
 }
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
+
+// ★ fab-portalにボタンを移動（page-wrapper外に出す）
+(function() {
+    var portal = document.getElementById('fab-portal');
+    var src = document.getElementById('top-fab-src');
+    if (portal && src) {
+        while (src.firstChild) {
+            portal.appendChild(src.firstChild);
+        }
+    }
+})();
 
 // ===== 更新ログボタン =====
 var updateLogBtn = document.getElementById('update-log-btn');
