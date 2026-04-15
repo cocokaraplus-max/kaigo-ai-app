@@ -880,13 +880,18 @@ applyNavMode();
     function showLock() {
         var screen = document.getElementById('app-lock-screen');
         screen.style.display = 'flex';
+        screen.style.pointerEvents = '';
+        screen.style.zIndex = '99999';
         lockInput_val = '';
         updateDots();
 
     }
 
     function hideLock() {
-        document.getElementById('app-lock-screen').style.display = 'none';
+        var screen = document.getElementById('app-lock-screen');
+        screen.style.display = 'none';
+        screen.style.pointerEvents = 'none';
+        screen.style.zIndex = '-1';
     }
 
     function updateDots() {
