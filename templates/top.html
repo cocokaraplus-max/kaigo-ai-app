@@ -55,30 +55,16 @@
 }
 .birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
 
-
-
-/* ★ ナビ並び替えグリッド */
-.nav-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 8px; padding: 4px;
-}
-.nav-grid-item {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 4px; padding: 10px 4px; border-radius: 12px;
-    background: #f8f9fa; border: 2px solid #e8f0fe;
-    cursor: grab; user-select: none; touch-action: none;
-    transition: transform 0.1s, box-shadow 0.1s;
+/* ★ 歯車ボタン */
+.settings-fab {
+    position: fixed; top: 16px; right: 16px;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #f0f4ff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     -webkit-tap-highlight-color: transparent;
 }
-.nav-grid-item.dragging {
-    opacity: 0.5; transform: scale(0.95);
-    box-shadow: 0 4px 16px rgba(26,115,232,0.3);
-}
-.nav-grid-item.drag-over {
-    border-color: #1a73e8; background: #e8f0fe;
-}
-.nav-grid-item .material-symbols-outlined { font-size: 24px; color: #1a73e8; }
-.nav-grid-item span.label { font-size: 0.65rem; font-weight: 700; color: #5f6368; text-align: center; }
+.settings-fab .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
 
 /* ★ 設定モーダル */
 .settings-modal {
@@ -171,44 +157,15 @@
 }
 .icon-setting-row:active { background: #e8f0fe; }
 .icon-setting-arrow { margin-left: auto; color: #80868b; }
-
-/* ロック設定 */
-.lock-toggle-row {
-    display: flex; align-items: center; justify-content: space-between;
-    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
-    margin-bottom: 8px;
-}
-.lock-toggle-label { font-size: 0.88rem; font-weight: 600; color: #202124; display: flex; align-items: center; gap: 8px; }
-.lock-toggle-label .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
-.toggle-switch {
-    position: relative; width: 44px; height: 24px; cursor: pointer;
-}
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider {
-    position: absolute; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s;
-}
-.toggle-slider:before {
-    content: ''; position: absolute; width: 18px; height: 18px;
-    left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s;
-}
-.toggle-switch input:checked + .toggle-slider { background: #1a73e8; }
-.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
-.passcode-input-row {
-    display: flex; gap: 8px; margin-top: 10px; justify-content: center;
-}
-.passcode-digit {
-    width: 44px; height: 54px; border: 2px solid #e0e0e0; border-radius: 10px;
-    font-size: 1.4rem; font-weight: 800; text-align: center;
-    color: #202124; background: #fff; -webkit-appearance: none;
-    transition: border-color 0.15s;
-}
-.passcode-digit:focus { outline: none; border-color: #1a73e8; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-
+<!-- ★ 歯車ボタン（右上固定） -->
+<button class="settings-fab" id="settings-fab-btn">
+    <span class="material-symbols-outlined">settings</span>
+</button>
 
 <div class="logo-area">
     <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
@@ -335,79 +292,7 @@
             </div>
         </div>
 
-        <!-- ナビ表示モード -->
-        <div class="setting-section">
-            <div class="setting-section-label">
-                <span class="material-symbols-outlined">view_quilt</span>
-                メニュー表示モード
-            </div>
-            <div style="display:flex;gap:8px;">
-                <button class="nav-mode-btn" data-mode="scroll" id="mode-btn-scroll"
-                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
-                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">view_agenda</span>
-                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">横スクロール</span>
-                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">←→ 1列で横にスクロール</div>
-                </button>
-                <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-row"
-                    style="flex:1;padding:12px 8px;border-radius:12px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;">
-                    <span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">grid_view</span>
-                    <span style="font-size:0.75rem;font-weight:700;color:#202124;">2段表示</span>
-                    <div style="font-size:0.65rem;color:#80868b;margin-top:2px;">4列×2段で全部見える</div>
-                </button>
-            </div>
-        </div>
-
-        <!-- ナビカスタマイズ -->
-        <div class="setting-section">
-            <div class="setting-section-label">
-                <span class="material-symbols-outlined">menu</span>
-                メニュー並び順
-            </div>
-            <!-- ガイド -->
-            <div style="display:flex;align-items:center;gap:6px;background:#e8f0fe;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:0.78rem;color:#1a73e8;font-weight:600;">
-                <span class="material-symbols-outlined" style="font-size:15px;">info</span>
-                左上の①から右へ順番に並びます。長押しドラッグで入れ替えできます。
-            </div>
-            <div class="nav-grid" id="nav-sort-grid"></div>
-            <button id="nav-order-reset-btn" style="width:100%;margin-top:10px;padding:8px;border:1px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;cursor:pointer;">
-                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">refresh</span>
-                デフォルトに戻す
-            </button>
-        </div>
-
-        <!-- ロック設定 -->
-        <div class="setting-section">
-            <div class="setting-section-label">
-                <span class="material-symbols-outlined">lock</span>
-                アプリロック
-            </div>
-            <!-- パスコード -->
-            <div class="lock-toggle-row">
-                <div class="lock-toggle-label">
-                    <span class="material-symbols-outlined">pin</span>
-                    パスコードロック
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="passcode-toggle">
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-            <div id="passcode-setting-area" style="display:none;padding:10px 4px 4px;">
-                <div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;text-align:center;">4桁のパスコードを設定してください</div>
-                <div class="passcode-input-row">
-                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc0">
-                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc1">
-                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc2">
-                    <input class="passcode-digit" type="password" inputmode="numeric" maxlength="1" id="pc3">
-                </div>
-                <button id="save-passcode-btn" style="width:100%;margin-top:12px;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.88rem;cursor:pointer;">
-                    <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">save</span>
-                    パスコードを保存
-                </button>
-            </div>
-        </div>
-
-        <!-- アイコン設定（一番下に移動） -->
+        <!-- アイコン設定 -->
         <div class="setting-section">
             <div class="setting-section-label">
                 <span class="material-symbols-outlined">account_circle</span>
@@ -432,49 +317,6 @@
             </div>
         </div>
 
-    </div>
-</div>
-
-<!-- 更新ログモーダル -->
-<div id="update-log-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2500;align-items:flex-end;justify-content:center;">
-    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 40px;max-height:85vh;overflow-y:auto;">
-        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <div style="font-size:1rem;font-weight:800;color:#202124;display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#1a73e8;">notifications</span>
-                アップデート情報
-            </div>
-            <button id="close-update-log-btn" style="background:none;border:none;cursor:pointer;">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div id="update-log-content">
-            <div style="display:flex;flex-direction:column;gap:12px;">
-
-                <div style="border-left:3px solid #1a73e8;padding:8px 12px;background:#f8f9fa;border-radius:0 10px 10px 0;">
-                    <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-04-15</div>
-                    <div style="font-size:0.88rem;font-weight:700;color:#202124;margin-bottom:6px;">🎉 システム改善・機能追加</div>
-                    <div style="font-size:0.82rem;color:#5f6368;line-height:1.8;">
-                        ✅ タスクリストを追加<br>
-                        ✅ メニューアイコン配置の自由化<br>
-                        ✅ 掲示板の使いやすさを改善<br>
-                        ✅ セキュリティ機能を強化（パスコードロック）<br>
-                        ✅ 記録入力の一部機能を改善
-                    </div>
-                </div>
-
-                <div style="border-left:3px solid #34a853;padding:8px 12px;background:#f8f9fa;border-radius:0 10px 10px 0;">
-                    <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-03</div>
-                    <div style="font-size:0.88rem;font-weight:700;color:#202124;margin-bottom:6px;">📋 新機能追加</div>
-                    <div style="font-size:0.82rem;color:#5f6368;line-height:1.8;">
-                        ✅ 掲示板機能を追加<br>
-                        ✅ 評価ページに音声機能を追加<br>
-                        ✅ 各種バグを修正
-                    </div>
-                </div>
-
-            </div>
-        </div>
     </div>
 </div>
 
@@ -582,15 +424,6 @@
 <hr class="divider">
 {% endif %}
 
-<!-- 期限タスクセクション -->
-<div class="history-section" id="urgent-tasks-section" style="display:none;">
-    <div class="section-title">
-        <span class="material-symbols-outlined" style="color:#ea4335;">task_alt</span>
-        期限が近いタスク
-    </div>
-    <div class="history-list" id="urgent-tasks-list"></div>
-</div>
-
 <div class="history-section">
     <div class="section-title">
         <span class="material-symbols-outlined">history</span>
@@ -637,30 +470,29 @@ function applyFontSize(pct) {
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
 
-// fab buttons handled in base.html
+// ===== 歯車ボタン =====
+var fabBtn = document.getElementById('settings-fab-btn');
+var modal  = document.getElementById('user-settings-modal');
+var closeBtn = document.getElementById('settings-close-btn');
 
-window.openSettings = function() {
-    var m = document.getElementById('user-settings-modal');
-    if (!m) return;
-    hideBottomNav();
-    m.classList.add('show');
-    var cur = parseInt(localStorage.getItem('tasukaru_font_size') || '100');
-    var slider = document.getElementById('font-slider');
-    var label = document.getElementById('font-size-label');
-    if (slider) slider.value = cur;
-    if (label) label.textContent = cur + '%';
-    var curSound = localStorage.getItem('tasukaru_sound') || 'pop';
+fabBtn.addEventListener('click', openSettings);
+fabBtn.addEventListener('touchend', function(e) { e.preventDefault(); openSettings(); });
+closeBtn.addEventListener('click', closeSettings);
+modal.addEventListener('click', function(e) { if (e.target === modal) closeSettings(); });
+
+function openSettings() {
+    modal.classList.add('show');
+    // 現在の文字サイズをスライダーに反映
+    var cur = parseInt(localStorage.getItem(FONT_KEY) || '100');
+    document.getElementById('font-slider').value = cur;
+    document.getElementById('font-size-label').textContent = cur + '%';
+    // 現在のサウンドをハイライト
+    var curSound = localStorage.getItem(SOUND_KEY) || 'pop';
     document.querySelectorAll('.sound-opt').forEach(function(el) {
         el.classList.toggle('active', el.dataset.sound === curSound);
     });
-};
-function openSettings() { window.openSettings(); }
-window.closeSettings = function() {
-    var m = document.getElementById('user-settings-modal');
-    if (m) m.classList.remove('show');
-    showBottomNav();
-};
-function closeSettings() { window.closeSettings(); }
+}
+function closeSettings() { modal.classList.remove('show'); }
 
 // ===== 文字サイズスライダー =====
 var slider = document.getElementById('font-slider');
@@ -737,29 +569,11 @@ var openIconBtn = document.getElementById('open-icon-edit-btn');
 var iconModal   = document.getElementById('icon-edit-modal');
 var closeIconBtn = document.getElementById('close-icon-edit-btn');
 
-function openIconModal() {
-    closeSettings();
-    hideBottomNav();
-    iconModal.style.display = 'flex';
-}
-function closeIconModal() {
-    iconModal.style.display = 'none';
-    showBottomNav();
-}
-function hideBottomNav() {
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = 'none';
-}
-function showBottomNav() {
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = '';
-}
-
-openIconBtn.addEventListener('click', openIconModal);
-openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); openIconModal(); });
-closeIconBtn.addEventListener('click', closeIconModal);
-document.getElementById('my-icon-btn').addEventListener('click', openIconModal);
-iconModal.addEventListener('click', function(e) { if (e.target === iconModal) closeIconModal(); });
+openIconBtn.addEventListener('click', function() { closeSettings(); iconModal.style.display = 'flex'; });
+openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); closeSettings(); iconModal.style.display = 'flex'; });
+closeIconBtn.addEventListener('click', function() { iconModal.style.display = 'none'; });
+document.getElementById('my-icon-btn').addEventListener('click', function() { iconModal.style.display = 'flex'; });
+iconModal.addEventListener('click', function(e) { if (e.target === iconModal) iconModal.style.display = 'none'; });
 
 // 写真選択
 var photoInput = document.getElementById('icon-photo-input');
@@ -879,7 +693,7 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
             } else {
                 myBtn.innerHTML = '<span style="font-size:18px;font-weight:800;color:#fff;">' + MY_INITIAL + '</span>';
             }
-            closeIconModal();
+            iconModal.style.display = 'none';
             var toast = document.createElement('div');
             toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
             toast.textContent = '✅ アイコンを更新しました';
@@ -893,316 +707,12 @@ document.getElementById('icon-save-btn').addEventListener('click', async functio
     }
 });
 
-// ========== ナビカスタマイズ ==========
-// ===== ナビ表示モード =====
-var NAV_MODE_KEY = 'tasukaru_nav_mode';
-
-function applyNavModeUI() {
-    var currentMode = localStorage.getItem(NAV_MODE_KEY) || 'scroll';
-    document.querySelectorAll('.nav-mode-btn').forEach(function(btn) {
-        var isActive = btn.dataset.mode === currentMode;
-        btn.style.borderColor = isActive ? '#1a73e8' : '#e0e0e0';
-        btn.style.background = isActive ? '#e8f0fe' : '#fff';
+// 更新履歴クリック
+document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
+    el.addEventListener('click', function() {
+        window.location.href = '/daily_view?user=' + encodeURIComponent(this.dataset.user) + '&date=' + this.dataset.date;
     });
-}
-
-document.addEventListener('click', function(e) {
-    var btn = e.target.closest('.nav-mode-btn');
-    if (!btn) return;
-    var mode = btn.dataset.mode;
-    localStorage.setItem(NAV_MODE_KEY, mode);
-    // ナビに即時反映
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) {
-        if (mode === 'two-row') {
-            nav.classList.add('two-row');
-        } else {
-            nav.classList.remove('two-row');
-        }
-    }
-    applyNavModeUI();
-    showToastMsg(mode === 'two-row' ? '2段表示に変更しました' : '横スクロールに変更しました');
 });
-
-var NAV_ORDER_KEY = 'tasukaru_nav_order';
-
-var ALL_NAV_ITEMS = [
-    { key: 'top',        label: 'TOP',        icon: 'home'                 },
-    { key: 'input',      label: '記録入力',   icon: 'edit_note'            },
-    { key: 'daily_view', label: 'ケース記録', icon: 'calendar_month'       },
-    { key: 'vitals',     label: 'バイタル',   icon: 'monitor_heart'        },
-    { key: 'calendar',   label: 'カレンダー', icon: 'event'                },
-    { key: 'history',    label: 'モニタリング',icon: 'monitoring'           },
-    { key: 'assessment', label: '評価',       icon: 'assignment'           },
-    { key: 'board',      label: '掲示板',     icon: 'campaign'             },
-    { key: 'birthday',   label: '誕生日',     icon: 'cake'                 },
-    { key: 'numerology', label: '数秘',       icon: 'auto_awesome'         },
-    { key: 'admin',      label: '管理者MENU', icon: 'admin_panel_settings' },
-    { key: 'manual',     label: 'ガイド',     icon: 'menu_book'            },
-];
-
-function getNavOrder() {
-    try {
-        var s = localStorage.getItem(NAV_ORDER_KEY);
-        if (s) return JSON.parse(s);
-    } catch(e) {}
-    return ALL_NAV_ITEMS.map(function(i) { return i.key; });
-}
-
-function saveNavOrder(order) {
-    localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order));
-}
-
-// ナビを実際に並び替え
-function applyNavOrder() {
-    var nav = document.querySelector('.bottom-nav');
-    if (!nav) return;
-    var order = getNavOrder();
-    var logoutForm = nav.querySelector('form[action="/logout"]');
-    order.forEach(function(key) {
-        var item = nav.querySelector('a[href="/' + key + '"]');
-        if (item) nav.appendChild(item);
-    });
-    if (logoutForm) nav.appendChild(logoutForm);
-}
-
-// グリッドUIを描画
-function renderNavSortGrid() {
-    var grid = document.getElementById('nav-sort-grid');
-    if (!grid) return;
-    var order = getNavOrder();
-    grid.innerHTML = '';
-
-    order.forEach(function(key) {
-        var def = ALL_NAV_ITEMS.find(function(i) { return i.key === key; });
-        if (!def) return;
-        var cell = document.createElement('div');
-        cell.className = 'nav-grid-item';
-        cell.dataset.key = key;
-        var num = order.indexOf(key) + 1;
-        cell.innerHTML =
-            '<span data-num="1" style="position:absolute;top:3px;left:5px;width:14px;height:14px;border-radius:50%;background:#1a73e8;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;">' + num + '</span>' +
-            '<span class="material-symbols-outlined">' + def.icon + '</span>' +
-            '<span class="label">' + def.label + '</span>';
-        grid.appendChild(cell);
-        setupGridDrag(cell, grid);
-    });
-}
-
-// グリッドのドラッグ＆ドロップ（タッチ）
-function setupGridDrag(cell, grid) {
-    var startX, startY, dragging = false, clone = null;
-
-    cell.addEventListener('touchstart', function(e) {
-        e.preventDefault();
-        dragging = true;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        cell.classList.add('dragging');
-
-        // ドラッグ中の視覚クローンを作成
-        clone = cell.cloneNode(true);
-        var rect = cell.getBoundingClientRect();
-        clone.style.cssText = 'position:fixed;z-index:9999;width:' + rect.width + 'px;opacity:0.85;pointer-events:none;' +
-            'left:' + rect.left + 'px;top:' + rect.top + 'px;background:#e8f0fe;border:2px solid #1a73e8;border-radius:12px;' +
-            'display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;';
-        document.body.appendChild(clone);
-    }, { passive: false });
-
-    cell.addEventListener('touchmove', function(e) {
-        if (!dragging || !clone) return;
-        e.preventDefault();
-        var touch = e.touches[0];
-        var dx = touch.clientX - startX;
-        var dy = touch.clientY - startY;
-        var rect = cell.getBoundingClientRect();
-        clone.style.left = (rect.left + dx) + 'px';
-        clone.style.top  = (rect.top  + dy) + 'px';
-
-        // ホバー中のセルを検出
-        var els = document.elementsFromPoint(touch.clientX, touch.clientY);
-        var target = els.find(function(el) {
-            return el.classList.contains('nav-grid-item') && el !== cell && el !== clone;
-        });
-        grid.querySelectorAll('.nav-grid-item').forEach(function(c) { c.classList.remove('drag-over'); });
-        if (target) target.classList.add('drag-over');
-    }, { passive: false });
-
-    cell.addEventListener('touchend', function(e) {
-        if (!dragging) return;
-        dragging = false;
-        cell.classList.remove('dragging');
-        if (clone) { clone.remove(); clone = null; }
-
-        var touch = e.changedTouches[0];
-        var els = document.elementsFromPoint(touch.clientX, touch.clientY);
-        var target = els.find(function(el) {
-            return el.classList.contains('nav-grid-item') && el !== cell;
-        });
-        grid.querySelectorAll('.nav-grid-item').forEach(function(c) { c.classList.remove('drag-over'); });
-
-        if (target) {
-            var allCells = Array.from(grid.querySelectorAll('.nav-grid-item'));
-            var fromIdx = allCells.indexOf(cell);
-            var toIdx   = allCells.indexOf(target);
-            if (fromIdx !== toIdx) {
-                if (fromIdx < toIdx) {
-                    grid.insertBefore(cell, target.nextSibling);
-                } else {
-                    grid.insertBefore(cell, target);
-                }
-                var newOrder = Array.from(grid.querySelectorAll('.nav-grid-item')).map(function(c) { return c.dataset.key; });
-                saveNavOrder(newOrder);
-                applyNavOrder();
-                // 番号バッジを振り直す
-                grid.querySelectorAll('.nav-grid-item').forEach(function(c, i) {
-                    var badge = c.querySelector('[data-num]');
-                    if (badge) badge.textContent = i + 1;
-                });
-                showToastMsg('メニューを並び替えました ✅');
-            }
-        }
-    });
-}
-
-// リセットボタン
-document.addEventListener('click', function(e) {
-    if (e.target.closest('#nav-order-reset-btn')) {
-        localStorage.removeItem(NAV_ORDER_KEY);
-        applyNavOrder();
-        renderNavSortGrid();
-        showToastMsg('メニューをデフォルトに戻しました');
-    }
-});
-
-// 設定モーダルを開いたときにグリッド描画
-var _origOpenSettings = window.openSettings;
-window.openSettings = function() {
-    _origOpenSettings();
-    renderNavSortGrid();
-    applyNavModeUI();
-};
-
-// ページ読み込み時に順序を適用
-applyNavOrder();
-
-// ========== アプリロック設定 ==========
-var LOCK_PASSCODE_KEY = 'tasukaru_passcode';
-var LOCK_ENABLED_KEY  = 'tasukaru_lock_enabled';
-var BIOMETRIC_KEY     = 'tasukaru_biometric_enabled';
-
-// パスコードトグル
-var passcodeToggle = document.getElementById('passcode-toggle');
-var passcodeArea   = document.getElementById('passcode-setting-area');
-// 保存済み設定を読み込む
-if (localStorage.getItem(LOCK_ENABLED_KEY) === '1') {
-    passcodeToggle.checked = true;
-    passcodeArea.style.display = 'block';
-}
-
-passcodeToggle.addEventListener('change', function() {
-    if (this.checked) {
-        passcodeArea.style.display = 'block';
-    } else {
-        passcodeArea.style.display = 'none';
-        localStorage.removeItem(LOCK_ENABLED_KEY);
-        localStorage.removeItem(LOCK_PASSCODE_KEY);
-        showToastMsg('🔓 パスコードロックを解除しました');
-    }
-});
-
-// 4桁入力→次へ自動フォーカス
-for (var i = 0; i < 4; i++) {
-    (function(idx) {
-        var el = document.getElementById('pc' + idx);
-        el.addEventListener('input', function() {
-            this.value = this.value.replace(/[^0-9]/g, '').slice(-1);
-            if (this.value && idx < 3) document.getElementById('pc' + (idx+1)).focus();
-        });
-        el.addEventListener('keydown', function(e) {
-            if (e.key === 'Backspace' && !this.value && idx > 0) {
-                document.getElementById('pc' + (idx-1)).focus();
-            }
-        });
-    })(i);
-}
-
-// パスコード保存
-document.getElementById('save-passcode-btn').addEventListener('click', function() {
-    var code = ['pc0','pc1','pc2','pc3'].map(function(id) { return document.getElementById(id).value; }).join('');
-    if (code.length !== 4) { alert('4桁を入力してください'); return; }
-    localStorage.setItem(LOCK_PASSCODE_KEY, btoa(code)); // base64で保存
-    localStorage.setItem(LOCK_ENABLED_KEY, '1');
-    ['pc0','pc1','pc2','pc3'].forEach(function(id) { document.getElementById(id).value = ''; });
-    showToastMsg('🔒 パスコードを設定しました');
-});
-
-
-
-function showToastMsg(msg) {
-    var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function() { t.remove(); }, 2500);
-}
-
-// ========== 更新履歴クリック
-function bindHistoryClicks() {
-    document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
-        el.addEventListener('click', function() {
-            window.location.href = '/daily_view?user=' + encodeURIComponent(this.dataset.user) + '&date=' + this.dataset.date;
-        });
-    });
-}
-bindHistoryClicks();
-
-// 更新履歴の自動更新（10秒ごと）
-var _lastHistHtml = '';
-async function checkNewRecords() {
-    try {
-        var r = await fetch('/top?partial=1');
-        var d = await r.json();
-        var tmp = document.createElement('div');
-        tmp.innerHTML = d.content;
-        var newList = tmp.querySelector('.history-list');
-        var newTitle = tmp.querySelector('.section-title');
-        var curList = document.querySelector('.history-list');
-        var curTitle = document.querySelector('.section-title');
-        if (newList && curList && newList.innerHTML !== _lastHistHtml) {
-            _lastHistHtml = newList.innerHTML;
-            curList.innerHTML = newList.innerHTML;
-            if (newTitle && curTitle) curTitle.innerHTML = newTitle.innerHTML;
-            bindHistoryClicks();
-        }
-    } catch(e) {}
-}
-setInterval(checkNewRecords, 10000);
-checkNewRecords();
-
-// ===== 期限タスク読み込み =====
-async function loadUrgentTasks() {
-    try {
-        var res = await fetch('/api/tasks/urgent');
-        var data = await res.json();
-        var tasks = data.tasks || [];
-        var section = document.getElementById('urgent-tasks-section');
-        var list = document.getElementById('urgent-tasks-list');
-        if (!tasks.length) { section.style.display = 'none'; return; }
-        section.style.display = 'block';
-        list.innerHTML = tasks.map(function(t) {
-            var diffText = t.due_diff === 0 ? '今日' : t.due_diff < 0 ? Math.abs(t.due_diff) + '日超過' : t.due_diff + '日後';
-            var urgent = t.due_diff <= 1;
-            return '<div class="history-item" onclick="window.location.href=&quot;/tasks&quot;" style="' + (urgent ? 'border-left:3px solid #ea4335;' : '') + '">' +
-                '<span style="font-size:16px;">' + t.priority_icon + '</span>' +
-                '<span class="history-item-name">' + t.title + '</span>' +
-                '<span class="history-item-time" style="' + (urgent ? 'color:#ea4335;font-weight:700;' : '') + '">' + diffText + '</span>' +
-                '</div>';
-        }).join('');
-    } catch(e) {}
-}
-loadUrgentTasks();
-setInterval(loadUrgentTasks, 60000);
 
 })();
 </script>
