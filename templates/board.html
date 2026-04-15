@@ -853,6 +853,8 @@ window.openComments = async function(postId) {
     hideNav();
     document.getElementById('comments-drawer').classList.add('show');
     await loadComments(postId);
+    // コメントを開いたらその投稿のコメント数バッジをすべて消す
+    document.querySelectorAll('[data-post-id="' + postId + '"] .post-action-btn:last-child .badge').forEach(function(b) { b.remove(); });
 };
 
 function closeComments() {
