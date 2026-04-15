@@ -135,6 +135,8 @@
             margin: 0 auto;
             touch-action: pan-x;
             overscroll-behavior-x: contain;
+            position: relative;
+            z-index: 1;
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
@@ -395,6 +397,13 @@ async function navigateTo(url, pushState = true) {
         updateNavActive(url);
         window.__SPA_NAVIGATED__ = true;
         console.log('[SPA] navigation complete:', url);
+
+        // 掲示板に遷移したらバッジをクリア
+        if (url === '/board' || url.startsWith('/board?') || url.startsWith('/board/')) {
+            const badge = document.getElementById('chat-badge');
+            if (badge) badge.style.display = 'none';
+            lastUnreadCount = 0;
+        }
 
     } catch(e) {
         console.log('[SPA] error, fallback:', e);
