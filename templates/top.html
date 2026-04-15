@@ -640,19 +640,24 @@ applyFontSize(savedFont);
 // fab buttons handled in base.html
 
 window.openSettings = function() {
+    var m = document.getElementById('user-settings-modal');
+    if (!m) return;
     hideBottomNav();
-    modal.classList.add('show');
-    var cur = parseInt(localStorage.getItem(FONT_KEY) || '100');
-    document.getElementById('font-slider').value = cur;
-    document.getElementById('font-size-label').textContent = cur + '%';
-    var curSound = localStorage.getItem(SOUND_KEY) || 'pop';
+    m.classList.add('show');
+    var cur = parseInt(localStorage.getItem('tasukaru_font_size') || '100');
+    var slider = document.getElementById('font-slider');
+    var label = document.getElementById('font-size-label');
+    if (slider) slider.value = cur;
+    if (label) label.textContent = cur + '%';
+    var curSound = localStorage.getItem('tasukaru_sound') || 'pop';
     document.querySelectorAll('.sound-opt').forEach(function(el) {
         el.classList.toggle('active', el.dataset.sound === curSound);
     });
 };
 function openSettings() { window.openSettings(); }
 window.closeSettings = function() {
-    modal.classList.remove('show');
+    var m = document.getElementById('user-settings-modal');
+    if (m) m.classList.remove('show');
     showBottomNav();
 };
 function closeSettings() { window.closeSettings(); }
