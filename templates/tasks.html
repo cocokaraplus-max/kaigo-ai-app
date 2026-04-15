@@ -229,20 +229,25 @@
         </div>
         <div class="form-row">
             <label>担当者</label>
+            <div style="position:relative;margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;color:#80868b;">search</span>
+                <input type="text" id="assign-search" class="form-control" placeholder="名前で検索..."
+                    style="padding-left:32px;" oninput="filterAssignChips(this.value)">
+            </div>
             <div class="assign-chips" id="assign-chips">
                 <button class="assign-chip all-chip" data-name="all">🌐 全員</button>
                 {% for s in staffs %}
                 <button class="assign-chip" data-name="{{ s }}">{{ s }}</button>
                 {% endfor %}
             </div>
+            <div id="assign-selected-area" style="display:none;margin-top:6px;padding:8px;background:#e8f0fe;border-radius:10px;font-size:0.8rem;color:#1557b0;font-weight:600;">
+                選択中：<span id="assign-selected-text"></span>
+            </div>
         </div>
         <div class="form-row">
             <label>プロジェクト（任意）</label>
             <select id="task-project-select" class="form-control">
                 <option value="">なし</option>
-                {% for p in projects %}
-                <option value="{{ p.id }}">{{ p.name }}</option>
-                {% endfor %}
             </select>
         </div>
 
@@ -307,6 +312,34 @@
 
 var MY_NAME = {{ my_name | tojson }};
 var ALL_STAFFS = {{ staffs | tojson }};
+
+// ===== 担当者検索フィルター =====
+window.filterAssignChips = function(query) {
+    var q = query.trim().toLowerCase();
+    document.querySelectorAll('#assign-chips .assign-chip').forEach(function(chip) {
+        var name = chip.dataset.name;
+        if (name === 'all') { chip.style.display = ''; return; }
+        chip.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none';
+    });
+};
+
+function updateAssignSelectedText() {
+    var area = document.getElementById('assign-selected-area');
+    var text = document.getElementById('assign-selected-text');
+    var allChip = document.querySelector('#assign-chips .all-chip');
+    if (allChip && allChip.classList.contains('selected')) {
+        area.style.display = 'block';
+        text.textContent = '全員';
+        return;
+    }
+    if (selectedAssign.length > 0) {
+        area.style.display = 'block';
+        text.textContent = selectedAssign.join('、');
+    } else {
+        area.style.display = 'none';
+        text.textContent = '';
+    }
+}
 var currentFilter = 'all';
 var currentProjectId = null;
 var selectedPriority = 'medium';
@@ -503,6 +536,27 @@ function openCreateModal() {
     hideBottomNav();
     document.getElementById('create-task-modal').classList.add('show');
 }
+async function loadProjectsToSelect() {
+    try {
+        var res = await fetch('/api/tasks/projects');
+        var data = await res.json();
+        var sel = document.getElementById('task-project-select');
+        sel.innerHTML = '<option value="">なし</option>';
+        (data.projects || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+function openCreateModal() {
+    hideBottomNav();
+    loadProjectsToSelect();
+    document.getElementById('create-task-modal').classList.add('show');
+}
+
 document.getElementById('new-task-btn').addEventListener('click', openCreateModal);
 document.getElementById('new-task-btn').addEventListener('touchend', function(e) { e.preventDefault(); openCreateModal(); });
 
@@ -550,6 +604,7 @@ document.getElementById('assign-chips').addEventListener('click', function(e) {
             selectedAssign = selectedAssign.filter(function(n) { return n !== name; });
         }
     }
+    updateAssignSelectedText();
 });
 
 // タスク保存
@@ -579,9 +634,14 @@ document.getElementById('create-task-submit-btn').addEventListener('click', asyn
         document.getElementById('task-title-input').value = '';
         document.getElementById('task-desc-input').value = '';
         document.getElementById('task-due-input').value = '';
+        document.getElementById('assign-search').value = '';
         selectedAssign = [];
         selectedPriority = 'medium';
-        document.querySelectorAll('#assign-chips .assign-chip').forEach(function(c) { c.classList.remove('selected'); });
+        document.querySelectorAll('#assign-chips .assign-chip').forEach(function(c) {
+            c.classList.remove('selected');
+            c.style.display = '';
+        });
+        document.getElementById('assign-selected-area').style.display = 'none';
         document.querySelectorAll('.priority-btn').forEach(function(b) { b.className = 'priority-btn'; });
         document.querySelector('.priority-btn[data-priority="medium"]').className = 'priority-btn active-medium';
         loadTasks();
