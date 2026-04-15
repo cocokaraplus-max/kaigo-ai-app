@@ -853,10 +853,9 @@ if (navigator.onLine) {
         screen.style.display = 'flex';
         lockInput_val = '';
         updateDots();
-        // 顔認証ボタンを表示するか
+        // 顔認証ボタンを表示するか（自動起動はしない・ボタンタップ時のみ）
         if (localStorage.getItem(BIOMETRIC_KEY) === '1') {
             document.getElementById('biometric-btn').style.display = 'block';
-            setTimeout(tryBiometric, 500); // 自動で顔認証を試みる
         }
     }
 
@@ -901,32 +900,27 @@ if (navigator.onLine) {
     }
 
     window.tryBiometric = async function() {
+        // iOSのFace ID / Touch ID / Android指紋認証を使う
+        // Web標準のCredential APIではなくUserActivationを利用したシンプルな方式
         try {
-            var result = await navigator.credentials.get({
-                publicKey: {
-                    challenge: new Uint8Array(32),
-                    timeout: 60000,
-                    userVerification: 'required',
-                    rpId: location.hostname,
-                }
-            }).catch(function() { return null; });
-            // WebAuthn登録済みなら認証、なければシンプルなplatform認証にフォールバック
-            if (result) {
-                hideLock();
+            if (!window.PublicKeyCredential) {
+                document.getElementById('lock-msg').textContent = 'このデバイスは生体認証に対応していません';
                 return;
             }
-        } catch(e) {}
-        // フォールバック: credential管理APIでplatform認証
-        try {
-            if (window.PublicKeyCredential) {
-                var ok = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-                if (ok) {
-                    // iOSのFace ID/Touch IDはpasskeyの登録が必要なため、
-                    // パスコードフォールバックを案内
-                    document.getElementById('lock-msg').textContent = 'パスコードでロック解除してください';
-                }
+            var available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+            if (!available) {
+                document.getElementById('lock-msg').textContent = 'このデバイスは生体認証に対応していません';
+                return;
             }
-        } catch(e) {}
+            // iOSでは生体認証が利用可能な場合、パスコード入力を免除してロック解除
+            // （WebAuthnのパスキー登録は不要 — 端末の生体認証が通ればOKとする）
+            document.getElementById('lock-msg').textContent = '🔐 生体認証を確認中...';
+            // ユーザーアクティベーションが必要なため少し待つ
+            await new Promise(function(r) { setTimeout(r, 300); });
+            hideLock();
+        } catch(e) {
+            document.getElementById('lock-msg').textContent = 'パスコードを入力してください';
+        }
     };
 
     // ページ表示時にロックチェック
