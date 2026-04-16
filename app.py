@@ -504,8 +504,9 @@ def top():
     try:
         res_hist = supabase.table("records").select(
             "id, user_name, staff_name, created_at"
-        ).eq("facility_code", f_code).order("created_at", desc=True).limit(hist_limit * 2).execute()
+        ).eq("facility_code", f_code).order("id", desc=True).limit(hist_limit * 2).execute()
         if res_hist.data:
+            # id降順（DB挿入順）でソートすることで、未来日付の記録が上に鎮座しなくなる
             filtered = [r for r in res_hist.data if r['staff_name'] != "AI統合記録"][:hist_limit]
             for r in filtered:
                 records.append({
