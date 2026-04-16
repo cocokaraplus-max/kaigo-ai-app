@@ -342,37 +342,42 @@
     </div>
     <!-- ナビ編集完了バー -->
     <!-- 設定モーダル -->
+    <!-- 設定モーダル -->
     <div class="settings-modal" id="user-settings-modal">
         <div class="settings-sheet">
             <div class="settings-handle"></div>
             <div class="settings-title-row">
-                <div class="settings-title">
-                    <span class="material-symbols-outlined">tune</span>
-                    ユーザー設定
-                </div>
-                <button class="settings-close-btn" id="settings-close-btn">
-                    <span class="material-symbols-outlined">close</span>
-                </button>
+                <div class="settings-title"><span class="material-symbols-outlined">tune</span>ユーザー設定</div>
+                <button class                <btn" id="settings-close-btn"><span class="material-symbols-outlined">close</span></button>
             </div>
-            <!-- 文字サイズ -->
             <div class="setting-section">
-                <div class="setting-section-label"><span class="material-symbols-outlined">text_fields</span>文字サイズ</div>
+                                                                                      ned">text_fields</span>文字サイズ</div>
                 <div class="font-size-wrap">
                     <div class="font-size-preview" id="font-preview">文字サイズのプレビュー（介護記録アプリ TASUKARU）</div>
                     <div class="font-size-controls">
                         <span class="material-symbols-outlined" style="font-size:16px;">text_decrease</span>
-                        <input type="range" class="font-slider" id="font-slider" min="90" max="130" step="5" value="100">
-                        <span class="material-symbols-outlined" style="font-size:22px;">text_increase</span>
-                        <span class="font-size-value" id="font-size-label">100%</span>
-                    </div>
+                        <input type                        <input type                     ax                        <input type                  <span class="material-symbols-outlined" style="font-size:22px;">text_increase                        <input type                        <input type                     ax                        <iv>
                 </div>
             </div>
-            <!-- 通知サウンド -->
             <div class="setting-section">
-                <div class="setting-section-label"><span class="material-symbols-outlined">notifications</span>通知サウンド</div>
+                <div class="setting-section-label"><span class="materi                <div class="setons</span>通知サウンド</div>
                 <div id="sound-opts">
-                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span><div class="sound-opt-info"><div class="sound-opt-name">ポップ</div><div class="sound-opt-desc">軽快な音</div></div><button class="preview-btn" data-preview="pop"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
-                    <div class="sound-opt" data-sound="chime"><span style="font-size:20px;">🎵</span><div class="sound-opt-info"><div class="sound-opt-name">チャイム</div><div class="sound-opt-desc">3音チャイム</div>
+                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span><div class="sound-opt-info"><div class="sound-opt-name">ポップ</div><div class="sound-opt-desc">軽快な音</div></div><button class="preview-btn" data-preview="pop"><span class="material-symbols-outl                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span<span style="font-size:20px;">🎵</span><div class="sound-opt-info"><div class="sound-opt-name">チャイム</div><div class="sound-opt-desc">3音チャイム</div></div><button class="preview-btn" data-preview="chime"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
+                    <div class="sound-opt" data-sound="pico"><span style="font-size:20px;">📯</span><div class="sound-opt-info"><div class="sound-opt-name">ピコン</div><div class="sound-opt-desc">電子音</div></div><button class="preview-btn" data-preview="pico"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
+                    <div class="sound-opt" data-sound="tasukaru"><span style="font-size:20px;">🦝</span><div class="sound-opt-info"><div class="sound-opt-name">タスカル</div><div class="sound-opt-desc">音声で通知</div></div><button class="preview-btn" data-preview="tasukaru"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
+                    <div class="sound-opt" data-sound="none"><span style="font-size:20px;">🔕</span><div class="sound-opt-info"><div class="sound-opt-name">なし</div><div class="sound-opt-desc">サウンドOFF</div></div></div>
+                </div>
+            </div>
+            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div classpx;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;"><span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">view_agenda</span><span style="font-size:0.75rem;font-weight:700;">横スクロール</span></button>
+                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-moto                    pan              font-size:0.75rem;font-weight:700;">2段表示</span></button>
+                </div>
+            </div>
+            <div class="setting-section">
+                <div class="setting-section-label"><span class="material-symbols-outlined">menu</span>メニュー並び順</div>
+                <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始</button>
+            </div>
+        </div>
+    </div>
     <div class="top-fab-area" id="top-fab-area">
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
