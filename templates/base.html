@@ -864,6 +864,104 @@ function applyNavMode() {
     }
 }
 applyNavMode();
+// ===== 設定モーダル関連 =====
+window.openSettings = function() {
+    var m = document.getElementById('user-settings-modal');
+    if (!m) return;
+    hideBottomNav();
+    m.classList.add('show');
+    var savedFont = parseInt(localStorage.getItem('tasukaru_font_size') || '100');
+    var slider = document.getElementById('font-slider');
+    var label = document.getElementById('font-size-label');
+    var preview = document.getElementById('font-preview');
+    if (slider) slider.value = savedFont;
+    if (label) label.textContent = savedFont + '%';
+    if (preview) preview.style.fontSize = '0.95rem';
+    var savedSound = localStorage.getItem('tasukaru_sound') || 'pop';
+    document.querySelectorAll('.sound-opt').forEach(function(o) {
+        o.classList.toggle('active', o.dataset.sound === savedSound);
+    });
+    var savedMode = localStorage.getItem('tasukaru_nav_mode') || 'scroll';
+    document.querySelectorAll('.nav-mode-btn').forEach(function(b) {
+        b.style.borderColor = b.dataset.mode === savedMode ? '#1a73e8' : '#e0e0e0';
+        b.style.background = b.dataset.mode === savedMode ? '#e8f0fe' : '#fff';
+    });
+    var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === 'true';
+    var toggle = document.getElementById('passcode-toggle');
+    if (toggle) toggle.checked = lockEnabled;
+};
+function openSettings() { window.openSettings(); }
+
+window.closeSettings = function() {
+    var m = document.getElementById('user-settings-modal');
+    if (m) m.classList.remove('show');
+    showBottomNav();
+};
+function closeSettings() { window.closeSettings(); }
+
+// ===== 設定モーダルのイベント（閉じる・サウンド・フォント等）=====
+document.addEventListener('click', function(e) {
+    if (e.target.closest('#settings-close-btn')) {
+        window.closeSettings();
+        return;
+    }
+    var settingsModal = document.getElementById('user-settings-modal');
+    if (settingsModal && e.target === settingsModal) {
+        window.closeSettings();
+        return;
+    }
+    if (e.target.closest('#start-nav-edit-btn')) {
+        if (typeof window.startNavEditMode === 'function') window.startNavEditMode();
+        return;
+    }
+    if (e.target.closest('#nav-edit-done-btn')) {
+        if (typeof window.stopNavEditMode === 'function') window.stopNavEditMode();
+        return;
+    }
+    if (e.target.closest('.sound-opt')) {
+        var opt = e.target.closest('.sound-opt');
+        var sound = opt.dataset.sound;
+        localStorage.setItem('tasukaru_sound', sound);
+        document.querySelectorAll('.sound-opt').forEach(function(o) { o.classList.remove('active'); });
+        opt.classList.add('active');
+        return;
+    }
+    if (e.target.closest('.nav-mode-btn')) {
+        var btn = e.target.closest('.nav-mode-btn');
+        var mode = btn.dataset.mode;
+        localStorage.setItem('tasukaru_nav_mode', mode);
+        document.querySelectorAll('.nav-mode-btn').forEach(function(b) {
+            b.style.borderColor = b.dataset.mode === mode ? '#1a73e8' : '#e0e0e0';
+            b.style.background = b.dataset.mode === mode ? '#e8f0fe' : '#fff';
+        });
+        if (typeof applyNavMode === 'function') applyNavMode();
+        return;
+    }
+    if (e.target.closest('#preview-btn, .preview-btn')) {
+        var pBtn = e.target.closest('.preview-btn');
+        if (pBtn) {
+            var snd = pBtn.dataset.preview;
+            if (snd === 'pop') soundPop();
+            else if (snd === 'chime') soundChime();
+            else if (snd === 'pico') soundPico();
+            else if (snd === 'tasukaru') soundTasukaru();
+        }
+        return;
+    }
+});
+
+// フォントスライダー
+document.addEventListener('input', function(e) {
+    if (e.target.id === 'font-slider') {
+        var pct = parseInt(e.target.value);
+        document.documentElement.style.fontSize = pct + '%';
+        var label = document.getElementById('font-size-label');
+        var preview = document.getElementById('font-preview');
+        if (label) label.textContent = pct + '%';
+        if (preview) preview.style.fontSize = '0.95rem';
+        localStorage.setItem('tasukaru_font_size', pct);
+    }
+});
 
 // ★ top-fab-areaをbody最後尾に移動（iOSのoverflow scrollingによるタップ阻害を回避）
 (function moveFabToBody() {
