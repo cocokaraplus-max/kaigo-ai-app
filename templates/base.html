@@ -1034,6 +1034,8 @@ document.addEventListener('click', function(e) {
         return;
     }
     if (e.target.closest('#start-nav-edit-btn')) {
+        e.stopPropagation();
+        e.preventDefault();
         if (typeof window.startNavEditMode === 'function') window.startNavEditMode();
         return;
     }
