@@ -168,19 +168,6 @@
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
-        /* ★ 2段表示モード */
-        .bottom-nav.two-row {
-            flex-wrap: wrap;
-            overflow-x: hidden;
-            padding-bottom: max(100px, calc(env(safe-area-inset-bottom) + 80px));
-        }
-        .bottom-nav.two-row .bottom-nav-item {
-            flex: 0 0 25%;
-            max-width: 25%;
-            border-right: none;
-            border-bottom: 1px solid #f0f0f0;
-        }
-
         .bottom-nav-item {
             display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 3px;
@@ -268,7 +255,34 @@
     padding: 4px 10px; cursor: pointer;
     font-size: 0.75rem; font-weight: 700; color: #1a73e8;
     display: flex; align-items: center; gap: 3px;
-}       .flash-messages { margin-bottom: 1rem; }
+    flex-shrink: 0;
+}
+/* 設定行（トグル付き） */
+.setting-row-toggle {
+    display: flex; align-items: center; gap: 12px;
+    background: #f8f9fa; border-radius: 12px; padding: 12px 14px;
+}
+.setting-row-info { flex: 1; }
+.setting-row-name { font-size: 0.88rem; font-weight: 700; color: #202124; }
+.setting-row-desc { font-size: 0.72rem; color: #80868b; margin-top: 2px; }
+/* トグルスイッチ */
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: #ccc; border-radius: 24px;
+    transition: background 0.2s;
+}
+.toggle-slider:before {
+    content: ""; position: absolute;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; left: 3px; top: 3px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch input:checked + .toggle-slider { background: #1a73e8; }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+.flash-messages { margin-bottom: 1rem; }
     </style>
     {% block extra_style %}{% endblock %}
 </head>
@@ -343,38 +357,123 @@
     <!-- ナビ編集完了バー -->
     <!-- 設定モーダル -->
     <!-- 設定モーダル -->
+    <!-- ★ 設定モーダル -->
     <div class="settings-modal" id="user-settings-modal">
         <div class="settings-sheet">
             <div class="settings-handle"></div>
             <div class="settings-title-row">
-                <div class="settings-title"><span class="material-symbols-outlined">tune</span>ユーザー設定</div>
-                <button class                <btn" id="settings-close-btn"><span class="material-symbols-outlined">close</span></button>
+                <div class="settings-title">
+                    <span class="material-symbols-outlined">tune</span>
+                    ユーザー設定
+                </div>
+                <button class="settings-close-btn" id="settings-close-btn">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
             </div>
+
+            <!-- 文字サイズ -->
             <div class="setting-section">
-<div class="setting-section-label"><span class="material-symbols-outlined">text_fields</span>文字サイズ</div>
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">text_fields</span>文字サイズ
+                </div>
                 <div class="font-size-wrap">
                     <div class="font-size-preview" id="font-preview">文字サイズのプレビュー（介護記録アプリ TASUKARU）</div>
                     <div class="font-size-controls">
                         <span class="material-symbols-outlined" style="font-size:16px;">text_decrease</span>
-                        <input type                        <input type                     ax                        <input type                  <span class="material-symbols-outlined" style="font-size:22px;">text_increase                        <input type                        <input type                     ax                        <iv>
+                        <input type="range" id="font-slider" class="font-slider" min="80" max="130" value="100" step="5">
+                        <span class="font-size-value" id="font-size-label">100%</span>
+                        <span class="material-symbols-outlined" style="font-size:22px;">text_increase</span>
+                    </div>
                 </div>
             </div>
+
+            <!-- 通知サウンド -->
             <div class="setting-section">
-                <div class="setting-section-label"><span class="material-symbols-outlined">notifications</span>通知サウンド</div>
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">notifications</span>通知サウンド
+                </div>
                 <div id="sound-opts">
-                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span><div class="sound-opt-info"><div class="sound-opt-name">ポップ</div><div class="sound-opt-desc">軽快な音</div></div><button class="preview-btn" data-preview="pop"><span class="material-symbols-outl                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span<span style="font-size:20px;">🎵</span><div class="sound-opt-info"><div class="sound-opt-name">チャイム</div><div class="sound-opt-desc">3音チャイム</div></div><button class="preview-btn" data-preview="chime"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
-                    <div class="sound-opt" data-sound="pico"><span style="font-size:20px;">📯</span><div class="sound-opt-info"><div class="sound-opt-name">ピコン</div><div class="sound-opt-desc">電子音</div></div><button class="preview-btn" data-preview="pico"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
-                    <div class="sound-opt" data-sound="tasukaru"><span style="font-size:20px;">🦝</span><div class="sound-opt-info"><div class="sound-opt-name">タスカル</div><div class="sound-opt-desc">音声で通知</div></div><button class="preview-btn" data-preview="tasukaru"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
-                    <div class="sound-opt" data-sound="none"><span style="font-size:20px;">🔕</span><div class="sound-opt-info"><div class="sound-opt-name">なし</div><div class="sound-opt-desc">サウンドOFF</div></div></div>
+                    <div class="sound-opt active" data-sound="pop">
+                        <span style="font-size:20px;">🔔</span>
+                        <div class="sound-opt-info">
+                            <div class="sound-opt-name">ポップ</div>
+                            <div class="sound-opt-desc">軽快な音</div>
+                        </div>
+                        <button class="preview-btn" data-preview="pop">
+                            <span class="material-symbols-outlined">play_arrow</span>試聴
+                        </button>
+                    </div>
+                    <div class="sound-opt" data-sound="chime">
+                        <span style="font-size:20px;">🎵</span>
+                        <div class="sound-opt-info">
+                            <div class="sound-opt-name">チャイム</div>
+                            <div class="sound-opt-desc">3音チャイム</div>
+                        </div>
+                        <button class="preview-btn" data-preview="chime">
+                            <span class="material-symbols-outlined">play_arrow</span>試聴
+                        </button>
+                    </div>
+                    <div class="sound-opt" data-sound="pico">
+                        <span style="font-size:20px;">📯</span>
+                        <div class="sound-opt-info">
+                            <div class="sound-opt-name">ピコン</div>
+                            <div class="sound-opt-desc">電子音</div>
+                        </div>
+                        <button class="preview-btn" data-preview="pico">
+                            <span class="material-symbols-outlined">play_arrow</span>試聴
+                        </button>
+                    </div>
+                    <div class="sound-opt" data-sound="tasukaru">
+                        <span style="font-size:20px;">🦝</span>
+                        <div class="sound-opt-info">
+                            <div class="sound-opt-name">タスカル</div>
+                            <div class="sound-opt-desc">音声で通知</div>
+                        </div>
+                        <button class="preview-btn" data-preview="tasukaru">
+                            <span class="material-symbols-outlined">play_arrow</span>試聴
+                        </button>
+                    </div>
+                    <div class="sound-opt" data-sound="none">
+                        <span style="font-size:20px;">🔕</span>
+                        <div class="sound-opt-info">
+                            <div class="sound-opt-name">なし</div>
+                            <div class="sound-opt-desc">サウンドOFF</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div class="setting-sec            <div classpx;border:2px solid #e0e0e0;background:#fff;cursor:pointer;text-align:center;"><span class="material-symbols-outlined" style="font-size:22px;display:block;color:#1a73e8;margin-bottom:4px;">view_agenda</span><span style="font-size:0.75rem;font-weight:700;">横スクロール</span></button>
-                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-mode="two-row" id="mode-btn-two-r                    <button class="nav-mode-btn" data-moto                    pan              font-size:0.75rem;font-weight:700;">2段表示</span></button>
-                </div>
-            </div>
+
+            <!-- アプリロック -->
             <div class="setting-section">
-                <div class="setting-section-label"><span class="material-symbols-outlined">menu</span>メニュー並び順</div>
-                <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始</button>
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">lock</span>アプリロック
+                </div>
+                <div class="setting-row-toggle">
+                    <div class="setting-row-info">
+                        <div class="setting-row-name">パスコードロック</div>
+                        <div class="setting-row-desc">起動時・バックグラウンドから戻った時にロック</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="passcode-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="passcode-setup-area" style="display:none; margin-top:10px;">
+                    <button id="passcode-set-btn" style="width:100%;padding:12px;background:#f8f9fa;color:#202124;border:1.5px solid #e0e0e0;border-radius:10px;font-weight:700;font-size:0.88rem;cursor:pointer;">
+                        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">pin</span>
+                        パスコードを設定する
+                    </button>
+                </div>
+            </div>
+
+            <!-- メニュー並び順 -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">menu</span>メニュー並び順
+                </div>
+                <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
+                </button>
             </div>
         </div>
     </div>
@@ -992,12 +1091,7 @@ function showBottomNav() {
 function applyNavMode() {
     var nav = document.querySelector('.bottom-nav');
     if (!nav) return;
-    var mode = localStorage.getItem(NAV_MODE_KEY) || 'scroll';
-    if (mode === 'two-row') {
-        nav.classList.add('two-row');
-    } else {
-        nav.classList.remove('two-row');
-    }
+    nav.classList.remove('two-row');
 }
 applyNavMode();
 // ===== 設定モーダル関連 =====
@@ -1006,6 +1100,7 @@ window.openSettings = function() {
     if (!m) return;
     hideBottomNav();
     m.classList.add('show');
+    // フォントサイズ
     var savedFont = parseInt(localStorage.getItem('tasukaru_font_size') || '100');
     var slider = document.getElementById('font-slider');
     var label = document.getElementById('font-size-label');
@@ -1013,18 +1108,19 @@ window.openSettings = function() {
     if (slider) slider.value = savedFont;
     if (label) label.textContent = savedFont + '%';
     if (preview) preview.style.fontSize = '0.95rem';
+    // サウンド
     var savedSound = localStorage.getItem('tasukaru_sound') || 'pop';
     document.querySelectorAll('.sound-opt').forEach(function(o) {
         o.classList.toggle('active', o.dataset.sound === savedSound);
     });
-    var savedMode = localStorage.getItem('tasukaru_nav_mode') || 'scroll';
-    document.querySelectorAll('.nav-mode-btn').forEach(function(b) {
-        b.style.borderColor = b.dataset.mode === savedMode ? '#1a73e8' : '#e0e0e0';
-        b.style.background = b.dataset.mode === savedMode ? '#e8f0fe' : '#fff';
-    });
-    var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === 'true';
+    // パスコードトグル
+    var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === '1';
     var toggle = document.getElementById('passcode-toggle');
-    if (toggle) toggle.checked = lockEnabled;
+    var setupArea = document.getElementById('passcode-setup-area');
+    if (toggle) {
+        toggle.checked = lockEnabled;
+        if (setupArea) setupArea.style.display = lockEnabled ? 'block' : 'none';
+    }
 };
 function openSettings() { window.openSettings(); }
 
@@ -1058,21 +1154,38 @@ document.addEventListener('click', function(e) {
     }
     if (e.target.closest('.sound-opt')) {
         var opt = e.target.closest('.sound-opt');
+        if (e.target.closest('.preview-btn')) return; // 試聴ボタンはここでは処理しない
         var sound = opt.dataset.sound;
         localStorage.setItem('tasukaru_sound', sound);
         document.querySelectorAll('.sound-opt').forEach(function(o) { o.classList.remove('active'); });
         opt.classList.add('active');
         return;
     }
-    if (e.target.closest('.nav-mode-btn')) {
-        var btn = e.target.closest('.nav-mode-btn');
-        var mode = btn.dataset.mode;
-        localStorage.setItem('tasukaru_nav_mode', mode);
-        document.querySelectorAll('.nav-mode-btn').forEach(function(b) {
-            b.style.borderColor = b.dataset.mode === mode ? '#1a73e8' : '#e0e0e0';
-            b.style.background = b.dataset.mode === mode ? '#e8f0fe' : '#fff';
-        });
-        if (typeof applyNavMode === 'function') applyNavMode();
+    // パスコードトグル
+    if (e.target.id === 'passcode-toggle') {
+        var enabled = e.target.checked;
+        var setupArea = document.getElementById('passcode-setup-area');
+        if (enabled) {
+            localStorage.setItem('tasukaru_lock_enabled', '1');
+            if (setupArea) setupArea.style.display = 'block';
+        } else {
+            localStorage.removeItem('tasukaru_lock_enabled');
+            localStorage.removeItem('tasukaru_passcode');
+            if (setupArea) setupArea.style.display = 'none';
+        }
+        return;
+    }
+    // パスコード設定ボタン
+    if (e.target.closest('#passcode-set-btn')) {
+        window.closeSettings();
+        setTimeout(function() {
+            var p1 = prompt('新しいパスコード（4桁）を入力してください');
+            if (!p1 || !/^\d{4}$/.test(p1)) { alert('4桁の数字で入力してください'); return; }
+            var p2 = prompt('もう一度入力してください');
+            if (p1 !== p2) { alert('パスコードが一致しません'); return; }
+            localStorage.setItem('tasukaru_passcode', btoa(p1));
+            alert('✅ パスコードを設定しました');
+        }, 300);
         return;
     }
     if (e.target.closest('#preview-btn, .preview-btn')) {
