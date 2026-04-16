@@ -863,14 +863,6 @@ async function syncOfflineQueue() {
                 else resolve(list);
             };
         });
-        function hideBottomNav() {
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = 'none';
-}
-function showBottomNav() {
-    var nav = document.querySelector('.bottom-nav');
-    if (nav) nav.style.display = '';
-}
         if (!items.length) return;
 
         let synced = 0;
@@ -903,6 +895,14 @@ if (navigator.onLine) {
 
 // ===== ナビ表示モード適用 =====
 var NAV_MODE_KEY = 'tasukaru_nav_mode';
+function hideBottomNav() {
+    var nav = document.querySelector(".bottom-nav");
+    if (nav) nav.style.display = "none";
+}
+function showBottomNav() {
+    var nav = document.querySelector(".bottom-nav");
+    if (nav) nav.style.display = "";
+}
 function applyNavMode() {
     var nav = document.querySelector('.bottom-nav');
     if (!nav) return;
