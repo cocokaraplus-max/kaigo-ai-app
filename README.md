@@ -10,12 +10,16 @@
 > cpコマンド：cp "/Users/ZIMAX 1/Downloads/xxx" templates/
 >
 > **⚠️ ファイルの受け渡し方法（重要）**
-> ダウンロードしたファイルが古いことが多い。
-> 確実な方法：VS Codeでファイルを直接開いてコードを貼り付ける。
+> VS Codeのターミナルを使うのが確実。
 > Claudeはコード変更があれば完成版ファイル全体を出力して、VS Codeに貼り付けてもらう。
+> またはpythonパッチスクリプト（patch_xxx.py）をtemplatesに置いてpython3で実行する方法が定着。
 >
 > **⚠️ sw.jsは絶対に触らない**
 > バージョンを上げると真っ白になる。現在：tasukaru-v4（固定）
+>
+> **⚠️ Chrome連携（Claude in Chrome）が使える**
+> 開発者のChromeと連携しており、スクリーンショット・JS実行・コンソール確認が可能。
+> デプロイ前の動作確認はChrome連携で必ず行う。
 
 ---
 
@@ -32,171 +36,173 @@
 
 ---
 
-## 開発者の意図・哲学
-
-1. **タスカルくん（🦝）を大切に** → マスコット。変更不可
-2. **スマホファースト** → iPhoneで快適に動くことが必須
-3. **iPhoneの操作感** → ナビ並び替えはiPhoneのホーム画面のようなプルプル震える操作感
-4. **エラーはゼロが目標** → Chrome連携でコンソールエラーを確認してからデプロイ
-5. **シンプル** → 機能を増やすより使いやすさを優先
-
----
-
-## 開発ルール
-
-1. `patients.id`はbigint型 → patient_idはTEXT型で持つ
-2. 環境変数更新は`--update-env-vars`のみ（`--set-env-vars`は厳禁）
-3. スクリプトはすべてIIFEで囲む
-4. 全関数を`window.xxx`で公開する
-5. 開発はcloudrun-devで行い、確認後にcloudrunにマージ
-6. **sw.jsのバージョンは絶対に上げない** → 真っ白になる
-7. `position:fixed`の要素はpage-wrapperの外に置く（iOSのoverflow制約）
-8. HTMLの構造修正は必ずPythonスクリプトで行う（VS Codeの貼り付けは構造が壊れやすい）
-
----
-
-## デプロイコマンド
+## デプロイコマンド（完全版）
 
 ```bash
 # 開発版
-git add . && git commit -m "変更内容" && git push origin cloudrun-dev
+cd "/Users/ZIMAX 1/Desktop/kaigo-ai-app"
+git add .
+git commit -m "変更内容"
+git push origin cloudrun-dev
 gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --platform managed --allow-unauthenticated
 
-# 本番同期
-git stash && git checkout cloudrun && git merge cloudrun-dev && git push origin cloudrun
+# 本番同期（マージコンフリクト回避のため checkout方式を使う）
+git checkout cloudrun
+git checkout cloudrun-dev -- app.py
+git checkout cloudrun-dev -- templates/base.html
+git checkout cloudrun-dev -- templates/top.html
+git checkout cloudrun-dev -- templates/manual.html
+git add .
+git commit -m "sync: cloudrun-devの内容を本番に反映"
+git push origin cloudrun
 gcloud run deploy tasukaru --source . --region asia-northeast1 --platform managed --allow-unauthenticated
-git checkout cloudrun-dev && git stash pop
+git checkout cloudrun-dev
+```
+
+**⚠️ git merge は.DS_Storeとかでコンフリクトするのでcheckout方式を使うこと！**
+
+---
+
+## 2026-04-16 大規模修正セッション完了内容
+
+### ✅ 本番デプロイ済み
+
+| # | ファイル | 修正内容 |
+|---|---------|---------|
+| 1 | app.py | input_viewのXHR保存修正（X-Requested-With判定でJSON返却） |
+| 2 | app.py | 評価プロンプト全面改善（ICF視点・機能訓練指導員口調） |
+| 3 | app.py | 全APIバリデーション強化（save_vital/generate_daily等） |
+| 4 | app.py | 更新履歴をcreated_at順→id降順に変更（未来日付が上に来なくなった） |
+| 5 | base.html | ベルはTOPのみ表示・歯車もTOP以外は非表示（applyFabVisibility） |
+| 6 | base.html | history-itemクリック→ケース記録ジャンプ（イベント委譲で実装） |
+| 7 | base.html | ベルのないページからはTOPへSPA遷移 |
+| 8 | top.html | 更新ログモーダルHTML追加（ベルを押すと開く） |
+| 9 | top.html | 歯車CSS(position:fixed)削除・歯車HTMLボタン削除 |
+| 10 | top.html | fabBtn/openIconBtnのnullガード追加 |
+| 11 | manual.html | 上に戻るボタン bottom:130px・scrollTo修正 |
+
+### ⚠️ 残っているJS nullエラー
+- top.html 2676行目にまだnullエラー残存
+- patch_top.pyのfabBtn/openIconBtn nullガードは適用済みだが別箇所にまだある可能性
+- Chrome連携で `read_console_messages` して特定→修正が必要
+
+---
+
+## base.htmlの重要な構造
+
+```
+【top-fab-area】（body最後尾にmoveFabToBodyで移動）
+  - #update-log-btn（ベル）← TOPのみ表示
+  - #settings-fab-btn（歯車）← TOPのみ表示
+
+【applyFabVisibility()】
+  - isTop = pathname === '/top' || '/'
+  - fabArea/bellBtn/gearBtn を isTop ? '' : 'none'
+  - popstate・pushStateにフック済み
+
+【イベント委譲（document.addEventListener click）】
+  - .history-item[data-user] → /daily_view?user=&date= へジャンプ
+  - #update-log-btn → update-log-modalを開く（なければ/topへ）
+  - #settings-fab-btn → openSettings()
+  - #close-update-log-btn → モーダルを閉じる
 ```
 
 ---
 
-## 2026-04-16 大規模作業記録
+## タスクのプロジェクト機能（よくある質問）
 
-### ✅ 完了
-
-1. **本番の記録保存エラー緊急修正**
-   - app.pyのinput_viewにXHRヘッダー判定追加（本番のapp.py 587行目付近）
-   - `if request.headers.get("X-Requested-With") == "XMLHttpRequest":` でJSON返却
-   - **develop(cloudrun-dev)のapp.pyにはまだ未適用 → 要対応**
-
-2. **マニュアル Ver.4.0**（本番適用済み）
-   - カラータスカルくん・タスクセクション・カスタマイズセクション・更新ログ追加
-
-3. **歯車・ベルボタン**
-   - base.htmlにCSS/HTML/JS移植完了
-   - ベル🔔と歯車⚙️が右上に並んで表示される
-
-4. **設定モーダル**
-   - base.htmlに移植完了（全ページで動作）
-   - top.htmlから削除済み
-   - 開くと「ユーザー設定」タイトル・文字サイズ・通知サウンド・並び替えボタンが表示される
-
-5. **ナビ並び替え機能**
-   - top.htmlにstartNavEditMode/stopNavEditModeを追加
-   - 「並び替えモードを開始」→完了バーが動作確認済み
-   - Chrome上でも動作確認済み
-
-### ❌ 残っている問題（次のClaudeが対応）
-
-**最優先1：メニュー表示モード（2段/横スクロール切り替え）を削除**
-
-開発者の意向：2段モードは削除してシンプルに横スクロール1本にする。
-
-base.htmlから以下を削除する：
-- `<!-- メニュー表示モード -->` セクションのHTML（nav-mode-btnボタン2つ）
-- CSS の `.nav-mode-btn` / `.bottom-nav.two-row` 関連
-- JS の `applyNavMode` 内のtwo-row処理
-- JS の `.nav-mode-btn` クリックイベント処理
-
-**最優先2：develop版のapp.pyに記録保存修正を適用**
-
-```bash
-cd "/Users/ZIMAX 1/Desktop/kaigo-ai-app"
-# cloudrun-devブランチで実行
-sed -i '' 's/return redirect(url_for("daily_view", user=user_name, date=record_date_str))/if request.headers.get("X-Requested-With") == "XMLHttpRequest":\n                        return jsonify({"status": "success", "redirect": url_for("daily_view", user=user_name, date=record_date_str)})\n                    return redirect(url_for("daily_view", user=user_name, date=record_date_str))/' app.py
-grep -c "X-Requested-With" app.py  # 1以上になればOK
-```
-
-**その他：**
-- スマホでの動作確認（プルプルアニメ・ドラッグ・ベル）
-- develop版manual.htmlをカラータスカルくん版に更新
+「なし」しか選べない → プロジェクトを先に作成する必要がある
+「タスク」→「プロジェクト」タブ → 「新しいプロジェクトを作成」
+プロジェクト名を入力してメンバーを選んで作成
+→ タスク作成時にプロジェクト選択肢に出てくる
+→ マニュアルにも手順を追記済み（patch_manual_project.py適用後）
 
 ---
 
-## base.htmlの現在の構造（重要）
+## 📊 2026-04-16 新規作業：Googleスプレッドシート連携
 
+### 概要
+ケース記録・モニタリング報告書のExcel様式をGoogleスプレッドシートで管理し、
+TASUKARUのデータを自動入力できる仕組みを構築中。
+
+### 完了済み
+1. **ExcelテンプレートをGoogleスプレッドシートに変換**
+   - 元ファイル：ケース記録_モニタリンク_.xlsx（4シート構成）
+   - 変換済みファイル：TASUKARU_様式（Googleスプレッドシート）
+   - GoogleドライブURL：https://docs.google.com/spreadsheets/d/13fAq0ELCyq8w_bryzt-CEpKrzdDdsPyqYd-UYEqLq6Q/edit
+   - 保存場所：マイドライブ > ケース記録＆モニタリング フォルダ
+   - 書式確認済み（ほぼ崩れなし）
+
+2. **Google Apps Script（GAS）コード作成済み**
+   - GASプロジェクト名：TASUKARU自動入力
+   - スクリプトID：1_3CHezNwUFpBMchQv7cMWCS4qU7R_32glKcDankYrHBuLZdpqOz0OpsL
+   - Apps Script URL：https://script.google.com/u/0/home/projects/1_3CHezNwUFpBMchQv7cMWCS4qU7R_32glKcDankYrHBuLZdpqOz0OpsL/edit
+   - 機能：
+     - スプレッドシートに「🦝 TASUKARU」メニューを追加
+     - 利用者一覧をSupabaseから取得してダイアログ表示
+     - 選択した利用者のデータをシートに自動入力
+     - 設定画面でSupabase APIキーを保存
+
+3. **スクリプトプロパティの設定画面まで到達**
+   - プロパティ名「SUPABASE_KEY」は入力済み
+   - **値（Supabase Anon Key）の貼り付けがまだ未完了** ← ここで止まっている
+
+### ❌ 次のセッションでやること（最優先）
+
+**① GASにSupabase Anon Keyを設定する**
+
+手順：
+1. Chromeで https://script.google.com を開く
+2. 「TASUKARU自動入力」プロジェクトを開く
+3. 左メニューの歯車アイコン「プロジェクトの設定」をクリック
+4. 下にスクロールして「スクリプトプロパティ」セクションへ
+5. 「スクリプトプロパティを追加」をクリック
+6. プロパティ：`SUPABASE_KEY`
+7. 値：SupabaseのAnon Key（下記から取得）
+   - https://supabase.com/dashboard/project/abvglnkwtdeoaazyqwyd/settings/api-keys/legacy
+   - 「Legacy anon, service_role API keys」タブ
+   - **anon public** のCopyボタンを押してコピー
+8. 「スクリプトプロパティを保存」をクリック
+
+**② スプレッドシートをリロードして動作確認**
+
+1. https://docs.google.com/spreadsheets/d/13fAq0ELCyq8w_bryzt-CEpKrzdDdsPyqYd-UYEqLq6Q/edit を開く
+2. メニューバーに「🦝 TASUKARU」が表示される（初回は権限承認が必要）
+3. 「🦝 TASUKARU」→「利用者一覧を取得」をクリック
+4. 利用者のリストが表示されれば成功！
+5. 利用者を選んで「データを入力する」→ シートに自動入力される
+
+**③ 動作確認後にGASコードのカラム位置調整**
+- Supabaseのpatientsテーブルのカラム名を確認
+- assessmentsテーブルのカラム名を確認
+- GASコードのsetValue箇所とシートのセル位置を合わせる
+
+### GASコードの概要（コード.gs）
+
+```javascript
+// 設定値
+const SUPABASE_URL = 'https://abvglnkwtdeoaazyqwyd.supabase.co';
+const FACILITY_CODE = 'cocokaraplus-5526';
+
+// メイン機能
+- onOpen() → メニュー追加
+- getPatients() → Supabaseから利用者一覧取得
+- getAssessment(patientId) → 評価データ取得
+- showPatientSelector() → 利用者選択ダイアログ表示
+- fillPatientData(patientId) → シートにデータ自動入力
+  ├ モニタリング報告書R8.3: G6(氏名), D11(フリガナ), D12(氏名), I11(性別)
+  │   J12(生年月日), P12(要介護度), D15-D17(短期目標), D19-D21(長期目標)
+  │   B24(変化), L24(課題)
+  └ ケース記録R8.3: D3(氏名), D6-D8(短期目標), D9-D11(長期目標)
+- openSettings() → APIキー設定画面
+- saveSettings(key) → スクリプトプロパティに保存
 ```
-【CSS（~200行目）】
-- .page-wrapper
-- .settings-fab / .top-fab-area
-- .nav-edit-bar / .nav-edit-bar.show / .nav-edit-bar-done
-- .settings-modal / .settings-sheet / .settings-title等
-- .sound-opt / .sound-opt.active
-- .font-slider等
-- ★.nav-mode-btn / .bottom-nav.two-row ← 削除予定
 
-【HTML】
-325行目: <div class="nav-edit-bar" id="nav-edit-bar">
-345行目: <div class="settings-modal" id="user-settings-modal">
-         - 文字サイズスライダー
-         - 通知サウンド（ポップ/チャイム/ピコン/タスカル/なし）
-         - ★メニュー表示モード（横スクロール/2段） ← 削除予定
-         - メニュー並び順「並び替えモードを開始」ボタン ← 残す
-         </div>
-381行目: <div class="top-fab-area">（ベル・歯車ボタン）
-391行目: <div class="page-wrapper">
-
-【JS（グローバルスコープ）】
-- saveNavOrder(order)
-- showToastMsg(msg)
-- hideBottomNav() / showBottomNav()
-- window.openSettings() / window.closeSettings()
-- applyNavMode() / applyNavOrder()
-- ★applyNavModeUI() ← この関数が未定義の可能性あり
-
-【document.addEventListener（イベント委譲）】
-- #update-log-btn → 更新ログモーダルを開く
-- #settings-fab-btn → openSettings()
-- #settings-close-btn → closeSettings()
-- #start-nav-edit-btn → startNavEditMode()（stopPropagation済み）
-- #nav-edit-done-btn → stopNavEditMode()
-- .sound-opt → サウンド選択
-- ★.nav-mode-btn → ナビモード切替 ← 削除予定
-- .preview-btn → 試聴
-- font-slider → フォントサイズ変更
-```
-
----
-
-## top.htmlの現在の状態
-
-- 719行のベース + VS Codeで以下を追加
-- IIFE の先頭付近に追加：
-  - `window.startNavEditMode` / `window.stopNavEditMode`
-  - `onNavItemTouchStart` / `onNavItemTouchMove` / `onNavItemTouchEnd`
-  - `onNavItemMouseDown`
-- 設定モーダルHTMLは削除済み
-- 設定モーダルのCSSはtop.htmlに残っているが無害
-
----
-
-## Supabaseテーブル
-
-- `records`：`record_date`カラムは存在しない（insertに含めると失敗）
-- `tasks` / `task_projects`：タスクリスト機能
-- `_tasukaru_deploy`：開発用一時保存（nav_code_b64等）
-
----
-
-## タスカルくん画像
-
-```
-/static/tasukaruカラー.png        カラー版（メイン・マニュアルヘッダーに使用）
-/static/tasukaru_sestumei.png     説明・案内（白黒）
-/static/tasukaru_odoroki.png      驚き（白黒）
-/static/tasukaru_ooyorokobi.png   大喜び（白黒）
-/static/tasukaru_onegai.png       お願い（白黒）
-```
+### Supabaseのテーブル構造確認が必要な項目
+- `patients` テーブルのカラム：id, user_name, kana, gender, birth_date, care_level
+- `assessments` テーブルのカラム：short_function, short_activity, short_participation,
+  long_function, long_activity, long_participation, changes, issues
+  （カラム名が違う場合はGASコードを修正）
 
 ---
 
@@ -205,14 +211,12 @@ grep -c "X-Requested-With" app.py  # 1以上になればOK
 | エラー | 原因 | 対処 |
 |--------|------|------|
 | sw.js更新で真っ白 | ServiceWorkerキャッシュ競合 | **絶対にバージョンを上げない** |
-| パスのスペースでcp失敗 | `ZIMAX 1`のスペース | `"/Users/ZIMAX 1/..."` でクォート |
-| ヒアドキュメントSyntaxError | シングルクォート衝突 | VS Codeで直接貼り付け |
-| page-wrapperのwidth/height:0 | 設定モーダルHTMLが構造破壊 | Pythonで正確に書き直す |
-| 500エラー | Jinja2テンプレート構造破壊 | `git revert HEAD`で戻す |
-| openSettingsがundefined | IIFEに閉じ込められている | `window.openSettings`で公開 |
-| ボタンが押せない（iOS） | page-wrapper内にposition:fixed | base.htmlのpage-wrapper外に移動 |
-| ダウンロードファイルが古い | キャッシュ問題 | VS Codeで直接貼り付けが確実 |
+| 本番mergeでコンフリクト | .DS_Storeの競合 | checkout方式（merge禁止） |
+| ベルを押しても反応なし | update-log-modalが存在しない | top.htmlにモーダルHTMLを追加 |
+| history-itemクリックで遷移しない | SPA遷移後イベント消える | base.htmlのイベント委譲で管理 |
+| GASのメニューが出ない | onOpen未実行 or 権限未承認 | スプレッドシートをリロード→承認 |
+| GAS「利用者が見つかりません」 | SUPABASE_KEYが未設定 | スクリプトプロパティを設定 |
 
 ---
 
-*最終更新：2026-04-16 深夜（Ver.4.0 長期作業セッション）*
+*最終更新：2026-04-16 夜（GASスプレッドシート連携作業中）*
