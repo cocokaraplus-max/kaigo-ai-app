@@ -584,9 +584,14 @@ def input_view():
                     selected_patient = ""
                     user_name = m.group(2)
                     record_date_str = record_date
+                    # XHR（SPA）からのリクエストにはJSONを返す
+                    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                        return jsonify({"status": "success", "redirect": url_for("daily_view", user=user_name, date=record_date_str)})
                     return redirect(url_for("daily_view", user=user_name, date=record_date_str))
             except Exception as e:
                 error = f"保存に失敗しました: {e}"
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"status": "error", "message": error}), 500
 
     return render("input.html",
         patients=patients, today=today, content=content,
@@ -1034,6 +1039,8 @@ def api_create_room():
 def api_send_room_message():
     try:
         data = request.json
+        if not data or not data.get("room_id") or not data.get("content", "").strip():
+            return jsonify({"status": "error", "message": "room_id と content は必須です"}), 400
         my_name = session["my_name"]
         f_code = session["f_code"]
         supabase = get_supabase()
@@ -1257,6 +1264,8 @@ def api_save_vital():
             "staff_name": my_name,
         }
         # 既存レコードがあればupdate、なければinsert
+        if not data.get("patient_id") or not data.get("measured_date"):
+            return jsonify({"status": "error", "message": "patient_idとmeasured_dateは必須です"}), 400
         existing = supabase.table("vitals").select("id").eq("facility_code", f_code).eq("patient_id", data["patient_id"]).eq("measured_date", data["measured_date"]).execute()
         if existing.data:
             rid = existing.data[0]["id"]
@@ -1767,30 +1776,35 @@ def api_generate_assessment():
         training_progress = data.get("training_progress", "")
         other_notes       = data.get("other_notes", "")
 
-        prompt = f"""あなたは介護施設の機能訓練指導員です。
-以下の情報をもとに、ケアマネジャーへ提出する「個別機能訓練 月次評価報告書」の2項目を生成してください。
+        prompt = f"""あなたは通所介護事業所の機能訓練指導員です。
+以下の情報をもとに、ケアマネジャーへ提出する「個別機能訓練 月次評価報告書」の2項目を作成してください。
 
 【利用者情報】
 氏名: {name}　生年月日: {birth}　疾患名: {disease}
 訓練目標: {goal}
 対象月: {month}
 
-【聴取内容】
-・今月の訓練達成度: {achievement or '（記載なし）'}
+【今月の状況】
+・訓練達成度: {achievement or '（記載なし）'}
 ・自宅での取り組み: {home_effort or '（記載なし）'}
 ・デイでの訓練進捗: {training_progress or '（記載なし）'}
 ・その他・気づき: {other_notes or '（記載なし）'}
 
-以下の2項目をそれぞれ3〜5文で、専門的かつ具体的に記述してください。
-箇条書きは使わず、流れのある文章で書いてください。
+【作成ルール】
+・機能訓練指導員としての専門的立場から、客観的事実に基づいて記述する
+・ICFの視点（①心身機能・身体構造、②活動、③参加）を意識して記述する
+・情報の虚偽・誇張・憶測は一切行わない。記載のない情報は補完しない
+・ケアマネジャーが読みやすい「です・ます調」の報告書口調で記述する
+・専門用語は使いつつも簡潔に。1項目あたり3〜4文、100〜150字程度
+・箇条書きは使わず、流れのある文章で書く
 
 【個別機能訓練実施による変化】
-（訓練を通じて利用者の身体機能・ADL・意欲などにどのような変化があったかを記述）
+（今月の訓練を通じて確認できた心身機能・ADL・意欲等の変化を、機能訓練指導員の視点から記述）
 
 【個別機能訓練実施における課題とその要因】
-（現在の課題、その背景にある要因、今後の方針を記述）
+（現在残存する課題、その背景となる要因、今後の訓練方針を記述）
 
-回答はJSON形式で返してください：
+回答はJSON形式のみで返してください（説明文・コードブロック不要）：
 {{"ai_change": "変化の文章", "ai_challenge": "課題の文章"}}"""
 
         model = get_generative_model()
@@ -2275,25 +2289,37 @@ def api_record_dates():
 def api_transcribe():
     try:
         data = request.json
+        if not data or not data.get("audio_data"):
+            return jsonify({"error": "音声データがありません"}), 400
         from utils import get_generative_model, upload_audio_to_supabase
         model = get_generative_model()
         prompt = "以下の音声を介護記録として文章に起こしてください。\n【ルール】\n・話した内容をできるだけ忠実に文章化する\n・「あー」「えー」「えっと」などのフィラーは省略する\n・職員名や「利用者様は」などの主語は不要\n・です・ます調に整える\n・事実のみを記載し、余計な装飾は不要"
-        audio_bytes = base64.b64decode(data["audio_data"])
-        contents = [prompt, {"mime_type": data["audio_mime"], "data": audio_bytes}]
+        try:
+            audio_bytes = base64.b64decode(data["audio_data"])
+        except Exception:
+            return jsonify({"error": "音声データのデコードに失敗しました"}), 400
+        mime = data.get("audio_mime", "audio/webm")
+        contents = [prompt, {"mime_type": mime, "data": audio_bytes}]
         result = model.generate_content(contents)
         return jsonify({"text": result.text.strip()})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"[transcribe error] {e}")
+        return jsonify({"error": f"音声変換に失敗しました: {str(e)}"}), 500
 
 @app.route('/api/generate_daily', methods=['POST'])
 @login_required
 def api_generate_daily():
     try:
         data = request.json
+        if not data or not data.get("user") or not data.get("date"):
+            return jsonify({"status": "error", "message": "user と date は必須です"}), 400
         f_code = session["f_code"]
         supabase = get_supabase()
         user = data["user"]
-        selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        try:
+            selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"status": "error", "message": "日付の形式が正しくありません（YYYY-MM-DD）"}), 400
         t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
         res = supabase.table("records").select("*").eq("facility_code", f_code).eq(
             "user_name", user
@@ -2322,10 +2348,15 @@ def api_generate_daily():
 def api_regenerate_daily():
     try:
         data = request.json
+        if not data or not data.get("user") or not data.get("date"):
+            return jsonify({"status": "error", "message": "user と date は必須です"}), 400
         f_code = session["f_code"]
         supabase = get_supabase()
         user = data["user"]
-        selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        try:
+            selected_date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"status": "error", "message": "日付の形式が正しくありません（YYYY-MM-DD）"}), 400
         t_start = tokyo_tz.localize(datetime.combine(selected_date, dt_time.min))
         res = supabase.table("records").select("*").eq("facility_code", f_code).eq(
             "user_name", user
@@ -2353,17 +2384,21 @@ def api_regenerate_daily():
 def api_update_record():
     try:
         data = request.json
+        if not data or not data.get("id") or data.get("content") is None:
+            return jsonify({"status": "error", "message": "id と content は必須です"}), 400
         supabase = get_supabase()
         supabase.table("records").update({"content": data["content"]}).eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/delete_record', methods=['POST'])
 @login_required
 def api_delete_record():
     try:
         data = request.json
+        if not data or not data.get("id"):
+            return jsonify({"status": "error", "message": "id は必須です"}), 400
         f_code = session["f_code"]
         my_name = session["my_name"]
         is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
