@@ -263,6 +263,48 @@
 </div>
 
     {% if session.get('f_code') %}
+    <!-- ナビ編集完了バー -->
+    <div class="nav-edit-bar" id="nav-edit-bar">
+        <span>✏️ ドラッグでメニューを並び替え</span>
+        <button class="nav-edit-bar-done" id="nav-edit-done-btn">✅ 完了</button>
+    </div>
+    <!-- ナビ編集完了バー -->
+    <div class="nav-edit-bar" id="nav-edit-bar">
+        <span>✏️ ドラッグでメニューを並び替え</span>
+        <button class="nav-edit-bar-done" id="nav-edit-done-btn">✅ 完了</button>
+    </div>
+    <!-- 設定モーダル -->
+    <div class="settings-modal" id="user-settings-modal">
+        <div class="settings-sheet">
+            <div class="settings-handle"></div>
+            <div class="settings-title-row">
+                <div class="settings-title">
+                    <span class="material-symbols-outlined">tune</span>
+                    ユーザー設定
+                </div>
+                <button class="settings-close-btn" id="settings-close-btn">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <!-- 文字サイズ -->
+            <div class="setting-section">
+                <div class="setting-section-label"><span class="material-symbols-outlined">text_fields</span>文字サイズ</div>
+                <div class="font-size-wrap">
+                    <div class="font-size-preview" id="font-preview">文字サイズのプレビュー（介護記録アプリ TASUKARU）</div>
+                    <div class="font-size-controls">
+                        <span class="material-symbols-outlined" style="font-size:16px;">text_decrease</span>
+                        <input type="range" class="font-slider" id="font-slider" min="90" max="130" step="5" value="100">
+                        <span class="material-symbols-outlined" style="font-size:22px;">text_increase</span>
+                        <span class="font-size-value" id="font-size-label">100%</span>
+                    </div>
+                </div>
+            </div>
+            <!-- 通知サウンド -->
+            <div class="setting-section">
+                <div class="setting-section-label"><span class="material-symbols-outlined">notifications</span>通知サウンド</div>
+                <div id="sound-opts">
+                    <div class="sound-opt active" data-sound="pop"><span style="font-size:20px;">🔔</span><div class="sound-opt-info"><div class="sound-opt-name">ポップ</div><div class="sound-opt-desc">軽快な音</div></div><button class="preview-btn" data-preview="pop"><span class="material-symbols-outlined">play_arrow</span>試聴</button></div>
+                    <div class="sound-opt" data-sound="chime"><span style="font-size:20px;">🎵</span><div class="sound-opt-info"><div class="sound-opt-name">チャイム</div><div class="sound-opt-desc">3音チャイム</div>
     <div class="top-fab-area" id="top-fab-area">
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
