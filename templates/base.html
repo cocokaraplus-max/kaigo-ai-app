@@ -1226,6 +1226,16 @@ document.addEventListener('input', function(e) {
 // ===== 歯車・ベルボタンのイベントバインド =====
 // イベントはdocumentに委譲して確実に動作させる
 document.addEventListener('click', function(e) {
+    // 更新履歴アイテム → ケース記録へジャンプ（SPA遷移・通常遷移どちらでも動作）
+    if (e.target.closest('.history-item[data-user]')) {
+        var item = e.target.closest('.history-item[data-user]');
+        var user = item.dataset.user;
+        var date = item.dataset.date;
+        if (user && date) {
+            window.location.href = '/daily_view?user=' + encodeURIComponent(user) + '&date=' + date;
+        }
+        return;
+    }
     // ベルボタン
     if (e.target.closest('#update-log-btn')) {
         var modal = document.getElementById('update-log-modal');
