@@ -135,8 +135,9 @@
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
             position: fixed; top: 16px; right: 16px;
-            display: flex; gap: 8px; z-index: 1000;
-            pointer-events: auto;
+            display: flex; flex-direction: row; gap: 8px;
+            z-index: 1000; pointer-events: auto;
+            width: auto; align-items: center;
         }
         .settings-fab {
             width: 40px; height: 40px; border-radius: 50%;
@@ -1228,7 +1229,15 @@ document.addEventListener('click', function(e) {
     // ベルボタン
     if (e.target.closest('#update-log-btn')) {
         var modal = document.getElementById('update-log-modal');
-        if (!modal) return;
+        if (!modal) {
+            // update-log-modalがないページ（manual等）はTOPへSPA遷移
+            if (typeof navigateTo === 'function') {
+                navigateTo('/top');
+            } else {
+                window.location.href = '/top';
+            }
+            return;
+        }
         var nav = document.querySelector('.bottom-nav');
         if (nav) nav.style.display = 'none';
         modal.style.display = 'flex';
