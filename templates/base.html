@@ -139,6 +139,12 @@
             z-index: 1000; pointer-events: auto;
             width: auto; align-items: center;
         }
+        /* top.htmlの古い .settings-fab { position:fixed } を上書き */
+        .top-fab-area .settings-fab {
+            position: relative !important;
+            top: auto !important; right: auto !important;
+            z-index: auto !important;
+        }
         .settings-fab {
             width: 40px; height: 40px; border-radius: 50%;
             background: #f0f4ff; border: none; cursor: pointer;
@@ -1221,6 +1227,26 @@ document.addEventListener('input', function(e) {
     if (fab && fab.parentNode !== document.body) {
         document.body.appendChild(fab);
     }
+})();
+
+// ★ top-fab-area: TOPページのみベルを表示、それ以外は歯車のみ
+(function updateFabForPage() {
+    function applyFabVisibility() {
+        var bellBtn = document.getElementById('update-log-btn');
+        var isTop = window.location.pathname === '/top' || window.location.pathname === '/';
+        if (bellBtn) {
+            bellBtn.style.display = isTop ? '' : 'none';
+        }
+    }
+    applyFabVisibility();
+    // SPA遷移後も対応
+    window.addEventListener('popstate', applyFabVisibility);
+    // navigateToのフック
+    var _origPushState = history.pushState;
+    history.pushState = function() {
+        _origPushState.apply(history, arguments);
+        setTimeout(applyFabVisibility, 50);
+    };
 })();
 
 // ===== 歯車・ベルボタンのイベントバインド =====
