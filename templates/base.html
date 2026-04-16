@@ -968,6 +968,19 @@ if (navigator.onLine) {
 
 // ===== ナビ表示モード適用 =====
 var NAV_MODE_KEY = 'tasukaru_nav_mode';
+function saveNavOrder(order) {
+    localStorage.setItem('tasukaru_nav_order', JSON.stringify(order));
+}
+
+function showToastMsg(msg) {
+    var toast = document.getElementById('save-toast');
+    if (toast) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 2500);
+    }
+}
+
 function hideBottomNav() {
     var nav = document.querySelector(".bottom-nav");
     if (nav) nav.style.display = "none";
