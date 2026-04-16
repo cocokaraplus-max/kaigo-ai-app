@@ -55,6 +55,100 @@
 }
 .birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
 
+/* ★ 歯車ボタン */
+.settings-fab {
+    position: fixed; top: 16px; right: 16px;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #f0f4ff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    -webkit-tap-highlight-color: transparent;
+}
+.settings-fab .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
+
+/* ★ 設定モーダル */
+.settings-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 2000;
+    align-items: flex-end; justify-content: center;
+}
+.settings-modal.show { display: flex; }
+.settings-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 20px 40px; animation: slideUp 0.22s ease;
+    max-height: 90vh; overflow-y: auto;
+}
+@keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.settings-handle {
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 0 auto 16px;
+}
+.settings-title-row {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.settings-title {
+    font-size: 1rem; font-weight: 800; color: #202124;
+    display: flex; align-items: center; gap: 8px;
+}
+.settings-title .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
+.settings-close-btn { background: none; border: none; cursor: pointer; padding: 4px; }
+
+/* 設定セクション */
+.setting-section { margin-bottom: 24px; }
+.setting-section-label {
+    font-size: 0.8rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.setting-section-label .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+
+/* 文字サイズスライダー */
+.font-size-wrap {
+    background: #f8f9fa; border-radius: 12px; padding: 14px 16px;
+}
+.font-size-preview {
+    text-align: center; font-weight: 600; color: #202124;
+    margin-bottom: 12px; padding: 10px;
+    background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;
+    transition: font-size 0.2s;
+}
+.font-size-controls {
+    display: flex; align-items: center; gap: 10px;
+}
+.font-size-controls .material-symbols-outlined { color: #5f6368; }
+.font-slider {
+    flex: 1; accent-color: #1a73e8;
+    height: 4px; cursor: pointer;
+}
+.font-size-value {
+    font-size: 0.82rem; font-weight: 700; color: #1a73e8;
+    min-width: 36px; text-align: center;
+}
+
+/* サウンド選択 */
+.sound-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1.5px solid #e0e0e0; cursor: pointer;
+    background: #fff; transition: all 0.15s; margin-bottom: 6px;
+    -webkit-tap-highlight-color: transparent;
+}
+.sound-opt.active { border-color: #1a73e8; background: #e8f0fe; }
+.sound-opt-info { flex: 1; }
+.sound-opt-name { font-size: 0.85rem; font-weight: 700; }
+.sound-opt-desc { font-size: 0.7rem; color: #80868b; }
+.preview-btn {
+    background: #f0f4ff; border: none; border-radius: 20px;
+    padding: 4px 10px; cursor: pointer;
+    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
+    display: flex; align-items: center; gap: 3px; flex-shrink: 0;
+}
+.preview-btn .material-symbols-outlined { font-size: 14px; }
+
 /* アイコン設定ボタン */
 .icon-setting-row {
     display: flex; align-items: center; gap: 12px;
@@ -68,37 +162,10 @@
 
 {% block content %}
 
-
-<!-- ★ 更新ログモーダル -->
-<div id="update-log-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:3000;align-items:flex-end;justify-content:center;">
-    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px 20px 40px;max-height:80vh;overflow-y:auto;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <div style="font-size:1rem;font-weight:800;color:#202124;display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">notifications</span>
-                アップデート情報
-            </div>
-            <button id="close-update-log-btn" style="background:none;border:none;cursor:pointer;padding:4px;">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div style="font-size:0.85rem;color:#5f6368;line-height:1.8;">
-            <div style="margin-bottom:16px;padding:12px;background:#f8f9fa;border-radius:12px;">
-                <div style="font-weight:800;color:#1a73e8;margin-bottom:6px;">🦝 Ver.4.0 （2026年4月）</div>
-                <div>・設定モーダルをリニューアル</div>
-                <div>・ベル・歯車ボタンを右上に配置</div>
-                <div>・更新履歴をタップしてケース記録へジャンプ</div>
-                <div>・更新履歴を入力順（新着順）に表示</div>
-                <div>・評価レポートをICF視点・機能訓練指導員口調に改善</div>
-                <div>・各種保存エラーを修正</div>
-            </div>
-            <div style="padding:12px;background:#f8f9fa;border-radius:12px;">
-                <div style="font-weight:800;color:#5f6368;margin-bottom:6px;">📋 Ver.3.x</div>
-                <div>・タスク管理・掲示板・バイタル管理機能を追加</div>
-                <div>・AIによる日次統合記録を追加</div>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- ★ 歯車ボタン（右上固定） -->
+<button class="settings-fab" id="settings-fab-btn">
+    <span class="material-symbols-outlined">settings</span>
+</button>
 
 <div class="logo-area">
     <img src="/static/logo.png" alt="TASUKARU" onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
@@ -407,14 +474,15 @@ function applyFontSize(pct) {
 var savedFont = parseInt(localStorage.getItem(FONT_KEY) || '100');
 applyFontSize(savedFont);
 
-// ===== 歯車ボタン: base.htmlのイベント委譲と統合済み =====
-var fabBtn   = document.getElementById('settings-fab-btn');
-var modal    = document.getElementById('user-settings-modal');
+// ===== 歯車ボタン =====
+var fabBtn = document.getElementById('settings-fab-btn');
+var modal  = document.getElementById('user-settings-modal');
 var closeBtn = document.getElementById('settings-close-btn');
 
-if (fabBtn)   { fabBtn.addEventListener('click', openSettings); fabBtn.addEventListener('touchend', function(e) { e.preventDefault(); openSettings(); }); }
-if (closeBtn) { closeBtn.addEventListener('click', closeSettings); }
-if (modal)    { modal.addEventListener('click', function(e) { if (e.target === modal) closeSettings(); }); }
+fabBtn.addEventListener('click', openSettings);
+fabBtn.addEventListener('touchend', function(e) { e.preventDefault(); openSettings(); });
+closeBtn.addEventListener('click', closeSettings);
+modal.addEventListener('click', function(e) { if (e.target === modal) closeSettings(); });
 
 function openSettings() {
     modal.classList.add('show');
@@ -505,14 +573,11 @@ var openIconBtn = document.getElementById('open-icon-edit-btn');
 var iconModal   = document.getElementById('icon-edit-modal');
 var closeIconBtn = document.getElementById('close-icon-edit-btn');
 
-if (openIconBtn && iconModal) {
-    openIconBtn.addEventListener('click', function() { if (typeof closeSettings==='function') closeSettings(); iconModal.style.display = 'flex'; });
-    openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); if (typeof closeSettings==='function') closeSettings(); iconModal.style.display = 'flex'; });
-}
-if (closeIconBtn) { closeIconBtn.addEventListener('click', function() { iconModal.style.display = 'none'; }); }
-var _myIconBtn = document.getElementById('my-icon-btn');
-if (_myIconBtn && iconModal) { _myIconBtn.addEventListener('click', function() { iconModal.style.display = 'flex'; }); }
-if (iconModal) { iconModal.addEventListener('click', function(e) { if (e.target === iconModal) iconModal.style.display = 'none'; }); }
+openIconBtn.addEventListener('click', function() { closeSettings(); iconModal.style.display = 'flex'; });
+openIconBtn.addEventListener('touchend', function(e) { e.preventDefault(); closeSettings(); iconModal.style.display = 'flex'; });
+closeIconBtn.addEventListener('click', function() { iconModal.style.display = 'none'; });
+document.getElementById('my-icon-btn').addEventListener('click', function() { iconModal.style.display = 'flex'; });
+iconModal.addEventListener('click', function(e) { if (e.target === iconModal) iconModal.style.display = 'none'; });
 
 // 写真選択
 var photoInput = document.getElementById('icon-photo-input');
