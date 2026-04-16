@@ -1233,10 +1233,13 @@ document.addEventListener('input', function(e) {
 (function updateFabForPage() {
     function applyFabVisibility() {
         var bellBtn = document.getElementById('update-log-btn');
+        var gearBtn = document.getElementById('settings-fab-btn');
+        var fabArea = document.getElementById('top-fab-area');
         var isTop = window.location.pathname === '/top' || window.location.pathname === '/';
-        if (bellBtn) {
-            bellBtn.style.display = isTop ? '' : 'none';
-        }
+        // TOPのみベル+歯車を表示、それ以外は全て非表示
+        if (fabArea) fabArea.style.display = isTop ? '' : 'none';
+        if (bellBtn) bellBtn.style.display = isTop ? '' : 'none';
+        if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
     }
     applyFabVisibility();
     // SPA遷移後も対応
