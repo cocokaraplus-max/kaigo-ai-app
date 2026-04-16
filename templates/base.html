@@ -863,6 +863,14 @@ async function syncOfflineQueue() {
                 else resolve(list);
             };
         });
+        function hideBottomNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = 'none';
+}
+function showBottomNav() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) nav.style.display = '';
+}
         if (!items.length) return;
 
         let synced = 0;
