@@ -452,6 +452,126 @@
 {% block extra_script %}
 <script>
 (function(){
+    // ===== ボトムナビ直接編集モード =====
+var _navEditDragging = false;
+var _navEditClone = null;
+var _navEditSource = null;
+
+window.startNavEditMode = function startNavEditMode() {
+    window.closeSettings();
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    nav.classList.add('edit-mode');
+    document.getElementById('nav-edit-bar').classList.add('show');
+    nav.querySelectorAll('a.bottom-nav-item').forEach(function(item) {
+        item.addEventListener('touchstart', onNavItemTouchStart, { passive: false });
+        item.addEventListener('touchmove', onNavItemTouchMove, { passive: false });
+        item.addEventListener('touchend', onNavItemTouchEnd, { passive: false });
+        item.addEventListener('mousedown', onNavItemMouseDown);
+    });
+}
+
+window.stopNavEditMode = function stopNavEditMode() {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    nav.classList.remove('edit-mode');
+    document.getElementById('nav-edit-bar').classList.remove('show');
+    nav.querySelectorAll('a.bottom-nav-item').forEach(function(item) {
+        item.removeEventListener('touchstart', onNavItemTouchStart);
+        item.removeEventListener('touchmove', onNavItemTouchMove);
+        item.removeEventListener('touchend', onNavItemTouchEnd);
+        item.removeEventListener('mousedown', onNavItemMouseDown);
+    });
+    var order = Array.from(nav.querySelectorAll('a[href]')).map(function(a) {
+        return a.getAttribute('href').replace('/', '');
+    });
+    saveNavOrder(order);
+    showToastMsg('メニューの並び順を保存しました ✅');
+}
+
+function onNavItemTouchStart(e) {
+    e.preventDefault();
+    _navEditSource = this;
+    _navEditDragging = true;
+    this.classList.add('dragging');
+    var rect = this.getBoundingClientRect();
+    _navEditClone = this.cloneNode(true);
+    _navEditClone.style.cssText = 'position:fixed;z-index:9998;width:' + rect.width + 'px;height:' + rect.height + 'px;left:' + rect.left + 'px;top:' + rect.top + 'px;pointer-events:none;opacity:0.85;background:#e8f0fe;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;';
+    document.body.appendChild(_navEditClone);
+    this._dragStartX = e.touches[0].clientX - rect.left;
+    this._dragStartY = e.touches[0].clientY - rect.top;
+}
+
+function onNavItemTouchMove(e) {
+    if (!_navEditDragging || !_navEditClone) return;
+    e.preventDefault();
+    var touch = e.touches[0];
+    _navEditClone.style.left = (touch.clientX - _navEditSource._dragStartX) + 'px';
+    _navEditClone.style.top  = (touch.clientY - _navEditSource._dragStartY) + 'px';
+    _navEditClone.style.display = 'none';
+    var els = document.elementsFromPoint(touch.clientX, touch.clientY);
+    _navEditClone.style.display = '';
+    var nav = document.querySelector('.bottom-nav');
+    nav.querySelectorAll('a.bottom-nav-item').forEach(function(i) { i.classList.remove('drag-over'); });
+    var target = els.find(function(el) { return el.classList.contains('bottom-nav-item') && el !== _navEditSource; });
+    if (target) target.classList.add('drag-over');
+}
+
+function onNavItemTouchEnd(e) {
+    if (!_navEditDragging) return;
+    _navEditDragging = false;
+    if (_navEditClone) { _navEditClone.remove(); _navEditClone = null; }
+    _navEditSource.classList.remove('dragging');
+    var touch = e.changedTouches[0];
+    var nav = document.querySelector('.bottom-nav');
+    var els = document.elementsFromPoint(touch.clientX, touch.clientY);
+    var target = null;
+    for (var i = 0; i < els.length; i++) {
+        if (els[i].classList && els[i].classList.contains('bottom-nav-item') && els[i] !== _navEditSource) {
+            target = els[i]; break;
+        }
+    }
+    nav.querySelectorAll('a.bottom-nav-item').forEach(function(i) { i.classList.remove('drag-over'); });
+    if (target && _navEditSource) {
+        var allItems = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
+        var fromIdx = allItems.indexOf(_navEditSource);
+        var toIdx   = allItems.indexOf(target);
+        if (fromIdx !== toIdx) {
+            if (fromIdx < toIdx) nav.insertBefore(_navEditSource, target.nextSibling);
+            else nav.insertBefore(_navEditSource, target);
+        }
+    }
+    _navEditSource = null;
+}
+
+function onNavItemMouseDown(e) {
+    var item = this;
+    var nav = document.querySelector('.bottom-nav');
+    item.classList.add('dragging');
+    function onMouseMove(e2) {
+        var els = document.elementsFromPoint(e2.clientX, e2.clientY);
+        nav.querySelectorAll('a.bottom-nav-item').forEach(function(i) { i.classList.remove('drag-over'); });
+        var target = els.find(function(el) { return el.classList.contains('bottom-nav-item') && el !== item; });
+        if (target) target.classList.add('drag-over');
+    }
+    function onMouseUp(e2) {
+        item.classList.remove('dragging');
+        var els = document.elementsFromPoint(e2.clientX, e2.clientY);
+        var target = els.find(function(el) { return el.classList.contains('bottom-nav-item') && el !== item; });
+        nav.querySelectorAll('a.bottom-nav-item').forEach(function(i) { i.classList.remove('drag-over'); });
+        if (target) {
+            var allItems = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
+            var fromIdx = allItems.indexOf(item);
+            var toIdx   = allItems.indexOf(target);
+            if (fromIdx < toIdx) nav.insertBefore(item, target.nextSibling);
+            else nav.insertBefore(item, target);
+        }
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    }
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+}
 var SOUND_KEY    = 'tasukaru_sound';
 var FONT_KEY     = 'tasukaru_font_size';
 var MY_INITIAL   = {{ my_initial | tojson }};
