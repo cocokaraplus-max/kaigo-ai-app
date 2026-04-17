@@ -574,7 +574,7 @@ function renderMapped(td, key) {
   td.classList.add('mapped');
   td.classList.remove('droppable');
   const m = mapping[key];
-  td.innerHTML = `<div class="mapped-chip"><span>${m.label}</span><button onclick="removeMapping('${key}')" title="削除">×</button></div>`;
+  td.innerHTML = `<div class="mapped-chip"><span>${m.label}</span><button onclick="removeMapping('${key}')" title="削除">x</button></div>`;
 }
 
 function setupInteraction(td) {
@@ -645,7 +645,7 @@ function updateUI() {
       <span class="field">${v.label}</span>
       <span class="arrow">→</span>
       <span class="cell">${v.cell}</span>
-      <button class="remove" onclick="removeMapping('${k}')">×</button>
+      <button class="remove" onclick="removeMapping('${k}')">x</button>
     </div>
   `).join('');
 }
