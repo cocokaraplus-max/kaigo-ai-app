@@ -562,6 +562,65 @@ function buildGrid() {
         setupInteraction(td);
       } else {
         td.textContent = cell.text || '';
+        // カスタムレイアウト: クリックでdroppable切替 / ダブルクリックで編集
+        const isCustom = document.getElementById('sheet-selector').value.startsWith('custom_');
+        if (isCustom) {
+          td.style.cursor = 'pointer';
+          // シングルクリック: droppable切替
+          td.addEventListener('click', function(e) {
+            if (e.detail === 2) return; // ダブルクリックは別処理
+            if (selectedField) {
+              // フィールド選択中ならそのままマッピング
+              cell.drop = true;
+              cell.key = cell.key || ('custom_' + row.label + '_' + cell.c);
+              td.dataset.key = cell.key;
+              td.classList.add('droppable');
+              td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+              setupInteraction(td);
+              applyMapping(cell.key, td, selectedField);
+              clearSelection();
+            } else {
+              // フィールド未選択: 黄色切替
+              if (td.classList.contains('droppable')) {
+                td.classList.remove('droppable');
+                cell.drop = false;
+                td.textContent = cell.text || '';
+                td.style.background = '';
+                td.style.outline = '';
+              } else {
+                cell.drop = true;
+                cell.key = cell.key || ('custom_' + row.label + '_' + cell.c);
+                td.dataset.key = cell.key;
+                td.classList.add('droppable');
+                td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+                setupInteraction(td);
+              }
+            }
+          });
+          // ダブルクリック: テキスト直接編集
+          td.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            const current = cell.text || '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = current;
+            input.style.cssText = 'width:100%;border:none;outline:2px solid #2563eb;font-size:inherit;padding:2px;box-sizing:border-box;background:#eff6ff;';
+            td.innerHTML = '';
+            td.appendChild(input);
+            input.focus();
+            input.select();
+            function finishEdit() {
+              cell.text = input.value;
+              td.textContent = cell.text;
+              td.style.cursor = 'pointer';
+            }
+            input.addEventListener('blur', finishEdit);
+            input.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') { input.blur(); }
+              if (e.key === 'Escape') { input.value = current; input.blur(); }
+            });
+          });
+        }
       }
       tr.appendChild(td);
       col += (cell.cs || 1);
@@ -923,7 +982,11 @@ function sheetToLayout(ws) {
       var text = cell ? XLSX.utils.format_cell(cell) : '';
       var colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
       var style = text ? 'font-size:11px;' : '';
-      cells.push({ c: c + 1, cs: colSpan, text: text, style: style, drop: false });
+      // カラム幅をExcelから取得（!cols情報があれば）
+    const colInfo = ws['!cols'] && ws['!cols'][c];
+    const colWidthPx = colInfo && colInfo.wpx ? Math.max(colInfo.wpx, 30) : null;
+    const widthStyle = colWidthPx ? 'min-width:' + colWidthPx + 'px;max-width:' + colWidthPx + 'px;' : '';
+    cells.push({ c: c + 1, cs: colSpan, text: text, style: (style || '') + widthStyle, drop: false });
       c += colSpan;
     }
     if (cells.length > 0) {
