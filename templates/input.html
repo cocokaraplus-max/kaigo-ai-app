@@ -172,13 +172,19 @@
             <span class="material-symbols-outlined">mic</span>
             音声入力
         </label>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <button type="button" class="btn btn-primary btn-sm" id="rec-btn" onclick="toggleRecording()">
-                <span class="material-symbols-outlined">mic</span>
-                録音開始
-            </button>
-            <span id="rec-status" style="font-size:0.82rem; color:#5f6368;"></span>
-        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <button type="button" class="btn btn-primary btn-sm" id="rec-btn" onclick="toggleRecording()">
+        <span class="material-symbols-outlined">mic</span>
+        録音開始
+    </button>
+    <button type="button" id="pause-btn" onclick="togglePause()"
+        style="display:none; align-items:center; gap:5px; padding:8px 16px;
+               background:#f59e0b; color:#fff; border:none; border-radius:10px;
+               font-size:0.85rem; cursor:pointer; font-weight:600;">
+        ⏸ 一時停止
+    </button>
+    <span id="rec-status" style="font-size:0.82rem; color:#5f6368;"></span>
+</div>
         <input type="hidden" name="audio_data" id="audio-data">
         <input type="hidden" name="audio_mime" id="audio-mime">
     </div>
@@ -407,65 +413,216 @@ window.previewPhotos = function(input) {
     });
 }
 
-let mediaRecorder = null, audioChunks = [], isRecording = false;
+// ========== 音声入力（改善版: 一時停止・再開・エラー強化）==========
+let mediaRecorder = null;
+let audioChunks = [];
+let allAudioBlobs = [];
+let isRecording = false;
+let isPaused = false;
+let currentStream = null;
+let audioMimeType = '';
 
-window.toggleRecording = async function() {
+function updateVoiceUI() {
     const btn = document.getElementById('rec-btn');
+    const pauseBtn = document.getElementById('pause-btn');
     const status = document.getElementById('rec-status');
-    if (!isRecording) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                const reader = new FileReader();
-                reader.onload = e => {
-                    document.getElementById('audio-data').value = e.target.result.split(',')[1];
-                    document.getElementById('audio-mime').value = blob.type;
-                    document.getElementById('ai-btn').style.display = 'flex';
-                };
-                reader.readAsDataURL(blob);
-                stream.getTracks().forEach(t => t.stop());
-            };
-            mediaRecorder.start();
-            isRecording = true;
-            btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音停止';
-            btn.style.background = '#ea4335';
-            status.textContent = '録音中...';
-        } catch(e) {
-            status.textContent = 'マイクのアクセスを許可してください';
-        }
-    } else {
-        mediaRecorder.stop();
-        isRecording = false;
+    if (!isRecording && !isPaused) {
         btn.innerHTML = '<span class="material-symbols-outlined">mic</span> 録音開始';
         btn.style.background = '';
-        status.textContent = '録音完了';
+        btn.style.color = '';
+        if (pauseBtn) pauseBtn.style.display = 'none';
+        if (allAudioBlobs.length > 0) {
+            status.textContent = '録音完了 ✅（AIテキスト変換ボタンを押してください）';
+            status.style.color = '#16a34a';
+        } else {
+            status.textContent = '';
+        }
+    } else if (isRecording && !isPaused) {
+        btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音終了';
+        btn.style.background = '#ea4335';
+        btn.style.color = '#fff';
+        if (pauseBtn) {
+            pauseBtn.style.display = 'inline-flex';
+            pauseBtn.textContent = '⏸ 一時停止';
+            pauseBtn.style.background = '#f59e0b';
+        }
+        status.textContent = '🔴 録音中...';
+        status.style.color = '#ea4335';
+    } else if (isPaused) {
+        btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音終了';
+        btn.style.background = '#ea4335';
+        btn.style.color = '#fff';
+        if (pauseBtn) {
+            pauseBtn.style.display = 'inline-flex';
+            pauseBtn.textContent = '▶ 再開';
+            pauseBtn.style.background = '#2563eb';
+        }
+        status.textContent = '⏸ 一時停止中 — 「再開」でまた録音できます';
+        status.style.color = '#f59e0b';
     }
+}
+
+window.toggleRecording = async function() {
+    const status = document.getElementById('rec-status');
+    if (!isRecording && !isPaused) {
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
+            audioMimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+            mediaRecorder = new MediaRecorder(currentStream, audioMimeType ? { mimeType: audioMimeType } : {});
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                if (audioChunks.length > 0) {
+                    const blob = new Blob(audioChunks, { type: audioMimeType || 'audio/webm' });
+                    allAudioBlobs.push(blob);
+                    audioChunks = [];
+                }
+            };
+            mediaRecorder.start(500);
+            isRecording = true;
+            isPaused = false;
+            updateVoiceUI();
+        } catch(e) {
+            if (e.name === 'NotAllowedError') {
+                status.textContent = '❌ マイクの許可が必要です。ブラウザの設定を確認してください。';
+            } else if (e.name === 'NotFoundError') {
+                status.textContent = '❌ マイクが見つかりません。接続を確認してください。';
+            } else {
+                status.textContent = '❌ マイクエラー: ' + e.message;
+            }
+            status.style.color = '#ea4335';
+        }
+    } else {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        if (currentStream) {
+            currentStream.getTracks().forEach(t => t.stop());
+            currentStream = null;
+        }
+        isRecording = false;
+        isPaused = false;
+        setTimeout(async () => {
+            await buildFinalAudio();
+            updateVoiceUI();
+        }, 300);
+    }
+};
+
+window.togglePause = async function() {
+    if (!isRecording && !isPaused) return;
+    const status = document.getElementById('rec-status');
+    if (!isPaused) {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        isPaused = true;
+        updateVoiceUI();
+    } else {
+        try {
+            if (!currentStream || currentStream.getTracks().every(t => t.readyState === 'ended')) {
+                currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(currentStream, audioMimeType ? { mimeType: audioMimeType } : {});
+            mediaRecorder.ondataavailable = e => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                if (audioChunks.length > 0) {
+                    allAudioBlobs.push(new Blob(audioChunks, { type: audioMimeType || 'audio/webm' }));
+                    audioChunks = [];
+                }
+            };
+            mediaRecorder.start(500);
+            isRecording = true;
+            isPaused = false;
+            updateVoiceUI();
+        } catch(e) {
+            status.textContent = '❌ 再開に失敗しました: ' + e.message;
+            status.style.color = '#ea4335';
+        }
+    }
+};
+
+async function buildFinalAudio() {
+    if (allAudioBlobs.length === 0) return;
+    const finalBlob = new Blob(allAudioBlobs, { type: audioMimeType || 'audio/webm' });
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            document.getElementById('audio-data').value = e.target.result.split(',')[1];
+            document.getElementById('audio-mime').value = finalBlob.type;
+            document.getElementById('ai-btn').style.display = 'flex';
+            resolve();
+        };
+        reader.readAsDataURL(finalBlob);
+    });
 }
 
 window.aiTranscribe = async function() {
     const audioData = document.getElementById('audio-data').value;
     const audioMime = document.getElementById('audio-mime').value;
+    const status = document.getElementById('rec-status');
     if (!audioData) return;
     document.getElementById('ai-btn').style.display = 'none';
     document.getElementById('ai-loading').style.display = 'flex';
-    try {
-        const res = await fetch('/api/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audio_data: audioData, audio_mime: audioMime })
-        });
-        const data = await res.json();
-        if (data.text) document.getElementById('content-area').value = data.text;
-    } catch(e) {
-        alert('AI変換に失敗しました');
-    } finally {
-        document.getElementById('ai-loading').style.display = 'none';
+    status.textContent = '🤖 AI文字起こし中...';
+    status.style.color = '#2563eb';
+    const MAX_RETRY = 2;
+    let lastError = null;
+    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            const res = await fetch('/api/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audio_data: audioData, audio_mime: audioMime }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error('サーバーエラー ' + res.status + ': ' + errText.slice(0, 100));
+            }
+            const data = await res.json();
+            if (data.text) {
+                const textarea = document.getElementById('content-area');
+                const existing = textarea.value.trim();
+                textarea.value = existing ? existing + '\n' + data.text : data.text;
+                status.textContent = '✅ 文字起こし完了！内容を確認して保存してください。';
+                status.style.color = '#16a34a';
+                allAudioBlobs = [];
+                document.getElementById('audio-data').value = '';
+                document.getElementById('ai-loading').style.display = 'none';
+                return;
+            } else if (data.error) {
+                throw new Error(data.error);
+            } else {
+                throw new Error('テキストが取得できませんでした');
+            }
+        } catch(e) {
+            lastError = e;
+            if (e.name === 'AbortError') {
+                lastError = new Error('タイムアウト（60秒）しました。音声が長すぎる可能性があります。');
+                break;
+            }
+            if (attempt < MAX_RETRY) {
+                status.textContent = '⚠️ 一時エラー、再試行中(' + attempt + '/' + MAX_RETRY + ')...';
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
     }
-}
+    status.textContent = '❌ 文字起こし失敗: ' + (lastError?.message || '不明なエラー');
+    status.style.color = '#ea4335';
+    document.getElementById('ai-btn').style.display = 'flex';
+    document.getElementById('ai-loading').style.display = 'none';
+};
 
 })();
 </script>
