@@ -836,8 +836,7 @@ function sheetToLayout(ws) {
 
 // CSV -> LAYOUTS形式に変換
 function csvToLayout(text) {
-  const rows = text.split('
-').filter(r => r.trim()).slice(0, 40);
+  const rows = text.split(chr(10)).filter(r => r.trim()).slice(0, 40);
   return rows.map((row, ri) => {
     const vals = row.split(',');
     const cells = vals.slice(0, 15).map((v, ci) => ({
