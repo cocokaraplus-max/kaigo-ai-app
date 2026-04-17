@@ -27,13 +27,13 @@
 | 項目 | 値 |
 |------|-----|
 | **本番URL** | https://tasukaru-191764727533.asia-northeast1.run.app |
-| **開発URL** | https://tasukaru-dev-191764727533.asia-northeast1.run.app |
+| **開発URL（テスト）** | https://tasukaru-dev-191764727533.asia-northeast1.run.app |
 | **GCPプロジェクト** | `tasukaru-production` |
 | **Cloud Runサービス（本番）** | `tasukaru` |
 | **Cloud Runサービス（開発）** | `tasukaru-dev` |
 | **リージョン** | `asia-northeast1`（東京） |
 | **最新リビジョン（本番）** | `tasukaru-00299-bvs`（2025-04-18時点） |
-| **最新リビジョン（開発）** | `tasukaru-dev-00209-8hb`（2025-04-18時点） |
+| **最新リビジョン（開発）** | `tasukaru-dev-00212-bnc`（2025-04-18時点） |
 
 ---
 
@@ -57,21 +57,21 @@
 ├── app.py                    # Flaskメインアプリ（全ルート・API定義）
 ├── Dockerfile                # Cloud Run用コンテナ定義
 ├── requirements.txt          # Pythonパッケージ
-├── templates/                # Flaskテンプレート（Jinja2）
+├── templates/
 │   ├── base.html             # 共通レイアウト（ヘッダー・ナビ）
+│   ├── input.html            # 記録入力（音声入力・一時停止・再開機能付き）★改善済み
 │   ├── assessment.html       # AIアセスメント入力画面
-│   ├── mapping.html          # 書式マッピング設定（暫定）
 │   ├── case_record.html      # ケース記録入力
 │   ├── monitoring.html       # モニタリング記録
 │   ├── vitals.html           # バイタル記録
 │   ├── calendar.html         # カレンダー表示
 │   ├── daily_view.html       # 日次記録ビュー
 │   ├── board.html            # 掲示板
-│   ├── numerology.html       # 数秘術（特殊機能）
 │   └── ...（その他多数）
 └── static/
-    ├── mapping.html          # 書式マッピング設定UI（スタンドアロンHTML・本物）
+    ├── mapping.html          # 書式マッピング設定UI（スタンドアロンHTML）
     ├── help.html             # 操作マニュアル（実スクリーンショット入り・約104KB）
+    ├── sw.js                 # Service Worker（オフライン対応・キャッシュ管理）
     ├── admin.js              # 管理機能JS
     ├── logo.png              # TASUKARUロゴ
     └── ...（その他静的ファイル）
@@ -84,6 +84,7 @@
 | URL | 説明 | 備考 |
 |-----|------|------|
 | `/top` | TOPページ（ダッシュボード） | |
+| `/input` | **記録入力** | 音声入力・一時停止・再開機能付き ★改善済み |
 | `/assessment` | AIアセスメント入力 | 面談内容を入力→AI分析 |
 | `/case_record` | ケース記録入力 | |
 | `/monitoring` | モニタリング記録 | |
@@ -92,7 +93,7 @@
 | `/daily_view` | 日次記録ビュー | |
 | `/board` | 掲示板 | |
 | `/mapping` | **書式マッピング設定** | `send_file('static/mapping.html')`で配信 |
-| `/help` | **操作マニュアル** | `send_file('static/help.html')`で配信。実スクリーンショット入り |
+| `/help` | **操作マニュアル** | 実スクリーンショット入り |
 | `/manual` | マニュアルページ | |
 | `/dev` | 開発者ページ | |
 | `/numerology` | 数秘術 | |
@@ -101,9 +102,9 @@
 - `/api/assess` — AIアセスメント実行
 - `/api/save_assessment` — アセスメント保存
 - `/api/patients` — 利用者一覧取得
+- `/api/transcribe` — 音声文字起こし（POST: audio_data, audio_mime）
 - `/api/save_calendar` — カレンダー保存
 - `/api/tasks/*` — タスク管理系
-- `/api/invite_calendar_member` — カレンダーメンバー招待
 
 ---
 
@@ -119,10 +120,10 @@
 | テーブル | 内容 |
 |---------|------|
 | `patients` | 利用者マスタ（user_name, user_kana, care_level, birth_date, gender...） |
-| `assessments` | アセスメント結果（ai_change, ai_challenge, target_month, user_name...） |
+| `assessments` | アセスメント結果 |
 | `case_records` | ケース記録 |
 | `monitoring_records` | モニタリング記録 |
-| `admin_settings` | 施設ごとの設定（各種キーと値を保存） |
+| `admin_settings` | 施設ごとの設定 |
 
 ### ⚠️ admin_settings テーブルのカラム名（重要・ハマりやすい）
 
@@ -130,26 +131,15 @@
 id, facility_code, key, value, created_at
 ```
 
-**注意**: 旧ドキュメントに `setting_key` / `setting_value` と書かれている箇所があるが、
-実際のカラム名は `key` / `value` が正しい。間違えると `PGRST204` エラーになる。
-
-### Supabaseへの保存パターン（正しいカラム名）
+**注意**: `setting_key` / `setting_value` ではなく `key` / `value` が正しい。間違えると `PGRST204` エラーになる。
 
 ```javascript
-await fetch(cfg.supabaseUrl + '/rest/v1/admin_settings', {
-  method: 'POST',
-  headers: {
-    'apikey': cfg.supabaseKey,
-    'Authorization': 'Bearer ' + cfg.supabaseKey,
-    'Content-Type': 'application/json',
-    'Prefer': 'resolution=merge-duplicates'
-  },
-  body: JSON.stringify({
+// 正しい保存パターン
+body: JSON.stringify({
     facility_code: cfg.facilityCode,
     key: 'field_mapping',       // ← "setting_key" ではなく "key"
     value: JSON.stringify(data) // ← "setting_value" ではなく "value"
-  })
-});
+})
 ```
 
 ---
@@ -164,7 +154,54 @@ await fetch(cfg.supabaseUrl + '/rest/v1/admin_settings', {
 ### 実装済み機能（GAS）
 - `fillMonitoringFromAssessment()` — モニタリング自動入力（最新）
 - `fillMonitoringByMonth()` — モニタリング自動入力（月指定）
-- メニュー: `モニタリング自動入力(最新)` / `モニタリング自動入力(月指定)`
+
+---
+
+## 🎤 音声入力機能の仕様（2025-04-18 改善版）
+
+### 実装ファイル
+- `templates/input.html`（音声UI・JS）
+- `app.py` の `/api/transcribe` エンドポイント（バックエンド文字起こし）
+
+### 音声入力フロー
+```
+録音開始ボタン
+    ↓ getUserMedia() でマイク取得
+    ↓ MediaRecorder.start(500) ← 500ms毎にデータ確保
+録音中（赤ボタン）
+    ↓ ⏸一時停止ボタン → isPaused=true → onstopでblob保存
+    ↓ ▶再開ボタン → 新しいMediaRecorderで続き録音
+    ↓ ×回繰り返し可能（allAudioBlobsに累積）
+録音終了ボタン
+    ↓ buildFinalAudio() → 全blobを結合 → base64化
+AIテキスト変換ボタン
+    ↓ POST /api/transcribe {audio_data, audio_mime}
+    ↓ 失敗時: 2回自動リトライ / 60秒タイムアウト
+    ↓ 成功: テキストエリアに追記（上書きではなく）
+```
+
+### 改善内容（旧→新）
+
+| 項目 | 旧 | 新 |
+|------|-----|-----|
+| 一時停止 | なし | ⏸ボタンで一時停止→▶で再開 |
+| 複数セグメント録音 | 不可 | allAudioBlobsに累積・結合 |
+| エラー表示 | `alert('AI変換に失敗しました')` のみ | 原因を画面に表示（マイク権限なし・サーバーエラー・タイムアウト等） |
+| リトライ | なし | 失敗時2回自動リトライ |
+| タイムアウト | なし | 60秒で自動タイムアウト |
+| データ保護 | `mediaRecorder.start()` のみ | `start(500)` で500ms毎に確保 |
+| テキスト追記 | 上書き | 既存テキストに追記 |
+
+### 状態管理変数
+```javascript
+let mediaRecorder   // 現在のMediaRecorderインスタンス
+let audioChunks     // 現在セグメントのチャンク
+let allAudioBlobs   // 全セグメントのBlob累積リスト
+let isRecording     // 録音中フラグ
+let isPaused        // 一時停止中フラグ
+let currentStream   // マイクストリーム（一時停止中も保持）
+let audioMimeType   // 選択されたMIMEタイプ
+```
 
 ---
 
@@ -176,7 +213,6 @@ TASUKARU（利用者データ）  →  Excelの書式（施設ごとに異なる
    氏名                  →  セルC10
    フリガナ              →  セルB9
    介護度                →  セルI10
-   ...
 ```
 
 ### 仕組み
@@ -184,55 +220,12 @@ TASUKARU（利用者データ）  →  Excelの書式（施設ごとに異なる
 2. 設定は `Supabase.admin_settings`（`key='field_mapping'`）に保存
 3. GASが設定を読み取り、Excelに自動転記
 
-### `/mapping` の実装詳細
-- `app.py`: `send_file('static/mapping.html', mimetype='text/html')` で配信
-- `static/mapping.html`: スタンドアロンHTML（Flaskテンプレートではない）
-- **重要**: Jinja2テンプレートを通すと `{{` `}}` がエラーになるため `send_file` を使用
-- JavaScriptで `window.TASUKARU_CONFIG` を参照してSupabase接続情報を取得
-
-### `/help` の実装詳細（2025-04-18 更新）
-- `app.py`: `send_file('static/help.html', mimetype='text/html')` で配信
-- `static/help.html`: スタンドアロンHTML（約104KB）
-- STEP1〜5の説明に**実際の画面スクリーンショット**をbase64 JPEGで埋め込み済み
-
-#### help.htmlのスクリーンショット差し替え手順（再現方法）
-1. `/mapping` ページでブラウザコンソールから `html2canvas` を読み込む
-2. 各STEPの状態を再現してキャプチャ → base64データを `window._step1b64` 〜 `_step5b64` に格納
-3. Supabase `admin_settings`（`key='help_images_temp'`）にJSON形式で一時保存
-4. Cloud ShellのPythonスクリプトで取得 → `static/help.html` のSVGをbase64 JPEGに置換
-5. デプロイ
-
-```python
-# Cloud Shellで実行するPythonスクリプト例
-import json, re, os, urllib.request, subprocess
-
-result = subprocess.check_output([
-    'gcloud','run','services','describe','tasukaru-dev',
-    '--region=asia-northeast1','--format=json'
-], text=True)
-svc = json.loads(result)
-envs = svc['spec']['template']['spec']['containers'][0]['env']
-env_map = {e['name']: e.get('value','') for e in envs}
-SUPABASE_URL = env_map['SUPABASE_URL']
-SUPABASE_KEY = env_map['SUPABASE_KEY']
-
-req = urllib.request.Request(
-    SUPABASE_URL + '/rest/v1/admin_settings?key=eq.help_images_temp&limit=1',
-    headers={'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY}
-)
-data = json.loads(urllib.request.urlopen(req).read())
-imgs = json.loads(data[0]['value'])
-
-with open(os.path.expanduser('~/tasukaru/static/help.html')) as f:
-    html = f.read()
-
-for key in ['s1','s2','s3','s4','s5']:
-    html = re.sub(r'src="data:image/svg\+xml;base64,[^"]*"', f'src="{imgs[key]}"', html, count=1)
-
-with open(os.path.expanduser('~/tasukaru/static/help.html'), 'w') as f:
-    f.write(html)
-print('Done:', len(html))
-```
+### `/help` の実装詳細
+- `static/help.html`（約104KB）に実際の画面スクリーンショットをbase64 JPEGで埋め込み済み
+- 再作成が必要な場合は以下のフロー：
+  1. `/mapping` ページで html2canvas を使いSTEP1〜5をキャプチャ
+  2. Supabase `admin_settings`（`key='help_images_temp'`）に一時保存
+  3. Cloud Shell Python でSVGを差し替えてデプロイ
 
 ---
 
@@ -241,58 +234,28 @@ print('Done:', len(html))
 ```bash
 cd ~/tasukaru
 
-# 開発環境（tasukaru-dev）へデプロイ
+# 開発環境（テスト）
 gcloud run deploy tasukaru-dev \
-  --source . \
-  --region asia-northeast1 \
-  --project tasukaru-production \
-  --quiet
+  --source . --region asia-northeast1 \
+  --project tasukaru-production --quiet
 
-# 本番環境（tasukaru）へデプロイ
+# 本番環境
 gcloud run deploy tasukaru \
-  --source . \
-  --region asia-northeast1 \
-  --project tasukaru-production \
-  --quiet
+  --source . --region asia-northeast1 \
+  --project tasukaru-production --quiet
 ```
 
-### Cloud Run サービス一覧（asia-northeast1）
+### ⚠️ 必ずテスト環境で確認してから本番に反映すること
 
-| サービス名 | 用途 | URL |
-|-----------|------|-----|
-| `tasukaru-dev` | 開発・検証 | https://tasukaru-dev-191764727533.asia-northeast1.run.app |
-| `tasukaru` | 本番 | https://tasukaru-191764727533.asia-northeast1.run.app |
-| `kaigo-ai-app` | 旧サービス（現在は未使用） | — |
-
-### トークン更新（GCS操作時）
 ```bash
-gcloud auth print-access-token > /tmp/tok.txt
+# テスト確認後、本番ブランチに反映
+git checkout tasukaru
+git checkout tasukaru-dev -- templates/input.html  # 特定ファイルだけ
+git commit -m "本番反映: 変更内容"
+git push origin tasukaru
+gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
+git checkout tasukaru-dev
 ```
-
----
-
-## 📁 ファイル転送の方法
-
-### Cloud ShellへのHTMLアップロード（重要）
-**Claudeから直接アップロードは不可**（セキュリティ制限）。
-
-手動手順：
-1. Claudeがファイルをチャットにダウンロードリンクとして提供
-2. PCにダウンロード
-3. Cloud Shell Editor 左パネルのフォルダを**右クリック → Upload...**
-4. ファイルを選択してアップロード
-5. ターミナルでデプロイ実行
-
-### 大容量データの転送テクニック（2025-04-18 確立）
-
-ブラウザのJSからCloud Shellに直接大容量データを渡せない場合の回避策：
-1. JSで `fetch()` を使いSupabase `admin_settings` に一時保存（`key='任意のキー名'`）
-2. Cloud ShellのPythonでSupabaseからfetchして処理
-3. 処理後は不要データを削除するのが望ましい
-
-### staticファイル（スタンドアロンHTML）の注意
-- `static/` 配下のHTMLは `send_file()` で配信する
-- `templates/` に置くと Jinja2 が `{{ }}` を変数と解釈してエラーになる
 
 ---
 
@@ -300,49 +263,37 @@ gcloud auth print-access-token > /tmp/tok.txt
 
 | ブランチ名 | 用途 |
 |-----------|------|
-| `tasukaru-dev` | **メイン開発ブランチ**（Cloud Run: tasukaru-dev にデプロイ） |
-| `tasukaru` | **本番ブランチ**（Cloud Run: tasukaru にデプロイ） |
+| `tasukaru-dev` | **メイン開発ブランチ**（テスト環境） |
+| `tasukaru` | **本番ブランチ** |
 | `develop` | サブ開発用 |
 | `main` | GitHub デフォルトブランチ |
-| `cloudrun-test` | テスト用（現在は停滞中） |
+| `cloudrun-test` | テスト用（停滞中） |
 
 ### ブランチ変更履歴（2025-04-18）
-- `cloudrun-dev` → `tasukaru-dev` にリネーム（ローカル＋リモート）
-- `cloudrun` → `tasukaru` にリネーム（ローカル＋リモート）
+- `cloudrun-dev` → `tasukaru-dev` にリネーム
+- `cloudrun` → `tasukaru` にリネーム
 
 ### GitHub Personal Access Token
 - **トークン名**: `tasukaru-cloudshell`
 - **有効期限**: 2026-05-18
-- **スコープ**: repo（フルコントロール）
-- **使用場所**: Cloud Shell の Git 認証
+- **スコープ**: repo
 
 ```bash
-# Cloud ShellでのGit認証設定（PATが切れたら再発行して再設定）
+# Cloud ShellでのGit認証設定（期限切れ時は再発行して再設定）
 git remote set-url origin https://<PAT>@github.com/cocokaraplus-max/kaigo-ai-app.git
 ```
 
 ### よく使うGitコマンド
 
 ```bash
-# ブランチ確認
-git branch -a
-
 # 変更をcommit & push（開発ブランチ）
 git add -A
 git commit -m "変更内容のメッセージ"
 git push origin tasukaru-dev
 
-# 本番ブランチにも同じファイルを反映（特定ファイルだけ）
-git checkout tasukaru
-git checkout tasukaru-dev -- static/help.html
-git commit -m "同じ変更内容"
-git push origin tasukaru
-git checkout tasukaru-dev
-
-# ローカルのREADMEに未コミット変更がある場合
-git stash
-git pull
-git stash pop  # ローカル変更を戻す（不要なら省略）
+# Cloud Shellでpullしてデプロイ
+cd ~/tasukaru && git stash && git pull && gcloud run deploy tasukaru-dev \
+  --source . --region asia-northeast1 --project tasukaru-production --quiet
 ```
 
 ---
@@ -363,24 +314,20 @@ def example():
     return send_file('static/example.html', mimetype='text/html')
 ```
 
-### 環境変数の取得方法（Cloud Shell Python）
+**重要**: `static/` のHTMLには `{{ }}` が含まれる場合があるため `send_file` で配信。
+`templates/` に置くと Jinja2 が `{{ }}` を変数と解釈してエラーになる。
 
-```python
-import json, subprocess
+### ローカルVSCodeからCloud Shellへの大容量データ転送テクニック
 
-result = subprocess.check_output([
-    'gcloud','run','services','describe','tasukaru-dev',
-    '--region=asia-northeast1','--format=json'
-], text=True)
-svc = json.loads(result)
-envs = svc['spec']['template']['spec']['containers'][0]['env']
-env_map = {e['name']: e.get('value','') for e in envs}
-# env_map['SUPABASE_URL'], env_map['SUPABASE_KEY'] などで取得
-```
+ターミナルのheredocは長いスクリプトでタイムアウトする。回避策：
+
+1. **Pythonスクリプトをファイルとしてダウンロード** → ローカルで `python3 fix_xxx.py` を実行
+2. **Supabase経由**: JSで `admin_settings` に一時保存 → Cloud Shell Pythonで取得・処理
+3. **Cloud Shell Editorのアップロード**: 左パネルフォルダを右クリック → Upload
 
 ---
 
-## 📅 開発ログ（主要マイルストーン）
+## 📅 開発ログ（更新履歴）
 
 | 日付 | 内容 |
 |------|------|
@@ -388,23 +335,35 @@ env_map = {e['name']: e.get('value','') for e in envs}
 | 初期 | アセスメント・ケース記録・モニタリング・バイタル等の各種入力ページ実装 |
 | 初期 | GAS連携（SupabaseのデータをGoogleスプレッドシートに自動転記） |
 | 中期 | GAS: `monitoring.gs` 実装（モニタリング自動入力） |
-| 2025-04-17 | `/mapping` ルート追加（書式マッピング設定ページ） |
-| 2025-04-17 | `static/mapping.html`（30KB、ドラッグ&ドロップ対応UI）のデプロイ完了 |
-| 2025-04-17 | `/help` ルート追加（操作マニュアルページ） |
-| 2025-04-17 | `static/help.html`（操作マニュアル、5ステップ解説）のデプロイ完了 |
-| 2025-04-18 | `help.html` のSVGプレースホルダー5箇所を実際のスクリーンショット（base64 JPEG）に差し替え |
-| 2025-04-18 | Supabase `admin_settings` のカラム名が `key`/`value` であることを確認（旧記述を修正） |
-| 2025-04-18 | Cloud Run `tasukaru-dev`（rev: 00209-8hb）・`tasukaru`（rev: 00299-bvs）両方にデプロイ |
-| 2025-04-18 | Gitブランチ名変更: `cloudrun-dev`→`tasukaru-dev`、`cloudrun`→`tasukaru`（ローカル＋GitHub） |
-| 2025-04-18 | GitHub PAT（`tasukaru-cloudshell`、期限2026-05-18）を発行・Cloud ShellのGit認証を設定 |
-| 2025-04-18 | `tasukaru-dev` / `tasukaru` 両ブランチに最新 `help.html` をマージ＆push完了 |
-| 2025-04-18 | README.md を全面更新（本ファイル） |
+| 2025-04-17 | `/mapping` ルート追加・`static/mapping.html` デプロイ完了 |
+| 2025-04-17 | `/help` ルート追加・`static/help.html` デプロイ完了 |
+| 2025-04-18 | `help.html` のSVGプレースホルダー5箇所を実際のスクリーンショットに差し替え |
+| 2025-04-18 | Supabase `admin_settings` のカラム名が `key`/`value` であることを確認（旧記述修正） |
+| 2025-04-18 | Cloud Run ブランチ名変更: `cloudrun-dev`→`tasukaru-dev`、`cloudrun`→`tasukaru` |
+| 2025-04-18 | GitHub PAT（`tasukaru-cloudshell`、期限2026-05-18）発行・Cloud Shell Git認証設定 |
+| 2025-04-18 | README.md 全面更新 |
+| 2025-04-18 | **`templates/input.html` 音声入力を大幅改善** |
+| | ・一時停止（⏸）→ 再開（▶）機能を追加 |
+| | ・保存エラーの詳細表示（マイク権限なし・サーバーエラー・タイムアウト等） |
+| | ・失敗時の自動リトライ（最大2回）+ 60秒タイムアウト |
+| | ・500msごとのデータ確保でデータ取りこぼし防止 |
+| | ・文字起こし結果をテキストエリアに追記（上書きではなく） |
+| | ・テスト環境（tasukaru-dev-00212-bnc）で動作確認済み |
 
 ---
 
 ## 🔮 今後やること（PENDING）
 
 ### 優先度高
+- [ ] **音声入力改善を本番（`tasukaru`）にも反映**
+  ```bash
+  git checkout tasukaru
+  git checkout tasukaru-dev -- templates/input.html
+  git commit -m "feat: voice input pause/resume + error handling"
+  git push origin tasukaru
+  gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
+  git checkout tasukaru-dev
+  ```
 - [ ] `patients` テーブルに目標関連カラム追加
   - `goal_short_func` / `goal_short_act` / `goal_short_join`（短期目標）
   - `goal_long_func` / `goal_long_act` / `goal_long_join`（長期目標）
@@ -412,15 +371,15 @@ env_map = {e['name']: e.get('value','') for e in envs}
 - [ ] `/monitoring` ページの本格実装
 
 ### 優先度中
+- [ ] `assessment.html` / `manual.html` の音声入力も同様に改善（同じ問題を抱えている可能性あり）
 - [ ] TOPページや `/mapping` ページから `/help` へのリンクボタン追加
-- [ ] 書式マッピングUI: `mapping.html` をFlask `TASUKARU_CONFIG` と連携して施設情報を自動取得
-- [ ] 多施設テンプレート整備（施設ごとに異なるExcel書式への対応）
+- [ ] 多施設テンプレート整備
 - [ ] Supabase `admin_settings` の `key='help_images_temp'`（一時データ）を削除
 
 ### 優先度低
 - [ ] タスク管理機能の拡充
 - [ ] 掲示板機能の強化
-- [ ] `cloudrun-test` ブランチの整理（リネームまたは削除）
+- [ ] `cloudrun-test` ブランチの整理
 
 ---
 
@@ -436,26 +395,25 @@ gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tas
 # 本番デプロイ
 gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
 
+# pullしてデプロイ（Cloud Shell）
+git stash && git pull && gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
+
 # ルート一覧確認
 python3 -c "import re; routes=re.findall(r\"@app\.route\('([^']+)'\)\", open('app.py').read()); [print(r) for r in sorted(set(routes))]"
-
-# app.pyのルート確認
-grep -n "@app.route\|def " app.py | head -50
-
-# GCSトークン更新
-gcloud auth print-access-token > /tmp/tok.txt
-
-# staticフォルダ確認
-ls -la static/
-
-# ビルドログ確認
-gcloud builds list --limit=3 --region=asia-northeast1
 
 # Cloud Runサービス一覧
 gcloud run services list --region=asia-northeast1 --format="value(metadata.name)"
 
 # Gitブランチ確認
 git branch -a
+
+# 環境変数確認
+gcloud run services describe tasukaru-dev --region=asia-northeast1 --format=json | python3 -c "
+import json,sys
+svc=json.load(sys.stdin)
+for e in svc['spec']['template']['spec']['containers'][0]['env']:
+    print(e['name'],'=',(e.get('value','') or '(secret ref)')[:30])
+"
 ```
 
 ---
@@ -463,18 +421,6 @@ git branch -a
 ## 🔐 環境変数・秘匿情報
 
 本番環境の環境変数はCloud Runのコンソールで管理。
-
-```bash
-# 環境変数一覧を確認
-gcloud run services describe tasukaru-dev \
-  --region=asia-northeast1 \
-  --format=json | python3 -c "
-import json,sys
-svc=json.load(sys.stdin)
-for e in svc['spec']['template']['spec']['containers'][0]['env']:
-    print(e['name'],'=',(e.get('value','') or '(secret ref)')[:30])
-"
-```
 
 主な環境変数:
 - `SUPABASE_URL`
@@ -494,7 +440,7 @@ for e in svc['spec']['template']['spec']['containers'][0]['env']:
 
 - 新しい機能を追加したら「開発ログ」と「主要ページ一覧」を更新
 - 完了したタスクは「今後やること」から「開発ログ」に移動
-- 技術的な重要な決定（アーキテクチャ変更など）は必ず記録
+- 技術的な重要な決定は必ず記録
 - Supabaseのカラム名など「ハマりやすいポイント」は必ず残す
 - 次のClaudeセッションがこのREADMEだけで即座に作業再開できる粒度で書く
 
