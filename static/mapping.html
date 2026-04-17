@@ -884,12 +884,12 @@ window.handleExcelUpload = async function(event) {
     sel.appendChild(opt);
     sel.value = key;
     buildGrid();
-    status.textContent = '✅ ' + label + ' を読み込みました！マッピングしたいセルをクリックしてください。';
+    status.textContent = 'OK ' + label + ' を読み込みました！マッピングしたいセルをクリックしてください。';
     status.style.color = '#059669';
     event.target.value = '';
   } catch(e) {
     console.error(e);
-    status.textContent = '❌ 読み込み失敗: ' + e.message;
+    status.textContent = 'NG 読み込み失敗: ' + e.message;
     status.style.color = '#dc2626';
   }
 };
