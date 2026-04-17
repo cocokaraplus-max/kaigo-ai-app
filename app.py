@@ -2259,6 +2259,24 @@ def admin():
             board_editors=[])
 
 # ==========================================
+
+@app.route('/mapping')
+@login_required
+def mapping():
+    import os
+    html = open('static/mapping.html', encoding='utf-8').read()
+    su = os.environ.get('SUPABASE_URL', '')
+    sk = os.environ.get('SUPABASE_KEY', '')
+    fc = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    cfg = f'<script>window.TASUKARU_CONFIG={{supabaseUrl:"{su}",supabaseKey:"{sk}",facilityCode:"{fc}"}};</script>'
+    html = html.replace('</head>', cfg + '</head>', 1)
+    return html
+
+@app.route('/help')
+@login_required
+def help_page():
+    return app.send_static_file('help.html')
+
 # API エンドポイント
 # ==========================================
 
