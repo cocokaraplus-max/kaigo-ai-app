@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>書式マッピング設定 - TASUKARU</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0" rel="stylesheet">
+<style>
+  /* PC専用ページ - モバイルでは非表示 */
+  @media (max-width: 900px) {
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f7fa; }
+    #mobile-msg { display: flex !important; }
+    #app { display: none !important; }
+  }
+  @media (min-width: 901px) {
+    #mobile-msg { display: none !important; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  #mobile-msg {
+    flex-direction: column; align-items: center; gap: 16px;
+    padding: 40px 24px; text-align: center;
+  }
+  #mobile-msg .material-symbols-outlined { font-size: 48px; color: #94a3b8; }
+  #mobile-msg p { color: #64748b; font-size: 15px; line-height: 1.6; }
+
+  /* ヘッダー */
+  #header {
+    background: #fff; border-bottom: 1px solid #e8ecf0;
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  #header .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  #header .logo img { height: 32px; }
+  #header .logo span { font-size: 16px; font-weight: 700; color: #1a1a2e; }
+  #header .title { font-size: 15px; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 6px; }
+  #header .title .material-symbols-outlined { font-size: 20px; color: #3b82f6; }
+  #header .back-btn {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 13px; color: #6b7280; text-decoration: none;
+    padding: 6px 12px; border-radius: 8px; transition: background 0.15s;
+  }
+  #header .back-btn:hover { background: #f3f4f6; }
+
+  /* メインレイアウト */
+  #app { display: flex; flex-direction: column; height: calc(100vh - 56px); }
+  #toolbar {
+    background: #fff; border-bottom: 1px solid #e8ecf0;
+    padding: 10px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  #toolbar label { font-size: 13px; color: #6b7280; font-weight: 500; }
+  #sheet-selector {
+    padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 13px; background: #fff; color: #374151; cursor: pointer;
+  }
+  #toolbar .divider { width: 1px; height: 20px; background: #e5e7eb; }
+  .toolbar-hint {
+    font-size: 12px; color: #9ca3af;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .toolbar-hint .material-symbols-outlined { font-size: 16px; }
+
+  /* 3ペインレイアウト */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* 左：フィールドパネル */
+  #field-panel {
+    width: 220px; flex-shrink: 0; background: #fff;
+    border-right: 1px solid #e8ecf0; overflow-y: auto; padding: 16px 12px;
+  }
+  #field-panel h3 {
+    font-size: 11px; font-weight: 600; color: #9ca3af;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 10px; padding: 0 4px;
+  }
+  .field-group { margin-bottom: 16px; }
+  .field-group-label {
+    font-size: 10px; color: #9ca3af; font-weight: 600;
+    padding: 4px 4px 6px; letter-spacing: 0.04em;
+    border-bottom: 1px solid #f3f4f6; margin-bottom: 6px;
+  }
+  .field-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 10px; margin-bottom: 4px;
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 8px; cursor: grab; user-select: none;
+    font-size: 12px; font-weight: 500; color: #374151;
+    transition: all 0.15s; position: relative;
+  }
+  .field-chip:hover { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+  .field-chip.selected { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; outline: 2px solid #3b82f6; }
+  .field-chip.assigned { opacity: 0.4; pointer-events: none; }
+  .field-chip.dragging { opacity: 0.4; }
+  .field-chip .material-symbols-outlined { font-size: 14px; color: #94a3b8; }
+  .field-chip.selected .material-symbols-outlined { color: #3b82f6; }
+
+  /* 中央：プレビュー */
+  #preview-area {
+    flex: 1; overflow: auto; padding: 20px; background: #f0f2f5;
+  }
+  #preview-wrap {
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    overflow: hidden; min-width: 800px; max-width: 1100px; margin: 0 auto;
+  }
+  #preview-header {
+    background: #1e3a5f; color: #fff;
+    padding: 12px 20px; font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #preview-header .material-symbols-outlined { font-size: 18px; opacity: 0.8; }
+  #sheet-grid {
+    border-collapse: collapse; width: 100%;
+    font-size: 11px; table-layout: fixed;
+  }
+  #sheet-grid td {
+    border: 0.5px solid #d1d5db; padding: 3px 6px;
+    height: 26px; vertical-align: middle; overflow: hidden;
+    color: #6b7280; font-size: 11px; position: relative;
+  }
+  #sheet-grid td.header-cell {
+    background: #f8fafc; color: #374151; font-weight: 500; font-size: 11px;
+  }
+  #sheet-grid td.droppable {
+    background: #fffbeb; cursor: pointer; transition: all 0.15s;
+  }
+  #sheet-grid td.droppable:hover { background: #fef3c7; border: 1.5px dashed #f59e0b; }
+  #sheet-grid td.droppable.drag-over { background: #dbeafe !important; border: 2px dashed #3b82f6 !important; }
+  #sheet-grid td.mapped {
+    background: #eff6ff !important; border: 1px solid #bfdbfe !important; cursor: default;
+  }
+  .mapped-chip {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 4px;
+  }
+  .mapped-chip span { font-size: 10px; font-weight: 600; color: #1d4ed8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mapped-chip button {
+    border: none; background: none; cursor: pointer;
+    color: #ef4444; font-size: 12px; line-height: 1; padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .drop-hint { color: #d1d5db; font-size: 10px; font-style: italic; }
+
+  /* 右：マッピング一覧 */
+  #mapping-panel {
+    width: 240px; flex-shrink: 0; background: #fff;
+    border-left: 1px solid #e8ecf0; overflow-y: auto; padding: 16px 12px;
+  }
+  #mapping-panel h3 { font-size: 11px; font-weight: 600; color: #9ca3af; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; }
+  .mapping-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; margin-bottom: 4px;
+    background: #f8fafc; border-radius: 8px; font-size: 11px;
+  }
+  .mapping-row .field { color: #1d4ed8; font-weight: 600; flex: 1; }
+  .mapping-row .arrow { color: #9ca3af; }
+  .mapping-row .cell { color: #374151; font-weight: 500; font-family: monospace; font-size: 11px; }
+  .mapping-row .remove { color: #ef4444; cursor: pointer; border: none; background: none; padding: 0 2px; }
+  .no-mapping { font-size: 12px; color: #9ca3af; text-align: center; padding: 20px 0; }
+
+  /* ボトムバー */
+  #bottom-bar {
+    background: #fff; border-top: 1px solid #e8ecf0;
+    padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  #bottom-bar .info { font-size: 12px; color: #6b7280; }
+  #bottom-bar .info strong { color: #374151; }
+  .btn-group { display: flex; gap: 8px; }
+  .btn {
+    padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn .material-symbols-outlined { font-size: 16px; }
+  .btn-secondary { background: #f3f4f6; color: #374151; }
+  .btn-secondary:hover { background: #e5e7eb; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-danger { background: #fee2e2; color: #dc2626; }
+  .btn-danger:hover { background: #fecaca; }
+
+  /* トースト */
+  #toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #fff; padding: 10px 20px;
+    border-radius: 10px; font-size: 13px; font-weight: 500;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #toast.show { opacity: 1; }
+  #toast .material-symbols-outlined { font-size: 16px; }
+
+  /* 列幅 */
+  .col-row { width: 26px; }
+  .col-a { width: 8px; }
+</style>
+</head>
+<body>
+
+<div id="mobile-msg">
+  <span class="material-symbols-outlined">desktop_windows</span>
+  <p>書式マッピング設定はパソコンのブラウザでのみご利用いただけます。</p>
+</div>
+
+<div id="app">
+  <!-- ヘッダー -->
+  <div id="header">
+    <a href="/top" class="logo">
+      <img src="/static/logo.png" alt="TASUKARU">
+      <span>TASUKARU</span>
+    </a>
+    <div class="title">
+      <span class="material-symbols-outlined">grid_on</span>
+      書式マッピング設定
+    </div>
+    <a href="/top" class="back-btn">
+      <span class="material-symbols-outlined" style="font-size:16px">arrow_back</span>
+      TOPに戻る
+    </a>
+  </div>
+
+  <!-- ツールバー -->
+  <div id="toolbar">
+    <label>書式テンプレート：</label>
+    <select id="sheet-selector">
+      <option value="monitoring">モニタリング報告書</option>
+      <option value="case_record">ケース記録</option>
+    </select>
+    <div class="divider"></div>
+    <div class="toolbar-hint">
+      <span class="material-symbols-outlined">info</span>
+      左のフィールドをクリック選択 → 黄色いセルをクリックで対応付け（ドラッグ&ドロップも可）
+    </div>
+  </div>
+
+  <!-- 3ペイン -->
+  <div id="main">
+    <!-- 左：フィールドパネル -->
+    <div id="field-panel">
+      <h3>データ項目</h3>
+
+      <div class="field-group">
+        <div class="field-group-label">利用者情報</div>
+        <div class="field-chip" draggable="true" data-field="user_kana" data-label="フリガナ">
+          <span class="material-symbols-outlined">person</span>フリガナ
+        </div>
+        <div class="field-chip" draggable="true" data-field="user_name" data-label="氏名">
+          <span class="material-symbols-outlined">person</span>氏名（漢字）
+        </div>
+        <div class="field-chip" draggable="true" data-field="care_level" data-label="介護度">
+          <span class="material-symbols-outlined">medical_services</span>介護度
+        </div>
+        <div class="field-chip" draggable="true" data-field="birth_date" data-label="生年月日">
+          <span class="material-symbols-outlined">cake</span>生年月日
+        </div>
+        <div class="field-chip" draggable="true" data-field="gender" data-label="性別">
+          <span class="material-symbols-outlined">wc</span>性別
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-group-label">訓練目標</div>
+        <div class="field-chip" draggable="true" data-field="goal_short_func" data-label="短期目標(機能)">
+          <span class="material-symbols-outlined">flag</span>短期目標(機能)
+        </div>
+        <div class="field-chip" draggable="true" data-field="goal_short_act" data-label="短期目標(活動)">
+          <span class="material-symbols-outlined">flag</span>短期目標(活動)
+        </div>
+        <div class="field-chip" draggable="true" data-field="goal_short_join" data-label="短期目標(参加)">
+          <span class="material-symbols-outlined">flag</span>短期目標(参加)
+        </div>
+        <div class="field-chip" draggable="true" data-field="goal_long_func" data-label="長期目標(機能)">
+          <span class="material-symbols-outlined">outlined_flag</span>長期目標(機能)
+        </div>
+        <div class="field-chip" draggable="true" data-field="goal_long_act" data-label="長期目標(活動)">
+          <span class="material-symbols-outlined">outlined_flag</span>長期目標(活動)
+        </div>
+        <div class="field-chip" draggable="true" data-field="goal_long_join" data-label="長期目標(参加)">
+          <span class="material-symbols-outlined">outlined_flag</span>長期目標(参加)
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-group-label">AI評価出力</div>
+        <div class="field-chip" draggable="true" data-field="ai_change" data-label="【変化】">
+          <span class="material-symbols-outlined">trending_up</span>【変化】
+        </div>
+        <div class="field-chip" draggable="true" data-field="ai_challenge" data-label="【課題と要因】">
+          <span class="material-symbols-outlined">warning</span>【課題と要因】
+        </div>
+        <div class="field-chip" draggable="true" data-field="achievement" data-label="達成状況">
+          <span class="material-symbols-outlined">task_alt</span>達成状況
+        </div>
+        <div class="field-chip" draggable="true" data-field="target_month" data-label="対象月">
+          <span class="material-symbols-outlined">calendar_month</span>対象月
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-group-label">担当・施設</div>
+        <div class="field-chip" draggable="true" data-field="created_by" data-label="作成担当者">
+          <span class="material-symbols-outlined">badge</span>作成担当者
+        </div>
+        <div class="field-chip" draggable="true" data-field="created_date" data-label="作成日">
+          <span class="material-symbols-outlined">event</span>作成日
+        </div>
+        <div class="field-chip" draggable="true" data-field="care_manager" data-label="担当CM名">
+          <span class="material-symbols-outlined">manage_accounts</span>担当CM名
+        </div>
+      </div>
+    </div>
+
+    <!-- 中央：シートプレビュー -->
+    <div id="preview-area">
+      <div id="preview-wrap">
+        <div id="preview-header">
+          <span class="material-symbols-outlined">table_chart</span>
+          モニタリング報告書 — セルをクリックしてフィールドを割り当て
+        </div>
+        <div style="overflow-x:auto">
+          <table id="sheet-grid">
+            <colgroup>
+              <col class="col-row">
+              <col class="col-a">
+              <col style="width:60px"><col style="width:48px"><col style="width:55px">
+              <col style="width:48px"><col style="width:42px"><col style="width:42px">
+              <col style="width:42px"><col style="width:42px"><col style="width:42px">
+              <col style="width:42px"><col style="width:42px"><col style="width:42px">
+            </colgroup>
+            <tbody id="grid-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：マッピング一覧 -->
+    <div id="mapping-panel">
+      <h3>マッピング一覧</h3>
+      <div id="mapping-list">
+        <div class="no-mapping">まだ設定がありません</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ボトムバー -->
+  <div id="bottom-bar">
+    <div class="info">
+      <strong id="map-count">0</strong> 項目をマッピング済み
+      &nbsp;|&nbsp; 設定はブラウザに自動保存されます
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-danger" id="clear-btn">
+        <span class="material-symbols-outlined">delete_sweep</span>
+        クリア
+      </button>
+      <button class="btn btn-secondary" id="copy-btn">
+        <span class="material-symbols-outlined">content_copy</span>
+        JSONコピー
+      </button>
+      <button class="btn btn-primary" id="save-btn">
+        <span class="material-symbols-outlined">save</span>
+        設定を保存
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">
+  <span class="material-symbols-outlined" id="toast-icon">check_circle</span>
+  <span id="toast-msg"></span>
+</div>
+
+<script>
+const STORAGE_KEY = 'tasukaru_field_mapping_v1';
+const mapping = {};
+let selectedField = null;
+let draggedField = null;
+
+const LAYOUTS = {
+  monitoring: [
+    {r:1, label:'1', cells:[
+      {c:2,cs:13,text:'モニタリング報告書/評価表',cls:'header-cell',style:'text-align:center;font-size:13px;font-weight:600;height:28px'}
+    ]},
+    {r:2, label:'2', cells:[
+      {c:2,cs:4,text:''},
+      {c:6,cs:2,text:'作成日',cls:'header-cell',style:'text-align:right'},
+      {c:8,cs:6,text:'',key:'created_date',drop:true}
+    ]},
+    {r:3, label:'3', cells:[
+      {c:2,cs:2,text:'居宅介護支援事業所',cls:'header-cell'},
+      {c:4,cs:4,text:'',drop:false},
+      {c:8,cs:6,text:'機能訓練型デイサービス',style:'text-align:center;background:#f8fafc'}
+    ]},
+    {r:4, label:'4', cells:[
+      {c:2,cs:2,text:'担当ケアマネジャー',cls:'header-cell'},
+      {c:4,cs:4,text:'',key:'care_manager',drop:true},
+      {c:8,cs:6,text:'ココカラプラス',style:'text-align:center;font-weight:500;background:#f8fafc'}
+    ]},
+    {r:5, label:'5', cells:[
+      {c:2,cs:6,text:''},
+      {c:8,cs:6,text:'〒４７１－０８３２',style:'background:#f8fafc;font-size:10px'}
+    ]},
+    {r:6, label:'6', cells:[
+      {c:2,cs:6,text:''},
+      {c:8,cs:6,text:'愛知県豊田市丸山町…',style:'background:#f8fafc;font-size:10px'}
+    ]},
+    {r:7, label:'7', cells:[
+      {c:2,cs:6,text:''},
+      {c:8,cs:6,text:'TEL 0565-41-7804',style:'background:#f8fafc;font-size:10px'}
+    ]},
+    {r:8, label:'8', cells:[{c:2,cs:13,text:'',style:'border-top:2px solid #374151'}]},
+    {r:9, label:'9', cells:[
+      {c:2,cs:1,text:'フリガナ',cls:'header-cell'},
+      {c:3,cs:2,text:'',key:'user_kana',drop:true},
+      {c:5,cs:1,text:'性別',cls:'header-cell'},
+      {c:6,cs:1,text:'',key:'gender',drop:true},
+      {c:7,cs:2,text:'生年月日',cls:'header-cell'},
+      {c:9,cs:2,text:'',key:'birth_date',drop:true},
+      {c:11,cs:3,text:''}
+    ]},
+    {r:10, label:'10', cells:[
+      {c:2,cs:1,text:'氏名',cls:'header-cell'},
+      {c:3,cs:2,text:'',key:'user_name',drop:true},
+      {c:5,cs:2,text:''},
+      {c:7,cs:2,text:'要介護度',cls:'header-cell'},
+      {c:9,cs:2,text:'',key:'care_level',drop:true},
+      {c:11,cs:3,text:''}
+    ]},
+    {r:11, label:'11', cells:[
+      {c:2,cs:2,text:'作成担当者',cls:'header-cell'},
+      {c:4,cs:10,text:'',key:'created_by',drop:true}
+    ]},
+    {r:12, label:'12', cells:[
+      {c:2,cs:1,text:'【短期目標】',cls:'header-cell',style:'font-weight:600'},
+      {c:3,cs:8,text:''},
+      {c:11,cs:3,text:'期間',cls:'header-cell',style:'text-align:center'}
+    ]},
+    {r:13, label:'13', cells:[
+      {c:2,cs:1,text:'【機能】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_short_func',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:14, label:'14', cells:[
+      {c:2,cs:1,text:'【活動】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_short_act',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:15, label:'15', cells:[
+      {c:2,cs:1,text:'【参加】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_short_join',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:16, label:'16', cells:[
+      {c:2,cs:1,text:'【長期目標】',cls:'header-cell',style:'font-weight:600'},
+      {c:3,cs:8,text:''},
+      {c:11,cs:3,text:'期間',cls:'header-cell',style:'text-align:center'}
+    ]},
+    {r:17, label:'17', cells:[
+      {c:2,cs:1,text:'【機能】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_long_func',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:18, label:'18', cells:[
+      {c:2,cs:1,text:'【活動】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_long_act',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:19, label:'19', cells:[
+      {c:2,cs:1,text:'【参加】',cls:'header-cell'},
+      {c:3,cs:8,text:'',key:'goal_long_join',drop:true},
+      {c:11,cs:3,text:'',drop:false}
+    ]},
+    {r:20, label:'20', cells:[{c:2,cs:13,text:'',style:'border-top:1px solid #d1d5db'}]},
+    {r:21, label:'21', cells:[
+      {c:2,cs:6,text:'【個別機能訓練実施による変化】',cls:'header-cell',style:'font-weight:600;background:#fffbeb'},
+      {c:8,cs:7,text:'【個別機能訓練実施における課題とその要因】',cls:'header-cell',style:'font-weight:600'}
+    ]},
+    {r:22, label:'22', cells:[
+      {c:2,cs:6,text:'',key:'ai_change',drop:true,style:'height:60px;vertical-align:top;background:#fffef5'},
+      {c:8,cs:7,text:'',key:'ai_challenge',drop:true,style:'height:60px;vertical-align:top'}
+    ]},
+    {r:26, label:'26', cells:[{c:2,cs:13,text:'',style:'border-top:1px solid #d1d5db'}]},
+    {r:27, label:'27', cells:[
+      {c:2,cs:1,text:'【モニタリング】',cls:'header-cell',style:'font-weight:600'},
+      {c:3,cs:10,text:'評価目安',cls:'header-cell'}
+    ]},
+    {r:28, label:'28', cells:[
+      {c:2,cs:1,text:'①',cls:'header-cell'},
+      {c:3,cs:9,text:'',drop:false},
+      {c:12,cs:2,text:'達成状況',cls:'header-cell',style:'text-align:center'}
+    ]},
+    {r:29, label:'29', cells:[
+      {c:2,cs:1,text:'②',cls:'header-cell'},
+      {c:3,cs:9,text:'',drop:false},
+      {c:12,cs:2,text:'',key:'achievement',drop:true}
+    ]},
+    {r:33, label:'33', cells:[
+      {c:2,cs:1,text:'特記事項',cls:'header-cell',style:'font-weight:600'},
+      {c:3,cs:11,text:'',key:'notes',drop:true,style:'height:36px'}
+    ]},
+    {r:35, label:'35', cells:[
+      {c:2,cs:2,text:'体重',cls:'header-cell'},
+      {c:4,cs:2,text:'',key:'weight',drop:true},
+      {c:6,cs:1,text:'kg'},
+      {c:7,cs:7,text:''}
+    ]},
+  ]
+};
+
+function getCellAddr(colIdx, rowLabel) {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  return letters[colIdx - 1] + rowLabel;
+}
+
+function buildGrid() {
+  const tbody = document.getElementById('grid-body');
+  tbody.innerHTML = '';
+  const layout = LAYOUTS[document.getElementById('sheet-selector').value] || LAYOUTS.monitoring;
+
+  layout.forEach(row => {
+    const tr = document.createElement('tr');
+    // 行番号セル
+    const rowTd = document.createElement('td');
+    rowTd.textContent = row.label || '';
+    rowTd.style.cssText = 'background:#f1f5f9;color:#94a3b8;text-align:center;font-size:9px;border-right:1px solid #d1d5db;padding:0';
+    tr.appendChild(rowTd);
+
+    let col = 1;
+    row.cells.forEach(cell => {
+      // 空セルを埋める
+      while (col < cell.c) {
+        const td = document.createElement('td');
+        tr.appendChild(td);
+        col++;
+      }
+      const td = document.createElement('td');
+      if (cell.cs > 1) td.colSpan = cell.cs;
+      if (cell.cls) td.className = cell.cls;
+      if (cell.style) td.setAttribute('style', (td.getAttribute('style')||'') + cell.style);
+
+      const cellAddr = getCellAddr(cell.c, row.label || row.r);
+      td.dataset.addr = cellAddr;
+
+      if (cell.drop && cell.key) {
+        td.classList.add('droppable');
+        td.dataset.key = cell.key;
+        if (mapping[cell.key]) {
+          renderMapped(td, cell.key);
+        } else {
+          td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+        }
+        setupInteraction(td);
+      } else {
+        td.textContent = cell.text || '';
+      }
+      tr.appendChild(td);
+      col += (cell.cs || 1);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function renderMapped(td, key) {
+  td.classList.add('mapped');
+  td.classList.remove('droppable');
+  const m = mapping[key];
+  td.innerHTML = `<div class="mapped-chip"><span>${m.label}</span><button onclick="removeMapping('${key}')" title="削除">×</button></div>`;
+}
+
+function setupInteraction(td) {
+  const key = td.dataset.key;
+
+  td.addEventListener('click', () => {
+    if (!selectedField) return;
+    applyMapping(key, td, selectedField);
+    clearSelection();
+  });
+
+  td.addEventListener('dragover', e => {
+    e.preventDefault();
+    td.classList.add('drag-over');
+  });
+  td.addEventListener('dragleave', () => td.classList.remove('drag-over'));
+  td.addEventListener('drop', e => {
+    e.preventDefault();
+    td.classList.remove('drag-over');
+    if (!draggedField) return;
+    applyMapping(key, td, draggedField);
+    draggedField = null;
+  });
+}
+
+function applyMapping(key, td, field) {
+  const addr = td.dataset.addr;
+  mapping[key] = { field: field.field, label: field.label, cell: addr };
+  renderMapped(td, key);
+  markFieldAssigned(field.field, true);
+  updateUI();
+  showToast('check_circle', `${field.label} → ${addr} に設定しました`);
+}
+
+function removeMapping(key) {
+  const field = mapping[key] ? mapping[key].field : null;
+  delete mapping[key];
+  buildGrid();
+  if (field) markFieldAssigned(field, false);
+  updateUI();
+}
+
+function markFieldAssigned(fieldId, assigned) {
+  document.querySelectorAll('.field-chip').forEach(c => {
+    if (c.dataset.field === fieldId) {
+      c.classList.toggle('assigned', assigned);
+    }
+  });
+}
+
+function clearSelection() {
+  selectedField = null;
+  document.querySelectorAll('.field-chip').forEach(c => c.classList.remove('selected'));
+}
+
+function updateUI() {
+  const count = Object.keys(mapping).length;
+  document.getElementById('map-count').textContent = count;
+
+  // マッピング一覧更新
+  const list = document.getElementById('mapping-list');
+  if (count === 0) {
+    list.innerHTML = '<div class="no-mapping">まだ設定がありません</div>';
+    return;
+  }
+  list.innerHTML = Object.entries(mapping).map(([k, v]) => `
+    <div class="mapping-row">
+      <span class="field">${v.label}</span>
+      <span class="arrow">→</span>
+      <span class="cell">${v.cell}</span>
+      <button class="remove" onclick="removeMapping('${k}')">×</button>
+    </div>
+  `).join('');
+}
+
+function showToast(icon, msg) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-icon').textContent = icon;
+  document.getElementById('toast-msg').textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+function saveMapping() {
+  const out = {};
+  Object.entries(mapping).forEach(([k, v]) => { out[v.field] = v.cell; });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+
+  // Supabaseにも保存
+  saveToSupabase(out);
+  showToast('save', '設定を保存しました');
+}
+
+async function saveToSupabase(data) {
+  try {
+    const cfg = window.TASUKARU_CONFIG || {};
+    if (!cfg.supabaseUrl || !cfg.supabaseKey) return;
+    await fetch(cfg.supabaseUrl + '/rest/v1/admin_settings', {
+      method: 'POST',
+      headers: {
+        'apikey': cfg.supabaseKey,
+        'Authorization': 'Bearer ' + cfg.supabaseKey,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({
+        facility_code: cfg.facilityCode,
+        setting_key: 'field_mapping',
+        setting_value: JSON.stringify(data)
+      })
+    });
+  } catch(e) { console.warn('Supabase保存エラー:', e); }
+}
+
+function loadSavedMapping() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    // fieldからkeyへの逆引きマップを作成
+    const fieldToKey = {};
+    const layout = LAYOUTS[document.getElementById('sheet-selector').value] || LAYOUTS.monitoring;
+    layout.forEach(row => {
+      row.cells.forEach(cell => {
+        if (cell.key) fieldToKey[cell.key] = cell.key;
+      });
+    });
+    // 保存データを復元（field→cell のマップなので変換）
+    Object.entries(data).forEach(([field, cell]) => {
+      // labelを探す
+      const chip = document.querySelector(`.field-chip[data-field="${field}"]`);
+      const label = chip ? chip.textContent.trim() : field;
+      // keyを探す
+      let key = null;
+      layout.forEach(row => { row.cells.forEach(c => { if (c.key && (c.key === field || c.key.includes(field))) key = c.key; }); });
+      if (key) mapping[key] = { field, label, cell };
+    });
+  } catch(e) { console.warn('読み込みエラー:', e); }
+}
+
+// イベント設定
+document.querySelectorAll('.field-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    if (chip.classList.contains('assigned')) return;
+    clearSelection();
+    selectedField = { field: chip.dataset.field, label: chip.dataset.label };
+    chip.classList.add('selected');
+    showToast('ads_click', `"${chip.dataset.label}" を選択 — セルをクリックして対応付け`);
+  });
+
+  chip.addEventListener('dragstart', e => {
+    draggedField = { field: chip.dataset.field, label: chip.dataset.label };
+    chip.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+});
+
+document.getElementById('sheet-selector').addEventListener('change', () => {
+  Object.keys(mapping).forEach(k => delete mapping[k]);
+  document.querySelectorAll('.field-chip').forEach(c => c.classList.remove('assigned','selected'));
+  selectedField = null;
+  buildGrid();
+  updateUI();
+});
+
+document.getElementById('save-btn').addEventListener('click', saveMapping);
+
+document.getElementById('copy-btn').addEventListener('click', () => {
+  const out = {};
+  Object.entries(mapping).forEach(([k, v]) => { out[v.field] = v.cell; });
+  navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
+    showToast('content_copy', 'JSONをコピーしました');
+  });
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (!confirm('全てのマッピング設定をクリアしますか？')) return;
+  Object.keys(mapping).forEach(k => delete mapping[k]);
+  document.querySelectorAll('.field-chip').forEach(c => c.classList.remove('assigned','selected'));
+  selectedField = null;
+  buildGrid();
+  updateUI();
+  showToast('delete_sweep', 'クリアしました');
+});
+
+// 初期化
+loadSavedMapping();
+buildGrid();
+updateUI();
+// 保存済みのフィールドをassignedに
+Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
+</script>
+</body>
+</html>

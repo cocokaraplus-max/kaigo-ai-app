@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>書式マッピング設定 操作マニュアル - TASUKARU</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+:root{--blue:#1e3a5f;--accent:#2563eb;--gold:#f59e0b;--bg:#f0f4f8;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:#1e293b;line-height:1.7;}
+.hero{background:var(--blue);color:#fff;padding:48px 24px 40px;text-align:center;position:relative;}
+.hero::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0,rgba(255,255,255,.03) 1px,transparent 1px,transparent 32px);}
+.hero-tag{display:inline-block;background:var(--gold);color:#1e293b;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;margin-bottom:16px;letter-spacing:.08em;}
+.hero h1{font-size:28px;font-weight:900;margin-bottom:8px;position:relative;}
+.hero p{font-size:14px;opacity:.8;position:relative;}
+.nav-back{position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.7);text-decoration:none;font-size:13px;z-index:1;}
+.nav-back:hover{color:#fff;}
+.container{max-width:860px;margin:0 auto;padding:0 20px;}
+.intro{background:#fff;border-radius:14px;margin:32px auto;max-width:860px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.intro h2{font-size:16px;font-weight:700;margin-bottom:10px;color:var(--blue);}
+.intro p{font-size:14px;color:#475569;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:18px;}
+.card{background:#eff6ff;border-radius:10px;padding:16px;border-left:3px solid var(--accent);}
+.card .label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.card p{font-size:13px;color:#334155;}
+.steps{max-width:860px;margin:0 auto 48px;padding:0 20px;}
+.step{background:#fff;border-radius:14px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.step-head{display:flex;align-items:center;gap:14px;padding:20px 24px;border-bottom:1px solid #e2e8f0;}
+.step-num{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step-title{font-size:16px;font-weight:700;}
+.step-body{padding:20px 24px;}
+.step-body p{font-size:13px;color:#475569;margin-bottom:14px;}
+.step-img{width:100%;border-radius:8px;border:1px solid #e2e8f0;display:block;}
+.tip{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-top:14px;font-size:12px;color:#92400e;}
+.tip::before{content:'💡 ';}
+.notes{background:#fff;border-radius:14px;max-width:860px;margin:0 auto 48px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.notes h2{font-size:15px;font-weight:700;margin-bottom:12px;color:var(--blue);}
+.notes ul{list-style:none;display:flex;flex-direction:column;gap:8px;}
+.notes li{font-size:13px;color:#475569;padding-left:18px;position:relative;}
+.notes li::before{content:'✓';position:absolute;left:0;color:var(--accent);font-weight:700;}
+footer{background:var(--blue);color:rgba(255,255,255,.7);text-align:center;padding:20px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="hero">
+  <a href="/top" class="nav-back">← TOPに戻る</a>
+  <div class="hero-tag">操作マニュアル</div>
+  <h1>書式マッピング設定</h1>
+  <p>TASUKARUのデータをExcelのどのセルに入力するか設定する画面です</p>
+</div>
+<div class="intro container">
+  <h2>📋 この機能でできること</h2>
+  <p>利用者情報・アセスメント結果などのデータ項目と、Excelの書式の特定セルを対応付けます。一度設定すると以後の自動入力に使われます。</p>
+  <div class="grid3">
+    <div class="card"><div class="label">左パネル</div><p>TASUKARUの<strong>データ項目</strong>（氏名・フリガナ・介護度など）</p></div>
+    <div class="card"><div class="label">中央パネル</div><p>Excelの<strong>書式プレビュー</strong>（黄色のセル＝入力可能箇所）</p></div>
+    <div class="card"><div class="label">右パネル</div><p>設定済みの<strong>マッピング一覧</strong>（確認・削除が可能）</p></div>
+  </div>
+</div>
+<div class="steps container">
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">書式マッピング設定画面を開く</div></div>
+    <div class="step-body">
+      <p>TOPページや画面上部のナビゲーションから「書式マッピング設定」へアクセスします。3パネル構成の画面が表示されます。</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzUwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjM1MCIgZmlsbD0iI2VmZjZmZiIvPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9Ijg2OCIgaGVpZ2h0PSIzMTgiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2UyZThmMCIvPjx0ZXh0IHg9IjQ1MCIgeT0iMTYwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM2NDc0OGIiPlNURVAgMTwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTUiIGZpbGw9IiM5NGEzYjgiPuabuOW8j+ODnuODg+ODlOODs+OCsOioreWumiDnlLvpnaLlhajkvZM8L3RleHQ+PC9zdmc+" alt="初期画面" class="step-img">
+      <div class="tip">書式テンプレートの切り替えは画面上部のドロップダウンで行えます（モニタリング報告書・ケース記録など）。</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">左パネルのデータ項目をクリックして選択</div></div>
+    <div class="step-body">
+      <p>画面左側の「データ項目」から、Excelに入力したい項目をクリックします。選択した項目は<strong>青くハイライト</strong>されます。</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzUwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjM1MCIgZmlsbD0iI2VmZjZmZiIvPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9Ijg2OCIgaGVpZ2h0PSIzMTgiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2UyZThmMCIvPjx0ZXh0IHg9IjQ1MCIgeT0iMTYwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM2NDc0OGIiPlNURVAgMjwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTUiIGZpbGw9IiM5NGEzYjgiPuODh+ODvOOCv+mgheebruOCkuOCr+ODquODg+OCr+mBuOaKnu+8iOmdkuOBj+ODj+OCpOODqeOCpOODiO+8iTwvdGV4dD48L3N2Zz4=" alt="フィールド選択" class="step-img">
+      <div class="tip">ドラッグ&ドロップでも設定できます。項目を直接黄色いセルにドラッグして離すことでも対応付けできます。</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">中央の黄色いセルをクリックして対応付け</div></div>
+    <div class="step-body">
+      <p>書式プレビューの<strong>黄色いセル</strong>（「＋クリックまたはドロップ」と表示）をクリックすると対応付けが完了します。セルに項目名が表示されます。</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzUwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjM1MCIgZmlsbD0iI2ZlZmNlOCIvPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9Ijg2OCIgaGVpZ2h0PSIzMTgiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2UyZThmMCIvPjx0ZXh0IHg9IjQ1MCIgeT0iMTYwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM2NDc0OGIiPlNURVAgMzwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTUiIGZpbGw9IiM5NGEzYjgiPum7hOiJsuOBhOOCu+ODq+OCkuOCr+ODquODg+OCr+OBl+OBpuWvvuW/nOS7mOOBkeWujOS6hjwvdGV4dD48L3N2Zz4=" alt="対応付け完了" class="step-img">
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">4</div><div class="step-title">全項目を設定して右パネルで確認</div></div>
+    <div class="step-body">
+      <p>②③を繰り返して必要な項目をすべて設定します。右パネルの「マッピング一覧」で設定内容を確認できます。「×」で個別削除も可能です。</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzUwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjM1MCIgZmlsbD0iI2YwZmRmNCIvPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9Ijg2OCIgaGVpZ2h0PSIzMTgiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2UyZThmMCIvPjx0ZXh0IHg9IjQ1MCIgeT0iMTYwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM2NDc0OGIiPlNURVAgNDwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTUiIGZpbGw9IiM5NGEzYjgiPuikh+aVsOmgheebruOCkuODnuODg+ODlOODs+OCsOa4iOOBv+OBrueKtuaFizwvdGV4dD48L3N2Zz4=" alt="複数マッピング済み" class="step-img">
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">5</div><div class="step-title">「設定を保存」をクリック</div></div>
+    <div class="step-body">
+      <p>すべての設定が完了したら、右下の<strong>「設定を保存」</strong>ボタンをクリックします。設定がサーバーに保存され、以後の自動入力に反映されます。</p>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzUwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjM1MCIgZmlsbD0iI2VmZjZmZiIvPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9Ijg2OCIgaGVpZ2h0PSIzMTgiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2UyZThmMCIvPjx0ZXh0IHg9IjQ1MCIgeT0iMTYwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM2NDc0OGIiPlNURVAgNTwvdGV4dD48dGV4dCB4PSI0NTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTUiIGZpbGw9IiM5NGEzYjgiPuioreWumuOCkuS/neWtmOODnOOCv+ODs+OCkuOCr+ODquODg+OCrzwvdGV4dD48L3N2Zz4=" alt="保存完了" class="step-img">
+      <div class="tip">必ず「設定を保存」ボタンを押してください。押さないとブラウザを閉じたときに設定が失われる場合があります。</div>
+    </div>
+  </div>
+</div>
+<div class="notes container">
+  <h2>⚠️ 注意事項</h2>
+  <ul>
+    <li>黄色いセル以外には設定できません（まず左パネルでデータ項目を選択してください）</li>
+    <li>同じデータ項目を複数のセルに割り当てることはできません</li>
+    <li>「クリア」ボタンを押すとすべての設定が削除されます（元に戻せません）</li>
+    <li>設定後は必ず「設定を保存」ボタンを押してサーバーに保存してください</li>
+  </ul>
+</div>
+<footer>TASUKARU 書式マッピング設定 操作マニュアル</footer>
+</body>
+</html>
