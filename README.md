@@ -1,168 +1,181 @@
-# TASUKARU  - Claude
-2026-04-17
+# TASUKARU  
+
+> cocokaraplus-maxZIMAX  
+> Claude 
 
 ---
 
-## 
+##  
 
-
-Excel
-AI
-
-
-- AI
-- Excel
-- 
-
----
-
-## GitHub
-
-https://github.com/cocokaraplus-max/kaigo-ai-app
-
-
-- main          
-- cloudrun-dev  Cloud RunCloud Shell
-- cloudrun      Cloud Run
-- develop       VS Code
-- cloudrun-test  
-
-
-VS Codedevelop GitHub push  cloudrun-dev Cloud Shell
- OK  cloudrun/main   
-
-Cloud Shellcloudrun-dev
-VS Codedeveloppush
-
----
-
-## 
-
-URLhttps://tasukaru-dev-191764727533.asia-northeast1.run.app
-GCPtasukaru-production
-Cloud Runtasukaru-dev
-asia-northeast1
-tasukaru-dev-00200-l622026-04-17
-
----
-
-## 
-
-Python / Flask
-Google Cloud RunDocker
-DBSupabasePostgreSQL
-  URLhttps://abvglnkwtdeoaazyqwyd.supabase.co
-  ()cocokaraplus-5526
-Google Apps ScriptGAS
-HTML/CSS/JSFlaskHTML
-
----
-
-## 
-
-/top          TOP
-/assessment   AIAI
-/case_record  
-/monitoring   
-/vitals       
-/calendar     
-/daily_view   
-/board        
-/mapping      send_filestatic/mapping.html
-/help         send_filestatic/help.html
-
----
-
-## 
-
-templates/  FlaskJinja2
-static/     Jinja2
-  mapping.html  UI30KB&
-  help.html     5
-
-static/HTMLJinja2{{ }}send_file()
-app.pymappingHTMLwindow.TASUKARU_CONFIG
-
-mapping
-  @app.route('/mapping')
-  @login_required
-  def mapping():
-      html = open('static/mapping.html').read()
-      su = os.environ.get('SUPABASE_URL', '...')
-      sk = os.environ.get('SUPABASE_KEY', '')
-      fc = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
-      cfg = f'<script>window.TASUKARU_CONFIG={{...}};</script>'
-      return html.replace('</head>', cfg + '</head>', 1)
-
----
-
-## Supabase 
-
-patients        
-assessments     
-case_records    
-admin_settings  setting_key='field_mapping'
-
----
-
-## GAS
-
-GAShttps://script.google.com/u/0/home/projects/1_3CHezNwUFpBMchQv7cMWCS4qU7R_32glKcDankYrHBuLZdpqOz0OpsL/edit
-https://docs.google.com/spreadsheets/d/13fAq0ELCyq8w_bryzt-CEpKrzdDdsPyqYd-UYEqLq6Q
-
-
-- fillMonitoringFromAssessment()  
-- fillMonitoringByMonth()         
-
----
-
-## 
-
+```bash
+# Cloud Shell 
 cd ~/tasukaru
-git checkout cloudrun-dev
+git status  # 
+
+# VS Code 
+git fetch origin
+git checkout cloudrun      # 
+# 
+git checkout cloudrun-dev  # 
+git pull origin cloudrun   # 
+```
+
+---
+
+##  
+
+### GitHub
+`https://github.com/cocokaraplus-max/kaigo-ai-app`
+
+|  |  |  |
+|---------|------|--------|
+| `main` | Streamlit |   |
+| `develop` | Streamlit |   |
+| `cloudrun` | **Flask** |   |
+| `cloudrun-dev` | **Flask** |   |
+
+### Cloud Run: tasukaru-production, region: asia-northeast1
+
+|  | URL |  |
+|-----------|-----|------|
+| `tasukaru` | https://tasukaru-dmgqqhsp6q-an.a.run.app | **Flask**   |
+| `tasukaru-dev` | https://tasukaru-dev-dmgqqhsp6q-an.a.run.app | Flask |
+| `kaigo-ai-app` | https://kaigo-ai-app-191764727533.asia-northeast1.run.app | Streamlit|
+
+### Cloud Shell
+`~/tasukaru/``cloudrun-dev`
+
+---
+
+##  
+
+```bash
+cd ~/tasukaru
+
+# 
 gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
 
----
+# 
+gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
+```
 
-## Cloud Shell
+##  GitHubpush
 
-ClaudeCloud Shell
-ClaudePC
-Cloud Shell EditorUpload...
-gcloud run deploy
+```bash
+# cloudrun-dev  cloudrun 
+git add -A
+git commit -m "feat: "
+git push origin cloudrun-dev
+git push origin cloudrun-dev:cloudrun --force
+```
 
----
-
-## 
-
-Flask + Supabase + Cloud Run 
-
-GASSupabaseGoogle
-GAS: monitoring.gs
-2026-04-17/mappingstatic/mapping.html(30KB)
-2026-04-17mapping.htmlTASUKARU_CONFIG
-2026-04-17/helpstatic/help.html
-2026-04-17CloudShellGitHubcloudrun-dev
+>  pushGitHub PAT
+> GitHub  Settings  Developer settings  Personal access tokens
 
 ---
 
-## PENDING
+##  
 
-
-- patientsgoal_short/long_func/act/join
-- /monitoring
-- TOP/help
-
-
-- mapping.html
-- 
+|  |  |
+|---------|------|
+| `app.py` | Flask |
+| `templates/admin.html` | MENU |
+| `static/mapping.html` |  |
+| `static/help.html` |  |
+| `static/admin.js` | MENU JavaScript |
 
 ---
 
-## 
+##  2026-04-17 
 
-cd ~/tasukaru
-git checkout cloudrun-dev
-git add -A && git commit -m "" && git push origin cloudrun-dev
-gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
-python3 -c "import re; routes=re.findall(r\"@app\.route\('([^']+)'\)\", open('app.py').read()); [print(r) for r in sorted(set(routes))]"
+|  |  |
+|------|---------|
+| `/mapping` Supabase Config | `app.py` |
+| `/help`  | `app.py` |
+| MENU 500`board_editors=[]`3 | `app.py` |
+| MENU | `templates/admin.html` |
+| ? | `templates/admin.html` |
+| `develop`  `d8b8d97` | GitHub |
+| `kaigo-ai-app`Streamlit   | Cloud Run |
+
+---
+
+##  
+
+### `board_editors` 
+`templates/admin.html` 814
+```javascript
+var _boardEditors = {{ board_editors | tojson }};
+```
+ `render_template("admin.html", ...)` **** `board_editors=[]` 
+MENU500
+
+### `/mapping` 
+```python
+@app.route('/mapping')
+@login_required
+def mapping():
+    import os
+    html = open('static/mapping.html', encoding='utf-8').read()
+    su = os.environ.get('SUPABASE_URL', '')
+    sk = os.environ.get('SUPABASE_KEY', '')
+    fc = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    cfg = f'<script>window.TASUKARU_CONFIG={{supabaseUrl:"{su}",supabaseKey:"{sk}",facilityCode:"{fc}"}};</script>'
+    html = html.replace('</head>', cfg + '</head>', 1)
+    return html
+```
+`static/mapping.html` HTMLFlaskConfig
+
+### `kaigo-ai-app` 
+- URL: `https://kaigo-ai-app-191764727533.asia-northeast1.run.app`
+- Streamlit
+- **Flask**
+
+---
+
+##  MENU
+
+```
+MENU
+ AI
+ [ ]  [?]   2026-04-17
+ 
+ 
+ MENU
+```
+
+-  `/mapping` 
+- ? `/help`
+
+---
+
+##  Supabase
+
+|  |  |
+|------|---|
+| URL | https://abvglnkwtdeoaazyqwyd.supabase.co |
+|  | cocokaraplus-5526 |
+
+---
+
+##  TODO
+
+- [ ] VS Code`git pull origin cloudrun`  diverge  `git reset --hard origin/cloudrun` 
+- [ ] Supabase
+- [ ] PAT
+
+---
+
+##  
+
+```
+1. VS Code  cloudrun-dev 
+2. Cloud Shell  git pull
+3. Cloud Shell  tasukaru-dev   
+4.  tasukaru
+5. GitHub  pushcloudrun-dev  cloudrun 
+```
+
+---
+
+*: 2026-04-18 by TASUKARUClaude*
