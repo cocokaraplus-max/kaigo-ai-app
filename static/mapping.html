@@ -197,6 +197,7 @@
   .col-row { width: 26px; }
   .col-a { width: 8px; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -760,6 +761,141 @@ buildGrid();
 updateUI();
 // 保存済みのフィールドをassignedに
 Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
+
+// ============================================================
+// Excel / CSV アップロード機能
+// ============================================================
+window.handleExcelUpload = async function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('excel-status');
+  status.textContent = '読み込み中...';
+  status.style.color = '#6b7280';
+
+  try {
+    const buffer = await file.arrayBuffer();
+    let layout;
+
+    if (file.name.endsWith('.csv')) {
+      // CSV処理
+      const text = new TextDecoder('utf-8').decode(buffer);
+      layout = csvToLayout(text);
+    } else {
+      // xlsx/xls処理
+      const wb = XLSX.read(buffer, { type: 'array', cellStyles: true, sheetRows: 50 });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      layout = sheetToLayout(ws);
+    }
+
+    // LAYOUTSに追加して選択
+    const key = 'custom_' + Date.now();
+    const label = file.name.replace(/\.xlsx?|\.csv$/i, '').slice(0, 20);
+    LAYOUTS[key] = layout;
+
+    // セレクターにオプション追加
+    const sel = document.getElementById('sheet-selector');
+    // 既存のカスタムオプションを削除
+    Array.from(sel.options).forEach(o => { if (o.value.startsWith('custom_')) sel.remove(o.index); });
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = '★ ' + label + ' (読み込み)';
+    sel.appendChild(opt);
+    sel.value = key;
+
+    // グリッド再描画
+    buildGrid();
+    status.textContent = '✅ ' + label + ' を読み込みました！黄色にしたいセルをクリックしてください。';
+    status.style.color = '#059669';
+
+    // 入力をリセット（同じファイルを再度読み込めるように）
+    event.target.value = '';
+  } catch(e) {
+    console.error(e);
+    status.textContent = '❌ 読み込み失敗: ' + e.message;
+    status.style.color = '#dc2626';
+  }
+};
+
+// xlsx シート → LAYOUTS形式に変換
+function sheetToLayout(ws) {
+  const ref = ws['!ref'];
+  if (!ref) return [];
+  const range = XLSX.utils.decode_range(ref);
+  const merges = ws['!merges'] || [];
+  const layout = [];
+
+  // マージ情報をマップ化
+  const mergeMap = {};
+  merges.forEach(m => {
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        if (r === m.s.r && c === m.s.c) {
+          mergeMap[r + '_' + c] = { cs: m.e.c - m.s.c + 1, rs: m.e.r - m.s.r + 1 };
+        } else {
+          mergeMap[r + '_' + c] = 'skip';
+        }
+      }
+    }
+  });
+
+  const maxRow = Math.min(range.e.r, 49);
+  const maxCol = Math.min(range.e.c, 20);
+
+  for (let r = range.s.r; r <= maxRow; r++) {
+    const cells = [];
+    let c = range.s.c;
+    while (c <= maxCol) {
+      const mk = r + '_' + c;
+      if (mergeMap[mk] === 'skip') { c++; continue; }
+
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      const text = cell ? XLSX.utils.format_cell(cell) : '';
+      const colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
+
+      // セルのスタイル判定
+      const isBold = cell && cell.s && cell.s.font && cell.s.font.bold;
+      const bgColor = cell && cell.s && cell.s.fill && cell.s.fill.fgColor && cell.s.fill.fgColor.rgb;
+
+      let style = '';
+      if (isBold) style += 'font-weight:600;';
+      if (bgColor && bgColor !== 'FFFFFF' && bgColor !== 'ffffff') {
+        style += 'background:#' + bgColor + ';';
+      }
+      if (text) style += 'font-size:11px;';
+
+      cells.push({
+        c: c + 1,       // 1-indexed
+        cs: colSpan,
+        text: text,
+        style: style || undefined,
+        drop: false      // 初期は全セル非drop、クリックでtoggle
+      });
+      c += colSpan;
+    }
+    if (cells.length > 0) {
+      layout.push({ r: r + 1, label: String(r + 1), cells });
+    }
+  }
+  return layout;
+}
+
+// CSV → LAYOUTS形式に変換
+function csvToLayout(text) {
+  const rows = text.split('
+').filter(r => r.trim()).slice(0, 40);
+  return rows.map((row, ri) => {
+    const vals = row.split(',');
+    const cells = vals.slice(0, 15).map((v, ci) => ({
+      c: ci + 1,
+      cs: 1,
+      text: v.trim().replace(/^"|"$/g, ''),
+      drop: false
+    }));
+    return { r: ri + 1, label: String(ri + 1), cells };
+  });
+}
+
 </script>
 </body>
 </html>
