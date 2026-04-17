@@ -239,7 +239,7 @@
     <div class="divider"></div>
     <div class="toolbar-hint">
       <span class="material-symbols-outlined">info</span>
-      左のフィールドをクリック選択 → 黄色いセルをクリックで対応付け（ドラッグ&ドロップも可）
+      左のフィールドをクリック選択 -> 黄色いセルをクリックで対応付け（ドラッグ&ドロップも可）
     </div>
   </div>
 
@@ -325,7 +325,7 @@
       <div id="preview-wrap">
         <div id="preview-header">
           <span class="material-symbols-outlined">table_chart</span>
-          モニタリング報告書 — セルをクリックしてフィールドを割り当て
+          モニタリング報告書 -- セルをクリックしてフィールドを割り当て
         </div>
         <div style="overflow-x:auto">
           <table id="sheet-grid">
@@ -412,7 +412,7 @@ const LAYOUTS = {
     ]},
     {r:6, label:'6', cells:[
       {c:2,cs:6,text:''},
-      {c:8,cs:6,text:'愛知県豊田市丸山町…',style:'background:#f8fafc;font-size:10px'}
+      {c:8,cs:6,text:'愛知県豊田市丸山町...',style:'background:#f8fafc;font-size:10px'}
     ]},
     {r:7, label:'7', cells:[
       {c:2,cs:6,text:''},
@@ -495,12 +495,12 @@ const LAYOUTS = {
       {c:3,cs:10,text:'評価目安',cls:'header-cell'}
     ]},
     {r:28, label:'28', cells:[
-      {c:2,cs:1,text:'①',cls:'header-cell'},
+      {c:2,cs:1,text:'(1)',cls:'header-cell'},
       {c:3,cs:9,text:'',drop:false},
       {c:12,cs:2,text:'達成状況',cls:'header-cell',style:'text-align:center'}
     ]},
     {r:29, label:'29', cells:[
-      {c:2,cs:1,text:'②',cls:'header-cell'},
+      {c:2,cs:1,text:'(2)',cls:'header-cell'},
       {c:3,cs:9,text:'',drop:false},
       {c:12,cs:2,text:'',key:'achievement',drop:true}
     ]},
@@ -606,7 +606,7 @@ function applyMapping(key, td, field) {
   renderMapped(td, key);
   markFieldAssigned(field.field, true);
   updateUI();
-  showToast('check_circle', `${field.label} → ${addr} に設定しました`);
+  showToast('check_circle', `${field.label} -> ${addr} に設定しました`);
 }
 
 function removeMapping(key) {
@@ -643,7 +643,7 @@ function updateUI() {
   list.innerHTML = Object.entries(mapping).map(([k, v]) => `
     <div class="mapping-row">
       <span class="field">${v.label}</span>
-      <span class="arrow">→</span>
+      <span class="arrow">-></span>
       <span class="cell">${v.cell}</span>
       <button class="remove" onclick="removeMapping('${k}')">x</button>
     </div>
@@ -702,7 +702,7 @@ function loadSavedMapping() {
         if (cell.key) fieldToKey[cell.key] = cell.key;
       });
     });
-    // 保存データを復元（field→cell のマップなので変換）
+    // 保存データを復元（field->cell のマップなので変換）
     Object.entries(data).forEach(([field, cell]) => {
       // labelを探す
       const chip = document.querySelector(`.field-chip[data-field="${field}"]`);
@@ -722,7 +722,7 @@ document.querySelectorAll('.field-chip').forEach(chip => {
     clearSelection();
     selectedField = { field: chip.dataset.field, label: chip.dataset.label };
     chip.classList.add('selected');
-    showToast('ads_click', `"${chip.dataset.label}" を選択 — セルをクリックして対応付け`);
+    showToast('ads_click', `"${chip.dataset.label}" を選択 -- セルをクリックして対応付け`);
   });
 
   chip.addEventListener('dragstart', e => {
@@ -770,7 +770,7 @@ Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
 
 ;
 
-// xlsx シート → LAYOUTS形式に変換
+// xlsx シート -> LAYOUTS形式に変換
 function sheetToLayout(ws) {
   const ref = ws['!ref'];
   if (!ref) return [];
@@ -834,7 +834,7 @@ function sheetToLayout(ws) {
   return layout;
 }
 
-// CSV → LAYOUTS形式に変換
+// CSV -> LAYOUTS形式に変換
 function csvToLayout(text) {
   const rows = text.split('
 ').filter(r => r.trim()).slice(0, 40);
@@ -880,7 +880,7 @@ window.handleExcelUpload = async function(event) {
     });
     const opt = document.createElement('option');
     opt.value = key;
-    opt.textContent = '★ ' + label + ' (読み込み)';
+    opt.textContent = '* ' + label + ' (読み込み)';
     sel.appendChild(opt);
     sel.value = key;
     buildGrid();
