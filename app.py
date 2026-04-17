@@ -2263,14 +2263,17 @@ def admin():
 @app.route('/mapping')
 @login_required
 def mapping():
-    import os
+    import os, json
+    from flask import Response
     html = open('static/mapping.html', encoding='utf-8').read()
-    su = os.environ.get('SUPABASE_URL', '')
-    sk = os.environ.get('SUPABASE_KEY', '')
-    fc = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
-    cfg = f'<script>window.TASUKARU_CONFIG={{supabaseUrl:"{su}",supabaseKey:"{sk}",facilityCode:"{fc}"}};</script>'
+    config = json.dumps({
+        'supabaseUrl': os.environ.get('SUPABASE_URL', ''),
+        'supabaseKey': os.environ.get('SUPABASE_KEY', ''),
+        'facilityCode': os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    })
+    cfg = '<script>window.TASUKARU_CONFIG=' + config + ';</script>'
     html = html.replace('</head>', cfg + '</head>', 1)
-    return html
+    return Response(html, mimetype='text/html')
 
 @app.route('/help')
 @login_required
