@@ -230,6 +230,12 @@
       <option value="monitoring">モニタリング報告書</option>
       <option value="case_record">ケース記録</option>
     </select>
+    <label id="excel-upload-btn" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#059669;color:#fff;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:8px;" title=".xlsx/.xls/.csvを読み込む">
+      <span class="material-symbols-outlined" style="font-size:16px">upload_file</span>
+      Excel&#12288;&#35501;&#12415;&#36796;&#12416;
+      <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleExcelUpload(event)">
+    </label>
+    <span id="excel-status" style="font-size:0.78rem;color:#6b7280;margin-left:6px;"></span>
     <div class="divider"></div>
     <div class="toolbar-hint">
       <span class="material-symbols-outlined">info</span>
