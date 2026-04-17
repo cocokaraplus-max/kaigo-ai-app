@@ -33,7 +33,7 @@
 | **Cloud Runサービス（開発）** | `tasukaru-dev` |
 | **リージョン** | `asia-northeast1`（東京） |
 | **最新リビジョン（本番）** | `tasukaru-00299-bvs`（2025-04-18時点） |
-| **最新リビジョン（開発）** | `tasukaru-dev-00212-bnc`（2025-04-18時点） |
+| **最新リビジョン（開発）** | `tasukaru-dev-00214-9jz`（2025-04-18時点） |
 
 ---
 
@@ -53,13 +53,13 @@
 ## 📁 ファイル構成
 
 ```
-~/tasukaru/
+kaigo-ai-app/  ← ローカルMacのフォルダ名（パス: /Users/ZIMAX 1/Desktop/kaigo-ai-app）
 ├── app.py                    # Flaskメインアプリ（全ルート・API定義）
 ├── Dockerfile                # Cloud Run用コンテナ定義
 ├── requirements.txt          # Pythonパッケージ
 ├── templates/
 │   ├── base.html             # 共通レイアウト（ヘッダー・ナビ）
-│   ├── input.html            # 記録入力（音声入力・一時停止・再開機能付き）★改善済み
+│   ├── input.html            # 記録入力 ★音声入力改善済み（一時停止・再開・エラー強化）
 │   ├── assessment.html       # AIアセスメント入力画面
 │   ├── case_record.html      # ケース記録入力
 │   ├── monitoring.html       # モニタリング記録
@@ -94,9 +94,6 @@
 | `/board` | 掲示板 | |
 | `/mapping` | **書式マッピング設定** | `send_file('static/mapping.html')`で配信 |
 | `/help` | **操作マニュアル** | 実スクリーンショット入り |
-| `/manual` | マニュアルページ | |
-| `/dev` | 開発者ページ | |
-| `/numerology` | 数秘術 | |
 
 ### API エンドポイント（主要なもの）
 - `/api/assess` — AIアセスメント実行
@@ -131,16 +128,7 @@
 id, facility_code, key, value, created_at
 ```
 
-**注意**: `setting_key` / `setting_value` ではなく `key` / `value` が正しい。間違えると `PGRST204` エラーになる。
-
-```javascript
-// 正しい保存パターン
-body: JSON.stringify({
-    facility_code: cfg.facilityCode,
-    key: 'field_mapping',       // ← "setting_key" ではなく "key"
-    value: JSON.stringify(data) // ← "setting_value" ではなく "value"
-})
-```
+`setting_key` / `setting_value` ではなく `key` / `value` が正しい。間違えると `PGRST204` エラーになる。
 
 ---
 
@@ -167,7 +155,7 @@ body: JSON.stringify({
 ```
 録音開始ボタン
     ↓ getUserMedia() でマイク取得
-    ↓ MediaRecorder.start(500) ← 500ms毎にデータ確保
+    ↓ MediaRecorder.start(500) ← 500ms毎にデータ確保（取りこぼし防止）
 録音中（赤ボタン）
     ↓ ⏸一時停止ボタン → isPaused=true → onstopでblob保存
     ↓ ▶再開ボタン → 新しいMediaRecorderで続き録音
@@ -186,75 +174,62 @@ AIテキスト変換ボタン
 |------|-----|-----|
 | 一時停止 | なし | ⏸ボタンで一時停止→▶で再開 |
 | 複数セグメント録音 | 不可 | allAudioBlobsに累積・結合 |
-| エラー表示 | `alert('AI変換に失敗しました')` のみ | 原因を画面に表示（マイク権限なし・サーバーエラー・タイムアウト等） |
+| エラー表示 | `alert('AI変換に失敗しました')` のみ | 原因を画面に表示 |
 | リトライ | なし | 失敗時2回自動リトライ |
 | タイムアウト | なし | 60秒で自動タイムアウト |
-| データ保護 | `mediaRecorder.start()` のみ | `start(500)` で500ms毎に確保 |
-| テキスト追記 | 上書き | 既存テキストに追記 |
-
-### 状態管理変数
-```javascript
-let mediaRecorder   // 現在のMediaRecorderインスタンス
-let audioChunks     // 現在セグメントのチャンク
-let allAudioBlobs   // 全セグメントのBlob累積リスト
-let isRecording     // 録音中フラグ
-let isPaused        // 一時停止中フラグ
-let currentStream   // マイクストリーム（一時停止中も保持）
-let audioMimeType   // 選択されたMIMEタイプ
-```
-
----
-
-## ✨ 書式マッピング機能の説明
-
-### 概念
-```
-TASUKARU（利用者データ）  →  Excelの書式（施設ごとに異なる）
-   氏名                  →  セルC10
-   フリガナ              →  セルB9
-   介護度                →  セルI10
-```
-
-### 仕組み
-1. `/mapping` ページで「どのデータをどのセルに入れるか」を設定
-2. 設定は `Supabase.admin_settings`（`key='field_mapping'`）に保存
-3. GASが設定を読み取り、Excelに自動転記
-
-### `/help` の実装詳細
-- `static/help.html`（約104KB）に実際の画面スクリーンショットをbase64 JPEGで埋め込み済み
-- 再作成が必要な場合は以下のフロー：
-  1. `/mapping` ページで html2canvas を使いSTEP1〜5をキャプチャ
-  2. Supabase `admin_settings`（`key='help_images_temp'`）に一時保存
-  3. Cloud Shell Python でSVGを差し替えてデプロイ
+| データ保護 | `start()` のみ | `start(500)` で500ms毎に確保 |
+| テキスト | 上書き | 既存テキストに追記 |
 
 ---
 
 ## 🚀 デプロイ手順
 
+### ローカルMac から直接デプロイ（推奨・2025-04-18 確立）
+
 ```bash
-cd ~/tasukaru
+# 作業フォルダ: /Users/ZIMAX 1/Desktop/kaigo-ai-app
 
-# 開発環境（テスト）
+# テスト環境へデプロイ
 gcloud run deploy tasukaru-dev \
-  --source . --region asia-northeast1 \
-  --project tasukaru-production --quiet
+  --source . \
+  --region asia-northeast1 \
+  --project tasukaru-production \
+  --quiet
 
-# 本番環境
+# 本番環境へデプロイ
 gcloud run deploy tasukaru \
-  --source . --region asia-northeast1 \
-  --project tasukaru-production --quiet
+  --source . \
+  --region asia-northeast1 \
+  --project tasukaru-production \
+  --quiet
+```
+
+### ローカルMac の gcloud セットアップ（初回のみ）
+
+```bash
+brew install google-cloud-sdk
+gcloud auth login
+gcloud config set project tasukaru-production
 ```
 
 ### ⚠️ 必ずテスト環境で確認してから本番に反映すること
 
+```
+コード修正（VSCode）
+    ↓
+git add & commit & push（GitHubにバックアップ）
+    ↓
+gcloud run deploy tasukaru-dev ...（テスト環境で確認）
+    ↓ 問題なければ
+gcloud run deploy tasukaru ...（本番環境に反映）
+```
+
+### Cloud Shell からデプロイする場合（サブ手段）
+
 ```bash
-# テスト確認後、本番ブランチに反映
-git checkout tasukaru
-git checkout tasukaru-dev -- templates/input.html  # 特定ファイルだけ
-git commit -m "本番反映: 変更内容"
-git push origin tasukaru
-gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
-git checkout tasukaru-dev
+cd ~/tasukaru
+git stash && git pull
+gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
 ```
 
 ---
@@ -277,23 +252,27 @@ git checkout tasukaru-dev
 - **トークン名**: `tasukaru-cloudshell`
 - **有効期限**: 2026-05-18
 - **スコープ**: repo
+- **用途**: Cloud Shell での Git 認証
 
 ```bash
-# Cloud ShellでのGit認証設定（期限切れ時は再発行して再設定）
+# PATが切れたら再発行して再設定
 git remote set-url origin https://<PAT>@github.com/cocokaraplus-max/kaigo-ai-app.git
 ```
 
 ### よく使うGitコマンド
 
 ```bash
-# 変更をcommit & push（開発ブランチ）
+# 変更をcommit & push
 git add -A
 git commit -m "変更内容のメッセージ"
 git push origin tasukaru-dev
 
-# Cloud Shellでpullしてデプロイ
-cd ~/tasukaru && git stash && git pull && gcloud run deploy tasukaru-dev \
-  --source . --region asia-northeast1 --project tasukaru-production --quiet
+# 本番ブランチにも特定ファイルを反映
+git checkout tasukaru
+git checkout tasukaru-dev -- templates/input.html
+git commit -m "本番反映: 変更内容"
+git push origin tasukaru
+git checkout tasukaru-dev
 ```
 
 ---
@@ -314,16 +293,30 @@ def example():
     return send_file('static/example.html', mimetype='text/html')
 ```
 
-**重要**: `static/` のHTMLには `{{ }}` が含まれる場合があるため `send_file` で配信。
+`static/` のHTMLには `{{ }}` が含まれる場合があるため `send_file` で配信。
 `templates/` に置くと Jinja2 が `{{ }}` を変数と解釈してエラーになる。
 
-### ローカルVSCodeからCloud Shellへの大容量データ転送テクニック
+### ローカルVSCodeからCloud Shellへの大容量データ転送
 
 ターミナルのheredocは長いスクリプトでタイムアウトする。回避策：
-
-1. **Pythonスクリプトをファイルとしてダウンロード** → ローカルで `python3 fix_xxx.py` を実行
+1. **Pythonスクリプトをファイルとしてダウンロード** → ローカルで `python3 fix_xxx.py`
 2. **Supabase経由**: JSで `admin_settings` に一時保存 → Cloud Shell Pythonで取得・処理
 3. **Cloud Shell Editorのアップロード**: 左パネルフォルダを右クリック → Upload
+
+---
+
+## 💾 バックアップ
+
+### USB バックアップ
+- **USBドライブ名**: `HIRO'sUSB`
+
+```bash
+cp -r "/Users/ZIMAX 1/Desktop/kaigo-ai-app" "/Volumes/HIRO'sUSB/TASUKARU_backup_YYYYMMDD"
+```
+
+### GitHub バックアップ
+- **リポジトリ**: https://github.com/cocokaraplus-max/kaigo-ai-app
+- `tasukaru-dev` ブランチが最新の開発状態
 
 ---
 
@@ -344,11 +337,18 @@ def example():
 | 2025-04-18 | README.md 全面更新 |
 | 2025-04-18 | **`templates/input.html` 音声入力を大幅改善** |
 | | ・一時停止（⏸）→ 再開（▶）機能を追加 |
-| | ・保存エラーの詳細表示（マイク権限なし・サーバーエラー・タイムアウト等） |
+| | ・保存エラーの詳細表示（マイク権限・サーバーエラー・タイムアウト等） |
 | | ・失敗時の自動リトライ（最大2回）+ 60秒タイムアウト |
 | | ・500msごとのデータ確保でデータ取りこぼし防止 |
 | | ・文字起こし結果をテキストエリアに追記（上書きではなく） |
 | | ・テスト環境（tasukaru-dev-00212-bnc）で動作確認済み |
+| 2025-04-18 | **ローカルMac（/Users/ZIMAX 1/Desktop/kaigo-ai-app）からの直接デプロイを確立** |
+| | ・Google Cloud SDK（gcloud）をMacにインストール |
+| | ・`gcloud auth login` で認証済み |
+| | ・`gcloud config set project tasukaru-production` 設定済み |
+| | ・ローカルから直接 `gcloud run deploy` でCloud Runにデプロイ可能になった |
+| | ・Cloud Shellを経由せずにデプロイできるためワークフローが大幅にシンプル化 |
+| | ・テスト環境デプロイ確認済み（revision: tasukaru-dev-00214-9jz） |
 
 ---
 
@@ -371,8 +371,8 @@ def example():
 - [ ] `/monitoring` ページの本格実装
 
 ### 優先度中
-- [ ] `assessment.html` / `manual.html` の音声入力も同様に改善（同じ問題を抱えている可能性あり）
-- [ ] TOPページや `/mapping` ページから `/help` へのリンクボタン追加
+- [ ] `assessment.html` / `manual.html` の音声入力も同様に改善
+- [ ] TOPページや `/mapping` から `/help` へのリンクボタン追加
 - [ ] 多施設テンプレート整備
 - [ ] Supabase `admin_settings` の `key='help_images_temp'`（一時データ）を削除
 
@@ -386,26 +386,25 @@ def example():
 ## 💡 よく使うコマンド集
 
 ```bash
-# 作業ディレクトリ
-cd ~/tasukaru
+# ===== ローカルMacから（推奨）=====
 
-# 開発デプロイ
+# テスト環境デプロイ
 gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
 
 # 本番デプロイ
 gcloud run deploy tasukaru --source . --region asia-northeast1 --project tasukaru-production --quiet
 
-# pullしてデプロイ（Cloud Shell）
-git stash && git pull && gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
+# USBバックアップ
+cp -r "/Users/ZIMAX 1/Desktop/kaigo-ai-app" "/Volumes/HIRO'sUSB/TASUKARU_backup_$(date +%Y%m%d)"
 
-# ルート一覧確認
-python3 -c "import re; routes=re.findall(r\"@app\.route\('([^']+)'\)\", open('app.py').read()); [print(r) for r in sorted(set(routes))]"
+# ===== Cloud Shell から（サブ）=====
+
+cd ~/tasukaru
+git stash && git pull
+gcloud run deploy tasukaru-dev --source . --region asia-northeast1 --project tasukaru-production --quiet
 
 # Cloud Runサービス一覧
 gcloud run services list --region=asia-northeast1 --format="value(metadata.name)"
-
-# Gitブランチ確認
-git branch -a
 
 # 環境変数確認
 gcloud run services describe tasukaru-dev --region=asia-northeast1 --format=json | python3 -c "
