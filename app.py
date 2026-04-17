@@ -2034,7 +2034,8 @@ def admin_auth():
                 patients=[], blocked=[], staff_list=[],
                 hist_limit=30, error="開発者パスワードが違います。",
                 claude_url=None, registered_staffs=[], f_code=f_code
-            )
+            ,
+            board_editors=[])
 
     # 管理者認証
     try:
@@ -2052,7 +2053,8 @@ def admin_auth():
             patients=[], blocked=[], staff_list=[],
             hist_limit=30, error="パスワードが違います。",
             claude_url=None, registered_staffs=[], f_code=f_code
-        )
+        ,
+            board_editors=[])
 
 @app.route('/api/scan_patients_from_image', methods=['POST'])
 @login_required
@@ -2253,7 +2255,8 @@ def admin():
         claude_url=claude_url,
         registered_staffs=registered_staffs,
         f_code=f_code
-    )
+    ,
+            board_editors=[])
 
 # ==========================================
 # API エンドポイント
