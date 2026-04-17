@@ -671,7 +671,22 @@ function applyMapping(key, td, field) {
 function removeMapping(key) {
   const field = mapping[key] ? mapping[key].field : null;
   delete mapping[key];
-  buildGrid();
+  // カスタムレイアウトの場合はセルをdroppable状態に戻す
+  const isCustom = document.getElementById('sheet-selector').value.startsWith('custom_');
+  if (isCustom) {
+    // keyに対応するtdを探してdroppableに戻す
+    const td = document.querySelector(`#grid-body td[data-key="${key}"]`);
+    if (td) {
+      td.classList.remove('mapped');
+      td.classList.add('droppable');
+      td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+      setupInteraction(td);
+    } else {
+      buildGrid();
+    }
+  } else {
+    buildGrid();
+  }
   if (field) markFieldAssigned(field, false);
   updateUI();
 }
@@ -830,68 +845,6 @@ Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
 ;
 
 // xlsx シート -> LAYOUTS形式に変換
-function sheetToLayout(ws) {
-  const ref = ws['!ref'];
-  if (!ref) return [];
-  const range = XLSX.utils.decode_range(ref);
-  const merges = ws['!merges'] || [];
-  const layout = [];
-
-  // マージ情報をマップ化
-  const mergeMap = {};
-  merges.forEach(m => {
-    for (let r = m.s.r; r <= m.e.r; r++) {
-      for (let c = m.s.c; c <= m.e.c; c++) {
-        if (r === m.s.r && c === m.s.c) {
-          mergeMap[r + '_' + c] = { cs: m.e.c - m.s.c + 1, rs: m.e.r - m.s.r + 1 };
-        } else {
-          mergeMap[r + '_' + c] = 'skip';
-        }
-      }
-    }
-  });
-
-  const maxRow = Math.min(range.e.r, 49);
-  const maxCol = Math.min(range.e.c, 20);
-
-  for (let r = range.s.r; r <= maxRow; r++) {
-    const cells = [];
-    let c = range.s.c;
-    while (c <= maxCol) {
-      const mk = r + '_' + c;
-      if (mergeMap[mk] === 'skip') { c++; continue; }
-
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      const text = cell ? XLSX.utils.format_cell(cell) : '';
-      const colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
-
-      // セルのスタイル判定
-      const isBold = cell && cell.s && cell.s.font && cell.s.font.bold;
-      const bgColor = cell && cell.s && cell.s.fill && cell.s.fill.fgColor && cell.s.fill.fgColor.rgb;
-
-      let style = '';
-      if (isBold) style += 'font-weight:600;';
-      if (bgColor && bgColor !== 'FFFFFF' && bgColor !== 'ffffff') {
-        style += 'background:#' + bgColor + ';';
-      }
-      if (text) style += 'font-size:11px;';
-
-      cells.push({
-        c: c + 1,       // 1-indexed
-        cs: colSpan,
-        text: text,
-        style: style || undefined,
-        drop: false      // 初期は全セル非drop、クリックでtoggle
-      });
-      c += colSpan;
-    }
-    if (cells.length > 0) {
-      layout.push({ r: r + 1, label: String(r + 1), cells });
-    }
-  }
-  return layout;
-}
 
 // CSV -> LAYOUTS形式に変換
 function csvToLayout(text) {
@@ -954,9 +907,9 @@ window.handleExcelUpload = async function(event) {
 
 function sheetToLayout(ws) {
   if (!ws['!ref']) return [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const merges = ws['!merges'] || [];
-  const mergeMap = {};
+  var range = XLSX.utils.decode_range(ws['!ref']);
+  var merges = ws['!merges'] || [];
+  var mergeMap = {};
   merges.forEach(function(m) {
     for (var r = m.s.r; r <= m.e.r; r++) {
       for (var c = m.s.c; c <= m.e.c; c++) {
@@ -972,6 +925,8 @@ function sheetToLayout(ws) {
   var maxRow = Math.min(range.e.r, 49);
   var maxCol = Math.min(range.e.c, 25);
   for (var r = range.s.r; r <= maxRow; r++) {
+    var rowInfo = ws['!rows'] && ws['!rows'][r];
+    var rowH = rowInfo && rowInfo.hpx ? Math.max(rowInfo.hpx, 16) : null;
     var cells = [];
     var c = range.s.c;
     while (c <= maxCol) {
@@ -981,12 +936,30 @@ function sheetToLayout(ws) {
       var cell = ws[addr];
       var text = cell ? XLSX.utils.format_cell(cell) : '';
       var colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
-      var style = text ? 'font-size:11px;' : '';
-      // カラム幅をExcelから取得（!cols情報があれば）
-    const colInfo = ws['!cols'] && ws['!cols'][c];
-    const colWidthPx = colInfo && colInfo.wpx ? Math.max(colInfo.wpx, 30) : null;
-    const widthStyle = colWidthPx ? 'min-width:' + colWidthPx + 'px;max-width:' + colWidthPx + 'px;' : '';
-    cells.push({ c: c + 1, cs: colSpan, text: text, style: (style || '') + widthStyle, drop: false });
+      var style = 'font-size:11px;';
+      if (rowH) style += 'height:' + rowH + 'px;vertical-align:middle;';
+      if (cell && cell.s) {
+        var s = cell.s;
+        if (s.fill && s.fill.fgColor && s.fill.fgColor.rgb && s.fill.fgColor.rgb.length >= 6) {
+          var bg = s.fill.fgColor.rgb.slice(-6);
+          if (bg !== 'FFFFFF' && bg !== 'ffffff') style += 'background:#' + bg + ';';
+        }
+        if (s.font) {
+          if (s.font.bold) style += 'font-weight:700;';
+          if (s.font.color && s.font.color.rgb && s.font.color.rgb.length >= 6) {
+            var fg = s.font.color.rgb.slice(-6);
+            if (fg !== '000000') style += 'color:#' + fg + ';';
+          }
+        }
+        if (s.alignment) {
+          if (s.alignment.horizontal === 'center') style += 'text-align:center;';
+          else if (s.alignment.horizontal === 'right') style += 'text-align:right;';
+        }
+      }
+      var colInfo = ws['!cols'] && ws['!cols'][c];
+      var colW = colInfo && colInfo.wpx ? Math.max(colInfo.wpx, 30) : null;
+      if (colW) style += 'min-width:' + colW + 'px;max-width:' + colW + 'px;';
+      cells.push({ c: c + 1, cs: colSpan, text: text, style: style, drop: false });
       c += colSpan;
     }
     if (cells.length > 0) {
