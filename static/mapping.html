@@ -878,7 +878,7 @@ window.handleExcelUpload = async function(event) {
       const text = new TextDecoder('utf-8').decode(buffer);
       layout = csvToLayout(text);
     } else {
-      const wb = XLSX.read(buffer, { type: 'array', sheetRows: 50 });
+      const wb = XLSX.read(buffer, { type: 'array', cellStyles: true, cellDates: true, sheetRows: 60 });
       const ws = wb.Sheets[wb.SheetNames[0]];
       layout = sheetToLayout(ws);
     }
