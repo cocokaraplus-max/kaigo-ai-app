@@ -954,6 +954,29 @@ function sheetToLayout(ws) {
   if (!ws['!ref']) return [];
   var range = XLSX.utils.decode_range(ws['!ref']);
   var merges = ws['!merges'] || [];
+
+  // ===== A4/A3基準のスケーリング =====
+  // 用紙幅: A4縦=794px A4横=1123px A3縦=1123px A3横=1587px
+  var PAGE_W = 794; // デフォルトA4縦
+  var ps = ws['!pageSetup'];
+  if (ps) {
+    if (ps.paperSize == 8 || ps.paperSize == 3) PAGE_W = 1123; // A3
+    if (ps.orientation === 'landscape') PAGE_W = PAGE_W === 794 ? 1123 : 1587;
+  }
+  // 実際の列幅合計を計算（印刷範囲内）
+  var cols = ws['!cols'] || [];
+  var totalWpx = 0;
+  var colWidths = [];
+  for (var ci = range.s.c; ci <= range.e.c; ci++) {
+    var col = cols[ci];
+    var w = col && col.wpx ? col.wpx : (col && col.width ? Math.round(col.width * 7) : 48);
+    colWidths.push(w);
+    totalWpx += w;
+  }
+  // スケール係数（印刷範囲が用紙幅に収まるよう）
+  var scale = totalWpx > 0 ? Math.min((PAGE_W - 20) / totalWpx, 2.0) : 1.0;
+
+  // マージ情報をマップ化
   var mergeMap = {};
   merges.forEach(function(m) {
     for (var r = m.s.r; r <= m.e.r; r++) {
@@ -966,23 +989,33 @@ function sheetToLayout(ws) {
       }
     }
   });
+
   var layout = [];
-  var maxRow = Math.min(range.e.r, 49);
-  var maxCol = Math.min(range.e.c, 25);
+  var maxRow = Math.min(range.e.r, 59);
+
   for (var r = range.s.r; r <= maxRow; r++) {
     var rowInfo = ws['!rows'] && ws['!rows'][r];
-    var rowH = rowInfo && rowInfo.hpx ? Math.max(rowInfo.hpx, 16) : null;
+    var rowH = rowInfo && rowInfo.hpx ? Math.max(Math.round(rowInfo.hpx * scale), 16) : null;
     var cells = [];
     var c = range.s.c;
-    while (c <= maxCol) {
+    while (c <= range.e.c) {
       var mk = r + '_' + c;
       if (mergeMap[mk] === 'skip') { c++; continue; }
       var addr = XLSX.utils.encode_cell({ r: r, c: c });
       var cell = ws[addr];
       var text = cell ? XLSX.utils.format_cell(cell) : '';
       var colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
+
+      // スケーリングした列幅
+      var colIdx = c - range.s.c;
+      var rawW = colWidths[colIdx] || 48;
+      var scaledW = Math.max(Math.round(rawW * scale), 20);
+
+      // スタイル構築
       var style = 'font-size:11px;';
       if (rowH) style += 'height:' + rowH + 'px;vertical-align:middle;';
+      style += 'min-width:' + scaledW + 'px;max-width:' + (scaledW * colSpan) + 'px;';
+
       if (cell && cell.s) {
         var s = cell.s;
         if (s.fill && s.fill.fgColor && s.fill.fgColor.rgb && s.fill.fgColor.rgb.length >= 6) {
@@ -999,16 +1032,15 @@ function sheetToLayout(ws) {
         if (s.alignment) {
           if (s.alignment.horizontal === 'center') style += 'text-align:center;';
           else if (s.alignment.horizontal === 'right') style += 'text-align:right;';
+          if (s.alignment.wrapText) style += 'white-space:pre-wrap;word-break:break-all;';
         }
       }
-      var colInfo = ws['!cols'] && ws['!cols'][c];
-      var colW = colInfo && colInfo.wpx ? Math.max(colInfo.wpx, 30) : null;
-      if (colW) style += 'min-width:' + colW + 'px;max-width:' + colW + 'px;';
-      cells.push({ c: c + 1, cs: colSpan, text: text, style: style, drop: false });
+
+      cells.push({ c: c - range.s.c + 1, cs: colSpan, text: text, style: style, drop: false });
       c += colSpan;
     }
     if (cells.length > 0) {
-      layout.push({ r: r + 1, label: String(r + 1), cells: cells });
+      layout.push({ r: r - range.s.r + 1, label: String(r + 1), cells: cells });
     }
   }
   return layout;
