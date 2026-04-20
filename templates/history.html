@@ -42,22 +42,6 @@
     </div>
 </div>
 
-<script>
-window.toggleGearMenu = function(e) {
-    e.stopPropagation();
-    const menu = document.getElementById('gearMenu');
-    if (!menu) return;
-    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-};
-
-document.addEventListener('click', function(e) {
-    const menu = document.getElementById('gearMenu');
-    if (menu && menu.style.display !== 'none' && !e.target.closest('#gearMenu') && !e.target.closest('[onclick*="toggleGearMenu"]')) {
-        menu.style.display = 'none';
-    }
-});
-</script>
-
 <div class="form-group">
     <label class="form-label">
         <span class="material-symbols-outlined">person</span>
@@ -153,6 +137,22 @@ document.addEventListener('click', function(e) {
 {% endblock %}
 
 {% block extra_script %}
+<script> 
+// ========== 歯車メニュー ==========
+window.toggleGearMenu = function(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('gearMenu');
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('gearMenu');
+    if (menu && menu.style.display !== 'none' && !e.target.closest('#gearMenu') && !e.target.closest('[onclick*="toggleGearMenu"]')) {
+        menu.style.display = 'none';
+    }
+});
+// ==================================
+</script> 
 <script>
 // ========== 患者テキスト検索 ==========
 const HISTORY_PATIENTS = [

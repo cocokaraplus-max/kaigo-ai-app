@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 .DS_Store
 IMG_3965.PNG
+setenv.sh
