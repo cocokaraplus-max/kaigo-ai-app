@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, current_app
 from supabase import create_client
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
@@ -60,72 +60,28 @@ def login_required(f):
     return decorated
 
 def render(template, **kwargs):
-    """partialパラメータがあればJSON形式でコンテンツのみ返す"""
+    """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
-        import re as _re
-        html = render_template(template, **kwargs)
+        tmpl = current_app.jinja_env.get_template(template)
+        ctx = tmpl.new_context(kwargs)
 
-        # <style>タグを抽出（base.htmlのものは除く）
-        styles = _re.findall(r'<style[^>]*>(.*?)</style>', html, _re.DOTALL)
-        # 最初のstyleはbase.htmlの共通CSS、2つ目以降がページ固有
-        page_styles = styles[1:] if len(styles) > 1 else []
-        style = '<style>' + '\n'.join(page_styles) + '</style>' if page_styles else ''
+        def render_block(name):
+            if name in tmpl.blocks:
+                try:
+                    return "".join(tmpl.blocks[name](ctx))
+                except Exception as e:
+                    print(f"[render partial] block {name} error: {e}")
+                    return ""
+            return ""
 
-        # page-wrapperの中身を抽出（終了タグまで）
-        content_match = _re.search(
-            r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>\s*\n\s*\n\s*(?:<!--.*?-->)?\s*\{%',
-            html, _re.DOTALL
-        )
-        if not content_match:
-            # 別パターン：page-wrapperからnavタグまで
-            content_match = _re.search(
-                r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>(?:\s|\n)*<(?:nav|script)',
-                html, _re.DOTALL
-            )
-        if not content_match:
-            # フォールバック：bodyの最初のdivの中身
-            content_match = _re.search(
-                r'<div class=["\']page-wrapper["\'][^>]*>(.*)',
-                html, _re.DOTALL
-            )
-            if content_match:
-                raw = content_match.group(1)
-                # page-wrapperの閉じタグを探す
-                depth = 1
-                pos = 0
-                result = []
-                while pos < len(raw) and depth > 0:
-                    open_tag = raw.find('<div', pos)
-                    close_tag = raw.find('</div>', pos)
-                    if close_tag == -1:
-                        break
-                    if open_tag != -1 and open_tag < close_tag:
-                        depth += 1
-                        result.append(raw[pos:open_tag + 4])
-                        pos = open_tag + 4
-                    else:
-                        depth -= 1
-                        if depth > 0:
-                            result.append(raw[pos:close_tag + 6])
-                        else:
-                            result.append(raw[pos:close_tag])
-                        pos = close_tag + 6
-                content = ''.join(result).strip()
-            else:
-                content = html
-        else:
-            content = content_match.group(1).strip()
-
-        # <script>タグを抽出（SPAルーター以外を全部結合）
-        scripts = _re.findall(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL)
-        # SPAルーターを含まないスクリプトのみ全部結合
-        page_scripts = [s for s in scripts if 'navigateTo' not in s and 'SPAルーター' not in s]
-        script = '<script>' + '\n'.join(page_scripts) + '</script>' if page_scripts else ''
+        content_block = render_block("content")
+        style_block = render_block("extra_style")
+        script_block = render_block("extra_script")
 
         return jsonify({
-            "style": style,
-            "content": content,
-            "script": script,
+            "content": content_block,
+            "style": style_block,
+            "script": script_block,
         })
     return render_template(template, **kwargs)
 
@@ -3377,5 +3333,15 @@ def api_tasks_projects_delete():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+from monitoring_integration import register_monitoring_routes
+register_monitoring_routes(app)
+
+from patient_info_integration import register_patient_info_routes
+register_patient_info_routes(app)
+
+from patient_info_import_integration import register_import_routes
+register_import_routes(app)
+
 if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)

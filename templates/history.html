@@ -8,10 +8,55 @@
     TOP画面へ
 </a>
 
-<div class="page-title">
-    <span class="material-symbols-outlined">monitoring</span>
-    モニタリング生成
+<div class="page-title" style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined">monitoring</span>
+        モニタリング生成
+    </div>
+    <button type="button" onclick="toggleGearMenu(event)" 
+        style="background:#f1f3f4; border:none; border-radius:50%; width:36px; height:36px; 
+               display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;">
+        <span class="material-symbols-outlined" style="font-size:20px; color:#5f6368;">settings</span>
+    </button>
+    <div id="gearMenu" style="display:none; position:absolute; top:46px; right:0; 
+        background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; 
+        box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:1000; min-width:200px; padding:6px;">
+        <a href="/monitoring" 
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px; 
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">description</span>
+            AI書類作成
+        </a>
+        <a href="/patient-info" 
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px; 
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">person_book</span>
+            利用者情報
+        </a>
+        <a href="/patient-info/import" 
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px; 
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">upload_file</span>
+            Excel取込
+        </a>
+    </div>
 </div>
+
+<script>
+window.toggleGearMenu = function(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('gearMenu');
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('gearMenu');
+    if (menu && menu.style.display !== 'none' && !e.target.closest('#gearMenu') && !e.target.closest('[onclick*="toggleGearMenu"]')) {
+        menu.style.display = 'none';
+    }
+});
+</script>
 
 <div class="form-group">
     <label class="form-label">
