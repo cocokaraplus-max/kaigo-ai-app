@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}書類生成 - TASUKARU{% endblock %}
+{% block nav_monitoring %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.monitoring-wrap { max-width: 680px; margin: 0 auto; }
+.step-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:16px; margin-bottom:12px; }
+.step-title { font-size:0.82rem; font-weight:700; color:#1a73e8; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.step-title .num { background:#1a73e8; color:#fff; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-size:0.72rem; }
+.field-row { margin-bottom:10px; }
+.field-row label { font-size:0.78rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.field-row select, .field-row input, .field-row textarea { width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0; font-size:0.92rem; background:#fff; }
+.field-row textarea { min-height:80px; font-family:inherit; resize:vertical; }
+.field-row input:focus, .field-row select:focus, .field-row textarea:focus { outline:none; border-color:#1a73e8; }
+.btn-primary { width:100%; padding:14px; background:#1a73e8; color:#fff; border:none; border-radius:12px; font-size:0.96rem; font-weight:700; cursor:pointer; }
+.btn-primary:hover { background:#1557b0; }
+.btn-primary:disabled { background:#bbb; cursor:not-allowed; }
+.btn-secondary { padding:10px 16px; background:#fff; color:#1a73e8; border:1.5px solid #1a73e8; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; }
+.btn-download { width:100%; padding:14px; background:#34a853; color:#fff; border:none; border-radius:12px; font-size:0.96rem; font-weight:700; cursor:pointer; }
+.btn-download:hover { background:#2d8f47; }
+.preview-section { display:none; }
+.preview-section.active { display:block; }
+.preview-title { font-size:0.92rem; font-weight:700; color:#202124; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+.preview-subtitle { font-size:0.78rem; color:#5f6368; margin-bottom:14px; }
+.ai-badge { display:inline-block; background:#e8f0fe; color:#1a73e8; font-size:0.66rem; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:6px; }
+.field-group { border:1px solid #e8eaed; border-radius:10px; padding:12px; margin-bottom:10px; background:#fafbfc; }
+.field-group-title { font-size:0.78rem; font-weight:700; color:#1a73e8; margin-bottom:8px; border-bottom:1px solid #e8eaed; padding-bottom:4px; }
+.loading { text-align:center; padding:40px 20px; color:#5f6368; }
+.loading .spinner { display:inline-block; width:32px; height:32px; border:3px solid #e0e0e0; border-top-color:#1a73e8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.error-msg { background:#fce8e6; color:#c5221f; border-radius:10px; padding:12px; font-size:0.82rem; margin-bottom:12px; display:none; }
+.error-msg.show { display:block; }
+.info-msg { background:#e8f0fe; color:#1967d2; border-radius:10px; padding:12px; font-size:0.82rem; margin-bottom:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+<a href="/history" onclick="spaNav(event,'/history')" 
+   style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; 
+          background:#f1f3f4; color:#5f6368; text-decoration:none; 
+          border-radius:20px; font-size:0.82rem; font-weight:600; 
+          margin-bottom:12px;">
+    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+    モニタリング生成へ戻る
+</a>
+<div class="monitoring-wrap">
+
+    <h2 style="font-size:1.1rem; font-weight:700; color:#202124; margin-bottom:14px;">
+        書類生成
+    </h2>
+
+    <div class="info-msg">
+        蓄積された介護記録から、AIが書類を自動作成します。プレビューで確認・編集してからダウンロードできます。
+    </div>
+
+    <div id="errorMsg" class="error-msg"></div>
+
+    <div id="inputSection">
+
+        <div class="step-card">
+    <div class="step-title"><span class="num">1</span>利用者を選ぶ</div>
+    <div style="position:relative;">
+        <input type="text" id="patient-search" class="form-control"
+            placeholder="ひらがな・漢字・カルテ番号で検索"
+            oninput="searchPatient(this.value)"
+            onfocus="searchPatient(this.value)"
+            autocomplete="off"
+            style="width:100%; padding:10px 14px; border:1.5px solid #e0e0e0; border-radius:10px; font-size:0.95rem; box-sizing:border-box;">
+        <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
+            background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
+            z-index:100; max-height:220px; overflow-y:auto; margin-top:4px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+        </div>
+    </div>
+    <div id="patient-selected-badge" style="display:none; margin-top:8px;
+        padding:10px 14px; background:#e8f0fe; border-radius:10px;
+        font-size:0.88rem; font-weight:600; color:#1557b0;
+        align-items:center; gap:8px;">
+        <span class="material-symbols-outlined">person</span>
+        <span id="patient-selected-label"></span>
+        <span onclick="clearPatient()" style="margin-left:auto; cursor:pointer; font-size:0.78rem; color:#80868b;">変更</span>
+    </div>
+    <!-- 隠しselect（既存のJS互換性のため） -->
+    <select id="patientSelect" style="display:none;">
+        <option value="">---</option>
+        {% for p in patients %}
+        <option value="{{ p.value }}">{{ p.label }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+        <div class="step-card">
+            <div class="step-title"><span class="num">2</span>対象の月</div>
+            <div class="field-row">
+                <input type="month" id="monthInput" value="">
+            </div>
+        </div>
+
+        <div class="step-card">
+            <div class="step-title"><span class="num">3</span>様式</div>
+            <div class="field-row">
+                <select id="templateSelect">
+                   <option value="">-- 選択 --</option>
+       {% for t in templates %}
+   <option value="{{ t.id }}">{{ t.name }}</option>
+   {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <button id="generateBtn" class="btn-primary">AIで下書きを生成</button>
+    </div>
+
+    <div id="loadingSection" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <div>記録を解析して書類を生成中...</div>
+        <div style="font-size:0.74rem; margin-top:4px;">通常10〜30秒かかります</div>
+    </div>
+
+    <div id="previewSection" class="preview-section">
+        <div class="step-card">
+            <div class="preview-title">
+                <span>プレビュー & 手直し</span>
+                <button class="btn-secondary" onclick="window.monitoringApp.backToInput()">← 戻る</button>
+            </div>
+            <div class="preview-subtitle">
+                AIが生成した下書きです。必要に応じて編集してからダウンロードしてください。
+            </div>
+            <div id="previewFields"></div>
+        </div>
+
+        <button id="downloadBtn" class="btn-download">この内容でExcelをダウンロード</button>
+    </div>
+
+</div>
+</div>
+
+<script>
+// ========== 患者テキスト検索 ==========
+const MONITORING_PATIENTS = [
+    {% for p in patients %}
+    { value: {{ p.value | tojson }}, label: {{ p.label | tojson }},
+      name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
+    {% endfor %}
+];
+
+function searchPatient(query) {
+    const q = query.trim().toLowerCase();
+    const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const candidates = document.getElementById('patient-candidates');
+    const filtered = q === '' ? MONITORING_PATIENTS :
+        MONITORING_PATIENTS.filter(p =>
+            p.name.toLowerCase().includes(q) ||
+            p.kana.toLowerCase().includes(q) ||
+            p.kana.includes(qKata) || p.kana.includes(qHira) ||
+            p.chart.toLowerCase().includes(q)
+        );
+    if (filtered.length === 0) {
+        candidates.innerHTML = '<div style="padding:12px 14px;color:#80868b;font-size:0.88rem;">該当なし</div>';
+    } else {
+        candidates.innerHTML = filtered.map((p, i) =>
+            `<div data-idx="${i}" style="padding:12px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;">${p.label}</div>`
+        ).join('');
+        candidates.querySelectorAll('[data-idx]').forEach((el, i) => {
+            const p = filtered[i];
+            el.addEventListener('mousedown', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+            el.addEventListener('touchend', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+        });
+    }
+    candidates.style.display = 'block';
+}
+window.searchPatient = searchPatient;
+
+function selectPatient(value, label) {
+    document.getElementById('patient-search').style.display = 'none';
+    document.getElementById('patient-selected-label').textContent = label;
+    const badge = document.getElementById('patient-selected-badge');
+    badge.style.display = 'flex';
+    document.getElementById('patient-candidates').style.display = 'none';
+    document.getElementById('patientSelect').value = value;
+}
+window.selectPatient = selectPatient;
+
+function clearPatient() {
+    document.getElementById('patient-search').style.display = 'block';
+    document.getElementById('patient-search').value = '';
+    document.getElementById('patient-selected-badge').style.display = 'none';
+    document.getElementById('patientSelect').value = '';
+}
+window.clearPatient = clearPatient;
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('[id^="patient"]')) {
+        setTimeout(() => { const c = document.getElementById('patient-candidates'); if(c) c.style.display = 'none'; }, 200);
+    }
+});
+// ========== 患者テキスト検索 ここまで ==========    
+(function() {
+    const app = {
+        currentMapping: null,
+        currentData: null,
+        currentTemplateId: null,
+
+        init() {
+            const today = new Date();
+            const ym = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0");
+            document.getElementById("monthInput").value = ym;
+            document.getElementById("generateBtn").addEventListener("click", () => this.generate());
+            document.getElementById("downloadBtn").addEventListener("click", () => this.download());
+        },
+
+        showError(msg) {
+            const el = document.getElementById("errorMsg");
+            el.textContent = msg;
+            el.classList.add("show");
+            setTimeout(() => el.classList.remove("show"), 5000);
+        },
+
+        async generate() {
+            const patient = document.getElementById("patientSelect").value;
+            const month = document.getElementById("monthInput").value;
+            const templateId = document.getElementById("templateSelect").value;
+
+            if (!patient) { this.showError("利用者を選択してください"); return; }
+            if (!month) { this.showError("対象の月を選択してください"); return; }
+            if (!templateId) { this.showError("様式を選択してください"); return; }
+
+            document.getElementById("inputSection").style.display = "none";
+            document.getElementById("loadingSection").style.display = "block";
+
+            try {
+                const res = await fetch("/api/monitoring/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    body: JSON.stringify({ patient, month, template_id: templateId }),
+                });
+                const json = await res.json();
+                if (!res.ok || json.error) throw new Error(json.error || "生成に失敗しました");
+
+                this.currentMapping = json.mapping;
+                this.currentData = json.structured_data;
+                this.currentTemplateId = templateId;
+                this.renderPreview();
+
+                document.getElementById("loadingSection").style.display = "none";
+                document.getElementById("previewSection").classList.add("active");
+            } catch (e) {
+                document.getElementById("loadingSection").style.display = "none";
+                document.getElementById("inputSection").style.display = "block";
+                this.showError(e.message || "エラーが発生しました");
+            }
+        },
+
+        renderPreview() {
+            const container = document.getElementById("previewFields");
+            container.innerHTML = "";
+            const fields = this.currentMapping.fields || {};
+
+            const groups = {
+                "基本情報": ["client_name", "client_name_kanji", "client_name_kana", "gender", "birthday", "care_level", "staff_name"],
+                "短期目標": ["short_goal_period_from", "short_goal_period_to", "short_goal_function", "short_goal_function_status", "short_goal_activity", "short_goal_activity_status", "short_goal_participation", "short_goal_participation_status"],
+                "長期目標": ["long_goal_period_from", "long_goal_period_to", "long_goal_function", "long_goal_function_status", "long_goal_activity", "long_goal_activity_status", "long_goal_participation", "long_goal_participation_status"],
+                "変化・課題": ["changes_by_training", "issues_and_causes"],
+                "モニタリング項目": ["monitoring_item_1", "monitoring_item_2", "monitoring_item_3", "monitoring_item_4", "special_notes"],
+                "その他": ["weight_kg", "new_requests_exist", "new_requests_detail", "satisfaction", "service_appropriateness"],
+            };
+
+            for (const [groupName, keys] of Object.entries(groups)) {
+                const keysInGroup = keys.filter(k => k in fields);
+                if (keysInGroup.length === 0) continue;
+
+                const groupDiv = document.createElement("div");
+                groupDiv.className = "field-group";
+                groupDiv.innerHTML = `<div class="field-group-title">${groupName}</div>`;
+
+                for (const key of keysInGroup) {
+                    const info = fields[key];
+                    const value = this.currentData[key] ?? "";
+                    const fieldDiv = document.createElement("div");
+                    fieldDiv.className = "field-row";
+                    const label = info.label + (info.ai_generated ? '<span class="ai-badge">AI生成</span>' : '');
+
+                    let input;
+                    if (info.options && Array.isArray(info.options)) {
+                        input = `<select data-key="${key}"><option value="">--</option>`;
+                        for (const opt of info.options) {
+                            input += `<option value="${opt}"${value === opt ? " selected" : ""}>${opt}</option>`;
+                        }
+                        input += `</select>`;
+                    } else if (info.type === "text" || (info.max_chars && info.max_chars > 80)) {
+                        input = `<textarea data-key="${key}">${this.esc(value)}</textarea>`;
+                    } else if (info.type === "number") {
+                        input = `<input type="number" step="0.1" data-key="${key}" value="${this.esc(value)}">`;
+                    } else if (info.type === "date") {
+                        input = `<input type="date" data-key="${key}" value="${this.esc(value)}">`;
+                    } else {
+                        input = `<input type="text" data-key="${key}" value="${this.esc(value)}">`;
+                    }
+
+                    fieldDiv.innerHTML = `<label>${label}</label>${input}`;
+                    groupDiv.appendChild(fieldDiv);
+                }
+                container.appendChild(groupDiv);
+            }
+        },
+
+        esc(v) {
+            if (v === null || v === undefined) return "";
+            return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        },
+
+        collectEditedData() {
+            const edited = {};
+            document.querySelectorAll("#previewFields [data-key]").forEach(el => {
+                edited[el.dataset.key] = el.value;
+            });
+            return edited;
+        },
+
+        async download() {
+            const edited = this.collectEditedData();
+            const btn = document.getElementById("downloadBtn");
+            btn.disabled = true;
+            btn.textContent = "ダウンロード中...";
+
+            try {
+                const res = await fetch("/api/monitoring/download", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    body: JSON.stringify({ template_id: this.currentTemplateId, structured_data: edited }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || "ダウンロードに失敗しました");
+                }
+                const blob = await res.blob();
+                const cd = res.headers.get("Content-Disposition") || "";
+                const fnameMatch = cd.match(/filename\*?=(?:UTF-8'')?(?:")?([^";]+)(?:")?/);
+                const filename = fnameMatch ? decodeURIComponent(fnameMatch[1]) : "monitoring.xlsx";
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                this.showError(e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "この内容でExcelをダウンロード";
+            }
+        },
+
+        backToInput() {
+            document.getElementById("previewSection").classList.remove("active");
+            document.getElementById("inputSection").style.display = "block";
+        },
+    };
+
+    window.monitoringApp = app;
+    app.init();
+})();
+</script>
+{% endblock %}

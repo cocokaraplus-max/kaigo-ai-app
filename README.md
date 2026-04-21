@@ -67,13 +67,12 @@ TASUKARUのSPAナビゲーション（spaNav）と新画面の相性問題。
 - create_patient_care_plans.sql
 - add_usage_weekday.sql
 - add_care_level_category.sql
-
-### 環境変数（本番と同じ、要再設定）
-export SUPABASE_URL="https://abvglnkwtdeoaazyqwyd.supabase.co"
-export SUPABASE_KEY="eyJhbGc...（長いJWT）"
-export GEMINI_API_KEY="AIzaSyAXGkCxINAK5lYiPi8cOyrOeLVPCCOOXcI"
-export FACILITY_CODE="cocokaraplus-5526"
-export SECRET_KEY="tasukaru-fixed-2024-cocokaraplus"
-export DEV_PASSWORD="dev-tasukaru-5526"
-
 ### 起動コマンド
+### 環境変数（本番と同じ、要再設定）
+以下の変数は `setenv.sh` で管理（gitignore済み）。値は管理者から取得してください。
+- SUPABASE_URL
+- SUPABASE_KEY
+- GEMINI_API_KEY
+- FACILITY_CODE
+- SECRET_KEY
+- DEV_PASSWORD

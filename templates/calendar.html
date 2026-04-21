@@ -464,6 +464,7 @@ function renderCalendar() {
 function renderMonth() {
     const grid = document.getElementById('cal-days');
     const title = document.getElementById('cal-month-title');
+    if (!grid || !title) return;
     title.textContent = `${currentYear}年${currentMonth+1}月`;
 
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
