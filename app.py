@@ -1599,6 +1599,36 @@ def api_delete_calendar():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/update_calendar', methods=['POST'])
+def api_update_calendar():
+    try:
+        data = request.json
+        calendar_id = data.get('id')
+        name = data.get('name')
+        color = data.get('color')
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        
+        # カレンダーの所有者確認
+        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+            return jsonify({"status": "error", "message": "編集権限がありません"}), 403
+        
+        # カレンダー更新
+        update_data = {}
+        if name:
+            update_data["name"] = name
+        if color:
+            update_data["color"] = color
+            
+        supabase.table("calendars").update(update_data).eq("id", calendar_id).execute()
+        
+        return jsonify({"status": "success"})
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/save_calendar', methods=['POST'])
 @login_required
 def api_save_calendar():
