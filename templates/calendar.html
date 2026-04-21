@@ -931,6 +931,47 @@ window.deleteEvent = async function() {
 };
 
 // ===== カレンダー削除 =====
+// ===== カレンダー編集 =====
+window.editCalendar = function(calendarId) {
+    const calendar = CALENDARS.find(c => c.id === calendarId);
+    if (!calendar) return;
+    
+    // 簡単な編集（名前変更）
+    const newName = prompt('カレンダー名を変更:', calendar.name);
+    if (!newName || newName === calendar.name) return;
+    
+    // サーバーに送信（簡易版）
+    fetch('/api/update_calendar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            id: calendarId,
+            name: newName,
+            color: calendar.color
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // ローカルデータ更新
+            calendar.name = newName;
+            updateDropdownCalendars();
+            
+            // タブも更新
+            const tab = document.querySelector(`.cal-tab[data-id="${calendarId}"] span:not(.material-symbols-outlined)`);
+            if (tab) tab.textContent = newName;
+            
+            document.getElementById('calendar-dropdown').style.display = 'none';
+            renderCalendar();
+            alert('カレンダー名を変更しました');
+        } else {
+            alert('変更に失敗しました: ' + (data.message || ''));
+        }
+    })
+    .catch(error => {
+        alert('エラーが発生しました');
+    });
+};
 window.deleteCalendar = async function(calendarId) {
     console.log('削除開始:', calendarId);  //
     const calendar = CALENDARS.find(c => c.id === calendarId);
