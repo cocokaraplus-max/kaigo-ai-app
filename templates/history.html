@@ -50,7 +50,7 @@
     <div style="position:relative;">
         <input type="text" id="history-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
-            oninput="searchHistoryPatient(this.value)" onfocus="searchHistoryPatient(this.value)"
+            oninput="alert('検索実行:' + this.value); searchHistoryPatient(this.value)" onfocus="searchHistoryPatient(this.value)"
              
             autocomplete="off">
         <div id="history-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
