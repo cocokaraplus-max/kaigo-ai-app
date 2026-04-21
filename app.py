@@ -1571,17 +1571,33 @@ def api_save_calendar_event():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/delete_calendar_event', methods=['POST'])
-@login_required
-def api_delete_calendar_event():
+@app.route('/api/delete_calendar', methods=['POST'])
+def api_delete_calendar():
     try:
         data = request.json
+        calendar_id = data.get('id')
         f_code = session["f_code"]
+        my_name = session["my_name"]
         supabase = get_supabase()
-        supabase.table("calendar_events").delete().eq("id", data["id"]).eq("facility_code", f_code).execute()
+        
+        # カレンダーの所有者確認
+        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+            return jsonify({"status": "error", "message": "削除権限がありません"}), 403
+        
+        # 関連する予定を削除
+        supabase.table("calendar_events").delete().eq("calendar_id", calendar_id).execute()
+        
+        # カレンダーメンバーを削除
+        supabase.table("calendar_members").delete().eq("calendar_id", calendar_id).execute()
+        
+        # カレンダーを削除
+        supabase.table("calendars").delete().eq("id", calendar_id).execute()
+        
         return jsonify({"status": "success"})
+        
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/save_calendar', methods=['POST'])
 @login_required
