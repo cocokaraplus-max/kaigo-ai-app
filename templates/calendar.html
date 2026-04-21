@@ -4,231 +4,51 @@
 
 {% block extra_style %}
 <style>
-/* ===== カレンダー管理プルダウン ===== */
-.calendar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
+/* ===== カレンダー全体 ===== */
+.cal-toolbar {
+    display:flex; align-items:center; gap:8px;
+    margin-bottom:10px; flex-wrap:wrap;
 }
+.cal-month-nav {
+    display:flex; align-items:center; gap:6px; flex:1;
+}
+.cal-nav-btn {
+    width:32px; height:32px; border-radius:50%;
+    border:none; background:#f0f4ff; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    color:#1a73e8; flex-shrink:0;
+}
+.cal-nav-btn .material-symbols-outlined { font-size:20px; }
+.cal-month-title { font-size:1.05rem; font-weight:800; color:#202124; white-space:nowrap; }
+.cal-today-btn {
+    padding:5px 12px; border-radius:16px; border:1.5px solid #1a73e8;
+    background:#fff; color:#1a73e8; font-size:0.78rem; font-weight:700; cursor:pointer;
+}
+.cal-view-btn {
+    padding:5px 10px; border-radius:16px; border:1.5px solid #e0e0e0;
+    background:#fff; color:#5f6368; font-size:0.78rem; font-weight:600; cursor:pointer;
+    display:flex; align-items:center; gap:3px;
+}
+.cal-view-btn.active { border-color:#1a73e8; background:#e8f0fe; color:#1a73e8; }
 
-.calendar-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #202124;
+/* ===== カレンダー選択 ===== */
+.calendar-list {
+    display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;
 }
-
-.calendar-dropdown-wrapper {
-    position: relative;
+.cal-chip {
+    display:flex; align-items:center; gap:5px;
+    padding:4px 10px; border-radius:16px;
+    border:2px solid transparent; cursor:pointer;
+    font-size:0.75rem; font-weight:700; transition:all 0.15s;
+    -webkit-tap-highlight-color:transparent;
 }
-
-.calendar-dropdown-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background: #f8f9fa;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #5f6368;
-    transition: all 0.2s ease;
-}
-
-.calendar-dropdown-btn:hover {
-    background: #e8eaed;
-    color: #202124;
-}
-
-.calendar-dropdown-menu {
-    position: absolute;
-    top: 44px;
-    right: 0;
-    width: 320px;
-    max-height: 500px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    border: 1px solid #e8eaed;
-    overflow-y: auto;
-    z-index: 1000;
-    display: none;
-}
-.dropdown-header {
-    padding: 20px 20px 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #202124;
-    border-bottom: 1px solid #f0f0f0;
-}
-
-.dropdown-category {
-    padding: 12px 0;
-    border-bottom: 1px solid #f8f9fa;
-}
-
-.category-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 20px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #5f6368;
-}
-
-.category-add-btn {
-    margin-left: auto;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #1a73e8;
-    transition: background 0.2s;
-}
-
-.category-add-btn:hover {
-    background: #e8f0fe;
-}
-
-.category-calendars {
-    padding-left: 12px;
-}
-
-.dropdown-calendar-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 20px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    transition: background 0.1s;
-    color: #202124;
-}
-
-.dropdown-calendar-item:hover {
-    background: #f8f9fa;
-}
-
-.dropdown-calendar-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.dropdown-calendar-actions {
-    margin-left: auto;
-    display: flex;
-    gap: 4px;
-}
-
-.dropdown-calendar-action {
-    width: 20px;
-    height: 20px;
-    border: none;
-    background: transparent;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: all 0.15s;
-    color: #5f6368;
-}
-
-.dropdown-calendar-item:hover .dropdown-calendar-action {
-    opacity: 0.8;
-}
-
-.dropdown-calendar-action:hover {
-    opacity: 1 !important;
-    background: #e8eaed;
-}
-
-/* ===== TimeTree風カレンダータブ ===== */
-.calendar-tabs {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 16px;
-    padding: 8px;
-    background: #f8f9fa;
-    border-radius: 12px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-.cal-tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #5f6368;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-    min-width: fit-content;
-}
-
-.cal-tab:hover {
-    background: #e8eaed;
-}
-
-.cal-tab.active {
-    background: #1a73e8;
-    color: #fff;
-    box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
-}
-
-.cal-tab-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.cal-tab-icon {
-    font-size: 16px !important;
-    opacity: 0.7;
-}
-
-.cal-tab.active .cal-tab-icon {
-    opacity: 1;
-}
-
-.cal-tab-add {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    background: transparent;
-    border: 1px dashed #dadce0;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #1a73e8;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-}
-
-.cal-tab-add:hover {
-    background: #e8f0fe;
-    border-color: #1a73e8;
+.cal-chip.active { opacity:1; }
+.cal-chip.inactive { opacity:0.35; }
+.cal-chip-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.cal-chip-add {
+    padding:4px 10px; border-radius:16px;
+    border:1.5px dashed #1a73e8; color:#1a73e8;
+    font-size:0.75rem; font-weight:700; cursor:pointer; background:#fff;
 }
 
 /* ===== 月表示グリッド ===== */
@@ -264,6 +84,27 @@
 .cal-cell.today .cal-cell-num {
     background:#1a73e8; color:#fff; font-weight:800;
 }
+.cal-cell-num.sun { color:#c62828; }
+.cal-cell-num.sat { color:#2e7d32; }
+.cal-cell.today .cal-cell-num.sun,
+.cal-cell.today .cal-cell-num.sat { color:#fff; }
+
+/* ===== イベントバー ===== */
+.cal-event-bar {
+    display:block; font-size:0.62rem; font-weight:600;
+    padding:1px 4px; border-radius:3px; margin-bottom:1px;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+    cursor:pointer; color:#fff; line-height:1.4;
+}
+.cal-event-more {
+    font-size:0.6rem; color:#80868b; padding:0 2px; cursor:pointer;
+}
+
+/* ===== シール ===== */
+.cal-sticker {
+    font-size:14px; text-align:center; line-height:1;
+    position:absolute; top:2px; right:2px;
+}
 
 /* ===== モーダル ===== */
 .modal-overlay {
@@ -289,164 +130,125 @@
 }
 .modal-title { font-size:1rem; font-weight:700; color:#202124; margin-bottom:16px; }
 
-/* ===== フォーム要素 ===== */
-.form-group {
-    margin-bottom: 16px;
+/* ===== シール選択 ===== */
+.sticker-grid {
+    display:grid; grid-template-columns:repeat(6,1fr);
+    gap:8px; margin-bottom:12px;
+}
+.sticker-btn {
+    font-size:22px; text-align:center; padding:6px;
+    border-radius:10px; border:2px solid transparent;
+    cursor:pointer; background:#f8f9fa;
+    -webkit-tap-highlight-color:transparent;
+}
+.sticker-btn.selected { border-color:#1a73e8; background:#e8f0fe; }
+
+/* ===== カラーピッカー ===== */
+.color-picker-row {
+    display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;
+}
+.color-dot {
+    width:28px; height:28px; border-radius:50%;
+    cursor:pointer; border:3px solid transparent;
+    transition:transform 0.15s;
+}
+.color-dot.selected { border-color:#202124; transform:scale(1.15); }
+
+/* ===== 繰り返し ===== */
+.repeat-select { width:100%; }
+
+/* ===== イベント詳細 ===== */
+.event-detail-color {
+    width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:6px;
 }
 
-.form-label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #202124;
-    margin-bottom: 6px;
+/* ===== 週表示 ===== */
+.week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.week-cell {
+    border:1px solid #e0e0e0; border-radius:8px;
+    padding:6px 4px; min-height:100px;
 }
-
-.form-control {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    color: #202124;
-    background: #fff;
-    transition: border-color 0.2s;
-    box-sizing: border-box;
+.week-cell-header {
+    text-align:center; font-size:0.7rem; font-weight:700; margin-bottom:4px;
 }
-
-.form-control:focus {
-    outline: none;
-    border-color: #1a73e8;
-    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
-}
-
-.btn {
-    padding: 12px 16px;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: #fff;
-    color: #5f6368;
-}
-
-.btn:hover {
-    background: #f8f9fa;
-}
-
-.btn-primary {
-    background: #1a73e8;
-    color: #fff;
-    border-color: #1a73e8;
-}
-
-.btn-primary:hover {
-    background: #1557b0;
-}
+.week-cell.today { background:#e8f0fe; border-color:#1a73e8; }
 </style>
 {% endblock %}
+
 {% block content %}
-<!-- カレンダーヘッダー -->
-<div class="calendar-header">
-    <div class="calendar-title">
-        <span class="material-symbols-outlined">calendar_month</span>
-        カレンダー
-    </div>
-    
-    <!-- カレンダー管理プルダウン -->
-    <div class="calendar-dropdown-wrapper">
-        <button class="calendar-dropdown-btn" onclick="toggleCalendarDropdown()">
-            <span class="material-symbols-outlined">expand_more</span>
-        </button>
-        
-        <div class="calendar-dropdown-menu" id="calendar-dropdown">
-            <div class="dropdown-header">カレンダー管理</div>
-            
-            <!-- 仕事カテゴリ -->
-            <div class="dropdown-category">
-                <div class="category-header">
-                    <span class="material-symbols-outlined">work</span>
-                    <span>仕事</span>
-                    <button class="category-add-btn" onclick="showAddCalendarModal('work')" title="仕事カレンダーを追加">
-                        <span class="material-symbols-outlined">add</span>
-                    </button>
-                </div>
-                <div class="category-calendars" id="work-calendars">
-                </div>
-            </div>
-            
-            <!-- プライベートカテゴリ -->
-            <div class="dropdown-category">
-                <div class="category-header">
-                    <span class="material-symbols-outlined">person</span>
-                    <span>プライベート</span>
-                    <button class="category-add-btn" onclick="showAddCalendarModal('private')" title="プライベートカレンダーを追加">
-                        <span class="material-symbols-outlined">add</span>
-                    </button>
-                </div>
-                <div class="category-calendars" id="private-calendars">
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="page-title">
+    <span class="material-symbols-outlined">calendar_month</span>
+    カレンダー
 </div>
 
-<!-- TimeTree風カレンダータブ -->
-<div class="calendar-tabs" id="cal-tabs">
-    <!-- 全表示ボタン -->
-    <div class="cal-tab active" data-id="all" onclick="switchCalendarView('all')">
-        <span class="material-symbols-outlined">calendar_view_month</span>
-        <span>すべて</span>
+<!-- カレンダー一覧チップ -->
+<div class="calendar-list" id="cal-chips">
+    <div class="cal-chip active" data-id="all" style="background:#f0f0f0;border-color:#e0e0e0;color:#202124;" onclick="toggleCalendar('all')">
+        <div class="cal-chip-dot" style="background:#888;"></div>
+        すべて
     </div>
-    
-    <!-- 個別カレンダータブ -->
     {% for cal in calendars %}
-    <div class="cal-tab" data-id="{{ cal.id }}" onclick="switchCalendarView('{{ cal.id }}')">
-        <div class="cal-tab-dot" style="background:{{ cal.color }};"></div>
-        <span>{{ cal.name }}</span>
-        {% if cal.is_private %}
-        <span class="material-symbols-outlined cal-tab-icon">lock</span>
-        {% else %}
-        <span class="material-symbols-outlined cal-tab-icon">group</span>
+    <div style="display:flex;align-items:center;gap:2px;">
+        <div class="cal-chip active" data-id="{{ cal.id }}"
+            style="background:{{ cal.color }}22;border-color:{{ cal.color }};"
+            onclick="toggleCalendar('{{ cal.id }}')">
+            <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
+            <span style="color:{{ cal.color }};">{{ cal.name }}</span>
+            {% if cal.is_private %}
+            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">lock</span>
+            {% else %}
+            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">group</span>
+            {% endif %}
+        </div>
+        {% if cal.is_owner %}
+        <div onclick="openInviteModal('{{ cal.id }}','{{ cal.name }}')"
+            style="cursor:pointer;padding:2px 4px;color:#80868b;">
+            <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
+        </div>
         {% endif %}
     </div>
     {% endfor %}
-    
-    <!-- 新規作成ボタン -->
-    <div class="cal-tab-add" onclick="showQuickAddCalendar()">
-        <span class="material-symbols-outlined">add</span>
-        <span>追加</span>
+    <div class="cal-chip-add" onclick="openNewCalendar()">＋ 追加</div>
+</div>
+
+<!-- ツールバー -->
+<div class="cal-toolbar">
+    <div class="cal-month-nav">
+        <button class="cal-nav-btn" onclick="changeMonth(-1)">
+            <span class="material-symbols-outlined">chevron_left</span>
+        </button>
+        <span class="cal-month-title" id="cal-month-title">2026年4月</span>
+        <button class="cal-nav-btn" onclick="changeMonth(1)">
+            <span class="material-symbols-outlined">chevron_right</span>
+        </button>
+        <button class="cal-today-btn" onclick="goToday()">今日</button>
+    </div>
+    <div style="display:flex;gap:4px;">
+        <button class="cal-view-btn active" id="view-month" onclick="switchView('month')">
+            <span class="material-symbols-outlined" style="font-size:14px;">grid_view</span>月
+        </button>
+        <button class="cal-view-btn" id="view-week" onclick="switchView('week')">
+            <span class="material-symbols-outlined" style="font-size:14px;">view_week</span>週
+        </button>
     </div>
 </div>
 
-<!-- 月ナビゲーション -->
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-    <div style="display:flex;align-items:center;gap:6px;flex:1;">
-        <button onclick="changeMonth(-1)" style="width:32px;height:32px;border-radius:50%;border:none;background:#f0f4ff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#1a73e8;">
-            <span class="material-symbols-outlined" style="font-size:20px;">chevron_left</span>
-        </button>
-        <div id="cal-month-title" style="font-size:1.05rem;font-weight:800;color:#202124;">2026年4月</div>
-        <button onclick="changeMonth(1)" style="width:32px;height:32px;border-radius:50%;border:none;background:#f0f4ff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#1a73e8;">
-            <span class="material-symbols-outlined" style="font-size:20px;">chevron_right</span>
-        </button>
+<!-- カレンダー本体 -->
+<div id="calendar-body" style="border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;margin-bottom:1rem;">
+    <!-- 曜日ヘッダー -->
+    <div class="cal-grid-header">
+        <div class="cal-dow sun">日</div>
+        <div class="cal-dow">月</div>
+        <div class="cal-dow">火</div>
+        <div class="cal-dow">水</div>
+        <div class="cal-dow">木</div>
+        <div class="cal-dow">金</div>
+        <div class="cal-dow sat">土</div>
     </div>
-    <button onclick="goToToday()" style="padding:5px 12px;border-radius:16px;border:1.5px solid #1a73e8;background:#fff;color:#1a73e8;font-size:0.78rem;font-weight:700;cursor:pointer;">今日</button>
+    <div class="cal-days-grid" id="cal-days"></div>
 </div>
 
-<!-- カレンダーグリッド -->
-<div class="cal-grid-header">
-    <div class="cal-dow sun">日</div>
-    <div class="cal-dow">月</div>
-    <div class="cal-dow">火</div>
-    <div class="cal-dow">水</div>
-    <div class="cal-dow">木</div>
-    <div class="cal-dow">金</div>
-    <div class="cal-dow sat">土</div>
-</div>
-<div class="cal-days-grid" id="cal-days"></div>
-<!-- 予定追加/編集モーダル -->
+<!-- ========== 予定追加モーダル ========== -->
 <div class="modal-overlay" id="event-modal" onclick="closeModalOutside(event,'event-modal')">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -454,17 +256,17 @@
 
         <div class="form-group">
             <label class="form-label">タイトル</label>
-            <input type="text" class="form-control" id="ev-title" placeholder="例：会議・希望休・担当者打合せ">
+            <input type="text" class="form-control" id="ev-title" placeholder="例：希望休・担当者会議">
         </div>
 
         <!-- シール選択 -->
         <div class="form-group">
             <label class="form-label">シール（任意）</label>
-            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px;" id="sticker-grid">
+            <div class="sticker-grid" id="sticker-grid">
                 {% for s in stickers %}
-                <div onclick="selectSticker('{{ s.emoji }}')" data-sticker="{{ s.emoji }}" title="{{ s.label }}" style="font-size:22px;text-align:center;padding:6px;border-radius:10px;border:2px solid transparent;cursor:pointer;background:#f8f9fa;">{{ s.emoji }}</div>
+                <div class="sticker-btn" data-sticker="{{ s.emoji }}" onclick="selectSticker('{{ s.emoji }}')" title="{{ s.label }}">{{ s.emoji }}</div>
                 {% endfor %}
-                <div onclick="selectSticker('')" data-sticker="" title="なし" style="font-size:12px;color:#80868b;text-align:center;padding:6px;border-radius:10px;border:2px solid transparent;cursor:pointer;background:#f8f9fa;">なし</div>
+                <div class="sticker-btn" data-sticker="" onclick="selectSticker('')" title="なし" style="font-size:12px;color:#80868b;">なし</div>
             </div>
         </div>
 
@@ -489,6 +291,19 @@
             </div>
         </div>
 
+        <!-- カラー -->
+        <div class="form-group">
+            <label class="form-label">色</label>
+            <div class="color-picker-row" id="ev-color-picker">
+                {% for color in event_colors %}
+                <div class="color-dot {% if loop.first %}selected{% endif %}"
+                    style="background:{{ color }};"
+                    data-color="{{ color }}"
+                    onclick="selectColor('{{ color }}')"></div>
+                {% endfor %}
+            </div>
+        </div>
+
         <!-- カレンダー選択 -->
         <div class="form-group">
             <label class="form-label">カレンダー</label>
@@ -499,14 +314,33 @@
             </select>
         </div>
 
-        <!-- カラー -->
+        <!-- 繰り返し -->
         <div class="form-group">
-            <label class="form-label">色</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;" id="ev-color-picker">
-                {% for color in event_colors %}
-                <div onclick="selectColor('{{ color }}')" data-color="{{ color }}" style="width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform 0.15s;background:{{ color }};" class="{% if loop.first %}selected{% endif %}"></div>
-                {% endfor %}
-            </div>
+            <label class="form-label">繰り返し</label>
+            <select class="form-control repeat-select" id="ev-repeat">
+                <option value="none">繰り返しなし</option>
+                <option value="daily">毎日</option>
+                <option value="weekly">毎週</option>
+                <option value="monthly">毎月</option>
+                <option value="yearly">毎年</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="ev-repeat-until-row" style="display:none;">
+            <label class="form-label">繰り返し終了日</label>
+            <input type="date" class="form-control" id="ev-repeat-until">
+        </div>
+
+        <!-- 通知 -->
+        <div class="form-group">
+            <label class="form-label">通知</label>
+            <select class="form-control" id="ev-notify">
+                <option value="0">通知なし</option>
+                <option value="10">10分前</option>
+                <option value="30">30分前</option>
+                <option value="60">1時間前</option>
+                <option value="1440">1日前</option>
+            </select>
         </div>
 
         <div class="form-group">
@@ -517,7 +351,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <button class="btn" onclick="closeModal('event-modal')">キャンセル</button>
             <button class="btn btn-primary" onclick="saveEvent()">
-                <span class="material-symbols-outlined" style="color:white;font-size:16px;vertical-align:middle;">save</span> 保存
+                <span class="material-symbols-outlined" style="color:white;">save</span>保存
             </button>
         </div>
         <button id="ev-delete-btn" style="display:none;width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1.5px solid #ea4335;background:#fff;color:#ea4335;font-weight:700;cursor:pointer;" onclick="deleteEvent()">
@@ -526,208 +360,328 @@
     </div>
 </div>
 
-<!-- カレンダー追加モーダル -->
-<div class="modal-overlay" id="calendar-add-modal" onclick="closeModalOutside(event,'calendar-add-modal')">
+<!-- ========== カレンダー追加モーダル ========== -->
+<div class="modal-overlay" id="cal-modal" onclick="closeModalOutside(event,'cal-modal')">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title" id="calendar-add-title">カレンダーを追加</div>
-
+        <div class="modal-title">カレンダーを追加</div>
         <div class="form-group">
-            <label class="form-label">カテゴリー</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                <div id="type-work" onclick="selectCalendarCategory('work')" style="padding:16px;border:2px solid #e0e0e0;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s ease;">
-                    <span class="material-symbols-outlined" style="font-size:32px;margin-bottom:8px;display:block;color:#5f6368;">work</span>
-                    <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;color:#202124;">仕事</div>
-                    <div style="font-size:0.75rem;color:#5f6368;line-height:1.4;">チームで共有される<br>業務カレンダー</div>
+            <label class="form-label">カレンダー名</label>
+            <input type="text" class="form-control" id="new-cal-name" placeholder="例：マイカレンダー・希望休・会議">
+        </div>
+        <div class="form-group">
+            <label class="form-label">種類</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div id="type-private" onclick="selectCalType('private')"
+                    style="border:2px solid #1a73e8;background:#e8f0fe;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">lock</span>
+                    <div style="font-size:0.8rem;font-weight:700;color:#1a73e8;">プライベート</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">自分だけ見える</div>
                 </div>
-                <div id="type-private" onclick="selectCalendarCategory('private')" style="padding:16px;border:2px solid #e0e0e0;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s ease;">
-                    <span class="material-symbols-outlined" style="font-size:32px;margin-bottom:8px;display:block;color:#5f6368;">person</span>
-                    <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;color:#202124;">プライベート</div>
-                    <div style="font-size:0.75rem;color:#5f6368;line-height:1.4;">個人専用の<br>プライベートカレンダー</div>
+                <div id="type-shared" onclick="selectCalType('shared')"
+                    style="border:2px solid #e0e0e0;background:#fff;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="color:#80868b;font-size:20px;">group</span>
+                    <div style="font-size:0.8rem;font-weight:700;color:#80868b;">共有</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">招待した人と共有</div>
                 </div>
             </div>
         </div>
-
-        <div class="form-group">
-            <label class="form-label">カレンダー名</label>
-            <input type="text" class="form-control" id="new-cal-name" placeholder="好きな名前を入力してください">
-        </div>
-
         <div class="form-group">
             <label class="form-label">色</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;" id="new-cal-color-picker">
+            <div class="color-picker-row" id="new-cal-color-picker">
                 {% for color in event_colors %}
-                <div onclick="selectNewCalColor('{{ color }}')" data-color="{{ color }}" style="width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform 0.15s;background:{{ color }};" class="{% if loop.first %}selected{% endif %}"></div>
+                <div class="color-dot {% if loop.first %}selected{% endif %}"
+                    style="background:{{ color }};"
+                    data-color="{{ color }}"
+                    onclick="selectNewCalColor('{{ color }}')"></div>
                 {% endfor %}
             </div>
         </div>
-
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <button class="btn" onclick="closeModal('calendar-add-modal')">キャンセル</button>
+            <button class="btn" onclick="closeModal('cal-modal')">キャンセル</button>
             <button class="btn btn-primary" onclick="saveNewCalendar()">
-                <span class="material-symbols-outlined" style="color:white;font-size:16px;vertical-align:middle;">save</span> 作成
+                <span class="material-symbols-outlined" style="color:white;">add</span>作成
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== メンバー招待モーダル ========== -->
+<div class="modal-overlay" id="invite-modal" onclick="closeModalOutside(event,'invite-modal')">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" id="invite-modal-title">メンバーを招待</div>
+        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;">招待したいスタッフを選んでください</div>
+        <div id="invite-staff-list" style="margin-bottom:16px;"></div>
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">招待済みメンバー</div>
+        <div id="current-members-list" style="margin-bottom:16px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn" onclick="closeModal('invite-modal')">閉じる</button>
+            <button class="btn btn-primary" onclick="inviteMembers()">
+                <span class="material-symbols-outlined" style="color:white;">person_add</span>招待する
             </button>
         </div>
     </div>
 </div>
 {% endblock %}
+
 {% block extra_script %}
 <script>
-(function() {
-'use strict';
+(function(){
 
-// ===== グローバル変数 =====
-let currentYear = 2026;
-let currentMonth = 4; // 1=January, 4=April
-let clickedDate = null;
+const CALENDARS    = {{ calendars | tojson }};
+const ALL_EVENTS   = {{ events | tojson }};
+const STICKERS     = {{ stickers | tojson }};
+const STAFFS       = {{ staffs | tojson }};
+const CAL_MEMBERS  = {{ cal_members | tojson }};
+const MY_NAME      = {{ my_name | tojson }};
+
+let currentYear  = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
+let currentView  = 'month';
+let currentWeekStart = (() => {
+    const today = new Date();
+    const d = new Date(today);
+    d.setDate(today.getDate() - today.getDay());
+    d.setHours(0,0,0,0);
+    return d;
+})();
+let activeCalIds = new Set(['all', ...CALENDARS.map(c => c.id)]);
 let editingEventId = null;
 let selectedSticker = '';
-let selectedColor = '#1a73e8';
-let selectedNewCalColor = '#1a73e8';
-let newCalendarCategory = 'work';
+let selectedColor = '{{ event_colors[0] if event_colors else "#1a73e8" }}';
+let selectedNewCalColor = '{{ event_colors[0] if event_colors else "#1a73e8" }}';
+let newCalIsPrivate = true;
+let invitingCalendarId = null;
+let selectedInviteStaffs = new Set();
 
-// データ（実際のアプリではサーバーから取得）
-let CALENDARS = {{ calendars | tojson | safe }};
-let ALL_EVENTS = {{ events | tojson | safe }};
-let EVENT_COLORS = {{ event_colors | tojson | safe }};
-
-// カレンダー表示状態
-let activeCalendarIds = new Set(['all']);
-
-// ===== プルダウン管理 =====
-window.toggleCalendarDropdown = function() {
-    const dropdown = document.getElementById('calendar-dropdown');
-    const isVisible = dropdown.style.display === 'block';
-    dropdown.style.display = isVisible ? 'none' : 'block';
-    if (!isVisible) updateDropdownCalendars();
-};
-
-function updateDropdownCalendars() {
-    const workContainer = document.getElementById('work-calendars');
-    const privateContainer = document.getElementById('private-calendars');
-    workContainer.innerHTML = '';
-    privateContainer.innerHTML = '';
-    
-    CALENDARS.forEach(cal => {
-        const item = document.createElement('div');
-        item.className = 'dropdown-calendar-item';
-        item.innerHTML = `
-            <div class="dropdown-calendar-dot" style="background:${cal.color};"></div>
-            <span>${cal.name}</span>
-            <div class="dropdown-calendar-actions">
-    <button class="dropdown-calendar-action" onclick="editCalendar('${cal.id}')" title="編集">
-        <span class="material-symbols-outlined" style="font-size:12px;">edit</span>
-    </button>
-    <button class="dropdown-calendar-action" onclick="deleteCalendar('${cal.id}')" title="削除" style="color:#ea4335;">
-        <span class="material-symbols-outlined" style="font-size:12px;">delete</span>
-    </button>
-</div>
-        `;
-        
-        if (cal.is_private) {
-            privateContainer.appendChild(item);
-        } else {
-            workContainer.appendChild(item);
-        }
-    });
+// ===== カレンダー表示 =====
+function renderCalendar() {
+    if (currentView === 'month') renderMonth();
+    else renderWeek();
 }
 
-// ===== カレンダー表示切り替え =====
-window.switchCalendarView = function(calendarId) {
-    document.querySelectorAll('.cal-tab').forEach(tab => tab.classList.remove('active'));
-    const selectedTab = document.querySelector(`.cal-tab[data-id="${calendarId}"]`);
-    if (selectedTab) selectedTab.classList.add('active');
-    
-    activeCalendarIds = calendarId === 'all' ? new Set(['all']) : new Set([calendarId]);
+function renderMonth() {
+    const grid = document.getElementById('cal-days');
+    const title = document.getElementById('cal-month-title');
+    if (!grid || !title) return;
+    title.textContent = `${currentYear}年${currentMonth+1}月`;
+
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const lastDate = new Date(currentYear, currentMonth+1, 0).getDate();
+    const prevLast = new Date(currentYear, currentMonth, 0).getDate();
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+    const filteredEvents = getFilteredEvents();
+    const eventsByDate = {};
+    filteredEvents.forEach(ev => {
+        const d = ev.event_date;
+        if (!eventsByDate[d]) eventsByDate[d] = [];
+        eventsByDate[d].push(ev);
+    });
+
+    let html = '';
+    for (let i = 0; i < firstDay; i++) {
+        const d = prevLast - firstDay + 1 + i;
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+    }
+    for (let d = 1; d <= lastDate; d++) {
+        const dow = new Date(currentYear, currentMonth, d).getDay();
+        const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isToday = dateStr === todayStr;
+        const numCls = dow===0?'sun':dow===6?'sat':'';
+        const evs = eventsByDate[dateStr] || [];
+        const stickers = evs.filter(e=>e.sticker).map(e=>`<span class="cal-sticker">${e.sticker}</span>`).join('');
+        const bars = evs.slice(0,2).map(e=>
+            `<span class="cal-event-bar" style="background:${e.color||getCalColor(e.calendar_id)};"
+                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`
+        ).join('');
+        const more = evs.length > 2 ? `<span class="cal-event-more">+${evs.length-2}</span>` : '';
+
+        html += `<div class="cal-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
+            ${stickers}
+            <div class="cal-cell-num ${numCls}">${d}</div>
+            ${bars}${more}
+        </div>`;
+    }
+    const remain = 42 - firstDay - lastDate;
+    for (let d = 1; d <= remain; d++) {
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+    }
+    grid.innerHTML = html;
+}
+
+function renderWeek() {
+    const today = new Date();
+    const weekStart = new Date(currentWeekStart);
+
+    const title = document.getElementById('cal-month-title');
+    title.textContent = `${weekStart.getMonth()+1}/${weekStart.getDate()} 〜 ${weekStart.getMonth()+1}/${weekStart.getDate()+6}`;
+
+    const grid = document.getElementById('cal-days');
+    grid.style.gridTemplateColumns = 'repeat(7,1fr)';
+    grid.style.display = 'grid';
+    grid.style.gap = '4px';
+    grid.style.padding = '8px';
+
+    const filteredEvents = getFilteredEvents();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    let html = '';
+    for (let i=0; i<7; i++) {
+        const d = new Date(weekStart);
+        d.setDate(weekStart.getDate()+i);
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const isToday = dateStr === todayStr;
+        const dow = ['日','月','火','水','木','金','土'][i];
+        const evs = filteredEvents.filter(e=>e.event_date===dateStr);
+        const bars = evs.map(e=>
+            `<div class="cal-event-bar" style="background:${e.color||getCalColor(e.calendar_id)};"
+                onclick="openEditEvent('${e.id}')">${e.sticker||''}${e.title}</div>`
+        ).join('');
+        html += `<div class="week-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
+            <div class="week-cell-header" style="color:${i===0?'#c62828':i===6?'#2e7d32':'#5f6368'}">${dow}<br><b>${d.getDate()}</b></div>
+            ${bars}
+        </div>`;
+    }
+    grid.innerHTML = html;
+}
+
+function getFilteredEvents() {
+    if (activeCalIds.has('all')) return ALL_EVENTS;
+    return ALL_EVENTS.filter(e => activeCalIds.has(e.calendar_id));
+}
+
+function getCalColor(calId) {
+    const cal = CALENDARS.find(c=>c.id===calId);
+    return cal ? cal.color : '#1a73e8';
+}
+
+// ===== ナビゲーション =====
+window.changeMonth = function(delta) {
+    if (currentView === 'week') {
+        // 週表示は7日単位で移動
+        currentWeekStart.setDate(currentWeekStart.getDate() + delta * 7);
+    } else {
+        currentMonth += delta;
+        if (currentMonth > 11) { currentMonth=0; currentYear++; }
+        if (currentMonth < 0)  { currentMonth=11; currentYear--; }
+    }
+    renderCalendar();
+};
+window.goToday = function() {
+    const today = new Date();
+    currentYear = today.getFullYear();
+    currentMonth = today.getMonth();
+    currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - today.getDay());
+    currentWeekStart.setHours(0,0,0,0);
+    renderCalendar();
+};
+window.switchView = function(view) {
+    currentView = view;
+    document.getElementById('view-month').classList.toggle('active', view==='month');
+    document.getElementById('view-week').classList.toggle('active', view==='week');
+    const grid = document.getElementById('cal-days');
+    if (view==='month') {
+        grid.style.gridTemplateColumns = '';
+        grid.style.gap = '';
+        grid.style.padding = '';
+    }
     renderCalendar();
 };
 
-// ===== カレンダー作成 =====
-window.showQuickAddCalendar = function() {
-    newCalendarCategory = 'work';
-    selectCalendarCategory("work"); newCalendarCategory = "work";
-    document.getElementById('new-cal-name').value = '';
-    selectNewCalColor(EVENT_COLORS[0]);
-    document.getElementById('calendar-add-modal').classList.add('show');
-};
-
-window.showAddCalendarModal = function(category) {
-    newCalendarCategory = category;
-    selectCalendarCategory(category);
-    document.getElementById('new-cal-name').value = '';
-    document.getElementById('calendar-dropdown').style.display = 'none';
-    document.getElementById('calendar-add-modal').classList.add('show');
-};
-
-window.selectCalendarCategory = function(category) {
-    newCalendarCategory = category;
-    const workCard = document.getElementById('type-work');
-    const privateCard = document.getElementById('type-private');
-    
-    if (category === 'work') {
-        workCard.style.borderColor = '#1a73e8';
-        workCard.style.background = '#e8f0fe';
-        privateCard.style.borderColor = '#e0e0e0';
-        privateCard.style.background = '#fff';
-    } else {
-        privateCard.style.borderColor = '#1a73e8';
-        privateCard.style.background = '#e8f0fe';
-        workCard.style.borderColor = '#e0e0e0';
-        workCard.style.background = '#fff';
-    }
-};
-
-window.saveNewCalendar = async function() {
-    const name = document.getElementById('new-cal-name').value.trim();
-    if (!name) {
-        alert('カレンダー名を入力してください');
-    }
-    
-    try {
-        const response = await fetch('/api/save_calendar', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                name: name,
-                color: selectedNewCalColor,
-                is_private: (newCalendarCategory === 'private')
-            })
-        });
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            location.reload();
+// ===== カレンダー表示切り替え =====
+window.toggleCalendar = function(id) {
+    if (id === 'all') {
+        const allActive = CALENDARS.every(c=>activeCalIds.has(c.id));
+        if (allActive) {
+            activeCalIds.clear();
+            activeCalIds.add('all');
         } else {
-            alert('作成に失敗しました: ' + (data.message || ''));
+            activeCalIds = new Set(['all', ...CALENDARS.map(c=>c.id)]);
         }
-    } catch (error) {
-        alert('エラーが発生しました');
+    } else {
+        activeCalIds.delete('all');
+        if (activeCalIds.has(id)) {
+            activeCalIds.delete(id);
+        } else {
+            activeCalIds.add(id);
+        }
+        if (CALENDARS.every(c=>activeCalIds.has(c.id))) activeCalIds.add('all');
+    }
+    document.querySelectorAll('.cal-chip[data-id]').forEach(chip => {
+        const cid = chip.dataset.id;
+        chip.classList.toggle('active', activeCalIds.has(cid));
+        chip.classList.toggle('inactive', !activeCalIds.has(cid));
+    });
+    renderCalendar();
+};
+
+// ===== セルクリック =====
+window.onCellClick = function(dateStr) {
+    clickedDate = dateStr;
+    
+    // その日の予定を取得
+    const dayEvents = ALL_EVENTS.filter(event => {
+        if (activeCalendarIds.has("all")) return event.event_date === dateStr;
+        return event.event_date === dateStr && activeCalendarIds.has(event.calendar_id);
+    });
+    
+    if (dayEvents.length > 0) {
+        // 予定がある場合：予定一覧を表示
+        showDayEventsModal(dateStr, dayEvents);
+    } else {
+        // 予定がない場合：直接新規作成
+        showNewEventModal(dateStr);
     }
 };
 
-// ===== 色選択 =====
-window.selectColor = function(color) {
-    selectedColor = color;
-    document.querySelectorAll('#ev-color-picker > div').forEach((d, i) => {
-        d.style.borderColor = d.dataset.color === color ? '#202124' : 'transparent';
-        d.style.transform = d.dataset.color === color ? 'scale(1.15)' : 'scale(1)';
-    });
-};
-
-window.selectNewCalColor = function(color) {
-    selectedNewCalColor = color;
-    document.querySelectorAll('#new-cal-color-picker > div').forEach(d => {
-        d.style.borderColor = d.dataset.color === color ? '#202124' : 'transparent';
-        d.style.transform = d.dataset.color === color ? 'scale(1.15)' : 'scale(1)';
-    });
+// ===== 予定編集 =====
+window.openEditEvent = function(id) {
+    const ev = ALL_EVENTS.find(e=>e.id===id);
+    if (!ev) return;
+    editingEventId = id;
+    document.getElementById('ev-title').value = ev.title;
+    document.getElementById('ev-start-date').value = ev.event_date;
+    document.getElementById('ev-end-date').value = ev.end_date || ev.event_date;
+    document.getElementById('ev-allday').checked = ev.all_day;
+    document.getElementById('ev-time-row').style.display = ev.all_day ? 'none' : 'grid';
+    if (!ev.all_day) {
+        document.getElementById('ev-start-time').value = ev.start_time||'09:00';
+        document.getElementById('ev-end-time').value = ev.end_time||'10:00';
+    }
+    document.getElementById('ev-repeat').value = ev.repeat_type||'none';
+    document.getElementById('ev-repeat-until-row').style.display = ev.repeat_type&&ev.repeat_type!=='none'?'block':'none';
+    document.getElementById('ev-notify').value = ev.notify_before||0;
+    document.getElementById('ev-memo').value = ev.memo||'';
+    document.getElementById('ev-delete-btn').style.display = 'block';
+    document.getElementById('event-modal-title').textContent = '予定を編集';
+    selectSticker(ev.sticker||'');
+    selectColor(ev.color||getCalColor(ev.calendar_id));
+    if (CALENDARS.length) document.getElementById('ev-calendar').value = ev.calendar_id||CALENDARS[0].id;
+    document.getElementById('event-modal').classList.add('show');
 };
 
 // ===== シール選択 =====
 window.selectSticker = function(emoji) {
     selectedSticker = emoji;
-    document.querySelectorAll('#sticker-grid > div').forEach(b => {
-        b.style.borderColor = b.dataset.sticker === emoji ? '#1a73e8' : 'transparent';
-        b.style.background = b.dataset.sticker === emoji ? '#e8f0fe' : '#f8f9fa';
+    document.querySelectorAll('.sticker-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.sticker === emoji);
+    });
+};
+
+// ===== 色選択 =====
+window.selectColor = function(color) {
+    selectedColor = color;
+    document.querySelectorAll('#ev-color-picker .color-dot').forEach(d => {
+        d.classList.toggle('selected', d.dataset.color === color);
+    });
+};
+window.selectNewCalColor = function(color) {
+    selectedNewCalColor = color;
+    document.querySelectorAll('#new-cal-color-picker .color-dot').forEach(d => {
+        d.classList.toggle('selected', d.dataset.color === color);
     });
 };
 
@@ -737,301 +691,209 @@ window.toggleTimeInput = function() {
     document.getElementById('ev-time-row').style.display = allDay ? 'none' : 'grid';
 };
 
-// ===== カレンダーナビゲーション =====
-window.changeMonth = function(delta) {
-    currentMonth += delta;
-    if (currentMonth > 12) {
-        currentMonth = 1;
-        currentYear++;
-    } else if (currentMonth < 1) {
-        currentMonth = 12;
-        currentYear--;
-    }
-    renderCalendar();
-};
-
-window.goToToday = function() {
-    const today = new Date();
-    currentYear = today.getFullYear();
-    currentMonth = today.getMonth() + 1;
-    renderCalendar();
-};
-
-// ===== カレンダー描画 =====
-function renderCalendar() {
-    const monthNames = ['', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-    document.getElementById('cal-month-title').textContent = `${currentYear}年${monthNames[currentMonth]}`;
-    
-    const container = document.getElementById('cal-days');
-    const firstDay = new Date(currentYear, currentMonth - 1, 1);
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - firstDay.getDay());
-    
-    let html = '';
-    const today = new Date();
-    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-    
-    for (let week = 0; week < 6; week++) {
-        for (let day = 0; day < 7; day++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + week * 7 + day);
-            
-            const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-            const isOtherMonth = date.getMonth() !== currentMonth - 1;
-            const isToday = dateStr === todayStr;
-            const dayOfWeek = day === 0 ? 'sun' : (day === 6 ? 'sat' : '');
-            
-            // この日の予定を取得
-            const dayEvents = ALL_EVENTS.filter(event => {
-                if (activeCalendarIds.has('all')) return event.event_date === dateStr;
-                return event.event_date === dateStr && activeCalendarIds.has(event.calendar_id);
-            });
-            
-            const eventBars = dayEvents.map(event => 
-                `<div onclick="openEditEvent('${event.id}')" style="display:block;font-size:0.62rem;font-weight:600;padding:1px 4px;border-radius:3px;margin-bottom:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#fff;line-height:1.4;background:${event.color};">${event.title}</div>`
-            ).join('');
-            
-            html += `
-                <div onclick="onCellClick('${dateStr}')" style="min-height:68px;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;padding:2px;cursor:pointer;position:relative;transition:background 0.1s;${isOtherMonth ? 'background:#fafafa;' : ''}${isToday ? 'background:#e8f0fe;' : ''}">
-                    <div style="font-size:0.72rem;font-weight:600;color:#202124;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:1px auto 1px;${isToday ? 'background:#1a73e8;color:#fff;font-weight:800;' : ''}${dayOfWeek === 'sun' && !isToday ? 'color:#c62828;' : ''}${dayOfWeek === 'sat' && !isToday ? 'color:#2e7d32;' : ''}">${date.getDate()}</div>
-                    ${eventBars}
-                </div>
-            `;
-        }
-    }
-    container.innerHTML = html;
-}
-
-// ===== セルクリック（予定追加） =====
-window.onCellClick = function(dateStr) {
-    clickedDate = dateStr;
-    editingEventId = null;
-    
-    document.getElementById('ev-title').value = '';
-    document.getElementById('ev-start-date').value = dateStr;
-    document.getElementById('ev-end-date').value = dateStr;
-    document.getElementById('ev-allday').checked = true;
-    document.getElementById('ev-time-row').style.display = 'none';
-    document.getElementById('ev-memo').value = '';
-    document.getElementById('ev-delete-btn').style.display = 'none';
-    document.getElementById('event-modal-title').textContent = '予定を追加（' + dateStr + '）';
-    
-    if (CALENDARS.length > 0) {
-        document.getElementById('ev-calendar').value = CALENDARS[0].id;
-    }
-    
-    selectSticker('');
-    selectColor(EVENT_COLORS[0]);
-    document.getElementById('event-modal').classList.add('show');
-};
-
-// ===== 予定編集 =====
-window.openEditEvent = function(eventId) {
-    const event = ALL_EVENTS.find(e => e.id === eventId);
-    if (!event) return;
-    
-    editingEventId = eventId;
-    document.getElementById('ev-title').value = event.title || '';
-    document.getElementById('ev-start-date').value = event.event_date || '';
-    document.getElementById('ev-end-date').value = event.end_date || event.event_date || '';
-    document.getElementById('ev-allday').checked = event.all_day !== false;
-    document.getElementById('ev-time-row').style.display = event.all_day ? 'none' : 'grid';
-    
-    if (!event.all_day) {
-        document.getElementById('ev-start-time').value = event.start_time || '09:00';
-        document.getElementById('ev-end-time').value = event.end_time || '10:00';
-    }
-    
-    document.getElementById('ev-memo').value = event.memo || '';
-    document.getElementById('ev-delete-btn').style.display = 'block';
-    document.getElementById('event-modal-title').textContent = '予定を編集';
-    
-    if (CALENDARS.length > 0) {
-        document.getElementById('ev-calendar').value = event.calendar_id || CALENDARS[0].id;
-    }
-    
-    selectSticker(event.sticker || '');
-    selectColor(event.color || EVENT_COLORS[0]);
-    document.getElementById('event-modal').classList.add('show');
-};
+// ===== 繰り返し =====
+document.getElementById('ev-repeat').addEventListener('change', function() {
+    document.getElementById('ev-repeat-until-row').style.display =
+        this.value !== 'none' ? 'block' : 'none';
+});
 
 // ===== 予定保存 =====
 window.saveEvent = async function() {
     const title = document.getElementById('ev-title').value.trim();
-    if (!title) {
-        alert('タイトルを入力してください');
-        return;
-    }
-    
+    if (!title) { alert('タイトルを入力してください'); return; }
     const allDay = document.getElementById('ev-allday').checked;
-    const calendarId = document.getElementById('ev-calendar').value;
-    
+    const calId = CALENDARS.length ? document.getElementById('ev-calendar').value : null;
     const payload = {
         id: editingEventId,
-        calendar_id: calendarId,
-        title: title,
+        calendar_id: calId,
+        title,
         sticker: selectedSticker,
         event_date: document.getElementById('ev-start-date').value,
         end_date: document.getElementById('ev-end-date').value,
         all_day: allDay,
         start_time: allDay ? null : document.getElementById('ev-start-time').value,
-        end_time: allDay ? null : document.getElementById('ev-end-time').value,
+        end_time:   allDay ? null : document.getElementById('ev-end-time').value,
         color: selectedColor,
-        memo: document.getElementById('ev-memo').value
+        repeat_type: document.getElementById('ev-repeat').value,
+        repeat_until: document.getElementById('ev-repeat-until').value || null,
+        notify_before: parseInt(document.getElementById('ev-notify').value),
+        memo: document.getElementById('ev-memo').value,
     };
-    
-    try {
-        const response = await fetch('/api/save_calendar_event', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            if (editingEventId) {
-                const index = ALL_EVENTS.findIndex(e => e.id === editingEventId);
-                if (index >= 0) ALL_EVENTS[index] = {...ALL_EVENTS[index], ...payload, id: editingEventId};
-            } else {
-                ALL_EVENTS.push({...payload, id: data.id});
-            }
-            closeModal('event-modal');
-            renderCalendar();
+    const res = await fetch('/api/save_calendar_event', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        if (editingEventId) {
+            const idx = ALL_EVENTS.findIndex(e=>e.id===editingEventId);
+            if (idx>=0) ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId};
         } else {
-            alert('保存に失敗しました: ' + (data.message || ''));
+            ALL_EVENTS.push({...payload, id: data.id});
         }
-    } catch (error) {
-        alert('エラーが発生しました');
-    }
+        closeModal('event-modal');
+        renderCalendar();
+    } else { alert('保存に失敗しました'); }
 };
 
 // ===== 予定削除 =====
 window.deleteEvent = async function() {
     if (!editingEventId || !confirm('この予定を削除しますか？')) return;
-    
-    try {
-        const response = await fetch('/api/delete_calendar_event', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id: editingEventId})
-        });
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            const index = ALL_EVENTS.findIndex(e => e.id === editingEventId);
-            if (index >= 0) ALL_EVENTS.splice(index, 1);
-            closeModal('event-modal');
-            renderCalendar();
-        } else {
-            alert('削除に失敗しました: ' + (data.message || ''));
-        }
-    } catch (error) {
-        alert('エラーが発生しました');
-    }
-};
-
-// ===== カレンダー削除 =====
-// ===== カレンダー編集 =====
-window.editCalendar = function(calendarId) {
-    const calendar = CALENDARS.find(c => c.id === calendarId);
-    if (!calendar) return;
-    
-    // 簡単な編集（名前変更）
-    const newName = prompt('カレンダー名を変更:', calendar.name);
-    if (!newName || newName === calendar.name) return;
-    
-    // サーバーに送信（簡易版）
-    fetch('/api/update_calendar', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            id: calendarId,
-            name: newName,
-            color: calendar.color
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            // ローカルデータ更新
-            calendar.name = newName;
-            updateDropdownCalendars();
-            
-            // タブも更新
-            const tab = document.querySelector(`.cal-tab[data-id="${calendarId}"] span:not(.material-symbols-outlined)`);
-            if (tab) tab.textContent = newName;
-            
-            document.getElementById('calendar-dropdown').style.display = 'none';
-            renderCalendar();
-            alert('カレンダー名を変更しました');
-        } else {
-            alert('変更に失敗しました: ' + (data.message || ''));
-        }
-    })
-    .catch(error => {
-        alert('エラーが発生しました');
+    const res = await fetch('/api/delete_calendar_event', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: editingEventId})
     });
-};
-window.deleteCalendar = async function(calendarId) {
-    console.log('削除開始:', calendarId);  //
-    const calendar = CALENDARS.find(c => c.id === calendarId);
-    if (!calendar) return;
-    
-    if (!confirm(`「${calendar.name}」カレンダーを削除しますか？関連する予定もすべて削除されます。`)) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/delete_calendar', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id: calendarId})
-        });
-        
-        const data = await response.json();
-        if (data.status === 'success') {
-            CALENDARS = CALENDARS.filter(c => c.id !== calendarId);
-            ALL_EVENTS = ALL_EVENTS.filter(e => e.calendar_id !== calendarId);
-            removeCalendarTab(calendarId);
-            updateDropdownCalendars();
-            document.getElementById('calendar-dropdown').style.display = 'none';
-            switchCalendarView('all');
-            alert('カレンダーを削除しました');
-        } else {
-            alert('削除に失敗しました: ' + (data.message || ''));
-        }
-    } catch (error) {
-        alert('削除中にエラーが発生しました');
+    if ((await res.json()).status === 'success') {
+        const idx = ALL_EVENTS.findIndex(e=>e.id===editingEventId);
+        if (idx>=0) ALL_EVENTS.splice(idx,1);
+        closeModal('event-modal');
+        renderCalendar();
     }
 };
 
-function removeCalendarTab(calendarId) {
-    const tab = document.querySelector(`.cal-tab[data-id="${calendarId}"]`);
-    if (tab) tab.remove();
-}
-// ===== モーダル管理 =====
-window.closeModal = function(modalId) {
-    document.getElementById(modalId).classList.remove('show');
-};
-
-window.closeModalOutside = function(event, modalId) {
-    if (event.target.id === modalId) closeModal(modalId);
-};
-
-// プルダウン外クリックで閉じる
-document.addEventListener('click', function(e) {
-    const dropdown = document.getElementById('calendar-dropdown');
-    const btn = document.querySelector('.calendar-dropdown-btn');
-    if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
-        dropdown.style.display = 'none';
+// ===== カレンダー種類選択 =====
+window.selectCalType = function(type) {
+    newCalIsPrivate = (type === 'private');
+    const priv = document.getElementById('type-private');
+    const shared = document.getElementById('type-shared');
+    if (newCalIsPrivate) {
+        priv.style.borderColor = '#1a73e8'; priv.style.background = '#e8f0fe';
+        priv.querySelector('.material-symbols-outlined').style.color = '#1a73e8';
+        priv.querySelector('div').style.color = '#1a73e8';
+        shared.style.borderColor = '#e0e0e0'; shared.style.background = '#fff';
+        shared.querySelector('.material-symbols-outlined').style.color = '#80868b';
+        shared.querySelector('div').style.color = '#80868b';
+    } else {
+        shared.style.borderColor = '#1a73e8'; shared.style.background = '#e8f0fe';
+        shared.querySelector('.material-symbols-outlined').style.color = '#1a73e8';
+        shared.querySelector('div').style.color = '#1a73e8';
+        priv.style.borderColor = '#e0e0e0'; priv.style.background = '#fff';
+        priv.querySelector('.material-symbols-outlined').style.color = '#80868b';
+        priv.querySelector('div').style.color = '#80868b';
     }
-});
+};
 
-// 初期化
-selectColor(EVENT_COLORS[0]);
-selectNewCalColor(EVENT_COLORS[0]);
-renderCalendar();
+// ===== 新規カレンダー =====
+window.openNewCalendar = function() {
+    document.getElementById('new-cal-name').value = '';
+    newCalIsPrivate = true;
+    selectCalType('private');
+    document.getElementById('cal-modal').classList.add('show');
+};
+window.saveNewCalendar = async function() {
+    const name = document.getElementById('new-cal-name').value.trim();
+    if (!name) { alert('カレンダー名を入力してください'); return; }
+    const res = await fetch('/api/save_calendar', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name, color: selectedNewCalColor, is_private: newCalIsPrivate})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        location.reload();
+    } else { alert('作成に失敗しました'); }
+};
+
+// ===== メンバー招待 =====
+window.openInviteModal = function(calId, calName) {
+    invitingCalendarId = calId;
+    selectedInviteStaffs = new Set();
+    document.getElementById('invite-modal-title').textContent = `「${calName}」にメンバーを招待`;
+
+    // 招待可能なスタッフ一覧
+    const currentMembers = CAL_MEMBERS[calId] || [];
+    const invitable = STAFFS.filter(s => !currentMembers.includes(s));
+    const staffList = document.getElementById('invite-staff-list');
+    if (!invitable.length) {
+        staffList.innerHTML = '<div style="font-size:0.82rem;color:#80868b;">招待できるスタッフがいません</div>';
+    } else {
+        staffList.innerHTML = invitable.map(s => `
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:0.88rem;cursor:pointer;">
+                <input type="checkbox" value="${s}" style="accent-color:#1a73e8;width:16px;height:16px;"
+                    onchange="toggleInviteStaff('${s}', this.checked)">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
+                ${s}
+            </label>`).join('');
+    }
+
+    // 招待済みメンバー
+    const memberList = document.getElementById('current-members-list');
+    if (!currentMembers.length) {
+        memberList.innerHTML = '<div style="font-size:0.82rem;color:#80868b;">まだメンバーがいません</div>';
+    } else {
+        memberList.innerHTML = currentMembers.map(s => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;">
+                <span style="font-size:0.88rem;">${s}</span>
+                <button onclick="removeMember('${calId}','${s}')" style="background:none;border:none;color:#ea4335;cursor:pointer;font-size:0.78rem;">
+                    <span class="material-symbols-outlined" style="font-size:16px;">person_remove</span>
+                </button>
+            </div>`).join('');
+    }
+    document.getElementById('invite-modal').classList.add('show');
+};
+
+window.toggleInviteStaff = function(name, checked) {
+    if (checked) selectedInviteStaffs.add(name);
+    else selectedInviteStaffs.delete(name);
+};
+
+window.inviteMembers = async function() {
+    if (!selectedInviteStaffs.size) { alert('スタッフを選んでください'); return; }
+    const res = await fetch('/api/invite_calendar_member', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({calendar_id: invitingCalendarId, staff_names: [...selectedInviteStaffs]})
+    });
+    if ((await res.json()).status === 'success') {
+        location.reload();
+    } else { alert('招待に失敗しました'); }
+};
+
+window.removeMember = async function(calId, staffName) {
+    if (!confirm(`${staffName} をカレンダーから削除しますか？`)) return;
+    const res = await fetch('/api/remove_calendar_member', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({calendar_id: calId, staff_name: staffName})
+    });
+    if ((await res.json()).status === 'success') {
+        location.reload();
+    }
+};
+
+// ===== モーダル =====
+window.closeModal = function(id) {
+    document.getElementById(id).classList.remove('show');
+};
+window.closeModalOutside = function(e, id) {
+    if (e.target === document.getElementById(id)) closeModal(id);
+};
+
+// ===== 初期描画 =====
+requestAnimationFrame(() => requestAnimationFrame(() => renderCalendar()));
 
 })();
 </script>
 {% endblock %}
+
+// ===== 日別予定表示機能 =====
+window.showDayEventsModal = function(dateStr, events) {
+    let html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
+    html += '<div class="modal-sheet"><div class="modal-handle"></div>';
+    html += '<div class="modal-title">' + dateStr + 'の予定</div>';
+    events.forEach(event => {
+        html += '<div onclick="openEditEvent(\'' + event.id + '\')" style="padding:12px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + event.color + '22;">';
+        html += '<strong style="color:' + event.color + ';">' + event.title + '</strong>';
+        html += '<div style="font-size:0.8rem;color:#666;">' + (event.all_day ? '終日' : (event.start_time + ' - ' + event.end_time)) + '</div></div>';
+    });
+    html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">新しい予定を追加</button>';
+                                          cl                                          cl          in                                          cl                                          cl          in                           al                                          cl                           nt                                          cl                         te                           ument.getElementById('ev-end-date').value = dateStr;
+    document.getElementById('ev-allday').checked = true;
+    document.getElementById('ev-time-row').style.display = 'none';
+    document.getElementById('ev-repeat').value = 'none';
+    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById(lete-btn').style.display = 'none';
+    document.getElementById('event-modal-title').textContent = '予定を追加（' + dateStr + '）';
+    if (CALENDARS.length > 0) document.getElementById('ev-calendar').value = CALENDARS[0].id;
+    selectSticker('');
+    selectColor(EVENT_COLORS[0]);
+    document.getElementById('event-modal').classList.add('show');
+    const dayModal = document.getElementById('day-events-modal');
+    if (dayModal) dayModal.remove();
+};
