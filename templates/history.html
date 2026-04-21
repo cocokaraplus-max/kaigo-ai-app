@@ -48,12 +48,12 @@
         利用者を選択（ひらがな・漢字・カルテ番号で検索）
     </label>
     <div style="position:relative;">
-        <input type="text" id="patient-search" class="form-control"
+        <input type="text" id="history-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
             
-             onkeyup="console.log('キー入力:', this.value); searchPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchPatient(this.value), 100)"
+             onkeyup="console.log('キー入力:', this.value); searchHistoryPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchHistoryPatient(this.value), 100)"
             autocomplete="off">
-        <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
+        <div id="history-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
             z-index:100; max-height:220px; overflow-y:auto;
             box-shadow:0 4px 12px rgba(0,0,0,0.1);">
@@ -165,11 +165,11 @@ const HISTORY_PATIENTS = [
 <script>
 (function(){
 
-function searchPatient(query) {
+function searchHistoryPatient(query) {
     const q = query.trim().toLowerCase();
     const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
     const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
-    const candidates = document.getElementById('patient-candidates');
+    const candidates = document.getElementById('history-candidates');
     const filtered = q === '' ? HISTORY_PATIENTS :
         HISTORY_PATIENTS.filter(p =>
             p.name.toLowerCase().includes(q) ||
@@ -194,29 +194,29 @@ function searchPatient(query) {
     }
     candidates.style.display = 'block';
 }
-window.searchPatient = searchPatient;
+window.searchHistoryPatient = searchHistoryPatient;
 
 // iPhone Safari 対応
 document.addEventListener("DOMContentLoaded", function() {
-    const searchInput = document.getElementById("patient-search");
+    const searchInput = document.getElementById("history-search");
     if (searchInput) {
         searchInput.addEventListener("input", function(e) {
             console.log("入力イベント検出:", e.target.value);
-            searchPatient(e.target.value);
+            searchHistoryPatient(e.target.value);
         });
         searchInput.addEventListener("focus", function(e) {
             console.log("フォーカスイベント検出:", e.target.value);
-            searchPatient(e.target.value);
+            searchHistoryPatient(e.target.value);
         });
     }
 });
 
 function selectPatient(value, label) {
-    document.getElementById('patient-search').style.display = 'none';
+    document.getElementById('history-search').style.display = 'none';
     document.getElementById('patient-selected-label').textContent = label;
     const badge = document.getElementById('patient-selected-badge');
     badge.style.display = 'flex';
-    document.getElementById('patient-candidates').style.display = 'none';
+    document.getElementById('history-candidates').style.display = 'none';
     const sel = document.getElementById('patient-select');
     sel.value = value;
     onPatientChange();
@@ -224,8 +224,8 @@ function selectPatient(value, label) {
 window.selectPatient = selectPatient;
 
 function clearPatient() {
-    document.getElementById('patient-search').style.display = 'block';
-    document.getElementById('patient-search').value = '';
+    document.getElementById('history-search').style.display = 'block';
+    document.getElementById('history-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
     document.getElementById('patient-select').value = '';
     onPatientChange();
@@ -234,7 +234,7 @@ window.clearPatient = clearPatient;
 
 document.addEventListener('click', e => {
     if (!e.target.closest('[id^="patient"]')) {
-        setTimeout(() => { const c = document.getElementById('patient-candidates'); if(c) c.style.display = 'none'; }, 200);
+        setTimeout(() => { const c = document.getElementById('history-candidates'); if(c) c.style.display = 'none'; }, 200);
     }
 });
 // ========================================
