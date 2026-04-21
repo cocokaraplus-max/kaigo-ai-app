@@ -153,7 +153,6 @@ document.addEventListener('click', function(e) {
 });
 // ==================================
 </script> 
-
 <script>
 // ========== 患者テキスト検索 ==========
 const HISTORY_PATIENTS = [
@@ -209,7 +208,7 @@ function selectPatient(value, label) {
 }
 window.selectPatient = selectPatient;
 
-window.updateCharBtn = function(el) {
+function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
