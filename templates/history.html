@@ -50,7 +50,7 @@
     <div style="position:relative;">
         <input type="text" id="patient-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
-            oninput="searchPatient(this.value)"
+            oninput="console.log('検索実行:', this.value); searchPatient(this.value)"
             onfocus="searchPatient(this.value)"
             autocomplete="off">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
