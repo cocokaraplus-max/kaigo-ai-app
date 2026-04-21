@@ -51,7 +51,7 @@
         <input type="text" id="patient-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
             oninput="console.log('検索実行:', this.value); searchPatient(this.value)"
-            onfocus="searchPatient(this.value)"
+            onfocus="console.log('フォーカス:', this.value); searchPatient(this.value)" onkeyup="console.log('キー入力:', this.value); searchPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchPatient(this.value), 100)"
             autocomplete="off">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
