@@ -153,7 +153,6 @@ document.addEventListener('click', function(e) {
 });
 // ==================================
 </script> 
-
 <script>
 // ========== 患者テキスト検索 ==========
 const HISTORY_PATIENTS = [
@@ -209,7 +208,6 @@ function selectPatient(value, label) {
 }
 window.selectPatient = selectPatient;
 
-}
 function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
@@ -232,7 +230,7 @@ function onPatientChange() {
 }
 window.onPatientChange = onPatientChange;
 
-window.updateCharBtn = function(el) {
+function updateCharBtn(el) {
     document.querySelectorAll('input[name="char_limit"]').forEach(r => {
         r.parentElement.style.borderColor = r.checked ? '#1a73e8' : '#E0E0E0';
         r.parentElement.style.color = r.checked ? '#1a73e8' : '#202124';
