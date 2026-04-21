@@ -535,7 +535,7 @@
         <div class="form-group">
             <label class="form-label">カテゴリー</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                <div id="type-work" onclick="selectCalendarCategory('work')" style="padding:16px;border:2px solid #e0e0e0;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s ease;">
+                <div id="type-work" onclick="selectCalendarCategory("work"); newCalendarCategory = "work"" style="padding:16px;border:2px solid #e0e0e0;border-radius:12px;cursor:pointer;text-align:center;transition:all 0.2s ease;">
                     <span class="material-symbols-outlined" style="font-size:32px;margin-bottom:8px;display:block;color:#5f6368;">work</span>
                     <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;color:#202124;">仕事</div>
                     <div style="font-size:0.75rem;color:#5f6368;line-height:1.4;">チームで共有される<br>業務カレンダー</div>
@@ -550,7 +550,7 @@
 
         <div class="form-group">
             <label class="form-label">カレンダー名</label>
-            <input type="text" class="form-control" id="new-cal-name" placeholder="例：プロジェクト会議・希望休・個人予定">
+            <input type="text" class="form-control" id="new-cal-name" placeholder="好きな名前を入力してください">
         </div>
 
         <div class="form-group">
@@ -645,7 +645,7 @@ window.switchCalendarView = function(calendarId) {
 // ===== カレンダー作成 =====
 window.showQuickAddCalendar = function() {
     newCalendarCategory = 'work';
-    selectCalendarCategory('work');
+    selectCalendarCategory("work"); newCalendarCategory = "work";
     document.getElementById('new-cal-name').value = '';
     selectNewCalColor(EVENT_COLORS[0]);
     document.getElementById('calendar-add-modal').classList.add('show');
@@ -681,7 +681,6 @@ window.saveNewCalendar = async function() {
     const name = document.getElementById('new-cal-name').value.trim();
     if (!name) {
         alert('カレンダー名を入力してください');
-        return;
     }
     
     try {
@@ -933,6 +932,7 @@ window.deleteEvent = async function() {
 
 // ===== カレンダー削除 =====
 window.deleteCalendar = async function(calendarId) {
+    console.log('削除開始:', calendarId);  //
     const calendar = CALENDARS.find(c => c.id === calendarId);
     if (!calendar) return;
     
