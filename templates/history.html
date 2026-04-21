@@ -50,8 +50,8 @@
     <div style="position:relative;">
         <input type="text" id="patient-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
-            oninput="console.log('検索実行:', this.value); searchPatient(this.value)"
-            onfocus="console.log('フォーカス:', this.value); searchPatient(this.value)" onkeyup="console.log('キー入力:', this.value); searchPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchPatient(this.value), 100)"
+            
+             onkeyup="console.log('キー入力:', this.value); searchPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchPatient(this.value), 100)"
             autocomplete="off">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
@@ -195,6 +195,21 @@ function searchPatient(query) {
     candidates.style.display = 'block';
 }
 window.searchPatient = searchPatient;
+
+// iPhone Safari 対応
+document.addEventListener("DOMContentLoaded", function() {
+    const searchInput = document.getElementById("patient-search");
+    if (searchInput) {
+        searchInput.addEventListener("input", function(e) {
+            console.log("入力イベント検出:", e.target.value);
+            searchPatient(e.target.value);
+        });
+        searchInput.addEventListener("focus", function(e) {
+            console.log("フォーカスイベント検出:", e.target.value);
+            searchPatient(e.target.value);
+        });
+    }
+});
 
 function selectPatient(value, label) {
     document.getElementById('patient-search').style.display = 'none';
