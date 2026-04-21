@@ -50,8 +50,8 @@
     <div style="position:relative;">
         <input type="text" id="history-search" class="form-control"
             placeholder="例：やまだ / 山田 / 001"
-            
-             onkeyup="console.log('キー入力:', this.value); searchHistoryPatient(this.value)" ontouchend="console.log('タッチ:', this.value); setTimeout(() => searchHistoryPatient(this.value), 100)"
+            oninput="searchHistoryPatient(this.value)" onfocus="searchHistoryPatient(this.value)"
+             
             autocomplete="off">
         <div id="history-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
