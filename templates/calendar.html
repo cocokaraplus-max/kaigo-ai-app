@@ -118,7 +118,7 @@
     width:100%; max-width:480px;
     padding:20px 20px 32px;
     animation:slideUp 0.22s ease;
-    max-height:90vh; overflow-y:auto;
+    max-height:85vh; overflow-y:auto; padding-bottom:60px;
 }
 @keyframes slideUp {
     from { transform:translateY(40px); opacity:0; }
@@ -628,13 +628,8 @@ window.onCellClick = function(dateStr) {
         return event.event_date === dateStr && activeCalendarIds.has(event.calendar_id);
     });
     
-    if (dayEvents.length > 0) {
-        // 予定がある場合：予定一覧を表示
-        showDayEventsModal(dateStr, dayEvents);
-    } else {
-        // 予定がない場合：直接新規作成
-        showNewEventModal(dateStr);
-    }
+    // 常に予定一覧を表示（予定がない場合は空の一覧）
+    showDayEventsModal(dateStr, dayEvents);
 };
 
 // ===== 予定編集 =====
