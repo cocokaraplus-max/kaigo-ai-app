@@ -209,7 +209,8 @@ function selectPatient(value, label) {
 }
 window.selectPatient = selectPatient;
 
-window.updateCharBtn = function(el) {
+}
+function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
@@ -231,7 +232,7 @@ function onPatientChange() {
 }
 window.onPatientChange = onPatientChange;
 
-function updateCharBtn(el) {
+window.updateCharBtn = function(el) {
     document.querySelectorAll('input[name="char_limit"]').forEach(r => {
         r.parentElement.style.borderColor = r.checked ? '#1a73e8' : '#E0E0E0';
         r.parentElement.style.color = r.checked ? '#1a73e8' : '#202124';
