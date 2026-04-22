@@ -866,7 +866,32 @@ setTimeout(function() {
 }, 3000);
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/static/sw.js')
+    navigator.serviceWorker.register('/static/sw.js').then(function(reg){
+          var __sw_auto_reload__ = true;
+          // Check for updates every time the page loads
+          if (reg.update) { try { reg.update(); } catch(e){} }
+          // If there's a waiting SW already, activate it now
+          if (reg.waiting) { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+          // Listen for a new SW being installed
+          reg.addEventListener('updatefound', function(){
+            var newSW = reg.installing;
+            if (!newSW) return;
+            newSW.addEventListener('statechange', function(){
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                // New SW is installed and waiting. Tell it to take over immediately.
+                newSW.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        }).catch(function(e){ console.warn('SW register failed:', e); });
+        // When a new SW takes control, reload to pick up fresh assets
+        var __sw_reloading__ = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function(){
+          if (__sw_reloading__) return;
+          __sw_reloading__ = true;
+          window.location.reload();
+        });
+        // Legacy no-op to keep replacement idempotent: navigator.serviceWorker.register('/static/sw.js')
         .then(reg => {
             console.log('[PWA] Service Worker登録成功');
             // バックグラウンド同期の登録

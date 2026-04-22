@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v4';
+const CACHE_VERSION = 'tasukaru-v5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -252,3 +252,11 @@ button{margin-top:20px;padding:12px 24px;background:#1a73e8;color:#fff;border:no
 </body>
 </html>`;
 }
+
+
+// === Handle SKIP_WAITING message from page ===
+self.addEventListener('message', function(event){
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
