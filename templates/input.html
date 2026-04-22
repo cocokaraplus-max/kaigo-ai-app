@@ -332,21 +332,11 @@ window.renderCandidates = function(list) {
         candidates.innerHTML = '<div class="search-candidate-item" style="color:#80868b;">該当なし</div>';
         candidates.classList.add('show');
     } else {
-        candidates.innerHTML = list.map((p, i) =>
-            `<div class="search-candidate-item" data-idx="${i}">${p.label}</div>`
-        ).join('');
-        // イベント委譲で確実にタップを拾う
-        candidates.querySelectorAll('.search-candidate-item[data-idx]').forEach((el, i) => {
-            const p = list[i];
-            el.addEventListener('mousedown', function(e) {
-                e.preventDefault();
-                selectPatient(p.value, p.label);
-            });
-            el.addEventListener('touchend', function(e) {
-                e.preventDefault();
-                selectPatient(p.value, p.label);
-            });
-        });
+        candidates.innerHTML = list.map(p => {
+            const v = String(p.value).replace(/'/g, "\\'");
+            const l = String(p.label).replace(/'/g, "\\'");
+            return `<div class="search-candidate-item" onclick="window.selectPatient('${v}', '${l}')">${p.label}</div>`;
+        }).join('');
         candidates.classList.add('show');
     }
 }
