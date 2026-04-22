@@ -221,6 +221,22 @@
 
 <script>
 
+// ページロード完了時にPATIENTS配列を自動でグローバル定義
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof window.PATIENTS === 'undefined') {
+    console.log('🔍 PATIENTS配列を探しています...');
+    const source = document.documentElement.outerHTML;
+    const match = source.match(/const PATIENTS = \[([\s\S]*?)\];/);
+    if (match) {
+      try {
+        eval('window.PATIENTS = [' + match[1] + '];');
+        console.log('✅ PATIENTS配列ロード成功:', window.PATIENTS.length, '件の利用者データ');
+      } catch(e) {
+        console.error('❌ PATIENTS配列ロード失敗:', e);
+      }
+    }
+  }
+});
 const PATIENTS = [
     {% for p in patients %}
     { value: {{ p.value | tojson }}, label: {{ p.label | tojson }}, name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
@@ -630,5 +646,6 @@ window.aiTranscribe = async function() {
     document.getElementById('ai-loading').style.display = 'none';
 };
 
+})();
 </script>
 {% endblock %}
