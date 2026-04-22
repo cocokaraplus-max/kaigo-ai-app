@@ -140,6 +140,14 @@
                 onchange="searchPatient(this.value)"
                 >
             <div class="search-candidates" id="candidates"></div>
+        <div id="debug-panel" style="display:none;margin-top:8px;padding:8px;background:#fffbe6;border:1px solid #ffd666;border-radius:6px;font-size:11px;font-family:monospace;color:#333;max-height:200px;overflow-y:auto;white-space:pre-wrap;">
+          <div style="font-weight:bold;margin-bottom:4px;"> DEBUG PANEL (build: fc18596)</div>
+          <div id="debug-log">Loading...</div>
+          <div style="margin-top:8px;">
+            <button type="button" onclick="window.__debugClearSW && window.__debugClearSW()" style="padding:4px 8px;font-size:11px;background:#ff4d4f;color:white;border:none;border-radius:4px;">SW & Cache </button>
+            <button type="button" onclick="window.__debugTest && window.__debugTest()" style="padding:4px 8px;font-size:11px;background:#1890ff;color:white;border:none;border-radius:4px;margin-left:4px;">('')</button>
+          </div>
+        </div>
         </div>
         <div id="selected-badge" style="display:none;" class="selected-badge">
             <span class="material-symbols-outlined">check_circle</span>
@@ -633,6 +641,70 @@ window.aiTranscribe = async function() {
     document.addEventListener('DOMContentLoaded', initFallback);
   } else {
     initFallback();
+  }
+})();
+
+
+// === DEBUG PANEL ===
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('debug') !== '1') return;
+  var panel = document.getElementById('debug-panel');
+  if (panel) panel.style.display = 'block';
+  var logEl = document.getElementById('debug-log');
+  var logs = [];
+  function log(msg) {
+    var ts = new Date().toISOString().substring(11,19);
+    logs.unshift('[' + ts + '] ' + msg);
+    if (logs.length > 15) logs.length = 15;
+    if (logEl) logEl.textContent = logs.join('\n');
+  }
+  function init(){
+    var el = document.getElementById('patient-search');
+    if (!el) { log('ERROR: input not found'); return; }
+    // Show initial state
+    var patientsCount = (typeof PATIENTS !== 'undefined' && PATIENTS && PATIENTS.length) ? PATIENTS.length : 'undef';
+    var fnType = typeof window.searchPatient;
+    log('INIT: PATIENTS=' + patientsCount + ' searchPatient=' + fnType + ' UA=' + navigator.userAgent.substring(0, 40));
+    // Attach spy listeners
+    ['focus','input','keyup','keydown','compositionstart','compositionupdate','compositionend','change','click','touchstart'].forEach(function(ev){
+      el.addEventListener(ev, function(e){
+        var v = el.value || '';
+        log(ev + ' value="' + v + '" (len=' + v.length + ')');
+      });
+    });
+    // Monitor candidates display changes
+    var cand = document.getElementById('candidates');
+    if (cand) {
+      var obs = new MutationObserver(function(muts){
+        log('candidates changed: children=' + cand.children.length + ' class=' + cand.className);
+      });
+      obs.observe(cand, { childList: true, attributes: true, attributeFilter: ['class'] });
+    }
+  }
+  // Expose debug helpers
+  window.__debugClearSW = function(){
+    log('Clearing SW and caches...');
+    Promise.all([
+      navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.map(function(r){return r.unregister();})); }) : Promise.resolve(),
+      (typeof caches !== 'undefined') ? caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){return caches.delete(k);})); }) : Promise.resolve()
+    ]).then(function(){
+      log('SW & cache cleared. Reloading in 1s...');
+      setTimeout(function(){ window.location.reload(); }, 1000);
+    }).catch(function(e){ log('Clear error: ' + e.message); });
+  };
+  window.__debugTest = function(){
+    log('Manual test: calling searchPatient("")');
+    try {
+      window.searchPatient && window.searchPatient('');
+      var cand = document.getElementById('candidates');
+      log('Result: children=' + cand.children.length);
+    } catch(e) { log('Test error: ' + e.message); }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();
 
