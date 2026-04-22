@@ -140,7 +140,7 @@
                 onchange="searchPatient(this.value)"
                 >
             <div class="search-candidates" id="candidates"></div>
-        <div id="debug-panel" style="display:none;margin-top:8px;padding:8px;background:#fffbe6;border:1px solid #ffd666;border-radius:6px;font-size:11px;font-family:monospace;color:#333;max-height:200px;overflow-y:auto;white-space:pre-wrap;">
+        <div id="debug-panel" style="display:block;margin-top:8px;padding:8px;background:#fffbe6;border:1px solid #ffd666;border-radius:6px;font-size:11px;font-family:monospace;color:#333;max-height:200px;overflow-y:auto;white-space:pre-wrap;">
           <div style="font-weight:bold;margin-bottom:4px;"> DEBUG PANEL (build: fc18596)</div>
           <div id="debug-log">Loading...</div>
           <div style="margin-top:8px;">
@@ -648,7 +648,7 @@ window.aiTranscribe = async function() {
 // === DEBUG PANEL ===
 (function(){
   var params = new URLSearchParams(window.location.search);
-  if (params.get('debug') !== '1') return;
+  // debug always on (temporary for Android testing)
   var panel = document.getElementById('debug-panel');
   if (panel) panel.style.display = 'block';
   var logEl = document.getElementById('debug-log');
