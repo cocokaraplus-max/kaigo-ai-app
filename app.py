@@ -10,6 +10,20 @@ import json
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
 
+# ===== Session persistence for PWA/mobile =====
+# Keep users logged in across browser restarts (up to 30 days)
+from datetime import timedelta
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS only (Cloud Run is always HTTPS)
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+
+@app.before_request
+def make_session_permanent():
+    from flask import session
+    session.permanent = True
+
 # ============================================================
 # HTMLno-cache
 # ============================================================
