@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}Excel取り込み - TASUKARU{% endblock %}
+{% block nav_patient_info %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.import-wrap { max-width: 720px; margin: 0 auto; }
+
+.info-msg { background: #e8f0fe; color: #1967d2; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; line-height: 1.6; }
+.error-msg { background: #fce8e6; color: #c5221f; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
+.error-msg.show { display: block; }
+.success-msg { background: #e6f4ea; color: #1e8e3e; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
+.success-msg.show { display: block; }
+.warning-msg { background: #fff8e1; color: #7a5a00; border-radius: 10px; padding: 12px; font-size: 0.78rem; margin-bottom: 12px; line-height: 1.6; }
+
+.drop-zone { border: 2px dashed #1a73e8; border-radius: 14px; padding: 40px 20px; text-align: center; background: #f8fbff; cursor: pointer; transition: all 0.15s; }
+.drop-zone:hover, .drop-zone.dragover { background: #e8f0fe; border-color: #1557b0; }
+.drop-zone .material-symbols-outlined { font-size: 48px; color: #1a73e8; }
+.drop-zone-text { font-size: 0.92rem; font-weight: 700; color: #5f6368; margin-top: 10px; }
+.drop-zone-sub { font-size: 0.76rem; color: #80868b; margin-top: 4px; }
+
+.section-card { background: #fff; border: 1.5px solid #e0e0e0; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.section-title { font-size: 0.88rem; font-weight: 700; color: #1a73e8; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e8eaed; }
+
+.analysis-meta { background: #f1f3f4; border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.analysis-meta .badge { background: #1a73e8; color: #fff; padding: 3px 10px; border-radius: 10px; font-size: 0.72rem; font-weight: 700; }
+
+.field-row { margin-bottom: 10px; }
+.field-row label { font-size: 0.78rem; font-weight: 700; color: #5f6368; display: block; margin-bottom: 4px; }
+.field-row input, .field-row textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #e0e0e0; font-size: 0.92rem; background: #fff; box-sizing: border-box; }
+.field-row textarea { min-height: 60px; font-family: inherit; resize: vertical; }
+.field-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.btn-primary { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 12px; font-size: 0.96rem; font-weight: 700; cursor: pointer; }
+.btn-primary:hover { background: #1557b0; }
+.btn-primary:disabled { background: #bbb; cursor: not-allowed; }
+.btn-secondary { padding: 10px 16px; background: #fff; color: #1a73e8; border: 1.5px solid #1a73e8; border-radius: 10px; font-size: 0.88rem; font-weight: 700; cursor: pointer; }
+
+.loading { text-align: center; padding: 40px 20px; color: #5f6368; }
+.loading .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top-color: #1a73e8; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.field-status { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 8px; margin-left: 6px; }
+.status-ok { background: #e6f4ea; color: #1e8e3e; }
+.status-missing { background: #fce8e6; color: #c5221f; }
+.status-fallback { background: #fff3e0; color: #bf6000; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+<a href="/history" onclick="spaNav(event,'/history')" 
+   style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; 
+          background:#f1f3f4; color:#5f6368; text-decoration:none; 
+          border-radius:20px; font-size:0.82rem; font-weight:600; 
+          margin-bottom:12px;">
+    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+    モニタリング生成へ戻る
+</a>
+<div class="import-wrap">
+
+    <h2 style="font-size:1.1rem; font-weight:700; color:#202124; margin-bottom:14px;">
+        <span class="material-symbols-outlined" style="vertical-align:middle; color:#1a73e8;">upload_file</span>
+        既存Excelから取り込み
+    </h2>
+
+    <div class="info-msg">
+        既存の運用中Excelファイル（ケース記録＋モニタリング）を取り込んで、利用者の目標・支援内容・利用曜日を一括登録できます。<br>
+        最新月のモニタリング報告書を優先し、空欄の項目は過去月から自動で補完します。
+    </div>
+
+    <div id="errorMsg" class="error-msg"></div>
+    <div id="successMsg" class="success-msg"></div>
+
+    <div id="uploadSection">
+        <div id="dropZone" class="drop-zone">
+            <span class="material-symbols-outlined">cloud_upload</span>
+            <div class="drop-zone-text">クリックしてファイルを選択、またはドラッグ&ドロップ</div>
+            <div class="drop-zone-sub">対応形式: .xlsx, .xlsm</div>
+            <input type="file" id="fileInput" accept=".xlsx,.xlsm" style="display:none;">
+        </div>
+    </div>
+
+    <div id="loadingSection" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <div>ファイルを解析中...</div>
+    </div>
+
+    <div id="previewSection" style="display:none;">
+
+        <div class="analysis-meta">
+            <span id="fileInfo"></span>
+            <span class="badge" id="periodBadge"></span>
+        </div>
+
+        <div id="fallbackInfo" class="warning-msg" style="display:none;"></div>
+
+        <div class="section-card">
+            <div class="section-title">利用者基本情報</div>
+            <div class="field-row">
+                <label>利用者氏名 <span class="field-status" data-field-status="user_name"></span></label>
+                <input type="text" data-field="user_name">
+            </div>
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>フリガナ <span class="field-status" data-field-status="user_name_kana"></span></label>
+                    <input type="text" data-field="user_name_kana">
+                </div>
+                <div class="field-row">
+                    <label>性別 <span class="field-status" data-field-status="gender"></span></label>
+                    <input type="text" data-field="gender">
+                </div>
+            </div>
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>生年月日 <span class="field-status" data-field-status="birthday"></span></label>
+                    <input type="date" data-field="birthday">
+                </div>
+                <div class="field-row">
+                    <label>要介護度 <span class="field-status" data-field-status="care_level_text"></span></label>
+                    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:4px;">
+                        <input type="text" data-field="care_level_text" placeholder="要介護">
+                        <input type="text" data-field="care_level_num" placeholder="1">
+                    </div>
+                </div>
+            </div>
+            <div class="field-row">
+                <label>利用曜日・時間帯 <span class="field-status" data-field-status="usage_weekday"></span></label>
+                <input type="text" data-field="usage_weekday" placeholder="例: 火・午前">
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">長期目標</div>
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>期間 From</label>
+                    <input type="date" data-field="long_goal_period_from">
+                </div>
+                <div class="field-row">
+                    <label>期間 To</label>
+                    <input type="date" data-field="long_goal_period_to">
+                </div>
+            </div>
+            <div class="field-row">
+                <label>機能 <span class="field-status" data-field-status="long_goal_function"></span></label>
+                <textarea data-field="long_goal_function"></textarea>
+            </div>
+            <div class="field-row">
+                <label>活動 <span class="field-status" data-field-status="long_goal_activity"></span></label>
+                <textarea data-field="long_goal_activity"></textarea>
+            </div>
+            <div class="field-row">
+                <label>参加 <span class="field-status" data-field-status="long_goal_participation"></span></label>
+                <textarea data-field="long_goal_participation"></textarea>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">短期目標</div>
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>期間 From</label>
+                    <input type="date" data-field="short_goal_period_from">
+                </div>
+                <div class="field-row">
+                    <label>期間 To</label>
+                    <input type="date" data-field="short_goal_period_to">
+                </div>
+            </div>
+            <div class="field-row">
+                <label>機能 <span class="field-status" data-field-status="short_goal_function"></span></label>
+                <textarea data-field="short_goal_function"></textarea>
+            </div>
+            <div class="field-row">
+                <label>活動 <span class="field-status" data-field-status="short_goal_activity"></span></label>
+                <textarea data-field="short_goal_activity"></textarea>
+            </div>
+            <div class="field-row">
+                <label>参加 <span class="field-status" data-field-status="short_goal_participation"></span></label>
+                <textarea data-field="short_goal_participation"></textarea>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">支援内容（モニタリング項目①〜④）</div>
+            <div class="field-row">
+                <label>① <span class="field-status" data-field-status="support_content_1"></span></label>
+                <textarea data-field="support_content_1"></textarea>
+            </div>
+            <div class="field-row">
+                <label>② <span class="field-status" data-field-status="support_content_2"></span></label>
+                <textarea data-field="support_content_2"></textarea>
+            </div>
+            <div class="field-row">
+                <label>③ <span class="field-status" data-field-status="support_content_3"></span></label>
+                <textarea data-field="support_content_3"></textarea>
+            </div>
+            <div class="field-row">
+                <label>④ <span class="field-status" data-field-status="support_content_4"></span></label>
+                <textarea data-field="support_content_4"></textarea>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn-secondary" onclick="window.importApp.reset()">別のファイルを選ぶ</button>
+            <button id="saveBtn" class="btn-primary">この内容で登録</button>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<script>
+(function() {
+    const app = {
+        currentData: null,
+        currentFilename: null,
+
+        init() {
+            const dropZone = document.getElementById("dropZone");
+            const fileInput = document.getElementById("fileInput");
+
+            dropZone.addEventListener("click", () => fileInput.click());
+            fileInput.addEventListener("change", (e) => {
+                if (e.target.files[0]) this.handleFile(e.target.files[0]);
+            });
+
+            dropZone.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropZone.classList.add("dragover");
+            });
+            dropZone.addEventListener("dragleave", () => {
+                dropZone.classList.remove("dragover");
+            });
+            dropZone.addEventListener("drop", (e) => {
+                e.preventDefault();
+                dropZone.classList.remove("dragover");
+                if (e.dataTransfer.files[0]) this.handleFile(e.dataTransfer.files[0]);
+            });
+
+            document.getElementById("saveBtn").addEventListener("click", () => this.save());
+        },
+
+        showError(msg) {
+            const el = document.getElementById("errorMsg");
+            el.textContent = msg;
+            el.classList.add("show");
+            setTimeout(() => el.classList.remove("show"), 5000);
+        },
+
+        showSuccess(msg) {
+            const el = document.getElementById("successMsg");
+            el.textContent = msg;
+            el.classList.add("show");
+        },
+
+        async handleFile(file) {
+            this.currentFilename = file.name;
+            
+            if (!/\.(xlsx|xlsm)$/i.test(file.name)) {
+                this.showError("xlsx または xlsm ファイルを選んでください");
+                return;
+            }
+
+            document.getElementById("uploadSection").style.display = "none";
+            document.getElementById("loadingSection").style.display = "block";
+
+            try {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                const res = await fetch("/api/patient-info/import/analyze", {
+                    method: "POST",
+                    headers: { "X-Requested-With": "XMLHttpRequest" },
+                    body: formData,
+                });
+                const json = await res.json();
+
+                if (!res.ok || json.error) {
+                    throw new Error(json.error || "解析に失敗しました");
+                }
+
+                this.currentData = json.extracted;
+                this.populateForm(json);
+
+                document.getElementById("loadingSection").style.display = "none";
+                document.getElementById("previewSection").style.display = "block";
+            } catch (e) {
+                document.getElementById("loadingSection").style.display = "none";
+                document.getElementById("uploadSection").style.display = "block";
+                this.showError(e.message);
+            }
+        },
+
+        populateForm(result) {
+            document.getElementById("fileInfo").textContent = result.filename || this.currentFilename;
+            const period = result.latest_period;
+            if (period) {
+                document.getElementById("periodBadge").textContent =
+                    `最新月: 令和${period.era_year}年${period.month}月`;
+            }
+
+            const extracted = result.extracted || {};
+            const missing = new Set(result.missing_fields || []);
+            const fieldSources = result.field_sources || {};
+            const latestSheet = result.latest_sheet_name;
+
+            document.querySelectorAll("[data-field]").forEach(el => {
+                const key = el.dataset.field;
+                el.value = extracted[key] || "";
+            });
+
+            // ステータスバッジ: 取得済 / 過去月から / 空欄
+            document.querySelectorAll("[data-field-status]").forEach(el => {
+                const key = el.dataset.fieldStatus;
+                if (missing.has(key)) {
+                    el.textContent = "空欄";
+                    el.className = "field-status status-missing";
+                } else if (fieldSources[key] && fieldSources[key] !== latestSheet) {
+                    el.textContent = "過去月から";
+                    el.className = "field-status status-fallback";
+                } else {
+                    el.textContent = "取得済";
+                    el.className = "field-status status-ok";
+                }
+            });
+            
+            // フォールバック情報を表示
+            const fallbackFields = [];
+            for (const [key, src] of Object.entries(fieldSources)) {
+                if (src !== latestSheet) {
+                    fallbackFields.push({key, src});
+                }
+            }
+            const fbDiv = document.getElementById("fallbackInfo");
+            if (fallbackFields.length > 0) {
+                const items = fallbackFields.map(f => `  ・${f.key} ← ${f.src}`).join("<br>");
+                fbDiv.innerHTML = `<strong>注意:</strong> 最新月に値が無かったため、過去月から補完した項目があります:<br>${items}`;
+                fbDiv.style.display = "block";
+            } else {
+                fbDiv.style.display = "none";
+            }
+        },
+
+        collectFormData() {
+            const data = {};
+            document.querySelectorAll("#previewSection [data-field]").forEach(el => {
+                data[el.dataset.field] = el.value;
+            });
+            return data;
+        },
+
+        async save() {
+            const edited = this.collectFormData();
+
+            if (!edited.user_name) {
+                this.showError("利用者氏名を入力してください");
+                return;
+            }
+
+            const btn = document.getElementById("saveBtn");
+            btn.disabled = true;
+            btn.textContent = "登録中...";
+
+            try {
+                const res = await fetch("/api/patient-info/import/save", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: JSON.stringify({ extracted: edited }),
+                });
+                const json = await res.json();
+
+                if (!res.ok || json.error) {
+                    throw new Error(json.error || "登録に失敗しました");
+                }
+
+                this.showSuccess(`${json.user_name} さんのケアプランを登録しました`);
+                btn.textContent = "登録完了 ✓";
+            } catch (e) {
+                this.showError(e.message);
+                btn.disabled = false;
+                btn.textContent = "この内容で登録";
+            }
+        },
+
+        reset() {
+            this.currentData = null;
+            this.currentFilename = null;
+            document.getElementById("fileInput").value = "";
+            document.getElementById("previewSection").style.display = "none";
+            document.getElementById("uploadSection").style.display = "block";
+            document.querySelectorAll("[data-field]").forEach(el => el.value = "");
+        },
+    };
+
+    window.importApp = app;
+    app.init();
+})();
+</script>
+{% endblock %}

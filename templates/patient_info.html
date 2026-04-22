@@ -1,0 +1,518 @@
+{% extends "base.html" %}
+{% block title %}利用者情報 - TASUKARU{% endblock %}
+{% block nav_patient_info %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.patient-info-wrap { max-width: 680px; margin: 0 auto; }
+
+.info-msg { background: #e8f0fe; color: #1967d2; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; }
+.error-msg { background: #fce8e6; color: #c5221f; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
+.error-msg.show { display: block; }
+.success-msg { background: #e6f4ea; color: #1e8e3e; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
+.success-msg.show { display: block; }
+
+.section-card { background: #fff; border: 1.5px solid #e0e0e0; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.section-title { font-size: 0.88rem; font-weight: 700; color: #1a73e8; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e8eaed; display: flex; align-items: center; gap: 8px; }
+
+.field-row { margin-bottom: 10px; }
+.field-row label { font-size: 0.78rem; font-weight: 700; color: #5f6368; display: block; margin-bottom: 4px; }
+.field-row select, .field-row input, .field-row textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #e0e0e0; font-size: 0.92rem; background: #fff; box-sizing: border-box; }
+.field-row textarea { min-height: 70px; font-family: inherit; resize: vertical; }
+.field-row input:focus, .field-row select:focus, .field-row textarea:focus { outline: none; border-color: #1a73e8; }
+.field-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+
+.btn-primary { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 12px; font-size: 0.96rem; font-weight: 700; cursor: pointer; }
+.btn-primary:hover { background: #1557b0; }
+.btn-primary:disabled { background: #bbb; cursor: not-allowed; }
+
+.goal-section-hint { font-size: 0.72rem; color: #5f6368; margin-bottom: 10px; line-height: 1.5; }
+
+/* 検索UI */
+.search-container { position: relative; margin-bottom: 8px; }
+.search-input {
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    border: 1.5px solid #e0e0e0; font-size: 0.96rem; background: #fff;
+    box-sizing: border-box;
+}
+.search-input:focus { outline: none; border-color: #1a73e8; }
+.search-candidates {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    background: #fff; border: 1.5px solid #1a73e8; border-radius: 10px;
+    z-index: 100; max-height: 240px; overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px;
+}
+.candidate-item {
+    padding: 10px 14px; font-size: 0.88rem; cursor: pointer;
+    border-bottom: 1px solid #f0f0f0; color: #202124;
+}
+.candidate-item:last-child { border-bottom: none; }
+.candidate-item:hover { background: #f8fbff; }
+
+.chart-number { font-size: 0.72rem; color: #5f6368; }
+.patient-kana { font-size: 0.72rem; color: #5f6368; }
+
+.selected-patient {
+    background: #e8f0fe; color: #1967d2;
+    padding: 10px 14px; border-radius: 10px; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.88rem; font-weight: 700;
+}
+.selected-patient .clear-btn {
+    background: #fff; color: #1967d2; border: 1px solid #1967d2;
+    border-radius: 6px; padding: 3px 10px; font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.search-hint { font-size: 0.72rem; color: #5f6368; margin-top: 4px; }
+
+.period-hint {
+    font-size: 0.72rem; color: #1967d2; margin-top: 4px;
+    padding: 4px 8px; background: #e8f0fe; border-radius: 6px;
+    display: inline-block;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+<a href="/history" onclick="spaNav(event,'/history')" 
+   style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; 
+          background:#f1f3f4; color:#5f6368; text-decoration:none; 
+          border-radius:20px; font-size:0.82rem; font-weight:600; 
+          margin-bottom:12px;">
+    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+    モニタリング生成へ戻る
+</a>
+<div class="patient-info-wrap">
+
+    <h2 style="font-size:1.1rem; font-weight:700; color:#202124; margin-bottom:14px;">
+        <span class="material-symbols-outlined" style="vertical-align:middle; color:#1a73e8;">person_book</span>
+        利用者情報
+    </h2>
+
+    <div class="info-msg">
+        利用者ごとの長期目標・短期目標・支援内容を事前登録します。<br>
+        登録した情報は、モニタリング書類の生成時に自動で転記されます。
+    </div>
+
+    <div id="errorMsg" class="error-msg"></div>
+    <div id="successMsg" class="success-msg"></div>
+
+    <!-- 利用者検索 -->
+    <div class="section-card">
+        <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">person_search</span>
+            利用者を検索
+        </div>
+        
+        <div id="selectedPatient" class="selected-patient" style="display:none;">
+            <span id="selectedPatientName"></span>
+            <button class="clear-btn" onclick="window.patientInfoApp.clearSelection()">変更</button>
+        </div>
+        
+        <div id="searchBox" class="search-container">
+            <input type="text" id="patientSearch" class="search-input"
+                placeholder="氏名・ふりがな・カルテ番号で検索"
+                autocomplete="off">
+            <div id="candidates" class="search-candidates"></div>
+        </div>
+        <div class="search-hint">
+            例: 「やまだ」「山田」「126」など、一部でもヒットします
+        </div>
+    </div>
+
+    <!-- ケアプラン編集エリア -->
+    <div id="planEditor" style="display:none;">
+
+        <!-- 要介護度（期間計算で使用） -->
+        <div class="section-card">
+            <div class="section-title">
+                <span class="material-symbols-outlined" style="font-size:20px;">info</span>
+                要介護度
+                <span id="careLevelBadge" style="margin-left:auto; font-size:0.72rem; background:#e8f0fe; color:#1967d2; padding:3px 10px; border-radius:10px;"></span>
+            </div>
+            <div class="field-row">
+                <label>区分（期間計算の自動判定に使用）</label>
+                <select id="careLevelSelect">
+                    <option value="">-- 選択 --</option>
+                    <option value="要介護">要介護（短期3ヶ月 / 長期6ヶ月）</option>
+                    <option value="要支援">要支援（短期1ヶ月 / 長期3ヶ月）</option>
+                    <option value="自立">自立（短期1ヶ月 / 長期3ヶ月）</option>
+                    <option value="事業対象者">事業対象者（短期1ヶ月 / 長期3ヶ月）</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">
+                <span class="material-symbols-outlined" style="font-size:20px;">flag</span>
+                長期目標
+            </div>
+            <div class="goal-section-hint" id="longGoalHint">
+                長期目標。ICF（機能・活動・参加）の視点で入力します。
+            </div>
+
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>期間 From</label>
+                    <input type="date" data-field="long_goal_period_from">
+                </div>
+                <div class="field-row">
+                    <label>期間 To（自動計算／手修正可）</label>
+                    <input type="date" data-field="long_goal_period_to">
+                </div>
+            </div>
+
+            <div class="field-row">
+                <label>機能（心身機能・身体構造）</label>
+                <textarea data-field="long_goal_function" placeholder="例: 歩行機能を維持する"></textarea>
+            </div>
+            <div class="field-row">
+                <label>活動（日常生活動作）</label>
+                <textarea data-field="long_goal_activity" placeholder="例: 屋外を自力で歩行できる"></textarea>
+            </div>
+            <div class="field-row">
+                <label>参加（社会参加）</label>
+                <textarea data-field="long_goal_participation" placeholder="例: 地域行事に参加できる"></textarea>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">
+                <span class="material-symbols-outlined" style="font-size:20px;">outlined_flag</span>
+                短期目標
+            </div>
+            <div class="goal-section-hint" id="shortGoalHint">
+                短期目標。長期目標に向けた具体的ステップ。
+            </div>
+
+            <div class="field-row-inline">
+                <div class="field-row">
+                    <label>期間 From</label>
+                    <input type="date" data-field="short_goal_period_from">
+                </div>
+                <div class="field-row">
+                    <label>期間 To（自動計算／手修正可）</label>
+                    <input type="date" data-field="short_goal_period_to">
+                </div>
+            </div>
+
+            <div class="field-row">
+                <label>機能</label>
+                <textarea data-field="short_goal_function" placeholder="例: 下肢筋力を維持する"></textarea>
+            </div>
+            <div class="field-row">
+                <label>活動</label>
+                <textarea data-field="short_goal_activity" placeholder="例: 屋内を見守りで歩行できる"></textarea>
+            </div>
+            <div class="field-row">
+                <label>参加</label>
+                <textarea data-field="short_goal_participation" placeholder="例: 集団体操に意欲的に参加する"></textarea>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">
+                <span class="material-symbols-outlined" style="font-size:20px;">list_alt</span>
+                支援内容（モニタリング項目①〜④）
+            </div>
+            <div class="goal-section-hint">
+                目標達成のための具体的な支援内容。モニタリング書類の①〜④に自動反映されます。<br>
+                日々のケース記録で「支援内容は…」と発言した内容は、特記事項に優先表記されます。
+            </div>
+
+            <div class="field-row">
+                <label>支援内容①</label>
+                <textarea data-field="support_content_1"></textarea>
+            </div>
+            <div class="field-row">
+                <label>支援内容②</label>
+                <textarea data-field="support_content_2"></textarea>
+            </div>
+            <div class="field-row">
+                <label>支援内容③</label>
+                <textarea data-field="support_content_3"></textarea>
+            </div>
+            <div class="field-row">
+                <label>支援内容④</label>
+                <textarea data-field="support_content_4"></textarea>
+            </div>
+        </div>
+
+        <button id="saveBtn" class="btn-primary">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>
+            この内容で保存
+        </button>
+    </div>
+
+</div>
+</div>
+
+<script>
+const PATIENTS = {{ patients | tojson }};
+
+(function() {
+    const app = {
+        currentPatient: null,
+        
+        init() {
+            const input = document.getElementById("patientSearch");
+            input.addEventListener("input", (e) => this.search(e.target.value));
+            input.addEventListener("focus", (e) => {
+                if (e.target.value.trim()) this.search(e.target.value);
+            });
+            
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".search-container")) {
+                    const cands = document.getElementById("candidates");
+                    if (cands) cands.style.display = "none";
+                }
+            });
+            
+            document.getElementById("saveBtn").addEventListener("click", () => this.save());
+            
+            // 期間自動計算
+            this.setupPeriodAutoCalc();
+        },
+        
+        // ---- 期間自動計算 ----
+        setupPeriodAutoCalc() {
+            const shortFrom = document.querySelector('[data-field="short_goal_period_from"]');
+            shortFrom.addEventListener("change", () => {
+                this.autoCalcEndDate("short", shortFrom.value);
+            });
+            
+            const longFrom = document.querySelector('[data-field="long_goal_period_from"]');
+            longFrom.addEventListener("change", () => {
+                this.autoCalcEndDate("long", longFrom.value);
+            });
+            
+            // 要介護度が変わったらFromが入っていれば再計算
+            const careLevel = document.getElementById("careLevelSelect");
+            careLevel.addEventListener("change", () => {
+                this.updateCareLevelBadge();
+                if (shortFrom.value) this.autoCalcEndDate("short", shortFrom.value);
+                if (longFrom.value) this.autoCalcEndDate("long", longFrom.value);
+            });
+        },
+        
+        // 要介護度バッジの表示
+        updateCareLevelBadge() {
+            const sel = document.getElementById("careLevelSelect");
+            const badge = document.getElementById("careLevelBadge");
+            if (!sel.value) {
+                badge.style.display = "none";
+                return;
+            }
+            const isCare = sel.value === "要介護";
+            badge.textContent = isCare ? "短期3ヶ月 / 長期6ヶ月" : "短期1ヶ月 / 長期3ヶ月";
+            badge.style.display = "inline-block";
+        },
+        
+        // 開始日から月数分後の日付を計算（同日）
+        calcEndDate(startDateStr, months) {
+            if (!startDateStr) return "";
+            const d = new Date(startDateStr);
+            if (isNaN(d.getTime())) return "";
+            const originalDay = d.getDate();
+            d.setMonth(d.getMonth() + months);
+            // 月末跨ぎ補正（1/31 + 1ヶ月 → 3/3 を回避して 2/28 に）
+            if (d.getDate() !== originalDay) {
+                d.setDate(0);
+            }
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            return `${y}-${m}-${dd}`;
+        },
+        
+        // From変更時に To を自動計算・上書き
+        autoCalcEndDate(kind, fromValue) {
+            if (!fromValue) return;
+            const careLevel = document.getElementById("careLevelSelect").value;
+            if (!careLevel) return;  // 要介護度が未選択なら何もしない
+            
+            const isCare = careLevel === "要介護";
+            const months = kind === "short" 
+                ? (isCare ? 3 : 1)
+                : (isCare ? 6 : 3);
+            
+            const calculated = this.calcEndDate(fromValue, months);
+            const toInput = document.querySelector(`[data-field="${kind}_goal_period_to"]`);
+            toInput.value = calculated;
+        },
+        
+        // 要介護度を自動推定（利用者情報から取得できた場合）
+        inferCareLevel(patient) {
+            // patient_care_plansテーブルまたは patients テーブル経由で
+            // 要介護度情報を取得できる想定だが、現状そのカラムは無い
+            // → ユーザーに手動で選んでもらう
+            return "";
+        },
+        
+        showError(msg) {
+            const el = document.getElementById("errorMsg");
+            el.textContent = msg;
+            el.classList.add("show");
+            setTimeout(() => el.classList.remove("show"), 5000);
+        },
+        
+        showSuccess(msg) {
+            const el = document.getElementById("successMsg");
+            el.textContent = msg;
+            el.classList.add("show");
+            setTimeout(() => el.classList.remove("show"), 3000);
+        },
+        
+        search(q) {
+            const cands = document.getElementById("candidates");
+            if (!q.trim()) {
+                cands.style.display = "none";
+                return;
+            }
+            const ql = q.toLowerCase();
+            const hits = PATIENTS.filter(p => {
+                const name = (p.user_name || "").toLowerCase();
+                const kana = (p.user_kana || "").toLowerCase();
+                const chart = String(p.chart_number || "").toLowerCase();
+                return name.includes(ql) || kana.includes(ql) || chart.includes(ql) ||
+                       (p.user_name || "").includes(q) || (p.user_kana || "").includes(q);
+            }).slice(0, 10);
+            
+            if (!hits.length) {
+                cands.innerHTML = '<div class="candidate-item" style="color:#80868b;">該当する利用者がいません</div>';
+                cands.style.display = "block";
+                return;
+            }
+            
+            cands.innerHTML = hits.map((p, idx) => `
+                <div class="candidate-item" data-idx="${idx}">
+                    <div>
+                        <span class="chart-number">(No.${p.chart_number})</span>
+                        <strong>${this.esc(p.user_name)}</strong>
+                    </div>
+                    <div class="patient-kana">${this.esc(p.user_kana || "")}</div>
+                </div>
+            `).join("");
+            cands.style.display = "block";
+            
+            cands.querySelectorAll(".candidate-item").forEach((el, idx) => {
+                el.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    this.selectPatient(hits[idx]);
+                });
+            });
+        },
+        
+        esc(s) {
+            return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        },
+        
+        async selectPatient(patient) {
+            this.currentPatient = patient;
+            
+            document.getElementById("searchBox").style.display = "none";
+            document.getElementById("candidates").style.display = "none";
+            document.getElementById("selectedPatient").style.display = "flex";
+            document.getElementById("selectedPatientName").textContent = 
+                `(No.${patient.chart_number}) ${patient.user_name}`;
+            document.getElementById("planEditor").style.display = "block";
+            
+            this.clearForm();
+            try {
+                const displayValue = patient.value || `[${patient.user_name}]`;
+                const res = await fetch(`/api/patient-info/get?patient=${encodeURIComponent(displayValue)}`, {
+                    headers: { "X-Requested-With": "XMLHttpRequest" },
+                });
+                const json = await res.json();
+                if (!res.ok || json.error) {
+                    throw new Error(json.error || "取得に失敗しました");
+                }
+                this.populateForm(json.care_plan);
+            } catch (e) {
+                this.showError(e.message);
+            }
+        },
+        
+        clearSelection() {
+            this.currentPatient = null;
+            document.getElementById("searchBox").style.display = "block";
+            document.getElementById("selectedPatient").style.display = "none";
+            document.getElementById("planEditor").style.display = "none";
+            document.getElementById("patientSearch").value = "";
+            document.getElementById("patientSearch").focus();
+            this.clearForm();
+        },
+        
+        clearForm() {
+            document.querySelectorAll("#planEditor [data-field]").forEach(el => el.value = "");
+            document.getElementById("careLevelSelect").value = "";
+            this.updateCareLevelBadge();
+        },
+        
+        populateForm(data) {
+            if (!data) {
+                this.clearForm();
+                return;
+            }
+            document.querySelectorAll("#planEditor [data-field]").forEach(el => {
+                const key = el.dataset.field;
+                el.value = data[key] || "";
+            });
+            // care_levelがDBに保存されていれば復元
+            if (data.care_level_category) {
+                document.getElementById("careLevelSelect").value = data.care_level_category;
+                this.updateCareLevelBadge();
+            }
+        },
+        
+        collectFormData() {
+            const data = { user_name: this.currentPatient.user_name };
+            data.chart_number = this.currentPatient.chart_number;
+            data.care_level_category = document.getElementById("careLevelSelect").value;
+            document.querySelectorAll("#planEditor [data-field]").forEach(el => {
+                data[el.dataset.field] = el.value;
+            });
+            return data;
+        },
+        
+        async save() {
+            if (!this.currentPatient) {
+                this.showError("利用者を選択してください");
+                return;
+            }
+            
+            const btn = document.getElementById("saveBtn");
+            btn.disabled = true;
+            btn.textContent = "保存中...";
+            
+            try {
+                const res = await fetch("/api/patient-info/save", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: JSON.stringify(this.collectFormData()),
+                });
+                const json = await res.json();
+                if (!res.ok || json.error) {
+                    throw new Error(json.error || "保存に失敗しました");
+                }
+                this.showSuccess("保存しました ✓");
+            } catch (e) {
+                this.showError(e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span> この内容で保存';
+            }
+        },
+    };
+    
+    window.patientInfoApp = app;
+    app.init();
+})();
+</script>
+{% endblock %}

@@ -8,19 +8,48 @@
     TOP画面へ
 </a>
 
-<div class="page-title">
-    <span class="material-symbols-outlined">monitoring</span>
-    モニタリング生成
+<div class="page-title" style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined">monitoring</span>
+        モニタリング生成
+    </div>
+    <button type="button" onclick="toggleGearMenu(event)"
+        style="background:#f1f3f4; border:none; border-radius:50%; width:36px; height:36px;
+               display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;">
+        <span class="material-symbols-outlined" style="font-size:20px; color:#5f6368;">settings</span>
+    </button>
+    <div id="gearMenu" style="display:none; position:absolute; top:46px; right:0;
+        background:#fff; border:1.5px solid #e0e0e0; border-radius:12px;
+        box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:1000; min-width:200px; padding:6px;">
+        <a href="/monitoring"
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px;
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">description</span>
+            AI書類作成
+        </a>
+        <a href="/patient-info"
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px;
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">person_book</span>
+            利用者情報
+        </a>
+        <a href="/patient-info/import"
+           style="display:flex; align-items:center; gap:10px; padding:10px 12px;
+                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">upload_file</span>
+            Excel取込
+        </a>
+    </div>
 </div>
 
 <div class="form-group">
     <label class="form-label">
         <span class="material-symbols-outlined">person</span>
-        利用者を選択（ひらがな・漢字・カルテ番号で検索）
+        利用者を選択(ひらがな・漢字・カルテ番号で検索)
     </label>
     <div style="position:relative;">
         <input type="text" id="patient-search" class="form-control"
-            placeholder="例：やまだ / 山田 / 001"
+            placeholder="例:やまだ / 山田 / 001"
             oninput="searchPatient(this.value)"
             onfocus="searchPatient(this.value)"
             autocomplete="off">
@@ -33,12 +62,11 @@
     <div id="patient-selected-badge" style="display:none; margin-top:8px;
         padding:10px 14px; background:#e8f0fe; border-radius:10px;
         font-size:0.88rem; font-weight:600; color:#1557b0;
-        display:none; align-items:center; gap:8px;">
+        align-items:center; gap:8px;">
         <span class="material-symbols-outlined">person</span>
         <span id="patient-selected-label"></span>
         <span onclick="clearPatient()" style="margin-left:auto; cursor:pointer; font-size:0.78rem; color:#80868b;">変更</span>
     </div>
-    <!-- 隠しselect（既存のJS互換性のため） -->
     <select id="patient-select" style="display:none;" onchange="onPatientChange()">
         <option value="">---</option>
         {% for p in patients %}
@@ -81,7 +109,7 @@
     </button>
 </div>
 
-<div id="loading" style="display:none;" class="alert alert-info" style="margin-top:1rem;">
+<div id="loading" style="display:none; margin-top:1rem;" class="alert alert-info">
     <span class="material-symbols-outlined">hourglass_top</span>
     AIが集計中です...
 </div>
@@ -91,7 +119,7 @@
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
-            生成結果（編集可能）
+            生成結果(編集可能)
         </label>
         <textarea class="form-control" id="result-text" style="min-height:200px;">{{ result }}</textarea>
     </div>
@@ -109,7 +137,20 @@
 
 {% block extra_script %}
 <script>
-// ========== 患者テキスト検索 ==========
+window.toggleGearMenu = function(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('gearMenu');
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('gearMenu');
+    if (menu && menu.style.display !== 'none' && !e.target.closest('#gearMenu') && !e.target.closest('[onclick*="toggleGearMenu"]')) {
+        menu.style.display = 'none';
+    }
+});
+</script>
+<script>
 const HISTORY_PATIENTS = [
     {% for p in patients %}
     { value: {{ p.value | tojson }}, label: {{ p.label | tojson }},
@@ -177,7 +218,6 @@ document.addEventListener('click', e => {
         setTimeout(() => { const c = document.getElementById('patient-candidates'); if(c) c.style.display = 'none'; }, 200);
     }
 });
-// ========================================
 
 function onPatientChange() {
     const v = document.getElementById('patient-select').value;
@@ -185,26 +225,23 @@ function onPatientChange() {
 }
 window.onPatientChange = onPatientChange;
 
-function updateCharBtn(el) {
+window.updateCharBtn = function(el) {
     document.querySelectorAll('input[name="char_limit"]').forEach(r => {
         r.parentElement.style.borderColor = r.checked ? '#1a73e8' : '#E0E0E0';
         r.parentElement.style.color = r.checked ? '#1a73e8' : '#202124';
         r.parentElement.style.background = r.checked ? '#e8f0fe' : '#fff';
     });
-}
-// 初期化
-document.querySelectorAll('input[name="char_limit"]').forEach(r => { if(r.checked) updateCharBtn(r); });
+};
+document.querySelectorAll('input[name="char_limit"]').forEach(r => { if(r.checked) window.updateCharBtn(r); });
 
 async function generateMonitoring() {
     const patient = document.getElementById('patient-select').value;
     const month = document.getElementById('month-select').value;
     const charLimit = document.querySelector('input[name="char_limit"]:checked').value;
     if (!patient) return;
-
     document.getElementById('gen-btn').disabled = true;
     document.getElementById('loading').style.display = 'flex';
     document.getElementById('result-area').style.display = 'none';
-
     try {
         const res = await fetch('/api/generate_monitoring', {
             method: 'POST',
@@ -238,6 +275,7 @@ function copyResult() {
     });
 }
 window.copyResult = copyResult;
+
 })();
 </script>
 {% endblock %}

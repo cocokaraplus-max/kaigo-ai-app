@@ -5,3 +5,21 @@ __pycache__/
 .venv/
 .DS_Store
 IMG_3965.PNG
+setenv.sh
+
+# バックアップ・一時ファイル
+*.bak
+*.backup
+*.backup-*
+*.bak-*
+*.broken_backup
+*.orig
+*~
+
+# エディタ一時
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db

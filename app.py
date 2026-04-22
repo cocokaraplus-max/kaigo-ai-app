@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, current_app
 from supabase import create_client
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
@@ -9,6 +9,19 @@ import json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
+
+# ============================================================
+# HTMLno-cache
+# ============================================================
+@app.after_request
+def add_no_cache_headers(response):
+    ct = response.headers.get('Content-Type', '')
+    if 'text/html' in ct:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
 
@@ -60,72 +73,28 @@ def login_required(f):
     return decorated
 
 def render(template, **kwargs):
-    """partialパラメータがあればJSON形式でコンテンツのみ返す"""
+    """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
-        import re as _re
-        html = render_template(template, **kwargs)
+        tmpl = current_app.jinja_env.get_template(template)
+        ctx = tmpl.new_context(kwargs)
 
-        # <style>タグを抽出（base.htmlのものは除く）
-        styles = _re.findall(r'<style[^>]*>(.*?)</style>', html, _re.DOTALL)
-        # 最初のstyleはbase.htmlの共通CSS、2つ目以降がページ固有
-        page_styles = styles[1:] if len(styles) > 1 else []
-        style = '<style>' + '\n'.join(page_styles) + '</style>' if page_styles else ''
+        def render_block(name):
+            if name in tmpl.blocks:
+                try:
+                    return "".join(tmpl.blocks[name](ctx))
+                except Exception as e:
+                    print(f"[render partial] block {name} error: {e}")
+                    return ""
+            return ""
 
-        # page-wrapperの中身を抽出（終了タグまで）
-        content_match = _re.search(
-            r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>\s*\n\s*\n\s*(?:<!--.*?-->)?\s*\{%',
-            html, _re.DOTALL
-        )
-        if not content_match:
-            # 別パターン：page-wrapperからnavタグまで
-            content_match = _re.search(
-                r'<div class=["\']page-wrapper["\'][^>]*>(.*?)</div>(?:\s|\n)*<(?:nav|script)',
-                html, _re.DOTALL
-            )
-        if not content_match:
-            # フォールバック：bodyの最初のdivの中身
-            content_match = _re.search(
-                r'<div class=["\']page-wrapper["\'][^>]*>(.*)',
-                html, _re.DOTALL
-            )
-            if content_match:
-                raw = content_match.group(1)
-                # page-wrapperの閉じタグを探す
-                depth = 1
-                pos = 0
-                result = []
-                while pos < len(raw) and depth > 0:
-                    open_tag = raw.find('<div', pos)
-                    close_tag = raw.find('</div>', pos)
-                    if close_tag == -1:
-                        break
-                    if open_tag != -1 and open_tag < close_tag:
-                        depth += 1
-                        result.append(raw[pos:open_tag + 4])
-                        pos = open_tag + 4
-                    else:
-                        depth -= 1
-                        if depth > 0:
-                            result.append(raw[pos:close_tag + 6])
-                        else:
-                            result.append(raw[pos:close_tag])
-                        pos = close_tag + 6
-                content = ''.join(result).strip()
-            else:
-                content = html
-        else:
-            content = content_match.group(1).strip()
-
-        # <script>タグを抽出（SPAルーター以外を全部結合）
-        scripts = _re.findall(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL)
-        # SPAルーターを含まないスクリプトのみ全部結合
-        page_scripts = [s for s in scripts if 'navigateTo' not in s and 'SPAルーター' not in s]
-        script = '<script>' + '\n'.join(page_scripts) + '</script>' if page_scripts else ''
+        content_block = render_block("content")
+        style_block = render_block("extra_style")
+        script_block = render_block("extra_script")
 
         return jsonify({
-            "style": style,
-            "content": content,
-            "script": script,
+            "content": content_block,
+            "style": style_block,
+            "script": script_block,
         })
     return render_template(template, **kwargs)
 
@@ -1615,17 +1584,63 @@ def api_save_calendar_event():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/delete_calendar_event', methods=['POST'])
-@login_required
-def api_delete_calendar_event():
+@app.route('/api/delete_calendar', methods=['POST'])
+def api_delete_calendar():
     try:
         data = request.json
+        calendar_id = data.get('id')
         f_code = session["f_code"]
+        my_name = session["my_name"]
         supabase = get_supabase()
-        supabase.table("calendar_events").delete().eq("id", data["id"]).eq("facility_code", f_code).execute()
+        
+        # カレンダーの所有者確認
+        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+            return jsonify({"status": "error", "message": "削除権限がありません"}), 403
+        
+        # 関連する予定を削除
+        supabase.table("calendar_events").delete().eq("calendar_id", calendar_id).execute()
+        
+        # カレンダーメンバーを削除
+        supabase.table("calendar_members").delete().eq("calendar_id", calendar_id).execute()
+        
+        # カレンダーを削除
+        supabase.table("calendars").delete().eq("id", calendar_id).execute()
+        
         return jsonify({"status": "success"})
+        
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/update_calendar', methods=['POST'])
+def api_update_calendar():
+    try:
+        data = request.json
+        calendar_id = data.get('id')
+        name = data.get('name')
+        color = data.get('color')
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        
+        # カレンダーの所有者確認
+        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+            return jsonify({"status": "error", "message": "編集権限がありません"}), 403
+        
+        # カレンダー更新
+        update_data = {}
+        if name:
+            update_data["name"] = name
+        if color:
+            update_data["color"] = color
+            
+        supabase.table("calendars").update(update_data).eq("id", calendar_id).execute()
+        
+        return jsonify({"status": "success"})
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/save_calendar', methods=['POST'])
 @login_required
@@ -2263,14 +2278,17 @@ def admin():
 @app.route('/mapping')
 @login_required
 def mapping():
-    import os
+    import os, json
+    from flask import Response
     html = open('static/mapping.html', encoding='utf-8').read()
-    su = os.environ.get('SUPABASE_URL', '')
-    sk = os.environ.get('SUPABASE_KEY', '')
-    fc = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
-    cfg = f'<script>window.TASUKARU_CONFIG={{supabaseUrl:"{su}",supabaseKey:"{sk}",facilityCode:"{fc}"}};</script>'
+    config = json.dumps({
+        'supabaseUrl': os.environ.get('SUPABASE_URL', ''),
+        'supabaseKey': os.environ.get('SUPABASE_KEY', ''),
+        'facilityCode': os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    })
+    cfg = '<script>window.TASUKARU_CONFIG=' + config + ';</script>'
     html = html.replace('</head>', cfg + '</head>', 1)
-    return html
+    return Response(html, mimetype='text/html')
 
 @app.route('/help')
 @login_required
@@ -3374,5 +3392,15 @@ def api_tasks_projects_delete():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+from monitoring_integration import register_monitoring_routes
+register_monitoring_routes(app)
+
+from patient_info_integration import register_patient_info_routes
+register_patient_info_routes(app)
+
+from patient_info_import_integration import register_import_routes
+register_import_routes(app)
+
 if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)

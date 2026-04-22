@@ -197,6 +197,7 @@
   .col-row { width: 26px; }
   .col-a { width: 8px; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -229,10 +230,16 @@
       <option value="monitoring">モニタリング報告書</option>
       <option value="case_record">ケース記録</option>
     </select>
+    <label id="excel-upload-btn" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#059669;color:#fff;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:8px;" title=".xlsx/.xls/.csvを読み込む">
+      <span class="material-symbols-outlined" style="font-size:16px">upload_file</span>
+      Excel&#12288;&#35501;&#12415;&#36796;&#12416;
+      <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleExcelUpload(event)">
+    </label>
+    <span id="excel-status" style="font-size:0.78rem;color:#6b7280;margin-left:6px;"></span>
     <div class="divider"></div>
     <div class="toolbar-hint">
       <span class="material-symbols-outlined">info</span>
-      左のフィールドをクリック選択 → 黄色いセルをクリックで対応付け（ドラッグ&ドロップも可）
+      左のフィールドをクリック選択 -> 黄色いセルをクリックで対応付け（ドラッグ&ドロップも可）
     </div>
   </div>
 
@@ -318,7 +325,7 @@
       <div id="preview-wrap">
         <div id="preview-header">
           <span class="material-symbols-outlined">table_chart</span>
-          モニタリング報告書 — セルをクリックしてフィールドを割り当て
+          モニタリング報告書 -- セルをクリックしてフィールドを割り当て
         </div>
         <div style="overflow-x:auto">
           <table id="sheet-grid">
@@ -405,7 +412,7 @@ const LAYOUTS = {
     ]},
     {r:6, label:'6', cells:[
       {c:2,cs:6,text:''},
-      {c:8,cs:6,text:'愛知県豊田市丸山町…',style:'background:#f8fafc;font-size:10px'}
+      {c:8,cs:6,text:'愛知県豊田市丸山町...',style:'background:#f8fafc;font-size:10px'}
     ]},
     {r:7, label:'7', cells:[
       {c:2,cs:6,text:''},
@@ -488,12 +495,12 @@ const LAYOUTS = {
       {c:3,cs:10,text:'評価目安',cls:'header-cell'}
     ]},
     {r:28, label:'28', cells:[
-      {c:2,cs:1,text:'①',cls:'header-cell'},
+      {c:2,cs:1,text:'(1)',cls:'header-cell'},
       {c:3,cs:9,text:'',drop:false},
       {c:12,cs:2,text:'達成状況',cls:'header-cell',style:'text-align:center'}
     ]},
     {r:29, label:'29', cells:[
-      {c:2,cs:1,text:'②',cls:'header-cell'},
+      {c:2,cs:1,text:'(2)',cls:'header-cell'},
       {c:3,cs:9,text:'',drop:false},
       {c:12,cs:2,text:'',key:'achievement',drop:true}
     ]},
@@ -519,6 +526,51 @@ function buildGrid() {
   const tbody = document.getElementById('grid-body');
   tbody.innerHTML = '';
   const layout = LAYOUTS[document.getElementById('sheet-selector').value] || LAYOUTS.monitoring;
+
+  // colgroupを動的に再構築（Excelの列幅を反映）
+  const table = document.getElementById('sheet-grid');
+  const isCustom = document.getElementById('sheet-selector').value.startsWith('custom_');
+  if (isCustom && layout.length > 0) {
+    // 全セルから最大列数と各列幅を計算
+    const colWidths = {};
+    layout.forEach(function(row) {
+      row.cells.forEach(function(cell) {
+        if (cell.cs === 1) {
+          // 単一セルの場合のみ列幅を取得
+          var w = null;
+          if (cell.style) {
+            var m = cell.style.match(/min-width:(\d+)px/);
+            if (m) w = parseInt(m[1]);
+          }
+          if (w && !colWidths[cell.c]) colWidths[cell.c] = w;
+        }
+      });
+    });
+    // 最大列番号を算出
+    var maxCol = 1;
+    layout.forEach(function(row) {
+      row.cells.forEach(function(cell) {
+        maxCol = Math.max(maxCol, cell.c + (cell.cs || 1) - 1);
+      });
+    });
+    // colgroupを再構築
+    var cg = table.querySelector('colgroup');
+    if (cg) {
+      cg.innerHTML = '<col style="width:28px">'; // 行番号列
+      for (var ci = 1; ci <= maxCol; ci++) {
+        var w = colWidths[ci] || 48;
+        cg.innerHTML += '<col style="width:' + w + 'px">';
+      }
+    }
+    // テーブル幅をコンテンツに合わせる
+    var totalW = 28;
+    for (var ci = 1; ci <= maxCol; ci++) totalW += colWidths[ci] || 48;
+    table.style.width = Math.max(totalW, 600) + 'px';
+    table.style.tableLayout = 'fixed';
+  } else {
+    // 通常テンプレートは元のcolgroupに戻す
+    table.style.width = '100%';
+  }
 
   layout.forEach(row => {
     const tr = document.createElement('tr');
@@ -555,6 +607,65 @@ function buildGrid() {
         setupInteraction(td);
       } else {
         td.textContent = cell.text || '';
+        // カスタムレイアウト: クリックでdroppable切替 / ダブルクリックで編集
+        const isCustom = document.getElementById('sheet-selector').value.startsWith('custom_');
+        if (isCustom) {
+          td.style.cursor = 'pointer';
+          // シングルクリック: droppable切替
+          td.addEventListener('click', function(e) {
+            if (e.detail === 2) return; // ダブルクリックは別処理
+            if (selectedField) {
+              // フィールド選択中ならそのままマッピング
+              cell.drop = true;
+              cell.key = cell.key || ('custom_' + row.label + '_' + cell.c);
+              td.dataset.key = cell.key;
+              td.classList.add('droppable');
+              td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+              setupInteraction(td);
+              applyMapping(cell.key, td, selectedField);
+              clearSelection();
+            } else {
+              // フィールド未選択: 黄色切替
+              if (td.classList.contains('droppable')) {
+                td.classList.remove('droppable');
+                cell.drop = false;
+                td.textContent = cell.text || '';
+                td.style.background = '';
+                td.style.outline = '';
+              } else {
+                cell.drop = true;
+                cell.key = cell.key || ('custom_' + row.label + '_' + cell.c);
+                td.dataset.key = cell.key;
+                td.classList.add('droppable');
+                td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+                setupInteraction(td);
+              }
+            }
+          });
+          // ダブルクリック: テキスト直接編集
+          td.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            const current = cell.text || '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = current;
+            input.style.cssText = 'width:100%;border:none;outline:2px solid #2563eb;font-size:inherit;padding:2px;box-sizing:border-box;background:#eff6ff;';
+            td.innerHTML = '';
+            td.appendChild(input);
+            input.focus();
+            input.select();
+            function finishEdit() {
+              cell.text = input.value;
+              td.textContent = cell.text;
+              td.style.cursor = 'pointer';
+            }
+            input.addEventListener('blur', finishEdit);
+            input.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') { input.blur(); }
+              if (e.key === 'Escape') { input.value = current; input.blur(); }
+            });
+          });
+        }
       }
       tr.appendChild(td);
       col += (cell.cs || 1);
@@ -567,7 +678,7 @@ function renderMapped(td, key) {
   td.classList.add('mapped');
   td.classList.remove('droppable');
   const m = mapping[key];
-  td.innerHTML = `<div class="mapped-chip"><span>${m.label}</span><button onclick="removeMapping('${key}')" title="削除">×</button></div>`;
+  td.innerHTML = `<div class="mapped-chip"><span>${m.label}</span><button onclick="removeMapping('${key}')" title="削除">x</button></div>`;
 }
 
 function setupInteraction(td) {
@@ -599,13 +710,28 @@ function applyMapping(key, td, field) {
   renderMapped(td, key);
   markFieldAssigned(field.field, true);
   updateUI();
-  showToast('check_circle', `${field.label} → ${addr} に設定しました`);
+  showToast('check_circle', `${field.label} -> ${addr} に設定しました`);
 }
 
 function removeMapping(key) {
   const field = mapping[key] ? mapping[key].field : null;
   delete mapping[key];
-  buildGrid();
+  // カスタムレイアウトの場合はセルをdroppable状態に戻す
+  const isCustom = document.getElementById('sheet-selector').value.startsWith('custom_');
+  if (isCustom) {
+    // keyに対応するtdを探してdroppableに戻す
+    const td = document.querySelector(`#grid-body td[data-key="${key}"]`);
+    if (td) {
+      td.classList.remove('mapped');
+      td.classList.add('droppable');
+      td.innerHTML = '<span class="drop-hint">+ クリックまたはドロップ</span>';
+      setupInteraction(td);
+    } else {
+      buildGrid();
+    }
+  } else {
+    buildGrid();
+  }
   if (field) markFieldAssigned(field, false);
   updateUI();
 }
@@ -636,9 +762,9 @@ function updateUI() {
   list.innerHTML = Object.entries(mapping).map(([k, v]) => `
     <div class="mapping-row">
       <span class="field">${v.label}</span>
-      <span class="arrow">→</span>
+      <span class="arrow">-></span>
       <span class="cell">${v.cell}</span>
-      <button class="remove" onclick="removeMapping('${k}')">×</button>
+      <button class="remove" onclick="removeMapping('${k}')">x</button>
     </div>
   `).join('');
 }
@@ -695,7 +821,7 @@ function loadSavedMapping() {
         if (cell.key) fieldToKey[cell.key] = cell.key;
       });
     });
-    // 保存データを復元（field→cell のマップなので変換）
+    // 保存データを復元（field->cell のマップなので変換）
     Object.entries(data).forEach(([field, cell]) => {
       // labelを探す
       const chip = document.querySelector(`.field-chip[data-field="${field}"]`);
@@ -715,7 +841,7 @@ document.querySelectorAll('.field-chip').forEach(chip => {
     clearSelection();
     selectedField = { field: chip.dataset.field, label: chip.dataset.label };
     chip.classList.add('selected');
-    showToast('ads_click', `"${chip.dataset.label}" を選択 — セルをクリックして対応付け`);
+    showToast('ads_click', `"${chip.dataset.label}" を選択 -- セルをクリックして対応付け`);
   });
 
   chip.addEventListener('dragstart', e => {
@@ -760,6 +886,177 @@ buildGrid();
 updateUI();
 // 保存済みのフィールドをassignedに
 Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
+
+;
+
+// xlsx シート -> LAYOUTS形式に変換
+
+// CSV -> LAYOUTS形式に変換
+function csvToLayout(text) {
+  const rows = text.split(chr(10)).filter(r => r.trim()).slice(0, 40);
+  return rows.map((row, ri) => {
+    const vals = row.split(',');
+    const cells = vals.slice(0, 15).map((v, ci) => ({
+      c: ci + 1,
+      cs: 1,
+      text: v.trim().replace(/^"|"$/g, ''),
+      drop: false
+    }));
+    return { r: ri + 1, label: String(ri + 1), cells };
+  });
+}
+
+
+// ============================================================
+// Excel / CSV アップロード機能
+// ============================================================
+window.handleExcelUpload = async function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('excel-status');
+  status.textContent = '読み込み中...';
+  status.style.color = '#6b7280';
+  try {
+    const buffer = await file.arrayBuffer();
+    let layout;
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      const text = new TextDecoder('utf-8').decode(buffer);
+      layout = csvToLayout(text);
+    } else {
+      const wb = XLSX.read(buffer, { type: 'array', cellStyles: true, cellDates: true, sheetRows: 60 });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      layout = sheetToLayout(ws);
+    }
+    const key = 'custom_' + Date.now();
+    const label = file.name.replace(/\.xlsx?|\.csv$/i, '').slice(0, 20);
+    LAYOUTS[key] = layout;
+    const sel = document.getElementById('sheet-selector');
+    Array.from(sel.options).forEach(function(o) {
+      if (o.value.startsWith('custom_')) sel.remove(o.index);
+    });
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = '* ' + label + ' (読み込み)';
+    sel.appendChild(opt);
+    sel.value = key;
+    buildGrid();
+    status.textContent = 'OK ' + label + ' を読み込みました！マッピングしたいセルをクリックしてください。';
+    status.style.color = '#059669';
+    event.target.value = '';
+  } catch(e) {
+    console.error(e);
+    status.textContent = 'NG 読み込み失敗: ' + e.message;
+    status.style.color = '#dc2626';
+  }
+};
+
+function sheetToLayout(ws) {
+  if (!ws['!ref']) return [];
+  var range = XLSX.utils.decode_range(ws['!ref']);
+  var merges = ws['!merges'] || [];
+
+  // ===== A4/A3基準のスケーリング =====
+  // 用紙幅: A4縦=794px A4横=1123px A3縦=1123px A3横=1587px
+  var PAGE_W = 794; // デフォルトA4縦
+  var ps = ws['!pageSetup'];
+  if (ps) {
+    if (ps.paperSize == 8 || ps.paperSize == 3) PAGE_W = 1123; // A3
+    if (ps.orientation === 'landscape') PAGE_W = PAGE_W === 794 ? 1123 : 1587;
+  }
+  // 実際の列幅合計を計算（印刷範囲内）
+  var cols = ws['!cols'] || [];
+  var totalWpx = 0;
+  var colWidths = [];
+  for (var ci = range.s.c; ci <= range.e.c; ci++) {
+    var col = cols[ci];
+    var w = col && col.wpx ? col.wpx : (col && col.width ? Math.round(col.width * 7) : 48);
+    colWidths.push(w);
+    totalWpx += w;
+  }
+  // スケール係数（印刷範囲が用紙幅に収まるよう）
+  var scale = totalWpx > 0 ? Math.min((PAGE_W - 20) / totalWpx, 2.0) : 1.0;
+
+  // マージ情報をマップ化
+  var mergeMap = {};
+  merges.forEach(function(m) {
+    for (var r = m.s.r; r <= m.e.r; r++) {
+      for (var c = m.s.c; c <= m.e.c; c++) {
+        if (r === m.s.r && c === m.s.c) {
+          mergeMap[r + '_' + c] = { cs: m.e.c - m.s.c + 1 };
+        } else {
+          mergeMap[r + '_' + c] = 'skip';
+        }
+      }
+    }
+  });
+
+  var layout = [];
+  var maxRow = Math.min(range.e.r, 59);
+
+  for (var r = range.s.r; r <= maxRow; r++) {
+    var rowInfo = ws['!rows'] && ws['!rows'][r];
+    var rowH = rowInfo && rowInfo.hpx ? Math.max(Math.round(rowInfo.hpx * scale), 16) : null;
+    var cells = [];
+    var c = range.s.c;
+    while (c <= range.e.c) {
+      var mk = r + '_' + c;
+      if (mergeMap[mk] === 'skip') { c++; continue; }
+      var addr = XLSX.utils.encode_cell({ r: r, c: c });
+      var cell = ws[addr];
+      var text = cell ? XLSX.utils.format_cell(cell) : '';
+      var colSpan = mergeMap[mk] ? mergeMap[mk].cs : 1;
+
+      // スケーリングした列幅
+      var colIdx = c - range.s.c;
+      var rawW = colWidths[colIdx] || 48;
+      var scaledW = Math.max(Math.round(rawW * scale), 20);
+
+      // スタイル構築
+      var style = 'font-size:11px;';
+      if (rowH) style += 'height:' + rowH + 'px;vertical-align:middle;';
+      style += 'min-width:' + scaledW + 'px;max-width:' + (scaledW * colSpan) + 'px;';
+
+      if (cell && cell.s) {
+        var s = cell.s;
+        if (s.fill && s.fill.fgColor && s.fill.fgColor.rgb && s.fill.fgColor.rgb.length >= 6) {
+          var bg = s.fill.fgColor.rgb.slice(-6);
+          if (bg !== 'FFFFFF' && bg !== 'ffffff') style += 'background:#' + bg + ';';
+        }
+        if (s.font) {
+          if (s.font.bold) style += 'font-weight:700;';
+          if (s.font.color && s.font.color.rgb && s.font.color.rgb.length >= 6) {
+            var fg = s.font.color.rgb.slice(-6);
+            if (fg !== '000000') style += 'color:#' + fg + ';';
+          }
+        }
+        if (s.alignment) {
+          if (s.alignment.horizontal === 'center') style += 'text-align:center;';
+          else if (s.alignment.horizontal === 'right') style += 'text-align:right;';
+          if (s.alignment.wrapText) style += 'white-space:pre-wrap;word-break:break-all;';
+        }
+      }
+
+      cells.push({ c: c - range.s.c + 1, cs: colSpan, text: text, style: style, drop: false });
+      c += colSpan;
+    }
+    if (cells.length > 0) {
+      layout.push({ r: r - range.s.r + 1, label: String(r + 1), cells: cells });
+    }
+  }
+  return layout;
+}
+
+function csvToLayout(text) {
+  var rows = text.split('\n').filter(function(r) { return r.trim(); }).slice(0, 40);
+  return rows.map(function(row, ri) {
+    var vals = row.split(',');
+    var cells = vals.slice(0, 15).map(function(v, ci) {
+      return { c: ci + 1, cs: 1, text: v.trim().replace(/^"|"$/g, ''), drop: false };
+    });
+    return { r: ri + 1, label: String(ri + 1), cells: cells };
+  });
+}
+
 </script>
 </body>
 </html>

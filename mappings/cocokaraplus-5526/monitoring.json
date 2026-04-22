@@ -1,0 +1,298 @@
+{
+  "template_id": "cocokara_monitoring_v1",
+  "template_name": "モニタリング報告書/評価表（ココカラプラス 機能訓練型デイサービス）",
+  "template_file": "モニタリング報告書.xlsx",
+  "sheet_name": "モニタリング報告書R8.3",
+  "fixed_values": {
+    "_comment": "毎回自動で入る固定値（事業所情報）",
+    "N4": "機能訓練型デイサービス",
+    "N5": "ココカラプラス",
+    "N6": "〒４７１－０８３２",
+    "N7": "愛知県豊田市丸山町７丁目４９番地６",
+    "N8": "TEL0565-41‐7804　　FAX0565-41‐7814"
+  },
+  "auto_values": {
+    "_comment": "処理時に自動計算される値",
+    "create_date": {
+      "cell": "R2",
+      "type": "today",
+      "label": "作成日"
+    },
+    "age": {
+      "cell": "M12",
+      "type": "age_from_birthday",
+      "source": "birthday",
+      "label": "年齢"
+    }
+  },
+  "fields": {
+    "client_name_kanji": {
+      "cell": "C6",
+      "type": "string",
+      "label": "利用者氏名（見出し用大きい欄）",
+      "required": true,
+      "editable": true
+    },
+    "client_name_kana": {
+      "cell": "D11",
+      "type": "string",
+      "label": "フリガナ",
+      "required": true,
+      "editable": true
+    },
+    "client_name": {
+      "cell": "D12",
+      "type": "string",
+      "label": "氏名",
+      "required": true,
+      "editable": true
+    },
+    "gender": {
+      "cell": "H12",
+      "type": "enum",
+      "label": "性別",
+      "options": [
+        "男",
+        "女"
+      ],
+      "editable": true
+    },
+    "birthday": {
+      "cell": "I12",
+      "type": "date",
+      "label": "生年月日",
+      "editable": true
+    },
+    "care_level": {
+      "cell": "O12",
+      "type": "string",
+      "label": "要介護度",
+      "editable": true,
+      "hint": "要支援1〜2、要介護1〜5、自立など"
+    },
+    "staff_name": {
+      "cell": "R12",
+      "type": "string",
+      "label": "作成担当者",
+      "required": true,
+      "editable": true
+    },
+    "short_goal_period_from": {
+      "cell": "O14",
+      "type": "date",
+      "label": "短期目標 期間開始",
+      "editable": true
+    },
+    "short_goal_period_to": {
+      "cell": "S14",
+      "type": "date",
+      "label": "短期目標 期間終了",
+      "editable": true
+    },
+    "short_goal_function": {
+      "cell": "D15",
+      "type": "text",
+      "label": "短期目標：機能",
+      "editable": true
+    },
+    "short_goal_function_status": {
+      "cell": "T15",
+      "type": "enum",
+      "label": "短期機能 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "short_goal_activity": {
+      "cell": "D16",
+      "type": "text",
+      "label": "短期目標：活動",
+      "editable": true
+    },
+    "short_goal_activity_status": {
+      "cell": "T16",
+      "type": "enum",
+      "label": "短期活動 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "short_goal_participation": {
+      "cell": "D17",
+      "type": "text",
+      "label": "短期目標：参加",
+      "editable": true
+    },
+    "short_goal_participation_status": {
+      "cell": "T17",
+      "type": "enum",
+      "label": "短期参加 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "long_goal_period_from": {
+      "cell": "O18",
+      "type": "date",
+      "label": "長期目標 期間開始",
+      "editable": true
+    },
+    "long_goal_period_to": {
+      "cell": "S18",
+      "type": "date",
+      "label": "長期目標 期間終了",
+      "editable": true
+    },
+    "long_goal_function": {
+      "cell": "D19",
+      "type": "text",
+      "label": "長期目標：機能",
+      "editable": true
+    },
+    "long_goal_function_status": {
+      "cell": "T19",
+      "type": "enum",
+      "label": "長期機能 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "long_goal_activity": {
+      "cell": "D20",
+      "type": "text",
+      "label": "長期目標：活動",
+      "editable": true
+    },
+    "long_goal_activity_status": {
+      "cell": "T20",
+      "type": "enum",
+      "label": "長期活動 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "long_goal_participation": {
+      "cell": "D21",
+      "type": "text",
+      "label": "長期目標：参加",
+      "editable": true
+    },
+    "long_goal_participation_status": {
+      "cell": "T21",
+      "type": "enum",
+      "label": "長期参加 達成度",
+      "options": [
+        "達成",
+        "未達成"
+      ],
+      "editable": true
+    },
+    "changes_by_training": {
+      "cell": "B24",
+      "type": "text",
+      "label": "個別機能訓練実施による変化",
+      "ai_generated": true,
+      "editable": true,
+      "max_chars": 200,
+      "ai_hint": "機能訓練を通じて利用者に起きたポジティブな変化を敬体で簡潔に"
+    },
+    "issues_and_causes": {
+      "cell": "L24",
+      "type": "text",
+      "label": "個別機能訓練実施における課題とその要因",
+      "ai_generated": true,
+      "editable": true,
+      "max_chars": 200,
+      "ai_hint": "現在の課題と原因を客観的に敬体で記述"
+    },
+    "monitoring_item_1": {
+      "cell": "C32",
+      "type": "text",
+      "label": "モニタリング項目①",
+      "ai_generated": true,
+      "editable": true
+    },
+    "monitoring_item_2": {
+      "cell": "C33",
+      "type": "text",
+      "label": "モニタリング項目②",
+      "ai_generated": true,
+      "editable": true
+    },
+    "monitoring_item_3": {
+      "cell": "C34",
+      "type": "text",
+      "label": "モニタリング項目③",
+      "ai_generated": true,
+      "editable": true
+    },
+    "monitoring_item_4": {
+      "cell": "C35",
+      "type": "text",
+      "label": "モニタリング項目④",
+      "ai_generated": true,
+      "editable": true
+    },
+    "special_notes": {
+      "cell": "B37",
+      "type": "text",
+      "label": "特記事項",
+      "ai_generated": true,
+      "editable": true,
+      "max_chars": 300,
+      "ai_hint": "通常の記録欄に収まらない特筆すべき事項を敬体で"
+    },
+    "weight_kg": {
+      "cell": "S41",
+      "type": "number",
+      "label": "体重(kg)",
+      "editable": true
+    },
+    "new_requests_exist": {
+      "cell": "R42",
+      "type": "enum",
+      "label": "新しい希望や要望の有無",
+      "options": [
+        "あり",
+        "なし"
+      ],
+      "editable": true
+    },
+    "new_requests_detail": {
+      "cell": "B44",
+      "type": "text",
+      "label": "希望ありの場合の理由・内容",
+      "ai_generated": true,
+      "editable": true,
+      "max_chars": 200
+    },
+    "satisfaction": {
+      "cell": "T45",
+      "type": "text",
+      "label": "利用者・家族の満足度",
+      "editable": true,
+      "hint": "満足/やや満足/普通/やや不満/不満 など"
+    },
+    "service_appropriateness": {
+      "cell": "T46",
+      "type": "enum",
+      "label": "サービス提供内容の適切性",
+      "options": [
+        "適切",
+        "概ね適切",
+        "要見直し"
+      ],
+      "editable": true
+    }
+  }
+}

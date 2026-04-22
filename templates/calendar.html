@@ -118,7 +118,7 @@
     width:100%; max-width:480px;
     padding:20px 20px 32px;
     animation:slideUp 0.22s ease;
-    max-height:90vh; overflow-y:auto;
+    max-height:85vh; overflow-y:auto; padding-bottom:60px;
 }
 @keyframes slideUp {
     from { transform:translateY(40px); opacity:0; }
@@ -464,6 +464,7 @@ function renderCalendar() {
 function renderMonth() {
     const grid = document.getElementById('cal-days');
     const title = document.getElementById('cal-month-title');
+    if (!grid || !title) return;
     title.textContent = `${currentYear}年${currentMonth+1}月`;
 
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
@@ -620,20 +621,15 @@ window.toggleCalendar = function(id) {
 // ===== セルクリック =====
 window.onCellClick = function(dateStr) {
     clickedDate = dateStr;
-    editingEventId = null;
-    document.getElementById('ev-title').value = '';
-    document.getElementById('ev-start-date').value = dateStr;
-    document.getElementById('ev-end-date').value = dateStr;
-    document.getElementById('ev-allday').checked = true;
-    document.getElementById('ev-time-row').style.display = 'none';
-    document.getElementById('ev-repeat').value = 'none';
-    document.getElementById('ev-repeat-until-row').style.display = 'none';
-    document.getElementById('ev-notify').value = '0';
-    document.getElementById('ev-memo').value = '';
-    document.getElementById('ev-delete-btn').style.display = 'none';
-    document.getElementById('event-modal-title').textContent = '予定を追加（'+dateStr+'）';
-    selectSticker('');
-    document.getElementById('event-modal').classList.add('show');
+    
+    // その日の予定を取得
+    const dayEvents = ALL_EVENTS.filter(event => {
+        if (activeCalendarIds.has("all")) return event.event_date === dateStr;
+        return event.event_date === dateStr && activeCalendarIds.has(event.calendar_id);
+    });
+    
+    // 常に予定一覧を表示（予定がない場合は空の一覧）
+    showDayEventsModal(dateStr, dayEvents);
 };
 
 // ===== 予定編集 =====
@@ -871,3 +867,28 @@ requestAnimationFrame(() => requestAnimationFrame(() => renderCalendar()));
 })();
 </script>
 {% endblock %}
+
+// ===== 日別予定表示機能 =====
+window.showDayEventsModal = function(dateStr, events) {
+    let html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
+    html += '<div class="modal-sheet"><div class="modal-handle"></div>';
+    html += '<div class="modal-title">' + dateStr + 'の予定</div>';
+    events.forEach(event => {
+        html += '<div onclick="openEditEvent(\'' + event.id + '\')" style="padding:12px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + event.color + '22;">';
+        html += '<strong style="color:' + event.color + ';">' + event.title + '</strong>';
+        html += '<div style="font-size:0.8rem;color:#666;">' + (event.all_day ? '終日' : (event.start_time + ' - ' + event.end_time)) + '</div></div>';
+    });
+    html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">新しい予定を追加</button>';
+                                          cl                                          cl          in                                          cl                                          cl          in                           al                                          cl                           nt                                          cl                         te                           ument.getElementById('ev-end-date').value = dateStr;
+    document.getElementById('ev-allday').checked = true;
+    document.getElementById('ev-time-row').style.display = 'none';
+    document.getElementById('ev-repeat').value = 'none';
+    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById(lete-btn').style.display = 'none';
+    document.getElementById('event-modal-title').textContent = '予定を追加（' + dateStr + '）';
+    if (CALENDARS.length > 0) document.getElementById('ev-calendar').value = CALENDARS[0].id;
+    selectSticker('');
+    selectColor(EVENT_COLORS[0]);
+    document.getElementById('event-modal').classList.add('show');
+    const dayModal = document.getElementById('day-events-modal');
+    if (dayModal) dayModal.remove();
+};

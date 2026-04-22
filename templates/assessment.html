@@ -556,7 +556,8 @@ window.clearAssessmentPatient = function() {
 
 document.addEventListener('click', e => {
     if (!e.target.closest('#patient-search-input') && !e.target.closest('#patient-candidates-assess')) {
-        document.getElementById('patient-candidates-assess').style.display = 'none';
+        const cands = document.getElementById('patient-candidates-assess');
+        if (cands) cands.style.display = 'none';
     }
 });
 
