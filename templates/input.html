@@ -630,7 +630,7 @@ window.aiTranscribe = async function() {
   var _addEventListener__fallback_registered = true;
   function initFallback(){
     var el=document.getElementById('patient-search');
-    if(else:) return;
+    if(!el) return;
     function trigger(){ if(window.searchPatient) window.searchPatient(el.value); }
     el.addEventListener('input', trigger);
     el.addEventListener('compositionend', trigger);
