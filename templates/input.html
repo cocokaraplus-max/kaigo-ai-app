@@ -318,13 +318,6 @@ window.saveRecord = async function() {
         if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined">save</span> 保存'; }
     }
 };
-// 利用者データ配列
-const PATIENTS = [
-    {% for p in patients %}
-    { value: {{ p.value | tojson }}, label: {{ p.label | tojson }},
-      name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
-    {% endfor %}
-];
 
 window.searchPatient = function(query) {
     const q = query.trim();
