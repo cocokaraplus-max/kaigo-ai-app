@@ -867,6 +867,11 @@ setTimeout(function() {
 
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js').then(function(reg){
+          console.log('[PWA] Service Worker');
+          // 
+          if ('sync' in reg) {
+            reg.sync.register('sync-offline-records').catch(function(){});
+          }
           var __sw_auto_reload__ = true;
           // Check for updates every time the page loads
           if (reg.update) { try { reg.update(); } catch(e){} }
@@ -891,15 +896,6 @@ if ('serviceWorker' in navigator) {
           __sw_reloading__ = true;
           window.location.reload();
         });
-        // Legacy no-op to keep replacement idempotent: navigator.serviceWorker.register('/static/sw.js')
-        .then(reg => {
-            console.log('[PWA] Service Worker登録成功');
-            // バックグラウンド同期の登録
-            if ('sync' in reg) {
-                reg.sync.register('sync-offline-records').catch(() => {});
-            }
-        })
-        .catch(err => console.log('[PWA] Service Worker登録失敗:', err));
 }
 
 // ========== オンライン/オフライン検知 ==========
