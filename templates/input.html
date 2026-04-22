@@ -135,6 +135,9 @@
                 placeholder="例：やまだ / 山田 / 001"
                 autocomplete="off"
                 oninput="searchPatient(this.value)"
+                onkeyup="searchPatient(this.value)"
+                oncompositionend="searchPatient(this.value)"
+                onchange="searchPatient(this.value)"
                 onfocus="searchPatient(this.value)">
             <div class="search-candidates" id="candidates"></div>
         </div>
