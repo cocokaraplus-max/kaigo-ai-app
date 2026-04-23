@@ -65,7 +65,9 @@
   .cal-cell.sat .cal-date { color: #1a73e8; }
   .cal-cell.other-month.sun .cal-date,
   .cal-cell.other-month.sat .cal-date { color: #bdc1c6; }
-  .cal-events { flex: 1; margin-top: 2px; overflow: hidden; }
+  .cal-events { flex: 1; margin-top: 2px; overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
+  .cal-event-bar { font-size: 0.66rem; line-height: 1.2; padding: 1px 3px; border-radius: 3px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #999; }
+  .cal-event-more { font-size: 0.6rem; color: #5f6368; padding: 0 3px; }
 </style>
 {% endblock %}
 
@@ -95,13 +97,13 @@
 <script>
   var CAL_STATE = { year: 0, month: 0 };
 
-  function buildCell(dateNum, dow, isOther, isToday) {
+  function buildCell(dateNum, dow, isOther, isToday, dateKey) {
     var cls = 'cal-cell';
     if (isOther) cls += ' other-month';
     if (isToday) cls += ' today';
     if (dow === 0) cls += ' sun';
     else if (dow === 6) cls += ' sat';
-    return '<div class="' + cls + '">' +
+    return '<div class="' + cls + '" data-date="' + (dateKey || '') + '">' +
              '<span class="cal-date">' + dateNum + '</span>' +
              '<div class="cal-events"></div>' +
            '</div>';
@@ -123,22 +125,22 @@
     for (var i = firstDow; i > 0; i--) {
       var d = prevLast - i + 1;
       var dow = (7 - i + firstDow) % 7;
-      html += buildCell(d, dow, true, false);
+      var prevY = m === 0 ? y - 1 : y; var prevM = m === 0 ? 11 : m - 1; var prevKey = prevY + '-' + (prevM + 1 < 10 ? '0' : '') + (prevM + 1) + '-' + (d < 10 ? '0' : '') + d; html += buildCell(d, dow, true, false, prevKey);
       cells++;
     }
     for (var d2 = 1; d2 <= lastDate; d2++) {
       var dow2 = new Date(y, m, d2).getDay();
       var isToday = (y === tY && m === tM && d2 === tD);
-      html += buildCell(d2, dow2, false, isToday);
+      var curKey = y + '-' + (m + 1 < 10 ? '0' : '') + (m + 1) + '-' + (d2 < 10 ? '0' : '') + d2; html += buildCell(d2, dow2, false, isToday, curKey);
       cells++;
     }
     var nextD = 1;
     while (cells < 42) {
-      html += buildCell(nextD, cells % 7, true, false);
+      var nextY = m === 11 ? y + 1 : y; var nextM = m === 11 ? 0 : m + 1; var nextKey = nextY + '-' + (nextM + 1 < 10 ? '0' : '') + (nextM + 1) + '-' + (nextD < 10 ? '0' : '') + nextD; html += buildCell(nextD, cells % 7, true, false, nextKey);
       cells++;
       nextD++;
     }
-    grid.innerHTML = html;
+    grid.innerHTML = html; loadEvents();
   }
 
   function calInit() {
@@ -166,6 +168,56 @@
       renderMonthGrid();
     };
   }
+  function loadEvents() {
+    var y = CAL_STATE.year;
+    var m = CAL_STATE.month;
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    var firstDow = new Date(y, m, 1).getDay();
+    var fromDate = new Date(y, m, 1 - firstDow);
+    var toDate = new Date(fromDate);
+    toDate.setDate(toDate.getDate() + 41);
+    var from = fromDate.getFullYear() + '-' + pad2(fromDate.getMonth() + 1) + '-' + pad2(fromDate.getDate());
+    var to   = toDate.getFullYear() + '-' + pad2(toDate.getMonth() + 1) + '-' + pad2(toDate.getDate());
+    fetch('/api/calendar_events?from=' + from + '&to=' + to, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var events = (data && data.events) || [];
+        var map = {};
+        events.forEach(function (ev) {
+          var d = ev.event_date;
+          if (!d) return;
+          if (!map[d]) map[d] = [];
+          map[d].push(ev);
+        });
+        Object.keys(map).forEach(function (dateStr) {
+          var cell = document.querySelector('.cal-cell[data-date="' + dateStr + '"]');
+          if (!cell) return;
+          var slot = cell.querySelector('.cal-events');
+          if (!slot) return;
+          var evs = map[dateStr];
+          var MAX = 3;
+          evs.slice(0, MAX).forEach(function (ev) {
+            var bar = document.createElement('div');
+            bar.className = 'cal-event-bar';
+            if (ev.color) bar.style.background = ev.color;
+            var prefix = '';
+            if (ev.sticker) prefix = ev.sticker + ' ';
+            else if (!ev.all_day && ev.start_time) prefix = ev.start_time.slice(0, 5) + ' ';
+            bar.textContent = prefix + (ev.title || '');
+            bar.title = (ev.title || '') + (ev.memo ? ' - ' + ev.memo : '');
+            slot.appendChild(bar);
+          });
+          if (evs.length > MAX) {
+            var more = document.createElement('div');
+            more.className = 'cal-event-more';
+            more.textContent = '+' + (evs.length - MAX);
+            slot.appendChild(more);
+          }
+        });
+      })
+      .catch(function (e) { console.warn('loadEvents error:', e); });
+  }
+
   calInit();
 </script>
 {% endblock %}
