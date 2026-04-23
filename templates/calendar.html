@@ -113,7 +113,7 @@
     var label = document.getElementById('cal-month-label');
     var grid = document.getElementById('cal-grid');
     if (!label || !grid) return;
-    label.textContent = y + '' + (m + 1) + '';
+    label.textContent = y + '年' + (m + 1) + '月';
     var firstDow = new Date(y, m, 1).getDay();
     var lastDate = new Date(y, m + 1, 0).getDate();
     var prevLast = new Date(y, m, 0).getDate();
