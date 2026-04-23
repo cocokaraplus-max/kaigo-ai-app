@@ -68,6 +68,25 @@
   .cal-events { flex: 1; margin-top: 2px; overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
   .cal-event-bar { font-size: 0.66rem; line-height: 1.2; padding: 1px 3px; border-radius: 3px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #999; }
   .cal-event-more { font-size: 0.6rem; color: #5f6368; padding: 0 3px; }
+  /* ===== Step 2a: day-detail modal ===== */
+  .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 1000; padding: 0; }
+  .cal-modal-backdrop[hidden] { display: none !important; }
+  .cal-modal { background: #fff; width: 100%; max-width: 480px; max-height: 70vh; border-radius: 12px 12px 0 0; display: flex; flex-direction: column; box-shadow: 0 -8px 24px rgba(0,0,0,0.15); overflow: hidden; animation: cal-modal-in 0.18s ease-out; }
+  @media (min-width: 640px) { .cal-modal-backdrop { align-items: center; padding: 16px; } .cal-modal { border-radius: 12px; max-height: 80vh; } }
+  @keyframes cal-modal-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .cal-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #eee; }
+  .cal-modal-title { font-size: 1rem; font-weight: 600; color: #202124; }
+  .cal-modal-close { background: none; border: none; font-size: 1.6rem; line-height: 1; color: #5f6368; cursor: pointer; padding: 0 6px; }
+  .cal-modal-close:hover { color: #202124; }
+  .cal-modal-body { padding: 8px 0; overflow-y: auto; flex: 1; }
+  .cal-modal-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #f5f5f5; }
+  .cal-modal-item:last-child { border-bottom: none; }
+  .cal-modal-item-bar { width: 4px; flex-shrink: 0; align-self: stretch; border-radius: 2px; background: #ccc; }
+  .cal-modal-item-main { flex: 1; min-width: 0; }
+  .cal-modal-item-time { font-size: 0.8rem; color: #5f6368; margin-bottom: 2px; }
+  .cal-modal-item-title { font-size: 0.95rem; color: #202124; font-weight: 500; word-break: break-word; }
+  .cal-modal-item-memo { font-size: 0.82rem; color: #5f6368; margin-top: 4px; word-break: break-word; }
+  .cal-modal-empty { padding: 32px 16px; text-align: center; color: #9aa0a6; font-size: 0.9rem; }
 </style>
 {% endblock %}
 
@@ -92,6 +111,16 @@
     <div class="cal-weekday sat">土</div>
   </div>
   <div class="cal-grid" id="cal-grid"></div>
+
+  <div id="cal-modal-backdrop" class="cal-modal-backdrop" hidden>
+    <div class="cal-modal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
+      <div class="cal-modal-header">
+        <span id="cal-modal-title" class="cal-modal-title"></span>
+        <button type="button" id="cal-modal-close" class="cal-modal-close" aria-label="閉じる">×</button>
+      </div>
+      <div id="cal-modal-body" class="cal-modal-body"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -140,7 +169,7 @@
       cells++;
       nextD++;
     }
-    grid.innerHTML = html; loadEvents();
+    grid.innerHTML = html; loadEvents(); attachCellHandlers();
   }
 
   function calInit() {
@@ -195,6 +224,7 @@
           if (!map[d]) map[d] = [];
           map[d].push(ev);
         });
+        CAL_STATE.eventsByDate = map;
         Object.keys(map).forEach(function (dateStr) {
           var cell = document.querySelector('.cal-cell[data-date="' + dateStr + '"]');
           if (!cell) return;
@@ -224,6 +254,93 @@
       .catch(function (e) { console.warn('loadEvents error:', e); });
   }
 
+  function formatModalDate(dateStr) {
+    // dateStr: YYYY-MM-DD
+    var parts = dateStr.split("-");
+    var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+    var dow = new Date(y, m - 1, d).getDay();
+    var yobi = ['日','月','火','水','木','金','土'];
+    return y + '年' + m + '月' + d + '日' + ' (' + yobi[dow] + ')';
+  }
+  function openDayModal(dateStr) {
+    var titleEl = document.getElementById("cal-modal-title");
+    var bodyEl = document.getElementById("cal-modal-body");
+    var backdrop = document.getElementById("cal-modal-backdrop");
+    if (!titleEl || !bodyEl || !backdrop) return;
+    titleEl.textContent = formatModalDate(dateStr);
+    bodyEl.innerHTML = "";
+    var evs = (CAL_STATE.eventsByDate && CAL_STATE.eventsByDate[dateStr]) || [];
+    if (evs.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "cal-modal-empty";
+      empty.textContent = '予定なし';
+      bodyEl.appendChild(empty);
+    } else {
+      evs.forEach(function (ev) {
+        var item = document.createElement("div");
+        item.className = "cal-modal-item";
+        var bar = document.createElement("div");
+        bar.className = "cal-modal-item-bar";
+        if (ev.color) bar.style.background = ev.color;
+        item.appendChild(bar);
+        var main = document.createElement("div");
+        main.className = "cal-modal-item-main";
+        var timeStr = "";
+        if (!ev.all_day && ev.start_time) {
+          timeStr = String(ev.start_time).slice(0, 5);
+          if (ev.end_time) timeStr += " - " + String(ev.end_time).slice(0, 5);
+        }
+        if (timeStr) {
+          var t = document.createElement("div");
+          t.className = "cal-modal-item-time";
+          t.textContent = timeStr;
+          main.appendChild(t);
+        }
+        var title = document.createElement("div");
+        title.className = "cal-modal-item-title";
+        title.textContent = (ev.sticker ? ev.sticker + " " : "") + (ev.title || "");
+        main.appendChild(title);
+        if (ev.memo) {
+          var memo = document.createElement("div");
+          memo.className = "cal-modal-item-memo";
+          memo.textContent = ev.memo;
+          main.appendChild(memo);
+        }
+        item.appendChild(main);
+        bodyEl.appendChild(item);
+      });
+    }
+    backdrop.hidden = false;
+  }
+  function closeDayModal() {
+    var backdrop = document.getElementById("cal-modal-backdrop");
+    if (backdrop) backdrop.hidden = true;
+  }
+  function attachCellHandlers() {
+    var cells = document.querySelectorAll("#cal-grid .cal-cell[data-date]");
+    for (var i = 0; i < cells.length; i++) {
+      (function (cell) {
+        cell.addEventListener("click", function () {
+          var d = cell.getAttribute("data-date");
+          if (d) openDayModal(d);
+        });
+      })(cells[i]);
+    }
+  }
+  function wireModalChrome() {
+    var closeBtn = document.getElementById("cal-modal-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeDayModal);
+    var backdrop = document.getElementById("cal-modal-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", function (e) {
+        if (e.target === backdrop) closeDayModal();
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeDayModal();
+    });
+  }
+  wireModalChrome();
   calInit();
 </script>
 {% endblock %}
