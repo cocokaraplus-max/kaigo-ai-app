@@ -87,6 +87,25 @@
   .cal-modal-item-title { font-size: 0.95rem; color: #202124; font-weight: 500; word-break: break-word; }
   .cal-modal-item-memo { font-size: 0.82rem; color: #5f6368; margin-top: 4px; word-break: break-word; }
   .cal-modal-empty { padding: 32px 16px; text-align: center; color: #9aa0a6; font-size: 0.9rem; }
+  /* ===== Step 2b-1: create-mode form + footer ===== */
+  .cal-modal-add { background: none; border: none; color: #1a73e8; font-size: 1.5rem; font-weight: 600; cursor: pointer; padding: 0 10px; line-height: 1; }
+  .cal-modal-add:hover { color: #0d47a1; }
+  .cal-modal-header-actions { display: flex; align-items: center; gap: 4px; }
+  .cal-modal-form { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .cal-modal-field-label { font-size: 0.82rem; color: #5f6368; margin-bottom: 4px; }
+  .cal-modal-input, .cal-modal-textarea { width: 100%; font-size: 0.95rem; color: #202124; padding: 9px 10px; border: 1px solid #dadce0; border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+  .cal-modal-input:focus, .cal-modal-textarea:focus { border-color: #1a73e8; outline: none; }
+  .cal-modal-textarea { resize: vertical; min-height: 72px; }
+  .cal-modal-error { color: #d93025; font-size: 0.82rem; padding: 0 16px 4px; }
+  .cal-modal-error[hidden] { display: none !important; }
+  .cal-modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid #eee; }
+  .cal-modal-footer[hidden] { display: none !important; }
+  .cal-modal-btn { font-size: 0.9rem; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+  .cal-modal-btn-secondary { background: #fff; color: #5f6368; border: 1px solid #dadce0; }
+  .cal-modal-btn-secondary:hover { background: #f8f9fa; }
+  .cal-modal-btn-primary { background: #1a73e8; color: #fff; border: 1px solid #1a73e8; }
+  .cal-modal-btn-primary:hover { background: #174ea6; }
+  .cal-modal-btn-primary:disabled { background: #c8c8c8; border-color: #c8c8c8; cursor: not-allowed; }
 </style>
 {% endblock %}
 
@@ -110,15 +129,23 @@
     <div class="cal-weekday">金</div>
     <div class="cal-weekday sat">土</div>
   </div>
-  <div class="cal-grid" id="cal-grid"></div>
+  <div class="cal-grid" id="cal-grid" data-default-calendar-id="{{ calendars[0].id if calendars else '' }}"></div>
 
   <div id="cal-modal-backdrop" class="cal-modal-backdrop" hidden>
     <div class="cal-modal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
       <div class="cal-modal-header">
         <span id="cal-modal-title" class="cal-modal-title"></span>
-        <button type="button" id="cal-modal-close" class="cal-modal-close" aria-label="閉じる">×</button>
+        <div class="cal-modal-header-actions">
+          <button type="button" id="cal-modal-add" class="cal-modal-add" aria-label="予定を追加" title="予定を追加">+</button>
+          <button type="button" id="cal-modal-close" class="cal-modal-close" aria-label="閉じる">×</button>
+        </div>
       </div>
       <div id="cal-modal-body" class="cal-modal-body"></div>
+      <div id="cal-modal-error" class="cal-modal-error" hidden></div>
+      <div id="cal-modal-footer" class="cal-modal-footer" hidden>
+        <button type="button" id="cal-modal-cancel" class="cal-modal-btn cal-modal-btn-secondary">キャンセル</button>
+        <button type="button" id="cal-modal-save" class="cal-modal-btn cal-modal-btn-primary">保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -267,6 +294,12 @@
     var bodyEl = document.getElementById("cal-modal-body");
     var backdrop = document.getElementById("cal-modal-backdrop");
     if (!titleEl || !bodyEl || !backdrop) return;
+    CAL_STATE.modalDate = dateStr;
+    CAL_STATE.modalMode = "detail";
+    var footerEl = document.getElementById("cal-modal-footer");
+    var errorEl = document.getElementById("cal-modal-error");
+    if (footerEl) footerEl.hidden = true;
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
     titleEl.textContent = formatModalDate(dateStr);
     bodyEl.innerHTML = "";
     var evs = (CAL_STATE.eventsByDate && CAL_STATE.eventsByDate[dateStr]) || [];
@@ -327,6 +360,82 @@
       })(cells[i]);
     }
   }
+  function getDefaultCalendarId() {
+    var g = document.getElementById("cal-grid");
+    return g ? (g.getAttribute("data-default-calendar-id") || "") : "";
+  }
+  function switchToCreateMode(dateStr) {
+    CAL_STATE.modalMode = "create";
+    CAL_STATE.modalDate = dateStr;
+    var body = document.getElementById("cal-modal-body");
+    var footer = document.getElementById("cal-modal-footer");
+    var err = document.getElementById("cal-modal-error");
+    var titleEl = document.getElementById("cal-modal-title");
+    if (!body || !footer) return;
+    if (titleEl) titleEl.textContent = formatModalDate(dateStr);
+    body.innerHTML = "";
+    var form = document.createElement("div");
+    form.className = "cal-modal-form";
+    var l1 = document.createElement("label");
+    l1.className = "cal-modal-field-label";
+    l1.textContent = "タイトル";
+    form.appendChild(l1);
+    var inp = document.createElement("input");
+    inp.type = "text"; inp.id = "cal-form-title"; inp.className = "cal-modal-input"; inp.maxLength = 100;
+    inp.placeholder = "タイトル";
+    form.appendChild(inp);
+    var l2 = document.createElement("label");
+    l2.className = "cal-modal-field-label";
+    l2.textContent = "メモ";
+    form.appendChild(l2);
+    var ta = document.createElement("textarea");
+    ta.id = "cal-form-memo"; ta.className = "cal-modal-textarea"; ta.maxLength = 1000;
+    ta.placeholder = "メモ";
+    form.appendChild(ta);
+    body.appendChild(form);
+    if (err) { err.hidden = true; err.textContent = ""; }
+    footer.hidden = false;
+    var saveBtn = document.getElementById("cal-modal-save");
+    if (saveBtn) saveBtn.disabled = false;
+    setTimeout(function(){ var i = document.getElementById("cal-form-title"); if (i) i.focus(); }, 50);
+  }
+  function switchToDetailMode(dateStr) {
+    openDayModal(dateStr);
+  }
+  function createEvent(dateStr) {
+    var titleInput = document.getElementById("cal-form-title");
+    var memoInput = document.getElementById("cal-form-memo");
+    var saveBtn = document.getElementById("cal-modal-save");
+    var errEl = document.getElementById("cal-modal-error");
+    if (!titleInput || !errEl) return;
+    var title = (titleInput.value || "").trim();
+    if (!title) { errEl.textContent = "タイトルを入力してください"; errEl.hidden = false; return; }
+    var calId = getDefaultCalendarId();
+    if (!calId) { errEl.textContent = "カレンダーが見つかりません"; errEl.hidden = false; return; }
+    errEl.hidden = true; errEl.textContent = "";
+    if (saveBtn) saveBtn.disabled = true;
+    var payload = { calendar_id: calId, title: title, event_date: dateStr, all_day: true, color: "#1a73e8", memo: (memoInput ? memoInput.value : "") };
+    fetch("/api/save_calendar_event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d && d.status === "success") {
+          loadEvents();
+          setTimeout(function(){ switchToDetailMode(dateStr); }, 300);
+        } else {
+          errEl.textContent = (d && d.message) ? d.message : "保存に失敗しました";
+          errEl.hidden = false;
+          if (saveBtn) saveBtn.disabled = false;
+        }
+      })
+      .catch(function(e){
+        errEl.textContent = "通信エラー: " + (e && e.message ? e.message : e);
+        errEl.hidden = false;
+        if (saveBtn) saveBtn.disabled = false;
+      });
+  }
   function wireModalChrome() {
     var closeBtn = document.getElementById("cal-modal-close");
     if (closeBtn) closeBtn.addEventListener("click", closeDayModal);
@@ -336,6 +445,18 @@
         if (e.target === backdrop) closeDayModal();
       });
     }
+    var addBtn = document.getElementById("cal-modal-add");
+    if (addBtn) addBtn.addEventListener("click", function () {
+      if (CAL_STATE.modalDate) switchToCreateMode(CAL_STATE.modalDate);
+    });
+    var cancelBtn = document.getElementById("cal-modal-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", function () {
+      if (CAL_STATE.modalDate) switchToDetailMode(CAL_STATE.modalDate);
+    });
+    var saveBtn = document.getElementById("cal-modal-save");
+    if (saveBtn) saveBtn.addEventListener("click", function () {
+      if (CAL_STATE.modalDate) createEvent(CAL_STATE.modalDate);
+    });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeDayModal();
     });
