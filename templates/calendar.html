@@ -69,10 +69,10 @@
   .cal-event-bar { font-size: 0.66rem; line-height: 1.2; padding: 1px 3px; border-radius: 3px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #999; }
   .cal-event-more { font-size: 0.6rem; color: #5f6368; padding: 0 3px; }
   /* ===== Step 2a: day-detail modal ===== */
-  .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 1000; padding: 0; }
+  .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 1000; padding: 0; padding-bottom: max(84px, calc(env(safe-area-inset-bottom) + 60px)); }
   .cal-modal-backdrop[hidden] { display: none !important; }
-  .cal-modal { background: #fff; width: 100%; max-width: 480px; max-height: 70vh; border-radius: 12px 12px 0 0; display: flex; flex-direction: column; box-shadow: 0 -8px 24px rgba(0,0,0,0.15); overflow: hidden; animation: cal-modal-in 0.18s ease-out; }
-  @media (min-width: 640px) { .cal-modal-backdrop { align-items: center; padding: 16px; } .cal-modal { border-radius: 12px; max-height: 80vh; } }
+  .cal-modal { background: #fff; width: 100%; max-width: 480px; max-height: min(70vh, calc(100dvh - 120px)); border-radius: 12px 12px 0 0; display: flex; flex-direction: column; box-shadow: 0 -8px 24px rgba(0,0,0,0.15); overflow: hidden; animation: cal-modal-in 0.18s ease-out; }
+  @media (min-width: 640px) { .cal-modal-backdrop { align-items: center; padding: 16px; padding-bottom: 16px; } .cal-modal { border-radius: 12px; max-height: 80vh; } }
   @keyframes cal-modal-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
   .cal-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #eee; }
   .cal-modal-title { font-size: 1rem; font-weight: 600; color: #202124; }
