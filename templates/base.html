@@ -638,6 +638,19 @@ async function navigateTo(url, pushState = true) {
         if (window.cameraStream) { window.cameraStream.getTracks().forEach(t => t.stop()); window.cameraStream = null; }
         wrapper.scrollTop = 0;
 
+        // content<script> (innerHTML)
+        // tasks.htmlscriptcontent
+        wrapper.querySelectorAll('script').forEach(function(oldScript){
+          var newScript = document.createElement('script');
+          newScript.className = 'spa-injected-script';
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+          } else {
+            newScript.textContent = '(function(){\n' + oldScript.textContent + '\n})();';
+          }
+          oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+
         // スクリプト実行 - 古いSPA注入スクリプトを全て削除してから追加
         document.querySelectorAll('.spa-injected-script').forEach(s => s.remove());
         if (data.script) {
