@@ -621,6 +621,9 @@ async function navigateTo(url, pushState = true) {
             return;
         }
 
+        // Update tab title from partial response
+        if (data.title) { document.title = data.title; }
+
         // スタイル更新
         let styleEl = document.getElementById('spa-style');
         if (!styleEl) {

@@ -104,11 +104,13 @@ def render(template, **kwargs):
         content_block = render_block("content")
         style_block = render_block("extra_style")
         script_block = render_block("extra_script")
+        title_block = render_block("title")
 
         return jsonify({
             "content": content_block,
             "style": style_block,
             "script": script_block,
+            "title": title_block,
         })
     return render_template(template, **kwargs)
 
