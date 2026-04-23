@@ -169,6 +169,11 @@
     };
   }
   function loadEvents() {
+    CAL_STATE.reqSeq = (CAL_STATE.reqSeq || 0) + 1;
+    var mySeq = CAL_STATE.reqSeq;
+    // Clear any stale bars up-front (idempotent re-render guard)
+    var slots0 = document.querySelectorAll('#cal-grid .cal-events');
+    for (var i0 = 0; i0 < slots0.length; i0++) { slots0[i0].innerHTML = ''; }
     var y = CAL_STATE.year;
     var m = CAL_STATE.month;
     function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -181,6 +186,7 @@
     fetch('/api/calendar_events?from=' + from + '&to=' + to, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        if (mySeq !== CAL_STATE.reqSeq) { return; }
         var events = (data && data.events) || [];
         var map = {};
         events.forEach(function (ev) {
