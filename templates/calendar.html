@@ -408,6 +408,7 @@
   }
   function switchToCreateMode(dateStr) {
     CAL_STATE.modalMode = "create";
+    var _addBtn = document.getElementById("cal-modal-add"); if (_addBtn) _addBtn.hidden = true;
     CAL_STATE.modalDate = dateStr;
     var body = document.getElementById("cal-modal-body");
     var footer = document.getElementById("cal-modal-footer");
@@ -447,6 +448,7 @@
     setTimeout(function(){ var i = document.getElementById("cal-form-title"); if (i) i.focus(); }, 50);
   }
   function switchToDetailMode(dateStr) {
+    var _addBtn = document.getElementById("cal-modal-add"); if (_addBtn) _addBtn.hidden = false;
     openDayModal(dateStr);
   }
   function createEvent(dateStr) {
