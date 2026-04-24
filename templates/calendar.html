@@ -52,11 +52,11 @@
   .cal-weekday.sat { color: #1a73e8; }
   .cal-grid {
     display: grid; grid-template-columns: repeat(7, 1fr);
-    grid-template-rows: repeat(6, 1fr);
     gap: 1px; background: #dadce0; border-radius: 0;
     overflow: hidden; padding: 0;
     height: calc(100dvh - 220px);
-    min-height: 440px;
+    min-height: 380px;
+    touch-action: pan-y;
   }
   .cal-cell {
     background: #fff; min-height: 0; padding: 4px 6px;
@@ -201,12 +201,16 @@
       var curKey = y + '-' + (m + 1 < 10 ? '0' : '') + (m + 1) + '-' + (d2 < 10 ? '0' : '') + d2; html += buildCell(d2, dow2, false, isToday, curKey);
       cells++;
     }
+    // cells at this point = startOffset + daysInMonth
+    var need = Math.max(35, Math.ceil(cells / 7) * 7);
     var nextD = 1;
-    while (cells < 42) {
+    while (cells < need) {
       var nextY = m === 11 ? y + 1 : y; var nextM = m === 11 ? 0 : m + 1; var nextKey = nextY + '-' + (nextM + 1 < 10 ? '0' : '') + (nextM + 1) + '-' + (nextD < 10 ? '0' : '') + nextD; html += buildCell(nextD, cells % 7, true, false, nextKey);
       cells++;
       nextD++;
     }
+    var rows = need / 7;
+    grid.style.gridTemplateRows = "repeat(" + rows + ", 1fr)";
     grid.innerHTML = html; loadEvents(); attachCellHandlers();
   }
 
@@ -234,6 +238,33 @@
       CAL_STATE.month = x.getMonth();
       renderMonthGrid();
     };
+    // --- horizontal swipe to change months ---
+    var grid = document.getElementById("cal-grid");
+    if (grid && !grid.dataset.swipeWired) {
+      grid.dataset.swipeWired = "1";
+      var sx = 0, sy = 0, st = 0;
+      grid.addEventListener("touchstart", function (e) {
+        if (!e.touches || e.touches.length !== 1) return;
+        sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+      }, { passive: true });
+      grid.addEventListener("touchend", function (e) {
+        if (!e.changedTouches || e.changedTouches.length !== 1) return;
+        var dx = e.changedTouches[0].clientX - sx;
+        var dy = e.changedTouches[0].clientY - sy;
+        var dt = Date.now() - st;
+        if (dt > 600) return;
+        if (Math.abs(dx) < 60) return;
+        if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+        if (dx < 0) {
+          CAL_STATE.month++;
+          if (CAL_STATE.month > 11) { CAL_STATE.month = 0; CAL_STATE.year++; }
+        } else {
+          CAL_STATE.month--;
+          if (CAL_STATE.month < 0) { CAL_STATE.month = 11; CAL_STATE.year--; }
+        }
+        renderMonthGrid();
+      }, { passive: true });
+    }
   }
   function loadEvents() {
     CAL_STATE.reqSeq = (CAL_STATE.reqSeq || 0) + 1;
