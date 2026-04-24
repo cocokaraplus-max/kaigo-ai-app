@@ -4,6 +4,8 @@
 
 {% block extra_style %}
 <style>
+  /* Calendar view fills the whole screen width and height */
+  .cal-page.cal-page--full { max-width: none; padding-left: 8px; padding-right: 8px; padding-bottom: 90px; }
   .cal-page {
     max-width: 680px;
     margin: 0 auto;
@@ -39,7 +41,7 @@
   }
   .cal-weekday {
     text-align: center; font-size: 0.78rem; font-weight: 600;
-    padding: 6px 0; color: #5f6368;
+    padding: 8px 0; color: #5f6368; font-size: 0.9rem; font-weight: 600;
   }
   .cal-weekday.sun { color: #d93025; }
   .cal-weekday.sat { color: #1a73e8; }
@@ -48,8 +50,8 @@
     grid-template-rows: repeat(6, 1fr);
     gap: 2px; background: #e8eaed; border-radius: 8px;
     overflow: hidden; padding: 2px;
-    aspect-ratio: 7 / 6;
-    max-height: calc(100dvh - 230px);
+    height: calc(100dvh - 220px);
+    min-height: 440px;
   }
   .cal-cell {
     background: #fff; min-height: 0; padding: 4px 6px;
@@ -64,14 +66,14 @@
     display: inline-flex; align-items: center; justify-content: center;
     font-weight: 700;
   }
-  .cal-date { font-size: 0.82rem; color: #202124; font-weight: 500; }
+  .cal-date { font-size: 0.95rem; color: #202124; font-weight: 600; }
   .cal-cell.sun .cal-date { color: #d93025; }
   .cal-cell.sat .cal-date { color: #1a73e8; }
   .cal-cell.other-month.sun .cal-date,
   .cal-cell.other-month.sat .cal-date { color: #bdc1c6; }
   .cal-events { flex: 1; margin-top: 2px; overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
-  .cal-event-bar { font-size: 0.66rem; line-height: 1.2; padding: 1px 3px; border-radius: 3px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #999; }
-  .cal-event-more { font-size: 0.6rem; color: #5f6368; padding: 0 3px; }
+  .cal-event-bar { font-size: 0.78rem; line-height: 1.3; padding: 2px 5px; border-radius: 4px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #999; }
+  .cal-event-more { font-size: 0.72rem; color: #5f6368; padding: 0 4px; font-weight: 600; }
   /* ===== Step 2a: day-detail modal ===== */
   .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; padding-bottom: max(110px, calc(env(safe-area-inset-bottom) + 90px)); padding-top: max(20px, env(safe-area-inset-top)); box-sizing: border-box; }
   .cal-modal-backdrop[hidden] { display: none !important; }
@@ -114,7 +116,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="cal-page">
+<div class="cal-page cal-page--full">
   <div class="cal-header">
     <div class="cal-title">カレンダー</div>
     <div class="cal-nav">
