@@ -5,17 +5,11 @@
 {% block extra_style %}
 <style>
   /* Calendar view fills the whole screen width and height */
+  body { max-width: none !important; }
   .cal-page.cal-page--full {
     max-width: none;
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
-    padding: 8px 4px 0;
+    padding: 8px 4px max(84px, calc(env(safe-area-inset-bottom) + 60px));
     margin: 0;
-    overflow: hidden;
-    background: #fff;
-    display: flex; flex-direction: column;
-    z-index: 1;
   }
   .cal-page {
     max-width: 680px;
@@ -28,7 +22,6 @@
     align-items: center;
     justify-content: space-between;
     margin: 4px 4px 8px;
-    flex: 0 0 auto;
   }
   .cal-title { font-size: 1.5rem; font-weight: 700; color: #1a1a1a; }
   .cal-nav { display: flex; align-items: center; gap: 8px; }
@@ -53,7 +46,7 @@
   }
   .cal-weekday {
     text-align: center; font-size: 0.78rem; font-weight: 600;
-    padding: 6px 0; color: #5f6368; font-size: 0.85rem; font-weight: 600; flex: 0 0 auto;
+    padding: 6px 0; color: #5f6368; font-size: 0.85rem; font-weight: 600;
   }
   .cal-weekday.sun { color: #d93025; }
   .cal-weekday.sat { color: #1a73e8; }
@@ -62,7 +55,8 @@
     grid-template-rows: repeat(6, 1fr);
     gap: 1px; background: #dadce0; border-radius: 0;
     overflow: hidden; padding: 0;
-    flex: 1 1 auto; min-height: 0;
+    height: calc(100dvh - 220px);
+    min-height: 440px;
   }
   .cal-cell {
     background: #fff; min-height: 0; padding: 4px 6px;
