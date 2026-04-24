@@ -426,6 +426,11 @@
     inp.type = "text"; inp.id = "cal-form-title"; inp.className = "cal-modal-input"; inp.maxLength = 100;
     inp.placeholder = "タイトル";
     form.appendChild(inp);
+    var ls = document.createElement("label"); ls.className = "cal-modal-field-label"; ls.textContent = '開始日'; form.appendChild(ls);
+    var ds = document.createElement("input"); ds.type = "date"; ds.id = "cal-form-start"; ds.className = "cal-modal-input"; ds.value = dateStr; form.appendChild(ds);
+    var le = document.createElement("label"); le.className = "cal-modal-field-label"; le.textContent = '終了日'; form.appendChild(le);
+    var de = document.createElement("input"); de.type = "date"; de.id = "cal-form-end"; de.className = "cal-modal-input"; de.value = dateStr; form.appendChild(de);
+    ds.addEventListener("change", function(){ if (de.value < ds.value) de.value = ds.value; });
     var l2 = document.createElement("label");
     l2.className = "cal-modal-field-label";
     l2.textContent = "メモ";
@@ -456,7 +461,13 @@
     if (!calId) { errEl.textContent = "カレンダーが見つかりません"; errEl.hidden = false; return; }
     errEl.hidden = true; errEl.textContent = "";
     if (saveBtn) saveBtn.disabled = true;
-    var payload = { calendar_id: calId, title: title, event_date: dateStr, all_day: true, color: "#1a73e8", memo: (memoInput ? memoInput.value : "") };
+    var startEl = document.getElementById("cal-form-start");
+    var endEl = document.getElementById("cal-form-end");
+    var startVal = (startEl && startEl.value) ? startEl.value : dateStr;
+    var endVal = (endEl && endEl.value) ? endEl.value : startVal;
+    if (endVal < startVal) { errEl.textContent = '終了日は開始日以降にしてください'; errEl.hidden = false; if (saveBtn) saveBtn.disabled = false; return; }
+    var payload = { calendar_id: calId, title: title, event_date: startVal, all_day: true, color: "#1a73e8", memo: (memoInput ? memoInput.value : "") };
+    if (endVal !== startVal) payload.end_date = endVal;
     fetch("/api/save_calendar_event", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
