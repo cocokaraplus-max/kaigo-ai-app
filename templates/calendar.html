@@ -172,7 +172,92 @@
     text-align:center; font-size:0.7rem; font-weight:700; margin-bottom:4px;
 }
 .week-cell.today { background:#e8f0fe; border-color:#1a73e8; }
-</style>
+
+        /* ========== Phase 3c-5: hamburger calendar menu ========== */
+        .cal-menu-btn{
+            margin-left:auto; background:transparent; border:none;
+            padding:6px; cursor:pointer; color:#5f6368;
+            display:inline-flex; align-items:center; justify-content:center;
+            border-radius:8px;
+        }
+        .cal-menu-btn:hover{ background:rgba(0,0,0,0.05); }
+        .cal-menu-btn .material-symbols-outlined{ font-size:24px; }
+        .page-title{ display:flex; align-items:center; gap:6px; }
+
+        .cal-menu-wrap{ position:relative; }
+        .cal-menu{
+            position:absolute; top:calc(100% + 6px); right:0;
+            width:280px; max-width:calc(100vw - 24px);
+            background:#fff; border:1px solid #e0e0e0; border-radius:12px;
+            box-shadow:0 4px 16px rgba(0,0,0,0.12);
+            z-index:50; overflow:hidden;
+            display:none;
+        }
+        .cal-menu.open{ display:block; }
+        .cal-menu-header{
+            padding:10px 14px; font-size:12px; color:#5f6368;
+            background:#f8f9fa; border-bottom:1px solid #eee;
+        }
+        .cal-menu-item{
+            display:flex; align-items:center; gap:10px;
+            padding:10px 14px; cursor:pointer;
+            border-bottom:1px solid #f1f3f4;
+            position:relative;
+        }
+        .cal-menu-item:hover{ background:#f8f9fa; }
+        .cal-menu-item:last-child{ border-bottom:none; }
+        .cal-menu-item-dot{
+            width:10px; height:10px; border-radius:50%; flex-shrink:0;
+        }
+        .cal-menu-item-name{
+            flex:1; font-size:14px; color:#202124;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .cal-menu-item-icon{
+            font-size:14px; flex-shrink:0; color:#9aa0a6;
+        }
+        /* iOS-style toggle */
+        .cal-toggle{
+            position:relative; width:36px; height:20px; flex-shrink:0;
+            background:#d4d4d4; border-radius:10px; transition:background 0.2s;
+        }
+        .cal-toggle::after{
+            content:""; position:absolute; top:2px; left:2px;
+            width:16px; height:16px; background:#fff; border-radius:50%;
+            transition:left 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.2);
+        }
+        .cal-menu-item.active .cal-toggle{ background:#1a73e8; }
+        .cal-menu-item.active .cal-toggle::after{ left:18px; }
+        /* sub-menu trigger */
+        .cal-menu-more{
+            padding:4px 6px; cursor:pointer; color:#9aa0a6;
+            border-radius:4px; flex-shrink:0;
+        }
+        .cal-menu-more:hover{ background:rgba(0,0,0,0.06); color:#5f6368; }
+        .cal-menu-more .material-symbols-outlined{ font-size:18px; }
+        /* sub-menu popover */
+        .cal-submenu{
+            position:absolute; top:100%; right:8px;
+            background:#fff; border:1px solid #e0e0e0; border-radius:8px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.12);
+            min-width:140px; z-index:60;
+            display:none;
+        }
+        .cal-submenu.open{ display:block; }
+        .cal-submenu-item{
+            display:flex; align-items:center; gap:8px;
+            padding:8px 12px; cursor:pointer; font-size:13px; color:#202124;
+        }
+        .cal-submenu-item:hover{ background:#f8f9fa; }
+        .cal-submenu-item .material-symbols-outlined{ font-size:16px; }
+        .cal-menu-add{
+            padding:10px 14px; cursor:pointer; color:#1a73e8;
+            font-size:14px; border-top:1px solid #e0e0e0; background:#f8f9fa;
+        }
+        .cal-menu-add:hover{ background:#e8f0fe; }
+        /* hide elements that retain old data-id wiring */
+        #cal-chips-data{ display:none; }
+        </style>
 {% endblock %}
 
 {% block content %}
@@ -182,7 +267,7 @@
 </div>
 
 <!-- カレンダー一覧チップ -->
-<div class="calendar-list" id="cal-chips">
+<div class="calendar-list" id="cal-chips-data">
     <div class="cal-chip active" data-id="all" style="background:#f0f0f0;border-color:#e0e0e0;color:#202124;" onclick="toggleCalendar('all')">
         <div class="cal-chip-dot" style="background:#888;"></div>
         すべて
