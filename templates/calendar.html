@@ -172,6 +172,57 @@
     text-align:center; font-size:0.7rem; font-weight:700; margin-bottom:4px;
 }
 .week-cell.today { background:#e8f0fe; border-color:#1a73e8; }
+/* ===== TimeTree-style hamburger menu ===== */
+.cal-menu-wrapper { position:absolute; top:12px; right:12px; z-index:50; }
+.cal-menu-btn {
+    width:40px; height:40px; border-radius:50%;
+    border:1px solid #e0e0e0; background:#fff; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    color:#202124; box-shadow:0 1px 3px rgba(0,0,0,0.08);
+}
+.cal-menu-btn:hover { background:#f8f9fa; }
+.cal-menu-btn .material-symbols-outlined { font-size:22px; }
+.cal-menu-panel {
+    display:none; position:absolute; top:48px; right:0;
+    min-width:240px; max-width:320px; background:#fff;
+    border:1px solid #e0e0e0; border-radius:12px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.12);
+    padding:8px 0; max-height:70vh; overflow-y:auto;
+}
+.cal-menu-panel.show { display:block; }
+.cal-menu-item {
+    display:flex; align-items:center; gap:8px;
+    padding:10px 14px; cursor:pointer;
+    user-select:none;
+}
+.cal-menu-item:hover { background:#f8f9fa; }
+.cal-menu-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.cal-menu-name { flex:1; font-size:14px; color:#202124; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cal-menu-icon { font-size:14px; color:#80868b; flex-shrink:0; }
+.cal-menu-invite {
+    background:none; border:none; cursor:pointer; padding:2px;
+    color:#80868b; display:flex; align-items:center; flex-shrink:0;
+}
+.cal-menu-invite:hover { color:#1a73e8; }
+.cal-menu-invite .material-symbols-outlined { font-size:18px; }
+.cal-menu-sep { height:1px; background:#e8eaed; margin:6px 0; }
+/* iOS-style switch */
+.cal-switch {
+    appearance:none; -webkit-appearance:none;
+    width:36px; height:20px; border-radius:10px;
+    background:#dadce0; position:relative; cursor:pointer;
+    transition:background 0.2s; flex-shrink:0; margin:0;
+}
+.cal-switch::before {
+    content:""; position:absolute; top:2px; left:2px;
+    width:16px; height:16px; border-radius:50%;
+    background:#fff; transition:transform 0.2s;
+    box-shadow:0 1px 3px rgba(0,0,0,0.2);
+}
+.cal-switch:checked { background:#1a73e8; }
+.cal-switch:checked::before { transform:translateX(16px); }
+/* Make page-title relative so absolute menu positions correctly */
+.page-title { position:relative; }
 </style>
 {% endblock %}
 
@@ -182,29 +233,37 @@
 </div>
 
 <!-- カレンダー一覧チップ -->
-<div class="calendar-list" id="cal-chips">
-    <div class="cal-chip active" data-id="all" style="background:#f0f0f0;border-color:#e0e0e0;color:#202124;" onclick="toggleCalendar('all')">
-        <div class="cal-chip-dot" style="background:#888;"></div>
-        すべて
+    <!-- :  -->
+    <div class="cal-menu-wrapper">
+        <button class="cal-menu-btn" type="button" onclick="toggleCalMenu(event)" aria-label="">
+            <span class="material-symbols-outlined">menu</span>
+        </button>
+        <div class="cal-menu-panel" id="cal-menu-panel">
+            <label class="cal-menu-item">
+                <span class="cal-menu-dot" style="background:#888;"></span>
+                <span class="cal-menu-name"></span>
+                <input type="checkbox" class="cal-switch" data-id="all" checked onchange="toggleCalendar('all')">
+            </label>
+            <div class="cal-menu-sep"></div>
+            {% for cal in calendars %}
+            <label class="cal-menu-item">
+                <span class="cal-menu-dot" style="background:{{ cal.color }};"></span>
+                <span class="cal-menu-name">{{ cal.name }}</span>
+                {% if cal.is_private %}
+                <span class="material-symbols-outlined cal-menu-icon">lock</span>
+                {% else %}
+                <span class="material-symbols-outlined cal-menu-icon">group</span>
+                {% endif %}
+                {% if cal.is_owner %}
+                <button type="button" class="cal-menu-invite" onclick="event.stopPropagation();openInviteModal('{{ cal.id }}','{{ cal.name }}')" aria-label="">
+                    <span class="material-symbols-outlined">person_add</span>
+                </button>
+                {% endif %}
+                <input type="checkbox" class="cal-switch" data-id="{{ cal.id }}" checked onchange="toggleCalendar('{{ cal.id }}')">
+            </label>
+            {% endfor %}
+        </div>
     </div>
-    {% for cal in calendars %}
-    <div style="display:flex;align-items:center;gap:2px;">
-        <div class="cal-chip active" data-id="{{ cal.id }}"
-            style="background:{{ cal.color }}22;border-color:{{ cal.color }};"
-            onclick="toggleCalendar('{{ cal.id }}')">
-            <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
-            <span style="color:{{ cal.color }};">{{ cal.name }}</span>
-            {% if cal.is_private %}
-            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">lock</span>
-            {% else %}
-            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">group</span>
-            {% endif %}
-        </div>
-        {% if cal.is_owner %}
-        <div onclick="openInviteModal('{{ cal.id }}','{{ cal.name }}')"
-            style="cursor:pointer;padding:2px 4px;color:#80868b;">
-            <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
-        </div>
         {% endif %}
     </div>
     {% endfor %}
@@ -865,6 +924,21 @@ window.closeModalOutside = function(e, id) {
 requestAnimationFrame(() => requestAnimationFrame(() => renderCalendar()));
 
 })();
+
+// ===== TimeTree-style hamburger menu logic =====
+function toggleCalMenu(ev) {
+    if (ev) ev.stopPropagation();
+    var panel = document.getElementById('cal-menu-panel');
+    if (panel) panel.classList.toggle('show');
+}
+document.addEventListener('click', function(ev) {
+    var panel = document.getElementById('cal-menu-panel');
+    var btn = document.querySelector('.cal-menu-btn');
+    if (!panel || !btn) return;
+    if (!panel.classList.contains('show')) return;
+    if (btn.contains(ev.target) || panel.contains(ev.target)) return;
+    panel.classList.remove('show');
+});
 </script>
 {% endblock %}
 
