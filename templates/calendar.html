@@ -266,6 +266,41 @@
     カレンダー
 </div>
 
+  <!-- ハンバーガーメニュー (Phase 3c-5 v2) -->
+  <div class="cal-menu-wrap">
+    <button type="button" class="cal-menu-btn" onclick="toggleCalMenu(event)" aria-label="カレンダー一覧">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+    <div class="cal-menu" id="cal-menu">
+      <div class="cal-menu-header">カレンダー</div>
+      <div class="cal-menu-item active" data-id="all" onclick="onCalMenuItemClick(event, 'all')">
+        <div class="cal-menu-item-dot" style="background:#8a8a8a;"></div>
+        <div class="cal-menu-item-name">すべて</div>
+        <div class="cal-toggle"></div>
+      </div>
+      {% for cal in calendars %}
+      <div class="cal-menu-item active" data-id="{{ cal.id }}" onclick="onCalMenuItemClick(event, '{{ cal.id }}')">
+        <div class="cal-menu-item-dot" style="background:{{ cal.color }};"></div>
+        <div class="cal-menu-item-name" style="color:{{ cal.color }};">{{ cal.name }}</div>
+        <span class="material-symbols-outlined cal-menu-item-icon" style="color:{{ cal.color }};">{% if cal.is_private %}lock{% else %}group{% endif %}</span>
+        <div class="cal-toggle"></div>
+        {% if cal.is_owner %}
+        <button type="button" class="cal-menu-more" onclick="toggleCalSubmenu(event, '{{ cal.id }}')" aria-label="詳細">
+          <span class="material-symbols-outlined">more_horiz</span>
+        </button>
+        <div class="cal-submenu" id="cal-submenu-{{ cal.id }}">
+          <div class="cal-submenu-item" onclick="openInviteModal('{{ cal.id }}', '{{ cal.name }}'); closeAllCalMenus();">
+            <span class="material-symbols-outlined">person_add</span>招待
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="cal-menu-add" onclick="openNewCalendar(); closeAllCalMenus();">
+        <span class="material-symbols-outlined">add</span>新しいカレンダー
+      </div>
+    </div>
+  </div>
 <!-- カレンダー一覧チップ -->
 <div class="calendar-list" id="cal-chips-data">
     <div class="cal-chip active" data-id="all" style="background:#f0f0f0;border-color:#e0e0e0;color:#202124;" onclick="toggleCalendar('all')">
@@ -950,6 +985,40 @@ window.closeModalOutside = function(e, id) {
 requestAnimationFrame(() => requestAnimationFrame(() => renderCalendar()));
 
 })();
+// === Phase 3c-5 v2: Hamburger menu controls ===
+window.toggleCalMenu = function(e) {
+  if (e) e.stopPropagation();
+  var m = document.getElementById('cal-menu');
+  if (m) m.classList.toggle('open');
+  // close any open submenus
+  document.querySelectorAll('.cal-submenu.open').forEach(function(s){ s.classList.remove('open'); });
+};
+window.toggleCalSubmenu = function(e, calId) {
+  if (e) { e.stopPropagation(); e.preventDefault(); }
+  var s = document.getElementById('cal-submenu-' + calId);
+  if (!s) return;
+  // close other submenus first
+  document.querySelectorAll('.cal-submenu.open').forEach(function(o){ if (o !== s) o.classList.remove('open'); });
+  s.classList.toggle('open');
+};
+window.onCalMenuItemClick = function(e, calId) {
+  // ignore clicks on more button or submenu
+  if (e && e.target && (e.target.closest('.cal-menu-more') || e.target.closest('.cal-submenu'))) return;
+  // sync active class on both menu item and hidden chip (for existing JS)
+  var menuItem = document.querySelector('.cal-menu-item[data-id="' + calId + '"]');
+  if (menuItem) menuItem.classList.toggle('active');
+  // call the existing toggleCalendar to keep behavior consistent
+  if (typeof window.toggleCalendar === 'function') window.toggleCalendar(calId);
+};
+window.closeAllCalMenus = function() {
+  var m = document.getElementById('cal-menu');
+  if (m) m.classList.remove('open');
+  document.querySelectorAll('.cal-submenu.open').forEach(function(s){ s.classList.remove('open'); });
+};
+// close on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.cal-menu-wrap')) window.closeAllCalMenus();
+});
 </script>
 {% endblock %}
 
