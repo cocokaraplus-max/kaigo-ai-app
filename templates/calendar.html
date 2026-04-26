@@ -744,8 +744,8 @@ window.onCellClick = function(dateStr) {
     
     // その日の予定を取得
     const dayEvents = ALL_EVENTS.filter(event => {
-        if (activeCalendarIds.has("all")) return event.event_date === dateStr;
-        return event.event_date === dateStr && activeCalendarIds.has(event.calendar_id);
+        if (activeCalIds.has("all")) return event.event_date === dateStr;
+        return event.event_date === dateStr && activeCalIds.has(event.calendar_id);
     });
     
     // 常に予定一覧を表示（予定がない場合は空の一覧）
@@ -1019,30 +1019,59 @@ window.closeAllCalMenus = function() {
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.cal-menu-wrap')) window.closeAllCalMenus();
 });
+
+// ===== Phase 4: 日別予定一覧モーダル =====
+window.showDayEventsModal = function(dateStr, events) {
+  var existing = document.getElementById('day-events-modal');
+  if (existing) existing.remove();
+  var html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
+  html += '<div class="modal-sheet"><div class="modal-handle"></div>';
+  html += '<div class="modal-title">' + dateStr + ' の予定</div>';
+  if (events && events.length) {
+    events.forEach(function(ev) {
+      var color = ev.color || '#1a73e8';
+      var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
+      var sticker = ev.sticker || '';
+      html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
+      html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
+      html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
+      html += '</div>';
+    });
+  } else {
+    html += '<div style="text-align:center;color:#80868b;padding:20px 0;">この日の予定はありません</div>';
+  }
+  html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">＋ 新しい予定を追加</button>';
+  html += '<button class="btn" onclick="closeModal(\'day-events-modal\')" style="width:100%;margin-top:8px;">閉じる</button>';
+  html += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+// ===== Phase 4: 新規予定追加モーダル =====
+window.showNewEventModal = function(dateStr) {
+  var dayModal = document.getElementById('day-events-modal');
+  if (dayModal) dayModal.remove();
+  if (typeof editingEventId !== 'undefined') editingEventId = null;
+  document.getElementById('ev-title').value = '';
+  document.getElementById('ev-start-date').value = dateStr;
+  document.getElementById('ev-end-date').value = dateStr;
+  document.getElementById('ev-allday').checked = true;
+  document.getElementById('ev-time-row').style.display = 'none';
+  document.getElementById('ev-start-time').value = '09:00';
+  document.getElementById('ev-end-time').value = '10:00';
+  document.getElementById('ev-repeat').value = 'none';
+  document.getElementById('ev-repeat-until-row').style.display = 'none';
+  document.getElementById('ev-repeat-until').value = '';
+  document.getElementById('ev-notify').value = 0;
+  document.getElementById('ev-memo').value = '';
+  document.getElementById('ev-delete-btn').style.display = 'none';
+  document.getElementById('event-modal-title').textContent = '予定を追加 (' + dateStr + ')';
+  if (typeof CALENDARS !== 'undefined' && CALENDARS.length > 0) {
+    document.getElementById('ev-calendar').value = CALENDARS[0].id;
+  }
+  if (typeof selectSticker === 'function') selectSticker('');
+  var firstColor = document.querySelector('#ev-color-picker .color-dot');
+  if (firstColor && typeof selectColor === 'function') selectColor(firstColor.dataset.color);
+  document.getElementById('event-modal').classList.add('show');
+};
 </script>
 {% endblock %}
-
-// ===== 日別予定表示機能 =====
-window.showDayEventsModal = function(dateStr, events) {
-    let html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
-    html += '<div class="modal-sheet"><div class="modal-handle"></div>';
-    html += '<div class="modal-title">' + dateStr + 'の予定</div>';
-    events.forEach(event => {
-        html += '<div onclick="openEditEvent(\'' + event.id + '\')" style="padding:12px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + event.color + '22;">';
-        html += '<strong style="color:' + event.color + ';">' + event.title + '</strong>';
-        html += '<div style="font-size:0.8rem;color:#666;">' + (event.all_day ? '終日' : (event.start_time + ' - ' + event.end_time)) + '</div></div>';
-    });
-    html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">新しい予定を追加</button>';
-                                          cl                                          cl          in                                          cl                                          cl          in                           al                                          cl                           nt                                          cl                         te                           ument.getElementById('ev-end-date').value = dateStr;
-    document.getElementById('ev-allday').checked = true;
-    document.getElementById('ev-time-row').style.display = 'none';
-    document.getElementById('ev-repeat').value = 'none';
-    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById('ev-repeat-until-row').style.displ    document.getElementById(lete-btn').style.display = 'none';
-    document.getElementById('event-modal-title').textContent = '予定を追加（' + dateStr + '）';
-    if (CALENDARS.length > 0) document.getElementById('ev-calendar').value = CALENDARS[0].id;
-    selectSticker('');
-    selectColor(EVENT_COLORS[0]);
-    document.getElementById('event-modal').classList.add('show');
-    const dayModal = document.getElementById('day-events-modal');
-    if (dayModal) dayModal.remove();
-};
