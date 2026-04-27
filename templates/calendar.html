@@ -90,6 +90,12 @@
 .cal-cell.today .cal-cell-num.sat { color:#fff; }
 
 /* ===== イベントバー ===== */
+.cal-span-bar {
+    position:absolute; height:15px; padding:1px 6px; box-sizing:border-box;
+    font-size:0.62rem; line-height:13px; color:#fff; background:#1a73e8;
+    border-radius:3px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; font-weight:600; cursor:pointer; z-index:2;
+}
 .cal-event-bar { max-width:100%; box-sizing:border-box;
     display:block; font-size:0.62rem; font-weight:600;
     padding:1px 4px; border-radius:3px; margin-bottom:1px;
@@ -625,7 +631,7 @@ function renderMonth() {
         ).join('');
         const more = evs.length > 2 ? `<span class="cal-event-more">+${evs.length-2}</span>` : '';
 
-        html += `<div class="cal-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
+        html += `<div class="cal-cell ${isToday?'today':''}" data-date="${dateStr}" onclick="onCellClick('${dateStr}')">
             ${stickers}
             <div class="cal-cell-num ${numCls}">${d}</div>
             ${bars}${more}
@@ -636,6 +642,7 @@ function renderMonth() {
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
     }
     grid.innerHTML = html;
+    renderMultiDayBars();
 }
 
 function renderWeek() {
@@ -671,6 +678,7 @@ function renderWeek() {
         </div>`;
     }
     grid.innerHTML = html;
+    renderMultiDayBars();
 }
 
 function getFilteredEvents() {
@@ -1162,5 +1170,57 @@ document.addEventListener('click', function(e) {
     if (dem) dem.remove();
   }
 }, true);
+// ===== Phase 9: 連続バー(マルチデイバー)描画 =====
+window.renderMultiDayBars = function() {
+    const grid = document.getElementById('cal-days');
+    if (!grid) return;
+    // 既存の span-bar をクリア
+    grid.querySelectorAll('.cal-span-bar').forEach(el => el.remove());
+    // 複数日にわたる予定だけを抽出(end_date があり、event_date と異なる)
+    const filteredEvents = getFilteredEvents();
+    const spans = filteredEvents.filter(ev => ev.end_date && ev.end_date !== ev.event_date);
+    if (!spans.length) return;
+    // セル一覧と日付インデックス作成
+    const cellEls = grid.querySelectorAll('.cal-cell[data-date]');
+    if (!cellEls.length) return;
+    const dateIndex = {};
+    const dates = [];
+    cellEls.forEach((el, i) => {
+        const dk = el.getAttribute('data-date');
+        dateIndex[dk] = i;
+        dates.push(dk);
+    });
+    const totalCells = dates.length;
+    const rows = Math.max(1, Math.round(totalCells / 7));
+    const MAX_SLOTS = 3;
+    const occupancy = [];
+    for (let z = 0; z < totalCells; z++) occupancy.push([false, false, false]);
+    function findSlot(s0, e0) {
+        for (let sl = 0; sl < MAX_SLOTS; sl++) {
+            let ok = true;
+            for (let k = s0; k <= e0; k++) { if (occupancy[k][sl]) { ok = false; break; } }
+            if (ok) {
+                for (let k2 = s0; k2 <= e0; k2++) occupancy[k2][sl] = true;
+                return sl;
+                                                                                                  pa                             f (a.event_date !== b.event_date) return a.event_date <                                                               t_da                               te || b.event_date;
+                            :                             :   => {
+        const start = ev.event_date;
+                           date ||                       ir   = dates[0];
+        const last = dates[tot        const last = dates[tot        const last = dateif         const last = da        const clipStart = st        const last = dates[tot        const last = dates[tot        const last        const startIdx = dateIndex        const last = dates[tot        const laslipEnd];
+        if (startIdx        if (startIdx        if (startIdx        if (startIdx        if (startIdx        ifle        if (startIdx{
+        if (startIdx        if (startIdx        if (startIdx        if (strs        if (startIdx   st r        if (startIdx        if (startIdx        if (startIdx        if (strs        if (startIdx   st r        if (startIdx        if (startIdx        if (startIdx        if (strs        if (startIdx   st r        if (startIdx        if (startIdx        if (startIdx        if (strs        if (startIl-        if (startIdx        if (startIdx        if (startIdx     v.color;
+                const isFirstSegment = cursor === startIdx;
+                const prefix = ev.sticker ? (ev.sticker + ' ') : '';
+                bar.textContent = isFirstSegment ? (prefix + (ev.title || '')) : '';
+                bar.title = (ev.title || '') + (ev.memo ? ' - ' + ev.memo : '');
+                const leftRound = (start >= first && cursor === startIdx);
+                const rightRound = (end <                const rightRound = (end <                const rightRound = (end <                const rightRound = (end <        us                 const rightRound = (end <                const rightRound = (end <                const rightRound = (end <                const rightRound = (end <        us                 const rightRound = (end <                const rightRound = (end <                const rightRound = (end <                const rightRound = (end <        us                 const rightRound = (end <                const rightRound = (end <                const rightRounopagation();
+                                                                                                                               d.appendChild(bar);
+            }
+            cursor = rowEnd + 1;
+        }
+    });
+};
+
 </script>
 {% endblock %}
