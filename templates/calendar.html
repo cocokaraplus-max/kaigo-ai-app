@@ -96,6 +96,42 @@
     overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
     cursor:pointer; color:#fff; line-height:1.4;
 }
+/* ===== イベントバー: 複数日セグメント ===== */
+.cal-event-bar.seg-mid,
+.cal-event-bar.seg-end {
+    color: rgba(255,255,255,0.92);
+}
+.cal-event-bar.seg-start {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-right: -3px;
+    padding-right: 2px;
+}
+.cal-event-bar.seg-mid {
+    border-radius: 0;
+    margin-left: -3px;
+    margin-right: -3px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+.cal-event-bar.seg-end {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: -3px;
+    padding-left: 2px;
+}
+.cal-event-bar.seg-week-end {
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    margin-right: 0;
+    padding-right: 4px;
+}
+.cal-event-bar.seg-week-start {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+    margin-left: 0;
+    padding-left: 4px;
+}
 .cal-event-more {
     font-size:0.6rem; color:#80868b; padding:0 2px; cursor:pointer;
 }
@@ -602,9 +638,17 @@ function renderMonth() {
     const filteredEvents = getFilteredEvents();
     const eventsByDate = {};
     filteredEvents.forEach(ev => {
-        const d = ev.event_date;
-        if (!eventsByDate[d]) eventsByDate[d] = [];
-        eventsByDate[d].push(ev);
+        const start = ev.event_date;
+        const end = ev.end_date || ev.event_date;
+        // 開始〜終了日まで全ての日付キーに登録
+        let cur = new Date(start + 'T00:00:00');
+        const last = new Date(end + 'T00:00:00');
+        while (cur <= last) {
+            const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+            if (!eventsByDate[k]) eventsByDate[k] = [];
+            eventsByDate[k].push(ev);
+            cur.setDate(cur.getDate() + 1);
+        }
     });
 
     let html = '';
@@ -619,11 +663,24 @@ function renderMonth() {
         const numCls = dow===0?'sun':dow===6?'sat':'';
         const evs = eventsByDate[dateStr] || [];
         const stickers = evs.filter(e=>e.sticker).map(e=>`<span class="cal-sticker">${e.sticker}</span>`).join('');
-        const bars = evs.slice(0,2).map(e=>
-            `<span class="cal-event-bar" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`
-        ).join('');
-        const more = evs.length > 2 ? `<span class="cal-event-more">+${evs.length-2}</span>` : '';
+        const bars = evs.slice(0,3).map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (dow === 6 && !isEnd) segCls += ' seg-week-end';
+                if (dow === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
+                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+        }).join('');
+        const more = evs.length > 3 ? `<span class="cal-event-more">+${evs.length-3}</span>` : '';
 
         html += `<div class="cal-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             ${stickers}
@@ -660,11 +717,28 @@ function renderWeek() {
         const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         const isToday = dateStr === todayStr;
         const dow = ['日','月','火','水','木','金','土'][i];
-        const evs = filteredEvents.filter(e=>e.event_date===dateStr);
-        const bars = evs.map(e=>
-            `<div class="cal-event-bar" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="openEditEvent('${e.id}')">${e.sticker||''}${e.title}</div>`
-        ).join('');
+        const evs = filteredEvents.filter(e=>{
+            const s = e.event_date;
+            const en = e.end_date || e.event_date;
+            return s <= dateStr && dateStr <= en;
+        });
+        const bars = evs.map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (i === 6 && !isEnd) segCls += ' seg-week-end';
+                if (i === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<div class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
+                onclick="openEditEvent('${e.id}')">${e.sticker||''}${e.title}</div>`;
+        }).join('');
         html += `<div class="week-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             <div class="week-cell-header" style="color:${i===0?'#c62828':i===6?'#2e7d32':'#5f6368'}">${dow}<br><b>${d.getDate()}</b></div>
             ${bars}
@@ -750,8 +824,11 @@ window.onCellClick = function(dateStr) {
     
     // その日の予定を取得
     const dayEvents = ALL_EVENTS.filter(event => {
-        if (activeCalIds.has("all")) return event.event_date === dateStr;
-        return event.event_date === dateStr && activeCalIds.has(event.calendar_id);
+        const s = event.event_date;
+        const en = event.end_date || event.event_date;
+        const inRange = s <= dateStr && dateStr <= en;
+        if (activeCalIds.has("all")) return inRange;
+        return inRange && activeCalIds.has(event.calendar_id);
     });
     
     // 常に予定一覧を表示（予定がない場合は空の一覧）

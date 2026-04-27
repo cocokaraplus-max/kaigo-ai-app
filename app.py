@@ -1768,8 +1768,12 @@ def api_calendar_events():
         supabase = get_supabase()
         date_from = request.args.get("from")
         date_to   = request.args.get("to")
-        res = supabase.table("calendar_events").select("*").eq("facility_code", f_code).gte("event_date", date_from).lte("event_date", date_to).order("event_date").execute()
-        return jsonify({"events": res.data or []})
+        # 期間とイベント期間が重なるものを取得
+        # (event_date <= date_to) AND (COALESCE(end_date, event_date) >= date_from)
+        res = supabase.table("calendar_events").select("*").eq("facility_code", f_code).lte("event_date", date_to).order("event_date").execute()
+        all_events = res.data or []
+        events = [e for e in all_events if (e.get("end_date") or e.get("event_date")) >= date_from]
+        return jsonify({"events": events})
     except Exception as e:
         return jsonify({"events": [], "error": str(e)})
 
