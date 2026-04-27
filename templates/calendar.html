@@ -290,8 +290,14 @@
         </button>
         <div class="cal-submenu" id="cal-submenu-{{ cal.id }}">
           <div class="cal-submenu-item" onclick="openInviteModal('{{ cal.id }}', '{{ cal.name }}'); closeAllCalMenus();">
-            <span class="material-symbols-outlined">person_add</span>招待
-          </div>
+                    <span class="material-symbols-outlined">person_add</span>招待
+                </div>
+                <div class="cal-submenu-item" onclick="openEditCalendar('{{ cal.id }}', '{{ cal.name }}', '{{ cal.color }}', {% if cal.is_private %}true{% else %}false{% endif %}); closeAllCalMenus();">
+                    <span class="material-symbols-outlined">edit</span>編集
+                </div>
+                <div class="cal-submenu-item" style="color:#ea4335;" onclick="deleteCalendar('{{ cal.id }}', '{{ cal.name }}'); closeAllCalMenus();">
+                    <span class="material-symbols-outlined" style="color:#ea4335;">delete</span>削除
+                </div>
         </div>
         {% endif %}
       </div>
@@ -484,7 +490,7 @@
 <div class="modal-overlay" id="cal-modal" onclick="closeModalOutside(event,'cal-modal')">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title">カレンダーを追加</div>
+        <div class="modal-title" id="cal-modal-title">カレンダーを追加</div>
         <div class="form-group">
             <label class="form-label">カレンダー名</label>
             <input type="text" class="form-control" id="new-cal-name" placeholder="例：マイカレンダー・希望休・会議">
@@ -519,8 +525,8 @@
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <button class="btn" onclick="closeModal('cal-modal')">キャンセル</button>
-            <button class="btn btn-primary" onclick="saveNewCalendar()">
-                <span class="material-symbols-outlined" style="color:white;">add</span>作成
+            <button class="btn btn-primary" onclick="saveNewCalendar()"id="cal-save-btn">
+                <span class="material-symbols-outlined" style="color:white;">add</span><span id="cal-save-btn-label">作成</span>
             </button>
         </div>
     </div>
@@ -1073,5 +1079,88 @@ window.showNewEventModal = function(dateStr) {
   if (firstColor && typeof selectColor === 'function') selectColor(firstColor.dataset.color);
   document.getElementById('event-modal').classList.add('show');
 };
+// ===== Phase 5: カレンダー編集・削除 =====
+let editingCalendarId = null;
+
+window.openEditCalendar = function(calId, calName, calColor, isPrivate) {
+  editingCalendarId = calId;
+  document.getElementById('cal-modal-title').textContent = 'カレンダーを編集';
+  document.getElementById('cal-save-btn-label').textContent = '保存';
+  document.getElementById('new-cal-name').value = calName;
+  newCalIsPrivate = isPrivate;
+  selectedNewCalColor = calColor;
+  document.querySelectorAll('#new-cal-color-picker .color-dot').forEach(function(d){
+    d.classList.toggle('selected', d.dataset.color === calColor);
+  });
+  document.getElementById('cal-modal').classList.add('show');
+};
+
+window.deleteCalendar = async function(calId, calName) {
+  if (!confirm('「' + calName + '」を削除しますか？\nこのカレンダーの予定もすべて削除されます。')) return;
+  try {
+    const res = await fetch('/api/delete_calendar', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: calId})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      location.reload();
+    } else {
+      alert('削除に失敗しました: ' + (data.message || ''));
+    }
+  } catch (e) {
+    alert('削除エラー: ' + e.message);
+  }
+};
+
+// saveNewCalendar をオーバーライドして編集モード対応
+const _origSaveNewCalendar = window.saveNewCalendar;
+window.saveNewCalendar = async function() {
+  const name = document.getElementById('new-cal-name').value.trim();
+  if (!name) { alert('カレンダー名を入力してください'); return; }
+  if (editingCalendarId) {
+    try {
+      const res = await fetch('/api/update_calendar', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: editingCalendarId, name: name, color: selectedNewCalColor})
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        editingCalendarId = null;
+        location.reload();
+      } else {
+        alert('更新に失敗しました: ' + (data.message || ''));
+      }
+    } catch (e) {
+      alert('更新エラー: ' + e.message);
+    }
+  } else {
+    return _origSaveNewCalendar();
+  }
+};
+
+// openNewCalendar をオーバーライドして毎回モード初期化
+const _origOpenNewCalendar = window.openNewCalendar;
+window.openNewCalendar = function() {
+  editingCalendarId = null;
+  document.getElementById('cal-modal-title').textContent = 'カレンダーを追加';
+  document.getElementById('cal-save-btn-label').textContent = '作成';
+  return _origOpenNewCalendar();
+};
+
+// ===== Phase 5: iPhone PWA fix - cleanup ad-hoc modals on navigation =====
+window.addEventListener('pagehide', function() {
+  var dem = document.getElementById('day-events-modal');
+  if (dem) dem.remove();
+});
+document.addEventListener('click', function(e) {
+  var a = e.target.closest('a[href]');
+  if (a && a.getAttribute('href') && !a.getAttribute('href').startsWith('#')) {
+    var dem = document.getElementById('day-events-modal');
+    if (dem) dem.remove();
+  }
+}, true);
 </script>
 {% endblock %}
