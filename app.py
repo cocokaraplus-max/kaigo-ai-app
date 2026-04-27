@@ -1599,7 +1599,18 @@ def api_save_calendar_event():
             return jsonify({"status": "success", "id": new_id})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
+@app.route('/api/delete_calendar_event', methods=['POST'])
+@login_required
+def api_delete_calendar_event():
+    try:
+        data = request.json
+        event_id = data.get("id")
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        supabase.table("calendar_events").delete().eq("id", event_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 @app.route('/api/delete_calendar', methods=['POST'])
 def api_delete_calendar():
     try:
