@@ -707,12 +707,17 @@ body.modal-open .bottom-nav {
 </div>
 
 <!-- 画像ビューワー -->
-<div id="image-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;align-items:center;justify-content:center;">
-    <img id="image-viewer-img" style="max-width:100%;max-height:100%;object-fit:contain;">
-    <button onclick="document.getElementById('image-viewer').style.display='none'"
-        style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;">
+<div id="image-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;overflow:hidden;touch-action:none;">
+    <img id="image-viewer-img" style="max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none;pointer-events:none;">
+    <button id="image-viewer-close-btn" onclick="document.getElementById('image-viewer').style.display='none'"
+        style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;z-index:2;">
         <span class="material-symbols-outlined" style="color:white;font-size:20px;">close</span>
     </button>
+    <button id="image-viewer-reset-btn" aria-label="リセット"
+        style="display:none;position:absolute;top:16px;left:16px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;z-index:2;">
+        <span class="material-symbols-outlined" style="color:white;font-size:20px;">restart_alt</span>
+    </button>
+    <div id="image-viewer-hint" style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.7);font-size:0.78rem;background:rgba(0,0,0,0.4);padding:6px 14px;border-radius:14px;pointer-events:none;z-index:2;">ピンチで拡大・ダブルタップでズーム</div>
 </div>
 
 {% endblock %}
@@ -828,14 +833,250 @@ if (mentionSearchEl) {
     });
 }
 
-// ===== 画像ビューワー =====
-window.openImageViewer = function(url) {
-    document.getElementById('image-viewer-img').src = url;
-    document.getElementById('image-viewer').style.display = 'flex';
-};
-document.getElementById('image-viewer').addEventListener('click', function(e) {
-    if (e.target === this) this.style.display = 'none';
-});
+// ===== 画像ビューワー(ピンチズーム + ダブルタップ + ドラッグ + ホイール) =====
+(function setupImageViewer(){
+    var viewer = document.getElementById('image-viewer');
+    var img = document.getElementById('image-viewer-img');
+    var resetBtn = document.getElementById('image-viewer-reset-btn');
+    var hint = document.getElementById('image-viewer-hint');
+    var closeBtn = document.getElementById('image-viewer-close-btn');
+    if (!viewer || !img) return;
+
+    // ズーム/パン状態
+    var scale = 1;
+    var translateX = 0;
+    var translateY = 0;
+    // 操作中の状態
+    var isPanning = false;
+    var panStartX = 0, panStartY = 0;
+    var panStartTransX = 0, panStartTransY = 0;
+    // ピンチ状態
+    var pinchStartDist = 0;
+    var pinchStartScale = 1;
+    // タップ判定
+    var lastTapTime = 0;
+    var lastTapX = 0, lastTapY = 0;
+    var hintTimer = null;
+
+    var MIN_SCALE = 1;
+    var MAX_SCALE = 5;
+    var DOUBLE_TAP_MS = 300;
+
+    function applyTransform() {
+        img.style.transform = 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')';
+        // リセットボタンの表示
+        if (resetBtn) resetBtn.style.display = (scale > 1.001 || Math.abs(translateX) > 1 || Math.abs(translateY) > 1) ? 'block' : 'none';
+    }
+
+    function resetZoom() {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        img.style.transition = 'transform 0.18s ease';
+        applyTransform();
+        setTimeout(function(){ img.style.transition = ''; }, 200);
+    }
+
+    // パンの境界を制限(画像が見える範囲内に留まる)
+    function clampTranslate() {
+        var rect = viewer.getBoundingClientRect();
+        var imgRect = img.getBoundingClientRect();
+        // 画像が表示エリアより小さければ中央固定
+        var maxX = Math.max(0, (imgRect.width - rect.width) / 2);
+        var maxY = Math.max(0, (imgRect.height - rect.height) / 2);
+        if (translateX > maxX) translateX = maxX;
+        if (translateX < -maxX) translateX = -maxX;
+        if (translateY > maxY) translateY = maxY;
+        if (translateY < -maxY) translateY = -maxY;
+    }
+
+    // ヒントを数秒で消す
+    function showHint() {
+        if (!hint) return;
+        hint.style.opacity = '1';
+        hint.style.transition = 'opacity 0.4s ease';
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(function(){ hint.style.opacity = '0'; }, 2500);
+    }
+
+    // ===== タッチ操作 =====
+    viewer.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+            // シングルタッチ: パン開始 or タップ判定
+            var t = e.touches[0];
+            isPanning = (scale > 1.001);
+            panStartX = t.clientX;
+            panStartY = t.clientY;
+            panStartTransX = translateX;
+            panStartTransY = translateY;
+        } else if (e.touches.length === 2) {
+            // ピンチ開始
+            isPanning = false;
+            var t1 = e.touches[0], t2 = e.touches[1];
+            pinchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            pinchStartScale = scale;
+        }
+    }, { passive: true });
+
+    viewer.addEventListener('touchmove', function(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            var t1 = e.touches[0], t2 = e.touches[1];
+            var dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            if (pinchStartDist > 0) {
+                var ratio = dist / pinchStartDist;
+                scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinchStartScale * ratio));
+                clampTranslate();
+                applyTransform();
+            }
+        } else if (e.touches.length === 1 && isPanning) {
+            e.preventDefault();
+            var t = e.touches[0];
+            translateX = panStartTransX + (t.clientX - panStartX);
+            translateY = panStartTransY + (t.clientY - panStartY);
+            clampTranslate();
+            applyTransform();
+        }
+    }, { passive: false });
+
+    viewer.addEventListener('touchend', function(e) {
+        // ダブルタップ判定(指が0本になったタイミング、かつ単指タップだったとき)
+        if (e.touches.length === 0 && e.changedTouches.length === 1 && !isPanning) {
+            var t = e.changedTouches[0];
+            var now = Date.now();
+            var dx = Math.abs(t.clientX - lastTapX);
+            var dy = Math.abs(t.clientY - lastTapY);
+            if (now - lastTapTime < DOUBLE_TAP_MS && dx < 30 && dy < 30) {
+                // ダブルタップ → ズームトグル
+                if (scale > 1.001) {
+                    resetZoom();
+                } else {
+                    // タップ位置を中心に2倍ズーム
+                    var rect = viewer.getBoundingClientRect();
+                    var cx = t.clientX - rect.left - rect.width / 2;
+                    var cy = t.clientY - rect.top - rect.height / 2;
+                    scale = 2;
+                    translateX = -cx;
+                    translateY = -cy;
+                    clampTranslate();
+                    img.style.transition = 'transform 0.2s ease';
+                    applyTransform();
+                    setTimeout(function(){ img.style.transition = ''; }, 220);
+                }
+                lastTapTime = 0; // 連続トリプル防止
+                return;
+            }
+            lastTapTime = now;
+            lastTapX = t.clientX;
+            lastTapY = t.clientY;
+        }
+        // パン終了
+        if (e.touches.length === 0) {
+            isPanning = false;
+            pinchStartDist = 0;
+        }
+    }, { passive: true });
+
+    // ===== マウスホイール(デスクトップ) =====
+    viewer.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        var delta = -e.deltaY;
+        var step = delta > 0 ? 1.1 : 0.9;
+        var newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * step));
+        if (newScale !== scale) {
+            // マウス位置を基準にスケール
+            var rect = viewer.getBoundingClientRect();
+            var cx = e.clientX - rect.left - rect.width / 2;
+            var cy = e.clientY - rect.top - rect.height / 2;
+            // マウス位置が画像の同じ点を指し続けるように translate を調整
+            var ratio = newScale / scale;
+            translateX = cx - (cx - translateX) * ratio;
+            translateY = cy - (cy - translateY) * ratio;
+            scale = newScale;
+            clampTranslate();
+            applyTransform();
+        }
+    }, { passive: false });
+
+    // ===== マウスドラッグ(デスクトップ) =====
+    var isMouseDragging = false;
+    viewer.addEventListener('mousedown', function(e) {
+        if (e.target === closeBtn || e.target === resetBtn || (closeBtn && closeBtn.contains(e.target)) || (resetBtn && resetBtn.contains(e.target))) return;
+        if (scale > 1.001) {
+            isMouseDragging = true;
+            panStartX = e.clientX;
+            panStartY = e.clientY;
+            panStartTransX = translateX;
+            panStartTransY = translateY;
+            viewer.style.cursor = 'grabbing';
+            e.preventDefault();
+        }
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!isMouseDragging) return;
+        translateX = panStartTransX + (e.clientX - panStartX);
+        translateY = panStartTransY + (e.clientY - panStartY);
+        clampTranslate();
+        applyTransform();
+    });
+    document.addEventListener('mouseup', function() {
+        if (isMouseDragging) {
+            isMouseDragging = false;
+            viewer.style.cursor = '';
+        }
+    });
+
+    // ===== ダブルクリック(デスクトップ用) =====
+    viewer.addEventListener('dblclick', function(e) {
+        if (e.target === closeBtn || e.target === resetBtn || (closeBtn && closeBtn.contains(e.target)) || (resetBtn && resetBtn.contains(e.target))) return;
+        if (scale > 1.001) {
+            resetZoom();
+        } else {
+            var rect = viewer.getBoundingClientRect();
+            var cx = e.clientX - rect.left - rect.width / 2;
+            var cy = e.clientY - rect.top - rect.height / 2;
+            scale = 2;
+            translateX = -cx;
+            translateY = -cy;
+            clampTranslate();
+            img.style.transition = 'transform 0.2s ease';
+            applyTransform();
+            setTimeout(function(){ img.style.transition = ''; }, 220);
+        }
+    });
+
+    // ===== リセットボタン =====
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            resetZoom();
+        });
+    }
+
+    // ===== オーバーレイクリックで閉じる(ただしズーム中は無効) =====
+    viewer.addEventListener('click', function(e) {
+        if (e.target === closeBtn || (closeBtn && closeBtn.contains(e.target))) return;
+        if (e.target === resetBtn || (resetBtn && resetBtn.contains(e.target))) return;
+        // ズーム中は誤タップで閉じないようにする
+        if (scale > 1.001) return;
+        if (e.target === viewer) {
+            viewer.style.display = 'none';
+        }
+    });
+
+    // ===== 公開API =====
+    window.openImageViewer = function(url) {
+        // 状態リセット
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        img.style.transition = '';
+        applyTransform();
+        img.src = url;
+        viewer.style.display = 'flex';
+        showHint();
+    };
+})();
 
 // ===== 投稿作成モーダル =====
 document.getElementById('new-post-btn').addEventListener('click', openPostModal);
