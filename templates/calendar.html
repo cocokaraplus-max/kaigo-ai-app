@@ -1495,7 +1495,7 @@ document.addEventListener('click', function(e) {
                             mask.style.top = '0';
                             mask.style.width = maskWidth + 'px';
                             mask.style.height = '100%';
-                            mask.style.background = 'rgba(255,255,255,0.45)';
+                            mask.style.background = 'rgba(255,255,255,0.55)';
                             mask.style.pointerEvents = 'none';
                             connectBar.appendChild(mask);
                         }
@@ -1576,15 +1576,8 @@ document.addEventListener('click', function(e) {
             'box-shadow:0 1px 3px rgba(0,0,0,0.05)'
         ].join(';');
 
-        // どの予定が同色か簡潔に表示
-        var firstDup = duplicateColors[0];
-        var titles = (colorTitles[firstDup] || []).slice(0, 3).join('・');
-        var moreColorsText = duplicateColors.length > 1
-            ? ' (他' + (duplicateColors.length - 1) + '色も重複)'
-            : '';
-        var msg = '同じ色の予定が複数あります';
-        if (titles) msg += ': ' + titles;
-        msg += moreColorsText + '。色を変えると見やすくなります。';
+        // メッセージ作成: 自然な日本語にする
+        var msg = '同じ色の予定が重なっています。見分けやすくするには、それぞれ違う色を設定することをおすすめします。';
 
         var msgSpan = document.createElement('span');
         msgSpan.textContent = msg;
