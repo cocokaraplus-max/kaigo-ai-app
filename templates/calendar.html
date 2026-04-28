@@ -710,7 +710,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
-                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
+                data-event-id="${e.id}">${e.title}</span>`;
         }).join('');
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
@@ -736,7 +736,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
+                data-event-id="${e.id}">${e.title}</span>`;
         }).join('');
         const more = evs.length > 3 ? `<span class="cal-event-more">+${evs.length-3}</span>` : '';
 
@@ -773,7 +773,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
-                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
+                data-event-id="${e.id}">${e.title}</span>`;
         }).join('');
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
@@ -824,7 +824,7 @@ function renderWeek() {
                 if (i === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<div class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="openEditEvent('${e.id}')">${e.sticker||''}${e.title}</div>`;
+                data-event-id="${e.id}">${e.sticker||''}${e.title}</div>`;
         }).join('');
         html += `<div class="week-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             <div class="week-cell-header" style="color:${i===0?'#c62828':i===6?'#2e7d32':'#5f6368'}">${dow}<br><b>${d.getDate()}</b></div>
@@ -1447,8 +1447,11 @@ document.addEventListener('click', function(e) {
 
     function eventIdOf(bar) {
         var oc = bar.getAttribute('onclick') || '';
-        var m = oc.match(/openEditEvent\(['\"]([^'\"]+)/);
-        return m ? m[1] : null;
+        // openEditEvent('...') または openEventOrTask('...') の両方をマッチ
+        var m = oc.match(/(?:openEditEvent|openEventOrTask)\(['\"]([^'\"]+)/);
+        if (m) return m[1];
+        // フォールバック: data-event-id 属性
+        return bar.getAttribute('data-event-id') || null;
     }
 
     function getBg(bar) {
@@ -1603,8 +1606,10 @@ document.addEventListener('click', function(e) {
                     // (同じイベントなら全セルで同じ barIdx になるはず → 正確な積み重ね)
                     var sampleBarIdx = group[0].barIdx || 0;
                     connectBar.style.zIndex = String(5 + sampleBarIdx);
-                    connectBar.style.pointerEvents = 'auto';
-                    connectBar.style.cursor = 'pointer';
+                    // 連結バー自体はクリックを受けず、下のセルにクリックを通す。
+                    // → セルの onclick="onCellClick(...)" が発火 → 必ず一覧モーダルが開く。
+                    connectBar.style.pointerEvents = 'none';
+                    connectBar.style.cursor = 'default';
                     connectBar.style.boxSizing = 'border-box';
                     connectBar.style.borderRadius = '3px';
                     connectBar.style.overflow = 'hidden';
@@ -1617,14 +1622,7 @@ document.addEventListener('click', function(e) {
                     connectBar.style.textOverflow = 'ellipsis';
                     connectBar.textContent = title;
                     connectBar.setAttribute('data-event-id', eventId);
-                    connectBar.addEventListener('click', function(ev) {
-                        ev.stopPropagation();
-                        if (typeof openEventOrTask === 'function') {
-                            openEventOrTask(eventId);
-                        } else if (typeof openEditEvent === 'function') {
-                            openEditEvent(eventId);
-                        }
-                    });
+                    // 連結バーには click ハンドラを付けない(pointer-events:none で下のセルへ)
 
                     // 隣月部分は薄くするためのマスクを上に重ねる
                     // group には other-month セルが含まれない可能性があるため、
