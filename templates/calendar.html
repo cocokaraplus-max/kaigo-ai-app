@@ -1483,22 +1483,29 @@ document.addEventListener('click', function(e) {
                     });
 
                     // 隣月部分は薄くするためのマスクを上に重ねる
-                    // (バー全体は均一の濃い色 / 隣月セルの上だけマスクで薄く見せる)
-                    group.forEach(function(item) {
-                        if (item.cell.classList.contains('other-month')) {
-                            var cellRect = item.cell.getBoundingClientRect();
-                            var maskLeft = cellRect.left - fr.left;
-                            var maskWidth = cellRect.width;
-                            var mask = document.createElement('div');
-                            mask.style.position = 'absolute';
-                            mask.style.left = maskLeft + 'px';
-                            mask.style.top = '0';
-                            mask.style.width = maskWidth + 'px';
-                            mask.style.height = '100%';
-                            mask.style.background = 'rgba(255,255,255,0.55)';
-                            mask.style.pointerEvents = 'none';
-                            connectBar.appendChild(mask);
-                        }
+                    // group には other-month セルが含まれない可能性があるため、
+                    // row全体から other-month セルを探して、連結バー範囲と重なる部分にマスクを配置
+                    var connectBarLeftAbs = fr.left;  // 連結バーの絶対左端(画面座標)
+                    var connectBarRightAbs = lr.right; // 連結バーの絶対右端
+                    row.forEach(function(cell) {
+                        if (!cell.classList.contains('other-month')) return;
+                        var cellRect = cell.getBoundingClientRect();
+                        // 連結バー範囲とこのセル範囲が重なるかチェック
+                        var overlapLeft = Math.max(connectBarLeftAbs, cellRect.left);
+                        var overlapRight = Math.min(connectBarRightAbs, cellRect.right);
+                        if (overlapRight <= overlapLeft) return; // 重ならない
+                        // 連結バー内での相対位置に変換
+                        var maskLeft = overlapLeft - connectBarLeftAbs;
+                        var maskWidth = overlapRight - overlapLeft;
+                        var mask = document.createElement('div');
+                        mask.style.position = 'absolute';
+                        mask.style.left = maskLeft + 'px';
+                        mask.style.top = '0';
+                        mask.style.width = maskWidth + 'px';
+                        mask.style.height = '100%';
+                        mask.style.background = 'rgba(255,255,255,0.55)';
+                        mask.style.pointerEvents = 'none';
+                        connectBar.appendChild(mask);
                     });
 
                     grid.appendChild(connectBar);
