@@ -75,6 +75,10 @@
 }
 .cal-cell:active { background:#f0f4ff; }
 .cal-cell.other-month { background:#efefef; }
+/* 隣月セル(other-month)に描画されるイベントバーは常に非表示。
+   連結バーロジックが eventGroups に拾うためだけに描画されており、
+   視覚的には連結バー(オーバーレイ)が薄色マスクで隣月部分を表現する。 */
+.cal-cell.other-month .cal-event-bar { visibility: hidden !important; }
 .cal-cell.today { background:#e8f0fe; }
 .cal-cell-num {
     font-size:0.72rem; font-weight:600; color:#202124;
@@ -652,9 +656,36 @@ function renderMonth() {
     });
 
     let html = '';
+    // 月初の前月セル(other-month)にも、該当イベントがあれば bar を描画する。
+    // visibility:hidden で視覚上は非表示。連結バーロジック側で eventGroups に拾われ、
+    // 月跨ぎバーが隣月セル範囲まで延伸 → 薄色マスクが正しく生成される。
     for (let i = 0; i < firstDay; i++) {
         const d = prevLast - firstDay + 1 + i;
-        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+        // 前月の年月を計算
+        const prevDate = new Date(currentYear, currentMonth, 0); // 前月末日のDateオブジェクト
+        const py = prevDate.getFullYear();
+        const pm = prevDate.getMonth(); // 0-indexed
+        const dateStr = `${py}-${String(pm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dow = i; // 0=日, 1=月, ... 6=土(行頭からの位置)
+        const evs = eventsByDate[dateStr] || [];
+        const bars = evs.slice(0,3).map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (dow === 6 && !isEnd) segCls += ' seg-week-end';
+                if (dow === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
+                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+        }).join('');
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
     for (let d = 1; d <= lastDate; d++) {
         const dow = new Date(currentYear, currentMonth, d).getDay();
@@ -689,8 +720,35 @@ function renderMonth() {
         </div>`;
     }
     const remain = 42 - firstDay - lastDate;
+    // 月末の翌月セル(other-month)にも、該当イベントがあれば bar を描画する。
+    // visibility:hidden で視覚上は非表示。連結バーロジック側で eventGroups に拾われ、
+    // 月跨ぎバーが隣月セル範囲まで延伸 → 薄色マスクが正しく生成される。
+    const nextDate = new Date(currentYear, currentMonth+1, 1); // 翌月1日
+    const ny = nextDate.getFullYear();
+    const nm = nextDate.getMonth(); // 0-indexed
     for (let d = 1; d <= remain; d++) {
-        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+        const dateStr = `${ny}-${String(nm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cellIdx = firstDay + lastDate + (d - 1); // 0..41 のセルインデックス
+        const dow = cellIdx % 7;
+        const evs = eventsByDate[dateStr] || [];
+        const bars = evs.slice(0,3).map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (dow === 6 && !isEnd) segCls += ' seg-week-end';
+                if (dow === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
+                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+        }).join('');
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
     grid.innerHTML = html;
     // フル連結バー再描画
