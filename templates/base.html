@@ -810,6 +810,12 @@ let lastUnreadCount = 0;
 let chatPollingTimer = null;
 
 async function checkUnreadMessages() {
+    // 掲示板ページでは未読バッジを更新しない(掲示板を開いた時点で既読扱い)
+    if (window.location.pathname === '/board') {
+        var badge = document.getElementById('chat-badge');
+        if (badge) badge.style.display = 'none';
+        return;
+    }
     try {
         const res = await fetch('/api/board/unread_count');
         if (!res.ok) return;
