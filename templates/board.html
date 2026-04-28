@@ -200,6 +200,16 @@
     padding: 16px;
 }
 .post-detail-overlay.show { display: flex; }
+/* モーダルが開いている間、背景のスクロールを完全に止める(iOS Safari対策込み) */
+body.modal-open {
+    overflow: hidden !important;
+    /* iOS Safari でも効くように position fixed を併用 */
+    position: fixed;
+    top: var(--scroll-top, 0);
+    left: 0;
+    right: 0;
+    width: 100%;
+}
 /* モーダルが開いている間、ボトムナビをディムしてモーダルを際立たせる */
 body.modal-open .bottom-nav {
     opacity: 0.4;
@@ -322,6 +332,9 @@ body.modal-open .bottom-nav {
 .post-action-btn:active { background: #f0f0f0; }
 .post-action-btn .material-symbols-outlined { font-size: 18px; }
 .post-action-btn.checked { color: #1a73e8; }
+.post-action-btn.checked .material-symbols-outlined { color: #1a73e8; }
+.post-action-btn.unchecked { color: #ea4335; font-weight: 700; }
+.post-action-btn.unchecked .material-symbols-outlined { color: #ea4335; }
 .post-action-btn .badge {
     background: #ea4335; color: white; border-radius: 10px;
     font-size: 0.65rem; font-weight: 700; padding: 1px 5px; min-width: 16px;
@@ -624,12 +637,12 @@ body.modal-open .bottom-nav {
 
     <!-- アクションバー -->
     {% set checked = my_name in reactions_data.get(post.id, {}).get('✅', []) %}
+    {% set check_count = reactions_data.get(post.id, {}).get('✅', [])|length %}
     <div class="post-actions">
-        <button class="post-action-btn {% if checked %}checked{% endif %}" onclick="event.stopPropagation();toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
-            <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}check_circle{% endif %}</span>
-            確認済み
-            {% set check_count = reactions_data.get(post.id, {}).get('✅', [])|length %}
-            {% if check_count > 0 %}<span class="badge">{{ check_count }}</span>{% endif %}
+        <button class="post-action-btn {% if checked %}checked{% else %}unchecked{% endif %}" onclick="event.stopPropagation();toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
+            <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}radio_button_unchecked{% endif %}</span>
+            <span class="check-label">{% if checked %}確認済み{% else %}未確認{% endif %}</span>
+            {% if not checked and check_count > 0 %}<span class="badge">{{ check_count }}</span>{% endif %}
         </button>
         <button class="post-action-btn" onclick="event.stopPropagation();openReactionPicker({{ post.id }})">
             <span class="material-symbols-outlined">add_reaction</span>
@@ -917,6 +930,30 @@ var currentPostId = null;
 var selectedPhotos = [];
 var selectedAudio = null;
 var selectedMentions = [];
+
+// ===== モーダル open/close 時の背景スクロールロック共通ヘルパー =====
+// (新規投稿、編集、詳細、コメント、リアクションなど全部で使う)
+var __modalOpenCount = 0;
+var __savedScrollY = 0;
+
+function lockBodyScroll() {
+    if (__modalOpenCount === 0) {
+        __savedScrollY = window.scrollY || window.pageYOffset || 0;
+        document.body.style.setProperty('--scroll-top', '-' + __savedScrollY + 'px');
+        document.body.classList.add('modal-open');
+    }
+    __modalOpenCount++;
+}
+
+function unlockBodyScroll() {
+    __modalOpenCount = Math.max(0, __modalOpenCount - 1);
+    if (__modalOpenCount === 0) {
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('--scroll-top');
+        // スクロール位置を復元
+        window.scrollTo(0, __savedScrollY);
+    }
+}
 
 // メンション検索（入力時のみ候補表示）
 window.filterMentions = function(q) {
@@ -1437,11 +1474,13 @@ document.getElementById('new-post-btn').addEventListener('touchend', function(e)
 function openPostModal() {
     hideNav();
     document.getElementById('post-modal').classList.add('show');
+    lockBodyScroll();
     document.getElementById('post-textarea').focus();
 }
 function closePostModal() {
     showNav();
     document.getElementById('post-modal').classList.remove('show');
+    unlockBodyScroll();
     document.getElementById('post-textarea').value = '';
     selectedPhotos = []; selectedAudio = null; selectedMentions = [];
     selectedPatients = [];
@@ -1555,16 +1594,29 @@ window.toggleReaction = async function(postId, emoji) {
         var data = await res.json();
         if (data.status === 'success') {
             updateReactionsUI(postId, data.reactions);
-            // 確認済みボタンの更新
+            // 確認済み/未確認ボタンの更新
             if (emoji === '✅') {
                 var btn = document.getElementById('check-btn-' + postId);
                 var names = data.reactions['✅'] || [];
                 var isMine = names.includes(MY_NAME);
                 if (btn) {
+                    // class 切替(checked/unchecked排他)
                     btn.classList.toggle('checked', isMine);
+                    btn.classList.toggle('unchecked', !isMine);
+                    // アイコン切替
+                    var icon = btn.querySelector('.material-symbols-outlined');
+                    if (icon) icon.textContent = isMine ? 'check_circle' : 'radio_button_unchecked';
+                    // ラベル切替
+                    var label = btn.querySelector('.check-label');
+                    if (label) label.textContent = isMine ? '確認済み' : '未確認';
+                    // バッジ: 自分が確認済みなら消す、未確認なら他の確認者数を表示
                     var badge = btn.querySelector('.badge');
-                    if (names.length > 0) {
-                        if (!badge) { badge = document.createElement('span'); badge.className = 'badge'; btn.appendChild(badge); }
+                    if (!isMine && names.length > 0) {
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.className = 'badge';
+                            btn.appendChild(badge);
+                        }
                         badge.textContent = names.length;
                     } else if (badge) {
                         badge.remove();
@@ -1596,15 +1648,20 @@ var pickerPostId = null;
 window.openReactionPicker = function(postId) {
     pickerPostId = postId;
     document.getElementById('reaction-picker').classList.add('show');
+    lockBodyScroll();
 };
 document.getElementById('reaction-picker').addEventListener('click', function(e) {
-    if (e.target === this) this.classList.remove('show');
+    if (e.target === this) {
+        this.classList.remove('show');
+        unlockBodyScroll();
+    }
 });
 document.querySelectorAll('.reaction-item').forEach(function(item) {
     item.addEventListener('click', function() {
         if (pickerPostId) {
             toggleReaction(pickerPostId, this.dataset.emoji);
             document.getElementById('reaction-picker').classList.remove('show');
+            unlockBodyScroll();
         }
     });
 });
@@ -1624,6 +1681,7 @@ window.openComments = async function(postId) {
     currentPostId = postId;
     hideNav();
     document.getElementById('comments-drawer').classList.add('show');
+    lockBodyScroll();
     await loadComments(postId);
     // コメントを開いたらその投稿のコメント数バッジをすべて消す
     document.querySelectorAll('[data-post-id="' + postId + '"] .post-action-btn:last-child .badge').forEach(function(b) { b.remove(); });
@@ -1631,6 +1689,7 @@ window.openComments = async function(postId) {
 
 function closeComments() {
     document.getElementById('comments-drawer').classList.remove('show');
+    unlockBodyScroll();
     currentPostId = null;
     showNav();
 }
@@ -1744,17 +1803,24 @@ window.showPostMenu = function(postId, isMine) {
         + '</div>';
 
     document.body.appendChild(sheet);
+    lockBodyScroll();
+
+    // 共通: シート閉じる(スクロールロック解除込み)
+    function closeSheet() {
+        sheet.remove();
+        unlockBodyScroll();
+    }
 
     // イベント
-    sheet.addEventListener('click', function(e) { if (e.target === sheet) sheet.remove(); });
-    document.getElementById('menu-cancel-btn').addEventListener('click', function() { sheet.remove(); });
+    sheet.addEventListener('click', function(e) { if (e.target === sheet) closeSheet(); });
+    document.getElementById('menu-cancel-btn').addEventListener('click', closeSheet);
     if (isMine) {
         document.getElementById('menu-edit-btn').addEventListener('click', function() {
-            sheet.remove();
+            closeSheet();
             openEditModal(postId);
         });
         document.getElementById('menu-delete-btn').addEventListener('click', function() {
-            sheet.remove();
+            closeSheet();
             if (confirm('この投稿を削除しますか？')) deletePost(postId);
         });
     }
@@ -1779,12 +1845,12 @@ window.openEditModal = function(postId) {
     updateEditPatientSelectedArea();
 
     document.getElementById('edit-modal').classList.add('show');
-    document.body.classList.add('modal-open');
+    lockBodyScroll();
 }
 
 window.closeEditModal = function() {
     document.getElementById('edit-modal').classList.remove('show');
-    document.body.classList.remove('modal-open');
+    unlockBodyScroll();
     editSelectedPatients = [];
     var area = document.getElementById('edit-patient-selected-area');
     if (area) area.innerHTML = '';
@@ -1996,15 +2062,13 @@ window.showPostDetail = function(postId) {
     }
 
     overlay.classList.add('show');
-    document.body.classList.add('modal-open');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
 };
 
 window.closePostDetail = function() {
     var overlay = document.getElementById('post-detail-overlay');
     if (overlay) overlay.classList.remove('show');
-    document.body.classList.remove('modal-open');
-    document.body.style.overflow = '';
+    unlockBodyScroll();
     // モーダル内の音声を停止
     var audios = document.querySelectorAll('#pd-audio-container audio');
     audios.forEach(function(a){ try { a.pause(); a.currentTime = 0; } catch(e){} });
