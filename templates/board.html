@@ -216,6 +216,12 @@ body.modal-open .bottom-nav {
     transition: opacity 0.2s ease;
     pointer-events: none;
 }
+
+/* 掲示板ページにいる間は、ボトムナビの未読バッジを非表示固定にする
+   (base.htmlのポーリング処理が再描画してもこちらが勝つ) */
+body.is-board-page #chat-badge {
+    display: none !important;
+}
 .post-detail-sheet {
     background: #fff; border-radius: 16px;
     width: 100%; max-width: 480px;
@@ -731,11 +737,11 @@ body.modal-open .bottom-nav {
             </div>
         </div>
 
-        <!-- メンション -->
-        <div class="mention-area">
+        <!-- メンション(公開範囲が「メンションのみ」の時だけ表示) -->
+        <div class="mention-area" id="mention-area" style="display:none;">
             <div class="mention-label">
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">alternate_email</span>
-                メンション（特定のスタッフに通知）
+                通知するスタッフを選択
             </div>
             <!-- 選択済みメンション表示 -->
             <div id="mention-selected-area" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
@@ -920,6 +926,22 @@ window.setScope = function(scope) {
         allEl.querySelectorAll('span')[0].style.color='#80868b';
         allEl.querySelectorAll('span')[1].style.color='#80868b';
     }
+    // メンション(職員選択)エリアは「メンションのみ」のときだけ表示
+    var mentionArea = document.getElementById('mention-area');
+    if (mentionArea) {
+        mentionArea.style.display = (scope === 'mention') ? '' : 'none';
+    }
+    // 「全員に公開」に戻したら選択済みメンションをクリア
+    if (scope === 'all') {
+        selectedMentions = [];
+        var selectedArea = document.getElementById('mention-selected-area');
+        if (selectedArea) selectedArea.innerHTML = '';
+        var searchEl = document.getElementById('mention-search');
+        if (searchEl) searchEl.value = '';
+        var chipsBox = document.getElementById('mention-chips');
+        if (chipsBox) chipsBox.style.display = 'none';
+        document.querySelectorAll('.mention-chip').forEach(function(c) { c.classList.remove('selected'); });
+    }
 };
 document.getElementById('scope-all')?.addEventListener('click', function(){ setScope('all'); });
 document.getElementById('scope-all')?.addEventListener('touchend', function(e){ e.preventDefault(); setScope('all'); });
@@ -1003,12 +1025,18 @@ var mentionSearchEl = document.getElementById('mention-search');
 if (mentionSearchEl) {
     mentionSearchEl.addEventListener('input', function() { filterMentions(this.value); });
     mentionSearchEl.addEventListener('compositionend', function() { filterMentions(this.value); });
-    // フォーカスを外したら候補を非表示
+    mentionSearchEl.addEventListener('focus', function() {
+        // フォーカス時に既存の値があれば再表示
+        if (this.value) filterMentions(this.value);
+    });
+    // フォーカスを外したら候補を非表示(タップで選択する余裕を持たせる)
     mentionSearchEl.addEventListener('blur', function() {
         setTimeout(function() {
-            document.getElementById('mention-chips').style.display = 'none';
-            if (document.getElementById('mention-empty')) document.getElementById('mention-empty').style.display = 'none';
-        }, 200);
+            var box = document.getElementById('mention-chips');
+            var empty = document.getElementById('mention-empty');
+            if (box) box.style.display = 'none';
+            if (empty) empty.style.display = 'none';
+        }, 350);
     });
 }
 
@@ -1053,27 +1081,38 @@ function updatePatientSelectedArea() {
 }
 
 document.querySelectorAll('.patient-chip').forEach(function(chip) {
-    chip.addEventListener('click', function() {
+document.querySelectorAll('.patient-chip').forEach(function(chip) {
+    // iOS実機対応: mousedown / touchstart で発火させて blur 競合を回避
+    var handler = function(e) {
+        e.preventDefault();
         var name = chip.dataset.name;
         if (!selectedPatients.includes(name)) {
             selectedPatients.push(name);
             updatePatientSelectedArea();
         }
         var input = document.getElementById('patient-search');
-        if (input) input.value = '';
+        if (input) { input.value = ''; input.blur(); }
         document.getElementById('patient-chips').style.display = 'none';
-    });
+        if (document.getElementById('patient-empty')) document.getElementById('patient-empty').style.display = 'none';
+    };
+    chip.addEventListener('mousedown', handler);
+    chip.addEventListener('touchstart', handler, { passive: false });
 });
 
 var patientSearchEl = document.getElementById('patient-search');
 if (patientSearchEl) {
     patientSearchEl.addEventListener('input', function() { filterPatients(this.value); });
     patientSearchEl.addEventListener('compositionend', function() { filterPatients(this.value); });
+    patientSearchEl.addEventListener('focus', function() {
+        if (this.value) filterPatients(this.value);
+    });
     patientSearchEl.addEventListener('blur', function() {
         setTimeout(function() {
-            document.getElementById('patient-chips').style.display = 'none';
-            if (document.getElementById('patient-empty')) document.getElementById('patient-empty').style.display = 'none';
-        }, 200);
+            var box = document.getElementById('patient-chips');
+            var empty = document.getElementById('patient-empty');
+            if (box) box.style.display = 'none';
+            if (empty) empty.style.display = 'none';
+        }, 350);
     });
 }
 
@@ -1118,27 +1157,36 @@ function updateEditPatientSelectedArea() {
 }
 
 document.querySelectorAll('.patient-chip-edit').forEach(function(chip) {
-    chip.addEventListener('click', function() {
+    var handler = function(e) {
+        e.preventDefault();
         var name = chip.dataset.name;
         if (!editSelectedPatients.includes(name)) {
             editSelectedPatients.push(name);
             updateEditPatientSelectedArea();
         }
         var input = document.getElementById('edit-patient-search');
-        if (input) input.value = '';
+        if (input) { input.value = ''; input.blur(); }
         document.getElementById('edit-patient-chips').style.display = 'none';
-    });
+        if (document.getElementById('edit-patient-empty')) document.getElementById('edit-patient-empty').style.display = 'none';
+    };
+    chip.addEventListener('mousedown', handler);
+    chip.addEventListener('touchstart', handler, { passive: false });
 });
 
 var editPatientSearchEl = document.getElementById('edit-patient-search');
 if (editPatientSearchEl) {
     editPatientSearchEl.addEventListener('input', function() { filterEditPatients(this.value); });
     editPatientSearchEl.addEventListener('compositionend', function() { filterEditPatients(this.value); });
+    editPatientSearchEl.addEventListener('focus', function() {
+        if (this.value) filterEditPatients(this.value);
+    });
     editPatientSearchEl.addEventListener('blur', function() {
         setTimeout(function() {
-            document.getElementById('edit-patient-chips').style.display = 'none';
-            if (document.getElementById('edit-patient-empty')) document.getElementById('edit-patient-empty').style.display = 'none';
-        }, 200);
+            var box = document.getElementById('edit-patient-chips');
+            var empty = document.getElementById('edit-patient-empty');
+            if (box) box.style.display = 'none';
+            if (empty) empty.style.display = 'none';
+        }, 350);
     });
 }
 
@@ -1501,23 +1549,27 @@ document.getElementById('post-modal').addEventListener('click', function(e) {
 
 // メンション選択
 document.querySelectorAll('.mention-chip').forEach(function(chip) {
-    chip.addEventListener('click', function() {
-        var name = this.dataset.name;
+    // mousedown / touchstart を使うことで blur より先に発火してチップが消えるのを防ぐ
+    var handler = function(e) {
+        e.preventDefault();
+        var name = chip.dataset.name;
         var idx = selectedMentions.indexOf(name);
         if (idx >= 0) {
             selectedMentions.splice(idx, 1);
-            this.classList.remove('selected');
+            chip.classList.remove('selected');
         } else {
             selectedMentions.push(name);
-            this.classList.add('selected');
+            chip.classList.add('selected');
         }
         // 選択後に検索窓をクリアして候補を非表示
         var searchEl = document.getElementById('mention-search');
-        if (searchEl) { searchEl.value = ''; }
+        if (searchEl) { searchEl.value = ''; searchEl.blur(); }
         document.getElementById('mention-chips').style.display = 'none';
         if (document.getElementById('mention-empty')) document.getElementById('mention-empty').style.display = 'none';
         updateMentionSelectedArea();
-    });
+    };
+    chip.addEventListener('mousedown', handler);
+    chip.addEventListener('touchstart', handler, { passive: false });
 });
 
 // 写真添付
@@ -1927,11 +1979,17 @@ function startRealtime() {
 }
 startRealtime();
 
-// 掲示板を開いたらbase.htmlのバッジをクリア
+// 掲示板を開いたらbase.htmlのバッジを完全クリア
+// (base.htmlのcheckUnreadMessagesポーリングがバッジを再描画するのをCSS!important + 関数無効化で完全に止める)
 (function() {
+    document.body.classList.add('is-board-page');
     var badge = document.getElementById('chat-badge');
     if (badge) badge.style.display = 'none';
-    if (typeof lastUnreadCount !== 'undefined') lastUnreadCount = 0;
+    if (typeof window.lastUnreadCount !== 'undefined') window.lastUnreadCount = 0;
+    // ポーリング関数自体を無効化(掲示板ページにいる間は不要)
+    if (typeof window.checkUnreadMessages === 'function') {
+        window.checkUnreadMessages = function(){};
+    }
 })();
 
 function showToast(msg) {
