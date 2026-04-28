@@ -1292,6 +1292,7 @@ document.addEventListener('click', function(e) {
 </style>
 <script>
 (function installCalendarBarMerge() {
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) { console.log("[CalendarBarMerge] skipped on iOS"); return; }
     function rgbToRgba(rgbStr, alpha) {
         const m = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/) || rgbStr.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
         if (!m) return rgbStr;
