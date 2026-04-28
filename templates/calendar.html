@@ -1451,9 +1451,10 @@ document.addEventListener('click', function(e) {
                     var connectBar = document.createElement('div');
                     connectBar.className = 'cal-bar-connect-row cal-event-bar';
                     connectBar.style.position = 'absolute';
-                    connectBar.style.left = leftPx + 'px';
+                    // 隣接バーが繋がって見えないよう左右1pxずつ削る
+                    connectBar.style.left = (leftPx + 1) + 'px';
                     connectBar.style.top = topPx + 'px';
-                    connectBar.style.width = widthPx + 'px';
+                    connectBar.style.width = Math.max(widthPx - 2, 10) + 'px';
                     connectBar.style.height = heightPx + 'px';
                     connectBar.style.background = bg;
                     // z-index は barIdx に基づいて設定
@@ -1508,6 +1509,12 @@ document.addEventListener('click', function(e) {
                     });
                 });
             });
+            // 同色期間バー検知: 連結バー描画後、同色の複数日バーが2本以上あれば通知バナー表示
+            try {
+                checkSameColorBars(grid);
+            } catch(e3) {
+                console.error('[CalendarBarConnect] color check error:', e3);
+            }
         } catch(err) {
             // フォールバック: エラー時は元のバーを再表示
             console.error('[CalendarBarConnect] error, fallback to original bars:', err);
@@ -1515,6 +1522,100 @@ document.addEventListener('click', function(e) {
                 clearOverlays(grid);
                 showAllOriginalBars(grid);
             } catch(e2) { /* もう何もできない */ }
+        }
+    }
+
+    // 同色期間バー検知 + 通知バナー
+    function checkSameColorBars(grid) {
+        // 既存のバナーを削除
+        var oldBanner = document.getElementById('cal-color-advice-banner');
+        if (oldBanner) oldBanner.remove();
+
+        // 連結バー(複数日のオーバーレイ)を集めて、色ごとにカウント
+        var overlays = grid.querySelectorAll('.cal-bar-connect-row');
+        if (overlays.length < 2) return;
+
+        var colorMap = {}; // {color: count}
+        var colorTitles = {}; // {color: [title, title, ...]}
+        overlays.forEach(function(bar) {
+            // bg色を正規化(rgb形式に統一)
+            var bg = bar.style.backgroundColor || '';
+            var bgNorm = bg.replace(/\s+/g, '').toLowerCase();
+            if (!bgNorm) return;
+            colorMap[bgNorm] = (colorMap[bgNorm] || 0) + 1;
+            if (!colorTitles[bgNorm]) colorTitles[bgNorm] = [];
+            var t = (bar.textContent || '').trim().substring(0, 12);
+            if (t && colorTitles[bgNorm].indexOf(t) === -1) {
+                colorTitles[bgNorm].push(t);
+            }
+        });
+
+        // 2本以上同色のバーがあれば検知
+        var duplicateColors = Object.keys(colorMap).filter(function(c) {
+            return colorMap[c] >= 2;
+        });
+
+        if (duplicateColors.length === 0) return;
+
+        // 同月内で表示されている期間バーのみを対象としたいので、 .other-month の中だけのバーは除外したい
+        // ...現状のロジックでは隣月の薄色マスク部分も同色で混ざる可能性があるため、同色判定は単純に色だけで行う
+
+        // バナー作成
+        var banner = document.createElement('div');
+        banner.id = 'cal-color-advice-banner';
+        banner.style.cssText = [
+            'position:relative',
+            'margin:0 8px 8px 8px',
+            'padding:8px 36px 8px 12px',
+            'background:#fff8e1',
+            'border:1px solid #ffd54f',
+            'border-radius:6px',
+            'color:#5d4037',
+            'font-size:0.78rem',
+            'line-height:1.4',
+            'box-shadow:0 1px 3px rgba(0,0,0,0.05)'
+        ].join(';');
+
+        // どの予定が同色か簡潔に表示
+        var firstDup = duplicateColors[0];
+        var titles = (colorTitles[firstDup] || []).slice(0, 3).join('・');
+        var moreColorsText = duplicateColors.length > 1
+            ? ' (他' + (duplicateColors.length - 1) + '色も重複)'
+            : '';
+        var msg = '同じ色の予定が複数あります';
+        if (titles) msg += ': ' + titles;
+        msg += moreColorsText + '。色を変えると見やすくなります。';
+
+        var msgSpan = document.createElement('span');
+        msgSpan.textContent = msg;
+        banner.appendChild(msgSpan);
+
+        // 閉じるボタン
+        var closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.setAttribute('aria-label', '閉じる');
+        closeBtn.style.cssText = [
+            'position:absolute',
+            'top:50%',
+            'right:8px',
+            'transform:translateY(-50%)',
+            'border:none',
+            'background:transparent',
+            'color:#5d4037',
+            'font-size:1.1rem',
+            'font-weight:600',
+            'cursor:pointer',
+            'padding:0 4px',
+            'line-height:1'
+        ].join(';');
+        closeBtn.onclick = function() {
+            banner.remove();
+        };
+        banner.appendChild(closeBtn);
+
+        // グリッドの直前に挿入
+        if (grid.parentNode) {
+            grid.parentNode.insertBefore(banner, grid);
         }
     }
 
