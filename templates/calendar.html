@@ -655,6 +655,33 @@ function renderMonth() {
         }
     });
 
+    // タスクの期限日も擬似イベントとして混ぜ込む(単日扱い、優先度で色分け)
+    if (typeof window.ALL_TASKS !== 'undefined' && Array.isArray(window.ALL_TASKS)) {
+        window.ALL_TASKS.forEach(t => {
+            if (!t || !t.due_date) return;
+            const done = (t.completed === true || t.is_completed === true || t.status === 'done' || t.status === 'completed');
+            if (done) return; // 完了済みタスクは表示しない
+            const prio = t.priority || 'mid';
+            const prioColor = (prio === 'high' || prio === '高') ? '#e53935'
+                            : (prio === 'low' || prio === '低') ? '#43a047'
+                            : '#fb8c00';
+            const pseudoEv = {
+                id: 'task:' + (t.id || ''),
+                title: '📋 ' + (t.title || '(無題)'),
+                event_date: t.due_date,
+                end_date: t.due_date,
+                color: prioColor,
+                all_day: true,
+                sticker: '',
+                _isTask: true,
+                _taskRaw: t
+            };
+            const k = t.due_date;
+            if (!eventsByDate[k]) eventsByDate[k] = [];
+            eventsByDate[k].push(pseudoEv);
+        });
+    }
+
     let html = '';
     // 月初の前月セル(other-month)にも、該当イベントがあれば bar を描画する。
     // visibility:hidden で視覚上は非表示。連結バーロジック側で eventGroups に拾われ、
@@ -683,7 +710,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
-                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
         }).join('');
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
@@ -709,7 +736,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
         }).join('');
         const more = evs.length > 3 ? `<span class="cal-event-more">+${evs.length-3}</span>` : '';
 
@@ -746,7 +773,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
-                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+                onclick="event.stopPropagation();openEventOrTask('${e.id}')">${e.title}</span>`;
         }).join('');
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
@@ -895,6 +922,19 @@ window.onCellClick = function(dateStr) {
     
     // 常に予定一覧を表示（予定がない場合は空の一覧）
     showDayEventsModal(dateStr, dayEvents);
+};
+
+// ===== イベント or タスク のクリック振り分け =====
+// イベントID(UUID等)なら openEditEvent、タスクID(プレフィックス'task:')なら /tasks へ
+window.openEventOrTask = function(id) {
+    if (typeof id === 'string' && id.indexOf('task:') === 0) {
+        // タスクの場合は /tasks ページへ遷移
+        location.href = '/tasks';
+        return;
+    }
+    if (typeof window.openEditEvent === 'function') {
+        window.openEditEvent(id);
+    }
 };
 
 // ===== 予定編集 =====
@@ -1169,23 +1209,67 @@ document.addEventListener('click', function(e) {
 window.showDayEventsModal = function(dateStr, events) {
   var existing = document.getElementById('day-events-modal');
   if (existing) existing.remove();
+  // 日付を読みやすい形に整形(例: 2026-04-24 → 4月24日 (金))
+  var prettyDate = dateStr;
+  try {
+    var dt = new Date(dateStr + 'T00:00:00');
+    var dowJa = ['日','月','火','水','木','金','土'][dt.getDay()];
+    prettyDate = (dt.getMonth()+1) + '月' + dt.getDate() + '日 (' + dowJa + ')';
+  } catch(e) {}
+
   var html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
   html += '<div class="modal-sheet"><div class="modal-handle"></div>';
-  html += '<div class="modal-title">' + dateStr + ' の予定</div>';
-  if (events && events.length) {
-    events.forEach(function(ev) {
-      var color = ev.color || '#1a73e8';
-      var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
-      var sticker = ev.sticker || '';
-      html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
-      html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
-      html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
-      html += '</div>';
+  // ヘッダー: 日付タイトル + 右上に「+」ボタン
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+  html += '<div class="modal-title" style="margin:0;">' + prettyDate + '</div>';
+  html += '<button onclick="showNewEventModal(\'' + dateStr + '\')" aria-label="新規追加" '
+       + 'style="width:36px;height:36px;border-radius:50%;background:#1a73e8;color:#fff;border:none;'
+       + 'font-size:1.25rem;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;'
+       + 'justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.15);">＋</button>';
+  html += '</div>';
+
+  // タスク(その日が期限)も含めて一覧化
+  var tasksOnDay = [];
+  if (typeof window.ALL_TASKS !== 'undefined' && Array.isArray(window.ALL_TASKS)) {
+    tasksOnDay = window.ALL_TASKS.filter(function(t){
+      return t && t.due_date === dateStr;
     });
+  }
+
+  if ((events && events.length) || tasksOnDay.length) {
+    // 予定
+    if (events && events.length) {
+      events.forEach(function(ev) {
+        var color = ev.color || '#1a73e8';
+        var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
+        var sticker = ev.sticker || '';
+        html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
+        html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
+        html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
+        html += '</div>';
+      });
+    }
+    // タスク期限
+    if (tasksOnDay.length) {
+      tasksOnDay.forEach(function(t) {
+        var prio = t.priority || 'mid';
+        var prioColor = (prio === 'high' || prio === '高') ? '#e53935'
+                      : (prio === 'low' || prio === '低') ? '#43a047'
+                      : '#fb8c00';
+        var prioMark = (prio === 'high' || prio === '高') ? '🔴'
+                     : (prio === 'low' || prio === '低') ? '🟢'
+                     : '🟡';
+        var done = (t.completed === true || t.is_completed === true || t.status === 'done' || t.status === 'completed');
+        var titleStyle = done ? 'text-decoration:line-through;color:#9aa0a6;' : 'color:#202124;';
+        html += '<div onclick="closeModal(\'day-events-modal\');location.href=\'/tasks\'" style="padding:12px;border-left:4px solid ' + prioColor + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + prioColor + '15;">';
+        html += '<div style="font-weight:700;' + titleStyle + '">📋 ' + prioMark + ' ' + (t.title || '(無題タスク)') + '</div>';
+        html += '<div style="font-size:0.78rem;color:#5f6368;">タスク期限</div>';
+        html += '</div>';
+      });
+    }
   } else {
     html += '<div style="text-align:center;color:#80868b;padding:20px 0;">この日の予定はありません</div>';
   }
-  html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">＋ 新しい予定を追加</button>';
   html += '<button class="btn" onclick="closeModal(\'day-events-modal\')" style="width:100%;margin-top:8px;">閉じる</button>';
   html += '</div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
@@ -1535,7 +1619,9 @@ document.addEventListener('click', function(e) {
                     connectBar.setAttribute('data-event-id', eventId);
                     connectBar.addEventListener('click', function(ev) {
                         ev.stopPropagation();
-                        if (typeof openEditEvent === 'function') {
+                        if (typeof openEventOrTask === 'function') {
+                            openEventOrTask(eventId);
+                        } else if (typeof openEditEvent === 'function') {
                             openEditEvent(eventId);
                         }
                     });
@@ -1709,6 +1795,98 @@ document.addEventListener('click', function(e) {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(window.__calendarBarConnectRun, 200);
     });
+})();
+
+// ===== タスク期限のカレンダー表示(/api/tasks/list を取得して renderMonth に反映) =====
+(function loadTasksForCalendar() {
+    function refetchTasks() {
+        fetch('/api/tasks/list', { credentials: 'include' })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+                if (!data) { window.ALL_TASKS = []; return; }
+                window.ALL_TASKS = Array.isArray(data.tasks) ? data.tasks
+                                 : (Array.isArray(data) ? data : []);
+                // タスク取得後、現在のビューを再描画
+                if (typeof window.renderMonth === 'function') {
+                    try { window.renderMonth(); } catch(e) { console.warn('renderMonth refresh failed:', e); }
+                }
+                if (typeof window.renderWeek === 'function') {
+                    try { window.renderWeek(); } catch(e) {}
+                }
+            })
+            .catch(function(err){
+                console.warn('[TASUKARU] task fetch failed:', err);
+                window.ALL_TASKS = [];
+            });
+    }
+    // 初回ロード
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', refetchTasks);
+    } else {
+        refetchTasks();
+    }
+    // ページ可視化時に再取得(他タブでタスク更新したケースに対応)
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) refetchTasks();
+    });
+    // 外部から呼べるよう公開
+    window.__refetchTasks = refetchTasks;
+})();
+
+// ===== カレンダーのスワイプジェスチャー(前月/次月へ移動) =====
+(function installCalendarSwipe() {
+    function attach() {
+        var container = document.getElementById('cal-days');
+        if (!container) return;
+        // 既に取り付け済みならスキップ
+        if (container.dataset.swipeBound === '1') return;
+        container.dataset.swipeBound = '1';
+
+        var startX = 0, startY = 0, startT = 0;
+        var tracking = false;
+        // 縦スクロールとの干渉を避けるため、横スワイプが優勢な場合のみ反応
+        var THRESHOLD_X = 60;       // この距離以上で発火
+        var MAX_OFF_AXIS = 50;      // 縦の移動がこれを超えたら無効(縦スクロール扱い)
+        var MAX_TIME_MS = 800;      // この時間内のスワイプのみ
+
+        container.addEventListener('touchstart', function(e) {
+            if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+            var t = e.touches[0];
+            startX = t.clientX;
+            startY = t.clientY;
+            startT = Date.now();
+            tracking = true;
+        }, { passive: true });
+
+        container.addEventListener('touchend', function(e) {
+            if (!tracking) return;
+            tracking = false;
+            var t = (e.changedTouches && e.changedTouches[0]) || null;
+            if (!t) return;
+            var dx = t.clientX - startX;
+            var dy = t.clientY - startY;
+            var dt = Date.now() - startT;
+            if (dt > MAX_TIME_MS) return;
+            if (Math.abs(dy) > MAX_OFF_AXIS) return;
+            if (Math.abs(dx) < THRESHOLD_X) return;
+            // 月ビューかつ 連結バーやセルバーをタップしたわけではないとき
+            if (typeof window.changeMonth !== 'function') return;
+            if (typeof currentView !== 'undefined' && currentView !== 'month') return;
+            if (dx < 0) {
+                // 左スワイプ → 次月
+                window.changeMonth(1);
+            } else {
+                // 右スワイプ → 前月
+                window.changeMonth(-1);
+            }
+        }, { passive: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attach);
+    } else {
+        attach();
+    }
 })();
 </script>
 <!-- ↑↑↑ カレンダーバー連結機能 ↑↑↑ -->
