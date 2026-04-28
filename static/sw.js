@@ -1,21 +1,25 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v5';
+const CACHE_VERSION = 'tasukaru-v6';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
+// HTMLページは Network-First で扱うのでプリキャッシュには含めない
+// (含めるとデプロイ後も古いHTMLが返り続ける原因になる)
 const STATIC_FILES = [
-  '/',
-  '/top',
-  '/login',
-  '/input',
-  '/daily_view',
-  '/vitals',
-  '/calendar',
   '/static/manifest.json',
   '/static/admin.js',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200',
 ];
+
+// HTMLページのパス一覧(Network-First で扱う)
+const HTML_ROUTES = ['/', '/top', '/login', '/input', '/daily_view', '/vitals', '/calendar'];
+function isHtmlRoute(url) {
+  if (url.origin !== self.location.origin) return false;
+  // 拡張子付き(.js, .css, .png 等)はHTMLではない
+  if (/\.[a-zA-Z0-9]+$/.test(url.pathname)) return false;
+  return true;
+}
 
 // ===== インストール =====
 self.addEventListener('install', event => {
@@ -28,7 +32,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// ===== アクティベート（古いキャッシュ削除） =====
+// ===== アクティベート(古いキャッシュ削除) =====
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
@@ -42,7 +46,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // POSTリクエストは必ずネットワーク優先・Service Worker非介入
+  // POSTなど非GETはネットワーク優先・SW非介入
   if (event.request.method !== 'GET') {
     event.respondWith(
       fetch(event.request.clone()).catch(() => {
@@ -57,10 +61,34 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // /api/* はSW非介入(常にネットワーク)
   if (url.pathname.startsWith('/api/')) {
     return;
   }
 
+  // HTMLページ(同一オリジンのページルート)は Network-First
+  // ネットワーク優先で取りに行き、失敗時のみキャッシュにフォールバック
+  if (isHtmlRoute(url)) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(event.request).then(cached => {
+          return cached || caches.match('/top') || new Response(
+            getOfflinePage(),
+            { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+        });
+      })
+    );
+    return;
+  }
+
+  // 静的アセット(JS/CSS/画像/フォント等)は Cache-First
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -120,15 +148,19 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// ===== ★ メッセージ受信（ページからバッジを更新） =====
+// ===== ★ メッセージ受信(ページからバッジを更新 / SKIP_WAITING) =====
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'UPDATE_BADGE') {
+  if (!event.data) return;
+  if (event.data.type === 'UPDATE_BADGE') {
     const count = event.data.count || 0;
     if (count > 0) {
       navigator.setAppBadge && navigator.setAppBadge(count);
     } else {
       navigator.clearAppBadge && navigator.clearAppBadge();
     }
+  }
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
 
@@ -252,11 +284,3 @@ button{margin-top:20px;padding:12px 24px;background:#1a73e8;color:#fff;border:no
 </body>
 </html>`;
 }
-
-
-// === Handle SKIP_WAITING message from page ===
-self.addEventListener('message', function(event){
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
