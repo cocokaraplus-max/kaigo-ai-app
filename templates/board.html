@@ -20,6 +20,71 @@
 }
 .new-post-btn .material-symbols-outlined { font-size: 22px; color: white; }
 
+/* ========== 検索バー ========== */
+.board-search-bar {
+    margin-bottom: 12px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* 利用者タグ */
+.post-patient-tags {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding: 0 14px 8px;
+}
+.patient-tag {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: #fef7e0; border: 1px solid #f9d976;
+    color: #9c5500; font-size: 0.75rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.1s ease;
+}
+.patient-tag:hover, .patient-tag:active {
+    background: #fce8a3;
+}
+.patient-tag .material-symbols-outlined {
+    color: #9c5500; font-weight: 700;
+}
+.search-input-wrap {
+    position: relative;
+    display: flex; align-items: center;
+}
+.search-input-wrap .search-icon {
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%); color: #80868b; font-size: 20px;
+    pointer-events: none;
+}
+#board-search-input {
+    width: 100%;
+    padding: 8px 36px 8px 36px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    outline: none;
+    background: #f8f9fa;
+    transition: all 0.15s ease;
+    -webkit-appearance: none;
+}
+#board-search-input:focus {
+    border-color: #1a73e8;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+}
+#board-search-clear {
+    position: absolute; right: 6px; top: 50%;
+    transform: translateY(-50%);
+    background: transparent; border: none;
+    cursor: pointer; padding: 4px;
+    color: #80868b;
+    display: flex; align-items: center;
+}
+#board-search-clear:hover { color: #202124; }
+#board-search-clear .material-symbols-outlined { font-size: 18px; }
+
 /* ========== 投稿カード ========== */
 .post-card {
     background: #fff; border-radius: 16px;
@@ -449,6 +514,21 @@ body.modal-open .bottom-nav {
     </button>
 </div>
 
+<!-- 検索バー -->
+<div class="board-search-bar">
+    <div class="search-input-wrap">
+        <span class="material-symbols-outlined search-icon">search</span>
+        <input type="text" id="board-search-input" placeholder="本文・スタッフ名・利用者名で検索..." autocomplete="off">
+        <button type="button" id="board-search-clear" aria-label="クリア" style="display:none;">
+            <span class="material-symbols-outlined">close</span>
+        </button>
+    </div>
+    <div id="board-search-active" style="display:none;font-size:0.78rem;color:#5f6368;margin-top:6px;padding:0 4px;">
+        <span id="board-search-count"></span>
+        <button type="button" id="board-search-reset" style="background:none;border:none;color:#1a73e8;font-weight:700;cursor:pointer;padding:0 0 0 8px;font-size:0.78rem;">すべて表示</button>
+    </div>
+</div>
+
 <!-- 投稿一覧 -->
 <div id="posts-container">
 {% if not posts %}
@@ -480,6 +560,17 @@ body.modal-open .bottom-nav {
             <span class="material-symbols-outlined">more_vert</span>
         </button>
     </div>
+
+    <!-- 利用者タグ(あれば一覧でも表示) -->
+    {% if post.patient_names %}
+    <div class="post-patient-tags">
+        {% for pn in post.patient_names %}
+        <span class="patient-tag" onclick="event.stopPropagation();filterByPatient('{{ pn|e }}');">
+            <span class="material-symbols-outlined" style="font-size:12px;">person</span>{{ pn }}
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- 本文(一覧では3行省略、4行以上ある場合は「もっと見る」を表示) -->
     {% if post.content %}
@@ -571,6 +662,7 @@ body.modal-open .bottom-nav {
             </button>
         </div>
         <div class="post-detail-body" id="pd-body"></div>
+        <div id="pd-patients-container"></div>
         <div id="pd-images-container"></div>
         <div id="pd-audio-container"></div>
         <div id="pd-reactions-container"></div>
@@ -651,6 +743,31 @@ body.modal-open .bottom-nav {
             <div id="mention-empty" style="font-size:0.78rem;color:#80868b;padding:4px 0;display:none;">該当するスタッフが見つかりません</div>
         </div>
 
+        <!-- 利用者選択 -->
+        <div class="mention-area">
+            <div class="mention-label" style="color:#9c5500;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">person</span>
+                利用者(複数選択可)
+            </div>
+            <!-- 選択済み利用者表示 -->
+            <div id="patient-selected-area" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
+            <div style="position:relative;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#80868b;font-size:16px;">search</span>
+                <input type="text" id="patient-search" placeholder="利用者名を入力して検索..."
+                    style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+            <div id="patient-chips" style="display:none;border:1.5px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:160px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                {% for pn in patient_names %}
+                <div class="patient-chip" data-name="{{ pn }}"
+                    style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;border-radius:0;">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#9c5500;">person</span>
+                    {{ pn }}
+                </div>
+                {% endfor %}
+            </div>
+            <div id="patient-empty" style="font-size:0.78rem;color:#80868b;padding:4px 0;display:none;">該当する利用者が見つかりません</div>
+        </div>
+
         <!-- 添付 -->
         <div class="attach-row">
             <div class="attach-btn" id="photo-attach-btn">
@@ -687,6 +804,31 @@ body.modal-open .bottom-nav {
         </div>
         <textarea class="post-textarea" id="edit-textarea" placeholder="内容を編集..."></textarea>
         <input type="hidden" id="edit-post-id">
+
+        <!-- 編集モーダル用 利用者選択 -->
+        <div class="mention-area">
+            <div class="mention-label" style="color:#9c5500;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">person</span>
+                利用者(複数選択可)
+            </div>
+            <div id="edit-patient-selected-area" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
+            <div style="position:relative;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#80868b;font-size:16px;">search</span>
+                <input type="text" id="edit-patient-search" placeholder="利用者名を入力して検索..."
+                    style="width:100%;padding:8px 8px 8px 30px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+            <div id="edit-patient-chips" style="display:none;border:1.5px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:160px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                {% for pn in patient_names %}
+                <div class="patient-chip-edit" data-name="{{ pn }}"
+                    style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;border-radius:0;">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#9c5500;">person</span>
+                    {{ pn }}
+                </div>
+                {% endfor %}
+            </div>
+            <div id="edit-patient-empty" style="font-size:0.78rem;color:#80868b;padding:4px 0;display:none;">該当する利用者が見つかりません</div>
+        </div>
+
         <div style="display:flex;gap:10px;">
             <button onclick="closeEditModal()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;color:#5f6368;">キャンセル</button>
             <button id="edit-submit-btn" style="flex:2;padding:12px;border-radius:12px;border:none;background:#1a73e8;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">保存する</button>
@@ -832,6 +974,216 @@ if (mentionSearchEl) {
         }, 200);
     });
 }
+
+// ===== 利用者選択(新規投稿) =====
+var selectedPatients = [];
+
+window.filterPatients = function(q) {
+    var ql = q.trim().toLowerCase();
+    var chips = document.getElementById('patient-chips');
+    var empty = document.getElementById('patient-empty');
+    if (!ql) {
+        chips.style.display = 'none';
+        if (empty) empty.style.display = 'none';
+        return;
+    }
+    var hits = 0;
+    document.querySelectorAll('.patient-chip').forEach(function(chip) {
+        var name = chip.dataset.name.toLowerCase();
+        var show = name.includes(ql) && !selectedPatients.includes(chip.dataset.name);
+        chip.style.display = show ? '' : 'none';
+        if (show) hits++;
+    });
+    chips.style.display = hits > 0 ? 'block' : 'none';
+    if (empty) empty.style.display = hits === 0 ? 'block' : 'none';
+};
+
+function updatePatientSelectedArea() {
+    var area = document.getElementById('patient-selected-area');
+    if (!area) return;
+    area.innerHTML = '';
+    selectedPatients.forEach(function(name) {
+        var badge = document.createElement('div');
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#fef7e0;border:1.5px solid #f9a825;border-radius:20px;font-size:0.78rem;font-weight:700;color:#9c5500;cursor:pointer;';
+        badge.innerHTML = '👤' + name + ' <span style="font-size:14px;line-height:1;">×</span>';
+        badge.addEventListener('click', function() {
+            var idx = selectedPatients.indexOf(name);
+            if (idx >= 0) selectedPatients.splice(idx, 1);
+            updatePatientSelectedArea();
+        });
+        area.appendChild(badge);
+    });
+}
+
+document.querySelectorAll('.patient-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+        var name = chip.dataset.name;
+        if (!selectedPatients.includes(name)) {
+            selectedPatients.push(name);
+            updatePatientSelectedArea();
+        }
+        var input = document.getElementById('patient-search');
+        if (input) input.value = '';
+        document.getElementById('patient-chips').style.display = 'none';
+    });
+});
+
+var patientSearchEl = document.getElementById('patient-search');
+if (patientSearchEl) {
+    patientSearchEl.addEventListener('input', function() { filterPatients(this.value); });
+    patientSearchEl.addEventListener('compositionend', function() { filterPatients(this.value); });
+    patientSearchEl.addEventListener('blur', function() {
+        setTimeout(function() {
+            document.getElementById('patient-chips').style.display = 'none';
+            if (document.getElementById('patient-empty')) document.getElementById('patient-empty').style.display = 'none';
+        }, 200);
+    });
+}
+
+// ===== 利用者選択(編集モーダル) =====
+var editSelectedPatients = [];
+
+window.filterEditPatients = function(q) {
+    var ql = q.trim().toLowerCase();
+    var chips = document.getElementById('edit-patient-chips');
+    var empty = document.getElementById('edit-patient-empty');
+    if (!ql) {
+        chips.style.display = 'none';
+        if (empty) empty.style.display = 'none';
+        return;
+    }
+    var hits = 0;
+    document.querySelectorAll('.patient-chip-edit').forEach(function(chip) {
+        var name = chip.dataset.name.toLowerCase();
+        var show = name.includes(ql) && !editSelectedPatients.includes(chip.dataset.name);
+        chip.style.display = show ? '' : 'none';
+        if (show) hits++;
+    });
+    chips.style.display = hits > 0 ? 'block' : 'none';
+    if (empty) empty.style.display = hits === 0 ? 'block' : 'none';
+};
+
+function updateEditPatientSelectedArea() {
+    var area = document.getElementById('edit-patient-selected-area');
+    if (!area) return;
+    area.innerHTML = '';
+    editSelectedPatients.forEach(function(name) {
+        var badge = document.createElement('div');
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#fef7e0;border:1.5px solid #f9a825;border-radius:20px;font-size:0.78rem;font-weight:700;color:#9c5500;cursor:pointer;';
+        badge.innerHTML = '👤' + name + ' <span style="font-size:14px;line-height:1;">×</span>';
+        badge.addEventListener('click', function() {
+            var idx = editSelectedPatients.indexOf(name);
+            if (idx >= 0) editSelectedPatients.splice(idx, 1);
+            updateEditPatientSelectedArea();
+        });
+        area.appendChild(badge);
+    });
+}
+
+document.querySelectorAll('.patient-chip-edit').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+        var name = chip.dataset.name;
+        if (!editSelectedPatients.includes(name)) {
+            editSelectedPatients.push(name);
+            updateEditPatientSelectedArea();
+        }
+        var input = document.getElementById('edit-patient-search');
+        if (input) input.value = '';
+        document.getElementById('edit-patient-chips').style.display = 'none';
+    });
+});
+
+var editPatientSearchEl = document.getElementById('edit-patient-search');
+if (editPatientSearchEl) {
+    editPatientSearchEl.addEventListener('input', function() { filterEditPatients(this.value); });
+    editPatientSearchEl.addEventListener('compositionend', function() { filterEditPatients(this.value); });
+    editPatientSearchEl.addEventListener('blur', function() {
+        setTimeout(function() {
+            document.getElementById('edit-patient-chips').style.display = 'none';
+            if (document.getElementById('edit-patient-empty')) document.getElementById('edit-patient-empty').style.display = 'none';
+        }, 200);
+    });
+}
+
+// ===== 掲示板検索機能 =====
+window.filterByPatient = function(patientName) {
+    var input = document.getElementById('board-search-input');
+    if (input) {
+        input.value = patientName;
+        applyBoardSearch();
+        // 画面トップへスクロール
+        try { document.getElementById('posts-container').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(e){}
+    }
+};
+
+function applyBoardSearch() {
+    var input = document.getElementById('board-search-input');
+    if (!input) return;
+    var q = (input.value || '').trim().toLowerCase();
+    var clearBtn = document.getElementById('board-search-clear');
+    var activeArea = document.getElementById('board-search-active');
+    var countEl = document.getElementById('board-search-count');
+
+    if (!q) {
+        // 検索クリア → 全表示
+        document.querySelectorAll('.post-card').forEach(function(card) { card.style.display = ''; });
+        if (clearBtn) clearBtn.style.display = 'none';
+        if (activeArea) activeArea.style.display = 'none';
+        return;
+    }
+
+    if (clearBtn) clearBtn.style.display = '';
+
+    var hits = 0;
+    document.querySelectorAll('.post-card').forEach(function(card) {
+        var pid = card.dataset.postId;
+        if (!pid || !Array.isArray(POSTS_DATA)) {
+            card.style.display = 'none';
+            return;
+        }
+        var post = POSTS_DATA.find(function(p){ return String(p.id) === String(pid); });
+        if (!post) {
+            card.style.display = 'none';
+            return;
+        }
+        // 検索対象: 本文、投稿者名、利用者名(配列)
+        var hay = [
+            (post.content || ''),
+            (post.staff_name || ''),
+            (Array.isArray(post.patient_names) ? post.patient_names.join(' ') : '')
+        ].join(' ').toLowerCase();
+        var match = hay.includes(q);
+        card.style.display = match ? '' : 'none';
+        if (match) hits++;
+    });
+
+    if (activeArea) activeArea.style.display = '';
+    if (countEl) countEl.textContent = '🔍 「' + q + '」 ' + hits + '件';
+}
+
+// 検索イベント設定
+(function setupBoardSearch(){
+    var input = document.getElementById('board-search-input');
+    if (!input) return;
+    input.addEventListener('input', applyBoardSearch);
+    input.addEventListener('compositionend', applyBoardSearch);
+
+    var clearBtn = document.getElementById('board-search-clear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            input.value = '';
+            applyBoardSearch();
+            input.focus();
+        });
+    }
+    var resetBtn = document.getElementById('board-search-reset');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            input.value = '';
+            applyBoardSearch();
+        });
+    }
+})();
 
 // ===== 画像ビューワー(ピンチズーム + ダブルタップ + ドラッグ + ホイール) =====
 (function setupImageViewer(){
@@ -1092,12 +1444,16 @@ function closePostModal() {
     document.getElementById('post-modal').classList.remove('show');
     document.getElementById('post-textarea').value = '';
     selectedPhotos = []; selectedAudio = null; selectedMentions = [];
+    selectedPatients = [];
     document.getElementById('photo-preview').innerHTML = '';
     document.getElementById('audio-preview').style.display = 'none';
     document.querySelectorAll('.mention-chip').forEach(function(c) { c.classList.remove('selected'); });
     document.getElementById('mention-selected-area').innerHTML = '';
     document.getElementById('mention-search').value = '';
     document.getElementById('mention-chips').style.display = 'none';
+    var psel = document.getElementById('patient-selected-area'); if (psel) psel.innerHTML = '';
+    var psearch = document.getElementById('patient-search'); if (psearch) psearch.value = '';
+    var pchips = document.getElementById('patient-chips'); if (pchips) pchips.style.display = 'none';
     setScope('all'); currentScope = 'all';
 }
 document.getElementById('post-modal').addEventListener('click', function(e) {
@@ -1168,6 +1524,7 @@ async function submitPost() {
         var formData = new FormData();
         formData.append('content', content);
         formData.append('mention_names', JSON.stringify(selectedMentions));
+        formData.append('patient_names', JSON.stringify(selectedPatients));
         formData.append('is_private', currentScope === 'mention' ? '1' : '0');
         selectedPhotos.forEach(function(f) { formData.append('photos', f); });
         if (selectedAudio) formData.append('audio', selectedAudio);
@@ -1407,14 +1764,32 @@ window.openEditModal = function(postId) {
     // 現在の投稿内容を取得
     var card = document.getElementById('post-' + postId);
     var contentEl = card ? card.querySelector('.post-content') : null;
-    var currentContent = contentEl ? contentEl.textContent.trim() : '';
+    var currentContent = contentEl ? (contentEl.dataset.fullContent || contentEl.textContent).trim() : '';
     document.getElementById('edit-textarea').value = currentContent;
     document.getElementById('edit-post-id').value = postId;
+
+    // 既存の利用者リストをロード
+    editSelectedPatients = [];
+    if (Array.isArray(POSTS_DATA)) {
+        var post = POSTS_DATA.find(function(p){ return String(p.id) === String(postId); });
+        if (post && Array.isArray(post.patient_names)) {
+            editSelectedPatients = post.patient_names.slice();
+        }
+    }
+    updateEditPatientSelectedArea();
+
     document.getElementById('edit-modal').classList.add('show');
+    document.body.classList.add('modal-open');
 }
 
 window.closeEditModal = function() {
     document.getElementById('edit-modal').classList.remove('show');
+    document.body.classList.remove('modal-open');
+    editSelectedPatients = [];
+    var area = document.getElementById('edit-patient-selected-area');
+    if (area) area.innerHTML = '';
+    var s = document.getElementById('edit-patient-search'); if (s) s.value = '';
+    var c = document.getElementById('edit-patient-chips'); if (c) c.style.display = 'none';
 };
 document.getElementById('edit-modal').addEventListener('click', function(e) {
     if (e.target === this) closeEditModal();
@@ -1428,15 +1803,17 @@ document.getElementById('edit-submit-btn').addEventListener('click', async funct
     try {
         var res = await fetch('/api/board/update_post', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ id: parseInt(postId), content: content })
+            body: JSON.stringify({
+                id: parseInt(postId),
+                content: content,
+                patient_names: editSelectedPatients
+            })
         });
         var data = await res.json();
         if (data.status === 'success') {
-            // カード上の内容を更新
-            var card = document.getElementById('post-' + postId);
-            var contentEl = card ? card.querySelector('.post-content') : null;
-            if (contentEl) contentEl.textContent = content;
+            // 反映するためにリロード(利用者タグも再描画)
             closeEditModal();
+            window.location.reload();
         } else {
             alert('更新に失敗しました: ' + (data.message || ''));
         }
@@ -1529,6 +1906,20 @@ window.showPostDetail = function(postId) {
     // 本文(全文表示)
     document.getElementById('pd-body').textContent = post.content || '';
     document.getElementById('pd-body').style.display = post.content ? '' : 'none';
+
+    // 利用者タグ(詳細モーダル)
+    var patientsContainer = document.getElementById('pd-patients-container');
+    patientsContainer.innerHTML = '';
+    if (Array.isArray(post.patient_names) && post.patient_names.length > 0) {
+        var pHtml = '<div style="padding:0 16px 12px;display:flex;flex-wrap:wrap;gap:6px;">';
+        post.patient_names.forEach(function(pn) {
+            var safeN = String(pn).replace(/'/g, "\\'");
+            pHtml += '<span class="patient-tag" onclick="closePostDetail();filterByPatient(\'' + safeN + '\');" style="font-size:0.82rem;">'
+                + '<span class="material-symbols-outlined" style="font-size:14px;">person</span>' + pn + '</span>';
+        });
+        pHtml += '</div>';
+        patientsContainer.innerHTML = pHtml;
+    }
 
     // 画像(全部表示)
     var imgContainer = document.getElementById('pd-images-container');

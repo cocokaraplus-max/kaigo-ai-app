@@ -210,6 +210,58 @@ DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日�
 """
 
 # ==========================================
+# 管理者権限ヘルパー
+# ==========================================
+def get_admin_managers(supabase, f_code):
+    """
+    施設の管理者として指定されているスタッフ名リストを取得。
+    admin_settings に保存されていなければ、facilities.admin_email に紐づくスタッフを
+    自動で初期管理者として登録してから返す。
+    """
+    import json as _json
+    try:
+        res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "admin_managers").execute()
+        if res.data and res.data[0].get("value"):
+            try:
+                lst = _json.loads(res.data[0]["value"])
+                if isinstance(lst, list) and len(lst) > 0:
+                    return lst
+            except: pass
+    except: pass
+
+    # 空または未設定 → facilities.admin_email に紐づくスタッフを初期管理者に
+    initial = []
+    try:
+        fac_res = supabase.table("facilities").select("admin_email").eq("facility_code", f_code).execute()
+        admin_email = fac_res.data[0].get("admin_email") if fac_res.data else None
+        if admin_email:
+            staff_res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("email", admin_email).eq("is_active", True).execute()
+            if staff_res.data:
+                initial = [s["staff_name"] for s in staff_res.data]
+    except: pass
+
+    # 初期値があれば保存
+    if initial:
+        try:
+            existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "admin_managers").execute()
+            value_json = _json.dumps(initial, ensure_ascii=False)
+            if existing.data:
+                supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
+            else:
+                supabase.table("admin_settings").insert({
+                    "facility_code": f_code, "key": "admin_managers", "value": value_json
+                }).execute()
+        except: pass
+    return initial
+
+def is_admin_user(supabase, f_code, my_name):
+    """指定スタッフが管理者として認可されているかを判定"""
+    if not my_name:
+        return False
+    managers = get_admin_managers(supabase, f_code)
+    return my_name in managers
+
+# ==========================================
 # ページルート
 # ==========================================
 
@@ -393,7 +445,6 @@ def login():
                             def verify_password(pw, hashed):
                                 return hashlib.sha256(pw.encode()).hexdigest() == hashed
 
-                            admin_pw = fac_data.get("admin_password", "")
                             staff = supabase.table("staffs").select("*").eq(
                                 "facility_code", f_code
                             ).eq("is_active", True).execute()
@@ -404,11 +455,10 @@ def login():
                                     matched_staff = s
                                     break
 
-                            is_admin = (password == admin_pw)
-                            if not is_admin and not matched_staff:
+                            if not matched_staff:
                                 error = "パスワードが違います。"
                             else:
-                                my_name = "管理者" if is_admin else matched_staff["staff_name"]
+                                my_name = matched_staff["staff_name"]
                                 session["f_code"] = f_code
                                 session["my_name"] = my_name
                                 session["saved_f_code"] = f_code
@@ -589,7 +639,7 @@ def input_view():
 def daily_view():
     f_code = session["f_code"]
     my_name = session["my_name"]
-    is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+    is_admin = session.get("admin_authenticated", False)
     supabase = get_supabase()
 
     selected_date_str = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
@@ -2081,26 +2131,57 @@ def admin_auth():
                 hist_limit=30, error="開発者パスワードが違います。",
                 claude_url=None, registered_staffs=[], f_code=f_code
             ,
-            board_editors=[])
+            board_editors=[], admin_managers=[])
 
-    # 管理者認証
+    # 管理者認証(個人パスワード + admin_managers リストに含まれているかチェック)
     try:
+        import hashlib
+        def verify_password(p, h):
+            return hashlib.sha256(p.encode()).hexdigest() == h
         supabase = get_supabase()
-        res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
-        cur_pw = res.data[0]['value'] if res.data else "8888"
-    except:
-        cur_pw = "8888"
-    if pw == cur_pw:
+        my_name = session.get("my_name", "")
+
+        # まず、ログイン中スタッフの個人パスワードと一致するか確認
+        staff_res = supabase.table("staffs").select("staff_name,password_hash,email").eq(
+            "facility_code", f_code
+        ).eq("staff_name", my_name).eq("is_active", True).execute()
+
+        if not staff_res.data:
+            return render_template("admin.html",
+                authenticated=False, dev_mode=False,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30, error="ログイン情報が確認できません。",
+                claude_url=None, registered_staffs=[], f_code=f_code,
+                board_editors=[], admin_managers=[])
+
+        s = staff_res.data[0]
+        if not verify_password(pw, s.get("password_hash", "")):
+            return render_template("admin.html",
+                authenticated=False, dev_mode=False,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30, error="パスワードが違います。",
+                claude_url=None, registered_staffs=[], f_code=f_code,
+                board_editors=[], admin_managers=[])
+
+        # パスワードはOK、次に管理者として認可されているかチェック
+        managers = get_admin_managers(supabase, f_code)
+        if my_name not in managers:
+            return render_template("admin.html",
+                authenticated=False, dev_mode=False,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30, error="管理者権限がありません。施設の管理者にお問い合わせください。",
+                claude_url=None, registered_staffs=[], f_code=f_code,
+                board_editors=[], admin_managers=[])
+
         session["admin_authenticated"] = True
         return redirect(url_for("admin"))
-    else:
+    except Exception as e:
         return render_template("admin.html",
             authenticated=False, dev_mode=False,
             patients=[], blocked=[], staff_list=[],
-            hist_limit=30, error="パスワードが違います。",
-            claude_url=None, registered_staffs=[], f_code=f_code
-        ,
-            board_editors=[])
+            hist_limit=30, error=f"認証中にエラーが発生しました: {e}",
+            claude_url=None, registered_staffs=[], f_code=f_code,
+            board_editors=[], admin_managers=[])
 
 @app.route('/api/scan_patients_from_image', methods=['POST'])
 @login_required
@@ -2298,6 +2379,13 @@ def admin():
                     board_editors_list = []
         except: pass
 
+    # 管理者リスト(admin_managers)
+    admin_managers_list = []
+    if authenticated:
+        try:
+            admin_managers_list = get_admin_managers(supabase, f_code)
+        except: pass
+
     claude_url = session.pop("claude_url", None)
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
@@ -2314,7 +2402,8 @@ def admin():
         registered_staffs=registered_staffs,
         f_code=f_code
     ,
-            board_editors=board_editors_list)
+            board_editors=board_editors_list,
+            admin_managers=admin_managers_list)
 
 # ==========================================
 
@@ -2484,7 +2573,7 @@ def api_delete_record():
             return jsonify({"status": "error", "message": "id は必須です"}), 400
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
         # 権限チェック：自分の記録か管理者のみ削除可能
         rec = supabase.table("records").select("staff_name,facility_code").eq("id", data["id"]).execute()
@@ -2703,9 +2792,14 @@ def api_update_hist_limit():
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
-        supabase.table("admin_settings").upsert({
-            "facility_code": f_code, "key": "history_limit", "value": str(data["limit"])
-        }, on_conflict="facility_code,key").execute()
+        # admin_settings に (facility_code, key) のユニーク制約が無いため existing 分岐
+        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "history_limit").execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": str(data["limit"])}).eq("facility_code", f_code).eq("key", "history_limit").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": "history_limit", "value": str(data["limit"])
+            }).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
@@ -2717,7 +2811,7 @@ def api_board_set_editors():
     try:
         # 管理者でない場合は拒否
         my_name = session.get("my_name", "")
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         if not is_admin:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         data = request.json or {}
@@ -2727,12 +2821,52 @@ def api_board_set_editors():
         f_code = session["f_code"]
         supabase = get_supabase()
         import json as _json
-        supabase.table("admin_settings").upsert({
-            "facility_code": f_code,
-            "key": "board_editors",
-            "value": _json.dumps(editors, ensure_ascii=False)
-        }, on_conflict="facility_code,key").execute()
+        value_json = _json.dumps(editors, ensure_ascii=False)
+        # admin_settings に (facility_code, key) のユニーク制約が無いため
+        # upsert ではなく existing確認 → update or insert で対応
+        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "board_editors").execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "board_editors").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code,
+                "key": "board_editors",
+                "value": value_json
+            }).execute()
         return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/admin/set_managers', methods=['POST'])
+@login_required
+def api_admin_set_managers():
+    """管理者MENUに入れる人(admin_managers)の保存。管理者専用。"""
+    try:
+        my_name = session.get("my_name", "")
+        is_admin = session.get("admin_authenticated", False)
+        if not is_admin:
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        data = request.json or {}
+        managers = data.get("managers", [])
+        if not isinstance(managers, list):
+            return jsonify({"status": "error", "message": "形式が不正です"}), 400
+        # 管理者ゼロは禁止
+        if len(managers) == 0:
+            return jsonify({"status": "error", "message": "管理者は最低1人必要です"}), 400
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        import json as _json
+        value_json = _json.dumps(managers, ensure_ascii=False)
+        existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "admin_managers").execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code,
+                "key": "admin_managers",
+                "value": value_json
+            }).execute()
+        return jsonify({"status": "success", "managers": managers})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -3005,8 +3139,20 @@ def board():
     except Exception as e:
         print(f"board detail error: {e}")
     staffs = [name for name in icons.keys()]
+    # 利用者リスト(投稿時の選択 + 検索フィルタ用)
+    patient_names = []
+    try:
+        pat_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).order("user_kana").execute()
+        seen = set()
+        for p in (pat_res.data or []):
+            n = (p.get("user_name") or "").strip()
+            if n and n not in seen:
+                seen.add(n)
+                patient_names.append(n)
+    except Exception as e:
+        print(f"board patients error: {e}")
     # 編集・削除権限: 管理者本人 or 管理画面で許可されたスタッフ
-    is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+    is_admin = session.get("admin_authenticated", False)
     is_board_editor = is_admin
     if not is_board_editor:
         try:
@@ -3022,6 +3168,7 @@ def board():
         my_color=staff_color(my_name), my_initial=staff_initial(my_name),
         comments_count=comments_count, reactions_data=reactions_data,
         read_data=read_data, staffs=staffs,
+        patient_names=patient_names,
         is_board_editor=is_board_editor,
         supabase_url=get_secret("SUPABASE_URL"),
         supabase_anon_key=get_secret("SUPABASE_KEY"),
@@ -3039,6 +3186,9 @@ def api_board_create_post():
         audio = request.files.get("audio")
         import json as _json
         mentions = _json.loads(request.form.get("mention_names", "[]"))
+        patient_names = _json.loads(request.form.get("patient_names", "[]"))
+        if not isinstance(patient_names, list):
+            patient_names = []
         image_urls = []
         if photos and photos[0].filename:
             from utils import upload_images_to_supabase
@@ -3051,7 +3201,8 @@ def api_board_create_post():
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
             "file_urls": [], "audio_url": audio_url,
-            "mention_names": mentions, "is_pinned": False,
+            "mention_names": mentions, "patient_names": patient_names,
+            "is_pinned": False,
         }).execute()
         return jsonify({"status": "success", "post_id": res.data[0]["id"] if res.data else None})
     except Exception as e:
@@ -3065,7 +3216,7 @@ def api_board_update_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error", "message": "見つかりません"}), 404
@@ -3073,10 +3224,16 @@ def api_board_update_post():
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
         if not is_admin and p["staff_name"] != my_name:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
-        supabase.table("board_posts").update({
+        update_payload = {
             "content": data.get("content", ""),
             "updated_at": "now()"
-        }).eq("id", data["id"]).execute()
+        }
+        # patient_names の更新(明示的に渡された場合のみ)
+        if "patient_names" in data:
+            pn = data.get("patient_names")
+            if isinstance(pn, list):
+                update_payload["patient_names"] = pn
+        supabase.table("board_posts").update(update_payload).eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -3088,7 +3245,7 @@ def api_board_delete_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
         post = supabase.table("board_posts").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not post.data: return jsonify({"status": "error"}), 404
@@ -3107,7 +3264,7 @@ def api_board_pin_post():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         if not is_admin: return jsonify({"status": "error", "message": "管理者のみ操作可能"}), 403
         supabase = get_supabase()
         supabase.table("board_posts").update({"is_pinned": data.get("pinned", True)}).eq("id", data["id"]).eq("facility_code", f_code).execute()
@@ -3164,7 +3321,7 @@ def api_board_delete_comment():
         data = request.json
         f_code = session["f_code"]
         my_name = session["my_name"]
-        is_admin = session.get("admin_authenticated", False) or my_name == "管理者"
+        is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
         c = supabase.table("board_comments").select("staff_name").eq("id", data["id"]).execute()
         if not c.data: return jsonify({"status": "error"}), 404
