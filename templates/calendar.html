@@ -1407,6 +1407,9 @@ document.addEventListener('click', function(e) {
                     var topPx = medianTop - gridRect.top;
                     var heightPx = medianHeight;
 
+                    // sampleBar (背景色とタイトルの基準にする最初のバー)
+                    var sampleBar = group[0].bar;
+
                     // 元のバーの背景色とタイトル
                     var bg = getBg(sampleBar);
                     var title = '';
