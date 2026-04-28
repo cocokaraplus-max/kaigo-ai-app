@@ -261,23 +261,6 @@ def is_admin_user(supabase, f_code, my_name):
     managers = get_admin_managers(supabase, f_code)
     return my_name in managers
 
-def is_board_editor_user(supabase, f_code, my_name, is_admin_authenticated=False):
-    """指定スタッフが掲示板の編集削除権限を持つかを判定。
-    管理者MENUにログイン中、または board_editors リストに含まれていればOK。"""
-    if is_admin_authenticated:
-        return True
-    if not my_name:
-        return False
-    try:
-        import json as _json
-        res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "board_editors").execute()
-        if res.data and res.data[0].get("value"):
-            editors_list = _json.loads(res.data[0]["value"])
-            if isinstance(editors_list, list) and my_name in editors_list:
-                return True
-    except: pass
-    return False
-
 # ==========================================
 # ページルート
 # ==========================================
@@ -3239,9 +3222,7 @@ def api_board_update_post():
         if not post.data: return jsonify({"status": "error", "message": "見つかりません"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        # 編集可: 本人 OR 管理者 OR 掲示板編集権限ありのスタッフ
-        can_edit = (p["staff_name"] == my_name) or is_board_editor_user(supabase, f_code, my_name, is_admin)
-        if not can_edit:
+        if not is_admin and p["staff_name"] != my_name:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         update_payload = {
             "content": data.get("content", ""),
@@ -3270,10 +3251,7 @@ def api_board_delete_post():
         if not post.data: return jsonify({"status": "error"}), 404
         p = post.data[0]
         if p["facility_code"] != f_code: return jsonify({"status": "error"}), 403
-        # 削除可: 本人 OR 管理者 OR 掲示板編集権限ありのスタッフ
-        can_edit = (p["staff_name"] == my_name) or is_board_editor_user(supabase, f_code, my_name, is_admin)
-        if not can_edit:
-            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        if not is_admin and p["staff_name"] != my_name: return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_posts").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
