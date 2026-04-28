@@ -1362,6 +1362,8 @@ document.addEventListener('click', function(e) {
 
             // 各行を処理
             rows.forEach(function(row, rowIdx) {
+                // この行で既に使用されているtopレンジ(重なり回避用)
+                var usedRanges = [];
                 // この行の全バーを集める(イベントIDごとにグループ化)
                 // 各バーが「セル内の何番目」かを barIdx として記録
                 var eventGroups = {}; // {eventId: [{cell, bar, cellIdx, barIdx}, ...]}
@@ -1406,6 +1408,29 @@ document.addEventListener('click', function(e) {
                     var medianHeight = heightValues[Math.floor(heightValues.length / 2)];
                     var topPx = medianTop - gridRect.top;
                     var heightPx = medianHeight;
+
+                    // 重なり回避: この行で既に使われているtopレンジと衝突するなら下にずらす
+                    var leftPxCheck = fr.left - gridRect.left;
+                    var rightPxCheck = leftPxCheck + (lr.right - fr.left);
+                    var collision = true;
+                    var maxIter = 20;
+                    while (collision && maxIter-- > 0) {
+                        collision = false;
+                        for (var ui = 0; ui < usedRanges.length; ui++) {
+                            var u = usedRanges[ui];
+                            // 横方向の重なり判定(完全に外なら重ならない)
+                            var hOverlap = !(rightPxCheck <= u.left || leftPxCheck >= u.right);
+                            // 縦方向の重なり判定(0.5pxの誤差を許容)
+                            var vOverlap = !(topPx + heightPx <= u.top + 0.5 || topPx >= u.bottom - 0.5);
+                            if (hOverlap && vOverlap) {
+                                topPx = u.bottom + 1; // 1px隙間で下にずらす
+                                collision = true;
+                                break;
+                            }
+                        }
+                    }
+                    // この配置を使用済みとして記録
+                    usedRanges.push({ left: leftPxCheck, right: rightPxCheck, top: topPx, bottom: topPx + heightPx });
 
                     // sampleBar (背景色とタイトルの基準にする最初のバー)
                     var sampleBar = group[0].bar;
