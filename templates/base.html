@@ -659,12 +659,13 @@ async function navigateTo(url, pushState = true) {
         if (data.script) {
             const scriptContent = (data.script || '').replace(/<\/?script[^>]*>/g, '');
             if (scriptContent.trim()) {
-                const scriptEl = document.createElement('script');
-                scriptEl.className = 'spa-injected-script';
-                // IIFEで囲むことでconst/letの重複宣言エラーを防ぐ
-                // requestAnimationFrameでDOM描画完了後に実行（カレンダー白問題の修正）
-                scriptEl.textContent = `(function(){\n${scriptContent}\n})();`;
-                document.head.appendChild(scriptEl);
+                // new Function() で HTMLパーサーを介さずに評価
+                // (< を含む文字列リテラルでも安全に実行できる)
+                try {
+                    new Function(scriptContent)();
+                } catch (err) {
+                    console.error('[SPA] script execution error:', err);
+                }
             }
         }
 
