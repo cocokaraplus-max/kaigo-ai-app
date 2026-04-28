@@ -1491,22 +1491,29 @@ document.addEventListener('click', function(e) {
     }
 
     // 公開API: renderCalendar 後に呼ばれる
+    // run関数をクロージャ内に保持しつつ、setTimeoutで遅延実行(より確実)
     window.__calendarBarConnectRun = function() {
-        // requestAnimationFrame x2 で DOM完成を待つ
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(function() {
-                requestAnimationFrame(run);
-            });
-        } else {
-            setTimeout(run, 50);
-        }
+        setTimeout(function() {
+            try {
+                run();
+                console.log('[CalendarBarConnect] run completed, overlays:', 
+                    (document.getElementById('cal-days') || document).querySelectorAll('.cal-bar-connect-row').length);
+            } catch(err) {
+                console.error('[CalendarBarConnect] run error:', err);
+            }
+        }, 80);
     };
 
-    // 初回実行
+    // 初回実行(DOMContentLoaded 後 + さらに少し待つ)
+    function initialRun() {
+        setTimeout(function() {
+            try { run(); } catch(e) { console.error('[CalendarBarConnect] init error:', e); }
+        }, 200);
+    }
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', window.__calendarBarConnectRun);
+        document.addEventListener('DOMContentLoaded', initialRun);
     } else {
-        window.__calendarBarConnectRun();
+        initialRun();
     }
 
     // resize 対応(debounce 200ms)
