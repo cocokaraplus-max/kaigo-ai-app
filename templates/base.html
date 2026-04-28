@@ -572,12 +572,9 @@
 // onclick属性から直接呼ばれる関数（iPhoneでも確実に動く）
 function spaNav(event, url) {
     // admin・history・numerologyは通常遷移（JSが複雑なためSPA非対応）
-    // Jinja2タグを含むページは通常遷移（SPA非対応）
-    if (['/admin', '/history', '/numerology', '/birthday', '/input', '/daily_view'].includes(url)) {
-        return;
-    }
-    event.preventDefault();
-    navigateTo(url);
+    // SPAナビゲーション無効化: 全ページを通常遷移に統一
+    // (event.preventDefault しないことで、ブラウザ標準のリンク動作が走る)
+    return;
 }
 
 async function navigateTo(url, pushState = true) {
@@ -707,23 +704,16 @@ function updateNavActive(url) {
     });
 }
 
-// ナビリンクのクリックをSPAに変換（イベント委譲）
-document.addEventListener('click', e => {
-    const link = e.target.closest('.bottom-nav-item[href]');
-    if (!link) return;
-    const href = link.getAttribute('href');
-    // adminは通常遷移
-    if (href === '/admin') return;
-    e.preventDefault();
-    navigateTo(href);
-});
+// ナビリンクのクリック委譲: SPA無効化のためコメントアウト
+// document.addEventListener('click', e => { ... navigateTo(href); });
 
 // ブラウザの戻る/進むに対応
-window.addEventListener('popstate', e => {
-    if (e.state && e.state.url) {
-        navigateTo(e.state.url, false);
-    }
-});
+// popstate(戻る/進む)も SPA 無効化のためコメントアウト
+// window.addEventListener('popstate', e => {
+//     if (e.state && e.state.url) {
+//         navigateTo(e.state.url, false);
+//     }
+// });
 
 // 初期状態をhistoryに登録
 window.addEventListener('load', () => {
