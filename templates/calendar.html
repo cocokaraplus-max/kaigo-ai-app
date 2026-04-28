@@ -1363,14 +1363,15 @@ document.addEventListener('click', function(e) {
             // 各行を処理
             rows.forEach(function(row, rowIdx) {
                 // この行の全バーを集める(イベントIDごとにグループ化)
-                var eventGroups = {}; // {eventId: [{cell, bar, cellIdx}, ...]}
+                // 各バーが「セル内の何番目」かを barIdx として記録
+                var eventGroups = {}; // {eventId: [{cell, bar, cellIdx, barIdx}, ...]}
                 row.forEach(function(cell, cellIdx) {
                     var bars = Array.from(cell.querySelectorAll('.cal-event-bar'));
-                    bars.forEach(function(bar) {
+                    bars.forEach(function(bar, barIdx) {
                         var id = eventIdOf(bar);
                         if (!id) return;
                         if (!eventGroups[id]) eventGroups[id] = [];
-                        eventGroups[id].push({cell: cell, bar: bar, cellIdx: cellIdx});
+                        eventGroups[id].push({cell: cell, bar: bar, cellIdx: cellIdx, barIdx: barIdx});
                     });
                 });
 
@@ -1394,10 +1395,17 @@ document.addEventListener('click', function(e) {
                     var widthPx = (lr.right - fr.left);
 
                     // 元のバーの上下位置(同セル内に複数バーがある場合の縦位置を反映)
-                    var sampleBar = group[0].bar;
-                    var sbRect = sampleBar.getBoundingClientRect();
-                    var topPx = sbRect.top - gridRect.top;
-                    var heightPx = sbRect.height;
+                    // 各バーの top 値を集めて中央値を採用(外れ値の影響を減らす)
+                    var topValues = group.map(function(item) {
+                        return item.bar.getBoundingClientRect().top;
+                    }).sort(function(a, b) { return a - b; });
+                    var medianTop = topValues[Math.floor(topValues.length / 2)];
+                    var heightValues = group.map(function(item) {
+                        return item.bar.getBoundingClientRect().height;
+                    });
+                    var medianHeight = heightValues[Math.floor(heightValues.length / 2)];
+                    var topPx = medianTop - gridRect.top;
+                    var heightPx = medianHeight;
 
                     // 元のバーの背景色とタイトル
                     var bg = getBg(sampleBar);
@@ -1420,7 +1428,10 @@ document.addEventListener('click', function(e) {
                     connectBar.style.width = widthPx + 'px';
                     connectBar.style.height = heightPx + 'px';
                     connectBar.style.background = bg;
-                    connectBar.style.zIndex = '5';
+                    // z-index は barIdx に基づいて設定
+                    // (同じイベントなら全セルで同じ barIdx になるはず → 正確な積み重ね)
+                    var sampleBarIdx = group[0].barIdx || 0;
+                    connectBar.style.zIndex = String(5 + sampleBarIdx);
                     connectBar.style.pointerEvents = 'auto';
                     connectBar.style.cursor = 'pointer';
                     connectBar.style.boxSizing = 'border-box';
