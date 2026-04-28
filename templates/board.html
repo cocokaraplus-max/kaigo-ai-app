@@ -130,10 +130,16 @@
 /* ========== 投稿詳細モーダル ========== */
 .post-detail-overlay {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5); z-index: 1300;
+    background: rgba(0,0,0,0.5); z-index: 99999;
     align-items: flex-end; justify-content: center;
 }
 .post-detail-overlay.show { display: flex; }
+/* モーダル系が前面に出ている間、ボトムナビ・固定要素を裏に */
+body.modal-open .bottom-nav,
+body.modal-open .bottom-nav * {
+    z-index: 0 !important;
+    position: static !important;
+}
 .post-detail-sheet {
     background: #fff; border-radius: 20px 20px 0 0;
     width: 100%; max-width: 480px;
@@ -258,7 +264,7 @@
 /* ========== コメントドロワー ========== */
 .comments-drawer {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4); z-index: 1200;
+    background: rgba(0,0,0,0.4); z-index: 99998;
     align-items: flex-end; justify-content: center;
 }
 .comments-drawer.show { display: flex; }
@@ -324,7 +330,7 @@
 /* ========== 投稿作成モーダル ========== */
 .post-modal {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45); z-index: 1200;
+    background: rgba(0,0,0,0.45); z-index: 99998;
     align-items: flex-end; justify-content: center;
 }
 .post-modal.show { display: flex; }
@@ -388,7 +394,7 @@
 /* リアクション選択 */
 .reaction-picker {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.3); z-index: 1100;
+    background: rgba(0,0,0,0.3); z-index: 99997;
     align-items: flex-end; justify-content: center;
 }
 .reaction-picker.show { display: flex; }
@@ -686,7 +692,7 @@
 </div>
 
 <!-- 画像ビューワー -->
-<div id="image-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:2000;align-items:center;justify-content:center;">
+<div id="image-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;align-items:center;justify-content:center;">
     <img id="image-viewer-img" style="max-width:100%;max-height:100%;object-fit:contain;">
     <button onclick="document.getElementById('image-viewer').style.display='none'"
         style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;">
@@ -1117,7 +1123,7 @@ window.showPostMenu = function(postId, isMine) {
 
     var sheet = document.createElement('div');
     sheet.id = 'post-action-sheet';
-    sheet.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1500;display:flex;align-items:flex-end;justify-content:center;';
+    sheet.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:flex-end;justify-content:center;';
     sheet.innerHTML = '<div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px 32px;">'
         + '<div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;"></div>'
         + (isMine ? '<button id="menu-edit-btn" style="width:100%;padding:14px;border:none;border-radius:12px;background:#f0f6ff;color:#1a73e8;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span class="material-symbols-outlined">edit</span>編集する</button>' : '')
@@ -1344,12 +1350,14 @@ window.showPostDetail = function(postId) {
     }
 
     overlay.classList.add('show');
+    document.body.classList.add('modal-open');
     document.body.style.overflow = 'hidden';
 };
 
 window.closePostDetail = function() {
     var overlay = document.getElementById('post-detail-overlay');
     if (overlay) overlay.classList.remove('show');
+    document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
     // モーダル内の音声を停止
     var audios = document.querySelectorAll('#pd-audio-container audio');
