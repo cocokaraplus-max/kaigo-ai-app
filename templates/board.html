@@ -58,6 +58,20 @@
     font-size: 0.92rem; line-height: 1.7; color: #202124;
     white-space: pre-wrap; word-break: break-word;
 }
+/* 一覧では3行で省略 */
+.post-content.clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.post-more-link {
+    display: inline-block;
+    margin: 0 14px 10px;
+    color: #1a73e8; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer;
+}
+.post-more-link:hover { text-decoration: underline; }
 .post-content .mention {
     color: #1a73e8; font-weight: 700;
 }
@@ -74,6 +88,22 @@
     width: 100%; border-radius: 8px;
     aspect-ratio: 1; object-fit: cover; cursor: pointer;
 }
+/* 一覧用: サムネイル1枚+残り枚数オーバーレイ */
+.post-thumb-wrap {
+    position: relative; padding: 0 14px 10px;
+    cursor: pointer;
+}
+.post-thumb-wrap img {
+    width: 100%; max-height: 280px; border-radius: 10px;
+    object-fit: cover; display: block;
+}
+.post-thumb-overlay {
+    position: absolute; right: 14px; bottom: 10px;
+    background: rgba(0,0,0,0.6); color: #fff;
+    padding: 4px 10px; border-radius: 14px;
+    font-size: 0.8rem; font-weight: 800;
+    pointer-events: none;
+}
 
 /* 音声 */
 .post-audio {
@@ -85,6 +115,99 @@
 }
 .post-audio .material-symbols-outlined { color: #1a73e8; }
 .post-audio audio { flex: 1; height: 32px; }
+/* 一覧用: 音声チップ(プレイヤーは出さず、詳細で) */
+.post-audio-chip {
+    margin: 0 14px 10px;
+    background: #f0f6ff; border-radius: 18px;
+    padding: 6px 12px;
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #1a73e8;
+    color: #1a73e8; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer;
+}
+.post-audio-chip .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+
+/* ========== 投稿詳細モーダル ========== */
+.post-detail-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 1300;
+    align-items: flex-end; justify-content: center;
+}
+.post-detail-overlay.show { display: flex; }
+.post-detail-sheet {
+    background: #fff; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px;
+    max-height: 92vh; overflow-y: auto;
+    animation: slideUp 0.22s ease;
+    padding-bottom: 28px;
+}
+.post-detail-handle {
+    width: 36px; height: 4px; background: #e0e0e0;
+    border-radius: 2px; margin: 12px auto 8px;
+}
+.post-detail-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px 12px; border-bottom: 1px solid #f0f0f0;
+}
+.post-detail-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; font-weight: 700; color: #fff; flex-shrink: 0;
+    overflow: hidden;
+}
+.post-detail-meta { flex: 1; }
+.post-detail-author { font-size: 0.95rem; font-weight: 700; color: #202124; }
+.post-detail-time { font-size: 0.78rem; color: #80868b; }
+.post-detail-close {
+    background: none; border: none; cursor: pointer; padding: 4px;
+    color: #5f6368;
+}
+.post-detail-body {
+    padding: 14px 16px;
+    font-size: 0.95rem; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-word;
+    color: #202124;
+}
+.post-detail-images {
+    display: grid; gap: 6px; padding: 0 16px 12px;
+}
+.post-detail-images.count-1 { grid-template-columns: 1fr; }
+.post-detail-images.count-2 { grid-template-columns: 1fr 1fr; }
+.post-detail-images.count-many { grid-template-columns: 1fr 1fr; }
+.post-detail-images img {
+    width: 100%; border-radius: 10px;
+    aspect-ratio: 1; object-fit: cover; cursor: pointer;
+}
+.post-detail-audio {
+    margin: 0 16px 14px;
+    background: #f0f6ff; border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid #1a73e8;
+}
+.post-detail-audio audio { flex: 1; height: 36px; }
+.post-detail-section {
+    margin: 0 16px 14px; padding: 12px;
+    background: #f8f9fa; border-radius: 10px;
+}
+.post-detail-section-title {
+    font-size: 0.82rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
+}
+.post-detail-section-body {
+    font-size: 0.88rem; color: #202124; line-height: 1.6;
+}
+.post-detail-people {
+    display: flex; flex-wrap: wrap; gap: 6px;
+}
+.post-detail-people .person {
+    background: #fff; border-radius: 14px;
+    padding: 3px 10px; font-size: 0.8rem;
+    border: 1px solid #e0e0e0;
+}
+.post-detail-empty {
+    color: #80868b; font-size: 0.85rem; font-style: italic;
+}
 
 /* リアクション */
 .post-reactions {
@@ -314,7 +437,7 @@
 </div>
 {% else %}
 {% for post in posts %}
-<div class="post-card {% if post.is_pinned %}pinned{% endif %}" id="post-{{ post.id }}" data-post-id="{{ post.id }}">
+<div class="post-card {% if post.is_pinned %}pinned{% endif %}" id="post-{{ post.id }}" data-post-id="{{ post.id }}" onclick="showPostDetail({{ post.id }})" style="cursor:pointer;">
     <div class="post-card-header">
         <!-- アバター -->
         {% set ic = icons.get(post.staff_name, {}) %}
@@ -332,31 +455,33 @@
             <span class="material-symbols-outlined" style="font-size:12px;">push_pin</span>固定
         </div>
         {% endif %}
-        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-can-edit="{{ 'true' if post.staff_name == my_name or is_board_editor else 'false' }}" onclick="showPostMenu(this.dataset.postId, this.dataset.canEdit==='true')">
+        <button class="post-menu-btn" data-post-id="{{ post.id }}" data-can-edit="{{ 'true' if post.staff_name == my_name or is_board_editor else 'false' }}" onclick="event.stopPropagation();showPostMenu(this.dataset.postId, this.dataset.canEdit==='true')">
             <span class="material-symbols-outlined">more_vert</span>
         </button>
     </div>
 
-    <!-- 本文 -->
+    <!-- 本文(一覧では3行省略、4行以上ある場合は「もっと見る」を表示) -->
     {% if post.content %}
-    <div class="post-content">{{ post.content }}</div>
+    <div class="post-content clamp" data-full-content="{{ post.content|e }}">{{ post.content }}</div>
+    <span class="post-more-link" data-post-id="{{ post.id }}" style="display:none;" onclick="event.stopPropagation();showPostDetail({{ post.id }})">…もっと見る</span>
     {% endif %}
 
-    <!-- 画像 -->
+    <!-- 画像(一覧では1枚目のみサムネイル、複数枚は+Nバッジ) -->
     {% if post.image_urls %}
-    <div class="post-images count-{{ post.image_urls|length }}">
-        {% for url in post.image_urls %}
-        <img src="{{ url }}" onclick="openImageViewer('{{ url }}')" loading="lazy">
-        {% endfor %}
+    <div class="post-thumb-wrap" onclick="event.stopPropagation();showPostDetail({{ post.id }})">
+        <img src="{{ post.image_urls[0] }}" loading="lazy">
+        {% if post.image_urls|length > 1 %}
+        <div class="post-thumb-overlay">+{{ post.image_urls|length - 1 }}</div>
+        {% endif %}
     </div>
     {% endif %}
 
-    <!-- 音声 -->
+    <!-- 音声(一覧ではチップのみ、プレイヤーは詳細モーダルで) -->
     {% if post.audio_url %}
-    <div class="post-audio">
+    <span class="post-audio-chip" onclick="event.stopPropagation();showPostDetail({{ post.id }})">
         <span class="material-symbols-outlined">mic</span>
-        <audio controls><source src="{{ post.audio_url }}"></audio>
-    </div>
+        音声メッセージ
+    </span>
     {% endif %}
 
     <!-- リアクション -->
@@ -365,7 +490,7 @@
     <div class="post-reactions" id="reactions-{{ post.id }}">
         {% for emoji, names in post_reactions.items() %}
         <div class="reaction-chip {% if my_name in names %}mine{% endif %}"
-            onclick="toggleReaction({{ post.id }}, '{{ emoji }}')"
+            onclick="event.stopPropagation();toggleReaction({{ post.id }}, '{{ emoji }}')"
             title="{{ names|join('、') }}">
             <span class="emoji">{{ emoji }}</span>
             <span class="count">{{ names|length }}</span>
@@ -376,29 +501,29 @@
     <div class="post-reactions" id="reactions-{{ post.id }}"></div>
     {% endif %}
 
-    <!-- 既読 -->
+    <!-- 既読(一覧では人数のみ) -->
     {% set readers = read_data.get(post.id, []) %}
     {% if readers %}
     <div class="post-reads">
         <span class="material-symbols-outlined" style="font-size:13px;">visibility</span>
-        {{ readers|join('、') }}
+        {{ readers|length }}人が確認
     </div>
     {% endif %}
 
     <!-- アクションバー -->
     {% set checked = my_name in reactions_data.get(post.id, {}).get('✅', []) %}
     <div class="post-actions">
-        <button class="post-action-btn {% if checked %}checked{% endif %}" onclick="toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
+        <button class="post-action-btn {% if checked %}checked{% endif %}" onclick="event.stopPropagation();toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
             <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}check_circle{% endif %}</span>
             確認済み
             {% set check_count = reactions_data.get(post.id, {}).get('✅', [])|length %}
             {% if check_count > 0 %}<span class="badge">{{ check_count }}</span>{% endif %}
         </button>
-        <button class="post-action-btn" onclick="openReactionPicker({{ post.id }})">
+        <button class="post-action-btn" onclick="event.stopPropagation();openReactionPicker({{ post.id }})">
             <span class="material-symbols-outlined">add_reaction</span>
             リアクション
         </button>
-        <button class="post-action-btn" onclick="openComments({{ post.id }})">
+        <button class="post-action-btn" onclick="event.stopPropagation();openComments({{ post.id }})">
             <span class="material-symbols-outlined">chat_bubble_outline</span>
             コメント
             {% set cnt = comments_count.get(post.id, 0) %}
@@ -408,6 +533,29 @@
 </div>
 {% endfor %}
 {% endif %}
+</div>
+
+<!-- 投稿詳細モーダル -->
+<div class="post-detail-overlay" id="post-detail-overlay">
+    <div class="post-detail-sheet" id="post-detail-sheet">
+        <div class="post-detail-handle"></div>
+        <div class="post-detail-header">
+            <div class="post-detail-avatar" id="pd-avatar"></div>
+            <div class="post-detail-meta">
+                <div class="post-detail-author" id="pd-author"></div>
+                <div class="post-detail-time" id="pd-time"></div>
+            </div>
+            <button class="post-detail-close" id="pd-close" aria-label="閉じる">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="post-detail-body" id="pd-body"></div>
+        <div id="pd-images-container"></div>
+        <div id="pd-audio-container"></div>
+        <div id="pd-reactions-container"></div>
+        <div id="pd-checked-container"></div>
+        <div id="pd-readers-container"></div>
+    </div>
 </div>
 
 <!-- コメントドロワー -->
@@ -558,6 +706,11 @@ const MY_INITIAL   = {{ my_initial | tojson }};
 const SUPA_URL     = {{ supabase_url | tojson }};
 const SUPA_KEY     = {{ supabase_anon_key | tojson }};
 const STAFFS       = {{ staffs | tojson }};
+// 詳細モーダル用: サーバから受け取ったデータをJS化
+const POSTS_DATA      = {{ posts | tojson }};
+const REACTIONS_DATA  = {{ reactions_data | tojson }};
+const READ_DATA       = {{ read_data | tojson }};
+const ICONS_DATA      = {{ icons | tojson }};
 
 // ページ読み込み時にカメラモーダルを確実に閉じる
 var _cam = document.getElementById('camera-modal');
@@ -1084,6 +1237,161 @@ function showToast(msg) {
     document.body.appendChild(toast);
     setTimeout(function() { toast.remove(); }, 3000);
 }
+
+// ===== 投稿詳細モーダル =====
+window.showPostDetail = function(postId) {
+    if (!Array.isArray(POSTS_DATA)) return;
+    var post = POSTS_DATA.find(function(p){ return String(p.id) === String(postId); });
+    if (!post) { console.warn('post not found:', postId); return; }
+
+    var overlay = document.getElementById('post-detail-overlay');
+    if (!overlay) return;
+
+    // ヘッダー: アバター・名前・日時
+    var ic = (ICONS_DATA && ICONS_DATA[post.staff_name]) || {};
+    var avatar = document.getElementById('pd-avatar');
+    avatar.style.background = ic.color || '#1a73e8';
+    if (ic.image_url) {
+        avatar.innerHTML = '<img src="' + ic.image_url + '" style="width:100%;height:100%;object-fit:cover;">';
+    } else if (ic.emoji) {
+        avatar.innerHTML = '<span style="font-size:20px;">' + ic.emoji + '</span>';
+    } else {
+        avatar.textContent = ic.initial || (post.staff_name || '?').slice(0, 1);
+    }
+    document.getElementById('pd-author').textContent = post.staff_name || '';
+    var ca = post.created_at || '';
+    var timeText = ca.length >= 16
+        ? (ca.slice(5, 7) + '月' + ca.slice(8, 10) + '日 ' + ca.slice(11, 16))
+        : ca;
+    document.getElementById('pd-time').textContent = timeText;
+
+    // 本文(全文表示)
+    document.getElementById('pd-body').textContent = post.content || '';
+    document.getElementById('pd-body').style.display = post.content ? '' : 'none';
+
+    // 画像(全部表示)
+    var imgContainer = document.getElementById('pd-images-container');
+    imgContainer.innerHTML = '';
+    if (Array.isArray(post.image_urls) && post.image_urls.length > 0) {
+        var n = post.image_urls.length;
+        var cls = n === 1 ? 'count-1' : (n === 2 ? 'count-2' : 'count-many');
+        var imgsHtml = '<div class="post-detail-images ' + cls + '">';
+        post.image_urls.forEach(function(u) {
+            imgsHtml += '<img src="' + u + '" loading="lazy" onclick="event.stopPropagation();openImageViewer(\'' + u.replace(/'/g, "\\'") + '\')">';
+        });
+        imgsHtml += '</div>';
+        imgContainer.innerHTML = imgsHtml;
+    }
+
+    // 音声(プレイヤー表示)
+    var audioContainer = document.getElementById('pd-audio-container');
+    audioContainer.innerHTML = '';
+    if (post.audio_url) {
+        audioContainer.innerHTML = '<div class="post-detail-audio">'
+            + '<span class="material-symbols-outlined" style="color:#1a73e8;">mic</span>'
+            + '<audio controls preload="metadata"><source src="' + post.audio_url + '"></audio>'
+            + '</div>';
+    }
+
+    // リアクション一覧(絵文字ごとに名前列挙)
+    var reactionsContainer = document.getElementById('pd-reactions-container');
+    var reactions = (REACTIONS_DATA && REACTIONS_DATA[post.id]) || {};
+    var reactionEmojis = Object.keys(reactions).filter(function(e){ return e !== '✅' && (reactions[e]||[]).length > 0; });
+    if (reactionEmojis.length > 0) {
+        var rHtml = '<div class="post-detail-section">';
+        rHtml += '<div class="post-detail-section-title"><span class="material-symbols-outlined" style="font-size:16px;">add_reaction</span>リアクション</div>';
+        rHtml += '<div class="post-detail-section-body">';
+        reactionEmojis.forEach(function(em) {
+            var names = reactions[em] || [];
+            rHtml += '<div style="margin-bottom:6px;">';
+            rHtml += '<span style="font-size:1.1rem;margin-right:6px;">' + em + '</span>';
+            rHtml += '<span style="color:#5f6368;">' + names.length + '人:</span> ';
+            rHtml += names.map(function(n){ return '<span class="person" style="display:inline-block;background:#fff;border:1px solid #e0e0e0;border-radius:14px;padding:2px 8px;font-size:0.78rem;margin:0 2px;">' + n + '</span>'; }).join(' ');
+            rHtml += '</div>';
+        });
+        rHtml += '</div></div>';
+        reactionsContainer.innerHTML = rHtml;
+    } else {
+        reactionsContainer.innerHTML = '';
+    }
+
+    // 確認済み一覧
+    var checkedContainer = document.getElementById('pd-checked-container');
+    var checkedNames = (reactions['✅']) || [];
+    if (checkedNames.length > 0) {
+        var cHtml = '<div class="post-detail-section">';
+        cHtml += '<div class="post-detail-section-title"><span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>確認済み (' + checkedNames.length + '人)</div>';
+        cHtml += '<div class="post-detail-people">';
+        cHtml += checkedNames.map(function(n){ return '<span class="person">' + n + '</span>'; }).join('');
+        cHtml += '</div></div>';
+        checkedContainer.innerHTML = cHtml;
+    } else {
+        checkedContainer.innerHTML = '';
+    }
+
+    // 既読(閲覧済み)一覧
+    var readersContainer = document.getElementById('pd-readers-container');
+    var readers = (READ_DATA && READ_DATA[post.id]) || [];
+    if (readers.length > 0) {
+        var rdHtml = '<div class="post-detail-section">';
+        rdHtml += '<div class="post-detail-section-title"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span>閲覧済み (' + readers.length + '人)</div>';
+        rdHtml += '<div class="post-detail-people">';
+        rdHtml += readers.map(function(n){ return '<span class="person">' + n + '</span>'; }).join('');
+        rdHtml += '</div></div>';
+        readersContainer.innerHTML = rdHtml;
+    } else {
+        readersContainer.innerHTML = '';
+    }
+
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+};
+
+window.closePostDetail = function() {
+    var overlay = document.getElementById('post-detail-overlay');
+    if (overlay) overlay.classList.remove('show');
+    document.body.style.overflow = '';
+    // モーダル内の音声を停止
+    var audios = document.querySelectorAll('#pd-audio-container audio');
+    audios.forEach(function(a){ try { a.pause(); a.currentTime = 0; } catch(e){} });
+};
+
+// 詳細モーダルの閉じる動作(×ボタン・オーバーレイ外クリック)
+(function setupPostDetailHandlers(){
+    var overlay = document.getElementById('post-detail-overlay');
+    if (!overlay) return;
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) window.closePostDetail();
+    });
+    var closeBtn = document.getElementById('pd-close');
+    if (closeBtn) closeBtn.addEventListener('click', window.closePostDetail);
+})();
+
+// 「もっと見る」リンクの表示判定
+// 投稿カードの本文が3行を超えていれば「もっと見る」を表示
+(function setupMoreLinks(){
+    function check() {
+        document.querySelectorAll('.post-card').forEach(function(card){
+            var content = card.querySelector('.post-content.clamp');
+            var moreLink = card.querySelector('.post-more-link');
+            if (!content || !moreLink) return;
+            // scrollHeight > clientHeight なら省略されている
+            if (content.scrollHeight > content.clientHeight + 1) {
+                moreLink.style.display = 'inline-block';
+            } else {
+                moreLink.style.display = 'none';
+            }
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', check);
+    } else {
+        check();
+    }
+    // 画像読み込み等で高さが変わる可能性があるので少し遅延後にも実行
+    setTimeout(check, 300);
+    window.addEventListener('resize', check);
+})();
 
 })();
 </script>
