@@ -1240,4 +1240,314 @@ document.addEventListener('click', function(e) {
   }
 }, true);
 </script>
+<!-- ↓↓↓ カレンダーバー連結機能(Phase 12 後付け、既存JSは変更しない) ↓↓↓ -->
+<style id="cal-bar-merge-style-static">
+.cal-event-bar.seg-start,
+.cal-event-bar.seg-mid,
+.cal-event-bar.seg-end {
+    max-width: none !important;
+    position: relative !important;
+    z-index: 2 !important;
+    box-sizing: border-box !important;
+}
+.cal-event-bar.seg-start {
+    width: 100% !important;
+    margin-right: 0 !important;
+    padding-right: 4px !important;
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+.cal-event-bar.seg-mid {
+    width: calc(100% + 8px) !important;
+    margin-left: -4px !important;
+    margin-right: -4px !important;
+    border-radius: 0 !important;
+}
+.cal-event-bar.seg-end {
+    width: calc(100% + 4px) !important;
+    margin-left: -4px !important;
+    margin-right: 0 !important;
+    padding-left: 4px !important;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+.cal-event-bar.seg-week-end {
+    border-top-right-radius: 3px !important;
+    border-bottom-right-radius: 3px !important;
+}
+.cal-event-bar.seg-week-start {
+    margin-left: 0 !important;
+    border-top-left-radius: 3px !important;
+    border-bottom-left-radius: 3px !important;
+}
+.cal-event-bar-placeholder {
+    display: block;
+    visibility: hidden;
+    box-sizing: border-box;
+}
+.cal-row-overlay {
+    pointer-events: none;
+    border-radius: 3px;
+}
+</style>
+<script>
+(function installCalendarBarMerge() {
+    function rgbToRgba(rgbStr, alpha) {
+        const m = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/) || rgbStr.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
+        if (!m) return rgbStr;
+        return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+    }
+    function getOriginalBg(b) {
+        let bg = b.dataset.originalBg;
+        if (!bg) {
+            bg = b.style.backgroundColor || getComputedStyle(b).backgroundColor;
+            if (bg.startsWith("rgb(")) { b.dataset.originalBg = bg; }
+            else if (bg.startsWith("rgba(")) {
+                const m = bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
+                if (m) { bg = `rgb(${m[1]}, ${m[2]}, ${m[3]})`; b.dataset.originalBg = bg; }
+            }
+        }
+        return bg;
+    }
+    const eventIdOf = (b) => {
+        const oc = b.getAttribute("onclick") || "";
+        const m = oc.match(/openEditEvent\(\'([^\']+)\'/);
+        return m ? m[1] : null;
+    };
+    function processBars() {
+        document.querySelectorAll(".cal-row-overlay").forEach(o => o.remove());
+        const grid = document.getElementById("cal-days");
+        if (!grid) return;
+        grid.querySelectorAll(".cal-cell").forEach(c => c.style.removeProperty("border-right"));
+        const allCells = Array.from(grid.querySelectorAll(".cal-cell, .week-cell"));
+        if (allCells.length === 0) return;
+        const sampleBar = grid.querySelector(".cal-event-bar:not(.cal-event-bar-placeholder)");
+        if (!sampleBar) return;
+        const barCS = getComputedStyle(sampleBar);
+        const phHeightPx = sampleBar.getBoundingClientRect().height;
+        const phMarginBottom = barCS.marginBottom;
+        const cellsSorted = allCells.map(c => ({c, r: c.getBoundingClientRect()})).sort((a, b) => Math.abs(a.r.top - b.r.top) > 10 ? a.r.top - b.r.top : a.r.left - b.r.left);
+        const rows = [];
+        let curRow = null, curTop = -1;
+        cellsSorted.forEach(({c, r}) => {
+            if (Math.abs(r.top - curTop) > 10) { curRow = []; rows.push(curRow); curTop = r.top; }
+            curRow.push(c);
+        });
+        rows.forEach(row => {
+            const cellBars = row.map(cell => Array.from(cell.querySelectorAll(".cal-event-bar:not([data-injected])")));
+            const allIds = new Set();
+            cellBars.forEach(bars => bars.forEach(b => { const id = eventIdOf(b); if (id) allIds.add(id); }));
+            row.forEach(cell => cell.querySelectorAll(".cal-event-bar[data-injected]").forEach(b => b.remove()));
+            allIds.forEach(id => {
+                let firstIdx = -1, lastIdx = -1;
+                cellBars.forEach((bars, i) => {
+                    if (bars.some(b => eventIdOf(b) === id)) {
+                        if (firstIdx === -1) firstIdx = i;
+                        lastIdx = i;
+                    }
+                });
+                if (firstIdx === -1) return;
+                const firstBar = cellBars[firstIdx].find(b => eventIdOf(b) === id);
+                const lastBar = cellBars[lastIdx].find(b => eventIdOf(b) === id);
+                const lastCls = lastBar.className;
+                const lastIsTerminal = lastCls.includes("seg-end") || lastCls.includes("seg-week-end") || (!lastCls.includes("seg-mid") && !lastCls.includes("seg-start"));
+                if (!lastIsTerminal && lastIdx < row.length - 1) {
+                    for (let i = lastIdx + 1; i < row.length; i++) {
+                        const cell = row[i];
+                        if (!cell.classList.contains("other-month")) break;
+                        const clone = lastBar.cloneNode(true);
+                        clone.className = "cal-event-bar seg-mid";
+                        if (i === row.length - 1) clone.className += " seg-week-end";
+                        clone.dataset.injected = "1";
+                        clone.dataset.original = clone.textContent;
+                        clone.innerHTML = "&nbsp;";
+                        clone.dataset.originalBg = lastBar.dataset.originalBg || lastBar.style.backgroundColor || getComputedStyle(lastBar).backgroundColor;
+                        cellBars[i].push(clone);
+                        cell.appendChild(clone);
+                    }
+                }
+                const firstCls = firstBar.className;
+                const firstIsStart = firstCls.includes("seg-start") || firstCls.includes("seg-week-start") || (!firstCls.includes("seg-mid") && !firstCls.includes("seg-end"));
+                if (!firstIsStart && firstIdx > 0) {
+                    for (let i = firstIdx - 1; i >= 0; i--) {
+                        const cell = row[i];
+                        if (!cell.classList.contains("other-month")) break;
+                        const clone = firstBar.cloneNode(true);
+                        clone.className = "cal-event-bar seg-mid";
+                        if (i === 0) clone.className += " seg-week-start";
+                        clone.dataset.injected = "1";
+                        clone.dataset.original = clone.textContent;
+                        clone.innerHTML = "&nbsp;";
+                        clone.dataset.originalBg = firstBar.dataset.originalBg || firstBar.style.backgroundColor || getComputedStyle(firstBar).backgroundColor;
+                        cellBars[i].unshift(clone);
+                        cell.appendChild(clone);
+                    }
+                }
+            });
+        });
+        const firstOccurrenceInRow = new Map();
+        rows.forEach((row, rowIdx) => {
+            row.forEach(cell => {
+                if (cell.classList.contains("other-month")) return;
+                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
+                    const id = eventIdOf(b);
+                    if (!id) return;
+                    const key = rowIdx + "|" + id;
+                    if (!firstOccurrenceInRow.has(key)) firstOccurrenceInRow.set(key, cell);
+                });
+            });
+        });
+        rows.forEach((row, rowIdx) => {
+            let activeRow = [];
+            row.forEach(cell => {
+                const barsInCell = Array.from(cell.querySelectorAll(".cal-event-bar"));
+                const idsHere = barsInCell.map(eventIdOf);
+                activeRow = activeRow.map(id => idsHere.includes(id) ? id : null);
+                idsHere.forEach(id => {
+                    if (id && !activeRow.includes(id)) {
+                        let idx = activeRow.findIndex(s => s === null);
+                        if (idx === -1) { idx = activeRow.length; activeRow.push(id); }
+                        else { activeRow[idx] = id; }
+                    }
+                });
+                const sorted = [];
+                activeRow.forEach(id => {
+                    if (id === null) {
+                        const ph = document.createElement("span");
+                        ph.className = "cal-event-bar-placeholder";
+                        ph.style.height = phHeightPx + "px";
+                        ph.style.marginBottom = phMarginBottom;
+                        ph.innerHTML = "&nbsp;";
+                        sorted.push(ph);
+                    } else {
+                        const bar = barsInCell.find(b => eventIdOf(b) === id);
+                        if (bar) sorted.push(bar);
+                    }
+                });
+                const isOtherMonth = cell.classList.contains("other-month");
+                sorted.forEach(s => {
+                    if (!s.classList || !s.classList.contains("cal-event-bar")) return;
+                    const cls = s.className;
+                    const isMidOrEnd = cls.includes("seg-mid") || cls.includes("seg-end");
+                    if (!isMidOrEnd) {
+                        if (s.dataset.original && !s.dataset.injected) {
+                            s.innerHTML = "";
+                            s.textContent = s.dataset.original;
+                            delete s.dataset.original;
+                        }
+                        return;
+                    }
+                    const id = eventIdOf(s);
+                    const key = rowIdx + "|" + id;
+                    const showTitle = !isOtherMonth && firstOccurrenceInRow.get(key) === cell;
+                    if (showTitle) {
+                        if (s.dataset.original) {
+                            s.innerHTML = "";
+                            s.textContent = s.dataset.original;
+                            delete s.dataset.original;
+                        }
+                    } else {
+                        if (!s.dataset.original) {
+                            s.dataset.original = s.textContent;
+                            s.innerHTML = "&nbsp;";
+                        }
+                    }
+                });
+                barsInCell.forEach(b => b.remove());
+                cell.querySelectorAll(".cal-event-bar-placeholder").forEach(p => p.remove());
+                const more = cell.querySelector(".cal-event-more");
+                if (more) more.remove();
+                sorted.forEach(s => cell.appendChild(s));
+                if (more) cell.appendChild(more);
+            });
+        });
+        Array.from(grid.querySelectorAll(".cal-event-bar")).forEach(b => {
+            const cell = b.closest(".cal-cell");
+            const isOther = cell?.classList.contains("other-month");
+            const cls = b.className;
+            let color = isOther ? rgbToRgba(getOriginalBg(b), 0.35) : getOriginalBg(b);
+            b.style.backgroundColor = color;
+            b.style.opacity = "1";
+            if (isOther) { b.style.boxShadow = ""; }
+            else {
+                const extendRight = (cls.includes("seg-mid") || cls.includes("seg-start")) && !cls.includes("seg-week-end");
+                const extendLeft = (cls.includes("seg-mid") || cls.includes("seg-end")) && !cls.includes("seg-week-start");
+                const shadows = [];
+                if (extendRight) shadows.push(`4px 0 0 0 ${color}`);
+                if (extendLeft) shadows.push(`-4px 0 0 0 ${color}`);
+                b.style.boxShadow = shadows.join(", ");
+            }
+        });
+        grid.style.position = "relative";
+        const gridRect = grid.getBoundingClientRect();
+        rows.forEach(row => {
+            const eventBars = {};
+            row.forEach((cell, cellIdx) => {
+                if (!cell.classList.contains("other-month")) return;
+                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
+                    const id = eventIdOf(b);
+                    if (!id) return;
+                    if (!eventBars[id]) eventBars[id] = [];
+                    eventBars[id].push({ cell, bar: b, cellIdx });
+                });
+            });
+            Object.values(eventBars).forEach(items => {
+                if (items.length === 0) return;
+                items.sort((a, b) => a.cellIdx - b.cellIdx);
+                const firstItem = items[0];
+                const lastItem = items[items.length - 1];
+                const firstRect = firstItem.cell.getBoundingClientRect();
+                const lastRect = lastItem.cell.getBoundingClientRect();
+                const barRect = firstItem.bar.getBoundingClientRect();
+                const bg = firstItem.bar.style.backgroundColor;
+                const cls = firstItem.bar.className;
+                const lastCls = lastItem.bar.className;
+                let radius = "0";
+                const isLeftEnd = cls.includes("seg-week-start");
+                const isRightEnd = lastCls.includes("seg-week-end");
+                if (isLeftEnd && isRightEnd) radius = "3px";
+                else if (isLeftEnd) radius = "3px 0 0 3px";
+                else if (isRightEnd) radius = "0 3px 3px 0";
+                const overlay = document.createElement("div");
+                overlay.className = "cal-row-overlay";
+                overlay.style.cssText = `position: absolute; left: ${firstRect.left - gridRect.left}px; top: ${barRect.top - gridRect.top}px; width: ${lastRect.right - firstRect.left}px; height: ${barRect.height}px; background: ${bg}; border-radius: ${radius}; pointer-events: none; z-index: 3;`;
+                grid.appendChild(overlay);
+                items.forEach(({bar}) => { bar.style.background = "transparent"; });
+                for (let i = 0; i < items.length - 1; i++) {
+                    items[i].cell.style.borderRight = "1px solid transparent";
+                }
+            });
+        });
+    }
+    const grid = document.getElementById("cal-days");
+    if (grid) {
+        let timeout = null;
+        const observer = new MutationObserver((mutations) => {
+            const isOnlyOverlayChange = mutations.every(m => Array.from(m.addedNodes).every(n => n.classList?.contains("cal-row-overlay")) && Array.from(m.removedNodes).every(n => n.classList?.contains("cal-row-overlay")));
+            if (isOnlyOverlayChange) return;
+            if (timeout) clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                observer.disconnect();
+                try { processBars(); } catch(e) { console.error("processBars error:", e); }
+                observer.observe(grid, { childList: true, subtree: true });
+            }, 30);
+        });
+        observer.observe(grid, { childList: true, subtree: true });
+        setTimeout(processBars, 100);
+        let sx = 0, sy = 0, st = 0;
+        const cont = grid.parentElement;
+        if (cont) {
+            cont.addEventListener("touchstart", (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); }, { passive: true });
+            cont.addEventListener("touchend", (e) => {
+                const t = e.changedTouches[0];
+                const dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
+                if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 500) {
+                    if (typeof changeMonth === "function") { changeMonth(dx < 0 ? 1 : -1); }
+                }
+            }, { passive: true });
+        }
+    }
+})();
+</script>
+<!-- ↑↑↑ カレンダーバー連結機能 ↑↑↑ -->
 {% endblock %}
