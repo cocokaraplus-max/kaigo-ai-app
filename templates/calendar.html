@@ -693,6 +693,8 @@ function renderMonth() {
         html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
     }
     grid.innerHTML = html;
+    // フル連結バー再描画
+    if (typeof window.__calendarBarConnectRun === 'function') window.__calendarBarConnectRun();
 }
 
 function renderWeek() {
@@ -745,6 +747,8 @@ function renderWeek() {
         </div>`;
     }
     grid.innerHTML = html;
+    // フル連結バー再描画
+    if (typeof window.__calendarBarConnectRun === 'function') window.__calendarBarConnectRun();
 }
 
 function getFilteredEvents() {
@@ -1291,263 +1295,215 @@ document.addEventListener('click', function(e) {
 }
 </style>
 <script>
-(function installCalendarBarMerge() {
-    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) { console.log("[CalendarBarMerge] skipped on iOS"); return; }
-    function rgbToRgba(rgbStr, alpha) {
-        const m = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/) || rgbStr.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
-        if (!m) return rgbStr;
-        return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
-    }
-    function getOriginalBg(b) {
-        let bg = b.dataset.originalBg;
-        if (!bg) {
-            bg = b.style.backgroundColor || getComputedStyle(b).backgroundColor;
-            if (bg.startsWith("rgb(")) { b.dataset.originalBg = bg; }
-            else if (bg.startsWith("rgba(")) {
-                const m = bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
-                if (m) { bg = `rgb(${m[1]}, ${m[2]}, ${m[3]})`; b.dataset.originalBg = bg; }
-            }
-        }
-        return bg;
-    }
-    const eventIdOf = (b) => {
-        const oc = b.getAttribute("onclick") || "";
-        const m = oc.match(/openEditEvent\(\'([^\']+)\'/);
+(function installCalendarBarConnect() {
+    // フル連結バー描画 (C案 安全策つき)
+    // 設計:
+    //   - 各週の上に絶対配置の連結バーをオーバーレイ表示
+    //   - 既存のセル内バーは visibility:hidden 化(レイアウトは保つ)
+    //   - 隣月セル部分は opacity 0.55 で薄く
+    //   - エラー時はフォールバック(元のバーを再表示)
+
+    function eventIdOf(bar) {
+        var oc = bar.getAttribute('onclick') || '';
+        var m = oc.match(/openEditEvent\(['\"]([^'\"]+)/);
         return m ? m[1] : null;
-    };
-    function processBars() {
-        document.querySelectorAll(".cal-row-overlay").forEach(o => o.remove());
-        const grid = document.getElementById("cal-days");
-        if (!grid) return;
-        grid.querySelectorAll(".cal-cell").forEach(c => c.style.removeProperty("border-right"));
-        const allCells = Array.from(grid.querySelectorAll(".cal-cell, .week-cell"));
-        if (allCells.length === 0) return;
-        const sampleBar = grid.querySelector(".cal-event-bar:not(.cal-event-bar-placeholder)");
-        if (!sampleBar) return;
-        const barCS = getComputedStyle(sampleBar);
-        const phHeightPx = sampleBar.getBoundingClientRect().height;
-        const phMarginBottom = barCS.marginBottom;
-        const cellsSorted = allCells.map(c => ({c, r: c.getBoundingClientRect()})).sort((a, b) => Math.abs(a.r.top - b.r.top) > 10 ? a.r.top - b.r.top : a.r.left - b.r.left);
-        const rows = [];
-        let curRow = null, curTop = -1;
-        cellsSorted.forEach(({c, r}) => {
-            if (Math.abs(r.top - curTop) > 10) { curRow = []; rows.push(curRow); curTop = r.top; }
-            curRow.push(c);
-        });
-        rows.forEach(row => {
-            const cellBars = row.map(cell => Array.from(cell.querySelectorAll(".cal-event-bar:not([data-injected])")));
-            const allIds = new Set();
-            cellBars.forEach(bars => bars.forEach(b => { const id = eventIdOf(b); if (id) allIds.add(id); }));
-            row.forEach(cell => cell.querySelectorAll(".cal-event-bar[data-injected]").forEach(b => b.remove()));
-            allIds.forEach(id => {
-                let firstIdx = -1, lastIdx = -1;
-                cellBars.forEach((bars, i) => {
-                    if (bars.some(b => eventIdOf(b) === id)) {
-                        if (firstIdx === -1) firstIdx = i;
-                        lastIdx = i;
-                    }
-                });
-                if (firstIdx === -1) return;
-                const firstBar = cellBars[firstIdx].find(b => eventIdOf(b) === id);
-                const lastBar = cellBars[lastIdx].find(b => eventIdOf(b) === id);
-                const lastCls = lastBar.className;
-                const lastIsTerminal = lastCls.includes("seg-end") || lastCls.includes("seg-week-end") || (!lastCls.includes("seg-mid") && !lastCls.includes("seg-start"));
-                if (!lastIsTerminal && lastIdx < row.length - 1) {
-                    for (let i = lastIdx + 1; i < row.length; i++) {
-                        const cell = row[i];
-                        if (!cell.classList.contains("other-month")) break;
-                        const clone = lastBar.cloneNode(true);
-                        clone.className = "cal-event-bar seg-mid";
-                        if (i === row.length - 1) clone.className += " seg-week-end";
-                        clone.dataset.injected = "1";
-                        clone.dataset.original = clone.textContent;
-                        clone.innerHTML = "&nbsp;";
-                        clone.dataset.originalBg = lastBar.dataset.originalBg || lastBar.style.backgroundColor || getComputedStyle(lastBar).backgroundColor;
-                        cellBars[i].push(clone);
-                        cell.appendChild(clone);
-                    }
-                }
-                const firstCls = firstBar.className;
-                const firstIsStart = firstCls.includes("seg-start") || firstCls.includes("seg-week-start") || (!firstCls.includes("seg-mid") && !firstCls.includes("seg-end"));
-                if (!firstIsStart && firstIdx > 0) {
-                    for (let i = firstIdx - 1; i >= 0; i--) {
-                        const cell = row[i];
-                        if (!cell.classList.contains("other-month")) break;
-                        const clone = firstBar.cloneNode(true);
-                        clone.className = "cal-event-bar seg-mid";
-                        if (i === 0) clone.className += " seg-week-start";
-                        clone.dataset.injected = "1";
-                        clone.dataset.original = clone.textContent;
-                        clone.innerHTML = "&nbsp;";
-                        clone.dataset.originalBg = firstBar.dataset.originalBg || firstBar.style.backgroundColor || getComputedStyle(firstBar).backgroundColor;
-                        cellBars[i].unshift(clone);
-                        cell.appendChild(clone);
-                    }
-                }
-            });
-        });
-        const firstOccurrenceInRow = new Map();
-        rows.forEach((row, rowIdx) => {
-            row.forEach(cell => {
-                if (cell.classList.contains("other-month")) return;
-                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
-                    const id = eventIdOf(b);
-                    if (!id) return;
-                    const key = rowIdx + "|" + id;
-                    if (!firstOccurrenceInRow.has(key)) firstOccurrenceInRow.set(key, cell);
-                });
-            });
-        });
-        rows.forEach((row, rowIdx) => {
-            let activeRow = [];
-            row.forEach(cell => {
-                const barsInCell = Array.from(cell.querySelectorAll(".cal-event-bar"));
-                const idsHere = barsInCell.map(eventIdOf);
-                activeRow = activeRow.map(id => idsHere.includes(id) ? id : null);
-                idsHere.forEach(id => {
-                    if (id && !activeRow.includes(id)) {
-                        let idx = activeRow.findIndex(s => s === null);
-                        if (idx === -1) { idx = activeRow.length; activeRow.push(id); }
-                        else { activeRow[idx] = id; }
-                    }
-                });
-                const sorted = [];
-                activeRow.forEach(id => {
-                    if (id === null) {
-                        const ph = document.createElement("span");
-                        ph.className = "cal-event-bar-placeholder";
-                        ph.style.height = phHeightPx + "px";
-                        ph.style.marginBottom = phMarginBottom;
-                        ph.innerHTML = "&nbsp;";
-                        sorted.push(ph);
-                    } else {
-                        const bar = barsInCell.find(b => eventIdOf(b) === id);
-                        if (bar) sorted.push(bar);
-                    }
-                });
-                const isOtherMonth = cell.classList.contains("other-month");
-                sorted.forEach(s => {
-                    if (!s.classList || !s.classList.contains("cal-event-bar")) return;
-                    const cls = s.className;
-                    const isMidOrEnd = cls.includes("seg-mid") || cls.includes("seg-end");
-                    if (!isMidOrEnd) {
-                        if (s.dataset.original && !s.dataset.injected) {
-                            s.innerHTML = "";
-                            s.textContent = s.dataset.original;
-                            delete s.dataset.original;
-                        }
-                        return;
-                    }
-                    const id = eventIdOf(s);
-                    const key = rowIdx + "|" + id;
-                    const showTitle = !isOtherMonth && firstOccurrenceInRow.get(key) === cell;
-                    if (showTitle) {
-                        if (s.dataset.original) {
-                            s.innerHTML = "";
-                            s.textContent = s.dataset.original;
-                            delete s.dataset.original;
-                        }
-                    } else {
-                        if (!s.dataset.original) {
-                            s.dataset.original = s.textContent;
-                            s.innerHTML = "&nbsp;";
-                        }
-                    }
-                });
-                barsInCell.forEach(b => b.remove());
-                cell.querySelectorAll(".cal-event-bar-placeholder").forEach(p => p.remove());
-                const more = cell.querySelector(".cal-event-more");
-                if (more) more.remove();
-                sorted.forEach(s => cell.appendChild(s));
-                if (more) cell.appendChild(more);
-            });
-        });
-        Array.from(grid.querySelectorAll(".cal-event-bar")).forEach(b => {
-            const cell = b.closest(".cal-cell");
-            const isOther = cell?.classList.contains("other-month");
-            const cls = b.className;
-            let color = isOther ? rgbToRgba(getOriginalBg(b), 0.35) : getOriginalBg(b);
-            b.style.backgroundColor = color;
-            b.style.opacity = "1";
-            if (isOther) { b.style.boxShadow = ""; }
-            else {
-                const extendRight = (cls.includes("seg-mid") || cls.includes("seg-start")) && !cls.includes("seg-week-end");
-                const extendLeft = (cls.includes("seg-mid") || cls.includes("seg-end")) && !cls.includes("seg-week-start");
-                const shadows = [];
-                if (extendRight) shadows.push(`4px 0 0 0 ${color}`);
-                if (extendLeft) shadows.push(`-4px 0 0 0 ${color}`);
-                b.style.boxShadow = shadows.join(", ");
-            }
-        });
-        grid.style.position = "relative";
-        const gridRect = grid.getBoundingClientRect();
-        rows.forEach(row => {
-            const eventBars = {};
-            row.forEach((cell, cellIdx) => {
-                if (!cell.classList.contains("other-month")) return;
-                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
-                    const id = eventIdOf(b);
-                    if (!id) return;
-                    if (!eventBars[id]) eventBars[id] = [];
-                    eventBars[id].push({ cell, bar: b, cellIdx });
-                });
-            });
-            Object.values(eventBars).forEach(items => {
-                if (items.length === 0) return;
-                items.sort((a, b) => a.cellIdx - b.cellIdx);
-                const firstItem = items[0];
-                const lastItem = items[items.length - 1];
-                const firstRect = firstItem.cell.getBoundingClientRect();
-                const lastRect = lastItem.cell.getBoundingClientRect();
-                const barRect = firstItem.bar.getBoundingClientRect();
-                const bg = firstItem.bar.style.backgroundColor;
-                const cls = firstItem.bar.className;
-                const lastCls = lastItem.bar.className;
-                let radius = "0";
-                const isLeftEnd = cls.includes("seg-week-start");
-                const isRightEnd = lastCls.includes("seg-week-end");
-                if (isLeftEnd && isRightEnd) radius = "3px";
-                else if (isLeftEnd) radius = "3px 0 0 3px";
-                else if (isRightEnd) radius = "0 3px 3px 0";
-                const overlay = document.createElement("div");
-                overlay.className = "cal-row-overlay";
-                overlay.style.cssText = `position: absolute; left: ${firstRect.left - gridRect.left}px; top: ${barRect.top - gridRect.top}px; width: ${lastRect.right - firstRect.left}px; height: ${barRect.height}px; background: ${bg}; border-radius: ${radius}; pointer-events: none; z-index: 3;`;
-                grid.appendChild(overlay);
-                items.forEach(({bar}) => { bar.style.background = "transparent"; });
-                for (let i = 0; i < items.length - 1; i++) {
-                    items[i].cell.style.borderRight = "1px solid transparent";
-                }
-            });
+    }
+
+    function getBg(bar) {
+        return bar.style.backgroundColor || getComputedStyle(bar).backgroundColor;
+    }
+
+    function getTitleText(bar) {
+        // dataset.original があればそれを優先(セグメント中で空にされている可能性)
+        if (bar.dataset && bar.dataset.original) return bar.dataset.original;
+        return bar.textContent || '';
+    }
+
+    function clearOverlays(grid) {
+        grid.querySelectorAll('.cal-bar-connect-row').forEach(function(el) { el.remove(); });
+    }
+
+    function showAllOriginalBars(grid) {
+        // フォールバック: 全てのオリジナルバーを再表示
+        grid.querySelectorAll('.cal-event-bar').forEach(function(b) {
+            b.style.visibility = '';
         });
     }
-    const grid = document.getElementById("cal-days");
-    if (grid) {
-        let timeout = null;
-        const observer = new MutationObserver((mutations) => {
-            const isOnlyOverlayChange = mutations.every(m => Array.from(m.addedNodes).every(n => n.classList?.contains("cal-row-overlay")) && Array.from(m.removedNodes).every(n => n.classList?.contains("cal-row-overlay")));
-            if (isOnlyOverlayChange) return;
-            if (timeout) clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                observer.disconnect();
-                try { processBars(); } catch(e) { console.error("processBars error:", e); }
-                observer.observe(grid, { childList: true, subtree: true });
-            }, 30);
-        });
-        observer.observe(grid, { childList: true, subtree: true });
-        setTimeout(processBars, 100);
-        let sx = 0, sy = 0, st = 0;
-        const cont = grid.parentElement;
-        if (cont) {
-            cont.addEventListener("touchstart", (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); }, { passive: true });
-            cont.addEventListener("touchend", (e) => {
-                const t = e.changedTouches[0];
-                const dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
-                if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 500) {
-                    if (typeof changeMonth === "function") { changeMonth(dx < 0 ? 1 : -1); }
+
+    function run() {
+        var grid = document.getElementById('cal-days');
+        if (!grid) return;
+        try {
+            clearOverlays(grid);
+
+            var allCells = Array.from(grid.querySelectorAll('.cal-cell'));
+            if (allCells.length === 0) return;
+
+            // 行ごとにグルーピング(top座標で判定、同じtop±5px以内は同じ行)
+            var rows = [];
+            var curRow = null;
+            var curTop = -9999;
+            allCells.forEach(function(cell) {
+                var r = cell.getBoundingClientRect();
+                if (Math.abs(r.top - curTop) > 5) {
+                    curRow = [];
+                    rows.push(curRow);
+                    curTop = r.top;
                 }
-            }, { passive: true });
+                curRow.push(cell);
+            });
+
+            // grid 自体の位置(オーバーレイの基準にする)
+            var gridRect = grid.getBoundingClientRect();
+            // grid を position:relative に(オーバーレイの絶対配置の基準)
+            if (getComputedStyle(grid).position === 'static') {
+                grid.style.position = 'relative';
+            }
+
+            // 各行を処理
+            rows.forEach(function(row, rowIdx) {
+                // この行の全バーを集める(イベントIDごとにグループ化)
+                var eventGroups = {}; // {eventId: [{cell, bar, cellIdx}, ...]}
+                row.forEach(function(cell, cellIdx) {
+                    var bars = Array.from(cell.querySelectorAll('.cal-event-bar'));
+                    bars.forEach(function(bar) {
+                        var id = eventIdOf(bar);
+                        if (!id) return;
+                        if (!eventGroups[id]) eventGroups[id] = [];
+                        eventGroups[id].push({cell: cell, bar: bar, cellIdx: cellIdx});
+                    });
+                });
+
+                // 各イベントグループに対して連結バーを生成
+                Object.keys(eventGroups).forEach(function(eventId) {
+                    var group = eventGroups[eventId];
+                    if (group.length === 0) return;
+
+                    // この行内での連続範囲(最初と最後のセルインデックス)
+                    var minIdx = group[0].cellIdx;
+                    var maxIdx = group[group.length - 1].cellIdx;
+                    var firstCell = row[minIdx];
+                    var lastCell = row[maxIdx];
+
+                    // 連結バーの位置とサイズ
+                    var fr = firstCell.getBoundingClientRect();
+                    var lr = lastCell.getBoundingClientRect();
+
+                    // grid 内での相対座標
+                    var leftPx = fr.left - gridRect.left;
+                    var widthPx = (lr.right - fr.left);
+
+                    // 元のバーの上下位置(同セル内に複数バーがある場合の縦位置を反映)
+                    var sampleBar = group[0].bar;
+                    var sbRect = sampleBar.getBoundingClientRect();
+                    var topPx = sbRect.top - gridRect.top;
+                    var heightPx = sbRect.height;
+
+                    // 元のバーの背景色とタイトル
+                    var bg = getBg(sampleBar);
+                    var title = '';
+                    // 同月セルのバーから優先的にタイトルを取得
+                    for (var i = 0; i < group.length; i++) {
+                        if (!group[i].cell.classList.contains('other-month')) {
+                            title = getTitleText(group[i].bar);
+                            if (title.trim()) break;
+                        }
+                    }
+                    if (!title) title = getTitleText(group[0].bar);
+
+                    // 連結バー本体を作成
+                    var connectBar = document.createElement('div');
+                    connectBar.className = 'cal-bar-connect-row cal-event-bar';
+                    connectBar.style.position = 'absolute';
+                    connectBar.style.left = leftPx + 'px';
+                    connectBar.style.top = topPx + 'px';
+                    connectBar.style.width = widthPx + 'px';
+                    connectBar.style.height = heightPx + 'px';
+                    connectBar.style.background = bg;
+                    connectBar.style.zIndex = '5';
+                    connectBar.style.pointerEvents = 'auto';
+                    connectBar.style.cursor = 'pointer';
+                    connectBar.style.boxSizing = 'border-box';
+                    connectBar.style.borderRadius = '3px';
+                    connectBar.style.overflow = 'hidden';
+                    connectBar.style.padding = '1px 4px';
+                    connectBar.style.color = '#fff';
+                    connectBar.style.fontSize = '0.62rem';
+                    connectBar.style.fontWeight = '600';
+                    connectBar.style.lineHeight = '1.4';
+                    connectBar.style.whiteSpace = 'nowrap';
+                    connectBar.style.textOverflow = 'ellipsis';
+                    connectBar.textContent = title;
+                    connectBar.setAttribute('data-event-id', eventId);
+                    connectBar.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        if (typeof openEditEvent === 'function') {
+                            openEditEvent(eventId);
+                        }
+                    });
+
+                    // 隣月部分は薄くするためのマスクを上に重ねる
+                    // (バー全体は均一の濃い色 / 隣月セルの上だけマスクで薄く見せる)
+                    group.forEach(function(item) {
+                        if (item.cell.classList.contains('other-month')) {
+                            var cellRect = item.cell.getBoundingClientRect();
+                            var maskLeft = cellRect.left - fr.left;
+                            var maskWidth = cellRect.width;
+                            var mask = document.createElement('div');
+                            mask.style.position = 'absolute';
+                            mask.style.left = maskLeft + 'px';
+                            mask.style.top = '0';
+                            mask.style.width = maskWidth + 'px';
+                            mask.style.height = '100%';
+                            mask.style.background = 'rgba(255,255,255,0.45)';
+                            mask.style.pointerEvents = 'none';
+                            connectBar.appendChild(mask);
+                        }
+                    });
+
+                    grid.appendChild(connectBar);
+
+                    // 元のバーを非表示(レイアウトは残す)
+                    group.forEach(function(item) {
+                        item.bar.style.visibility = 'hidden';
+                    });
+                });
+            });
+        } catch(err) {
+            // フォールバック: エラー時は元のバーを再表示
+            console.error('[CalendarBarConnect] error, fallback to original bars:', err);
+            try {
+                clearOverlays(grid);
+                showAllOriginalBars(grid);
+            } catch(e2) { /* もう何もできない */ }
         }
     }
+
+    // 公開API: renderCalendar 後に呼ばれる
+    window.__calendarBarConnectRun = function() {
+        // requestAnimationFrame x2 で DOM完成を待つ
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(function() {
+                requestAnimationFrame(run);
+            });
+        } else {
+            setTimeout(run, 50);
+        }
+    };
+
+    // 初回実行
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', window.__calendarBarConnectRun);
+    } else {
+        window.__calendarBarConnectRun();
+    }
+
+    // resize 対応(debounce 200ms)
+    var resizeTimer = null;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(window.__calendarBarConnectRun, 200);
+    });
 })();
 </script>
 <!-- ↑↑↑ カレンダーバー連結機能 ↑↑↑ -->
