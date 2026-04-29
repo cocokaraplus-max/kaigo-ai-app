@@ -1927,11 +1927,13 @@ function startRealtime() {
 }
 startRealtime();
 
-// 掲示板を開いたらbase.htmlのバッジをクリア
+// 掲示板を開いたらbase.htmlのバッジをクリア & サーバ側で全投稿を既読化
 (function() {
     var badge = document.getElementById('chat-badge');
     if (badge) badge.style.display = 'none';
     if (typeof lastUnreadCount !== 'undefined') lastUnreadCount = 0;
+    // サーバ側で全投稿を既読としてマーク(これで他のページに戻ってもバッジ消える)
+    fetch('/api/board/mark_all_read', { method: 'POST', credentials: 'include' }).catch(function(){});
 })();
 
 function showToast(msg) {
