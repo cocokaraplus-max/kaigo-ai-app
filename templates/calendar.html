@@ -74,7 +74,11 @@
     transition:background 0.1s;
 }
 .cal-cell:active { background:#f0f4ff; }
-.cal-cell.other-month { background:#fafafa; }
+.cal-cell.other-month { background:#efefef; }
+/* 隣月セル(other-month)に描画されるイベントバーは常に非表示。
+   連結バーロジックが eventGroups に拾うためだけに描画されており、
+   視覚的には連結バー(オーバーレイ)が薄色マスクで隣月部分を表現する。 */
+.cal-cell.other-month .cal-event-bar { visibility: hidden !important; }
 .cal-cell.today { background:#e8f0fe; }
 .cal-cell-num {
     font-size:0.72rem; font-weight:600; color:#202124;
@@ -651,10 +655,64 @@ function renderMonth() {
         }
     });
 
+    // タスクの期限日も擬似イベントとして混ぜ込む(単日扱い、優先度で色分け)
+    if (typeof window.ALL_TASKS !== 'undefined' && Array.isArray(window.ALL_TASKS)) {
+        window.ALL_TASKS.forEach(t => {
+            if (!t || !t.due_date) return;
+            const done = (t.completed === true || t.is_completed === true || t.status === 'done' || t.status === 'completed');
+            if (done) return; // 完了済みタスクは表示しない
+            const prio = t.priority || 'mid';
+            const prioColor = (prio === 'high' || prio === '高') ? '#e53935'
+                            : (prio === 'low' || prio === '低') ? '#43a047'
+                            : '#fb8c00';
+            const pseudoEv = {
+                id: 'task:' + (t.id || ''),
+                title: '📋 ' + (t.title || '(無題)'),
+                event_date: t.due_date,
+                end_date: t.due_date,
+                color: prioColor,
+                all_day: true,
+                sticker: '',
+                _isTask: true,
+                _taskRaw: t
+            };
+            const k = t.due_date;
+            if (!eventsByDate[k]) eventsByDate[k] = [];
+            eventsByDate[k].push(pseudoEv);
+        });
+    }
+
     let html = '';
+    // 月初の前月セル(other-month)にも、該当イベントがあれば bar を描画する。
+    // visibility:hidden で視覚上は非表示。連結バーロジック側で eventGroups に拾われ、
+    // 月跨ぎバーが隣月セル範囲まで延伸 → 薄色マスクが正しく生成される。
     for (let i = 0; i < firstDay; i++) {
         const d = prevLast - firstDay + 1 + i;
-        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+        // 前月の年月を計算
+        const prevDate = new Date(currentYear, currentMonth, 0); // 前月末日のDateオブジェクト
+        const py = prevDate.getFullYear();
+        const pm = prevDate.getMonth(); // 0-indexed
+        const dateStr = `${py}-${String(pm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dow = i; // 0=日, 1=月, ... 6=土(行頭からの位置)
+        const evs = eventsByDate[dateStr] || [];
+        const bars = evs.slice(0,3).map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (dow === 6 && !isEnd) segCls += ' seg-week-end';
+                if (dow === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
+                data-event-id="${e.id}">${e.title}</span>`;
+        }).join('');
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
     for (let d = 1; d <= lastDate; d++) {
         const dow = new Date(currentYear, currentMonth, d).getDay();
@@ -678,7 +736,7 @@ function renderMonth() {
                 if (dow === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="event.stopPropagation();openEditEvent('${e.id}')">${e.title}</span>`;
+                data-event-id="${e.id}">${e.title}</span>`;
         }).join('');
         const more = evs.length > 3 ? `<span class="cal-event-more">+${evs.length-3}</span>` : '';
 
@@ -689,10 +747,39 @@ function renderMonth() {
         </div>`;
     }
     const remain = 42 - firstDay - lastDate;
+    // 月末の翌月セル(other-month)にも、該当イベントがあれば bar を描画する。
+    // visibility:hidden で視覚上は非表示。連結バーロジック側で eventGroups に拾われ、
+    // 月跨ぎバーが隣月セル範囲まで延伸 → 薄色マスクが正しく生成される。
+    const nextDate = new Date(currentYear, currentMonth+1, 1); // 翌月1日
+    const ny = nextDate.getFullYear();
+    const nm = nextDate.getMonth(); // 0-indexed
     for (let d = 1; d <= remain; d++) {
-        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div></div>`;
+        const dateStr = `${ny}-${String(nm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cellIdx = firstDay + lastDate + (d - 1); // 0..41 のセルインデックス
+        const dow = cellIdx % 7;
+        const evs = eventsByDate[dateStr] || [];
+        const bars = evs.slice(0,3).map(e=>{
+            const evStart = e.event_date;
+            const evEnd = e.end_date || e.event_date;
+            const isMulti = evStart !== evEnd;
+            let segCls = '';
+            if (isMulti) {
+                const isStart = evStart === dateStr;
+                const isEnd = evEnd === dateStr;
+                if (isStart && !isEnd) segCls = 'seg-start';
+                else if (isEnd && !isStart) segCls = 'seg-end';
+                else if (!isStart && !isEnd) segCls = 'seg-mid';
+                if (dow === 6 && !isEnd) segCls += ' seg-week-end';
+                if (dow === 0 && !isStart) segCls += ' seg-week-start';
+            }
+            return `<span class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};visibility:hidden;"
+                data-event-id="${e.id}">${e.title}</span>`;
+        }).join('');
+        html += `<div class="cal-cell other-month"><div class="cal-cell-num" style="color:#ccc;">${d}</div>${bars}</div>`;
     }
     grid.innerHTML = html;
+    // フル連結バー再描画
+    if (typeof window.__calendarBarConnectRun === 'function') window.__calendarBarConnectRun();
 }
 
 function renderWeek() {
@@ -737,7 +824,7 @@ function renderWeek() {
                 if (i === 0 && !isStart) segCls += ' seg-week-start';
             }
             return `<div class="cal-event-bar ${segCls}" style="background:${e.color||getCalColor(e.calendar_id)};"
-                onclick="openEditEvent('${e.id}')">${e.sticker||''}${e.title}</div>`;
+                data-event-id="${e.id}">${e.sticker||''}${e.title}</div>`;
         }).join('');
         html += `<div class="week-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             <div class="week-cell-header" style="color:${i===0?'#c62828':i===6?'#2e7d32':'#5f6368'}">${dow}<br><b>${d.getDate()}</b></div>
@@ -745,6 +832,8 @@ function renderWeek() {
         </div>`;
     }
     grid.innerHTML = html;
+    // フル連結バー再描画
+    if (typeof window.__calendarBarConnectRun === 'function') window.__calendarBarConnectRun();
 }
 
 function getFilteredEvents() {
@@ -833,6 +922,19 @@ window.onCellClick = function(dateStr) {
     
     // 常に予定一覧を表示（予定がない場合は空の一覧）
     showDayEventsModal(dateStr, dayEvents);
+};
+
+// ===== イベント or タスク のクリック振り分け =====
+// イベントID(UUID等)なら openEditEvent、タスクID(プレフィックス'task:')なら /tasks へ
+window.openEventOrTask = function(id) {
+    if (typeof id === 'string' && id.indexOf('task:') === 0) {
+        // タスクの場合は /tasks ページへ遷移
+        location.href = '/tasks';
+        return;
+    }
+    if (typeof window.openEditEvent === 'function') {
+        window.openEditEvent(id);
+    }
 };
 
 // ===== 予定編集 =====
@@ -1107,23 +1209,67 @@ document.addEventListener('click', function(e) {
 window.showDayEventsModal = function(dateStr, events) {
   var existing = document.getElementById('day-events-modal');
   if (existing) existing.remove();
+  // 日付を読みやすい形に整形(例: 2026-04-24 → 4月24日 (金))
+  var prettyDate = dateStr;
+  try {
+    var dt = new Date(dateStr + 'T00:00:00');
+    var dowJa = ['日','月','火','水','木','金','土'][dt.getDay()];
+    prettyDate = (dt.getMonth()+1) + '月' + dt.getDate() + '日 (' + dowJa + ')';
+  } catch(e) {}
+
   var html = '<div class="modal-overlay show" id="day-events-modal" onclick="closeModalOutside(event,\'day-events-modal\')">';
   html += '<div class="modal-sheet"><div class="modal-handle"></div>';
-  html += '<div class="modal-title">' + dateStr + ' の予定</div>';
-  if (events && events.length) {
-    events.forEach(function(ev) {
-      var color = ev.color || '#1a73e8';
-      var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
-      var sticker = ev.sticker || '';
-      html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
-      html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
-      html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
-      html += '</div>';
+  // ヘッダー: 日付タイトル + 右上に「+」ボタン
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+  html += '<div class="modal-title" style="margin:0;">' + prettyDate + '</div>';
+  html += '<button onclick="showNewEventModal(\'' + dateStr + '\')" aria-label="新規追加" '
+       + 'style="width:36px;height:36px;border-radius:50%;background:#1a73e8;color:#fff;border:none;'
+       + 'font-size:1.25rem;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;'
+       + 'justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.15);">＋</button>';
+  html += '</div>';
+
+  // タスク(その日が期限)も含めて一覧化
+  var tasksOnDay = [];
+  if (typeof window.ALL_TASKS !== 'undefined' && Array.isArray(window.ALL_TASKS)) {
+    tasksOnDay = window.ALL_TASKS.filter(function(t){
+      return t && t.due_date === dateStr;
     });
+  }
+
+  if ((events && events.length) || tasksOnDay.length) {
+    // 予定
+    if (events && events.length) {
+      events.forEach(function(ev) {
+        var color = ev.color || '#1a73e8';
+        var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
+        var sticker = ev.sticker || '';
+        html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
+        html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
+        html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
+        html += '</div>';
+      });
+    }
+    // タスク期限
+    if (tasksOnDay.length) {
+      tasksOnDay.forEach(function(t) {
+        var prio = t.priority || 'mid';
+        var prioColor = (prio === 'high' || prio === '高') ? '#e53935'
+                      : (prio === 'low' || prio === '低') ? '#43a047'
+                      : '#fb8c00';
+        var prioMark = (prio === 'high' || prio === '高') ? '🔴'
+                     : (prio === 'low' || prio === '低') ? '🟢'
+                     : '🟡';
+        var done = (t.completed === true || t.is_completed === true || t.status === 'done' || t.status === 'completed');
+        var titleStyle = done ? 'text-decoration:line-through;color:#9aa0a6;' : 'color:#202124;';
+        html += '<div onclick="closeModal(\'day-events-modal\');location.href=\'/tasks\'" style="padding:12px;border-left:4px solid ' + prioColor + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + prioColor + '15;">';
+        html += '<div style="font-weight:700;' + titleStyle + '">📋 ' + prioMark + ' ' + (t.title || '(無題タスク)') + '</div>';
+        html += '<div style="font-size:0.78rem;color:#5f6368;">タスク期限</div>';
+        html += '</div>';
+      });
+    }
   } else {
     html += '<div style="text-align:center;color:#80868b;padding:20px 0;">この日の予定はありません</div>';
   }
-  html += '<button class="btn btn-primary" onclick="showNewEventModal(\'' + dateStr + '\')" style="width:100%;margin-top:12px;">＋ 新しい予定を追加</button>';
   html += '<button class="btn" onclick="closeModal(\'day-events-modal\')" style="width:100%;margin-top:8px;">閉じる</button>';
   html += '</div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
@@ -1291,262 +1437,453 @@ document.addEventListener('click', function(e) {
 }
 </style>
 <script>
-(function installCalendarBarMerge() {
-    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) { console.log("[CalendarBarMerge] skipped on iOS"); return; }
-    function rgbToRgba(rgbStr, alpha) {
-        const m = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/) || rgbStr.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
-        if (!m) return rgbStr;
-        return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+(function installCalendarBarConnect() {
+    // フル連結バー描画 (C案 安全策つき)
+    // 設計:
+    //   - 各週の上に絶対配置の連結バーをオーバーレイ表示
+    //   - 既存のセル内バーは visibility:hidden 化(レイアウトは保つ)
+    //   - 隣月セル部分は opacity 0.55 で薄く
+    //   - エラー時はフォールバック(元のバーを再表示)
+
+    function eventIdOf(bar) {
+        var oc = bar.getAttribute('onclick') || '';
+        // openEditEvent('...') または openEventOrTask('...') の両方をマッチ
+        var m = oc.match(/(?:openEditEvent|openEventOrTask)\(['\"]([^'\"]+)/);
+        if (m) return m[1];
+        // フォールバック: data-event-id 属性
+        return bar.getAttribute('data-event-id') || null;
     }
-    function getOriginalBg(b) {
-        let bg = b.dataset.originalBg;
-        if (!bg) {
-            bg = b.style.backgroundColor || getComputedStyle(b).backgroundColor;
-            if (bg.startsWith("rgb(")) { b.dataset.originalBg = bg; }
-            else if (bg.startsWith("rgba(")) {
-                const m = bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
-                if (m) { bg = `rgb(${m[1]}, ${m[2]}, ${m[3]})`; b.dataset.originalBg = bg; }
-            }
-        }
-        return bg;
+
+    function getBg(bar) {
+        return bar.style.backgroundColor || getComputedStyle(bar).backgroundColor;
     }
-    const eventIdOf = (b) => {
-        const oc = b.getAttribute("onclick") || "";
-        const m = oc.match(/openEditEvent\(\'([^\']+)\'/);
-        return m ? m[1] : null;
-    };
-    function processBars() {
-        document.querySelectorAll(".cal-row-overlay").forEach(o => o.remove());
-        const grid = document.getElementById("cal-days");
+
+    function getTitleText(bar) {
+        // dataset.original があればそれを優先(セグメント中で空にされている可能性)
+        if (bar.dataset && bar.dataset.original) return bar.dataset.original;
+        return bar.textContent || '';
+    }
+
+    function clearOverlays(grid) {
+        grid.querySelectorAll('.cal-bar-connect-row').forEach(function(el) { el.remove(); });
+    }
+
+    function showAllOriginalBars(grid) {
+        // フォールバック: 全てのオリジナルバーを再表示
+        grid.querySelectorAll('.cal-event-bar').forEach(function(b) {
+            b.style.visibility = '';
+        });
+    }
+
+    function run() {
+        var grid = document.getElementById('cal-days');
         if (!grid) return;
-        grid.querySelectorAll(".cal-cell").forEach(c => c.style.removeProperty("border-right"));
-        const allCells = Array.from(grid.querySelectorAll(".cal-cell, .week-cell"));
-        if (allCells.length === 0) return;
-        const sampleBar = grid.querySelector(".cal-event-bar:not(.cal-event-bar-placeholder)");
-        if (!sampleBar) return;
-        const barCS = getComputedStyle(sampleBar);
-        const phHeightPx = sampleBar.getBoundingClientRect().height;
-        const phMarginBottom = barCS.marginBottom;
-        const cellsSorted = allCells.map(c => ({c, r: c.getBoundingClientRect()})).sort((a, b) => Math.abs(a.r.top - b.r.top) > 10 ? a.r.top - b.r.top : a.r.left - b.r.left);
-        const rows = [];
-        let curRow = null, curTop = -1;
-        cellsSorted.forEach(({c, r}) => {
-            if (Math.abs(r.top - curTop) > 10) { curRow = []; rows.push(curRow); curTop = r.top; }
-            curRow.push(c);
-        });
-        rows.forEach(row => {
-            const cellBars = row.map(cell => Array.from(cell.querySelectorAll(".cal-event-bar:not([data-injected])")));
-            const allIds = new Set();
-            cellBars.forEach(bars => bars.forEach(b => { const id = eventIdOf(b); if (id) allIds.add(id); }));
-            row.forEach(cell => cell.querySelectorAll(".cal-event-bar[data-injected]").forEach(b => b.remove()));
-            allIds.forEach(id => {
-                let firstIdx = -1, lastIdx = -1;
-                cellBars.forEach((bars, i) => {
-                    if (bars.some(b => eventIdOf(b) === id)) {
-                        if (firstIdx === -1) firstIdx = i;
-                        lastIdx = i;
-                    }
-                });
-                if (firstIdx === -1) return;
-                const firstBar = cellBars[firstIdx].find(b => eventIdOf(b) === id);
-                const lastBar = cellBars[lastIdx].find(b => eventIdOf(b) === id);
-                const lastCls = lastBar.className;
-                const lastIsTerminal = lastCls.includes("seg-end") || lastCls.includes("seg-week-end") || (!lastCls.includes("seg-mid") && !lastCls.includes("seg-start"));
-                if (!lastIsTerminal && lastIdx < row.length - 1) {
-                    for (let i = lastIdx + 1; i < row.length; i++) {
-                        const cell = row[i];
-                        if (!cell.classList.contains("other-month")) break;
-                        const clone = lastBar.cloneNode(true);
-                        clone.className = "cal-event-bar seg-mid";
-                        if (i === row.length - 1) clone.className += " seg-week-end";
-                        clone.dataset.injected = "1";
-                        clone.dataset.original = clone.textContent;
-                        clone.innerHTML = "&nbsp;";
-                        clone.dataset.originalBg = lastBar.dataset.originalBg || lastBar.style.backgroundColor || getComputedStyle(lastBar).backgroundColor;
-                        cellBars[i].push(clone);
-                        cell.appendChild(clone);
-                    }
+        try {
+            clearOverlays(grid);
+
+            var allCells = Array.from(grid.querySelectorAll('.cal-cell'));
+            if (allCells.length === 0) return;
+
+            // 行ごとにグルーピング(top座標で判定、同じtop±5px以内は同じ行)
+            var rows = [];
+            var curRow = null;
+            var curTop = -9999;
+            allCells.forEach(function(cell) {
+                var r = cell.getBoundingClientRect();
+                if (Math.abs(r.top - curTop) > 5) {
+                    curRow = [];
+                    rows.push(curRow);
+                    curTop = r.top;
                 }
-                const firstCls = firstBar.className;
-                const firstIsStart = firstCls.includes("seg-start") || firstCls.includes("seg-week-start") || (!firstCls.includes("seg-mid") && !firstCls.includes("seg-end"));
-                if (!firstIsStart && firstIdx > 0) {
-                    for (let i = firstIdx - 1; i >= 0; i--) {
-                        const cell = row[i];
-                        if (!cell.classList.contains("other-month")) break;
-                        const clone = firstBar.cloneNode(true);
-                        clone.className = "cal-event-bar seg-mid";
-                        if (i === 0) clone.className += " seg-week-start";
-                        clone.dataset.injected = "1";
-                        clone.dataset.original = clone.textContent;
-                        clone.innerHTML = "&nbsp;";
-                        clone.dataset.originalBg = firstBar.dataset.originalBg || firstBar.style.backgroundColor || getComputedStyle(firstBar).backgroundColor;
-                        cellBars[i].unshift(clone);
-                        cell.appendChild(clone);
-                    }
-                }
+                curRow.push(cell);
             });
-        });
-        const firstOccurrenceInRow = new Map();
-        rows.forEach((row, rowIdx) => {
-            row.forEach(cell => {
-                if (cell.classList.contains("other-month")) return;
-                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
-                    const id = eventIdOf(b);
-                    if (!id) return;
-                    const key = rowIdx + "|" + id;
-                    if (!firstOccurrenceInRow.has(key)) firstOccurrenceInRow.set(key, cell);
+
+            // grid 自体の位置(オーバーレイの基準にする)
+            var gridRect = grid.getBoundingClientRect();
+            // grid を position:relative に(オーバーレイの絶対配置の基準)
+            if (getComputedStyle(grid).position === 'static') {
+                grid.style.position = 'relative';
+            }
+
+            // 各行を処理
+            rows.forEach(function(row, rowIdx) {
+                // この行で既に使用されているtopレンジ(重なり回避用)
+                var usedRanges = [];
+                // この行の全バーを集める(イベントIDごとにグループ化)
+                // 各バーが「セル内の何番目」かを barIdx として記録
+                var eventGroups = {}; // {eventId: [{cell, bar, cellIdx, barIdx}, ...]}
+                row.forEach(function(cell, cellIdx) {
+                    var bars = Array.from(cell.querySelectorAll('.cal-event-bar'));
+                    bars.forEach(function(bar, barIdx) {
+                        var id = eventIdOf(bar);
+                        if (!id) return;
+                        if (!eventGroups[id]) eventGroups[id] = [];
+                        eventGroups[id].push({cell: cell, bar: bar, cellIdx: cellIdx, barIdx: barIdx});
+                    });
                 });
-            });
-        });
-        rows.forEach((row, rowIdx) => {
-            let activeRow = [];
-            row.forEach(cell => {
-                const barsInCell = Array.from(cell.querySelectorAll(".cal-event-bar"));
-                const idsHere = barsInCell.map(eventIdOf);
-                activeRow = activeRow.map(id => idsHere.includes(id) ? id : null);
-                idsHere.forEach(id => {
-                    if (id && !activeRow.includes(id)) {
-                        let idx = activeRow.findIndex(s => s === null);
-                        if (idx === -1) { idx = activeRow.length; activeRow.push(id); }
-                        else { activeRow[idx] = id; }
-                    }
-                });
-                const sorted = [];
-                activeRow.forEach(id => {
-                    if (id === null) {
-                        const ph = document.createElement("span");
-                        ph.className = "cal-event-bar-placeholder";
-                        ph.style.height = phHeightPx + "px";
-                        ph.style.marginBottom = phMarginBottom;
-                        ph.innerHTML = "&nbsp;";
-                        sorted.push(ph);
-                    } else {
-                        const bar = barsInCell.find(b => eventIdOf(b) === id);
-                        if (bar) sorted.push(bar);
-                    }
-                });
-                const isOtherMonth = cell.classList.contains("other-month");
-                sorted.forEach(s => {
-                    if (!s.classList || !s.classList.contains("cal-event-bar")) return;
-                    const cls = s.className;
-                    const isMidOrEnd = cls.includes("seg-mid") || cls.includes("seg-end");
-                    if (!isMidOrEnd) {
-                        if (s.dataset.original && !s.dataset.injected) {
-                            s.innerHTML = "";
-                            s.textContent = s.dataset.original;
-                            delete s.dataset.original;
-                        }
-                        return;
-                    }
-                    const id = eventIdOf(s);
-                    const key = rowIdx + "|" + id;
-                    const showTitle = !isOtherMonth && firstOccurrenceInRow.get(key) === cell;
-                    if (showTitle) {
-                        if (s.dataset.original) {
-                            s.innerHTML = "";
-                            s.textContent = s.dataset.original;
-                            delete s.dataset.original;
-                        }
-                    } else {
-                        if (!s.dataset.original) {
-                            s.dataset.original = s.textContent;
-                            s.innerHTML = "&nbsp;";
+
+                // 各イベントグループに対して連結バーを生成
+                Object.keys(eventGroups).forEach(function(eventId) {
+                    var group = eventGroups[eventId];
+                    if (group.length === 0) return;
+
+                    // この行内での連続範囲(最初と最後のセルインデックス)
+                    var minIdx = group[0].cellIdx;
+                    var maxIdx = group[group.length - 1].cellIdx;
+                    var firstCell = row[minIdx];
+                    var lastCell = row[maxIdx];
+
+                    // 連結バーの位置とサイズ
+                    var fr = firstCell.getBoundingClientRect();
+                    var lr = lastCell.getBoundingClientRect();
+
+                    // grid 内での相対座標
+                    var leftPx = fr.left - gridRect.left;
+                    var widthPx = (lr.right - fr.left);
+
+                    // 元のバーの上下位置(同セル内に複数バーがある場合の縦位置を反映)
+                    // 各バーの top 値を集めて中央値を採用(外れ値の影響を減らす)
+                    var topValues = group.map(function(item) {
+                        return item.bar.getBoundingClientRect().top;
+                    }).sort(function(a, b) { return a - b; });
+                    var medianTop = topValues[Math.floor(topValues.length / 2)];
+                    var heightValues = group.map(function(item) {
+                        return item.bar.getBoundingClientRect().height;
+                    });
+                    var medianHeight = heightValues[Math.floor(heightValues.length / 2)];
+                    var topPx = medianTop - gridRect.top;
+                    var heightPx = medianHeight;
+
+                    // 重なり回避: この行で既に使われているtopレンジと衝突するなら下にずらす
+                    var leftPxCheck = fr.left - gridRect.left;
+                    var rightPxCheck = leftPxCheck + (lr.right - fr.left);
+                    var collision = true;
+                    var maxIter = 20;
+                    while (collision && maxIter-- > 0) {
+                        collision = false;
+                        for (var ui = 0; ui < usedRanges.length; ui++) {
+                            var u = usedRanges[ui];
+                            // 横方向の重なり判定(完全に外なら重ならない)
+                            var hOverlap = !(rightPxCheck <= u.left || leftPxCheck >= u.right);
+                            // 縦方向の重なり判定(0.5pxの誤差を許容)
+                            var vOverlap = !(topPx + heightPx <= u.top + 0.5 || topPx >= u.bottom - 0.5);
+                            if (hOverlap && vOverlap) {
+                                topPx = u.bottom + 1; // 1px隙間で下にずらす
+                                collision = true;
+                                break;
+                            }
                         }
                     }
+                    // この配置を使用済みとして記録
+                    usedRanges.push({ left: leftPxCheck, right: rightPxCheck, top: topPx, bottom: topPx + heightPx });
+
+                    // sampleBar (背景色とタイトルの基準にする最初のバー)
+                    var sampleBar = group[0].bar;
+
+                    // 元のバーの背景色とタイトル
+                    var bg = getBg(sampleBar);
+                    var title = '';
+                    // 同月セルのバーから優先的にタイトルを取得
+                    for (var i = 0; i < group.length; i++) {
+                        if (!group[i].cell.classList.contains('other-month')) {
+                            title = getTitleText(group[i].bar);
+                            if (title.trim()) break;
+                        }
+                    }
+                    if (!title) title = getTitleText(group[0].bar);
+
+                    // 連結バー本体を作成
+                    var connectBar = document.createElement('div');
+                    connectBar.className = 'cal-bar-connect-row cal-event-bar';
+                    connectBar.style.position = 'absolute';
+                    // 隣接バーが繋がって見えないよう左右1pxずつ削る
+                    connectBar.style.left = (leftPx + 1) + 'px';
+                    connectBar.style.top = topPx + 'px';
+                    connectBar.style.width = Math.max(widthPx - 2, 10) + 'px';
+                    connectBar.style.height = heightPx + 'px';
+                    connectBar.style.background = bg;
+                    // z-index は barIdx に基づいて設定
+                    // (同じイベントなら全セルで同じ barIdx になるはず → 正確な積み重ね)
+                    var sampleBarIdx = group[0].barIdx || 0;
+                    connectBar.style.zIndex = String(5 + sampleBarIdx);
+                    // 連結バー自体はクリックを受けず、下のセルにクリックを通す。
+                    // → セルの onclick="onCellClick(...)" が発火 → 必ず一覧モーダルが開く。
+                    connectBar.style.pointerEvents = 'none';
+                    connectBar.style.cursor = 'default';
+                    connectBar.style.boxSizing = 'border-box';
+                    connectBar.style.borderRadius = '3px';
+                    connectBar.style.overflow = 'hidden';
+                    connectBar.style.padding = '1px 4px';
+                    connectBar.style.color = '#fff';
+                    connectBar.style.fontSize = '0.62rem';
+                    connectBar.style.fontWeight = '600';
+                    connectBar.style.lineHeight = '1.4';
+                    connectBar.style.whiteSpace = 'nowrap';
+                    connectBar.style.textOverflow = 'ellipsis';
+                    connectBar.textContent = title;
+                    connectBar.setAttribute('data-event-id', eventId);
+                    // 連結バーには click ハンドラを付けない(pointer-events:none で下のセルへ)
+
+                    // 隣月部分は薄くするためのマスクを上に重ねる
+                    // group には other-month セルが含まれない可能性があるため、
+                    // row全体から other-month セルを探して、連結バー範囲と重なる部分にマスクを配置
+                    var connectBarLeftAbs = fr.left;  // 連結バーの絶対左端(画面座標)
+                    var connectBarRightAbs = lr.right; // 連結バーの絶対右端
+                    row.forEach(function(cell) {
+                        if (!cell.classList.contains('other-month')) return;
+                        var cellRect = cell.getBoundingClientRect();
+                        // 連結バー範囲とこのセル範囲が重なるかチェック
+                        var overlapLeft = Math.max(connectBarLeftAbs, cellRect.left);
+                        var overlapRight = Math.min(connectBarRightAbs, cellRect.right);
+                        if (overlapRight <= overlapLeft) return; // 重ならない
+                        // 連結バー内での相対位置に変換
+                        var maskLeft = overlapLeft - connectBarLeftAbs;
+                        var maskWidth = overlapRight - overlapLeft;
+                        var mask = document.createElement('div');
+                        mask.style.position = 'absolute';
+                        mask.style.left = maskLeft + 'px';
+                        mask.style.top = '0';
+                        mask.style.width = maskWidth + 'px';
+                        mask.style.height = '100%';
+                        mask.style.background = 'rgba(255,255,255,0.55)';
+                        mask.style.pointerEvents = 'none';
+                        connectBar.appendChild(mask);
+                    });
+
+                    grid.appendChild(connectBar);
+
+                    // 元のバーを非表示(レイアウトは残す)
+                    group.forEach(function(item) {
+                        item.bar.style.visibility = 'hidden';
+                    });
                 });
-                barsInCell.forEach(b => b.remove());
-                cell.querySelectorAll(".cal-event-bar-placeholder").forEach(p => p.remove());
-                const more = cell.querySelector(".cal-event-more");
-                if (more) more.remove();
-                sorted.forEach(s => cell.appendChild(s));
-                if (more) cell.appendChild(more);
             });
-        });
-        Array.from(grid.querySelectorAll(".cal-event-bar")).forEach(b => {
-            const cell = b.closest(".cal-cell");
-            const isOther = cell?.classList.contains("other-month");
-            const cls = b.className;
-            let color = isOther ? rgbToRgba(getOriginalBg(b), 0.35) : getOriginalBg(b);
-            b.style.backgroundColor = color;
-            b.style.opacity = "1";
-            if (isOther) { b.style.boxShadow = ""; }
-            else {
-                const extendRight = (cls.includes("seg-mid") || cls.includes("seg-start")) && !cls.includes("seg-week-end");
-                const extendLeft = (cls.includes("seg-mid") || cls.includes("seg-end")) && !cls.includes("seg-week-start");
-                const shadows = [];
-                if (extendRight) shadows.push(`4px 0 0 0 ${color}`);
-                if (extendLeft) shadows.push(`-4px 0 0 0 ${color}`);
-                b.style.boxShadow = shadows.join(", ");
+            // 同色期間バー検知: 連結バー描画後、同色の複数日バーが2本以上あれば通知バナー表示
+            try {
+                checkSameColorBars(grid);
+            } catch(e3) {
+                console.error('[CalendarBarConnect] color check error:', e3);
+            }
+        } catch(err) {
+            // フォールバック: エラー時は元のバーを再表示
+            console.error('[CalendarBarConnect] error, fallback to original bars:', err);
+            try {
+                clearOverlays(grid);
+                showAllOriginalBars(grid);
+            } catch(e2) { /* もう何もできない */ }
+        }
+    }
+
+    // 同色期間バー検知 + 通知バナー
+    function checkSameColorBars(grid) {
+        // 既存のバナーを削除
+        var oldBanner = document.getElementById('cal-color-advice-banner');
+        if (oldBanner) oldBanner.remove();
+
+        // 連結バー(複数日のオーバーレイ)を集めて、色ごとにカウント
+        var overlays = grid.querySelectorAll('.cal-bar-connect-row');
+        if (overlays.length < 2) return;
+
+        var colorMap = {}; // {color: count}
+        var colorTitles = {}; // {color: [title, title, ...]}
+        overlays.forEach(function(bar) {
+            // bg色を正規化(rgb形式に統一)
+            var bg = bar.style.backgroundColor || '';
+            var bgNorm = bg.replace(/\s+/g, '').toLowerCase();
+            if (!bgNorm) return;
+            colorMap[bgNorm] = (colorMap[bgNorm] || 0) + 1;
+            if (!colorTitles[bgNorm]) colorTitles[bgNorm] = [];
+            var t = (bar.textContent || '').trim().substring(0, 12);
+            if (t && colorTitles[bgNorm].indexOf(t) === -1) {
+                colorTitles[bgNorm].push(t);
             }
         });
-        grid.style.position = "relative";
-        const gridRect = grid.getBoundingClientRect();
-        rows.forEach(row => {
-            const eventBars = {};
-            row.forEach((cell, cellIdx) => {
-                if (!cell.classList.contains("other-month")) return;
-                Array.from(cell.querySelectorAll(".cal-event-bar")).forEach(b => {
-                    const id = eventIdOf(b);
-                    if (!id) return;
-                    if (!eventBars[id]) eventBars[id] = [];
-                    eventBars[id].push({ cell, bar: b, cellIdx });
-                });
-            });
-            Object.values(eventBars).forEach(items => {
-                if (items.length === 0) return;
-                items.sort((a, b) => a.cellIdx - b.cellIdx);
-                const firstItem = items[0];
-                const lastItem = items[items.length - 1];
-                const firstRect = firstItem.cell.getBoundingClientRect();
-                const lastRect = lastItem.cell.getBoundingClientRect();
-                const barRect = firstItem.bar.getBoundingClientRect();
-                const bg = firstItem.bar.style.backgroundColor;
-                const cls = firstItem.bar.className;
-                const lastCls = lastItem.bar.className;
-                let radius = "0";
-                const isLeftEnd = cls.includes("seg-week-start");
-                const isRightEnd = lastCls.includes("seg-week-end");
-                if (isLeftEnd && isRightEnd) radius = "3px";
-                else if (isLeftEnd) radius = "3px 0 0 3px";
-                else if (isRightEnd) radius = "0 3px 3px 0";
-                const overlay = document.createElement("div");
-                overlay.className = "cal-row-overlay";
-                overlay.style.cssText = `position: absolute; left: ${firstRect.left - gridRect.left}px; top: ${barRect.top - gridRect.top}px; width: ${lastRect.right - firstRect.left}px; height: ${barRect.height}px; background: ${bg}; border-radius: ${radius}; pointer-events: none; z-index: 3;`;
-                grid.appendChild(overlay);
-                items.forEach(({bar}) => { bar.style.background = "transparent"; });
-                for (let i = 0; i < items.length - 1; i++) {
-                    items[i].cell.style.borderRight = "1px solid transparent";
-                }
-            });
+
+        // 2本以上同色のバーがあれば検知
+        var duplicateColors = Object.keys(colorMap).filter(function(c) {
+            return colorMap[c] >= 2;
         });
-    }
-    const grid = document.getElementById("cal-days");
-    if (grid) {
-        let timeout = null;
-        const observer = new MutationObserver((mutations) => {
-            const isOnlyOverlayChange = mutations.every(m => Array.from(m.addedNodes).every(n => n.classList?.contains("cal-row-overlay")) && Array.from(m.removedNodes).every(n => n.classList?.contains("cal-row-overlay")));
-            if (isOnlyOverlayChange) return;
-            if (timeout) clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                observer.disconnect();
-                try { processBars(); } catch(e) { console.error("processBars error:", e); }
-                observer.observe(grid, { childList: true, subtree: true });
-            }, 30);
-        });
-        observer.observe(grid, { childList: true, subtree: true });
-        setTimeout(processBars, 100);
-        let sx = 0, sy = 0, st = 0;
-        const cont = grid.parentElement;
-        if (cont) {
-            cont.addEventListener("touchstart", (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); }, { passive: true });
-            cont.addEventListener("touchend", (e) => {
-                const t = e.changedTouches[0];
-                const dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
-                if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 500) {
-                    if (typeof changeMonth === "function") { changeMonth(dx < 0 ? 1 : -1); }
-                }
-            }, { passive: true });
+
+        if (duplicateColors.length === 0) return;
+
+        // 同月内で表示されている期間バーのみを対象としたいので、 .other-month の中だけのバーは除外したい
+        // ...現状のロジックでは隣月の薄色マスク部分も同色で混ざる可能性があるため、同色判定は単純に色だけで行う
+
+        // バナー作成
+        var banner = document.createElement('div');
+        banner.id = 'cal-color-advice-banner';
+        banner.style.cssText = [
+            'position:relative',
+            'margin:0 8px 8px 8px',
+            'padding:8px 36px 8px 12px',
+            'background:#fff8e1',
+            'border:1px solid #ffd54f',
+            'border-radius:6px',
+            'color:#5d4037',
+            'font-size:0.78rem',
+            'line-height:1.4',
+            'box-shadow:0 1px 3px rgba(0,0,0,0.05)'
+        ].join(';');
+
+        // メッセージ作成: 自然な日本語にする
+        var msg = '同じ色の予定が重なっています。見分けやすくするには、それぞれ違う色を設定することをおすすめします。';
+
+        var msgSpan = document.createElement('span');
+        msgSpan.textContent = msg;
+        banner.appendChild(msgSpan);
+
+        // 閉じるボタン
+        var closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.setAttribute('aria-label', '閉じる');
+        closeBtn.style.cssText = [
+            'position:absolute',
+            'top:50%',
+            'right:8px',
+            'transform:translateY(-50%)',
+            'border:none',
+            'background:transparent',
+            'color:#5d4037',
+            'font-size:1.1rem',
+            'font-weight:600',
+            'cursor:pointer',
+            'padding:0 4px',
+            'line-height:1'
+        ].join(';');
+        closeBtn.onclick = function() {
+            banner.remove();
+        };
+        banner.appendChild(closeBtn);
+
+        // グリッドの直前に挿入
+        if (grid.parentNode) {
+            grid.parentNode.insertBefore(banner, grid);
         }
+    }
+
+    // 公開API: renderCalendar 後に呼ばれる
+    // run関数をクロージャ内に保持しつつ、setTimeoutで遅延実行(より確実)
+    window.__calendarBarConnectRun = function() {
+        setTimeout(function() {
+            try {
+                run();
+                console.log('[CalendarBarConnect] run completed, overlays:', 
+                    (document.getElementById('cal-days') || document).querySelectorAll('.cal-bar-connect-row').length);
+            } catch(err) {
+                console.error('[CalendarBarConnect] run error:', err);
+            }
+        }, 80);
+    };
+
+    // 初回実行(DOMContentLoaded 後 + さらに少し待つ)
+    function initialRun() {
+        setTimeout(function() {
+            try { run(); } catch(e) { console.error('[CalendarBarConnect] init error:', e); }
+        }, 200);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialRun);
+    } else {
+        initialRun();
+    }
+
+    // resize 対応(debounce 200ms)
+    var resizeTimer = null;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(window.__calendarBarConnectRun, 200);
+    });
+})();
+
+// ===== タスク期限のカレンダー表示(/api/tasks/list を取得して renderMonth に反映) =====
+(function loadTasksForCalendar() {
+    function refetchTasks() {
+        fetch('/api/tasks/list', { credentials: 'include' })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+                if (!data) { window.ALL_TASKS = []; return; }
+                window.ALL_TASKS = Array.isArray(data.tasks) ? data.tasks
+                                 : (Array.isArray(data) ? data : []);
+                // タスク取得後、現在のビューを再描画
+                if (typeof window.renderMonth === 'function') {
+                    try { window.renderMonth(); } catch(e) { console.warn('renderMonth refresh failed:', e); }
+                }
+                if (typeof window.renderWeek === 'function') {
+                    try { window.renderWeek(); } catch(e) {}
+                }
+            })
+            .catch(function(err){
+                console.warn('[TASUKARU] task fetch failed:', err);
+                window.ALL_TASKS = [];
+            });
+    }
+    // 初回ロード
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', refetchTasks);
+    } else {
+        refetchTasks();
+    }
+    // ページ可視化時に再取得(他タブでタスク更新したケースに対応)
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) refetchTasks();
+    });
+    // 外部から呼べるよう公開
+    window.__refetchTasks = refetchTasks;
+})();
+
+// ===== カレンダーのスワイプジェスチャー(前月/次月へ移動) =====
+(function installCalendarSwipe() {
+    function attach() {
+        var container = document.getElementById('cal-days');
+        if (!container) return;
+        // 既に取り付け済みならスキップ
+        if (container.dataset.swipeBound === '1') return;
+        container.dataset.swipeBound = '1';
+
+        var startX = 0, startY = 0, startT = 0;
+        var tracking = false;
+        // 縦スクロールとの干渉を避けるため、横スワイプが優勢な場合のみ反応
+        var THRESHOLD_X = 60;       // この距離以上で発火
+        var MAX_OFF_AXIS = 50;      // 縦の移動がこれを超えたら無効(縦スクロール扱い)
+        var MAX_TIME_MS = 800;      // この時間内のスワイプのみ
+
+        container.addEventListener('touchstart', function(e) {
+            if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+            var t = e.touches[0];
+            startX = t.clientX;
+            startY = t.clientY;
+            startT = Date.now();
+            tracking = true;
+        }, { passive: true });
+
+        container.addEventListener('touchend', function(e) {
+            if (!tracking) return;
+            tracking = false;
+            var t = (e.changedTouches && e.changedTouches[0]) || null;
+            if (!t) return;
+            var dx = t.clientX - startX;
+            var dy = t.clientY - startY;
+            var dt = Date.now() - startT;
+            if (dt > MAX_TIME_MS) return;
+            if (Math.abs(dy) > MAX_OFF_AXIS) return;
+            if (Math.abs(dx) < THRESHOLD_X) return;
+            // 月ビューかつ 連結バーやセルバーをタップしたわけではないとき
+            if (typeof window.changeMonth !== 'function') return;
+            if (typeof currentView !== 'undefined' && currentView !== 'month') return;
+            if (dx < 0) {
+                // 左スワイプ → 次月
+                window.changeMonth(1);
+            } else {
+                // 右スワイプ → 前月
+                window.changeMonth(-1);
+            }
+        }, { passive: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attach);
+    } else {
+        attach();
     }
 })();
 </script>

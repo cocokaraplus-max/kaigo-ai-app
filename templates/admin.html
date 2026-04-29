@@ -711,6 +711,14 @@
         <span class="material-symbols-outlined" style="font-size:16px;">edit_note</span>
         <span><b>📋 掲示板権限</b>（ペンアイコン）をONにすると、他のスタッフの投稿も編集・削除できます</span>
     </div>
+    <div style="background:#fff8e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.8rem;color:#a06200;display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">admin_panel_settings</span>
+        <span><b>👑 管理者権限</b>（王冠アイコン）をONにすると、管理者MENUに入れます。最低1人は必要です。</span>
+    </div>
+    <div id="managers-count-bar" style="background:#f1f3f4;border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:0.8rem;color:#3c4043;display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">groups</span>
+        <span>現在の管理者: <b id="managers-count-num">{{ admin_managers|length }}</b>人</span>
+    </div>
     {% for s in staff_list %}
     <div class="staff-card" id="sc-{{ loop.index }}">
         <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
@@ -731,6 +739,16 @@
                     onchange="toggleBoardEditor('{{ s.name }}', this.checked)"
                     style="accent-color:#1a73e8;width:14px;height:14px;">
                 <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
+            </label>
+            <!-- 管理者権限トグル(王冠アイコン) -->
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.75rem;color:#5f6368;background:#fff8e1;border-radius:8px;padding:4px 8px;border:1px solid #f4d35e;"
+                title="管理者MENUに入れる権限">
+                <input type="checkbox" id="admin-mng-{{ loop.index }}"
+                    data-staff-name="{{ s.name }}"
+                    {% if s.name in admin_managers %}checked{% endif %}
+                    onchange="toggleAdminManager('{{ s.name }}', this.checked, this)"
+                    style="accent-color:#f9ab00;width:14px;height:14px;">
+                <span class="material-symbols-outlined" style="font-size:14px;color:#a06200;">admin_panel_settings</span>
             </label>
             <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}', '{{ s.name }}', '{{ s.birth_date or '' }}')">
                 <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
@@ -839,6 +857,74 @@ async function toggleBoardEditor(staffName, checked) {
             alert('保存に失敗しました: ' + (data.message || ''));
         }
     } catch(e) {
+        alert('エラー: ' + e.message);
+    }
+}
+
+// 管理者権限トグル
+var _adminManagers = {{ admin_managers | tojson }};
+
+async function toggleAdminManager(staffName, checked, inputEl) {
+    // セーフティ確認(自分自身を OFF にする時)
+    if (!checked) {
+        // managers_info で自分の名前と現状確認
+        try {
+            var infoRes = await fetch('/api/admin/managers_info', { credentials: 'include' });
+            var info = await infoRes.json();
+            if (info.my_name === staffName) {
+                if (!confirm('あなた自身の管理者権限をOFFにしようとしています。\n\n管理者MENUに二度と入れなくなる可能性があります。\n本当によろしいですか?')) {
+                    if (inputEl) inputEl.checked = true;  // 元に戻す
+                    return;
+                }
+            }
+            // 超管理者は OFF にできない
+            if ((info.super_admins || []).indexOf(staffName) !== -1) {
+                alert('「' + staffName + '」は施設の超管理者(初期登録メール管理者)のため、管理者権限を外すことはできません。');
+                if (inputEl) inputEl.checked = true;
+                return;
+            }
+        } catch(e) { /* 取得失敗時は通常のセーフティに任せる */ }
+    }
+    // 配列を更新
+    var updated;
+    if (checked) {
+        updated = _adminManagers.slice();
+        if (!updated.includes(staffName)) updated.push(staffName);
+    } else {
+        updated = _adminManagers.filter(function(n) { return n !== staffName; });
+    }
+    try {
+        var res = await fetch('/api/admin/set_managers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ managers: updated })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            _adminManagers = data.managers || updated;
+            // バッジの数値更新
+            var num = document.getElementById('managers-count-num');
+            if (num) num.textContent = _adminManagers.length;
+            // 超管理者が自動的に追加された場合、UI チェック状態を同期
+            (data.managers || []).forEach(function(name) {
+                document.querySelectorAll('input[id^="admin-mng-"]').forEach(function(inp) {
+                    if (inp.dataset.staffName === name) inp.checked = true;
+                });
+            });
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
+            toast.textContent = checked
+                ? '👑 ' + staffName + ' に管理者権限を付与しました'
+                : '🔓 ' + staffName + ' の管理者権限を解除しました';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3000);
+        } else {
+            // エラー(0人禁止など) → トグルを元に戻す
+            if (inputEl) inputEl.checked = !checked;
+            alert('保存に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) {
+        if (inputEl) inputEl.checked = !checked;
         alert('エラー: ' + e.message);
     }
 }
