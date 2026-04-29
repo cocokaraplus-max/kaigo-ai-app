@@ -196,6 +196,10 @@
             <div class="toc-ic" style="background:#9c27b0;"><span class="material-symbols-outlined" style="color:#fff;">tune</span></div>
             <span class="toc-lbl">カスタマイズ</span>
         </a>
+        <a class="toc-a" style="background:#fff8e1;" href="#s-admin">
+            <div class="toc-ic" style="background:#a06200;"><span class="material-symbols-outlined" style="color:#fff;">admin_panel_settings</span></div>
+            <span class="toc-lbl">管理者MENU</span>
+        </a>
         <a class="toc-a" style="background:#fbe9e7;" href="#s-disaster">
             <div class="toc-ic" style="background:#bf360c;"><span class="material-symbols-outlined" style="color:#fff;">emergency</span></div>
             <span class="toc-lbl">災害時モード</span>
@@ -621,6 +625,123 @@
             <div class="hint" style="background:#ede7f6;color:#4a148c;">
                 <span class="material-symbols-outlined" style="font-size:16px;flex-shrink:0;">info</span>
                 <span style="font-size:0.78rem;">アイコンがプルプル震えている間が並び替えモードです。好きな位置にドラッグして入れ替えてください。</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 管理者MENUと権限管理 ===== -->
+<div class="sc" id="s-admin">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#fff8e1;"><span class="material-symbols-outlined" style="font-size:26px;color:#a06200;">admin_panel_settings</span></div>
+        <div><div class="sc-ttl">管理者MENUと権限管理</div><div class="sc-sub">🔐 大切なデータを守るしくみ</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">TASUKARUは大事な利用者情報をあつかうから、<b>権限管理のしくみ</b>がしっかりあるよ🔐<br>誰でもなんでもできるわけじゃないんだ!</div>
+        </div>
+
+        <!-- ログインの2段階 -->
+        <div class="point-box" style="background:linear-gradient(135deg,#e8f0fe,#fff8e1);border:1.5px solid #ffd54f;margin-bottom:14px;">
+            <div class="point-box-title" style="color:#5d4037;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#5d4037;">layers</span>
+                <b>2段階のログイン</b>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#1a73e8;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">1</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">個人ログイン</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">施設コード + 自分のパスワードでアプリに入る。<br>これは<b>全員必須</b>。</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#f9ab00;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">2</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">管理者MENUへの入場</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">管理者MENUに入るときに、<b>もう一度自分のパスワード</b>を入力する。<br>さらに<b>👑管理者権限がONの人だけ</b>入れる。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2種類の権限トグル -->
+        <div class="mb" style="margin-top:14px;">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">職員管理タブには<b>2種類のトグル</b>があるよ。<br>役割が違うから間違えないでね!</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+            <div style="background:#f8f9fa;border:1.5px solid #1a73e8;border-radius:12px;padding:12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="font-size:22px;color:#1a73e8;">edit_note</span>
+                    <div style="font-weight:800;font-size:0.95rem;color:#1557b0;">📋 掲示板権限(ペンアイコン)</div>
+                </div>
+                <div style="font-size:0.8rem;color:#5f6368;line-height:1.6;">
+                    ONにすると、<b>他の人が書いた掲示板の投稿</b>を編集・削除できるようになる。<br>
+                    ※自分の投稿は誰でも編集・削除できるよ
+                </div>
+            </div>
+            <div style="background:#fff8e1;border:1.5px solid #f4d35e;border-radius:12px;padding:12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="font-size:22px;color:#a06200;">admin_panel_settings</span>
+                    <div style="font-weight:800;font-size:0.95rem;color:#a06200;">👑 管理者権限(王冠アイコン)</div>
+                </div>
+                <div style="font-size:0.8rem;color:#5f6368;line-height:1.6;">
+                    ONにすると、<b>管理者MENU</b>に入れるようになる。<br>
+                    利用者の追加・削除、職員の招待、各種設定の変更ができる。
+                </div>
+            </div>
+        </div>
+
+        <!-- セーフティネット -->
+        <div class="mb" style="margin-top:14px;">
+            <img src="/static/tasukaru_odoroki.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text"><b>「もし管理者がゼロ人になったら誰も入れなくなる…」</b><br>そんな事故を防ぐためのセーフティネットが何重もあるよ🛡️</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+            <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
+                <span class="material-symbols-outlined" style="color:#34a853;flex-shrink:0;">shield</span>
+                <div>
+                    <div style="font-weight:700;font-size:0.85rem;color:#202124;">最後の管理者は外せない</div>
+                    <div style="font-size:0.76rem;color:#5f6368;margin-top:2px;">管理者が0人になる操作はサーバー側ではじかれる</div>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
+                <span class="material-symbols-outlined" style="color:#34a853;flex-shrink:0;">shield</span>
+                <div>
+                    <div style="font-weight:700;font-size:0.85rem;color:#202124;">自分自身をOFFにする時の確認</div>
+                    <div style="font-size:0.76rem;color:#5f6368;margin-top:2px;">あなた自身の管理者権限を解除しようとすると確認ダイアログが出る</div>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
+                <span class="material-symbols-outlined" style="color:#34a853;flex-shrink:0;">shield</span>
+                <div>
+                    <div style="font-weight:700;font-size:0.85rem;color:#202124;">スタッフブロック時の自動連動</div>
+                    <div style="font-size:0.76rem;color:#5f6368;margin-top:2px;">管理者をブロックすると自動で管理者リストからも外れる(他に管理者がいない場合はブロック自体できない)</div>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #f4d35e;border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
+                <span class="material-symbols-outlined" style="color:#a06200;flex-shrink:0;">verified</span>
+                <div>
+                    <div style="font-weight:700;font-size:0.85rem;color:#a06200;">超管理者(緊急リカバリ)</div>
+                    <div style="font-size:0.76rem;color:#5f6368;margin-top:2px;">施設作成時に登録した「管理者メール」のスタッフは<b>常に管理者</b>として保護される。万が一データが壊れても入れる</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 運用のコツ -->
+        <div class="point-box" style="background:#f1f8e9;border:1.5px solid #aed581;">
+            <div class="point-box-title" style="color:#33691e;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#33691e;">tips_and_updates</span>
+                <b>運用のコツ</b>
+            </div>
+            <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-top:6px;">
+                ・管理者は<b>2人以上</b>を指名しておくと安心(1人が休みでも別の人が対応可)<br>
+                ・管理者が辞職する時は<b>先に他の人を管理者に指名</b>してからブロック<br>
+                ・パスワードは定期的に変更しよう
             </div>
         </div>
     </div>
