@@ -479,6 +479,10 @@ def login():
                                 session["f_code"] = f_code
                                 session["my_name"] = my_name
                                 session["saved_f_code"] = f_code
+                                # ログイン成功時に管理者セッションフラグをクリア
+                                # (前のユーザーが管理者だった場合に権限が引き継がれないように)
+                                session["admin_authenticated"] = False
+                                session["dev_authenticated"] = False
                                 return redirect(url_for("top"))
             except Exception as e:
                 error = f"ログイン中にエラーが発生しました: {e}"
@@ -489,6 +493,16 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+@app.route('/api/whoami')
+def api_whoami():
+    """セッション情報を返すデバッグ用API"""
+    return jsonify({
+        "f_code": session.get("f_code"),
+        "my_name": session.get("my_name"),
+        "admin_authenticated": session.get("admin_authenticated", False),
+        "dev_authenticated": session.get("dev_authenticated", False),
+    })
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
