@@ -957,7 +957,7 @@ function unlockBodyScroll() {
 
 // メンション検索（入力時のみ候補表示）
 window.filterMentions = function(q) {
-    var ql = q.trim().toLowerCase();
+    var ql = window.__normalizeForSearch(q);
     var chips = document.getElementById('mention-chips');
     var empty = document.getElementById('mention-empty');
     if (!ql) {
@@ -967,7 +967,7 @@ window.filterMentions = function(q) {
     }
     var hits = 0;
     document.querySelectorAll('.mention-chip').forEach(function(chip) {
-        var name = chip.dataset.name.toLowerCase();
+        var name = window.__normalizeForSearch(chip.dataset.name);
         var show = name.includes(ql) && !selectedMentions.includes(chip.dataset.name);
         chip.style.display = show ? '' : 'none';
         if (show) hits++;
@@ -1016,7 +1016,7 @@ if (mentionSearchEl) {
 var selectedPatients = [];
 
 window.filterPatients = function(q) {
-    var ql = q.trim().toLowerCase();
+    var ql = window.__normalizeForSearch(q);
     var chips = document.getElementById('patient-chips');
     var empty = document.getElementById('patient-empty');
     if (!ql) {
@@ -1026,8 +1026,9 @@ window.filterPatients = function(q) {
     }
     var hits = 0;
     document.querySelectorAll('.patient-chip').forEach(function(chip) {
-        var name = chip.dataset.name.toLowerCase();
-        var show = name.includes(ql) && !selectedPatients.includes(chip.dataset.name);
+        // 漢字氏名+ふりがな+カルテ番号を結合した hay で部分一致
+        var hay = window.__patientHay(chip.dataset.name);
+        var show = hay.includes(ql) && !selectedPatients.includes(chip.dataset.name);
         chip.style.display = show ? '' : 'none';
         if (show) hits++;
     });
@@ -1081,7 +1082,7 @@ if (patientSearchEl) {
 var editSelectedPatients = [];
 
 window.filterEditPatients = function(q) {
-    var ql = q.trim().toLowerCase();
+    var ql = window.__normalizeForSearch(q);
     var chips = document.getElementById('edit-patient-chips');
     var empty = document.getElementById('edit-patient-empty');
     if (!ql) {
@@ -1091,8 +1092,9 @@ window.filterEditPatients = function(q) {
     }
     var hits = 0;
     document.querySelectorAll('.patient-chip-edit').forEach(function(chip) {
-        var name = chip.dataset.name.toLowerCase();
-        var show = name.includes(ql) && !editSelectedPatients.includes(chip.dataset.name);
+        // 漢字氏名+ふりがな+カルテ番号を結合した hay で部分一致
+        var hay = window.__patientHay(chip.dataset.name);
+        var show = hay.includes(ql) && !editSelectedPatients.includes(chip.dataset.name);
         chip.style.display = show ? '' : 'none';
         if (show) hits++;
     });
@@ -1142,6 +1144,54 @@ if (editPatientSearchEl) {
     });
 }
 
+// ===== 検索ヘルパー(ひらがな・漢字・カルテ番号 部分一致) =====
+// 文字列を検索用に正規化:カタカナ→ひらがな、半/全角空白除去、小文字化
+window.__normalizeForSearch = function(s) {
+    if (s == null) return '';
+    return String(s)
+        .toLowerCase()
+        .replace(/[\u30A1-\u30F6]/g, function(c) {
+            // カタカナをひらがなに変換(ヴ等はそのまま近似)
+            return String.fromCharCode(c.charCodeAt(0) - 0x60);
+        })
+        .replace(/[\s\u3000]+/g, ''); // 全角・半角スペース除去
+};
+
+// 施設の全利用者データ(name/kana/chart)を一度だけ取得してキャッシュ
+window.__patientLookup = null;       // {name -> {kana, chart}}
+window.__patientLookupReady = false; // 取得完了フラグ
+(function loadPatientLookup() {
+    fetch('/api/patients_cache', { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var arr = (d && d.patients) || [];
+            var map = {};
+            arr.forEach(function(p) {
+                var name = (p.user_name || '').trim();
+                if (!name) return;
+                map[name] = {
+                    kana: (p.user_kana || '').trim(),
+                    chart: String(p.chart_number || '').trim()
+                };
+            });
+            window.__patientLookup = map;
+            window.__patientLookupReady = true;
+        })
+        .catch(function() {
+            window.__patientLookup = {};
+            window.__patientLookupReady = true;
+        });
+})();
+
+// 利用者名(漢字)から検索用 hay 文字列を作る:漢字+ふりがな+カルテ番号
+window.__patientHay = function(name) {
+    if (!name) return '';
+    var n = String(name).trim();
+    var info = window.__patientLookup ? window.__patientLookup[n] : null;
+    if (!info) return window.__normalizeForSearch(n);
+    return window.__normalizeForSearch(n + ' ' + info.kana + ' ' + info.chart);
+};
+
 // ===== 掲示板検索機能 =====
 window.filterByPatient = function(patientName) {
     var input = document.getElementById('board-search-input');
@@ -1156,7 +1206,7 @@ window.filterByPatient = function(patientName) {
 function applyBoardSearch() {
     var input = document.getElementById('board-search-input');
     if (!input) return;
-    var q = (input.value || '').trim().toLowerCase();
+    var q = window.__normalizeForSearch(input.value || '');
     var clearBtn = document.getElementById('board-search-clear');
     var activeArea = document.getElementById('board-search-active');
     var countEl = document.getElementById('board-search-count');
@@ -1183,19 +1233,22 @@ function applyBoardSearch() {
             card.style.display = 'none';
             return;
         }
-        // 検索対象: 本文、投稿者名、利用者名(配列)
-        var hay = [
-            (post.content || ''),
-            (post.staff_name || ''),
-            (Array.isArray(post.patient_names) ? post.patient_names.join(' ') : '')
-        ].join(' ').toLowerCase();
+        // 検索対象: 本文、投稿者名、利用者(漢字+ふりがな+カルテ番号)
+        var patientHays = '';
+        if (Array.isArray(post.patient_names)) {
+            patientHays = post.patient_names.map(function(n) { return window.__patientHay(n); }).join(' ');
+        }
+        var hay = window.__normalizeForSearch(
+            (post.content || '') + ' ' +
+            (post.staff_name || '')
+        ) + ' ' + patientHays;
         var match = hay.includes(q);
         card.style.display = match ? '' : 'none';
         if (match) hits++;
     });
 
     if (activeArea) activeArea.style.display = '';
-    if (countEl) countEl.textContent = '🔍 「' + q + '」 ' + hits + '件';
+    if (countEl) countEl.textContent = '🔍 「' + (input.value || '').trim() + '」 ' + hits + '件';
 }
 
 // 検索イベント設定
