@@ -254,12 +254,35 @@ def get_admin_managers(supabase, f_code):
         except: pass
     return initial
 
-def is_admin_user(supabase, f_code, my_name):
-    """指定スタッフが管理者として認可されているかを判定"""
+def is_admin_email_staff(supabase, f_code, my_name):
+    """指定スタッフが facilities.admin_email に紐づく超管理者かを判定。
+    緊急リカバリ用: admin_managers が空・誤操作で消えた場合でも
+    施設作成時の管理者メール登録者は常に管理者として認める。"""
     if not my_name:
         return False
+    try:
+        fac_res = supabase.table("facilities").select("admin_email").eq("facility_code", f_code).execute()
+        admin_email = fac_res.data[0].get("admin_email") if fac_res.data else None
+        if not admin_email:
+            return False
+        st = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("email", admin_email).eq("is_active", True).execute()
+        return any(s.get("staff_name") == my_name for s in (st.data or []))
+    except: return False
+
+def is_admin_user(supabase, f_code, my_name):
+    """指定スタッフが管理者として認可されているかを判定。
+    admin_managers リストに含まれているか、または facilities.admin_email
+    に紐づくスタッフ(超管理者: 緊急リカバリ用) であれば True。"""
+    if not my_name:
+        return False
+    # 1. admin_managers リスト
     managers = get_admin_managers(supabase, f_code)
-    return my_name in managers
+    if my_name in managers:
+        return True
+    # 2. 緊急リカバリ: admin_email スタッフは常に管理者
+    if is_admin_email_staff(supabase, f_code, my_name):
+        return True
+    return False
 
 def is_board_editor_user(supabase, f_code, my_name, is_admin_authenticated=False):
     """指定スタッフが掲示板の編集削除権限を持つかを判定。
@@ -2195,8 +2218,8 @@ def admin_auth():
                 board_editors=[], admin_managers=[])
 
         # パスワードはOK、次に管理者として認可されているかチェック
-        managers = get_admin_managers(supabase, f_code)
-        if my_name not in managers:
+        # (admin_managers リスト OR facilities.admin_email スタッフ = 超管理者)
+        if not is_admin_user(supabase, f_code, my_name):
             return render_template("admin.html",
                 authenticated=False, dev_mode=False,
                 patients=[], blocked=[], staff_list=[],
@@ -2670,9 +2693,6 @@ def api_admin_login():
         supabase = get_supabase()
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
         cur_pw = res.data[0]['value'] if res.data else "8888"
-        # ★DEBUG★ 後で消すこと
-        recv = data.get("password", "")
-        print(f"[DEBUG admin_login] f_code={f_code!r} received={recv!r} (len={len(recv)}) expected={cur_pw!r} (len={len(cur_pw)}) match={recv == cur_pw}", flush=True)
         if data["password"] == cur_pw:
             session["admin_authenticated"] = True
             return jsonify({"status": "success", "redirect": "/admin"})
@@ -2871,10 +2891,41 @@ def api_board_set_editors():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/admin/managers_info')
+@login_required
+def api_admin_managers_info():
+    """現在の管理者リストとセーフティ情報を返す。GUI が状態表示と確認ダイアログ判定に使う。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        managers = get_admin_managers(supabase, f_code)
+        # 超管理者(admin_email スタッフ)
+        super_admins = []
+        try:
+            fac_res = supabase.table("facilities").select("admin_email").eq("facility_code", f_code).execute()
+            admin_email = fac_res.data[0].get("admin_email") if fac_res.data else None
+            if admin_email:
+                st = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("email", admin_email).eq("is_active", True).execute()
+                super_admins = [s.get("staff_name") for s in (st.data or []) if s.get("staff_name")]
+        except: pass
+        return jsonify({
+            "managers": managers,
+            "super_admins": super_admins,
+            "my_name": my_name,
+            "is_my_super": my_name in super_admins,
+            "count": len(set(managers) | set(super_admins)),
+        })
+    except Exception as e:
+        return jsonify({"managers": [], "super_admins": [], "count": 0, "error": str(e)})
+
 @app.route('/api/admin/set_managers', methods=['POST'])
 @login_required
 def api_admin_set_managers():
-    """管理者MENUに入れる人(admin_managers)の保存。管理者専用。"""
+    """管理者MENUに入れる人(admin_managers)の保存。管理者専用。
+    セーフティ:
+      - 配列が空(0人)は禁止
+      - facilities.admin_email に紐づくスタッフ(超管理者)は強制的にリストに含める"""
     try:
         my_name = session.get("my_name", "")
         is_admin = session.get("admin_authenticated", False)
@@ -2884,11 +2935,22 @@ def api_admin_set_managers():
         managers = data.get("managers", [])
         if not isinstance(managers, list):
             return jsonify({"status": "error", "message": "形式が不正です"}), 400
-        # 管理者ゼロは禁止
-        if len(managers) == 0:
-            return jsonify({"status": "error", "message": "管理者は最低1人必要です"}), 400
         f_code = session["f_code"]
         supabase = get_supabase()
+        # 超管理者(admin_email スタッフ)は強制的に常に含める
+        try:
+            fac_res = supabase.table("facilities").select("admin_email").eq("facility_code", f_code).execute()
+            admin_email = fac_res.data[0].get("admin_email") if fac_res.data else None
+            if admin_email:
+                st = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("email", admin_email).eq("is_active", True).execute()
+                for s in (st.data or []):
+                    nm = s.get("staff_name")
+                    if nm and nm not in managers:
+                        managers.append(nm)
+        except: pass
+        # 管理者ゼロは禁止(超管理者がいない場合の最終保護)
+        if len(managers) == 0:
+            return jsonify({"status": "error", "message": "管理者は最低1人必要です"}), 400
         import json as _json
         value_json = _json.dumps(managers, ensure_ascii=False)
         existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "admin_managers").execute()
@@ -2910,14 +2972,49 @@ def api_block_staff():
     try:
         data = request.json
         f_code = session["f_code"]
+        target_name = data.get("name", "")
         supabase = get_supabase()
+        # 管理者だった場合の保護
+        try:
+            managers = get_admin_managers(supabase, f_code)
+            if target_name in managers:
+                # 他に管理者がいなければブロック拒否(超管理者も考慮)
+                remaining = [m for m in managers if m != target_name]
+                # 超管理者(admin_email スタッフ)が他にいれば 0 人扱いではない
+                has_super = False
+                try:
+                    fac_res = supabase.table("facilities").select("admin_email").eq("facility_code", f_code).execute()
+                    admin_email = fac_res.data[0].get("admin_email") if fac_res.data else None
+                    if admin_email:
+                        st = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("email", admin_email).eq("is_active", True).execute()
+                        for s in (st.data or []):
+                            if s.get("staff_name") and s["staff_name"] != target_name:
+                                has_super = True
+                                break
+                except: pass
+                if len(remaining) == 0 and not has_super:
+                    return jsonify({
+                        "status": "error",
+                        "message": "このスタッフは唯一の管理者のためブロックできません。先に他のスタッフを管理者に指定してください。"
+                    }), 400
+                # admin_managers から自動除外
+                try:
+                    import json as _json
+                    value_json = _json.dumps(remaining, ensure_ascii=False)
+                    existing = supabase.table("admin_settings").select("id").eq("facility_code", f_code).eq("key", "admin_managers").execute()
+                    if existing.data:
+                        supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
+                    else:
+                        supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_managers", "value": value_json}).execute()
+                except: pass
+        except: pass
         supabase.table("blocked_devices").insert({
-            "staff_name": data["name"], "facility_code": f_code,
+            "staff_name": target_name, "facility_code": f_code,
             "is_active": True, "device_id": "NAME_LOCK"
         }).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/issue_claude_session_form', methods=['POST'])
 @login_required
