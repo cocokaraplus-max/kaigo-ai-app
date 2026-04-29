@@ -1603,9 +1603,13 @@ def calendar_view():
             inv_res = supabase.table("calendars").select("*").in_("id", invited_ids).execute()
             invited_cals = inv_res.data or []
 
+        # 施設内の共有カレンダー(is_shared=true)を取得
+        shared_res = supabase.table("calendars").select("*").eq("facility_code", f_code).eq("is_shared", True).execute()
+        shared_cals = shared_res.data or []
+
         # 重複排除してマージ
         seen = set()
-        for cal in own_cals + invited_cals:
+        for cal in own_cals + invited_cals + shared_cals:
             if cal["id"] not in seen:
                 cal["is_owner"] = (cal.get("owner_name") == my_name)
                 calendars.append(cal)
@@ -1724,9 +1728,13 @@ def api_delete_calendar():
         my_name = session["my_name"]
         supabase = get_supabase()
         
-        # カレンダーの所有者確認
+        # カレンダーの所有者確認(オーナー or 管理者は削除可)
         cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
-        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+        if not cal_res.data:
+            return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
+        is_owner = (cal_res.data[0]["owner_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
             return jsonify({"status": "error", "message": "削除権限がありません"}), 403
         
         # 関連する予定を削除
@@ -1754,9 +1762,13 @@ def api_update_calendar():
         my_name = session["my_name"]
         supabase = get_supabase()
         
-        # カレンダーの所有者確認
+        # カレンダーの所有者確認(オーナー or 管理者は編集可)
         cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
-        if not cal_res.data or cal_res.data[0]["owner_name"] != my_name:
+        if not cal_res.data:
+            return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
+        is_owner = (cal_res.data[0]["owner_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
             return jsonify({"status": "error", "message": "編集権限がありません"}), 403
         
         # カレンダー更新
@@ -1801,10 +1813,15 @@ def api_invite_calendar_member():
     try:
         data = request.json
         f_code = session["f_code"]
+        my_name = session["my_name"]
         supabase = get_supabase()
-        # 自分が所有者かチェック
+        # オーナー or 管理者だけ招待可能
         cal = supabase.table("calendars").select("owner_name").eq("id", data["calendar_id"]).execute()
-        if not cal.data or cal.data[0]["owner_name"] != session["my_name"]:
+        if not cal.data:
+            return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
+        is_owner = (cal.data[0]["owner_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         # メンバー追加（重複は無視）
         for staff_name in data.get("staff_names", []):
