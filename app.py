@@ -2670,6 +2670,9 @@ def api_admin_login():
         supabase = get_supabase()
         res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
         cur_pw = res.data[0]['value'] if res.data else "8888"
+        # ★DEBUG★ 後で消すこと
+        recv = data.get("password", "")
+        print(f"[DEBUG admin_login] f_code={f_code!r} received={recv!r} (len={len(recv)}) expected={cur_pw!r} (len={len(cur_pw)}) match={recv == cur_pw}", flush=True)
         if data["password"] == cur_pw:
             session["admin_authenticated"] = True
             return jsonify({"status": "success", "redirect": "/admin"})
