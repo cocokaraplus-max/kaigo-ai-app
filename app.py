@@ -3138,9 +3138,26 @@ def board():
     read_data = {}
     try:
         if post_ids:
+            # 自分以外が書いた全コメントを取得(未読対象)
+            ccs = supabase.table("board_comments").select("id,post_id,staff_name").in_("post_id", post_ids).eq("facility_code", f_code).execute()
+            unread_comment_ids_by_post = {}
+            all_other_comment_ids = []
+            for c in (ccs.data or []):
+                if c["staff_name"] == my_name:
+                    continue
+                all_other_comment_ids.append(c["id"])
+                unread_comment_ids_by_post.setdefault(c["post_id"], set()).add(c["id"])
+            # 自分が既読化したコメントID
+            read_comment_ids = set()
+            if all_other_comment_ids:
+                try:
+                    crres = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", all_other_comment_ids).execute()
+                    read_comment_ids = set(r["comment_id"] for r in (crres.data or []))
+                except: pass
+            # 未読数 = 自分以外作 - 自分既読
             for pid in post_ids:
-                cnt = supabase.table("board_comments").select("id", count="exact").eq("post_id", pid).execute()
-                comments_count[pid] = cnt.count or 0
+                ids = unread_comment_ids_by_post.get(pid, set())
+                comments_count[pid] = len(ids - read_comment_ids)
             rres = supabase.table("board_reactions").select("*").in_("post_id", post_ids).execute()
             for r in (rres.data or []):
                 pid = r["post_id"]
@@ -3315,6 +3332,16 @@ def api_board_get_comments():
                 "facility_code": f_code, "post_id": int(post_id), "staff_name": my_name
             }, on_conflict="post_id,staff_name").execute()
         except: pass
+        # コメントを既読化(自分以外が書いたもののみ、まだ既読化していないもの)
+        try:
+            other_ids = [c["id"] for c in (res.data or []) if c["staff_name"] != my_name]
+            if other_ids:
+                already = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
+                already_ids = set(r["comment_id"] for r in (already.data or []))
+                to_insert = [{"comment_id": cid, "facility_code": f_code, "staff_name": my_name} for cid in other_ids if cid not in already_ids]
+                if to_insert:
+                    supabase.table("board_comment_reads").insert(to_insert).execute()
+        except: pass
         return jsonify({"status": "success", "comments": comments})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -3391,12 +3418,25 @@ def api_board_unread_count():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
+        # 未読投稿
         all_posts = supabase.table("board_posts").select("id").eq("facility_code", f_code).execute()
         all_ids = [p["id"] for p in (all_posts.data or [])]
-        if not all_ids: return jsonify({"count": 0})
-        read_posts = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
-        read_ids = set(r["post_id"] for r in (read_posts.data or []))
-        return jsonify({"count": len([i for i in all_ids if i not in read_ids])})
+        post_unread = 0
+        if all_ids:
+            read_posts = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            read_ids = set(r["post_id"] for r in (read_posts.data or []))
+            post_unread = len([i for i in all_ids if i not in read_ids])
+        # 未読コメント(自分以外作のみカウント)
+        comment_unread = 0
+        try:
+            ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).execute()
+            other_ids = [c["id"] for c in (ccs.data or []) if c["staff_name"] != my_name]
+            if other_ids:
+                read_c = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
+                read_c_ids = set(r["comment_id"] for r in (read_c.data or []))
+                comment_unread = len([i for i in other_ids if i not in read_c_ids])
+        except: pass
+        return jsonify({"count": post_unread + comment_unread})
     except Exception as e:
         return jsonify({"count": 0})
 
@@ -3404,21 +3444,36 @@ def api_board_unread_count():
 @app.route("/api/board/mark_all_read", methods=["POST"])
 @login_required
 def api_board_mark_all_read():
-    """掲示板を開いた瞬間に全投稿を既読にする"""
+    """掲示板を開いた瞬間に全投稿+全コメントを既読にする"""
     try:
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
+        # 全投稿を既読化
         all_posts = supabase.table("board_posts").select("id").eq("facility_code", f_code).execute()
         all_ids = [p["id"] for p in (all_posts.data or [])]
-        if not all_ids:
-            return jsonify({"status": "success", "count": 0})
-        existing = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
-        existing_ids = set(r["post_id"] for r in (existing.data or []))
-        to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_ids]
-        if to_insert:
-            supabase.table("board_reads").insert(to_insert).execute()
-        return jsonify({"status": "success", "count": len(to_insert)})
+        post_added = 0
+        if all_ids:
+            existing = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            existing_ids = set(r["post_id"] for r in (existing.data or []))
+            to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_ids]
+            if to_insert:
+                supabase.table("board_reads").insert(to_insert).execute()
+                post_added = len(to_insert)
+        # 自分以外作の全コメントを既読化
+        comment_added = 0
+        try:
+            ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).execute()
+            other_ids = [c["id"] for c in (ccs.data or []) if c["staff_name"] != my_name]
+            if other_ids:
+                already = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
+                already_ids = set(r["comment_id"] for r in (already.data or []))
+                cto_insert = [{"comment_id": cid, "facility_code": f_code, "staff_name": my_name} for cid in other_ids if cid not in already_ids]
+                if cto_insert:
+                    supabase.table("board_comment_reads").insert(cto_insert).execute()
+                    comment_added = len(cto_insert)
+        except: pass
+        return jsonify({"status": "success", "count": post_added + comment_added, "posts": post_added, "comments": comment_added})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
