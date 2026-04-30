@@ -1615,18 +1615,8 @@ def calendar_view():
                 calendars.append(cal)
                 seen.add(cal["id"])
 
-        # デフォルトカレンダーがなければ作成（初回のみ）
-        if not calendars:
-            default_cals = [
-                {"facility_code": f_code, "name": "マイカレンダー", "color": "#1a73e8", "is_private": True, "is_shared": False, "owner_name": my_name},
-                {"facility_code": f_code, "name": "仕事", "color": "#34a853", "is_private": False, "is_shared": True, "owner_name": my_name},
-            ]
-            for dc in default_cals:
-                r = supabase.table("calendars").insert(dc).execute()
-                if r.data:
-                    cal = r.data[0]
-                    cal["is_owner"] = True
-                    calendars.append(cal)
+        # デフォルトカレンダー自動作成は廃止（カテゴリ機能導入により）
+        # 全削除時はユーザーが意図的に削除したと判断し、再作成しない
     except Exception as e:
         print(f"calendar error: {e}")
 
@@ -1662,6 +1652,11 @@ def calendar_view():
     except Exception as e:
         print(f"events error: {e}")
 
+    # 管理者フラグをテンプレートに渡す
+    try:
+        is_admin = is_admin_user(supabase, f_code, my_name)
+    except Exception:
+        is_admin = False
     return render("calendar.html",
         calendars=calendars,
         events=events,
@@ -1670,6 +1665,7 @@ def calendar_view():
         staffs=staffs,
         cal_members=cal_members,
         my_name=my_name,
+        is_admin=is_admin,
     )
 
 @app.route('/api/save_calendar_event', methods=['POST'])
@@ -1728,14 +1724,26 @@ def api_delete_calendar():
         my_name = session["my_name"]
         supabase = get_supabase()
         
-        # カレンダーの所有者確認(オーナー or 管理者は削除可)
-        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        # カレンダーの権限確認（カテゴリで分岐）
+        cal_res = supabase.table("calendars").select("owner_name,category").eq("id", calendar_id).eq("facility_code", f_code).execute()
         if not cal_res.data:
             return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
-        is_owner = (cal_res.data[0]["owner_name"] == my_name)
+        cal_data = cal_res.data[0]
+        category = cal_data.get("category") or "PRIVATE"
+        is_owner = (cal_data["owner_name"] == my_name)
         is_admin = is_admin_user(supabase, f_code, my_name)
-        if not (is_owner or is_admin):
-            return jsonify({"status": "error", "message": "削除権限がありません"}), 403
+        # JOB: 管理者のみ削除可。PRIVATE: 作成者+招待者+管理者
+        if category == "JOB":
+            if not is_admin:
+                return jsonify({"status": "error", "message": "JOBカレンダーは管理者のみ削除できます"}), 403
+        else:
+            # PRIVATEは作成者または招待されたメンバーまたは管理者
+            is_member = False
+            if not (is_owner or is_admin):
+                mem_res = supabase.table("calendar_members").select("staff_name").eq("calendar_id", calendar_id).eq("staff_name", my_name).execute()
+                is_member = bool(mem_res.data)
+            if not (is_owner or is_admin or is_member):
+                return jsonify({"status": "error", "message": "削除権限がありません"}), 403
         
         # 関連する予定を削除
         supabase.table("calendar_events").delete().eq("calendar_id", calendar_id).execute()
@@ -1762,14 +1770,25 @@ def api_update_calendar():
         my_name = session["my_name"]
         supabase = get_supabase()
         
-        # カレンダーの所有者確認(オーナー or 管理者は編集可)
-        cal_res = supabase.table("calendars").select("owner_name").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        # カレンダーの権限確認（カテゴリで分岐）
+        cal_res = supabase.table("calendars").select("owner_name,category").eq("id", calendar_id).eq("facility_code", f_code).execute()
         if not cal_res.data:
             return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
-        is_owner = (cal_res.data[0]["owner_name"] == my_name)
+        cal_data = cal_res.data[0]
+        category = cal_data.get("category") or "PRIVATE"
+        is_owner = (cal_data["owner_name"] == my_name)
         is_admin = is_admin_user(supabase, f_code, my_name)
-        if not (is_owner or is_admin):
-            return jsonify({"status": "error", "message": "編集権限がありません"}), 403
+        # JOB: 管理者のみ編集可。PRIVATE: 作成者+招待者+管理者
+        if category == "JOB":
+            if not is_admin:
+                return jsonify({"status": "error", "message": "JOBカレンダーは管理者のみ編集できます"}), 403
+        else:
+            is_member = False
+            if not (is_owner or is_admin):
+                mem_res = supabase.table("calendar_members").select("staff_name").eq("calendar_id", calendar_id).eq("staff_name", my_name).execute()
+                is_member = bool(mem_res.data)
+            if not (is_owner or is_admin or is_member):
+                return jsonify({"status": "error", "message": "編集権限がありません"}), 403
         
         # カレンダー更新
         update_data = {}
@@ -1793,14 +1812,25 @@ def api_save_calendar():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
-        is_private = data.get("is_private", False)
+        # カテゴリ判定（デフォルトはPRIVATE）
+        category = data.get("category", "PRIVATE")
+        if category not in ("JOB", "PRIVATE"):
+            category = "PRIVATE"
+        # JOBカテゴリは管理者のみ作成可能
+        if category == "JOB":
+            if not is_admin_user(supabase, f_code, my_name):
+                return jsonify({"status": "error", "message": "JOBカレンダーは管理者のみ作成できます"}), 403
+        # is_shared/is_private はカテゴリに応じて自動設定
+        is_shared = (category == "JOB")
+        is_private = (category == "PRIVATE")
         res = supabase.table("calendars").insert({
             "facility_code": f_code,
             "name":       data["name"],
             "color":      data.get("color", "#1a73e8"),
             "is_private": is_private,
-            "is_shared":  not is_private,
+            "is_shared":  is_shared,
             "owner_name": my_name,
+            "category":   category,
         }).execute()
         return jsonify({"status": "success", "id": res.data[0]["id"] if res.data else None})
     except Exception as e:
@@ -1815,14 +1845,21 @@ def api_invite_calendar_member():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
-        # オーナー or 管理者だけ招待可能
-        cal = supabase.table("calendars").select("owner_name").eq("id", data["calendar_id"]).execute()
+        # カテゴリで招待権限を分岐
+        cal = supabase.table("calendars").select("owner_name,category").eq("id", data["calendar_id"]).execute()
         if not cal.data:
             return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
-        is_owner = (cal.data[0]["owner_name"] == my_name)
+        cal_data = cal.data[0]
+        category = cal_data.get("category") or "PRIVATE"
+        is_owner = (cal_data["owner_name"] == my_name)
         is_admin = is_admin_user(supabase, f_code, my_name)
-        if not (is_owner or is_admin):
-            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        # JOB: 管理者のみ招待可。PRIVATE: 作成者のみ
+        if category == "JOB":
+            if not is_admin:
+                return jsonify({"status": "error", "message": "JOBカレンダーへの招待は管理者のみ可能です"}), 403
+        else:
+            if not (is_owner or is_admin):
+                return jsonify({"status": "error", "message": "招待は作成者のみ可能です"}), 403
         # メンバー追加（重複は無視）
         for staff_name in data.get("staff_names", []):
             try:
