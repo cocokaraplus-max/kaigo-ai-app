@@ -3304,6 +3304,20 @@ def board():
     comments_count = {}
     reactions_data = {}
     read_data = {}
+    # === カテゴリー機能 ===
+    board_categories = []
+    post_categories = {}
+    is_admin_flag = False
+    try:
+        is_admin_flag = is_admin_user(supabase, f_code, my_name)
+    except Exception:
+        is_admin_flag = False
+    try:
+        cat_res = supabase.table("board_categories").select("*").eq("facility_code", f_code).order("sort_order").order("id").execute()
+        board_categories = cat_res.data or []
+    except Exception as e:
+        print(f"board_categories error: {e}")
+        board_categories = []
     try:
         if post_ids:
             # 自分以外が書いた全コメントを取得(未読対象)
@@ -3338,6 +3352,14 @@ def board():
                 pid = r["post_id"]
                 if pid not in read_data: read_data[pid] = []
                 read_data[pid].append(r["staff_name"])
+            # 投稿ごとのカテゴリー情報をマップ化
+            try:
+                posts_with_cat = supabase.table("board_posts").select("id,category_id").in_("id", post_ids).execute()
+                for p in (posts_with_cat.data or []):
+                    if p.get("category_id"):
+                        post_categories[p["id"]] = p["category_id"]
+            except Exception as e:
+                print(f"post_categories error: {e}")
     except Exception as e:
         print(f"board detail error: {e}")
     staffs = [name for name in icons.keys()]
@@ -3370,6 +3392,8 @@ def board():
         my_color=staff_color(my_name), my_initial=staff_initial(my_name),
         comments_count=comments_count, reactions_data=reactions_data,
         read_data=read_data, staffs=staffs,
+        board_categories=board_categories, post_categories=post_categories,
+        is_admin=is_admin_flag,
         patient_names=patient_names,
         is_board_editor=is_board_editor,
         supabase_url=get_secret("SUPABASE_URL"),
@@ -3911,6 +3935,104 @@ register_patient_info_routes(app)
 
 from patient_info_import_integration import register_import_routes
 register_import_routes(app)
+
+
+
+# ===== 掲示板カテゴリー管理API =====
+@app.route("/api/board_categories", methods=["GET"])
+@login_required
+def api_board_categories_list():
+    """カテゴリー一覧取得"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("board_categories").select("*").eq("facility_code", f_code).order("sort_order").order("id").execute()
+        return jsonify({"status": "success", "categories": res.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/board_categories/save", methods=["POST"])
+@login_required
+def api_board_categories_save():
+    """カテゴリー作成・編集(管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        payload = {
+            "name": (data.get("name") or "").strip(),
+            "color": data.get("color") or "#1a73e8",
+            "sort_order": int(data.get("sort_order") or 0),
+        }
+        if not payload["name"]:
+            return jsonify({"status": "error", "message": "カテゴリー名を入力してください"}), 400
+        if cat_id:
+            # 編集
+            supabase.table("board_categories").update(payload).eq("id", cat_id).eq("facility_code", f_code).execute()
+        else:
+            # 新規作成
+            payload["facility_code"] = f_code
+            payload["created_by"] = my_name
+            r = supabase.table("board_categories").insert(payload).execute()
+            cat_id = r.data[0]["id"] if r.data else None
+        return jsonify({"status": "success", "id": cat_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/board_categories/delete", methods=["POST"])
+@login_required
+def api_board_categories_delete():
+    """カテゴリー削除(管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        if not cat_id:
+            return jsonify({"status": "error", "message": "IDが必要です"}), 400
+        # 削除前に、このカテゴリーを使っている投稿のcategory_idをNULLにする
+        supabase.table("board_posts").update({"category_id": None}).eq("category_id", cat_id).eq("facility_code", f_code).execute()
+        # カテゴリー本体を削除
+        supabase.table("board_categories").delete().eq("id", cat_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/board/update_category", methods=["POST"])
+@login_required
+def api_board_update_category():
+    """投稿のカテゴリー変更(管理者または投稿者本人)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        post_id = data.get("post_id")
+        category_id = data.get("category_id")  # null可(未分類)
+        if not post_id:
+            return jsonify({"status": "error", "message": "post_idが必要です"}), 400
+        # 権限チェック: 管理者 or 投稿者本人
+        post_res = supabase.table("board_posts").select("staff_name").eq("id", post_id).eq("facility_code", f_code).execute()
+        if not post_res.data:
+            return jsonify({"status": "error", "message": "投稿が見つかりません"}), 404
+        is_owner = (post_res.data[0]["staff_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        # 更新(category_idがNoneの場合はNULLに)
+        update_data = {"category_id": category_id if category_id else None}
+        supabase.table("board_posts").update(update_data).eq("id", post_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)

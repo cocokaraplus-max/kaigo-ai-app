@@ -624,8 +624,15 @@ window.markEndTimeManual = function() {
 };
 
 // ===== 色重複アラート再表示制御 =====
-// 直近に×で閉じた時の同色組み合わせを記録(同じ組み合わせなら再表示しない)
-window._dismissedColorSet = null;
+// ×で閉じたかどうかのフラグ(新規追加までは再表示しない)
+window._alertDismissed = false;
+// ページロード時にsessionStorageをチェックして、新規追加直後ならフラグをリセット
+try {
+    if (sessionStorage.getItem('cal_alert_reset') === '1') {
+        window._alertDismissed = false;
+        sessionStorage.removeItem('cal_alert_reset');
+    }
+} catch(e) {}
 
 const STICKERS     = {{ stickers | tojson }};
 const STAFFS       = {{ staffs | tojson }};
@@ -1049,6 +1056,11 @@ window.saveEvent = async function() {
         notify_before: parseInt(document.getElementById('ev-notify').value),
         memo: document.getElementById('ev-memo').value,
     };
+    // 新規予定追加直前: アラート非表示フラグを次回リロード後リセットするため
+    // sessionStorageに「次回のチェックで表示する」マーカーを置く
+    try {
+        sessionStorage.setItem('cal_alert_reset', '1');
+    } catch(e) {}
     const res = await fetch('/api/save_calendar_event', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
@@ -1840,12 +1852,9 @@ document.addEventListener('click', function(e) {
             return colorMap[c] >= 2;
         });
 
-        if (duplicateColors.length === 0) {
-            window._dismissedColorSet = null;
-            return;
-        }
-        var currentKey = duplicateColors.slice().sort().join('|');
-        if (window._dismissedColorSet === currentKey) return;
+        if (duplicateColors.length === 0) return;
+        // 一度×で閉じたら、新規予定追加があるまで再表示しない
+        if (window._alertDismissed === true) return;
 
         // 同月内で表示されている期間バーのみを対象としたいので、 .other-month の中だけのバーは除外したい
         // ...現状のロジックでは隣月の薄色マスク部分も同色で混ざる可能性があるため、同色判定は単純に色だけで行う
@@ -1892,10 +1901,8 @@ document.addEventListener('click', function(e) {
             'line-height:1'
         ].join(';');
         closeBtn.onclick = function() {
-            // 現在の重複色組み合わせを記憶(同じ組み合わせなら再表示しない)
-            try {
-                window._dismissedColorSet = duplicateColors.slice().sort().join('|');
-            } catch(e) {}
+            // ×で閉じたら、次に新規予定が追加されるまで再表示しない
+            window._alertDismissed = true;
             banner.remove();
         };
         banner.appendChild(closeBtn);
