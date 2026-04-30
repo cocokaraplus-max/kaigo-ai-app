@@ -1611,7 +1611,7 @@ def calendar_view():
         seen = set()
         for cal in own_cals + invited_cals + shared_cals:
             if cal["id"] not in seen:
-                cal["is_owner"] = (cal.get("owner_name") == my_name)
+                cal["is_owner"] = (cal.get("owner_name") == my_name) or is_admin_user(supabase, f_code, my_name)
                 calendars.append(cal)
                 seen.add(cal["id"])
 
