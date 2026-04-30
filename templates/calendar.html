@@ -1248,11 +1248,49 @@ window.toggleCalSubmenu = function(e, calId) {
 window.onCalMenuItemClick = function(e, calId) {
   // ignore clicks on more button or submenu
   if (e && e.target && (e.target.closest('.cal-menu-more') || e.target.closest('.cal-submenu'))) return;
-  // sync active class on both menu item and hidden chip (for existing JS)
+  // 「すべて」の場合は全カレンダーを連動させる
+  if (calId === 'all') {
+    var allItem = document.querySelector('.cal-menu-item[data-id="all"]');
+    if (!allItem) return;
+    // 現在のactive状態を反転させた値を全カレンダーに適用
+    var willBeActive = !allItem.classList.contains('active');
+    // 「すべて」自体をトグル
+    allItem.classList.toggle('active');
+    // 全ての個別カレンダーを同じ状態に揃える
+    document.querySelectorAll('.cal-menu-item').forEach(function(item) {
+      var id = item.dataset.id;
+      if (!id || id === 'all') return;
+      var isActive = item.classList.contains('active');
+      if (willBeActive && !isActive) {
+        item.classList.add('active');
+        if (typeof window.toggleCalendar === 'function') window.toggleCalendar(id);
+      } else if (!willBeActive && isActive) {
+        item.classList.remove('active');
+        if (typeof window.toggleCalendar === 'function') window.toggleCalendar(id);
+      }
+    });
+    return;
+  }
+  // 個別カレンダーのトグル
   var menuItem = document.querySelector('.cal-menu-item[data-id="' + calId + '"]');
   if (menuItem) menuItem.classList.toggle('active');
-  // call the existing toggleCalendar to keep behavior consistent
   if (typeof window.toggleCalendar === 'function') window.toggleCalendar(calId);
+  // 個別カレンダーの状態に応じて「すべて」の状態を更新
+  // - すべての個別カレンダーがactive → 「すべて」もactive
+  // - 1つでも非active → 「すべて」を非active
+  var allItem2 = document.querySelector('.cal-menu-item[data-id="all"]');
+  if (allItem2) {
+    var allCals = document.querySelectorAll('.cal-menu-item[data-id]:not([data-id="all"])');
+    var allActive = true;
+    allCals.forEach(function(c) {
+      if (!c.classList.contains('active')) allActive = false;
+    });
+    if (allActive) {
+      allItem2.classList.add('active');
+    } else {
+      allItem2.classList.remove('active');
+    }
+  }
 };
 window.closeAllCalMenus = function() {
   var m = document.getElementById('cal-menu');
