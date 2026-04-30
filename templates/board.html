@@ -32,12 +32,14 @@
 /* ヘッダー+タブ+検索バーを1つのスティッキー領域にする */
 .board-sticky-stack {
     position: sticky;
-    top: 0;
+    top: -1px; /* 1px上に食い込ませて隙間を完全に消す */
     z-index: 100;
     background: #f1f3f4;
     /* page-wrapper の padding (1.5rem 1.2rem) を相殺してフルブリード化 */
     margin: -1.5rem -1.2rem 1rem -1.2rem;
     padding: 1.5rem 1.2rem 0 1.2rem;
+    /* 上方向にも背景を広げて、stickyで止まったときの上の隙間を完全カバー */
+    box-shadow: 0 -10px 0 #f1f3f4;
 }
 
 .board-tabs {
