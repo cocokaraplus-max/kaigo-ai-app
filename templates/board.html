@@ -21,23 +21,28 @@
 .new-post-btn .material-symbols-outlined { font-size: 22px; color: white; }
 
 /* ========== 検索バー ========== */
-/* ========== カテゴリータブ ========== */
+/* ========== カテゴリータブ(付箋風sticky) ========== */
 .board-tabs {
     display: flex;
     gap: 6px;
-    padding: 10px 12px 6px 12px;
+    padding: 10px 12px 10px 12px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    background: #fff;
-    border-bottom: 1px solid #f0f0f0;
+    background: linear-gradient(180deg, #fff 0%, #f8f9fa 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 1px solid #e0e0e0;
 }
 .board-tabs::-webkit-scrollbar { display: none; }
 .board-tab {
     flex-shrink: 0;
-    padding: 6px 12px;
-    border-radius: 16px;
+    padding: 8px 14px 10px 14px;
+    border-radius: 8px 8px 2px 2px;
     border: 1.5px solid #e0e0e0;
+    border-bottom: 3px solid #e0e0e0;
     background: #fff;
     color: #5f6368;
     font-size: 0.82rem;
@@ -48,20 +53,30 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
-.board-tab:hover { background: #f8f9fa; }
+.board-tab:hover {
+    background: #f8f9fa;
+    transform: translateY(-1px);
+}
 .board-tab.active {
     background: #1a73e8;
     color: #fff;
     border-color: #1a73e8;
+    border-bottom-color: #1557b0;
+    box-shadow: 0 2px 6px rgba(26,115,232,0.3);
+    transform: translateY(-2px);
 }
 .board-tab.unread-tab {
     border-color: #ea4335;
+    border-bottom-color: #c5221f;
     color: #ea4335;
 }
 .board-tab.unread-tab.active {
     background: #ea4335;
     color: #fff;
+    box-shadow: 0 2px 6px rgba(234,67,53,0.3);
 }
 .board-tab-count {
     background: rgba(255,255,255,0.3);
@@ -78,9 +93,10 @@
 .board-tab-add {
     flex-shrink: 0;
     width: 30px;
-    height: 30px;
-    border-radius: 50%;
+    height: 32px;
+    border-radius: 8px 8px 2px 2px;
     border: 1.5px dashed #1a73e8;
+    border-bottom: 3px dashed #1a73e8;
     background: #fff;
     color: #1a73e8;
     font-size: 18px;
@@ -90,7 +106,72 @@
     justify-content: center;
     line-height: 1;
 }
-.board-tab-add:hover { background: #e8f0fe; }
+.board-tab-add:hover { background: #e8f0fe; transform: translateY(-1px); }
+
+/* ========== カテゴリー管理モーダル ========== */
+.cat-mgr-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    margin: 12px 0;
+}
+.cat-mgr-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: #fff;
+}
+.cat-mgr-color-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #e0e0e0;
+}
+.cat-mgr-name {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #202124;
+}
+.cat-mgr-actions {
+    display: flex;
+    gap: 4px;
+}
+.cat-mgr-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    color: #5f6368;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.cat-mgr-btn:hover { background: #f1f3f4; }
+.cat-mgr-btn.delete:hover { background: #fce8e6; color: #ea4335; }
+.cat-color-picker {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+}
+.cat-color-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+.cat-color-dot.selected {
+    border-color: #202124;
+    transform: scale(1.1);
+}
 
 /* ========== 投稿カードのカテゴリーバッジ ========== */
 .post-category-badge {
@@ -921,6 +1002,50 @@ body.modal-open .bottom-nav {
 </div>
 
 <!-- 投稿編集モーダル -->
+<!-- ========== カテゴリー管理モーダル(管理者専用) ========== -->
+<div class="post-modal" id="cat-mgr-modal" style="display:none;">
+    <div class="post-modal-content" style="max-width:500px;">
+        <div class="post-modal-header">
+            <div class="post-modal-title">カテゴリー管理</div>
+            <button class="post-modal-close" onclick="closeCategoryManager()" aria-label="閉じる">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div style="padding:0 16px 16px 16px;">
+            <!-- 既存カテゴリー一覧 -->
+            <div class="cat-mgr-list" id="cat-mgr-list"></div>
+            <!-- 追加・編集フォーム -->
+            <div style="border-top:1px solid #e0e0e0;padding-top:12px;">
+                <div style="font-size:0.82rem;font-weight:700;color:#202124;margin-bottom:8px;" id="cat-mgr-form-title">新しいカテゴリーを追加</div>
+                <input type="hidden" id="cat-mgr-edit-id" value="">
+                <input type="text" id="cat-mgr-name" placeholder="カテゴリー名(例:お知らせ、業務連絡)" 
+                    style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:0.9rem;margin-bottom:8px;box-sizing:border-box;">
+                <div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">色を選択</div>
+                <div class="cat-color-picker" id="cat-mgr-color-picker">
+                    <div class="cat-color-dot selected" style="background:#1a73e8;" data-color="#1a73e8" onclick="selectCatColor('#1a73e8')"></div>
+                    <div class="cat-color-dot" style="background:#34a853;" data-color="#34a853" onclick="selectCatColor('#34a853')"></div>
+                    <div class="cat-color-dot" style="background:#fbbc04;" data-color="#fbbc04" onclick="selectCatColor('#fbbc04')"></div>
+                    <div class="cat-color-dot" style="background:#ea4335;" data-color="#ea4335" onclick="selectCatColor('#ea4335')"></div>
+                    <div class="cat-color-dot" style="background:#9334e6;" data-color="#9334e6" onclick="selectCatColor('#9334e6')"></div>
+                    <div class="cat-color-dot" style="background:#0d9488;" data-color="#0d9488" onclick="selectCatColor('#0d9488')"></div>
+                    <div class="cat-color-dot" style="background:#f97316;" data-color="#f97316" onclick="selectCatColor('#f97316')"></div>
+                    <div class="cat-color-dot" style="background:#5f6368;" data-color="#5f6368" onclick="selectCatColor('#5f6368')"></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button onclick="resetCatForm()" id="cat-mgr-cancel-btn" 
+                        style="flex:1;padding:10px;border:1.5px solid #e0e0e0;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#5f6368;display:none;">
+                        キャンセル
+                    </button>
+                    <button onclick="saveCategoryFromModal()" id="cat-mgr-save-btn"
+                        style="flex:1;padding:10px;border:none;background:#1a73e8;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">
+                        追加
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="post-modal" id="edit-modal">
     <div class="post-sheet">
         <div class="post-sheet-handle"></div>
@@ -1064,9 +1189,131 @@ setTimeout(function() {
     if (typeof window.updateUnreadCount === 'function') updateUnreadCount();
 }, 200);
 
-// ===== カテゴリー管理画面(プレースホルダ・段階2で実装) =====
+// ===== カテゴリー管理機能 =====
+window._selectedCatColor = '#1a73e8';
+window._editingCatId = null;
+
 window.openCategoryManager = function() {
-    alert('カテゴリー管理機能は近日実装予定です');
+    if (!IS_BOARD_ADMIN) {
+        alert('管理者のみ操作できます');
+        return;
+    }
+    resetCatForm();
+    renderCatMgrList();
+    var modal = document.getElementById('cat-mgr-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+    }
+};
+
+window.closeCategoryManager = function() {
+    var modal = document.getElementById('cat-mgr-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+};
+
+window.renderCatMgrList = function() {
+    var listEl = document.getElementById('cat-mgr-list');
+    if (!listEl) return;
+    if (!BOARD_CATEGORIES || BOARD_CATEGORIES.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;font-size:0.85rem;">カテゴリーがまだありません</div>';
+        return;
+    }
+    var html = '';
+    BOARD_CATEGORIES.forEach(function(cat) {
+        html += '<div class="cat-mgr-item">' +
+            '<div class="cat-mgr-color-dot" style="background:' + cat.color + ';"></div>' +
+            '<div class="cat-mgr-name">' + cat.name + '</div>' +
+            '<div class="cat-mgr-actions">' +
+                '<button class="cat-mgr-btn" onclick="editCategory(' + cat.id + ')" aria-label="編集">' +
+                    '<span class="material-symbols-outlined" style="font-size:18px;">edit</span>' +
+                '</button>' +
+                '<button class="cat-mgr-btn delete" onclick="deleteCategoryConfirm(' + cat.id + ', \'' + cat.name.replace(/'/g, "\\'") + '\')" aria-label="削除">' +
+                    '<span class="material-symbols-outlined" style="font-size:18px;">delete</span>' +
+                '</button>' +
+            '</div>' +
+        '</div>';
+    });
+    listEl.innerHTML = html;
+};
+
+window.selectCatColor = function(color) {
+    window._selectedCatColor = color;
+    document.querySelectorAll('#cat-mgr-color-picker .cat-color-dot').forEach(function(dot) {
+        dot.classList.toggle('selected', dot.dataset.color === color);
+    });
+};
+
+window.editCategory = function(catId) {
+    var cat = BOARD_CATEGORIES.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    window._editingCatId = catId;
+    document.getElementById('cat-mgr-edit-id').value = catId;
+    document.getElementById('cat-mgr-name').value = cat.name;
+    document.getElementById('cat-mgr-form-title').textContent = 'カテゴリーを編集';
+    document.getElementById('cat-mgr-save-btn').textContent = '更新';
+    document.getElementById('cat-mgr-cancel-btn').style.display = '';
+    selectCatColor(cat.color);
+};
+
+window.resetCatForm = function() {
+    window._editingCatId = null;
+    document.getElementById('cat-mgr-edit-id').value = '';
+    document.getElementById('cat-mgr-name').value = '';
+    document.getElementById('cat-mgr-form-title').textContent = '新しいカテゴリーを追加';
+    document.getElementById('cat-mgr-save-btn').textContent = '追加';
+    document.getElementById('cat-mgr-cancel-btn').style.display = 'none';
+    selectCatColor('#1a73e8');
+};
+
+window.saveCategoryFromModal = async function() {
+    var name = (document.getElementById('cat-mgr-name').value || '').trim();
+    if (!name) {
+        alert('カテゴリー名を入力してください');
+        return;
+    }
+    var payload = {
+        name: name,
+        color: window._selectedCatColor,
+    };
+    if (window._editingCatId) payload.id = window._editingCatId;
+    try {
+        var res = await fetch('/api/board_categories/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('保存に失敗しました: ' + (data.message || ''));
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+};
+
+window.deleteCategoryConfirm = async function(catId, catName) {
+    if (!confirm('「' + catName + '」を削除しますか?\nこのカテゴリーが設定されている投稿は「未分類」になります。')) return;
+    try {
+        var res = await fetch('/api/board_categories/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: catId})
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('削除に失敗しました: ' + (data.message || ''));
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
 };
 
 const READ_DATA       = {{ read_data | tojson }};
