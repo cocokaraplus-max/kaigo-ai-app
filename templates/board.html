@@ -35,8 +35,9 @@
     top: 0;
     z-index: 100;
     background: #f1f3f4;
-    margin: 0 -16px; /* 親の余白を相殺してフルブリード化 */
-    padding: 0 16px;
+    /* page-wrapper の padding (1.5rem 1.2rem) を相殺してフルブリード化 */
+    margin: -1.5rem -1.2rem 1rem -1.2rem;
+    padding: 1.5rem 1.2rem 0 1.2rem;
 }
 
 .board-tabs {
@@ -2907,5 +2908,93 @@ window.closePostDetail = function() {
 })();
 
 })();
+
+// ===== モーダル開閉時に下部ナビを隠す(透過防止) =====
+(function() {
+    var navHiddenCount = 0;
+    function hideBottomNavForModal() {
+        navHiddenCount++;
+        var nav = document.querySelector('.bottom-nav');
+        if (nav) nav.style.display = 'none';
+    }
+    function restoreBottomNavAfterModal() {
+        navHiddenCount = Math.max(0, navHiddenCount - 1);
+        if (navHiddenCount === 0) {
+            var nav = document.querySelector('.bottom-nav');
+            if (nav) nav.style.display = '';
+        }
+    }
+    // .post-modal の show クラス変化を監視
+    document.querySelectorAll('.post-modal').forEach(function(modal) {
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                if (m.type === 'attributes' && m.attributeName === 'class') {
+                    if (modal.classList.contains('show')) {
+                        if (!modal.dataset.navHidden) {
+                            modal.dataset.navHidden = '1';
+                            hideBottomNavForModal();
+                        }
+                    } else {
+                        if (modal.dataset.navHidden) {
+                            delete modal.dataset.navHidden;
+                            restoreBottomNavAfterModal();
+                        }
+                    }
+                }
+            });
+        });
+        observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    });
+    // 動的に作られるモーダル系(post-action-sheet, cat-set-sheet, image-viewer)も対応
+    var bodyObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(node) {
+                if (node.nodeType !== 1) return;
+                var ids = ['post-action-sheet', 'cat-set-sheet'];
+                if (ids.indexOf(node.id) !== -1 || (node.classList && (node.classList.contains('post-modal') || node.classList.contains('cat-set-sheet')))) {
+                    if (!node.dataset.navHidden) {
+                        node.dataset.navHidden = '1';
+                        hideBottomNavForModal();
+                        // 削除されたら戻す
+                        var rmObserver = new MutationObserver(function() {
+                            if (!document.body.contains(node)) {
+                                rmObserver.disconnect();
+                                if (node.dataset.navHidden) {
+                                    delete node.dataset.navHidden;
+                                    restoreBottomNavAfterModal();
+                                }
+                            }
+                        });
+                        rmObserver.observe(document.body, { childList: true, subtree: true });
+                    }
+                }
+            });
+            m.removedNodes.forEach(function(node) {
+                if (node.nodeType !== 1) return;
+                if (node.dataset && node.dataset.navHidden) {
+                    delete node.dataset.navHidden;
+                    restoreBottomNavAfterModal();
+                }
+            });
+        });
+    });
+    bodyObserver.observe(document.body, { childList: true });
+    // image-viewer も対応 (display 切替で表示制御されている)
+    var imgViewer = document.getElementById('image-viewer');
+    if (imgViewer) {
+        var imgObs = new MutationObserver(function() {
+            var visible = getComputedStyle(imgViewer).display !== 'none';
+            if (visible && !imgViewer.dataset.navHidden) {
+                imgViewer.dataset.navHidden = '1';
+                hideBottomNavForModal();
+            } else if (!visible && imgViewer.dataset.navHidden) {
+                delete imgViewer.dataset.navHidden;
+                restoreBottomNavAfterModal();
+            }
+        });
+        imgObs.observe(imgViewer, { attributes: true, attributeFilter: ['style'] });
+    }
+})();
+
 </script>
 {% endblock %}
