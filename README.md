@@ -2,9 +2,9 @@
 
 ## 📍 現在の状況サマリ
 
-**掲示板UI大幅刷新セッション完了**。第4セッションでは、掲示板にカテゴリー機能(タブ式UI + フィルタ + 既存投稿への割当)を完全実装し、見た目も整えた。
-現在は **dev `tasukaru-dev` ブランチ** に push 済みで、**Cloud Run デプロイも完了・動作確認済み**。
-本番(production)には**まだマージしていない** — 動作確認後にマージ予定。
+**掲示板UI大幅刷新セッション完了 + dev/本番両方デプロイ完了**。第4セッションでは、掲示板にカテゴリー機能(タブ式UI + フィルタ + 既存投稿への割当)を完全実装し、見た目も整えた。
+**本番マージ + 本番Supabaseテーブル作成 + 動作確認すべて完了**。dev (`tasukaru-dev` Cloud Run) と 本番 (`tasukaru` Cloud Run) の両方で動作中。
+本番URL(`tasukaru-191764727533.asia-northeast1.run.app/board`)で実ユーザー(岸本さん他)がコンパクト化された新UIで投稿確認済み。
 
 ### 第4セッションでの主な成果
 1. **カレンダー色重複アラート機能を完全削除** (ユーザー要望で機能廃止)
@@ -16,7 +16,12 @@
 7. **未読カウント即時更新**: ✅トグル後にREACTIONS_DATAキャッシュ更新+再計算
 8. **ヘッダー完全sticky化**: タイトル+投稿ボタン+タブ+検索バーが常時上部固定
 9. **モーダル透過バグ修正**: bottom-navをモーダル開閉時に display:none で隠す
-10. **Supabase RLS問題解決**: `board_categories` テーブルの RLS無効化
+10. **Supabase RLS問題解決**: `board_categories` テーブルの RLS無効化 (devプロジェクト)
+11. **選択中カテゴリータブの文字色修正**: 背景色=カテゴリー色、文字=白で視認性確保(`!important`)
+12. **ヘッダーコンパクト化**: 188px → 132px (56px節約)、「掲示板」タイトルが画面上端ギリギリ
+13. **box-shadow による隙間カバー**: `0 -50px 0 #f1f3f4` で sticky上部の透けを完全解消
+14. **本番マージ完了**: `tasukaru-dev` → `tasukaru` ブランチ自動マージワークフローによりCloud Build/Runへデプロイ
+15. **本番Supabase `board_categories` テーブル作成**: 本番のSupabaseプロジェクト `kaigo-ai-app` (`abvglnkwtdeoaazyqwyd`) にテーブル作成 + RLS無効化 + `board_posts.category_id` カラム追加
 
 ---
 
@@ -359,16 +364,53 @@ fetch('https://raw.githubusercontent.com/cocokaraplus-max/kaigo-ai-app/tasukaru-
 17. **🆕 sed パターンは現実のファイルとの乖離に弱い** — 私が想定したコメント文や改行を含むパターンが実ファイルと微妙に違うと一切マッチしない。「直前の行が短く、安定しているコード行」をアンカーにして、その**直後に挿入**する正規表現の方が壊れにくい。
 18. **🆕 一連の修正で複数スクリプト実行する場合、確認は機械的に** — `grep -c` でキーワード出現数を測ると「適用済みかどうか」が一発でわかる。app.py の `category_id` 出現数を確認して、過去のセッションで既に修正済みだったことを発見できた。
 19. **🆕 ファイルの中身を grep で確認 → スクリプト未適用が判明** という流れは強力。`raise SystemExit(1)` で止まったときファイルは無傷なので、慌てずに状態確認すれば良い。
+20. **🆕 本番マージは GitHub の自動マージワークフローを確認** — リポジトリに `.github/workflows/auto-merge.yml` のような自動マージが設定されている場合、`tasukaru-dev` への push 後しばらくすると自動的に `tasukaru` にもマージされる。`git log origin/tasukaru --oneline` で `Merge branch 'tasukaru-dev' into tasukaru` のコミットを見つけて状態を確認できる。
+21. **🆕 `git status` の "Changes not staged for commit" は実は既にコミット済みのことがある** — VSCodeなど他の経路で何かファイル変更を加えた場合、ターミナルで `git status` が「modified」と表示するが、実際は最新コミットに含まれていることがある。`git diff origin/<branch> -- <file>` でリモートとの真の差分を確認するのが確実。
+22. **🆕 cssの `box-shadow` は擬似要素より安全** — `position: sticky` の上方向の透け対策で、擬似要素 `::before { top: -100px }` は親や周辺要素を覆い隠すリスクがある。代わりに対象要素の `box-shadow: 0 -50px 0 #color` を使うと、自分自身の影として描画されるので位置ずれ・覆い隠しが起きない。
+23. **🆕 `position: sticky` の停止位置は親の padding を考慮** — 親要素に `padding: 1.5rem` がある場合、その内側に sticky を置くと「停止位置 = 親のpadding上端」になる。ピクセル単位で隙間を消すには `top: -1px` で1px食い込ませる + box-shadow で上方向にも背景を伸ばす2段構えが必要。
+24. **🆕 Chrome経由で実機CSSをライブ調整できる** — `getComputedStyle` で値を取得しながら、`element.style.cssText` で即時変更を試して見栄えを確認できる。本番に反映する前に最適値を見つけられるのでデザイン調整に最適。
+25. **🆕 dev と 本番でSupabaseプロジェクトが別** — TASUKARUは dev (`tasukaru-dev` プロジェクト, ID `otjevnmoycnvaxeltrtj`) と 本番 (`kaigo-ai-app` プロジェクト, ID `abvglnkwtdeoaazyqwyd`) で**別々のSupabaseプロジェクト**を使用。新しいテーブルを作成したら**両方に反映**する必要がある。dev側だけでテストして満足するとPostgRESTエラー `PGRST205 Could not find the table 'public.<table_name>' in the schema cache` で本番が壊れる。
+26. **🆕 Supabase は新規テーブル作成時に RLS有効化を強く推奨** — `CREATE TABLE` 実行時に「Run without RLS / Run and enable RLS」のダイアログが出る。他の `board_*` テーブルが全部 RLS無効ならば、新テーブルも `Run without RLS` を選んで統一性を保つ。後から `ALTER TABLE ... DISABLE ROW LEVEL SECURITY;` を実行する手間も省ける。
 
 ---
 
 ## 📋 第4セッションで触ったファイル
-- `app.py` — `create_post`/`update_post` に `category_id` 受付追加 (実は前セッションで対応済みだった)
-- `templates/board.html` — タブUI / カテゴリー管理 / カテゴリー選択UI / sticky化 / モーダル透過対策
+- `app.py` — `create_post`/`update_post` に `category_id` 受付追加、`board()` ルートにカテゴリー取得処理追加
+- `templates/board.html` — タブUI / カテゴリー管理 / カテゴリー選択UI / sticky化 / モーダル透過対策 / ヘッダーコンパクト化(188→132px)
 - `templates/calendar.html` — 色重複アラート機能を完全削除
-- Supabase: `board_categories` テーブルの RLS を `DISABLE` に変更
+- `README.md` — 第4セッションの引き継ぎとして全面更新
+
+## 📋 第4セッションでのSupabase操作
+**dev環境 `tasukaru-dev` (`otjevnmoycnvaxeltrtj`):**
+- `board_categories` テーブルの RLS を `DISABLE` に変更 (テーブルは過去のセッションで既に存在)
+
+**本番環境 `kaigo-ai-app` (`abvglnkwtdeoaazyqwyd`):**
+- `board_categories` テーブル作成 (id, facility_code, name, color, sort_order, created_by, created_at)
+- `board_categories` の RLS無効化 (Run without RLS で実行)
+- `board_posts` に `category_id` カラム追加 (FK to board_categories.id, ON DELETE SET NULL)
+- インデックス追加: `idx_board_categories_facility`, `idx_board_posts_category`
+
+実行SQL(本番):
+```sql
+CREATE TABLE IF NOT EXISTS board_categories (
+  id SERIAL PRIMARY KEY,
+  facility_code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#1a73e8',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE board_categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES board_categories(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_board_categories_facility ON board_categories(facility_code, sort_order);
+CREATE INDEX IF NOT EXISTS idx_board_posts_category ON board_posts(category_id);
+```
 
 ## 📋 次セッションでやること候補
-- 本番(productionブランチ)へマージ
 - 段階1〜段階4以外の細かい改善(あれば)
-- ユーザーフィードバック反映
+- ユーザーフィードバック反映(実ユーザーの使用感)
+- 大量のバックアップファイル(`*.bak.*`, `*.broken.*`)を `.gitignore` に追加して整理
+- 古いバックアップファイルの削除(`templates/board.html.bak.20260429*` など、半月以上前のもの)
+- 掲示板以外のページのUIも統一感のあるデザインに揃えるか検討
+- Supabaseの dev/本番の差異を防ぐためのスキーマ管理ツール導入検討(マイグレーションファイル化)
