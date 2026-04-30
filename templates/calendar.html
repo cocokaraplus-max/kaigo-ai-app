@@ -535,23 +535,25 @@
             <label class="form-label">カレンダー名</label>
             <input type="text" class="form-control" id="new-cal-name" placeholder="例：マイカレンダー・希望休・会議">
         </div>
-        <div class="form-group">
-            <label class="form-label">種類</label>
+        {% if is_admin %}
+        <div class="form-group" id="cat-select-group">
+            <label class="form-label">カテゴリ</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div id="type-private" onclick="selectCalType('private')"
+                <div id="cat-private" onclick="selectCalCategory('PRIVATE')"
                     style="border:2px solid #1a73e8;background:#e8f0fe;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
                     <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">lock</span>
-                    <div style="font-size:0.8rem;font-weight:700;color:#1a73e8;">プライベート</div>
-                    <div style="font-size:0.68rem;color:#5f6368;">自分だけ見える</div>
+                    <div style="font-size:0.8rem;font-weight:700;color:#1a73e8;">PRIVATE</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">個人用・招待で共有可</div>
                 </div>
-                <div id="type-shared" onclick="selectCalType('shared')"
+                <div id="cat-job" onclick="selectCalCategory('JOB')"
                     style="border:2px solid #e0e0e0;background:#fff;border-radius:10px;padding:10px;text-align:center;cursor:pointer;">
-                    <span class="material-symbols-outlined" style="color:#80868b;font-size:20px;">group</span>
-                    <div style="font-size:0.8rem;font-weight:700;color:#80868b;">共有</div>
-                    <div style="font-size:0.68rem;color:#5f6368;">招待した人と共有</div>
+                    <span class="material-symbols-outlined" style="color:#80868b;font-size:20px;">work</span>
+                    <div style="font-size:0.8rem;font-weight:700;color:#80868b;">JOB</div>
+                    <div style="font-size:0.68rem;color:#5f6368;">業務用・施設全員に表示</div>
                 </div>
             </div>
         </div>
+        {% endif %}
         <div class="form-group">
             <label class="form-label">色</label>
             <div class="color-picker-row" id="new-cal-color-picker">
@@ -1074,23 +1076,52 @@ window.selectCalType = function(type) {
 };
 
 // ===== 新規カレンダー =====
+window.selectedCalCategory = 'PRIVATE';
+window.selectCalCategory = function(cat) {
+    window.selectedCalCategory = cat;
+    var p = document.getElementById('cat-private');
+    var j = document.getElementById('cat-job');
+    if (!p || !j) return;
+    if (cat === 'PRIVATE') {
+        p.style.border = '2px solid #1a73e8';
+        p.style.background = '#e8f0fe';
+        p.querySelectorAll('span,div').forEach(function(el){ if(el.style.color === 'rgb(128, 134, 155)' || el.style.color==='#80868b') el.style.color = '#1a73e8'; });
+        p.children[0].style.color = '#1a73e8';
+        p.children[1].style.color = '#1a73e8';
+        j.style.border = '2px solid #e0e0e0';
+        j.style.background = '#fff';
+        j.children[0].style.color = '#80868b';
+        j.children[1].style.color = '#80868b';
+    } else {
+        j.style.border = '2px solid #34a853';
+        j.style.background = '#e6f4ea';
+        j.children[0].style.color = '#34a853';
+        j.children[1].style.color = '#34a853';
+        p.style.border = '2px solid #e0e0e0';
+        p.style.background = '#fff';
+        p.children[0].style.color = '#80868b';
+        p.children[1].style.color = '#80868b';
+    }
+};
 window.openNewCalendar = function() {
     document.getElementById('new-cal-name').value = '';
-    newCalIsPrivate = true;
-    selectCalType('private');
+    window.selectedCalCategory = 'PRIVATE';
+    if (document.getElementById('cat-private')) selectCalCategory('PRIVATE');
     document.getElementById('cal-modal').classList.add('show');
 };
 window.saveNewCalendar = async function() {
     const name = document.getElementById('new-cal-name').value.trim();
     if (!name) { alert('カレンダー名を入力してください'); return; }
+    // カテゴリ: 管理者でJOB選択中ならJOB、それ以外はPRIVATE
+    const category = window.selectedCalCategory || 'PRIVATE';
     const res = await fetch('/api/save_calendar', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({name, color: selectedNewCalColor, is_private: newCalIsPrivate})
+        body: JSON.stringify({name, color: selectedNewCalColor, category: category})
     });
     const data = await res.json();
     if (data.status === 'success') {
         location.reload();
-    } else { alert('作成に失敗しました'); }
+    } else { alert('作成に失敗しました: ' + (data.message || '')); }
 };
 
 // ===== メンバー招待 =====
