@@ -29,6 +29,19 @@
     background: #f1f3f4;
     border-bottom: 2px solid #1a73e8;
     padding: 8px 12px 0 12px;
+    /* 上方向にも背景を伸ばして、stickyで止まったタブの上の隙間が透けないようにする */
+    box-shadow: 0 -16px 0 #f1f3f4;
+    margin-top: 0;
+}
+/* スクロール時にタブの上(画面と検索バーなどの上)が透けないように、ページ自体の背景も合わせる */
+.board-tabs-wrap::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    top: -100px;
+    height: 100px;
+    background: #f1f3f4;
+    z-index: -1;
 }
 .board-tabs {
     display: flex;
