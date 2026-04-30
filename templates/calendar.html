@@ -623,16 +623,7 @@ window.markEndTimeManual = function() {
     window._endTimeManuallySet = true;
 };
 
-// ===== 色重複アラート再表示制御 =====
-// ×で閉じたかどうかのフラグ(新規追加までは再表示しない)
-window._alertDismissed = false;
-// ページロード時にsessionStorageをチェックして、新規追加直後ならフラグをリセット
-try {
-    if (sessionStorage.getItem('cal_alert_reset') === '1') {
-        window._alertDismissed = false;
-        sessionStorage.removeItem('cal_alert_reset');
-    }
-} catch(e) {}
+
 
 const STICKERS     = {{ stickers | tojson }};
 const STAFFS       = {{ staffs | tojson }};
@@ -1056,11 +1047,6 @@ window.saveEvent = async function() {
         notify_before: parseInt(document.getElementById('ev-notify').value),
         memo: document.getElementById('ev-memo').value,
     };
-    // 新規予定追加直前: アラート非表示フラグを次回リロード後リセットするため
-    // sessionStorageに「次回のチェックで表示する」マーカーを置く
-    try {
-        sessionStorage.setItem('cal_alert_reset', '1');
-    } catch(e) {}
     const res = await fetch('/api/save_calendar_event', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
@@ -1818,99 +1804,9 @@ document.addEventListener('click', function(e) {
 
     // 同色期間バー検知 + 通知バナー
     function checkSameColorBars(grid) {
-        // 既存のバナーを削除
+        // 色重複アラート機能は削除されました
         var oldBanner = document.getElementById('cal-color-advice-banner');
         if (oldBanner) oldBanner.remove();
-
-        // 連結バー(複数日のオーバーレイ)を集めて、色ごとにカウント
-        var overlays = grid.querySelectorAll('.cal-bar-connect-row');
-        if (overlays.length < 2) return;
-
-        var colorMap = {}; // {color: count}
-        var colorTitles = {}; // {color: [title, title, ...]}
-        overlays.forEach(function(bar) {
-            // 他月のセル内のバーは除外(月をまたぐ予定の半透明表示を排除)
-            if (bar.closest && bar.closest('.other-month')) return;
-            // 非表示のバーも除外
-            if (bar.offsetParent === null) return;
-            // bg色を正規化(rgb形式に統一)
-            var bg = bar.style.backgroundColor || '';
-            var bgNorm = bg.replace(/\s+/g, '').toLowerCase();
-            if (!bgNorm) return;
-            var t = (bar.textContent || '').trim().substring(0, 20);
-            if (!t) return;
-            if (!colorTitles[bgNorm]) colorTitles[bgNorm] = [];
-            // 同じタイトルは1回だけカウント(同じ予定の連続バーを除外)
-            if (colorTitles[bgNorm].indexOf(t) === -1) {
-                colorTitles[bgNorm].push(t);
-                colorMap[bgNorm] = (colorMap[bgNorm] || 0) + 1;
-            }
-        });
-
-        // 2本以上同色のバーがあれば検知
-        var duplicateColors = Object.keys(colorMap).filter(function(c) {
-            return colorMap[c] >= 2;
-        });
-
-        if (duplicateColors.length === 0) return;
-        // 一度×で閉じたら、新規予定追加があるまで再表示しない
-        if (window._alertDismissed === true) return;
-
-        // 同月内で表示されている期間バーのみを対象としたいので、 .other-month の中だけのバーは除外したい
-        // ...現状のロジックでは隣月の薄色マスク部分も同色で混ざる可能性があるため、同色判定は単純に色だけで行う
-
-        // バナー作成
-        var banner = document.createElement('div');
-        banner.id = 'cal-color-advice-banner';
-        banner.style.cssText = [
-            'position:relative',
-            'margin:0 8px 8px 8px',
-            'padding:8px 36px 8px 12px',
-            'background:#fff8e1',
-            'border:1px solid #ffd54f',
-            'border-radius:6px',
-            'color:#5d4037',
-            'font-size:0.78rem',
-            'line-height:1.4',
-            'box-shadow:0 1px 3px rgba(0,0,0,0.05)'
-        ].join(';');
-
-        // メッセージ作成: 自然な日本語にする
-        var msg = '同じ色の予定が重なっています。見分けやすくするには、それぞれ違う色を設定することをおすすめします。';
-
-        var msgSpan = document.createElement('span');
-        msgSpan.textContent = msg;
-        banner.appendChild(msgSpan);
-
-        // 閉じるボタン
-        var closeBtn = document.createElement('button');
-        closeBtn.textContent = '×';
-        closeBtn.setAttribute('aria-label', '閉じる');
-        closeBtn.style.cssText = [
-            'position:absolute',
-            'top:50%',
-            'right:8px',
-            'transform:translateY(-50%)',
-            'border:none',
-            'background:transparent',
-            'color:#5d4037',
-            'font-size:1.1rem',
-            'font-weight:600',
-            'cursor:pointer',
-            'padding:0 4px',
-            'line-height:1'
-        ].join(';');
-        closeBtn.onclick = function() {
-            // ×で閉じたら、次に新規予定が追加されるまで再表示しない
-            window._alertDismissed = true;
-            banner.remove();
-        };
-        banner.appendChild(closeBtn);
-
-        // グリッドの直前に挿入
-        if (grid.parentNode) {
-            grid.parentNode.insertBefore(banner, grid);
-        }
     }
 
     // 公開API: renderCalendar 後に呼ばれる
