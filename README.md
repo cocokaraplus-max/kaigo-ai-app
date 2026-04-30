@@ -1,12 +1,22 @@
-# TASUKARU介護AIアプリ 開発引き継ぎ(2026-04-29 第3セッション末)
+# TASUKARU介護AIアプリ 開発引き継ぎ(2026-04-30 第4セッション末)
 
 ## 📍 現在の状況サマリ
 
-掲示板に**JS構文エラー**が混入し、復旧のため `git checkout ed87a9c` でロールバック済み。
-現在は **commit `39d1a01` (rollback to ed87a9c)** が dev に push されており、**掲示板は動作中**。
+**掲示板UI大幅刷新セッション完了**。第4セッションでは、掲示板にカテゴリー機能(タブ式UI + フィルタ + 既存投稿への割当)を完全実装し、見た目も整えた。
+現在は **dev `tasukaru-dev` ブランチ** に push 済みで、**Cloud Run デプロイも完了・動作確認済み**。
+本番(production)には**まだマージしていない** — 動作確認後にマージ予定。
 
-その後、`base.html` のみに**「掲示板ページではポーリング停止」**の修正を1ファイル限定で実施・push 済み(動作確認済み)。
-ただしこれは消極的な対策。**「TOPに戻るとバッジ復活」問題が残存**。
+### 第4セッションでの主な成果
+1. **カレンダー色重複アラート機能を完全削除** (ユーザー要望で機能廃止)
+2. **掲示板タブUI実装**: 「すべて / 未読 / カテゴリー別」のタブ式フィルタリング
+3. **カテゴリー管理モーダル**: 管理者専用、追加・編集・削除・8色から選択
+4. **タブデザイン**: 整列・角丸・選択中浮上・横スクロール対応(項目増えたらスワイプ)
+5. **投稿時のカテゴリー選択UI**: 新規投稿/編集モーダルにチップ式選択
+6. **既存投稿のカテゴリー設定**: 投稿メニューから変更可能
+7. **未読カウント即時更新**: ✅トグル後にREACTIONS_DATAキャッシュ更新+再計算
+8. **ヘッダー完全sticky化**: タイトル+投稿ボタン+タブ+検索バーが常時上部固定
+9. **モーダル透過バグ修正**: bottom-navをモーダル開閉時に display:none で隠す
+10. **Supabase RLS問題解決**: `board_categories` テーブルの RLS無効化
 
 ---
 
@@ -336,3 +346,29 @@ fetch('https://raw.githubusercontent.com/cocokaraplus-max/kaigo-ai-app/tasukaru-
 - 利用者紐付け + 検索機能
 
 を実装してきた。
+
+
+---
+
+## 🧠 第4セッションで学んだこと(追記)
+
+13. **🆕 RLSは silently 拒否される** — Supabaseで CREATE TABLE するとデフォルトで RLS有効になる場合があり、ポリシーが無いと全 INSERT/UPDATE/DELETE が拒否される。エラーメッセージは `42501` で `new row violates row-level security policy`。確認SQL: `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname='public';`。同系のテーブル(他のboard_*など)とRLS設定を揃えることが重要。
+14. **🆕 stacking context は z-index の階層を分断する** — 親要素に `z-index: 0` (auto以外) + `position: relative` があると、その内部の要素は親より外には z-index で勝てない。掲示板のモーダル(z-index: 99999)が `.page-wrapper`(z-index: 0) の中にあるため、外の `.bottom-nav` より上に出られなかった。解決策: モーダル開閉時に外の要素を JS で非表示化する MutationObserver パターンが安全。
+15. **🆕 sticky 化は親のpaddingを考慮する** — `position: sticky` の要素を親の padding 内に配置すると、stickyしても親の上端paddingが見える。`.page-wrapper` の `padding: 1.5rem 1.2rem` を打ち消すには `margin: -1.5rem -1.2rem ... -1.2rem` で相殺し、内部に `padding: 1.5rem 1.2rem 0 1.2rem` で内部余白を再確保する。
+16. **🆕 擬似要素 ::before での背景延長は危険** — `top: -100px; height: 100px` のような擬似要素で背景を伸ばすと、上方向の他要素(ヘッダー等)を覆い隠してしまう事故が起きる。マージン相殺の方が安全。
+17. **🆕 sed パターンは現実のファイルとの乖離に弱い** — 私が想定したコメント文や改行を含むパターンが実ファイルと微妙に違うと一切マッチしない。「直前の行が短く、安定しているコード行」をアンカーにして、その**直後に挿入**する正規表現の方が壊れにくい。
+18. **🆕 一連の修正で複数スクリプト実行する場合、確認は機械的に** — `grep -c` でキーワード出現数を測ると「適用済みかどうか」が一発でわかる。app.py の `category_id` 出現数を確認して、過去のセッションで既に修正済みだったことを発見できた。
+19. **🆕 ファイルの中身を grep で確認 → スクリプト未適用が判明** という流れは強力。`raise SystemExit(1)` で止まったときファイルは無傷なので、慌てずに状態確認すれば良い。
+
+---
+
+## 📋 第4セッションで触ったファイル
+- `app.py` — `create_post`/`update_post` に `category_id` 受付追加 (実は前セッションで対応済みだった)
+- `templates/board.html` — タブUI / カテゴリー管理 / カテゴリー選択UI / sticky化 / モーダル透過対策
+- `templates/calendar.html` — 色重複アラート機能を完全削除
+- Supabase: `board_categories` テーブルの RLS を `DISABLE` に変更
+
+## 📋 次セッションでやること候補
+- 本番(productionブランチ)へマージ
+- 段階1〜段階4以外の細かい改善(あれば)
+- ユーザーフィードバック反映
