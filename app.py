@@ -3774,7 +3774,10 @@ def api_tasks_update():
             return jsonify({"status": "error", "message": "タスクが見つかりません"}), 404
         t = task.data[0]
         assigned = t.get("assigned_to") or []
-        if t["created_by"] != my_name and my_name not in assigned:
+        is_creator = (t["created_by"] == my_name)
+        is_assignee = (my_name in assigned)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_creator or is_assignee or is_admin):
             return jsonify({"status": "error", "message": "権限がありません"}), 403
 
         update_data = {"updated_at": datetime.now(tokyo_tz).isoformat()}
@@ -3801,8 +3804,10 @@ def api_tasks_delete():
         task = supabase.table("tasks").select("created_by").eq("id", task_id).eq("facility_code", f_code).execute()
         if not task.data:
             return jsonify({"status": "error"}), 404
-        if task.data[0]["created_by"] != my_name:
-            return jsonify({"status": "error", "message": "作成者のみ削除できます"}), 403
+        is_creator = (task.data[0]["created_by"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_creator or is_admin):
+            return jsonify({"status": "error", "message": "作成者または管理者のみ削除できます"}), 403
 
         supabase.table("tasks").delete().eq("id", task_id).execute()
         return jsonify({"status": "success"})
