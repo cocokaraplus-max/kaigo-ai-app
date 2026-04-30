@@ -127,9 +127,16 @@
     padding: 6px 12px; border-radius: 20px; border: 1.5px solid #e0e0e0;
     background: #fff; font-size: 0.8rem; font-weight: 600; cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    display: none; /* ★デフォルトは非表示。検索ヒット時または選択時のみ表示 */
 }
+/* 「全員」ボタンと選択済みチップは常に表示 */
+.assign-chip.all-chip,
+.assign-chip.selected,
+.assign-chip.matched { display: inline-block; }
 .assign-chip.selected { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
 .assign-chip.all-chip.selected { background: #e6f4ea; border-color: #34a853; color: #137333; }
+/* 検索ヒットなしのときの空メッセージ */
+#assign-empty { display: none; padding: 8px 4px; color: #80868b; font-size: 0.78rem; }
 
 /* ===== 詳細モーダル ===== */
 .task-detail-status {
@@ -240,6 +247,7 @@
                 <button class="assign-chip" data-name="{{ s }}">{{ s }}</button>
                 {% endfor %}
             </div>
+            <div id="assign-empty">該当する職員がいません</div>
             <div id="assign-selected-area" style="display:none;margin-top:6px;padding:8px;background:#e8f0fe;border-radius:10px;font-size:0.8rem;color:#1557b0;font-weight:600;">
                 選択中：<span id="assign-selected-text"></span>
             </div>
@@ -314,13 +322,42 @@ var MY_NAME = {{ my_name | tojson }};
 var ALL_STAFFS = {{ staffs | tojson }};
 
 // ===== 担当者検索フィルター =====
+// 文字列の正規化(カタカナ→ひらがな、空白除去、小文字化)
+function __normalizeAssign(s) {
+    if (s == null) return '';
+    return String(s)
+        .toLowerCase()
+        .replace(/[\u30A1-\u30F6]/g, function(c) {
+            return String.fromCharCode(c.charCodeAt(0) - 0x60);
+        })
+        .replace(/[\s\u3000]+/g, '');
+}
+
 window.filterAssignChips = function(query) {
-    var q = query.trim().toLowerCase();
+    var q = __normalizeAssign(query);
+    var hits = 0;
     document.querySelectorAll('#assign-chips .assign-chip').forEach(function(chip) {
         var name = chip.dataset.name;
-        if (name === 'all') { chip.style.display = ''; return; }
-        chip.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none';
+        // 「全員」ボタンは常に表示(CSSで処理)
+        if (name === 'all') { chip.classList.remove('matched'); return; }
+        // 選択済みは常に表示(CSSで処理)
+        if (chip.classList.contains('selected')) { chip.classList.remove('matched'); return; }
+        // 検索クエリが空なら個別チップは全部非表示
+        if (!q) { chip.classList.remove('matched'); return; }
+        // 名前で部分一致(ひらがな/カタカナ正規化)
+        var hay = __normalizeAssign(name);
+        if (hay.includes(q)) {
+            chip.classList.add('matched');
+            hits++;
+        } else {
+            chip.classList.remove('matched');
+        }
     });
+    // ヒットなしメッセージの表示制御
+    var emptyEl = document.getElementById('assign-empty');
+    if (emptyEl) {
+        emptyEl.style.display = (q && hits === 0) ? 'block' : 'none';
+    }
 };
 
 function updateAssignSelectedText() {
@@ -554,6 +591,10 @@ async function loadProjectsToSelect() {
 function openCreateModal() {
     hideBottomNav();
     loadProjectsToSelect();
+    // 担当者選択UIを初期化
+    var searchInput = document.getElementById('assign-search');
+    if (searchInput) searchInput.value = '';
+    if (typeof filterAssignChips === 'function') filterAssignChips('');
     document.getElementById('create-task-modal').classList.add('show');
 }
 
