@@ -29,19 +29,17 @@
     background: #f1f3f4;
     border-bottom: 2px solid #1a73e8;
     padding: 8px 12px 0 12px;
-    /* 上方向にも背景を伸ばして、stickyで止まったタブの上の隙間が透けないようにする */
-    box-shadow: 0 -16px 0 #f1f3f4;
-    margin-top: 0;
 }
-/* スクロール時にタブの上(画面と検索バーなどの上)が透けないように、ページ自体の背景も合わせる */
-.board-tabs-wrap::before {
-    content: '';
-    position: absolute;
-    left: 0; right: 0;
-    top: -100px;
-    height: 100px;
+/* ヘッダー(掲示板タイトル + 投稿ボタン)も同じ背景でタブと連続させる */
+.board-header {
     background: #f1f3f4;
-    z-index: -1;
+    padding: 12px 16px;
+    margin: 0 -16px; /* 親の余白を相殺してフルブリード化 */
+}
+/* 掲示板ページの本体背景を全て #f1f3f4 に統一 */
+.board-content,
+body.board-page {
+    background: #f1f3f4;
 }
 .board-tabs {
     display: flex;
