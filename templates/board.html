@@ -77,12 +77,21 @@
 .board-tab.active {
     height: 36px;
     padding: 0 16px;
-    background: #1a73e8;
-    color: #fff;
+    background: #1a73e8 !important;
+    color: #fff !important;
     border-color: #1a73e8;
     box-shadow: 0 -1px 4px rgba(0,0,0,0.08);
     font-weight: 700;
 }
+/* カテゴリータブ選択時はカテゴリー色を背景に、文字は白で見えるように
+   HTMLにインラインstyleで color/border-color が設定されているため、
+   active時はそれらをCSS変数または !important で上書きする */
+.board-tab[data-tab^="cat-"].active {
+    /* インラインstyleの color よりも CSS の !important が優先される */
+    color: #fff !important;
+}
+/* インラインstyle で border-color が指定されているので、それを背景色にもする
+   JS で active になったタブの background を border-color と同じにする処理を別途追加 */
 .board-tab.unread-tab {
     border-color: #ea4335;
     color: #ea4335;
@@ -1400,6 +1409,26 @@ const IS_BOARD_ADMIN = {{ is_admin | tojson }};
 window._currentBoardTab = 'all';
 
 window.switchBoardTab = function(tabId) {
+    // カテゴリータブの場合、active時の背景色をカテゴリー色に合わせる
+    setTimeout(function() {
+        document.querySelectorAll('.board-tab[data-tab^="cat-"]').forEach(function(t) {
+            if (t.classList.contains('active')) {
+                // インラインstyleの border-color から色を取得
+                var col = t.style.borderColor || '#1a73e8';
+                t.style.background = col;
+                t.style.color = '#fff';
+            } else {
+                // 非アクティブに戻す: インライン style.background をクリア、color を元のカテゴリー色に
+                t.style.background = '';
+                // インラインstyle.color はテンプレで設定されているので、そのまま残す
+                // ただし activeから戻った時に '#fff' のままになっている可能性があるので元の色に戻す
+                var origColor = t.dataset.origColor;
+                if (origColor) {
+                    t.style.color = origColor;
+                }
+            }
+        });
+    }, 0);
     window._currentBoardTab = tabId;
     // タブのactive状態切替
     document.querySelectorAll('.board-tab').forEach(function(t) {
@@ -1446,6 +1475,11 @@ window.updateUnreadCount = function() {
 
 // 初期化時に未読件数を計算
 document.addEventListener('DOMContentLoaded', function() {
+    // カテゴリータブの元の文字色を data-orig-color として保存(active切替で復元するため)
+    document.querySelectorAll('.board-tab[data-tab^="cat-"]').forEach(function(t) {
+        var c = t.style.color;
+        if (c) t.dataset.origColor = c;
+    });
     setTimeout(updateUnreadCount, 100);
 });
 // 念のため即時実行も(DOMContentLoadedを過ぎていた場合)
