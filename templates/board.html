@@ -2331,6 +2331,10 @@ window.toggleReaction = async function(postId, emoji) {
         });
         var data = await res.json();
         if (data.status === 'success') {
+            // REACTIONS_DATA キャッシュを最新に更新(未読カウント計算で参照される)
+            if (typeof REACTIONS_DATA !== 'undefined') {
+                REACTIONS_DATA[postId] = data.reactions;
+            }
             updateReactionsUI(postId, data.reactions);
             // 確認済み/未確認ボタンの更新
             if (emoji === '✅') {
@@ -2360,6 +2364,8 @@ window.toggleReaction = async function(postId, emoji) {
                         badge.remove();
                     }
                 }
+                // 未読カウントを即時再計算(✅トグルで未読/既読が切り替わるため)
+                if (typeof updateUnreadCount === 'function') updateUnreadCount();
             }
         }
     } catch(e) {}
