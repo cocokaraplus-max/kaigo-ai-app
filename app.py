@@ -3423,13 +3423,24 @@ def api_board_create_post():
         if audio and audio.filename:
             from utils import upload_audio_to_supabase
             audio_url = upload_audio_to_supabase(supabase, audio.read(), audio.filename, f_code)
-        res = supabase.table("board_posts").insert({
+        # カテゴリー(任意、未指定なら未分類=NULL)
+        category_id_raw = request.form.get("category_id", "").strip()
+        category_id = None
+        if category_id_raw and category_id_raw not in ("null", "undefined", "0"):
+            try:
+                category_id = int(category_id_raw)
+            except (TypeError, ValueError):
+                category_id = None
+        insert_payload = {
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
             "file_urls": [], "audio_url": audio_url,
             "mention_names": mentions, "patient_names": patient_names,
             "is_pinned": False,
-        }).execute()
+        }
+        if category_id is not None:
+            insert_payload["category_id"] = category_id
+        res = supabase.table("board_posts").insert(insert_payload).execute()
         return jsonify({"status": "success", "post_id": res.data[0]["id"] if res.data else None})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -3461,6 +3472,16 @@ def api_board_update_post():
             pn = data.get("patient_names")
             if isinstance(pn, list):
                 update_payload["patient_names"] = pn
+        # category_id の更新(明示的に渡された場合のみ。null/0/undefinedはNULL扱い)
+        if "category_id" in data:
+            cid = data.get("category_id")
+            if cid in (None, "", "null", "undefined", 0, "0"):
+                update_payload["category_id"] = None
+            else:
+                try:
+                    update_payload["category_id"] = int(cid)
+                except (TypeError, ValueError):
+                    update_payload["category_id"] = None
         supabase.table("board_posts").update(update_payload).eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
