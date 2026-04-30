@@ -21,6 +21,92 @@
 .new-post-btn .material-symbols-outlined { font-size: 22px; color: white; }
 
 /* ========== 検索バー ========== */
+/* ========== カテゴリータブ ========== */
+.board-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px 6px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+}
+.board-tabs::-webkit-scrollbar { display: none; }
+.board-tab {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border-radius: 16px;
+    border: 1.5px solid #e0e0e0;
+    background: #fff;
+    color: #5f6368;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.board-tab:hover { background: #f8f9fa; }
+.board-tab.active {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+}
+.board-tab.unread-tab {
+    border-color: #ea4335;
+    color: #ea4335;
+}
+.board-tab.unread-tab.active {
+    background: #ea4335;
+    color: #fff;
+}
+.board-tab-count {
+    background: rgba(255,255,255,0.3);
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 0.72rem;
+    min-width: 16px;
+    text-align: center;
+}
+.board-tab:not(.active) .board-tab-count {
+    background: #f1f3f4;
+    color: #5f6368;
+}
+.board-tab-add {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px dashed #1a73e8;
+    background: #fff;
+    color: #1a73e8;
+    font-size: 18px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.board-tab-add:hover { background: #e8f0fe; }
+
+/* ========== 投稿カードのカテゴリーバッジ ========== */
+.post-category-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+.post-category-badge.uncategorized {
+    background: #ea4335;
+}
+
 .board-search-bar {
     margin-bottom: 12px;
     background: #fff;
@@ -528,6 +614,23 @@ body.modal-open .bottom-nav {
 </div>
 
 <!-- 検索バー -->
+<!-- ========== カテゴリータブ ========== -->
+<div class="board-tabs" id="board-tabs">
+    <button type="button" class="board-tab active" data-tab="all" onclick="switchBoardTab('all')">すべて</button>
+    <button type="button" class="board-tab unread-tab" data-tab="unread" onclick="switchBoardTab('unread')">
+        未読 <span class="board-tab-count" id="unread-count">0</span>
+    </button>
+    {% for cat in board_categories %}
+    <button type="button" class="board-tab" data-tab="cat-{{ cat.id }}" onclick="switchBoardTab('cat-{{ cat.id }}')"
+            style="border-color:{{ cat.color }};color:{{ cat.color }};">
+        {{ cat.name }}
+    </button>
+    {% endfor %}
+    {% if is_admin %}
+    <button type="button" class="board-tab-add" onclick="openCategoryManager()" title="カテゴリー管理">+</button>
+    {% endif %}
+</div>
+
 <div class="board-search-bar">
     <div class="search-input-wrap">
         <span class="material-symbols-outlined search-icon">search</span>
@@ -551,7 +654,17 @@ body.modal-open .bottom-nav {
 </div>
 {% else %}
 {% for post in posts %}
-<div class="post-card {% if post.is_pinned %}pinned{% endif %}" id="post-{{ post.id }}" data-post-id="{{ post.id }}" onclick="showPostDetail({{ post.id }})" style="cursor:pointer;">
+<div class="post-card {% if post.is_pinned %}pinned{% endif %}" id="post-{{ post.id }}" data-post-id="{{ post.id }}" data-category-id="{{ post_categories.get(post.id, '') }}" onclick="showPostDetail({{ post.id }})" style="cursor:pointer;">
+    {% set cat_id = post_categories.get(post.id) %}
+    {% if cat_id %}
+        {% for cat in board_categories %}
+            {% if cat.id == cat_id %}
+            <div class="post-category-badge" style="background:{{ cat.color }};">{{ cat.name }}</div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+    <div class="post-category-badge uncategorized">未分類</div>
+    {% endif %}
     <div class="post-card-header">
         <!-- アバター -->
         {% set ic = icons.get(post.staff_name, {}) %}
@@ -890,6 +1003,72 @@ const STAFFS       = {{ staffs | tojson }};
 // 詳細モーダル用: サーバから受け取ったデータをJS化
 const POSTS_DATA      = {{ posts | tojson }};
 const REACTIONS_DATA  = {{ reactions_data | tojson }};
+const POST_CATEGORIES = {{ post_categories | tojson }};
+const BOARD_CATEGORIES = {{ board_categories | tojson }};
+const IS_BOARD_ADMIN = {{ is_admin | tojson }};
+
+// ===== タブ切り替え機能 =====
+window._currentBoardTab = 'all';
+
+window.switchBoardTab = function(tabId) {
+    window._currentBoardTab = tabId;
+    // タブのactive状態切替
+    document.querySelectorAll('.board-tab').forEach(function(t) {
+        t.classList.toggle('active', t.dataset.tab === tabId);
+    });
+    // 投稿フィルタリング
+    applyBoardTabFilter();
+};
+
+window.applyBoardTabFilter = function() {
+    var tab = window._currentBoardTab;
+    document.querySelectorAll('.post-card').forEach(function(card) {
+        var postId = parseInt(card.dataset.postId, 10);
+        var catId = card.dataset.categoryId ? parseInt(card.dataset.categoryId, 10) : null;
+        var show = false;
+        
+        if (tab === 'all') {
+            show = true;
+        } else if (tab === 'unread') {
+            // 未読: 自分が✅を押していない投稿
+            var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
+            show = checks.indexOf(MY_NAME) === -1;
+        } else if (tab.indexOf('cat-') === 0) {
+            // カテゴリー別: cat-{id} の形式
+            var targetCatId = parseInt(tab.substring(4), 10);
+            show = (catId === targetCatId);
+        }
+        
+        card.style.display = show ? '' : 'none';
+    });
+};
+
+// ===== 未読件数の計算と表示 =====
+window.updateUnreadCount = function() {
+    var unreadCount = 0;
+    document.querySelectorAll('.post-card').forEach(function(card) {
+        var postId = parseInt(card.dataset.postId, 10);
+        var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
+        if (checks.indexOf(MY_NAME) === -1) unreadCount++;
+    });
+    var badge = document.getElementById('unread-count');
+    if (badge) badge.textContent = unreadCount;
+};
+
+// 初期化時に未読件数を計算
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(updateUnreadCount, 100);
+});
+// 念のため即時実行も(DOMContentLoadedを過ぎていた場合)
+setTimeout(function() {
+    if (typeof window.updateUnreadCount === 'function') updateUnreadCount();
+}, 200);
+
+// ===== カテゴリー管理画面(プレースホルダ・段階2で実装) =====
+window.openCategoryManager = function() {
+    alert('カテゴリー管理機能は近日実装予定です');
+};
+
 const READ_DATA       = {{ read_data | tojson }};
 const ICONS_DATA      = {{ icons | tojson }};
 
