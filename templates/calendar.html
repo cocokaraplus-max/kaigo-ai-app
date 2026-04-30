@@ -1270,11 +1270,42 @@ window.showDayEventsModal = function(dateStr, events) {
     if (events && events.length) {
       events.forEach(function(ev) {
         var color = ev.color || '#1a73e8';
-        var time = ev.all_day ? '終日' : ((ev.start_time || '') + ' - ' + (ev.end_time || ''));
         var sticker = ev.sticker || '';
+        // 日付フォーマット用ヘルパー(YYYY-MM-DD → MM/DD)
+        var fmtDate = function(s) {
+          if (!s) return '';
+          var p = s.split('-');
+          if (p.length !== 3) return s;
+          return p[1] + '/' + p[2];
+        };
+        // 時間情報の組み立て
+        var timeStr = '';
+        if (ev.all_day) {
+          timeStr = '終日';
+        } else if (ev.start_time || ev.end_time) {
+          var st = ev.start_time || '';
+          var et = ev.end_time || '';
+          timeStr = st + (et ? ' - ' + et : '');
+        }
+        // 期間情報(複数日のみ)の組み立て
+        var periodStr = '';
+        if (ev.end_date && ev.event_date && ev.end_date !== ev.event_date) {
+          periodStr = fmtDate(ev.event_date) + ' - ' + fmtDate(ev.end_date);
+        }
+        // HTML生成
         html += '<div onclick="closeModal(\'day-events-modal\');openEditEvent(\'' + ev.id + '\')" style="padding:12px;border-left:4px solid ' + color + ';border-radius:8px;margin-bottom:8px;cursor:pointer;background:' + color + '15;">';
         html += '<div style="font-weight:700;color:#202124;">' + sticker + ' ' + ev.title + '</div>';
-        html += '<div style="font-size:0.78rem;color:#5f6368;">' + time + '</div>';
+        if (timeStr) {
+          html += '<div style="font-size:0.78rem;color:#5f6368;margin-top:4px;">🕐 ' + timeStr + '</div>';
+        }
+        if (periodStr) {
+          html += '<div style="font-size:0.78rem;color:#5f6368;margin-top:2px;">📅 ' + periodStr + '</div>';
+        }
+        if (ev.memo && ev.memo.trim()) {
+          // メモはエスケープして改行も保持
+          var memoEscaped = ev.memo.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+          html += '<div style="font-size:0.78rem;color:#5f6368;margin-top:4px;padding-top:6px;border-top:1px dashed ' + color + '40;">📝 ' + memoEscaped + '</div>';
+        }
         html += '</div>';
       });
     }
