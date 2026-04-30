@@ -722,7 +722,6 @@ function renderMonth() {
         const isToday = dateStr === todayStr;
         const numCls = dow===0?'sun':dow===6?'sat':'';
         const evs = eventsByDate[dateStr] || [];
-        const stickers = evs.filter(e=>e.sticker).map(e=>`<span class="cal-sticker">${e.sticker}</span>`).join('');
         const bars = evs.slice(0,3).map(e=>{
             const evStart = e.event_date;
             const evEnd = e.end_date || e.event_date;
@@ -743,7 +742,6 @@ function renderMonth() {
         const more = evs.length > 3 ? `<span class="cal-event-more">+${evs.length-3}</span>` : '';
 
         html += `<div class="cal-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
-            ${stickers}
             <div class="cal-cell-num ${numCls}">${d}</div>
             ${bars}${more}
         </div>`;
