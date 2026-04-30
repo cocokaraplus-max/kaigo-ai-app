@@ -7,8 +7,8 @@
 /* ========== 掲示板ヘッダー ========== */
 .board-header {
     display: flex; align-items: center;
-    justify-content: space-between; margin-bottom: 0;
-    padding: 12px 0 8px;
+    justify-content: space-between; margin: 0;
+    padding: 0 0 2px;
     position: relative; z-index: 1;
     background: #f1f3f4;
 }
@@ -27,7 +27,8 @@
 .board-tabs-wrap {
     background: #f1f3f4;
     border-bottom: 2px solid #1a73e8;
-    padding: 8px 12px 0 12px;
+    padding: 2px 12px 0 12px;
+    margin: 0;
 }
 /* ヘッダー+タブ+検索バーを1つのスティッキー領域にする */
 .board-sticky-stack {
@@ -37,9 +38,9 @@
     background: #f1f3f4;
     /* page-wrapper の padding (1.5rem 1.2rem) を相殺してフルブリード化 */
     margin: -1.5rem -1.2rem 1rem -1.2rem;
-    padding: 1.5rem 1.2rem 0 1.2rem;
+    padding: 4px 1.2rem 0 1.2rem;
     /* 上方向にも背景を広げて、stickyで止まったときの上の隙間を完全カバー */
-    box-shadow: 0 -10px 0 #f1f3f4;
+    box-shadow: 0 -50px 0 #f1f3f4;
 }
 
 .board-tabs {
@@ -309,11 +310,12 @@
 
 .board-search-bar {
     background: #f1f3f4;
-    padding: 10px 0 12px;
+    padding: 4px 12px;
+    margin: 0;
     margin-bottom: 12px;
     background: #fff;
     border-radius: 12px;
-    padding: 10px 12px;
+    padding: 4px 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
