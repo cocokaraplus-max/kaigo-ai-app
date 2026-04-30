@@ -451,9 +451,9 @@
                 終日
             </label>
             <div id="ev-time-row" style="display:none;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
-                <input type="time" class="form-control" id="ev-start-time" value="09:00">
+                <input type="time" class="form-control" id="ev-start-time" value="09:00" oninput="autoSetEndTime()">
                 <span style="color:#80868b;">〜</span>
-                <input type="time" class="form-control" id="ev-end-time" value="10:00">
+                <input type="time" class="form-control" id="ev-end-time" value="10:00" oninput="markEndTimeManual()">
             </div>
         </div>
 
@@ -599,6 +599,34 @@
 
 const CALENDARS    = {{ calendars | tojson }};
 const ALL_EVENTS   = {{ events | tojson }};
+// ===== 時間自動設定機能 =====
+window._endTimeManuallySet = false;
+
+window.autoSetEndTime = function() {
+    if (window._endTimeManuallySet) return;
+    var startInput = document.getElementById('ev-start-time');
+    var endInput = document.getElementById('ev-end-time');
+    if (!startInput || !endInput) return;
+    var startVal = startInput.value;
+    if (!startVal) return;
+    var parts = startVal.split(':');
+    if (parts.length !== 2) return;
+    var hours = parseInt(parts[0], 10);
+    var minutes = parseInt(parts[1], 10);
+    if (isNaN(hours) || isNaN(minutes)) return;
+    var endHours = (hours + 1) % 24;
+    var endStr = String(endHours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+    endInput.value = endStr;
+};
+
+window.markEndTimeManual = function() {
+    window._endTimeManuallySet = true;
+};
+
+// ===== 色重複アラート再表示制御 =====
+// 直近に×で閉じた時の同色組み合わせを記録(同じ組み合わせなら再表示しない)
+window._dismissedColorSet = null;
+
 const STICKERS     = {{ stickers | tojson }};
 const STAFFS       = {{ staffs | tojson }};
 const CAL_MEMBERS  = {{ cal_members | tojson }};
@@ -950,6 +978,8 @@ window.openEditEvent = function(id) {
     if (!ev.all_day) {
         document.getElementById('ev-start-time').value = ev.start_time||'09:00';
         document.getElementById('ev-end-time').value = ev.end_time||'10:00';
+        // 編集モードでは既存の終了時間を尊重するため、自動更新フラグをON
+        window._endTimeManuallySet = true;
     }
     document.getElementById('ev-repeat').value = ev.repeat_type||'none';
     document.getElementById('ev-repeat-until-row').style.display = ev.repeat_type&&ev.repeat_type!=='none'?'block':'none';
@@ -1347,6 +1377,8 @@ window.showNewEventModal = function(dateStr) {
   document.getElementById('ev-time-row').style.display = 'none';
   document.getElementById('ev-start-time').value = '09:00';
   document.getElementById('ev-end-time').value = '10:00';
+  // 新規作成モードでは自動更新フラグをOFFにリセット
+  window._endTimeManuallySet = false;
   document.getElementById('ev-repeat').value = 'none';
   document.getElementById('ev-repeat-until-row').style.display = 'none';
   document.getElementById('ev-repeat-until').value = '';
@@ -1770,7 +1802,12 @@ document.addEventListener('click', function(e) {
             return colorMap[c] >= 2;
         });
 
-        if (duplicateColors.length === 0) return;
+        if (duplicateColors.length === 0) {
+            window._dismissedColorSet = null;
+            return;
+        }
+        var currentKey = duplicateColors.slice().sort().join('|');
+        if (window._dismissedColorSet === currentKey) return;
 
         // 同月内で表示されている期間バーのみを対象としたいので、 .other-month の中だけのバーは除外したい
         // ...現状のロジックでは隣月の薄色マスク部分も同色で混ざる可能性があるため、同色判定は単純に色だけで行う
@@ -1817,6 +1854,10 @@ document.addEventListener('click', function(e) {
             'line-height:1'
         ].join(';');
         closeBtn.onclick = function() {
+            // 現在の重複色組み合わせを記憶(同じ組み合わせなら再表示しない)
+            try {
+                window._dismissedColorSet = duplicateColors.slice().sort().join('|');
+            } catch(e) {}
             banner.remove();
         };
         banner.appendChild(closeBtn);
