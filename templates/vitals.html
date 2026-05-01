@@ -212,6 +212,96 @@
 .search-candidate-item:hover,
 .search-candidate-item:active { background: #e8f0fe; }
 
+
+/* バイタル履歴の完全なUI改善 - 最終版 */
+.vital-label, .vital-unit {
+    color: #333 !important;
+    font-weight: 600;
+}
+
+.vital-value-normal {
+    color: #2196F3 !important;
+    font-weight: 500;
+}
+
+.vital-value-abnormal {
+    color: #F44336 !important;
+    font-weight: 600;
+}
+
+.vitals-history-container {
+    display: flex !important;
+    overflow-x: auto !important;
+    scroll-behavior: smooth !important;
+    padding: 12px 8px !important;
+    gap: 12px !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+.vitals-history-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.vitals-history-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.vitals-history-container::-webkit-scrollbar-thumb {
+    background: #2196F3;
+    border-radius: 3px;
+}
+
+.vital-measurement-group {
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 340px !important;
+    max-width: 420px !important;
+    background: #fff !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    scroll-snap-align: start !important;
+    border: 1px solid #e0e0e0 !important;
+}
+
+.measurement-date {
+    font-size: 16px;
+    color: #333;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.measurement-time {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.vitals-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+}
+
+.vital-val-chip {
+    white-space: nowrap;
+    min-width: 120px !important;
+    flex: 1 1 auto !important;
+    padding: 8px 12px !important;
+    background: #f8f9fa !important;
+    border-radius: 8px !important;
+    border: 1px solid #e0e0e0 !important;
+    margin: 2px !important;
+}
+
+@media (max-width: 768px) {
+    .vital-measurement-group {
+        min-width: 300px !important;
+    }
+}
 </style>
 {% endblock %}
 
