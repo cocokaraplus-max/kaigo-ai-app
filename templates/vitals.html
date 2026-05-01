@@ -180,6 +180,38 @@
 .setting-field label { font-size:0.72rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
 .setting-field input { width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #e0e0e0; font-size:0.9rem; text-align:center; }
 .setting-section-title { font-size:0.82rem; font-weight:700; color:#1a73e8; margin:12px 0 8px; display:flex; align-items:center; gap:4px; }
+
+/* ===== 履歴検索候補のドロップダウン (課題2: 履歴タブで候補が見えづらい問題) ===== */
+.search-wrapper {
+    position: relative;
+}
+.search-candidates {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    z-index: 100;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: none;
+    margin-top: 4px;
+}
+.search-candidates.show { display: block; }
+.search-candidate-item {
+    padding: 12px 14px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    color: #202124;
+}
+.search-candidate-item:last-child { border-bottom: none; }
+.search-candidate-item:hover,
+.search-candidate-item:active { background: #e8f0fe; }
+
 </style>
 {% endblock %}
 
