@@ -842,14 +842,38 @@ window.updateWeekdayLabel = function() {
     else if (dayIdx === 6) label.classList.add('sat');
 };
 
-window.onVitalDateChange = function() {
+window.onVitalDateChange = async function() {
     const el = document.getElementById('vital-date');
     if (!el || !el.value) return;
     const d = new Date(el.value + 'T00:00:00');
     if (isNaN(d.getTime())) return;
     selectWeekday(d.getDay());
     updateWeekdayLabel();
+    // ★日付変更時:新しい日付のバイタルデータと除外データを再取得
+    await reloadVitalsForDate(el.value);
+    renderPatientList();
 };
+
+// 指定日のバイタル + 除外データを再取得して VITALS_DATA / EXCLUDES_TODAY を更新
+async function reloadVitalsForDate(dateStr) {
+    try {
+        // バイタル取得
+        const vRes = await fetch('/api/vitals_daily?date=' + encodeURIComponent(dateStr));
+        const vData = await vRes.json();
+        // 既存のVITALS_DATAをクリアして再構築
+        Object.keys(VITALS_DATA).forEach(k => delete VITALS_DATA[k]);
+        (vData.vitals || []).forEach(v => {
+            VITALS_DATA[String(v.patient_id)] = v;
+        });
+        // 除外データ取得
+        const eRes = await fetch('/api/vital_excludes?date=' + encodeURIComponent(dateStr));
+        const eData = await eRes.json();
+        EXCLUDES_TODAY.length = 0;
+        (eData.patient_ids || []).forEach(id => EXCLUDES_TODAY.push(String(id)));
+    } catch (e) {
+        console.error('reloadVitalsForDate error:', e);
+    }
+}
 
 // ページ読み込み時に今日の曜日をアクティブに + 曜日ラベル表示
 requestAnimationFrame(() => {
