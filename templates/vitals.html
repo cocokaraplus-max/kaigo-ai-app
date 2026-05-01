@@ -136,16 +136,19 @@
 .daily-page { flex:0 0 100%; scroll-snap-align:start; box-sizing:border-box; }
 
 /* テーブル本体 */
-.daily-tbl { border-collapse:collapse; width:100%; font-size:0.78rem; background:#fff; border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden; }
-.daily-tbl th, .daily-tbl td { padding:8px 6px; text-align:center; border-bottom:1px solid #f5f5f5; }
-.daily-tbl thead th { background:#f0f0f0; font-weight:700; color:#5f6368; font-size:0.72rem; white-space:nowrap; }
-.daily-tbl td.name { text-align:left; font-weight:600; padding-left:10px; }
-.daily-tbl td.val { font-weight:700; color:#2196F3; font-size:0.82rem; }
-.daily-tbl td.val.alert { color:#F44336; background:#ffebee; }
+.daily-tbl { border-collapse:collapse; width:100%; table-layout:fixed; font-size:0.78rem; background:#fff; border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden; }
+.daily-tbl th, .daily-tbl td { padding:8px 4px; text-align:center; border-bottom:1px solid #f5f5f5; vertical-align:middle; white-space:nowrap; overflow:hidden; }
+.daily-tbl thead th { background:#f0f0f0; font-weight:700; color:#5f6368; font-size:0.7rem; }
+.daily-tbl col.col-name { width:32%; }
+.daily-tbl col.col-val { width:13.6%; }
+.daily-tbl td.name { text-align:left; font-weight:700; color:#202124; padding-left:8px; padding-right:4px; font-size:0.78rem; line-height:1.2; white-space:normal; word-break:break-word; }
+.daily-tbl td.val { font-weight:700; color:#2196F3; font-size:0.85rem; }
 .daily-tbl td.val.empty { color:#bdc1c6; font-weight:500; }
+.daily-tbl td.val .val-pill { display:inline-block; padding:2px 6px; border-radius:6px; }
+.daily-tbl td.val.alert .val-pill { background:#ffebee; color:#F44336; }
 .daily-tbl tr.has-alert { background:#fff8e1; }
 .daily-tbl tr.has-alert td.name { color:#202124; }
-.daily-recheck-mini { display:inline-block; margin-left:4px; font-size:0.6rem; padding:1px 6px; border-radius:8px; background:#fbbc04; color:#fff; font-weight:700; vertical-align:middle; }
+.daily-recheck-mini { display:inline-block; margin-left:4px; font-size:0.6rem; padding:1px 5px; border-radius:8px; background:#fbbc04; color:#fff; font-weight:700; vertical-align:middle; }
 
 /* ページドット(下部) */
 .daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
@@ -1350,7 +1353,7 @@ window.loadDailyOverview = async function() {
                 </tr>`;
             }
             const cls = key => isAlertVal(key, v[key]) ? 'val alert' : 'val';
-            const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}">${val}</td>` : `<td class="val empty">—</td>`;
+            const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
             return `<tr class="${p.hasAlert ? 'has-alert' : ''}">
                 <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
                 ${cell('bp_high', v.bp_high)}
@@ -1363,6 +1366,10 @@ window.loadDailyOverview = async function() {
 
         pagesHtml.push(`<div class="daily-page" data-page="${pageIdx}">
             <table class="daily-tbl">
+                <colgroup>
+                    <col class="col-name">
+                    <col class="col-val"><col class="col-val"><col class="col-val"><col class="col-val"><col class="col-val">
+                </colgroup>
                 <thead><tr>
                     <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th>
                 </tr></thead>
