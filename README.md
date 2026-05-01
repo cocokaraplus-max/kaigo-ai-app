@@ -675,3 +675,324 @@ CREATE TABLE fcm_subscriptions (
 - [ ] Step 3 への移行判断を保留中であること(勝手に着手しないよう警告)
 - [ ] 「.icsリマインダー連携」が選択された経緯と「自動化はStep 3まで保留」という確定事項
 
+---
+
+# 🚨 Session 9 引き継ぎ(2026-05-01 21時頃〜) — バイタル機能 Phase 2
+
+## 🎯 現在進行中のタスク: 再検査アラーム機能の実装
+
+### ⚠️ 中断時の最重要事項
+
+**この機能は段階実装の途中。** 中断したら **必ずこのセクションを読んでから再開すること**。
+
+仕様や実装方針を勝手に変えると、ユーザーが過去の会話で決めた仕様と矛盾して **大事故** になる。
+
+---
+
+## 📋 アラーム機能の意思決定(確定済み・絶対変更禁止)
+
+### ユーザーの確定要望
+1. **手動「再検査必要」ボタンも残す** — 閾値内でも職員判断で再検査指示できる必要あり
+2. **自動再検査マークも併存** — 異常値検出で自動表示
+3. **再検査時刻指定**: 「30分後」ボタン + 直接時刻入力 **両方** 提供
+4. **アラーム鳴動条件**:
+   - **画面スリープ中も鳴る**(超重要)
+   - 別アプリ使用中も鳴る
+   - アプリ閉じてても鳴る
+5. **画面アラーム形式**: 音 + 画面ダイアログで「誰の再検査か」明示
+6. **介護現場の運用**: 「アプリは開いてない事が多い」
+
+### 採用方式: **「C案」段階的実装**(ユーザー確定)
+
+| 段階 | 内容 | 工数 | 費用 |
+|------|------|------|------|
+| **Step 1 (まず実施)** | 手動再検査ボタンの表示反映バグ修正 | 15分 | 無料 |
+| **Step 2 (まず実施)** | .icsリマインダー連携 + アプリ内アラーム(音+ダイアログ) | 1〜2時間 | 無料 |
+| **Step 3 (運用後に判断)** | Firebase Push通知で完全自動化 | 半日〜1日 | 無料(Sparkプラン) |
+
+**重要: Step 2 まで実施 → 運用してみる → 必要ならStep 3 拡張、という段階的アプローチ**
+
+### 検討時に却下した選択肢(蒸し返し禁止)
+
+| 却下案 | 却下理由 |
+|--------|----------|
+| Web Audio APIのみ | スリープ中鳴らない |
+| ブラウザ通知(Notification API) | iOS Safariで音鳴らず |
+| 専用ネイティブアプリ化 | 工数膨大、ストア審査必要 |
+| 完全自動化を最初から(Bを直接) | 工数大きい→運用後に拡張判断したい |
+
+---
+
+## 💰 費用に関する確定情報(質問対策)
+
+### 完全無料で実装可能 ✅
+- **.icsファイル生成**: 完全無料(HTML/JSのみで完結)
+- **Firebase FCM Sparkプラン**: 無料、メッセージ無制限、クレカ登録不要
+- **Cloud Run側追加負荷**: ほぼゼロ
+
+### お金が発生する可能性
+- **FCM Blazeプラン**(月200万メッセージ超):介護施設規模では絶対到達しない
+
+---
+
+## 📱 端末動作の確定情報
+
+### .ics リマインダー連携の動作
+
+| 項目 | iPhone | Android |
+|------|---------|---------|
+| .ics対応 | ✅ Safari→「リマインダー」or「カレンダー」 | ✅ Chrome→「Googleカレンダー」or標準カレンダー |
+| **スリープ中アラーム** | **✅ 確実に鳴る** | **✅ 確実に鳴る**(Doze modeでもホワイトリスト) |
+| 別アプリ使用中の通知 | ✅ バナー+音 | ✅ バナー+音 |
+
+### Android機種別の注意
+- **Xiaomi/HUAWEI等**: 独自電池最適化があるため、初期設定で「Googleカレンダー」を「電池最適化対象外」にする必要あり
+- **Samsung等**: 独自カレンダーアプリで開く場合あり(.ics対応OK)
+
+### 自動設定不可の制約(重要)
+- **iOS/Androidのセキュリティ仕様上、ウェブアプリが勝手にカレンダー登録は禁止**
+- 必ず「📅 リマインダーに登録」ボタンを職員が**1タップする必要がある**
+- これは仕様上回避不可、Step 3でPush通知に拡張するまでは避けられない
+
+---
+
+## 🛠 Step 1 実装内容(手動再検査ボタンの反映バグ修正)
+
+### 現状の問題
+- DBの `recheck` フィールドに手動でtrueを保存しても、表示側で **`hasAnyAlert` だけで判定**している
+- 手動チェックは保存されているが表示に反映されない
+
+### 修正内容
+全員確認(本日の記録)タブの異常値判定ロジック:
+
+```javascript
+// 修正前
+const hasAlert = info.items.some(v => hasAnyAlert(v));
+
+// 修正後
+const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
+```
+
+該当箇所(2箇所):
+1. `loadDailyOverview` 内の patientList生成部
+2. エディタの `daily-time-tab.has-alert` 判定箇所
+
+### 編集タブの「再検査必要」チェックボックスも残す
+編集フォームに以下を追加:
+```html
+<label>
+    <input type="checkbox" id="ef-recheck-${pid}">
+    再検査が必要(手動)
+</label>
+```
+保存時に `recheck` フィールドに反映、自動判定の `hasAnyAlert` とORで判定。
+
+### 記録タブ(測定タブ)の「再検査必要」も同様に残す
+現在の `<input type="checkbox" id="v-recheck-${pid}">` は維持。
+手動 OR 自動のいずれかで `recheck=true` になる仕様。
+
+---
+
+## 🛠 Step 2 実装内容(.icsリマインダー連携 + アプリ内アラーム)
+
+### 2-1. DB追加: `vital_recheck_schedules` テーブル(Supabase)
+
+```sql
+CREATE TABLE vital_recheck_schedules (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    vital_id UUID,  -- 元の異常値検出した測定のID(あれば)
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    note TEXT,
+    is_completed BOOLEAN DEFAULT false,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT
+);
+ALTER TABLE vital_recheck_schedules DISABLE ROW LEVEL SECURITY;
+CREATE INDEX idx_recheck_schedules_lookup ON vital_recheck_schedules(facility_code, scheduled_at);
+```
+
+**重要**: 引き継ぎ書教訓3「新規Supabaseテーブル作成時はRLS必ずDISABLE」厳守
+
+### 2-2. API追加(app.py)
+
+- `/api/recheck_schedule` POST: 再検査予定登録
+- `/api/recheck_schedule` GET: 当日の予定一覧取得
+- `/api/recheck_schedule/<id>` POST(complete): 完了マーク
+
+### 2-3. UI追加(vitals.html)
+
+#### 異常値検出時/手動recheck時にUIを表示
+```
+┌─────────────────────────────────┐
+│ ⚠ 池田 ヨシ 様 異常値検出       │
+│ 血圧 200/150                    │
+│                                 │
+│ 何分後に再検査しますか?         │
+│  [+15分][+30分][+1時間][+2時間] │
+│  または直接時刻 [14:30]         │
+│                                 │
+│ [📅 リマインダーに登録]         │ ← .ics生成
+│ ☑ アプリ画面でも通知(開いてる時)│
+└─────────────────────────────────┘
+```
+
+#### .ics生成ロジック
+```javascript
+function generateICS(scheduleData) {
+    const dt = new Date(scheduleData.scheduled_at);
+    const dtUtc = dt.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TASUKARU//VitalRecheck//JP
+BEGIN:VEVENT
+UID:${Date.now()}@tasukaru.app
+DTSTAMP:${dtUtc}
+DTSTART:${dtUtc}
+SUMMARY:再検査:${scheduleData.user_name} 様
+DESCRIPTION:${scheduleData.note || ''}
+BEGIN:VALARM
+TRIGGER:-PT0M
+ACTION:DISPLAY
+DESCRIPTION:再検査時間です
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+}
+// Blob→ダウンロードリンク
+```
+
+#### アプリ内アラーム(画面開いてる時)
+- 全員確認タブ表示中、定期的に未完了の `recheck_schedules` をチェック
+- scheduled_at <= now() の予定があれば → モーダル表示 + 音再生
+- Web Audio API で短いビープ音(Base64埋込)
+- モーダル: 「[今から測定] [10分後に再通知] [完了にする]」
+
+### 2-4. 用語の確定
+
+| 旧 | 新 |
+|----|----|
+| 再検査 | 再検査(変更なし) |
+| recheck flag | 自動判定 + 手動チェック両方の OR |
+
+---
+
+## 🚧 Step 3(将来):Firebase Push通知
+
+**重要**: Step 2の運用結果次第。今は手を付けない。
+
+### Step 3 の前提条件(満たされた時のみ着手)
+- Step 2 実装後、現場で「.ics登録の1タップが運用上厳しい」と判明
+- ホーム画面追加(PWA化)を職員が受け入れられる体制
+- iOS 16.4 以上の端末が普及している(Push通知の最低要件)
+
+### Step 3 着手時の実装ステップ
+1. Firebase プロジェクト作成(無料Sparkプラン)
+2. VAPID鍵生成
+3. firebase-config.js 作成
+4. Service Worker 拡張(`sw.js` に push handler 追加)
+5. クライアント: 通知許可取得→FCMトークン取得→DB保存
+6. サーバー: push送信ジョブ(scheduled_at到来時にFCM送信)
+7. iOS: PWA化必須(マニフェスト整備)、Android: 標準的に動く
+
+### Step 3 で追加するDBカラム
+```sql
+ALTER TABLE patients ADD COLUMN fcm_tokens JSONB DEFAULT '[]'::jsonb;
+-- または別テーブル
+CREATE TABLE fcm_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT,
+    user_id TEXT,  -- 職員ID
+    fcm_token TEXT UNIQUE,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## 📝 実装順序(再開時はこの順番厳守)
+
+1. ✅ **Step 1**: 手動recheckの表示反映バグ修正(15分)→ push → 動作確認
+2. ✅ **Step 2-1**: Supabaseに `vital_recheck_schedules` テーブル作成(RLS無効化必須)
+3. ✅ **Step 2-2**: app.pyに3つのAPI追加 → push → ログでエラー出ないこと確認
+4. ✅ **Step 2-3**: vitals.htmlに再検査時刻設定UI追加 → push → 動作確認
+5. ✅ **Step 2-4**: .ics生成ロジック → 実機(iPhone/Android)でリマインダー登録できるか確認
+6. ✅ **Step 2-5**: アプリ内アラーム(画面開いてる時)→ 動作確認
+7. ⏸ **Step 3**: 運用してみて必要なら(後回し)
+
+---
+
+## ⚠️ 中断時の引継ぎチェックリスト
+
+中断時、新しいチャットへ引き継ぐ時は以下を必ず明示:
+
+- [ ] 現在Stepいくつまで完了したか
+- [ ] 各Stepでpush済みコミットハッシュ
+- [ ] Step 2-1 のテーブル作成済みか
+- [ ] Step 3 への移行判断を保留中であること(勝手に着手しないよう警告)
+- [ ] 「.icsリマインダー連携」が選択された経緯と「自動化はStep 3まで保留」という確定事項
+
+
+---
+
+## 📚 Step 4: 利用者向けガイドページの作成(必須)
+
+### 重要
+Step 2 完了後、**必ず** 利用者(=介護施設の職員)向けの設定方法ガイドを実装する。
+これがないと、「.icsをタップしてもどうしていいかわからない」状態になる。
+
+### ガイドの場所
+バイタルタブ → 「設定」タブの中、または **新規「ヘルプ」タブ** を追加
+
+### ガイド内容(最低限)
+
+#### 1. 再検査アラームの仕組みを説明
+- 「異常値を検出すると、再検査時刻を設定できます」
+- 「設定したらリマインダー登録ボタンを押してください」
+- 「お使いの端末のアラームで通知されます(画面スリープ中もOK)」
+
+#### 2. iOS版の初回設定手順(画像付き推奨)
+- 「📅 リマインダーに登録」ボタンを押す
+- ダイアログで「リマインダー」または「カレンダー」を選ぶ
+- アプリ内で「追加」ボタンを押して登録完了
+- 通知許可を求められたら必ず「許可」を選ぶ
+- システム設定→通知→リマインダー(orカレンダー)で**サウンドON**を確認
+
+#### 3. Android版の初回設定手順
+- 「📅 リマインダーに登録」ボタンを押す
+- 「Googleカレンダー」または標準カレンダーを選ぶ
+- 「保存」を押して登録
+- **重要**: Xiaomi/HUAWEI/OPPO等の場合
+  - 設定 → アプリ → Googleカレンダー → 電池 → 「制限なし」に変更
+  - これをしないとスリープ中に通知が鳴らない可能性
+
+#### 4. トラブルシューティング
+- 「アラームが鳴らない時のチェックリスト」
+  - 端末のサイレントモードがOFFか?
+  - 通知音量がゼロでないか?
+  - リマインダー/カレンダーアプリが通知許可されているか?
+  - (Android) 電池最適化対象外になっているか?
+  - .icsファイルがダウンロードされなかった場合は再度ボタン押す
+
+#### 5. 「いつ・どこで通知が鳴るのか」一覧表
+
+| シーン | 内部アラーム | リマインダー(.ics) |
+|--------|------------|-------------------|
+| バイタル画面を表示中 | ✅ 鳴る | ✅ 鳴る |
+| 別タブを表示中 | △ 場合により | ✅ 鳴る |
+| 別アプリ使用中 | ❌ 鳴らない | ✅ 鳴る |
+| 画面スリープ中 | ❌ 鳴らない | ✅ 鳴る |
+| アプリ完全終了 | ❌ 鳴らない | ✅ 鳴る |
+
+→ **だから「📅 リマインダーに登録」が重要** という説明を載せる
+
+### 実装方針
+- 静的なHTMLコンテンツでOK(Jinjaテンプレート内)
+- 折りたたみアコーディオン形式(Q&A風)
+- スクリーンショット画像があるとなお良い(後回しでも可)
+- 「設定」タブの中に「📚 使い方ガイド」セクションを追加するのが工数最小
+
