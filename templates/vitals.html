@@ -150,6 +150,60 @@
 .daily-tbl tr.has-alert td.name { color:#202124; }
 .daily-recheck-mini { display:inline-block; margin-left:4px; font-size:0.6rem; padding:1px 5px; border-radius:8px; background:#fbbc04; color:#fff; font-weight:700; vertical-align:middle; }
 
+/* 編集ボタン(行の右端) */
+.daily-tbl col.col-edit { width:36px; }
+.daily-tbl td.edit-cell, .daily-tbl th.edit-cell { padding:4px 2px; text-align:center; }
+.daily-edit-btn { width:28px; height:28px; border-radius:50%; border:none; background:#f0f4ff; color:#1a73e8; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.daily-edit-btn:hover { background:#1a73e8; color:#fff; }
+.daily-edit-btn .material-symbols-outlined { font-size:16px; transition:transform 0.2s; }
+.daily-tbl tr.expanded .daily-edit-btn { background:#1a73e8; color:#fff; }
+.daily-tbl tr.expanded .daily-edit-btn .material-symbols-outlined { transform:rotate(180deg); }
+
+/* アコーディオン展開エリア */
+.daily-tbl tr.editor-row { background:#fafbfd; }
+.daily-tbl tr.editor-row td { padding:0; }
+.daily-editor-wrap { padding:14px 12px 16px; animation:slideDown 0.2s ease-out; }
+@keyframes slideDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to { opacity:1; transform:translateY(0); }
+}
+
+/* C案タブ(時刻ピル) */
+.daily-time-tabs { display:flex; gap:6px; overflow-x:auto; padding:0 0 4px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.daily-time-tabs::-webkit-scrollbar { display:none; }
+.daily-time-tab { flex-shrink:0; padding:6px 12px; border-radius:18px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.78rem; font-weight:700; color:#5f6368; cursor:pointer; white-space:nowrap; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px; }
+.daily-time-tab:hover { border-color:#1a73e8; color:#1a73e8; }
+.daily-time-tab.active { background:linear-gradient(135deg, #1a73e8, #4285f4); color:#fff; border-color:#1a73e8; box-shadow:0 2px 6px rgba(26,115,232,0.3); }
+.daily-time-tab.has-alert { border-color:#fbbc04; }
+.daily-time-tab.has-alert.active { background:linear-gradient(135deg, #fbbc04, #f29900); border-color:#fbbc04; box-shadow:0 2px 6px rgba(251,188,4,0.4); }
+.daily-time-tab .tab-check { font-size:13px; opacity:0.9; }
+.daily-time-tab.add-tab { border-style:dashed; color:#1a73e8; background:#f0f6ff; }
+.daily-time-tab.add-tab:hover { background:#e8f0fe; }
+
+/* エディタフォーム */
+.daily-editor-panel { margin-top:12px; padding:14px; background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; }
+.daily-editor-time { font-size:0.75rem; color:#5f6368; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.daily-editor-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin-bottom:14px; }
+.daily-editor-fields .full-row { grid-column:1 / -1; }
+.daily-editor-field label { display:block; font-size:0.72rem; color:#5f6368; font-weight:600; margin-bottom:3px; }
+.daily-editor-field .field-row { display:flex; align-items:center; gap:4px; }
+.daily-editor-field input[type="number"], .daily-editor-field input[type="time"] { width:100%; padding:7px 9px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.9rem; font-weight:700; color:#202124; transition:border-color 0.15s; -moz-appearance:textfield; }
+.daily-editor-field input[type="number"]::-webkit-outer-spin-button,
+.daily-editor-field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.daily-editor-field input:focus { outline:none; border-color:#1a73e8; box-shadow:0 0 0 3px rgba(26,115,232,0.1); }
+.daily-editor-field input.alert { border-color:#F44336; background:#ffebee; color:#F44336; }
+.daily-editor-field .field-unit { font-size:0.7rem; color:#5f6368; font-weight:500; flex-shrink:0; }
+.daily-editor-field .slash { color:#5f6368; font-weight:600; }
+
+.daily-editor-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.daily-editor-btn { flex:1; min-width:0; padding:10px 14px; border-radius:10px; border:none; font-size:0.85rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:4px; transition:all 0.15s; }
+.daily-editor-btn.save { background:linear-gradient(135deg, #1a73e8, #4285f4); color:#fff; box-shadow:0 2px 6px rgba(26,115,232,0.3); }
+.daily-editor-btn.save:hover { box-shadow:0 4px 10px rgba(26,115,232,0.4); transform:translateY(-1px); }
+.daily-editor-btn.delete { flex:0 0 auto; background:#fff; color:#ea4335; border:1.5px solid #ea4335; }
+.daily-editor-btn.delete:hover { background:#ea4335; color:#fff; }
+.daily-editor-btn .material-symbols-outlined { font-size:18px; }
+.daily-editor-empty-info { padding:14px; text-align:center; color:#5f6368; font-size:0.82rem; background:#f8f9fa; border-radius:10px; margin-top:10px; }
+
 /* ページドット(下部) */
 .daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
 .daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
@@ -1181,38 +1235,55 @@ window.toggleVitalCard = function(pid) {
 // ========== バイタル保存 ==========
 window.saveVital = async function(pid, name, dateStr) {
     const get = id => document.getElementById(id)?.value || null;
+    const bp_high = get(`v-bp_high-${pid}`) ? parseInt(get(`v-bp_high-${pid}`)) : null;
+    const bp_low = get(`v-bp_low-${pid}`) ? parseInt(get(`v-bp_low-${pid}`)) : null;
+    const pulse = get(`v-pulse-${pid}`) ? parseInt(get(`v-pulse-${pid}`)) : null;
+    const temperature = get(`v-temperature-${pid}`) ? parseFloat(get(`v-temperature-${pid}`)) : null;
+    const spo2 = get(`v-spo2-${pid}`) ? parseInt(get(`v-spo2-${pid}`)) : null;
+    // 入力が全くなければ保存しない
+    if (bp_high == null && bp_low == null && pulse == null && temperature == null && spo2 == null) {
+        alert('値を入力してください');
+        return;
+    }
+    // 自動再検査判定(設定の閾値を使用)
+    const autoRecheck = hasAnyAlert({bp_high, bp_low, pulse, temperature, spo2});
     const payload = {
         patient_id: pid,
         user_name: name,
         measured_date: dateStr,
-        bp_high:     get(`v-bp_high-${pid}`)     ? parseInt(get(`v-bp_high-${pid}`))     : null,
-        bp_low:      get(`v-bp_low-${pid}`)      ? parseInt(get(`v-bp_low-${pid}`))      : null,
-        pulse:       get(`v-pulse-${pid}`)       ? parseInt(get(`v-pulse-${pid}`))       : null,
-        temperature: get(`v-temperature-${pid}`) ? parseFloat(get(`v-temperature-${pid}`)) : null,
-        spo2:        get(`v-spo2-${pid}`)        ? parseInt(get(`v-spo2-${pid}`))        : null,
-        note:        get(`v-note-${pid}`) || '',
-        recheck:     document.getElementById(`v-recheck-${pid}`)?.checked || false,
+        bp_high, bp_low, pulse, temperature, spo2,
+        note:    get(`v-note-${pid}`) || '',
+        recheck: autoRecheck,
     };
-    const res = await fetch('/api/save_vital', {
+    // 常に新規追加(2回目、3回目の測定にも対応)
+    const res = await fetch('/api/add_vital', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.status === 'success') {
-        // VITALS_DATAを更新してカード再描画
+        // VITALS_DATAを最新の測定値で更新(カードのサマリ表示用)
         VITALS_DATA[pid] = {...VITALS_DATA[pid], ...payload, id: data.id};
         const card = document.getElementById('vcard-'+pid);
         if (card) {
-            const alerts = checkAlert(payload);
-            card.className = 'patient-vital-card ' + (payload.recheck ? 'recheck' : (alerts.length ? 'alert' : ''));
+            card.className = 'patient-vital-card ' + (autoRecheck ? 'recheck' : '');
         }
+        // ★入力欄をクリア(次の測定の準備)
+        ['bp_high','bp_low','pulse','temperature','spo2','note'].forEach(k => {
+            const el = document.getElementById(`v-${k}-${pid}`);
+            if (el) el.value = '';
+        });
+        const recheckEl = document.getElementById(`v-recheck-${pid}`);
+        if (recheckEl) recheckEl.checked = false;
+
+        // 保存メッセージ
         const savedMsg = document.createElement('div');
-        savedMsg.style.cssText = 'font-size:0.72rem;color:#34a853;text-align:center;margin-top:4px;';
-        savedMsg.textContent = '✅ 保存しました';
+        savedMsg.style.cssText = 'font-size:0.78rem;color:#34a853;text-align:center;margin-top:4px;font-weight:700;';
+        savedMsg.textContent = autoRecheck ? '✅ 保存しました(⚠ 再検査推奨)' : '✅ 保存しました 次の測定が入力できます';
         const btn = document.querySelector(`#vbody-${pid} .save-vital-btn`);
-        if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2000); }
+        if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2500); }
     } else {
-        alert('保存に失敗しました');
+        alert('保存に失敗しました: ' + (data.message || ''));
     }
 };
 
@@ -1306,6 +1377,239 @@ async function sendToAI(blob) {
 }
 
 // ========== 全員確認 ==========
+// 全員確認のアコーディオン編集状態(2026-05-01)
+let _dailyEditorState = {
+    expandedPid: null,    // 現在展開中の患者ID(1度に1人だけ)
+    selectedIdx: 0,       // 選択中の測定タブのindex
+    isNewMode: false,     // 新規追加モード(idなし)
+    cachedData: {},       // pid -> {name, items[]}
+};
+
+window.toggleDailyEditor = function(pid) {
+    const editorRow = document.getElementById(`editor-row-${pid}`);
+    if (!editorRow) return;
+    const trMain = editorRow.previousElementSibling;
+
+    // すでに展開中だったら閉じる
+    if (_dailyEditorState.expandedPid === pid) {
+        editorRow.style.display = 'none';
+        editorRow.querySelector('td').innerHTML = '';
+        if (trMain) trMain.classList.remove('expanded');
+        _dailyEditorState.expandedPid = null;
+        return;
+    }
+
+    // 他のエディタが開いていたら閉じる
+    if (_dailyEditorState.expandedPid) {
+        const oldRow = document.getElementById(`editor-row-${_dailyEditorState.expandedPid}`);
+        if (oldRow) {
+            oldRow.style.display = 'none';
+            oldRow.querySelector('td').innerHTML = '';
+            const oldMain = oldRow.previousElementSibling;
+            if (oldMain) oldMain.classList.remove('expanded');
+        }
+    }
+
+    // この行を展開
+    _dailyEditorState.expandedPid = pid;
+    _dailyEditorState.selectedIdx = 0;
+    _dailyEditorState.isNewMode = false;
+    if (trMain) trMain.classList.add('expanded');
+    editorRow.style.display = '';
+    renderDailyEditor(pid);
+};
+
+function renderDailyEditor(pid) {
+    const cache = _dailyEditorState.cachedData[pid];
+    if (!cache) return;
+    const editorRow = document.getElementById(`editor-row-${pid}`);
+    if (!editorRow) return;
+    const td = editorRow.querySelector('td');
+
+    // タブ生成
+    const items = cache.items;
+    const tabsHtml = items.map((v, i) => {
+        const t = v.measured_at ? new Date(v.measured_at) : null;
+        const timeStr = t ? `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : `${i+1}回目`;
+        const isActive = (i === _dailyEditorState.selectedIdx) && !_dailyEditorState.isNewMode;
+        const hasAlert = hasAnyAlert(v);
+        return `<div class="daily-time-tab${isActive ? ' active' : ''}${hasAlert ? ' has-alert' : ''}" onclick="selectDailyEditorTab('${pid}', ${i})">
+            ${timeStr}
+            ${hasAlert ? '<span class="tab-check">⚠</span>' : '<span class="tab-check">✓</span>'}
+        </div>`;
+    }).join('');
+    const addTabHtml = `<div class="daily-time-tab add-tab${_dailyEditorState.isNewMode ? ' active' : ''}" onclick="startNewDailyEditor('${pid}')">
+        <span class="material-symbols-outlined" style="font-size:14px;">add</span>追加
+    </div>`;
+
+    // フォーム部分
+    let formHtml;
+    if (_dailyEditorState.isNewMode) {
+        const nowH = String(new Date().getHours()).padStart(2,'0');
+        const nowM = String(new Date().getMinutes()).padStart(2,'0');
+        formHtml = renderEditorForm(pid, null, `${nowH}:${nowM}`);
+    } else if (items.length > 0) {
+        const v = items[_dailyEditorState.selectedIdx];
+        const t = v.measured_at ? new Date(v.measured_at) : null;
+        const timeStr = t ? `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : '';
+        formHtml = renderEditorForm(pid, v, timeStr);
+    } else {
+        formHtml = `<div class="daily-editor-empty-info">記録はありません。「追加」を押して測定を入力できます。</div>`;
+    }
+
+    td.innerHTML = `<div class="daily-editor-wrap">
+        <div class="daily-time-tabs">${tabsHtml}${addTabHtml}</div>
+        ${formHtml}
+    </div>`;
+}
+
+function renderEditorForm(pid, v, timeStr) {
+    const isNew = !v;
+    const editorId = isNew ? 'new' : v.id;
+    const val = (key) => v && v[key] != null ? v[key] : '';
+    const alertCls = (key) => v && isAlertVal(key, v[key]) ? 'alert' : '';
+
+    return `<div class="daily-editor-panel">
+        <div class="daily-editor-time">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#1a73e8;">schedule</span>
+            <input type="time" id="ef-time-${pid}" value="${timeStr}" style="width:90px;padding:3px 6px;border:1px solid #e0e0e0;border-radius:6px;font-size:0.78rem;font-weight:700;">
+            <span style="color:#5f6368;">の測定</span>
+            ${isNew ? '<span style="margin-left:auto;font-size:0.7rem;color:#1a73e8;font-weight:700;">新規追加</span>' : ''}
+        </div>
+        <div class="daily-editor-fields">
+            <div class="daily-editor-field">
+                <label>血圧</label>
+                <div class="field-row">
+                    <input type="number" id="ef-bp_high-${pid}" value="${val('bp_high')}" placeholder="上" class="${alertCls('bp_high')}">
+                    <span class="slash">/</span>
+                    <input type="number" id="ef-bp_low-${pid}" value="${val('bp_low')}" placeholder="下" class="${alertCls('bp_low')}">
+                    <span class="field-unit">mmHg</span>
+                </div>
+            </div>
+            <div class="daily-editor-field">
+                <label>脈拍</label>
+                <div class="field-row">
+                    <input type="number" id="ef-pulse-${pid}" value="${val('pulse')}" placeholder="--" class="${alertCls('pulse')}">
+                    <span class="field-unit">bpm</span>
+                </div>
+            </div>
+            <div class="daily-editor-field">
+                <label>体温</label>
+                <div class="field-row">
+                    <input type="number" step="0.1" id="ef-temperature-${pid}" value="${val('temperature')}" placeholder="--" class="${alertCls('temperature')}">
+                    <span class="field-unit">℃</span>
+                </div>
+            </div>
+            <div class="daily-editor-field">
+                <label>SpO2</label>
+                <div class="field-row">
+                    <input type="number" id="ef-spo2-${pid}" value="${val('spo2')}" placeholder="--" class="${alertCls('spo2')}">
+                    <span class="field-unit">%</span>
+                </div>
+            </div>
+        </div>
+        <div class="daily-editor-actions">
+            <button class="daily-editor-btn save" onclick="saveDailyEditor('${pid}', '${editorId}')">
+                <span class="material-symbols-outlined">save</span>保存
+            </button>
+            ${!isNew ? `<button class="daily-editor-btn delete" onclick="deleteDailyEditor('${pid}', '${v.id}')" aria-label="削除">
+                <span class="material-symbols-outlined">delete</span>
+            </button>` : ''}
+        </div>
+    </div>`;
+}
+
+window.selectDailyEditorTab = function(pid, idx) {
+    _dailyEditorState.selectedIdx = idx;
+    _dailyEditorState.isNewMode = false;
+    renderDailyEditor(pid);
+};
+
+window.startNewDailyEditor = function(pid) {
+    _dailyEditorState.isNewMode = true;
+    renderDailyEditor(pid);
+};
+
+window.saveDailyEditor = async function(pid, editorId) {
+    const num = (id) => {
+        const el = document.getElementById(id);
+        if (!el || el.value === '') return null;
+        const n = Number(el.value);
+        return isNaN(n) ? null : n;
+    };
+    const timeEl = document.getElementById(`ef-time-${pid}`);
+    const dateStr = document.getElementById('daily-date').value;
+    let measuredAt = null;
+    if (timeEl && timeEl.value && dateStr) {
+        // YYYY-MM-DD + HH:MM をローカル時刻として ISO化
+        measuredAt = new Date(`${dateStr}T${timeEl.value}:00`).toISOString();
+    }
+
+    const cache = _dailyEditorState.cachedData[pid];
+    const payload = {
+        bp_high: num(`ef-bp_high-${pid}`),
+        bp_low: num(`ef-bp_low-${pid}`),
+        pulse: num(`ef-pulse-${pid}`),
+        temperature: num(`ef-temperature-${pid}`),
+        spo2: num(`ef-spo2-${pid}`),
+        measured_at: measuredAt,
+    };
+    // 自動再検査判定
+    payload.recheck = hasAnyAlert(payload);
+
+    let url, body;
+    if (editorId === 'new') {
+        url = '/api/add_vital';
+        body = {
+            ...payload,
+            patient_id: pid,
+            user_name: cache.name,
+            measured_date: dateStr,
+        };
+    } else {
+        url = '/api/update_vital';
+        body = { ...payload, id: editorId };
+    }
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('保存に失敗しました: ' + (result.message || ''));
+            return;
+        }
+        // 保存後、データを再取得して表示更新
+        await loadDailyOverview();
+        // エディタを再展開
+        toggleDailyEditor(pid);
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+window.deleteDailyEditor = async function(pid, vid) {
+    if (!confirm('この測定を削除しますか?')) return;
+    try {
+        const res = await fetch('/api/delete_vital', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ id: vid })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('削除に失敗しました: ' + (result.message || ''));
+            return;
+        }
+        await loadDailyOverview();
+        // エディタを閉じる
+        _dailyEditorState.expandedPid = null;
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
 window.loadDailyOverview = async function() {
     const date = document.getElementById('daily-date').value;
     if (!date) return;
@@ -1337,6 +1641,21 @@ window.loadDailyOverview = async function() {
         return a.name.localeCompare(b.name, 'ja');
     });
 
+    // エディタ用にキャッシュ(全員分)
+    _dailyEditorState.cachedData = {};
+    patientList.forEach(p => {
+        _dailyEditorState.cachedData[p.pid] = { name: p.name, items: p.items };
+    });
+    // 患者名簿にいるが今日の測定がない人もキャッシュ(編集行から「追加」できるようにするため将来用)
+    if (typeof PATIENTS !== 'undefined') {
+        PATIENTS.forEach(pp => {
+            const k = String(pp.id);
+            if (!_dailyEditorState.cachedData[k]) {
+                _dailyEditorState.cachedData[k] = { name: pp.user_name, items: [] };
+            }
+        });
+    }
+
     // 最大測定回数(ページ数)
     const maxPages = Math.max(...patientList.map(p => p.items.length));
 
@@ -1346,22 +1665,25 @@ window.loadDailyOverview = async function() {
         const rows = patientList.map(p => {
             const v = p.items[pageIdx];
             if (!v) {
-                // この測定回数の記録がない人は空欄行
-                return `<tr class="${p.hasAlert ? 'has-alert' : ''}">
+                return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
                     <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
                     <td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td>
-                </tr>`;
+                    <td class="edit-cell"><button class="daily-edit-btn" onclick="toggleDailyEditor('${p.pid}')" aria-label="編集"><span class="material-symbols-outlined">expand_more</span></button></td>
+                </tr>
+                <tr class="editor-row" id="editor-row-${p.pid}" style="display:none;"><td colspan="7"></td></tr>`;
             }
             const cls = key => isAlertVal(key, v[key]) ? 'val alert' : 'val';
             const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
-            return `<tr class="${p.hasAlert ? 'has-alert' : ''}">
+            return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
                 <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
                 ${cell('bp_high', v.bp_high)}
                 ${cell('bp_low', v.bp_low)}
                 ${cell('pulse', v.pulse)}
                 ${cell('temperature', v.temperature)}
                 ${cell('spo2', v.spo2)}
-            </tr>`;
+                <td class="edit-cell"><button class="daily-edit-btn" onclick="toggleDailyEditor('${p.pid}')" aria-label="編集"><span class="material-symbols-outlined">expand_more</span></button></td>
+            </tr>
+            <tr class="editor-row" id="editor-row-${p.pid}" style="display:none;"><td colspan="7"></td></tr>`;
         }).join('');
 
         pagesHtml.push(`<div class="daily-page" data-page="${pageIdx}">
@@ -1369,9 +1691,10 @@ window.loadDailyOverview = async function() {
                 <colgroup>
                     <col class="col-name">
                     <col class="col-val"><col class="col-val"><col class="col-val"><col class="col-val"><col class="col-val">
+                    <col class="col-edit">
                 </colgroup>
                 <thead><tr>
-                    <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th>
+                    <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th><th class="edit-cell"></th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
             </table>

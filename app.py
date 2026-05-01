@@ -1292,6 +1292,7 @@ def vitals():
     patients = get_patients(supabase, f_code)
 
     # 各患者のweekdays・ampm取得
+    # ★型不一致対策: patient_id は str() で統一(BIGINT vs string でマッチしない問題対応)
     visit_days = {}
     ampm_data = {}
     try:
@@ -1302,7 +1303,8 @@ def vitals():
         for p in patients:
             p["weekdays"] = visit_days.get(str(p["id"]), "")
             p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
-    except:
+    except Exception as e:
+        print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
             p["weekdays"] = ""
             p["ampm"] = "BOTH"
@@ -1313,7 +1315,8 @@ def vitals():
         res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("measured_date", today).execute()
         for r in (res.data or []):
             vitals_data[str(r["patient_id"])] = r
-    except: pass
+    except Exception as e:
+        print(f"vitals data fetch error: {e}", flush=True)
 
     # 今日除外されている利用者ID一覧を取得
     excludes_today = []
@@ -1324,6 +1327,7 @@ def vitals():
         print(f"vitals excludes fetch error: {e}", flush=True)
 
     settings = get_vital_settings(supabase, f_code)
+    # ★patient_id は文字列キーで統一(JS側で String(p.id) と比較されるため)
     visit_days_map = {str(p["id"]): p["weekdays"] for p in patients}
     ampm_map = {str(p["id"]): p["ampm"] for p in patients}
 
@@ -1502,6 +1506,86 @@ def api_remove_visit_day():
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"remove_visit_day error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ========== バイタル編集API(2026-05-01:複数測定対応) ==========
+@app.route('/api/add_vital', methods=['POST'])
+@login_required
+def api_add_vital():
+    """新規測定をINSERT(同じpatient_id+date があっても新しいレコード作成)"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if not data.get("patient_id") or not data.get("measured_date"):
+            return jsonify({"status": "error", "message": "patient_idとmeasured_dateは必須です"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": str(data.get("patient_id")),
+            "user_name": data.get("user_name", ""),
+            "measured_date": data.get("measured_date"),
+            "measured_at": data.get("measured_at") or now_iso,
+            "bp_high": data.get("bp_high"),
+            "bp_low": data.get("bp_low"),
+            "pulse": data.get("pulse"),
+            "temperature": data.get("temperature"),
+            "spo2": data.get("spo2"),
+            "note": data.get("note", ""),
+            "recheck": data.get("recheck", False),
+            "staff_name": my_name,
+        }
+        res = supabase.table("vitals").insert(payload).execute()
+        rid = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        print(f"add_vital error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/update_vital', methods=['POST'])
+@login_required
+def api_update_vital():
+    """既存測定をid指定でUPDATE"""
+    try:
+        data = request.json
+        supabase = get_supabase()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        payload = {
+            "bp_high": data.get("bp_high"),
+            "bp_low": data.get("bp_low"),
+            "pulse": data.get("pulse"),
+            "temperature": data.get("temperature"),
+            "spo2": data.get("spo2"),
+            "note": data.get("note", ""),
+            "recheck": data.get("recheck", False),
+        }
+        if data.get("measured_at"):
+            payload["measured_at"] = data["measured_at"]
+        supabase.table("vitals").update(payload).eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"update_vital error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delete_vital', methods=['POST'])
+@login_required
+def api_delete_vital():
+    """測定をid指定でDELETE"""
+    try:
+        data = request.json
+        supabase = get_supabase()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        supabase.table("vitals").delete().eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"delete_vital error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/save_vital_settings', methods=['POST'])
