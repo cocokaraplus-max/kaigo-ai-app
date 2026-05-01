@@ -213,7 +213,7 @@
 <div class="tab-panel active" id="tab-record">
     <!-- 日付選択 -->
     <div class="form-group" style="margin-bottom:10px;">
-        <input type="date" class="form-control" id="vital-date" value="{{ today }}">
+        <input type="date" class="form-control" id="vital-date" value="{{ today }}" onchange="onVitalDateChange()">
     </div>
 
     <!-- 曜日タブ -->
@@ -474,7 +474,14 @@ const VITALS_DATA = {{ vitals_data | tojson }};
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
 
-let currentWeekday = new Date().getDay();
+let currentWeekday = (function() {
+    const el = document.getElementById('vital-date');
+    if (el && el.value) {
+        const d = new Date(el.value + 'T00:00:00');
+        if (!isNaN(d.getTime())) return d.getDay();
+    }
+    return new Date().getDay();
+})();
 let cameraStream   = null;
 let currentCameraPatient = null;
 
@@ -560,6 +567,14 @@ window.selectWeekday = function(day) {
     document.querySelectorAll('.wd-tab').forEach(t => t.classList.remove('active'));
     document.querySelector(`.wd-tab[data-day="${day}"]`).classList.add('active');
     renderPatientList();
+};
+// ========== 日付変更時に曜日タブを自動連動 ==========
+window.onVitalDateChange = function() {
+    const el = document.getElementById('vital-date');
+    if (!el || !el.value) return;
+    const d = new Date(el.value + 'T00:00:00');
+    if (isNaN(d.getTime())) return;
+    selectWeekday(d.getDay());
 };
 
 // ページ読み込み時に今日の曜日をアクティブに
