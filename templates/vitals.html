@@ -117,12 +117,40 @@
 }
 
 /* ===== 全員一覧 ===== */
-.daily-overview-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
-.daily-overview-table th { background:#f0f0f0; padding:8px 6px; text-align:center; font-weight:700; color:#5f6368; }
-.daily-overview-table td { padding:8px 6px; text-align:center; border-bottom:1px solid #f5f5f5; }
-.daily-overview-table td.name { text-align:left; font-weight:600; }
-.daily-overview-table td.ng { color:#c5221f; font-weight:700; background:#fce8e6; }
-.daily-overview-table tr.recheck-row { background:#fff8e1; }
+
+/* ===== 全員確認(ページめくり式テーブル 2026-05-01) ===== */
+.daily-summary-bar { padding:8px 12px; background:#f8f9fa; font-size:0.78rem; color:#5f6368; border-radius:8px; margin-bottom:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.daily-summary-bar .alert-count { color:#e65100; font-weight:700; }
+
+/* ページ切替バー(2回目以降がある時に表示) */
+.daily-page-bar { display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#fff; border:1.5px solid #e0e0e0; border-radius:8px; margin-bottom:8px; }
+.daily-page-bar button { background:none; border:none; cursor:pointer; padding:4px 10px; color:#1a73e8; font-size:0.85rem; font-weight:700; border-radius:6px; }
+.daily-page-bar button:hover { background:#e8f0fe; }
+.daily-page-bar button:disabled { color:#bdc1c6; cursor:not-allowed; }
+.daily-page-bar .page-label { font-size:0.85rem; font-weight:700; color:#202124; }
+
+/* スワイプ可能なページコンテナ */
+.daily-pages-wrap { overflow:hidden; border-radius:12px; }
+.daily-pages-scroller { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+.daily-pages-scroller::-webkit-scrollbar { display:none; }
+.daily-page { flex:0 0 100%; scroll-snap-align:start; box-sizing:border-box; }
+
+/* テーブル本体 */
+.daily-tbl { border-collapse:collapse; width:100%; font-size:0.78rem; background:#fff; border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden; }
+.daily-tbl th, .daily-tbl td { padding:8px 6px; text-align:center; border-bottom:1px solid #f5f5f5; }
+.daily-tbl thead th { background:#f0f0f0; font-weight:700; color:#5f6368; font-size:0.72rem; white-space:nowrap; }
+.daily-tbl td.name { text-align:left; font-weight:600; padding-left:10px; }
+.daily-tbl td.val { font-weight:700; color:#2196F3; font-size:0.82rem; }
+.daily-tbl td.val.alert { color:#F44336; background:#ffebee; }
+.daily-tbl td.val.empty { color:#bdc1c6; font-weight:500; }
+.daily-tbl tr.has-alert { background:#fff8e1; }
+.daily-tbl tr.has-alert td.name { color:#202124; }
+.daily-recheck-mini { display:inline-block; margin-left:4px; font-size:0.6rem; padding:1px 6px; border-radius:8px; background:#fbbc04; color:#fff; font-weight:700; vertical-align:middle; }
+
+/* ページドット(下部) */
+.daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
+.daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
+.daily-page-dot.active { background:#1a73e8; width:24px; border-radius:4px; }
 
 /* ===== 追加ボタン ===== */
 .add-today-btn {
@@ -1285,27 +1313,136 @@ window.loadDailyOverview = async function() {
         area.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;"><span class="material-symbols-outlined">info</span>${date} の記録はありません。</div>`;
         return;
     }
-    const rows = data.vitals.map(v => {
-        const alerts = checkAlert(v);
-        const ng = key => isAlertVal(key, v[key]) ? 'ng' : '';
-        return `<tr class="${v.recheck?'recheck-row':''}">
-            <td class="name">${v.user_name}${v.recheck?'<span class="vital-recheck-badge" style="margin-left:4px;font-size:0.62rem;">再検査</span>':''}</td>
-            <td class="${ng('bp_high')}">${v.bp_high||'—'}</td>
-            <td class="${ng('bp_low')}">${v.bp_low||'—'}</td>
-            <td class="${ng('pulse')}">${v.pulse||'—'}</td>
-            <td class="${ng('temperature')}">${v.temperature||'—'}</td>
-            <td class="${ng('spo2')}">${v.spo2||'—'}</td>
-        </tr>`;
-    }).join('');
+
+    // 利用者ごとにグループ化
+    const byPatient = {};
+    data.vitals.forEach(v => {
+        const key = String(v.patient_id);
+        if (!byPatient[key]) byPatient[key] = { name: v.user_name, items: [] };
+        byPatient[key].items.push(v);
+    });
+    Object.values(byPatient).forEach(p => {
+        p.items.sort((a, b) => (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+    });
+
+    // 異常値判定 + 並び順(再検査者上位)
+    const patientList = Object.entries(byPatient).map(([pid, info]) => {
+        const hasAlert = info.items.some(v => hasAnyAlert(v));
+        return { pid, ...info, hasAlert };
+    }).sort((a, b) => {
+        if (a.hasAlert !== b.hasAlert) return a.hasAlert ? -1 : 1;
+        return a.name.localeCompare(b.name, 'ja');
+    });
+
+    // 最大測定回数(ページ数)
+    const maxPages = Math.max(...patientList.map(p => p.items.length));
+
+    // 各ページのテーブルHTMLを生成
+    const pagesHtml = [];
+    for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+        const rows = patientList.map(p => {
+            const v = p.items[pageIdx];
+            if (!v) {
+                // この測定回数の記録がない人は空欄行
+                return `<tr class="${p.hasAlert ? 'has-alert' : ''}">
+                    <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
+                    <td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td>
+                </tr>`;
+            }
+            const cls = key => isAlertVal(key, v[key]) ? 'val alert' : 'val';
+            const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}">${val}</td>` : `<td class="val empty">—</td>`;
+            return `<tr class="${p.hasAlert ? 'has-alert' : ''}">
+                <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
+                ${cell('bp_high', v.bp_high)}
+                ${cell('bp_low', v.bp_low)}
+                ${cell('pulse', v.pulse)}
+                ${cell('temperature', v.temperature)}
+                ${cell('spo2', v.spo2)}
+            </tr>`;
+        }).join('');
+
+        pagesHtml.push(`<div class="daily-page" data-page="${pageIdx}">
+            <table class="daily-tbl">
+                <thead><tr>
+                    <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`);
+    }
+
+    const alertCount = patientList.filter(p => p.hasAlert).length;
+
+    // ページ切替バー(2ページ以上ある時のみ)
+    const pageBarHtml = maxPages > 1 ? `
+        <div class="daily-page-bar">
+            <button id="daily-prev-page" onclick="changeDailyPage(-1)" disabled>
+                <span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">chevron_left</span>前
+            </button>
+            <span class="page-label" id="daily-page-label">1回目 / 全${maxPages}回</span>
+            <button id="daily-next-page" onclick="changeDailyPage(1)">
+                次<span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">chevron_right</span>
+            </button>
+        </div>` : '';
+
+    // ページドット
+    const dotsHtml = maxPages > 1 ? `
+        <div class="daily-page-dots">
+            ${Array.from({length: maxPages}, (_, i) => `<div class="daily-page-dot${i === 0 ? ' active' : ''}" data-page="${i}"></div>`).join('')}
+        </div>` : '';
+
     area.innerHTML = `
-        <div style="overflow-x:auto;">
-        <table class="daily-overview-table">
-            <thead><tr>
-                <th>利用者</th><th>血圧上</th><th>血圧下</th><th>脈拍</th><th>体温</th><th>SpO2</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-        </table></div>`;
+        <div class="daily-summary-bar">
+            <span><strong>${date}</strong> ・ ${patientList.length}名</span>
+            ${alertCount > 0 ? `<span class="alert-count">⚠ ${alertCount}名要再検査</span>` : ''}
+            ${maxPages > 1 ? `<span style="margin-left:auto;font-size:0.7rem;color:#80868b;">${maxPages}回測定あり</span>` : ''}
+        </div>
+        ${pageBarHtml}
+        <div class="daily-pages-wrap">
+            <div class="daily-pages-scroller" id="daily-pages-scroller">
+                ${pagesHtml.join('')}
+            </div>
+        </div>
+        ${dotsHtml}
+    `;
+
+    // スワイプ時のページ番号連動
+    const scroller = document.getElementById('daily-pages-scroller');
+    if (scroller && maxPages > 1) {
+        scroller.addEventListener('scroll', () => {
+            const idx = Math.round(scroller.scrollLeft / scroller.clientWidth);
+            document.querySelectorAll('.daily-page-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+            const lbl = document.getElementById('daily-page-label');
+            if (lbl) lbl.textContent = `${idx + 1}回目 / 全${maxPages}回`;
+            const prevBtn = document.getElementById('daily-prev-page');
+            const nextBtn = document.getElementById('daily-next-page');
+            if (prevBtn) prevBtn.disabled = (idx === 0);
+            if (nextBtn) nextBtn.disabled = (idx === maxPages - 1);
+        }, { passive: true });
+    }
 };
+
+// ページ切替ボタン
+window.changeDailyPage = function(delta) {
+    const scroller = document.getElementById('daily-pages-scroller');
+    if (!scroller) return;
+    const currentIdx = Math.round(scroller.scrollLeft / scroller.clientWidth);
+    const newIdx = currentIdx + delta;
+    const pages = scroller.querySelectorAll('.daily-page');
+    if (newIdx < 0 || newIdx >= pages.length) return;
+    scroller.scrollTo({ left: scroller.clientWidth * newIdx, behavior: 'smooth' });
+};
+
+// 任意のバイタル項目が異常値か判定(自動再検査用)
+function hasAnyAlert(v) {
+    if (!v) return false;
+    if (v.bp_high != null && isAlertVal('bp_high', v.bp_high)) return true;
+    if (v.bp_low != null && isAlertVal('bp_low', v.bp_low)) return true;
+    if (v.pulse != null && isAlertVal('pulse', v.pulse)) return true;
+    if (v.temperature != null && isAlertVal('temperature', v.temperature)) return true;
+    if (v.spo2 != null && isAlertVal('spo2', v.spo2)) return true;
+    return false;
+}
 
 // ========== 履歴UI(月切替・グラフ対応 2026-05-01) ==========
 let _historyState = {
