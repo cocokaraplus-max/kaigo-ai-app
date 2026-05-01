@@ -759,7 +759,7 @@ function buildVitalForm(p, v, dateStr) {
     `;
 }
 
-function onVitalInput(pid, key, val) {
+window.onVitalInput = function onVitalInput(pid, key, val) {
     const el = document.getElementById(`v-${key}-${pid}`);
     if (el) el.className = isAlertVal(key, val) ? 'alert-val' : '';
 }
