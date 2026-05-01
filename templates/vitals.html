@@ -118,7 +118,7 @@
 
 /* ===== 全員一覧 ===== */
 
-/* ===== 全員確認(ページめくり式テーブル 2026-05-01) ===== */
+/* ===== 本日の記録(ページめくり式テーブル 2026-05-01) ===== */
 .daily-summary-bar { padding:8px 12px; background:#f8f9fa; font-size:0.78rem; color:#5f6368; border-radius:8px; margin-bottom:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .daily-summary-bar .alert-count { color:#e65100; font-weight:700; }
 
@@ -160,9 +160,20 @@
 .daily-tbl tr.expanded .daily-edit-btn .material-symbols-outlined { transform:rotate(180deg); }
 
 /* アコーディオン展開エリア */
-.daily-tbl tr.editor-row { background:#fafbfd; }
-.daily-tbl tr.editor-row td { padding:0; }
-.daily-editor-wrap { padding:14px 12px 16px; animation:slideDown 0.2s ease-out; }
+/* 行ハイライト(展開中) */
+.daily-tbl tr.expanded { background:#e8f0fe !important; }
+.daily-tbl tr.expanded.has-alert { background:#fff3e0 !important; }
+.daily-tbl tr.expanded .daily-edit-btn { background:#1a73e8; color:#fff; }
+.daily-tbl tr.expanded .daily-edit-btn .material-symbols-outlined { transform:rotate(180deg); }
+
+/* 共通エディタコンテナ(ページ下部に1つだけ) */
+#daily-editor-container { margin-top:12px; }
+#daily-editor-container:empty { display:none; }
+.daily-editor-wrap { padding:14px 12px 16px; background:#fafbfd; border:1.5px solid #1a73e8; border-radius:12px; animation:slideDown 0.25s ease-out; }
+.daily-editor-header { display:flex; align-items:center; gap:8px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #e8eaed; }
+.daily-editor-name { font-size:0.95rem; font-weight:700; color:#202124; flex:1; }
+.daily-editor-close { background:none; border:none; cursor:pointer; padding:4px; color:#5f6368; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; transition:background 0.15s; }
+.daily-editor-close:hover { background:#e8eaed; color:#202124; }
 @keyframes slideDown {
     from { opacity:0; transform:translateY(-8px); }
     to { opacity:1; transform:translateY(0); }
@@ -430,11 +441,11 @@
 <div class="tab-bar" id="main-tab-bar">
     <div class="tab-item active" onclick="switchMainTab('record', this)">
         <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">edit_note</span>
-        記録
+        測定
     </div>
     <div class="tab-item" onclick="switchMainTab('daily', this)">
         <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">groups</span>
-        全員確認
+        本日の記録
     </div>
     <div class="tab-item" onclick="switchMainTab('history', this)">
         <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">history</span>
@@ -490,7 +501,7 @@
     <!-- 旧「本日のみ追加(臨時・体験)」UIは削除 → 環ボタン(FAB)からモーダルを開く方式に変更 -->
 </div>
 
-<!-- ========== 全員確認タブ ========== -->
+<!-- ========== 本日の記録タブ ========== -->
 <div class="tab-panel" id="tab-daily">
     <div class="form-group" style="margin-bottom:10px;">
         <input type="date" class="form-control" id="daily-date" value="{{ today }}" onchange="loadDailyOverview()">
@@ -1376,8 +1387,8 @@ async function sendToAI(blob) {
     }
 }
 
-// ========== 全員確認 ==========
-// 全員確認のアコーディオン編集状態(2026-05-01)
+// ========== 本日の記録 ==========
+// 本日の記録のアコーディオン編集状態(2026-05-01)
 let _dailyEditorState = {
     expandedPid: null,    // 現在展開中の患者ID(1度に1人だけ)
     selectedIdx: 0,       // 選択中の測定タブのindex
@@ -1385,46 +1396,42 @@ let _dailyEditorState = {
     cachedData: {},       // pid -> {name, items[]}
 };
 
-window.toggleDailyEditor = function(pid) {
-    const editorRow = document.getElementById(`editor-row-${pid}`);
-    if (!editorRow) return;
-    const trMain = editorRow.previousElementSibling;
+window.toggleDailyEditor = function(pid, pageIdx) {
+    const container = document.getElementById('daily-editor-container');
+    if (!container) return;
 
-    // すでに展開中だったら閉じる
+    // 編集ボタンの押された行ハイライトをクリア
+    document.querySelectorAll('.daily-tbl tr.expanded').forEach(tr => tr.classList.remove('expanded'));
+
+    // 同じpidなら閉じる(トグル)
     if (_dailyEditorState.expandedPid === pid) {
-        editorRow.style.display = 'none';
-        editorRow.querySelector('td').innerHTML = '';
-        if (trMain) trMain.classList.remove('expanded');
+        container.innerHTML = '';
         _dailyEditorState.expandedPid = null;
         return;
     }
 
-    // 他のエディタが開いていたら閉じる
-    if (_dailyEditorState.expandedPid) {
-        const oldRow = document.getElementById(`editor-row-${_dailyEditorState.expandedPid}`);
-        if (oldRow) {
-            oldRow.style.display = 'none';
-            oldRow.querySelector('td').innerHTML = '';
-            const oldMain = oldRow.previousElementSibling;
-            if (oldMain) oldMain.classList.remove('expanded');
-        }
-    }
-
-    // この行を展開
+    // 開く
     _dailyEditorState.expandedPid = pid;
-    _dailyEditorState.selectedIdx = 0;
+    // クリックされたページのインデックスをデフォルト選択(編集対象を確実に)
+    _dailyEditorState.selectedIdx = (typeof pageIdx === 'number') ? pageIdx : 0;
     _dailyEditorState.isNewMode = false;
-    if (trMain) trMain.classList.add('expanded');
-    editorRow.style.display = '';
+
+    // 該当行に「展開中」マークを付ける(全ページで同一PIDの行に)
+    document.querySelectorAll(`.daily-tbl tr[data-pid="${pid}"]`).forEach(tr => tr.classList.add('expanded'));
+
     renderDailyEditor(pid);
+
+    // エディタ位置までスクロール(スマホで便利)
+    setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
 };
 
 function renderDailyEditor(pid) {
     const cache = _dailyEditorState.cachedData[pid];
     if (!cache) return;
-    const editorRow = document.getElementById(`editor-row-${pid}`);
-    if (!editorRow) return;
-    const td = editorRow.querySelector('td');
+    const container = document.getElementById('daily-editor-container');
+    if (!container) return;
 
     // タブ生成
     const items = cache.items;
@@ -1457,7 +1464,14 @@ function renderDailyEditor(pid) {
         formHtml = `<div class="daily-editor-empty-info">記録はありません。「追加」を押して測定を入力できます。</div>`;
     }
 
-    td.innerHTML = `<div class="daily-editor-wrap">
+    container.innerHTML = `<div class="daily-editor-wrap">
+        <div class="daily-editor-header">
+            <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">edit_note</span>
+            <span class="daily-editor-name">${cache.name} 様</span>
+            <button class="daily-editor-close" onclick="toggleDailyEditor('${pid}')" aria-label="閉じる">
+                <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+            </button>
+        </div>
         <div class="daily-time-tabs">${tabsHtml}${addTabHtml}</div>
         ${formHtml}
     </div>`;
@@ -1581,10 +1595,24 @@ window.saveDailyEditor = async function(pid, editorId) {
             alert('保存に失敗しました: ' + (result.message || ''));
             return;
         }
-        // 保存後、データを再取得して表示更新
+        // 保存後、データを再取得
         await loadDailyOverview();
-        // エディタを再展開
-        toggleDailyEditor(pid);
+        // エディタを開いたまま再描画(同じpidで、最新の測定を選択状態に)
+        const cache = _dailyEditorState.cachedData[pid];
+        if (cache && cache.items.length > 0) {
+            // 新規追加だった場合は最後尾(最新)を選択、編集だった場合は同じindexを保持
+            if (editorId === 'new') {
+                _dailyEditorState.selectedIdx = cache.items.length - 1;
+            }
+            _dailyEditorState.isNewMode = false;
+            // 行ハイライト復活
+            document.querySelectorAll(`.daily-tbl tr[data-pid="${pid}"]`).forEach(tr => tr.classList.add('expanded'));
+            renderDailyEditor(pid);
+        } else {
+            _dailyEditorState.expandedPid = null;
+            const c = document.getElementById('daily-editor-container');
+            if (c) c.innerHTML = '';
+        }
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
@@ -1605,6 +1633,8 @@ window.deleteDailyEditor = async function(pid, vid) {
         await loadDailyOverview();
         // エディタを閉じる
         _dailyEditorState.expandedPid = null;
+        const c = document.getElementById('daily-editor-container');
+        if (c) c.innerHTML = '';
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
@@ -1669,8 +1699,7 @@ window.loadDailyOverview = async function() {
                     <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
                     <td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td><td class="val empty">—</td>
                     <td class="edit-cell"><button class="daily-edit-btn" onclick="toggleDailyEditor('${p.pid}')" aria-label="編集"><span class="material-symbols-outlined">expand_more</span></button></td>
-                </tr>
-                <tr class="editor-row" id="editor-row-${p.pid}" style="display:none;"><td colspan="7"></td></tr>`;
+                </tr>`;
             }
             const cls = key => isAlertVal(key, v[key]) ? 'val is-alert' : 'val';
             const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
@@ -1681,9 +1710,8 @@ window.loadDailyOverview = async function() {
                 ${cell('pulse', v.pulse)}
                 ${cell('temperature', v.temperature)}
                 ${cell('spo2', v.spo2)}
-                <td class="edit-cell"><button class="daily-edit-btn" onclick="toggleDailyEditor('${p.pid}')" aria-label="編集"><span class="material-symbols-outlined">expand_more</span></button></td>
-            </tr>
-            <tr class="editor-row" id="editor-row-${p.pid}" style="display:none;"><td colspan="7"></td></tr>`;
+                <td class="edit-cell"><button class="daily-edit-btn" onclick="toggleDailyEditor('${p.pid}', ${pageIdx})" aria-label="編集"><span class="material-symbols-outlined">expand_more</span></button></td>
+            </tr>`;
         }).join('');
 
         pagesHtml.push(`<div class="daily-page" data-page="${pageIdx}">
@@ -1734,6 +1762,7 @@ window.loadDailyOverview = async function() {
             </div>
         </div>
         ${dotsHtml}
+        <div id="daily-editor-container"></div>
     `;
 
     // スワイプ時のページ番号連動
