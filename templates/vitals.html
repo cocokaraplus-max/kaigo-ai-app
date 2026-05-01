@@ -145,7 +145,7 @@
 .daily-tbl td.val { font-weight:700; color:#2196F3; font-size:0.85rem; }
 .daily-tbl td.val.empty { color:#bdc1c6; font-weight:500; }
 .daily-tbl td.val .val-pill { display:inline-block !important; padding:2px 6px; border-radius:6px; line-height:1.2; }
-.daily-tbl td.val.alert .val-pill { background:#ffebee; color:#F44336; }
+.daily-tbl td.val.is-alert .val-pill { background:#ffebee; color:#F44336; }
 .daily-tbl tr.has-alert { background:#fff8e1; }
 .daily-tbl tr.has-alert td.name { color:#202124; }
 .daily-recheck-mini { display:inline-block; margin-left:4px; font-size:0.6rem; padding:1px 5px; border-radius:8px; background:#fbbc04; color:#fff; font-weight:700; vertical-align:middle; }
@@ -191,7 +191,7 @@
 .daily-editor-field input[type="number"]::-webkit-outer-spin-button,
 .daily-editor-field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 .daily-editor-field input:focus { outline:none; border-color:#1a73e8; box-shadow:0 0 0 3px rgba(26,115,232,0.1); }
-.daily-editor-field input.alert { border-color:#F44336; background:#ffebee; color:#F44336; }
+.daily-editor-field input.is-alert { border-color:#F44336; background:#ffebee; color:#F44336; }
 .daily-editor-field .field-unit { font-size:0.7rem; color:#5f6368; font-weight:500; flex-shrink:0; }
 .daily-editor-field .slash { color:#5f6368; font-weight:600; }
 
@@ -404,7 +404,7 @@
 .history-vital-item { display:flex; align-items:baseline; gap:4px; min-width:0; }
 .history-vital-label { font-size:0.72rem; color:#5f6368; font-weight:600; flex-shrink:0; }
 .history-vital-value { font-size:0.92rem; font-weight:700; color:#2196F3; }
-.history-vital-value.alert { color:#F44336; }
+.history-vital-value.is-alert { color:#F44336; }
 .history-vital-unit { font-size:0.66rem; color:#5f6368; font-weight:500; }
 .history-vital-empty { font-size:0.78rem; color:#bdc1c6; font-weight:500; }
 
@@ -1467,7 +1467,7 @@ function renderEditorForm(pid, v, timeStr) {
     const isNew = !v;
     const editorId = isNew ? 'new' : v.id;
     const val = (key) => v && v[key] != null ? v[key] : '';
-    const alertCls = (key) => v && isAlertVal(key, v[key]) ? 'alert' : '';
+    const alertCls = (key) => v && isAlertVal(key, v[key]) ? 'is-alert' : '';
 
     return `<div class="daily-editor-panel">
         <div class="daily-editor-time">
@@ -1672,7 +1672,7 @@ window.loadDailyOverview = async function() {
                 </tr>
                 <tr class="editor-row" id="editor-row-${p.pid}" style="display:none;"><td colspan="7"></td></tr>`;
             }
-            const cls = key => isAlertVal(key, v[key]) ? 'val alert' : 'val';
+            const cls = key => isAlertVal(key, v[key]) ? 'val is-alert' : 'val';
             const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
             return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
                 <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
@@ -1949,8 +1949,8 @@ function vitalCellHtml(label, val1, val2, unit, key1, key2) {
     const isAlert2 = key2 && val2 != null ? isAlertVal(key2, val2) : false;
     const isAlert = isAlert1 || isAlert2;
     const valDisplay = (val2 != null && val2 !== '')
-        ? `<span class="history-vital-value${isAlert ? ' alert' : ''}">${val1}/${val2}</span>`
-        : `<span class="history-vital-value${isAlert ? ' alert' : ''}">${val1}</span>`;
+        ? `<span class="history-vital-value${isAlert ? ' is-alert' : ''}">${val1}/${val2}</span>`
+        : `<span class="history-vital-value${isAlert ? ' is-alert' : ''}">${val1}</span>`;
     return `<div class="history-vital-item">
         <span class="history-vital-label">${label}:</span>
         ${valDisplay}
