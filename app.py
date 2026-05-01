@@ -1297,11 +1297,11 @@ def vitals():
     try:
         res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm").eq("facility_code", f_code).execute()
         for r in (res.data or []):
-            visit_days[r["patient_id"]] = r.get("weekdays") or ""
-            ampm_data[r["patient_id"]] = r.get("ampm") or "BOTH"
+            visit_days[str(r["patient_id"])] = r.get("weekdays") or ""
+            ampm_data[str(r["patient_id"])] = r.get("ampm") or "BOTH"
         for p in patients:
-            p["weekdays"] = visit_days.get(p["id"], "")
-            p["ampm"] = ampm_data.get(p["id"], "BOTH")
+            p["weekdays"] = visit_days.get(str(p["id"]), "")
+            p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
     except:
         for p in patients:
             p["weekdays"] = ""
@@ -1312,7 +1312,7 @@ def vitals():
     try:
         res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("measured_date", today).execute()
         for r in (res.data or []):
-            vitals_data[r["patient_id"]] = r
+            vitals_data[str(r["patient_id"])] = r
     except: pass
 
     # 今日除外されている利用者ID一覧を取得
@@ -1324,8 +1324,8 @@ def vitals():
         print(f"vitals excludes fetch error: {e}", flush=True)
 
     settings = get_vital_settings(supabase, f_code)
-    visit_days_map = {p["id"]: p["weekdays"] for p in patients}
-    ampm_map = {p["id"]: p["ampm"] for p in patients}
+    visit_days_map = {str(p["id"]): p["weekdays"] for p in patients}
+    ampm_map = {str(p["id"]): p["ampm"] for p in patients}
 
     return render("vitals.html",
         patients=patients,
