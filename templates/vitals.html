@@ -215,6 +215,13 @@
 .daily-editor-btn .material-symbols-outlined { font-size:18px; }
 .daily-editor-empty-info { padding:14px; text-align:center; color:#5f6368; font-size:0.82rem; background:#f8f9fa; border-radius:10px; margin-top:10px; }
 
+/* 手動再検査チェックボックス */
+.manual-recheck-label { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#fff8e1; border:1.5px solid #fbbc04; border-radius:10px; cursor:pointer; transition:all 0.15s; font-weight:700; }
+.manual-recheck-label:hover { background:#fff3e0; }
+.manual-recheck-label input[type="checkbox"] { width:18px; height:18px; accent-color:#fbbc04; cursor:pointer; }
+.manual-recheck-text { font-size:0.85rem; color:#e65100; }
+.manual-recheck-hint { display:block; font-size:0.7rem; color:#80868b; margin-top:4px; padding-left:4px; }
+
 /* ページドット(下部) */
 .daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
 .daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
@@ -1256,15 +1263,17 @@ window.saveVital = async function(pid, name, dateStr) {
         alert('値を入力してください');
         return;
     }
-    // 自動再検査判定(設定の閾値を使用)
+    // 自動再検査判定(設定の閾値を使用) + 手動チェックの OR
     const autoRecheck = hasAnyAlert({bp_high, bp_low, pulse, temperature, spo2});
+    const manualRecheck = document.getElementById(`v-recheck-${pid}`)?.checked || false;
+    const finalRecheck = autoRecheck || manualRecheck;
     const payload = {
         patient_id: pid,
         user_name: name,
         measured_date: dateStr,
         bp_high, bp_low, pulse, temperature, spo2,
         note:    get(`v-note-${pid}`) || '',
-        recheck: autoRecheck,
+        recheck: finalRecheck,
     };
     // 常に新規追加(2回目、3回目の測定にも対応)
     const res = await fetch('/api/add_vital', {
@@ -1277,7 +1286,7 @@ window.saveVital = async function(pid, name, dateStr) {
         VITALS_DATA[pid] = {...VITALS_DATA[pid], ...payload, id: data.id};
         const card = document.getElementById('vcard-'+pid);
         if (card) {
-            card.className = 'patient-vital-card ' + (autoRecheck ? 'recheck' : '');
+            card.className = 'patient-vital-card ' + (finalRecheck ? 'recheck' : '');
         }
         // ★入力欄をクリア(次の測定の準備)
         ['bp_high','bp_low','pulse','temperature','spo2','note'].forEach(k => {
@@ -1287,10 +1296,14 @@ window.saveVital = async function(pid, name, dateStr) {
         const recheckEl = document.getElementById(`v-recheck-${pid}`);
         if (recheckEl) recheckEl.checked = false;
 
-        // 保存メッセージ
+        // 保存メッセージ(自動か手動かで表記分け)
         const savedMsg = document.createElement('div');
         savedMsg.style.cssText = 'font-size:0.78rem;color:#34a853;text-align:center;margin-top:4px;font-weight:700;';
-        savedMsg.textContent = autoRecheck ? '✅ 保存しました(⚠ 再検査推奨)' : '✅ 保存しました 次の測定が入力できます';
+        if (finalRecheck) {
+            savedMsg.textContent = autoRecheck ? '✅ 保存しました(⚠ 異常値検出・再検査推奨)' : '✅ 保存しました(⚠ 再検査マーク済み)';
+        } else {
+            savedMsg.textContent = '✅ 保存しました 次の測定が入力できます';
+        }
         const btn = document.querySelector(`#vbody-${pid} .save-vital-btn`);
         if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2500); }
     } else {
@@ -1439,7 +1452,7 @@ function renderDailyEditor(pid) {
         const t = v.measured_at ? new Date(v.measured_at) : null;
         const timeStr = t ? `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : `${i+1}回目`;
         const isActive = (i === _dailyEditorState.selectedIdx) && !_dailyEditorState.isNewMode;
-        const hasAlert = hasAnyAlert(v);
+        const hasAlert = hasAnyAlert(v) || v.recheck === true;
         return `<div class="daily-time-tab${isActive ? ' active' : ''}${hasAlert ? ' has-alert' : ''}" onclick="selectDailyEditorTab('${pid}', ${i})">
             ${timeStr}
             ${hasAlert ? '<span class="tab-check">⚠</span>' : '<span class="tab-check">✓</span>'}
@@ -1521,6 +1534,13 @@ function renderEditorForm(pid, v, timeStr) {
                     <span class="field-unit">%</span>
                 </div>
             </div>
+            <div class="daily-editor-field full-row">
+                <label class="manual-recheck-label">
+                    <input type="checkbox" id="ef-recheck-${pid}" ${v && v.recheck ? 'checked' : ''}>
+                    <span class="manual-recheck-text">⚠ 再検査が必要(手動)</span>
+                </label>
+                <span class="manual-recheck-hint">※ 数値が範囲内でも、職員判断で再検査をマークできます</span>
+            </div>
         </div>
         <div class="daily-editor-actions">
             <button class="daily-editor-btn save" onclick="saveDailyEditor('${pid}', '${editorId}')">
@@ -1568,8 +1588,11 @@ window.saveDailyEditor = async function(pid, editorId) {
         spo2: num(`ef-spo2-${pid}`),
         measured_at: measuredAt,
     };
-    // 自動再検査判定
-    payload.recheck = hasAnyAlert(payload);
+    // 自動再検査判定 + 手動チェックの OR
+    const autoRecheck = hasAnyAlert(payload);
+    const manualRecheckEl = document.getElementById(`ef-recheck-${pid}`);
+    const manualRecheck = manualRecheckEl ? manualRecheckEl.checked : false;
+    payload.recheck = autoRecheck || manualRecheck;
 
     let url, body;
     if (editorId === 'new') {
@@ -1664,7 +1687,7 @@ window.loadDailyOverview = async function() {
 
     // 異常値判定 + 並び順(再検査者上位)
     const patientList = Object.entries(byPatient).map(([pid, info]) => {
-        const hasAlert = info.items.some(v => hasAnyAlert(v));
+        const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
         return { pid, ...info, hasAlert };
     }).sort((a, b) => {
         if (a.hasAlert !== b.hasAlert) return a.hasAlert ? -1 : 1;
