@@ -12,8 +12,15 @@
 .tab-panel { display:none; }
 .tab-panel.active { display:block; }
 
-/* ===== 曜日タブ ===== */
-.weekday-tabs { display:flex; gap:4px; margin-bottom:1rem; }
+/* ===== 曜日タブ(非表示化:日付から自動算出に変更) ===== */
+.weekday-tabs { display:none !important; }
+.weekday-tabs-legacy { display:flex; gap:4px; margin-bottom:1rem; }
+/* ===== 日付+曜日表示 ===== */
+.date-weekday-row { display:flex; align-items:center; gap:8px; }
+.date-weekday-row .form-control { flex:1; }
+.weekday-label { font-size:0.95rem; font-weight:700; color:#1a73e8; white-space:nowrap; padding:0 4px; }
+.weekday-label.sun { color:#c62828; }
+.weekday-label.sat { color:#2e7d32; }
 .wd-tab { flex:1; padding:8px 4px; border-radius:10px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.78rem; font-weight:700; color:#80868b; cursor:pointer; text-align:center; transition:all 0.15s; }
 .wd-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
 .wd-tab.sun { color:#c62828; }
@@ -335,7 +342,10 @@
 <div class="tab-panel active" id="tab-record">
     <!-- 日付選択 -->
     <div class="form-group" style="margin-bottom:10px;">
-        <input type="date" class="form-control" id="vital-date" value="{{ today }}" onchange="onVitalDateChange()">
+        <div class="date-weekday-row">
+            <input type="date" class="form-control" id="vital-date" value="{{ today }}" onchange="onVitalDateChange()">
+            <span class="weekday-label" id="vital-weekday-label"></span>
+        </div>
     </div>
 
     <!-- 曜日タブ -->
@@ -690,19 +700,35 @@ window.selectWeekday = function(day) {
     document.querySelector(`.wd-tab[data-day="${day}"]`).classList.add('active');
     renderPatientList();
 };
-// ========== 日付変更時に曜日タブを自動連動 ==========
+// ========== 日付変更時に曜日タブを自動連動 + 曜日ラベル更新 ==========
+window.updateWeekdayLabel = function() {
+    const el = document.getElementById('vital-date');
+    const label = document.getElementById('vital-weekday-label');
+    if (!el || !label || !el.value) return;
+    const d = new Date(el.value + 'T00:00:00');
+    if (isNaN(d.getTime())) return;
+    const days = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'];
+    const dayIdx = d.getDay();
+    label.textContent = '(' + days[dayIdx] + ')';
+    label.classList.remove('sun','sat');
+    if (dayIdx === 0) label.classList.add('sun');
+    else if (dayIdx === 6) label.classList.add('sat');
+};
+
 window.onVitalDateChange = function() {
     const el = document.getElementById('vital-date');
     if (!el || !el.value) return;
     const d = new Date(el.value + 'T00:00:00');
     if (isNaN(d.getTime())) return;
     selectWeekday(d.getDay());
+    updateWeekdayLabel();
 };
 
-// ページ読み込み時に今日の曜日をアクティブに
+// ページ読み込み時に今日の曜日をアクティブに + 曜日ラベル表示
 requestAnimationFrame(() => {
     selectAmpm('ALL');
     document.querySelector(`.wd-tab[data-day="${currentWeekday}"]`)?.classList.add('active');
+    updateWeekdayLabel();
     renderPatientList();
 });
 
