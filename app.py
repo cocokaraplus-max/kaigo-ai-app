@@ -1588,6 +1588,92 @@ def api_delete_vital():
         print(f"delete_vital error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ========== 再検査予約API(2026-05-02:アラーム機能 Step 2) ==========
+@app.route('/api/recheck_schedule', methods=['POST'])
+@login_required
+def api_recheck_schedule_post():
+    """再検査予約を登録"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+
+        if not data.get("patient_id") or not data.get("scheduled_at"):
+            return jsonify({"status": "error", "message": "patient_idとscheduled_atは必須です"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": str(data.get("patient_id")),
+            "user_name": data.get("user_name", ""),
+            "vital_id": data.get("vital_id"),
+            "scheduled_at": data.get("scheduled_at"),
+            "note": data.get("note", ""),
+            "is_completed": False,
+            "created_by": my_name,
+        }
+        res = supabase.table("vital_recheck_schedules").insert(payload).execute()
+        rid = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        print(f"recheck_schedule_post error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/recheck_schedule', methods=['GET'])
+@login_required
+def api_recheck_schedule_get():
+    """指定日の再検査予約一覧を取得(デフォルトは今日)"""
+    try:
+        f_code = session["f_code"]
+        date = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
+        only_pending = request.args.get("only_pending", "false").lower() == "true"
+        supabase = get_supabase()
+
+        # 当日の予約を時刻順で取得
+        start = f"{date}T00:00:00+09:00"
+        end = f"{date}T23:59:59+09:00"
+        q = supabase.table("vital_recheck_schedules").select("*").eq("facility_code", f_code) \
+            .gte("scheduled_at", start).lte("scheduled_at", end)
+        if only_pending:
+            q = q.eq("is_completed", False)
+        res = q.order("scheduled_at").execute()
+        return jsonify({"schedules": res.data or []})
+    except Exception as e:
+        print(f"recheck_schedule_get error: {e}", flush=True)
+        return jsonify({"schedules": [], "error": str(e)})
+
+@app.route('/api/recheck_schedule/complete', methods=['POST'])
+@login_required
+def api_recheck_schedule_complete():
+    """再検査予約を完了マーク"""
+    try:
+        data = request.json
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("vital_recheck_schedules").update({
+            "is_completed": True,
+            "completed_at": now_iso,
+        }).eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"recheck_schedule_complete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/recheck_schedule/<int:rid>', methods=['DELETE'])
+@login_required
+def api_recheck_schedule_delete(rid):
+    """再検査予約を削除"""
+    try:
+        supabase = get_supabase()
+        supabase.table("vital_recheck_schedules").delete().eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"recheck_schedule_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/save_vital_settings', methods=['POST'])
 @login_required
 def api_save_vital_settings():
