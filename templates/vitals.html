@@ -388,30 +388,8 @@
     <!-- 利用者一覧 -->
     <div id="patient-vitals-list"></div>
 
-    <!-- 臨時追加 -->
-    <div style="margin-bottom:10px;">
-        <div class="add-today-btn" onclick="toggleTempSearch()" id="temp-add-btn">
-            <span class="material-symbols-outlined">person_add</span>
-            本日のみ追加（臨時・体験）
-        </div>
-        <div id="temp-search-area" style="display:none; background:#f0f6ff; border:1.5px solid #1a73e8; border-radius:12px; padding:12px; margin-top:6px;">
-            <div style="font-size:0.8rem; font-weight:700; color:#1a73e8; margin-bottom:8px;">
-                <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">person_search</span>
-                既存利用者から選ぶ、または新しい名前を入力
-            </div>
-            <div style="position:relative; margin-bottom:8px;">
-                <input type="text" class="form-control" id="temp-patient-search"
-                    placeholder="名前・ふりがなで検索、または新しい名前を入力"
-                    oninput="searchTempPatient(this.value)" autocomplete="off">
-                <div id="temp-candidates" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1.5px solid #1a73e8; border-radius:10px; z-index:100; max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
-                </div>
-            </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="addTempPatient()">
-                <span class="material-symbols-outlined" style="color:white;">add</span>
-                追加する
-            </button>
-        </div>
-    </div>
+    <!-- 利用者追加(モーダル経由) -->
+    <!-- 旧「本日のみ追加(臨時・体験)」UIは削除 → 環ボタン(FAB)からモーダルを開く方式に変更 -->
 </div>
 
 <!-- ========== 全員確認タブ ========== -->
@@ -557,6 +535,132 @@
     </div>
 </div>
 
+<!-- ========== 環ボタン(FAB):本日の利用者を追加 ========== -->
+<button id="add-today-fab" onclick="openAddPatientModal()" aria-label="本日の利用者を追加" style="
+    position:fixed; bottom:84px; right:20px; z-index:200;
+    width:56px; height:56px; border-radius:50%;
+    background:#1a73e8; color:#fff; border:none;
+    box-shadow:0 4px 12px rgba(26,115,232,0.4);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+    <span class="material-symbols-outlined" style="font-size:28px;color:#fff;">person_add</span>
+</button>
+
+<!-- ========== モーダル:本日の利用者を追加 ========== -->
+<div id="add-patient-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:flex-end; justify-content:center;">
+    <div style="background:#fff; width:100%; max-width:520px; max-height:85vh; border-radius:16px 16px 0 0; padding:20px 18px; overflow-y:auto;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-size:1.05rem; font-weight:700; color:#202124;">
+                <span class="material-symbols-outlined" style="vertical-align:middle; color:#1a73e8;">person_add</span>
+                本日の利用者を追加
+            </div>
+            <button onclick="closeAddPatientModal()" style="background:none; border:none; cursor:pointer; padding:4px;">
+                <span class="material-symbols-outlined" style="color:#5f6368;">close</span>
+            </button>
+        </div>
+        <div style="font-size:0.78rem; color:#5f6368; margin-bottom:10px;">
+            既存利用者から選ぶ、または新しい名前を入力してください
+        </div>
+
+        <!-- 検索バー -->
+        <div style="position:relative; margin-bottom:12px;">
+            <input type="text" class="form-control" id="add-patient-search"
+                placeholder="🔍 名前・ふりがなで絞り込み..."
+                oninput="filterAddPatientList(this.value)" autocomplete="off">
+        </div>
+
+        <!-- 既存利用者リスト -->
+        <div style="font-size:0.78rem; font-weight:700; color:#1a73e8; margin:10px 0 6px;">
+            既存利用者から選択
+        </div>
+        <div id="add-patient-list" style="max-height:280px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;"></div>
+
+        <!-- 新規利用者入力 -->
+        <div style="margin-top:14px; padding-top:14px; border-top:1px dashed #e0e0e0;">
+            <div style="font-size:0.78rem; font-weight:700; color:#1a73e8; margin-bottom:6px;">
+                または新規利用者を入力
+            </div>
+            <input type="text" class="form-control" id="add-patient-newname"
+                placeholder="新しい利用者の名前" autocomplete="off" style="margin-bottom:8px;">
+        </div>
+
+        <!-- ボタン -->
+        <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn" style="flex:1; background:#f1f3f4; color:#5f6368; border:none;" onclick="closeAddPatientModal()">
+                キャンセル
+            </button>
+            <button class="btn btn-primary" style="flex:2;" onclick="confirmAddPatient()">
+                <span class="material-symbols-outlined" style="color:#fff;">add</span>
+                追加する
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル:削除確認(2択) ========== -->
+<div id="delete-confirm-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; width:100%; max-width:420px; border-radius:16px; padding:22px 20px;">
+        <div style="text-align:center; margin-bottom:14px;">
+            <span class="material-symbols-outlined" style="font-size:36px; color:#fbbc04;">warning</span>
+        </div>
+        <div style="font-size:1rem; font-weight:700; color:#202124; text-align:center; margin-bottom:6px;">
+            削除確認
+        </div>
+        <div style="font-size:0.88rem; color:#5f6368; text-align:center; margin-bottom:18px;" id="delete-confirm-name">
+            「__」さんをどう削除しますか?
+        </div>
+
+        <!-- 今日だけ削除 -->
+        <button id="delete-today-only-btn" style="width:100%; margin-bottom:10px; padding:14px; border-radius:12px; border:1.5px solid #f9ab00; background:#fff8e1; color:#a26800; font-size:0.92rem; font-weight:700; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+            <span class="material-symbols-outlined" style="color:#f9ab00; font-size:24px;">event_busy</span>
+            <div style="flex:1;">
+                <div>今日だけ削除</div>
+                <div style="font-size:0.72rem; font-weight:400; color:#5f6368; margin-top:2px;">来週は通常通り表示されます</div>
+            </div>
+        </button>
+
+        <!-- 今後ずっと削除 -->
+        <button id="delete-permanent-btn" style="width:100%; margin-bottom:10px; padding:14px; border-radius:12px; border:1.5px solid #ea4335; background:#fce8e6; color:#a52714; font-size:0.92rem; font-weight:700; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+            <span class="material-symbols-outlined" style="color:#ea4335; font-size:24px;">person_remove</span>
+            <div style="flex:1;">
+                <div>今後ずっと削除</div>
+                <div style="font-size:0.72rem; font-weight:400; color:#5f6368; margin-top:2px;">この曜日のリストから完全に外します</div>
+            </div>
+        </button>
+
+        <!-- キャンセル -->
+        <button onclick="closeDeleteConfirmModal()" style="width:100%; padding:12px; border-radius:12px; border:1px solid #e0e0e0; background:#fff; color:#5f6368; font-size:0.88rem; font-weight:700; cursor:pointer;">
+            キャンセル
+        </button>
+    </div>
+</div>
+
+<!-- ========== モーダル:同名利用者の確認 ========== -->
+<div id="duplicate-name-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; width:100%; max-width:420px; border-radius:16px; padding:22px 20px;">
+        <div style="text-align:center; margin-bottom:14px;">
+            <span class="material-symbols-outlined" style="font-size:36px; color:#1a73e8;">person_search</span>
+        </div>
+        <div style="font-size:1rem; font-weight:700; color:#202124; text-align:center; margin-bottom:8px;">
+            同名の利用者が見つかりました
+        </div>
+        <div style="font-size:0.88rem; color:#5f6368; text-align:center; margin-bottom:18px;" id="duplicate-name-text">
+            「__」と同じ名前の利用者が登録されています。
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <button id="duplicate-link-btn" class="btn btn-primary">
+                同一人物として紐づける
+            </button>
+            <button id="duplicate-new-btn" class="btn" style="background:#f1f3f4; color:#5f6368; border:none;">
+                別人として新規追加
+            </button>
+            <button onclick="closeDuplicateNameModal()" class="btn" style="background:none; color:#5f6368; border:1px solid #e0e0e0;">
+                キャンセル
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- ========== カメラモーダル ========== -->
 <div class="camera-modal" id="camera-modal">
     <div style="width:100%;max-width:480px;height:100%;display:flex;flex-direction:column;">
@@ -615,6 +719,7 @@ const AMPM_DATA   = {{ ampm_data | tojson }};
 const VITALS_DATA = {{ vitals_data | tojson }};
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
+let EXCLUDES_TODAY = ({{ excludes_today | tojson }} || []).map(String);
 
 let currentWeekday = (function() {
     const el = document.getElementById('vital-date');
@@ -782,10 +887,12 @@ function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
     const list = document.getElementById('patient-vitals-list');
 
-    // 今日の曜日の利用者を絞り込み（AM/PMフィルタも適用）
+    // 今日の曜日の利用者を絞り込み（AM/PMフィルタ + 本日除外フィルタも適用）
     const targets = PATIENTS.filter(p => {
         const wd = VISIT_DAYS[p.id] || '';
         if (!wd.includes(String(currentWeekday))) return false;
+        // 「今日だけ削除」されている利用者は表示しない
+        if (EXCLUDES_TODAY.includes(String(p.id))) return false;
         if (currentAmpm === 'ALL') return true;
         const ampm = AMPM_DATA[p.id] || 'BOTH';
         return ampm === currentAmpm || ampm === 'BOTH';
@@ -910,13 +1017,11 @@ function initSwipeDelete(cardId, patientId, patientName) {
         isDragging = false;
         if (currentX < -THRESHOLD) {
             inner.style.transform = `translateX(-80px)`;
-            // 削除確認
+            // 2択の削除確認モーダルを開く
             setTimeout(() => {
-                if (confirm(`本当に「${patientName}」を本日の一覧から取り消しますか？`)) {
-                    removePatientFromDay(patientId);
-                } else {
+                openDeleteConfirmModal(patientId, patientName, () => {
                     inner.style.transform = '';
-                }
+                });
             }, 100);
         } else {
             inner.style.transform = '';
@@ -1200,90 +1305,204 @@ window.saveSettings = async function() {
     }
 };
 
-// ========== 臨時追加 ==========
-window.toggleTempSearch = function() {
-    const area = document.getElementById('temp-search-area');
-    area.style.display = area.style.display === 'none' ? 'block' : 'none';
-    if (area.style.display === 'block') {
-        setTimeout(() => document.getElementById('temp-patient-search').focus(), 100);
-    }
+// ========== 利用者追加モーダル(2026-05-01) ==========
+let _addPatientFiltered = [];
+let _addPatientSelectedId = null;
+
+window.openAddPatientModal = function() {
+    _addPatientSelectedId = null;
+    document.getElementById('add-patient-search').value = '';
+    document.getElementById('add-patient-newname').value = '';
+    renderAddPatientList(PATIENTS);
+    const m = document.getElementById('add-patient-modal');
+    m.style.display = 'flex';
+    setTimeout(() => document.getElementById('add-patient-search').focus(), 100);
 };
 
-window.searchTempPatient = function(q) {
-    const cands = document.getElementById('temp-candidates');
-    if (!q.trim()) { cands.style.display = 'none'; return; }
-    const ql = q.toLowerCase();
-    const hits = PATIENTS.filter(p =>
-        p.user_name.includes(q) || (p.user_kana||'').includes(q) ||
-        p.user_name.toLowerCase().includes(ql) || (p.user_kana||'').toLowerCase().includes(ql)
-    ).slice(0, 8);
-    if (!hits.length) { cands.style.display = 'none'; return; }
-    cands.innerHTML = hits.map(p =>
-        `<div style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;"
-            data-name="${p.user_name}" data-id="${p.id}">${p.user_name}（${p.user_kana||''}）</div>`
-    ).join('');
-    cands.style.display = 'block';
-    cands.querySelectorAll('[data-name]').forEach(el => {
-        el.addEventListener('mousedown', e => {
-            e.preventDefault();
-            document.getElementById('temp-patient-search').value = el.dataset.name;
-            document.getElementById('temp-patient-search').dataset.selectedId = el.dataset.id;
-            cands.style.display = 'none';
-        });
-        el.addEventListener('touchend', e => {
-            e.preventDefault();
-            document.getElementById('temp-patient-search').value = el.dataset.name;
-            document.getElementById('temp-patient-search').dataset.selectedId = el.dataset.id;
-            cands.style.display = 'none';
+window.closeAddPatientModal = function() {
+    document.getElementById('add-patient-modal').style.display = 'none';
+    _addPatientSelectedId = null;
+};
+
+function renderAddPatientList(arr) {
+    _addPatientFiltered = arr || [];
+    const list = document.getElementById('add-patient-list');
+    if (!_addPatientFiltered.length) {
+        list.innerHTML = '<div style="padding:14px; text-align:center; color:#80868b; font-size:0.85rem;">該当する利用者がいません</div>';
+        return;
+    }
+    const wdNames = ['日','月','火','水','木','金','土'];
+    list.innerHTML = _addPatientFiltered.map(p => {
+        const wd = VISIT_DAYS[p.id] || '';
+        const wdLabel = wd ? wd.split('').map(d => wdNames[parseInt(d,10)]).join('') : '未設定';
+        const inToday = wd.includes(String(currentWeekday)) && !EXCLUDES_TODAY.includes(String(p.id));
+        return `<div data-pid="${p.id}" data-name="${p.user_name}" class="add-patient-item" style="
+            padding:11px 14px; border-bottom:1px solid #ececec; cursor:pointer;
+            display:flex; align-items:center; gap:10px;
+            ${inToday ? 'opacity:0.5;' : ''}
+            ${_addPatientSelectedId === String(p.id) ? 'background:#e8f0fe;' : ''}">
+            <span class="material-symbols-outlined" style="font-size:18px;color:${_addPatientSelectedId === String(p.id) ? '#1a73e8' : '#80868b'};">${_addPatientSelectedId === String(p.id) ? 'check_circle' : 'person'}</span>
+            <div style="flex:1; min-width:0;">
+                <div style="font-size:0.9rem; color:#202124; font-weight:500;">${p.user_name}${inToday ? ' <span style="font-size:0.7rem;color:#34a853;">(本日表示中)</span>' : ''}</div>
+                <div style="font-size:0.72rem; color:#80868b;">${p.user_kana || ''} ／ 利用曜日: ${wdLabel}</div>
+            </div>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.add-patient-item').forEach(el => {
+        el.addEventListener('click', () => {
+            _addPatientSelectedId = String(el.dataset.pid);
+            document.getElementById('add-patient-newname').value = '';
+            renderAddPatientList(_addPatientFiltered);
         });
     });
+}
+
+window.filterAddPatientList = function(q) {
+    const ql = (q || '').trim().toLowerCase();
+    if (!ql) { renderAddPatientList(PATIENTS); return; }
+    const hits = PATIENTS.filter(p =>
+        p.user_name.includes(q) || (p.user_kana || '').includes(q) ||
+        p.user_name.toLowerCase().includes(ql) || (p.user_kana || '').toLowerCase().includes(ql)
+    );
+    renderAddPatientList(hits);
 };
 
-window.addTempPatient = async function() {
-    const input = document.getElementById('temp-patient-search');
-    const name = input.value.trim();
-    if (!name) { alert('名前を入力してください'); return; }
-    const selectedId = input.dataset.selectedId;
+window.confirmAddPatient = async function() {
+    const newName = document.getElementById('add-patient-newname').value.trim();
 
-    // 既存利用者として選択されている場合
-    if (selectedId) {
-        const p = PATIENTS.find(x => x.id === selectedId);
-        if (p) {
-            if (!VISIT_DAYS[p.id] || !VISIT_DAYS[p.id].includes(String(currentWeekday))) {
-                VISIT_DAYS[p.id] = (VISIT_DAYS[p.id] || '') + String(currentWeekday);
-            }
-            renderPatientList();
-            document.getElementById('temp-search-area').style.display = 'none';
-            input.value = ''; input.dataset.selectedId = '';
+    // 既存利用者選択 → 今日の曜日に追加
+    if (_addPatientSelectedId && !newName) {
+        await doAddTodayPatient({ patient_id: _addPatientSelectedId });
+        return;
+    }
+
+    // 新規利用者
+    if (newName) {
+        // patientsテーブルに同名がいるか
+        const samenamePatient = PATIENTS.find(p => p.user_name === newName);
+        if (samenamePatient) {
+            // 既存patientsに同名あり → 確認ダイアログ
+            openDuplicateNameModal(newName,
+                () => { doAddTodayPatient({ patient_id: samenamePatient.id }); },
+                () => { doAddTodayPatient({ user_name: newName }); }
+            );
             return;
         }
+        // 過去バイタルでの同名チェック(臨時で記録済みかも)
+        try {
+            const checkRes = await fetch(`/api/check_temp_vital?name=${encodeURIComponent(newName)}`);
+            const checkData = await checkRes.json();
+            if (checkData.exists && checkData.patient_id) {
+                openDuplicateNameModal(newName,
+                    () => {
+                        doAddTodayPatient({ patient_id: checkData.patient_id });
+                        fetch('/api/link_temp_vital', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ temp_name: newName, link_to_id: checkData.patient_id })
+                        }).catch(() => {});
+                    },
+                    () => { doAddTodayPatient({ user_name: newName }); }
+                );
+                return;
+            }
+        } catch (e) { /* fall through */ }
+        // 全く新規
+        await doAddTodayPatient({ user_name: newName });
+        return;
     }
 
-    // 新規臨時利用者 → 同名の過去バイタルチェック
-    const res = await fetch(`/api/check_temp_vital?name=${encodeURIComponent(name)}`);
-    const data = await res.json();
-
-    if (data.exists) {
-        const confirm_link = confirm(
-            `「${name}」様の過去のバイタル記録（${data.date}）があります。\n同一人物ですか？\n\n[OK] 同一人物として紐づける\n[キャンセル] 別の人として追加`
-        );
-        if (confirm_link) {
-            await fetch('/api/link_temp_vital', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ temp_name: name, link_to_id: data.patient_id })
-            });
-        }
-    }
-
-    // 臨時利用者として今日のリストに追加
-    const tempId = 'temp_' + Date.now();
-    PATIENTS.push({ id: tempId, user_name: name, user_kana: '', chart_number: '臨時', weekdays: '' });
-    VISIT_DAYS[tempId] = String(currentWeekday);
-    renderPatientList();
-    document.getElementById('temp-search-area').style.display = 'none';
-    input.value = ''; input.dataset.selectedId = '';
+    alert('既存の利用者を選ぶか、新しい名前を入力してください');
 };
+
+async function doAddTodayPatient(payload) {
+    try {
+        const dateStr = document.getElementById('vital-date').value || TODAY;
+        payload.date = dateStr;
+        const res = await fetch('/api/add_today_patient', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status !== 'success') {
+            alert('追加に失敗しました: ' + (data.message || ''));
+            return;
+        }
+        const pid = String(data.patient_id);
+        if (data.is_new) {
+            PATIENTS.push({ id: pid, user_name: data.user_name, user_kana: '', chart_number: '臨時' });
+        }
+        VISIT_DAYS[pid] = (VISIT_DAYS[pid] || '');
+        if (!VISIT_DAYS[pid].includes(String(currentWeekday))) {
+            VISIT_DAYS[pid] += String(currentWeekday);
+        }
+        EXCLUDES_TODAY = EXCLUDES_TODAY.filter(x => x !== pid);
+        closeAddPatientModal();
+        renderPatientList();
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+}
+
+// ========== 同名利用者の確認モーダル ==========
+window.openDuplicateNameModal = function(name, onLink, onNew) {
+    document.getElementById('duplicate-name-text').textContent = `「${name}」様と同じ名前の利用者が登録されています。同一人物ですか?`;
+    const linkBtn = document.getElementById('duplicate-link-btn');
+    const newBtn = document.getElementById('duplicate-new-btn');
+    linkBtn.onclick = () => { closeDuplicateNameModal(); onLink && onLink(); };
+    newBtn.onclick = () => { closeDuplicateNameModal(); onNew && onNew(); };
+    document.getElementById('duplicate-name-modal').style.display = 'flex';
+};
+
+window.closeDuplicateNameModal = function() {
+    document.getElementById('duplicate-name-modal').style.display = 'none';
+};
+
+// ========== 削除確認モーダル(2択) ==========
+window.openDeleteConfirmModal = function(patientId, patientName, onCancel) {
+    document.getElementById('delete-confirm-name').textContent = `「${patientName}」様をどう削除しますか?`;
+    const todayBtn = document.getElementById('delete-today-only-btn');
+    const permBtn = document.getElementById('delete-permanent-btn');
+    todayBtn.onclick = async () => {
+        closeDeleteConfirmModal();
+        await excludeTodayOnly(patientId);
+    };
+    permBtn.onclick = async () => {
+        closeDeleteConfirmModal();
+        await removePatientFromDay(patientId);
+    };
+    const modal = document.getElementById('delete-confirm-modal');
+    modal._onCancel = onCancel;
+    modal.style.display = 'flex';
+};
+
+window.closeDeleteConfirmModal = function() {
+    const modal = document.getElementById('delete-confirm-modal');
+    modal.style.display = 'none';
+    if (typeof modal._onCancel === 'function') {
+        modal._onCancel();
+        modal._onCancel = null;
+    }
+};
+
+async function excludeTodayOnly(patientId) {
+    try {
+        const dateStr = document.getElementById('vital-date').value || TODAY;
+        const res = await fetch('/api/vital_excludes', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ patient_id: patientId, date: dateStr })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const pid = String(patientId);
+            if (!EXCLUDES_TODAY.includes(pid)) EXCLUDES_TODAY.push(pid);
+            renderPatientList();
+        } else {
+            alert('除外に失敗しました');
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+}
 
 // ========== 再検査通知時刻の追加・削除 ==========
 window.addRecheckTime = function() {
