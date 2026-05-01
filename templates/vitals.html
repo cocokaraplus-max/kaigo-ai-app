@@ -843,6 +843,9 @@ window.switchMainTab = function(name, el) {
     document.getElementById('tab-'+name).classList.add('active');
     el.classList.add('active');
     if (name === 'daily') loadDailyOverview();
+    // FAB(本日の利用者を追加)は記録タブのみ表示
+    const fab = document.getElementById('add-today-fab');
+    if (fab) fab.style.display = (name === 'record') ? 'flex' : 'none';
 };
 
 // ========== 曜日選択 ==========
