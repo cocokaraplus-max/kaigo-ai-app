@@ -547,33 +547,42 @@
 </button>
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
-<div id="add-patient-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:flex-end; justify-content:center;">
-    <div style="background:#fff; width:100%; max-width:520px; max-height:85vh; border-radius:16px 16px 0 0; padding:20px 18px; overflow-y:auto;">
+<!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
+<div id="add-patient-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:flex-start; justify-content:center; padding:40px 0 0; overflow-y:auto;">
+    <div style="background:#fff; width:100%; max-width:520px; min-height:60vh; border-radius:16px 16px 0 0; padding:20px 18px 24px; margin-bottom:0; display:flex; flex-direction:column;">
+        <!-- タイトル部(sticky) -->
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
             <div style="font-size:1.05rem; font-weight:700; color:#202124;">
                 <span class="material-symbols-outlined" style="vertical-align:middle; color:#1a73e8;">person_add</span>
-                本日の利用者を追加
+                本日の利用者を追加<span id="add-patient-count-label" style="color:#1a73e8; font-size:0.85rem; margin-left:6px;"></span>
             </div>
             <button onclick="closeAddPatientModal()" style="background:none; border:none; cursor:pointer; padding:4px;">
                 <span class="material-symbols-outlined" style="color:#5f6368;">close</span>
             </button>
         </div>
         <div style="font-size:0.78rem; color:#5f6368; margin-bottom:10px;">
-            既存利用者から選ぶ、または新しい名前を入力してください
+            既存利用者から複数選択、または新しい名前を入力してください
         </div>
 
         <!-- 検索バー -->
         <div style="position:relative; margin-bottom:12px;">
             <input type="text" class="form-control" id="add-patient-search"
                 placeholder="🔍 名前・ふりがなで絞り込み..."
-                oninput="filterAddPatientList(this.value)" autocomplete="off">
+                oninput="filterAddPatientList(this.value)"
+                onfocus="onAddPatientSearchFocus()"
+                autocomplete="off">
         </div>
 
         <!-- 既存利用者リスト -->
-        <div style="font-size:0.78rem; font-weight:700; color:#1a73e8; margin:10px 0 6px;">
-            既存利用者から選択
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:10px 0 6px;">
+            <div style="font-size:0.78rem; font-weight:700; color:#1a73e8;">
+                既存利用者から選択(複数可)
+            </div>
+            <button id="add-patient-clear-btn" onclick="clearAddPatientSelection()" style="background:none; border:none; color:#5f6368; font-size:0.72rem; cursor:pointer; text-decoration:underline; display:none;">
+                選択をクリア
+            </button>
         </div>
-        <div id="add-patient-list" style="max-height:280px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;"></div>
+        <div id="add-patient-list" style="max-height:50vh; overflow-y:auto; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;"></div>
 
         <!-- 新規利用者入力 -->
         <div style="margin-top:14px; padding-top:14px; border-top:1px dashed #e0e0e0;">
@@ -581,17 +590,20 @@
                 または新規利用者を入力
             </div>
             <input type="text" class="form-control" id="add-patient-newname"
-                placeholder="新しい利用者の名前" autocomplete="off" style="margin-bottom:8px;">
+                placeholder="新しい利用者の名前"
+                oninput="updateAddPatientCounter()"
+                onfocus="onAddPatientSearchFocus()"
+                autocomplete="off" style="margin-bottom:8px;">
         </div>
 
-        <!-- ボタン -->
+        <!-- ボタン(下部) -->
         <div style="display:flex; gap:8px; margin-top:14px;">
             <button class="btn" style="flex:1; background:#f1f3f4; color:#5f6368; border:none;" onclick="closeAddPatientModal()">
                 キャンセル
             </button>
-            <button class="btn btn-primary" style="flex:2;" onclick="confirmAddPatient()">
+            <button class="btn btn-primary" style="flex:2;" onclick="confirmAddPatient()" id="add-patient-confirm-btn">
                 <span class="material-symbols-outlined" style="color:#fff;">add</span>
-                追加する
+                <span id="add-patient-confirm-label">追加する</span>
             </button>
         </div>
     </div>
@@ -1305,24 +1317,62 @@ window.saveSettings = async function() {
     }
 };
 
-// ========== 利用者追加モーダル(2026-05-01) ==========
+// ========== 利用者追加モーダル(複数選択対応 2026-05-01) ==========
 let _addPatientFiltered = [];
-let _addPatientSelectedId = null;
+let _addPatientSelectedIds = new Set();
 
 window.openAddPatientModal = function() {
-    _addPatientSelectedId = null;
+    _addPatientSelectedIds = new Set();
     document.getElementById('add-patient-search').value = '';
     document.getElementById('add-patient-newname').value = '';
     renderAddPatientList(PATIENTS);
+    updateAddPatientCounter();
     const m = document.getElementById('add-patient-modal');
     m.style.display = 'flex';
-    setTimeout(() => document.getElementById('add-patient-search').focus(), 100);
+    // iOSキーボード対策: フォーカスは即時にせず、モーダル全体が見えてから
+    // ユーザーが自分でタップする方が予期しない位置ずれが起こりにくい
 };
 
 window.closeAddPatientModal = function() {
     document.getElementById('add-patient-modal').style.display = 'none';
-    _addPatientSelectedId = null;
+    _addPatientSelectedIds = new Set();
 };
+
+// 検索バー or 新規入力欄にフォーカス時、モーダル先頭にスクロール(キーボード対策)
+window.onAddPatientSearchFocus = function() {
+    setTimeout(() => {
+        const m = document.getElementById('add-patient-modal');
+        if (m) m.scrollTop = 0;
+    }, 250);
+};
+
+// 選択クリア
+window.clearAddPatientSelection = function() {
+    _addPatientSelectedIds = new Set();
+    renderAddPatientList(_addPatientFiltered);
+    updateAddPatientCounter();
+};
+
+function updateAddPatientCounter() {
+    const n = _addPatientSelectedIds.size;
+    const newName = (document.getElementById('add-patient-newname')?.value || '').trim();
+    const label = document.getElementById('add-patient-count-label');
+    const btnLabel = document.getElementById('add-patient-confirm-label');
+    const clearBtn = document.getElementById('add-patient-clear-btn');
+    if (label) label.textContent = n > 0 ? ` (${n}人選択中)` : '';
+    if (clearBtn) clearBtn.style.display = n > 0 ? 'inline' : 'none';
+    if (btnLabel) {
+        if (n > 0 && newName) {
+            btnLabel.textContent = `${n}人 + 新規1人を追加する`;
+        } else if (n > 0) {
+            btnLabel.textContent = `${n}人を追加する`;
+        } else if (newName) {
+            btnLabel.textContent = '新規追加する';
+        } else {
+            btnLabel.textContent = '追加する';
+        }
+    }
+}
 
 function renderAddPatientList(arr) {
     _addPatientFiltered = arr || [];
@@ -1333,15 +1383,17 @@ function renderAddPatientList(arr) {
     }
     const wdNames = ['日','月','火','水','木','金','土'];
     list.innerHTML = _addPatientFiltered.map(p => {
+        const pid = String(p.id);
         const wd = VISIT_DAYS[p.id] || '';
         const wdLabel = wd ? wd.split('').map(d => wdNames[parseInt(d,10)]).join('') : '未設定';
-        const inToday = wd.includes(String(currentWeekday)) && !EXCLUDES_TODAY.includes(String(p.id));
+        const inToday = wd.includes(String(currentWeekday)) && !EXCLUDES_TODAY.includes(pid);
+        const isSelected = _addPatientSelectedIds.has(pid);
         return `<div data-pid="${p.id}" data-name="${p.user_name}" class="add-patient-item" style="
             padding:11px 14px; border-bottom:1px solid #ececec; cursor:pointer;
             display:flex; align-items:center; gap:10px;
             ${inToday ? 'opacity:0.5;' : ''}
-            ${_addPatientSelectedId === String(p.id) ? 'background:#e8f0fe;' : ''}">
-            <span class="material-symbols-outlined" style="font-size:18px;color:${_addPatientSelectedId === String(p.id) ? '#1a73e8' : '#80868b'};">${_addPatientSelectedId === String(p.id) ? 'check_circle' : 'person'}</span>
+            ${isSelected ? 'background:#e8f0fe;' : ''}">
+            <span class="material-symbols-outlined" style="font-size:22px; color:${isSelected ? '#1a73e8' : '#bdc1c6'};">${isSelected ? 'check_box' : 'check_box_outline_blank'}</span>
             <div style="flex:1; min-width:0;">
                 <div style="font-size:0.9rem; color:#202124; font-weight:500;">${p.user_name}${inToday ? ' <span style="font-size:0.7rem;color:#34a853;">(本日表示中)</span>' : ''}</div>
                 <div style="font-size:0.72rem; color:#80868b;">${p.user_kana || ''} ／ 利用曜日: ${wdLabel}</div>
@@ -1350,9 +1402,14 @@ function renderAddPatientList(arr) {
     }).join('');
     list.querySelectorAll('.add-patient-item').forEach(el => {
         el.addEventListener('click', () => {
-            _addPatientSelectedId = String(el.dataset.pid);
-            document.getElementById('add-patient-newname').value = '';
+            const pid = String(el.dataset.pid);
+            if (_addPatientSelectedIds.has(pid)) {
+                _addPatientSelectedIds.delete(pid);
+            } else {
+                _addPatientSelectedIds.add(pid);
+            }
             renderAddPatientList(_addPatientFiltered);
+            updateAddPatientCounter();
         });
     });
 }
@@ -1369,52 +1426,99 @@ window.filterAddPatientList = function(q) {
 
 window.confirmAddPatient = async function() {
     const newName = document.getElementById('add-patient-newname').value.trim();
+    const selectedIds = Array.from(_addPatientSelectedIds);
 
-    // 既存利用者選択 → 今日の曜日に追加
-    if (_addPatientSelectedId && !newName) {
-        await doAddTodayPatient({ patient_id: _addPatientSelectedId });
+    // 何も選択されていない & 新規入力もない
+    if (selectedIds.length === 0 && !newName) {
+        alert('既存の利用者を選ぶか、新しい名前を入力してください');
         return;
     }
 
-    // 新規利用者
-    if (newName) {
-        // patientsテーブルに同名がいるか
-        const samenamePatient = PATIENTS.find(p => p.user_name === newName);
-        if (samenamePatient) {
-            // 既存patientsに同名あり → 確認ダイアログ
-            openDuplicateNameModal(newName,
-                () => { doAddTodayPatient({ patient_id: samenamePatient.id }); },
-                () => { doAddTodayPatient({ user_name: newName }); }
-            );
-            return;
+    const btn = document.getElementById('add-patient-confirm-btn');
+    if (btn) btn.disabled = true;
+    let successCount = 0;
+    let errorMessages = [];
+
+    try {
+        // 1) 複数選択した既存利用者を順次追加
+        for (const pid of selectedIds) {
+            const ok = await doAddTodayPatientSilent({ patient_id: pid });
+            if (ok) successCount++;
+            else errorMessages.push(`ID=${pid}の追加に失敗`);
         }
-        // 過去バイタルでの同名チェック(臨時で記録済みかも)
-        try {
-            const checkRes = await fetch(`/api/check_temp_vital?name=${encodeURIComponent(newName)}`);
-            const checkData = await checkRes.json();
-            if (checkData.exists && checkData.patient_id) {
-                openDuplicateNameModal(newName,
-                    () => {
-                        doAddTodayPatient({ patient_id: checkData.patient_id });
-                        fetch('/api/link_temp_vital', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ temp_name: newName, link_to_id: checkData.patient_id })
-                        }).catch(() => {});
-                    },
-                    () => { doAddTodayPatient({ user_name: newName }); }
-                );
+
+        // 2) 新規名前があれば追加(同名チェック付き)
+        if (newName) {
+            const handledNew = await handleNewNameAdd(newName);
+            if (handledNew === true) successCount++;
+            else if (handledNew === 'pending') {
+                // 同名確認ダイアログが開いたので、ここで終了(ユーザー操作待ち)
+                if (btn) btn.disabled = false;
                 return;
             }
-        } catch (e) { /* fall through */ }
-        // 全く新規
-        await doAddTodayPatient({ user_name: newName });
-        return;
-    }
+        }
 
-    alert('既存の利用者を選ぶか、新しい名前を入力してください');
+        // モーダル閉じてリスト更新
+        closeAddPatientModal();
+        renderPatientList();
+        if (errorMessages.length) {
+            alert(`一部の追加に失敗しました(成功:${successCount}件)\n${errorMessages.join('\n')}`);
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 };
 
-async function doAddTodayPatient(payload) {
+// 新規名前の追加処理(同名チェック含む)
+// 戻り値: true=完了, 'pending'=ダイアログ表示中(後続処理はダイアログから), false=失敗
+async function handleNewNameAdd(newName) {
+    // patientsテーブルに同名がいるか
+    const samenamePatient = PATIENTS.find(p => p.user_name === newName);
+    if (samenamePatient) {
+        openDuplicateNameModal(newName,
+            async () => {
+                await doAddTodayPatientSilent({ patient_id: samenamePatient.id });
+                closeAddPatientModal();
+                renderPatientList();
+            },
+            async () => {
+                await doAddTodayPatientSilent({ user_name: newName });
+                closeAddPatientModal();
+                renderPatientList();
+            }
+        );
+        return 'pending';
+    }
+    // 過去バイタルでの同名チェック(臨時で記録済みかも)
+    try {
+        const checkRes = await fetch(`/api/check_temp_vital?name=${encodeURIComponent(newName)}`);
+        const checkData = await checkRes.json();
+        if (checkData.exists && checkData.patient_id) {
+            openDuplicateNameModal(newName,
+                async () => {
+                    await doAddTodayPatientSilent({ patient_id: checkData.patient_id });
+                    fetch('/api/link_temp_vital', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ temp_name: newName, link_to_id: checkData.patient_id })
+                    }).catch(() => {});
+                    closeAddPatientModal();
+                    renderPatientList();
+                },
+                async () => {
+                    await doAddTodayPatientSilent({ user_name: newName });
+                    closeAddPatientModal();
+                    renderPatientList();
+                }
+            );
+            return 'pending';
+        }
+    } catch (e) { /* fall through */ }
+    // 全く新規
+    return await doAddTodayPatientSilent({ user_name: newName });
+}
+
+// API呼び出しのみ(モーダル制御・renderPatientListは呼ばない)
+async function doAddTodayPatientSilent(payload) {
     try {
         const dateStr = document.getElementById('vital-date').value || TODAY;
         payload.date = dateStr;
@@ -1423,10 +1527,7 @@ async function doAddTodayPatient(payload) {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (data.status !== 'success') {
-            alert('追加に失敗しました: ' + (data.message || ''));
-            return;
-        }
+        if (data.status !== 'success') return false;
         const pid = String(data.patient_id);
         if (data.is_new) {
             PATIENTS.push({ id: pid, user_name: data.user_name, user_kana: '', chart_number: '臨時' });
@@ -1436,10 +1537,9 @@ async function doAddTodayPatient(payload) {
             VISIT_DAYS[pid] += String(currentWeekday);
         }
         EXCLUDES_TODAY = EXCLUDES_TODAY.filter(x => x !== pid);
-        closeAddPatientModal();
-        renderPatientList();
+        return true;
     } catch (e) {
-        alert('エラー: ' + e.message);
+        return false;
     }
 }
 
