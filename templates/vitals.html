@@ -116,20 +116,6 @@
     cursor:pointer; box-shadow:0 2px 8px rgba(52,168,83,0.3);
 }
 
-/* ===== 過去データ表示 ===== */
-.vital-history-row {
-    display:flex; align-items:center; gap:8px;
-    padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:0.8rem;
-}
-.vital-history-row:last-child { border-bottom:none; }
-.vital-date { color:#80868b; font-size:0.72rem; min-width:60px; }
-.vital-val-chip {
-    display:inline-flex; align-items:center; gap:2px;
-    background:#f0f4ff; color:#1a73e8; border-radius:8px;
-    padding:2px 7px; font-size:0.75rem; font-weight:700;
-}
-.vital-val-chip.ng { background:#fce8e6; color:#c5221f; }
-
 /* ===== 全員一覧 ===== */
 .daily-overview-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .daily-overview-table th { background:#f0f0f0; padding:8px 6px; text-align:center; font-weight:700; color:#5f6368; }
@@ -303,22 +289,49 @@
     gap: 8px !important;
 }
 
-.vital-val-chip {
-    white-space: nowrap;
-    min-width: 120px !important;
-    flex: 1 1 auto !important;
-    padding: 8px 12px !important;
-    background: #f8f9fa !important;
-    border-radius: 8px !important;
-    border: 1px solid #e0e0e0 !important;
-    margin: 2px !important;
-}
-
 @media (max-width: 768px) {
     .vital-measurement-group {
         min-width: 300px !important;
     }
 }
+
+/* ===== 履歴UI(2026-05-01 改修) ===== */
+.history-mode-tabs { display:flex; gap:6px; margin-bottom:10px; }
+.history-mode-tab { flex:1; padding:8px 12px; border-radius:10px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.82rem; font-weight:700; color:#5f6368; cursor:pointer; text-align:center; transition:all 0.15s; }
+.history-mode-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+
+.history-month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:8px 12px; background:#f8f9fa; border-radius:10px; }
+.history-month-nav button { background:none; border:none; cursor:pointer; padding:6px 12px; color:#1a73e8; font-size:0.95rem; font-weight:700; border-radius:6px; }
+.history-month-nav button:hover { background:#e8f0fe; }
+.history-month-nav button:disabled { color:#bdc1c6; cursor:not-allowed; }
+.history-month-label { font-size:0.95rem; font-weight:700; color:#202124; }
+
+.history-day-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+.history-day-header { padding:8px 12px; background:#f8f9fa; border-bottom:1px solid #e8eaed; font-size:0.82rem; font-weight:700; color:#202124; display:flex; align-items:center; gap:6px; }
+.history-day-header .recheck-mini { font-size:0.65rem; padding:2px 6px; border-radius:4px; background:#fff3e0; color:#e65100; font-weight:700; }
+
+.history-measurements { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+.history-measurements::-webkit-scrollbar { height:4px; }
+.history-measurements::-webkit-scrollbar-thumb { background:#1a73e8; border-radius:2px; }
+.history-measurement { flex:0 0 100%; scroll-snap-align:start; padding:10px 12px; box-sizing:border-box; }
+.history-measurement .meas-time { font-size:0.72rem; color:#5f6368; margin-bottom:6px; font-weight:600; }
+.history-vitals-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; }
+.history-vital-item { display:flex; align-items:baseline; gap:4px; min-width:0; }
+.history-vital-label { font-size:0.72rem; color:#5f6368; font-weight:600; flex-shrink:0; }
+.history-vital-value { font-size:0.92rem; font-weight:700; color:#2196F3; }
+.history-vital-value.alert { color:#F44336; }
+.history-vital-unit { font-size:0.66rem; color:#5f6368; font-weight:500; }
+.history-vital-empty { font-size:0.78rem; color:#bdc1c6; font-weight:500; }
+
+.history-page-indicator { display:flex; justify-content:center; gap:4px; padding:6px 0 8px; }
+.history-page-dot { width:6px; height:6px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
+.history-page-dot.active { background:#1a73e8; }
+
+.history-graph-area { background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; padding:12px; margin-top:8px; }
+.history-graph-tabs { display:flex; gap:4px; margin-bottom:10px; flex-wrap:wrap; }
+.history-graph-tab { padding:5px 10px; border-radius:8px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.74rem; font-weight:700; color:#5f6368; cursor:pointer; }
+.history-graph-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+.history-graph-canvas-wrap { position:relative; height:240px; }
 </style>
 {% endblock %}
 
@@ -415,6 +428,32 @@
             <div class="search-candidates" id="history-candidates" style="display:none;"></div>
         </div>
     </div>
+
+    <!-- モード切替: リスト / グラフ -->
+    <div class="history-mode-tabs" id="history-mode-tabs" style="display:none;">
+        <div class="history-mode-tab active" data-mode="list" onclick="setHistoryMode('list')">
+            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">list</span>
+            リスト
+        </div>
+        <div class="history-mode-tab" data-mode="graph" onclick="setHistoryMode('graph')">
+            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">show_chart</span>
+            グラフ
+        </div>
+    </div>
+
+    <!-- 月切替ナビ -->
+    <div class="history-month-nav" id="history-month-nav" style="display:none;">
+        <button onclick="changeHistoryMonth(-1)" id="history-month-prev">
+            <span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">chevron_left</span>
+            前月
+        </button>
+        <div class="history-month-label" id="history-month-label">2026年5月</div>
+        <button onclick="changeHistoryMonth(1)" id="history-month-next">
+            次月
+            <span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">chevron_right</span>
+        </button>
+    </div>
+
     <div id="history-area">
         <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
             <span class="material-symbols-outlined">info</span>
@@ -723,6 +762,7 @@
 {% endblock %}
 
 {% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function(){
 const PATIENTS    = {{ patients | tojson }};
@@ -1264,7 +1304,17 @@ window.loadDailyOverview = async function() {
         </table></div>`;
 };
 
-// ========== 履歴 ==========
+// ========== 履歴UI(月切替・グラフ対応 2026-05-01) ==========
+let _historyState = {
+    pid: null,
+    name: null,
+    allVitals: [],
+    currentMonth: null,
+    mode: 'list',
+    graphMetric: 'bp',
+    chartInstance: null,
+};
+
 window.searchHistoryPatient = function(q) {
     const cands = document.getElementById('history-candidates');
     if (!q.trim()) { cands.style.display='none'; return; }
@@ -1279,27 +1329,234 @@ window.searchHistoryPatient = function(q) {
 window.loadHistory = async function(pid, name) {
     document.getElementById('history-candidates').style.display='none';
     document.getElementById('history-search').value = name;
-    const res = await fetch(`/api/vitals_history?patient_id=${pid}`);
-    const data = await res.json();
+    _historyState.pid = pid;
+    _historyState.name = name;
+    _historyState.mode = 'list';
+    _historyState.graphMetric = 'bp';
+    if (_historyState.chartInstance) { _historyState.chartInstance.destroy(); _historyState.chartInstance = null; }
+
+    try {
+        const res = await fetch(`/api/vitals_history?patient_id=${pid}`);
+        const data = await res.json();
+        _historyState.allVitals = data.vitals || [];
+    } catch (e) {
+        _historyState.allVitals = [];
+    }
+
+    if (_historyState.allVitals.length) {
+        _historyState.currentMonth = _historyState.allVitals[0].measured_date.slice(0, 7);
+    } else {
+        _historyState.currentMonth = (document.getElementById('vital-date').value || TODAY).slice(0, 7);
+    }
+
+    document.getElementById('history-mode-tabs').style.display = 'flex';
+    document.getElementById('history-month-nav').style.display = 'flex';
+    document.querySelectorAll('.history-mode-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.mode === 'list');
+    });
+
+    renderHistory();
+};
+
+window.setHistoryMode = function(mode) {
+    _historyState.mode = mode;
+    document.querySelectorAll('.history-mode-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.mode === mode);
+    });
+    if (_historyState.chartInstance) { _historyState.chartInstance.destroy(); _historyState.chartInstance = null; }
+    renderHistory();
+};
+
+window.changeHistoryMonth = function(delta) {
+    const [y, m] = _historyState.currentMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    _historyState.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (_historyState.chartInstance) { _historyState.chartInstance.destroy(); _historyState.chartInstance = null; }
+    renderHistory();
+};
+
+function getVitalsForMonth() {
+    return _historyState.allVitals.filter(v => v.measured_date && v.measured_date.startsWith(_historyState.currentMonth));
+}
+
+function renderHistory() {
     const area = document.getElementById('history-area');
-    if (!data.vitals || !data.vitals.length) {
-        area.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;"><span class="material-symbols-outlined">info</span>${name} 様のバイタル記録はありません。</div>`;
+    const monthLabel = document.getElementById('history-month-label');
+    const [y, m] = _historyState.currentMonth.split('-').map(Number);
+    monthLabel.textContent = `${y}年${m}月`;
+
+    if (_historyState.allVitals.length) {
+        const oldest = _historyState.allVitals[_historyState.allVitals.length - 1].measured_date.slice(0, 7);
+        const newest = _historyState.allVitals[0].measured_date.slice(0, 7);
+        document.getElementById('history-month-prev').disabled = (_historyState.currentMonth <= oldest);
+        document.getElementById('history-month-next').disabled = (_historyState.currentMonth >= newest);
+    } else {
+        document.getElementById('history-month-prev').disabled = true;
+        document.getElementById('history-month-next').disabled = true;
+    }
+
+    if (_historyState.mode === 'graph') {
+        renderHistoryGraph(area);
+    } else {
+        renderHistoryList(area);
+    }
+}
+
+function renderHistoryList(area) {
+    const monthVitals = getVitalsForMonth();
+    if (!monthVitals.length) {
+        area.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;"><span class="material-symbols-outlined">info</span>${_historyState.name} 様のこの月の記録はありません。</div>`;
         return;
     }
-    const rows = data.vitals.map(v => {
-        const chip = (key, val, unit) => val ? `<span class="vital-val-chip ${isAlertVal(key,val)?'ng':''}">${val}${unit}</span>` : '';
-        return `<div class="vital-history-row">
-            <span class="vital-date">${v.measured_date}</span>
-            ${chip('bp_high',v.bp_high,'')}${v.bp_high&&v.bp_low?`<span style="font-size:0.72rem;color:#80868b;">/</span>`:''}${chip('bp_low',v.bp_low,'mmHg')}
-            ${chip('pulse',v.pulse,'bpm')}
-            ${chip('temperature',v.temperature,'℃')}
-            ${chip('spo2',v.spo2,'%')}
-            ${v.recheck?'<span class="vital-recheck-badge" style="font-size:0.62rem;">再検査</span>':''}
+    const byDate = {};
+    monthVitals.forEach(v => {
+        const d = v.measured_date;
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(v);
+    });
+    Object.keys(byDate).forEach(d => {
+        byDate[d].sort((a, b) => (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+    });
+    const sortedDates = Object.keys(byDate).sort().reverse();
+    const wdNames = ['日','月','火','水','木','金','土'];
+
+    const html = sortedDates.map(date => {
+        const items = byDate[date];
+        const dt = new Date(date + 'T00:00:00');
+        const wd = wdNames[dt.getDay()];
+        const dateLabel = `${dt.getMonth() + 1}月${dt.getDate()}日(${wd})`;
+
+        const measurementsHtml = items.map((v, idx) => {
+            const t = v.measured_at ? new Date(v.measured_at) : null;
+            const timeStr = t ? `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : '';
+            const ampm = t ? (t.getHours() < 12 ? '🌅 午前' : '🌇 午後') : '';
+            return `<div class="history-measurement">
+                <div class="meas-time">${ampm}${timeStr ? ' ' + timeStr : ''}${items.length > 1 ? ` (${idx+1}/${items.length})` : ''}${v.recheck ? '<span class="recheck-mini" style="margin-left:6px;">再検査</span>' : ''}</div>
+                <div class="history-vitals-grid">
+                    ${vitalCellHtml('血圧', v.bp_high, v.bp_low, 'mmHg', 'bp_high', 'bp_low')}
+                    ${vitalCellHtml('脈拍', v.pulse, null, 'bpm', 'pulse')}
+                    ${vitalCellHtml('体温', v.temperature, null, '℃', 'temperature')}
+                    ${vitalCellHtml('SpO2', v.spo2, null, '%', 'spo2')}
+                </div>
+            </div>`;
+        }).join('');
+
+        const dotsHtml = items.length > 1
+            ? `<div class="history-page-indicator">${items.map((_, i) => `<div class="history-page-dot${i === 0 ? ' active' : ''}"></div>`).join('')}</div>`
+            : '';
+
+        return `<div class="history-day-card" data-date="${date}">
+            <div class="history-day-header">
+                <span class="material-symbols-outlined" style="font-size:16px;color:#1a73e8;">event</span>
+                ${dateLabel}
+                ${items.length > 1 ? `<span style="font-size:0.7rem;color:#5f6368;margin-left:auto;">${items.length}回測定</span>` : ''}
+            </div>
+            <div class="history-measurements">${measurementsHtml}</div>
+            ${dotsHtml}
         </div>`;
     }).join('');
+
     area.innerHTML = `
-        <div style="font-weight:700;font-size:0.9rem;margin-bottom:10px;">${name} 様のバイタル履歴</div>
-        <div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:12px;padding:12px 14px;">${rows}</div>`;
+        <div style="font-weight:700;font-size:0.9rem;margin-bottom:10px;color:#202124;">${_historyState.name} 様のバイタル履歴</div>
+        ${html}`;
+
+    document.querySelectorAll('.history-day-card').forEach(card => {
+        const scroller = card.querySelector('.history-measurements');
+        const dots = card.querySelectorAll('.history-page-dot');
+        if (!scroller || dots.length <= 1) return;
+        scroller.addEventListener('scroll', () => {
+            const idx = Math.round(scroller.scrollLeft / scroller.clientWidth);
+            dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+        }, { passive: true });
+    });
+}
+
+function vitalCellHtml(label, val1, val2, unit, key1, key2) {
+    if (val1 == null || val1 === '') {
+        return `<div class="history-vital-item"><span class="history-vital-label">${label}:</span><span class="history-vital-empty">--</span></div>`;
+    }
+    const isAlert1 = isAlertVal(key1, val1);
+    const isAlert2 = key2 && val2 != null ? isAlertVal(key2, val2) : false;
+    const isAlert = isAlert1 || isAlert2;
+    const valDisplay = (val2 != null && val2 !== '')
+        ? `<span class="history-vital-value${isAlert ? ' alert' : ''}">${val1}/${val2}</span>`
+        : `<span class="history-vital-value${isAlert ? ' alert' : ''}">${val1}</span>`;
+    return `<div class="history-vital-item">
+        <span class="history-vital-label">${label}:</span>
+        ${valDisplay}
+        <span class="history-vital-unit">${unit}</span>
+    </div>`;
+}
+
+function renderHistoryGraph(area) {
+    const monthVitals = getVitalsForMonth();
+    const graphTabs = `
+        <div class="history-graph-tabs">
+            <div class="history-graph-tab ${_historyState.graphMetric === 'bp' ? 'active' : ''}" onclick="setGraphMetric('bp')">血圧</div>
+            <div class="history-graph-tab ${_historyState.graphMetric === 'pulse' ? 'active' : ''}" onclick="setGraphMetric('pulse')">脈拍</div>
+            <div class="history-graph-tab ${_historyState.graphMetric === 'temp' ? 'active' : ''}" onclick="setGraphMetric('temp')">体温</div>
+            <div class="history-graph-tab ${_historyState.graphMetric === 'spo2' ? 'active' : ''}" onclick="setGraphMetric('spo2')">SpO2</div>
+        </div>`;
+
+    if (!monthVitals.length) {
+        area.innerHTML = `
+            <div style="font-weight:700;font-size:0.9rem;margin-bottom:10px;color:#202124;">${_historyState.name} 様のグラフ</div>
+            <div class="history-graph-area">${graphTabs}<div style="text-align:center;color:#80868b;font-size:0.85rem;padding:30px 0;">この月の記録はありません</div></div>`;
+        return;
+    }
+
+    area.innerHTML = `
+        <div style="font-weight:700;font-size:0.9rem;margin-bottom:10px;color:#202124;">${_historyState.name} 様のグラフ</div>
+        <div class="history-graph-area">
+            ${graphTabs}
+            <div class="history-graph-canvas-wrap"><canvas id="history-chart"></canvas></div>
+        </div>`;
+
+    const sorted = [...monthVitals].sort((a, b) => (a.measured_at || a.measured_date).localeCompare(b.measured_at || b.measured_date));
+    const labels = sorted.map(v => {
+        const d = new Date(v.measured_date + 'T00:00:00');
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+    });
+
+    let datasets = [];
+    if (_historyState.graphMetric === 'bp') {
+        datasets = [
+            { label: '血圧(上)', data: sorted.map(v => v.bp_high), borderColor: '#F44336', backgroundColor: '#F44336', tension: 0.2, spanGaps: true },
+            { label: '血圧(下)', data: sorted.map(v => v.bp_low), borderColor: '#2196F3', backgroundColor: '#2196F3', tension: 0.2, spanGaps: true },
+        ];
+    } else if (_historyState.graphMetric === 'pulse') {
+        datasets = [{ label: '脈拍 (bpm)', data: sorted.map(v => v.pulse), borderColor: '#FF9800', backgroundColor: '#FF9800', tension: 0.2, spanGaps: true }];
+    } else if (_historyState.graphMetric === 'temp') {
+        datasets = [{ label: '体温 (℃)', data: sorted.map(v => v.temperature), borderColor: '#9C27B0', backgroundColor: '#9C27B0', tension: 0.2, spanGaps: true }];
+    } else if (_historyState.graphMetric === 'spo2') {
+        datasets = [{ label: 'SpO2 (%)', data: sorted.map(v => v.spo2), borderColor: '#00BCD4', backgroundColor: '#00BCD4', tension: 0.2, spanGaps: true }];
+    }
+
+    const ctx = document.getElementById('history-chart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    _historyState.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { font: { size: 11 } } },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                y: { beginAtZero: false, ticks: { font: { size: 10 } } },
+                x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }
+            },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false }
+        }
+    });
+}
+
+window.setGraphMetric = function(metric) {
+    _historyState.graphMetric = metric;
+    if (_historyState.chartInstance) { _historyState.chartInstance.destroy(); _historyState.chartInstance = null; }
+    renderHistory();
 };
 
 // ========== 利用曜日保存 ==========
