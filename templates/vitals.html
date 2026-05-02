@@ -1813,6 +1813,7 @@ window.saveRecheckSchedule = async function(pid, vitalId) {
             scheduled_at: scheduledDate.toISOString(),
             user_name: userName,
             note: note,
+            patient_id: pid,
         });
         // 入力欄リセット + 一覧再取得
         timeInput.value = '';
@@ -1856,15 +1857,20 @@ END:VEVENT
 END:VCALENDAR`;
 }
 
-// .icsをダウンロード
+// .icsをダウンロード(ファイル名はASCIIのみで構成: recheck-{pid}-{YYYYMMDD-HHMM}.ics)
 function downloadICS(scheduleData) {
     const ics = generateICS(scheduleData);
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const safeName = String(scheduleData.user_name || 'recheck').replace(/[\\\/:*?"<>|]/g, '_');
-    a.download = `recheck-${safeName}-${Date.now()}.ics`;
+    // patient_id をASCIIにサニタイズ(英数とハイフン・アンダースコアのみ)
+    const safePid = String(scheduleData.patient_id || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '');
+    // scheduled_at から YYYYMMDD-HHMM を生成(ローカル時刻)
+    const dt = new Date(scheduleData.scheduled_at);
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${dt.getFullYear()}${pad(dt.getMonth()+1)}${pad(dt.getDate())}-${pad(dt.getHours())}${pad(dt.getMinutes())}`;
+    a.download = `recheck-${safePid}-${stamp}.ics`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
