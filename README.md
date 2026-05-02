@@ -996,3 +996,66 @@ Step 2 完了後、**必ず** 利用者(=介護施設の職員)向けの設定�
 - スクリーンショット画像があるとなお良い(後回しでも可)
 - 「設定」タブの中に「📚 使い方ガイド」セクションを追加するのが工数最小
 
+
+---
+
+# Session 11 動作確認結果(2026-05-03 朝)
+
+Step 2-③ アラーム機能の動作確認を dev 環境(iPhone Safari)で実施した結果と、見つかった既知問題の記録。
+
+## 動作 OK の項目
+
+- アラームモーダルの発火(30秒ポーリング → 期限切れ予約検出 → 赤枠+パルス表示)
+- 「今から測定する」ボタン → 該当利用者のエディタが自動展開
+- 「10分後に再通知」ボタン → snooze API 呼び出し → 一覧の時刻が10分後に更新
+- 「完了にする」ボタン → complete API 呼び出し → 一覧から消える(または完了状態)
+- 「過去時刻ですが本当に登録しますか?」確認ダイアログ
+- 既存予約一覧の表示(時刻 / 完了状態 / メモ / 削除ボタン)
+
+## 既知の問題(Session 12 で対応予定)
+
+### 問題A: iPhone Safari で初回ロード時に「取得エラー: Load failed」
+
+- **症状**: 「既に予約済みの再検査」セクションに `取得エラー: Load failed` と表示される
+- **原因**: 教訓8 の Service Worker 古い版キャッシュ(古い JS が fetch をインターセプトしている疑い)
+- **回避策**: iPhone 設定 → Safari → 「履歴とWebサイトデータを消去」を実施 → 解決を確認済み
+- **恒久対策案**: ガイドページ(Step 4)で SW クリア手順を明記する。または vitals.html の SW 登録部に強制更新ロジックを追加することを検討
+- **重要**: dev 環境を Mac Chrome で同時に確認した結果、**サーバー側 API は正常動作**(GET /api/recheck_schedule が schedules 配列を正しく返す)。問題は iPhone Safari クライアント側の SW キャッシュのみ
+
+### 問題B: アラームのビープ音が鳴らない
+
+- **症状**: アラームモーダルは表示されるが、Web Audio API のビープ音(880Hz/660Hz, 4音, 計0.9秒)が鳴らない
+- **原因**: iOS Safari の autoplay 制限。AudioContext がユーザー操作直後でないと鳴らせない
+- **修正方針**: 「📅 リマインダーに登録」「+15分」などのクイックボタンタップ時に AudioContext を unlock(無音再生)して活性化しておく。後でアラーム発火時にその AudioContext で音を鳴らせるようにする
+- **状態**: 未修正(Session 12 で対応)
+
+### 問題C: iOS の「カレンダーの参加依頼を表示しようとしています」ダイアログが分かりにくい
+
+- **症状**: 「📅 リマインダーに登録」を押すと iOS が `tasukaru-dev-...run.app はカレンダーの参加依頼を表示しようとしています。許可しますか?` というシステムダイアログを表示する。「無視」を押されると .ics が登録されない
+- **原因**: iOS Safari の固定UI(ウェブ側からは文言を変更できない)
+- **修正方針**: ボタン直前または直後に「次の画面で『許可』を押してください」という事前案内を追加する
+- **状態**: 未修正(Session 12 で対応)
+
+## ユーザーから新たに出てきた要望(Session 12 以降)
+
+Step 2-③ 動作確認中に出てきた、現状未着手の要望:
+
+1. **「測定」タブの統合検討**: 「測定」タブで利用者を展開すると保存ボタン下のフッターに食い込む。「本日の記録」タブに利用者追加機能を持たせれば「測定」タブを廃止できる可能性がある(ただし大改修なので慎重に)
+2. **「未測定」表示**: 「本日の記録」タブで未測定の利用者も表示し、空欄 or 「未測定」ラベルで視覚的に分かるようにする
+3. **カメラ読み取りボタンの移植**: 現状「測定」タブのみにあるカメラ自動読み取りを、「本日の記録」アコーディオン編集にも追加する
+4. **音声入力でのバイタル入力(NEW)**: 「体温36.5、血圧上120、下80、脈60、酸素97」のような自然文を解析して各フィールドに自動入力する機能。Web Speech API を想定。介護現場の運用想定で工数大きめ(別セッション扱い推奨)
+
+## 最新コミット状態(2026-05-03 朝)
+
+```
+45b5c29 (HEAD -> tasukaru-dev, origin/tasukaru-dev) docs session11 handoff with step 2 completion and incident lessons
+8611db5 feat vitals recheck alarm with polling beep modal and snooze api  [Step 2-③]
+4ccd76b fix vitals recheck ics filename ascii safe with patient id and timestamp
+3ee08a3 feat vitals recheck schedule ui with quick buttons and ics download  [Step 2-②]
+8441073 feat vital recheck schedule apis post get complete delete  [Step 2-①]
+8803c33 fix vitals manual recheck reflect in display and add manual checkbox in editor  [Step 1]
+```
+
+- app.py: 4383 行 / 196216 bytes
+- templates/vitals.html: 2980 行 / 144326 bytes
+
