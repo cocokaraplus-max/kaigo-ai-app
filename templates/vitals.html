@@ -255,6 +255,29 @@
 .recheck-action-btn.delete { color:#d93025; border-color:#ea4335; }
 .recheck-action-btn.delete:hover { background:#fce8e6; }
 
+/* ===== アラームモーダル(Step 2-③) ===== */
+.alarm-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; animation:alarmFadeIn 0.2s ease-out; }
+@keyframes alarmFadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes alarmPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.04); } }
+.alarm-modal { background:#fff; border-radius:18px; max-width:380px; width:100%; padding:22px 20px; box-shadow:0 20px 60px rgba(0,0,0,0.3); border:3px solid #ea4335; animation:alarmPulse 1s ease-in-out infinite; }
+.alarm-modal-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; padding-bottom:12px; border-bottom:1.5px dashed #ea4335; }
+.alarm-modal-header .alarm-icon { font-size:32px; color:#ea4335; }
+.alarm-modal-title { font-size:1.05rem; font-weight:700; color:#202124; }
+.alarm-modal-subtitle { font-size:0.7rem; color:#80868b; margin-top:2px; }
+.alarm-modal-body { margin-bottom:16px; }
+.alarm-modal-name { font-size:1.4rem; font-weight:700; color:#1a73e8; margin-bottom:6px; }
+.alarm-modal-time { font-size:0.85rem; color:#5f6368; margin-bottom:8px; }
+.alarm-modal-note { font-size:0.85rem; color:#5f6368; padding:8px 10px; background:#f8f9fa; border-radius:8px; border-left:3px solid #fbbc04; }
+.alarm-modal-note:empty { display:none; }
+.alarm-modal-actions { display:flex; flex-direction:column; gap:8px; }
+.alarm-btn { padding:12px; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; border:none; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.15s; }
+.alarm-btn.primary { background:#1a73e8; color:#fff; }
+.alarm-btn.primary:hover { background:#1557b0; }
+.alarm-btn.secondary { background:#fff; color:#5f6368; border:1.5px solid #e0e0e0; }
+.alarm-btn.secondary:hover { background:#f8f9fa; }
+.alarm-btn.complete { background:#fff; color:#1e8e3e; border:1.5px solid #34a853; }
+.alarm-btn.complete:hover { background:#e6f4ea; }
+
 /* ページドット(下部) */
 .daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
 .daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
@@ -982,6 +1005,11 @@ window.switchMainTab = function(name, el) {
     // FAB(本日の利用者を追加)は記録タブのみ表示
     const fab = document.getElementById('add-today-fab');
     if (fab) fab.style.display = (name === 'record') ? 'flex' : 'none';
+    // アラームポーリング:本日の記録タブのみ起動
+    if (typeof startRecheckAlarmPolling === 'function') {
+        if (name === 'daily') startRecheckAlarmPolling();
+        else stopRecheckAlarmPolling();
+    }
 };
 
 // ========== 曜日選択 ==========
@@ -1971,6 +1999,213 @@ window.deleteRecheckSchedule = async function(rid, pid) {
         alert('通信エラー: ' + e.message);
     }
 };
+
+// ===== アラーム機能(Step 2-③)=====
+
+// グローバル状態
+let _alarmPollingId = null;
+let _alarmIsShowing = false;
+const _alarmFiredIds = new Set();
+let _alarmAudioCtx = null;
+
+// 本日の記録タブ表示中のみポーリング開始
+function startRecheckAlarmPolling() {
+    if (_alarmPollingId) return; // 二重起動防止
+    // 即座に1回チェック + その後30秒間隔
+    checkRecheckAlarms();
+    _alarmPollingId = setInterval(checkRecheckAlarms, 30000);
+}
+
+function stopRecheckAlarmPolling() {
+    if (_alarmPollingId) {
+        clearInterval(_alarmPollingId);
+        _alarmPollingId = null;
+    }
+}
+
+// 期限切れの予約をチェック
+async function checkRecheckAlarms() {
+    if (_alarmIsShowing) return; // モーダル表示中は停止
+    const date = document.getElementById('daily-date');
+    const dateStr = (date && date.value) ? date.value : new Date().toISOString().slice(0, 10);
+    try {
+        const res = await fetch(`/api/recheck_schedule?date=${encodeURIComponent(dateStr)}&only_pending=true`);
+        const data = await res.json();
+        const now = Date.now();
+        const due = (data.schedules || []).filter(s => {
+            if (s.is_completed) return false;
+            if (_alarmFiredIds.has(s.id)) return false;
+            const t = new Date(s.scheduled_at).getTime();
+            return t <= now;
+        });
+        if (due.length === 0) return;
+        // 一番早い予定から順に発火(1件だけ表示、ユーザー操作後に次へ)
+        due.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+        showAlarmModal(due[0]);
+    } catch (e) {
+        console.warn('checkRecheckAlarms error:', e);
+    }
+}
+
+// アラームモーダルを表示 + ビープ音
+function showAlarmModal(schedule) {
+    _alarmIsShowing = true;
+    _alarmFiredIds.add(schedule.id);
+
+    const dt = new Date(schedule.scheduled_at);
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mm = String(dt.getMinutes()).padStart(2, '0');
+    const safeName = String(schedule.user_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeNote = String(schedule.note || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'alarm-overlay';
+    overlay.id = 'recheck-alarm-overlay';
+    overlay.innerHTML = `
+        <div class="alarm-modal" role="alertdialog" aria-labelledby="alarm-title">
+            <div class="alarm-modal-header">
+                <span class="material-symbols-outlined alarm-icon">notifications_active</span>
+                <div>
+                    <div class="alarm-modal-title" id="alarm-title">⏰ 再検査の時間です</div>
+                    <div class="alarm-modal-subtitle">予定時刻: ${hh}:${mm}</div>
+                </div>
+            </div>
+            <div class="alarm-modal-body">
+                <div class="alarm-modal-name">${safeName} 様</div>
+                <div class="alarm-modal-note">${safeNote || ''}</div>
+            </div>
+            <div class="alarm-modal-actions">
+                <button class="alarm-btn primary" onclick="alarmActionMeasure(${schedule.id}, '${schedule.patient_id}')">
+                    <span class="material-symbols-outlined">monitor_heart</span>
+                    今から測定する
+                </button>
+                <button class="alarm-btn secondary" onclick="alarmActionSnooze(${schedule.id})">
+                    <span class="material-symbols-outlined">snooze</span>
+                    10分後に再通知
+                </button>
+                <button class="alarm-btn complete" onclick="alarmActionComplete(${schedule.id})">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    完了にする
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    // ビープ音再生
+    playAlarmBeep();
+}
+
+// モーダルを閉じる
+function closeAlarmModal() {
+    const overlay = document.getElementById('recheck-alarm-overlay');
+    if (overlay) overlay.remove();
+    _alarmIsShowing = false;
+    // 即座に次のチェックを走らせる(連続して期限切れがある場合)
+    setTimeout(checkRecheckAlarms, 500);
+}
+
+// Web Audio APIでビープ音を生成(220Hz + 440Hz の2音、計1.2秒)
+function playAlarmBeep() {
+    try {
+        if (!_alarmAudioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            _alarmAudioCtx = new Ctx();
+        }
+        const ctx = _alarmAudioCtx;
+        // ユーザーインタラクション後にコンテキストが suspended の場合があるので resume を試す
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const now = ctx.currentTime;
+        const playTone = (freq, start, dur) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, now + start);
+            gain.gain.linearRampToValueAtTime(0.3, now + start + 0.02);
+            gain.gain.linearRampToValueAtTime(0, now + start + dur);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(now + start);
+            osc.stop(now + start + dur);
+        };
+        // ピポ ピポ パターン(2回繰り返し)
+        playTone(880, 0.0, 0.18);
+        playTone(660, 0.20, 0.18);
+        playTone(880, 0.50, 0.18);
+        playTone(660, 0.70, 0.18);
+    } catch (e) {
+        console.warn('playAlarmBeep error:', e);
+    }
+}
+
+// アクション:今から測定(エディタを開く)
+window.alarmActionMeasure = function(rid, pid) {
+    closeAlarmModal();
+    // エディタを開く(該当利用者の最新測定を選択状態に)
+    const cache = _dailyEditorState.cachedData[String(pid)];
+    if (cache && cache.items.length > 0) {
+        // 既存の編集ボタン押下と同じ動作
+        toggleDailyEditor(String(pid), cache.items.length - 1);
+    } else {
+        // データキャッシュがない場合は再ロードしてから開く
+        loadDailyOverview().then(() => {
+            const c2 = _dailyEditorState.cachedData[String(pid)];
+            if (c2 && c2.items.length > 0) {
+                toggleDailyEditor(String(pid), c2.items.length - 1);
+            }
+        });
+    }
+};
+
+// アクション:10分後にスヌーズ
+window.alarmActionSnooze = async function(rid) {
+    try {
+        const res = await fetch('/api/recheck_schedule/snooze', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ id: rid, minutes: 10 })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('スヌーズに失敗: ' + (result.message || ''));
+            return;
+        }
+        // スヌーズしたので発火済みリストから外す(10分後に再発火)
+        _alarmFiredIds.delete(rid);
+        closeAlarmModal();
+        // 開いているエディタの予約一覧を更新
+        if (_dailyEditorState.expandedPid) {
+            loadRecheckSchedules(_dailyEditorState.expandedPid);
+        }
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+// アクション:完了マーク
+window.alarmActionComplete = async function(rid) {
+    try {
+        const res = await fetch('/api/recheck_schedule/complete', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ id: rid })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('完了マークに失敗: ' + (result.message || ''));
+            return;
+        }
+        closeAlarmModal();
+        if (_dailyEditorState.expandedPid) {
+            loadRecheckSchedules(_dailyEditorState.expandedPid);
+        }
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+// ページ離脱時にポーリング停止
+window.addEventListener('beforeunload', () => {
+    stopRecheckAlarmPolling();
+});
 
 window.loadDailyOverview = async function() {
     const date = document.getElementById('daily-date').value;

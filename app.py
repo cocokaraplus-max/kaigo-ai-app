@@ -1662,6 +1662,28 @@ def api_recheck_schedule_complete():
         print(f"recheck_schedule_complete error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/recheck_schedule/snooze', methods=['POST'])
+@login_required
+def api_recheck_schedule_snooze():
+    """再検査予約をN分後にスヌーズ(scheduled_atを更新)"""
+    try:
+        data = request.json
+        rid = data.get("id")
+        minutes = int(data.get("minutes", 10))
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        if minutes < 1 or minutes > 240:
+            return jsonify({"status": "error", "message": "minutesは1〜240の範囲で指定してください"}), 400
+        supabase = get_supabase()
+        new_at = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+        supabase.table("vital_recheck_schedules").update({
+            "scheduled_at": new_at,
+        }).eq("id", rid).execute()
+        return jsonify({"status": "success", "scheduled_at": new_at})
+    except Exception as e:
+        print(f"recheck_schedule_snooze error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/recheck_schedule/<int:rid>', methods=['DELETE'])
 @login_required
 def api_recheck_schedule_delete(rid):
