@@ -222,6 +222,39 @@
 .manual-recheck-text { font-size:0.85rem; color:#e65100; }
 .manual-recheck-hint { display:block; font-size:0.7rem; color:#80868b; margin-top:4px; padding-left:4px; }
 
+/* ===== 再検査の予約セクション(Step 2-②) ===== */
+.recheck-section { margin-top:14px; padding:12px; background:#fff8e1; border:1.5px solid #fbbc04; border-radius:12px; }
+.recheck-section-title { display:flex; align-items:center; gap:6px; font-size:0.85rem; font-weight:700; color:#e65100; margin-bottom:10px; }
+.recheck-section-title .new-badge { font-size:0.65rem; background:#e65100; color:#fff; padding:2px 6px; border-radius:6px; font-weight:700; }
+.recheck-question { font-size:0.78rem; color:#5f6368; margin-bottom:6px; font-weight:600; }
+.recheck-quick-buttons { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.recheck-quick-btn { padding:6px 10px; background:#fff; border:1.5px solid #fbbc04; border-radius:8px; font-size:0.78rem; font-weight:700; color:#e65100; cursor:pointer; transition:all 0.15s; }
+.recheck-quick-btn:hover { background:#fff3e0; }
+.recheck-quick-btn.active { background:#fbbc04; color:#fff; }
+.schedule-time-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.schedule-time-row label { font-size:0.75rem; color:#5f6368; }
+.schedule-time-input { padding:5px 8px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.85rem; font-weight:700; }
+.recheck-note-row { margin-bottom:10px; }
+.recheck-note-row label { display:block; font-size:0.75rem; color:#5f6368; margin-bottom:4px; }
+.recheck-note-input { width:100%; padding:6px 10px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.82rem; box-sizing:border-box; }
+.recheck-submit-btn { width:100%; padding:10px; background:#1a73e8; color:#fff; border:none; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:background 0.15s; }
+.recheck-submit-btn:hover { background:#1557b0; }
+.recheck-submit-btn:disabled { background:#bdbdbd; cursor:not-allowed; }
+.recheck-existing { margin-top:14px; padding-top:10px; border-top:1px dashed #e0a800; }
+.recheck-existing-title { font-size:0.75rem; color:#5f6368; font-weight:700; margin-bottom:6px; }
+.recheck-existing-empty { font-size:0.75rem; color:#80868b; padding:6px 0; }
+.recheck-existing-item { display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ffe082; border-radius:8px; margin-bottom:6px; font-size:0.82rem; }
+.recheck-existing-item.is-completed { background:#f1f3f4; opacity:0.65; }
+.recheck-existing-time { font-weight:700; color:#1a73e8; }
+.recheck-existing-rel { color:#80868b; font-size:0.72rem; }
+.recheck-existing-note { color:#5f6368; font-size:0.75rem; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.recheck-existing-actions { display:flex; gap:4px; margin-left:auto; }
+.recheck-action-btn { padding:4px 8px; border:1px solid #e0e0e0; background:#fff; border-radius:6px; font-size:0.7rem; font-weight:700; cursor:pointer; }
+.recheck-action-btn.complete { color:#1e8e3e; border-color:#34a853; }
+.recheck-action-btn.complete:hover { background:#e6f4ea; }
+.recheck-action-btn.delete { color:#d93025; border-color:#ea4335; }
+.recheck-action-btn.delete:hover { background:#fce8e6; }
+
 /* ページドット(下部) */
 .daily-page-dots { display:flex; justify-content:center; gap:6px; padding:8px 0 4px; }
 .daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
@@ -1488,6 +1521,11 @@ function renderDailyEditor(pid) {
         <div class="daily-time-tabs">${tabsHtml}${addTabHtml}</div>
         ${formHtml}
     </div>`;
+
+    // 編集モード(isNewModeでなく既存測定を選択中)の時のみ再検査一覧をロード
+    if (!_dailyEditorState.isNewMode && items.length > 0 && typeof window.loadRecheckSchedules === 'function') {
+        loadRecheckSchedules(pid);
+    }
 }
 
 function renderEditorForm(pid, v, timeStr) {
@@ -1550,6 +1588,39 @@ function renderEditorForm(pid, v, timeStr) {
                 <span class="material-symbols-outlined">delete</span>
             </button>` : ''}
         </div>
+        ${!isNew ? `
+        <div class="recheck-section" id="recheck-section-${pid}" data-vital-id="${v.id}">
+            <div class="recheck-section-title">
+                <span class="material-symbols-outlined" style="font-size:18px;">alarm</span>
+                再検査の予約
+                <span class="new-badge">NEW</span>
+            </div>
+            <div class="recheck-question">いつ再検査する?</div>
+            <div class="recheck-quick-buttons">
+                <button type="button" class="recheck-quick-btn" onclick="setQuickRecheckTime('${pid}', 15)">+15分</button>
+                <button type="button" class="recheck-quick-btn" onclick="setQuickRecheckTime('${pid}', 30)">+30分</button>
+                <button type="button" class="recheck-quick-btn" onclick="setQuickRecheckTime('${pid}', 60)">+1時間</button>
+                <button type="button" class="recheck-quick-btn" onclick="setQuickRecheckTime('${pid}', 120)">+2時間</button>
+            </div>
+            <div class="schedule-time-row">
+                <label for="recheck-time-${pid}">または直接時刻</label>
+                <input type="time" id="recheck-time-${pid}" class="schedule-time-input">
+            </div>
+            <div class="recheck-note-row">
+                <label for="recheck-note-${pid}">メモ(任意)</label>
+                <input type="text" id="recheck-note-${pid}" class="recheck-note-input" placeholder="例:血圧:200/140" value="${defaultRecheckNote(v)}">
+            </div>
+            <button type="button" class="recheck-submit-btn" onclick="saveRecheckSchedule('${pid}', '${v.id}')">
+                <span class="material-symbols-outlined">event</span>
+                📅 リマインダーに登録
+            </button>
+            <div class="recheck-existing">
+                <div class="recheck-existing-title">既に予約済みの再検査</div>
+                <div id="recheck-list-${pid}">
+                    <div class="recheck-existing-empty">読み込み中…</div>
+                </div>
+            </div>
+        </div>` : ''}
     </div>`;
 }
 
@@ -1658,6 +1729,238 @@ window.deleteDailyEditor = async function(pid, vid) {
         _dailyEditorState.expandedPid = null;
         const c = document.getElementById('daily-editor-container');
         if (c) c.innerHTML = '';
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+// ===== 再検査の予約(Step 2-②)=====
+
+// 異常値があればメモを自動生成(なければ空文字)
+function defaultRecheckNote(v) {
+    if (!v) return '';
+    const parts = [];
+    if (isAlertVal('bp_high', v.bp_high) || isAlertVal('bp_low', v.bp_low)) {
+        if (v.bp_high != null && v.bp_low != null) parts.push(`血圧:${v.bp_high}/${v.bp_low}`);
+        else if (v.bp_high != null) parts.push(`血圧上:${v.bp_high}`);
+        else if (v.bp_low != null) parts.push(`血圧下:${v.bp_low}`);
+    }
+    if (isAlertVal('pulse', v.pulse) && v.pulse != null) parts.push(`脈拍:${v.pulse}`);
+    if (isAlertVal('temperature', v.temperature) && v.temperature != null) parts.push(`体温:${v.temperature}`);
+    if (isAlertVal('spo2', v.spo2) && v.spo2 != null) parts.push(`SpO2:${v.spo2}`);
+    if (parts.length === 0 && v.recheck) return '手動再検査マーク';
+    return parts.join(' / ').replace(/"/g, '');
+}
+
+// クイックボタンで再検査時刻を +N分 に設定
+window.setQuickRecheckTime = function(pid, minutes) {
+    const now = new Date();
+    const target = new Date(now.getTime() + minutes * 60000);
+    const hh = String(target.getHours()).padStart(2, '0');
+    const mm = String(target.getMinutes()).padStart(2, '0');
+    const input = document.getElementById(`recheck-time-${pid}`);
+    if (input) input.value = `${hh}:${mm}`;
+    // ボタンのアクティブ状態を更新
+    const section = document.getElementById(`recheck-section-${pid}`);
+    if (section) {
+        section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
+        const btns = section.querySelectorAll('.recheck-quick-btn');
+        const order = [15, 30, 60, 120];
+        const idx = order.indexOf(minutes);
+        if (idx >= 0 && btns[idx]) btns[idx].classList.add('active');
+    }
+};
+
+// 再検査予約を保存(API)+ .icsダウンロード
+window.saveRecheckSchedule = async function(pid, vitalId) {
+    const timeInput = document.getElementById(`recheck-time-${pid}`);
+    const noteInput = document.getElementById(`recheck-note-${pid}`);
+    if (!timeInput || !timeInput.value) {
+        alert('再検査の時刻を選択してください(クイックボタン or 直接入力)');
+        return;
+    }
+    // ローカル時刻として今日の日付と組み合わせてISO化
+    const dateStr = document.getElementById('daily-date').value || new Date().toISOString().slice(0, 10);
+    const scheduledDate = new Date(`${dateStr}T${timeInput.value}:00`);
+    // 過去時刻チェック(過去5分以上前なら警告)
+    if (scheduledDate.getTime() < Date.now() - 5 * 60000) {
+        if (!confirm('指定された時刻は過去です。本当に登録しますか?')) return;
+    }
+    const cache = _dailyEditorState.cachedData[pid];
+    const userName = cache ? cache.name : '';
+    const note = noteInput ? noteInput.value : '';
+
+    const body = {
+        patient_id: pid,
+        user_name: userName,
+        vital_id: (vitalId && vitalId !== 'new') ? vitalId : null,
+        scheduled_at: scheduledDate.toISOString(),
+        note: note,
+    };
+
+    try {
+        const res = await fetch('/api/recheck_schedule', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('予約の保存に失敗しました: ' + (result.message || ''));
+            return;
+        }
+        // .icsファイル生成 + ダウンロード
+        downloadICS({
+            scheduled_at: scheduledDate.toISOString(),
+            user_name: userName,
+            note: note,
+        });
+        // 入力欄リセット + 一覧再取得
+        timeInput.value = '';
+        if (noteInput) noteInput.value = '';
+        const section = document.getElementById(`recheck-section-${pid}`);
+        if (section) section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
+        await loadRecheckSchedules(pid);
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+// .ics形式の文字列を生成
+function generateICS(scheduleData) {
+    const dt = new Date(scheduleData.scheduled_at);
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+    const dtStart = fmt(dt);
+    const dtEnd = fmt(new Date(dt.getTime() + 5 * 60000));
+    const dtStamp = fmt(new Date());
+    const uid = `recheck-${Date.now()}@tasukaru.app`;
+    const safeName = String(scheduleData.user_name || '').replace(/[\r\n,;]/g, ' ');
+    const safeNote = String(scheduleData.note || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/[,;]/g, ' ');
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TASUKARU//VitalRecheck//JP
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${dtStamp}
+DTSTART:${dtStart}
+DTEND:${dtEnd}
+SUMMARY:再検査:${safeName} 様
+DESCRIPTION:${safeNote}
+BEGIN:VALARM
+TRIGGER:-PT0M
+ACTION:DISPLAY
+DESCRIPTION:再検査時間です
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+}
+
+// .icsをダウンロード
+function downloadICS(scheduleData) {
+    const ics = generateICS(scheduleData);
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = String(scheduleData.user_name || 'recheck').replace(/[\\\/:*?"<>|]/g, '_');
+    a.download = `recheck-${safeName}-${Date.now()}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// その日のこの利用者の予約を取得して表示
+window.loadRecheckSchedules = async function(pid) {
+    const date = document.getElementById('daily-date').value;
+    const listEl = document.getElementById(`recheck-list-${pid}`);
+    if (!listEl) return;
+    try {
+        const res = await fetch(`/api/recheck_schedule?date=${encodeURIComponent(date)}`);
+        const data = await res.json();
+        const all = data.schedules || [];
+        // この利用者の分だけフィルタ(API側はfacility_code単位なのでクライアント側で絞る)
+        const mine = all.filter(s => String(s.patient_id) === String(pid));
+        renderRecheckSchedules(pid, mine);
+    } catch (e) {
+        listEl.innerHTML = `<div class="recheck-existing-empty">取得エラー: ${e.message}</div>`;
+    }
+};
+
+// 予約一覧をレンダリング
+function renderRecheckSchedules(pid, schedules) {
+    const listEl = document.getElementById(`recheck-list-${pid}`);
+    if (!listEl) return;
+    if (!schedules || schedules.length === 0) {
+        listEl.innerHTML = '<div class="recheck-existing-empty">予約済みの再検査はありません</div>';
+        return;
+    }
+    const now = Date.now();
+    const html = schedules.map(s => {
+        const dt = new Date(s.scheduled_at);
+        const hh = String(dt.getHours()).padStart(2, '0');
+        const mm = String(dt.getMinutes()).padStart(2, '0');
+        const diffMin = Math.round((dt.getTime() - now) / 60000);
+        let rel = '';
+        if (s.is_completed) {
+            rel = '✓ 完了';
+        } else if (diffMin > 0) {
+            if (diffMin < 60) rel = `${diffMin}分後`;
+            else rel = `${Math.floor(diffMin/60)}時間${diffMin%60}分後`;
+        } else if (diffMin === 0) {
+            rel = 'まもなく';
+        } else {
+            const past = -diffMin;
+            if (past < 60) rel = `${past}分過ぎ`;
+            else rel = `${Math.floor(past/60)}時間${past%60}分過ぎ`;
+        }
+        const safeNote = String(s.note || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const completedCls = s.is_completed ? ' is-completed' : '';
+        const actionsHtml = s.is_completed
+            ? `<button class="recheck-action-btn delete" onclick="deleteRecheckSchedule(${s.id}, '${pid}')">削除</button>`
+            : `<button class="recheck-action-btn complete" onclick="completeRecheckSchedule(${s.id}, '${pid}')">完了</button>
+               <button class="recheck-action-btn delete" onclick="deleteRecheckSchedule(${s.id}, '${pid}')">削除</button>`;
+        return `<div class="recheck-existing-item${completedCls}">
+            <span class="material-symbols-outlined" style="font-size:16px;color:#1a73e8;">schedule</span>
+            <span class="recheck-existing-time">${hh}:${mm}</span>
+            <span class="recheck-existing-rel">(${rel})</span>
+            <span class="recheck-existing-note">${safeNote}</span>
+            <span class="recheck-existing-actions">${actionsHtml}</span>
+        </div>`;
+    }).join('');
+    listEl.innerHTML = html;
+}
+
+// 完了マーク
+window.completeRecheckSchedule = async function(rid, pid) {
+    try {
+        const res = await fetch('/api/recheck_schedule/complete', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ id: rid })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('完了マークに失敗: ' + (result.message || ''));
+            return;
+        }
+        await loadRecheckSchedules(pid);
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+};
+
+// 予約削除
+window.deleteRecheckSchedule = async function(rid, pid) {
+    if (!confirm('この予約を削除しますか?')) return;
+    try {
+        const res = await fetch(`/api/recheck_schedule/${rid}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (result.status !== 'success') {
+            alert('削除に失敗: ' + (result.message || ''));
+            return;
+        }
+        await loadRecheckSchedules(pid);
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
