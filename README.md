@@ -1059,3 +1059,65 @@ Step 2-③ 動作確認中に出てきた、現状未着手の要望:
 - app.py: 4383 行 / 196216 bytes
 - templates/vitals.html: 2980 行 / 144326 bytes
 
+
+---
+
+# Session 12 Phase A 完了(2026-05-03)
+
+Session 11 で見つかった問題B(アラーム音 autoplay)と問題C(iOS文言事前案内)を修正、コミット `eb90403` でデプロイ。
+
+## 修正内容
+
+### 問題B: アラーム音 autoplay unlock(解決済)
+- iOS Safari の autoplay 制限により、ユーザー操作直後の AudioContext でなければ音が鳴らない問題に対処
+- `templates/vitals.html` に `unlockAlarmAudio()` 関数を新規追加
+- `setQuickRecheckTime()` と `saveRecheckSchedule()` の冒頭で呼び出し、ユーザーがクイックボタンや「リマインダーに登録」を押した瞬間に AudioContext を活性化(無音バッファ1サンプル再生で iOS の autoplay ロックを解除)
+- 後でアラーム発火時、その AudioContext を再利用して `playAlarmBeep()` がビープ音を鳴らせる
+
+### 問題C: iOS「カレンダーの参加依頼」事前案内(解決済)
+- iOS の固定UI(文言は変更不可)で利用者が混乱しないよう、「📅 リマインダーに登録」ボタンの直下に黄色背景・点線枠の小さな案内文を追加
+- 内容: 「ボタンを押すと iPhone・iPad では『カレンダーの参加依頼を表示しますか?』と確認が出ます。『許可』を押してください。次にカレンダーアプリが開いたら『追加』を押すと登録完了です。」
+- CSS: `.recheck-ios-notice` クラス(font-size 0.72rem、padding 8px 10px)
+
+## 動作確認結果(iPhone Safari、2026-05-03)
+- ✅ アラームモーダル発火時にビープ音が鳴る
+- ✅ 案内文が「📅 リマインダーに登録」ボタンの直下に表示される
+
+## 「閉じてる時に鳴らせるか」のユーザー疑問への整理
+
+| シーン | 鳴るか |
+|--------|--------|
+| vitalsページを開いたまま | ✅ アプリ内アラーム(モーダル+ビープ)が鳴る |
+| 別タブを使用中 | △ 場合により(JSタイマーがOSにスロットルされる) |
+| 画面閉じる/別アプリ/スリープ | ✅ ただし「📅 リマインダーに登録」→「許可」→「追加」までやって OS カレンダーに登録した場合のみ |
+| アプリ完全終了 | ✅ 同上(OS カレンダーが鳴らす) |
+| 完全自動(ボタン操作不要) | ❌ Step 3 Firebase Push で実現する設計、未実装、明示依頼まで提案禁止 |
+
+→ 「閉じてる時に鳴らない」と感じる場合は、.icsカレンダー登録の最後の「追加」まで完了していない可能性が高い。Step 4 のガイドページで明確に案内する予定。
+
+## 最新コミット状態(2026-05-03 夜)
+
+```
+eb90403 fix vitals alarm audio autoplay unlock and add ios calendar dialog notice  [Phase A]
+c357b67 chore add bak and broken files to gitignore
+b900c5e docs session11 verification result and session12 handoff with audio autoplay and ios calendar dialog issues
+45b5c29 docs session11 handoff with step 2 completion and incident lessons
+8611db5 feat vitals recheck alarm with polling beep modal and snooze api
+```
+
+- `app.py`: 4383 行 / 196216 bytes(変更なし)
+- `templates/vitals.html`: 3014 行 / 146288 bytes(+34 行)
+- `.gitignore`: 30 行(.bak / .broken 除外ルール追加済)
+
+## Session 12 Phase B 以降の選択肢(まだ未着手)
+
+引き継ぎ書通り、ここから先は明示の指示があるまで着手しない。
+
+| 選択肢 | 内容 | 工数 |
+|-------|------|------|
+| **B-1: Step 4(利用者向けガイドページ)** | 「設定」タブに「📚 使い方ガイド」追加 | 1〜3時間 |
+| **B-2: 「本日の記録」タブ強化** | 未測定者表示 + カメラ読み取りボタン移植 | 2〜3時間 |
+| **B-3: 「測定」タブ廃止/統合** | UI 大改修、回帰テスト多 | 2〜4時間 |
+| **C: 音声入力(Web Speech API)** | バイタル自然文入力 | 半日〜1日(別セッション推奨) |
+| **D: Step 3(Firebase Push)** | 完全自動通知 | 半日〜2日(明示依頼があるまで提案禁止) |
+

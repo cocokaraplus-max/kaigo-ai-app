@@ -421,3 +421,97 @@ Session 11 動作確認の流れの中で、ユーザーから新しい要望が
 ### Supabase
 - vital_recheck_schedules テーブル RLS 無効化済(維持されている)
 - DEMO001 ファシリティで予約データ複数件登録済(テスト用、適宜削除可)
+
+---
+
+# 🎯 Session 12 Phase A 完了 → Session 13 への引き継ぎ追記(2026-05-03 夜)
+
+## ✅ Phase A 完了:問題B/C を1コミットで修正
+
+コミット **eb90403** で `templates/vitals.html` のみ修正(+34行)。動作確認 OK。
+
+### 修正サマリー
+| 項目 | 内容 |
+|------|------|
+| 問題B(アラーム音 autoplay) | `unlockAlarmAudio()` 関数を新規追加。`setQuickRecheckTime` と `saveRecheckSchedule` の冒頭で呼ぶことで、ユーザー操作直後に AudioContext を活性化 → 後でアラーム発火時に音が鳴るように |
+| 問題C(iOS文言事前案内) | 「📅 リマインダーに登録」ボタン直下に `.recheck-ios-notice` の案内文を追加。「許可→追加」の手順を明示 |
+
+### 動作確認(iPhone Safari)
+- ✅ ビープ音が鳴った(問題B解決)
+- ✅ 案内文が表示された(問題C解決)
+
+## 📝 ユーザー疑問への対応記録
+
+ユーザーから「閉じてる時はまだ鳴らない状態だよね?」という確認があった。回答済の整理:
+
+- **画面開いてる時** → アプリ内アラーム(問題Bで解決した今回の修正)
+- **画面閉じてる時** → .icsカレンダー登録(「📅 リマインダーに登録」→「許可」→カレンダーアプリで「追加」まで完了)していれば OS が鳴らす
+- **完全自動(ボタン操作なし)で画面閉じてる時に鳴らす** → Step 3 Firebase Push の領域、未実装、明示依頼まで提案禁止
+
+→ Step 4(ガイドページ)で「.icsカレンダー登録の手順」「閉じてる時はカレンダー登録してれば鳴る」を明確に案内する必要がある(運用上重要)。
+
+## 🚦 Session 13 開始時の状態確認コマンド
+
+```
+cd ~/dev/kaigo-ai-app
+git log --oneline -5
+wc -l app.py templates/vitals.html .gitignore
+grep -c "unlockAlarmAudio" templates/vitals.html
+grep -c "recheck-ios-notice" templates/vitals.html
+```
+
+期待値:
+- 最新コミット: `eb90403 fix vitals alarm audio autoplay unlock and add ios calendar dialog notice`(+ 今回のドキュメントコミット)
+- `app.py`: 4383 行
+- `templates/vitals.html`: 3014 行 / 146288 bytes
+- `.gitignore`: 30 行
+- `unlockAlarmAudio`: 4
+- `recheck-ios-notice`: 3
+
+## 🎯 Session 13 で取り組む候補(優先度順)
+
+### 最優先候補:Step 4(利用者向けガイドページ)
+**「Step 2 完了後必須」と引き継ぎ書本体に明記済**。今やるのが筋。
+- 「設定」タブに「📚 使い方ガイド」セクション追加(静的HTMLでOK)
+- 工数: 1〜3時間
+- 内容: 既に引き継ぎ書本体に詳細設計あり(L850付近~)
+- **加えて反映すべき今日の知見**:
+  - 教訓14「Service Worker キャッシュは履歴消去レベルでないとクリアできない」→ ガイドの末尾に「アプリの調子が悪いとき」セクションでSWクリア手順を案内
+  - 「閉じてる時に鳴らすには .ics→許可→追加の3手順が必要」を明確に説明
+  - iOS の「カレンダーの参加依頼」ダイアログの意味を説明
+
+### 中期候補:「本日の記録」タブ強化
+- 未測定者の一覧表示(空欄 or 「未測定」ラベル)
+- アコーディオン編集パネルにカメラ読み取りボタン移植(現状「測定」タブのみ)
+- 工数: 2〜3時間
+
+### 大型/別セッション推奨:
+- 「測定」タブ廃止/統合(2〜4時間、大改修、回帰テスト多)
+- 音声入力 Web Speech API(半日〜1日)
+- Step 3 Firebase Push(明示依頼まで提案禁止)
+
+## ⚠️ 引き続き厳守する事項
+
+1. 引き継ぎ書教訓1〜15(教訓14, 15 を Session 11 で追加済み)
+2. 「ユーザーが望んでいないこと(新機能、UI再設計、別方式)を提案しない」
+3. 「仕様や設計を勝手に変更しない」
+4. **Step 3(Firebase Push)は明示依頼まで提案禁止**
+5. ファイル受け渡し: outputs → Desktop → cp → 検証 → commit
+6. コミット規約: 英字シンプル、日本語半角括弧禁止、1機能=1コミット
+7. コードはコードブロック内で提示、ターミナル直接ペースト用と説明用を明確に区別する(教訓13)
+
+## 📦 ファイル状態(2026-05-03 夜、Session 13 開始時)
+
+### Mac (~/dev/kaigo-ai-app)(全て push 済み)
+- `app.py`: 4383 行 / 196216 bytes(変更なし)
+- `templates/vitals.html`: **3014 行 / 146288 bytes**(Phase A で +34 行)
+- `.gitignore`: 30 行
+- `README.md`: Phase A 完了記録を末尾に追記済(Session 13 でこのコミット)
+- `HANDOFF_session11.md`: 本セクション追記済(Session 13 でこのコミット)
+
+### Cloud Run dev 環境
+- コミット eb90403 までデプロイ済(動作確認済 - 音もOK、案内文も表示OK)
+
+### Supabase
+- vital_recheck_schedules テーブル RLS 無効化維持
+- DEMO001 ファシリティでテスト予約データ複数件あり(削除可)
