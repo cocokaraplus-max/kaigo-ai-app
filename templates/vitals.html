@@ -240,6 +240,8 @@
 .recheck-submit-btn { width:100%; padding:10px; background:#1a73e8; color:#fff; border:none; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:background 0.15s; }
 .recheck-submit-btn:hover { background:#1557b0; }
 .recheck-submit-btn:disabled { background:#bdbdbd; cursor:not-allowed; }
+.recheck-ios-notice { margin-top:8px; padding:8px 10px; background:#fffde7; border:1px dashed #fbc02d; border-radius:8px; font-size:0.72rem; color:#5f6368; line-height:1.5; }
+.recheck-ios-notice strong { color:#e65100; font-weight:700; }
 .recheck-existing { margin-top:14px; padding-top:10px; border-top:1px dashed #e0a800; }
 .recheck-existing-title { font-size:0.75rem; color:#5f6368; font-weight:700; margin-bottom:6px; }
 .recheck-existing-empty { font-size:0.75rem; color:#80868b; padding:6px 0; }
@@ -1642,6 +1644,9 @@ function renderEditorForm(pid, v, timeStr) {
                 <span class="material-symbols-outlined">event</span>
                 📅 リマインダーに登録
             </button>
+            <p class="recheck-ios-notice">
+                📱 ボタンを押すと、iPhone・iPadでは<strong>「カレンダーの参加依頼を表示しますか?」</strong>と確認が出ます。<strong>「許可」</strong>を押してください。次にカレンダーアプリが開いたら<strong>「追加」</strong>を押すと登録完了です。
+            </p>
             <div class="recheck-existing">
                 <div class="recheck-existing-title">既に予約済みの再検査</div>
                 <div id="recheck-list-${pid}">
@@ -1782,6 +1787,8 @@ function defaultRecheckNote(v) {
 
 // クイックボタンで再検査時刻を +N分 に設定
 window.setQuickRecheckTime = function(pid, minutes) {
+    // ユーザー操作のタイミングでアラーム音のautoplay制限を解除
+    if (typeof unlockAlarmAudio === 'function') unlockAlarmAudio();
     const now = new Date();
     const target = new Date(now.getTime() + minutes * 60000);
     const hh = String(target.getHours()).padStart(2, '0');
@@ -1801,6 +1808,8 @@ window.setQuickRecheckTime = function(pid, minutes) {
 
 // 再検査予約を保存(API)+ .icsダウンロード
 window.saveRecheckSchedule = async function(pid, vitalId) {
+    // ユーザー操作のタイミングでアラーム音のautoplay制限を解除
+    if (typeof unlockAlarmAudio === 'function') unlockAlarmAudio();
     const timeInput = document.getElementById(`recheck-time-${pid}`);
     const noteInput = document.getElementById(`recheck-note-${pid}`);
     if (!timeInput || !timeInput.value) {
@@ -2102,6 +2111,31 @@ function closeAlarmModal() {
     _alarmIsShowing = false;
     // 即座に次のチェックを走らせる(連続して期限切れがある場合)
     setTimeout(checkRecheckAlarms, 500);
+}
+
+// iOS Safariのautoplay制限を解除するため、ユーザー操作直後に AudioContext を活性化する
+// 再検査関連のボタンを押したタイミング(=ユーザー操作)で呼ぶことで、
+// 後でアラーム発火時に自動でビープ音を鳴らせるようになる
+function unlockAlarmAudio() {
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        if (!_alarmAudioCtx) {
+            _alarmAudioCtx = new Ctx();
+        }
+        const ctx = _alarmAudioCtx;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        // 無音バッファを1サンプルだけ再生して iOS の autoplay ロックを解除
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+    } catch (e) {
+        console.warn('unlockAlarmAudio error:', e);
+    }
 }
 
 // Web Audio APIでビープ音を生成(220Hz + 440Hz の2音、計1.2秒)
