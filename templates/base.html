@@ -135,19 +135,18 @@
 /* ===== ナビ並び替え編集モード ===== */
 .bottom-nav.edit-mode {
     padding-bottom: 0;
-    /* 編集モード中はブラウザのデフォルトスクロール/ピンチを完全停止 */
-    touch-action: none !important;
-    -ms-touch-action: none !important;
-    overflow-x: hidden !important;
+    /* 編集モード中: 横スクロールは許可、縦スクロール/ピンチは禁止 */
+    touch-action: pan-x !important;
+    -ms-touch-action: pan-x !important;
 }
 body.nav-editing { touch-action: none !important; -ms-touch-action: none !important; overscroll-behavior: contain; }
 .bottom-nav.edit-mode .bottom-nav-item.draggable-item {
-    /* 編集中の項目: transform/animation を使わずに「移動可能」を表現 */
+    /* 編集中の項目: 長押しでドラッグ開始、長押し前は横スクロール許可 */
     border: 2px dashed #1a73e8 !important;
     border-radius: 6px;
     background: #f0f7ff !important;
     margin: 2px;
-    touch-action: none;
+    touch-action: pan-x;
     -webkit-user-select: none;
     user-select: none;
     cursor: grab;
@@ -1309,25 +1308,93 @@ function attachNavDrag(el) {
     el.addEventListener('pointerdown', onNavPointerDown);
 }
 
+// 長押しタイマー(150ms 押しっぱで「ドラッグ準備完了」)
+var _navHoldTimer = null;
+var _navHoldState = null;
+
 function onNavPointerDown(e) {
     var nav = document.querySelector('.bottom-nav');
     if (!nav || !nav.classList.contains('edit-mode')) return;
     var target = e.currentTarget;
     if (!target.classList.contains('draggable-item')) return;
-    e.preventDefault();
+    // 指を置いた直後は preventDefault しない: 横スクロールを許可するため
     var rect = target.getBoundingClientRect();
-    _navDragState = {
+    _navHoldState = {
         el: target,
         startX: e.clientX,
         startY: e.clientY,
-        offsetX: e.clientX - rect.left,
-        offsetY: e.clientY - rect.top,
+        rect: rect,
+        pointerId: e.pointerId,
+        cancelled: false
+    };
+    // 軽く視覚フィードバック(押された感)
+    target.style.opacity = '0.7';
+    // 一時的に pointermove と pointerup を listen して、長押し前に動いたらキャンセル
+    document.addEventListener('pointermove', onNavHoldMove);
+    document.addEventListener('pointerup', onNavHoldUp);
+    document.addEventListener('pointercancel', onNavHoldUp);
+    // 150ms 後にドラッグモード突入
+    _navHoldTimer = setTimeout(function() {
+        if (!_navHoldState || _navHoldState.cancelled) return;
+        beginDragMode(e);
+    }, 150);
+}
+
+function onNavHoldMove(e) {
+    if (!_navHoldState || _navHoldState.cancelled) return;
+    var dx = e.clientX - _navHoldState.startX;
+    var dy = e.clientY - _navHoldState.startY;
+    // 長押し前に 8px 以上動いたら → 横スクロール意図と判断、ドラッグキャンセル
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        cancelHold();
+    }
+}
+
+function onNavHoldUp(e) {
+    if (!_navHoldState) return;
+    if (_navHoldState.cancelled) return;
+    cancelHold();
+}
+
+function cancelHold() {
+    if (_navHoldTimer) { clearTimeout(_navHoldTimer); _navHoldTimer = null; }
+    if (_navHoldState) {
+        _navHoldState.el.style.opacity = '';
+        _navHoldState.cancelled = true;
+    }
+    _navHoldState = null;
+    document.removeEventListener('pointermove', onNavHoldMove);
+    document.removeEventListener('pointerup', onNavHoldUp);
+    document.removeEventListener('pointercancel', onNavHoldUp);
+}
+
+function beginDragMode(originEvent) {
+    if (!_navHoldState) return;
+    var holdState = _navHoldState;
+    var target = holdState.el;
+    target.style.opacity = '';
+    // ホールド用リスナを外す
+    document.removeEventListener('pointermove', onNavHoldMove);
+    document.removeEventListener('pointerup', onNavHoldUp);
+    document.removeEventListener('pointercancel', onNavHoldUp);
+    _navHoldState = null;
+    _navHoldTimer = null;
+    // 振動フィードバック(対応端末のみ)
+    if (navigator.vibrate) try { navigator.vibrate(20); } catch(e){}
+    // ドラッグ状態に入る
+    var rect = holdState.rect;
+    _navDragState = {
+        el: target,
+        startX: holdState.startX,
+        startY: holdState.startY,
+        offsetX: holdState.startX - rect.left,
+        offsetY: holdState.startY - rect.top,
         origLeft: rect.left,
         origTop: rect.top,
         moved: false,
-        pointerId: e.pointerId
+        pointerId: holdState.pointerId
     };
-    try { target.setPointerCapture(e.pointerId); } catch (err) {}
+    try { target.setPointerCapture(holdState.pointerId); } catch (err) {}
     target.classList.add('dragging');
     document.addEventListener('pointermove', onNavPointerMove);
     document.addEventListener('pointerup', onNavPointerUp);
