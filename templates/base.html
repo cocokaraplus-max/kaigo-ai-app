@@ -1304,6 +1304,13 @@ window.startNavEditMode = function() {
         if (h && movableHrefs.indexOf(h) !== -1) {
             el.classList.add('draggable-item');
             el.classList.remove('fixed-item');
+            // ★ iOS Safari のリンクプレビュー対策: href を一時退避して <a> から外す。
+            //   これで iOS は「これはリンクではない」と判断し、長押しメニューを出さない。
+            //   stopNavEditMode で元に戻す。
+            if (el.tagName === 'A' && el.hasAttribute('href')) {
+                el.dataset.savedHref = el.getAttribute('href');
+                el.removeAttribute('href');
+            }
             attachNavDrag(el);
         } else {
             el.classList.add('fixed-item');
@@ -1312,6 +1319,8 @@ window.startNavEditMode = function() {
     });
     // 編集モード中は <a> のクリック遷移を抑制(pointer events で自前制御)
     nav.addEventListener('click', navEditClickBlocker, true);
+    // ★ iOS Safari の長押しコンテキストメニュー(リンクプレビュー)もブロック
+    nav.addEventListener('contextmenu', navEditContextMenuBlocker, true);
     // ナビを最上部にスクロール
     nav.scrollLeft = 0;
 };
@@ -1320,6 +1329,14 @@ window.stopNavEditMode = function() {
     var nav = document.querySelector('.bottom-nav');
     var bar = document.getElementById('nav-edit-bar');
     if (!nav || !bar) return;
+    // ★ 最優先: 一時退避していた href を <a> に復元(順序を保存する前に必須)
+    var savedItems = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    savedItems.forEach(function(el) {
+        if (el.dataset && el.dataset.savedHref) {
+            el.setAttribute('href', el.dataset.savedHref);
+            delete el.dataset.savedHref;
+        }
+    });
     bar.classList.remove('show');
     nav.classList.remove('edit-mode');
     document.body.classList.remove('nav-editing');
@@ -1328,6 +1345,7 @@ window.stopNavEditMode = function() {
         el.classList.remove('draggable-item', 'fixed-item', 'dragging', 'drop-target-before', 'drop-target-after');
     });
     nav.removeEventListener('click', navEditClickBlocker, true);
+    nav.removeEventListener('contextmenu', navEditContextMenuBlocker, true);
     // 現在の DOM 順序を保存(href 配列、movable のみ)
     var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
     var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
@@ -1349,6 +1367,14 @@ window.resetNavOrder = function() {
 };
 
 function navEditClickBlocker(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// ★ iOS Safari の長押しコンテキストメニュー(リンクプレビュー)を編集モード中ブロック
+function navEditContextMenuBlocker(e) {
     var nav = document.querySelector('.bottom-nav');
     if (!nav || !nav.classList.contains('edit-mode')) return;
     e.preventDefault();
