@@ -131,6 +131,47 @@
     border-left:4px solid #1a73e8; padding:12px 14px;
     background:#f8f9fa; border-radius:0 12px 12px 0; margin-bottom:12px;
 }
+
+/* スクリーンショット表示 */
+.gd-shot {
+    display:block; margin:10px auto 14px; max-width:280px; width:100%;
+    border-radius:14px; border:2px solid #e0e0e0;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+.gd-shot-cap {
+    text-align:center; font-size:0.72rem; color:#5f6368;
+    margin:-8px 0 14px; line-height:1.5;
+}
+.gd-shot-row {
+    display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
+    margin-bottom:14px;
+}
+.gd-shot-row .gd-shot { margin:0; max-width:140px; }
+.gd-placeholder {
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:6px;
+    background:#f6f8ff; border:2px dashed #9c27b0; border-radius:14px;
+    color:#9c27b0; font-size:0.78rem; font-weight:700;
+    padding:30px 16px; margin:10px auto 14px; max-width:280px;
+    text-align:center; line-height:1.5;
+}
+.gd-placeholder .material-symbols-outlined { font-size:32px; }
+
+/* コードブロック(SWクリア手順用) */
+.gd-code {
+    background:#202124; color:#e8eaed; border-radius:10px;
+    padding:12px 14px; font-family:'Courier New',monospace;
+    font-size:0.74rem; line-height:1.6; overflow-x:auto;
+    white-space:pre; margin:10px 0;
+}
+
+/* 警告ボックス */
+.gd-warn {
+    background:#fff3e0; border-left:4px solid #ff9800;
+    border-radius:0 12px 12px 0; padding:12px 14px;
+    margin:10px 0; font-size:0.82rem; line-height:1.7;
+}
+.gd-warn b { color:#e65100; }
 </style>
 {% endblock %}
 
@@ -203,6 +244,18 @@
         <a class="toc-a" style="background:#fbe9e7;" href="#s-disaster">
             <div class="toc-ic" style="background:#bf360c;"><span class="material-symbols-outlined" style="color:#fff;">emergency</span></div>
             <span class="toc-lbl">災害時モード</span>
+        </a>
+        <a class="toc-a" style="background:#e8f0fe;" href="#s-vitals-input">
+            <div class="toc-ic" style="background:#1a73e8;"><span class="material-symbols-outlined" style="color:#fff;">monitoring</span></div>
+            <span class="toc-lbl">バイタル測定</span>
+        </a>
+        <a class="toc-a" style="background:#fce8e6;" href="#s-vitals-recheck">
+            <div class="toc-ic" style="background:#dc2626;"><span class="material-symbols-outlined" style="color:#fff;">notifications_active</span></div>
+            <span class="toc-lbl">再検査アラーム</span>
+        </a>
+        <a class="toc-a" style="background:#f3e5f5;" href="#s-vitals-trouble">
+            <div class="toc-ic" style="background:#9c27b0;"><span class="material-symbols-outlined" style="color:#fff;">help_outline</span></div>
+            <span class="toc-lbl">設定・困った時</span>
         </a>
         <a class="toc-a" style="background:#fff3e0;" href="#s-updates">
             <div class="toc-ic" style="background:#ff9800;"><span class="material-symbols-outlined" style="color:#fff;">notifications</span></div>
@@ -370,6 +423,337 @@
                 <div class="step-n" style="background:#ff9800;">3</div>
                 <div><div class="step-t">内容を確認して保存</div><div class="step-d">テキストを確認・修正してから保存ボタンを押してください</div></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== バイタル測定 ===== -->
+<div class="sc" id="s-vitals-input">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f0fe;"><span class="material-symbols-outlined" style="font-size:26px;color:#1a73e8;">monitoring</span></div>
+        <div><div class="sc-ttl">バイタル測定</div><div class="sc-sub">血圧・脈拍・体温・SpO2 を記録する</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">バイタルの記録は<b>3つの方法</b>で入力できるよ！🩺<br>その日の状況に合わせて使い分けてね</div>
+        </div>
+
+        <!-- 4タブの全体像 -->
+        <div class="point-box">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">tab</span>4つのタブ</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                バイタル機能には4つのタブがあります:<br>
+                ・<b>測定</b> — 新しいバイタルを記録する<br>
+                ・<b>本日の記録</b> — 今日の全員分を一覧で確認<br>
+                ・<b>履歴</b> — 過去のバイタル推移をグラフで確認<br>
+                ・<b>設定</b> — 利用者・通知時刻などの設定
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:バイタル4タブの全景<br>
+            (vital-tabs.png 予定)
+        </div>
+        <div class="gd-shot-cap">↑ 画面下に並ぶ4つのタブ</div>
+
+        <!-- 3つの入力方法 -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:16px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">edit_note</span>
+            3つの入力方法
+        </div>
+
+        <!-- 方法①: 手入力 -->
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">1</div>
+            <div style="flex:1;">
+                <div class="step-t">手で入力する(基本)</div>
+                <div class="step-d">数値を直接入力する一番確実な方法。血圧上・血圧下・脈拍・体温・SpO2 の5項目を順に入れていきます。</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:測定タブの入力エディタ<br>
+            (vital-input.png 予定)
+        </div>
+
+        <!-- 方法②: カメラ読み取り -->
+        <div class="step">
+            <div class="step-n" style="background:#34a853;">2</div>
+            <div style="flex:1;">
+                <div class="step-t">📷 カメラで自動読み取り</div>
+                <div class="step-d">血圧計や体温計の表示部分をカメラで撮影すると、AIが数字を自動で読み取って入力欄にセット。手入力より速い!</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:カメラ読み取りボタン<br>
+            (vital-camera.png 予定)
+        </div>
+        <div class="hint" style="background:#e8f5e9;color:#137333;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>機械が暗い場所だとうまく読み取れないことがあります。明るい場所で表示部分が画面いっぱいに映るように撮ってください。</span>
+        </div>
+
+        <!-- 方法③: 音声入力 (NEW) -->
+        <div class="step">
+            <div class="step-n" style="background:#dc2626;">3</div>
+            <div style="flex:1;">
+                <div class="step-t">🎤 音声で入力<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;margin-left:6px;">NEW</span></div>
+                <div class="step-d">「体温36.5、血圧上が120で下が80、脈60、酸素97」のように<b>普通に話すだけ</b>。AIが数値を自動で各欄にセットしてくれます。両手がふさがっている時にも便利!</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:🎤 音声入力ボタン(録音中・赤い脈動)<br>
+            (vital-voice.png 予定)
+        </div>
+        <div class="hint" style="background:#fce8e6;color:#c5221f;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">info</span>
+            <span>音声入力は<b>「測定」タブのみ</b>で使えます。録音時間は最大20秒。話し終わったらもう一度ボタンを押すと早く解析が始まります。</span>
+        </div>
+
+        <!-- メモ欄 -->
+        <div class="point-box" style="margin-top:14px;">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">edit_note</span>メモ欄について</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                数値以外で気づいたこと(顔色・痛み・様子の変化など)はメモ欄に記録してください。音声入力でも、数字以外の発話は自動でメモ欄に追記されます。
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 再検査アラーム ===== -->
+<div class="sc" id="s-vitals-recheck">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#fce8e6;"><span class="material-symbols-outlined" style="font-size:26px;color:#dc2626;">notifications_active</span></div>
+        <div><div class="sc-ttl">再検査アラーム</div><div class="sc-sub">異常値を見つけたら、決めた時刻に音で知らせる</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_onegai.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">血圧が高すぎる時など、<b>「あとでもう一度測りたい」</b>を忘れないようにアラームをセットできるよ⏰</div>
+        </div>
+
+        <!-- 全体フロー -->
+        <div class="flow">
+            <div class="flow-step"><div class="flow-num" style="background:#dc2626;"><span class="material-symbols-outlined" style="font-size:14px;">warning</span></div><div class="flow-lbl">異常値<br>検出</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#1a73e8;"><span class="material-symbols-outlined" style="font-size:14px;">schedule</span></div><div class="flow-lbl">時刻を<br>選ぶ</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#1a73e8;"><span class="material-symbols-outlined" style="font-size:14px;">event</span></div><div class="flow-lbl">📅 リマインダー<br>登録</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#34a853;"><span class="material-symbols-outlined" style="font-size:14px;">notifications_active</span></div><div class="flow-lbl">時刻に<br>鳴る</div></div>
+        </div>
+
+        <!-- 異常値の検出 -->
+        <div class="step">
+            <div class="step-n" style="background:#dc2626;">1</div>
+            <div style="flex:1;">
+                <div class="step-t">異常値の検出</div>
+                <div class="step-d">バイタルを保存した時、設定した範囲を超える数値があると、自動的に<b>「⚠ 再検査が必要」</b>マークが付きます。閾値は「設定」タブで調整できます。</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:異常値検出 + 「⚠ 再検査が必要」表示<br>
+            (recheck-detect.png 予定)
+        </div>
+
+        <!-- 時刻設定 -->
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">2</div>
+            <div style="flex:1;">
+                <div class="step-t">再検査の時刻を選ぶ</div>
+                <div class="step-d"><b>「本日の記録」タブ</b>から該当の利用者の編集を開き、再検査セクションでクイックボタン(+15分/+30分/+1時間/+2時間)または直接時刻入力で設定します。</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:時刻設定UI(クイックボタン4つ)<br>
+            (recheck-set.png 予定)
+        </div>
+
+        <!-- リマインダー登録 -->
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">3</div>
+            <div style="flex:1;">
+                <div class="step-t">📅 リマインダーに登録</div>
+                <div class="step-d">「📅 リマインダーに登録」ボタンを押すと、サーバーに予約が保存され、<b>カレンダーアプリへの登録</b>(.icsファイル)も自動でダウンロードされます。</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:📅 リマインダー登録ボタン + 案内文<br>
+            (recheck-register.png 予定)
+        </div>
+
+        <!-- アラーム発火 -->
+        <div class="step">
+            <div class="step-n" style="background:#34a853;">4</div>
+            <div style="flex:1;">
+                <div class="step-t">時刻が来たら鳴る</div>
+                <div class="step-d">設定した時刻になると、画面中央に<b>赤い枠のアラーム</b>が表示され、ピポピポ音が鳴ります。「今から測定する」「10分後に再通知」「完了にする」の3つから選べます。</div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:アラーム発火モーダル(赤枠+3ボタン)<br>
+            (recheck-alarm.png 予定)
+        </div>
+
+        <!-- 通知が鳴るタイミング -->
+        <div class="point-box" style="margin-top:18px;">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>通知が鳴るタイミング</div>
+            <div style="font-size:0.82rem;line-height:1.8;color:#202124;">
+                <b>📱 アプリを開いている時</b><br>
+                → アプリが30秒ごとに時刻をチェックして、自動でアラームを鳴らします。<br><br>
+                <b>🔒 アプリを閉じている時(画面スリープ含む)</b><br>
+                → カレンダーアプリのリマインダー機能で OS が鳴らします。<br>
+                <b>そのために、📅 リマインダー登録 → 許可 → カレンダーで「追加」</b>の3ステップを最後まで完了する必要があります。
+            </div>
+        </div>
+
+        <div class="gd-warn">
+            <b>⚠ 注意:</b> 完全自動(ボタン操作なしでアプリを閉じても鳴る)は、現在のバージョンでは未対応です。<br>
+            アプリを閉じている時に鳴らすには、毎回カレンダーへの追加が必要です。
+        </div>
+    </div>
+</div>
+
+<!-- ===== 設定・困った時 ===== -->
+<div class="sc" id="s-vitals-trouble">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#f3e5f5;"><span class="material-symbols-outlined" style="font-size:26px;color:#9c27b0;">help_outline</span></div>
+        <div><div class="sc-ttl">設定・困った時</div><div class="sc-sub">スマホ別の設定方法とトラブル対処</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">アラームを<b>確実に鳴らす</b>には、スマホごとに少し設定が必要だよ📱<br>困ったときはここを見てね</div>
+        </div>
+
+        <!-- iPhone 設定手順 -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:6px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">apple</span>
+            iPhone(iOS)をお使いの方
+        </div>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">1</div>
+                <div><div class="step-t">📅 リマインダー登録ボタンを押す</div><div class="step-d">アプリ内で「📅 リマインダーに登録」を押すと、iPhoneが「カレンダーの参加依頼」と表示します。</div></div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:iOS「カレンダーの参加依頼」ダイアログ<br>
+            (ios-invite.png 予定)
+        </div>
+        <div class="hint" style="background:#e8f0fe;color:#1a37e8;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">info</span>
+            <span>「参加依頼」という言葉が出ますが、通常通り<b>「許可」</b>を押せばOKです。誰かに招待を送るわけではありません。</span>
+        </div>
+
+        <div class="steps" style="margin-top:10px;">
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">2</div>
+                <div><div class="step-t">カレンダーアプリで「追加」</div><div class="step-d">許可するとカレンダーアプリが開きます。「追加」を押せばリマインダーが登録され、設定時刻にアラームが鳴ります。</div></div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:iOSカレンダーアプリでの「追加」画面<br>
+            (ios-add.png 予定)
+        </div>
+
+        <!-- Android 設定手順 -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:18px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#34a853;">android</span>
+            Androidをお使いの方
+        </div>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-n" style="background:#34a853;">1</div>
+                <div><div class="step-t">Googleカレンダーに追加</div><div class="step-d">「📅 リマインダーに登録」を押すと、Googleカレンダーが開きます。「保存」を押してください。</div></div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:Google カレンダーの追加画面<br>
+            (android-add.png 予定)
+        </div>
+
+        <div class="gd-warn">
+            <b>⚠ Xiaomi / HUAWEI / OPPO の方は要注意</b><br>
+            これらの機種では、省電力機能でアラームが鳴らないことがあります。<br>
+            <b>設定 → アプリ → カレンダー → 電池 → 「制限なし」</b> に変更してください。
+        </div>
+
+        <div class="steps" style="margin-top:10px;">
+            <div class="step">
+                <div class="step-n" style="background:#34a853;">2</div>
+                <div><div class="step-t">電池最適化の対象外にする</div><div class="step-d">省電力モードでアプリが停止するのを防ぐため、カレンダーアプリを電池最適化の対象外にします。</div></div>
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:Android 電池最適化対象外の設定画面<br>
+            (android-battery.png 予定)
+        </div>
+
+        <!-- 困った時の対処 -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:18px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#9c27b0;">build</span>
+            困った時の対処
+        </div>
+
+        <!-- アラームが鳴らない -->
+        <div class="point-box" style="border-color:#dc2626;">
+            <div class="point-box-title" style="color:#dc2626;"><span class="material-symbols-outlined" style="font-size:18px;">notifications_off</span>アラームが鳴らない</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                ・カレンダーアプリで「追加」まで完了していますか?<br>
+                ・スマホがマナーモードや消音モードになっていませんか?<br>
+                ・(Android)電池最適化の設定を確認してください<br>
+                ・(iOS)カレンダーアプリで通知がオンになっていますか?
+            </div>
+        </div>
+
+        <!-- 画面が古いまま -->
+        <div class="point-box" style="border-color:#ff9800;">
+            <div class="point-box-title" style="color:#e65100;"><span class="material-symbols-outlined" style="font-size:18px;">cached</span>画面が古いまま / 「Load failed」と出る</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                アプリのキャッシュ(一時保存)が古くなっているのが原因です。下の手順で解消します:<br><br>
+                <b>iPhone(Safari):</b><br>
+                設定 → Safari → 履歴とWebサイトデータを消去 → アプリを再起動<br><br>
+                <b>Android(Chrome):</b><br>
+                Chrome の設定 → プライバシー → 閲覧履歴データを削除<br><br>
+                <b>パソコン(Chrome):</b><br>
+                F12 → Application → Service Workers → 「Unregister」 → ページを再読み込み
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:Safari キャッシュ消去画面<br>
+            (sw-clear.png 予定)
+        </div>
+
+        <!-- マイクが反応しない -->
+        <div class="point-box" style="border-color:#9c27b0;">
+            <div class="point-box-title" style="color:#9c27b0;"><span class="material-symbols-outlined" style="font-size:18px;">mic_off</span>音声入力でマイクが反応しない</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                ブラウザにマイクの使用が許可されていません。下の手順で許可してください:<br><br>
+                <b>iPhone(Safari):</b><br>
+                設定 → Safari → カメラ・マイク → 確認 / 許可<br><br>
+                <b>Android(Chrome):</b><br>
+                Chrome の設定 → サイトの設定 → マイク → 該当サイトを許可
+            </div>
+        </div>
+        <div class="gd-placeholder">
+            <span class="material-symbols-outlined">image</span>
+            スクショ:マイク権限の設定画面<br>
+            (mic-perm.png 予定)
         </div>
     </div>
 </div>
@@ -784,6 +1168,37 @@
         <div class="mb">
             <img src="/static/tasukaru_ooyorokobi.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
             <div class="mb-text">TASUKARUはどんどん進化中！<br>右上の<b>🔔ベルボタン</b>でいつでも最新の更新情報を確認できるよ🎉</div>
+        </div>
+
+        <div class="update-card" style="border-color:#dc2626;">
+            <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-05</div>
+            <div style="font-size:0.92rem;font-weight:800;color:#202124;margin-bottom:8px;">🩺 Ver.4.1 バイタル管理アップデート</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>バイタル管理機能を追加</b>(血圧・脈拍・体温・SpO2を記録、4タブ構成)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>📷 カメラ自動読み取り</b>(血圧計・体温計の表示をAIが読み取り)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>🎤 音声でバイタル入力</b>(話すだけで各欄に自動セット)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>再検査アラーム機能</b>(異常値検出 → 時刻設定 → 音で通知)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>📅 カレンダーリマインダー連携</b>(画面を閉じていても時刻にお知らせ)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f0fe;color:#1557b0;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">改善</span>
+                    <span>履歴を月単位で切替可、Chart.jsの折れ線グラフ表示</span>
+                </div>
+            </div>
         </div>
 
         <div class="update-card" style="border-color:#1a73e8;">
