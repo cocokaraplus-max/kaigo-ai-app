@@ -774,3 +774,187 @@ b900c5e docs session11 verification result and session12 handoff with audio auto
 - `templates/vitals.html`: 3014 行 / 146288 bytes(Phase A 適用済)
 - `utils.py`: 162 行(変更なし)
 - `.gitignore`: 30 行
+
+---
+
+# 🎙 Session 13 完了(2026-05-04)— 音声バイタル入力 MVP
+
+## 結論
+
+**音声バイタル入力 MVP の実装・動作確認完了。** Mac Chrome / iPhone Safari 両環境で実機確認済。dev 環境にデプロイ済(`50093c0`)。
+
+## 実装した機能
+
+「測定」タブで、カメラ自動読み取りボタンの **真横**(横並び 50:50、B案レイアウト)に「🎤 音声入力」ボタンを追加。タップすると最大 20 秒の録音が開始され、Gemini が音声を解析して血圧・脈拍・体温・SpO2 を抽出 → 各フィールドへ自動入力。数値以外の発話は memo 欄に追記される。
+
+## 確定仕様(Session 12 設計仕様書通り、変更なし)
+
+- 対象タブ:「測定」タブのみ
+- ボタン位置:カメラ自動読み取りボタンの真横(B案・横並び 50:50 等幅)
+- 音声エンジン:**Gemini**(`get_generative_model()` を再利用、追加コストなし)
+- 解析:Gemini で音声 → JSON 一発で完結
+- 録音時間:**最大 20 秒**(自動停止 + 録音中タップで早期終了可)
+- メモ欄対応:数値以外の発話は ` / ` 区切りで既存メモに追記
+- 認識結果:確認ダイアログなしで即フィールドにセット
+- 永続保存:**しない**(プライバシー配慮、`upload_audio_to_supabase` は呼ばない)
+- ボタン文言:カメラ「カメラ読み取り」、音声「音声入力」(対称)
+
+## 実装ファイル変更サマリ
+
+| ファイル | 変更前 | 変更後 | 差分 |
+|---------|-------|-------|------|
+| `app.py` | 4383行 / 196216 bytes | 4442行 / 198998 bytes | +59 行 |
+| `templates/vitals.html` | 3014行 / 146288 bytes | 3252行 / 155229 bytes | +238 行(=246 追加 - 4 削除) |
+
+## バックエンド実装(`app.py` 1446〜1503行)
+
+新規エンドポイント `/api/vital_voice_parse`:
+
+- 既存 `/api/read_vital_image`(画像版)と同じパターンで実装
+- MIME マップに `.mp4` 追加(iOS Safari 対応)
+- デフォルト MIME は `audio/webm`(Mac Chrome のデフォルト)
+- 録音空チェック追加(`if not audio_bytes`)
+- JSON 抽出は `re.search(r'\{.*\}', resp.text.strip(), re.DOTALL)` パターン
+- `upload_audio_to_supabase` は import しない(永続保存しない仕様)
+
+## フロントエンド実装(`templates/vitals.html`)
+
+### HTML(1241行付近)
+
+カメラボタンを `vital-action-row` という flex コンテナで包み、その中にカメラ・音声の2ボタンを配置:
+
+```html
+<div class="vital-action-row">
+    <button class="camera-btn" onclick="openCamera('${p.id}')">
+        <span class="material-symbols-outlined">photo_camera</span>
+        カメラ読み取り
+    </button>
+    <button class="voice-btn" id="voice-btn-${p.id}" onclick="toggleVoiceRecording('${p.id}')">
+        <span class="material-symbols-outlined">mic</span>
+        <span class="voice-btn-label">音声入力</span>
+    </button>
+</div>
+```
+
+### CSS(111〜137行)
+
+- `.vital-action-row`:`display:flex; gap:8px;` 50:50 等幅
+- `.voice-btn`:緑系グラデーション(`#34a853 → #2d8f47`)、camera-btn と同形・同サイズ
+- `.voice-btn.recording`:赤系(`#dc2626 → #b91c1c`)+ 1.2秒の脈動アニメ(`@keyframes voicePulse`)
+- `.voice-btn:disabled`:オパシティ低下
+
+### JavaScript(1500行付近、約 200 行)
+
+- `pickVoiceMime()`:`MediaRecorder.isTypeSupported` で対応 MIME を動的選択(audio/webm → audio/mp4 → ...)
+- `mimeToExt(mime)`:MIME から拡張子を導出
+- `toggleVoiceRecording(pid)`:タップで開始 / 録音中タップで早期終了 / 20秒で自動停止
+- `stopVoiceRecording(autoStop)`:録音停止
+- `cleanupVoiceStream()`:MediaStream トラック停止
+- `sendVoiceToAI(blob, ext)`:`/api/vital_voice_parse` へ POST、レスポンスで各フィールドへセット
+- メモ欄は `dispatchEvent(new Event('change'))` で保存処理を発火させる
+
+## 動作確認結果
+
+| 環境 | 結果 |
+|------|------|
+| Mac Chrome(dev) | ✅ 録音 → 数値抽出 → フィールド自動入力 → 保存まで OK |
+| iPhone Safari(dev) | ✅ マイク権限取得 → 録音 → 数値抽出 → 保存まで OK |
+
+両環境で実機確認済。
+
+## 遭遇した問題と対処
+
+### 問題1:Service Worker キャッシュで古い HTML が表示される(教訓8 再発、Mac Chrome でも発生)
+
+**症状**:`50093c0` を push 後、Mac Chrome で dev タブをリロードしても古い HTML が返る。`voice-btn` が DOM に存在しない、`unlockAlarmAudio`(Session 12 で追加した関数)も window に未定義。
+
+**原因**:`tasukaru-v6-static` の Service Worker キャッシュが古い HTML を提供し続ける。
+
+**対処**:Chrome 連携で以下を実行:
+
+```javascript
+const regs = await navigator.serviceWorker.getRegistrations();
+for (const r of regs) await r.unregister();
+const names = await caches.keys();
+for (const n of names) await caches.delete(n);
+location.reload();
+```
+
+これで Service Worker と全キャッシュを消去 → ハードリロード → 新版反映。
+
+### 問題2:ローカル Flask 起動で環境変数が読まれない
+
+**症状**:`python3 app.py` で起動しても、`* Tip: There are .env files present. Install python-dotenv to use them.` と出て、`.env` が読まれない。Supabase に接続できないためログイン不可。
+
+**原因**:`app.py` / `utils.py` のどこにも `load_dotenv()` の呼び出しが無い。Cloud Run では Secret Manager から直接環境変数が注入されるため、これまで気づかれなかった。
+
+**対処**:Session 13 では Cloud Run dev での確認に切り替えて回避。`load_dotenv()` 追加は別途検討課題(本筋スコープ外のため未対応)。
+
+## 教訓追加(教訓16〜17)
+
+### 教訓16:Service Worker キャッシュは Mac Chrome でも発生する
+
+Session 12 では iPhone でしか観測しなかった Service Worker キャッシュ問題が、Mac Chrome でも再発。push 直後の動作確認時は **Service Worker unregister + caches.delete + location.reload()** をワンセットで実行する習慣をつける。Chrome 連携の `javascript_tool` で一発実行可能。
+
+### 教訓17:ローカル Flask 起動には load_dotenv() が必要
+
+`app.py` / `utils.py` には `load_dotenv()` の呼び出しが無いため、ローカルで `python3 app.py` を実行しても `.env` が読まれない。Cloud Run では Secret Manager 経由で環境変数が注入されるため、これまで発覚していなかった。
+
+次回ローカル起動が必要になったら、選択肢は2つ:
+
+**選択肢 A**:`app.py` 冒頭に追加(永続的、本番影響なし)
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+**選択肢 B**:起動時に環境変数を export(一回限り)
+
+```bash
+set -a; source .env; set +a
+python3 app.py
+```
+
+## コミット
+
+```
+50093c0 feat vitals voice input parse with gemini audio analysis
+```
+
+1機能=1コミット完結(教訓5)。Cloud Run dev へデプロイ済。
+
+## 現在のリポジトリ状態(2026-05-04 Session 13 完了時点)
+
+最新コミット履歴:
+
+```
+50093c0 feat vitals voice input parse with gemini audio analysis
+c9161c4 docs session13 voice vital input design specification
+1250d09 docs session12 phase a completion with audio unlock and ios notice records
+eb90403 fix vitals alarm audio autoplay unlock and add ios calendar dialog notice
+c357b67 chore add bak and broken files to gitignore
+```
+
+ファイルサイズ:
+
+- `app.py`: 4442 行 / 198998 bytes
+- `templates/vitals.html`: 3252 行 / 155229 bytes
+- `utils.py`: 162 行(変更なし)
+- `.gitignore`: 30 行(変更なし)
+- `README.md`: Session 13 完了記録追記済み(後続コミット予定)
+- `HANDOFF_session11.md`: Session 13 完了記録追記済み(後続コミット予定)
+
+## 次セッション(Session 14)以降の候補
+
+引き継ぎ書通り、明示の指示があるまで着手しない。
+
+| 候補 | 内容 | 工数 |
+|------|------|------|
+| **B-1: Step 4(利用者向けガイドページ)** | 「設定」タブに「📚 使い方ガイド」追加 | 1〜3時間 |
+| **B-2: 「本日の記録」タブ強化** | 未測定者表示 + カメラ・音声ボタン移植 | 2〜3時間 |
+| **B-3: 「測定」タブ廃止/統合** | ✅ ユーザー判断で見送り(現状維持) | — |
+| **dev → prod マージ** | 音声入力を含む dev の成果を prod に昇格 | 0.5〜1時間 |
+| **「記録を保存」ボタンの色変更** | 音声入力(緑)と保存ボタン(緑)の色被り解消 | 30分 |
+| **load_dotenv 対応** | ローカル Flask 起動を可能にする(教訓17 参照) | 15分 |
+| **D: Step 3(Firebase Push)** | 完全自動通知 | 半日〜2日(明示依頼があるまで提案禁止) |
