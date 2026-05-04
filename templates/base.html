@@ -133,7 +133,14 @@
     font-weight: 800; cursor: pointer;
 }
 /* ===== ナビ並び替え編集モード ===== */
-.bottom-nav.edit-mode { padding-bottom: 0; }
+.bottom-nav.edit-mode {
+    padding-bottom: 0;
+    /* 編集モード中はブラウザのデフォルトスクロール/ピンチを完全停止 */
+    touch-action: none !important;
+    -ms-touch-action: none !important;
+    overflow-x: hidden !important;
+}
+body.nav-editing { touch-action: none !important; -ms-touch-action: none !important; overscroll-behavior: contain; }
 .bottom-nav.edit-mode .bottom-nav-item.draggable-item {
     animation: navWiggle 0.4s ease-in-out infinite alternate;
     border: 1px dashed #1a73e8;
@@ -1329,10 +1336,19 @@ function onNavPointerDown(e) {
     document.addEventListener('pointermove', onNavPointerMove);
     document.addEventListener('pointerup', onNavPointerUp);
     document.addEventListener('pointercancel', onNavPointerUp);
+    // iOS Safari でのスクロール完全停止のため touchmove も passive:false で抑止
+    document.addEventListener('touchmove', onNavTouchMoveBlock, { passive: false });
+}
+
+function onNavTouchMoveBlock(e) {
+    if (!_navDragState) return;
+    if (e.cancelable) e.preventDefault();
 }
 
 function onNavPointerMove(e) {
     if (!_navDragState) return;
+    // iOS Safari でのページスクロール抑止
+    if (e.cancelable) e.preventDefault();
     var state = _navDragState;
     var dx = e.clientX - state.startX;
     var dy = e.clientY - state.startY;
@@ -1384,6 +1400,7 @@ function onNavPointerUp(e) {
     document.removeEventListener('pointermove', onNavPointerMove);
     document.removeEventListener('pointerup', onNavPointerUp);
     document.removeEventListener('pointercancel', onNavPointerUp);
+    document.removeEventListener('touchmove', onNavTouchMoveBlock);
     try { state.el.releasePointerCapture(state.pointerId); } catch (err) {}
     state.el.classList.remove('dragging');
     if (nav && state.moved) {
