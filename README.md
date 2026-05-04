@@ -1514,3 +1514,261 @@ f4851f4 docs session13 voice vital input completion records and session14 handof
 3. **Step 3 Firebase Push**を提案しない(教訓)
 4. 教訓1〜17 を遵守
 5. 1機能=1コミット、push 後 30〜60秒待つ
+
+---
+
+# 📝 Session 15 完了サマリ(2026-05-04)— ボトムナビ並び替え機能の修正
+
+## 📍 セッション概要
+
+Session 14 候補タスクには無かったが、ユーザーから「下部のメニュー配置を変えても他のメニューを経由すると元に戻ってしまうのを改善したい」との要望で着手。
+**既存の並び替え機能(設定モーダル「並び替えモードを開始」ボタン)が実装の残骸として存在するだけで、実際には動作していない**ことを Chrome 連携で調査して特定。base.html と top.html を全面修正して **「全ページで動作する pointer events ベースの並び替え機能」** を実装した。
+
+## ✅ 第15セッションでの主な成果
+
+### 1. 真因特定(Chrome 連携での徹底的な調査)
+
+調査で判明した状況:
+- `base.html` には `saveNavOrder()` 関数の **残骸** だけがあり、ドラッグハンドラ・読み込み処理は存在せず
+- `top.html` の L283〜L405(120行)に **HTML5 D&D ベースの並び替え機能のフル実装** が隠れていた
+- top.html の旧実装は `a.getAttribute('href').replace('/', '')` でスラッシュを削除して localStorage に保存(`["top","input",...]`)
+- でも **どこにも読み込み処理(loadNavOrder)が存在しなかった** ため、TOP で並び替えても他ページに行くと元に戻っていた
+- TOP ページでしか top.html のスクリプトは読まれないため、他ページでは並び替え自体できなかった
+
+→ ユーザーが言う **「下部メニュー配置を変えても元に戻る」** はこの構造的欠陥が原因と確定
+
+### 2. 並び替え機能の新規実装(`base.html` に統合)
+
+base.html に以下を追加(+349行):
+
+| 関数 | 役割 |
+|---|---|
+| `loadNavOrder()` | ページロード時に localStorage を読んで DOM 並び替えを適用(全ページ共通) |
+| `saveNavOrder()` | 並び順を localStorage に保存(スラッシュ付き形式) |
+| `startNavEditMode()` | 編集モード起動。設定モーダル閉じる→編集バー表示→各項目に分類クラスとハンドラ装着 |
+| `stopNavEditMode()` | 編集モード終了→現在の DOM 順序を localStorage に保存→トースト表示 |
+| `attachNavDrag()` / `onNavPointerDown()` | 各項目にドラッグハンドラ装着 |
+| `onNavHoldMove()` / `onNavHoldUp()` / `cancelHold()` / `beginDragMode()` | **長押し検知(150ms)→ドラッグ突入** ロジック |
+| `onNavPointerMove()` / `onNavPointerUp()` | ドラッグ中のヒットテストと DOM 入れ替え |
+| `onNavTouchMoveBlock()` | iOS Safari で `passive: false` の touchmove リスナでスクロール完全抑止 |
+
+### 3. top.html の旧実装削除(`-117行`)
+
+top.html L286〜L405 の旧 D&D 実装を削除し、コメント3行に置き換え:
+```
+// ===== ボトムナビ並び替え機能は base.html 側に統合済み =====
+// 旧実装(startNavEditMode/stopNavEditMode/onNavItem*/onMouseDown 系)は削除。
+// base.html の pointer events ベース実装(全ページ対応・iPhone Safari 対応)に一本化。
+```
+
+文字サイズ・サウンド・アイコン設定・クロッパー・更新履歴クリック等の他機能はすべて温存。
+
+### 4. UX/技術的な工夫
+
+- **TOP / ログアウトは固定**(両端、誤タップ防止)。間の12項目のみ並び替え可
+- **長押し 150ms でドラッグ開始**(短押し=横スクロール、長押し=並び替えの区別)
+- **横スクロールは生かしたまま**(`touch-action: pan-x`)→ 14項目すべてに指でアクセス可能
+- **transform / animation を一切使わない CSS**(iOS Safari の Material Symbols ligature 解除バグ回避)
+- **旧形式(`"top"` スラッシュなし)/ 新形式(`"/top"`)両対応の `loadNavOrder()`** で既存ユーザーの localStorage を破壊しない
+- **振動フィードバック**(`navigator.vibrate(20)`)で長押し成立を体感
+
+## 🐛 セッション中に踏んだ罠と修正履歴
+
+修正は **5回の反復** が必要だった:
+
+1. **初回実装**(`d804e8b`)→ HTML5 dragstart 系。dev で確認したら top.html の独自実装と衝突
+2. **2回目修正** → `body { overflow: hidden }` が `elementFromPoint` を阻害してドロップ判定不能。フォールバック追加で解決
+3. **3回目(top.html 削除)**(`9896ae2`)→ top.html の旧実装が base.html を上書きしていたのを発見、120行削除
+4. **4回目(iOS Safari 対応)** → ドラッグ中にページがスクロールして「メニューが下に動く」問題。`touch-action: none` + touchmove 抑止で対応
+5. **5回目(横スクロール復活)**(`2a72b1d`)→ `overflow-x: hidden` が強すぎて 14項目すべてにアクセス不能の致命バグ。**長押し検知方式 + `touch-action: pan-x`** に設計刷新で解決
+
+## 🎯 動作確認結果(Chrome 連携で全自動テスト)
+
+| シナリオ | 結果 |
+|---|---|
+| 編集モード CSS(touch-action: pan-x、overflow-x: auto) | ✅ |
+| 短押し(タップ)はドラッグに入らない | ✅ |
+| 短時間で 8px 以上動く(横スクロール意図)→ キャンセル | ✅ |
+| 150ms 押しっぱなし → ドラッグモード突入 | ✅ |
+| ドラッグで並び替え → DOM 入れ替え + localStorage 保存(スラッシュ付き) | ✅ |
+| **別ページ遷移後も並び順保持(本題)** | ✅ |
+| 14項目すべてアクセス可(横スクロール復活) | ✅ |
+| アイコンが文字に変わらない(transform 不使用) | ✅ |
+| TOP / ログアウトは固定で並び替え不可 | ✅ |
+
+## ファイル変更サマリ
+
+- `templates/base.html`: 1478 → 1827 行(+349行、CSS 追加 + JS 関数群追加)
+- `templates/top.html`: 672 → 555 行(-117行、旧 D&D 実装削除)
+
+## コミット(Session 15)
+
+```
+2a72b1d fix nav reorder long press to drag preserving horizontal scroll
+(以下、間の修正コミットは省略 — 1機能=1コミットの原則は守れず複数回修正が入った)
+9896ae2 fix nav reorder unify implementation in base and remove top html duplicate
+d804e8b feat base nav reorder with drag and drop persisted in localstorage
+```
+
+## 教訓追加(教訓18〜21)
+
+### 教訓18:既存の「動かない機能」は残骸ではなく重複実装の可能性を疑う
+`saveNavOrder()` 関数があったので「実装の残骸」と仮定して上書き実装を作ったが、実際には別ファイル(top.html)に**動作している重複実装**があった。**全ファイルを横断して**同名関数・同名 localStorage キー・同名 ID/クラスを grep するべき。Chrome の `window.* === 'function'` チェックや HTML 内での `saveNavOrder` 出現回数の確認(=3 だった)が決定的な手がかりになった。
+
+### 教訓19:iOS Safari は transform を持つ要素で Material Symbols ligature が解除される
+ドラッグ中の `.dragging` で `transform: scale(1.08)` を指定したら、ユーザーから「アイコンが文字(`monitor_heart` のような英単語)に変わる」報告。これは Webkit の既知挙動で、transform を持つ要素で `font-feature-settings` の一部が解除されるため。**並び替え UI で transform は使わない**(border + box-shadow + background だけで「ドラッグ中」を表現する)。
+
+### 教訓20:`touch-action: none` を強くかけすぎると横スクロールも殺す
+iOS Safari のページスクロール対策で `body.nav-editing { touch-action: none }` + `bottom-nav.edit-mode { overflow-x: hidden }` を強制した結果、**ボトムナビの横スクロールも禁止**されて 14項目あるうち右側 4項目に物理的に届かなくなる致命バグ。**`touch-action: pan-x`(横のみ許可)**で解決。
+- 縦スクロール禁止+横スクロール許可:`touch-action: pan-x`
+- 横スクロール禁止+縦スクロール許可:`touch-action: pan-y`
+- 全部禁止:`touch-action: none`(ドラッグ可能要素にだけ使う)
+
+### 教訓21:タップとドラッグの区別は「長押し検知」方式が確実
+`pointerdown` で即 `preventDefault()` する設計だと、ユーザーが横スクロールしたいだけでも勝手にドラッグモードに入る。**150ms の長押しタイマー**(指を置いた瞬間にタイマー開始、150ms 内に 8px 以上動いたらキャンセル、タイマー満了したらドラッグモード突入)で UX が劇的に改善する。iOS のホーム画面アイコン編集と同じ操作感。`navigator.vibrate(20)` で長押し成立をユーザーに伝えるのも重要。
+
+## 🛠 Session 15 で得た技術的知見
+
+### Chrome 連携でのライブ調査・検証フロー(超重要)
+
+このセッションで確立した**コードを書き出してダウンロードしながら Chrome 連携で常に検証する** ワークフロー。次の Claude もこの方式で動くこと。
+
+具体的な手順:
+
+1. **問題報告を受けたら、まず Chrome 連携で現状を調査**:
+   - `tabs_context_mcp` でアクティブタブ確認
+   - `javascript_exec` で DOM・グローバル関数・localStorage・computed style を観察
+   - 仮説を立てて、その仮説を JS で検証(`elementFromPoint`、`getComputedStyle`、event dispatch など)
+
+2. **修正対象のテンプレートをユーザーから受け取る**:
+   - `~/Desktop/` 経由でファイルをアップロードしてもらう(チャットの容量上限を回避)
+   - `/mnt/user-data/uploads/` で受け取り、`/home/claude/work/` にコピーして編集
+   - **raw.githubusercontent.com から fetch で取得**する手もあるが、Chrome の `[BLOCKED: Cookie/query string data]` で中身が見えないことがあるので、アップロードのほうが確実
+
+3. **修正版を書き出す**:
+   - `str_replace` で慎重にパッチ(大きい範囲は Python で行ベース置換)
+   - JS 構文チェック(`node --check` を Jinja タグ除外したスクリプトで実施)
+   - `/mnt/user-data/outputs/` にコピー → `present_files` でユーザーに渡す
+
+4. **ユーザーが Mac でコピー → push**:
+   - `cp "/Users/ZIMAX 1/Desktop/base.html" templates/base.html`(ZIMAX 1 のスペース注意)
+   - `git add ... && git commit -m '...' && git push origin tasukaru-dev`
+
+5. **push 後に Chrome 連携で再検証**:
+   - 30〜45秒待つ(Cloud Run デプロイ時間)
+   - SW unregister + 全 caches.delete + `?cb=` 付きリロード(教訓8/16)
+   - 新コードが反映されたか `typeof window.xxx === 'function'` で確認
+   - **イベント dispatch で UI 操作を自動シミュレート**(pointerdown/pointermove/pointerup を JS で発火させて並び替えをテスト)
+
+### 自動テストのコツ
+
+- `new PointerEvent('pointerdown', {bubbles:true, cancelable:true, clientX, clientY, pointerType:'mouse', isPrimary:true, pointerId:1})` で擬似タッチ
+- ドラッグの動きは `setTimeout` の Promise チェーンで段階的に再現(pointerdown → 待機 → pointermove → 待機 → pointerup)
+- 別ページ遷移後の状態確認は `location.href = ...` した後にタブ参照が再確立されるまで `setTimeout(_, 4000)`
+
+### `localStorage.setItem` フックの威力
+
+「誰が localStorage に書いてるか分からない」場合、`Storage.prototype.setItem` を上書きしてスタックトレースを取るデバッグ手法が有効:
+
+```javascript
+const orig = Storage.prototype.setItem;
+Storage.prototype.setItem = function(k, v) {
+  if (k === 'tasukaru_nav_order') {
+    console.log('SAVE', k, v, new Error().stack);
+  }
+  return orig.call(this, k, v);
+};
+```
+
+### CSS の `!important` が効かない時の真因
+詳細度が同じ `!important` 同士でも、**CSS 記述順序で後の方が勝つ**わけではなく、`getComputedStyle()` のタイミングと `@keyframes` のアニメーション競合が原因のことがある。今回は `animation: navWiggle` の `transform: rotate(...)` が `.dragging` の `transform: scale(1.08)` を上書きしていた(両方 transform プロパティだから一方だけが効く)。教訓:**transform を CSS と animation の両方で同じ要素に書かない**。
+
+## ⚠️ 重要事項(Session 16 以降への申し送り)
+
+- **本番(prod, tasukaru ブランチ)にはまだマージしていない**。dev のみで動作確認した状態。Session 16 の最初で本番マージするか、もう少し dev で運用してからマージするかは、ユーザーの判断次第。
+- **既存ユーザーの localStorage に旧形式(`"top"` スラッシュなし)が残っているが、loadNavOrder が両形式対応になっているので問題なし**。次回 stopNavEditMode が呼ばれた時に新形式(スラッシュ付き)で上書きされる。
+- **Service Worker のキャッシュ問題**(教訓8/16)が今回も再発した。Cloud Run デプロイ完了後の動作確認時は **必ず SW unregister + caches.delete + `?cb=` 付きリロード** を実施する。
+
+---
+
+# 📝 Session 15 → Session 16 引き継ぎ
+
+## 🚨 重要:このセッションを引き継ぐ Claude へ
+
+### 必読の前提
+1. **教訓1〜21 厳守**(過去 README 参照)。特に:
+   - 教訓1:タスカルくん画像 14箇所 + animation:fl 1箇所 は絶対に削除/変更しない
+   - 教訓5:1機能=1コミット(Session 15 では複数修正が入って守れなかった反省あり)
+   - 教訓8/16:Service Worker キャッシュ対策(SW unregister + caches.delete + `?cb=`)
+   - 教訓13:マークダウンリンク化対策(コマンドはコードブロックで囲む)
+   - 教訓18:既存の「動かない機能」は残骸ではなく重複実装の可能性を疑う
+   - 教訓19:iOS Safari で transform は Material Symbols を壊す
+   - 教訓20:`touch-action: none` を強くかけすぎると横スクロールも殺す
+   - 教訓21:タップとドラッグの区別は長押し検知方式
+2. **Step 3 Firebase Push は明示依頼があるまで提案禁止**
+3. **コミットメッセージは英語シンプル**(日本語全角括弧禁止)
+4. **push 後 30〜60秒待つ**(Cloud Run デプロイ時間)
+5. **ファイル受け渡しは `~/Desktop/`**(NOT Downloads)
+6. **Mac のユーザー名は "ZIMAX 1"(スペース含む)**
+7. **dev preview は `?cb=` 付きで確認**(Service Worker キャッシュ対策)
+
+### 作業の流れ(Session 15 で確立した方式 ★重要)
+
+**Chrome 連携を使い、コードを書き出してダウンロードしながら作業する** のが Session 15 で確立したワークフロー。次の Claude もこの方式で動くこと:
+
+1. **問題報告を受けたら、まず Chrome 連携で現状調査**
+   - `tabs_context_mcp` で開いているタブ確認(普通は dev タブが既に開いている)
+   - `javascript_exec` で DOM・関数・localStorage・computed style を観察
+   - 仮説を立てたら JS でその仮説を検証する
+
+2. **修正が必要なファイルはユーザーに `~/Desktop/` 経由でアップロードしてもらう**
+   - 「base.html をアップしてください」のように依頼
+   - `/mnt/user-data/uploads/` で受け取り、`/home/claude/work/` にコピーして編集
+
+3. **修正版を `/mnt/user-data/outputs/` に書き出して `present_files` でユーザーに渡す**
+   - JS 構文チェック(node --check で Jinja タグ除外)を必ず通してから渡す
+   - ユーザーは Desktop に保存 → `cp "/Users/ZIMAX 1/Desktop/xxx" templates/xxx` で配置
+
+4. **ユーザーが push したら、Chrome 連携で動作確認**
+   - 30〜45秒待つ(Cloud Run デプロイ)
+   - SW 解除 + caches 削除 + `?cb=` 付きリロード
+   - 新コードが反映されたか `typeof window.xxx === 'function'` 等で確認
+   - イベント dispatch で UI 操作を自動シミュレートして検証
+
+5. **iPhone での実機確認はユーザーにお願いする**
+   - Chrome デスクトップで OK でも iOS Safari で動かないことが多い(教訓19/20/21)
+
+### リポジトリ・URL
+- Repo: https://github.com/cocokaraplus-max/kaigo-ai-app
+- branch: tasukaru-dev(開発)/ tasukaru(本番)
+- Mac path: ~/dev/kaigo-ai-app
+- dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
+- Supabase dev: https://supabase.com/dashboard/project/otjevnmoycnvaxeltrtj
+- Supabase prod: https://supabase.com/dashboard/project/abvglnkwtdeoaazyqwyd
+
+## 🎯 Session 16 候補タスク(明示の指示があるまで着手しない)
+
+| 優先度 | 候補 | 内容 | 工数 |
+|---|---|---|---|
+| **高** | **Session 15 成果の prod 反映** | dev で動作確認済みのナビ並び替え機能を本番(tasukaru ブランチ)にマージ | 15分 |
+| **高** | **アコーディオン下部隠れバグ修正** | iPhone PWA で測定時に保存ボタンが下部メニューに隠れる(Session 14 中に発見、未対応) | 1〜2時間 |
+| 中 | **記録を保存ボタンの色変更** | 緑→別色、音声入力ボタンとの視認性向上 | 30分 |
+| 中 | **Android スクショ追加** | guide-android-add / guide-android-battery のプレースホルダ置き換え | 1時間(Android 実機要) |
+| 中 | **B-2: 本日の記録タブ強化** | 未測定者表示+カメラ・音声ボタン移植 | 2〜3時間 |
+| 中 | **load_dotenv 対応**(教訓17) | 環境変数の取り回し統一 | 30分 |
+| 中 | **タスカルくんダミー利用者の整理判断** | patient_id=51, 52 の扱い決定 | 5分 |
+| 低 | **B-3: 測定タブ廃止/統合** | 現状維持判断済み | — |
+
+## 📁 Session 15 で変更したファイル
+
+- `templates/base.html`: 1478 → 1827 行(並び替え機能の新規実装統合)
+- `templates/top.html`: 672 → 555 行(旧並び替え実装の削除)
+
+## ⏭ Session 16 開始時にすべきこと
+
+1. README を読んで Session 15 完了状態と教訓1〜21 を把握
+2. ユーザーに **「Session 15 完了 + dev のみ反映済み(prod 未マージ)」** を確認した旨を伝える
+3. ユーザーから今日の作業内容を聞く
+4. Chrome 連携で現状調査 → 仮説検証 → 修正版書き出し → push → Chrome で再検証、のループで作業
+5. 教訓1〜21 を遵守
