@@ -123,24 +123,37 @@
 .nav-edit-bar {
     display: none; position: fixed; top: 0; left: 0; right: 0;
     background: #1a73e8; color: #fff; z-index: 9000;
-    padding: 12px 16px; justify-content: space-between; align-items: center;
-    font-size: 0.9rem; font-weight: 700;
+    padding: 10px 14px; justify-content: space-between; align-items: center;
+    font-size: 0.88rem; font-weight: 700;
+    gap: 8px;
 }
 .nav-edit-bar.show { display: flex; }
+.nav-edit-bar-label {
+    flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .nav-edit-bar-actions {
-    display: flex; gap: 8px; align-items: center;
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+.nav-edit-bar-reset,
+.nav-edit-bar-done {
+    white-space: nowrap;
+    border-radius: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
 }
 .nav-edit-bar-reset {
     background: rgba(255, 255, 255, 0.18); color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    border-radius: 20px; padding: 6px 14px;
-    font-weight: 700; font-size: 0.82rem; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    padding: 7px 12px;
+    font-size: 0.82rem;
 }
 .nav-edit-bar-reset:active { background: rgba(255, 255, 255, 0.35); }
 .nav-edit-bar-done {
     background: #fff; color: #1a73e8; border: none;
-    border-radius: 20px; padding: 6px 20px;
-    font-weight: 800; cursor: pointer;
+    padding: 7px 16px;
+    font-size: 0.85rem; font-weight: 800;
 }
 /* ===== ナビ並び替え編集モード ===== */
 .bottom-nav.edit-mode {
@@ -150,6 +163,24 @@
     -ms-touch-action: pan-x !important;
 }
 body.nav-editing { touch-action: none !important; -ms-touch-action: none !important; overscroll-behavior: contain; }
+/* 編集中: ナビを画面中央寄り(60vh)に持ち上げて操作しやすくする */
+/* 教訓19: transform は Material Symbols を壊すので、left/right と margin: auto で中央寄せ */
+body.nav-editing .bottom-nav.edit-mode {
+    position: fixed !important;
+    top: 60vh !important;
+    bottom: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100% !important;
+    max-width: 480px !important;
+    padding-bottom: 0 !important;
+    border-top: 1px solid rgba(26, 115, 232, 0.25);
+    border-bottom: 1px solid rgba(26, 115, 232, 0.25);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 8500;
+}
 .bottom-nav.edit-mode .bottom-nav-item.draggable-item {
     /* 編集中の項目: 長押しでドラッグ開始、長押し前は横スクロール許可 */
     border: 2px dashed #1a73e8 !important;
@@ -410,10 +441,10 @@ body.nav-editing { touch-action: none !important; -ms-touch-action: none !import
     {% if session.get('f_code') %}
     <!-- ナビ編集完了バー -->
     <div class="nav-edit-bar" id="nav-edit-bar">
-        <span>✏️ ドラッグでメニューを並び替え</span>
+        <span class="nav-edit-bar-label">✏️ メニューを並び替え</span>
         <div class="nav-edit-bar-actions">
-            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">🔄 初期状態</button>
-            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">✅ 完了</button>
+            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">初期状態</button>
+            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">完了</button>
         </div>
     </div>
     <!-- ナビ編集完了バー -->
