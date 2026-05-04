@@ -157,7 +157,9 @@
 }
 /* ===== ナビ並び替え編集モード ===== */
 .bottom-nav.edit-mode {
-    padding-bottom: 0;
+    /* 教訓: padding-bottom を 0 にするとアイコンが画面下端まで行き、
+       iOS のホームインジケーター&アプリ切替ジェスチャーと干渉する。
+       通常時の padding-bottom(max(74px, safe-area + 50px))を維持する。 */
     /* 編集モード中: 横スクロールは許可、縦スクロール/ピンチは禁止 */
     touch-action: pan-x !important;
     -ms-touch-action: pan-x !important;
