@@ -1288,3 +1288,229 @@ python3 app.py
 | **dev → prod マージ** | 音声入力を含む dev の成果を prod に昇格 | 0.5〜1時間 |
 | **「記録を保存」ボタンの色変更** | 音声入力(緑)と保存(緑)の色被り解消 | 30分 |
 | **D: Step 3(Firebase Push)** | 完全自動通知 | 半日〜2日(明示依頼があるまで提案禁止) |
+---
+
+# 📝 Session 14 完了サマリ(2026-05-04)
+
+## 📍 セッション概要
+
+**Step 4(利用者向けガイドページ)を完成 + dev → prod マージ実施**。
+manual.html(ガイドページ)に「バイタル測定」「再検査アラーム」「設定・困った時」の3セクションを追加し、計14個のスクショプレースホルダーを実画像に差し替え(うち Android 系2枚は意図的にプレースホルダのまま)。Chrome 連携の `html2canvas` + Cmd+Shift+4 ネイティブスクショ + iPhone PWA のハイブリッド撮影で12枚のスクショを取得・配置。透けて見える問題を発見し、ネイティブスクショで完全解決。
+
+## ✅ 第14セッションでの主な成果
+
+### 1. ガイドページに3セクション追加(`b776720`)
+- **`s-vitals-input` バイタル測定の使い方**(blue/monitoring アイコン): 4タブ全景 → 入力エディタ → カメラ読取 → 音声入力(録音中)
+- **`s-vitals-recheck` 再検査アラームの使い方**(red/notifications_active アイコン): 異常値検出 → 時刻設定 → リマインダー登録 → アラーム発火
+- **`s-vitals-trouble` 設定・困った時**(purple/help_outline アイコン): iOS カレンダー権限・キャッシュクリア・マイク権限
+- **更新ログ Ver.4.1 カード**(赤枠) 追加(目立つように一番上に配置)
+- 870行 → 1285行(+415行)
+- 教訓1(タスカルくん画像 14箇所 + animation:fl 1箇所)堅持
+
+### 2. 14枚のスクショ撮影プロセス(`2c85802`, `05dcd84`, `7022a41`)
+
+**取得済み画像11枚(Android 2枚を除く)**:
+| # | ファイル名 | 撮影方法 | 内容 |
+|---|---|---|---|
+| 1 | vital-tabs.png | html2canvas | 4タブ全景・3名表示 |
+| 2 | vital-input.png | html2canvas | 入力エディタ展開 |
+| 3 | vital-camera.png | (#2 兼用) | カメラ・音声ボタン横並び |
+| 4 | vital-voice.png | html2canvas + JS hack | 録音中(.recording クラス付与で赤色脈動) |
+| 5 | recheck-detect.png | html2canvas | 異常値+「再検査」オレンジバッジ |
+| 6 | recheck-set.png | Cmd+Shift+4 範囲選択 | クイックボタン4つだけクロップ |
+| 7 | recheck-register.png | Cmd+Shift+4 ウィンドウ全体 | リマインダー登録ボタン+iOS案内文 |
+| 8 | recheck-alarm.png | Cmd+Shift+4 範囲選択 | アラーム発火モーダル(白背景クッキリ) |
+| 9 | ios-invite.png | iPhone PWA スクショ | iOS「カレンダーの参加依頼」ダイアログ |
+| 10 | ios-add.png | iPhone PWA スクショ | iOS カレンダー追加画面 |
+| 13 | sw-clear.png | iPhone PWA スクショ | Safari 履歴消去 |
+| 14 | mic-perm.png | iPhone PWA スクショ | Safari マイク権限 |
+
+**未取得(プレースホルダのまま)**:
+- #11 android-add.png
+- #12 android-battery.png
+
+### 3. dev → prod 同期(Session 14 末)
+- tasukaru-dev → tasukaru ブランチへマージ
+- Cloud Run prod(tasukaru-191764727533.asia-northeast1.run.app)に Step 4 ガイドページが反映
+- Ver.4.1 リリース
+
+### 4. 撮影プロセスで発見した知見
+
+**html2canvas の制約と対策**:
+- 静的UI(タブ/入力欄/通常状態のボタン)→ html2canvas で問題なし
+- **fixed/absolute 配置の overlay/modal** → html2canvas は背景レイヤーと前景レイヤーの合成に失敗、**透けて見える問題発生**
+- **transition 中(押された直後のフェードアウト状態)のボタン** → 透けて見える問題発生
+- 解決策: **Mac ネイティブスクショ(Cmd+Shift+4 + Space + ウィンドウクリック、または範囲選択ドラッグ)** で確実に撮れる
+
+**Chrome 連携の撮影パターン**:
+1. 私(Claude)が画面状態を JS で構築(値セット、クラス付与、状態変更)
+2. html2canvas でダウンロード発火 OR ユーザーが Mac の Cmd+Shift+4 で撮影
+3. ユーザーがチャットにドラッグでアップ
+4. 私が `/mnt/user-data/uploads/` で受け取り、リネーム
+
+**iPhone PWA 撮影パターン**:
+- iOS 専用画面(参加依頼ダイアログ・カレンダーアプリ・iPhone 設定)は iPhone 実機必須
+- iPhone のスクショは `スクリーンショット_2026-05-04_xx_xx_xx.png` 形式
+
+## 🎯 達成した状態
+
+### dev/本番両方で以下が動作中:
+- バイタル4タブ(測定/本日の記録/履歴/設定)
+- カメラ読み取り + 音声入力(マイク権限がオン時)
+- 「再検査が必要」手動マーク + 異常値自動検出
+- 再検査の予約(クイックボタン4つ + 直接時刻入力)
+- iPhone カレンダー連携(.ics ダウンロード → 「カレンダーの参加依頼」ダイアログ)
+- アラームモーダル発火(時刻一致時)
+- ガイドページ(/manual)に Step 4 セクション3つ表示
+
+### Ver.4.1 の主な機能(更新ログより):
+- 4タブ統合UI(測定/本日の記録/履歴/設定)
+- カメラ読み取り + 音声入力(GPT-4o)
+- 再検査アラーム機能
+- 異常値自動検出(色分け表示)
+- iPhone カレンダー連携
+
+## 📦 dev DB の状態(2026-05-04 末)
+
+- 既存利用者: 石井 三郎(28)他多数
+- ガイド撮影用ダミー: タスカルちゃん(51)、タスカルくん(52)
+  - タスカルくん には異常値データ記録済み(血圧 180/110、脈拍 110、体温 38.5、SpO2 92、メモ「顔色がやや赤い、めまいの訴えあり」、再検査が必要✓)
+  - 18:25 と 18:35 で再検査予約済み(完了マーク付き)
+- 削除する場合は Supabase ダッシュボードから手動で
+
+## 🐛 既知の課題(Session 15 以降で対応)
+
+### 高優先
+- **iPhone PWA で測定時アコーディオン展開→利用者ボタン+保存ボタンが下部メニューに隠れる問題**(Session 14 中の発見、未対応)
+
+### 中優先
+- **「記録を保存」ボタンの色変更**:現状緑色で、音声入力ボタン(緑)と被って見分けづらい
+- **Android 系スクショ(#11, #12)未取得**:android-add.png / android-battery.png は紫破線プレースホルダのまま
+- **load_dotenv 対応**(教訓17):環境変数の取り回しを統一
+
+### 低優先 / 様子見
+- B-2: 「本日の記録」タブ強化(未測定者表示 + カメラ・音声ボタン移植)
+- Step 3 Firebase Push:**明示の依頼があるまで提案禁止**(教訓継続)
+
+---
+
+# 📝 Session 14 → Session 15 引き継ぎ
+
+## 🚨 重要:このセッションを引き継ぐ Claude へ
+
+### 必読の前提
+1. **教訓1〜17 厳守**(過去 README 参照)。特にタスカルくん画像 14箇所 + animation:fl 1箇所 は絶対に削除/変更しない
+2. **1機能=1コミット**(混ぜない)
+3. **Service Worker キャッシュ対策**: dev preview で `?cb=` キャッシュバスター付きで確認
+4. **コミットメッセージは英語シンプル**、日本語全角括弧禁止
+5. **push 後 30〜60秒待つ**(Cloud Run デプロイ時間)
+6. **Step 3 (Firebase Push) は提案禁止**、明示依頼があるまで触れない
+7. **マークダウンリンク化対策**(教訓13):コマンドはコードブロックで囲む
+
+### リポジトリ・URL
+- Repo: https://github.com/cocokaraplus-max/kaigo-ai-app
+- branch: `tasukaru-dev`(開発)/ `tasukaru`(本番)/ `main`(default、3週間前から手付かず)
+- Mac path: `~/dev/kaigo-ai-app`(ユーザー名 "ZIMAX 1" にスペース含む点注意)
+- File handoff: **`~/Desktop/`** (NOT Downloads)
+- dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
+- Supabase dev: https://supabase.com/dashboard/project/otjevnmoycnvaxeltrtj
+- Supabase prod: https://supabase.com/dashboard/project/abvglnkwtdeoaazyqwyd
+
+## 🎯 Session 15 候補タスク(明示の指示があるまで着手しない)
+
+| 優先度 | 候補 | 内容 | 工数 |
+|---|---|---|---|
+| **高** | **アコーディオン下部隠れバグ修正** | iPhone PWA で測定時に保存ボタンが下部メニューに隠れる(Session 14 中に発見、未対応) | 1〜2時間 |
+| 中 | **記録を保存ボタンの色変更** | 緑→別色(青系・オレンジ系)、音声入力(緑)との視認性向上 | 30分 |
+| 中 | **Android スクショ追加** | android-add.png / android-battery.png(プレースホルダのまま) | 1時間(実機要) |
+| 中 | **B-2: 本日の記録タブ強化** | 未測定者表示 + カメラ・音声ボタン移植 | 2〜3時間 |
+| 中 | **load_dotenv 対応**(教訓17) | 環境変数の取り回し統一 | 30分 |
+| 中 | **タスカルくんダミー利用者の整理** | dev DB の patient_id=51, 52 を削除するかどうか判断 | 5分 |
+| 低 | **B-3: 測定タブ廃止/統合** | ユーザー判断で見送り(現状維持) | — |
+| 低 | **D: Step 3 Firebase Push** | 完全自動通知 | 半日〜2日(**明示依頼があるまで提案禁止**) |
+
+## 📁 Session 14 で生成したファイル(参考)
+
+### 採用された11画像(`/static/img/guide/` 配下)
+- vital-tabs.png(30KB)
+- vital-input.png(44KB)
+- vital-voice.png(45KB)
+- recheck-detect.png(31KB)
+- recheck-set.png(25KB ← Cmd+Shift+4 クロップ)
+- recheck-register.png(141KB ← Cmd+Shift+4 ウィンドウ全体)
+- recheck-alarm.png(126KB ← Cmd+Shift+4 範囲選択)
+- ios-invite.png(220KB)
+- ios-add.png(110KB)
+- sw-clear.png(170KB)
+- mic-perm.png(63KB)
+
+### 未取得2画像(プレースホルダ)
+- android-add.png
+- android-battery.png
+
+### manual.html
+- 1249行
+- 既存セクション10個 + 新規セクション3個(s-vitals-input, s-vitals-recheck, s-vitals-trouble)+ 更新ログに Ver.4.1 追加
+- 残るプレースホルダ:android-add, android-battery のみ(紫破線枠)
+
+## 🛠 Session 14 で得た技術的知見
+
+### Chrome 連携でのスクショ撮影フロー
+```javascript
+// html2canvas を動的に読み込み
+new Promise((resolve) => {
+    if (typeof html2canvas !== 'undefined') return resolve('already');
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = () => resolve('loaded');
+    document.head.appendChild(s);
+}).then(() => {
+    return html2canvas(document.body, {
+        backgroundColor: '#f2f4f8', scale: 1,
+        width: 390, height: 844, windowWidth: 390, windowHeight: 844
+    });
+}).then(canvas => {
+    canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'XXX.png';
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+    }, 'image/png');
+});
+// → Mac の Downloads に PNG が落ちる
+```
+
+### html2canvas の制約
+- ✅ 通常UI(タブ・入力欄)
+- ❌ overlay/modal(透ける)
+- ❌ transition 中のボタン(透ける)
+- 代替: **Mac Cmd+Shift+4** でネイティブスクショ
+
+### vitals.html 内の発見した API
+- 入力 ID パターン: `v-bp_high-{patient_id}`, `v-bp_low-{}`, `v-pulse-{}`, `v-temperature-{}`, `v-spo2-{}`, `v-note-{}`
+- チェックボックス: `v-recheck-{patient_id}`(再検査が必要)
+- 時刻入力: `recheck-time-{patient_id}`
+- 関数: `alarmActionMeasure`, `alarmActionSnooze`, `alarmActionComplete`, `saveRecheckSchedule`, `loadRecheckSchedules`, `completeRecheckSchedule`, `deleteRecheckSchedule`, `addRecheckTime`, `removeRecheckTime`, `openAddPatientModal`, `deleteDailyEditor`
+- モーダル: `recheck-alarm-overlay`(`.alarm-overlay` クラス、display:flex で発火)
+- 内部スクロール: `.page-wrapper`(scrollHeight > body のスクロールコンテナ)
+- 利用者カード: 左スワイプで `swipe-delete-bg`(削除背景)が出る
+- CSS クラス: `.voice-btn.recording`(背景:赤グラデ、影:赤、animation: voicePulse 1.2s)
+
+### コミット履歴(Session 14)
+```
+7022a41 (HEAD -> tasukaru-dev) fix manual replace recheck-set with cropped quick-button screenshot
+05dcd84 fix manual replace recheck-register and recheck-alarm with clean native screenshots
+2c85802 feat manual replace placeholders with vital guide screenshots
+b776720 feat manual add vital guide sections with placeholders for screenshots
+f4851f4 docs session13 voice vital input completion records and session14 handoff
+```
+
+## ⏭ Session 15 開始時にすべきこと
+
+1. このセッション開始時、ユーザーから「やってほしい作業」を聞く前に、まずこの README を読む
+2. ユーザーに **「Session 14 完了 + dev/prod 同期済み」**を確認した上で、**今日の作業内容**を聞く
+3. **Step 3 Firebase Push**を提案しない(教訓)
+4. 教訓1〜17 を遵守
+5. 1機能=1コミット、push 後 30〜60秒待つ
