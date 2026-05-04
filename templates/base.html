@@ -172,7 +172,6 @@
     0%   { transform: rotate(-1.2deg); }
     100% { transform: rotate(1.2deg); }
 }
-body.nav-editing { overflow: hidden; }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
             position: fixed; top: 16px; right: 16px;
@@ -1337,8 +1336,22 @@ function onNavPointerMove(e) {
     state.el.style.pointerEvents = 'none';
     var hit = document.elementFromPoint(e.clientX, e.clientY);
     state.el.style.pointerEvents = '';
-    if (!hit) return;
-    var hitItem = hit.closest && hit.closest('.bottom-nav-item.draggable-item');
+    var hitItem = (hit && hit.closest) ? hit.closest('.bottom-nav-item.draggable-item') : null;
+    // フォールバック: elementFromPoint が body 等を返す場合、座標と getBoundingClientRect で直接検索
+    if (!hitItem) {
+        var candidates = nav.querySelectorAll('.bottom-nav-item.draggable-item');
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (c === state.el) continue;
+            var rr = c.getBoundingClientRect();
+            // 横方向のみ判定(縦方向は nav 内ならOK扱い)
+            if (e.clientX >= rr.left && e.clientX <= rr.right &&
+                e.clientY >= rr.top - 30 && e.clientY <= rr.bottom + 30) {
+                hitItem = c;
+                break;
+            }
+        }
+    }
     // 既存のドロップターゲット表示をクリア
     nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
         el.classList.remove('drop-target-before', 'drop-target-after');
