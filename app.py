@@ -1443,6 +1443,65 @@ def api_read_vital_image():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/vital_voice_parse', methods=['POST'])
+@login_required
+def api_vital_voice_parse():
+    """音声を Gemini で解析して血圧・脈拍・体温・SpO2 を抽出（音声は永続保存しない）"""
+    try:
+        from utils import get_generative_model
+        audio = request.files.get('audio')
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or '').lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+
+        # MIMEタイプ判定（parse_assessment_file と同じパターン + iOS Safari の audio/mp4 対応）
+        ext_mime = {
+            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+            '.wav': 'audio/wav',  '.aac': 'audio/aac',
+            '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
+            '.mp4': 'audio/mp4',
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/webm')
+
+        prompt = """これは介護施設のスタッフがバイタル測定値を口頭で報告している音声です。
+発話内容を文字起こしし、数値を抽出してください。
+
+抽出ルール:
+- 「血圧上」「血圧の上」「収縮期」「上が」→ bp_high(整数)
+- 「血圧下」「血圧の下」「拡張期」「下が」→ bp_low(整数)
+- 「脈拍」「脈」「心拍」 → pulse(整数)
+- 「体温」「熱」 → temperature(小数点1桁、例:36.5)
+- 「SpO2」「酸素」「酸素飽和度」「サチュレーション」 → spo2(整数、80~100の範囲)
+- 数値以外の発話(様子・気づき)があれば memo に格納
+- 言及のない項目は null
+- 数値の言い間違い(例:「ひゃくにじゅう」=120)も整数化する
+
+JSON形式のみで返してください(説明文・コードブロック禁止):
+
+{
+  "transcript": "発話の全文書き起こし",
+  "bp_high": 整数 or null,
+  "bp_low": 整数 or null,
+  "pulse": 整数 or null,
+  "temperature": 小数 or null,
+  "spo2": 整数 or null,
+  "memo": "数値以外の発話、なければ空文字"
+}"""
+
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        import re as _re, json as _json
+        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        if m:
+            result = _json.loads(m.group())
+            return jsonify({"status": "success", **result})
+        return jsonify({"status": "error", "message": "音声を認識できませんでした。もう一度お試しください。"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/vitals_daily')
 @login_required
 def api_vitals_daily():

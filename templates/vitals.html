@@ -108,6 +108,34 @@
 }
 .camera-btn .material-symbols-outlined { font-size:20px; }
 
+.vital-action-row {
+    display:flex; gap:8px; margin-bottom:10px;
+}
+.vital-action-row .camera-btn,
+.vital-action-row .voice-btn {
+    flex:1 1 0; margin-bottom:0;
+}
+.voice-btn {
+    width:100%; padding:12px; border-radius:12px; border:none;
+    background:linear-gradient(135deg, #34a853, #2d8f47);
+    color:#fff; font-size:0.88rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    cursor:pointer; margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(52,168,83,0.3);
+    transition:background 0.2s, box-shadow 0.2s;
+}
+.voice-btn .material-symbols-outlined { font-size:20px; }
+.voice-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.voice-btn.recording {
+    background:linear-gradient(135deg, #dc2626, #b91c1c);
+    box-shadow:0 2px 8px rgba(220,38,38,0.5);
+    animation:voicePulse 1.2s ease-in-out infinite;
+}
+@keyframes voicePulse {
+    0%, 100% { box-shadow:0 2px 8px rgba(220,38,38,0.5); }
+    50% { box-shadow:0 2px 14px rgba(220,38,38,0.85); }
+}
+
 .save-vital-btn {
     width:100%; padding:12px; border-radius:12px; border:none;
     background:linear-gradient(135deg,#34a853,#2d8f47);
@@ -1208,10 +1236,16 @@ function buildVitalForm(p, v, dateStr) {
         </div>`;
     }
     return `
-        <button class="camera-btn" onclick="openCamera('${p.id}')">
-            <span class="material-symbols-outlined">photo_camera</span>
-            カメラで数値を自動読み取り
-        </button>
+        <div class="vital-action-row">
+            <button class="camera-btn" onclick="openCamera('${p.id}')">
+                <span class="material-symbols-outlined">photo_camera</span>
+                カメラ読み取り
+            </button>
+            <button class="voice-btn" id="voice-btn-${p.id}" onclick="toggleVoiceRecording('${p.id}')">
+                <span class="material-symbols-outlined">mic</span>
+                <span class="voice-btn-label">音声入力</span>
+            </button>
+        </div>
         <div class="vital-grid">
             ${field('bp_high','血圧（上）','mmHg', v.bp_high)}
             ${field('bp_low','血圧（下）','mmHg', v.bp_low)}
@@ -1460,6 +1494,210 @@ async function sendToAI(blob) {
     } catch(e) {
         alert('通信エラーが発生しました');
         closeCamera();
+    }
+}
+
+// ========== 音声入力（バイタル）==========
+// Session 13: MediaRecorder API でマイク音声を取得し、Gemini で数値抽出
+let currentVoicePatient = null;
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceCountdownInterval = null;
+let voiceStopTimeout = null;
+let voiceStream = null;
+const VOICE_RECORD_SECONDS = 20;
+
+// MediaRecorder で使う MIME タイプを判定（iOS Safari は audio/mp4 が安定、Chrome は audio/webm）
+function pickVoiceMime() {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg',
+    ];
+    for (const m of candidates) {
+        try {
+            if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) return m;
+        } catch (e) { /* ignore */ }
+    }
+    return ''; // 空文字 = ブラウザのデフォルトに任せる
+}
+
+function mimeToExt(mime) {
+    if (!mime) return 'webm';
+    if (mime.includes('mp4')) return 'mp4';
+    if (mime.includes('aac')) return 'aac';
+    if (mime.includes('ogg')) return 'ogg';
+    if (mime.includes('webm')) return 'webm';
+    return 'webm';
+}
+
+window.toggleVoiceRecording = async function(pid) {
+    // 録音中に押されたら停止（早期終了）
+    if (voiceRecorder && voiceRecorder.state === 'recording' && currentVoicePatient === pid) {
+        stopVoiceRecording(false);
+        return;
+    }
+    // 別の患者で録音中なら無視（連打防止）
+    if (voiceRecorder && voiceRecorder.state === 'recording') {
+        return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('このブラウザはマイク入力に対応していません。Chrome や Safari の最新版をお使いください。');
+        return;
+    }
+
+    try {
+        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+        alert('マイクへのアクセスが許可されていません。ブラウザの設定を確認してください。');
+        return;
+    }
+
+    currentVoicePatient = pid;
+    voiceChunks = [];
+    const mime = pickVoiceMime();
+    try {
+        voiceRecorder = mime
+            ? new MediaRecorder(voiceStream, { mimeType: mime })
+            : new MediaRecorder(voiceStream);
+    } catch (e) {
+        alert('録音の開始に失敗しました: ' + (e.message || e));
+        cleanupVoiceStream();
+        return;
+    }
+
+    voiceRecorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) voiceChunks.push(ev.data);
+    };
+    voiceRecorder.onstop = () => {
+        // ボタンUIを元に戻す
+        const btn = document.getElementById(`voice-btn-${currentVoicePatient}`);
+        if (btn) {
+            btn.classList.remove('recording');
+            const lbl = btn.querySelector('.voice-btn-label');
+            if (lbl) lbl.textContent = '音声入力';
+        }
+        // タイマー解除
+        if (voiceCountdownInterval) { clearInterval(voiceCountdownInterval); voiceCountdownInterval = null; }
+        if (voiceStopTimeout) { clearTimeout(voiceStopTimeout); voiceStopTimeout = null; }
+        // ストリーム停止
+        cleanupVoiceStream();
+        // 送信
+        const usedMime = voiceRecorder.mimeType || mime || 'audio/webm';
+        const blob = new Blob(voiceChunks, { type: usedMime });
+        if (blob.size === 0) {
+            alert('録音が空でした。もう一度お試しください。');
+            return;
+        }
+        sendVoiceToAI(blob, mimeToExt(usedMime));
+    };
+
+    // 録音開始
+    voiceRecorder.start();
+
+    // ボタンUIを録音中に
+    const btn = document.getElementById(`voice-btn-${pid}`);
+    if (btn) {
+        btn.classList.add('recording');
+    }
+    let remaining = VOICE_RECORD_SECONDS;
+    const updateLabel = () => {
+        if (!btn) return;
+        const lbl = btn.querySelector('.voice-btn-label');
+        if (lbl) lbl.textContent = `録音中 ${remaining}s（タップで終了）`;
+    };
+    updateLabel();
+    voiceCountdownInterval = setInterval(() => {
+        remaining -= 1;
+        updateLabel();
+        if (remaining <= 0) {
+            clearInterval(voiceCountdownInterval);
+            voiceCountdownInterval = null;
+        }
+    }, 1000);
+
+    // 20秒で自動停止
+    voiceStopTimeout = setTimeout(() => {
+        stopVoiceRecording(true);
+    }, VOICE_RECORD_SECONDS * 1000);
+};
+
+function stopVoiceRecording(autoStop) {
+    try {
+        if (voiceRecorder && voiceRecorder.state !== 'inactive') {
+            voiceRecorder.stop();
+        }
+    } catch (e) {
+        console.warn('voiceRecorder.stop failed', e);
+    }
+}
+
+function cleanupVoiceStream() {
+    if (voiceStream) {
+        try { voiceStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        voiceStream = null;
+    }
+}
+
+async function sendVoiceToAI(blob, ext) {
+    const pid = currentVoicePatient;
+    const formData = new FormData();
+    formData.append('audio', blob, `vital_voice.${ext}`);
+    document.getElementById('ai-indicator').style.display = 'flex';
+    try {
+        const res = await fetch('/api/vital_voice_parse', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('ai-indicator').style.display = 'none';
+        if (data.status === 'success') {
+            // 各フィールドへセット（カメラと同じパターン）
+            const setIf = (key) => {
+                if (data[key] !== null && data[key] !== undefined && data[key] !== '') {
+                    const el = document.getElementById(`v-${key}-${pid}`);
+                    if (el) {
+                        el.value = data[key];
+                        onVitalInput(pid, key, data[key]);
+                    }
+                }
+            };
+            setIf('bp_high');
+            setIf('bp_low');
+            setIf('pulse');
+            setIf('temperature');
+            setIf('spo2');
+
+            // メモ欄：数値以外の発話があれば追記（既存メモを上書きしない）
+            if (data.memo && typeof data.memo === 'string' && data.memo.trim() !== '') {
+                const noteEl = document.getElementById(`v-note-${pid}`);
+                if (noteEl) {
+                    const cur = (noteEl.value || '').trim();
+                    noteEl.value = cur ? `${cur} / ${data.memo.trim()}` : data.memo.trim();
+                    // change イベントを発火して保存処理を走らせる
+                    try { noteEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+                }
+            }
+
+            // アラートがあれば再検査チェックを自動ON（カメラと同じ）
+            const vals = { bp_high:data.bp_high, bp_low:data.bp_low, pulse:data.pulse, temperature:data.temperature, spo2:data.spo2 };
+            try {
+                if (checkAlert(vals).length > 0) {
+                    const rc = document.getElementById(`v-recheck-${pid}`);
+                    if (rc) rc.checked = true;
+                }
+            } catch (e) { /* checkAlert が未定義の状況は無視 */ }
+        } else {
+            alert('音声の認識に失敗しました。もう一度お試しください。\n' + (data.message || ''));
+        }
+    } catch (e) {
+        document.getElementById('ai-indicator').style.display = 'none';
+        alert('通信エラーが発生しました');
+    } finally {
+        currentVoicePatient = null;
+        voiceRecorder = null;
+        voiceChunks = [];
     }
 }
 
