@@ -162,7 +162,14 @@
     touch-action: pan-x !important;
     -ms-touch-action: pan-x !important;
 }
-body.nav-editing { touch-action: none !important; -ms-touch-action: none !important; overscroll-behavior: contain; }
+body.nav-editing {
+    /* 教訓: body に touch-action: none を当てると子の pan-x も殺されてしまい、
+       ナビを横スワイプで動かせなくなる。pan-x にして横スクロールだけ許可する。
+       (縦スクロール・ピンチズームは禁止のまま、ナビの横スクロールだけ可能) */
+    touch-action: pan-x !important;
+    -ms-touch-action: pan-x !important;
+    overscroll-behavior: contain;
+}
 /* 編集中: ナビを画面中央寄り(60vh)に持ち上げて操作しやすくする */
 /* 教訓19: transform は Material Symbols を壊すので、left/right と margin: auto で中央寄せ */
 body.nav-editing .bottom-nav.edit-mode {
