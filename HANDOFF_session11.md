@@ -515,3 +515,262 @@ grep -c "recheck-ios-notice" templates/vitals.html
 ### Supabase
 - vital_recheck_schedules テーブル RLS 無効化維持
 - DEMO001 ファシリティでテスト予約データ複数件あり(削除可)
+
+---
+
+# 🎙 Session 13 着手予定:音声バイタル入力機能の設計仕様書
+
+Session 12 終盤(2026-05-03 夜)、ユーザーから明示の依頼を受けて設計確定。実装は次セッションで集中して行う。
+
+## 🎯 機能の目的
+
+介護現場で、スタッフが「体温36.5、血圧上が120で下が80、脈拍60、酸素97」のように自然な発話で バイタル測定値を一気に入力できるようにする。手入力やカメラ読み取りより速く、騒音の多い現場でも実用的に使えることを目指す。
+
+## ✅ 確定済の仕様(ユーザー回答)
+
+| Q | 回答 | 意味 |
+|---|------|------|
+| Q1: 対象タブ | A | 「測定」タブのみ(本日の記録は対象外)。B-3「測定タブ統合」より先に実装するため、測定タブが現役のうちに価値を出す |
+| Q2: ボタン位置 | A | 「カメラで自動読み取り」ボタンの隣に「🎤 音声で入力」ボタンを並列配置 |
+| Q3: 音声エンジン | Gemini | プロジェクトに既存の `get_generative_model()` を再利用。**Whisper API は有料($0.006/分)なので不採用**、Gemini なら無料枠で完結 |
+| Q4: 解析方法 | Gemini 一本 | 音声→構造化JSON を1回の Gemini 呼び出しで完結。ブラウザ側 JS解析は不要 |
+| Q5: スコープ | 理想形 | 騒音耐性 + 言い間違い対応 を目指すが、Gemini なら最初から達成できる見込み |
+| 認識結果の扱い | A 即フィールドにセット | 確認ダイアログなし、ユーザーが目視確認して保存ボタン |
+| 録音時間制限 | B 中(20〜30秒) | メモも入れられる余裕、20秒推奨 |
+| メモ欄対応 | A Yes | 数値以外の発話はメモ欄に自動投入 |
+
+## 🏗 アーキテクチャ
+
+```
+[ブラウザ Safari]                          [Cloud Run (Flask app.py)]            [Gemini API]
+1. 🎤 ボタン押下
+   → MediaRecorder API で録音開始
+   → ビープ音「録音中」表示
+2. 20秒経過 or 停止ボタンで録音終了
+   → audio/webm Blob 生成
+3. POST /api/vital_voice_parse
+   FormData(audio=<blob>)            ──────► 4. base64で受信、mime=audio/webm
+                                              5. プロンプト + audio を Gemini に投げる ──► 6. Geminiが文字起こし+解析
+                                              7. JSON抽出
+                                              8. {"sbp":120,"dbp":80,...,"memo":"..."}
+9. ←────────────────────────────────────────  返却
+10. JSON.parse → 各フィールドに自動入力
+    → メモ欄にも残りの発話投入
+    → ユーザー目視確認 → 保存
+```
+
+### 既存資産の再利用
+
+- ✅ `utils.get_generative_model()` をそのまま使用
+- ✅ `audio/webm` MIMEタイプは既存 `parse_assessment_file` で実績あり
+- ✅ Gemini フォールバックロジック(2.5-flash → 2.5-pro → 2.5-flash-lite → ...)も自動適用
+- ⚠️ `upload_audio_to_supabase` は **使わない**(バイタル音声は永続保存不要、評価記録の音声と用途が違う)
+
+## 📡 API 仕様
+
+### POST /api/vital_voice_parse
+
+#### リクエスト
+```
+Content-Type: multipart/form-data
+Body:
+  audio: Blob (audio/webm or audio/m4a, 最大~1MB相当 = 30秒程度)
+```
+
+#### レスポンス(成功時)
+```json
+{
+  "status": "success",
+  "transcript": "体温36.5、血圧上が120で下が80、脈拍60、酸素97",
+  "bp_high": 120,
+  "bp_low": 80,
+  "pulse": 60,
+  "temperature": 36.5,
+  "spo2": 97,
+  "memo": ""
+}
+```
+
+#### レスポンス(部分成功・メモあり)
+```json
+{
+  "status": "success",
+  "transcript": "体温36.8です。今朝は元気でしたが、咳が少し出ていました。",
+  "bp_high": null,
+  "bp_low": null,
+  "pulse": null,
+  "temperature": 36.8,
+  "spo2": null,
+  "memo": "今朝は元気でしたが、咳が少し出ていました。"
+}
+```
+
+#### レスポンス(エラー時)
+```json
+{
+  "status": "error",
+  "message": "音声を認識できませんでした。もう一度お試しください。"
+}
+```
+
+## 🎨 UI 仕様
+
+### ボタン配置(templates/vitals.html、「測定」タブ内)
+
+既存:
+```
+[📷 カメラで数値を自動読み取り]
+血圧(上) [入力欄]   血圧(下) [入力欄]
+脈拍     [入力欄]   体温     [入力欄]
+SpO2     [入力欄]   メモ     [特記事項]
+```
+
+変更後:
+```
+[📷 カメラで数値を自動読み取り]  [🎤 音声で入力]
+血圧(上) [入力欄]   血圧(下) [入力欄]
+...
+```
+
+### 録音中UI
+
+「🎤 音声で入力」を押すと:
+1. ボタンが赤色に変化、ラベルが「⏹ 録音中... 残り20秒」(カウントダウン)
+2. ボタンの下に小さく「📢 体温36.5、血圧上120、下80のように話してください」案内
+3. 20秒経過 or もう一度ボタン押下で録音終了
+4. ボタンが「🌀 解析中...」表示(disabled)
+5. レスポンス受信で各フィールドに自動入力、ボタンが元に戻る
+
+### エラー処理
+
+- マイク権限拒否 → アラート「マイクの使用を許可してください」
+- 録音失敗 → アラート「録音できませんでした。もう一度お試しください」
+- API 通信エラー → アラート「通信エラーが発生しました」
+- Gemini 応答異常 → アラート「音声を認識できませんでした。もう一度お試しください」
+
+## 🤖 Gemini プロンプト案
+
+```
+これは介護施設のスタッフがバイタル測定値を口頭で報告している音声です。
+発話内容を文字起こしし、数値を抽出してください。
+
+抽出ルール:
+- 「血圧上」「血圧の上」「収縮期」「上が」→ bp_high(整数)
+- 「血圧下」「血圧の下」「拡張期」「下が」→ bp_low(整数)
+- 「脈拍」「脈」「心拍」 → pulse(整数)
+- 「体温」「熱」 → temperature(小数点1桁、例:36.5)
+- 「SpO2」「酸素」「酸素飽和度」「サチュレーション」 → spo2(整数、80~100の範囲)
+- 数値以外の発話(様子・気づき)があれば memo に格納
+- 言及のない項目は null
+- 数値の言い間違い(例:「ひゃくにじゅう」=120)も整数化する
+
+JSON形式のみで返してください(説明文・コードブロック禁止):
+
+{
+  "transcript": "発話の全文書き起こし",
+  "bp_high": 整数 or null,
+  "bp_low": 整数 or null,
+  "pulse": 整数 or null,
+  "temperature": 小数 or null,
+  "spo2": 整数 or null,
+  "memo": "数値以外の発話、なければ空文字"
+}
+```
+
+## ⚠️ 実装上の注意点
+
+### iOS Safari の制約
+1. **HTTPS 必須**(本番もdevもhttps://なのでOK)
+2. **ユーザー操作が起点でないと録音開始できない**(ボタンonclick内で getUserMedia 呼ぶ)
+3. **MediaRecorder の MIME** → iOS は `audio/mp4` が安定。`audio/webm` は対応してるが念のため両対応
+4. **マイク権限ダイアログ** → 初回のみ表示、ユーザー説明テキストを事前に出す
+5. **PWA(ホーム画面追加)からの起動だとマイク権限が別管理** → ガイドページで案内
+
+### Gemini API
+1. **音声送信は base64 ではなく bytes 直接渡し**(既存の `parse_assessment_file` パターン踏襲)
+2. **音声が大きすぎると Gemini がエラー** → 30秒制限を厳守、超えたら警告
+3. **JSON抽出** → 既存パターンと同じく `re.search(r'\{.*\}', text, re.DOTALL)`
+
+### セキュリティ
+- 録音音声は **Supabase ストレージに保存しない**(`upload_audio_to_supabase` を呼ばない)
+- メモリ内で Gemini に渡して破棄、漏洩リスク最小化
+- API も `@login_required` を付与
+
+### コスト管理
+- Gemini 2.5-flash で 30秒音声 ≒ 数百トークン 程度 → 無料枠(15RPM, 月100万)で十分
+- 10秒ごとに利用率モニタリング(将来的な施策として記録のみ)
+
+## 📋 実装ステップ(次セッションで実施)
+
+### Step 1: バックエンドAPI追加(app.py)
+- `/api/vital_voice_parse` エンドポイント新規作成
+- 既存 `/api/read_vital_image` の音声バージョンとして実装
+- `@login_required`、エラーハンドリング、JSONパース
+
+### Step 2: フロントエンド実装(templates/vitals.html)
+- 「🎤 音声で入力」ボタン追加(「測定」タブ内、カメラボタンの隣)
+- MediaRecorder API ラッパー関数(録音開始/停止/Blob生成)
+- カウントダウンタイマー
+- API呼び出し → フィールド自動入力
+- エラー時のフォールバック
+
+### Step 3: 動作確認
+- Mac Chrome で先に確認(マイク権限、録音、API疎通)
+- iPhone Safari で実機確認(認識精度、騒音耐性)
+- 認識成功率が低かったらプロンプト調整
+
+### Step 4: コミット
+- 1コミット: `feat vitals voice input parse with gemini audio analysis`
+- 通常通り outputs → Desktop → cp → 検証 → push の流れ
+
+## 🚦 着手前チェックリスト(次セッション開始時)
+
+- [ ] HANDOFF_session11.md の本セクションを最初に再読
+- [ ] 状態確認: `git log --oneline -3`、`wc -l app.py templates/vitals.html`
+- [ ] Cloud Run dev のデプロイ状態確認
+- [ ] Gemini API キーの有効性確認(既存 `/api/read_vital_image` がエラーなく動くか)
+- [ ] マイク権限テスト用に dev環境を iPhone で開いておく
+- [ ] スコープ:**MVPまで**(Step 1〜3)。プロンプト最適化や追加機能は次々回送り
+
+## ⏰ 工数見積
+
+| Step | 内容 | 想定時間 |
+|------|------|---------|
+| 1 | バックエンドAPI(50行程度) | 30〜45分 |
+| 2 | フロントエンド(ボタン+録音+解析受信) | 60〜90分 |
+| 3 | 動作確認(Mac→iPhone) | 30〜60分 |
+| 4 | プロンプト調整 | 0〜60分(必要なら) |
+| 5 | コミット&push&記録 | 15分 |
+| **合計** | MVP まで | **2.5〜4.5 時間** |
+
+## 🔮 将来拡張(MVP後、別セッション)
+
+1. **連続発話モード**: 1人で10秒、続けて次の利用者を選んで10秒、と連続入力
+2. **バイタル以外の項目対応**: 食事量、排便、活動量なども音声入力可
+3. **言語対応**: 多言語介護スタッフ向けに英語・中国語・ベトナム語にも対応(Gemini はマルチリンガル)
+4. **音声履歴の保存**: スタッフが「あの利用者、何て言ってたっけ?」を再生できる機能
+5. **オフライン対応**: SW + Web Speech API でオフライン時も動作
+
+## ⚠️ 引き続き厳守する事項(再掲)
+
+- 引き継ぎ書教訓1〜15
+- ユーザーが望んでいないことを提案/実装しない
+- 仕様や設計を勝手に変更しない
+- Step 3(Firebase Push)は明示依頼まで提案禁止
+- 1機能=1コミット、英字シンプル、日本語半角括弧禁止
+- ファイル受け渡し: outputs → Desktop → cp → 検証 → commit
+
+## 📦 着手時の最新ファイル状態
+
+```
+1250d09 (HEAD -> tasukaru-dev, origin/tasukaru-dev) docs session12 phase a completion with audio unlock and ios notice records
+eb90403 fix vitals alarm audio autoplay unlock and add ios calendar dialog notice
+c357b67 chore add bak and broken files to gitignore
+b900c5e docs session11 verification result and session12 handoff with audio autoplay and ios calendar dialog issues
+45b5c29 docs session11 handoff with step 2 completion and incident lessons
+```
+
+- `app.py`: 4383 行(変更なし)
+- `templates/vitals.html`: 3014 行 / 146288 bytes(Phase A 適用済)
+- `utils.py`: 162 行(変更なし)
+- `.gitignore`: 30 行
