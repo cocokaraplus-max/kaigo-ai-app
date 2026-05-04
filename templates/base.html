@@ -1166,6 +1166,16 @@ function loadNavOrder() {
         saved = JSON.parse(raw);
     } catch (e) { return; }
     if (!Array.isArray(saved) || saved.length === 0) return;
+    // 旧形式(スラッシュなし: "top","input"...)と新形式(スラッシュ付き: "/top","/input"...)
+    // の両方を受け入れる。さらに何らかの空白も削る。
+    var normalize = function(h) {
+        if (typeof h !== 'string') return '';
+        var s = h.trim();
+        if (!s) return '';
+        return s.charAt(0) === '/' ? s : '/' + s;
+    };
+    saved = saved.map(normalize).filter(function(h) { return !!h; });
+    if (saved.length === 0) return;
     // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
     // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
     var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
