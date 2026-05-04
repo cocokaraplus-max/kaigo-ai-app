@@ -132,6 +132,47 @@
     border-radius: 20px; padding: 6px 20px;
     font-weight: 800; cursor: pointer;
 }
+/* ===== ナビ並び替え編集モード ===== */
+.bottom-nav.edit-mode { padding-bottom: 0; }
+.bottom-nav.edit-mode .bottom-nav-item.draggable-item {
+    animation: navWiggle 0.4s ease-in-out infinite alternate;
+    border: 1px dashed #1a73e8;
+    border-radius: 6px;
+    background: #f0f7ff;
+    margin: 2px;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: grab;
+}
+.bottom-nav.edit-mode .bottom-nav-item.fixed-item {
+    opacity: 0.45;
+    pointer-events: none;
+}
+.bottom-nav.edit-mode .bottom-nav-item.dragging {
+    animation: none;
+    opacity: 0.85;
+    background: #1a73e8 !important;
+    color: #fff !important;
+    z-index: 10;
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+    cursor: grabbing;
+}
+.bottom-nav.edit-mode .bottom-nav-item.dragging .material-symbols-outlined {
+    color: #fff !important;
+}
+.bottom-nav.edit-mode .bottom-nav-item.drop-target-before {
+    border-left: 3px solid #ea4335;
+}
+.bottom-nav.edit-mode .bottom-nav-item.drop-target-after {
+    border-right: 3px solid #ea4335;
+}
+@keyframes navWiggle {
+    0%   { transform: rotate(-1.2deg); }
+    100% { transform: rotate(1.2deg); }
+}
+body.nav-editing { overflow: hidden; }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
             position: fixed; top: 16px; right: 16px;
@@ -1108,8 +1149,59 @@ if (navigator.onLine) {
 
 // ===== ナビ表示モード適用 =====
 var NAV_MODE_KEY = 'tasukaru_nav_mode';
+var NAV_ORDER_KEY = 'tasukaru_nav_order';
+
 function saveNavOrder(order) {
-    localStorage.setItem('tasukaru_nav_order', JSON.stringify(order));
+    try {
+        localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order));
+    } catch (e) {}
+}
+
+function loadNavOrder() {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var saved;
+    try {
+        var raw = localStorage.getItem(NAV_ORDER_KEY);
+        if (!raw) return;
+        saved = JSON.parse(raw);
+    } catch (e) { return; }
+    if (!Array.isArray(saved) || saved.length === 0) return;
+    // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
+    // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
+    var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    // 各 movable item の現在の参照を取得
+    var byHref = {};
+    items.forEach(function(el) {
+        var h = el.getAttribute('href');
+        if (movableHrefs.indexOf(h) !== -1) byHref[h] = el;
+    });
+    // 「/top の直後」を挿入起点にする
+    var topEl = nav.querySelector('a.bottom-nav-item[href="/top"]');
+    if (!topEl) return;
+    // saved の順序に従って、movable な項目を一度ばらして TOP の直後に並べ直す
+    // 1. movable 項目を一旦取り外す
+    movableHrefs.forEach(function(h) {
+        if (byHref[h] && byHref[h].parentNode) byHref[h].parentNode.removeChild(byHref[h]);
+    });
+    // 2. saved 順で TOP の後ろに insertAfter していく(reverseしてinsertAfter)
+    var anchor = topEl;
+    // 保存順を尊重しつつ、保存にない movable は最後に追加
+    var ordered = [];
+    saved.forEach(function(h) {
+        if (byHref[h] && ordered.indexOf(h) === -1) ordered.push(h);
+    });
+    movableHrefs.forEach(function(h) {
+        if (byHref[h] && ordered.indexOf(h) === -1) ordered.push(h);
+    });
+    ordered.forEach(function(h) {
+        var el = byHref[h];
+        if (el && anchor.parentNode) {
+            anchor.parentNode.insertBefore(el, anchor.nextSibling);
+            anchor = el;
+        }
+    });
 }
 
 function showToastMsg(msg) {
@@ -1135,6 +1227,160 @@ function applyNavMode() {
     nav.classList.remove('two-row');
 }
 applyNavMode();
+loadNavOrder();
+
+// ===== ナビ並び替え編集モード =====
+window.startNavEditMode = function() {
+    var nav = document.querySelector('.bottom-nav');
+    var bar = document.getElementById('nav-edit-bar');
+    if (!nav || !bar) return;
+    // 設定モーダルを閉じる
+    if (typeof window.closeSettings === 'function') window.closeSettings();
+    // 編集バー表示 & ナビ自体に edit-mode 付与
+    bar.classList.add('show');
+    nav.classList.add('edit-mode');
+    document.body.classList.add('nav-editing');
+    // 各項目を「並び替え可」「固定」に分類
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    items.forEach(function(el) {
+        var h = el.getAttribute('href');
+        if (h && movableHrefs.indexOf(h) !== -1) {
+            el.classList.add('draggable-item');
+            el.classList.remove('fixed-item');
+            attachNavDrag(el);
+        } else {
+            el.classList.add('fixed-item');
+            el.classList.remove('draggable-item');
+        }
+    });
+    // 編集モード中は <a> のクリック遷移を抑制(pointer events で自前制御)
+    nav.addEventListener('click', navEditClickBlocker, true);
+    // ナビを最上部にスクロール
+    nav.scrollLeft = 0;
+};
+
+window.stopNavEditMode = function() {
+    var nav = document.querySelector('.bottom-nav');
+    var bar = document.getElementById('nav-edit-bar');
+    if (!nav || !bar) return;
+    bar.classList.remove('show');
+    nav.classList.remove('edit-mode');
+    document.body.classList.remove('nav-editing');
+    var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    items.forEach(function(el) {
+        el.classList.remove('draggable-item', 'fixed-item', 'dragging', 'drop-target-before', 'drop-target-after');
+    });
+    nav.removeEventListener('click', navEditClickBlocker, true);
+    // 現在の DOM 順序を保存(href 配列、movable のみ)
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
+        .map(function(el) { return el.getAttribute('href'); })
+        .filter(function(h) { return movableHrefs.indexOf(h) !== -1; });
+    saveNavOrder(current);
+    showToastMsg('✅ メニュー並び順を保存しました');
+};
+
+function navEditClickBlocker(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// pointer events ベースのドラッグ並び替え(iOS Safari 対応)
+var _navDragState = null;
+
+function attachNavDrag(el) {
+    if (el._navDragAttached) return;
+    el._navDragAttached = true;
+    el.addEventListener('pointerdown', onNavPointerDown);
+}
+
+function onNavPointerDown(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    var target = e.currentTarget;
+    if (!target.classList.contains('draggable-item')) return;
+    e.preventDefault();
+    var rect = target.getBoundingClientRect();
+    _navDragState = {
+        el: target,
+        startX: e.clientX,
+        startY: e.clientY,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+        origLeft: rect.left,
+        origTop: rect.top,
+        moved: false,
+        pointerId: e.pointerId
+    };
+    try { target.setPointerCapture(e.pointerId); } catch (err) {}
+    target.classList.add('dragging');
+    document.addEventListener('pointermove', onNavPointerMove);
+    document.addEventListener('pointerup', onNavPointerUp);
+    document.addEventListener('pointercancel', onNavPointerUp);
+}
+
+function onNavPointerMove(e) {
+    if (!_navDragState) return;
+    var state = _navDragState;
+    var dx = e.clientX - state.startX;
+    var dy = e.clientY - state.startY;
+    if (!state.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+    state.moved = true;
+    // ドラッグ中の見た目: そのまま CSS の .dragging スタイルで強調
+    // ヒットテスト: 現在のポインタ位置にある draggable-item を探す
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    // 一時的に dragging を非表示にしてヒットテスト(自分自身を除外するため)
+    state.el.style.pointerEvents = 'none';
+    var hit = document.elementFromPoint(e.clientX, e.clientY);
+    state.el.style.pointerEvents = '';
+    if (!hit) return;
+    var hitItem = hit.closest && hit.closest('.bottom-nav-item.draggable-item');
+    // 既存のドロップターゲット表示をクリア
+    nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+    });
+    if (!hitItem || hitItem === state.el) return;
+    // ヒットした項目の左半分なら手前、右半分なら後ろにマーク
+    var hr = hitItem.getBoundingClientRect();
+    var midX = hr.left + hr.width / 2;
+    if (e.clientX < midX) {
+        hitItem.classList.add('drop-target-before');
+    } else {
+        hitItem.classList.add('drop-target-after');
+    }
+}
+
+function onNavPointerUp(e) {
+    if (!_navDragState) return;
+    var state = _navDragState;
+    var nav = document.querySelector('.bottom-nav');
+    document.removeEventListener('pointermove', onNavPointerMove);
+    document.removeEventListener('pointerup', onNavPointerUp);
+    document.removeEventListener('pointercancel', onNavPointerUp);
+    try { state.el.releasePointerCapture(state.pointerId); } catch (err) {}
+    state.el.classList.remove('dragging');
+    if (nav && state.moved) {
+        // 現在のドロップターゲットに応じて DOM を入れ替え
+        var before = nav.querySelector('.drop-target-before');
+        var after = nav.querySelector('.drop-target-after');
+        if (before && before.parentNode) {
+            before.parentNode.insertBefore(state.el, before);
+        } else if (after && after.parentNode) {
+            after.parentNode.insertBefore(state.el, after.nextSibling);
+        }
+    }
+    if (nav) {
+        nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+            el.classList.remove('drop-target-before', 'drop-target-after');
+        });
+    }
+    _navDragState = null;
+}
+
 // ===== 設定モーダル関連 =====
 window.openSettings = function() {
     var m = document.getElementById('user-settings-modal');
