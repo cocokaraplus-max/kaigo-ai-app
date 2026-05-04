@@ -1408,6 +1408,77 @@ function onNavTouchMoveBlock(e) {
     if (e.cancelable) e.preventDefault();
 }
 
+// ★ ドラッグ中の画面端オートスクロール
+var _navAutoScrollRAF = null;
+var _navAutoScrollStep = 0;
+function startNavAutoScroll(step) {
+    _navAutoScrollStep = step;
+    if (_navAutoScrollRAF) return; // 既に走っているなら step だけ更新
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var tick = function() {
+        if (!_navDragState || _navAutoScrollStep === 0) {
+            _navAutoScrollRAF = null;
+            return;
+        }
+        var prev = nav.scrollLeft;
+        nav.scrollLeft = prev + _navAutoScrollStep;
+        // 端で動かなくなったら停止して RAF も止める
+        if (nav.scrollLeft === prev) {
+            _navAutoScrollRAF = null;
+            return;
+        }
+        // ナビをスクロールしたぶん、ヒットテストもポインタ位置で再評価
+        // (指は止まっているのに項目だけ流れていくケースに対応)
+        if (_navDragState && typeof _navDragState.lastClientX === 'number') {
+            simulateNavHitTest(_navDragState.lastClientX, _navDragState.lastClientY);
+        }
+        _navAutoScrollRAF = requestAnimationFrame(tick);
+    };
+    _navAutoScrollRAF = requestAnimationFrame(tick);
+}
+function stopNavAutoScroll() {
+    _navAutoScrollStep = 0;
+    if (_navAutoScrollRAF) {
+        cancelAnimationFrame(_navAutoScrollRAF);
+        _navAutoScrollRAF = null;
+    }
+}
+// オートスクロール中、指は止まっているがナビが流れる場合のヒットテスト再評価
+function simulateNavHitTest(clientX, clientY) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !_navDragState) return;
+    var state = _navDragState;
+    state.el.style.pointerEvents = 'none';
+    var hit = document.elementFromPoint(clientX, clientY);
+    state.el.style.pointerEvents = '';
+    var hitItem = (hit && hit.closest) ? hit.closest('.bottom-nav-item.draggable-item') : null;
+    if (!hitItem) {
+        var candidates = nav.querySelectorAll('.bottom-nav-item.draggable-item');
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (c === state.el) continue;
+            var rr = c.getBoundingClientRect();
+            if (clientX >= rr.left && clientX <= rr.right &&
+                clientY >= rr.top - 5 && clientY <= rr.bottom + 5) {
+                hitItem = c;
+                break;
+            }
+        }
+    }
+    nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+    });
+    if (!hitItem || hitItem === state.el) return;
+    var hr = hitItem.getBoundingClientRect();
+    var midX = hr.left + hr.width / 2;
+    if (clientX < midX) {
+        hitItem.classList.add('drop-target-before');
+    } else {
+        hitItem.classList.add('drop-target-after');
+    }
+}
+
 function onNavPointerMove(e) {
     if (!_navDragState) return;
     // iOS Safari でのページスクロール抑止
@@ -1421,6 +1492,28 @@ function onNavPointerMove(e) {
     // ヒットテスト: 現在のポインタ位置にある draggable-item を探す
     var nav = document.querySelector('.bottom-nav');
     if (!nav) return;
+    // ★ エッジオートスクロール: 画面左右端付近に指があればナビ自体を横スクロール
+    // (preventDefault でブラウザのデフォルト横スクロールを止めているため、自前で動かす)
+    var edgeZone = 60; // 端からの判定範囲(px)
+    var maxStep = 14;  // 1フレームあたりの最大スクロール量(px)
+    var navRect = nav.getBoundingClientRect();
+    var leftDist = e.clientX - navRect.left;   // 左端からの距離
+    var rightDist = navRect.right - e.clientX; // 右端からの距離
+    var edgeStep = 0;
+    if (leftDist < edgeZone) {
+        // 左端に近いほど大きく、左へスクロール
+        edgeStep = -Math.ceil(maxStep * (1 - Math.max(0, leftDist) / edgeZone));
+    } else if (rightDist < edgeZone) {
+        // 右端に近いほど大きく、右へスクロール
+        edgeStep = Math.ceil(maxStep * (1 - Math.max(0, rightDist) / edgeZone));
+    }
+    state.lastClientX = e.clientX;
+    state.lastClientY = e.clientY;
+    if (edgeStep !== 0) {
+        startNavAutoScroll(edgeStep);
+    } else {
+        stopNavAutoScroll();
+    }
     // 一時的に dragging を非表示にしてヒットテスト(自分自身を除外するため)
     state.el.style.pointerEvents = 'none';
     var hit = document.elementFromPoint(e.clientX, e.clientY);
@@ -1460,6 +1553,7 @@ function onNavPointerUp(e) {
     if (!_navDragState) return;
     var state = _navDragState;
     var nav = document.querySelector('.bottom-nav');
+    stopNavAutoScroll();
     document.removeEventListener('pointermove', onNavPointerMove);
     document.removeEventListener('pointerup', onNavPointerUp);
     document.removeEventListener('pointercancel', onNavPointerUp);
