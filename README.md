@@ -414,3 +414,877 @@ CREATE INDEX IF NOT EXISTS idx_board_posts_category ON board_posts(category_id);
 - 古いバックアップファイルの削除(`templates/board.html.bak.20260429*` など、半月以上前のもの)
 - 掲示板以外のページのUIも統一感のあるデザインに揃えるか検討
 - Supabaseの dev/本番の差異を防ぐためのスキーマ管理ツール導入検討(マイグレーションファイル化)
+---
+
+# 🚨 Session 9 引き継ぎ(2026-05-01 21時頃〜) — バイタル機能 Phase 2
+
+## 🎯 現在進行中のタスク: 再検査アラーム機能の実装
+
+### ⚠️ 中断時の最重要事項
+
+**この機能は段階実装の途中。** 中断したら **必ずこのセクションを読んでから再開すること**。
+
+仕様や実装方針を勝手に変えると、ユーザーが過去の会話で決めた仕様と矛盾して **大事故** になる。
+
+---
+
+## 📋 アラーム機能の意思決定(確定済み・絶対変更禁止)
+
+### ユーザーの確定要望
+1. **手動「再検査必要」ボタンも残す** — 閾値内でも職員判断で再検査指示できる必要あり
+2. **自動再検査マークも併存** — 異常値検出で自動表示
+3. **再検査時刻指定**: 「30分後」ボタン + 直接時刻入力 **両方** 提供
+4. **アラーム鳴動条件**:
+   - **画面スリープ中も鳴る**(超重要)
+   - 別アプリ使用中も鳴る
+   - アプリ閉じてても鳴る
+5. **画面アラーム形式**: 音 + 画面ダイアログで「誰の再検査か」明示
+6. **介護現場の運用**: 「アプリは開いてない事が多い」
+
+### 採用方式: **「C案」段階的実装**(ユーザー確定)
+
+| 段階 | 内容 | 工数 | 費用 |
+|------|------|------|------|
+| **Step 1 (まず実施)** | 手動再検査ボタンの表示反映バグ修正 | 15分 | 無料 |
+| **Step 2 (まず実施)** | .icsリマインダー連携 + アプリ内アラーム(音+ダイアログ) | 1〜2時間 | 無料 |
+| **Step 3 (運用後に判断)** | Firebase Push通知で完全自動化 | 半日〜1日 | 無料(Sparkプラン) |
+
+**重要: Step 2 まで実施 → 運用してみる → 必要ならStep 3 拡張、という段階的アプローチ**
+
+### 検討時に却下した選択肢(蒸し返し禁止)
+
+| 却下案 | 却下理由 |
+|--------|----------|
+| Web Audio APIのみ | スリープ中鳴らない |
+| ブラウザ通知(Notification API) | iOS Safariで音鳴らず |
+| 専用ネイティブアプリ化 | 工数膨大、ストア審査必要 |
+| 完全自動化を最初から(Bを直接) | 工数大きい→運用後に拡張判断したい |
+
+---
+
+## 💰 費用に関する確定情報(質問対策)
+
+### 完全無料で実装可能 ✅
+- **.icsファイル生成**: 完全無料(HTML/JSのみで完結)
+- **Firebase FCM Sparkプラン**: 無料、メッセージ無制限、クレカ登録不要
+- **Cloud Run側追加負荷**: ほぼゼロ
+
+### お金が発生する可能性
+- **FCM Blazeプラン**(月200万メッセージ超):介護施設規模では絶対到達しない
+
+---
+
+## 📱 端末動作の確定情報
+
+### .ics リマインダー連携の動作
+
+| 項目 | iPhone | Android |
+|------|---------|---------|
+| .ics対応 | ✅ Safari→「リマインダー」or「カレンダー」 | ✅ Chrome→「Googleカレンダー」or標準カレンダー |
+| **スリープ中アラーム** | **✅ 確実に鳴る** | **✅ 確実に鳴る**(Doze modeでもホワイトリスト) |
+| 別アプリ使用中の通知 | ✅ バナー+音 | ✅ バナー+音 |
+
+### Android機種別の注意
+- **Xiaomi/HUAWEI等**: 独自電池最適化があるため、初期設定で「Googleカレンダー」を「電池最適化対象外」にする必要あり
+- **Samsung等**: 独自カレンダーアプリで開く場合あり(.ics対応OK)
+
+### 自動設定不可の制約(重要)
+- **iOS/Androidのセキュリティ仕様上、ウェブアプリが勝手にカレンダー登録は禁止**
+- 必ず「📅 リマインダーに登録」ボタンを職員が**1タップする必要がある**
+- これは仕様上回避不可、Step 3でPush通知に拡張するまでは避けられない
+
+---
+
+## 🛠 Step 1 実装内容(手動再検査ボタンの反映バグ修正)
+
+### 現状の問題
+- DBの `recheck` フィールドに手動でtrueを保存しても、表示側で **`hasAnyAlert` だけで判定**している
+- 手動チェックは保存されているが表示に反映されない
+
+### 修正内容
+全員確認(本日の記録)タブの異常値判定ロジック:
+
+```javascript
+// 修正前
+const hasAlert = info.items.some(v => hasAnyAlert(v));
+
+// 修正後
+const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
+```
+
+該当箇所(2箇所):
+1. `loadDailyOverview` 内の patientList生成部
+2. エディタの `daily-time-tab.has-alert` 判定箇所
+
+### 編集タブの「再検査必要」チェックボックスも残す
+編集フォームに以下を追加:
+```html
+<label>
+    <input type="checkbox" id="ef-recheck-${pid}">
+    再検査が必要(手動)
+</label>
+```
+保存時に `recheck` フィールドに反映、自動判定の `hasAnyAlert` とORで判定。
+
+### 記録タブ(測定タブ)の「再検査必要」も同様に残す
+現在の `<input type="checkbox" id="v-recheck-${pid}">` は維持。
+手動 OR 自動のいずれかで `recheck=true` になる仕様。
+
+---
+
+## 🛠 Step 2 実装内容(.icsリマインダー連携 + アプリ内アラーム)
+
+### 2-1. DB追加: `vital_recheck_schedules` テーブル(Supabase)
+
+```sql
+CREATE TABLE vital_recheck_schedules (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    vital_id UUID,  -- 元の異常値検出した測定のID(あれば)
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    note TEXT,
+    is_completed BOOLEAN DEFAULT false,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT
+);
+ALTER TABLE vital_recheck_schedules DISABLE ROW LEVEL SECURITY;
+CREATE INDEX idx_recheck_schedules_lookup ON vital_recheck_schedules(facility_code, scheduled_at);
+```
+
+**重要**: 引き継ぎ書教訓3「新規Supabaseテーブル作成時はRLS必ずDISABLE」厳守
+
+### 2-2. API追加(app.py)
+
+- `/api/recheck_schedule` POST: 再検査予定登録
+- `/api/recheck_schedule` GET: 当日の予定一覧取得
+- `/api/recheck_schedule/<id>` POST(complete): 完了マーク
+
+### 2-3. UI追加(vitals.html)
+
+#### 異常値検出時/手動recheck時にUIを表示
+```
+┌─────────────────────────────────┐
+│ ⚠ 池田 ヨシ 様 異常値検出       │
+│ 血圧 200/150                    │
+│                                 │
+│ 何分後に再検査しますか?         │
+│  [+15分][+30分][+1時間][+2時間] │
+│  または直接時刻 [14:30]         │
+│                                 │
+│ [📅 リマインダーに登録]         │ ← .ics生成
+│ ☑ アプリ画面でも通知(開いてる時)│
+└─────────────────────────────────┘
+```
+
+#### .ics生成ロジック
+```javascript
+function generateICS(scheduleData) {
+    const dt = new Date(scheduleData.scheduled_at);
+    const dtUtc = dt.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TASUKARU//VitalRecheck//JP
+BEGIN:VEVENT
+UID:${Date.now()}@tasukaru.app
+DTSTAMP:${dtUtc}
+DTSTART:${dtUtc}
+SUMMARY:再検査:${scheduleData.user_name} 様
+DESCRIPTION:${scheduleData.note || ''}
+BEGIN:VALARM
+TRIGGER:-PT0M
+ACTION:DISPLAY
+DESCRIPTION:再検査時間です
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+}
+// Blob→ダウンロードリンク
+```
+
+#### アプリ内アラーム(画面開いてる時)
+- 全員確認タブ表示中、定期的に未完了の `recheck_schedules` をチェック
+- scheduled_at <= now() の予定があれば → モーダル表示 + 音再生
+- Web Audio API で短いビープ音(Base64埋込)
+- モーダル: 「[今から測定] [10分後に再通知] [完了にする]」
+
+### 2-4. 用語の確定
+
+| 旧 | 新 |
+|----|----|
+| 再検査 | 再検査(変更なし) |
+| recheck flag | 自動判定 + 手動チェック両方の OR |
+
+---
+
+## 🚧 Step 3(将来):Firebase Push通知
+
+**重要**: Step 2の運用結果次第。今は手を付けない。
+
+### Step 3 の前提条件(満たされた時のみ着手)
+- Step 2 実装後、現場で「.ics登録の1タップが運用上厳しい」と判明
+- ホーム画面追加(PWA化)を職員が受け入れられる体制
+- iOS 16.4 以上の端末が普及している(Push通知の最低要件)
+
+### Step 3 着手時の実装ステップ
+1. Firebase プロジェクト作成(無料Sparkプラン)
+2. VAPID鍵生成
+3. firebase-config.js 作成
+4. Service Worker 拡張(`sw.js` に push handler 追加)
+5. クライアント: 通知許可取得→FCMトークン取得→DB保存
+6. サーバー: push送信ジョブ(scheduled_at到来時にFCM送信)
+7. iOS: PWA化必須(マニフェスト整備)、Android: 標準的に動く
+
+### Step 3 で追加するDBカラム
+```sql
+ALTER TABLE patients ADD COLUMN fcm_tokens JSONB DEFAULT '[]'::jsonb;
+-- または別テーブル
+CREATE TABLE fcm_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT,
+    user_id TEXT,  -- 職員ID
+    fcm_token TEXT UNIQUE,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## 📝 実装順序(再開時はこの順番厳守)
+
+1. ✅ **Step 1**: 手動recheckの表示反映バグ修正(15分)→ push → 動作確認
+2. ✅ **Step 2-1**: Supabaseに `vital_recheck_schedules` テーブル作成(RLS無効化必須)
+3. ✅ **Step 2-2**: app.pyに3つのAPI追加 → push → ログでエラー出ないこと確認
+4. ✅ **Step 2-3**: vitals.htmlに再検査時刻設定UI追加 → push → 動作確認
+5. ✅ **Step 2-4**: .ics生成ロジック → 実機(iPhone/Android)でリマインダー登録できるか確認
+6. ✅ **Step 2-5**: アプリ内アラーム(画面開いてる時)→ 動作確認
+7. ⏸ **Step 3**: 運用してみて必要なら(後回し)
+
+---
+
+## ⚠️ 中断時の引継ぎチェックリスト
+
+中断時、新しいチャットへ引き継ぐ時は以下を必ず明示:
+
+- [ ] 現在Stepいくつまで完了したか
+- [ ] 各Stepでpush済みコミットハッシュ
+- [ ] Step 2-1 のテーブル作成済みか
+- [ ] Step 3 への移行判断を保留中であること(勝手に着手しないよう警告)
+- [ ] 「.icsリマインダー連携」が選択された経緯と「自動化はStep 3まで保留」という確定事項
+
+---
+
+# 🚨 Session 9 引き継ぎ(2026-05-01 21時頃〜) — バイタル機能 Phase 2
+
+## 🎯 現在進行中のタスク: 再検査アラーム機能の実装
+
+### ⚠️ 中断時の最重要事項
+
+**この機能は段階実装の途中。** 中断したら **必ずこのセクションを読んでから再開すること**。
+
+仕様や実装方針を勝手に変えると、ユーザーが過去の会話で決めた仕様と矛盾して **大事故** になる。
+
+---
+
+## 📋 アラーム機能の意思決定(確定済み・絶対変更禁止)
+
+### ユーザーの確定要望
+1. **手動「再検査必要」ボタンも残す** — 閾値内でも職員判断で再検査指示できる必要あり
+2. **自動再検査マークも併存** — 異常値検出で自動表示
+3. **再検査時刻指定**: 「30分後」ボタン + 直接時刻入力 **両方** 提供
+4. **アラーム鳴動条件**:
+   - **画面スリープ中も鳴る**(超重要)
+   - 別アプリ使用中も鳴る
+   - アプリ閉じてても鳴る
+5. **画面アラーム形式**: 音 + 画面ダイアログで「誰の再検査か」明示
+6. **介護現場の運用**: 「アプリは開いてない事が多い」
+
+### 採用方式: **「C案」段階的実装**(ユーザー確定)
+
+| 段階 | 内容 | 工数 | 費用 |
+|------|------|------|------|
+| **Step 1 (まず実施)** | 手動再検査ボタンの表示反映バグ修正 | 15分 | 無料 |
+| **Step 2 (まず実施)** | .icsリマインダー連携 + アプリ内アラーム(音+ダイアログ) | 1〜2時間 | 無料 |
+| **Step 3 (運用後に判断)** | Firebase Push通知で完全自動化 | 半日〜1日 | 無料(Sparkプラン) |
+
+**重要: Step 2 まで実施 → 運用してみる → 必要ならStep 3 拡張、という段階的アプローチ**
+
+### 検討時に却下した選択肢(蒸し返し禁止)
+
+| 却下案 | 却下理由 |
+|--------|----------|
+| Web Audio APIのみ | スリープ中鳴らない |
+| ブラウザ通知(Notification API) | iOS Safariで音鳴らず |
+| 専用ネイティブアプリ化 | 工数膨大、ストア審査必要 |
+| 完全自動化を最初から(Bを直接) | 工数大きい→運用後に拡張判断したい |
+
+---
+
+## 💰 費用に関する確定情報(質問対策)
+
+### 完全無料で実装可能 ✅
+- **.icsファイル生成**: 完全無料(HTML/JSのみで完結)
+- **Firebase FCM Sparkプラン**: 無料、メッセージ無制限、クレカ登録不要
+- **Cloud Run側追加負荷**: ほぼゼロ
+
+### お金が発生する可能性
+- **FCM Blazeプラン**(月200万メッセージ超):介護施設規模では絶対到達しない
+
+---
+
+## 📱 端末動作の確定情報
+
+### .ics リマインダー連携の動作
+
+| 項目 | iPhone | Android |
+|------|---------|---------|
+| .ics対応 | ✅ Safari→「リマインダー」or「カレンダー」 | ✅ Chrome→「Googleカレンダー」or標準カレンダー |
+| **スリープ中アラーム** | **✅ 確実に鳴る** | **✅ 確実に鳴る**(Doze modeでもホワイトリスト) |
+| 別アプリ使用中の通知 | ✅ バナー+音 | ✅ バナー+音 |
+
+### Android機種別の注意
+- **Xiaomi/HUAWEI等**: 独自電池最適化があるため、初期設定で「Googleカレンダー」を「電池最適化対象外」にする必要あり
+- **Samsung等**: 独自カレンダーアプリで開く場合あり(.ics対応OK)
+
+### 自動設定不可の制約(重要)
+- **iOS/Androidのセキュリティ仕様上、ウェブアプリが勝手にカレンダー登録は禁止**
+- 必ず「📅 リマインダーに登録」ボタンを職員が**1タップする必要がある**
+- これは仕様上回避不可、Step 3でPush通知に拡張するまでは避けられない
+
+---
+
+## 🛠 Step 1 実装内容(手動再検査ボタンの反映バグ修正)
+
+### 現状の問題
+- DBの `recheck` フィールドに手動でtrueを保存しても、表示側で **`hasAnyAlert` だけで判定**している
+- 手動チェックは保存されているが表示に反映されない
+
+### 修正内容
+全員確認(本日の記録)タブの異常値判定ロジック:
+
+```javascript
+// 修正前
+const hasAlert = info.items.some(v => hasAnyAlert(v));
+
+// 修正後
+const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
+```
+
+該当箇所(2箇所):
+1. `loadDailyOverview` 内の patientList生成部
+2. エディタの `daily-time-tab.has-alert` 判定箇所
+
+### 編集タブの「再検査必要」チェックボックスも残す
+編集フォームに以下を追加:
+```html
+<label>
+    <input type="checkbox" id="ef-recheck-${pid}">
+    再検査が必要(手動)
+</label>
+```
+保存時に `recheck` フィールドに反映、自動判定の `hasAnyAlert` とORで判定。
+
+### 記録タブ(測定タブ)の「再検査必要」も同様に残す
+現在の `<input type="checkbox" id="v-recheck-${pid}">` は維持。
+手動 OR 自動のいずれかで `recheck=true` になる仕様。
+
+---
+
+## 🛠 Step 2 実装内容(.icsリマインダー連携 + アプリ内アラーム)
+
+### 2-1. DB追加: `vital_recheck_schedules` テーブル(Supabase)
+
+```sql
+CREATE TABLE vital_recheck_schedules (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    vital_id UUID,  -- 元の異常値検出した測定のID(あれば)
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    note TEXT,
+    is_completed BOOLEAN DEFAULT false,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT
+);
+ALTER TABLE vital_recheck_schedules DISABLE ROW LEVEL SECURITY;
+CREATE INDEX idx_recheck_schedules_lookup ON vital_recheck_schedules(facility_code, scheduled_at);
+```
+
+**重要**: 引き継ぎ書教訓3「新規Supabaseテーブル作成時はRLS必ずDISABLE」厳守
+
+### 2-2. API追加(app.py)
+
+- `/api/recheck_schedule` POST: 再検査予定登録
+- `/api/recheck_schedule` GET: 当日の予定一覧取得
+- `/api/recheck_schedule/<id>` POST(complete): 完了マーク
+
+### 2-3. UI追加(vitals.html)
+
+#### 異常値検出時/手動recheck時にUIを表示
+```
+┌─────────────────────────────────┐
+│ ⚠ 池田 ヨシ 様 異常値検出       │
+│ 血圧 200/150                    │
+│                                 │
+│ 何分後に再検査しますか?         │
+│  [+15分][+30分][+1時間][+2時間] │
+│  または直接時刻 [14:30]         │
+│                                 │
+│ [📅 リマインダーに登録]         │ ← .ics生成
+│ ☑ アプリ画面でも通知(開いてる時)│
+└─────────────────────────────────┘
+```
+
+#### .ics生成ロジック
+```javascript
+function generateICS(scheduleData) {
+    const dt = new Date(scheduleData.scheduled_at);
+    const dtUtc = dt.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    return `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TASUKARU//VitalRecheck//JP
+BEGIN:VEVENT
+UID:${Date.now()}@tasukaru.app
+DTSTAMP:${dtUtc}
+DTSTART:${dtUtc}
+SUMMARY:再検査:${scheduleData.user_name} 様
+DESCRIPTION:${scheduleData.note || ''}
+BEGIN:VALARM
+TRIGGER:-PT0M
+ACTION:DISPLAY
+DESCRIPTION:再検査時間です
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+}
+// Blob→ダウンロードリンク
+```
+
+#### アプリ内アラーム(画面開いてる時)
+- 全員確認タブ表示中、定期的に未完了の `recheck_schedules` をチェック
+- scheduled_at <= now() の予定があれば → モーダル表示 + 音再生
+- Web Audio API で短いビープ音(Base64埋込)
+- モーダル: 「[今から測定] [10分後に再通知] [完了にする]」
+
+### 2-4. 用語の確定
+
+| 旧 | 新 |
+|----|----|
+| 再検査 | 再検査(変更なし) |
+| recheck flag | 自動判定 + 手動チェック両方の OR |
+
+---
+
+## 🚧 Step 3(将来):Firebase Push通知
+
+**重要**: Step 2の運用結果次第。今は手を付けない。
+
+### Step 3 の前提条件(満たされた時のみ着手)
+- Step 2 実装後、現場で「.ics登録の1タップが運用上厳しい」と判明
+- ホーム画面追加(PWA化)を職員が受け入れられる体制
+- iOS 16.4 以上の端末が普及している(Push通知の最低要件)
+
+### Step 3 着手時の実装ステップ
+1. Firebase プロジェクト作成(無料Sparkプラン)
+2. VAPID鍵生成
+3. firebase-config.js 作成
+4. Service Worker 拡張(`sw.js` に push handler 追加)
+5. クライアント: 通知許可取得→FCMトークン取得→DB保存
+6. サーバー: push送信ジョブ(scheduled_at到来時にFCM送信)
+7. iOS: PWA化必須(マニフェスト整備)、Android: 標準的に動く
+
+### Step 3 で追加するDBカラム
+```sql
+ALTER TABLE patients ADD COLUMN fcm_tokens JSONB DEFAULT '[]'::jsonb;
+-- または別テーブル
+CREATE TABLE fcm_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT,
+    user_id TEXT,  -- 職員ID
+    fcm_token TEXT UNIQUE,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+## 📝 実装順序(再開時はこの順番厳守)
+
+1. ✅ **Step 1**: 手動recheckの表示反映バグ修正(15分)→ push → 動作確認
+2. ✅ **Step 2-1**: Supabaseに `vital_recheck_schedules` テーブル作成(RLS無効化必須)
+3. ✅ **Step 2-2**: app.pyに3つのAPI追加 → push → ログでエラー出ないこと確認
+4. ✅ **Step 2-3**: vitals.htmlに再検査時刻設定UI追加 → push → 動作確認
+5. ✅ **Step 2-4**: .ics生成ロジック → 実機(iPhone/Android)でリマインダー登録できるか確認
+6. ✅ **Step 2-5**: アプリ内アラーム(画面開いてる時)→ 動作確認
+7. ⏸ **Step 3**: 運用してみて必要なら(後回し)
+
+---
+
+## ⚠️ 中断時の引継ぎチェックリスト
+
+中断時、新しいチャットへ引き継ぐ時は以下を必ず明示:
+
+- [ ] 現在Stepいくつまで完了したか
+- [ ] 各Stepでpush済みコミットハッシュ
+- [ ] Step 2-1 のテーブル作成済みか
+- [ ] Step 3 への移行判断を保留中であること(勝手に着手しないよう警告)
+- [ ] 「.icsリマインダー連携」が選択された経緯と「自動化はStep 3まで保留」という確定事項
+
+
+---
+
+## 📚 Step 4: 利用者向けガイドページの作成(必須)
+
+### 重要
+Step 2 完了後、**必ず** 利用者(=介護施設の職員)向けの設定方法ガイドを実装する。
+これがないと、「.icsをタップしてもどうしていいかわからない」状態になる。
+
+### ガイドの場所
+バイタルタブ → 「設定」タブの中、または **新規「ヘルプ」タブ** を追加
+
+### ガイド内容(最低限)
+
+#### 1. 再検査アラームの仕組みを説明
+- 「異常値を検出すると、再検査時刻を設定できます」
+- 「設定したらリマインダー登録ボタンを押してください」
+- 「お使いの端末のアラームで通知されます(画面スリープ中もOK)」
+
+#### 2. iOS版の初回設定手順(画像付き推奨)
+- 「📅 リマインダーに登録」ボタンを押す
+- ダイアログで「リマインダー」または「カレンダー」を選ぶ
+- アプリ内で「追加」ボタンを押して登録完了
+- 通知許可を求められたら必ず「許可」を選ぶ
+- システム設定→通知→リマインダー(orカレンダー)で**サウンドON**を確認
+
+#### 3. Android版の初回設定手順
+- 「📅 リマインダーに登録」ボタンを押す
+- 「Googleカレンダー」または標準カレンダーを選ぶ
+- 「保存」を押して登録
+- **重要**: Xiaomi/HUAWEI/OPPO等の場合
+  - 設定 → アプリ → Googleカレンダー → 電池 → 「制限なし」に変更
+  - これをしないとスリープ中に通知が鳴らない可能性
+
+#### 4. トラブルシューティング
+- 「アラームが鳴らない時のチェックリスト」
+  - 端末のサイレントモードがOFFか?
+  - 通知音量がゼロでないか?
+  - リマインダー/カレンダーアプリが通知許可されているか?
+  - (Android) 電池最適化対象外になっているか?
+  - .icsファイルがダウンロードされなかった場合は再度ボタン押す
+
+#### 5. 「いつ・どこで通知が鳴るのか」一覧表
+
+| シーン | 内部アラーム | リマインダー(.ics) |
+|--------|------------|-------------------|
+| バイタル画面を表示中 | ✅ 鳴る | ✅ 鳴る |
+| 別タブを表示中 | △ 場合により | ✅ 鳴る |
+| 別アプリ使用中 | ❌ 鳴らない | ✅ 鳴る |
+| 画面スリープ中 | ❌ 鳴らない | ✅ 鳴る |
+| アプリ完全終了 | ❌ 鳴らない | ✅ 鳴る |
+
+→ **だから「📅 リマインダーに登録」が重要** という説明を載せる
+
+### 実装方針
+- 静的なHTMLコンテンツでOK(Jinjaテンプレート内)
+- 折りたたみアコーディオン形式(Q&A風)
+- スクリーンショット画像があるとなお良い(後回しでも可)
+- 「設定」タブの中に「📚 使い方ガイド」セクションを追加するのが工数最小
+
+
+---
+
+# Session 11 動作確認結果(2026-05-03 朝)
+
+Step 2-③ アラーム機能の動作確認を dev 環境(iPhone Safari)で実施した結果と、見つかった既知問題の記録。
+
+## 動作 OK の項目
+
+- アラームモーダルの発火(30秒ポーリング → 期限切れ予約検出 → 赤枠+パルス表示)
+- 「今から測定する」ボタン → 該当利用者のエディタが自動展開
+- 「10分後に再通知」ボタン → snooze API 呼び出し → 一覧の時刻が10分後に更新
+- 「完了にする」ボタン → complete API 呼び出し → 一覧から消える(または完了状態)
+- 「過去時刻ですが本当に登録しますか?」確認ダイアログ
+- 既存予約一覧の表示(時刻 / 完了状態 / メモ / 削除ボタン)
+
+## 既知の問題(Session 12 で対応予定)
+
+### 問題A: iPhone Safari で初回ロード時に「取得エラー: Load failed」
+
+- **症状**: 「既に予約済みの再検査」セクションに `取得エラー: Load failed` と表示される
+- **原因**: 教訓8 の Service Worker 古い版キャッシュ(古い JS が fetch をインターセプトしている疑い)
+- **回避策**: iPhone 設定 → Safari → 「履歴とWebサイトデータを消去」を実施 → 解決を確認済み
+- **恒久対策案**: ガイドページ(Step 4)で SW クリア手順を明記する。または vitals.html の SW 登録部に強制更新ロジックを追加することを検討
+- **重要**: dev 環境を Mac Chrome で同時に確認した結果、**サーバー側 API は正常動作**(GET /api/recheck_schedule が schedules 配列を正しく返す)。問題は iPhone Safari クライアント側の SW キャッシュのみ
+
+### 問題B: アラームのビープ音が鳴らない
+
+- **症状**: アラームモーダルは表示されるが、Web Audio API のビープ音(880Hz/660Hz, 4音, 計0.9秒)が鳴らない
+- **原因**: iOS Safari の autoplay 制限。AudioContext がユーザー操作直後でないと鳴らせない
+- **修正方針**: 「📅 リマインダーに登録」「+15分」などのクイックボタンタップ時に AudioContext を unlock(無音再生)して活性化しておく。後でアラーム発火時にその AudioContext で音を鳴らせるようにする
+- **状態**: 未修正(Session 12 で対応)
+
+### 問題C: iOS の「カレンダーの参加依頼を表示しようとしています」ダイアログが分かりにくい
+
+- **症状**: 「📅 リマインダーに登録」を押すと iOS が `tasukaru-dev-...run.app はカレンダーの参加依頼を表示しようとしています。許可しますか?` というシステムダイアログを表示する。「無視」を押されると .ics が登録されない
+- **原因**: iOS Safari の固定UI(ウェブ側からは文言を変更できない)
+- **修正方針**: ボタン直前または直後に「次の画面で『許可』を押してください」という事前案内を追加する
+- **状態**: 未修正(Session 12 で対応)
+
+## ユーザーから新たに出てきた要望(Session 12 以降)
+
+Step 2-③ 動作確認中に出てきた、現状未着手の要望:
+
+1. **「測定」タブの統合検討**: 「測定」タブで利用者を展開すると保存ボタン下のフッターに食い込む。「本日の記録」タブに利用者追加機能を持たせれば「測定」タブを廃止できる可能性がある(ただし大改修なので慎重に)
+2. **「未測定」表示**: 「本日の記録」タブで未測定の利用者も表示し、空欄 or 「未測定」ラベルで視覚的に分かるようにする
+3. **カメラ読み取りボタンの移植**: 現状「測定」タブのみにあるカメラ自動読み取りを、「本日の記録」アコーディオン編集にも追加する
+4. **音声入力でのバイタル入力(NEW)**: 「体温36.5、血圧上120、下80、脈60、酸素97」のような自然文を解析して各フィールドに自動入力する機能。Web Speech API を想定。介護現場の運用想定で工数大きめ(別セッション扱い推奨)
+
+## 最新コミット状態(2026-05-03 朝)
+
+```
+45b5c29 (HEAD -> tasukaru-dev, origin/tasukaru-dev) docs session11 handoff with step 2 completion and incident lessons
+8611db5 feat vitals recheck alarm with polling beep modal and snooze api  [Step 2-③]
+4ccd76b fix vitals recheck ics filename ascii safe with patient id and timestamp
+3ee08a3 feat vitals recheck schedule ui with quick buttons and ics download  [Step 2-②]
+8441073 feat vital recheck schedule apis post get complete delete  [Step 2-①]
+8803c33 fix vitals manual recheck reflect in display and add manual checkbox in editor  [Step 1]
+```
+
+- app.py: 4383 行 / 196216 bytes
+- templates/vitals.html: 2980 行 / 144326 bytes
+
+
+---
+
+# Session 12 Phase A 完了(2026-05-03)
+
+Session 11 で見つかった問題B(アラーム音 autoplay)と問題C(iOS文言事前案内)を修正、コミット `eb90403` でデプロイ。
+
+## 修正内容
+
+### 問題B: アラーム音 autoplay unlock(解決済)
+- iOS Safari の autoplay 制限により、ユーザー操作直後の AudioContext でなければ音が鳴らない問題に対処
+- `templates/vitals.html` に `unlockAlarmAudio()` 関数を新規追加
+- `setQuickRecheckTime()` と `saveRecheckSchedule()` の冒頭で呼び出し、ユーザーがクイックボタンや「リマインダーに登録」を押した瞬間に AudioContext を活性化(無音バッファ1サンプル再生で iOS の autoplay ロックを解除)
+- 後でアラーム発火時、その AudioContext を再利用して `playAlarmBeep()` がビープ音を鳴らせる
+
+### 問題C: iOS「カレンダーの参加依頼」事前案内(解決済)
+- iOS の固定UI(文言は変更不可)で利用者が混乱しないよう、「📅 リマインダーに登録」ボタンの直下に黄色背景・点線枠の小さな案内文を追加
+- 内容: 「ボタンを押すと iPhone・iPad では『カレンダーの参加依頼を表示しますか?』と確認が出ます。『許可』を押してください。次にカレンダーアプリが開いたら『追加』を押すと登録完了です。」
+- CSS: `.recheck-ios-notice` クラス(font-size 0.72rem、padding 8px 10px)
+
+## 動作確認結果(iPhone Safari、2026-05-03)
+- ✅ アラームモーダル発火時にビープ音が鳴る
+- ✅ 案内文が「📅 リマインダーに登録」ボタンの直下に表示される
+
+## 「閉じてる時に鳴らせるか」のユーザー疑問への整理
+
+| シーン | 鳴るか |
+|--------|--------|
+| vitalsページを開いたまま | ✅ アプリ内アラーム(モーダル+ビープ)が鳴る |
+| 別タブを使用中 | △ 場合により(JSタイマーがOSにスロットルされる) |
+| 画面閉じる/別アプリ/スリープ | ✅ ただし「📅 リマインダーに登録」→「許可」→「追加」までやって OS カレンダーに登録した場合のみ |
+| アプリ完全終了 | ✅ 同上(OS カレンダーが鳴らす) |
+| 完全自動(ボタン操作不要) | ❌ Step 3 Firebase Push で実現する設計、未実装、明示依頼まで提案禁止 |
+
+→ 「閉じてる時に鳴らない」と感じる場合は、.icsカレンダー登録の最後の「追加」まで完了していない可能性が高い。Step 4 のガイドページで明確に案内する予定。
+
+## 最新コミット状態(2026-05-03 夜)
+
+```
+eb90403 fix vitals alarm audio autoplay unlock and add ios calendar dialog notice  [Phase A]
+c357b67 chore add bak and broken files to gitignore
+b900c5e docs session11 verification result and session12 handoff with audio autoplay and ios calendar dialog issues
+45b5c29 docs session11 handoff with step 2 completion and incident lessons
+8611db5 feat vitals recheck alarm with polling beep modal and snooze api
+```
+
+- `app.py`: 4383 行 / 196216 bytes(変更なし)
+- `templates/vitals.html`: 3014 行 / 146288 bytes(+34 行)
+- `.gitignore`: 30 行(.bak / .broken 除外ルール追加済)
+
+## Session 12 Phase B 以降の選択肢(まだ未着手)
+
+引き継ぎ書通り、ここから先は明示の指示があるまで着手しない。
+
+| 選択肢 | 内容 | 工数 |
+|-------|------|------|
+| **B-1: Step 4(利用者向けガイドページ)** | 「設定」タブに「📚 使い方ガイド」追加 | 1〜3時間 |
+| **B-2: 「本日の記録」タブ強化** | 未測定者表示 + カメラ読み取りボタン移植 | 2〜3時間 |
+| **B-3: 「測定」タブ廃止/統合** | UI 大改修、回帰テスト多 | 2〜4時間(B-3 はユーザー判断で見送り、現状維持で OK) |
+| **C: 音声入力(Gemini Audio)** | ✅ Session 13 で実装済(下記参照) | 完了 |
+| **D: Step 3(Firebase Push)** | 完全自動通知 | 半日〜2日(明示依頼があるまで提案禁止) |
+
+
+---
+
+# 🎙 Session 13 完了(2026-05-04)— 音声バイタル入力 MVP
+
+## 概要
+
+「測定」タブで利用者のバイタル測定値を **音声で入力** できる機能を追加。利用者の前で「血圧上125、下78、脈拍72、体温36.5、SpO2 98、調子は良好です」と話すだけで、Gemini が音声を解析し、各フィールドへ数値が自動入力される。
+
+## 確定仕様(Session 12 から継続、変更なし)
+
+- 対象タブ:「測定」タブのみ(本日の記録タブには追加しない)
+- ボタン位置:カメラ自動読み取りボタンの **真横**(B案・横並び 50:50)
+- 音声エンジン:**Gemini**(既存の `get_generative_model()` を再利用、Whisper 等の追加コストなし)
+- 解析:Gemini で音声 → JSON 一発で完結(中間処理なし)
+- 録音時間:**最大 20 秒**(自動停止 or 録音中タップで早期終了)
+- メモ欄対応:数値以外の発話があれば既存メモに ` / ` 区切りで追記
+- 認識結果:確認ダイアログなしで即フィールドへセット(カメラ読み取りと同じ挙動)
+- 永続保存:**しない**(プライバシー配慮、`upload_audio_to_supabase` は呼ばない)
+
+## 実装内容
+
+### バックエンド(app.py)
+
+新規エンドポイント `/api/vital_voice_parse`(1446行〜1503行、約 59 行)
+
+```python
+@app.route('/api/vital_voice_parse', methods=['POST'])
+@login_required
+def api_vital_voice_parse():
+    # request.files.get('audio') で受信
+    # MIME マップ: .mp3/.m4a/.wav/.aac/.ogg/.webm/.mp4 (iOS Safari 対応で .mp4 追加)
+    # デフォルト MIME: audio/webm (Chrome の MediaRecorder デフォルト)
+    # Gemini プロンプトで bp_high/bp_low/pulse/temperature/spo2/memo を抽出
+    # JSON 抽出: re.search(r'\{.*\}', resp.text.strip(), re.DOTALL)
+```
+
+設計判断:
+- 既存の `/api/read_vital_image`(画像版)を参考に同じパターンで実装
+- `parse_assessment_file` の MIME 判定パターンを流用
+- `upload_audio_to_supabase` は **import しない**(永続保存しない仕様)
+- 録音空チェック追加(`if not audio_bytes`)
+
+### フロントエンド(templates/vitals.html)
+
+**HTML 変更**(1241行付近):
+
+```html
+<!-- Before -->
+<button class="camera-btn" onclick="openCamera('${p.id}')">
+    <span class="material-symbols-outlined">photo_camera</span>
+    カメラで数値を自動読み取り
+</button>
+
+<!-- After -->
+<div class="vital-action-row">
+    <button class="camera-btn" onclick="openCamera('${p.id}')">
+        <span class="material-symbols-outlined">photo_camera</span>
+        カメラ読み取り
+    </button>
+    <button class="voice-btn" id="voice-btn-${p.id}" onclick="toggleVoiceRecording('${p.id}')">
+        <span class="material-symbols-outlined">mic</span>
+        <span class="voice-btn-label">音声入力</span>
+    </button>
+</div>
+```
+
+**CSS 追加**(111行〜137行):
+- `.vital-action-row`:flex 50:50 等幅
+- `.voice-btn`:緑系グラデーション(`#34a853 → #2d8f47`)、camera-btn と同サイズ
+- `.voice-btn.recording`:赤系(`#dc2626 → #b91c1c`)+ 1.2秒の脈動アニメ
+
+**JavaScript 追加**(1500行〜1700行付近、約 200 行):
+- `pickVoiceMime()`:Chrome/Safari 両対応の MIME 自動選択
+- `toggleVoiceRecording(pid)`:タップで開始 / 録音中タップで早期終了 / 20秒で自動停止
+- `sendVoiceToAI(blob, ext)`:`/api/vital_voice_parse` への POST、レスポンスでフィールド自動入力
+- `cleanupVoiceStream()`:MediaStream トラック停止
+
+iOS Safari 対応:
+- MIME 候補リストに `audio/mp4` を含める
+- `MediaRecorder.isTypeSupported` で動的に対応 MIME を選択
+- 失敗時は `new MediaRecorder(stream)` のデフォルトにフォールバック
+
+## 動作確認結果(2026-05-04)
+
+| 環境 | 結果 |
+|------|------|
+| Mac Chrome(dev) | ✅ 録音 → 数値抽出 → フィールド自動入力 → 保存まで OK |
+| iPhone Safari(dev) | ✅ マイク権限取得 → 録音 → 数値抽出 → 保存まで OK |
+
+## 遭遇した問題と対処
+
+### 問題1:Service Worker キャッシュで古い HTML が表示される(教訓8 再発)
+
+**症状**:push 後、Mac Chrome で dev タブをリロードしても古い HTML が返る(`voice-btn` が DOM に存在しない)。`unlockAlarmAudio`(Session 12 で追加した関数)すら window に存在しない状態。
+
+**原因**:`tasukaru-v6-static` キャッシュが古い HTML を提供し続ける。
+
+**対処**:Chrome 連携で以下を実行:
+
+```javascript
+const regs = await navigator.serviceWorker.getRegistrations();
+for (const r of regs) await r.unregister();
+const names = await caches.keys();
+for (const n of names) await caches.delete(n);
+location.reload();
+```
+
+これで Service Worker と全キャッシュを消去 → ハードリロード → 新版反映。
+
+### 問題2:ローカル Flask 起動で環境変数が読まれない
+
+**症状**:`python3 app.py` で起動しても、Supabase 接続できずログイン不可。
+
+**原因**:`app.py` / `utils.py` に `load_dotenv()` の呼び出しが無い。Cloud Run では Secret Manager から直接環境変数が注入されるため気づかなかった。
+
+**対処**:今回はローカル起動を諦めて Cloud Run dev での確認に切り替え。`load_dotenv()` 追加は別途検討課題(本筋スコープ外のため Session 13 では対応せず)。
+
+## ファイル変更サマリ
+
+| ファイル | 変更前 | 変更後 | 差分 |
+|---------|-------|-------|------|
+| `app.py` | 4383行 / 196216 bytes | 4442行 / 198998 bytes | +59 行 |
+| `templates/vitals.html` | 3014行 / 146288 bytes | 3252行 / 155229 bytes | +238 行 |
+
+## コミット
+
+```
+50093c0 feat vitals voice input parse with gemini audio analysis
+```
+
+1機能=1コミット完結(教訓5)。Cloud Run dev へデプロイ済み。
+
+## 教訓追加(教訓16〜17)
+
+### 教訓16:Service Worker キャッシュは Mac Chrome でも発生する
+
+Session 12 では iPhone でしか観測しなかった Service Worker キャッシュ問題が、Mac Chrome でも発生。push 直後の動作確認時は **Service Worker unregister + caches.delete + location.reload()** をワンセットで実行する習慣を身につけるべき。
+
+### 教訓17:ローカル Flask 起動には load_dotenv() が必要
+
+`app.py` / `utils.py` には `load_dotenv()` の呼び出しが無いため、ローカルで `python3 app.py` を実行しても `.env` が読まれない。Cloud Run では Secret Manager 経由で環境変数が注入されるため発覚していなかった。次回ローカル起動が必要になったら、`app.py` 冒頭に以下を追加(本番影響なし):
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+または、起動時に環境変数を export(一回限り):
+
+```bash
+set -a; source .env; set +a
+python3 app.py
+```
+
+## 次セッション(Session 14)以降の候補
+
+引き継ぎ書通り、明示の指示があるまで着手しない。
+
+| 候補 | 内容 | 工数 |
+|------|------|------|
+| **B-1: Step 4(利用者向けガイドページ)** | 「設定」タブに「📚 使い方ガイド」追加 | 1〜3時間 |
+| **B-2: 「本日の記録」タブ強化** | 未測定者表示 + カメラ・音声ボタン移植 | 2〜3時間 |
+| **B-3: 「測定」タブ廃止/統合** | ユーザー判断で見送り(現状維持) | — |
+| **dev → prod マージ** | 音声入力を含む dev の成果を prod に昇格 | 0.5〜1時間 |
+| **「記録を保存」ボタンの色変更** | 音声入力(緑)と保存(緑)の色被り解消 | 30分 |
+| **D: Step 3(Firebase Push)** | 完全自動通知 | 半日〜2日(明示依頼があるまで提案禁止) |

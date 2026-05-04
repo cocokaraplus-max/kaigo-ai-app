@@ -1292,17 +1292,19 @@ def vitals():
     patients = get_patients(supabase, f_code)
 
     # 各患者のweekdays・ampm取得
+    # ★型不一致対策: patient_id は str() で統一(BIGINT vs string でマッチしない問題対応)
     visit_days = {}
     ampm_data = {}
     try:
         res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm").eq("facility_code", f_code).execute()
         for r in (res.data or []):
-            visit_days[r["patient_id"]] = r.get("weekdays") or ""
-            ampm_data[r["patient_id"]] = r.get("ampm") or "BOTH"
+            visit_days[str(r["patient_id"])] = r.get("weekdays") or ""
+            ampm_data[str(r["patient_id"])] = r.get("ampm") or "BOTH"
         for p in patients:
-            p["weekdays"] = visit_days.get(p["id"], "")
-            p["ampm"] = ampm_data.get(p["id"], "BOTH")
-    except:
+            p["weekdays"] = visit_days.get(str(p["id"]), "")
+            p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
+    except Exception as e:
+        print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
             p["weekdays"] = ""
             p["ampm"] = "BOTH"
@@ -1312,18 +1314,29 @@ def vitals():
     try:
         res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("measured_date", today).execute()
         for r in (res.data or []):
-            vitals_data[r["patient_id"]] = r
-    except: pass
+            vitals_data[str(r["patient_id"])] = r
+    except Exception as e:
+        print(f"vitals data fetch error: {e}", flush=True)
+
+    # 今日除外されている利用者ID一覧を取得
+    excludes_today = []
+    try:
+        res = supabase.table("vital_daily_excludes").select("patient_id").eq("facility_code", f_code).eq("excluded_date", today).execute()
+        excludes_today = [str(r["patient_id"]) for r in (res.data or [])]
+    except Exception as e:
+        print(f"vitals excludes fetch error: {e}", flush=True)
 
     settings = get_vital_settings(supabase, f_code)
-    visit_days_map = {p["id"]: p["weekdays"] for p in patients}
-    ampm_map = {p["id"]: p["ampm"] for p in patients}
+    # ★patient_id は文字列キーで統一(JS側で String(p.id) と比較されるため)
+    visit_days_map = {str(p["id"]): p["weekdays"] for p in patients}
+    ampm_map = {str(p["id"]): p["ampm"] for p in patients}
 
     return render("vitals.html",
         patients=patients,
         visit_days=visit_days_map,
         ampm_data=ampm_map,
         vitals_data=vitals_data,
+        excludes_today=excludes_today,
         settings=settings,
         today=today,
     )
@@ -1430,6 +1443,65 @@ def api_read_vital_image():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/vital_voice_parse', methods=['POST'])
+@login_required
+def api_vital_voice_parse():
+    """音声を Gemini で解析して血圧・脈拍・体温・SpO2 を抽出（音声は永続保存しない）"""
+    try:
+        from utils import get_generative_model
+        audio = request.files.get('audio')
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or '').lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+
+        # MIMEタイプ判定（parse_assessment_file と同じパターン + iOS Safari の audio/mp4 対応）
+        ext_mime = {
+            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+            '.wav': 'audio/wav',  '.aac': 'audio/aac',
+            '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
+            '.mp4': 'audio/mp4',
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/webm')
+
+        prompt = """これは介護施設のスタッフがバイタル測定値を口頭で報告している音声です。
+発話内容を文字起こしし、数値を抽出してください。
+
+抽出ルール:
+- 「血圧上」「血圧の上」「収縮期」「上が」→ bp_high(整数)
+- 「血圧下」「血圧の下」「拡張期」「下が」→ bp_low(整数)
+- 「脈拍」「脈」「心拍」 → pulse(整数)
+- 「体温」「熱」 → temperature(小数点1桁、例:36.5)
+- 「SpO2」「酸素」「酸素飽和度」「サチュレーション」 → spo2(整数、80~100の範囲)
+- 数値以外の発話(様子・気づき)があれば memo に格納
+- 言及のない項目は null
+- 数値の言い間違い(例:「ひゃくにじゅう」=120)も整数化する
+
+JSON形式のみで返してください(説明文・コードブロック禁止):
+
+{
+  "transcript": "発話の全文書き起こし",
+  "bp_high": 整数 or null,
+  "bp_low": 整数 or null,
+  "pulse": 整数 or null,
+  "temperature": 小数 or null,
+  "spo2": 整数 or null,
+  "memo": "数値以外の発話、なければ空文字"
+}"""
+
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        import re as _re, json as _json
+        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        if m:
+            result = _json.loads(m.group())
+            return jsonify({"status": "success", **result})
+        return jsonify({"status": "error", "message": "音声を認識できませんでした。もう一度お試しください。"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/vitals_daily')
 @login_required
 def api_vitals_daily():
@@ -1495,6 +1567,194 @@ def api_remove_visit_day():
         print(f"remove_visit_day error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ========== バイタル編集API(2026-05-01:複数測定対応) ==========
+@app.route('/api/add_vital', methods=['POST'])
+@login_required
+def api_add_vital():
+    """新規測定をINSERT(同じpatient_id+date があっても新しいレコード作成)"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if not data.get("patient_id") or not data.get("measured_date"):
+            return jsonify({"status": "error", "message": "patient_idとmeasured_dateは必須です"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": str(data.get("patient_id")),
+            "user_name": data.get("user_name", ""),
+            "measured_date": data.get("measured_date"),
+            "measured_at": data.get("measured_at") or now_iso,
+            "bp_high": data.get("bp_high"),
+            "bp_low": data.get("bp_low"),
+            "pulse": data.get("pulse"),
+            "temperature": data.get("temperature"),
+            "spo2": data.get("spo2"),
+            "note": data.get("note", ""),
+            "recheck": data.get("recheck", False),
+            "staff_name": my_name,
+        }
+        res = supabase.table("vitals").insert(payload).execute()
+        rid = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        print(f"add_vital error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/update_vital', methods=['POST'])
+@login_required
+def api_update_vital():
+    """既存測定をid指定でUPDATE"""
+    try:
+        data = request.json
+        supabase = get_supabase()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        payload = {
+            "bp_high": data.get("bp_high"),
+            "bp_low": data.get("bp_low"),
+            "pulse": data.get("pulse"),
+            "temperature": data.get("temperature"),
+            "spo2": data.get("spo2"),
+            "note": data.get("note", ""),
+            "recheck": data.get("recheck", False),
+        }
+        if data.get("measured_at"):
+            payload["measured_at"] = data["measured_at"]
+        supabase.table("vitals").update(payload).eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"update_vital error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delete_vital', methods=['POST'])
+@login_required
+def api_delete_vital():
+    """測定をid指定でDELETE"""
+    try:
+        data = request.json
+        supabase = get_supabase()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        supabase.table("vitals").delete().eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"delete_vital error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ========== 再検査予約API(2026-05-02:アラーム機能 Step 2) ==========
+@app.route('/api/recheck_schedule', methods=['POST'])
+@login_required
+def api_recheck_schedule_post():
+    """再検査予約を登録"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+
+        if not data.get("patient_id") or not data.get("scheduled_at"):
+            return jsonify({"status": "error", "message": "patient_idとscheduled_atは必須です"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": str(data.get("patient_id")),
+            "user_name": data.get("user_name", ""),
+            "vital_id": data.get("vital_id"),
+            "scheduled_at": data.get("scheduled_at"),
+            "note": data.get("note", ""),
+            "is_completed": False,
+            "created_by": my_name,
+        }
+        res = supabase.table("vital_recheck_schedules").insert(payload).execute()
+        rid = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        print(f"recheck_schedule_post error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/recheck_schedule', methods=['GET'])
+@login_required
+def api_recheck_schedule_get():
+    """指定日の再検査予約一覧を取得(デフォルトは今日)"""
+    try:
+        f_code = session["f_code"]
+        date = request.args.get("date", datetime.now(tokyo_tz).strftime("%Y-%m-%d"))
+        only_pending = request.args.get("only_pending", "false").lower() == "true"
+        supabase = get_supabase()
+
+        # 当日の予約を時刻順で取得
+        start = f"{date}T00:00:00+09:00"
+        end = f"{date}T23:59:59+09:00"
+        q = supabase.table("vital_recheck_schedules").select("*").eq("facility_code", f_code) \
+            .gte("scheduled_at", start).lte("scheduled_at", end)
+        if only_pending:
+            q = q.eq("is_completed", False)
+        res = q.order("scheduled_at").execute()
+        return jsonify({"schedules": res.data or []})
+    except Exception as e:
+        print(f"recheck_schedule_get error: {e}", flush=True)
+        return jsonify({"schedules": [], "error": str(e)})
+
+@app.route('/api/recheck_schedule/complete', methods=['POST'])
+@login_required
+def api_recheck_schedule_complete():
+    """再検査予約を完了マーク"""
+    try:
+        data = request.json
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("vital_recheck_schedules").update({
+            "is_completed": True,
+            "completed_at": now_iso,
+        }).eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"recheck_schedule_complete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/recheck_schedule/snooze', methods=['POST'])
+@login_required
+def api_recheck_schedule_snooze():
+    """再検査予約をN分後にスヌーズ(scheduled_atを更新)"""
+    try:
+        data = request.json
+        rid = data.get("id")
+        minutes = int(data.get("minutes", 10))
+        if not rid:
+            return jsonify({"status": "error", "message": "idは必須です"}), 400
+        if minutes < 1 or minutes > 240:
+            return jsonify({"status": "error", "message": "minutesは1〜240の範囲で指定してください"}), 400
+        supabase = get_supabase()
+        new_at = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+        supabase.table("vital_recheck_schedules").update({
+            "scheduled_at": new_at,
+        }).eq("id", rid).execute()
+        return jsonify({"status": "success", "scheduled_at": new_at})
+    except Exception as e:
+        print(f"recheck_schedule_snooze error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/recheck_schedule/<int:rid>', methods=['DELETE'])
+@login_required
+def api_recheck_schedule_delete(rid):
+    """再検査予約を削除"""
+    try:
+        supabase = get_supabase()
+        supabase.table("vital_recheck_schedules").delete().eq("id", rid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"recheck_schedule_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/save_vital_settings', methods=['POST'])
 @login_required
 def api_save_vital_settings():
@@ -1541,6 +1801,129 @@ def api_link_temp_vital():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+# ==========================================
+# 利用者の本日除外・本日追加(2026-05-01 追加)
+# ==========================================
+
+@app.route('/api/vital_excludes', methods=['GET'])
+@login_required
+def api_vital_excludes_get():
+    """指定日に今日だけ除外されている利用者ID一覧を取得"""
+    try:
+        f_code = session["f_code"]
+        date_str = request.args.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        supabase = get_supabase()
+        res = supabase.table("vital_daily_excludes").select("patient_id").eq("facility_code", f_code).eq("excluded_date", date_str).execute()
+        ids = [str(r["patient_id"]) for r in (res.data or [])]
+        return jsonify({"status": "success", "patient_ids": ids, "date": date_str})
+    except Exception as e:
+        print(f"vital_excludes_get error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/vital_excludes', methods=['POST'])
+@login_required
+def api_vital_excludes_post():
+    """利用者を「今日だけ除外」する"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        patient_id = str(data["patient_id"])
+        date_str = data.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        supabase = get_supabase()
+        # UNIQUE(facility_code, patient_id, excluded_date) 制約があるので、既存チェック
+        existing = supabase.table("vital_daily_excludes").select("id").eq("facility_code", f_code).eq("patient_id", patient_id).eq("excluded_date", date_str).execute()
+        if existing.data:
+            return jsonify({"status": "success", "message": "already excluded"})
+        supabase.table("vital_daily_excludes").insert({
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "excluded_date": date_str,
+            "excluded_by": my_name,
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"vital_excludes_post error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/vital_excludes', methods=['DELETE'])
+@login_required
+def api_vital_excludes_delete():
+    """除外解除(リストに復活)"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        patient_id = str(data["patient_id"])
+        date_str = data.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        supabase = get_supabase()
+        supabase.table("vital_daily_excludes").delete().eq("facility_code", f_code).eq("patient_id", patient_id).eq("excluded_date", date_str).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"vital_excludes_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/add_today_patient', methods=['POST'])
+@login_required
+def api_add_today_patient():
+    """利用者を本日の曜日に追加する(既存利用者の場合はvisit_daysに今日の曜日を追記)"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        date_str = data.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        # 曜日番号(0=日, 1=月, ..., 6=土)を計算
+        target_date = datetime.strptime(date_str, "%Y-%m-%d")
+        weekday_num = str((target_date.weekday() + 1) % 7)  # Python: 月=0,...,日=6 → JS: 日=0,...,土=6 に変換
+
+        patient_id = data.get("patient_id")
+        if patient_id:
+            patient_id = str(patient_id)
+            # 既存利用者: visit_daysに該当曜日を追記
+            existing = supabase.table("patient_visit_days").select("id,weekdays,user_name").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
+            if existing.data:
+                old_days = existing.data[0].get("weekdays") or ""
+                if weekday_num not in old_days:
+                    new_days = old_days + weekday_num
+                    supabase.table("patient_visit_days").update({"weekdays": new_days}).eq("id", existing.data[0]["id"]).execute()
+            else:
+                # patient_visit_days行が無い場合は新規作成(user_name必要)
+                user_name = data.get("user_name", "")
+                if not user_name:
+                    p_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("id", patient_id).execute()
+                    if p_res.data:
+                        user_name = p_res.data[0].get("user_name", "")
+                supabase.table("patient_visit_days").insert({
+                    "facility_code": f_code,
+                    "patient_id": patient_id,
+                    "user_name": user_name,
+                    "weekdays": weekday_num,
+                }).execute()
+            # 除外フラグが残っていたら解除(再追加=表示復活)
+            supabase.table("vital_daily_excludes").delete().eq("facility_code", f_code).eq("patient_id", patient_id).eq("excluded_date", date_str).execute()
+            return jsonify({"status": "success", "patient_id": patient_id})
+        else:
+            # 新規利用者作成
+            user_name = (data.get("user_name") or "").strip()
+            if not user_name:
+                return jsonify({"status": "error", "message": "user_name required"}), 400
+            new_p = supabase.table("patients").insert({
+                "facility_code": f_code,
+                "user_name": user_name,
+                "user_kana": data.get("user_kana", ""),
+                "chart_number": data.get("chart_number", "臨時"),
+            }).execute()
+            new_id = str(new_p.data[0]["id"])
+            supabase.table("patient_visit_days").insert({
+                "facility_code": f_code,
+                "patient_id": new_id,
+                "user_name": user_name,
+                "weekdays": weekday_num,
+            }).execute()
+            return jsonify({"status": "success", "patient_id": new_id, "user_name": user_name, "is_new": True})
+    except Exception as e:
+        print(f"add_today_patient error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
 # カレンダー

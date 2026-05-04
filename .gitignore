@@ -23,3 +23,8 @@ setenv.sh
 
 # OS
 Thumbs.db
+
+# Backup files (never tracked)
+*.bak
+*.bak.*
+*.broken.*
