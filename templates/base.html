@@ -127,6 +127,16 @@
     font-size: 0.9rem; font-weight: 700;
 }
 .nav-edit-bar.show { display: flex; }
+.nav-edit-bar-actions {
+    display: flex; gap: 8px; align-items: center;
+}
+.nav-edit-bar-reset {
+    background: rgba(255, 255, 255, 0.18); color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 20px; padding: 6px 14px;
+    font-weight: 700; font-size: 0.82rem; cursor: pointer;
+}
+.nav-edit-bar-reset:active { background: rgba(255, 255, 255, 0.35); }
 .nav-edit-bar-done {
     background: #fff; color: #1a73e8; border: none;
     border-radius: 20px; padding: 6px 20px;
@@ -401,7 +411,10 @@ body.nav-editing { touch-action: none !important; -ms-touch-action: none !import
     <!-- ナビ編集完了バー -->
     <div class="nav-edit-bar" id="nav-edit-bar">
         <span>✏️ ドラッグでメニューを並び替え</span>
-        <button class="nav-edit-bar-done" id="nav-edit-done-btn">✅ 完了</button>
+        <div class="nav-edit-bar-actions">
+            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">🔄 初期状態</button>
+            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">✅ 完了</button>
+        </div>
     </div>
     <!-- ナビ編集完了バー -->
     <!-- 設定モーダル -->
@@ -1292,6 +1305,17 @@ window.stopNavEditMode = function() {
     showToastMsg('✅ メニュー並び順を保存しました');
 };
 
+// ★ 並び順を初期状態に戻す(編集バーの「🔄 初期状態」ボタン)
+window.resetNavOrder = function() {
+    var ok = window.confirm('初期状態に戻します。よろしいですか?');
+    if (!ok) return;
+    try {
+        localStorage.removeItem(NAV_ORDER_KEY);
+    } catch (e) {}
+    // ナビ並びを反映するためページをリロード(編集モードも自動解除)
+    location.reload();
+};
+
 function navEditClickBlocker(e) {
     var nav = document.querySelector('.bottom-nav');
     if (!nav || !nav.classList.contains('edit-mode')) return;
@@ -1634,6 +1658,12 @@ document.addEventListener('click', function(e) {
     }
     if (e.target.closest('#nav-edit-done-btn')) {
         if (typeof window.stopNavEditMode === 'function') window.stopNavEditMode();
+        return;
+    }
+    if (e.target.closest('#nav-edit-reset-btn')) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (typeof window.resetNavOrder === 'function') window.resetNavOrder();
         return;
     }
     if (e.target.closest('.sound-opt')) {
