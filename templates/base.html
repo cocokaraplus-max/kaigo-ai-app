@@ -163,30 +163,19 @@
     -ms-touch-action: pan-x !important;
 }
 body.nav-editing {
-    /* 教訓: body に touch-action: none を当てると子の pan-x も殺されてしまい、
+    /* 教訓20: body に touch-action: none を当てると子の pan-x も殺されてしまい、
        ナビを横スワイプで動かせなくなる。pan-x にして横スクロールだけ許可する。
        (縦スクロール・ピンチズームは禁止のまま、ナビの横スクロールだけ可能) */
     touch-action: pan-x !important;
     -ms-touch-action: pan-x !important;
     overscroll-behavior: contain;
 }
-/* 編集中: ナビを画面中央寄り(60vh)に持ち上げて操作しやすくする */
-/* 教訓19: transform は Material Symbols を壊すので、left/right と margin: auto で中央寄せ */
-body.nav-editing .bottom-nav.edit-mode {
-    position: fixed !important;
-    top: 60vh !important;
-    bottom: auto !important;
-    left: 0 !important;
-    right: 0 !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    width: 100% !important;
-    max-width: 480px !important;
-    padding-bottom: 0 !important;
-    border-top: 1px solid rgba(26, 115, 232, 0.25);
-    border-bottom: 1px solid rgba(26, 115, 232, 0.25);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 8500;
+/* 編集中のナビ位置は通常時と同じ(本来のフッター位置)で操作させる:
+   - 親指が一番届きやすい位置を維持
+   - 上部バーで「並び替え中」の意図を伝える */
+.bottom-nav.edit-mode {
+    border-top: 2px solid rgba(26, 115, 232, 0.4);
+    box-shadow: 0 -4px 12px rgba(26, 115, 232, 0.15);
 }
 .bottom-nav.edit-mode .bottom-nav-item.draggable-item {
     /* 編集中の項目: 長押しでドラッグ開始、長押し前は横スクロール許可 */
