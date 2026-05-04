@@ -142,42 +142,38 @@
 }
 body.nav-editing { touch-action: none !important; -ms-touch-action: none !important; overscroll-behavior: contain; }
 .bottom-nav.edit-mode .bottom-nav-item.draggable-item {
-    animation: navWiggle 0.4s ease-in-out infinite alternate;
-    border: 1px dashed #1a73e8;
+    /* 編集中の項目: transform/animation を使わずに「移動可能」を表現 */
+    border: 2px dashed #1a73e8 !important;
     border-radius: 6px;
-    background: #f0f7ff;
+    background: #f0f7ff !important;
     margin: 2px;
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
     cursor: grab;
+    box-shadow: 0 0 0 1px rgba(26, 115, 232, 0.25);
 }
 .bottom-nav.edit-mode .bottom-nav-item.fixed-item {
-    opacity: 0.45;
+    opacity: 0.4;
     pointer-events: none;
 }
 .bottom-nav.edit-mode .bottom-nav-item.dragging {
-    animation: none;
-    opacity: 0.85;
+    /* ドラッグ中: 青背景 + 白文字。transform/scale は使わない(指の追従がズレるため) */
     background: #1a73e8 !important;
     color: #fff !important;
+    border-color: #1a73e8 !important;
     z-index: 10;
-    transform: scale(1.08);
-    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+    box-shadow: 0 6px 16px rgba(26, 115, 232, 0.5);
     cursor: grabbing;
 }
 .bottom-nav.edit-mode .bottom-nav-item.dragging .material-symbols-outlined {
     color: #fff !important;
 }
 .bottom-nav.edit-mode .bottom-nav-item.drop-target-before {
-    border-left: 3px solid #ea4335;
+    box-shadow: -3px 0 0 0 #ea4335 inset, 0 0 0 1px rgba(26, 115, 232, 0.25);
 }
 .bottom-nav.edit-mode .bottom-nav-item.drop-target-after {
-    border-right: 3px solid #ea4335;
-}
-@keyframes navWiggle {
-    0%   { transform: rotate(-1.2deg); }
-    100% { transform: rotate(1.2deg); }
+    box-shadow: 3px 0 0 0 #ea4335 inset, 0 0 0 1px rgba(26, 115, 232, 0.25);
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
@@ -1370,9 +1366,9 @@ function onNavPointerMove(e) {
             var c = candidates[i];
             if (c === state.el) continue;
             var rr = c.getBoundingClientRect();
-            // 横方向のみ判定(縦方向は nav 内ならOK扱い)
+            // 横方向のみ判定(縦方向は ±5px のみ余裕)
             if (e.clientX >= rr.left && e.clientX <= rr.right &&
-                e.clientY >= rr.top - 30 && e.clientY <= rr.bottom + 30) {
+                e.clientY >= rr.top - 5 && e.clientY <= rr.bottom + 5) {
                 hitItem = c;
                 break;
             }
