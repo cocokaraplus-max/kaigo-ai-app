@@ -826,7 +826,7 @@ def api_user_month_records():
                 if r["staff_name"] == "AI統合記録":
                     records_by_date[d]["ai_record"] = r
                 else:
-                    r["time"] = parse_jst(r["created_at"]).strftime("%H:%M")
+                    r["time"] = parse_jst(r["created_at"])
                     r["can_edit"] = (str(r["staff_name"]) == str(my_name)) or is_admin
                     records_by_date[d]["normal_records"].append(r)
     except Exception as e:
