@@ -1759,10 +1759,14 @@ def api_recheck_schedule_delete(rid):
 @login_required
 def api_save_vital_settings():
     try:
-        data = request.json
+        data = request.json or {}
         f_code = session["f_code"]
         supabase = get_supabase()
-        payload = {**data, "facility_code": f_code}
+        # Supabase テーブルに存在しないキーが含まれると 500 になるので
+        # DEFAULT_VITAL_SETTINGS で定義されたキーだけに絞り込む
+        allowed = set(DEFAULT_VITAL_SETTINGS.keys())
+        clean = {k: v for k, v in data.items() if k in allowed}
+        payload = {**clean, "facility_code": f_code}
         existing = supabase.table("vital_alert_settings").select("id").eq("facility_code", f_code).execute()
         if existing.data:
             supabase.table("vital_alert_settings").update(payload).eq("facility_code", f_code).execute()
@@ -1770,7 +1774,10 @@ def api_save_vital_settings():
             supabase.table("vital_alert_settings").insert(payload).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        import traceback
+        traceback.print_exc()
+        print(f"[save_vital_settings] error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/check_temp_vital')
 @login_required

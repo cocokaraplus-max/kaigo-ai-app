@@ -2951,9 +2951,14 @@ window.saveSettings = async function() {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
     });
-    if ((await res.json()).status === 'success') {
+    let result = null;
+    try { result = await res.json(); } catch(e) { result = null; }
+    if (res.ok && result && result.status === 'success') {
         Object.assign(SETTINGS, payload);
         alert('設定を保存しました');
+    } else {
+        const msg = (result && result.message) ? result.message : ('HTTP ' + res.status);
+        alert('保存に失敗しました: ' + msg);
     }
 };
 
