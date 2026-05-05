@@ -780,6 +780,67 @@ def daily_view():
         patients=patients_list
     )
 
+@app.route('/api/user_month_records')
+@login_required
+def api_user_month_records():
+    """Session 19: 指定利用者の月内ケース記録を返す"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    is_admin = session.get("admin_authenticated", False)
+    supabase = get_supabase()
+    try:
+        user_id = int(request.args.get("user_id", 0))
+        year = int(request.args.get("year", 0))
+        month = int(request.args.get("month", 0))
+    except:
+        return jsonify({"status": "error", "message": "invalid params"}), 400
+    if not (user_id and year and month):
+        return jsonify({"status": "error", "message": "missing params"}), 400
+    # patient_id から user_name を引く
+    try:
+        p_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("id", user_id).execute()
+        if not p_res.data:
+            return jsonify({"status": "error", "message": "patient not found"}), 404
+        user_name = p_res.data[0]["user_name"]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    # 月の開始/終了を計算
+    month_start = tokyo_tz.localize(datetime(year, month, 1))
+    if month == 12:
+        next_month = tokyo_tz.localize(datetime(year + 1, 1, 1))
+    else:
+        next_month = tokyo_tz.localize(datetime(year, month + 1, 1))
+    # records から user_name で絞り込み
+    records_by_date = {}
+    record_dates_set = set()
+    try:
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq("user_name", user_name).gte(
+            "created_at", month_start.isoformat()
+        ).lt("created_at", next_month.isoformat()).order("created_at").execute()
+        if res.data:
+            for r in res.data:
+                d = parse_jst_date(r["created_at"]).strftime("%Y-%m-%d")
+                record_dates_set.add(d)
+                if d not in records_by_date:
+                    records_by_date[d] = {"ai_record": None, "normal_records": []}
+                if r["staff_name"] == "AI統合記録":
+                    records_by_date[d]["ai_record"] = r
+                else:
+                    r["time"] = parse_jst(r["created_at"]).strftime("%H:%M")
+                    r["can_edit"] = (str(r["staff_name"]) == str(my_name)) or is_admin
+                    records_by_date[d]["normal_records"].append(r)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    # 日付昇順で並べ替え
+    sorted_dates = sorted(records_by_date.keys())
+    sorted_records = {d: records_by_date[d] for d in sorted_dates}
+    return jsonify({
+        "status": "success",
+        "user_name": user_name,
+        "records_by_date": sorted_records,
+        "record_dates": list(record_dates_set),
+    })
+
 @app.route('/birthday')
 @login_required
 def birthday():
