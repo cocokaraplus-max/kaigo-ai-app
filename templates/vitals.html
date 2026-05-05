@@ -89,7 +89,11 @@
 .vital-summary span.ng { color:#ea4335; font-weight:700; }
 
 .patient-vital-body { padding:14px 16px; display:none; }
-.patient-vital-body.open { display:block; }
+.patient-vital-body.open {
+    display:block;
+    /* ナビ+FAB の高さ分のスペーサー。スクロールしても保存ボタンがナビ下に隠れないように */
+    padding-bottom: 130px;
+}
 
 /* ===== バイタル入力エリア ===== */
 .vital-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
@@ -1345,6 +1349,16 @@ window.toggleVitalCard = function(pid) {
     const arrow = document.getElementById('varrow-'+pid);
     body.classList.toggle('open');
     arrow.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+    // 展開時、利用者カードが画面上部に来るように自動スクロール(保存ボタンまで見やすくする)
+    if (body.classList.contains('open')) {
+        const card = document.getElementById('vcard-'+pid);
+        if (card) {
+            // 次のレイアウトサイクルで body がレンダリングされるのを待ってスクロール
+            setTimeout(() => {
+                card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
+        }
+    }
 };
 
 // ========== バイタル保存 ==========
