@@ -564,9 +564,21 @@ document.addEventListener('click', e => {
 window.onPatientSelect = function() {
     const sel = document.getElementById('patient-select');
     const opt = sel.options[sel.selectedIndex];
-    if (!opt.value) { document.getElementById('goal-section').style.display = 'none'; return; }
+    const hint = document.getElementById('patient-hint');
+    const inputSec = document.getElementById('input-section');
+    const genBtn = document.getElementById('generate-btn');
+    if (!opt.value) {
+        document.getElementById('goal-section').style.display = 'none';
+        if (hint) hint.style.display = 'flex';
+        if (inputSec) inputSec.style.display = 'none';
+        if (genBtn) genBtn.style.display = 'none';
+        return;
+    }
     document.getElementById('goal-section').style.display = 'block';
     document.getElementById('training-goal').value = opt.dataset.goal || '';
+    if (hint) hint.style.display = 'none';
+    if (inputSec) inputSec.style.display = '';
+    if (genBtn) genBtn.style.display = '';
 }
 
 const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
