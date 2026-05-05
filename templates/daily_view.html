@@ -129,13 +129,24 @@
 .cal-day.has-record::after {
     content: '';
     position: absolute;
-    bottom: 3px;
+    bottom: 4px;
     left: 50%;
     transform: translateX(-50%);
-    width: 4px;
-    height: 4px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #1a73e8;
+}
+.cal-day.has-user-record::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e53935;
 }
 .cal-day.selected::after { background: #fff; }
 
@@ -225,6 +236,86 @@
     margin-bottom: 10px;
 }
 .section-subtitle .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
+/* Session 19: DAY/利用者 タブ + 検索ボックス */
+.dv-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.dv-tab {
+    flex: 1;
+    padding: 8px;
+    border-radius: 10px;
+    border: 1.5px solid #e0e0e0;
+    background: #fff;
+    color: #5f6368;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.dv-tab.active {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+}
+.dv-tab:active { opacity: 0.8; }
+
+.dv-user-search {
+    background: #f8f9fa;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.dv-user-search input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+    background: #fff;
+}
+.dv-user-search input:focus {
+    outline: none;
+    border-color: #1a73e8;
+}
+.dv-search-results {
+    margin-top: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    display: none;
+}
+.dv-search-result-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.dv-search-result-item:last-child { border-bottom: none; }
+.dv-search-result-item:active { background: #eff6ff; }
+.dv-search-result-item .kana { color: #80868b; font-size: 0.78rem; margin-left: 6px; }
+.dv-search-result-item .chart { color: #1a73e8; font-size: 0.78rem; margin-left: 6px; }
+.dv-search-empty {
+    padding: 14px;
+    text-align: center;
+    color: #80868b;
+    font-size: 0.85rem;
+}
+.dv-selected-user {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #e8f0fe;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #1a73e8;
+    display: none;
+}
 </style>
 {% endblock %}
 
@@ -239,6 +330,17 @@
     ケース記録閲覧
 </div>
 
+<!-- Session 19: DAY/利用者 タブ -->
+<div class="dv-tabs">
+    <button id="dv-tab-day" class="dv-tab active" onclick="setDvMode('day')">📅 DAY</button>
+    <button id="dv-tab-user" class="dv-tab" onclick="setDvMode('user')">👤 利用者</button>
+</div>
+<!-- 利用者検索(利用者タブ時のみ表示) -->
+<div id="dv-user-search" class="dv-user-search" style="display:none;">
+    <input type="text" id="dv-search-input" placeholder="名前・ふりがな・カルテNoで検索" oninput="searchPatients(this.value)" onfocus="searchPatients(this.value)" autocomplete="off">
+    <div id="dv-search-results" class="dv-search-results"></div>
+    <div id="dv-selected-user" class="dv-selected-user"></div>
+</div>
 <div class="form-group">
     <div class="calendar-wrapper">
         <div class="calendar-header">
@@ -372,6 +474,80 @@
 
 {% block extra_script %}
 <script>
+// Session 19: DAY/利用者 タブ切替と利用者検索
+const PATIENTS = {{ patients | tojson }};
+let dvMode = 'day';
+let dvSelectedUser = null;
+
+// localStorage から復元(月跨ぎでの利用者選択保持)
+try {
+    const saved = localStorage.getItem('dv_selected_user');
+    if (saved) dvSelectedUser = JSON.parse(saved);
+} catch (e) {}
+
+window.setDvMode = function(mode) {
+    dvMode = mode;
+    document.getElementById('dv-tab-day').classList.toggle('active', mode === 'day');
+    document.getElementById('dv-tab-user').classList.toggle('active', mode === 'user');
+    document.getElementById('dv-user-search').style.display = (mode === 'user') ? 'block' : 'none';
+    if (mode === 'user' && dvSelectedUser) {
+        showSelectedUser();
+    }
+    // カレンダードットの色を切り替え(再描画は後で実装)
+    if (typeof renderCalendar === 'function') renderCalendar();
+};
+
+function showSelectedUser() {
+    const el = document.getElementById('dv-selected-user');
+    if (!el || !dvSelectedUser) return;
+    el.textContent = '選択中: ' + dvSelectedUser.user_name + ' 様';
+    el.style.display = 'block';
+}
+
+window.searchPatients = function(q) {
+    const resultsEl = document.getElementById('dv-search-results');
+    if (!q || !q.trim()) {
+        resultsEl.style.display = 'none';
+        resultsEl.innerHTML = '';
+        return;
+    }
+    const query = q.trim().toLowerCase();
+    const hits = PATIENTS.filter(p => {
+        const name = (p.user_name || '').toLowerCase();
+        const kana = (p.user_kana || '').toLowerCase();
+        const chart = (p.chart_number || '').toLowerCase();
+        return name.includes(query) || kana.includes(query) || chart.includes(query);
+    }).slice(0, 20);
+    if (!hits.length) {
+        resultsEl.innerHTML = '<div class="dv-search-empty">該当する利用者がいません</div>';
+        resultsEl.style.display = 'block';
+        return;
+    }
+    resultsEl.innerHTML = hits.map(p => {
+        const safeName = (p.user_name || '').replace(/'/g, "\\'");
+        const safeKana = (p.user_kana || '').replace(/'/g, "\\'");
+        return '<div class="dv-search-result-item" onclick="selectPatient(' + p.id + ', \'' + safeName + '\', \'' + safeKana + '\')">'
+            + '<strong>' + p.user_name + '</strong>'
+            + (p.user_kana ? '<span class="kana">' + p.user_kana + '</span>' : '')
+            + (p.chart_number ? '<span class="chart">No.' + p.chart_number + '</span>' : '')
+            + '</div>';
+    }).join('');
+    resultsEl.style.display = 'block';
+};
+
+window.selectPatient = function(id, user_name, user_kana) {
+    dvSelectedUser = { id: id, user_name: user_name, user_kana: user_kana };
+    try { localStorage.setItem('dv_selected_user', JSON.stringify(dvSelectedUser)); } catch (e) {}
+    document.getElementById('dv-search-input').value = '';
+    document.getElementById('dv-search-results').style.display = 'none';
+    document.getElementById('dv-search-results').innerHTML = '';
+    showSelectedUser();
+    // 利用者の月内記録を取得して表示(ステップDで実装)
+    if (typeof loadUserMonthRecords === 'function') loadUserMonthRecords();
+    if (typeof renderCalendar === 'function') renderCalendar();
+};
+
+// 起動時、もし利用者モードが選ばれていればUIを復元(今は使わないが将来用)
 (function(){
 const selectedDate = "{{ selected_date }}";
 const targetUser = "{{ target_user }}";

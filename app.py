@@ -756,13 +756,28 @@ def daily_view():
     except Exception as e:
         pass
     records = dict(sorted(records.items(), key=lambda x: user_kana_map.get(x[0], x[0])))
+    # Session 19: 利用者検索用 PATIENTS リスト取得
+    patients_list = []
+    try:
+        pl_res = supabase.table("patients").select("id, user_name, user_kana, chart_number").eq("facility_code", f_code).order("user_kana").execute()
+        if pl_res.data:
+            for p in pl_res.data:
+                patients_list.append({
+                    "id": p["id"],
+                    "user_name": p["user_name"],
+                    "user_kana": p.get("user_kana") or "",
+                    "chart_number": str(p.get("chart_number") or ""),
+                })
+    except Exception as e:
+        pass
     return render("daily_view.html",
         selected_date=selected_date_str,
         date_label=date_label,
         target_user=target_user,
         records=records,
         is_admin=is_admin,
-        record_dates=record_dates
+        record_dates=record_dates,
+        patients=patients_list
     )
 
 @app.route('/birthday')
