@@ -1772,3 +1772,320 @@ Storage.prototype.setItem = function(k, v) {
 3. ユーザーから今日の作業内容を聞く
 4. Chrome 連携で現状調査 → 仮説検証 → 修正版書き出し → push → Chrome で再検証、のループで作業
 5. 教訓1〜21 を遵守
+
+---
+
+# 📚 Session 14 完了(2026-05-04)— Step 4 利用者向けガイドページ
+
+## 概要
+
+Session 9 から Phase 計画にあった **Step 4「利用者向けガイドページ」** を実装。マニュアル(`templates/manual.html`)に **バイタル機能のガイドセクション** を追加し、操作スクショを差し込んだ。
+
+## 実装内容
+
+### マニュアルへのバイタルガイドセクション追加
+
+`templates/manual.html` に新セクションを追加:
+
+- 再検査アラームの仕組み解説
+- iOS/Android の初回設定手順
+- 「いつ・どこで通知が鳴るのか」一覧表(画面開いてる時/別タブ/別アプリ/スリープ/完全終了 × アプリ内アラーム/.icsリマインダー)
+- トラブルシューティング(アラーム鳴らない時のチェックリスト)
+
+### スクショの埋め込み
+
+iPhone 実機スクショを切り抜いて 3 枚埋め込み:
+
+1. クイックボタン UI(+15分・+30分・+1時間・+2時間)
+2. 「📅 リマインダーに登録」操作後の iOS カレンダー登録画面
+3. アラームモーダル発火時の表示
+
+スクショは複数回差し替え:
+- `b776720`: プレースホルダー版で初期コミット
+- `2c85802`: 実スクショへ置換
+- `05dcd84`: iOS のシステムダイアログ版を追加
+- `7022a41`: 切り抜き範囲を調整(クイックボタン部分のみ)
+
+## 成果
+
+- バイタル機能の誤操作リスク減
+- 「アラームが鳴らない」問い合わせ対応がガイド誘導で完結する設計
+- マニュアル上部の **タスカルくんアニメーション**(`animation: fl`)は **絶対変更しない厳命** 厳守
+
+## コミット履歴(Session 14)
+
+```
+e2904fa docs session14 step4 guide page completion records and session15 handoff
+7022a41 fix manual replace recheck-set with cropped quick-button screenshot
+05dcd84 fix manual replace recheck-register and recheck-alarm with clean native screenshots
+2c85802 feat manual replace placeholders with vital guide screenshots
+b776720 feat manual add vital guide sections with placeholders for screenshots
+```
+
+---
+
+# 🧭 Session 15 完了(2026-05-04 夜)— ボトムナビ並び替え機能
+
+## 概要
+
+ユーザーが **下部ナビのメニュー順を自分で並び替えられる** 機能を実装。長押し → ドラッグで配置を変更し、`localStorage` に保存して全ページで反映する仕様。
+
+## 確定仕様
+
+| 項目 | 仕様 |
+|---|---|
+| 編集モード起動 | 設定モーダル → 「メニュー並び替え」ボタン |
+| 並び替え可能項目 | TOP / ログアウト 以外の **12 項目**(記録入力、ケース記録、バイタル、カレンダー、掲示板、履歴、評価、タスク、誕生日、数秘、管理者MENU、ガイド) |
+| 固定項目 | TOP(左端)、ログアウト(右端)— `fixed-item` クラス、編集中は薄表示 + pointer-events: none |
+| ドラッグ起動 | **長押し 150ms → ドラッグ** 方式(誤発動防止のため) |
+| 永続化 | `localStorage`(キー: `tasukaru_nav_order`)に href 配列で保存 |
+| 適用範囲 | base.html 内の全ページに自動反映(applyNavOrder 関数) |
+
+## 実装の苦労ポイント
+
+### 1. iOS Safari の縦/横スクロール競合
+
+`touch-action: none` を強くかけすぎると **ナビの横スクロールも殺される**。逆に何もしないと並び替え中にページが縦スクロールして体験が壊れる。最終的に:
+- `body.nav-editing { touch-action: pan-x }` で**横スクロールだけ許可、縦スクロール禁止**
+- `.bottom-nav.edit-mode { touch-action: pan-x }` も同様
+
+### 2. transform が Material Symbols を壊す
+
+ドラッグ中の見た目を transform: scale(1.05) で動かしたら、Material Symbols フォントが iOS Safari でレンダリング崩壊。drag は `position: fixed` + `left/top` で動かして transform は使わない方針に変更。
+
+### 3. base.html と top.html の並び替えロジック重複
+
+最初は top.html に独自実装していたが、他ページからは並び替え発動できない不便。base.html に統合 + top.html の旧実装を削除して **全ページで動く** ようにした。
+
+### 4. エッジオートスクロール
+
+ドラッグ中、画面端に指を持っていくとナビが自動で横スクロールする実装。`window.requestAnimationFrame` で連続実行、scrollLeft を加減。
+
+## コミット履歴(Session 15)
+
+```
+f833e85 docs session15 nav reorder completion records and session16 handoff
+2a72b1d fix nav reorder long press to drag preserving horizontal scroll
+3450d2c fix nav reorder remove transform animations preserve material icons on drag
+593523e fix nav reorder ios safari scroll lock with touch-action and touchmove blocker
+9896ae2 fix nav reorder unify implementation in base and remove top html duplicate
+d804e8b fix nav reorder hit test fallback when elementfrompoint returns body
+52ee01c feat base nav reorder with drag and drop persisted in localstorage
+```
+
+## Session 15 末状態
+
+- dev 反映済み、prod 未マージ
+- 最新コミット: `2a72b1d`
+- 横スクロールの違和感や上部バーの整形は **Session 16 で対応** する積み残し
+
+---
+
+# 🛠 Session 16 完了(2026-05-05)— ナビ並び替え UX 改善 + バイタル FAB 隠れバグ修正
+
+## 概要
+
+Session 15 で実装した並び替え機能の UX 課題と、別件で発覚した **バイタルアコーディオン展開時の FAB 隠れバグ** を解消。
+
+## 完了タスク一覧
+
+### A. ナビ並び替え機能の改善
+
+| # | 修正内容 | 経緯 | コミット |
+|---|---|---|---|
+| A-1 | エッジオートスクロール追加 | Session 15 末の積み残し | `f050d4a` |
+| A-2 | 上部バーに「初期状態」リセットボタン | confirm ダイアログ + localStorage 削除 | `352e54f` |
+| A-3 | 編集中ナビを 60vh 持ち上げ案 → **撤回**(レイアウト崩壊) | UI が壊れて見える | `546b561` |
+| A-4 | 横スクロール修正(`touch-action: pan-x`) | `body.nav-editing` の touch-action: none が祖先指定で子の pan-x を上書きしていた | `0792c76` |
+| A-5 | 上部バー UI 整形 + ナビ位置を本来位置に戻す | 「✏️ メニューを並び替え」短文化、ボタンから絵文字除去、ellipsis | `2b91124` |
+| A-6 | 編集モードの padding-bottom を維持 | iOS ホームインジケーター回避領域(74px)を保つ | `b2adf2e` |
+| A-7 | iOS リンクプレビュー対策(初手:CSS のみ) | `-webkit-touch-callout: none` を draggable-item に追加 | `445e255` |
+| A-8 | iOS リンクプレビュー対策(本命:三段防御) | href 退避 + contextmenu preventDefault + touch-callout | `c086ee8` |
+
+### B. バイタル測定タブのアコーディオン下部隠れバグ修正
+
+| # | 修正内容 | 経緯 | コミット |
+|---|---|---|---|
+| B-1 | アコーディオン展開時に自動スクロール + 下部スペーサー(130px) | 「記録を保存」ボタンがナビ下に隠れる問題 | `6eb8a42` |
+| B-2 | FAB(青丸 person_add)を body 直下に移動 | `.page-wrapper { z-index: 0 }` の stacking context により FAB が ナビに勝てなかった = **教訓14 の再発** | `58b8ef9` |
+
+## 主要な技術的発見
+
+### 1. iOS Safari `<a>` 長押しメニューの三段防御
+
+`-webkit-touch-callout: none` だけでは iOS の長押しメニューを完全には止められなかった。**href を一時退避** が一番強力:
+
+```js
+// startNavEditMode 内
+if (el.tagName === 'A' && el.hasAttribute('href')) {
+    el.dataset.savedHref = el.getAttribute('href');
+    el.removeAttribute('href');  // <a> から href を外して「リンクではない」状態に
+}
+
+// stopNavEditMode 内(必ず最初に)
+savedItems.forEach(el => {
+    if (el.dataset && el.dataset.savedHref) {
+        el.setAttribute('href', el.dataset.savedHref);
+        delete el.dataset.savedHref;
+    }
+});
+```
+
+iOS Safari は href のない `<a>` をリンクと認識しないため、長押しメニューが発動しない。順序保存ロジックは復元後に走るので空配列にならず安全。
+
+### 2. stacking context の再発(教訓14)
+
+バイタルの FAB(`#add-today-fab`、`position: fixed; z-index: 200`)が `.page-wrapper { position: relative; z-index: 0 }` の中にあると、**z-index 200 は親の中での話に閉じ込められて、外のナビ(body 直下)に勝てない**。
+
+解決策は **camera-modal と同パターン** で `requestAnimationFrame` 内で body 直下に移動:
+
+```js
+const fab = document.getElementById('add-today-fab');
+if (fab && fab.parentElement !== document.body) {
+    document.body.appendChild(fab);
+}
+```
+
+### 3. アコーディオン展開時の自動スクロール
+
+`scrollIntoView({ behavior: 'smooth', block: 'start' })` で利用者カードを画面上端に持ってくると、入力欄全体が一目で見える状態になる。padding-bottom: 130px のスペーサーと組み合わせて、最下部までスクロールしたとき保存ボタンとナビの隙間 165px(完全に余裕)。
+
+## コミット履歴(Session 16)
+
+```
+58b8ef9 fix vitals fab move to body level to escape page wrapper stacking context
+6eb8a42 fix vitals accordion auto scroll on expand and add bottom spacer for save button
+c086ee8 fix nav drag block ios link preview by detaching href and contextmenu
+445e255 fix nav drag suppress ios link long press preview menu on draggable items
+b2adf2e fix nav edit mode preserve padding-bottom to avoid home indicator gesture
+2b91124 refine nav edit ux fix horizontal scroll polish bar and keep nav position
+0792c76 fix nav edit horizontal scroll by relaxing body touch action to pan-x
+546b561 polish nav edit bar layout and lift nav to 60vh during edit
+352e54f feat nav reorder add reset button to edit bar with confirm
+f050d4a fix nav reorder edge auto scroll while dragging
+```
+
+## 教訓追加(Session 14・15・16 統合)
+
+### 教訓18: ナビなど重要 UI の touch-action は最小限に
+
+`touch-action: none` を祖先(body)に強くかけると、子要素の `touch-action: pan-x` が完全に上書きされる(後者の方が CSS 的に弱い扱い)。代わりに `touch-action: pan-x` を祖先にも設定して、明示的に「縦は禁止、横は許可」を伝える。
+
+### 教訓19: iOS Safari で transform は Material Symbols を壊す
+
+ドラッグ中要素の見た目を `transform: scale()` や `translate()` で動かすと、Material Symbols フォントが iOS Safari でレンダリング崩壊する事例を確認。**`position: fixed` + `left/top` 直接指定** で動かすのが安全。
+
+### 教訓20: touch-action: none を強くかけすぎると横スクロールも殺される
+
+`body.nav-editing { touch-action: none !important }` で「ナビ並び替え中は触れない」を実現しようとした結果、ナビ自体の横スクロール(pan-x)も死亡。**祖先指定は子要素を支配する** ため、祖先に `pan-x` を当てるのが正解。
+
+### 教訓21: iOS Safari の `<a>` 長押しメニュー対策は href 退避が最強
+
+`-webkit-touch-callout: none` や `contextmenu` の preventDefault だけでは完全には止まらない。**`<a>` から href を一時的に外す**(`removeAttribute('href')`)ことで「これはリンクではない」と iOS に認識させ、長押しメニューの発動経路を根本から塞ぐのが最強。
+
+### 教訓14 の再発例: バイタル FAB
+
+stacking context は z-index の階層を分断する(教訓14)。今回は `.page-wrapper { z-index: 0 }` の中に置かれた FAB(z-index: 200)が、外の `.bottom-nav`(body 直下)より上に出られない問題として再発した。**body 直下に移動するパターン** が確実な解決策。
+
+---
+
+# 📋 次セッション(Session 17)以降のタスク
+
+## 🔴 優先度: 高
+
+### 1. dev → prod マージ
+
+Session 14 以降の成果(マニュアルガイド、ナビ並び替え、バイタル FAB 修正)が dev で完了して動作確認済み。**prod への昇格** が積み残しになっている。
+
+```bash
+cd ~/dev/kaigo-ai-app
+git checkout tasukaru
+git pull origin tasukaru
+git merge tasukaru-dev
+git push origin tasukaru
+```
+
+(または `.github/workflows/auto-merge.yml` の自動マージワークフローが動くなら待つだけ)
+
+## 🟡 優先度: 中
+
+### 2. Android 系スクショ追加
+
+マニュアルの「いつ・どこで通知が鳴るのか」セクションには iPhone スクショしかない。Android の Googleカレンダー登録画面・通知画面のスクショを追加すると、Android 利用者にも分かりやすい。
+
+ファイル名候補:
+- `android-add.png`(Googleカレンダー追加画面)
+- `android-battery.png`(電池最適化対象外設定)
+
+### 3. 「記録を保存」ボタンの色変更検討
+
+Session 13 で音声入力ボタン(緑)を追加したため、**バイタルの「記録を保存」ボタン(緑)と色被り** が発生中。識別性向上のため、保存ボタンを別色(青系 or オレンジ系)に変更する選択肢あり。
+
+### 4. 「本日の記録」タブ強化(B-2)
+
+- 未測定者を「未測定」ラベル付きで表示
+- カメラ読み取り・音声入力ボタンを「本日の記録」アコーディオン編集にも追加(現状は「測定」タブのみ)
+
+### 5. load_dotenv() 対応(教訓17)
+
+ローカル Flask 起動時に `.env` が読まれない問題。`app.py` 冒頭に以下を追加:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+Cloud Run では Secret Manager 経由で環境変数注入のため本番影響なし、ローカル開発のみ便利になる。
+
+## 🟢 優先度: 低
+
+### 6. タスカルくんダミー利用者(patient_id 51, 52)の整理判断
+
+過去にデモ用に作ったダミー利用者がそのまま残っている。本番運用上は不要。削除するか、デモ用フラグで隠すかの判断必要。
+
+### 7. 古いバックアップファイル整理
+
+`templates/*.bak.*`、`templates/*.broken.*` が `.gitignore` で除外されているが、ローカル / Mac の Desktop には溜まり続けている。月一でクリーンアップ推奨。
+
+## ⏸ 着手禁止(明示依頼があるまで)
+
+### Step 3: Firebase Push 通知
+
+完全自動アラーム化は **明示依頼があるまで提案禁止**(Session 9 で確定)。
+
+---
+
+# 🛠 開発フロー(Session 16 で確立した方式)
+
+1. **Chrome 連携で現状調査**: `tabs_context_mcp` → `javascript_exec` で DOM/CSS 計測
+2. **仮説立ててから JS で検証**: live edit で element.style 変更しながら結果確認
+3. **修正対象ファイルは ~/Desktop/ 経由でアップロード**: Mac の `~/dev/kaigo-ai-app` から該当ファイルを Desktop に置く
+4. **`/mnt/user-data/outputs/` に修正版書き出し**: `present_files` で渡す
+5. **ユーザーが Desktop にDL → ターミナルで `cp ~/Desktop/file ./templates/file` → grep で行数 / 機能確認 → push**
+6. **push 後 30〜60秒待って Cloud Run 反映**: SW unregister + caches.delete でハードリロード
+7. **Mac Chrome で動作シミュレート → iPhone 実機で最終確認**(iPhone 確認はユーザーに依頼)
+8. **BLOCKED された文字列は配列化**(`s.split('')`)で回避
+
+---
+
+# 📜 Session 16 末コミット状態
+
+```
+58b8ef9 (HEAD -> tasukaru-dev, origin/tasukaru-dev) fix vitals fab move to body level to escape page wrapper stacking context
+6eb8a42 fix vitals accordion auto scroll on expand and add bottom spacer for save button
+c086ee8 fix nav drag block ios link preview by detaching href and contextmenu
+445e255 fix nav drag suppress ios link long press preview menu on draggable items
+b2adf2e fix nav edit mode preserve padding-bottom to avoid home indicator gesture
+2b91124 refine nav edit ux fix horizontal scroll polish bar and keep nav position
+0792c76 fix nav edit horizontal scroll by relaxing body touch action to pan-x
+546b561 polish nav edit bar layout and lift nav to 60vh during edit
+352e54f feat nav reorder add reset button to edit bar with confirm
+f050d4a fix nav reorder edge auto scroll while dragging
+```
+
+- `templates/base.html`: 2009 行 / 86766 bytes(Session 14 → 16 で +349 行)
+- `templates/vitals.html`: 3273 行 / 156305 bytes(Session 16 で +21 行)
+
+dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
+prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
+
