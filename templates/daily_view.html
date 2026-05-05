@@ -600,6 +600,7 @@ window.changeMonth = function(delta) {
     if (currentMonth > 11) { currentMonth = 0; currentYear++; }
     if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
     fetchRecordDatesAndRender(currentYear, currentMonth + 1);
+    if (typeof loadUserMonthRecords === 'function' && dvMode === 'user' && dvSelectedUser) loadUserMonthRecords();
 };
 async function fetchRecordDatesAndRender(year, month) {
     try {
@@ -626,7 +627,7 @@ function renderCalendar() {
         let cls = 'cal-day ' + (dow===0?'sunday':dow===6?'saturday':'weekday');
         if (dateStr === todayStr) cls += ' today';
         if (dateStr === selectedDate) cls += ' selected';
-        if (recordDates.has(dateStr)) cls += ' has-record';
+        if (dvMode === 'user') { if (userRecordDates.has(dateStr)) cls += ' has-user-record'; } else { if (recordDates.has(dateStr)) cls += ' has-record'; }
         html += `<div class="${cls}" onclick="selectDate('${dateStr}')">${d}</div>`;
     }
     daysEl.innerHTML = html;
@@ -650,6 +651,103 @@ if (targetUser) {
     }));
 }
 
+// Session 19: 利用者の月内ケース記録読込・描画(ステップD)
+let userRecordDates = new Set();
+let userMonthData = null;
+
+window.loadUserMonthRecords = async function() {
+    if (!dvSelectedUser || dvMode !== 'user') return;
+    // 現在表示中のカレンダー年月を取得(currentMonth は 0-11、currentYear はYYYY)
+    const y = (typeof currentYear !== 'undefined') ? currentYear : new Date().getFullYear();
+    const m = (typeof currentMonth !== 'undefined') ? currentMonth + 1 : (new Date().getMonth() + 1);
+    try {
+        const res = await fetch('/api/user_month_records?user_id=' + dvSelectedUser.id + '&year=' + y + '&month=' + m);
+        const data = await res.json();
+        if (data.status !== 'success') {
+            console.error('API error:', data.message);
+            userRecordDates = new Set();
+            userMonthData = null;
+        } else {
+            userRecordDates = new Set(data.record_dates);
+            userMonthData = data;
+        }
+    } catch (e) {
+        console.error(e);
+        userRecordDates = new Set();
+        userMonthData = null;
+    }
+    if (typeof renderCalendar === 'function') renderCalendar();
+    renderUserMonthRecords();
+};
+
+function renderUserMonthRecords() {
+    const wrap = document.getElementById('dv-user-records');
+    const empty = document.getElementById('dv-user-empty');
+    if (!wrap || !empty) return;
+    if (!dvSelectedUser) {
+        empty.style.display = 'block';
+        wrap.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+    }
+    empty.style.display = 'none';
+    wrap.style.display = 'block';
+    if (!userMonthData || !userMonthData.records_by_date || Object.keys(userMonthData.records_by_date).length === 0) {
+        wrap.innerHTML = '<div class="alert alert-info"><span class="material-symbols-outlined">info</span>この月の記録はありません。</div>';
+        return;
+    }
+    const dates = Object.keys(userMonthData.records_by_date).sort();
+    let html = '';
+    dates.forEach(date => {
+        const data = userMonthData.records_by_date[date];
+        const dateLabel = formatDateLabel(date);
+        html += '<div class="dv-month-record" id="dv-record-' + date + '" style="margin-bottom:14px;border:1.5px solid #e0e0e0;border-radius:12px;padding:14px;background:#fff;">';
+        html += '<div style="font-weight:700;font-size:0.95rem;color:#1a73e8;margin-bottom:10px;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="jumpToDayView(\'' + date + '\')">';
+        html += '<span class="material-symbols-outlined" style="font-size:18px;">event</span>';
+        html += dateLabel;
+        html += '<span style="margin-left:auto;font-size:0.78rem;color:#5f6368;font-weight:500;">DAYで開く ›</span>';
+        html += '</div>';
+        if (data.ai_record) {
+            html += '<div class="ai-record-card" style="margin-bottom:10px;">';
+            html += '<div class="ai-record-label"><span class="material-symbols-outlined">description</span>ケース記録</div>';
+            html += '<div class="ai-record-content">' + escapeHtml(data.ai_record.content || '') + '</div>';
+            html += '</div>';
+        }
+        if (data.normal_records && data.normal_records.length) {
+            html += '<div class="section-subtitle"><span class="material-symbols-outlined">notes</span>個別のケース記録</div>';
+            data.normal_records.forEach(r => {
+                html += '<div class="record-item" style="border-left:3px solid #1a73e8;padding:8px 12px;margin-bottom:8px;background:#f8f9fa;border-radius:6px;">';
+                html += '<div class="record-meta" style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">';
+                html += '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">schedule</span> ';
+                html += (r.time || '') + ' ・ ' + escapeHtml(r.staff_name || '');
+                html += '</div>';
+                html += '<div style="font-size:0.9rem;white-space:pre-wrap;">' + escapeHtml(r.content || '') + '</div>';
+                html += '</div>';
+            });
+        }
+        html += '</div>';
+    });
+    wrap.innerHTML = html;
+}
+
+function formatDateLabel(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dow = ['日','月','火','水','木','金','土'][dt.getDay()];
+    return m + '月' + d + '日(' + dow + ')';
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+window.jumpToDayView = function(dateStr) {
+    // DAYモードに戻ってその日付を選択
+    setDvMode('day');
+    if (typeof selectDate === 'function') selectDate(dateStr);
+    else window.location.href = '/daily_view?date=' + dateStr;
+};
 window.toggleAccordion = function(idx) {
     document.getElementById('body-'+idx).classList.toggle('open');
     document.getElementById('arrow-'+idx).classList.toggle('open');
