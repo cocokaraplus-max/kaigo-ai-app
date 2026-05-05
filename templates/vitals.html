@@ -654,6 +654,21 @@
     <div class="form-group" style="margin-bottom:10px;">
         <input type="date" class="form-control" id="daily-date" value="{{ today }}" onchange="loadDailyOverview()">
     </div>
+    <!-- Session 19: AM/PM/全員フィルタ(本日の記録) -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button id="daily-ampm-all" onclick="setDailyFilter('all')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #1a73e8;background:#1a73e8;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌞🌇 全員
+        </button>
+        <button id="daily-ampm-AM" onclick="setDailyFilter('AM')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌅 午前（AM）
+        </button>
+        <button id="daily-ampm-PM" onclick="setDailyFilter('PM')"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            🌇 午後（PM）
+        </button>
+    </div>
     <div id="daily-overview-area">
         <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
             <span class="material-symbols-outlined">info</span>
@@ -1813,6 +1828,27 @@ async function sendVoiceToAI(blob, ext) {
 }
 
 // ========== 本日の記録 ==========
+// Session 19: 本日の記録の AM/PM フィルタ
+let dailyFilter = 'all';
+window.setDailyFilter = function(filter) {
+    dailyFilter = filter;
+    // 3つのボタンの見た目を切り替え(IDベース、インラインstyle)
+    const ids = { 'all': 'daily-ampm-all', 'AM': 'daily-ampm-AM', 'PM': 'daily-ampm-PM' };
+    Object.entries(ids).forEach(([key, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        if (key === filter) {
+            btn.style.background = '#1a73e8';
+            btn.style.color = '#fff';
+            btn.style.borderColor = '#1a73e8';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#5f6368';
+            btn.style.borderColor = '#e0e0e0';
+        }
+    });
+    if (typeof loadDailyOverview === 'function') loadDailyOverview();
+};
 // 本日の記録のアコーディオン編集状態(2026-05-01)
 let _dailyEditorState = {
     expandedPid: null,    // 現在展開中の患者ID(1度に1人だけ)
@@ -2613,12 +2649,24 @@ window.loadDailyOverview = async function() {
     });
 
     // 異常値判定 + 並び順(再検査者上位)
-    const patientList = Object.entries(byPatient).map(([pid, info]) => {
+    let patientList = Object.entries(byPatient).map(([pid, info]) => {
         const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
         return { pid, ...info, hasAlert };
     }).sort((a, b) => {
         if (a.hasAlert !== b.hasAlert) return a.hasAlert ? -1 : 1;
         return a.name.localeCompare(b.name, 'ja');
+    });
+
+    // Session 19: AM/PM/全員フィルタ(本日の記録)
+    const _dailyWd = String(new Date(date).getDay());
+    patientList = patientList.filter(p => {
+        if (dailyFilter === 'all') return true;
+        const ampmMap = AMPM_PER_DAY[p.pid] || {};
+        const state = ampmMap[_dailyWd] || 'ALL';
+        if (state === 'NONE') return false;
+        if (dailyFilter === 'AM') return state === 'AM' || state === 'ALL';
+        if (dailyFilter === 'PM') return state === 'PM' || state === 'ALL';
+        return true;
     });
 
     // エディタ用にキャッシュ(全員分)
