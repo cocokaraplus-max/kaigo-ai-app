@@ -1336,11 +1336,14 @@ def vitals():
     # ★patient_id は文字列キーで統一(JS側で String(p.id) と比較されるため)
     visit_days_map = {str(p["id"]): p["weekdays"] for p in patients}
     ampm_map = {str(p["id"]): p["ampm"] for p in patients}
+    # ★Session 18: 曜日ごとの AM/PM/ALL 状態
+    ampm_per_day_map = {str(p["id"]): p["ampm_per_day"] for p in patients}
 
     return render("vitals.html",
         patients=patients,
         visit_days=visit_days_map,
         ampm_data=ampm_map,
+        ampm_per_day=ampm_per_day_map,
         vitals_data=vitals_data,
         excludes_today=excludes_today,
         settings=settings,
