@@ -364,6 +364,7 @@
         <div class="calendar-days" id="cal-days"></div>
     </div>
 </div>
+<div id="dv-records-wrapper">
 
 {% if not records %}
 <div class="alert alert-info" id="records-area">
@@ -465,6 +466,15 @@
 </div>
 {% endfor %}
 {% endif %}
+</div>
+<!-- Session 19: 利用者モード用エリア -->
+<div id="dv-user-area" style="display:none;">
+    <div class="alert alert-info" id="dv-user-empty">
+        <span class="material-symbols-outlined">info</span>
+        利用者を選んでください。
+    </div>
+    <div id="dv-user-records"></div>
+</div>
 
 <a href="/top" class="back-btn">
     <span class="material-symbols-outlined">home</span>
@@ -490,6 +500,25 @@ window.setDvMode = function(mode) {
     document.getElementById('dv-tab-day').classList.toggle('active', mode === 'day');
     document.getElementById('dv-tab-user').classList.toggle('active', mode === 'user');
     document.getElementById('dv-user-search').style.display = (mode === 'user') ? 'block' : 'none';
+    // Session 19: アコーディオン群と利用者モードエリアの表示切替
+    const recWrap = document.getElementById('dv-records-wrapper');
+    const userArea = document.getElementById('dv-user-area');
+    if (recWrap) recWrap.style.display = (mode === 'day') ? 'block' : 'none';
+    if (userArea) userArea.style.display = (mode === 'user') ? 'block' : 'none';
+    // 利用者モード時、利用者未選択なら「選んでください」、選択済みなら記録エリア
+    if (mode === 'user') {
+        const empty = document.getElementById('dv-user-empty');
+        const records = document.getElementById('dv-user-records');
+        if (empty && records) {
+            if (dvSelectedUser) {
+                empty.style.display = 'none';
+                records.style.display = 'block';
+            } else {
+                empty.style.display = 'block';
+                records.style.display = 'none';
+            }
+        }
+    }
     if (mode === 'user' && dvSelectedUser) {
         showSelectedUser();
     }
