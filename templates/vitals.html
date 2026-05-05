@@ -384,11 +384,49 @@
 .weekday-btn-pm   { color:#BA7517; border-color:#BA7517 !important; background:#FAEEDA !important; }
 .weekday-btn-all  { color:#3B6D11; border-color:#3B6D11 !important; background:#EAF3DE !important; }
 .weekday-btn:active { transform:scale(0.96); }
-.weekday-card { transition:opacity 0.15s; }
+.weekday-card { transition:opacity 0.15s; position:relative; }
+.weekday-card-saved::after {
+    content: "✓ 保存済";
+    position: absolute; top: 8px; right: 10px;
+    font-size: 0.68rem; font-weight: 700; color: #34a853;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none;
+}
+.weekday-card-saved.flash::after { opacity: 1; }
 @media (max-width: 420px) {
     .weekday-card { padding:10px 8px; }
     .weekday-btn { font-size:0.72rem !important; padding:8px 0 !important; }
 }
+
+/* ===== Session 18: トースト通知 ===== */
+.tasukaru-toast {
+    position: fixed; left: 50%; bottom: 80px;
+    transform: translateX(-50%) translateY(20px);
+    background: #34a853; color: #fff;
+    padding: 10px 18px; border-radius: 24px;
+    font-size: 0.85rem; font-weight: 600;
+    box-shadow: 0 4px 12px rgba(52,168,83,0.35);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 9999;
+    max-width: 90vw; text-align: center;
+    white-space: nowrap;
+}
+.tasukaru-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.tasukaru-toast.error { background: #ea4335; box-shadow: 0 4px 12px rgba(234,67,53,0.35); }
+
+/* ===== Session 18: 設定タブ用フローティング保存FAB ===== */
+#settings-save-fab {
+    position: fixed; bottom: 84px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #1a73e8; color: #fff; border: none;
+    box-shadow: 0 4px 12px rgba(26,115,232,0.4);
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 200;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+#settings-save-fab.show { display: flex; }
+#settings-save-fab:active { transform: scale(0.95); }
 
 /* ===== 履歴検索候補のドロップダウン (課題2: 履歴タブで候補が見えづらい問題) ===== */
 .search-wrapper {
@@ -780,7 +818,7 @@
         <div id="visit-days-list">
             {% for p in patients %}
             {% set apd = p.ampm_per_day or {} %}
-            <div class="weekday-card" style="margin-bottom:10px;padding:12px;border:1px solid #e8eaed;border-radius:10px;background:#fafbfc;">
+            <div class="weekday-card weekday-card-saved" style="margin-bottom:10px;padding:12px;border:1px solid #e8eaed;border-radius:10px;background:#fafbfc;">
                 <div style="font-size:0.88rem;font-weight:700;margin-bottom:8px;color:#202124;">{{ p.user_name }} 様</div>
                 <div style="display:flex;gap:5px;">
                     {% for day, label, lbl_color in [('0','日','#c62828'),('1','月','#5f6368'),('2','火','#5f6368'),('3','水','#5f6368'),('4','木','#5f6368'),('5','金','#5f6368'),('6','土','#2e7d32')] %}
@@ -816,6 +854,14 @@
     cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
     <span class="material-symbols-outlined" style="font-size:28px;color:#fff;">person_add</span>
 </button>
+
+<!-- ========== Session 18: 設定タブ用 フローティング保存FAB ========== -->
+<button id="settings-save-fab" onclick="saveSettings()" aria-label="設定を保存">
+    <span class="material-symbols-outlined" style="font-size:28px;color:#fff;">save</span>
+</button>
+
+<!-- ========== Session 18: トースト通知 ========== -->
+<div id="tasukaru-toast" class="tasukaru-toast" role="status" aria-live="polite"></div>
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
 <!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
@@ -1086,6 +1132,9 @@ window.switchMainTab = function(name, el) {
     // FAB(本日の利用者を追加)は記録タブのみ表示
     const fab = document.getElementById('add-today-fab');
     if (fab) fab.style.display = (name === 'record') ? 'flex' : 'none';
+    // Session 18: 設定タブ用の保存FAB
+    const saveFab = document.getElementById('settings-save-fab');
+    if (saveFab) saveFab.classList.toggle('show', name === 'settings');
     // アラームポーリング:本日の記録タブのみ起動
     if (typeof startRecheckAlarmPolling === 'function') {
         if (name === 'daily') startRecheckAlarmPolling();
@@ -2959,6 +3008,20 @@ window.setGraphMetric = function(metric) {
     renderHistory();
 };
 
+// ========== Session 18: トースト通知 ==========
+window.showToast = function(message, type) {
+    const toast = document.getElementById('tasukaru-toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.remove('error');
+    if (type === 'error') toast.classList.add('error');
+    toast.classList.add('show');
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2000);
+};
+
 // ========== Session 18: 曜日ごとの AM/PM/ALL/× 切替 ==========
 window.cycleWeekdayState = async function(btn) {
     const pid = btn.dataset.pid;
@@ -2967,6 +3030,8 @@ window.cycleWeekdayState = async function(btn) {
     const current = btn.dataset.state || 'NONE';
     const cycle = { 'NONE': 'AM', 'AM': 'PM', 'PM': 'ALL', 'ALL': 'NONE' };
     const next = cycle[current];
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const stateLabels = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
 
     // 楽観的UI更新
     const prevState = current;
@@ -2986,6 +3051,15 @@ window.cycleWeekdayState = async function(btn) {
             AMPM_PER_DAY[pid] = json.ampm_per_day || {};
             VISIT_DAYS[pid] = json.weekdays || '';
             btn.style.opacity = '1';
+
+            // ✓ カード右上にフラッシュ
+            const card = btn.closest('.weekday-card');
+            if (card) {
+                card.classList.add('flash');
+                setTimeout(() => card.classList.remove('flash'), 1200);
+            }
+            // トースト
+            showToast('✓ ' + name + ' ' + dayNames[parseInt(day,10)] + '曜=' + stateLabels[next] + ' に変更しました');
         } else {
             throw new Error(json.message || 'save failed');
         }
@@ -2995,7 +3069,7 @@ window.cycleWeekdayState = async function(btn) {
         btn.textContent = (prevState === 'NONE') ? '×' : prevState;
         btn.className = 'weekday-btn weekday-btn-' + prevState.toLowerCase();
         btn.style.opacity = '1';
-        alert('保存に失敗しました: ' + e.message);
+        showToast('保存に失敗しました', 'error');
     }
 };
 
@@ -3036,10 +3110,18 @@ window.saveSettings = async function() {
     try { result = await res.json(); } catch(e) { result = null; }
     if (res.ok && result && result.status === 'success') {
         Object.assign(SETTINGS, payload);
-        alert('設定を保存しました');
+        if (typeof showToast === 'function') {
+            showToast('✓ 設定を保存しました');
+        } else {
+            alert('設定を保存しました');
+        }
     } else {
         const msg = (result && result.message) ? result.message : ('HTTP ' + res.status);
-        alert('保存に失敗しました: ' + msg);
+        if (typeof showToast === 'function') {
+            showToast('保存に失敗しました: ' + msg, 'error');
+        } else {
+            alert('保存に失敗しました: ' + msg);
+        }
     }
 };
 
