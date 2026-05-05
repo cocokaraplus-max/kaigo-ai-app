@@ -2089,3 +2089,229 @@ f050d4a fix nav reorder edge auto scroll while dragging
 dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
 prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
 
+
+---
+
+# 📜 Session 17 サマリ (2026-05-05)
+
+## ✅ 完了タスク
+
+1. **バイタル設定保存バグ修正**
+   - 真因: Supabase `vital_alert_settings.recheck_times` カラム欠落で 500 エラー
+   - 修正: dev/prod 両環境に ALTER TABLE で追加(コードは既存コミット 753b754 で対応済)
+   - 動作確認: dev / prod / iPhone 実機すべて OK
+
+2. **評価ページ UX 改善**
+   - 真因: 利用者を選ばずに進めると `alert('利用者を選択してください')` が出るが見落とされていた
+   - 修正方針: 利用者未選択時は下部セクション(聴取エリア / AI生成ボタン / 訓練目標)を全て隠す + 黄色ヒント表示
+   - コミット: `3701675` `d48e58d` `00a40e0`
+   - 動作確認: dev / prod の Mac Chrome で完璧動作
+
+3. **dev → prod 同期**
+   - 22 commits / 6 files (Session 14 末から Session 17 までの全変更)
+   - マージ commit: `973988f`
+
+## 🆕 新教訓
+
+- **教訓21**: パッチスクリプトは「1パッチ=1スクリプト+HARD CHECK」(grep -c で確認、count 不一致なら exit 1)
+- **教訓22**: macOS ターミナルで日本語 grep が `ÿff...` バイト羅列で表示されることがある(LANG/LC_ALL 未設定が原因。マッチ自体は正常)
+- **教訓23**: GitHub raw URL は数分の CDN キャッシュあり。push 直後は反映されないことがある
+- **教訓24**: 評価機能の詳細画面は `ai_change`/`ai_challenge` のみ表示、入力フィールドは DB 保存はされるが画面非表示
+
+---
+
+# 🚀 Session 18 引き継ぎ
+
+## 大型機能: 「曜日ごとの AM/PM/ALL/× 設定」(仕様確定済み)
+
+詳細は `docs/SESSION17_HANDOFF.md` 参照。
+
+### 概要
+- バイタル「設定」タブの曜日設定を 4 状態(× / AM / PM / ALL)に拡張
+- 「測定」「本日の記録」タブにも同じ区分を反映
+- データは `patient_visit_days.ampm_per_day` (JSONB 新カラム) に保存
+- 既存データは「weekdays に含まれる曜日 → ALL」で自動マイグレーション
+
+### 実装ステップ(8 ステップ、合計 4-5 時間)
+
+1. Supabase スキーマ変更 (`ALTER TABLE patient_visit_days ADD COLUMN ampm_per_day JSONB`)
+2. マイグレーション SQL 実行
+3. API 改修 (`/api/save_visit_day`, 新設 `/api/save_weekday_ampm`)
+4. 設定 UI 改修 (vitals.html、新ボタン UI)
+5. `renderPatientList` のフィルタロジック修正
+6. 「本日の記録」タブのフィルタも修正
+7. bulk_register の対応(任意)
+8. dev → prod 同期
+
+### Session 18 開始時の合言葉
+
+「**Session 18 開始。GitHub から README と docs/SESSION17_HANDOFF.md を読み込んで、曜日ごとの AM/PM/ALL/× 設定の Step 1 から進めて**」
+
+## Session 18 で最初にやる片付け
+
+```sql
+-- dev DB のテストデータ削除
+DELETE FROM assessments WHERE user_name = 'Session17テスト利用者';
+```
+
+## 残タスク(優先度順)
+
+| # | 内容 | 優先度 | 規模 |
+|---|---|---|---|
+| ① | 曜日ごとの AM/PM/ALL/× 設定(本セッションで仕様確定済み) | 最優先 | 4-5h |
+| ② | 過去の月次評価報告書を編集できるように | 中 | 1-2h |
+| ③ | 過去の月次評価報告書を削除できるように | 中 | 30m-1h |
+| ④ | モニタリング(generate_monitoring)結果の DB 保存 | 中(大改修) | 2-3h |
+
+
+---
+
+# 📜 Session 18 サマリ (2026-05-05)
+
+## ✅ 完了タスク(dev反映済、本番未反映)
+
+### 大型機能: 「曜日ごとの AM/PM/ALL/× 設定」
+- **Step 1: DBスキーマ変更** ✅ dev / 本番 両方完了
+  - `patient_visit_days.ampm_per_day` JSONB カラム追加(`'{}'::jsonb` デフォルト)
+- **Step 2: マイグレーション** ✅ dev (7件) / 本番 (75件) 両方完了
+  - 既存 `weekdays` から `ampm_per_day` を生成(全曜日 ALL で初期化)
+- **Step 3: API改修(app.py)** ✅ dev デプロイ済(commit `bd3e773`)
+  - `vitals()` ルート: `ampm_per_day` も SELECT してテンプレートに渡す
+  - `/api/save_visit_day`: `ampm_per_day` 引数があれば一緒に保存(後方互換)
+  - `/api/save_weekday_ampm` **新設**: 単一曜日の状態を更新(weekdays カラムも同期更新)
+  - `bulk_register`: 新規利用者に `ampm_per_day` 初期値ALL でセット
+- **Step 4-5: UI改修(vitals.html)** ✅ dev デプロイ済(commit `024e746`)
+  - 既存チェックボックスUIを撤去
+  - 7曜日のボタンUI(タップで × → AM → PM → ALL → × 循環)
+  - 色分け: AM=青(#185FA5)、PM=オレンジ(#BA7517)、ALL=緑(#3B6D11)、×=白枠
+  - `renderPatientList` のフィルタロジックを `AMPM_PER_DAY` ベースに変更
+
+### UX改善(追加実装)
+- **設定タブ用 フローティング保存FAB** ✅ commit `d4488cb`
+  - 画面右下に常駐(設定タブ表示中のみ)
+  - 既存「本日の利用者を追加」FABとタブ切替で交代表示
+- **トースト通知** ✅ commit `d4488cb`
+  - 曜日切替時: `✓ <利用者名> <曜日>=<状態> に変更しました`(緑色、2秒)
+  - 設定保存時: `✓ 設定を保存しました`
+  - 失敗時: 赤色で表示
+- **✓ 保存済 フラッシュ** ✅ commit `d4488cb`
+  - 曜日カード右上に `✓ 保存済` が1.2秒光る
+
+### 文言修正
+- 凡例「× 来所なし」→「× 利用無し」 ✅ commit `cf36a6a`
+
+### ガイド用画像
+- `static/img/guide/vital-weekday-settings.png`(全景)✅ commit `311ff78`
+- `static/img/guide/vital-weekday-cycle.png`(カードズーム)✅ commit `311ff78`
+- `static/img/guide/vital-weekday-toast.png`(トースト)✅ commit `311ff78`
+
+## ⚠️ Session 18 未完タスク
+
+### `templates/manual.html` の「曜日設定」セクション追加 ❌
+- **状態**: ファイルは Claude 側で完成済み(`/mnt/user-data/outputs/manual.html`、1345行)
+- **問題**: ターミナルへの大量ペーストでテキスト破損が発生(教訓追加候補)。
+  ファイルダウンロード経由の配置も Mac側で manual.html がダウンロードフォルダに保存できなかった
+- **対応方法(Session 19 で着手)**:
+  1. Claude が `present_files` で manual.html を提示
+  2. ZIMAXさんが Chrome のダウンロードリンクをクリック
+  3. `~/Downloads/manual.html` の **存在確認** を `ls -la` でしてから配置
+  4. または、Chrome 連携で直接 git clone 済みディレクトリに書き込む別方法
+- **追加内容(参考)**:
+  - 目次に「曜日設定」追加(緑、calendar_month アイコン)
+  - 新セクション `s-vitals-weekday`(再検査アラームセクションの直後)
+  - 4つの状態説明(× / AM / PM / ALL)
+  - 3ステップ(設定タブを開く → タップ → 自動保存)
+  - 反映先の説明(測定タブ・本日の記録タブ)
+  - 更新ログ Ver.4.2(2026-05-05)エントリ追加
+
+## ✅ 動作確認済み (dev)
+
+- API テスト: `/api/save_weekday_ampm` 全パターン成功
+  - 新規追加(NONE → AM)
+  - 上書き(AM → PM)
+  - 状態追加(NONE → ALL)
+  - 削除(任意 → NONE)
+  - 不正値バリデーション(weekday range / state enum)
+- UI テスト: タスカルちゃん/くんで実際にボタンタップ → トースト + ✓ + DB反映 全OK
+- 測定タブのフィルタリング動作OK(火曜にALLの利用者だけ表示)
+
+## 🆕 Session 18 で得た教訓
+
+### 教訓25: ターミナルへの heredoc 大量ペーストは破損する
+- macOS Terminal.app で日本語+特殊文字を含む heredoc(>>EOF)を貼り付けると、行が複製・欠損する
+- 原因: ターミナルのバッファリング + IME干渉 + ペースト速度
+- 対策:
+  - ファイル経由で渡す(`present_files` でダウンロードしてもらう)
+  - またはスクリプトを `/tmp/xxx.py` として cat で書き込んだ後 `python3 /tmp/xxx.py` で実行
+  - 大量ペーストを避け、1行ずつ実行できる短いコマンドに分解する
+
+### 教訓26: ファイルダウンロード成否の事前確認
+- `present_files` で渡したファイルが必ずユーザー側に届くとは限らない
+- ZIMAXさんに `ls -la ~/Downloads/<filename>` で実在確認してもらってから次に進む
+- 画像3枚は成功(16:34, 16:41 ダウンロード)、HTMLは失敗(原因不明)した実例
+
+### 教訓27: タブ表示中だけ FAB を出す制御
+- `switchMainTab` 内で `fab.style.display` または `classList.toggle` でタブ別 FAB 切替
+- 同じ位置に複数 FAB(本日追加 / 保存)がある場合、表示時間を排他にすることで衝突回避
+
+### 教訓28: 楽観的UI + ロールバック
+- 曜日ボタンタップで API 待たずに表示を即変更 → 失敗時は元の状態に戻す
+- ユーザー体感は爆速、エラー時もユーザーは混乱しない
+- パターン: `prevState` 保存 → 楽観更新 → API → 成功確定 or ロールバック
+
+---
+
+# 🚀 Session 19 引き継ぎ
+
+## 着手前の片付け
+
+### 1. manual.html 更新(優先度: 中)
+- Claude セッション開始直後に `present_files` で manual.html (1345行) を再提示
+- ZIMAXさんが `~/Downloads/manual.html` の存在を `ls -la` で確認してから配置
+- 配置時の検証コマンド:
+  ```bash
+  cd ~/dev/kaigo-ai-app
+  cp ~/Downloads/manual.html templates/manual.html
+  wc -l templates/manual.html  # → 1345
+  grep -c "s-vitals-weekday" templates/manual.html  # → 2
+  grep -c "Ver.4.2" templates/manual.html  # → 1
+  grep -c "animation:fl" templates/manual.html  # → 1 (教訓1: 不可侵エリア)
+  ```
+- commit & push: `git commit -m "Add weekday settings section to vital guide"`
+
+### 2. dev → 本番 同期
+- Session 17 と同じ手順:
+  ```bash
+  git checkout tasukaru
+  git merge tasukaru-dev
+  git push origin tasukaru
+  git checkout tasukaru-dev
+  ```
+- 本番URLで動作確認: https://tasukaru-191764727533.asia-northeast1.run.app/vitals
+
+## Session 19 候補タスク
+
+| # | 内容 | 優先度 | 規模 |
+|---|---|---|---|
+| ① | manual.html 更新 + dev → 本番 同期 | 最優先 | 30m |
+| ② | 「本日の記録」タブにも AM/PM/ALL フィルタ反映(Step 6) | 中 | 1h |
+| ③ | iPhone 実機での動作確認(教訓19/20/21) | 中 | 30m |
+| ④ | 過去の月次評価報告書を編集できるように | 中 | 1-2h |
+| ⑤ | 過去の月次評価報告書を削除できるように | 中 | 30m-1h |
+| ⑥ | モニタリング(generate_monitoring)結果の DB 保存 | 中(大改修) | 2-3h |
+
+## Session 19 開始時の合言葉
+
+「**Session 19 開始。Session 18 引き継ぎを確認して、まずは manual.html 更新から進めて**」
+
+## Session 18 で push したコミット履歴
+
+```
+bd3e773 Add ampm_per_day API for weekday AM/PM/ALL/NONE settings
+024e746 Add per-weekday AM/PM/ALL UI in vitals settings tab
+d4488cb Add toast notification and floating save FAB for settings UX
+cf36a6a Rename legend label from 来所なし to 利用無し
+311ff78 Add weekday settings section to vital guide (画像3枚のみ、HTMLは失敗)
+```
+
+すべて `tasukaru-dev` ブランチ。**本番(`tasukaru` ブランチ)には未マージ**。

@@ -1291,23 +1291,29 @@ def vitals():
 
     patients = get_patients(supabase, f_code)
 
-    # 各患者のweekdays・ampm取得
+    # 各患者のweekdays・ampm・ampm_per_day取得
     # ★型不一致対策: patient_id は str() で統一(BIGINT vs string でマッチしない問題対応)
+    # ★Session 18: ampm_per_day (JSONB) で曜日ごとの AM/PM/ALL/NONE を保持
     visit_days = {}
     ampm_data = {}
+    ampm_per_day_data = {}
     try:
-        res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm").eq("facility_code", f_code).execute()
+        res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm,ampm_per_day").eq("facility_code", f_code).execute()
         for r in (res.data or []):
             visit_days[str(r["patient_id"])] = r.get("weekdays") or ""
             ampm_data[str(r["patient_id"])] = r.get("ampm") or "BOTH"
+            apd = r.get("ampm_per_day")
+            ampm_per_day_data[str(r["patient_id"])] = apd if isinstance(apd, dict) else {}
         for p in patients:
             p["weekdays"] = visit_days.get(str(p["id"]), "")
             p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
+            p["ampm_per_day"] = ampm_per_day_data.get(str(p["id"]), {})
     except Exception as e:
         print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
             p["weekdays"] = ""
             p["ampm"] = "BOTH"
+            p["ampm_per_day"] = {}
 
     # 今日のバイタルデータ取得
     vitals_data = {}
@@ -1330,11 +1336,14 @@ def vitals():
     # ★patient_id は文字列キーで統一(JS側で String(p.id) と比較されるため)
     visit_days_map = {str(p["id"]): p["weekdays"] for p in patients}
     ampm_map = {str(p["id"]): p["ampm"] for p in patients}
+    # ★Session 18: 曜日ごとの AM/PM/ALL 状態
+    ampm_per_day_map = {str(p["id"]): p["ampm_per_day"] for p in patients}
 
     return render("vitals.html",
         patients=patients,
         visit_days=visit_days_map,
         ampm_data=ampm_map,
+        ampm_per_day=ampm_per_day_map,
         vitals_data=vitals_data,
         excludes_today=excludes_today,
         settings=settings,
@@ -1529,23 +1538,90 @@ def api_vitals_history():
 @app.route('/api/save_visit_day', methods=['POST'])
 @login_required
 def api_save_visit_day():
+    """利用曜日を保存。Session 18 から ampm_per_day も任意で保存可能。"""
     try:
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
+        # 後方互換: ampm_per_day が来ていれば一緒に保存
+        update_payload = {"weekdays": data["weekdays"]}
+        insert_payload = {
+            "facility_code": f_code,
+            "patient_id": data["patient_id"],
+            "user_name": data["user_name"],
+            "weekdays": data["weekdays"],
+        }
+        if "ampm_per_day" in data:
+            update_payload["ampm_per_day"] = data["ampm_per_day"]
+            insert_payload["ampm_per_day"] = data["ampm_per_day"]
         existing = supabase.table("patient_visit_days").select("id").eq("facility_code", f_code).eq("patient_id", data["patient_id"]).execute()
         if existing.data:
-            supabase.table("patient_visit_days").update({"weekdays": data["weekdays"]}).eq("id", existing.data[0]["id"]).execute()
+            supabase.table("patient_visit_days").update(update_payload).eq("id", existing.data[0]["id"]).execute()
         else:
-            supabase.table("patient_visit_days").insert({
-                "facility_code": f_code,
-                "patient_id": data["patient_id"],
-                "user_name": data["user_name"],
-                "weekdays": data["weekdays"],
-            }).execute()
+            supabase.table("patient_visit_days").insert(insert_payload).execute()
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error"}), 500
+        print(f"save_visit_day error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/save_weekday_ampm', methods=['POST'])
+@login_required
+def api_save_weekday_ampm():
+    """単一曜日の状態(AM/PM/ALL/NONE)を ampm_per_day JSONB に保存。
+    Session 18 で新設。後方互換のため weekdays カラムも同期更新する。
+    payload: {patient_id, weekday("0"-"6"), state("AM"/"PM"/"ALL"/"NONE"), user_name?}
+    """
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        patient_id = str(data["patient_id"])
+        weekday = str(data["weekday"])
+        state = data["state"]
+        if weekday not in "0123456":
+            return jsonify({"status": "error", "message": "invalid weekday"}), 400
+        if state not in ("AM", "PM", "ALL", "NONE"):
+            return jsonify({"status": "error", "message": "invalid state"}), 400
+        supabase = get_supabase()
+        existing = supabase.table("patient_visit_days").select("id,ampm_per_day,weekdays,user_name").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
+        if existing.data:
+            row = existing.data[0]
+            current_map = row.get("ampm_per_day")
+            if not isinstance(current_map, dict):
+                current_map = {}
+            old_weekdays = row.get("weekdays") or ""
+            if state == "NONE":
+                current_map.pop(weekday, None)
+                new_weekdays = old_weekdays.replace(weekday, "")
+            else:
+                current_map[weekday] = state
+                if weekday not in old_weekdays:
+                    new_weekdays = "".join(sorted(set(old_weekdays + weekday)))
+                else:
+                    new_weekdays = old_weekdays
+            supabase.table("patient_visit_days").update({
+                "ampm_per_day": current_map,
+                "weekdays": new_weekdays,
+            }).eq("id", row["id"]).execute()
+            return jsonify({"status": "success", "ampm_per_day": current_map, "weekdays": new_weekdays})
+        else:
+            user_name = data.get("user_name", "")
+            if not user_name:
+                p_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("id", patient_id).execute()
+                if p_res.data:
+                    user_name = p_res.data[0].get("user_name", "")
+            initial_map = {} if state == "NONE" else {weekday: state}
+            initial_weekdays = "" if state == "NONE" else weekday
+            supabase.table("patient_visit_days").insert({
+                "facility_code": f_code,
+                "patient_id": patient_id,
+                "user_name": user_name,
+                "weekdays": initial_weekdays,
+                "ampm_per_day": initial_map,
+            }).execute()
+            return jsonify({"status": "success", "ampm_per_day": initial_map, "weekdays": initial_weekdays})
+    except Exception as e:
+        print(f"save_weekday_ampm error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/remove_visit_day', methods=['POST'])
 @login_required
@@ -2795,6 +2871,8 @@ def api_bulk_register_patients():
                 new_p = supabase.table("patients").select("id").eq("facility_code", f_code).eq("user_name", name).eq("chart_number", chart).execute()
                 if new_p.data:
                     pid = str(new_p.data[0]["id"])
+                    # Session 18: weekdays から ampm_per_day を生成(全曜日 ALL)
+                    ampm_per_day_init = {ch: "ALL" for ch in weekdays if ch in "0123456"}
                     try:
                         supabase.table("patient_visit_days").insert({
                             "facility_code": f_code,
@@ -2802,6 +2880,7 @@ def api_bulk_register_patients():
                             "user_name":     name,
                             "weekdays":      weekdays,
                             "ampm":          ampm,
+                            "ampm_per_day":  ampm_per_day_init,
                         }).execute()
                     except:
                         pass

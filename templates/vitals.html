@@ -377,6 +377,57 @@
 .setting-field input { width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #e0e0e0; font-size:0.9rem; text-align:center; }
 .setting-section-title { font-size:0.82rem; font-weight:700; color:#1a73e8; margin:12px 0 8px; display:flex; align-items:center; gap:4px; }
 
+/* ===== Session 18: 曜日ごとの AM/PM/ALL/× ボタン ===== */
+.weekday-btn { color:#9aa0a6; border-color:#dadce0 !important; background:#fff !important; }
+.weekday-btn-none { color:#9aa0a6; border-color:#dadce0 !important; background:#fff !important; }
+.weekday-btn-am   { color:#185FA5; border-color:#185FA5 !important; background:#E6F1FB !important; }
+.weekday-btn-pm   { color:#BA7517; border-color:#BA7517 !important; background:#FAEEDA !important; }
+.weekday-btn-all  { color:#3B6D11; border-color:#3B6D11 !important; background:#EAF3DE !important; }
+.weekday-btn:active { transform:scale(0.96); }
+.weekday-card { transition:opacity 0.15s; position:relative; }
+.weekday-card-saved::after {
+    content: "✓ 保存済";
+    position: absolute; top: 8px; right: 10px;
+    font-size: 0.68rem; font-weight: 700; color: #34a853;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none;
+}
+.weekday-card-saved.flash::after { opacity: 1; }
+@media (max-width: 420px) {
+    .weekday-card { padding:10px 8px; }
+    .weekday-btn { font-size:0.72rem !important; padding:8px 0 !important; }
+}
+
+/* ===== Session 18: トースト通知 ===== */
+.tasukaru-toast {
+    position: fixed; left: 50%; bottom: 136px;
+    transform: translateX(-50%) translateY(20px);
+    background: #34a853; color: #fff;
+    padding: 10px 18px; border-radius: 24px;
+    font-size: 0.85rem; font-weight: 600;
+    box-shadow: 0 4px 12px rgba(52,168,83,0.35);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 9999;
+    max-width: 90vw; text-align: center;
+    white-space: nowrap;
+}
+.tasukaru-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.tasukaru-toast.error { background: #ea4335; box-shadow: 0 4px 12px rgba(234,67,53,0.35); }
+
+/* ===== Session 18: 設定タブ用フローティング保存FAB ===== */
+#settings-save-fab {
+    position: fixed; bottom: 140px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #1a73e8; color: #fff; border: none;
+    box-shadow: 0 4px 12px rgba(26,115,232,0.4);
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 200;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+#settings-save-fab.show { display: flex; }
+#settings-save-fab:active { transform: scale(0.95); }
+
 /* ===== 履歴検索候補のドロップダウン (課題2: 履歴タブで候補が見えづらい問題) ===== */
 .search-wrapper {
     position: relative;
@@ -740,25 +791,51 @@
         </button>
     </div>
 
-    <!-- 利用曜日設定 -->
+    <!-- 利用曜日設定 (Session 18: AM/PM/ALL/× ボタン式) -->
     <div class="input-section" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:14px;padding:16px;">
         <div class="setting-section-title">
             <span class="material-symbols-outlined" style="font-size:16px;">calendar_month</span>
             利用者の利用曜日設定
         </div>
+        <div style="font-size:0.78rem;color:#5f6368;margin:4px 0 12px;">タップで × → AM → PM → ALL を循環</div>
+
+        <!-- 凡例 -->
+        <div style="display:flex;flex-wrap:wrap;gap:10px 14px;margin-bottom:14px;font-size:0.72rem;color:#5f6368;">
+            <div style="display:flex;align-items:center;gap:5px;">
+                <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fff;border:1.5px solid #d0d0d0;"></span>× 利用無し
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#E6F1FB;border:1.5px solid #185FA5;"></span>AM 午前のみ
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#FAEEDA;border:1.5px solid #BA7517;"></span>PM 午後のみ
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#EAF3DE;border:1.5px solid #3B6D11;"></span>ALL 1日
+            </div>
+        </div>
+
         <div id="visit-days-list">
             {% for p in patients %}
-            <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">
-                <div style="font-size:0.85rem;font-weight:700;margin-bottom:6px;">{{ p.user_name }}</div>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    {% for day, label, cls in [('0','日','sun'),('1','月',''),('2','火',''),('3','水',''),('4','木',''),('5','金',''),('6','土','sat')] %}
-                    <label style="display:flex;align-items:center;gap:3px;font-size:0.78rem;font-weight:600;cursor:pointer;">
-                        <input type="checkbox" name="wd-{{ p.id }}" value="{{ day }}"
-                            {{ 'checked' if day in (p.weekdays or '') }}
-                            style="accent-color:#1a73e8;"
-                            onchange="saveVisitDay('{{ p.id }}', '{{ p.user_name }}')">
-                        <span style="color:{{ '#c62828' if cls=='sun' else ('#2e7d32' if cls=='sat' else '#202124') }}">{{ label }}</span>
-                    </label>
+            {% set apd = p.ampm_per_day or {} %}
+            <div class="weekday-card weekday-card-saved" style="margin-bottom:10px;padding:12px;border:1px solid #e8eaed;border-radius:10px;background:#fafbfc;">
+                <div style="font-size:0.88rem;font-weight:700;margin-bottom:8px;color:#202124;">{{ p.user_name }} 様</div>
+                <div style="display:flex;gap:5px;">
+                    {% for day, label, lbl_color in [('0','日','#c62828'),('1','月','#5f6368'),('2','火','#5f6368'),('3','水','#5f6368'),('4','木','#5f6368'),('5','金','#5f6368'),('6','土','#2e7d32')] %}
+                    {% set state = apd.get(day, 'NONE') %}
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+                        <span style="font-size:0.7rem;font-weight:600;color:{{ lbl_color }};">{{ label }}</span>
+                        <button type="button"
+                                class="weekday-btn weekday-btn-{{ state|lower }}"
+                                data-pid="{{ p.id }}"
+                                data-name="{{ p.user_name }}"
+                                data-day="{{ day }}"
+                                data-state="{{ state }}"
+                                onclick="cycleWeekdayState(this)"
+                                style="width:100%;border:1.5px solid;border-radius:8px;padding:10px 0;font-size:0.78rem;font-weight:700;cursor:pointer;background:#fff;transition:all 0.15s;">
+                            {{ '×' if state == 'NONE' else state }}
+                        </button>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -769,7 +846,7 @@
 
 <!-- ========== 環ボタン(FAB):本日の利用者を追加 ========== -->
 <button id="add-today-fab" onclick="openAddPatientModal()" aria-label="本日の利用者を追加" style="
-    position:fixed; bottom:84px; right:20px; z-index:200;
+    position:fixed; bottom:140px; right:20px; z-index:200;
     width:56px; height:56px; border-radius:50%;
     background:#1a73e8; color:#fff; border:none;
     box-shadow:0 4px 12px rgba(26,115,232,0.4);
@@ -777,6 +854,14 @@
     cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
     <span class="material-symbols-outlined" style="font-size:28px;color:#fff;">person_add</span>
 </button>
+
+<!-- ========== Session 18: 設定タブ用 フローティング保存FAB ========== -->
+<button id="settings-save-fab" onclick="saveSettings()" aria-label="設定を保存">
+    <span class="material-symbols-outlined" style="font-size:28px;color:#fff;">save</span>
+</button>
+
+<!-- ========== Session 18: トースト通知 ========== -->
+<div id="tasukaru-toast" class="tasukaru-toast" role="status" aria-live="polite"></div>
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
 <!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
@@ -961,6 +1046,7 @@
 const PATIENTS    = {{ patients | tojson }};
 const VISIT_DAYS  = {{ visit_days | tojson }};
 const AMPM_DATA   = {{ ampm_data | tojson }};
+const AMPM_PER_DAY = {{ ampm_per_day | tojson }};
 const VITALS_DATA = {{ vitals_data | tojson }};
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
@@ -1046,6 +1132,9 @@ window.switchMainTab = function(name, el) {
     // FAB(本日の利用者を追加)は記録タブのみ表示
     const fab = document.getElementById('add-today-fab');
     if (fab) fab.style.display = (name === 'record') ? 'flex' : 'none';
+    // Session 18: 設定タブ用の保存FAB
+    const saveFab = document.getElementById('settings-save-fab');
+    if (saveFab) saveFab.classList.toggle('show', name === 'settings');
     // アラームポーリング:本日の記録タブのみ起動
     if (typeof startRecheckAlarmPolling === 'function') {
         if (name === 'daily') startRecheckAlarmPolling();
@@ -1171,15 +1260,16 @@ function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
     const list = document.getElementById('patient-vitals-list');
 
-    // 今日の曜日の利用者を絞り込み（AM/PMフィルタ + 本日除外フィルタも適用）
+    // 今日の曜日の利用者を絞り込み（曜日ごと AM/PM/ALL/NONE フィルタ + 本日除外フィルタも適用）
+    // Session 18: AMPM_PER_DAY (曜日ごとの状態) を参照
     const targets = PATIENTS.filter(p => {
-        const wd = VISIT_DAYS[p.id] || '';
-        if (!wd.includes(String(currentWeekday))) return false;
+        const ampmMap = AMPM_PER_DAY[p.id] || {};
+        const todayAmpm = ampmMap[String(currentWeekday)] || 'NONE';
+        if (todayAmpm === 'NONE') return false;
         // 「今日だけ削除」されている利用者は表示しない
         if (EXCLUDES_TODAY.includes(String(p.id))) return false;
         if (currentAmpm === 'ALL') return true;
-        const ampm = AMPM_DATA[p.id] || 'BOTH';
-        return ampm === currentAmpm || ampm === 'BOTH';
+        return todayAmpm === currentAmpm || todayAmpm === 'ALL';
     });
 
     if (!targets.length) {
@@ -2918,6 +3008,71 @@ window.setGraphMetric = function(metric) {
     renderHistory();
 };
 
+// ========== Session 18: トースト通知 ==========
+window.showToast = function(message, type) {
+    const toast = document.getElementById('tasukaru-toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.remove('error');
+    if (type === 'error') toast.classList.add('error');
+    toast.classList.add('show');
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2000);
+};
+
+// ========== Session 18: 曜日ごとの AM/PM/ALL/× 切替 ==========
+window.cycleWeekdayState = async function(btn) {
+    const pid = btn.dataset.pid;
+    const name = btn.dataset.name;
+    const day = btn.dataset.day;
+    const current = btn.dataset.state || 'NONE';
+    const cycle = { 'NONE': 'AM', 'AM': 'PM', 'PM': 'ALL', 'ALL': 'NONE' };
+    const next = cycle[current];
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const stateLabels = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
+
+    // 楽観的UI更新
+    const prevState = current;
+    btn.dataset.state = next;
+    btn.textContent = (next === 'NONE') ? '×' : next;
+    btn.className = 'weekday-btn weekday-btn-' + next.toLowerCase();
+    btn.style.opacity = '0.6';
+
+    try {
+        const res = await fetch('/api/save_weekday_ampm', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({patient_id: pid, user_name: name, weekday: day, state: next})
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+            // ローカルキャッシュ更新
+            AMPM_PER_DAY[pid] = json.ampm_per_day || {};
+            VISIT_DAYS[pid] = json.weekdays || '';
+            btn.style.opacity = '1';
+
+            // ✓ カード右上にフラッシュ
+            const card = btn.closest('.weekday-card');
+            if (card) {
+                card.classList.add('flash');
+                setTimeout(() => card.classList.remove('flash'), 1200);
+            }
+            // トースト
+            showToast('✓ ' + name + ' ' + dayNames[parseInt(day,10)] + '曜=' + stateLabels[next] + ' に変更しました');
+        } else {
+            throw new Error(json.message || 'save failed');
+        }
+    } catch (e) {
+        // ロールバック
+        btn.dataset.state = prevState;
+        btn.textContent = (prevState === 'NONE') ? '×' : prevState;
+        btn.className = 'weekday-btn weekday-btn-' + prevState.toLowerCase();
+        btn.style.opacity = '1';
+        showToast('保存に失敗しました', 'error');
+    }
+};
+
 // ========== 利用曜日保存 ==========
 window.saveVisitDay = async function(pid, name) {
     const checks = document.querySelectorAll(`input[name="wd-${pid}"]:checked`);
@@ -2955,10 +3110,18 @@ window.saveSettings = async function() {
     try { result = await res.json(); } catch(e) { result = null; }
     if (res.ok && result && result.status === 'success') {
         Object.assign(SETTINGS, payload);
-        alert('設定を保存しました');
+        if (typeof showToast === 'function') {
+            showToast('✓ 設定を保存しました');
+        } else {
+            alert('設定を保存しました');
+        }
     } else {
         const msg = (result && result.message) ? result.message : ('HTTP ' + res.status);
-        alert('保存に失敗しました: ' + msg);
+        if (typeof showToast === 'function') {
+            showToast('保存に失敗しました: ' + msg, 'error');
+        } else {
+            alert('保存に失敗しました: ' + msg);
+        }
     }
 };
 
