@@ -2089,3 +2089,76 @@ f050d4a fix nav reorder edge auto scroll while dragging
 dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
 prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
 
+
+---
+
+# 📜 Session 17 サマリ (2026-05-05)
+
+## ✅ 完了タスク
+
+1. **バイタル設定保存バグ修正**
+   - 真因: Supabase `vital_alert_settings.recheck_times` カラム欠落で 500 エラー
+   - 修正: dev/prod 両環境に ALTER TABLE で追加(コードは既存コミット 753b754 で対応済)
+   - 動作確認: dev / prod / iPhone 実機すべて OK
+
+2. **評価ページ UX 改善**
+   - 真因: 利用者を選ばずに進めると `alert('利用者を選択してください')` が出るが見落とされていた
+   - 修正方針: 利用者未選択時は下部セクション(聴取エリア / AI生成ボタン / 訓練目標)を全て隠す + 黄色ヒント表示
+   - コミット: `3701675` `d48e58d` `00a40e0`
+   - 動作確認: dev / prod の Mac Chrome で完璧動作
+
+3. **dev → prod 同期**
+   - 22 commits / 6 files (Session 14 末から Session 17 までの全変更)
+   - マージ commit: `973988f`
+
+## 🆕 新教訓
+
+- **教訓21**: パッチスクリプトは「1パッチ=1スクリプト+HARD CHECK」(grep -c で確認、count 不一致なら exit 1)
+- **教訓22**: macOS ターミナルで日本語 grep が `ÿff...` バイト羅列で表示されることがある(LANG/LC_ALL 未設定が原因。マッチ自体は正常)
+- **教訓23**: GitHub raw URL は数分の CDN キャッシュあり。push 直後は反映されないことがある
+- **教訓24**: 評価機能の詳細画面は `ai_change`/`ai_challenge` のみ表示、入力フィールドは DB 保存はされるが画面非表示
+
+---
+
+# 🚀 Session 18 引き継ぎ
+
+## 大型機能: 「曜日ごとの AM/PM/ALL/× 設定」(仕様確定済み)
+
+詳細は `docs/SESSION17_HANDOFF.md` 参照。
+
+### 概要
+- バイタル「設定」タブの曜日設定を 4 状態(× / AM / PM / ALL)に拡張
+- 「測定」「本日の記録」タブにも同じ区分を反映
+- データは `patient_visit_days.ampm_per_day` (JSONB 新カラム) に保存
+- 既存データは「weekdays に含まれる曜日 → ALL」で自動マイグレーション
+
+### 実装ステップ(8 ステップ、合計 4-5 時間)
+
+1. Supabase スキーマ変更 (`ALTER TABLE patient_visit_days ADD COLUMN ampm_per_day JSONB`)
+2. マイグレーション SQL 実行
+3. API 改修 (`/api/save_visit_day`, 新設 `/api/save_weekday_ampm`)
+4. 設定 UI 改修 (vitals.html、新ボタン UI)
+5. `renderPatientList` のフィルタロジック修正
+6. 「本日の記録」タブのフィルタも修正
+7. bulk_register の対応(任意)
+8. dev → prod 同期
+
+### Session 18 開始時の合言葉
+
+「**Session 18 開始。GitHub から README と docs/SESSION17_HANDOFF.md を読み込んで、曜日ごとの AM/PM/ALL/× 設定の Step 1 から進めて**」
+
+## Session 18 で最初にやる片付け
+
+```sql
+-- dev DB のテストデータ削除
+DELETE FROM assessments WHERE user_name = 'Session17テスト利用者';
+```
+
+## 残タスク(優先度順)
+
+| # | 内容 | 優先度 | 規模 |
+|---|---|---|---|
+| ① | 曜日ごとの AM/PM/ALL/× 設定(本セッションで仕様確定済み) | 最優先 | 4-5h |
+| ② | 過去の月次評価報告書を編集できるように | 中 | 1-2h |
+| ③ | 過去の月次評価報告書を削除できるように | 中 | 30m-1h |
+| ④ | モニタリング(generate_monitoring)結果の DB 保存 | 中(大改修) | 2-3h |
