@@ -253,6 +253,10 @@
             <div class="toc-ic" style="background:#dc2626;"><span class="material-symbols-outlined" style="color:#fff;">notifications_active</span></div>
             <span class="toc-lbl">再検査アラーム</span>
         </a>
+        <a class="toc-a" style="background:#e8f5e9;" href="#s-vitals-weekday">
+            <div class="toc-ic" style="background:#34a853;"><span class="material-symbols-outlined" style="color:#fff;">calendar_month</span></div>
+            <span class="toc-lbl">曜日設定</span>
+        </a>
         <a class="toc-a" style="background:#f3e5f5;" href="#s-vitals-trouble">
             <div class="toc-ic" style="background:#9c27b0;"><span class="material-symbols-outlined" style="color:#fff;">help_outline</span></div>
             <span class="toc-lbl">設定・困った時</span>
@@ -593,6 +597,79 @@
         <div class="gd-warn">
             <b>⚠ 注意:</b> 完全自動(ボタン操作なしでアプリを閉じても鳴る)は、現在のバージョンでは未対応です。<br>
             アプリを閉じている時に鳴らすには、毎回カレンダーへの追加が必要です。
+        </div>
+    </div>
+</div>
+
+<!-- ===== 曜日設定(Session 18 NEW) ===== -->
+<div class="sc" id="s-vitals-weekday">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f5e9;"><span class="material-symbols-outlined" style="font-size:26px;color:#34a853;">calendar_month</span></div>
+        <div><div class="sc-ttl">曜日設定<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:8px;vertical-align:middle;">NEW</span></div><div class="sc-sub">利用者ごとに「× / AM / PM / ALL」を1タップで切替</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">利用者ごとに<b>曜日と時間帯</b>を設定できるよ📅<br>「火曜は午前のみ」「金曜は1日」など細かく指定OK!</div>
+        </div>
+
+        <!-- 4つの状態 -->
+        <div class="point-box">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">touch_app</span>4つの状態</div>
+            <div style="font-size:0.82rem;line-height:1.8;color:#202124;">
+                ・<b style="color:#9aa0a6;">×</b> — 利用無し(その曜日は来所しない)<br>
+                ・<b style="color:#185FA5;">AM</b> — 午前のみ来所<br>
+                ・<b style="color:#BA7517;">PM</b> — 午後のみ来所<br>
+                ・<b style="color:#3B6D11;">ALL</b> — 1日(終日)
+            </div>
+        </div>
+        <img src="/static/img/guide/vital-weekday-settings.png" alt="利用曜日設定の全景(凡例+利用者カード)" class="gd-shot">
+        <div class="gd-shot-cap">📅 設定タブの「利用者の利用曜日設定」</div>
+
+        <!-- ステップ1: 設定タブを開く -->
+        <div class="step">
+            <div class="step-n" style="background:#34a853;">1</div>
+            <div style="flex:1;">
+                <div class="step-t">バイタル → 設定タブを開く</div>
+                <div class="step-d">バイタル機能の<b>「設定」タブ</b>を開いて、画面下の「利用者の利用曜日設定」セクションまでスクロールします。</div>
+            </div>
+        </div>
+
+        <!-- ステップ2: ボタンをタップ -->
+        <div class="step">
+            <div class="step-n" style="background:#34a853;">2</div>
+            <div style="flex:1;">
+                <div class="step-t">曜日ボタンをタップ</div>
+                <div class="step-d">利用者ごとに <b>日〜土の7曜日のボタン</b> が並んでいます。タップするたびに <b>× → AM → PM → ALL → ×</b> と循環します。</div>
+            </div>
+        </div>
+        <img src="/static/img/guide/vital-weekday-cycle.png" alt="タスカルくん様の曜日ボタン(色とりどり)" class="gd-shot">
+        <div class="gd-shot-cap">タップで4状態を切替(色で区別)</div>
+
+        <!-- ステップ3: 自動保存 -->
+        <div class="step">
+            <div class="step-n" style="background:#34a853;">3</div>
+            <div style="flex:1;">
+                <div class="step-t">自動保存(タップした瞬間)</div>
+                <div class="step-d">タップした瞬間に <b>自動で保存</b> されます。画面下に緑色のメッセージが出て、カード右上に <b>✓ 保存済</b> マークが一瞬光ります。「保存」ボタンを押す必要はありません!</div>
+            </div>
+        </div>
+        <img src="/static/img/guide/vital-weekday-toast.png" alt="保存完了トースト+✓保存済マーク" class="gd-shot">
+        <div class="gd-shot-cap">✓ 保存済マーク(右上) + 緑のお知らせ</div>
+
+        <!-- 反映先 -->
+        <div class="point-box" style="margin-top:18px;">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">visibility</span>設定はどこに反映される?</div>
+            <div style="font-size:0.82rem;line-height:1.8;color:#202124;">
+                ・<b>「測定」タブ</b> → 今日の曜日 + 時間帯(AM/PM/全員)に該当する利用者だけ表示<br>
+                ・<b>「本日の記録」タブ</b> → 同様にフィルタリング<br>
+                ・<b>「ALL」設定</b> → AM・PM どちらの絞り込みでも表示される
+            </div>
+        </div>
+
+        <div class="hint" style="background:#e8f5e9;color:#137333;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>使い始めは <b>すべての曜日が「ALL」</b> になっているので、来所しない曜日を「×」に変えるだけでOK!</span>
         </div>
     </div>
 </div>
@@ -1132,6 +1209,25 @@
         <div class="mb">
             <img src="/static/tasukaru_ooyorokobi.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
             <div class="mb-text">TASUKARUはどんどん進化中！<br>右上の<b>🔔ベルボタン</b>でいつでも最新の更新情報を確認できるよ🎉</div>
+        </div>
+
+        <div class="update-card" style="border-color:#34a853;">
+            <div style="font-size:0.72rem;color:#80868b;margin-bottom:4px;">2026-05-05</div>
+            <div style="font-size:0.92rem;font-weight:800;color:#202124;margin-bottom:8px;">📅 Ver.4.2 曜日設定アップデート</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f5e9;color:#137333;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">NEW</span>
+                    <span><b>曜日ごとの AM/PM/ALL/× 設定</b>(利用者ごとに細かく時間帯を指定)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f0fe;color:#1557b0;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">改善</span>
+                    <span>設定タブに<b>フローティング保存ボタン</b>追加(💾を画面右下に常駐)</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;">
+                    <span style="background:#e8f0fe;color:#1557b0;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">改善</span>
+                    <span>保存完了時に<b>緑のお知らせ + ✓ 保存済マーク</b>を表示</span>
+                </div>
+            </div>
         </div>
 
         <div class="update-card" style="border-color:#dc2626;">
