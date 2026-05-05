@@ -280,8 +280,8 @@
             placeholder="例：歩行距離を伸ばして自宅内の移動を安全に行なう"></textarea>
     </div>
 
-    <!-- 情報入力エリア -->
-    <div class="input-section">
+    <!-- 情報入力エリア (Session 17: 利用者選択後に表示) -->
+    <div class="input-section" id="input-section" style="display:none;">
         <div class="input-section-title">
             <span class="material-symbols-outlined">mic</span>
             聴取内容の入力
@@ -382,7 +382,7 @@
     </div>
 
     <!-- AI生成ボタン -->
-    <button class="generate-btn" id="generate-btn" onclick="generateReport()">
+    <button class="generate-btn" id="generate-btn" onclick="generateReport()" style="display:none;">
         <span class="material-symbols-outlined">auto_awesome</span>
         AI報告書を生成する
     </button>
