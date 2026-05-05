@@ -123,14 +123,98 @@
 .nav-edit-bar {
     display: none; position: fixed; top: 0; left: 0; right: 0;
     background: #1a73e8; color: #fff; z-index: 9000;
-    padding: 12px 16px; justify-content: space-between; align-items: center;
-    font-size: 0.9rem; font-weight: 700;
+    padding: 10px 14px; justify-content: space-between; align-items: center;
+    font-size: 0.88rem; font-weight: 700;
+    gap: 8px;
 }
 .nav-edit-bar.show { display: flex; }
+.nav-edit-bar-label {
+    flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-edit-bar-actions {
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+.nav-edit-bar-reset,
+.nav-edit-bar-done {
+    white-space: nowrap;
+    border-radius: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
+}
+.nav-edit-bar-reset {
+    background: rgba(255, 255, 255, 0.18); color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    padding: 7px 12px;
+    font-size: 0.82rem;
+}
+.nav-edit-bar-reset:active { background: rgba(255, 255, 255, 0.35); }
 .nav-edit-bar-done {
     background: #fff; color: #1a73e8; border: none;
-    border-radius: 20px; padding: 6px 20px;
-    font-weight: 800; cursor: pointer;
+    padding: 7px 16px;
+    font-size: 0.85rem; font-weight: 800;
+}
+/* ===== ナビ並び替え編集モード ===== */
+.bottom-nav.edit-mode {
+    /* 教訓: padding-bottom を 0 にするとアイコンが画面下端まで行き、
+       iOS のホームインジケーター&アプリ切替ジェスチャーと干渉する。
+       通常時の padding-bottom(max(74px, safe-area + 50px))を維持する。 */
+    /* 編集モード中: 横スクロールは許可、縦スクロール/ピンチは禁止 */
+    touch-action: pan-x !important;
+    -ms-touch-action: pan-x !important;
+}
+body.nav-editing {
+    /* 教訓20: body に touch-action: none を当てると子の pan-x も殺されてしまい、
+       ナビを横スワイプで動かせなくなる。pan-x にして横スクロールだけ許可する。
+       (縦スクロール・ピンチズームは禁止のまま、ナビの横スクロールだけ可能) */
+    touch-action: pan-x !important;
+    -ms-touch-action: pan-x !important;
+    overscroll-behavior: contain;
+}
+/* 編集中のナビ位置は通常時と同じ(本来のフッター位置)で操作させる:
+   - 親指が一番届きやすい位置を維持
+   - 上部バーで「並び替え中」の意図を伝える */
+.bottom-nav.edit-mode {
+    border-top: 2px solid rgba(26, 115, 232, 0.4);
+    box-shadow: 0 -4px 12px rgba(26, 115, 232, 0.15);
+}
+.bottom-nav.edit-mode .bottom-nav-item.draggable-item {
+    /* 編集中の項目: 長押しでドラッグ開始、長押し前は横スクロール許可 */
+    border: 2px dashed #1a73e8 !important;
+    border-radius: 6px;
+    background: #f0f7ff !important;
+    margin: 2px;
+    touch-action: pan-x;
+    -webkit-user-select: none;
+    user-select: none;
+    /* 教訓: iOS Safari の <a> 長押しはデフォルトでリンクプレビュー/コンテキストメニューを開く。
+       これがドラッグを乗っ取るので、編集モード中は明示的に無効化する。 */
+    -webkit-touch-callout: none;
+    cursor: grab;
+    box-shadow: 0 0 0 1px rgba(26, 115, 232, 0.25);
+}
+.bottom-nav.edit-mode .bottom-nav-item.fixed-item {
+    opacity: 0.4;
+    pointer-events: none;
+}
+.bottom-nav.edit-mode .bottom-nav-item.dragging {
+    /* ドラッグ中: 青背景 + 白文字。transform/scale は使わない(指の追従がズレるため) */
+    background: #1a73e8 !important;
+    color: #fff !important;
+    border-color: #1a73e8 !important;
+    z-index: 10;
+    box-shadow: 0 6px 16px rgba(26, 115, 232, 0.5);
+    cursor: grabbing;
+}
+.bottom-nav.edit-mode .bottom-nav-item.dragging .material-symbols-outlined {
+    color: #fff !important;
+}
+.bottom-nav.edit-mode .bottom-nav-item.drop-target-before {
+    box-shadow: -3px 0 0 0 #ea4335 inset, 0 0 0 1px rgba(26, 115, 232, 0.25);
+}
+.bottom-nav.edit-mode .bottom-nav-item.drop-target-after {
+    box-shadow: 3px 0 0 0 #ea4335 inset, 0 0 0 1px rgba(26, 115, 232, 0.25);
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
@@ -358,8 +442,11 @@
     {% if session.get('f_code') %}
     <!-- ナビ編集完了バー -->
     <div class="nav-edit-bar" id="nav-edit-bar">
-        <span>✏️ ドラッグでメニューを並び替え</span>
-        <button class="nav-edit-bar-done" id="nav-edit-done-btn">✅ 完了</button>
+        <span class="nav-edit-bar-label">✏️ メニューを並び替え</span>
+        <div class="nav-edit-bar-actions">
+            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">初期状態</button>
+            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">完了</button>
+        </div>
     </div>
     <!-- ナビ編集完了バー -->
     <!-- 設定モーダル -->
@@ -1108,8 +1195,69 @@ if (navigator.onLine) {
 
 // ===== ナビ表示モード適用 =====
 var NAV_MODE_KEY = 'tasukaru_nav_mode';
+var NAV_ORDER_KEY = 'tasukaru_nav_order';
+
 function saveNavOrder(order) {
-    localStorage.setItem('tasukaru_nav_order', JSON.stringify(order));
+    try {
+        localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order));
+    } catch (e) {}
+}
+
+function loadNavOrder() {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var saved;
+    try {
+        var raw = localStorage.getItem(NAV_ORDER_KEY);
+        if (!raw) return;
+        saved = JSON.parse(raw);
+    } catch (e) { return; }
+    if (!Array.isArray(saved) || saved.length === 0) return;
+    // 旧形式(スラッシュなし: "top","input"...)と新形式(スラッシュ付き: "/top","/input"...)
+    // の両方を受け入れる。さらに何らかの空白も削る。
+    var normalize = function(h) {
+        if (typeof h !== 'string') return '';
+        var s = h.trim();
+        if (!s) return '';
+        return s.charAt(0) === '/' ? s : '/' + s;
+    };
+    saved = saved.map(normalize).filter(function(h) { return !!h; });
+    if (saved.length === 0) return;
+    // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
+    // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
+    var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    // 各 movable item の現在の参照を取得
+    var byHref = {};
+    items.forEach(function(el) {
+        var h = el.getAttribute('href');
+        if (movableHrefs.indexOf(h) !== -1) byHref[h] = el;
+    });
+    // 「/top の直後」を挿入起点にする
+    var topEl = nav.querySelector('a.bottom-nav-item[href="/top"]');
+    if (!topEl) return;
+    // saved の順序に従って、movable な項目を一度ばらして TOP の直後に並べ直す
+    // 1. movable 項目を一旦取り外す
+    movableHrefs.forEach(function(h) {
+        if (byHref[h] && byHref[h].parentNode) byHref[h].parentNode.removeChild(byHref[h]);
+    });
+    // 2. saved 順で TOP の後ろに insertAfter していく(reverseしてinsertAfter)
+    var anchor = topEl;
+    // 保存順を尊重しつつ、保存にない movable は最後に追加
+    var ordered = [];
+    saved.forEach(function(h) {
+        if (byHref[h] && ordered.indexOf(h) === -1) ordered.push(h);
+    });
+    movableHrefs.forEach(function(h) {
+        if (byHref[h] && ordered.indexOf(h) === -1) ordered.push(h);
+    });
+    ordered.forEach(function(h) {
+        var el = byHref[h];
+        if (el && anchor.parentNode) {
+            anchor.parentNode.insertBefore(el, anchor.nextSibling);
+            anchor = el;
+        }
+    });
 }
 
 function showToastMsg(msg) {
@@ -1135,6 +1283,383 @@ function applyNavMode() {
     nav.classList.remove('two-row');
 }
 applyNavMode();
+loadNavOrder();
+
+// ===== ナビ並び替え編集モード =====
+window.startNavEditMode = function() {
+    var nav = document.querySelector('.bottom-nav');
+    var bar = document.getElementById('nav-edit-bar');
+    if (!nav || !bar) return;
+    // 設定モーダルを閉じる
+    if (typeof window.closeSettings === 'function') window.closeSettings();
+    // 編集バー表示 & ナビ自体に edit-mode 付与
+    bar.classList.add('show');
+    nav.classList.add('edit-mode');
+    document.body.classList.add('nav-editing');
+    // 各項目を「並び替え可」「固定」に分類
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    items.forEach(function(el) {
+        var h = el.getAttribute('href');
+        if (h && movableHrefs.indexOf(h) !== -1) {
+            el.classList.add('draggable-item');
+            el.classList.remove('fixed-item');
+            // ★ iOS Safari のリンクプレビュー対策: href を一時退避して <a> から外す。
+            //   これで iOS は「これはリンクではない」と判断し、長押しメニューを出さない。
+            //   stopNavEditMode で元に戻す。
+            if (el.tagName === 'A' && el.hasAttribute('href')) {
+                el.dataset.savedHref = el.getAttribute('href');
+                el.removeAttribute('href');
+            }
+            attachNavDrag(el);
+        } else {
+            el.classList.add('fixed-item');
+            el.classList.remove('draggable-item');
+        }
+    });
+    // 編集モード中は <a> のクリック遷移を抑制(pointer events で自前制御)
+    nav.addEventListener('click', navEditClickBlocker, true);
+    // ★ iOS Safari の長押しコンテキストメニュー(リンクプレビュー)もブロック
+    nav.addEventListener('contextmenu', navEditContextMenuBlocker, true);
+    // ナビを最上部にスクロール
+    nav.scrollLeft = 0;
+};
+
+window.stopNavEditMode = function() {
+    var nav = document.querySelector('.bottom-nav');
+    var bar = document.getElementById('nav-edit-bar');
+    if (!nav || !bar) return;
+    // ★ 最優先: 一時退避していた href を <a> に復元(順序を保存する前に必須)
+    var savedItems = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    savedItems.forEach(function(el) {
+        if (el.dataset && el.dataset.savedHref) {
+            el.setAttribute('href', el.dataset.savedHref);
+            delete el.dataset.savedHref;
+        }
+    });
+    bar.classList.remove('show');
+    nav.classList.remove('edit-mode');
+    document.body.classList.remove('nav-editing');
+    var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
+    items.forEach(function(el) {
+        el.classList.remove('draggable-item', 'fixed-item', 'dragging', 'drop-target-before', 'drop-target-after');
+    });
+    nav.removeEventListener('click', navEditClickBlocker, true);
+    nav.removeEventListener('contextmenu', navEditContextMenuBlocker, true);
+    // 現在の DOM 順序を保存(href 配列、movable のみ)
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/calendar', '/history', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
+        .map(function(el) { return el.getAttribute('href'); })
+        .filter(function(h) { return movableHrefs.indexOf(h) !== -1; });
+    saveNavOrder(current);
+    showToastMsg('✅ メニュー並び順を保存しました');
+};
+
+// ★ 並び順を初期状態に戻す(編集バーの「🔄 初期状態」ボタン)
+window.resetNavOrder = function() {
+    var ok = window.confirm('初期状態に戻します。よろしいですか?');
+    if (!ok) return;
+    try {
+        localStorage.removeItem(NAV_ORDER_KEY);
+    } catch (e) {}
+    // ナビ並びを反映するためページをリロード(編集モードも自動解除)
+    location.reload();
+};
+
+function navEditClickBlocker(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// ★ iOS Safari の長押しコンテキストメニュー(リンクプレビュー)を編集モード中ブロック
+function navEditContextMenuBlocker(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// pointer events ベースのドラッグ並び替え(iOS Safari 対応)
+var _navDragState = null;
+
+function attachNavDrag(el) {
+    if (el._navDragAttached) return;
+    el._navDragAttached = true;
+    el.addEventListener('pointerdown', onNavPointerDown);
+}
+
+// 長押しタイマー(150ms 押しっぱで「ドラッグ準備完了」)
+var _navHoldTimer = null;
+var _navHoldState = null;
+
+function onNavPointerDown(e) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !nav.classList.contains('edit-mode')) return;
+    var target = e.currentTarget;
+    if (!target.classList.contains('draggable-item')) return;
+    // 指を置いた直後は preventDefault しない: 横スクロールを許可するため
+    var rect = target.getBoundingClientRect();
+    _navHoldState = {
+        el: target,
+        startX: e.clientX,
+        startY: e.clientY,
+        rect: rect,
+        pointerId: e.pointerId,
+        cancelled: false
+    };
+    // 軽く視覚フィードバック(押された感)
+    target.style.opacity = '0.7';
+    // 一時的に pointermove と pointerup を listen して、長押し前に動いたらキャンセル
+    document.addEventListener('pointermove', onNavHoldMove);
+    document.addEventListener('pointerup', onNavHoldUp);
+    document.addEventListener('pointercancel', onNavHoldUp);
+    // 150ms 後にドラッグモード突入
+    _navHoldTimer = setTimeout(function() {
+        if (!_navHoldState || _navHoldState.cancelled) return;
+        beginDragMode(e);
+    }, 150);
+}
+
+function onNavHoldMove(e) {
+    if (!_navHoldState || _navHoldState.cancelled) return;
+    var dx = e.clientX - _navHoldState.startX;
+    var dy = e.clientY - _navHoldState.startY;
+    // 長押し前に 8px 以上動いたら → 横スクロール意図と判断、ドラッグキャンセル
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        cancelHold();
+    }
+}
+
+function onNavHoldUp(e) {
+    if (!_navHoldState) return;
+    if (_navHoldState.cancelled) return;
+    cancelHold();
+}
+
+function cancelHold() {
+    if (_navHoldTimer) { clearTimeout(_navHoldTimer); _navHoldTimer = null; }
+    if (_navHoldState) {
+        _navHoldState.el.style.opacity = '';
+        _navHoldState.cancelled = true;
+    }
+    _navHoldState = null;
+    document.removeEventListener('pointermove', onNavHoldMove);
+    document.removeEventListener('pointerup', onNavHoldUp);
+    document.removeEventListener('pointercancel', onNavHoldUp);
+}
+
+function beginDragMode(originEvent) {
+    if (!_navHoldState) return;
+    var holdState = _navHoldState;
+    var target = holdState.el;
+    target.style.opacity = '';
+    // ホールド用リスナを外す
+    document.removeEventListener('pointermove', onNavHoldMove);
+    document.removeEventListener('pointerup', onNavHoldUp);
+    document.removeEventListener('pointercancel', onNavHoldUp);
+    _navHoldState = null;
+    _navHoldTimer = null;
+    // 振動フィードバック(対応端末のみ)
+    if (navigator.vibrate) try { navigator.vibrate(20); } catch(e){}
+    // ドラッグ状態に入る
+    var rect = holdState.rect;
+    _navDragState = {
+        el: target,
+        startX: holdState.startX,
+        startY: holdState.startY,
+        offsetX: holdState.startX - rect.left,
+        offsetY: holdState.startY - rect.top,
+        origLeft: rect.left,
+        origTop: rect.top,
+        moved: false,
+        pointerId: holdState.pointerId
+    };
+    try { target.setPointerCapture(holdState.pointerId); } catch (err) {}
+    target.classList.add('dragging');
+    document.addEventListener('pointermove', onNavPointerMove);
+    document.addEventListener('pointerup', onNavPointerUp);
+    document.addEventListener('pointercancel', onNavPointerUp);
+    // iOS Safari でのスクロール完全停止のため touchmove も passive:false で抑止
+    document.addEventListener('touchmove', onNavTouchMoveBlock, { passive: false });
+}
+
+function onNavTouchMoveBlock(e) {
+    if (!_navDragState) return;
+    if (e.cancelable) e.preventDefault();
+}
+
+// ★ ドラッグ中の画面端オートスクロール
+var _navAutoScrollRAF = null;
+var _navAutoScrollStep = 0;
+function startNavAutoScroll(step) {
+    _navAutoScrollStep = step;
+    if (_navAutoScrollRAF) return; // 既に走っているなら step だけ更新
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    var tick = function() {
+        if (!_navDragState || _navAutoScrollStep === 0) {
+            _navAutoScrollRAF = null;
+            return;
+        }
+        var prev = nav.scrollLeft;
+        nav.scrollLeft = prev + _navAutoScrollStep;
+        // 端で動かなくなったら停止して RAF も止める
+        if (nav.scrollLeft === prev) {
+            _navAutoScrollRAF = null;
+            return;
+        }
+        // ナビをスクロールしたぶん、ヒットテストもポインタ位置で再評価
+        // (指は止まっているのに項目だけ流れていくケースに対応)
+        if (_navDragState && typeof _navDragState.lastClientX === 'number') {
+            simulateNavHitTest(_navDragState.lastClientX, _navDragState.lastClientY);
+        }
+        _navAutoScrollRAF = requestAnimationFrame(tick);
+    };
+    _navAutoScrollRAF = requestAnimationFrame(tick);
+}
+function stopNavAutoScroll() {
+    _navAutoScrollStep = 0;
+    if (_navAutoScrollRAF) {
+        cancelAnimationFrame(_navAutoScrollRAF);
+        _navAutoScrollRAF = null;
+    }
+}
+// オートスクロール中、指は止まっているがナビが流れる場合のヒットテスト再評価
+function simulateNavHitTest(clientX, clientY) {
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav || !_navDragState) return;
+    var state = _navDragState;
+    state.el.style.pointerEvents = 'none';
+    var hit = document.elementFromPoint(clientX, clientY);
+    state.el.style.pointerEvents = '';
+    var hitItem = (hit && hit.closest) ? hit.closest('.bottom-nav-item.draggable-item') : null;
+    if (!hitItem) {
+        var candidates = nav.querySelectorAll('.bottom-nav-item.draggable-item');
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (c === state.el) continue;
+            var rr = c.getBoundingClientRect();
+            if (clientX >= rr.left && clientX <= rr.right &&
+                clientY >= rr.top - 5 && clientY <= rr.bottom + 5) {
+                hitItem = c;
+                break;
+            }
+        }
+    }
+    nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+    });
+    if (!hitItem || hitItem === state.el) return;
+    var hr = hitItem.getBoundingClientRect();
+    var midX = hr.left + hr.width / 2;
+    if (clientX < midX) {
+        hitItem.classList.add('drop-target-before');
+    } else {
+        hitItem.classList.add('drop-target-after');
+    }
+}
+
+function onNavPointerMove(e) {
+    if (!_navDragState) return;
+    // iOS Safari でのページスクロール抑止
+    if (e.cancelable) e.preventDefault();
+    var state = _navDragState;
+    var dx = e.clientX - state.startX;
+    var dy = e.clientY - state.startY;
+    if (!state.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+    state.moved = true;
+    // ドラッグ中の見た目: そのまま CSS の .dragging スタイルで強調
+    // ヒットテスト: 現在のポインタ位置にある draggable-item を探す
+    var nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+    // ★ エッジオートスクロール: 画面左右端付近に指があればナビ自体を横スクロール
+    // (preventDefault でブラウザのデフォルト横スクロールを止めているため、自前で動かす)
+    var edgeZone = 60; // 端からの判定範囲(px)
+    var maxStep = 14;  // 1フレームあたりの最大スクロール量(px)
+    var navRect = nav.getBoundingClientRect();
+    var leftDist = e.clientX - navRect.left;   // 左端からの距離
+    var rightDist = navRect.right - e.clientX; // 右端からの距離
+    var edgeStep = 0;
+    if (leftDist < edgeZone) {
+        // 左端に近いほど大きく、左へスクロール
+        edgeStep = -Math.ceil(maxStep * (1 - Math.max(0, leftDist) / edgeZone));
+    } else if (rightDist < edgeZone) {
+        // 右端に近いほど大きく、右へスクロール
+        edgeStep = Math.ceil(maxStep * (1 - Math.max(0, rightDist) / edgeZone));
+    }
+    state.lastClientX = e.clientX;
+    state.lastClientY = e.clientY;
+    if (edgeStep !== 0) {
+        startNavAutoScroll(edgeStep);
+    } else {
+        stopNavAutoScroll();
+    }
+    // 一時的に dragging を非表示にしてヒットテスト(自分自身を除外するため)
+    state.el.style.pointerEvents = 'none';
+    var hit = document.elementFromPoint(e.clientX, e.clientY);
+    state.el.style.pointerEvents = '';
+    var hitItem = (hit && hit.closest) ? hit.closest('.bottom-nav-item.draggable-item') : null;
+    // フォールバック: elementFromPoint が body 等を返す場合、座標と getBoundingClientRect で直接検索
+    if (!hitItem) {
+        var candidates = nav.querySelectorAll('.bottom-nav-item.draggable-item');
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (c === state.el) continue;
+            var rr = c.getBoundingClientRect();
+            // 横方向のみ判定(縦方向は ±5px のみ余裕)
+            if (e.clientX >= rr.left && e.clientX <= rr.right &&
+                e.clientY >= rr.top - 5 && e.clientY <= rr.bottom + 5) {
+                hitItem = c;
+                break;
+            }
+        }
+    }
+    // 既存のドロップターゲット表示をクリア
+    nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+    });
+    if (!hitItem || hitItem === state.el) return;
+    // ヒットした項目の左半分なら手前、右半分なら後ろにマーク
+    var hr = hitItem.getBoundingClientRect();
+    var midX = hr.left + hr.width / 2;
+    if (e.clientX < midX) {
+        hitItem.classList.add('drop-target-before');
+    } else {
+        hitItem.classList.add('drop-target-after');
+    }
+}
+
+function onNavPointerUp(e) {
+    if (!_navDragState) return;
+    var state = _navDragState;
+    var nav = document.querySelector('.bottom-nav');
+    stopNavAutoScroll();
+    document.removeEventListener('pointermove', onNavPointerMove);
+    document.removeEventListener('pointerup', onNavPointerUp);
+    document.removeEventListener('pointercancel', onNavPointerUp);
+    document.removeEventListener('touchmove', onNavTouchMoveBlock);
+    try { state.el.releasePointerCapture(state.pointerId); } catch (err) {}
+    state.el.classList.remove('dragging');
+    if (nav && state.moved) {
+        // 現在のドロップターゲットに応じて DOM を入れ替え
+        var before = nav.querySelector('.drop-target-before');
+        var after = nav.querySelector('.drop-target-after');
+        if (before && before.parentNode) {
+            before.parentNode.insertBefore(state.el, before);
+        } else if (after && after.parentNode) {
+            after.parentNode.insertBefore(state.el, after.nextSibling);
+        }
+    }
+    if (nav) {
+        nav.querySelectorAll('.drop-target-before, .drop-target-after').forEach(function(el) {
+            el.classList.remove('drop-target-before', 'drop-target-after');
+        });
+    }
+    _navDragState = null;
+}
+
 // ===== 設定モーダル関連 =====
 window.openSettings = function() {
     var m = document.getElementById('user-settings-modal');
@@ -1191,6 +1716,12 @@ document.addEventListener('click', function(e) {
     }
     if (e.target.closest('#nav-edit-done-btn')) {
         if (typeof window.stopNavEditMode === 'function') window.stopNavEditMode();
+        return;
+    }
+    if (e.target.closest('#nav-edit-reset-btn')) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (typeof window.resetNavOrder === 'function') window.resetNavOrder();
         return;
     }
     if (e.target.closest('.sound-opt')) {

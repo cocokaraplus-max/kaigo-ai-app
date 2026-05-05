@@ -89,7 +89,11 @@
 .vital-summary span.ng { color:#ea4335; font-weight:700; }
 
 .patient-vital-body { padding:14px 16px; display:none; }
-.patient-vital-body.open { display:block; }
+.patient-vital-body.open {
+    display:block;
+    /* ナビ+FAB の高さ分のスペーサー。スクロールしても保存ボタンがナビ下に隠れないように */
+    padding-bottom: 130px;
+}
 
 /* ===== バイタル入力エリア ===== */
 .vital-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
@@ -980,6 +984,13 @@ requestAnimationFrame(() => {
     if (modal && modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
+    // FAB(本日の利用者を追加)も body 直下に移動。
+    // .page-wrapper { z-index: 0 } が stacking context を作るため、
+    // FAB の z-index: 200 が外の .bottom-nav に勝てない。教訓14 同様の対処。
+    const fab = document.getElementById('add-today-fab');
+    if (fab && fab.parentElement !== document.body) {
+        document.body.appendChild(fab);
+    }
 });
 
 // ========== ピンチズーム ==========
@@ -1345,6 +1356,16 @@ window.toggleVitalCard = function(pid) {
     const arrow = document.getElementById('varrow-'+pid);
     body.classList.toggle('open');
     arrow.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+    // 展開時、利用者カードが画面上部に来るように自動スクロール(保存ボタンまで見やすくする)
+    if (body.classList.contains('open')) {
+        const card = document.getElementById('vcard-'+pid);
+        if (card) {
+            // 次のレイアウトサイクルで body がレンダリングされるのを待ってスクロール
+            setTimeout(() => {
+                card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
+        }
+    }
 };
 
 // ========== バイタル保存 ==========
@@ -2930,9 +2951,14 @@ window.saveSettings = async function() {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
     });
-    if ((await res.json()).status === 'success') {
+    let result = null;
+    try { result = await res.json(); } catch(e) { result = null; }
+    if (res.ok && result && result.status === 'success') {
         Object.assign(SETTINGS, payload);
         alert('設定を保存しました');
+    } else {
+        const msg = (result && result.message) ? result.message : ('HTTP ' + res.status);
+        alert('保存に失敗しました: ' + msg);
     }
 };
 
