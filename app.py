@@ -746,9 +746,16 @@ def daily_view():
             record_dates = list(dates_set)
     except Exception as e:
         pass
-
-    # Session 19: 利用者をあいうえお順にソート
-    records = dict(sorted(records.items(), key=lambda x: x[0]))
+    # Session 19: 利用者を user_kana ベースのあいうえお順にソート
+    user_kana_map = {}
+    try:
+        p_res = supabase.table("patients").select("user_name, user_kana").eq("facility_code", f_code).execute()
+        if p_res.data:
+            for p in p_res.data:
+                user_kana_map[p["user_name"]] = p.get("user_kana") or p["user_name"]
+    except Exception as e:
+        pass
+    records = dict(sorted(records.items(), key=lambda x: user_kana_map.get(x[0], x[0])))
     return render("daily_view.html",
         selected_date=selected_date_str,
         date_label=date_label,
