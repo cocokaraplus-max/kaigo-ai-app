@@ -641,6 +641,13 @@
             🌇 午後（PM）
         </button>
     </div>
+    <!-- Session 19: 再検者を上部に配置 トグル -->
+    <div style="display:flex;margin-bottom:10px;">
+        <button id="toggle-prioritize-vitals" onclick="togglePrioritizeAlerts()" type="button"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            ⚠ 再検者を上部に配置
+        </button>
+    </div>
 
     <!-- 利用者一覧 -->
     <div id="patient-vitals-list"></div>
@@ -667,6 +674,13 @@
         <button id="daily-ampm-PM" onclick="setDailyFilter('PM')"
             style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
             🌇 午後（PM）
+        </button>
+    </div>
+    <!-- Session 19: 再検者を上部に配置 トグル -->
+    <div style="display:flex;margin-bottom:10px;">
+        <button id="toggle-prioritize-daily" onclick="togglePrioritizeAlerts()" type="button"
+            style="flex:1;padding:7px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            ⚠ 再検者を上部に配置
         </button>
     </div>
     <div id="daily-overview-area">
@@ -1287,6 +1301,18 @@ function renderPatientList() {
         return todayAmpm === currentAmpm || todayAmpm === 'ALL';
     });
 
+    // Session 19: あいうえお順 + アラート優先トグル
+    targets.sort((a, b) => {
+        if (prioritizeAlerts) {
+            const va = VITALS_DATA[a.id] || {};
+            const vb = VITALS_DATA[b.id] || {};
+            const aAlert = (checkAlert(va).length > 0) || va.recheck === true;
+            const bAlert = (checkAlert(vb).length > 0) || vb.recheck === true;
+            if (aAlert !== bAlert) return aAlert ? -1 : 1;
+        }
+        return (a.user_kana || a.user_name).localeCompare(b.user_kana || b.user_name, 'ja');
+    });
+
     if (!targets.length) {
         list.innerHTML = `<div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
             <span class="material-symbols-outlined">info</span>
@@ -1828,6 +1854,29 @@ async function sendVoiceToAI(blob, ext) {
 }
 
 // ========== 本日の記録 ==========
+// Session 19: 利用者ソート(あいうえお順 + アラート優先トグル)
+let prioritizeAlerts = false;
+window.togglePrioritizeAlerts = function(scope) {
+    prioritizeAlerts = !prioritizeAlerts;
+    // 両タブのトグルボタンの見た目を同期
+    ['toggle-prioritize-vitals', 'toggle-prioritize-daily'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        if (prioritizeAlerts) {
+            btn.style.background = '#f59e0b';
+            btn.style.color = '#fff';
+            btn.style.borderColor = '#f59e0b';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#5f6368';
+            btn.style.borderColor = '#e0e0e0';
+        }
+    });
+    // 該当タブを再描画
+    if (typeof renderPatientList === 'function') renderPatientList();
+    if (typeof loadDailyOverview === 'function') loadDailyOverview();
+};
+
 // Session 19: 本日の記録の AM/PM フィルタ
 let dailyFilter = 'all';
 window.setDailyFilter = function(filter) {
@@ -2637,24 +2686,28 @@ window.loadDailyOverview = async function() {
         return;
     }
 
-    // 利用者ごとにグループ化
+    // 利用者ごとにグループ化(Session 19: user_kana も保持)
     const byPatient = {};
     data.vitals.forEach(v => {
         const key = String(v.patient_id);
-        if (!byPatient[key]) byPatient[key] = { name: v.user_name, items: [] };
+        if (!byPatient[key]) {
+            // PATIENTS 配列から kana を引く(なければ name で代用)
+            const matched = (typeof PATIENTS !== 'undefined') ? PATIENTS.find(pp => String(pp.id) === key) : null;
+            const kana = (matched && matched.user_kana) ? matched.user_kana : v.user_name;
+            byPatient[key] = { name: v.user_name, kana: kana, items: [] };
+        }
         byPatient[key].items.push(v);
     });
     Object.values(byPatient).forEach(p => {
         p.items.sort((a, b) => (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
     });
-
-    // 異常値判定 + 並び順(再検査者上位)
+    // 異常値判定 + 並び順(Session 19: あいうえお順 + アラート優先トグル)
     let patientList = Object.entries(byPatient).map(([pid, info]) => {
         const hasAlert = info.items.some(v => hasAnyAlert(v) || v.recheck === true);
         return { pid, ...info, hasAlert };
     }).sort((a, b) => {
-        if (a.hasAlert !== b.hasAlert) return a.hasAlert ? -1 : 1;
-        return a.name.localeCompare(b.name, 'ja');
+        if (prioritizeAlerts && a.hasAlert !== b.hasAlert) return a.hasAlert ? -1 : 1;
+        return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
     });
 
     // Session 19: AM/PM/全員フィルタ(本日の記録)

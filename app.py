@@ -747,6 +747,8 @@ def daily_view():
     except Exception as e:
         pass
 
+    # Session 19: 利用者をあいうえお順にソート
+    records = dict(sorted(records.items(), key=lambda x: x[0]))
     return render("daily_view.html",
         selected_date=selected_date_str,
         date_label=date_label,
