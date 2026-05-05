@@ -984,6 +984,13 @@ requestAnimationFrame(() => {
     if (modal && modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
+    // FAB(本日の利用者を追加)も body 直下に移動。
+    // .page-wrapper { z-index: 0 } が stacking context を作るため、
+    // FAB の z-index: 200 が外の .bottom-nav に勝てない。教訓14 同様の対処。
+    const fab = document.getElementById('add-today-fab');
+    if (fab && fab.parentElement !== document.body) {
+        document.body.appendChild(fab);
+    }
 });
 
 // ========== ピンチズーム ==========
