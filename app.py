@@ -661,6 +661,7 @@ def input_view():
                         datetime.strptime(record_date, "%Y-%m-%d").date(),
                         record_time
                     ))
+                    must_read_flag = (request.form.get("must_read", "0") == "1")
                     supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -668,7 +669,8 @@ def input_view():
                         "staff_name": my_name,
                         "content": content,
                         "created_at": dt_record.isoformat(),
-                        "image_urls": image_urls if image_urls else None
+                        "image_urls": image_urls if image_urls else None,
+                        "must_read": must_read_flag
                     }).execute()
                     content = ""
                     selected_patient = ""
@@ -714,6 +716,25 @@ def daily_view():
         ).lt("created_at", (t_start + timedelta(days=1)).isoformat()).order("created_at").execute()
 
         if res.data:
+            # Session 20: 当日記録の既読状況をまとめて取得
+            day_record_ids = [r["id"] for r in res.data]
+            my_read_ids = set()
+            reads_by_record = {}
+            if day_record_ids:
+                try:
+                    rr = supabase.table("record_reads").select("record_id, staff_name").eq("facility_code", f_code).in_("record_id", day_record_ids).execute()
+                    if rr.data:
+                        for row in rr.data:
+                            rid = row["record_id"]
+                            sname = row["staff_name"]
+                            if rid not in reads_by_record:
+                                reads_by_record[rid] = []
+                            reads_by_record[rid].append(sname)
+                            if sname == my_name:
+                                my_read_ids.add(rid)
+                except Exception:
+                    pass
+
             for r in res.data:
                 user = r["user_name"]
                 if user not in records:
@@ -723,6 +744,11 @@ def daily_view():
                 else:
                     r["time"] = parse_jst(r["created_at"])
                     r["can_edit"] = (str(r["staff_name"]) == str(my_name)) or is_admin
+                    # Session 20: 既読情報を付与
+                    r_reads = reads_by_record.get(r["id"], [])
+                    r["read_staffs"] = r_reads
+                    r["read_count"] = len(r_reads)
+                    r["is_read_by_me"] = (r["id"] in my_read_ids)
                     records[user]["normal_records"].append(r)
     except Exception as e:
         pass
@@ -818,6 +844,24 @@ def api_user_month_records():
             "created_at", month_start.isoformat()
         ).lt("created_at", next_month.isoformat()).order("created_at").execute()
         if res.data:
+            # Session 20: 既読情報をまとめて取得
+            month_record_ids = [r["id"] for r in res.data]
+            my_read_ids2 = set()
+            reads_by_record2 = {}
+            if month_record_ids:
+                try:
+                    rr2 = supabase.table("record_reads").select("record_id, staff_name").eq("facility_code", f_code).in_("record_id", month_record_ids).execute()
+                    if rr2.data:
+                        for row in rr2.data:
+                            rid = row["record_id"]
+                            sname = row["staff_name"]
+                            if rid not in reads_by_record2:
+                                reads_by_record2[rid] = []
+                            reads_by_record2[rid].append(sname)
+                            if sname == my_name:
+                                my_read_ids2.add(rid)
+                except Exception:
+                    pass
             for r in res.data:
                 d = parse_jst_date(r["created_at"]).strftime("%Y-%m-%d")
                 record_dates_set.add(d)
@@ -828,6 +872,11 @@ def api_user_month_records():
                 else:
                     r["time"] = parse_jst(r["created_at"])
                     r["can_edit"] = (str(r["staff_name"]) == str(my_name)) or is_admin
+                    # Session 20: 既読情報
+                    r_reads2 = reads_by_record2.get(r["id"], [])
+                    r["read_staffs"] = r_reads2
+                    r["read_count"] = len(r_reads2)
+                    r["is_read_by_me"] = (r["id"] in my_read_ids2)
                     records_by_date[d]["normal_records"].append(r)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -840,6 +889,172 @@ def api_user_month_records():
         "records_by_date": sorted_records,
         "record_dates": list(record_dates_set),
     })
+
+
+# ===== Session 20: 必読バッジ・既読管理 API =====
+
+@app.route('/api/toggle_must_read', methods=['POST'])
+@login_required
+def api_toggle_must_read():
+    """ケース記録の must_read フラグを切り替え"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    is_admin = session.get("admin_authenticated", False)
+    supabase = get_supabase()
+    try:
+        data = request.get_json(silent=True) or {}
+        record_id = int(data.get("record_id", 0))
+        must_read = bool(data.get("must_read", False))
+    except Exception:
+        return jsonify({"status": "error", "message": "invalid params"}), 400
+    if not record_id:
+        return jsonify({"status": "error", "message": "record_id required"}), 400
+    try:
+        # 同一施設の記録か確認
+        res = supabase.table("records").select("id, staff_name").eq("id", record_id).eq("facility_code", f_code).execute()
+        if not res.data:
+            return jsonify({"status": "error", "message": "record not found"}), 404
+        # 権限: 投稿者本人 or 管理者のみ
+        owner = res.data[0].get("staff_name") or ""
+        if not is_admin and str(owner) != str(my_name):
+            return jsonify({"status": "error", "message": "forbidden"}), 403
+        supabase.table("records").update({"must_read": must_read}).eq("id", record_id).eq("facility_code", f_code).execute()
+        # 自分が既読かどうかも返す(UIの分岐用)
+        rd = supabase.table("record_reads").select("id").eq("record_id", record_id).eq("staff_name", my_name).limit(1).execute()
+        is_read_by_me = bool(rd.data)
+        return jsonify({"status": "success", "must_read": must_read, "is_read_by_me": is_read_by_me})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/mark_records_read', methods=['POST'])
+@login_required
+def api_mark_records_read():
+    """指定された record_id 群を自分の既読としてマーク(掲示板の mark_all_read 相当)"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    try:
+        data = request.get_json(silent=True) or {}
+        record_ids = data.get("record_ids", [])
+        record_ids = [int(x) for x in record_ids if x]
+    except Exception:
+        return jsonify({"status": "error", "message": "invalid params"}), 400
+    if not record_ids:
+        return jsonify({"status": "success", "marked_ids": []})
+    try:
+        # 既存の既読を取得して重複を避ける
+        existing = supabase.table("record_reads").select("record_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("record_id", record_ids).execute()
+        existing_ids = set(r["record_id"] for r in (existing.data or []))
+        to_insert = [
+            {"facility_code": f_code, "record_id": rid, "staff_name": my_name}
+            for rid in record_ids if rid not in existing_ids
+        ]
+        if to_insert:
+            supabase.table("record_reads").insert(to_insert).execute()
+        return jsonify({"status": "success", "marked_ids": [x["record_id"] for x in to_insert]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/record_reads/<int:record_id>')
+@login_required
+def api_record_reads(record_id):
+    """指定記録の既読スタッフ一覧"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    try:
+        # 同一施設の記録か確認
+        rec = supabase.table("records").select("id").eq("id", record_id).eq("facility_code", f_code).execute()
+        if not rec.data:
+            return jsonify({"status": "error", "message": "record not found"}), 404
+        rr = supabase.table("record_reads").select("staff_name, read_at").eq("facility_code", f_code).eq("record_id", record_id).order("read_at").execute()
+        names = []
+        seen = set()
+        for row in (rr.data or []):
+            n = row.get("staff_name") or ""
+            if n and n not in seen:
+                seen.add(n)
+                names.append(n)
+        return jsonify({"status": "success", "read_staffs": names})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/records/unread_count')
+@login_required
+def api_records_unread_count():
+    """自分にとって未読の必読ケース記録の件数を返す(全期間)"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    try:
+        # 全期間の must_read=true な記録を取得
+        res = supabase.table("records").select("id").eq("facility_code", f_code).eq("must_read", True).execute()
+        if not res.data:
+            return jsonify({"status": "success", "count": 0})
+        must_read_ids = [r["id"] for r in res.data]
+        # 自分が既読の record_id を取得
+        rr = supabase.table("record_reads").select("record_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("record_id", must_read_ids).execute()
+        read_ids = set(row["record_id"] for row in (rr.data or []))
+        unread_count = sum(1 for rid in must_read_ids if rid not in read_ids)
+        return jsonify({"status": "success", "count": unread_count})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "count": 0}), 500
+
+
+@app.route('/api/records/unread_list')
+@login_required
+def api_records_unread_list():
+    """自分にとって未読の必読ケース記録の一覧(日付グループ化、新しい順)"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    try:
+        # 全期間の must_read=true な記録(本人投稿の AI統合記録は除外)
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq("must_read", True).neq("staff_name", "AI統合記録").order("created_at", desc=True).execute()
+        if not res.data:
+            return jsonify({"status": "success", "groups": []})
+        all_records = res.data
+        all_ids = [r["id"] for r in all_records]
+        # 自分が既読の record_id を取得
+        rr = supabase.table("record_reads").select("record_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("record_id", all_ids).execute()
+        read_ids = set(row["record_id"] for row in (rr.data or []))
+        unread = [r for r in all_records if r["id"] not in read_ids]
+
+        # 日付ごとにグループ化(JST基準)
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for r in unread:
+            d = parse_jst_date(r["created_at"]).strftime("%Y-%m-%d")
+            if d not in groups:
+                groups[d] = []
+            groups[d].append({
+                "id": r["id"],
+                "user_name": r.get("user_name") or "",
+                "staff_name": r.get("staff_name") or "",
+                "content": r.get("content") or "",
+                "time": parse_jst(r["created_at"]),
+                "image_urls": r.get("image_urls") or [],
+                "created_at": r["created_at"],
+            })
+        out = []
+        for d, items in groups.items():
+            try:
+                d_obj = datetime.strptime(d, "%Y-%m-%d")
+                date_label = d_obj.strftime("%m月%d日 (") + "日月火水木金土"[d_obj.weekday()] + ")"
+                date_label = d_obj.strftime("%m月%d日") + " (" + "月火水木金土日"[d_obj.weekday()] + ")"
+            except Exception:
+                date_label = d
+            out.append({
+                "date": d,
+                "date_label": date_label,
+                "records": items
+            })
+        return jsonify({"status": "success", "groups": out})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "groups": []}), 500
+
 
 @app.route('/birthday')
 @login_required

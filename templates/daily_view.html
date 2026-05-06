@@ -316,7 +316,174 @@
     color: #1a73e8;
     display: none;
 }
+/* Session 20: 必読バッジ・☆・既読チップ */
+.record-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.must-read-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9rem;
+    color: #999;
+    transition: all 0.15s ease;
+}
+.must-read-toggle.active {
+    color: #f59e0b;
+    background: #fef3c7;
+}
+.must-read-toggle .material-symbols-outlined {
+    font-size: 20px;
+}
+.must-read-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin: 6px 0;
+}
+.must-read-badge .material-symbols-outlined {
+    font-size: 16px;
+}
+.read-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: #f1f3f4;
+    color: #5f6368;
+    border-radius: 12px;
+    font-size: 0.74rem;
+    cursor: pointer;
+    user-select: none;
+    margin-top: 6px;
+}
+.read-chip:hover {
+    background: #e8eaed;
+}
+.read-chip .material-symbols-outlined {
+    font-size: 14px;
+}
+.read-list {
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #5f6368;
+    display: none;
+}
+.read-list.open { display: block; }
+.read-list-empty { color: #999; font-style: italic; }
+
+/* Session 20: 未読タブ */
+.dv-unread-day-group {
+    margin-bottom: 24px;
+}
+.dv-unread-day-header {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #202124;
+    padding: 8px 0;
+    border-bottom: 2px solid #1a73e8;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.dv-unread-day-header .material-symbols-outlined {
+    font-size: 20px;
+    color: #1a73e8;
+}
+.dv-unread-day-link {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: #1a73e8;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.dv-unread-record {
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+.dv-unread-record-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: #5f6368;
+    margin-bottom: 6px;
+}
+.dv-unread-record-meta .material-symbols-outlined {
+    font-size: 16px;
+}
+.dv-unread-record-user {
+    font-weight: 700;
+    color: #202124;
+}
+.dv-unread-record-content {
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: #202124;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 6px 0;
+}
+.dv-unread-record-photos {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.dv-unread-record-photos img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: zoom-in;
+}
+.dv-unread-confirm-btn {
+    margin-top: 8px;
+    background: #f59e0b;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.dv-unread-confirm-btn:hover {
+    background: #d97706;
+}
+.dv-unread-confirm-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
 </style>
+
+
 {% endblock %}
 
 {% block content %}
@@ -330,10 +497,15 @@
     ケース記録閲覧
 </div>
 
-<!-- Session 19: DAY/利用者 タブ -->
+<!-- Session 19: DAY/利用者 タブ + Session 20: 未読タブ -->
 <div class="dv-tabs">
-    <button id="dv-tab-day" class="dv-tab active" onclick="setDvMode('day')">📅 DAY</button>
+    <button id="dv-tab-day" class="dv-tab active" onclick="setDvMode('day')">📅 今日</button>
     <button id="dv-tab-user" class="dv-tab" onclick="setDvMode('user')">👤 利用者</button>
+    <button id="dv-tab-unread" class="dv-tab" onclick="setDvMode('unread')" style="position:relative;">
+        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">notifications_active</span>
+        未読
+        <span id="dv-tab-unread-count" style="display:none;background:#ea4335;color:#fff;font-size:0.65rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:4px;">0</span>
+    </button>
 </div>
 <!-- 利用者検索(利用者タブ時のみ表示) -->
 <div id="dv-user-search" class="dv-user-search" style="display:none;">
@@ -419,19 +591,48 @@
 
         {% for r in data.normal_records %}
         <div class="record-item" id="record-{{ r.id }}">
-            <div class="record-meta">
-                <span class="material-symbols-outlined">schedule</span>
-                {{ r.time }} （{{ r.staff_name }}）
+            <div class="record-meta-row">
+                <div class="record-meta">
+                    <span class="material-symbols-outlined">schedule</span>
+                    {{ r.time }} （{{ r.staff_name }}）
+                </div>
+                <button type="button" class="must-read-toggle{% if r.must_read %} active{% endif %}"
+                    id="mr-toggle-{{ r.id }}" onclick="toggleMustRead('{{ r.id }}')"
+                    title="閲覧必須を切り替え">
+                    <span class="material-symbols-outlined">{% if r.must_read %}star{% else %}star_outline{% endif %}</span>
+                </button>
             </div>
+            {% if r.must_read and not r.is_read_by_me %}
+            <div class="must-read-badge" id="mr-badge-{{ r.id }}"
+                onclick="markRecordReadByTap('{{ r.id }}')"
+                style="cursor:pointer;" title="タップして確認">
+                <span class="material-symbols-outlined">priority_high</span>
+                閲覧必須(タップで確認)
+            </div>
+            {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
 
             {% if r.image_urls %}
             <div class="photo-grid">
                 {% for url in r.image_urls %}
-                <img src="{{ url }}" alt="添付写真">
+                <img src="{{ url }}" alt="添付写真" style="cursor:zoom-in" onclick="openImageViewer('{{ url }}')">
                 {% endfor %}
             </div>
             {% endif %}
+
+            <div class="read-chip" onclick="toggleReadList('{{ r.id }}')">
+                <span class="material-symbols-outlined">check</span>
+                <span id="read-count-{{ r.id }}">{{ r.read_count or 0 }}</span>人
+            </div>
+            <div class="read-list" id="read-list-{{ r.id }}">
+                <div id="read-list-content-{{ r.id }}">
+                    {% if r.read_staffs %}
+                        {% for sname in r.read_staffs %}<span style="margin-right:8px;">{{ sname }}</span>{% endfor %}
+                    {% else %}
+                        <span class="read-list-empty">まだ誰も既読していません</span>
+                    {% endif %}
+                </div>
+            </div>
 
             {% if r.can_edit %}
             <div class="record-actions">
@@ -476,6 +677,19 @@
     <div id="dv-user-records"></div>
 </div>
 
+<!-- Session 20: 未読タブのコンテンツエリア -->
+<div id="dv-unread-area" style="display:none;">
+    <div id="dv-unread-empty" style="text-align:center;padding:40px 20px;color:#5f6368;">
+        <span class="material-symbols-outlined" style="font-size:48px;color:#9aa0a6;display:block;margin-bottom:8px;">check_circle</span>
+        未読の閲覧必須記録はありません
+    </div>
+    <div id="dv-unread-loading" style="display:none;text-align:center;padding:40px 20px;color:#5f6368;">
+        <span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;">hourglass_top</span>
+        読み込み中...
+    </div>
+    <div id="dv-unread-list"></div>
+</div>
+
 <a href="/top" class="back-btn">
     <span class="material-symbols-outlined">home</span>
     TOP画面へ
@@ -499,12 +713,22 @@ window.setDvMode = function(mode) {
     dvMode = mode;
     document.getElementById('dv-tab-day').classList.toggle('active', mode === 'day');
     document.getElementById('dv-tab-user').classList.toggle('active', mode === 'user');
+    var unreadTab = document.getElementById('dv-tab-unread');
+    if (unreadTab) unreadTab.classList.toggle('active', mode === 'unread');
     document.getElementById('dv-user-search').style.display = (mode === 'user') ? 'block' : 'none';
     // Session 19: アコーディオン群と利用者モードエリアの表示切替
     const recWrap = document.getElementById('dv-records-wrapper');
     const userArea = document.getElementById('dv-user-area');
+    var unreadArea = document.getElementById('dv-unread-area');
     if (recWrap) recWrap.style.display = (mode === 'day') ? 'block' : 'none';
     if (userArea) userArea.style.display = (mode === 'user') ? 'block' : 'none';
+    if (unreadArea) unreadArea.style.display = (mode === 'unread') ? 'block' : 'none';
+    // カレンダーは day モードのみ
+    var calWrapper = document.querySelector('.calendar-wrapper');
+    if (calWrapper) {
+        var calForm = calWrapper.closest('.form-group');
+        if (calForm) calForm.style.display = (mode === 'unread') ? 'none' : 'block';
+    }
     // 利用者モード時、利用者未選択なら「選んでください」、選択済みなら記録エリア
     if (mode === 'user') {
         const empty = document.getElementById('dv-user-empty');
@@ -522,9 +746,150 @@ window.setDvMode = function(mode) {
     if (mode === 'user' && dvSelectedUser) {
         showSelectedUser();
     }
+    // Session 20: 未読モード初表示時にデータ取得
+    if (mode === 'unread') {
+        loadUnreadRecords();
+    }
     // カレンダードットの色を切り替え(再描画は後で実装)
     if (typeof renderCalendar === 'function') renderCalendar();
 };
+
+// Session 20: 未読の必読記録を取得して表示
+async function loadUnreadRecords() {
+    var loading = document.getElementById('dv-unread-loading');
+    var emptyEl = document.getElementById('dv-unread-empty');
+    var listEl = document.getElementById('dv-unread-list');
+    if (!listEl) return;
+    if (loading) loading.style.display = 'block';
+    if (emptyEl) emptyEl.style.display = 'none';
+    listEl.innerHTML = '';
+    try {
+        var res = await fetch('/api/records/unread_list');
+        var data = await res.json();
+        if (loading) loading.style.display = 'none';
+        if (data.status !== 'success') {
+            listEl.innerHTML = '<div style="color:#ea4335;text-align:center;padding:20px;">取得に失敗しました</div>';
+            return;
+        }
+        var groups = data.groups || [];
+        if (groups.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+        }
+        var html = '';
+        groups.forEach(function(g) {
+            html += '<div class="dv-unread-day-group">';
+            html += '<div class="dv-unread-day-header">';
+            html += '<span class="material-symbols-outlined">today</span>';
+            html += escapeHtml(g.date_label);
+            html += '<span class="dv-unread-day-link" onclick="goToDailyView(\''+g.date+'\')">この日のページへ →</span>';
+            html += '</div>';
+            g.records.forEach(function(r) {
+                html += '<div class="dv-unread-record" id="unread-rec-' + r.id + '">';
+                html += '<div class="dv-unread-record-meta">';
+                html += '<span class="material-symbols-outlined">schedule</span>';
+                html += escapeHtml(r.time) + ' ';
+                html += '<span class="dv-unread-record-user">' + escapeHtml(r.user_name) + ' 様</span>';
+                html += '<span style="margin-left:6px;">(' + escapeHtml(r.staff_name) + ')</span>';
+                html += '</div>';
+                html += '<div class="dv-unread-record-content">' + escapeHtml(r.content || '') + '</div>';
+                if (r.image_urls && r.image_urls.length > 0) {
+                    html += '<div class="dv-unread-record-photos">';
+                    r.image_urls.forEach(function(u) {
+                        html += '<img src="' + escapeAttr(u) + '" onclick="openImageViewer(\''+escapeAttr(u)+'\')" alt="写真">';
+                    });
+                    html += '</div>';
+                }
+                html += '<button class="dv-unread-confirm-btn" onclick="confirmUnreadRecord(' + r.id + ')">';
+                html += '<span class="material-symbols-outlined">check</span>確認しました';
+                html += '</button>';
+                html += '</div>';
+            });
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+    } catch(e) {
+        if (loading) loading.style.display = 'none';
+        listEl.innerHTML = '<div style="color:#ea4335;text-align:center;padding:20px;">エラー: ' + escapeHtml(e.message || '') + '</div>';
+    }
+}
+
+window.confirmUnreadRecord = async function(recordId) {
+    var card = document.getElementById('unread-rec-' + recordId);
+    if (!card) return;
+    card.style.transition = 'opacity 0.3s ease';
+    card.style.opacity = '0.4';
+    try {
+        var res = await fetch('/api/mark_records_read', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_ids: [parseInt(recordId)]})
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            // フェードアウト後削除
+            setTimeout(function(){
+                if (card.parentNode) {
+                    var group = card.closest('.dv-unread-day-group');
+                    card.remove();
+                    // グループが空になったら日付グループも削除
+                    if (group && group.querySelectorAll('.dv-unread-record').length === 0) {
+                        group.remove();
+                    }
+                    // 全部空ならemptyを表示
+                    var listEl = document.getElementById('dv-unread-list');
+                    var emptyEl = document.getElementById('dv-unread-empty');
+                    if (listEl && listEl.children.length === 0 && emptyEl) {
+                        emptyEl.style.display = 'block';
+                    }
+                    // 件数バッジ更新
+                    refreshUnreadTabCount();
+                    // ボトムナビバッジも更新
+                    if (typeof checkUnreadMessages === 'function') checkUnreadMessages();
+                }
+            }, 300);
+        } else {
+            card.style.opacity = '1';
+            alert('確認に失敗しました');
+        }
+    } catch(e) {
+        card.style.opacity = '1';
+        alert('エラー: ' + e.message);
+    }
+};
+
+window.goToDailyView = function(dateStr) {
+    location.href = '/daily_view?date=' + encodeURIComponent(dateStr);
+};
+
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[<>&"']/g, function(c){
+        return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+function escapeAttr(s) {
+    return escapeHtml(s).replace(/'/g, '&#39;');
+}
+
+async function refreshUnreadTabCount() {
+    try {
+        var res = await fetch('/api/records/unread_count');
+        var data = await res.json();
+        var c = data.count || 0;
+        var el = document.getElementById('dv-tab-unread-count');
+        if (el) {
+            if (c > 0) {
+                el.textContent = c > 99 ? '99+' : c;
+                el.style.display = 'inline-block';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+    } catch(e) {}
+}
+// ページロード時にもタブ件数を更新
+setTimeout(refreshUnreadTabCount, 500);
 
 function showSelectedUser() {
     const el = document.getElementById('dv-selected-user');
@@ -780,6 +1145,112 @@ window.regenAI = async function(user, aiId, idx) {
     const res = await fetch('/api/regenerate_daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,date:selectedDate,ai_record_id:aiId})});
     if ((await res.json()).status === 'success') location.reload();
 };
+
+// Session 20: 必読バッジ・既読展開
+window.toggleMustRead = async function(recordId) {
+    const btn = document.getElementById('mr-toggle-' + recordId);
+    if (!btn) return;
+    const wasActive = btn.classList.contains('active');
+    const newState = !wasActive;
+    // 楽観的UI更新
+    btn.classList.toggle('active', newState);
+    btn.querySelector('.material-symbols-outlined').textContent = newState ? 'star' : 'star_outline';
+    try {
+        const res = await fetch('/api/toggle_must_read', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_id: parseInt(recordId), must_read: newState})
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'failed');
+        // バッジ表示も切替(自分が未読の時のみ)
+        const badge = document.getElementById('mr-badge-' + recordId);
+        if (newState && !badge && !data.is_read_by_me) {
+            // バッジを動的追加
+            const item = document.getElementById('record-' + recordId);
+            const content = item ? item.querySelector('.record-content') : null;
+            if (content) {
+                const div = document.createElement('div');
+                div.className = 'must-read-badge';
+                div.id = 'mr-badge-' + recordId;
+                div.style.cursor = 'pointer';
+                div.title = 'タップして確認';
+                div.onclick = function(){ markRecordReadByTap(recordId); };
+                div.innerHTML = '<span class="material-symbols-outlined">priority_high</span>閲覧必須(タップで確認)';
+                content.parentNode.insertBefore(div, content);
+            }
+        } else if (!newState && badge) {
+            badge.remove();
+        }
+    } catch(e) {
+        // ロールバック
+        btn.classList.toggle('active', wasActive);
+        btn.querySelector('.material-symbols-outlined').textContent = wasActive ? 'star' : 'star_outline';
+        alert('変更に失敗しました: ' + e.message);
+    }
+};
+
+window.toggleReadList = async function(recordId) {
+    const list = document.getElementById('read-list-' + recordId);
+    if (!list) return;
+    if (list.classList.contains('open')) {
+        list.classList.remove('open');
+        return;
+    }
+    // 開く前に最新一覧を取得
+    try {
+        const res = await fetch('/api/record_reads/' + recordId);
+        const data = await res.json();
+        if (data.status === 'success') {
+            const content = document.getElementById('read-list-content-' + recordId);
+            if (content) {
+                if (data.read_staffs && data.read_staffs.length > 0) {
+                    content.innerHTML = data.read_staffs.map(function(n) {
+                        return '<span style="margin-right:8px;">' + n.replace(/[<>&"']/g, function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c];}) + '</span>';
+                    }).join('');
+                } else {
+                    content.innerHTML = '<span class="read-list-empty">まだ誰も既読していません</span>';
+                }
+            }
+            const countEl = document.getElementById('read-count-' + recordId);
+            if (countEl) countEl.textContent = data.read_staffs ? data.read_staffs.length : 0;
+        }
+    } catch(e) { /* 既存表示でOK */ }
+    list.classList.add('open');
+};
+
+// Session 20: 必読バッジを「タップで確認」したら既読マーク
+window.markRecordReadByTap = async function(recordId) {
+    const badge = document.getElementById('mr-badge-' + recordId);
+    if (!badge) return;
+    // 即座に消す(楽観的UI)
+    badge.style.transition = 'opacity 0.25s ease';
+    badge.style.opacity = '0';
+    setTimeout(function(){ if (badge.parentNode) badge.remove(); }, 250);
+    try {
+        const res = await fetch('/api/mark_records_read', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_ids: [parseInt(recordId)]})
+        });
+        const data = await res.json();
+        if (data && data.status === 'success') {
+            // 既読人数チップを+1更新
+            const countEl = document.getElementById('read-count-' + recordId);
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0');
+                countEl.textContent = current + 1;
+            }
+        }
+    } catch(e) {
+        // 失敗時はバッジ復元
+        badge.style.opacity = '1';
+        if (!badge.parentNode) {
+            // 既に消えた場合は再構築は省略
+        }
+    }
+};
+
 })();
 </script>
 {% endblock %}
