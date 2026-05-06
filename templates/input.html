@@ -211,6 +211,16 @@
         <textarea name="content" class="form-control" id="content-area" placeholder="記録内容を入力してください">{{ content }}</textarea>
     </div>
 
+    <!-- Session 20: 閲覧必須トグル -->
+    <div class="form-group" style="margin-bottom:14px;">
+        <button type="button" id="must-read-btn" onclick="toggleMustReadInput()"
+            style="background:none;border:1.5px solid #e0e0e0;border-radius:10px;padding:10px 14px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:#5f6368;font-size:0.9rem;transition:all 0.15s ease;">
+            <span class="material-symbols-outlined" id="must-read-icon" style="font-size:22px;">star_outline</span>
+            <span id="must-read-label">閲覧必須にする</span>
+        </button>
+        <input type="hidden" id="must-read-flag" value="0">
+    </div>
+
     <button type="button" class="btn btn-primary" onclick="saveRecord()">
         <span class="material-symbols-outlined">save</span>
         保存
@@ -253,6 +263,7 @@ window.saveRecord = async function() {
         formData.append('patient', patientValue);
         formData.append('content', content);
         formData.append('record_date', recordDate);
+        formData.append('must_read', document.getElementById('must-read-flag').value);
 
         // 写真を圧縮してから追加
         const photoInput = document.querySelector('input[name="photos"]');
@@ -285,6 +296,19 @@ window.saveRecord = async function() {
             clearPatient();
             document.getElementById('content-area').value = '';
             document.getElementById('photo-preview').innerHTML = '';
+            // Session 20: 必読トグルもリセット
+            var mrFlag = document.getElementById('must-read-flag');
+            var mrIcon = document.getElementById('must-read-icon');
+            var mrLabel = document.getElementById('must-read-label');
+            var mrBtn = document.getElementById('must-read-btn');
+            if (mrFlag) mrFlag.value = '0';
+            if (mrIcon) mrIcon.textContent = 'star_outline';
+            if (mrLabel) mrLabel.textContent = '閲覧必須にする';
+            if (mrBtn) {
+                mrBtn.style.background = 'none';
+                mrBtn.style.color = '#5f6368';
+                mrBtn.style.borderColor = '#e0e0e0';
+            }
             if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
             if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
             if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
@@ -637,5 +661,22 @@ window.aiTranscribe = async function() {
 })();
 
 
+// Session 20: 閲覧必須トグル
+window.toggleMustReadInput = function() {
+    var flag = document.getElementById('must-read-flag');
+    var icon = document.getElementById('must-read-icon');
+    var label = document.getElementById('must-read-label');
+    var btn = document.getElementById('must-read-btn');
+    if (!flag) return;
+    var on = flag.value !== '1';
+    flag.value = on ? '1' : '0';
+    if (icon) icon.textContent = on ? 'star' : 'star_outline';
+    if (label) label.textContent = on ? '閲覧必須' : '閲覧必須にする';
+    if (btn) {
+        btn.style.background = on ? '#fef3c7' : 'none';
+        btn.style.color = on ? '#b45309' : '#5f6368';
+        btn.style.borderColor = on ? '#fcd34d' : '#e0e0e0';
+    }
+};
 </script>
 {% endblock %}

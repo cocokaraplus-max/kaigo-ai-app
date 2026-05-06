@@ -316,7 +316,83 @@
     color: #1a73e8;
     display: none;
 }
+/* Session 20: 必読バッジ・☆・既読チップ */
+.record-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.must-read-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9rem;
+    color: #999;
+    transition: all 0.15s ease;
+}
+.must-read-toggle.active {
+    color: #f59e0b;
+    background: #fef3c7;
+}
+.must-read-toggle .material-symbols-outlined {
+    font-size: 20px;
+}
+.must-read-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin: 6px 0;
+}
+.must-read-badge .material-symbols-outlined {
+    font-size: 16px;
+}
+.read-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: #f1f3f4;
+    color: #5f6368;
+    border-radius: 12px;
+    font-size: 0.74rem;
+    cursor: pointer;
+    user-select: none;
+    margin-top: 6px;
+}
+.read-chip:hover {
+    background: #e8eaed;
+}
+.read-chip .material-symbols-outlined {
+    font-size: 14px;
+}
+.read-list {
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #5f6368;
+    display: none;
+}
+.read-list.open { display: block; }
+.read-list-empty { color: #999; font-style: italic; }
+
 </style>
+
 {% endblock %}
 
 {% block content %}
@@ -419,19 +495,46 @@
 
         {% for r in data.normal_records %}
         <div class="record-item" id="record-{{ r.id }}">
-            <div class="record-meta">
-                <span class="material-symbols-outlined">schedule</span>
-                {{ r.time }} （{{ r.staff_name }}）
+            <div class="record-meta-row">
+                <div class="record-meta">
+                    <span class="material-symbols-outlined">schedule</span>
+                    {{ r.time }} （{{ r.staff_name }}）
+                </div>
+                <button type="button" class="must-read-toggle{% if r.must_read %} active{% endif %}"
+                    id="mr-toggle-{{ r.id }}" onclick="toggleMustRead('{{ r.id }}')"
+                    title="閲覧必須を切り替え">
+                    <span class="material-symbols-outlined">{% if r.must_read %}star{% else %}star_outline{% endif %}</span>
+                </button>
             </div>
+            {% if r.must_read and not r.is_read_by_me %}
+            <div class="must-read-badge" id="mr-badge-{{ r.id }}">
+                <span class="material-symbols-outlined">priority_high</span>
+                閲覧必須
+            </div>
+            {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
 
             {% if r.image_urls %}
             <div class="photo-grid">
                 {% for url in r.image_urls %}
-                <img src="{{ url }}" alt="添付写真">
+                <img src="{{ url }}" alt="添付写真" style="cursor:zoom-in" onclick="openImageViewer('{{ url }}')">
                 {% endfor %}
             </div>
             {% endif %}
+
+            <div class="read-chip" onclick="toggleReadList('{{ r.id }}')">
+                <span class="material-symbols-outlined">check</span>
+                <span id="read-count-{{ r.id }}">{{ r.read_count or 0 }}</span>人
+            </div>
+            <div class="read-list" id="read-list-{{ r.id }}">
+                <div id="read-list-content-{{ r.id }}">
+                    {% if r.read_staffs %}
+                        {% for sname in r.read_staffs %}<span style="margin-right:8px;">{{ sname }}</span>{% endfor %}
+                    {% else %}
+                        <span class="read-list-empty">まだ誰も既読していません</span>
+                    {% endif %}
+                </div>
+            </div>
 
             {% if r.can_edit %}
             <div class="record-actions">
@@ -780,6 +883,99 @@ window.regenAI = async function(user, aiId, idx) {
     const res = await fetch('/api/regenerate_daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,date:selectedDate,ai_record_id:aiId})});
     if ((await res.json()).status === 'success') location.reload();
 };
+
+// Session 20: 必読バッジ・既読展開
+window.toggleMustRead = async function(recordId) {
+    const btn = document.getElementById('mr-toggle-' + recordId);
+    if (!btn) return;
+    const wasActive = btn.classList.contains('active');
+    const newState = !wasActive;
+    // 楽観的UI更新
+    btn.classList.toggle('active', newState);
+    btn.querySelector('.material-symbols-outlined').textContent = newState ? 'star' : 'star_outline';
+    try {
+        const res = await fetch('/api/toggle_must_read', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_id: parseInt(recordId), must_read: newState})
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'failed');
+        // バッジ表示も切替(自分が未読の時のみ)
+        const badge = document.getElementById('mr-badge-' + recordId);
+        if (newState && !badge && !data.is_read_by_me) {
+            // バッジを動的追加
+            const item = document.getElementById('record-' + recordId);
+            const content = item ? item.querySelector('.record-content') : null;
+            if (content) {
+                const div = document.createElement('div');
+                div.className = 'must-read-badge';
+                div.id = 'mr-badge-' + recordId;
+                div.innerHTML = '<span class="material-symbols-outlined">priority_high</span>閲覧必須';
+                content.parentNode.insertBefore(div, content);
+            }
+        } else if (!newState && badge) {
+            badge.remove();
+        }
+    } catch(e) {
+        // ロールバック
+        btn.classList.toggle('active', wasActive);
+        btn.querySelector('.material-symbols-outlined').textContent = wasActive ? 'star' : 'star_outline';
+        alert('変更に失敗しました: ' + e.message);
+    }
+};
+
+window.toggleReadList = async function(recordId) {
+    const list = document.getElementById('read-list-' + recordId);
+    if (!list) return;
+    if (list.classList.contains('open')) {
+        list.classList.remove('open');
+        return;
+    }
+    // 開く前に最新一覧を取得
+    try {
+        const res = await fetch('/api/record_reads/' + recordId);
+        const data = await res.json();
+        if (data.status === 'success') {
+            const content = document.getElementById('read-list-content-' + recordId);
+            if (content) {
+                if (data.read_staffs && data.read_staffs.length > 0) {
+                    content.innerHTML = data.read_staffs.map(function(n) {
+                        return '<span style="margin-right:8px;">' + n.replace(/[<>&"']/g, function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c];}) + '</span>';
+                    }).join('');
+                } else {
+                    content.innerHTML = '<span class="read-list-empty">まだ誰も既読していません</span>';
+                }
+            }
+            const countEl = document.getElementById('read-count-' + recordId);
+            if (countEl) countEl.textContent = data.read_staffs ? data.read_staffs.length : 0;
+        }
+    } catch(e) { /* 既存表示でOK */ }
+    list.classList.add('open');
+};
+
+// 自分が未読の必読記録を、ページ表示時にすぐ既読マーク(掲示板と同じ仕様)
+(function markVisibleRecordsAsRead(){
+    const recordIds = [];
+    document.querySelectorAll('.record-item').forEach(function(item) {
+        const id = item.id.replace('record-', '');
+        if (id) recordIds.push(parseInt(id));
+    });
+    if (recordIds.length === 0) return;
+    fetch('/api/mark_records_read', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({record_ids: recordIds})
+    }).then(function(r){ return r.json(); }).then(function(data){
+        if (data && data.status === 'success' && data.marked_ids) {
+            data.marked_ids.forEach(function(rid) {
+                const badge = document.getElementById('mr-badge-' + rid);
+                if (badge) badge.remove();
+            });
+        }
+    }).catch(function(){});
+})();
+
 })();
 </script>
 {% endblock %}
