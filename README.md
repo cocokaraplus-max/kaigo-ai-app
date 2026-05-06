@@ -2315,3 +2315,211 @@ cf36a6a Rename legend label from 来所なし to 利用無し
 ```
 
 すべて `tasukaru-dev` ブランチ。**本番(`tasukaru` ブランチ)には未マージ**。
+
+---
+
+# TASUKARU Session 19 完了サマリ
+
+**作業日**: 2026-05-06
+**ブランチ**: tasukaru-dev / tasukaru(本番反映済み)
+**最終コミット**: ケース記録の大型改修まで本番反映完了
+
+---
+
+## ✅ Session 19 完了タスク(すべて本番反映済み)
+
+### 1. dev → 本番 同期(Session 18 全機能)
+Session 18 で実装した「曜日ごとの AM/PM/ALL/× 設定」を本番にマージ・push。Cloud Build 経由でデプロイ完了。
+
+### 2. FAB 位置調整
+- 測定タブの本日追加 FAB(+ボタン)、設定タブの保存 FAB(💾)、トースト通知の bottom 値を調整
+- ナビゲーションタブメニューと被らない位置に移動(140px / 136px)
+
+### 3. 本日の記録タブに AM/PM/全員フィルタ追加
+- vitals.html の本日の記録タブにも、測定タブと同じデザインの AM/PM/全員フィルタボタン
+- `/api/vitals_daily` のレスポンスに対して `AMPM_PER_DAY` で絞り込み
+- 過去日選択時もその日の曜日に基づいて正しくフィルタ
+
+### 4. バイタル & ケース記録のあいうえお順ソート
+- バイタル測定タブ: 利用者一覧を `user_kana` 優先のあいうえお順に
+- バイタル本日の記録タブ: 同様に `user_kana` 優先ソート
+- ケース記録(daily_view): app.py 側で `user_kana_map` を patients テーブルから取得して並び替え
+
+### 5. 「再検者を上部に配置」トグルボタン
+- バイタル測定タブ・本日の記録タブの両方に配置(2段目)
+- ON にすると再検査/アラート利用者を上に固定 + その中であいうえお順
+- OFF はあいうえお順のみ
+- localStorage で状態保持はせず、セッション内で動的切替
+- 両タブのトグル状態は同期(片方を押すと両方変わる)
+
+### 6. ケース記録の大型改修(DAY / 利用者 タブ機能)
+**最大の改修**。既存の DAY ベースのケース記録閲覧に、利用者軸での閲覧を追加:
+
+#### A. UI構造
+- カレンダー上部に「📅 DAY」「👤 利用者」の切替タブ
+- DAY タブ: 従来どおり日付選択でその日の全利用者の記録を閲覧
+- 利用者タブ: 検索窓表示 + 選択利用者の月内全記録を縦に展開
+
+#### B. 利用者検索
+- 検索窓「名前・ふりがな・カルテNoで検索」
+- 漢字 / ふりがな / カルテ番号で絞り込み(部分一致)
+- 検索結果は最大20件、各行に「漢字 / かな / No.チャート番号」表示
+
+#### C. カレンダードット
+- 既存の青ドット(DAYモード)を 4px → 8px に拡大
+- 利用者モード時は青ドット非表示、代わりに**赤ドット**で選択利用者の来所日を表示
+- `dvMode` 変数で切替制御
+
+#### D. 月内記録一覧表示
+- 選択利用者の月内全ケース記録を、日付ごとのカードで縦に展開
+- AI統合記録 + 個別の記録(時刻・スタッフ名・内容)を全件表示
+- 各カードに「DAYで開く ›」リンク → DAY モードに戻ってその日付にジャンプ
+
+#### E. 月跨ぎ動作
+- 月切替時(< / >ボタン)に自動でAPI再呼び出し
+- 利用者選択は localStorage で保持(月跨ぎでも同じ利用者の記録を継続閲覧)
+
+#### F. 利用者未選択時
+- 「利用者を選んでください。」のメッセージ表示
+- DAY モード時のアコーディオン群は wrapper div で囲み、利用者モード時に丸ごと非表示
+
+### 7. 新APIエンドポイント追加
+**`GET /api/user_month_records?user_id=X&year=Y&month=M`**
+
+Response:
+```json
+{
+  "status": "success",
+  "user_name": "浅見恵子",
+  "records_by_date": {
+    "2026-05-03": {
+      "ai_record": {...},
+      "normal_records": [{...}, {...}]
+    }
+  },
+  "record_dates": ["2026-05-03", ...]
+}
+```
+
+---
+
+## 📦 push したコミット履歴(時系列)
+
+```
+01d574e  Move FAB and toast above bottom-nav to prevent overlap
+b7a0560  Add AM/PM/all filter to daily record tab
+911817e  Add aiueo-order sort with alert-priority toggle for vitals and case records
+f8c3192  Use user_kana from patients table for daily_view records sort
+8eb1cff  Add DAY/user tabs and patient search to case records (step B)
+5576bc0  Hide DAY accordion when user tab is selected
+d96ea03  Add user month records view (step C+D)
+(末尾)   Fix parse_jst usage in user_month_records API
+```
+
+すべて本番(`tasukaru` ブランチ)に反映済み・Cloud Run デプロイ完了。
+
+---
+
+## 🆕 Session 19 で得た教訓
+
+### 教訓30: ターミナル表示の自動リンク化に注意
+- macOS Terminal は `var.method` や `var[key]` 形式のJSコードを **自動でリンク化** して表示する
+- 例: `p.pid` が `[p.pid](http://p.pid)` のように見える
+- **実ファイルは正常**(grepで `http://` を確認すると0件)
+- 表示装飾なので無視してOK、ただし最初は驚く
+
+### 教訓31: bashヒアドキュメント vs Python ヒアドキュメント
+- bash の `cat << 'BLOCK_END'` は **長文 + 日本語 + 引用符が混じると破損する**(教訓25 の再確認)
+- 一方、Python の `python3 << 'PYEOF'` は同じ条件でも **安全に動作**
+- 安全策: ZIMAXのMacのターミナルでは複雑な複数行ペーストを避け、 **Claude が `/home/claude/` に作ったファイルを present_files で渡し、Desktop 経由で `/tmp/` にコピー → sed で挿入** が最も確実
+
+### 教訓32: sed の `r` コマンドはファイル末尾の挿入が便利
+- `sed -i '' 'NUMr /tmp/file.txt' target` で **指定行の直後に挿入**
+- 削除と挿入を分けると行番号がズレるので、削除→挿入の順で慎重に
+- 削除予定の行数を必ず事前確認(`sed -n 'X,Yp'` で目視)
+
+### 教訓33: parse_jst は既に文字列を返す
+- `parse_jst()` は `'%H:%M'` 形式の文字列を返す → `.strftime()` を呼ぶとエラー
+- `parse_jst_date()` は `date` オブジェクトを返す → `.strftime()` OK
+- API追加時は型を必ず確認すること
+
+### 教訓34: let で宣言した変数は eval から見えない
+- ブラウザの `evaluate()` (chrome browser tool 等)から `userRecordDates` (let宣言)を参照すると undefined
+- 実際には変数は存在し、関数も動作している
+- デバッグ時は `window.someVar = ...` で window に明示的にぶら下げると確認できる
+
+### 教訓35: Cloud Build キャッシュとブラウザキャッシュ両方を疑う
+- `git push` 後のテストで古い挙動が見えたら:
+  1. Cloud Build の完了を確認(数分)
+  2. ServiceWorker.unregister + caches.delete でブラウザキャッシュをクリア
+  3. それでも反映されない時は数分待つ
+- 教訓29 の延長
+
+---
+
+## 🚀 Session 20 候補タスク(優先度順)
+
+| # | 内容 | 優先度 | 規模 |
+|---|---|---|---|
+| ① | 過去の月次評価報告書を編集できるように | 中 | 1-2h |
+| ② | 過去の月次評価報告書を削除できるように | 中 | 30m-1h |
+| ③ | モニタリング(generate_monitoring)結果の DB 保存 | 中(大改修) | 2-3h |
+| ④ | iPhone 実機で全機能の最終チェック | 高 | 30m |
+
+---
+
+## 🔑 重要な不変事項(変わらず継承)
+
+- タスカルくん画像 14箇所 + animation:fl(manual.html)**絶対不可侵**(教訓1)
+- Step 3 Firebase Push 提案禁止(明示依頼まで)
+- コミットメッセージ英語シンプル、日本語全角括弧禁止
+- push 後 30〜60秒待つ(Cloud Run デプロイ)
+- BLOCKED 文字列対策は `s.split('')` で配列化、長文関数は行ごとに分割
+- ファイル配置時は **Desktop 経由 + ls/wc/grep で配置前確認** が確実(教訓26)
+- 複雑なペーストは Claude 環境で生成 → Desktop 経由で配置(教訓31)
+
+---
+
+## Session 20 開始時の合言葉
+
+「**Session 20 開始。GitHub から README を読み込んで、続きをお願い**」
+
+---
+
+## 重要な技術的参照
+
+### Supabase プロジェクト
+- dev: `otjevnmoycnvaxeltrtj` (https://supabase.com/dashboard/project/otjevnmoycnvaxeltrtj)
+- 本番: `abvglnkwtdeoaazyqwyd` (https://supabase.com/dashboard/project/abvglnkwtdeoaazyqwyd)
+
+### URL
+- dev: https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- 本番: https://tasukaru-191764727533.asia-northeast1.run.app
+- GitHub: https://github.com/cocokaraplus-max/kaigo-ai-app
+
+### Session 19 で改修した app.py の重要箇所
+- L749-758: `daily_view` 関数の records ソート(user_kana ベース)
+- L759-772: `daily_view` 関数の patients_list 取得(検索用)
+- L780: `return render` に `patients=patients_list,` 追加
+- L782-842: `/api/user_month_records` 新エンドポイント
+
+### Session 19 で改修した vitals.html の重要箇所
+- L420 / L849: FAB の bottom 値(140px に拡大)
+- L657-671: 本日の記録タブの AM/PM/全員フィルタボタン
+- L644-650: 測定タブのトグルボタン「再検者を上部に配置」
+- L678-684: 本日の記録タブの同トグル
+- L1289-1298: 測定タブのソート(あいうえお + アラート優先)
+- L1832-1851: setDailyFilter 関数(AM/PM切替)
+- L1857-1876: トグル関数(prioritizeAlerts)
+- L2660-2671: 本日の記録のフィルタロジック
+
+### Session 19 で改修した daily_view.html の重要箇所
+- L129-152: カレンダードットCSS(青8px / 赤8px)
+- L239-318: タブUI/検索ボックスのCSS
+- L333-341: タブUI HTML
+- L342-353: 検索窓 HTML
+- L368: アコーディオンwrapper `<div id="dv-records-wrapper">`
+- L470-477: 利用者モード用エリア HTML
+- L487-528: タブ切替・検索・選択 JS(setDvMode, searchPatients, selectPatient)
+- L629: カレンダードット切替ロジック
+- L654-750: 月内記録読込・描画 JS(loadUserMonthRecords, renderUserMonthRecords)
