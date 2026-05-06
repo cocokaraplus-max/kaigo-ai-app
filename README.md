@@ -3225,3 +3225,70 @@ def api_search_records():
     # ... ORDER BY record_date DESC, created_at DESC LIMIT 100
 ```
 
+
+
+---
+
+# ✅ B-2 完了ログ(2026-05-07)
+
+## 実施内容: records テーブルに search_tags カラム + GINインデックス追加
+
+dev・本番の両方で実行完了。教訓39 完全遵守(RLS = false 維持)。
+
+### dev 環境(otjevnmoycnvaxeltrtj / tasukaru-dev)
+
+| Step | 実行内容 | 結果 |
+|---|---|---|
+| 0-2 | RLS 状態(実行前) | `records / false` ✅ |
+| 1 | `ALTER TABLE records ADD COLUMN IF NOT EXISTS search_tags TEXT[]` | Success ✅ |
+| 2 | `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)` | Success ✅ |
+| 3 | RLS 状態(実行後) | `records / false` ✅(維持) |
+| 4-1 | カラム存在 | `search_tags / ARRAY / _text` ✅ |
+| 4-2 | インデックス存在 | `records_search_tags_gin / CREATE INDEX ... USING gin (search_tags)` ✅ |
+| 4-3 | NULL数 | `total=5092, with_tags=0, null=5092` ✅(全件NULL = B-3 で埋める) |
+
+### 本番環境(abvglnkwtdeoaazyqwyd / kaigo-ai-app)
+
+| Step | 実行内容 | 結果 |
+|---|---|---|
+| 0-2 | RLS 状態(実行前) | `records / false` ✅ |
+| 1 | `ALTER TABLE records ADD COLUMN IF NOT EXISTS search_tags TEXT[]` | Success ✅ |
+| 2 | `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)` | Success ✅ |
+| 3 | RLS 状態(実行後) | `records / false` ✅(維持) |
+| 4-1 | カラム存在 | `search_tags / ARRAY / _text` ✅ |
+| 4-2 | インデックス存在 | `records_search_tags_gin / CREATE INDEX ... USING gin (search_tags)` ✅ |
+| 4-3 | NULL数 | `total=1012, with_tags=0, null=1012` ✅(全件NULL = B-3 で埋める) |
+
+### 実行に使った SQL ファイル
+
+`add_search_tags.sql`(Session 22 で生成、5ステップの安全設計):
+1. STEP 0: 実行前確認(カラム一覧 + RLS + 件数)
+2. STEP 1: `ALTER TABLE ADD COLUMN IF NOT EXISTS search_tags TEXT[]`
+3. STEP 2: `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)`
+4. STEP 3: RLS 再確認
+5. STEP 4: 最終確認(3クエリ)
+
+### 注意事項(B-3 以降への申し送り)
+
+- **アプリ側のコードは変更なし**: `search_tags` カラムは追加されたが、まだ書き込み・読み込みするコードは存在しない。アプリは引き続き正常動作中
+- **遡及バッチの対象件数**: dev 5,092件 / 本番 1,012件(2026-05-07 時点)
+- **GINインデックス**: 配列型に最適化され、`@>`(contains)、`&&`(overlaps)、`<@`(contained by)演算子を高速化。検索API では主に `search_tags @> ARRAY[keyword]` を使う想定
+- **B-3 のテスト方針**: dev で先に **小さい範囲(10件など)** テスト → タグ品質を目視確認 → 問題なければ全件実行。本番は dev で問題ないと確認できてから
+
+### Session 22 全コミット履歴(B-2 まで)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | (本コミット) | docs: log B-2 completion (dev + prod) |
+
+### 残タスク
+
+- **B-3**: 既存記録への遡及AIタグ生成バッチ(dev 5,092件 + 本番 1,012件)
+- **B-4**: 新規記録投稿時のAIタグ自動生成
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+- **B-6**: dev で全機能の動作確認
+- **C**: A + B 全部まとめて本番マージ・デプロイ
