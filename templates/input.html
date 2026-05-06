@@ -203,6 +203,19 @@
         </div>
     </div>
 
+    <!-- Session 21: カテゴリ選択(チップ式) -->
+    <div class="form-group" id="category-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">label</span>
+            カテゴリ
+        </label>
+        <div id="category-chips" style="display:flex;flex-wrap:wrap;gap:8px;">
+            <!-- JSで動的生成 -->
+            <span style="color:#9aa0a6;font-size:0.85rem;">読み込み中...</span>
+        </div>
+        <input type="hidden" id="selected-category" name="category" value="その他">
+    </div>
+
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
@@ -264,6 +277,7 @@ window.saveRecord = async function() {
         formData.append('content', content);
         formData.append('record_date', recordDate);
         formData.append('must_read', document.getElementById('must-read-flag').value);
+        formData.append('category', document.getElementById('selected-category').value || 'その他');
 
         // 写真を圧縮してから追加
         const photoInput = document.querySelector('input[name="photos"]');
@@ -309,6 +323,10 @@ window.saveRecord = async function() {
                 mrBtn.style.color = '#5f6368';
                 mrBtn.style.borderColor = '#e0e0e0';
             }
+            // Session 21: カテゴリも「その他」にリセット
+            var selCat = document.getElementById('selected-category');
+            if (selCat) selCat.value = 'その他';
+            updateCategoryChipsUI();
             if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
             if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
             if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
@@ -678,5 +696,85 @@ window.toggleMustReadInput = function() {
         btn.style.borderColor = on ? '#fcd34d' : '#e0e0e0';
     }
 };
+
+// ========== Session 21: カテゴリ選択 ==========
+var RECORD_CATEGORIES = [];
+
+window.loadRecordCategories = async function() {
+    var chipsBox = document.getElementById('category-chips');
+    if (!chipsBox) return;
+    try {
+        var res = await fetch('/api/record_categories', { credentials: 'include' });
+        var data = await res.json();
+        if (data.status === 'success' && Array.isArray(data.categories)) {
+            RECORD_CATEGORIES = data.categories;
+        } else {
+            RECORD_CATEGORIES = [];
+        }
+    } catch (e) {
+        console.error('カテゴリ取得失敗:', e);
+        RECORD_CATEGORIES = [];
+    }
+    // 初期選択: 「その他」を選択(無ければ先頭)
+    var sel = document.getElementById('selected-category');
+    if (sel) {
+        var has = RECORD_CATEGORIES.some(function(c){ return c.name === sel.value; });
+        if (!has) {
+            var defCat = RECORD_CATEGORIES.find(function(c){ return c.name === 'その他'; });
+            sel.value = defCat ? defCat.name : (RECORD_CATEGORIES[0] ? RECORD_CATEGORIES[0].name : 'その他');
+        }
+    }
+    renderCategoryChips();
+};
+
+window.renderCategoryChips = function() {
+    var chipsBox = document.getElementById('category-chips');
+    if (!chipsBox) return;
+    if (!RECORD_CATEGORIES.length) {
+        chipsBox.innerHTML = '<span style="color:#9aa0a6;font-size:0.85rem;">カテゴリがありません</span>';
+        return;
+    }
+    var sel = document.getElementById('selected-category');
+    var current = sel ? sel.value : 'その他';
+    chipsBox.innerHTML = RECORD_CATEGORIES.map(function(c) {
+        var isSel = (c.name === current);
+        var color = c.color || '#F97316';
+        var bg = isSel ? color : '#fff';
+        var fg = isSel ? '#fff' : color;
+        var border = isSel ? color : (color + '88');
+        return '<button type="button" data-cat-name="' + escapeHtml(c.name) + '" data-cat-color="' + escapeHtml(color) + '" '
+            + 'onclick="selectCategory(this)" '
+            + 'style="background:' + bg + ';color:' + fg + ';border:1.5px solid ' + border + ';'
+            + 'border-radius:18px;padding:6px 14px;font-size:0.88rem;cursor:pointer;transition:all 0.15s;'
+            + 'font-weight:' + (isSel ? '600' : '500') + ';">'
+            + escapeHtml(c.name) + '</button>';
+    }).join('');
+};
+
+window.selectCategory = function(btn) {
+    if (!btn) return;
+    var name = btn.getAttribute('data-cat-name');
+    var sel = document.getElementById('selected-category');
+    if (sel) sel.value = name;
+    renderCategoryChips();
+};
+
+window.updateCategoryChipsUI = function() {
+    renderCategoryChips();
+};
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+}
+
+// ページロード時にカテゴリ取得
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof loadRecordCategories === 'function') {
+        loadRecordCategories();
+    }
+});
+
 </script>
 {% endblock %}

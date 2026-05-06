@@ -662,6 +662,9 @@ def input_view():
                         record_time
                     ))
                     must_read_flag = (request.form.get("must_read", "0") == "1")
+                    category = (request.form.get("category", "") or "その他").strip()
+                    if not category:
+                        category = "その他"
                     supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -670,7 +673,8 @@ def input_view():
                         "content": content,
                         "created_at": dt_record.isoformat(),
                         "image_urls": image_urls if image_urls else None,
-                        "must_read": must_read_flag
+                        "must_read": must_read_flag,
+                        "category": category
                     }).execute()
                     content = ""
                     selected_patient = ""
@@ -4792,6 +4796,115 @@ def api_board_categories_delete():
         # カテゴリー本体を削除
         supabase.table("board_categories").delete().eq("id", cat_id).eq("facility_code", f_code).execute()
         return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== ケース記録カテゴリ管理API(Session 21)=====
+@app.route("/api/record_categories", methods=["GET"])
+@login_required
+def api_record_categories_list():
+    """ケース記録カテゴリ一覧取得"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("record_categories").select("*").eq("facility_code", f_code).order("sort_order").order("id").execute()
+        return jsonify({"status": "success", "categories": res.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/record_categories/save", methods=["POST"])
+@login_required
+def api_record_categories_save():
+    """ケース記録カテゴリ作成・編集(管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        new_name = (data.get("name") or "").strip()
+        if not new_name:
+            return jsonify({"status": "error", "message": "カテゴリ名を入力してください"}), 400
+        payload = {
+            "name": new_name,
+            "color": data.get("color") or "#F97316",
+            "sort_order": int(data.get("sort_order") or 0),
+        }
+        if cat_id:
+            # 編集 - 旧カテゴリ名を取得して、紐づく records.category も更新
+            old_res = supabase.table("record_categories").select("name").eq("id", cat_id).eq("facility_code", f_code).execute()
+            old_name = old_res.data[0]["name"] if old_res.data else None
+            supabase.table("record_categories").update(payload).eq("id", cat_id).eq("facility_code", f_code).execute()
+            if old_name and old_name != new_name:
+                supabase.table("records").update({"category": new_name}).eq("facility_code", f_code).eq("category", old_name).execute()
+        else:
+            # 新規作成
+            payload["facility_code"] = f_code
+            payload["is_default"] = False
+            r = supabase.table("record_categories").insert(payload).execute()
+            cat_id = r.data[0]["id"] if r.data else None
+        return jsonify({"status": "success", "id": cat_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/record_categories/delete", methods=["POST"])
+@login_required
+def api_record_categories_delete():
+    """ケース記録カテゴリ削除(管理者のみ。紐づく既存記録は「その他」に救済)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        if not cat_id:
+            return jsonify({"status": "error", "message": "IDが必要です"}), 400
+        # 削除対象のカテゴリ情報を取得
+        cat_res = supabase.table("record_categories").select("name").eq("id", cat_id).eq("facility_code", f_code).execute()
+        if not cat_res.data:
+            return jsonify({"status": "error", "message": "カテゴリが見つかりません"}), 404
+        cat_name = cat_res.data[0]["name"]
+        if cat_name == "その他":
+            return jsonify({"status": "error", "message": "「その他」カテゴリは削除できません"}), 400
+        # このカテゴリを使っている既存記録を「その他」に救済
+        supabase.table("records").update({"category": "その他"}).eq("facility_code", f_code).eq("category", cat_name).execute()
+        # カテゴリ本体を削除
+        supabase.table("record_categories").delete().eq("id", cat_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/records/update_category", methods=["POST"])
+@login_required
+def api_record_update_category():
+    """既存記録のカテゴリを変更(投稿者本人または管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        record_id = data.get("record_id")
+        new_category = (data.get("category") or "").strip()
+        if not record_id or not new_category:
+            return jsonify({"status": "error", "message": "record_id と category が必要です"}), 400
+        # 権限チェック: 投稿者本人 or 管理者
+        rec_res = supabase.table("records").select("staff_name").eq("id", record_id).eq("facility_code", f_code).execute()
+        if not rec_res.data:
+            return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
+        is_owner = (rec_res.data[0]["staff_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
+            return jsonify({"status": "error", "message": "投稿者本人または管理者のみ変更できます"}), 403
+        # カテゴリの存在確認(自施設のカテゴリリストに含まれるか)
+        cat_res = supabase.table("record_categories").select("name").eq("facility_code", f_code).eq("name", new_category).execute()
+        if not cat_res.data:
+            return jsonify({"status": "error", "message": "そのカテゴリは存在しません"}), 400
+        supabase.table("records").update({"category": new_category}).eq("id", record_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success", "category": new_category})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
