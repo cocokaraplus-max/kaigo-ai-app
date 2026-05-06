@@ -507,9 +507,11 @@
                 </button>
             </div>
             {% if r.must_read and not r.is_read_by_me %}
-            <div class="must-read-badge" id="mr-badge-{{ r.id }}">
+            <div class="must-read-badge" id="mr-badge-{{ r.id }}"
+                onclick="markRecordReadByTap('{{ r.id }}')"
+                style="cursor:pointer;" title="タップして確認">
                 <span class="material-symbols-outlined">priority_high</span>
-                閲覧必須
+                閲覧必須(タップで確認)
             </div>
             {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
@@ -911,7 +913,10 @@ window.toggleMustRead = async function(recordId) {
                 const div = document.createElement('div');
                 div.className = 'must-read-badge';
                 div.id = 'mr-badge-' + recordId;
-                div.innerHTML = '<span class="material-symbols-outlined">priority_high</span>閲覧必須';
+                div.style.cursor = 'pointer';
+                div.title = 'タップして確認';
+                div.onclick = function(){ markRecordReadByTap(recordId); };
+                div.innerHTML = '<span class="material-symbols-outlined">priority_high</span>閲覧必須(タップで確認)';
                 content.parentNode.insertBefore(div, content);
             }
         } else if (!newState && badge) {
@@ -954,27 +959,37 @@ window.toggleReadList = async function(recordId) {
     list.classList.add('open');
 };
 
-// 自分が未読の必読記録を、ページ表示時にすぐ既読マーク(掲示板と同じ仕様)
-(function markVisibleRecordsAsRead(){
-    const recordIds = [];
-    document.querySelectorAll('.record-item').forEach(function(item) {
-        const id = item.id.replace('record-', '');
-        if (id) recordIds.push(parseInt(id));
-    });
-    if (recordIds.length === 0) return;
-    fetch('/api/mark_records_read', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({record_ids: recordIds})
-    }).then(function(r){ return r.json(); }).then(function(data){
-        if (data && data.status === 'success' && data.marked_ids) {
-            data.marked_ids.forEach(function(rid) {
-                const badge = document.getElementById('mr-badge-' + rid);
-                if (badge) badge.remove();
-            });
+// Session 20: 必読バッジを「タップで確認」したら既読マーク
+window.markRecordReadByTap = async function(recordId) {
+    const badge = document.getElementById('mr-badge-' + recordId);
+    if (!badge) return;
+    // 即座に消す(楽観的UI)
+    badge.style.transition = 'opacity 0.25s ease';
+    badge.style.opacity = '0';
+    setTimeout(function(){ if (badge.parentNode) badge.remove(); }, 250);
+    try {
+        const res = await fetch('/api/mark_records_read', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_ids: [parseInt(recordId)]})
+        });
+        const data = await res.json();
+        if (data && data.status === 'success') {
+            // 既読人数チップを+1更新
+            const countEl = document.getElementById('read-count-' + recordId);
+            if (countEl) {
+                const current = parseInt(countEl.textContent || '0');
+                countEl.textContent = current + 1;
+            }
         }
-    }).catch(function(){});
-})();
+    } catch(e) {
+        // 失敗時はバッジ復元
+        badge.style.opacity = '1';
+        if (!badge.parentNode) {
+            // 既に消えた場合は再構築は省略
+        }
+    }
+};
 
 })();
 </script>
