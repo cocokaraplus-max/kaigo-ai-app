@@ -2523,3 +2523,201 @@ d96ea03  Add user month records view (step C+D)
 - L487-528: タブ切替・検索・選択 JS(setDvMode, searchPatients, selectPatient)
 - L629: カレンダードット切替ロジック
 - L654-750: 月内記録読込・描画 JS(loadUserMonthRecords, renderUserMonthRecords)
+
+---
+
+# 📘 Session 20 完了サマリ(2026-05-06)
+
+## 🎯 本セッションの達成事項
+
+ZIMAXさんからの2つの要望を1セットで実装し、本番マージ完了:
+
+### A. ケース記録の写真拡大
+- 既存掲示板のピンチズームビューア(commit `a7ef20b` 実装)を**`base.html` に移して全ページ共通化**
+- 全ページで `window.openImageViewer(url)` で呼べる(`board.html` の重複実装は削除)
+- daily_view.html の `<img>` に `onclick="openImageViewer('{{url}}')"` で起動
+
+### B. 「閲覧必須」バッジ機能
+- **入口1**: 記録入力フォームに ☆閲覧必須トグルボタン
+- **入口2**: ケース記録カードの ☆ボタン(投稿後に切替可能、投稿者本人 or 管理者のみ)
+- **バッジ表示**: ON状態の記録、自分が未読のときだけ「閲覧必須(タップで確認)」オレンジバッジ
+- **既読化**: バッジをタップすると既読登録、フェードアウトで消去
+- **既読UI**: 各記録カードに「✓ N人」既読人数チップ常時表示、タップで既読スタッフ一覧展開
+- **ボトムナビ赤丸件数**: 「ケース記録」アイコンに自分の未読必読件数バッジ(掲示板アイコンと同じ見た目、30秒ポーリング)
+- **未読タブ**: daily_view 内に「📅 今日 / 👤 利用者 / 🔔 未読」の3タブ構成、未読タブは日付ごとにグループ化リスト + 「確認しました」ボタン
+
+## 🗄️ DB 変更(dev/本番 両プロジェクト適用済)
+
+```sql
+-- records テーブル拡張
+ALTER TABLE records ADD COLUMN IF NOT EXISTS must_read BOOLEAN DEFAULT false;
+
+-- 既読管理テーブル新設(board_reads と同じ構造)
+CREATE TABLE IF NOT EXISTS record_reads (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    record_id BIGINT NOT NULL,
+    staff_name TEXT NOT NULL,
+    read_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(record_id, staff_name)
+);
+
+-- ★ RLS 必ず無効化(教訓9 / 教訓36)
+ALTER TABLE record_reads DISABLE ROW LEVEL SECURITY;
+
+-- 検索高速化用インデックス
+CREATE INDEX IF NOT EXISTS idx_record_reads_lookup ON record_reads(facility_code, record_id);
+CREATE INDEX IF NOT EXISTS idx_record_reads_staff ON record_reads(facility_code, staff_name);
+```
+
+## 🛠️ 改修ファイル一覧
+
+| ファイル | 元 → 後 | 差分 | 主な変更 |
+|---|---|---|---|
+| **app.py** | 4613 → 4828 | +215 | must_read 受付、新5API、既読データ取得 |
+| **base.html** | 2009 → 2217 | +208 | 共通画像ビューア、ボトムナビ daily-badge |
+| **board.html** | 3037 → 2766 | -271 | 重複画像ビューア削除(共通化に伴う整理) |
+| **daily_view.html** | 784 → 1255 | +471 | 必読バッジ、既読チップ、未読タブ全機能 |
+| **input.html** | 640 → 681 | +41 | ☆閲覧必須トグル |
+
+## 🔗 新規 API(全 5 個、app.py 行 896〜1059)
+
+| エンドポイント | メソッド | 用途 |
+|---|---|---|
+| `/api/toggle_must_read` | POST | 必読フラグ切替(投稿者本人 or 管理者のみ) |
+| `/api/mark_records_read` | POST | record_id 配列を一括既読マーク |
+| `/api/record_reads/<id>` | GET | 既読スタッフ名リスト取得 |
+| `/api/records/unread_count` | GET | 自分の未読必読件数(全期間) |
+| `/api/records/unread_list` | GET | 未読必読記録の日付グループ化リスト |
+
+## 🎓 Session 20 で得た新教訓
+
+### 教訓36: 共通モーダルは base.html に集約する
+画像ビューアのような全ページで使えるUI部品は base.html の `</body>` 直前に配置するのが筋。各ページから `window.openImageViewer(url)` で呼べて、重複実装を回避できる。board.html からは丸ごと削除可能。教訓18(重複実装の罠)の応用。
+
+### 教訓37: 大規模置換は assert で件数チェック
+Pythonでの一括置換時、`s.count(old) == 1` をassert に入れて置換前に必ずマッチ件数を確認する。マッチ数が想定外なら早期失敗で気付ける。今回 board.html の image-viewer 削除で、ネスト追跡の不備で `</div>` を1つ消し漏れていたバグを、後段のHTMLバランス検証(div開閉カウント)で検出できた。
+
+### 教訓38: N+1問題は事前に既読IDを集合化
+掲示板パターン応用。records 主取得 → ID集合 → record_reads 一括取得 → groupby → records各行に注入。daily_view と user_month_records の両方で同じパターンを使い、レコード件数に比例しないクエリ回数で完了。
+
+### 教訓39: ★Supabase の DISABLE ROW LEVEL SECURITY は実行漏れに極めて注意
+Step 1 の SQL で `ALTER TABLE record_reads DISABLE ROW LEVEL SECURITY` を実行したつもりが、何らかの理由で **dev側だけ RLS=true のまま**だった。結果:
+- フロント側のJS は正常
+- 「確認しました」をタップ → `/api/mark_records_read` が **500 エラー**で返る
+- gcloud のログには 500 が出ず、grep フィルタで漏れる(GET 200 ばかり並ぶ)
+- 原因特定まで時間がかかった
+
+**チェックリスト化**:
+1. 新規テーブル作成時、必ず最後に `SELECT relname, relrowsecurity FROM pg_class WHERE relname='テーブル名';` で `false` を確認
+2. dev/本番両方とも個別に確認(片方が `true` でもう片方が `false` のケースが実際に発生)
+3. 500 エラーが出たら最初に疑う(syntaxエラーよりずっと多い)
+4. Supabase Dashboardのテーブル設定画面で「Enable RLS」のトグルが**OFF**になっているか目視確認
+
+### 教訓40: 既読化は「ページを開いた瞬間」ではなく「明示的なアクション」が筋
+最初は掲示板の `mark_all_read` パターンを真似て、daily_view を開いた瞬間に全件自動既読化する実装にした → ZIMAXさんから「これちゃんとバッジ出るのかな?」と指摘。**バッジが出てから消えるまで数百ミリ秒で意味がない**ことに気付いた。
+
+ケース記録の「閲覧必須」は重要な情報なので:
+- バッジ自体に `onclick="markRecordReadByTap(...)"` を仕込む
+- 「閲覧必須(タップで確認)」とラベルに明記
+- タップ = 「確認しました」という明示的アクションとして機能させる
+
+未読タブ側も同様に、各カードに「✓ 確認しました」ボタンを置く。**ユーザー操作 = 既読** がUIとして自然。
+
+### 教訓41: 機能実装途中の認識ズレに注意
+途中、「未読タブを増設したい」というZIMAXさんの依頼を受けて私が「実装します」と回答した直後、コードを確認したら**未読タブ機能はSession 20の前半で既に実装されていた**ことが判明(私の見落とし)。各タブ用CSS、HTMLエリア、JSファンクション、API全部存在していた。
+
+教訓: 「新規実装」と思った機能でも、コードを最初から最後まで全文確認するクセを付ける。grep だけでは見落とす可能性がある。複数セッションに渡る実装では特に。
+
+### 教訓42: ターミナル長文ペーストは行が混ざる
+ZIMAXさんのMacのターミナルで複数コマンド一括ペーストすると、行が混ざって意味不明な羅列になる挙動が再現された。**1コマンド1ペースト**が安全。長くなる場合は最小単位に分けて送る。
+
+## 📊 セッション内のミス・反省点
+
+1. **board.html image-viewer 削除時の `</div>` 消し漏れ**(後で気付いて修正)
+2. **「ページ表示で全件自動既読」の初期実装**(ZIMAXさんの指摘で「タップで確認」に変更)
+3. **未読タブ機能が既に実装済みなのに気付かず、新規実装する流れになった**(コード確認で発覚)
+4. **dev側 record_reads の RLS=true 問題で1〜2時間ロス**(教訓39)
+
+## 🧪 Session 20 の実施タスク完了状況
+
+✅ A. 写真拡大の共通化(base.html 集約)
+✅ B. ☆閲覧必須トグル(入力フォーム + 投稿後カード)
+✅ B. 必読バッジ表示(タップで確認)
+✅ B. 既読人数チップ + 既読スタッフ一覧展開
+✅ B. ボトムナビ「ケース記録」アイコンの未読件数バッジ
+✅ B. 未読タブ(日付グループ化、確認しましたボタン)
+✅ DB変更(records.must_read + record_reads + RLS無効化)
+✅ dev/本番マージ完了
+✅ README.md 更新
+
+## 🚀 Session 21 候補タスク(優先度順)
+
+| # | 内容 | 優先度 | 規模 |
+|---|---|---|---|
+| ① | 過去の月次評価報告書を編集できるように | 中 | 1-2h |
+| ② | 過去の月次評価報告書を削除できるように | 中 | 30m-1h |
+| ③ | モニタリング(generate_monitoring)結果の DB 保存 | 中(大改修) | 2-3h |
+| ④ | iPhone 実機で Session 20 全機能の最終チェック | 高 | 30m |
+| ⑤ | Session 20 で発生した RLS確認漏れの再発防止策 | 低(教訓39済み) | - |
+
+## 🔑 Session 20 で参照する重要箇所
+
+### app.py(本番デプロイ済み)
+
+```
+L664-674   /input POST: must_read 受付 + INSERT
+L729-755   /daily_view: record_reads 一括取得・既読情報注入
+L877-879   /api/user_month_records: 同上
+L896-927   /api/toggle_must_read
+L930-957   /api/mark_records_read
+L960-981   /api/record_reads/<id>
+L984-1003  /api/records/unread_count
+L1006-1059 /api/records/unread_list
+```
+
+### base.html(本番デプロイ済み)
+
+```
+L599-606   ボトムナビ: ケース記録アイコン + daily-badge
+L895-948   checkUnreadMessages 関数(掲示板 + ケース記録の両バッジ更新)
+L2009-2197 image-viewer 共通モーダル(HTML + CSS + JS、188行)
+```
+
+### daily_view.html(本番デプロイ済み)
+
+```
+L240-262   タブUI CSS(.dv-tabs, .dv-tab)
+L347-484   必読バッジ・☆・既読チップ + 未読タブ用 CSS
+L501-510   タブHTML(今日 / 利用者 / 未読)
+L502-527   ☆ボタン + 必読バッジ表示(Jinja条件)
+L528-541   既読人数チップ + 既読リスト
+L681-690   未読タブエリア HTML
+L712-755   setDvMode(タブ切替)
+L758-815   loadUnreadRecords(未読リスト取得・描画)
+L817-866   confirmUnreadRecord(「確認しました」処理)
+L867-870   goToDailyView(該当日へ遷移)
+L875-895   refreshUnreadTabCount(タブ件数バッジ更新)
+L1170-1218 toggleMustRead(☆切替)
+L1220-1252 markRecordReadByTap(必読バッジタップで既読化)
+```
+
+### input.html(本番デプロイ済み)
+
+```
+L215-222   閲覧必須トグルボタン HTML
+L266       saveRecord で must_read を formData に追加
+L300-313   保存成功時のトグルリセット
+L666-680   toggleMustReadInput 関数
+```
+
+## ⚠️ Session 21 開始時の必読チェック
+
+**新規テーブルを作成する場合は、必ず以下のSQLで RLS=false を確認すること**:
+
+```sql
+SELECT relname, relrowsecurity FROM pg_class WHERE relname='テーブル名';
+```
+
+dev/本番両方で、`false` が返るまで先に進まない。教訓39 を絶対に踏まない。
+
