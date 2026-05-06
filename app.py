@@ -981,6 +981,81 @@ def api_record_reads(record_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/records/unread_count')
+@login_required
+def api_records_unread_count():
+    """自分にとって未読の必読ケース記録の件数を返す(全期間)"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    try:
+        # 全期間の must_read=true な記録を取得
+        res = supabase.table("records").select("id").eq("facility_code", f_code).eq("must_read", True).execute()
+        if not res.data:
+            return jsonify({"status": "success", "count": 0})
+        must_read_ids = [r["id"] for r in res.data]
+        # 自分が既読の record_id を取得
+        rr = supabase.table("record_reads").select("record_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("record_id", must_read_ids).execute()
+        read_ids = set(row["record_id"] for row in (rr.data or []))
+        unread_count = sum(1 for rid in must_read_ids if rid not in read_ids)
+        return jsonify({"status": "success", "count": unread_count})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "count": 0}), 500
+
+
+@app.route('/api/records/unread_list')
+@login_required
+def api_records_unread_list():
+    """自分にとって未読の必読ケース記録の一覧(日付グループ化、新しい順)"""
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+    try:
+        # 全期間の must_read=true な記録(本人投稿の AI統合記録は除外)
+        res = supabase.table("records").select("*").eq("facility_code", f_code).eq("must_read", True).neq("staff_name", "AI統合記録").order("created_at", desc=True).execute()
+        if not res.data:
+            return jsonify({"status": "success", "groups": []})
+        all_records = res.data
+        all_ids = [r["id"] for r in all_records]
+        # 自分が既読の record_id を取得
+        rr = supabase.table("record_reads").select("record_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("record_id", all_ids).execute()
+        read_ids = set(row["record_id"] for row in (rr.data or []))
+        unread = [r for r in all_records if r["id"] not in read_ids]
+
+        # 日付ごとにグループ化(JST基準)
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for r in unread:
+            d = parse_jst_date(r["created_at"]).strftime("%Y-%m-%d")
+            if d not in groups:
+                groups[d] = []
+            groups[d].append({
+                "id": r["id"],
+                "user_name": r.get("user_name") or "",
+                "staff_name": r.get("staff_name") or "",
+                "content": r.get("content") or "",
+                "time": parse_jst(r["created_at"]),
+                "image_urls": r.get("image_urls") or [],
+                "created_at": r["created_at"],
+            })
+        out = []
+        for d, items in groups.items():
+            try:
+                d_obj = datetime.strptime(d, "%Y-%m-%d")
+                date_label = d_obj.strftime("%m月%d日 (") + "日月火水木金土"[d_obj.weekday()] + ")"
+                date_label = d_obj.strftime("%m月%d日") + " (" + "月火水木金土日"[d_obj.weekday()] + ")"
+            except Exception:
+                date_label = d
+            out.append({
+                "date": d,
+                "date_label": date_label,
+                "records": items
+            })
+        return jsonify({"status": "success", "groups": out})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "groups": []}), 500
+
+
 @app.route('/birthday')
 @login_required
 def birthday():

@@ -597,7 +597,10 @@ body.nav-editing {
             記録入力
         </a>
         <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}" onclick="spaNav(event,'/daily_view')">
-            <span class="material-symbols-outlined">calendar_month</span>
+            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined">calendar_month</span>
+                <span id="daily-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
+            </div>
             ケース記録
         </a>
         <a href="/vitals" class="bottom-nav-item {% block nav_vitals %}{% endblock %}" onclick="spaNav(event,'/vitals')">
@@ -898,32 +901,49 @@ let chatPollingTimer = null;
 
 async function checkUnreadMessages() {
     // 掲示板ページでは未読バッジを更新しない(掲示板を開いた時点で既読扱い)
-    if (window.location.pathname === '/board') {
-        var badge = document.getElementById('chat-badge');
-        if (badge) badge.style.display = 'none';
-        return;
+    if (window.location.pathname !== '/board') {
+        try {
+            const res = await fetch('/api/board/unread_count');
+            if (res.ok) {
+                const data = await res.json();
+                const count = data.count || 0;
+                const badge = document.getElementById('chat-badge');
+                if (badge) {
+                    if (count > 0) {
+                        badge.textContent = count > 99 ? '99+' : count;
+                        badge.style.display = 'block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+                // 新着があったら通知音
+                if (count > lastUnreadCount && lastUnreadCount >= 0) {
+                    const isOnChat = location.pathname.startsWith('/chat');
+                    if (!isOnChat) window.playNotificationSound();
+                }
+                lastUnreadCount = count;
+            }
+        } catch(e) {}
+    } else {
+        var cb = document.getElementById('chat-badge');
+        if (cb) cb.style.display = 'none';
     }
+    // Session 20: ケース記録の必読未読件数バッジ
     try {
-        const res = await fetch('/api/board/unread_count');
-        if (!res.ok) return;
-        const data = await res.json();
-        const count = data.count || 0;
-        const badge = document.getElementById('chat-badge');
-        if (badge) {
-            if (count > 0) {
-                badge.textContent = count > 99 ? '99+' : count;
-                badge.style.display = 'block';
-            } else {
-                badge.style.display = 'none';
+        const r2 = await fetch('/api/records/unread_count');
+        if (r2.ok) {
+            const d2 = await r2.json();
+            const c2 = d2.count || 0;
+            const db = document.getElementById('daily-badge');
+            if (db) {
+                if (c2 > 0) {
+                    db.textContent = c2 > 99 ? '99+' : c2;
+                    db.style.display = 'block';
+                } else {
+                    db.style.display = 'none';
+                }
             }
         }
-        // 新着があったら通知音
-        if (count > lastUnreadCount && lastUnreadCount >= 0) {
-            // トーク画面を開いていないときだけ鳴らす
-            const isOnChat = location.pathname.startsWith('/chat');
-            if (!isOnChat) window.playNotificationSound();
-        }
-        lastUnreadCount = count;
     } catch(e) {}
 }
 
