@@ -2721,3 +2721,306 @@ SELECT relname, relrowsecurity FROM pg_class WHERE relname='テーブル名';
 
 dev/本番両方で、`false` が返るまで先に進まない。教訓39 を絶対に踏まない。
 
+
+
+---
+
+# 🚨 Session 21-22 引き継ぎ(2026-05-06 〜 2026-05-07)
+
+## 📍 完了タスク サマリ
+
+| タスク | 状態 | コミット |
+|---|---|---|
+| **A-1**: ケース記録カテゴリの新8区分への完全入れ替え(dev・本番) | ✅ 完了 | (DBのみ、コミットなし) |
+| **A-2**: 記録入力画面のカテゴリピッカー(iOS Picker風)を dev へ push | ✅ 完了 | `93deae2` |
+| **A-3**: 操作マニュアル(manual.html)にカテゴリピッカー説明 + スクショ2枚を追加 | ✅ 完了 | `deb31c2` |
+
+**Session 21 では設計と input.html のコード作成まで完了したが、push されていなかった。Session 22 で push と動作確認まで完了。**
+
+---
+
+## 🎨 新8カテゴリ仕様(最終決定版)
+
+ZIMAXさんと確定した内容。色は意味グルーピング:
+- **観察系(青系)**: 心身状況、訓練状況、コミュニケーション
+- **警戒系(赤)**: ヒヤリハット
+- **生活ケア系(暖色〜緑〜茶)**: 食事、入浴、排泄
+- **ニュートラル**: その他
+
+| sort_order | name | color | is_default |
+|---|---|---|---|
+| 10 | 心身状況 | `#3B82F6` | false |
+| 20 | 訓練状況 | `#06B6D4` | false |
+| 30 | コミュニケーション | `#8B5CF6` | false |
+| 40 | ヒヤリハット | `#EF4444` | false |
+| 50 | 食事 | `#F97316` | false |
+| 60 | 入浴 | `#10B981` | false |
+| 70 | 排泄 | `#A16207` | false |
+| 99 | その他 | `#94A3B8` | true |
+
+### A-1 で実行した SQL の構造(`replace_record_categories.sql`)
+
+5ステップの安全設計で構築:
+1. **STEP 0**: RLS 状態確認(`pg_class.relrowsecurity = false` を必ず確認、教訓39)
+2. **STEP 1**: 新8カテゴリを INSERT(既存と被ったら ON CONFLICT で SKIP)
+3. **STEP 2**: 既存行の色・並び順を UPDATE で新仕様に揃える
+4. **STEP 3**: records.category のうち新8カテゴリ名にないものを「その他」に救済
+5. **STEP 4**: 新8カテゴリ以外の record_categories 行を DELETE
+6. **STEP 5**: 最終確認(8行ピッタリ、records.category が全て新カテゴリ内)
+
+この順序により records.category が宙に浮く瞬間が生じない設計。
+
+### A-1 の実行結果
+
+dev・本番両方で実行完了。
+
+**dev (DEMO001) の records.category 分布**:
+| category | 件数 |
+|---|---|
+| その他 | 1,506(救済された旧カテゴリ含む) |
+| 食事 | 1,502 |
+| 排泄 | 1,061 |
+| 入浴 | 1,022 |
+| 訓練状況 | 1 |
+| **合計** | **5,092 件** |
+
+**本番の record_categories**: ちょうど8行、色は全て仕様通り、is_default は「その他」のみ true ✅
+
+---
+
+## 🎨 A-2: input.html の iOS Picker 風カスタムドロップダウン
+
+### 実装場所
+
+- **CSS**: `templates/input.html` 96〜198行
+- **HTML**: `templates/input.html` 309〜328行
+- **JS**: `templates/input.html` 811〜932行
+
+### 要素ID
+
+| ID | 役割 |
+|---|---|
+| `#cat-trigger` | 開閉トリガーの button |
+| `#cat-panel` | 8カテゴリのリストパネル(hidden 属性で開閉) |
+| `#selected-category` | フォーム送信用 hidden input(name="category") |
+| `#cat-trigger-label` | トリガー内の選択中カテゴリ名 |
+| `#cat-trigger-dot` | トリガー内の選択中カラードット |
+
+### デザイン特徴
+
+- カテゴリごとのカラードット(8色)
+- 選択中行は薄い背景色 + 右端にチェックマーク
+- chevron アイコンが180°回転で開閉表現
+- 二段シャドウでフロート感
+- 角丸12px、白背景
+- フォーカスリングは青(`#1a73e8`)
+- 外側クリックで自動的に閉じる
+- API `/api/record_categories` から動的にカテゴリ取得
+
+### バックエンドとの整合性
+
+- 旧 `<select id="category-select">` から hidden input `<input id="selected-category" name="category">` に変わったが、**フォーム送信される値の形式(name="category" の文字列)は完全に同じ**
+- 保存処理(279行付近)とリセット処理(326行付近)が新IDに正しく書き換え済み
+- バックエンドの `request.form.get('category')` は変更不要
+
+---
+
+## 🔍 重要な発見・経緯(後の Session で混乱しないため)
+
+### Session 21 の `<select>`版が既にリモートに存在していた
+
+Session 22 開始時、`git pull` で **45ファイル、14,401行** の差分が落ちてきた。これは Session 21 中に commit `253fe2e Switch input category UI from chips to dropdown with color dot` で **「<select> + カラードット」版**が既にpushされていたため。
+
+ところが Session 21 の最終形は **iOS Picker 風カスタム版(934行)** で、これは Desktop に置かれたまま push されていなかった。Session 21 の引き継ぎ文書には「コードは書き終わっているが dev にまだpushされていない」と記載されていた。
+
+#### 上書き判断の経緯
+
+1. リモート最新版(775行、`<select>`版)と Desktop 版(934行、iOS Picker版)を `diff -u` で比較
+2. 変更ブロック6つを精査:
+   - CSS追加(+103行)、HTML置換、JS新規追加(+52行)、保存処理1行変更、リセット処理2行変更、古いJS削除(-2行)
+3. 重要な整合性チェック:
+   - 保存処理: `getElementById('category-select')` → `getElementById('selected-category')` に正しく書き換え
+   - リセット処理: `updateCategoryColorDot()` → `renderCategoryPicker()` に正しく書き換え
+4. **リモート版にあって Desktop版に欠けている処理は存在しない** と確認 → 上書き push を判断
+
+**教訓**: リモートと Desktop で同じ目的の実装が並行することがある。push 前に必ず diff を取って、欠けている処理がないか確認する。
+
+### タスカルくん画像は14箇所→17箇所に増えていた
+
+Session 21 引き継ぎ文書の「タスカルくん画像14箇所」は古い数字で、**現在の manual.html では17箇所**(その後の Session で追加されたもの)。
+
+A-3 で manual.html を編集する前に `grep -n "タスカルくん"` で再確認したところ、17箇所が判明。**全箇所を不可侵領域として扱う**方針で安全に編集できた。
+
+**教訓**: 引き継ぎ文書の「N箇所」みたいな数値は鵜呑みにしない。grep で必ず再確認する。
+
+### Cloud Run デプロイ確認は強制リロードが必須
+
+push 後に dev 実機で確認する際、通常リロードだとブラウザキャッシュで古い画面が表示されることがある。**Cmd+Shift+R(強制リロード)が必須**。
+
+---
+
+## 📋 残タスク(Session 23以降): ケース記録の検索機能(B シリーズ)
+
+### 機能要件(ZIMAXさん指定)
+
+1. ケース記録閲覧画面に検索窓をつける
+2. **カテゴリで絞り込み検索**できる
+3. **キーワード検索**できる(記録内容に対して)
+4. 「褥瘡」で検索 → 引っかかる記録を全て表示
+5. **利用者単位の検索 / 全利用者横断検索** 両方OK
+6. **漢字・ひらがな・カタカナ どれで検索してもヒットする**
+
+### 採用方針: AIタグ方式(案②)
+
+**コスト試算(Gemini 2.5 Flash)**:
+- 1記録あたり 約 0.01円
+- 中規模施設(月3,000件) → 約27円/月
+- 過去1年分(3万件)の遡及生成 → 一回 約270円
+- 実質ほぼ無料
+
+### 実装計画(合意済み順序)
+
+| # | 内容 | 所要 |
+|---|---|---|
+| **B-1** | 検索機能の設計詰め(DB設計 + UI設計) | 15分 |
+| **B-2** | DB変更(`records.search_tags` カラム追加) | 5分 |
+| **B-3** | 既存記録への遡及AIタグ生成(バッチ実行) | 30分〜1h |
+| **B-4** | 新規記録のAIタグ自動生成(投稿時) | 30分 |
+| **B-5** | 検索UI(daily_view.html)+ 検索API実装 | 1〜2h |
+| **B-6** | dev で動作確認 | 30分 |
+| **C** | 本番マージ・デプロイ(A-2 + B 全部まとめて) | 15分 |
+
+合計 3〜4時間。
+
+### 設計のヒント
+
+#### B-2 DB設計案
+
+```sql
+ALTER TABLE records ADD COLUMN search_tags TEXT[];
+-- 例: ['褥瘡', 'じょくそう', 'ジョクソウ', '床ずれ', 'とこずれ']
+CREATE INDEX records_search_tags_gin ON records USING gin(search_tags);
+```
+
+⚠️ カラム追加後は必ず RLS 状態を確認(教訓39):
+```sql
+SELECT relname, relrowsecurity FROM pg_class WHERE relname='records';
+```
+
+#### B-4 タグ生成プロンプト案
+
+```
+以下の介護記録から、後で検索したくなりそうなキーワードを抽出してください。
+
+【出力ルール】
+- 漢字・ひらがな・カタカナの全表記を含める
+- 同義語(褥瘡 = 床ずれ など)も含める
+- 利用者名・職員名・日付は含めない
+- 介護用語の正式名と俗称両方を出す
+- JSON配列のみ返す
+
+【記録】
+{content}
+
+【出力例】
+["褥瘡", "じょくそう", "ジョクソウ", "床ずれ", "とこずれ", "仙骨部"]
+```
+
+#### B-5 検索API案
+
+```python
+@app.route('/api/search_records')
+@login_required
+def api_search_records():
+    keyword = request.args.get('q', '').strip()
+    category = request.args.get('category', '')
+    user_name = request.args.get('user', '')  # 空なら全利用者
+    # search_tags @> ARRAY[keyword] OR content ILIKE '%keyword%' OR user_name ILIKE
+    # の合成クエリで検索
+```
+
+### B-3 / B-4 実装上の注意
+
+- **B-3 の遡及バッチ生成は慎重に**: dev で先に小さい範囲(10件など)テストしてから全件実行
+- **B-4 の新規記録投稿時のAIタグ生成は保存処理を遅延させない**: 非同期で実装するか、保存後の追加処理にする(ユーザー体験を守る)
+
+### 本番デプロイは B 完了後にまとめて
+
+**A-2 (input.html iOS Picker) は dev に push 済みだが、本番にはまだマージしていない。** B シリーズも dev で完成・動作確認できてから、A + B をまとめて1つの PR で本番マージする方針(ZIMAXさんと合意済み)。
+
+---
+
+## 💡 教訓追加(Session 21-22 で得たもの)
+
+### 教訓43: リモートと Desktop で同じ目的の実装が並行することがある
+- push 前に必ず `diff -u` で比較
+- 「リモート版にあって Desktop版に欠けている処理」がないかを精査
+- 「Desktop版で完全に上位互換」と確認できてから上書き
+
+### 教訓44: 引き継ぎ文書の数値は鵜呑みにしない
+- 「タスカルくん画像14箇所」のような具体的な数値は、後の Session で変動している可能性
+- 編集前に必ず `grep -n` で再確認
+- 不可侵領域は最新の状態で再カウントしてから扱う
+
+### 教訓45: Cloud Run デプロイ後の確認は強制リロード必須
+- 通常リロード(Cmd+R)だとブラウザキャッシュで古い画面
+- `Cmd+Shift+R` で強制リロード必須
+- これを怠ると「push したのに反映されてない!?」と無駄な調査をしてしまう
+
+### 教訓46: `git status` の "up to date" は信用しない
+- 「up to date」は **前回の fetch 時点での up to date** を意味するだけ
+- リモートが進んでいても気づかない
+- Session 開始時は **必ず `git pull` を打って実際にリモートと同期** してから作業を始める
+
+---
+
+## 📁 ファイル状態(Session 22 終了時、2026-05-07)
+
+| ファイル | 行数 | 状態 |
+|---|---|---|
+| README.md | 2723 → 本セクションで更新 | 本コミットで Session 21-22 サマリ追加 |
+| app.py | 4828 | Session 20 から未更新(コミット 6f18942) |
+| templates/input.html | 934 | **dev に push 済み(commit `93deae2`)、本番未マージ** |
+| templates/manual.html | 1358 | **dev に push 済み(commit `deb31c2`)、本番未マージ** |
+| templates/daily_view.html | 1255 | Session 20 から未更新 |
+| templates/board.html | 2766 | Session 20 から未更新 |
+| static/img/guide/category-closed.png | (新規) | **dev に push 済み** |
+| static/img/guide/category-open.png | (新規) | **dev に push 済み** |
+
+### 出力済みSQL
+
+`replace_record_categories.sql`(`'YOUR_FACILITY_CODE'` プレースホルダー版)を Session 21 で生成済み。Session 22 では DEMO001 用に置換した版を使用。
+
+---
+
+## 🎯 Session 23 開始時の最初のアクション
+
+1. README を読み込んで全体把握(本セクション含む)
+2. ZIMAXさんに「**B-1(検索機能の設計詰め)から始めますか?**」と確認
+3. dev環境の Chrome タブを確認
+4. B-1 で詰めるべきこと:
+   - 検索UIの配置場所(daily_view.html のどこに検索窓を置く?)
+   - 検索のスコープ切替UI(全利用者横断 vs 利用者単位)
+   - 検索結果の表示方法(フィルタリング? 別画面?)
+   - AIタグのプロンプト最終確定
+   - 遡及バッチの実行タイミング(dev で先に少量テスト → 全件)
+
+---
+
+## 🚨 不変事項(Session 21-22 でも継続適用)
+
+過去の教訓に加えて、以下を厳守:
+
+1. **タスカルくん画像 17箇所(数値は更新)+ animation:fl(manual.html)絶対不可侵**(教訓1)
+2. **Step 3 Firebase Push 提案禁止**(明示依頼まで)
+3. **コミットメッセージは英語シンプル**、日本語全角括弧禁止
+4. **push 後 30〜60秒待つ**(Cloud Run デプロイ)
+5. **ファイル配置は Desktop 経由 + ls/wc/grep で配置前確認**(教訓26)
+6. **複雑な複数行ペーストは Mac のターミナルで混線する** → 1コマンド1ペースト(教訓42)
+7. **新規テーブル/カラム作成時は必ず RLS=false 確認**(教訓39)
+8. **1機能ずつ確認しながら進める**(push しっぱなしで次へ行かない)
+9. **リモートと Desktop の diff を必ず取る**(教訓43、新規)
+10. **引き継ぎ文書の数値は grep で再確認**(教訓44、新規)
+11. **Cloud Run 確認は Cmd+Shift+R で強制リロード**(教訓45、新規)
+12. **Session 開始時は必ず `git pull` で実際にリモート同期**(教訓46、新規)
+
