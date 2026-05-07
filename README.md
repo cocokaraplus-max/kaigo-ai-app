@@ -3423,3 +3423,168 @@ Session 22 の継続として Session 23 を開始する場合:
 - ターミナルで `cat > .env` する前に、VS Code 上の同ファイルを **保存または閉じる**
 - 教訓: 大事なファイルは `>>` (追記)を基本とし、`>` (上書き)は慎重に
 
+
+
+---
+
+# 🔄 Session 22 最新状態(2026-05-07 13:30 時点)
+
+このログは Session 22 終了時(または途中)の最新状態を記録するもの。チャット消失リスク対策として詳細を残す。
+
+## 進行中タスク
+
+### B-3: 既存記録への AI 検索タグ遡及生成バッチ
+
+**実行状況**: dev 環境で **1,250 / 5,092 件処理済み**(24.5%、残 3,842件)
+
+**実行中のコマンド**(別のターミナルタブで動作中):
+```bash
+TOKEN='QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE'
+URL='https://tasukaru-dev-191764727533.asia-northeast1.run.app/api/admin/generate_search_tags?limit=10&dry_run=false&sleep=0'
+
+for i in $(seq 1 600); do
+  RESULT=$(curl -s --max-time 290 -X POST -H "X-Admin-Token: $TOKEN" "$URL")
+  TOTAL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null)
+  SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+  echo "[$(date +%H:%M:%S)] Round $i: success=$SUCCESS / total=$TOTAL"
+  if [ "$TOTAL" = "0" ]; then
+    echo "===== ALL DONE ====="
+    break
+  fi
+done
+```
+
+**ペース**: 約 20件/分。残り 3,842件で **約3.2時間**(完了は 15:00〜16:00 頃見込み)。
+
+**確認SQL**(dev で進捗チェック):
+```sql
+SELECT COUNT(*) AS total, COUNT(search_tags) AS done, COUNT(*) - COUNT(search_tags) AS remaining FROM records;
+```
+
+**ADMIN_BATCH_TOKEN 値**: `QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE`(B-3 完了後に削除予定)
+
+## バッチコマンドが止まった場合の再開方法
+
+1. ターミナルで `Ctrl+C` で停止しているか確認(`pwd` でプロンプト戻ってる状態)
+2. 上記の **「実行中のコマンド」をそのまま再ペースト**して再実行
+3. エンドポイントは `search_tags IS NULL` 条件で取得するため、**処理済みレコードはスキップされ自動的に未処理分から再開**する
+
+## 既存バグ修正状況
+
+Session 22 の予定外で発生した既存バグ調査・修正:
+
+### バグA: 本番のバイタル「除外に失敗しました」エラー
+
+- **状態**: ✅ 修正完了(2026-05-07 12:30 頃)
+- **原因**: 本番DBの `vital_daily_excludes` テーブルが RLS=true、ポリシー未設定で全 INSERT が拒否されていた
+- **修正内容**: 本番DBで `ALTER TABLE vital_daily_excludes DISABLE ROW LEVEL SECURITY` 実行
+- **影響範囲**: 本番DBのみ(dev は元から RLS=false)
+- **アプリコード**: 変更なし(コードは正しかった)
+- **動作確認**: 本番で利用者削除成功確認済み ✅
+
+### バグB: ⭐(必読フラグ)エラー
+
+- **状態**: ✅ 仕様通り(対応不要)、クローズ済み
+- **詳細**: 他人の投稿に⭐を付けようとして 403 Forbidden(app.py 922-924行のロジック通り)
+- **管理者(ZIMAX)が叩く分には正常動作**
+
+### バグC + D: バイタル利用者追加モーダル関連
+
+- **状態**: ✅ コード修正完了(commit `a819c34`)、dev で動作確認待ち
+- **原因**: `.page-wrapper { z-index: 0 }` が stacking context を作るため、モーダル(z-index:9999)が `.bottom-nav` より下に表示される
+  - 教訓14 と完全に同じパターン
+- **修正内容**: vitals.html の DOMContentLoaded handler に「`#add-patient-modal` を body 直下に移動するロジック」を4行追加(コメント1行+コード4行=合計5行追加)
+- **影響範囲**: dev のみ反映(本番は未反映、Session 22 全完了後の本番マージで反映予定)
+- **動作確認**: ZIMAX 側で実施予定
+
+## Session 22 全コミット履歴(現在)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | `4b6acbb` | docs: log B-2 completion (dev + prod) |
+| 6 | `318fda0` | Add temporary admin endpoint for B-3 retroactive AI tag generation |
+| 7 | `b44a3eb` | docs: log B-3 in-progress with strategy notes |
+| 8 | `a819c34` | Fix add-patient modal hidden by bottom-nav |
+
+## Session 23 開始時のチェックリスト
+
+新しいチャットセッションを開始する場合の標準手順:
+
+### 必須確認事項
+1. ✅ README を読み込む(全体把握、特にこのセクション)
+2. ✅ B-3 バッチの完了状況を SQL で確認(dev):
+   ```sql
+   SELECT COUNT(*), COUNT(search_tags) FROM records;
+   ```
+3. ✅ ZIMAX 側のバッチターミナルが今も動いているか確認
+4. ✅ vitals.html 修正(commit `a819c34`)の dev 動作確認結果を確認
+
+### 状況に応じたアクション
+
+#### A. バッチ未完了の場合
+- ZIMAX 側のターミナルが動いているなら見守り継続
+- 止まっていたら、上記の再開コマンドで再実行
+- 完了後 → B へ進む
+
+#### B. バッチ完了の場合(全件 5,092 = done になった)
+1. **タグ品質スポットチェック**(ランダム5〜10件確認)
+2. **本番 B-3 実施**(同じトークン or 新規トークンで本番でもバッチ実行、約1時間)
+3. **エンドポイント削除コミット**(セキュリティ確保):
+   - app.py の `/api/admin/generate_search_tags` を削除
+   - dev → 本番に反映
+   - Cloud Run の `ADMIN_BATCH_TOKEN` 環境変数も削除
+
+#### C. バグC/D の動作確認結果
+- OK → README に追記してクローズ
+- NG → さらに調査、修正
+
+#### D. 残タスク
+- **B-4**: 新規記録投稿時の AIタグ自動生成(input.html / app.py の `/save_record`)
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+  - 検索SQL案: `search_tags @> ARRAY[keyword] OR content ILIKE '%keyword%' OR user_name ILIKE '%keyword%'`
+- **B-6**: dev で全機能の動作確認
+- **C(本番マージ)**: A シリーズ + B シリーズ全部まとめて本番マージ・デプロイ
+
+## 重要な認証情報
+
+### Cloud Run dev 環境変数(現在設定中)
+- `SECRET_KEY`, `DEV_PASSWORD`, `SUPABASE_URL`, `SUPABASE_KEY`, `GEMINI_API_KEY`
+- `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`
+- `ADMIN_BATCH_TOKEN`(Session 22 で追加、B-3 完了後に削除予定)
+
+### Supabase
+- dev: `otjevnmoycnvaxeltrtj` (tasukaru-dev)
+- 本番: `abvglnkwtdeoaazyqwyd` (kaigo-ai-app)
+
+### Cloud Run
+- プロジェクト: `tasukaru-production`
+- リージョン: `asia-northeast1`
+- dev サービス: `tasukaru-dev` → URL `https://tasukaru-dev-191764727533.asia-northeast1.run.app`
+- 本番サービス: `tasukaru` → URL `https://tasukaru-191764727533.asia-northeast1.run.app`
+
+### リポジトリ
+- GitHub: `cocokaraplus-max/kaigo-ai-app`
+- ブランチ: `tasukaru-dev`(開発) / `tasukaru`(本番)
+- ローカル: `~/Desktop/kaigo-ai-app`
+
+## 教訓追加(Session 22 後半)
+
+### 教訓50: stacking context の罠
+- `.page-wrapper { z-index: 0; position: relative }` のような外側コンテナが stacking context を作ると、内側の z-index:9999 のモーダルでも外側の bottom-nav に勝てない
+- 解決策: モーダル要素を JS で `document.body.appendChild()` で body 直下に移動
+- 教訓14 と同じパターン、すべての固定オーバーレイ要素で要注意
+
+### 教訓51: 本番のバグ調査は Cloud Run ログ + gcloud CLI
+- Cloud Console のログ画面 UI は textPayload を表示しないことがある
+- `gcloud logging read` で `textPayload` と `jsonPayload.message` を直接取得する方が確実
+- severity フィルタは「警告」を選ぶと警告以上(ERROR含む)が見える
+- アプリ内 print 出力は **stderr** ではなく `run.googleapis.com%2Fstdout` ログ名に格納される
+
+### 教訓52: 既存バグ調査の優先度判断
+- 報告された問題が「Session 22 の変更で発生したか」「以前から存在したバグか」を最初に切り分ける
+- Session 22 と無関係なら、Session 22 の進行中タスク(B-3 バッチなど)を止めずに並行調査
+- ただし、本番DBへの書き込みを伴う修正は慎重に
