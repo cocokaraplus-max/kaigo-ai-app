@@ -1106,6 +1106,11 @@ requestAnimationFrame(() => {
     if (fab && fab.parentElement !== document.body) {
         document.body.appendChild(fab);
     }
+    // 利用者追加モーダルも body 直下に移動。同じく page-wrapper の stacking context 対策。
+    const addPatientModal = document.getElementById('add-patient-modal');
+    if (addPatientModal && addPatientModal.parentElement !== document.body) {
+        document.body.appendChild(addPatientModal);
+    }
 });
 
 // ========== ピンチズーム ==========
