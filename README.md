@@ -3292,3 +3292,134 @@ dev・本番の両方で実行完了。教訓39 完全遵守(RLS = false 維持)
 - **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
 - **B-6**: dev で全機能の動作確認
 - **C**: A + B 全部まとめて本番マージ・デプロイ
+
+
+---
+
+# 🔄 B-3 進行中ログ(2026-05-07)
+
+## 実施状況: dev 環境で遡及AIタグ生成バッチ実行中
+
+### 実装方式の決定経緯
+
+当初予定した「ローカル Python スクリプト + .env」方式は、`.env` の管理ミスで上書き事故が起きそうになり中止。**Cloud Run エンドポイント方式** に切り替え:
+
+- app.py に管理者専用エンドポイント `/api/admin/generate_search_tags` を追加(commit `318fda0`)
+- 認証: `X-Admin-Token` ヘッダー = `ADMIN_BATCH_TOKEN` 環境変数(Cloud Run dev に設定済み)
+- パラメータ: `limit`, `dry_run`, `sleep`
+- B-3 完了後はエンドポイント自体を削除する commit を必ず push する(セキュリティ確保)
+
+### 動作確認結果
+
+#### dry-run テスト(3件、limit=3)
+- ✅ HTTP 200、16.4秒
+- ✅ タグ品質: 漢字/ひらがな/カタカナの3表記 + 業界俗称(「お風呂」「うとうと」「体を拭く」)もカバー
+- ✅ 利用者名・職員名・日付は含まれない(プロンプト通り)
+
+#### 本実行サンプル(73件、~10件ずつ繰り返し)
+- ✅ DB に正しく書き込み(`search_tags` 配列カラムに JSON 配列として保存)
+- ✅ サンプル(id=1〜3)で実際のタグ確認:
+  - 「一般浴 拒否あり。清拭にて」→ `["一般浴","いっぱんよく","イッパンヨク","入浴","にゅうよく","ニュウヨク","拒否",...]`
+  - 「朝食 8割摂取。主食の進み」→ `["朝食","ちょうしょく","チョウショク","食事","しょくじ","ショクジ","摂取",...]`
+  - 「午後より傾眠傾向。声掛けに」→ `["傾眠","けいみん","ケイミン","声掛け","こえかけ","コエカケ","応答",...]`
+
+### 重要な学び: 並列実行の問題
+
+最初は `xargs -P 5`(並列5)で実行しようとしたが:
+- Cloud Run のリソースに対して負荷が高く、curl が `--max-time 280` で切れる
+- レスポンスが空のままサーバー側は処理を続けるため、ZIMAX側のログが「空成功」状態に
+- 教訓: Cloud Run の有料プランでないと並列処理は厳しい
+
+**結論**: **並列1の逐次実行**(`for` ループ)で安定動作させる方針に変更。
+- 1ラウンド 10件 ≈ 35〜40秒
+- 残り 5,019件で **約3〜4時間**
+
+### バッチコマンド(参考、再実行可能)
+
+```bash
+TOKEN='<ADMIN_BATCH_TOKEN>'
+URL='https://tasukaru-dev-191764727533.asia-northeast1.run.app/api/admin/generate_search_tags?limit=10&dry_run=false&sleep=0'
+
+for i in $(seq 1 600); do
+  RESULT=$(curl -s --max-time 290 -X POST -H "X-Admin-Token: $TOKEN" "$URL")
+  TOTAL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null)
+  SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+  echo "[$(date +%H:%M:%S)] Round $i: success=$SUCCESS / total=$TOTAL"
+  if [ "$TOTAL" = "0" ]; then
+    echo "===== ALL DONE ====="
+    break
+  fi
+done
+```
+
+### Session 22 全コミット履歴(B-3 進行中時点)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | `4b6acbb` | docs: log B-2 completion (dev + prod) |
+| 6 | `318fda0` | Add temporary admin endpoint for B-3 retroactive AI tag generation |
+
+### バッチ完了後の予定(残タスク)
+
+#### B-3 dev 完了後
+
+1. **dev で全件タグ付与確認**(SQL: `SELECT COUNT(search_tags) FROM records WHERE search_tags IS NOT NULL` → 5,092 が期待値)
+2. **タグ品質スポットチェック**(ランダムサンプル 5〜10件)
+
+#### 本番(prod)での B-3 実施
+
+1. **本番にも同じコミットを反映**(Pull Request: `tasukaru-dev` → `tasukaru`)
+2. **Cloud Run prod に `ADMIN_BATCH_TOKEN` 環境変数を追加**(同じトークン or 別の新しいトークン)
+3. **本番 1,012件に対して同じバッチを実行**
+   - 約1時間で完了見込み
+4. **本番でも全件タグ付与確認**
+
+#### エンドポイント削除(セキュリティ確保)
+
+1. app.py から `/api/admin/generate_search_tags` を削除する commit を作成
+2. dev に push → 本番にも反映
+3. Cloud Run の `ADMIN_BATCH_TOKEN` 環境変数も削除
+
+#### 残タスク B-4 〜 C
+
+- **B-4**: 新規記録投稿時の AIタグ自動生成(input.html の保存処理 or app.py の `/save_record` で非同期生成)
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+- **B-6**: dev で全機能の動作確認
+- **C**: A + B 全部まとめて本番マージ・デプロイ
+
+### Session 23 開始時のスタートポイント
+
+Session 22 の継続として Session 23 を開始する場合:
+
+1. README を読み込んで全体把握
+2. dev のバッチ完了状況を確認:
+   ```sql
+   SELECT COUNT(*) AS total, COUNT(search_tags) AS done
+   FROM records;
+   ```
+3. もしバッチが完了していなかったら、上記コマンドで再開(`search_tags IS NULL` の条件で残りだけ処理)
+4. 完了していれば、**本番(prod)での B-3 実施** に進む
+
+### 教訓追加
+
+#### 教訓47: 並列実行は Cloud Run の無料/低リソース環境では避ける
+- 並列5本走らせると Cloud Run が処理しきれず、curl タイムアウトで応答が空になる
+- 結果として進捗ログが信頼できなくなる
+- DB の進捗は実際には進んでいるが、ログが信用できないと判断ミスを招く
+- **逐次実行(並列1)の方が、ログ整合性 + 安定動作の観点で優れる**
+
+#### 教訓48: 一時的なエンドポイントは「削除コミット」をセットで計画する
+- 認証付きでも、本番に管理者専用エンドポイントを残し続けるのはセキュリティリスク
+- 「実装 commit」と「削除 commit」をセットで計画し、必ず削除する
+- README に「削除予定」を明記しておくと、忘れ防止になる
+
+#### 教訓49: `.env` 編集は VS Code の「ディスクと同期」状態に注意
+- VS Code でファイルを開いていると、ターミナルでファイルを上書きしてもエディタには古い内容が残ったまま
+- ディスクとエディタで内容が乖離する → 混乱の原因
+- ターミナルで `cat > .env` する前に、VS Code 上の同ファイルを **保存または閉じる**
+- 教訓: 大事なファイルは `>>` (追記)を基本とし、`>` (上書き)は慎重に
+
