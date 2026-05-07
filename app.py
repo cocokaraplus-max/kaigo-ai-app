@@ -662,6 +662,9 @@ def input_view():
                         record_time
                     ))
                     must_read_flag = (request.form.get("must_read", "0") == "1")
+                    category = (request.form.get("category", "") or "その他").strip()
+                    if not category:
+                        category = "その他"
                     supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -670,7 +673,8 @@ def input_view():
                         "content": content,
                         "created_at": dt_record.isoformat(),
                         "image_urls": image_urls if image_urls else None,
-                        "must_read": must_read_flag
+                        "must_read": must_read_flag,
+                        "category": category
                     }).execute()
                     content = ""
                     selected_patient = ""
@@ -4795,6 +4799,115 @@ def api_board_categories_delete():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ===== ケース記録カテゴリ管理API(Session 21)=====
+@app.route("/api/record_categories", methods=["GET"])
+@login_required
+def api_record_categories_list():
+    """ケース記録カテゴリ一覧取得"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("record_categories").select("*").eq("facility_code", f_code).order("sort_order").order("id").execute()
+        return jsonify({"status": "success", "categories": res.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/record_categories/save", methods=["POST"])
+@login_required
+def api_record_categories_save():
+    """ケース記録カテゴリ作成・編集(管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        new_name = (data.get("name") or "").strip()
+        if not new_name:
+            return jsonify({"status": "error", "message": "カテゴリ名を入力してください"}), 400
+        payload = {
+            "name": new_name,
+            "color": data.get("color") or "#F97316",
+            "sort_order": int(data.get("sort_order") or 0),
+        }
+        if cat_id:
+            # 編集 - 旧カテゴリ名を取得して、紐づく records.category も更新
+            old_res = supabase.table("record_categories").select("name").eq("id", cat_id).eq("facility_code", f_code).execute()
+            old_name = old_res.data[0]["name"] if old_res.data else None
+            supabase.table("record_categories").update(payload).eq("id", cat_id).eq("facility_code", f_code).execute()
+            if old_name and old_name != new_name:
+                supabase.table("records").update({"category": new_name}).eq("facility_code", f_code).eq("category", old_name).execute()
+        else:
+            # 新規作成
+            payload["facility_code"] = f_code
+            payload["is_default"] = False
+            r = supabase.table("record_categories").insert(payload).execute()
+            cat_id = r.data[0]["id"] if r.data else None
+        return jsonify({"status": "success", "id": cat_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/record_categories/delete", methods=["POST"])
+@login_required
+def api_record_categories_delete():
+    """ケース記録カテゴリ削除(管理者のみ。紐づく既存記録は「その他」に救済)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ操作できます"}), 403
+        data = request.json
+        cat_id = data.get("id")
+        if not cat_id:
+            return jsonify({"status": "error", "message": "IDが必要です"}), 400
+        # 削除対象のカテゴリ情報を取得
+        cat_res = supabase.table("record_categories").select("name").eq("id", cat_id).eq("facility_code", f_code).execute()
+        if not cat_res.data:
+            return jsonify({"status": "error", "message": "カテゴリが見つかりません"}), 404
+        cat_name = cat_res.data[0]["name"]
+        if cat_name == "その他":
+            return jsonify({"status": "error", "message": "「その他」カテゴリは削除できません"}), 400
+        # このカテゴリを使っている既存記録を「その他」に救済
+        supabase.table("records").update({"category": "その他"}).eq("facility_code", f_code).eq("category", cat_name).execute()
+        # カテゴリ本体を削除
+        supabase.table("record_categories").delete().eq("id", cat_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/records/update_category", methods=["POST"])
+@login_required
+def api_record_update_category():
+    """既存記録のカテゴリを変更(投稿者本人または管理者のみ)"""
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        data = request.json
+        record_id = data.get("record_id")
+        new_category = (data.get("category") or "").strip()
+        if not record_id or not new_category:
+            return jsonify({"status": "error", "message": "record_id と category が必要です"}), 400
+        # 権限チェック: 投稿者本人 or 管理者
+        rec_res = supabase.table("records").select("staff_name").eq("id", record_id).eq("facility_code", f_code).execute()
+        if not rec_res.data:
+            return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
+        is_owner = (rec_res.data[0]["staff_name"] == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
+            return jsonify({"status": "error", "message": "投稿者本人または管理者のみ変更できます"}), 403
+        # カテゴリの存在確認(自施設のカテゴリリストに含まれるか)
+        cat_res = supabase.table("record_categories").select("name").eq("facility_code", f_code).eq("name", new_category).execute()
+        if not cat_res.data:
+            return jsonify({"status": "error", "message": "そのカテゴリは存在しません"}), 400
+        supabase.table("records").update({"category": new_category}).eq("id", record_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success", "category": new_category})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/board/update_category", methods=["POST"])
 @login_required
 def api_board_update_category():
@@ -4822,6 +4935,176 @@ def api_board_update_category():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
+# ============================================================
+# Session 22 B-3: 既存記録への AI 検索タグ遡及生成バッチ
+# ============================================================
+# 認証: X-Admin-Token ヘッダーが ADMIN_BATCH_TOKEN 環境変数と一致すること
+# 使い方:
+#   curl -X POST 'https://.../api/admin/generate_search_tags?limit=10&dry_run=true' \
+#        -H 'X-Admin-Token: <token>'
+# 完了後はこのエンドポイント全体を削除する commit を必ず push すること(セキュリティ)
+@app.route('/api/admin/generate_search_tags', methods=['POST'])
+def admin_generate_search_tags():
+    # === 認証 ===
+    expected_token = get_secret("ADMIN_BATCH_TOKEN")
+    if not expected_token:
+        return jsonify({"status": "error", "message": "ADMIN_BATCH_TOKEN not configured"}), 500
+    received = request.headers.get("X-Admin-Token", "")
+    if received != expected_token:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    # === パラメータ ===
+    try:
+        limit = int(request.args.get("limit", "0")) or None
+    except ValueError:
+        return jsonify({"status": "error", "message": "limit must be integer"}), 400
+    dry_run = request.args.get("dry_run", "false").lower() == "true"
+    sleep_sec = float(request.args.get("sleep", "0.3"))
+
+    # === Gemini クライアント ===
+    try:
+        from google import genai as google_genai
+        gemini_key = get_secret("GEMINI_API_KEY")
+        if not gemini_key:
+            return jsonify({"status": "error", "message": "GEMINI_API_KEY not set"}), 500
+        gemini_client = google_genai.Client(api_key=gemini_key)
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Gemini init failed: {e}"}), 500
+
+    # === Supabase クライアント ===
+    supabase = get_supabase()
+
+    # === プロンプト(Session 22 B-1 で確定) ===
+    PROMPT = """あなたは介護記録の検索キーワード抽出AIです。
+以下の介護記録から、後で職員が検索したくなりそうなキーワードを抽出してください。
+
+【観点(該当するものだけ抽出)】
+- 症状・状態(褥瘡、誤嚥、発熱、便秘、不穏 など)
+- 処置・ケア(吸引、創処置、清拭、保湿 など)
+- 行動・様子(歩行不安定、傾眠、興奮、拒否 など)
+- 食事(食形態、摂取量、むせ、嚥下 など)
+- 部位(仙骨、踵、右肩、左下肢 など)
+- 薬剤(薬剤名、剤型、頓服 など)
+- 介助レベル(全介助、一部介助、見守り など)
+- 排泄(失禁、便性、量、パッド など)
+- バイタル(発熱、血圧高値、SpO2低下 など)
+- リスク兆候(転倒、誤薬、ヒヤリハット など)
+
+【出力ルール】
+- 抽出したキーワードは漢字・ひらがな・カタカナの主な表記を全て含める
+  例: 褥瘡 -> ["褥瘡","じょくそう","ジョクソウ"]
+- 業界の同義語・俗称も含める
+  例: 褥瘡 -> "床ずれ", 嚥下 -> "飲み込み"
+- 利用者名・職員名・日付・時刻・施設名は絶対に含めない
+- 抽象すぎる語(「対応した」「様子見」など)は除外
+- 重複は除く
+- 最大20個程度に収める
+- JSON配列のみ返す(前後に説明文をつけない)
+
+【記録】
+{content}
+
+【出力例】
+入力: 「仙骨部に発赤あり、軟膏塗布で対応。再評価を明日実施予定」
+出力: ["褥瘡","じょくそう","床ずれ","とこずれ","発赤","ほっせき","仙骨","せんこつ","軟膏","なんこう","塗布","とふ","創処置","再評価"]
+"""
+
+    # === 対象レコード取得 ===
+    try:
+        query = supabase.table("records").select("id, content").is_("search_tags", "null").order("id")
+        if limit:
+            query = query.limit(limit)
+        res = query.execute()
+        rows = res.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to fetch records: {e}"}), 500
+
+    total = len(rows)
+    if total == 0:
+        return jsonify({"status": "success", "message": "No records to process", "total": 0, "results": []})
+
+    # === 各レコードを処理 ===
+    import time as time_module
+    results = []
+    success = 0
+    failed = 0
+    skipped = 0
+
+    for i, row in enumerate(rows, 1):
+        rid = row.get("id")
+        content = (row.get("content") or "").strip()
+        if not content:
+            results.append({"id": rid, "status": "skipped", "reason": "empty content"})
+            skipped += 1
+            continue
+
+        try:
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=PROMPT.format(content=content)
+            )
+            text = (response.text or "").strip()
+            # コードブロック除去(念のため)
+            if text.startswith("```"):
+                lines = text.split("\n")
+                text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+            text = text.strip()
+            tags_raw = json.loads(text)
+            if not isinstance(tags_raw, list):
+                raise ValueError(f"Expected JSON array, got {type(tags_raw).__name__}")
+            # クリーンアップ
+            seen = set()
+            tags = []
+            for t in tags_raw:
+                if not isinstance(t, str):
+                    continue
+                t = t.strip()
+                if t and t not in seen:
+                    seen.add(t)
+                    tags.append(t)
+
+            preview = content[:60].replace("\n", " ")
+            entry = {
+                "id": rid,
+                "status": "success",
+                "content_preview": preview,
+                "tags": tags,
+                "tag_count": len(tags)
+            }
+
+            if not dry_run:
+                supabase.table("records").update({"search_tags": tags}).eq("id", rid).execute()
+                entry["written"] = True
+            else:
+                entry["written"] = False
+
+            results.append(entry)
+            success += 1
+        except Exception as e:
+            results.append({
+                "id": rid,
+                "status": "failed",
+                "error": f"{type(e).__name__}: {str(e)[:200]}"
+            })
+            failed += 1
+
+        if i < total and sleep_sec > 0:
+            time_module.sleep(sleep_sec)
+
+    return jsonify({
+        "status": "success",
+        "dry_run": dry_run,
+        "total": total,
+        "success": success,
+        "failed": failed,
+        "skipped": skipped,
+        "results": results
+    })
+
 
 
 if __name__ == '__main__':

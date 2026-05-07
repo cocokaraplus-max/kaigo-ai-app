@@ -2721,3 +2721,960 @@ SELECT relname, relrowsecurity FROM pg_class WHERE relname='テーブル名';
 
 dev/本番両方で、`false` が返るまで先に進まない。教訓39 を絶対に踏まない。
 
+
+
+---
+
+# 🚨 Session 21-22 引き継ぎ(2026-05-06 〜 2026-05-07)
+
+## 📍 完了タスク サマリ
+
+| タスク | 状態 | コミット |
+|---|---|---|
+| **A-1**: ケース記録カテゴリの新8区分への完全入れ替え(dev・本番) | ✅ 完了 | (DBのみ、コミットなし) |
+| **A-2**: 記録入力画面のカテゴリピッカー(iOS Picker風)を dev へ push | ✅ 完了 | `93deae2` |
+| **A-3**: 操作マニュアル(manual.html)にカテゴリピッカー説明 + スクショ2枚を追加 | ✅ 完了 | `deb31c2` |
+
+**Session 21 では設計と input.html のコード作成まで完了したが、push されていなかった。Session 22 で push と動作確認まで完了。**
+
+---
+
+## 🎨 新8カテゴリ仕様(最終決定版)
+
+ZIMAXさんと確定した内容。色は意味グルーピング:
+- **観察系(青系)**: 心身状況、訓練状況、コミュニケーション
+- **警戒系(赤)**: ヒヤリハット
+- **生活ケア系(暖色〜緑〜茶)**: 食事、入浴、排泄
+- **ニュートラル**: その他
+
+| sort_order | name | color | is_default |
+|---|---|---|---|
+| 10 | 心身状況 | `#3B82F6` | false |
+| 20 | 訓練状況 | `#06B6D4` | false |
+| 30 | コミュニケーション | `#8B5CF6` | false |
+| 40 | ヒヤリハット | `#EF4444` | false |
+| 50 | 食事 | `#F97316` | false |
+| 60 | 入浴 | `#10B981` | false |
+| 70 | 排泄 | `#A16207` | false |
+| 99 | その他 | `#94A3B8` | true |
+
+### A-1 で実行した SQL の構造(`replace_record_categories.sql`)
+
+5ステップの安全設計で構築:
+1. **STEP 0**: RLS 状態確認(`pg_class.relrowsecurity = false` を必ず確認、教訓39)
+2. **STEP 1**: 新8カテゴリを INSERT(既存と被ったら ON CONFLICT で SKIP)
+3. **STEP 2**: 既存行の色・並び順を UPDATE で新仕様に揃える
+4. **STEP 3**: records.category のうち新8カテゴリ名にないものを「その他」に救済
+5. **STEP 4**: 新8カテゴリ以外の record_categories 行を DELETE
+6. **STEP 5**: 最終確認(8行ピッタリ、records.category が全て新カテゴリ内)
+
+この順序により records.category が宙に浮く瞬間が生じない設計。
+
+### A-1 の実行結果
+
+dev・本番両方で実行完了。
+
+**dev (DEMO001) の records.category 分布**:
+| category | 件数 |
+|---|---|
+| その他 | 1,506(救済された旧カテゴリ含む) |
+| 食事 | 1,502 |
+| 排泄 | 1,061 |
+| 入浴 | 1,022 |
+| 訓練状況 | 1 |
+| **合計** | **5,092 件** |
+
+**本番の record_categories**: ちょうど8行、色は全て仕様通り、is_default は「その他」のみ true ✅
+
+---
+
+## 🎨 A-2: input.html の iOS Picker 風カスタムドロップダウン
+
+### 実装場所
+
+- **CSS**: `templates/input.html` 96〜198行
+- **HTML**: `templates/input.html` 309〜328行
+- **JS**: `templates/input.html` 811〜932行
+
+### 要素ID
+
+| ID | 役割 |
+|---|---|
+| `#cat-trigger` | 開閉トリガーの button |
+| `#cat-panel` | 8カテゴリのリストパネル(hidden 属性で開閉) |
+| `#selected-category` | フォーム送信用 hidden input(name="category") |
+| `#cat-trigger-label` | トリガー内の選択中カテゴリ名 |
+| `#cat-trigger-dot` | トリガー内の選択中カラードット |
+
+### デザイン特徴
+
+- カテゴリごとのカラードット(8色)
+- 選択中行は薄い背景色 + 右端にチェックマーク
+- chevron アイコンが180°回転で開閉表現
+- 二段シャドウでフロート感
+- 角丸12px、白背景
+- フォーカスリングは青(`#1a73e8`)
+- 外側クリックで自動的に閉じる
+- API `/api/record_categories` から動的にカテゴリ取得
+
+### バックエンドとの整合性
+
+- 旧 `<select id="category-select">` から hidden input `<input id="selected-category" name="category">` に変わったが、**フォーム送信される値の形式(name="category" の文字列)は完全に同じ**
+- 保存処理(279行付近)とリセット処理(326行付近)が新IDに正しく書き換え済み
+- バックエンドの `request.form.get('category')` は変更不要
+
+---
+
+## 🔍 重要な発見・経緯(後の Session で混乱しないため)
+
+### Session 21 の `<select>`版が既にリモートに存在していた
+
+Session 22 開始時、`git pull` で **45ファイル、14,401行** の差分が落ちてきた。これは Session 21 中に commit `253fe2e Switch input category UI from chips to dropdown with color dot` で **「<select> + カラードット」版**が既にpushされていたため。
+
+ところが Session 21 の最終形は **iOS Picker 風カスタム版(934行)** で、これは Desktop に置かれたまま push されていなかった。Session 21 の引き継ぎ文書には「コードは書き終わっているが dev にまだpushされていない」と記載されていた。
+
+#### 上書き判断の経緯
+
+1. リモート最新版(775行、`<select>`版)と Desktop 版(934行、iOS Picker版)を `diff -u` で比較
+2. 変更ブロック6つを精査:
+   - CSS追加(+103行)、HTML置換、JS新規追加(+52行)、保存処理1行変更、リセット処理2行変更、古いJS削除(-2行)
+3. 重要な整合性チェック:
+   - 保存処理: `getElementById('category-select')` → `getElementById('selected-category')` に正しく書き換え
+   - リセット処理: `updateCategoryColorDot()` → `renderCategoryPicker()` に正しく書き換え
+4. **リモート版にあって Desktop版に欠けている処理は存在しない** と確認 → 上書き push を判断
+
+**教訓**: リモートと Desktop で同じ目的の実装が並行することがある。push 前に必ず diff を取って、欠けている処理がないか確認する。
+
+### タスカルくん画像は14箇所→17箇所に増えていた
+
+Session 21 引き継ぎ文書の「タスカルくん画像14箇所」は古い数字で、**現在の manual.html では17箇所**(その後の Session で追加されたもの)。
+
+A-3 で manual.html を編集する前に `grep -n "タスカルくん"` で再確認したところ、17箇所が判明。**全箇所を不可侵領域として扱う**方針で安全に編集できた。
+
+**教訓**: 引き継ぎ文書の「N箇所」みたいな数値は鵜呑みにしない。grep で必ず再確認する。
+
+### Cloud Run デプロイ確認は強制リロードが必須
+
+push 後に dev 実機で確認する際、通常リロードだとブラウザキャッシュで古い画面が表示されることがある。**Cmd+Shift+R(強制リロード)が必須**。
+
+---
+
+## 📋 残タスク(Session 23以降): ケース記録の検索機能(B シリーズ)
+
+### 機能要件(ZIMAXさん指定)
+
+1. ケース記録閲覧画面に検索窓をつける
+2. **カテゴリで絞り込み検索**できる
+3. **キーワード検索**できる(記録内容に対して)
+4. 「褥瘡」で検索 → 引っかかる記録を全て表示
+5. **利用者単位の検索 / 全利用者横断検索** 両方OK
+6. **漢字・ひらがな・カタカナ どれで検索してもヒットする**
+
+### 採用方針: AIタグ方式(案②)
+
+**コスト試算(Gemini 2.5 Flash)**:
+- 1記録あたり 約 0.01円
+- 中規模施設(月3,000件) → 約27円/月
+- 過去1年分(3万件)の遡及生成 → 一回 約270円
+- 実質ほぼ無料
+
+### 実装計画(合意済み順序)
+
+| # | 内容 | 所要 |
+|---|---|---|
+| **B-1** | 検索機能の設計詰め(DB設計 + UI設計) | 15分 |
+| **B-2** | DB変更(`records.search_tags` カラム追加) | 5分 |
+| **B-3** | 既存記録への遡及AIタグ生成(バッチ実行) | 30分〜1h |
+| **B-4** | 新規記録のAIタグ自動生成(投稿時) | 30分 |
+| **B-5** | 検索UI(daily_view.html)+ 検索API実装 | 1〜2h |
+| **B-6** | dev で動作確認 | 30分 |
+| **C** | 本番マージ・デプロイ(A-2 + B 全部まとめて) | 15分 |
+
+合計 3〜4時間。
+
+### 設計のヒント
+
+#### B-2 DB設計案
+
+```sql
+ALTER TABLE records ADD COLUMN search_tags TEXT[];
+-- 例: ['褥瘡', 'じょくそう', 'ジョクソウ', '床ずれ', 'とこずれ']
+CREATE INDEX records_search_tags_gin ON records USING gin(search_tags);
+```
+
+⚠️ カラム追加後は必ず RLS 状態を確認(教訓39):
+```sql
+SELECT relname, relrowsecurity FROM pg_class WHERE relname='records';
+```
+
+#### B-4 タグ生成プロンプト案
+
+```
+以下の介護記録から、後で検索したくなりそうなキーワードを抽出してください。
+
+【出力ルール】
+- 漢字・ひらがな・カタカナの全表記を含める
+- 同義語(褥瘡 = 床ずれ など)も含める
+- 利用者名・職員名・日付は含めない
+- 介護用語の正式名と俗称両方を出す
+- JSON配列のみ返す
+
+【記録】
+{content}
+
+【出力例】
+["褥瘡", "じょくそう", "ジョクソウ", "床ずれ", "とこずれ", "仙骨部"]
+```
+
+#### B-5 検索API案
+
+```python
+@app.route('/api/search_records')
+@login_required
+def api_search_records():
+    keyword = request.args.get('q', '').strip()
+    category = request.args.get('category', '')
+    user_name = request.args.get('user', '')  # 空なら全利用者
+    # search_tags @> ARRAY[keyword] OR content ILIKE '%keyword%' OR user_name ILIKE
+    # の合成クエリで検索
+```
+
+### B-3 / B-4 実装上の注意
+
+- **B-3 の遡及バッチ生成は慎重に**: dev で先に小さい範囲(10件など)テストしてから全件実行
+- **B-4 の新規記録投稿時のAIタグ生成は保存処理を遅延させない**: 非同期で実装するか、保存後の追加処理にする(ユーザー体験を守る)
+
+### 本番デプロイは B 完了後にまとめて
+
+**A-2 (input.html iOS Picker) は dev に push 済みだが、本番にはまだマージしていない。** B シリーズも dev で完成・動作確認できてから、A + B をまとめて1つの PR で本番マージする方針(ZIMAXさんと合意済み)。
+
+---
+
+## 💡 教訓追加(Session 21-22 で得たもの)
+
+### 教訓43: リモートと Desktop で同じ目的の実装が並行することがある
+- push 前に必ず `diff -u` で比較
+- 「リモート版にあって Desktop版に欠けている処理」がないかを精査
+- 「Desktop版で完全に上位互換」と確認できてから上書き
+
+### 教訓44: 引き継ぎ文書の数値は鵜呑みにしない
+- 「タスカルくん画像14箇所」のような具体的な数値は、後の Session で変動している可能性
+- 編集前に必ず `grep -n` で再確認
+- 不可侵領域は最新の状態で再カウントしてから扱う
+
+### 教訓45: Cloud Run デプロイ後の確認は強制リロード必須
+- 通常リロード(Cmd+R)だとブラウザキャッシュで古い画面
+- `Cmd+Shift+R` で強制リロード必須
+- これを怠ると「push したのに反映されてない!?」と無駄な調査をしてしまう
+
+### 教訓46: `git status` の "up to date" は信用しない
+- 「up to date」は **前回の fetch 時点での up to date** を意味するだけ
+- リモートが進んでいても気づかない
+- Session 開始時は **必ず `git pull` を打って実際にリモートと同期** してから作業を始める
+
+---
+
+## 📁 ファイル状態(Session 22 終了時、2026-05-07)
+
+| ファイル | 行数 | 状態 |
+|---|---|---|
+| README.md | 2723 → 本セクションで更新 | 本コミットで Session 21-22 サマリ追加 |
+| app.py | 4828 | Session 20 から未更新(コミット 6f18942) |
+| templates/input.html | 934 | **dev に push 済み(commit `93deae2`)、本番未マージ** |
+| templates/manual.html | 1358 | **dev に push 済み(commit `deb31c2`)、本番未マージ** |
+| templates/daily_view.html | 1255 | Session 20 から未更新 |
+| templates/board.html | 2766 | Session 20 から未更新 |
+| static/img/guide/category-closed.png | (新規) | **dev に push 済み** |
+| static/img/guide/category-open.png | (新規) | **dev に push 済み** |
+
+### 出力済みSQL
+
+`replace_record_categories.sql`(`'YOUR_FACILITY_CODE'` プレースホルダー版)を Session 21 で生成済み。Session 22 では DEMO001 用に置換した版を使用。
+
+---
+
+## 🎯 Session 23 開始時の最初のアクション
+
+1. README を読み込んで全体把握(本セクション含む)
+2. ZIMAXさんに「**B-1(検索機能の設計詰め)から始めますか?**」と確認
+3. dev環境の Chrome タブを確認
+4. B-1 で詰めるべきこと:
+   - 検索UIの配置場所(daily_view.html のどこに検索窓を置く?)
+   - 検索のスコープ切替UI(全利用者横断 vs 利用者単位)
+   - 検索結果の表示方法(フィルタリング? 別画面?)
+   - AIタグのプロンプト最終確定
+   - 遡及バッチの実行タイミング(dev で先に少量テスト → 全件)
+
+---
+
+## 🚨 不変事項(Session 21-22 でも継続適用)
+
+過去の教訓に加えて、以下を厳守:
+
+1. **タスカルくん画像 17箇所(数値は更新)+ animation:fl(manual.html)絶対不可侵**(教訓1)
+2. **Step 3 Firebase Push 提案禁止**(明示依頼まで)
+3. **コミットメッセージは英語シンプル**、日本語全角括弧禁止
+4. **push 後 30〜60秒待つ**(Cloud Run デプロイ)
+5. **ファイル配置は Desktop 経由 + ls/wc/grep で配置前確認**(教訓26)
+6. **複雑な複数行ペーストは Mac のターミナルで混線する** → 1コマンド1ペースト(教訓42)
+7. **新規テーブル/カラム作成時は必ず RLS=false 確認**(教訓39)
+8. **1機能ずつ確認しながら進める**(push しっぱなしで次へ行かない)
+9. **リモートと Desktop の diff を必ず取る**(教訓43、新規)
+10. **引き継ぎ文書の数値は grep で再確認**(教訓44、新規)
+11. **Cloud Run 確認は Cmd+Shift+R で強制リロード**(教訓45、新規)
+12. **Session 開始時は必ず `git pull` で実際にリモート同期**(教訓46、新規)
+
+
+
+---
+
+# 🔍 B-1: ケース記録検索機能 設計確定(2026-05-07)
+
+Session 22 後半で ZIMAXさんと設計詰め完了。B-2 以降の実装はこの設計に従う。
+
+## 🎯 確定した設計サマリ
+
+| # | 項目 | 確定内容 |
+|---|---|---|
+| ① | 検索UIの配置 | 右下フローティング虫眼鏡FAB → タップでモーダル起動 |
+| ② | モーダルレイアウト | 上部トグル(この人/全員)+ キーワード入力 + カテゴリチップ8個 |
+| ③ | カテゴリ選択モード | 未選択=全カテゴリ、選んだら絞る、複数選択OK |
+| ④ | 検索結果表示 | daily_view を「検索モード」に切替(同じ画面、別表示) |
+| ⑤ | AIタグプロンプト | 改善版(役割定義 + 10観点 + 上限20個 + 実例) |
+
+---
+
+## ① 検索UIの配置: フローティング虫眼鏡FAB
+
+- 画面右下に虫眼鏡 🔍 のフローティングボタン
+- **下部メニュー(タブバー)とは干渉しない位置**(タブバーより上に float)
+- タップ → 検索モーダルが立ち上がる
+- 既存パターン: Session 14-16 で実装済みの「vitals fab」と同じスタイルで作る(統一感)
+
+## ② 検索モーダルの中身: トグル型レイアウト
+
+```
+┌──────────────────────────┐
+│  🔍 記録を検索       ✕    │
+├──────────────────────────┤
+│  [この人] [全員]          │ ← トグル(daily_viewで開いている利用者がデフォルト)
+│                           │
+│  キーワード               │
+│  [_______________]        │ ← 入力欄(空でもOK)
+│                           │
+│  カテゴリ                 │
+│  [心身] [訓練] [コミュ]   │ ← チップ
+│  [ヒヤリ] [食事] [入浴]   │
+│  [排泄]  [その他]         │
+│                           │
+│  [    検索する    ]       │
+└──────────────────────────┘
+```
+
+- **トグル**: 「この人 / 全員」スイッチ。daily_view で開いている利用者がデフォルトで「この人」側
+- **キーワード**: 空のままでもOK(カテゴリだけで検索可能)
+- **カテゴリチップ**: 8個並べる、各チップに新8カテゴリの色付きドット
+
+## ③ カテゴリ選択モード: 未選択=全部、選んだら絞る、複数OK
+
+- **未選択時** = 全カテゴリ対象(チップが何もアクティブでない状態)
+- **チップを選び始めたら** = 選んだものだけに絞る
+- **複数選択可**(例: 「ヒヤリハット」+ 「食事」を同時に選んでフィルター)
+- 「すべて」みたいな特別ボタンは不要(自然な動作)
+- API側: `category` パラメータが空 → WHERE句にカテゴリ条件を追加しない
+
+## ④ 検索結果の表示: daily_view を「検索モード」に切替
+
+```
+[通常モード]                  [検索モード]
+─────────────────             ─────────────────
+2026-05-07                    🔍 「褥瘡」 3件 [×検索クリア]
+  記録1                       ─────────────────
+  記録2                       2026-05-07 ヒヤリハット🔴
+2026-05-06                      仙骨部に発赤あり…
+  記録3                       2026-04-22 心身状況🔵
+                                褥瘡予防のため体位…
+                              2026-03-10 心身状況🔵
+                                床ずれ確認…
+```
+
+- 検索ボタン押下 → モーダルを閉じる → daily_view が検索モードに切替
+- **既存の日付別表示の代わりに、検索結果リストが出る**(日付横断で時系列降順)
+- 各カードに `日付 | カテゴリバッジ(色) | 内容プレビュー` を表示
+- 上部に「🔍 『キーワード』 N件 [×検索クリア]」を表示
+- 「検索クリア」ボタンで通常モード(日付別表示)に戻る
+- 検索結果カードをタップ → 該当日のdaily_view 表示にジャンプ(既存の記録詳細遷移と同じ挙動)
+
+## ⑤ AIタグ生成プロンプト(改善版・最終確定)
+
+```
+あなたは介護記録の検索キーワード抽出AIです。
+以下の介護記録から、後で職員が検索したくなりそうなキーワードを抽出してください。
+
+【観点(該当するものだけ抽出)】
+- 症状・状態(褥瘡、誤嚥、発熱、便秘、不穏 など)
+- 処置・ケア(吸引、創処置、清拭、保湿 など)
+- 行動・様子(歩行不安定、傾眠、興奮、拒否 など)
+- 食事(食形態、摂取量、むせ、嚥下 など)
+- 部位(仙骨、踵、右肩、左下肢 など)
+- 薬剤(薬剤名、剤型、頓服 など)
+- 介助レベル(全介助、一部介助、見守り など)
+- 排泄(失禁、便性、量、パッド など)
+- バイタル(発熱、血圧高値、SpO2低下 など)
+- リスク兆候(転倒、誤薬、ヒヤリハット など)
+
+【出力ルール】
+- 抽出したキーワードは漢字・ひらがな・カタカナの主な表記を全て含める
+  例: 褥瘡 → ["褥瘡","じょくそう","ジョクソウ"]
+- 業界の同義語・俗称も含める
+  例: 褥瘡 → "床ずれ", 嚥下 → "飲み込み"
+- 利用者名・職員名・日付・時刻・施設名は絶対に含めない
+- 抽象すぎる語(「対応した」「様子見」など)は除外
+- 重複は除く
+- 最大20個程度に収める
+- JSON配列のみ返す(前後に説明文をつけない)
+
+【記録】
+{content}
+
+【出力例】
+入力: 「仙骨部に発赤あり、軟膏塗布で対応。再評価を明日実施予定」
+出力: ["褥瘡","じょくそう","床ずれ","とこずれ","発赤","ほっせき","仙骨","せんこつ","軟膏","なんこう","塗布","とふ","創処置","再評価"]
+```
+
+### プロンプトのポイント(改善経緯)
+
+1. **役割定義を冒頭に追加** → LLM がタスクを即座に理解
+2. **10観点を明示** → 抽出漏れ防止
+3. **上限20個** → DB肥大化と検索性能のバランス
+4. **「抽象すぎる語は除外」** → 検索でヒットしにくい語(「対応した」「観察」)を排除
+5. **「JSON配列のみ返す」を強調** → パース失敗対策
+6. **実例ベースの出力例** → AIが学習しやすい
+7. **同義語の例を観点ごとに追加** → 業界用語と俗称の両方を具体的に示す
+
+### コスト試算
+
+- プロンプト本体: 約 600 文字 ≈ 200 トークン
+- 記録本体: 平均 200 文字 ≈ 80 トークン
+- 入力合計: 約 280 トークン
+- 出力タグ: 20個 × 平均5文字 ≈ 50 トークン
+
+Gemini 2.5 Flash 料金(2026-05時点):
+- 入力 280t × $0.075 / 1M = $0.000021
+- 出力 50t × $0.30 / 1M = $0.000015
+- **合計 約 $0.000036 / 記録 ≈ 約0.0054円 / 記録**(1USD=150円)
+
+中規模施設(月3,000件) → **約16円/月**
+過去1年3万件遡及バッチ → **約160円**(一回限り)
+
+⚠️ 実際の最新料金は B-3 実装時に Anthropic / Google の公式ドキュメントで再確認すること。
+
+---
+
+## 🛠️ B-2 以降の実装計画(再掲)
+
+| # | 内容 | 所要 |
+|---|---|---|
+| **B-2** | DB変更(`records.search_tags TEXT[]` カラム追加 + GINインデックス) | 5分 |
+| **B-3** | 既存記録への遡及AIタグ生成バッチ(dev で 10件テスト → 全件) | 30分〜1h |
+| **B-4** | 新規記録投稿時のAIタグ自動生成(非同期 or 保存後の追加処理) | 30分 |
+| **B-5** | 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API実装 | 1〜2h |
+| **B-6** | dev で全機能の動作確認 | 30分 |
+| **C** | A-2 + A-3 + B 全部まとめて本番マージ・デプロイ | 15分 |
+
+合計 3〜4時間。
+
+### 重要な実装上の注意
+
+- **B-2**: カラム追加後は必ず RLS 状態確認(教訓39)
+  ```sql
+  SELECT relname, relrowsecurity FROM pg_class WHERE relname='records';
+  ```
+- **B-3**: dev で **小さい範囲(10件など)テスト** してから全件実行。タグ品質を確認
+- **B-4**: **保存処理を遅延させない**(ユーザー体験優先)。非同期 or 保存後の追加処理
+- **B-5**: 検索API は `search_tags @> ARRAY[keyword] OR content ILIKE '%keyword%' OR user_name ILIKE '%name%'` の合成クエリで構築。複数カテゴリは `category = ANY(...)` で
+
+### 検索API のクエリ設計案(B-5 で詳細詰める)
+
+```python
+@app.route('/api/search_records')
+@login_required
+def api_search_records():
+    keyword = request.args.get('q', '').strip()
+    categories = request.args.getlist('categories[]')  # 複数カテゴリ
+    user_name = request.args.get('user', '').strip()  # 空なら全利用者
+    facility_code = current_user.facility_code
+
+    # 動的にWHERE句を組み立て
+    conditions = ['facility_code = %s']
+    params = [facility_code]
+
+    if user_name:
+        conditions.append('user_name = %s')
+        params.append(user_name)
+
+    if keyword:
+        # AIタグ完全一致 OR 内容部分一致
+        conditions.append('(search_tags @> ARRAY[%s] OR content ILIKE %s)')
+        params.extend([keyword, f'%{keyword}%'])
+
+    if categories:
+        conditions.append('category = ANY(%s)')
+        params.append(categories)
+
+    # ... ORDER BY record_date DESC, created_at DESC LIMIT 100
+```
+
+
+
+---
+
+# ✅ B-2 完了ログ(2026-05-07)
+
+## 実施内容: records テーブルに search_tags カラム + GINインデックス追加
+
+dev・本番の両方で実行完了。教訓39 完全遵守(RLS = false 維持)。
+
+### dev 環境(otjevnmoycnvaxeltrtj / tasukaru-dev)
+
+| Step | 実行内容 | 結果 |
+|---|---|---|
+| 0-2 | RLS 状態(実行前) | `records / false` ✅ |
+| 1 | `ALTER TABLE records ADD COLUMN IF NOT EXISTS search_tags TEXT[]` | Success ✅ |
+| 2 | `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)` | Success ✅ |
+| 3 | RLS 状態(実行後) | `records / false` ✅(維持) |
+| 4-1 | カラム存在 | `search_tags / ARRAY / _text` ✅ |
+| 4-2 | インデックス存在 | `records_search_tags_gin / CREATE INDEX ... USING gin (search_tags)` ✅ |
+| 4-3 | NULL数 | `total=5092, with_tags=0, null=5092` ✅(全件NULL = B-3 で埋める) |
+
+### 本番環境(abvglnkwtdeoaazyqwyd / kaigo-ai-app)
+
+| Step | 実行内容 | 結果 |
+|---|---|---|
+| 0-2 | RLS 状態(実行前) | `records / false` ✅ |
+| 1 | `ALTER TABLE records ADD COLUMN IF NOT EXISTS search_tags TEXT[]` | Success ✅ |
+| 2 | `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)` | Success ✅ |
+| 3 | RLS 状態(実行後) | `records / false` ✅(維持) |
+| 4-1 | カラム存在 | `search_tags / ARRAY / _text` ✅ |
+| 4-2 | インデックス存在 | `records_search_tags_gin / CREATE INDEX ... USING gin (search_tags)` ✅ |
+| 4-3 | NULL数 | `total=1012, with_tags=0, null=1012` ✅(全件NULL = B-3 で埋める) |
+
+### 実行に使った SQL ファイル
+
+`add_search_tags.sql`(Session 22 で生成、5ステップの安全設計):
+1. STEP 0: 実行前確認(カラム一覧 + RLS + 件数)
+2. STEP 1: `ALTER TABLE ADD COLUMN IF NOT EXISTS search_tags TEXT[]`
+3. STEP 2: `CREATE INDEX IF NOT EXISTS records_search_tags_gin ON records USING gin(search_tags)`
+4. STEP 3: RLS 再確認
+5. STEP 4: 最終確認(3クエリ)
+
+### 注意事項(B-3 以降への申し送り)
+
+- **アプリ側のコードは変更なし**: `search_tags` カラムは追加されたが、まだ書き込み・読み込みするコードは存在しない。アプリは引き続き正常動作中
+- **遡及バッチの対象件数**: dev 5,092件 / 本番 1,012件(2026-05-07 時点)
+- **GINインデックス**: 配列型に最適化され、`@>`(contains)、`&&`(overlaps)、`<@`(contained by)演算子を高速化。検索API では主に `search_tags @> ARRAY[keyword]` を使う想定
+- **B-3 のテスト方針**: dev で先に **小さい範囲(10件など)** テスト → タグ品質を目視確認 → 問題なければ全件実行。本番は dev で問題ないと確認できてから
+
+### Session 22 全コミット履歴(B-2 まで)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | (本コミット) | docs: log B-2 completion (dev + prod) |
+
+### 残タスク
+
+- **B-3**: 既存記録への遡及AIタグ生成バッチ(dev 5,092件 + 本番 1,012件)
+- **B-4**: 新規記録投稿時のAIタグ自動生成
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+- **B-6**: dev で全機能の動作確認
+- **C**: A + B 全部まとめて本番マージ・デプロイ
+
+
+---
+
+# 🔄 B-3 進行中ログ(2026-05-07)
+
+## 実施状況: dev 環境で遡及AIタグ生成バッチ実行中
+
+### 実装方式の決定経緯
+
+当初予定した「ローカル Python スクリプト + .env」方式は、`.env` の管理ミスで上書き事故が起きそうになり中止。**Cloud Run エンドポイント方式** に切り替え:
+
+- app.py に管理者専用エンドポイント `/api/admin/generate_search_tags` を追加(commit `318fda0`)
+- 認証: `X-Admin-Token` ヘッダー = `ADMIN_BATCH_TOKEN` 環境変数(Cloud Run dev に設定済み)
+- パラメータ: `limit`, `dry_run`, `sleep`
+- B-3 完了後はエンドポイント自体を削除する commit を必ず push する(セキュリティ確保)
+
+### 動作確認結果
+
+#### dry-run テスト(3件、limit=3)
+- ✅ HTTP 200、16.4秒
+- ✅ タグ品質: 漢字/ひらがな/カタカナの3表記 + 業界俗称(「お風呂」「うとうと」「体を拭く」)もカバー
+- ✅ 利用者名・職員名・日付は含まれない(プロンプト通り)
+
+#### 本実行サンプル(73件、~10件ずつ繰り返し)
+- ✅ DB に正しく書き込み(`search_tags` 配列カラムに JSON 配列として保存)
+- ✅ サンプル(id=1〜3)で実際のタグ確認:
+  - 「一般浴 拒否あり。清拭にて」→ `["一般浴","いっぱんよく","イッパンヨク","入浴","にゅうよく","ニュウヨク","拒否",...]`
+  - 「朝食 8割摂取。主食の進み」→ `["朝食","ちょうしょく","チョウショク","食事","しょくじ","ショクジ","摂取",...]`
+  - 「午後より傾眠傾向。声掛けに」→ `["傾眠","けいみん","ケイミン","声掛け","こえかけ","コエカケ","応答",...]`
+
+### 重要な学び: 並列実行の問題
+
+最初は `xargs -P 5`(並列5)で実行しようとしたが:
+- Cloud Run のリソースに対して負荷が高く、curl が `--max-time 280` で切れる
+- レスポンスが空のままサーバー側は処理を続けるため、ZIMAX側のログが「空成功」状態に
+- 教訓: Cloud Run の有料プランでないと並列処理は厳しい
+
+**結論**: **並列1の逐次実行**(`for` ループ)で安定動作させる方針に変更。
+- 1ラウンド 10件 ≈ 35〜40秒
+- 残り 5,019件で **約3〜4時間**
+
+### バッチコマンド(参考、再実行可能)
+
+```bash
+TOKEN='<ADMIN_BATCH_TOKEN>'
+URL='https://tasukaru-dev-191764727533.asia-northeast1.run.app/api/admin/generate_search_tags?limit=10&dry_run=false&sleep=0'
+
+for i in $(seq 1 600); do
+  RESULT=$(curl -s --max-time 290 -X POST -H "X-Admin-Token: $TOKEN" "$URL")
+  TOTAL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null)
+  SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+  echo "[$(date +%H:%M:%S)] Round $i: success=$SUCCESS / total=$TOTAL"
+  if [ "$TOTAL" = "0" ]; then
+    echo "===== ALL DONE ====="
+    break
+  fi
+done
+```
+
+### Session 22 全コミット履歴(B-3 進行中時点)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | `4b6acbb` | docs: log B-2 completion (dev + prod) |
+| 6 | `318fda0` | Add temporary admin endpoint for B-3 retroactive AI tag generation |
+
+### バッチ完了後の予定(残タスク)
+
+#### B-3 dev 完了後
+
+1. **dev で全件タグ付与確認**(SQL: `SELECT COUNT(search_tags) FROM records WHERE search_tags IS NOT NULL` → 5,092 が期待値)
+2. **タグ品質スポットチェック**(ランダムサンプル 5〜10件)
+
+#### 本番(prod)での B-3 実施
+
+1. **本番にも同じコミットを反映**(Pull Request: `tasukaru-dev` → `tasukaru`)
+2. **Cloud Run prod に `ADMIN_BATCH_TOKEN` 環境変数を追加**(同じトークン or 別の新しいトークン)
+3. **本番 1,012件に対して同じバッチを実行**
+   - 約1時間で完了見込み
+4. **本番でも全件タグ付与確認**
+
+#### エンドポイント削除(セキュリティ確保)
+
+1. app.py から `/api/admin/generate_search_tags` を削除する commit を作成
+2. dev に push → 本番にも反映
+3. Cloud Run の `ADMIN_BATCH_TOKEN` 環境変数も削除
+
+#### 残タスク B-4 〜 C
+
+- **B-4**: 新規記録投稿時の AIタグ自動生成(input.html の保存処理 or app.py の `/save_record` で非同期生成)
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+- **B-6**: dev で全機能の動作確認
+- **C**: A + B 全部まとめて本番マージ・デプロイ
+
+### Session 23 開始時のスタートポイント
+
+Session 22 の継続として Session 23 を開始する場合:
+
+1. README を読み込んで全体把握
+2. dev のバッチ完了状況を確認:
+   ```sql
+   SELECT COUNT(*) AS total, COUNT(search_tags) AS done
+   FROM records;
+   ```
+3. もしバッチが完了していなかったら、上記コマンドで再開(`search_tags IS NULL` の条件で残りだけ処理)
+4. 完了していれば、**本番(prod)での B-3 実施** に進む
+
+### 教訓追加
+
+#### 教訓47: 並列実行は Cloud Run の無料/低リソース環境では避ける
+- 並列5本走らせると Cloud Run が処理しきれず、curl タイムアウトで応答が空になる
+- 結果として進捗ログが信頼できなくなる
+- DB の進捗は実際には進んでいるが、ログが信用できないと判断ミスを招く
+- **逐次実行(並列1)の方が、ログ整合性 + 安定動作の観点で優れる**
+
+#### 教訓48: 一時的なエンドポイントは「削除コミット」をセットで計画する
+- 認証付きでも、本番に管理者専用エンドポイントを残し続けるのはセキュリティリスク
+- 「実装 commit」と「削除 commit」をセットで計画し、必ず削除する
+- README に「削除予定」を明記しておくと、忘れ防止になる
+
+#### 教訓49: `.env` 編集は VS Code の「ディスクと同期」状態に注意
+- VS Code でファイルを開いていると、ターミナルでファイルを上書きしてもエディタには古い内容が残ったまま
+- ディスクとエディタで内容が乖離する → 混乱の原因
+- ターミナルで `cat > .env` する前に、VS Code 上の同ファイルを **保存または閉じる**
+- 教訓: 大事なファイルは `>>` (追記)を基本とし、`>` (上書き)は慎重に
+
+
+
+---
+
+# 🔄 Session 22 最新状態(2026-05-07 13:30 時点)
+
+このログは Session 22 終了時(または途中)の最新状態を記録するもの。チャット消失リスク対策として詳細を残す。
+
+## 進行中タスク
+
+### B-3: 既存記録への AI 検索タグ遡及生成バッチ
+
+**実行状況**: dev 環境で **1,250 / 5,092 件処理済み**(24.5%、残 3,842件)
+
+**実行中のコマンド**(別のターミナルタブで動作中):
+```bash
+TOKEN='QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE'
+URL='https://tasukaru-dev-191764727533.asia-northeast1.run.app/api/admin/generate_search_tags?limit=10&dry_run=false&sleep=0'
+
+for i in $(seq 1 600); do
+  RESULT=$(curl -s --max-time 290 -X POST -H "X-Admin-Token: $TOKEN" "$URL")
+  TOTAL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null)
+  SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+  echo "[$(date +%H:%M:%S)] Round $i: success=$SUCCESS / total=$TOTAL"
+  if [ "$TOTAL" = "0" ]; then
+    echo "===== ALL DONE ====="
+    break
+  fi
+done
+```
+
+**ペース**: 約 20件/分。残り 3,842件で **約3.2時間**(完了は 15:00〜16:00 頃見込み)。
+
+**確認SQL**(dev で進捗チェック):
+```sql
+SELECT COUNT(*) AS total, COUNT(search_tags) AS done, COUNT(*) - COUNT(search_tags) AS remaining FROM records;
+```
+
+**ADMIN_BATCH_TOKEN 値**: `QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE`(B-3 完了後に削除予定)
+
+## バッチコマンドが止まった場合の再開方法
+
+1. ターミナルで `Ctrl+C` で停止しているか確認(`pwd` でプロンプト戻ってる状態)
+2. 上記の **「実行中のコマンド」をそのまま再ペースト**して再実行
+3. エンドポイントは `search_tags IS NULL` 条件で取得するため、**処理済みレコードはスキップされ自動的に未処理分から再開**する
+
+## 既存バグ修正状況
+
+Session 22 の予定外で発生した既存バグ調査・修正:
+
+### バグA: 本番のバイタル「除外に失敗しました」エラー
+
+- **状態**: ✅ 修正完了(2026-05-07 12:30 頃)
+- **原因**: 本番DBの `vital_daily_excludes` テーブルが RLS=true、ポリシー未設定で全 INSERT が拒否されていた
+- **修正内容**: 本番DBで `ALTER TABLE vital_daily_excludes DISABLE ROW LEVEL SECURITY` 実行
+- **影響範囲**: 本番DBのみ(dev は元から RLS=false)
+- **アプリコード**: 変更なし(コードは正しかった)
+- **動作確認**: 本番で利用者削除成功確認済み ✅
+
+### バグB: ⭐(必読フラグ)エラー
+
+- **状態**: ✅ 仕様通り(対応不要)、クローズ済み
+- **詳細**: 他人の投稿に⭐を付けようとして 403 Forbidden(app.py 922-924行のロジック通り)
+- **管理者(ZIMAX)が叩く分には正常動作**
+
+### バグC + D: バイタル利用者追加モーダル関連
+
+- **状態**: ✅ コード修正完了(commit `a819c34`)、dev で動作確認待ち
+- **原因**: `.page-wrapper { z-index: 0 }` が stacking context を作るため、モーダル(z-index:9999)が `.bottom-nav` より下に表示される
+  - 教訓14 と完全に同じパターン
+- **修正内容**: vitals.html の DOMContentLoaded handler に「`#add-patient-modal` を body 直下に移動するロジック」を4行追加(コメント1行+コード4行=合計5行追加)
+- **影響範囲**: dev のみ反映(本番は未反映、Session 22 全完了後の本番マージで反映予定)
+- **動作確認**: ZIMAX 側で実施予定
+
+## Session 22 全コミット履歴(現在)
+
+| # | コミット | 内容 |
+|---|---|---|
+| 1 | `93deae2` | Replace native select with iOS-style category picker |
+| 2 | `deb31c2` | Add category picker section to manual |
+| 3 | `7f28aae` | docs: add Session 21-22 summary to README |
+| 4 | `670ba10` | docs: add B-1 search feature design to README |
+| 5 | `4b6acbb` | docs: log B-2 completion (dev + prod) |
+| 6 | `318fda0` | Add temporary admin endpoint for B-3 retroactive AI tag generation |
+| 7 | `b44a3eb` | docs: log B-3 in-progress with strategy notes |
+| 8 | `a819c34` | Fix add-patient modal hidden by bottom-nav |
+
+## Session 23 開始時のチェックリスト
+
+新しいチャットセッションを開始する場合の標準手順:
+
+### 必須確認事項
+1. ✅ README を読み込む(全体把握、特にこのセクション)
+2. ✅ B-3 バッチの完了状況を SQL で確認(dev):
+   ```sql
+   SELECT COUNT(*), COUNT(search_tags) FROM records;
+   ```
+3. ✅ ZIMAX 側のバッチターミナルが今も動いているか確認
+4. ✅ vitals.html 修正(commit `a819c34`)の dev 動作確認結果を確認
+
+### 状況に応じたアクション
+
+#### A. バッチ未完了の場合
+- ZIMAX 側のターミナルが動いているなら見守り継続
+- 止まっていたら、上記の再開コマンドで再実行
+- 完了後 → B へ進む
+
+#### B. バッチ完了の場合(全件 5,092 = done になった)
+1. **タグ品質スポットチェック**(ランダム5〜10件確認)
+2. **本番 B-3 実施**(同じトークン or 新規トークンで本番でもバッチ実行、約1時間)
+3. **エンドポイント削除コミット**(セキュリティ確保):
+   - app.py の `/api/admin/generate_search_tags` を削除
+   - dev → 本番に反映
+   - Cloud Run の `ADMIN_BATCH_TOKEN` 環境変数も削除
+
+#### C. バグC/D の動作確認結果
+- OK → README に追記してクローズ
+- NG → さらに調査、修正
+
+#### D. 残タスク
+- **B-4**: 新規記録投稿時の AIタグ自動生成(input.html / app.py の `/save_record`)
+- **B-5**: 検索UI実装(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+  - 検索SQL案: `search_tags @> ARRAY[keyword] OR content ILIKE '%keyword%' OR user_name ILIKE '%keyword%'`
+- **B-6**: dev で全機能の動作確認
+- **C(本番マージ)**: A シリーズ + B シリーズ全部まとめて本番マージ・デプロイ
+
+## 重要な認証情報
+
+### Cloud Run dev 環境変数(現在設定中)
+- `SECRET_KEY`, `DEV_PASSWORD`, `SUPABASE_URL`, `SUPABASE_KEY`, `GEMINI_API_KEY`
+- `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`
+- `ADMIN_BATCH_TOKEN`(Session 22 で追加、B-3 完了後に削除予定)
+
+### Supabase
+- dev: `otjevnmoycnvaxeltrtj` (tasukaru-dev)
+- 本番: `abvglnkwtdeoaazyqwyd` (kaigo-ai-app)
+
+### Cloud Run
+- プロジェクト: `tasukaru-production`
+- リージョン: `asia-northeast1`
+- dev サービス: `tasukaru-dev` → URL `https://tasukaru-dev-191764727533.asia-northeast1.run.app`
+- 本番サービス: `tasukaru` → URL `https://tasukaru-191764727533.asia-northeast1.run.app`
+
+### リポジトリ
+- GitHub: `cocokaraplus-max/kaigo-ai-app`
+- ブランチ: `tasukaru-dev`(開発) / `tasukaru`(本番)
+- ローカル: `~/Desktop/kaigo-ai-app`
+
+## 教訓追加(Session 22 後半)
+
+### 教訓50: stacking context の罠
+- `.page-wrapper { z-index: 0; position: relative }` のような外側コンテナが stacking context を作ると、内側の z-index:9999 のモーダルでも外側の bottom-nav に勝てない
+- 解決策: モーダル要素を JS で `document.body.appendChild()` で body 直下に移動
+- 教訓14 と同じパターン、すべての固定オーバーレイ要素で要注意
+
+### 教訓51: 本番のバグ調査は Cloud Run ログ + gcloud CLI
+- Cloud Console のログ画面 UI は textPayload を表示しないことがある
+- `gcloud logging read` で `textPayload` と `jsonPayload.message` を直接取得する方が確実
+- severity フィルタは「警告」を選ぶと警告以上(ERROR含む)が見える
+- アプリ内 print 出力は **stderr** ではなく `run.googleapis.com%2Fstdout` ログ名に格納される
+
+### 教訓52: 既存バグ調査の優先度判断
+- 報告された問題が「Session 22 の変更で発生したか」「以前から存在したバグか」を最初に切り分ける
+- Session 22 と無関係なら、Session 22 の進行中タスク(B-3 バッチなど)を止めずに並行調査
+- ただし、本番DBへの書き込みを伴う修正は慎重に
+
+## 動作確認結果(2026-05-07 14:00 頃 追記)
+
+- ✅ バグC(dev メガホン残り): dev で動作確認済み、解消
+- ✅ バグD(追加ボタン隠れ): dev で動作確認済み、追加ボタン押下可能
+- ⏳ 本番反映: A+B 全完了後の本番マージ(タスクC)で実施予定
+
+
+---
+
+# 🧹 本番スタッフ整理作業(2026-05-07 14:30 頃)
+
+Session 22 の予定外タスクとして実施。本番DB の records / admin_settings に残っていた誤登録スタッフ名義のクリーンアップ。
+
+## 経緯
+
+ZIMAXさんから「PCログイン用に加藤PC・宇佐美PCを staffs に登録したけど、Supabase で削除しても消えない」との報告。
+
+調査の結果:
+- **「加藤PC」「宇佐美PC」**: 過去にPC専用ログインを意図して staffs に作った誤登録(本物のスタッフは「加藤鮎美」「宇佐美友理」がフルネームで別途存在)
+- **「管理者」**: 過去に ZIMAX さん本人(岸本洋幸)が「管理者」名義でログインしていた名残
+- **「PCログインで端末ごと認証」機能は現在のアプリには存在しない**(将来の追加開発が必要)
+
+## 修正内容
+
+### records テーブル(本番)で名義を UPDATE
+
+| 修正前 | 件数 | 修正後 | 修正後の総件数 |
+|---|---|---|---|
+| 加藤PC | 20件 | 加藤鮎美 | 84件(元64+UPDATE分20) |
+| 宇佐美PC | 1件 | 宇佐美友理 | 63件(元62+UPDATE分1) |
+| 管理者 | 2件 | 岸本洋幸 | 41件(元39+UPDATE分2) |
+
+実行SQL:
+```sql
+UPDATE records SET staff_name = '加藤鮎美' WHERE staff_name = '加藤PC';
+UPDATE records SET staff_name = '宇佐美友理' WHERE staff_name = '宇佐美PC';
+UPDATE records SET staff_name = '岸本洋幸' WHERE staff_name = '管理者';
+```
+
+⚠️ **岸本朋子(奥様)357件は無傷で保護**(別人として独立、誤爆ゼロ)
+
+### admin_settings テーブル(本番)で管理者リスト修正
+
+修正前:
+```json
+admin_managers: ["岸本洋幸", "宇佐美PC", "加藤PC"]
+```
+
+修正後:
+```json
+admin_managers: ["岸本洋幸"]
+```
+
+実行SQL:
+```sql
+UPDATE admin_settings 
+SET value = '["岸本洋幸"]' 
+WHERE key = 'admin_managers';
+```
+
+## 検証結果
+
+- ✅ 管理者MENU から「加藤PC」「宇佐美PC」「管理者」が消えた
+- ✅ 「現在の管理者」が 3人 → 1人(岸本洋幸のみ)に変わった
+- ✅ records 総件数 1,039件 維持(データ消失なし)
+- ✅ 岸本朋子 357件 維持(奥様無事)
+
+## 教訓追加
+
+### 教訓53: 管理者MENU の表示は2系統ある
+- スタッフ一覧: `records.staff_name` の DISTINCT(過去に投稿した名義の一覧)
+- 管理者リスト: `admin_settings.value`(JSON 配列で保存された管理者名リスト)
+- staffs テーブルから削除しても、これらの2系統には影響しない
+- 完全に消すには両方の修正が必要
+
+### 教訓54: スタッフ整理は staffs だけでなく records も見る
+- staffs テーブルにスタッフ名は記録されていない情報源として`records.staff_name`が運用されている
+- 過去の投稿は staff_name が文字列として保存されているので、DELETEではなく UPDATEで名義変更するのが安全
+- 物理削除すると過去の介護記録が消えるため、UPDATE による名義統合が望ましい
+
+### 教訓55: 本番DB UPDATE は ドライラン → 影響件数確認 → UPDATE → 検証 の4ステップ
+- まず SELECT で現在の件数を確認
+- WHERE 句が想定通りのレコードだけ対象にしているか確認
+- UPDATE 実行
+- UPDATE 後に「移行先の件数が増えたか」「移行元の件数が0になったか」「無関係なレコードが影響を受けていないか」の3点を必ず検証
+- 特に同姓のレコード(例: 岸本洋幸 vs 岸本朋子)があるとき、LIKE パターンマッチは危険、必ず厳密一致を使う
+
+
+---

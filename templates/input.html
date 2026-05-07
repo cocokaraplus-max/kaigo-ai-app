@@ -92,6 +92,109 @@
 .save-toast.show {
     transform: translateX(-50%) translateY(0);
 }
+
+/* Session 21: カテゴリピッカー(iOS Picker風) */
+.cat-picker {
+    position: relative;
+}
+#cat-trigger {
+    width: 100%;
+    background: #ffffff;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: #202124;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+#cat-trigger:hover {
+    border-color: #c8c8c8;
+}
+#cat-trigger:focus,
+#cat-trigger.open {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.12);
+}
+.cat-trigger-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.cat-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #6B7280;
+    flex-shrink: 0;
+}
+.cat-trigger-chev {
+    color: #9aa0a6;
+    font-size: 22px !important;
+    transition: transform 0.18s;
+}
+#cat-trigger.open .cat-trigger-chev {
+    transform: rotate(180deg);
+}
+.cat-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+    z-index: 100;
+    max-height: 280px;
+    overflow-y: auto;
+    animation: catPanelIn 0.15s ease-out;
+}
+@keyframes catPanelIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.cat-panel[hidden] {
+    display: none !important;
+}
+.cat-opt {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #202124;
+    transition: background 0.1s;
+    user-select: none;
+}
+.cat-opt:hover {
+    background: #f5f7fa;
+}
+.cat-opt.selected {
+    background: #f0f4f8;
+    font-weight: 500;
+}
+.cat-opt-name {
+    flex: 1;
+}
+.cat-opt-check {
+    color: #1a73e8;
+    font-size: 18px !important;
+}
+.cat-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+}
 </style>
 {% endblock %}
 
@@ -203,6 +306,27 @@
         </div>
     </div>
 
+    <!-- Session 21: カテゴリ選択(iOS Picker風カスタムドロップダウン) -->
+    <div class="form-group" id="category-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">label</span>
+            カテゴリ
+        </label>
+        <div class="cat-picker">
+            <button type="button" id="cat-trigger" onclick="toggleCategoryPicker()">
+                <span class="cat-trigger-left">
+                    <span id="cat-trigger-dot" class="cat-dot"></span>
+                    <span id="cat-trigger-label">読み込み中...</span>
+                </span>
+                <span id="cat-trigger-chev" class="material-symbols-outlined cat-trigger-chev">expand_more</span>
+            </button>
+            <div id="cat-panel" class="cat-panel" hidden>
+                <!-- JSで動的生成 -->
+            </div>
+        </div>
+        <input type="hidden" id="selected-category" name="category" value="その他">
+    </div>
+
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
@@ -264,6 +388,7 @@ window.saveRecord = async function() {
         formData.append('content', content);
         formData.append('record_date', recordDate);
         formData.append('must_read', document.getElementById('must-read-flag').value);
+        formData.append('category', document.getElementById('selected-category').value || 'その他');
 
         // 写真を圧縮してから追加
         const photoInput = document.querySelector('input[name="photos"]');
@@ -309,6 +434,10 @@ window.saveRecord = async function() {
                 mrBtn.style.color = '#5f6368';
                 mrBtn.style.borderColor = '#e0e0e0';
             }
+            // Session 21: カテゴリも「その他」にリセット
+            var selCat = document.getElementById('selected-category');
+            if (selCat) selCat.value = 'その他';
+            renderCategoryPicker();
             if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
             if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
             if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
@@ -678,5 +807,129 @@ window.toggleMustReadInput = function() {
         btn.style.borderColor = on ? '#fcd34d' : '#e0e0e0';
     }
 };
+
+// ========== Session 21: カテゴリ選択(iOS Picker風カスタムドロップダウン) ==========
+var RECORD_CATEGORIES = [];
+
+window.loadRecordCategories = async function() {
+    try {
+        var res = await fetch('/api/record_categories', { credentials: 'include' });
+        var data = await res.json();
+        if (data.status === 'success' && Array.isArray(data.categories)) {
+            RECORD_CATEGORIES = data.categories;
+        } else {
+            RECORD_CATEGORIES = [];
+        }
+    } catch (e) {
+        console.error('カテゴリ取得失敗:', e);
+        RECORD_CATEGORIES = [];
+    }
+    renderCategoryPicker();
+};
+
+window.renderCategoryPicker = function() {
+    var sel = document.getElementById('selected-category');
+    var labelEl = document.getElementById('cat-trigger-label');
+    var dotEl = document.getElementById('cat-trigger-dot');
+    var panel = document.getElementById('cat-panel');
+    if (!sel || !labelEl || !dotEl || !panel) return;
+    
+    if (!RECORD_CATEGORIES.length) {
+        labelEl.textContent = 'カテゴリがありません';
+        dotEl.style.background = '#9aa0a6';
+        panel.innerHTML = '<div style="padding:12px;color:#9aa0a6;font-size:0.85rem;">利用可能なカテゴリがありません</div>';
+        return;
+    }
+    
+    // 現在の選択値が有効か確認
+    var current = sel.value;
+    var hasCurrent = RECORD_CATEGORIES.some(function(c){ return c.name === current; });
+    if (!hasCurrent) {
+        var sonota = RECORD_CATEGORIES.find(function(c){ return c.name === 'その他'; });
+        sel.value = sonota ? sonota.name : RECORD_CATEGORIES[0].name;
+        current = sel.value;
+    }
+    
+    // トリガーボタンの表示更新
+    var currentCat = RECORD_CATEGORIES.find(function(c){ return c.name === current; });
+    labelEl.textContent = current;
+    dotEl.style.background = currentCat ? (currentCat.color || '#6B7280') : '#6B7280';
+    
+    // パネル(オプション一覧)生成
+    panel.innerHTML = RECORD_CATEGORIES.map(function(c) {
+        var isSel = (c.name === current);
+        var color = c.color || '#6B7280';
+        return '<div class="cat-opt' + (isSel ? ' selected' : '') + '" '
+            + 'data-cat-name="' + escapeHtml(c.name) + '" '
+            + 'onclick="selectCategoryOption(this)">'
+            + '<span class="cat-dot" style="background:' + color + ';"></span>'
+            + '<span class="cat-opt-name">' + escapeHtml(c.name) + '</span>'
+            + (isSel ? '<span class="material-symbols-outlined cat-opt-check">check</span>' : '')
+            + '</div>';
+    }).join('');
+};
+
+window.toggleCategoryPicker = function() {
+    var trigger = document.getElementById('cat-trigger');
+    var panel = document.getElementById('cat-panel');
+    if (!trigger || !panel) return;
+    var isOpen = !panel.hasAttribute('hidden');
+    if (isOpen) {
+        closeCategoryPicker();
+    } else {
+        openCategoryPicker();
+    }
+};
+
+window.openCategoryPicker = function() {
+    var trigger = document.getElementById('cat-trigger');
+    var panel = document.getElementById('cat-panel');
+    if (!trigger || !panel) return;
+    panel.removeAttribute('hidden');
+    trigger.classList.add('open');
+    // 外側クリックで閉じる
+    setTimeout(function() {
+        document.addEventListener('click', handleCategoryOutsideClick);
+    }, 0);
+};
+
+window.closeCategoryPicker = function() {
+    var trigger = document.getElementById('cat-trigger');
+    var panel = document.getElementById('cat-panel');
+    if (!trigger || !panel) return;
+    panel.setAttribute('hidden', '');
+    trigger.classList.remove('open');
+    document.removeEventListener('click', handleCategoryOutsideClick);
+};
+
+function handleCategoryOutsideClick(e) {
+    var picker = document.querySelector('.cat-picker');
+    if (picker && !picker.contains(e.target)) {
+        closeCategoryPicker();
+    }
+}
+
+window.selectCategoryOption = function(optEl) {
+    if (!optEl) return;
+    var name = optEl.getAttribute('data-cat-name');
+    var sel = document.getElementById('selected-category');
+    if (sel) sel.value = name;
+    renderCategoryPicker();
+    closeCategoryPicker();
+};
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+}
+
+// ページロード時にカテゴリ取得
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof loadRecordCategories === 'function') {
+        loadRecordCategories();
+    }
+});
+
 </script>
 {% endblock %}
