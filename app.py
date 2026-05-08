@@ -57,7 +57,10 @@ def send_email(to_email, subject, html_content):
         from sendgrid.helpers.mail import Mail
         api_key = get_secret("SENDGRID_API_KEY")
         from_email = get_secret("SENDGRID_FROM_EMAIL")
+        from_email = from_email.strip() if from_email else from_email
+        print(f"[send_email] to={to_email} subject={subject!r} api_key_set={bool(api_key)} from_email={from_email!r}", flush=True)
         if not api_key or not from_email:
+            print(f"[send_email] EARLY RETURN: missing credentials (api_key={bool(api_key)}, from_email={bool(from_email)})", flush=True)
             return False
         message = Mail(
             from_email=from_email,
@@ -66,10 +69,11 @@ def send_email(to_email, subject, html_content):
             html_content=html_content
         )
         sg = SendGridAPIClient(api_key)
-        sg.send(message)
-        return True
+        response = sg.send(message)
+        print(f"[send_email] SendGrid response status={response.status_code}", flush=True)
+        return 200 <= response.status_code < 300
     except Exception as e:
-        print(f"Email error: {e}")
+        print(f"[send_email] Exception: {type(e).__name__}: {e}", flush=True)
         return False
 
 # ==========================================
