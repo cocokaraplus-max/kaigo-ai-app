@@ -3676,5 +3676,386 @@ WHERE key = 'admin_managers';
 - UPDATE 後に「移行先の件数が増えたか」「移行元の件数が0になったか」「無関係なレコードが影響を受けていないか」の3点を必ず検証
 - 特に同姓のレコード(例: 岸本洋幸 vs 岸本朋子)があるとき、LIKE パターンマッチは危険、必ず厳密一致を使う
 
-
 ---
+
+# 🚀 Session 23 引き継ぎ(2026-05-08)
+
+## 📍 サマリ
+
+**Session 23 のメインタスク = B-3 本番反映** が完了。本番1,081件すべての records に AI search_tags が付与済み。
+ただし副タスクで「メール送信トラブル」が発覚、**SendGrid send_email() の silent failure 問題**が残課題。
+将来的なメール基盤として **Mailjet** に移行準備を進めたが、新規アカウントが Suspended 状態で承認待ち。
+
+## ✅ 完了した作業
+
+### 1. ADMIN_BATCH_TOKEN 本番追加
+- 本番 Cloud Run env var に `ADMIN_BATCH_TOKEN = QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE` を追加
+- リビジョン `tasukaru-00348-gn6` トラフィック 100%
+- これで本番でも一時エンドポイント `/api/admin/generate_search_tags` 経由でバッチ実行可能に
+
+### 2. PR #6 マージ → 本番デプロイ
+- URL: https://github.com/cocokaraplus-max/kaigo-ai-app/pull/6
+- マージコミット: `f67bd64`
+- Cloud Build 自動トリガー成功(計1分58秒)
+- README 23行目通り、`tasukaru-dev` → `tasukaru` ブランチ自動マージで本番自動デプロイされる仕組みを確認
+
+### 3. B-3 本番バッチ実行 → 100% 完走
+- 起点: total=1,059, done=0, remaining=1,059
+- 実行コマンド(Session 22 と同じ、URL を本番に差し替えただけ):
+  ```bash
+  TOKEN='QSFf9eLCvGOWVXP-8UuX1JqKZ9AIdpDTM083qQIlgTE' && URL='https://tasukaru-191764727533.asia-northeast1.run.app/api/admin/generate_search_tags?limit=10&dry_run=false&sleep=0' && for i in $(seq 1 200); do RESULT=$(curl -s --max-time 290 -X POST -H "X-Admin-Token: $TOKEN" "$URL"); TOTAL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total','?'))" 2>/dev/null); SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null); echo "[$(date +%H:%M:%S)] Round $i: success=$SUCCESS / total=$TOTAL"; if [ "$TOTAL" = "0" ]; then echo "===== ALL DONE ====="; break; fi; done
+  ```
+- 124ラウンドで完走、その後バッチ後の新規分9件を追加処理(計2回バッチ実行)
+- **最終確認: total=1,081, done=1,081, remaining=0** ✅
+- 1回目バッチ完走後 → 9件残(バッチ実行中の新規投稿)→ もう1回叩いて即終了 → 100%完了
+
+### 4. dev SENDGRID_FROM_EMAIL クォート修正
+- dev の `SENDGRID_FROM_EMAIL` に **全角クォート(U+201C/U+201D)** が混入していたのを発見
+- 値: `"cocokara"plus@gmail.com`(charCodes 8220, 8221 含む)→ `cocokaraplus@gmail.com` に修正
+- JS の React-friendly setter で値を更新 → デプロイ完了
+- 本番側は **既に半角に修正済み**(ZIMAX さんが Session 22 終了後に直したとのこと)
+
+### 5. Mailjet 検討 + 連絡(SendGrid 6/9 トライアル切れ対策)
+- **Resend**: 独自ドメイン必須で却下
+- **Brevo**: SMS 認証で「最大試行回数到達」ロック、別メアドでも SMS 届かず詰み
+- **Mailjet**: アカウント作成 + Sender 認証(`cocokaraplus@gmail.com` Active, Type=Transactional)+ API Key/Secret Key 取得まで完了
+- 単体テスト送信実施 → **HTTP 401 mj-0001 "Account temporarily blocked"** エラー
+- 新規アカウントは Mailjet の手動レビュー待ち(数時間〜数日)
+- **Mailjet サポートに連絡済み**(承認加速依頼、24-72時間で承認見込み)
+
+## 🔬 メール届かない問題の調査結果
+
+### 仮説と検証
+1. ❌ 全角クォート問題 → 本番は既に半角だった、原因ではなかった
+2. ❌ メアドが staffs に未登録 → 本人(`cocokaraplus@gmail.com`)は確かに未登録だが、staffs に存在する加藤さんのメアド(`koyuzu.love.ayumi@gmail.com`)でテストしても届かず
+3. 🔍 **Cloud Run の "Email error:" ログ過去2時間で 0件**、過去30分のエラーログも 0件
+4. 🔍 過去には Delivered 実績あり(SendGrid Email Activity, April 12, 2026)→ SendGrid 自体は機能していた時期がある
+
+### 結論
+- **send_email() が silent failure している**(例外なく、ログにも出ない)
+- 原因の有力候補:
+  - Python の `print()` が flush されていない → ログに出ない
+  - SendGrid API のレスポンスステータスを確認していないコード → 4xx/5xx でも True を返す
+  - `if not api_key or not from_email: return False` の早期 return が発生している可能性
+- **Session 24 で `print(flush=True)` 追加 + レスポンス確認コード追加してデバッグ予定**
+
+### 加藤さん事前同意済み
+- メール届かない確認の協力を得た
+- Session 24 でも同じメアドでテスト送信予定(必要なら再度事前連絡を)
+
+## 🔲 PENDING タスク(Session 24 以降)
+
+### 優先度: 高
+1. **一時エンドポイント `/api/admin/generate_search_tags` を app.py から削除コミット**
+   - dev に push → 自動マージで本番にも反映
+2. **ADMIN_BATCH_TOKEN を dev/本番の Cloud Run env var から削除**
+   - ↑エンドポイント削除と同タイミングで OK
+3. **B-4: 新規記録投稿時の AIタグ自動生成**
+   - input.html の保存処理 or app.py の `/save_record` で非同期生成
+   - これがあれば「バッチ実行後の新規分」問題が解消
+
+### 優先度: 中
+4. **SendGrid send_email() のデバッグ**
+   - app.py line 53-72 の `send_email()` に `print(..., flush=True)` 追加
+   - SendGrid API レスポンスステータス取得・ログ出力を追加
+     ```python
+     response = sg.send(message)
+     print(f"SendGrid response: {response.status_code} {response.body}", flush=True)
+     ```
+   - dev デプロイ → dev でパスワードリセットテスト → 原因特定
+5. **Mailjet 移行(承認来たら)**
+   - 承認確認: API テスト送信が成功するか確認
+   - app.py を Mailjet 化(`mailjet-rest` ライブラリ、API Key + Secret Key の Basic 認証)
+   - requirements.txt に `mailjet-rest` 追加
+   - Cloud Run env var: `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAILJET_FROM_EMAIL` 追加
+   - dev でテスト → 本番にマージ
+   - 並行して: SENDGRID_API_KEY, SENDGRID_FROM_EMAIL を Cloud Run env var から削除
+6. **6/9 SendGrid トライアル切れ対策**
+   - 残り約1ヶ月、Mailjet 承認来なければ別の手段(SendGrid 有料化など)検討
+
+### 優先度: 低
+7. **Resend API キーを Revoke**(セキュリティ)
+8. **Mailjet API Key (`ce19***...`) は Session 終了後にローテート推奨**
+9. **B-5: 検索UI実装**(daily_view.html FAB + モーダル + 検索モード切替)+ 検索API
+10. **B-6: dev で全機能の動作確認**
+11. **C: A + B 全部まとめて本番マージ・デプロイ**
+
+## 🎓 教訓追加(Session 23 で得たもの)
+
+### 教訓56: 無料 SaaS は突然有料化することがある
+- SendGrid 旧無料プランは 2025/5/27 に廃止発表 → 7/26 完全終了
+- 現在は 60日 Free Trial に変更済み
+- ZIMAX さんの SendGrid トライアルは 2026/6/9 で切れる
+- **対策**: 早めに移行先を検討、また複数の選択肢を持っておく
+
+### 教訓57: env var の IME 全角クォート混入の罠
+- VS Code や Mac の IME が時々 ASCII クォートを **全角クォート(U+201C/U+201D)** に変換
+- env var の値が `"cocokara"plus@gmail.com` のようになっていた
+- `get_secret()` に `.strip()` だけでは不十分、文字種チェックも必要
+- 修正後はデプロイで反映確定(JS で値を変えただけでは反映されない)
+
+### 教訓58: メールサービス選びの落とし穴
+- **Resend**: 独自ドメイン前提、Gmail 送信元には不向き
+- **Brevo**: 新規アカウントは SMS 認証必須、最大試行回数で詰むリスク
+- **Mailjet**: 新規アカウントは "Sending suspended" でスタート、手動レビュー待ち
+- **SendGrid**: Single Sender Verification で Gmail 使えるが、無料プラン有料化済み
+- **教訓**: 新規メールサービスは「すぐ使える」とは限らない、移行は **数週間以上の猶予** を確保して進める
+
+### 教訓59: SendGrid silent failure の罠
+- `send_email()` の `print(f"Email error: {e}")` は **flush されていない可能性**
+- `sg.send(message)` の戻り値を確認していない → 4xx/5xx でも True を返す
+- パスワードリセット成功表示 = 実際に送信された とは限らない
+- **対策**: 明示的に `print(..., flush=True)` + レスポンスステータス確認
+
+### 教訓60: ターミナルへの長文ペースト後、Enter キー押下を忘れがち
+- バッチコマンドを貼ったが Enter を押していなかったため、しばらく動いていなかった
+- VS Code ターミナルでは特に注意
+
+### 教訓61: SQL クエリと bash コマンドの混同に注意
+- SQL は Supabase SQL Editor で実行
+- bash コマンドはターミナル(VS Code or ターミナル.app)で実行
+- どっちで実行するか毎回明確に指示する
+
+### 教訓62: 新規メールサービスの無料プランは即時利用不可
+- Brevo/Mailjet ともに新規アカウントは手動レビュー or SMS 認証で詰まる可能性
+- **Brevo**: SMS最大試行ロック、SMS 届かない問題
+- **Mailjet**: Account temporarily blocked、サポート連絡で解除依頼
+- **教訓**: 事前にテスト用の API Key を持っているサービスがあれば、緊急時のフォールバックに活用
+
+### 教訓63: 1機能=1セッションでも、外部サービス依存タスクは想定外に時間を食う
+- Session 23 の予定: B-3 本番反映 + クォート修正(計1〜1.5時間)
+- 実際: メール基盤再検討で計3時間以上
+- **教訓**: 外部サービス依存タスクには「判断ポイント」を早めに設けて、長引いたら撤退判断を
+
+### 教訓64: パスワードリセット機能のセキュリティ仕様
+- 該当メアドが DB に存在しなくても「成功メッセージ」を表示
+- send_email も呼ばない、パスワードもリセットしない
+- これは「攻撃者にメアドの存在を漏らさない」ための仕様
+- **テスト時は本番DBに登録されているメアドを使う**
+
+### 教訓65: バッチ実行中の新規レコード追加問題
+- バッチ起動時に「対象 1,059件」 → 完走後に確認すると「remaining = 9件」など増えている
+- 原因: バッチ実行中(124ラウンド = 約1時間)に他のスタッフが TASUKARU で記録投稿した
+- これは異常ではなく、バッチを再度叩けば解消(B-4 実装で完全自動化される)
+
+### 教訓66: コードで silent failure するとき、ログ強化が最優先
+- 「成功表示出るのにメール届かない」のような状況は、コードのどこかで silent skip している
+- まず `print(..., flush=True)` を追加して、どこでスキップされているか見える化する
+- いきなり別実装(Mailjet 移行など)に走る前に、原因特定が先
+
+## 📁 ファイル状態(Session 23 終了時、2026-05-08)
+
+| ファイル | 現状 |
+|---|---|
+| README.md | 本セクションで更新 |
+| app.py | Session 22 から変更なし(B-3 完走したので一時エンドポイントは残ったまま、削除は次回) |
+| Cloud Run env vars (本番) | ADMIN_BATCH_TOKEN 追加済み、SENDGRID_FROM_EMAIL 半角(正常) |
+| Cloud Run env vars (dev) | ADMIN_BATCH_TOKEN 追加済み(Session 22 から)、SENDGRID_FROM_EMAIL 全角→半角に修正済み |
+| 本番 records テーブル | 1,081/1,081 件に search_tags 付与済み(100%) |
+| dev records テーブル | 5,092/5,092 件に search_tags 付与済み(Session 22 で完了) |
+
+## ⚠️ 不変事項(Session 22-23 でも継続適用)
+
+- タスカルくん画像17箇所 + animation:fl in manual.html は不可侵
+- Step 3 Firebase Push 提案は禁止
+- Commit messages は英語シンプル、日本語全角括弧禁止
+- Push 後 30〜60秒待つ(Cloud Run デプロイ反映)
+- 1コマンド1ペースト原則(教訓42)
+- 新規テーブル/カラムは RLS=false 確認(教訓39)
+- Cloud Run 確認は Cmd+Shift+R 強制リロード(教訓45)
+- 並列実行は無料 Cloud Run では避ける、逐次が安定(教訓47)
+- 一時エンドポイントは「削除コミット」とセットで(教訓48)
+- 本番DB UPDATE は ドライラン → 件数確認 → UPDATE → 検証(教訓55)
+- 同姓レコード(岸本洋幸 vs 岸本朋子)では LIKE 危険、厳密一致(教訓55)
+
+## 🚀 Session 24 開始時のスタートポイント
+
+Session 23 の継続として Session 24 を開始する場合:
+
+1. README を読み込んで全体把握(特に本セクション「Session 23 引き継ぎ」)
+2. 本番 records テーブルの状況確認(全件 search_tags 付与済みのはず):
+   ```sql
+   SELECT COUNT(*) AS total, COUNT(search_tags) AS done, COUNT(*) - COUNT(search_tags) AS remaining FROM records;
+   ```
+3. Mailjet サポートからの返信を確認(承認来ているか?)
+4. 優先タスクの判断:
+   - **Mailjet 承認来ている** → app.py を Mailjet 化(別 PR で実装)
+   - **Mailjet 承認まだ** → SendGrid デバッグ(`print(flush=True)` 追加)
+   - **両方やる時間ない** → 一時エンドポイント削除コミット + ADMIN_BATCH_TOKEN 削除を優先
+5. B-4 実装(新規記録投稿時の AIタグ自動生成)も並行検討
+
+# 🚀 Session 24 引き継ぎ(2026-05-08)
+
+## 📍 サマリ
+
+**Session 24 のメインタスク = 一時エンドポイント削除 + SendGrid silent failure デバッグ**。
+作業途中に **dev DB に弊社実在職員データが混入していた問題** を発見し、緊急浄化を実施。
+SendGrid 問題は **Gmail 迷惑メールへの振り分けが真因** と判明、コードは正常動作と確認できた。
+
+## ✅ 完了した作業
+
+### 1. 一時エンドポイント `/api/admin/generate_search_tags` 削除
+- Session 22 B-3 で追加したバッチ用エンドポイントを app.py から削除(L4938-5106 の 169行)
+- PR #7 を作成・マージし、dev/本番両方にデプロイ反映
+- **dev: 404 確認、本番: 404 確認**(両方とも教訓48「削除コミットとセット」を完遂)
+- マージコミット: `4f2d574` (dev) → 本番 `tasukaru-00353-69w`
+
+### 2. ADMIN_BATCH_TOKEN 削除
+- 本番 Cloud Run env var から `ADMIN_BATCH_TOKEN` 削除
+- 本番リビジョン `tasukaru-00352-6d6` で削除確定
+- dev には実は元から存在しなかった(Session 23 では本番のみに追加されていた、引き継ぎ書の認識ズレ)
+
+### 3. send_email() ログ強化(silent failure 対策)
+- `app.py` L52-72 の `send_email()` を修正(+7 -3 行)
+- `print(..., flush=True)` を全箇所に追加
+- `from_email.strip()` 追加(全角クォート/改行/空白の混入防止)
+- 早期 return(env var 未設定時)にもログ出力
+- `sg.send(message)` の戻り値を取得し、`response.status_code` をログ出力
+- `200 <= status_code < 300` のみ True を返す(嘘の成功 True を防止)
+- Exception ログに `type(e).__name__` 追加
+- dev (commit `60e2f39`) → 本番 (PR #8 マージ → revision `tasukaru-00353-69w`)
+
+### 4. SendGrid silent failure 真因特定 ⭐
+- dev で `demo1@example.invalid` 宛にパスワードリセット試行
+- 強化ログで以下を取得:
+  ```
+  [send_email] to=demo1@example.invalid subject='【TASUKARU】パスワードリセット' api_key_set=True from_email='cocokaraplus@gmail.com'
+  [send_email] SendGrid response status=202
+  ```
+- → **コードは完璧に動作**、SendGrid に正常に依頼できている(202 Accepted)
+- SendGrid Email Activity Feed で確認: 加藤さん宛(`koyuzu.love.ayumi@gmail.com`)は **5/8 5:02 UTC に Delivered** で配送成功
+- → **「メール届かない」は誤認**、実際は **加藤さんの Gmail 迷惑メールフォルダに振り分けられていた**
+- **Session 23 の silent failure 推定は誤り、コード/SendGrid 両方とも正常**
+
+### 5. dev DB プライバシー浄化 ⭐⭐(Session 24 最大の収穫)
+- 「dev は全部テストデータ」の認識だったが、実際は **弊社職員 8名(岸本朋子・岸本洋幸・江良勇矢・坂野有希子・加藤鮎美・宇佐美友理 + 加藤PC + 宇佐美PC)が実名・実メアドで登録されていた**
+- dev でテストすると実在の方々に本物メールが届くリスクあり
+- **patients(利用者)52件は AI生成の架空データ** → 触らない
+- 浄化作業:
+  1. `staffs` テーブル本体: 8名を `デモ職員F〜M` + `demo6〜demo13@example.invalid` にダミー化(id 厳密一致 UPDATE)
+  2. `calendar_members` テーブル: 1件残存していた `岸本洋幸` → `デモ職員L`
+  3. `calendars` テーブル: 加藤鮎美の owner_name 2行 → `デモ職員G`
+  4. 残り 14テーブル の `staff_name` カラムは元々ヒットゼロ(救い)
+  5. 16テーブルの本文系フリーテキストカラムも全てヒットゼロ確認
+- **最終検証: 残存実名ゼロ件達成** 🎯
+
+## 🔬 注意事項: dev に本番職員データが混入していた経路は不明
+
+- ZIMAX さんに「dev に入れた覚えがない」と確認済み
+- 過去のシード処理、手動コピー忘れ、何らかの自動同期など、原因は特定できず
+- **教訓**: dev/本番分離の運用は、定期的に「dev の中身が本物データになっていないか」を点検する必要あり
+- 今回は浄化済みなので、今後 dev で何をテストしても弊社の方々に本物メールが届く心配はゼロ
+
+## 📋 PENDING タスク(Session 25 以降)
+
+### 優先度: 高
+1. **6/9 SendGrid トライアル切れ対策**(残り約1ヶ月)
+   - SendGrid 自体は正常動作と判明したので、最も素直な選択肢は **SendGrid 有料化**(月 $19.95)
+   - Mailjet 移行はサポート返信待ち + 独自ドメイン必要(個人 Gmail 不可)→ ハードル高い
+   - 独自ドメイン取得 + Mailjet も選択肢(`tasukaru.app` などブランディング兼ねる)
+2. **B-4: 新規記録投稿時の AIタグ自動生成**
+   - input.html の保存処理 or app.py の `/save_record` で非同期生成
+
+### 優先度: 中
+3. **Mailjet 承認確認**(放置で OK、来てたらラッキー、来なくても SendGrid 有料化で十分)
+4. **B-5: 検索 UI 実装**(daily_view.html FAB + モーダル + 検索モード切替)+ 検索 API
+5. **B-6: dev 全機能の動作確認**
+6. **C: A + B 全部まとめて本番マージ・デプロイ**
+
+### 優先度: 低
+7. Resend / Mailjet API キーを Revoke(セキュリティ)
+8. dev DB に本番データが混入した経路の事後調査(時間あれば)
+
+## 🎓 教訓追加(Session 24 で得たもの)
+
+### 教訓67: dev 環境のデータ混入を定期点検する
+- 「dev は全部テストデータ」と思い込んでも、過去の何らかの操作で本番データが流入している可能性
+- 月一でも `SELECT staff_name, email FROM staffs` などで点検する習慣を
+- メアド/電話/住所など連絡先が残ったままだと dev でテストしただけで本物に通知が飛ぶ
+- 対策: テスト用環境では「@example.invalid」「@example.test」など RFC 2606 予約 TLD のみを許容
+
+### 教訓68: silent failure の調査は「ログ強化が原因特定の最短ルート」
+- Session 23 終了時点で「sg.send() が silent failure している」と推定 → 実は誤推定
+- ログ強化版 (`flush=True` + `response.status_code`) で **1回のリセット試行で真因が完全に判明**
+- 別実装(Mailjet 移行など)に走る前に、まずログを増やすことが正しい対応
+- 教訓66 を実証する形になった
+
+### 教訓69: 「メールが届かない」は受信側の問題が多い
+- 加藤さんに送ったメールは SendGrid Activity 上は **Delivered**
+- 受信者は「届いていない」と認識(=迷惑メールフォルダに気付かなかった)
+- メール起因の障害は **送信側のログ + プロバイダの Activity Feed** を見て、受信側にも「迷惑メール確認した?」と尋ねる手順が必要
+- TASUKARU の「リセットメール届かない問い合わせ」対応プロトコルに、まず迷惑メール確認を含めるとよい
+
+### 教訓70: ターミナルでヒアドキュメントの長文ペーストは予測補完で破損する
+- VS Code/Mac Terminal の予測入力(autosuggestion)が、`<<'PYEOF'` 内の空白で勝手に補完を入れて文字列を破壊
+- 特にトリプルクォート文字列の改行付き Python コードを heredoc で渡すのは事故の元
+- **対策**: 長い置換コマンドは `/mnt/user-data/outputs/` にダウンロード可能なファイルを Claude が作って、ZIMAX さんが `~/Desktop/kaigo-ai-app/` に置いて `python3 patch_xxx.py` で実行する方が確実
+- 今回 `patch_send_email.py` 方式で 1 発成功 → これを今後の標準ワークフローに
+
+### 教訓71: PR 後の自動マージは「自動」ではない
+- 引き継ぎ書には「dev → 本番自動マージ」と書かれていたが、実際は GitHub の PR を作成 → マージする手動運用
+- Cloud Build トリガーは push をフックするので、tasukaru ブランチへの merge commit が push されると自動デプロイされる(ここまでは自動)
+- ただし dev → tasukaru ブランチへの **マージそのものは手動** で行う必要あり
+- README の表現を「PR 作成 → マージで本番反映」に正確化すべき(別途修正)
+
+### 教訓72: SendGrid Activity Feed は障害切り分けの最強ツール
+- アプリログだけでは「SendGrid に送ったあと何が起きたか」が見えない
+- Activity Feed で:
+  - **Processed**: SendGrid が受け付けた(API 呼び出し成功 = 202)
+  - **Delivered**: 受信メールサーバーが受け取った(配送成功)
+  - **Bounced**: 受信メールサーバーが拒否(アドレス不達など)
+  - **Dropped**: SendGrid 内部で送信中止(Suppression リスト等)
+  - **Deferred**: 一時保留中(リトライ中)
+- アプリログとセットで使うと、送信パイプライン全体のどこで詰まっているかが完全に分かる
+
+### 教訓73: dev/本番が同じ Cloud Run プロジェクトにあるリスク
+- dev (`tasukaru-dev`) も本番 (`tasukaru`) も同じ GCP プロジェクト `tasukaru-production` 配下
+- 本番(prod)じゃなくて dev でも `gcloud beta run services logs tail` でリアルタイムログが見える
+- 本番のミスオペ防止には Cloud Run サービス名の確認が必須(`tasukaru` と `tasukaru-dev` の打ち間違いに注意)
+
+## 📁 ファイル状態(Session 24 終了時、2026-05-08)
+
+| ファイル | 現状 |
+|---|---|
+| README.md | 本セクションで更新 |
+| app.py | L4938-5106 の一時エンドポイント削除、L52-72 の send_email() ログ強化 |
+| Cloud Run env vars (本番) | `ADMIN_BATCH_TOKEN` 削除、SendGrid 系は正常 |
+| Cloud Run env vars (dev) | 変更なし |
+| 本番リビジョン | `tasukaru-00353-69w`(ログ強化版反映済) |
+| dev リビジョン | `tasukaru-dev-00501-sbr` 系(ログ強化版反映済) |
+| 本番 staffs | 6名(変更なし、現場での通常運用継続中) |
+| dev staffs | 13名(全員 デモ職員A〜M、実名ゼロ) |
+| dev calendars | owner_name 全てダミー名 |
+| 本番 records | 1,081/1,081 件 search_tags 付与済み(変更なし) |
+| dev records | 5,092/5,092 件 search_tags 付与済み(変更なし) |
+| GitHub PR | #7 (一時エンドポイント削除) merged, #8 (ログ強化) merged |
+
+## ⚠️ 不変事項(Session 22-24 でも継続適用)
+
+- タスカルくん画像17箇所 + animation:fl in manual.html は不可侵
+- Step 3 Firebase Push 提案は禁止
+- Commit messages 英語シンプル、日本語全角括弧禁止
+- Push 後 30〜60秒待つ(Cloud Run デプロイ反映)
+- 1コマンド1ペースト原則(教訓42)
+- 新規テーブル/カラムは RLS=false 確認(教訓39)
+- Cloud Run 確認は Cmd+Shift+R 強制リロード(教訓45)
+- 並列実行は無料 Cloud Run では避ける、逐次が安定(教訓47)
+- 一時エンドポイントは「削除コミット」とセットで(教訓48)
+- 本番DB UPDATE は ドライラン → 件数確認 → UPDATE → 検証(教訓55)
+- 同姓レコード(岸本洋幸 vs 岸本朋子)では LIKE 危険、厳密一致(教訓55)
+- パスワードリセットテストは **本番DBに登録されているメアド** を使う(教訓64)
+- dev でテストする時は **dev DB のメアドが架空(@example.invalid 等)であることを確認**(教訓67、Session 24 新規)
+- silent failure 疑いは **まずログ強化 → 別実装に走らない**(教訓68、Session 24 強化)
+- 長い Python 置換は `patch_xxx.py` ファイル経由で実行(教訓70、Session 24 新規)
+
+## 🚀 Session 25 開始時のスタートポイント
+
+Session 24 の継続として Session 25 を開始する場合:
+
+1. README を読み込んで全体把握(特に本セクション「Session 24 引き継ぎ」)
+2. 6/9 SendGrid トライアル切れ対策の方針を決める:
+   - **A: SendGrid 有料化**(月 $19.95、最も素直、即解決)
+   - **B: Mailjet + 独自ドメイン取得**(数日〜数週間、ブランディング兼ねる)
+   - C: 別のメール基盤検討
+3. B-4(新規記録投稿時の AIタグ自動生成)に着手
+4. 余裕あれば B-5(検索 UI)、B-6(動作確認)、C(まとめて本番デプロイ)
