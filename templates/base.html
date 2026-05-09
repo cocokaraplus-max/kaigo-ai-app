@@ -12,6 +12,16 @@
     <meta name="theme-color" content="#1a73e8">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.jpg">
     <title>{% block title %}TASUKARU{% endblock %}</title>
+    <!-- 文字サイズの復元(全ページ共通・ロード時即時適用) -->
+    <script>
+      (function() {
+        try {
+          var pct = parseInt(localStorage.getItem('tasukaru_font_size') || '100', 10);
+          if (isNaN(pct) || pct < 80 || pct > 130) pct = 100;
+          document.documentElement.style.fontSize = pct + '%';
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0" />
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -264,16 +274,16 @@ body.nav-editing {
             align-items: center; justify-content: center; gap: 3px;
             text-decoration: none; color: #80868b;
             font-size: 0.6rem; font-weight: 600;
-            padding: 7px 6px 6px;
+            padding: 0.45rem 0.4rem 0.4rem;
             transition: color 0.15s, background 0.15s;
             cursor: pointer; background: none; border: none;
             border-right: 0.5px solid #e0e0e0;
             -webkit-tap-highlight-color: transparent;
-            white-space: nowrap; flex-shrink: 0; min-width: 52px;
+            white-space: nowrap; flex-shrink: 0; min-width: 3.4rem;
             flex: 1;
         }
         .bottom-nav-item:last-child { border-right: none; }
-        .bottom-nav-item .material-symbols-outlined { font-size: 22px; }
+        .bottom-nav-item .material-symbols-outlined { font-size: 1.4rem; }
         .bottom-nav-item.active {
             color: #1d4ed8;
             background: #dbeafe;
