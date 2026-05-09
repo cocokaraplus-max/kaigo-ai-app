@@ -669,7 +669,7 @@ def input_view():
                     category = (request.form.get("category", "") or "その他").strip()
                     if not category:
                         category = "その他"
-                    supabase.table("records").insert({
+                    insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
                         "user_name": m.group(2),
@@ -680,6 +680,22 @@ def input_view():
                         "must_read": must_read_flag,
                         "category": category
                     }).execute()
+
+                    # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
+                    try:
+                        new_id = None
+                        if insert_res and getattr(insert_res, "data", None):
+                            new_id = insert_res.data[0].get("id")
+                        if new_id:
+                            from utils import generate_search_tags
+                            tags = generate_search_tags(content, category)
+                            if tags:
+                                supabase.table("records").update(
+                                    {"search_tags": tags}
+                                ).eq("id", new_id).execute()
+                    except Exception as _tag_err:
+                        print(f"[search_tags] generation failed for new record: {_tag_err}", flush=True)
+
                     content = ""
                     selected_patient = ""
                     user_name = m.group(2)
@@ -813,6 +829,164 @@ def daily_view():
         record_dates=record_dates,
         patients=patients_list
     )
+
+# ===== Session 29 (B-5): ケース記録キーワード検索 =====
+def _build_search_snippet(content_text, keywords, max_len=150, ctx=40):
+    """検索結果用snippet。keywordsの最初のヒット位置周辺を抜粋。
+    ヒットしなければ先頭max_len文字。"""
+    if not content_text:
+        return ""
+    hit_pos = -1
+    for kw in keywords:
+        if not kw:
+            continue
+        i = content_text.find(kw)
+        if i >= 0:
+            hit_pos = i
+            break
+    if hit_pos < 0:
+        return content_text[:max_len] + ("…" if len(content_text) > max_len else "")
+    start = max(0, hit_pos - ctx)
+    end = min(len(content_text), hit_pos + ctx + max_len // 2)
+    snippet = content_text[start:end]
+    if start > 0:
+        snippet = "…" + snippet
+    if end < len(content_text):
+        snippet = snippet + "…"
+    return snippet
+
+@app.route('/api/records/search')
+@login_required
+def api_records_search():
+    """
+    ケース記録キーワード検索API
+    GET /api/records/search?q=褥瘡 入浴&category=入浴&user_name=石井&from=2025-05-01&to=2026-05-09
+    返却: {"results":[{id, created_at, user_name, category, staff_name, content, snippet, search_tags}], "total":N, "limited":bool}
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+
+    q_raw = (request.args.get("q", "") or "").strip()
+    category = (request.args.get("category", "") or "").strip()
+    user_name = (request.args.get("user_name", "") or "").strip()
+    date_from = (request.args.get("from", "") or "").strip()
+    date_to = (request.args.get("to", "") or "").strip()
+
+    # キーワードを空白(全角/半角)で分割。最大5語まで。
+    keywords = []
+    if q_raw:
+        for tok in re.split(r'[\s\u3000]+', q_raw):
+            tok = tok.strip()
+            if tok:
+                keywords.append(tok)
+        keywords = keywords[:5]
+
+    LIMIT = 100
+
+    try:
+        query = supabase.table("records").select(
+            "id, created_at, user_name, category, staff_name, content, search_tags"
+        ).eq("facility_code", f_code)
+
+        # キーワード AND 検索: contains演算子(@>)で全部含むレコードを絞り込み
+        if keywords:
+            query = query.contains("search_tags", keywords)
+
+        if category:
+            query = query.eq("category", category)
+        if user_name:
+            query = query.eq("user_name", user_name)
+        if date_from:
+            try:
+                d = datetime.strptime(date_from, "%Y-%m-%d").date()
+                t_start = tokyo_tz.localize(datetime.combine(d, dt_time.min))
+                query = query.gte("created_at", t_start.isoformat())
+            except Exception:
+                pass
+        if date_to:
+            try:
+                d = datetime.strptime(date_to, "%Y-%m-%d").date()
+                t_end = tokyo_tz.localize(datetime.combine(d + timedelta(days=1), dt_time.min))
+                query = query.lt("created_at", t_end.isoformat())
+            except Exception:
+                pass
+
+        # AI統合記録は検索結果から除外
+        query = query.neq("staff_name", "AI統合記録")
+
+        # 新しい順、上限+1件で limited 判定
+        query = query.order("created_at", desc=True).limit(LIMIT + 1)
+
+        res = query.execute()
+        rows = res.data or []
+        limited = len(rows) > LIMIT
+        if limited:
+            rows = rows[:LIMIT]
+
+        results = []
+        for r in rows:
+            content_text = r.get("content") or ""
+            snippet = _build_search_snippet(content_text, keywords)
+            results.append({
+                "id": r.get("id"),
+                "created_at": r.get("created_at"),
+                "user_name": r.get("user_name") or "",
+                "category": r.get("category") or "",
+                "staff_name": r.get("staff_name") or "",
+                "content": content_text,
+                "snippet": snippet,
+                "search_tags": r.get("search_tags") or [],
+            })
+
+        return jsonify({
+            "results": results,
+            "total": len(results),
+            "limited": limited,
+        })
+
+    except Exception as e:
+        return jsonify({"results": [], "total": 0, "limited": False, "error": str(e)}), 500
+
+
+@app.route('/api/records/search/categories')
+@login_required
+def api_records_search_categories():
+    """検索モーダルのカテゴリ選択肢を返す。
+    標準4カテゴリ(入浴/食事/排泄/その他)を常に先頭に出し、
+    Facility内で実際に使われている非標準カテゴリがあれば末尾に追加する。
+
+    Supabase クライアントは select() がデフォルト1000件上限のため、
+    レンジを大きく取って見落としを最小化する。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    standard = ["入浴", "食事", "排泄", "その他"]
+    try:
+        # 多めに取得して非標準カテゴリ拾い漏れを減らす。
+        # 標準カテゴリしか使ってない通常運用ではこれで十分。
+        res = (
+            supabase.table("records")
+            .select("category")
+            .eq("facility_code", f_code)
+            .neq("category", "")
+            .order("created_at", desc=True)
+            .limit(5000)
+            .execute()
+        )
+        seen_extra = []
+        seen_extra_set = set()
+        for r in (res.data or []):
+            c = (r.get("category") or "").strip()
+            if not c or c in standard or c in seen_extra_set:
+                continue
+            seen_extra_set.add(c)
+            seen_extra.append(c)
+        ordered = standard + sorted(seen_extra)
+        return jsonify({"categories": ordered})
+    except Exception as e:
+        # 失敗しても標準4カテゴリは返す
+        return jsonify({"categories": standard, "error": str(e)}), 200
+
 
 @app.route('/api/user_month_records')
 @login_required
