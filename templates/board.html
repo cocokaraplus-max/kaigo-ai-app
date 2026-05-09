@@ -2224,6 +2224,8 @@ window.openComments = async function(postId) {
     await loadComments(postId);
     // コメントを開いたらその投稿のコメント数バッジをすべて消す
     document.querySelectorAll('[data-post-id="' + postId + '"] .post-action-btn:last-child .badge').forEach(function(b) { b.remove(); });
+    // 未読タブのカウンタも即時再計算(リロード待ちのイラっと感を解消)
+    if (typeof window.updateUnreadCount === 'function') window.updateUnreadCount();
 };
 
 function closeComments() {
