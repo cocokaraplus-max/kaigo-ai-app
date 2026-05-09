@@ -1439,9 +1439,13 @@ window.applyBoardTabFilter = function() {
         if (tab === 'all') {
             show = true;
         } else if (tab === 'unread') {
-            // 未読: 自分が✅を押していない投稿
+            // 未読: (自分が✅を押していない) OR (自分以外が書いた未読コメントがある)
             var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
-            show = checks.indexOf(MY_NAME) === -1;
+            var checksMissing = checks.indexOf(MY_NAME) === -1;
+            // コメント未読数は DOM の .badge から取得(server 側で算出済)
+            var cmtBadge = card.querySelector('.post-action-btn:last-child .badge');
+            var unreadCmt = cmtBadge ? (parseInt(cmtBadge.textContent, 10) > 0) : false;
+            show = checksMissing || unreadCmt;
         } else if (tab.indexOf('cat-') === 0) {
             // カテゴリー別: cat-{id} の形式
             var targetCatId = parseInt(tab.substring(4), 10);
@@ -1453,12 +1457,16 @@ window.applyBoardTabFilter = function() {
 };
 
 // ===== 未読件数の計算と表示 =====
+// 未読 = (自分が✅を押していない) OR (自分以外が書いた未読コメントがある)
 window.updateUnreadCount = function() {
     var unreadCount = 0;
     document.querySelectorAll('.post-card').forEach(function(card) {
         var postId = parseInt(card.dataset.postId, 10);
         var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
-        if (checks.indexOf(MY_NAME) === -1) unreadCount++;
+        var checksMissing = checks.indexOf(MY_NAME) === -1;
+        var cmtBadge = card.querySelector('.post-action-btn:last-child .badge');
+        var unreadCmt = cmtBadge ? (parseInt(cmtBadge.textContent, 10) > 0) : false;
+        if (checksMissing || unreadCmt) unreadCount++;
     });
     var badge = document.getElementById('unread-count');
     if (badge) badge.textContent = unreadCount;
@@ -2299,6 +2307,17 @@ async function sendComment() {
             await loadComments(currentPostId);
             // コメント数バッジ更新
             var btn = document.querySelector('[data-post-id="' + currentPostId + '"] .post-action-btn:last-child');
+            // 自分の最新コメントが見える位置までスクロール(2重で確実に)
+            requestAnimationFrame(function() {
+                var list = document.getElementById('comments-list');
+                if (list) {
+                    list.scrollTop = list.scrollHeight;
+                    var last = list.lastElementChild;
+                    if (last && last.scrollIntoView) {
+                        last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
+            });
         }
     } catch(e) {}
 }
