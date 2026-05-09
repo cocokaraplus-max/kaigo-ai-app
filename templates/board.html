@@ -2324,19 +2324,24 @@ async function loadComments(postId) {
                 document.getElementById('comment-edit-textarea').value = commentText;
                 document.getElementById('comment-edit-drawer').classList.add('show');
             });
+        });
+        // 保存ボタン
+        document.getElementById('comment-edit-save-btn').addEventListener('click', async function() {
+            var commentId = document.getElementById('comment-edit-id').value;
+            var newContent = document.getElementById('comment-edit-textarea').value.trim();
+            if (!newContent) { alert('内容を入力してください'); return; }
+            var r = await fetch('/api/board/update_comment', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: parseInt(commentId), content: newContent })
+            });
             if ((await r.json()).status === 'success') {
-    document.getElementById('comment-' + commentId)
-        .querySelector('.comment-text')
-        .innerHTML = newContent.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
-    // コメント要素の内容を新しいテキストに更新
-    // メンション(@xxxx) はハイライト表示
-    
-    document.getElementById('comment-edit-drawer').classList.remove('show');
-    // モーダルを閉じる
-    
-    alert('コメントを更新しました');
-    // 成功メッセージ
-}
+                document.getElementById('comment-' + commentId)
+                    .querySelector('.comment-text')
+                    .innerHTML = newContent.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
+                document.getElementById('comment-edit-drawer').classList.remove('show');
+                alert('コメントを更新しました');
+            }
         });
         list.scrollTop = list.scrollHeight;
     } catch(e) {}
