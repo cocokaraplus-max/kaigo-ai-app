@@ -4305,14 +4305,18 @@ def api_board_get_comments():
         my_name = session["my_name"]
         post_id = request.args.get("post_id")
         supabase = get_supabase()
+        is_admin = session.get("admin_authenticated", False)
+        can_edit_others = is_board_editor_user(supabase, f_code, my_name, is_admin)
         icons = get_staff_icons(supabase, f_code)
         res = supabase.table("board_comments").select("*").eq("post_id", post_id).eq("facility_code", f_code).order("created_at").execute()
         comments = []
         for c in (res.data or []):
             ic = staff_icon_data(icons, c["staff_name"])
+            is_mine = c["staff_name"] == my_name
             comments.append({**c, "color": ic["color"], "initial": ic["initial"],
                 "emoji": ic.get("emoji",""), "image_url": ic.get("image_url",""),
-                "is_mine": c["staff_name"] == my_name, "time_label": parse_jst(c["created_at"])})
+                "is_mine": is_mine, "can_edit": is_mine or can_edit_others,
+                "time_label": parse_jst(c["created_at"])})
         try:
             supabase.table("board_reads").upsert({
                 "facility_code": f_code, "post_id": int(post_id), "staff_name": my_name
@@ -4349,6 +4353,32 @@ def api_board_add_comment():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/board/update_comment", methods=["POST"])
+@login_required
+def api_board_update_comment():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        is_admin = session.get("admin_authenticated", False)
+        supabase = get_supabase()
+        c = supabase.table("board_comments").select("staff_name,facility_code").eq("id", data["id"]).execute()
+        if not c.data: return jsonify({"status": "error", "message": "見つかりません"}), 404
+        if c.data[0]["facility_code"] != f_code: return jsonify({"status": "error"}), 403
+        # 編集可: 本人 OR 管理者 OR 掲示板編集権限ありのスタッフ
+        can_edit = (c.data[0]["staff_name"] == my_name) or is_board_editor_user(supabase, f_code, my_name, is_admin)
+        if not can_edit:
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+        new_content = data.get("content", "").strip()
+        if not new_content:
+            return jsonify({"status": "error", "message": "本文が空です"}), 400
+        supabase.table("board_comments").update({
+            "content": new_content
+        }).eq("id", data["id"]).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/board/delete_comment", methods=["POST"])
 @login_required
 def api_board_delete_comment():
@@ -4358,9 +4388,13 @@ def api_board_delete_comment():
         my_name = session["my_name"]
         is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
-        c = supabase.table("board_comments").select("staff_name").eq("id", data["id"]).execute()
+        # facility_code も取得して別施設のコメント操作を防ぐ
+        c = supabase.table("board_comments").select("staff_name,facility_code").eq("id", data["id"]).execute()
         if not c.data: return jsonify({"status": "error"}), 404
-        if not is_admin and c.data[0]["staff_name"] != my_name:
+        if c.data[0]["facility_code"] != f_code: return jsonify({"status": "error"}), 403
+        # 削除可: 本人 OR 管理者 OR 掲示板編集権限ありのスタッフ
+        can_edit = (c.data[0]["staff_name"] == my_name) or is_board_editor_user(supabase, f_code, my_name, is_admin)
+        if not can_edit:
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         supabase.table("board_comments").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
