@@ -689,6 +689,11 @@ body.modal-open .bottom-nav {
     background: none; border: none; cursor: pointer;
     color: #ccc; padding: 0; display: none;
 }
+.comment-edit-btn {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; padding: 0; display: none;
+}
+.comment-item:hover .comment-edit-btn { display: block; }
 .comment-item:hover .comment-delete-btn { display: block; }
 
 .comments-input-area {
@@ -1024,6 +1029,25 @@ body.modal-open .bottom-nav {
             </button>
         </div>
     </div>
+    <!-- コメント編集モーダル -->
+<div class="comments-drawer" id="comment-edit-drawer">
+    <div class="comments-sheet">
+        <div class="comments-header">
+            <div class="comments-title">✏️ コメント編集</div>
+            <button class="comments-close" id="comment-edit-close-btn">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div style="padding: 14px;">
+            <textarea class="comments-textarea" id="comment-edit-textarea" placeholder="コメントを編集..." rows="4" style="height: 100px;"></textarea>
+            <input type="hidden" id="comment-edit-id">
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button id="comment-edit-cancel-btn" style="flex: 1; padding: 10px; border: 1.5px solid #e0e0e0; border-radius: 10px; background: #fff; color: #5f6368; font-size: 0.9rem; font-weight: 700; cursor: pointer;">キャンセル</button>
+                <button id="comment-edit-save-btn" style="flex: 1; padding: 10px; border: none; border-radius: 10px; background: #1a73e8; color: #fff; font-size: 0.9rem; font-weight: 700; cursor: pointer;">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <!-- 投稿作成モーダル -->
@@ -2258,12 +2282,13 @@ async function loadComments(postId) {
                 ? '<img src="' + c.image_url + '" style="width:100%;height:100%;object-fit:cover;">'
                 : c.emoji ? '<span style="font-size:16px;">' + c.emoji + '</span>'
                 : c.initial || '?';
-            var deleteBtn = (c.is_mine) ? '<button class="comment-delete-btn" data-id="' + c.id + '"><span class="material-symbols-outlined" style="font-size:14px;">close</span></button>' : '';
+            var editBtn = (c.can_edit) ? '<button class="comment-edit-btn" data-id="' + c.id + '"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>' : '';
+            var deleteBtn = (c.can_edit) ? '<button class="comment-delete-btn" data-id="' + c.id + '"><span class="material-symbols-outlined" style="font-size:14px;">close</span></button>' : '';
             var contentHTML = c.content.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
             el.innerHTML = '<div class="comment-avatar" style="background:' + c.color + ';">' + avatarHTML + '</div>'
                 + '<div class="comment-body">'
                 + '<div class="comment-header"><span class="comment-author">' + c.staff_name + '</span>'
-                + '<span class="comment-time">' + c.time_label + '</span>' + deleteBtn + '</div>'
+                + '<span class="comment-time">' + c.time_label + '</span>' + editBtn + deleteBtn + '</div>'
                 + '<div class="comment-text">' + contentHTML + '</div>'
                 + '</div>';
             list.appendChild(el);
@@ -2280,6 +2305,43 @@ async function loadComments(postId) {
                     document.getElementById('comment-' + this.dataset.id)?.remove();
                 }
             });
+        });
+        // 編集モーダルを閉じる
+        document.getElementById('comment-edit-close-btn').addEventListener('click', function() {
+            document.getElementById('comment-edit-drawer').classList.remove('show');
+        });
+        // 編集モーダルのキャンセルボタン
+        document.getElementById('comment-edit-cancel-btn').addEventListener('click', function() {
+            document.getElementById('comment-edit-drawer').classList.remove('show');
+        });
+        // 編集ボタン
+        list.querySelectorAll('.comment-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var commentId = this.dataset.id;
+                var commentEl = document.getElementById('comment-' + commentId);
+                var commentText = commentEl.querySelector('.comment-text').textContent;
+                document.getElementById('comment-edit-id').value = commentId;
+                document.getElementById('comment-edit-textarea').value = commentText;
+                document.getElementById('comment-edit-drawer').classList.add('show');
+            });
+        });
+        // 保存ボタン
+        document.getElementById('comment-edit-save-btn').addEventListener('click', async function() {
+            var commentId = document.getElementById('comment-edit-id').value;
+            var newContent = document.getElementById('comment-edit-textarea').value.trim();
+            if (!newContent) { alert('内容を入力してください'); return; }
+            var r = await fetch('/api/board/update_comment', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: parseInt(commentId), content: newContent })
+            });
+            if ((await r.json()).status === 'success') {
+                document.getElementById('comment-' + commentId)
+                    .querySelector('.comment-text')
+                    .innerHTML = newContent.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
+                document.getElementById('comment-edit-drawer').classList.remove('show');
+                alert('コメントを更新しました');
+            }
         });
         list.scrollTop = list.scrollHeight;
     } catch(e) {}
