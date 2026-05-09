@@ -160,3 +160,88 @@ def upload_audio_to_supabase(supabase, audio_bytes, filename, f_code):
     except Exception as e:
         print(f"音声アップロードエラー: {e}", flush=True)
         return ""
+
+
+# ==========================================
+# Session 29 (B-4): ケース記録のAI検索タグ自動生成
+# ==========================================
+def generate_search_tags(content, category=""):
+    """
+    ケース記録の本文(+カテゴリ)から検索用タグを生成する。
+
+    形式: 1つの概念につき [漢字, ひらがな, カタカナ] の3バリエーションを抽出。
+    複数概念があれば全部にそれぞれ3バリエーションを付ける。
+    例:
+      入力: "食事の様子。褥瘡の発赤あり。"
+      出力: ["食事","しょくじ","ショクジ","褥瘡","じょくそう","ジョクソウ","発赤","ほっせき","ホッセキ"]
+
+    モデル: Gemini 2.5 Flash (FastGeminiModel のフォールバックで)
+    失敗時は空配列を返す(呼び出し側のメイン処理を止めない)。
+
+    Args:
+        content (str): ケース記録の本文
+        category (str): カテゴリ名(任意)。"その他" 以外なら先頭タグとして含める。
+
+    Returns:
+        list[str]: タグ配列。失敗時は []。
+    """
+    if not content or not content.strip():
+        return []
+
+    try:
+        prompt = (
+            "以下の介護記録から、検索用のキーワードタグを抽出してください。\n\n"
+            "【ルール】\n"
+            "1. 本文中の重要な概念(症状・行為・状態・出来事・身体部位など)を抽出してください\n"
+            "2. 各概念について、必ず3バリエーション(漢字表記・ひらがな表記・カタカナ表記)を出してください\n"
+            "3. 概念が複数あれば、それぞれ3バリエーションずつ出してください\n"
+            "4. 一般的すぎる語(「今日」「とても」「様子」など)は除外してください\n"
+            "5. JSON配列のみを返してください(説明文・コードブロック不要)\n\n"
+            "【入力】\n"
+            f"カテゴリ: {category or '(指定なし)'}\n"
+            f"本文: {content}\n\n"
+            "【出力例】\n"
+            "本文「入浴介助中に右足首に発赤あり。褥瘡の初期と判断。」\n"
+            '出力: ["入浴","にゅうよく","ニュウヨク","発赤","ほっせき","ホッセキ","褥瘡","じょくそう","ジョクソウ"]\n\n'
+            "【出力】"
+        )
+        model = get_generative_model()
+        resp = model.generate_content([prompt])
+        text = (resp.text or "").strip()
+
+        import re as _re
+        import json as _json
+
+        # ```json ... ``` で囲まれていても拾えるよう、最初の [ から最後の ] までを抜く
+        m = _re.search(r'\[.*\]', text, _re.DOTALL)
+        if not m:
+            return []
+
+        tags_raw = _json.loads(m.group())
+        if not isinstance(tags_raw, list):
+            return []
+
+        # サニタイズ: 文字列のみ・空除外・重複除外・長すぎ除外・上限30個
+        seen = set()
+        result = []
+        # カテゴリは最初に入れる("その他"は意味が薄いので除外)
+        if category and category.strip() and category.strip() != "その他":
+            cat = category.strip()
+            seen.add(cat)
+            result.append(cat)
+        for t in tags_raw:
+            if not isinstance(t, str):
+                continue
+            t = t.strip()
+            if not t or len(t) > 30 or t in seen:
+                continue
+            seen.add(t)
+            result.append(t)
+            if len(result) >= 30:
+                break
+        return result
+
+    except Exception as e:
+        # メイン処理を止めないため、ログだけ出して空配列を返す
+        print(f"[generate_search_tags] failed: {e}", flush=True)
+        return []

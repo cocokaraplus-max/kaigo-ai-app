@@ -481,6 +481,136 @@
     font-size: 18px;
 }
 
+/* Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル */
+.cr-search-fab {
+    position: fixed;
+    bottom: 152px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #ec4899;
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 950;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.cr-search-fab:hover { transform: scale(1.05); box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.cr-search-fab:active { transform: scale(0.95); }
+.cr-search-fab .material-symbols-outlined { font-size: 28px; }
+
+.cr-search-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 0;
+}
+.cr-search-modal.is-open { display: flex; }
+.cr-search-modal-content {
+    background: #fff;
+    width: 100%;
+    max-width: 480px;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.cr-search-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+}
+.cr-search-modal-header h3 { margin: 0; font-size: 1.1rem; color: #1a73e8; }
+.cr-search-modal-header button {
+    background: none; border: none; cursor: pointer; padding: 6px;
+    display: flex; align-items: center; justify-content: center;
+}
+.cr-search-modal-header button .material-symbols-outlined { font-size: 26px; color: #5f6368; }
+
+.cr-search-form { display: flex; flex-direction: column; gap: 10px; }
+.cr-search-form label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.85rem; color: #5f6368;
+}
+.cr-search-form input[type="text"],
+.cr-search-form input[type="date"],
+.cr-search-form select {
+    padding: 10px;
+    font-size: 1rem;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    background: #fff;
+    color: #202124;
+    box-sizing: border-box;
+    width: 100%;
+}
+.cr-search-form input[type="text"]:focus,
+.cr-search-form input[type="date"]:focus,
+.cr-search-form select:focus {
+    outline: none; border-color: #1a73e8; box-shadow: 0 0 0 3px rgba(26,115,232,0.15);
+}
+.cr-search-form-row { display: flex; gap: 8px; }
+.cr-search-form-row > label { flex: 1; }
+.cr-search-actions { display: flex; gap: 8px; margin-top: 4px; }
+.cr-search-actions button {
+    flex: 1;
+    padding: 12px;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+.cr-search-actions .cr-search-submit { background: #1a73e8; color: #fff; }
+.cr-search-actions .cr-search-submit:disabled { background: #9aa0a6; cursor: not-allowed; }
+.cr-search-actions .cr-search-clear { background: #f1f3f4; color: #5f6368; }
+
+.cr-search-status {
+    font-size: 0.85rem; color: #5f6368; padding: 4px 0;
+}
+.cr-search-results { display: flex; flex-direction: column; gap: 8px; }
+.cr-search-result-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.cr-search-result-item:hover { background: #f8f9fa; border-color: #1a73e8; }
+.cr-search-result-meta {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    font-size: 0.78rem; color: #5f6368; margin-bottom: 6px;
+}
+.cr-search-result-meta .cr-tag {
+    background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+}
+.cr-search-result-meta .cr-cat {
+    background: #fce8e6; color: #c5221f; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+}
+.cr-search-result-snippet {
+    font-size: 0.92rem; color: #202124; line-height: 1.5; word-break: break-word;
+}
+.cr-search-result-snippet mark {
+    background: #fff3a3; color: inherit; padding: 0 2px; border-radius: 2px;
+}
+.cr-search-empty, .cr-search-loading {
+    text-align: center; padding: 32px 16px; color: #5f6368;
+}
+
 </style>
 
 
@@ -688,6 +818,54 @@
         読み込み中...
     </div>
     <div id="dv-unread-list"></div>
+</div>
+
+<!-- Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル -->
+<button id="cr-search-fab" class="cr-search-fab" type="button" aria-label="ケース記録を検索" onclick="crOpenSearch()">
+    <span class="material-symbols-outlined">search</span>
+</button>
+
+<div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
+    <div class="cr-search-modal-content">
+        <div class="cr-search-modal-header">
+            <h3>ケース記録を検索</h3>
+            <button type="button" aria-label="閉じる" onclick="crCloseSearch()">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="cr-search-form">
+            <label>
+                キーワード(空白区切りでAND検索)
+                <input type="text" id="cr-q" placeholder="例: 褥瘡 入浴" autocomplete="off">
+            </label>
+            <div class="cr-search-form-row">
+                <label>
+                    カテゴリ
+                    <select id="cr-category"><option value="">すべて</option></select>
+                </label>
+                <label>
+                    利用者
+                    <select id="cr-user"><option value="">すべて</option></select>
+                </label>
+            </div>
+            <div class="cr-search-form-row">
+                <label>
+                    開始日
+                    <input type="date" id="cr-from">
+                </label>
+                <label>
+                    終了日
+                    <input type="date" id="cr-to">
+                </label>
+            </div>
+            <div class="cr-search-actions">
+                <button type="button" class="cr-search-clear" onclick="crClearSearch()">クリア</button>
+                <button type="button" class="cr-search-submit" id="cr-search-submit-btn" onclick="crRunSearch()">検索</button>
+            </div>
+        </div>
+        <div id="cr-search-status" class="cr-search-status"></div>
+        <div id="cr-search-results" class="cr-search-results"></div>
+    </div>
 </div>
 
 <a href="/top" class="back-btn">
@@ -1252,5 +1430,174 @@ window.markRecordReadByTap = async function(recordId) {
 };
 
 })();
+
+// ===== Session 29 (B-5): ケース記録キーワード検索 =====
+let crCategoriesLoaded = false;
+
+window.crOpenSearch = function() {
+    const modal = document.getElementById('cr-search-modal');
+    // body直下に移動(stacking context問題でbottom-navより上に来ない場合の対策)
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+    modal.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    // 利用者リストは既存PATIENTSから初回のみ流し込み
+    const userSel = document.getElementById('cr-user');
+    if (userSel.options.length <= 1 && Array.isArray(PATIENTS)) {
+        const sorted = [...PATIENTS].sort((a, b) =>
+            (a.user_kana || a.user_name || '').localeCompare(b.user_kana || b.user_name || '', 'ja')
+        );
+        for (const p of sorted) {
+            const opt = document.createElement('option');
+            opt.value = p.user_name;
+            opt.textContent = p.user_name;
+            userSel.appendChild(opt);
+        }
+    }
+    // カテゴリは初回のみAPI取得
+    if (!crCategoriesLoaded) {
+        crCategoriesLoaded = true;
+        fetch('/api/records/search/categories', {credentials: 'same-origin'})
+            .then(r => r.json())
+            .then(j => {
+                const sel = document.getElementById('cr-category');
+                for (const c of (j.categories || [])) {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c;
+                    sel.appendChild(opt);
+                }
+            }).catch(() => {});
+    }
+    setTimeout(() => document.getElementById('cr-q').focus(), 100);
+};
+
+window.crCloseSearch = function() {
+    document.getElementById('cr-search-modal').classList.remove('is-open');
+    document.body.style.overflow = '';
+};
+
+window.crClearSearch = function() {
+    document.getElementById('cr-q').value = '';
+    document.getElementById('cr-category').value = '';
+    document.getElementById('cr-user').value = '';
+    document.getElementById('cr-from').value = '';
+    document.getElementById('cr-to').value = '';
+    document.getElementById('cr-search-status').textContent = '';
+    document.getElementById('cr-search-results').innerHTML = '';
+};
+
+window.crRunSearch = async function() {
+    const q = document.getElementById('cr-q').value.trim();
+    const category = document.getElementById('cr-category').value;
+    const user_name = document.getElementById('cr-user').value;
+    const dfrom = document.getElementById('cr-from').value;
+    const dto = document.getElementById('cr-to').value;
+
+    if (!q && !category && !user_name && !dfrom && !dto) {
+        document.getElementById('cr-search-status').textContent = '検索条件を1つ以上入力してください。';
+        document.getElementById('cr-search-results').innerHTML = '';
+        return;
+    }
+
+    const btn = document.getElementById('cr-search-submit-btn');
+    btn.disabled = true;
+    document.getElementById('cr-search-status').textContent = '';
+    document.getElementById('cr-search-results').innerHTML =
+        '<div class="cr-search-loading"><span class="material-symbols-outlined">hourglass_top</span> 検索中…</div>';
+
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (category) params.set('category', category);
+    if (user_name) params.set('user_name', user_name);
+    if (dfrom) params.set('from', dfrom);
+    if (dto) params.set('to', dto);
+
+    try {
+        const res = await fetch('/api/records/search?' + params.toString(), {credentials: 'same-origin'});
+        const data = await res.json();
+        crRenderResults(data, q);
+    } catch (e) {
+        document.getElementById('cr-search-results').innerHTML = '';
+        document.getElementById('cr-search-status').textContent = '検索に失敗しました。時間をおいて再度お試しください。';
+    } finally {
+        btn.disabled = false;
+    }
+};
+
+function crRenderResults(data, q) {
+    const statusEl = document.getElementById('cr-search-status');
+    const listEl = document.getElementById('cr-search-results');
+    const results = (data && data.results) || [];
+
+    if (results.length === 0) {
+        statusEl.textContent = '該当する記録はありませんでした。';
+        listEl.innerHTML = '';
+        return;
+    }
+
+    const limited = data.limited;
+    statusEl.textContent = `${results.length}件${limited ? '(上位100件まで表示)' : ''}`;
+
+    const keywords = (q || '').split(/[\s\u3000]+/).filter(Boolean);
+    const frag = document.createDocumentFragment();
+    for (const r of results) {
+        const item = document.createElement('div');
+        item.className = 'cr-search-result-item';
+        const dateStr = (r.created_at || '').slice(0, 10);
+        const dispDate = dateStr.replace(/^\d{4}-/, '').replace('-', '/');
+        const meta = document.createElement('div');
+        meta.className = 'cr-search-result-meta';
+        meta.innerHTML =
+            `<span class="cr-tag">${crEscapeHtml(r.user_name || '')}</span>` +
+            (r.category ? `<span class="cr-cat">${crEscapeHtml(r.category)}</span>` : '') +
+            `<span>${crEscapeHtml(dispDate)}</span>` +
+            `<span>${crEscapeHtml(r.staff_name || '')}</span>`;
+        const snip = document.createElement('div');
+        snip.className = 'cr-search-result-snippet';
+        snip.innerHTML = crHighlightKeywords(r.snippet || '', keywords);
+        item.appendChild(meta);
+        item.appendChild(snip);
+        item.addEventListener('click', () => {
+            const url = `/daily_view?date=${encodeURIComponent(dateStr)}&user=${encodeURIComponent(r.user_name || '')}`;
+            window.location.href = url;
+        });
+        frag.appendChild(item);
+    }
+    listEl.innerHTML = '';
+    listEl.appendChild(frag);
+}
+
+function crEscapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+}
+
+function crHighlightKeywords(text, keywords) {
+    let html = crEscapeHtml(text);
+    if (!keywords || keywords.length === 0) return html;
+    // 長い順に置換(短い語が長い語の中にある場合の上書き防止)
+    const sorted = [...keywords].sort((a, b) => b.length - a.length);
+    for (const kw of sorted) {
+        if (!kw) continue;
+        const escKw = crEscapeHtml(kw).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        html = html.replace(new RegExp(escKw, 'g'), '<mark>$&</mark>');
+    }
+    return html;
+}
+
+// Escでモーダル閉じる
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const m = document.getElementById('cr-search-modal');
+        if (m && m.classList.contains('is-open')) crCloseSearch();
+    }
+});
+// 背景クリックで閉じる
+document.getElementById('cr-search-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) crCloseSearch();
+});
 </script>
 {% endblock %}
