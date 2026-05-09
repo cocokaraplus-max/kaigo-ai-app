@@ -221,6 +221,10 @@
             <div class="toc-ic" style="background:#ff9800;"><span class="material-symbols-outlined" style="color:#fff;">edit_note</span></div>
             <span class="toc-lbl">記録入力</span>
         </a>
+        <a class="toc-a" style="background:#fff0f6;" href="#s-records">
+            <div class="toc-ic" style="background:#ec4899;"><span class="material-symbols-outlined" style="color:#fff;">search</span></div>
+            <span class="toc-lbl">ケース記録</span>
+        </a>
         <a class="toc-a" style="background:#fce4ec;" href="#s-board">
             <div class="toc-ic" style="background:#e91e63;"><span class="material-symbols-outlined" style="color:#fff;">campaign</span></div>
             <span class="toc-lbl">掲示板</span>
@@ -441,6 +445,150 @@
         <img src="/static/img/guide/category-open.png" alt="カテゴリ選択パネル(開いた状態)" class="gd-shot">
         <div class="gd-shot-cap">↑ 8つのカテゴリから選択<br>(色付きの丸で見分けやすい)</div>
 
+    </div>
+</div>
+
+<!-- ===== ケース記録(検索・閲覧) ===== -->
+<div class="sc" id="s-records">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#fff0f6;"><span class="material-symbols-outlined" style="font-size:26px;color:#ec4899;">search</span></div>
+        <div><div class="sc-ttl">ケース記録</div><div class="sc-sub">過去の記録を見る・キーワードで探す</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">過去の記録を<b>カレンダー・利用者別・キーワード</b>の3つの方法で探せるよ🔍<br>「あの時の褥瘡の記録、どこだっけ?」がすぐ見つかる！</div>
+        </div>
+
+        <!-- 3つの探し方フロー -->
+        <div class="point-box">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">tab</span>3つの探し方</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                ・<b>📅 今日</b> — カレンダーから日付を選んで、その日の全記録を表示<br>
+                ・<b>👤 利用者</b> — 特定の利用者の記録だけを月単位で表示<br>
+                ・<b>🔔 未読</b> — 自分が見ていない閲覧必須の記録だけ表示
+            </div>
+        </div>
+
+        <!-- 画面モック: ケース記録閲覧 -->
+        <div class="phone-mock">
+            <div class="phone-mock-bar">
+                <div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">calendar_month</span>ケース記録閲覧</div>
+            </div>
+            <div class="phone-mock-body" style="position:relative;min-height:160px;">
+                <!-- 3タブ -->
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <div style="flex:1;background:#1a73e8;color:#fff;border-radius:8px;padding:6px;text-align:center;font-size:0.72rem;font-weight:700;">📅 今日</div>
+                    <div style="flex:1;background:#f8f9fa;color:#5f6368;border-radius:8px;padding:6px;text-align:center;font-size:0.72rem;">👤 利用者</div>
+                    <div style="flex:1;background:#f8f9fa;color:#5f6368;border-radius:8px;padding:6px;text-align:center;font-size:0.72rem;">🔔 未読</div>
+                </div>
+                <!-- カレンダー風 -->
+                <div style="background:#1a73e8;color:#fff;text-align:center;padding:4px;border-radius:6px 6px 0 0;font-size:0.72rem;font-weight:700;">2026年5月</div>
+                <div style="background:#fff;border:1px solid #e0e0e0;border-top:none;padding:6px;border-radius:0 0 6px 6px;">
+                    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:0.65rem;text-align:center;">
+                        <div style="color:#dc2626;">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div style="color:#1a73e8;">土</div>
+                        <div></div><div></div><div></div><div></div><div></div><div>1</div><div style="background:#e8f5e9;border-radius:4px;">2</div>
+                        <div style="color:#dc2626;">3</div><div>4</div><div>5</div><div style="background:#1a73e8;color:#fff;border-radius:4px;font-weight:700;">6</div><div>7</div><div>8</div><div style="background:#e8f5e9;border-radius:4px;">9</div>
+                    </div>
+                </div>
+                <!-- ピンクの検索FAB -->
+                <div style="position:absolute;right:8px;bottom:8px;width:36px;height:36px;background:#ec4899;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(236,72,153,0.4);">
+                    <span class="material-symbols-outlined" style="font-size:20px;color:#fff;">search</span>
+                </div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">↑ ケース記録閲覧画面。右下のピンク🔍ボタンが検索ボタン</div>
+
+        <!-- ===== キーワード検索の解説 ===== -->
+        <div class="mb" style="margin-top:18px;">
+            <img src="/static/tasukaru_onegai.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text"><b>キーワード検索</b>を使えば<br>本文に書かれた言葉から記録を一発で見つけられるよ🔎</div>
+        </div>
+
+        <!-- 検索フロー -->
+        <div class="flow">
+            <div class="flow-step"><div class="flow-num" style="background:#ec4899;"><span class="material-symbols-outlined" style="font-size:14px;">search</span></div><div class="flow-lbl">🔍ボタン<br>タップ</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#ec4899;"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></div><div class="flow-lbl">キーワード<br>入力</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#ec4899;"><span class="material-symbols-outlined" style="font-size:14px;">filter_alt</span></div><div class="flow-lbl">条件で<br>絞り込み</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#34a853;"><span class="material-symbols-outlined" style="font-size:14px;">check_circle</span></div><div class="flow-lbl">結果を<br>タップ</div></div>
+        </div>
+
+        <!-- 検索モーダルのモック -->
+        <div class="phone-mock">
+            <div class="phone-mock-bar">
+                <div class="phone-mock-title" style="color:#ec4899;"><span class="material-symbols-outlined" style="font-size:16px;">search</span>ケース記録を検索</div>
+            </div>
+            <div class="phone-mock-body">
+                <!-- キーワード -->
+                <div style="font-size:0.7rem;color:#5f6368;margin-bottom:3px;">キーワード(空白区切りでAND検索)</div>
+                <div style="background:#fff;border:1.5px solid #1a73e8;border-radius:8px;padding:6px 10px;font-size:0.78rem;color:#202124;margin-bottom:8px;box-shadow:0 0 0 3px rgba(26,115,232,0.15);">褥瘡 入浴</div>
+                <!-- カテゴリ・利用者 -->
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <div style="font-size:0.65rem;color:#5f6368;margin-bottom:2px;">カテゴリ</div>
+                        <div style="background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:6px;padding:5px 8px;font-size:0.72rem;">入浴 ▾</div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:0.65rem;color:#5f6368;margin-bottom:2px;">利用者</div>
+                        <div style="background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:6px;padding:5px 8px;font-size:0.72rem;">すべて ▾</div>
+                    </div>
+                </div>
+                <!-- 検索ボタン -->
+                <div style="background:#1a73e8;color:#fff;border-radius:8px;padding:8px;text-align:center;font-size:0.78rem;font-weight:700;margin-bottom:10px;">検索</div>
+                <!-- 結果1件 -->
+                <div style="font-size:0.7rem;color:#5f6368;margin-bottom:4px;">3件</div>
+                <div style="border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fff;">
+                    <div style="display:flex;gap:4px;align-items:center;font-size:0.62rem;color:#5f6368;margin-bottom:4px;flex-wrap:wrap;">
+                        <span style="background:#e8f0fe;color:#1a73e8;padding:1px 6px;border-radius:999px;font-weight:700;">山田 太郎</span>
+                        <span style="background:#fce8e6;color:#c5221f;padding:1px 6px;border-radius:999px;font-weight:700;">入浴</span>
+                        <span>04/23</span>
+                    </div>
+                    <div style="font-size:0.7rem;color:#202124;line-height:1.5;">背部に<mark style="background:#fff3a3;padding:0 2px;border-radius:2px;">褥瘡</mark>の発赤あり。看護師に報告。</div>
+                </div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">↑ 検索モーダル(キーワードに「褥瘡 入浴」、結果がハイライト表示される)</div>
+
+        <!-- ステップ -->
+        <div class="steps">
+            <div class="step">
+                <div class="step-n" style="background:#ec4899;">1</div>
+                <div><div class="step-t">右下のピンク🔍ボタンをタップ</div><div class="step-d">ケース記録閲覧画面の右下にあるピンクのボタンが検索ボタンです</div></div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#ec4899;">2</div>
+                <div><div class="step-t">キーワードを入力</div><div class="step-d">「褥瘡」「発熱」「転倒」など本文中の言葉を入れます。漢字でもひらがな・カタカナでも同じ結果が出ます(例:「じょくそう」「ジョクソウ」も同じ件数ヒット)</div></div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#ec4899;">3</div>
+                <div><div class="step-t">複数語でAND検索もできる</div><div class="step-d">空白で区切ると、両方の言葉を含む記録だけに絞り込めます。例:「褥瘡 入浴」→ 入浴中の褥瘡記録だけが出る</div></div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#ec4899;">4</div>
+                <div><div class="step-t">カテゴリ・利用者・期間で絞り込み</div><div class="step-d">キーワードに加えて、カテゴリ(入浴/食事/排泄など)や特定の利用者・期間でさらに絞れます</div></div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#34a853;">5</div>
+                <div><div class="step-t">結果をタップで該当日に飛ぶ</div><div class="step-d">検索結果のカードをタップすると、その記録の日付・利用者でケース記録が開きます</div></div>
+            </div>
+        </div>
+
+        <!-- ヒント: AIタグ -->
+        <div class="point-box" style="margin-top:14px;">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>AIが自動でタグを付けてます</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                記録を新規投稿すると、AIが本文を読んで重要な言葉(症状・行為・身体部位など)を自動で抽出し、検索用のタグとして保存します。<br>
+                各タグには<b>漢字・ひらがな・カタカナの3バリエーション</b>が付くので、表記ゆれを気にせず検索できます。
+            </div>
+        </div>
+
+        <div class="hint" style="background:#fff0f6;color:#9d174d;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>結果は新しい順に最大100件まで表示されます。100件を超える場合は「上位100件まで表示」と出るので、期間や利用者で絞り込んでください。</span>
+        </div>
     </div>
 </div>
 
