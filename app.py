@@ -4450,20 +4450,9 @@ def api_board_mark_all_read():
             if to_insert:
                 supabase.table("board_reads").insert(to_insert).execute()
                 post_added = len(to_insert)
-        # 自分以外作の全コメントを既読化
-        comment_added = 0
-        try:
-            ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).execute()
-            other_ids = [c["id"] for c in (ccs.data or []) if c["staff_name"] != my_name]
-            if other_ids:
-                already = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
-                already_ids = set(r["comment_id"] for r in (already.data or []))
-                cto_insert = [{"comment_id": cid, "facility_code": f_code, "staff_name": my_name} for cid in other_ids if cid not in already_ids]
-                if cto_insert:
-                    supabase.table("board_comment_reads").insert(cto_insert).execute()
-                    comment_added = len(cto_insert)
-        except: pass
-        return jsonify({"status": "success", "count": post_added + comment_added, "posts": post_added, "comments": comment_added})
+        # コメントは「実際に開いて見るまで未読」にしたいので、ここでは既読化しない
+        # (Session 26 PR-A: 自動コメント既読化を削除)
+        return jsonify({"status": "success", "count": post_added, "posts": post_added, "comments": 0})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
