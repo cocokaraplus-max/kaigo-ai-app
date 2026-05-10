@@ -501,43 +501,124 @@ function aicApplyUpdateCount() {
     document.getElementById('aic-apply-btn').disabled = (cbs.length === 0);
 }
 
-async function aicApply() {
-    const items = [];
-    document.querySelectorAll('.aic-apply-cb:checked').forEach(cb => {
-        const item = cb.closest('.aic-result-item');
-        if (!item) return;
-        items.push({
-            record_id: parseInt(item.dataset.recordId, 10),
-            new_category: item.dataset.newCategory,
-            ai_reason: item.dataset.aiReason || '',
-        });
-    });
-    if (items.length === 0) return;
-    if (!confirm(`${items.length} 件にカテゴリ変更を適用します。よろしいですか?\n(後で履歴からロールバック可能)`)) return;
+// === Hotfix-2: aicApply 堅牢化 (iOS Safari 対応) ===
+function _aicApplyResetBtn(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
+}
 
-    const btn = document.getElementById('aic-apply-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">hourglass_empty</span>適用中...';
-
+async function _aicApplyFetchWithTimeout(url, options, timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const resp = await fetch('/api/admin/ai-categorize/apply', {
+        return await fetch(url, Object.assign({}, options, {signal: ctrl.signal}));
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function aicApply() {
+    let _aicApplyV2 = true;
+    let items = [];
+    let bodyJson = null;
+    const btn = document.getElementById('aic-apply-btn');
+
+    // === Phase 1: チェック済みアイテムを収集 (どこでエラー出るか細かく追跡) ===
+    try {
+        document.querySelectorAll('.aic-apply-cb:checked').forEach(cb => {
+            const item = cb.closest('.aic-result-item');
+            if (!item) return;
+            const ridRaw = item.dataset.recordId;
+            const newCat = item.dataset.newCategory;
+            const reason = item.dataset.aiReason || '';
+            const rid = parseInt(ridRaw, 10);
+            // 不正データの混入を弾く(NaN, 空カテゴリ, 制御文字など)
+            if (!Number.isFinite(rid) || !newCat) {
+                console.warn('[aicApply] skip invalid item: rid=' + ridRaw + ' newCat=' + newCat);
+                return;
+            }
+            items.push({
+                record_id: rid,
+                new_category: String(newCat).trim(),
+                ai_reason: String(reason).trim(),
+            });
+        });
+    } catch (e) {
+        alert('対象収集エラー: ' + (e && e.message ? e.message : '不明'));
+        return;
+    }
+
+    if (items.length === 0) return;
+    if (!confirm(items.length + ' 件にカテゴリ変更を適用します。よろしいですか?\n(後で履歴からロールバック可能)')) return;
+
+    // === Phase 2: JSON body 生成 ===
+    try {
+        bodyJson = JSON.stringify({items: items});
+    } catch (e) {
+        alert('リクエスト生成エラー: ' + (e && e.message ? e.message : '不明'));
+        return;
+    }
+
+    // === Phase 3: fetch 実行 ===
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">hourglass_empty</span>適用中...';
+    }
+
+    let resp = null;
+    let fetchErr = null;
+    try {
+        resp = await _aicApplyFetchWithTimeout('/api/admin/ai-categorize/apply', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({items})
-        });
-        const data = await resp.json();
-        if (!data.ok) {
-            alert('適用エラー: ' + (data.error || '不明'));
-            btn.disabled = false;
-            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
-            return;
+            body: bodyJson
+        }, 90000);  // 60件超えるかもなので90秒
+    } catch (e) {
+        if (e && e.name === 'AbortError') {
+            fetchErr = '通信タイムアウト(90秒)。サーバ側で適用済みかもしれません。「ページをリロード」して履歴を確認してください。';
+        } else {
+            fetchErr = '送信時エラー(Phase 3): ' + (e && e.message ? e.message : '不明') + '\n※サーバ到達前のブラウザ側エラーの可能性。再度お試しください。';
         }
+    }
+
+    if (fetchErr) {
+        _aicApplyResetBtn(btn);
+        alert(fetchErr);
+        return;
+    }
+
+    if (!resp || !resp.ok) {
+        _aicApplyResetBtn(btn);
+        alert('サーバエラー: HTTP ' + (resp ? resp.status : 'no response'));
+        return;
+    }
+
+    // === Phase 4: レスポンス解析 ===
+    let data = null;
+    try {
+        data = await resp.json();
+    } catch (e) {
+        _aicApplyResetBtn(btn);
+        alert('応答解析エラー(Phase 4): ' + (e && e.message ? e.message : '不明') + '\nページをリロードして履歴を確認してください。');
+        return;
+    }
+
+    if (!data || !data.ok) {
+        _aicApplyResetBtn(btn);
+        alert('適用エラー: ' + ((data && data.error) || '不明'));
+        return;
+    }
+
+    // === Phase 5: UI 更新 (失敗してもデータは適用済み) ===
+    try {
         const errCount = (data.errors || []).length;
-        const msg = `${data.applied_count}/${data.total} 件適用完了。` +
-                    (errCount > 0 ? ` (失敗 ${errCount} 件)` : '') +
-                    `\nbatch_id: ${data.batch_id.slice(0, 8)}...`;
+        const batchShort = data.batch_id ? String(data.batch_id).slice(0, 8) + '...' : '(no batch)';
+        const msg = data.applied_count + '/' + data.total + ' 件適用完了。' +
+                    (errCount > 0 ? ' (失敗 ' + errCount + ' 件)' : '') +
+                    '\nbatch_id: ' + batchShort;
         alert(msg);
-        // 適用済みアイテムを画面から消す or グレーアウト
+
         document.querySelectorAll('.aic-apply-cb:checked').forEach(cb => {
             const item = cb.closest('.aic-result-item');
             if (item) {
@@ -547,12 +628,10 @@ async function aicApply() {
             }
         });
         aicApplyUpdateCount();
-        btn.disabled = false;
-        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
     } catch (e) {
-        alert('通信エラー: ' + e.message);
-        btn.disabled = false;
-        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
+        alert('UI更新エラー(Phase 5、データは適用済み): ' + (e && e.message ? e.message : '不明') + '\nページをリロードしてください。');
+    } finally {
+        _aicApplyResetBtn(btn);
     }
 }
 
