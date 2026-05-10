@@ -839,7 +839,7 @@
                     <span class="material-symbols-outlined" style="color:white;">delete</span>
                     削除
                 </button>
-                <button class="aic-card-judge-btn" onclick="aicCardJudge('{{ r.id }}')" title="AIカテゴリ判定">
+                <button class="aic-card-judge-btn" onclick="aicCardJudge('{{ r.id }}', this)" title="AIカテゴリ判定">
                     <span class="material-symbols-outlined" style="font-size:14px;">auto_awesome</span>
                     AI判定
                 </button>
@@ -1693,11 +1693,36 @@ document.getElementById('cr-search-modal')?.addEventListener('click', (e) => {
 </div>
 
 <script>
-// === Session 31 Step 6: カードAI判定 ===
-let _aicCardCurrent = null;
+// === Session 31 Hotfix: カードAI判定 (iOS Safari 対応堅牢化) ===
+let _aicCardCurrent_v2 = null;
 
-async function aicCardJudge(recordId) {
-    const btn = event.currentTarget;
+// fetch にタイムアウトを付ける小ヘルパ (AbortController利用)
+async function _aicCardFetchWithTimeout(url, options, timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const resp = await fetch(url, Object.assign({}, options, {signal: ctrl.signal}));
+        return resp;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function _aicCardResetJudgeBtn(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">auto_awesome</span>AI判定';
+}
+
+function _aicCardResetApplyBtn(applyBtn) {
+    if (!applyBtn) return;
+    applyBtn.disabled = false;
+    applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>変更を適用';
+}
+
+async function aicCardJudge(recordId, btnEl) {
+    // btnElはonclick=this経由で渡されるが、fallbackとしてquerySelectorAll
+    const btn = btnEl || document.querySelector('.aic-card-judge-btn[onclick*="' + recordId + '"]');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">hourglass_empty</span>判定中...';
@@ -1713,11 +1738,15 @@ async function aicCardJudge(recordId) {
         const tagEl = cardEl ? cardEl.querySelector('.aic-card-tag') : null;
         const curCat = tagEl ? tagEl.textContent.trim().replace(/^label\s*/, '') : 'その他';
 
-        const resp = await fetch('/api/records/suggest_category', {
+        const resp = await _aicCardFetchWithTimeout('/api/records/suggest_category', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({content: text, current_category: curCat})
-        });
+        }, 30000);
+        if (!resp.ok) {
+            alert('AI判定エラー: HTTP ' + resp.status);
+            return;
+        }
         const data = await resp.json();
         if (!data.ok || !data.result) {
             alert('AI判定エラー: ' + (data.error || '不明'));
@@ -1738,64 +1767,97 @@ async function aicCardJudge(recordId) {
             msgEl.innerHTML = '<b>「' + escapeAicCard(sg.category) + '」</b> への変更を推奨します。<br>(現在: ' + escapeAicCard(curCat) + ')';
             reasonEl.textContent = '判定理由: ' + (sg.reason || '(理由なし)');
             applyBtn.style.display = 'inline-flex';
-            _aicCardCurrent = {recordId: recordId, suggestion: sg, oldCat: curCat};
+            _aicCardCurrent_v2 = {recordId: recordId, suggestion: sg, oldCat: curCat};
         }
         document.getElementById('aic-card-overlay').style.display = 'flex';
     } catch (e) {
-        alert('通信エラー: ' + e.message);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">auto_awesome</span>AI判定';
+        if (e && e.name === 'AbortError') {
+            alert('AI判定がタイムアウトしました。もう一度お試しください。');
+        } else {
+            alert('通信エラー: ' + (e && e.message ? e.message : '不明'));
         }
+    } finally {
+        // どんな経路でもボタンを必ず復旧
+        _aicCardResetJudgeBtn(btn);
     }
 }
 
 function aicCardClose() {
-    document.getElementById('aic-card-overlay').style.display = 'none';
-    _aicCardCurrent = null;
+    const overlay = document.getElementById('aic-card-overlay');
+    if (overlay) overlay.style.display = 'none';
+    _aicCardCurrent_v2 = null;
+    // モーダル閉じる時に適用ボタン状態もリセット(次回開く時に変な状態にならないように)
+    _aicCardResetApplyBtn(document.getElementById('aic-card-apply-btn'));
 }
 
 async function aicCardApply() {
-    if (!_aicCardCurrent) return;
-    const {recordId, suggestion} = _aicCardCurrent;
+    if (!_aicCardCurrent_v2) return;
+    const cur = _aicCardCurrent_v2;  // ローカルにスナップショット
+    const recordId = cur.recordId;
+    const suggestion = cur.suggestion;
 
     const applyBtn = document.getElementById('aic-card-apply-btn');
-    applyBtn.disabled = true;
-    applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">hourglass_empty</span>適用中...';
+    if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">hourglass_empty</span>適用中...';
+    }
+
+    let success = false;
+    let errorMsg = null;
+    let warningMsg = null;
 
     try {
-        const resp = await fetch('/api/records/' + encodeURIComponent(recordId) + '/apply_ai_category', {
+        const resp = await _aicCardFetchWithTimeout('/api/records/' + encodeURIComponent(recordId) + '/apply_ai_category', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 new_category: suggestion.category,
                 ai_reason: suggestion.reason || ''
             })
-        });
-        const data = await resp.json();
-        if (!data.ok) {
-            alert('適用エラー: ' + (data.error || '不明'));
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>変更を適用';
-            return;
-        }
-        const cardEl = document.getElementById('record-' + recordId);
-        if (cardEl) {
-            const tagEl = cardEl.querySelector('.aic-card-tag');
-            if (tagEl) {
-                tagEl.className = 'aic-card-tag aic-card-cat-' + suggestion.category;
-                tagEl.innerHTML = '<span class="material-symbols-outlined">label</span> ' + escapeAicCard(suggestion.category);
+        }, 20000);
+        if (!resp.ok) {
+            errorMsg = '適用エラー: HTTP ' + resp.status;
+        } else {
+            const data = await resp.json();
+            if (!data.ok) {
+                errorMsg = '適用エラー: ' + (data.error || '不明');
+            } else {
+                success = true;
+                if (data.warning) warningMsg = data.warning;
             }
         }
-        if (data.warning) {
-            alert('適用しました(注意: ' + data.warning + ')');
+    } catch (e) {
+        if (e && e.name === 'AbortError') {
+            errorMsg = '適用がタイムアウトしました。サーバ側で適用済みかもしれませんので、ページをリロードして確認してください。';
+        } else {
+            errorMsg = '通信エラー: ' + (e && e.message ? e.message : '不明');
+        }
+    } finally {
+        // 必ずボタン状態を復旧
+        _aicCardResetApplyBtn(applyBtn);
+    }
+
+    // try/finally の外側で UI 更新(success/errorMsg は確定してる)
+    if (success) {
+        // カードのカテゴリタグを更新
+        try {
+            const cardEl = document.getElementById('record-' + recordId);
+            if (cardEl) {
+                const tagEl = cardEl.querySelector('.aic-card-tag');
+                if (tagEl) {
+                    tagEl.className = 'aic-card-tag aic-card-cat-' + suggestion.category;
+                    tagEl.innerHTML = '<span class="material-symbols-outlined">label</span> ' + escapeAicCard(suggestion.category);
+                }
+            }
+        } catch (e) {
+            console.error('[aicCardApply] tag update failed:', e);
+        }
+        if (warningMsg) {
+            alert('適用しました(注意: ' + warningMsg + ')');
         }
         aicCardClose();
-    } catch (e) {
-        alert('通信エラー: ' + e.message);
-        applyBtn.disabled = false;
-        applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>変更を適用';
+    } else if (errorMsg) {
+        alert(errorMsg);
     }
 }
 
