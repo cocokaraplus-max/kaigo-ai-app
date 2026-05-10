@@ -731,6 +731,39 @@
     border-radius: 8px;
     padding: 1px 6px;
 }
+/* === Session 31 UX改善: 手動ピッカーの「適用中」フィードバック === */
+.aic-manual-btn.aic-manual-applying {
+    position: relative;
+}
+.aic-manual-btn.aic-manual-applying::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.55);
+    border-radius: inherit;
+}
+.aic-manual-btn.aic-manual-applying::after {
+    content: "適用中";
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #202124;
+    background: #fff;
+    padding: 3px 10px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    white-space: nowrap;
+}
+.aic-manual-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.aic-manual-btn.aic-manual-applying:disabled {
+    opacity: 1;  /* 「適用中」表示中は opacity を戻して overlay が見えるように */
+}
+
 .aic-manual-cancel {
     width: 100%; padding: 10px; border-radius: 8px; cursor: pointer;
     background: #fff; color: #5f6368; border: 1px solid #dadce0;
@@ -2017,10 +2050,22 @@ async function aicManualPickerApply(newCat) {
         return;
     }
 
-    // ボタンを「適用中...」に
+    // === UX改善: 押されたボタン+全ボタンに「適用中」フィードバック ===
     const grid = document.getElementById('aic-manual-grid');
     const allBtns = grid.querySelectorAll('button');
-    allBtns.forEach(b => b.disabled = true);
+    let pressedBtn = null;
+    allBtns.forEach(b => {
+        if (b.textContent && b.textContent.trim().indexOf(newCat) !== -1) {
+            pressedBtn = b;
+        }
+        b.disabled = true;
+    });
+    if (pressedBtn) {
+        pressedBtn.classList.add('aic-manual-applying');
+    }
+    // キャンセルボタンも無効化
+    const cancelBtn = document.querySelector('.aic-manual-cancel');
+    if (cancelBtn) cancelBtn.disabled = true;
 
     let success = false;
     let errorMsg = null;
@@ -2057,7 +2102,11 @@ async function aicManualPickerApply(newCat) {
         }
     }
 
-    allBtns.forEach(b => b.disabled = false);
+    allBtns.forEach(b => {
+        b.disabled = false;
+        b.classList.remove('aic-manual-applying');
+    });
+    if (cancelBtn) cancelBtn.disabled = false;
 
     if (success) {
         // カードのタグを更新
