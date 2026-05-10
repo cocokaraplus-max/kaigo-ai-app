@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, current_app
 from supabase import create_client
+from utils import classify_category
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
 import pytz
@@ -5142,3 +5143,110 @@ def api_board_update_category():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
+
+
+# ============================================================
+# Session 31: AIカテゴリ自動振り分け
+# ============================================================
+@app.route('/admin/ai-categorize')
+@login_required
+def admin_ai_categorize():
+    """管理者向け: 「その他」カテゴリの記録一覧を表示"""
+    f_code = session["f_code"]
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("admin"))
+
+    supabase = get_supabase()
+    records = []
+    try:
+        # 「その他」カテゴリの記録を新しい順で最大100件取得
+        # AI統合記録は除外
+        res = supabase.table("records") \
+            .select("id,content,category,staff_name,user_name,created_at") \
+            .eq("facility_code", f_code) \
+            .eq("category", "その他") \
+            .neq("staff_name", "AI統合記録") \
+            .order("created_at", desc=True) \
+            .limit(100) \
+            .execute()
+        for r in (res.data or []):
+            # JSTで created_at を整形
+            try:
+                created_at_jst = parse_jst(r.get("created_at", ""), fmt="%Y-%m-%d %H:%M")
+            except Exception:
+                created_at_jst = r.get("created_at", "")[:16]
+            records.append({
+                "id": r.get("id"),
+                "content": (r.get("content") or "")[:300],
+                "staff_name": r.get("staff_name") or "",
+                "user_name": r.get("user_name") or "",
+                "created_at_jst": created_at_jst,
+            })
+    except Exception as e:
+        print(f"[admin_ai_categorize] fetch error: {e}", flush=True)
+
+    return render("admin_ai_categorize.html", records=records)
+
+
+@app.route('/api/admin/ai-categorize/judge', methods=['POST'])
+@login_required
+def api_admin_ai_categorize_judge():
+    """選択された record_id を AI 判定し、結果を返す(DB変更はしない)。"""
+    if not session.get("admin_authenticated", False):
+        return jsonify({"ok": False, "error": "管理者認証が必要です"}), 403
+
+    f_code = session["f_code"]
+    payload = request.get_json(silent=True) or {}
+    record_ids = payload.get("record_ids") or []
+
+    if not isinstance(record_ids, list) or len(record_ids) == 0:
+        return jsonify({"ok": False, "error": "record_ids が空です"}), 400
+    if len(record_ids) > 100:
+        return jsonify({"ok": False, "error": "一度に判定できるのは100件までです"}), 400
+
+    # int に正規化(Jinja から文字列で来る可能性に備え)
+    try:
+        record_ids = [int(x) for x in record_ids]
+    except Exception:
+        return jsonify({"ok": False, "error": "record_ids の形式が不正です"}), 400
+
+    supabase = get_supabase()
+
+    # 対象レコードを一括取得(他施設の記録を判定しないよう f_code で絞る)
+    try:
+        res = supabase.table("records") \
+            .select("id,content,category") \
+            .in_("id", record_ids) \
+            .eq("facility_code", f_code) \
+            .execute()
+        rows = res.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"記録取得エラー: {e}"}), 500
+
+    # id → row のマップ
+    rows_by_id = {r["id"]: r for r in rows}
+
+    results = []
+    for rid in record_ids:
+        row = rows_by_id.get(rid)
+        if not row:
+            # 該当なし(他施設・削除済み・AI統合記録など)
+            continue
+        content_text = row.get("content") or ""
+        current_category = row.get("category") or "その他"
+        try:
+            ai_result = classify_category(content_text, current_category)
+        except Exception as e:
+            print(f"[ai-categorize/judge] classify_category fail rid={rid}: {e}", flush=True)
+            ai_result = {"category": "その他", "confidence": "low", "reason": "AI判定エラー"}
+        results.append({
+            "record_id": rid,
+            "content": content_text[:300],
+            "current_category": current_category,
+            "category": ai_result.get("category", "その他"),
+            "confidence": ai_result.get("confidence", "low"),
+            "reason": ai_result.get("reason", ""),
+        })
+
+    return jsonify({"ok": True, "results": results, "count": len(results)})
+

@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}AIカテゴリ自動振り分け - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.aic-wrap { padding: 12px; max-width: 720px; margin: 0 auto; }
+.aic-header {
+    background: #fff3e0;
+    border: 2px solid #f57c00;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+}
+.aic-header-title {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 1rem; color: #e65100;
+    margin-bottom: 6px;
+}
+.aic-header-desc {
+    font-size: 0.82rem; color: #5f6368; line-height: 1.5;
+}
+.aic-toolbar {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.aic-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.aic-btn {
+    background: #f57c00; color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-weight: 700; font-size: 0.9rem;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.aic-btn:disabled { background: #ccc; cursor: not-allowed; }
+.aic-btn-secondary {
+    background: #fff; color: #5f6368; border: 1px solid #dadce0;
+}
+.aic-stats {
+    background: #f1f3f4; border-radius: 8px; padding: 8px 12px;
+    font-size: 0.82rem; color: #3c4043; margin-bottom: 10px;
+}
+.aic-list {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    max-height: 60vh; overflow-y: auto;
+}
+.aic-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid #f1f3f4;
+    font-size: 0.85rem;
+}
+.aic-row:last-child { border-bottom: none; }
+.aic-row input[type="checkbox"] { margin-top: 4px; flex-shrink: 0; }
+.aic-row-body { flex: 1; min-width: 0; }
+.aic-row-meta {
+    font-size: 0.75rem; color: #5f6368; margin-bottom: 3px;
+}
+.aic-row-content {
+    color: #202124; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.aic-progress {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 14px; margin-top: 14px;
+}
+.aic-progress-bar {
+    width: 100%; height: 10px; background: #f1f3f4; border-radius: 5px;
+    overflow: hidden; margin-top: 8px;
+}
+.aic-progress-bar-fill {
+    height: 100%; background: #f57c00; transition: width 0.3s;
+}
+.aic-results {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 14px; margin-top: 14px;
+}
+.aic-result-item {
+    padding: 10px; margin-bottom: 8px; border-radius: 8px;
+    background: #f8f9fa; font-size: 0.85rem;
+}
+.aic-result-high { border-left: 4px solid #34a853; }
+.aic-result-low  { border-left: 4px solid #9aa0a6; }
+.aic-result-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 700; margin-right: 6px;
+}
+.aic-tag-high { background: #e6f4ea; color: #137333; }
+.aic-tag-low  { background: #f1f3f4; color: #5f6368; }
+.aic-empty {
+    padding: 30px 20px; text-align: center;
+    color: #5f6368; font-size: 0.9rem;
+}
+.aic-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #1a73e8; text-decoration: none;
+    font-size: 0.85rem; margin-bottom: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="aic-wrap">
+    <a href="/admin" class="aic-back">
+        <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>管理者MENUへ戻る
+    </a>
+
+    <div class="aic-header">
+        <div class="aic-header-title">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            AIカテゴリ自動振り分け
+        </div>
+        <div class="aic-header-desc">
+            「その他」カテゴリの記録を AI(Gemini)が判定し、適切なカテゴリを提案します。<br>
+            <b>判定はAIによる提案です。必ず人が確認してから適用してください。</b>判定だけ行い、適用は次のステップで実装予定です。
+        </div>
+    </div>
+
+    <div class="aic-stats">
+        全 <b id="aic-total">{{ records|length }}</b> 件の「その他」記録があります(最新100件まで表示)
+    </div>
+
+    <div class="aic-toolbar">
+        <label>
+            <input type="checkbox" id="aic-select-all" onchange="aicToggleAll(this)">
+            すべて選択
+        </label>
+        <span style="flex:1; font-size:0.82rem; color:#5f6368;">
+            選択中: <b id="aic-selected-count">0</b> 件
+        </span>
+        <button class="aic-btn" id="aic-judge-btn" onclick="aicJudge()" disabled>
+            <span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>
+            選択を判定
+        </button>
+    </div>
+
+    {% if records %}
+    <div class="aic-list" id="aic-list">
+        {% for r in records %}
+        <label class="aic-row">
+            <input type="checkbox" class="aic-cb" value="{{ r.id }}" onchange="aicUpdateSelected()">
+            <div class="aic-row-body">
+                <div class="aic-row-meta">
+                    {{ r.created_at_jst }} / {{ r.staff_name }} / {{ r.user_name }}
+                </div>
+                <div class="aic-row-content">{{ r.content }}</div>
+            </div>
+        </label>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="aic-list">
+        <div class="aic-empty">
+            「その他」カテゴリの記録はありません。
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="aic-progress" id="aic-progress" style="display:none;">
+        <div style="font-weight:700; font-size:0.9rem;">
+            判定中... <span id="aic-progress-text">0/0</span>
+        </div>
+        <div class="aic-progress-bar">
+            <div class="aic-progress-bar-fill" id="aic-progress-fill" style="width:0%;"></div>
+        </div>
+    </div>
+
+    <div class="aic-results" id="aic-results" style="display:none;">
+        <div style="font-weight:700; font-size:0.95rem; margin-bottom:10px;">
+            判定結果
+        </div>
+        <div id="aic-results-summary" style="font-size:0.82rem; color:#5f6368; margin-bottom:10px;"></div>
+        <div id="aic-results-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function aicToggleAll(el) {
+    document.querySelectorAll('.aic-cb').forEach(cb => { cb.checked = el.checked; });
+    aicUpdateSelected();
+}
+
+function aicUpdateSelected() {
+    const cbs = document.querySelectorAll('.aic-cb:checked');
+    document.getElementById('aic-selected-count').textContent = cbs.length;
+    document.getElementById('aic-judge-btn').disabled = (cbs.length === 0);
+}
+
+async function aicJudge() {
+    const cbs = document.querySelectorAll('.aic-cb:checked');
+    const ids = Array.from(cbs).map(cb => parseInt(cb.value, 10));
+    if (ids.length === 0) return;
+    if (ids.length > 100) {
+        alert('一度に判定できるのは100件までです。');
+        return;
+    }
+
+    const btn = document.getElementById('aic-judge-btn');
+    btn.disabled = true;
+
+    const progressEl = document.getElementById('aic-progress');
+    const progressText = document.getElementById('aic-progress-text');
+    const progressFill = document.getElementById('aic-progress-fill');
+    const resultsEl = document.getElementById('aic-results');
+
+    progressEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+    progressText.textContent = `0/${ids.length}`;
+    progressFill.style.width = '0%';
+
+    // フェイク進捗(サーバ処理中、20秒で90%まで上げる)
+    let fakeProgress = 0;
+    const fakeTimer = setInterval(() => {
+        fakeProgress = Math.min(fakeProgress + 1, 90);
+        progressFill.style.width = fakeProgress + '%';
+        const fakeCount = Math.floor((fakeProgress / 100) * ids.length);
+        progressText.textContent = `${fakeCount}/${ids.length}`;
+    }, 200);
+
+    try {
+        const resp = await fetch('/api/admin/ai-categorize/judge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ record_ids: ids })
+        });
+        const data = await resp.json();
+        clearInterval(fakeTimer);
+        progressFill.style.width = '100%';
+        progressText.textContent = `${ids.length}/${ids.length}`;
+
+        if (!data.ok) {
+            alert('判定エラー: ' + (data.error || '不明'));
+            btn.disabled = false;
+            progressEl.style.display = 'none';
+            return;
+        }
+
+        // 結果表示
+        const results = data.results || [];
+        const highCount = results.filter(r => r.confidence === 'high').length;
+        const lowCount  = results.filter(r => r.confidence === 'low').length;
+
+        document.getElementById('aic-results-summary').innerHTML =
+            `合計 ${results.length} 件判定 / ` +
+            `<span style="color:#137333;">変更推奨(high): ${highCount} 件</span> / ` +
+            `<span style="color:#5f6368;">「その他」維持(low): ${lowCount} 件</span>`;
+
+        const listEl = document.getElementById('aic-results-list');
+        listEl.innerHTML = '';
+        results.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'aic-result-item ' + (r.confidence === 'high' ? 'aic-result-high' : 'aic-result-low');
+            const tagClass = r.confidence === 'high' ? 'aic-tag-high' : 'aic-tag-low';
+            const tagLabel = r.confidence === 'high' ? '変更推奨' : '維持';
+            div.innerHTML =
+                `<div style="margin-bottom:4px;">` +
+                `<span class="aic-result-tag ${tagClass}">${tagLabel}</span>` +
+                `<b>その他 → ${escapeHtml(r.category)}</b> ` +
+                `<span style="color:#5f6368;">(理由: ${escapeHtml(r.reason)})</span>` +
+                `</div>` +
+                `<div style="font-size:0.78rem; color:#5f6368; margin-bottom:3px;">` +
+                `record_id: ${r.record_id}` +
+                `</div>` +
+                `<div style="font-size:0.82rem; color:#202124;">` +
+                escapeHtml((r.content || '').slice(0, 200)) +
+                `</div>`;
+            listEl.appendChild(div);
+        });
+
+        resultsEl.style.display = 'block';
+        btn.disabled = false;
+    } catch (e) {
+        clearInterval(fakeTimer);
+        alert('通信エラー: ' + e.message);
+        btn.disabled = false;
+        progressEl.style.display = 'none';
+    }
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+</script>
+{% endblock %}

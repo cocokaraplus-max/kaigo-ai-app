@@ -370,6 +370,9 @@
     <button class="tab-item" onclick="switchTab('staff', this)">
         <span class="material-symbols-outlined">manage_accounts</span>スタッフ管理
     </button>
+    <button class="tab-item" onclick="switchTab('records', this)">
+        <span class="material-symbols-outlined">description</span>ケース記録
+    </button>
 </div>
 
 <!-- 利用者管理 -->
@@ -787,6 +790,24 @@
         </div>
     </div>
     {% endfor %}
+</div>
+
+<!-- ケース記録 -->
+<div class="tab-panel" id="tab-records">
+    <div class="section-box">
+        <div class="section-box-title">
+            <span class="material-symbols-outlined">auto_awesome</span>AIカテゴリ自動振り分け
+        </div>
+        <div style="font-size:0.85rem;color:#5f6368;margin-bottom:12px;line-height:1.5;">
+            「その他」カテゴリで投稿された記録を、AI(Gemini)が本文から判定し、適切なカテゴリに振り分けます。<br>
+            <b>判定はAIによる提案です。必ず人が確認してから適用してください。</b>
+        </div>
+        <a href="/admin/ai-categorize" style="display:flex;align-items:center;gap:10px;padding:16px 18px;background:#fff3e0;border-radius:12px;border:2px solid #f57c00;text-decoration:none;color:#e65100;font-weight:700;font-size:0.95rem;">
+            <span class="material-symbols-outlined" style="font-size:22px;">category</span>
+            AIカテゴリ自動振り分け画面へ
+            <span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span>
+        </a>
+    </div>
 </div>
 
 <button class="btn" style="margin-top:1.5rem; color:#ea4335; border-color:#ea4335;" onclick="adminLogout()">
