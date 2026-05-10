@@ -5534,3 +5534,125 @@ def api_admin_ai_categorize_rollback():
         "errors": errors,
     })
 
+
+
+# ============================================================
+# Session 31 Step 6: 投稿時提案 + カード上適用
+# ============================================================
+@app.route('/api/records/suggest_category', methods=['POST'])
+@login_required
+def api_records_suggest_category():
+    """投稿時のAIカテゴリ提案 / カード上の判定で共通利用するAPI。
+    body: {content, current_category}
+    return: classify_category() の結果そのまま (category, confidence, reason)
+    """
+    payload = request.get_json(silent=True) or {}
+    text = (payload.get("content") or "").strip()
+    cur_cat = (payload.get("current_category") or "その他").strip()
+
+    if not text:
+        return jsonify({"ok": False, "error": "content が空です"}), 400
+
+    try:
+        result = classify_category(text, cur_cat)
+    except Exception as e:
+        print(f"[suggest_category] failed: {e}", flush=True)
+        return jsonify({"ok": False, "error": "AI判定エラー"}), 500
+
+    return jsonify({"ok": True, "result": result})
+
+
+@app.route('/api/records/<int:record_id>/apply_ai_category', methods=['POST'])
+@login_required
+def api_records_apply_ai_category(record_id):
+    """カードから個別レコードのカテゴリをAI提案で書き換え。
+    権限: 投稿者本人 or 管理者
+    body: {new_category, ai_reason}
+    処理: records UPDATE + ai_categorize_history INSERT (履歴で一元管理)
+    """
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    is_admin = session.get("admin_authenticated", False)
+
+    payload = request.get_json(silent=True) or {}
+    new_cat = (payload.get("new_category") or "").strip()
+    ai_reason = str(payload.get("ai_reason") or "")[:200]
+
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット"}
+    if new_cat not in VALID_CATEGORIES:
+        return jsonify({"ok": False, "error": "不正なカテゴリです"}), 400
+
+    supabase = get_supabase()
+
+    # 対象レコード取得
+    try:
+        res = supabase.table("records") \
+            .select("id,content,category,search_tags,staff_name") \
+            .eq("id", record_id) \
+            .eq("facility_code", f_code) \
+            .execute()
+        rows = res.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"記録取得エラー: {e}"}), 500
+
+    if not rows:
+        return jsonify({"ok": False, "error": "対象レコードがありません"}), 404
+
+    row = rows[0]
+    poster = row.get("staff_name") or ""
+
+    # 権限チェック: 投稿者本人 or 管理者
+    if not is_admin and poster != my_name:
+        return jsonify({"ok": False, "error": "この記録を変更する権限がありません"}), 403
+
+    old_cat = row.get("category") or "その他"
+    old_tags = row.get("search_tags") or []
+    content_text = row.get("content") or ""
+
+    # search_tags 再生成
+    try:
+        new_tags = generate_search_tags(content_text, new_cat) or []
+    except Exception as e:
+        print(f"[apply_ai_category] generate_search_tags fail rid={record_id}: {e}", flush=True)
+        new_tags = []
+
+    # records UPDATE
+    try:
+        supabase.table("records") \
+            .update({"category": new_cat, "search_tags": new_tags}) \
+            .eq("id", record_id) \
+            .eq("facility_code", f_code) \
+            .execute()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"UPDATE失敗: {e}"}), 500
+
+    # 履歴 INSERT(個別操作なので独立batch_id)
+    batch_id = str(uuid.uuid4())
+    try:
+        supabase.table("ai_categorize_history").insert({
+            "batch_id": batch_id,
+            "record_id": record_id,
+            "old_category": old_cat,
+            "new_category": new_cat,
+            "old_search_tags": old_tags,
+            "new_search_tags": new_tags,
+            "ai_reason": ai_reason,
+            "applied_by": my_name,
+        }).execute()
+    except Exception as e:
+        print(f"[apply_ai_category] history insert fail rid={record_id}: {e}", flush=True)
+        # 履歴INSERT失敗してもrecords更新は完了済み。エラーは返すが ok:true 維持。
+        return jsonify({
+            "ok": True,
+            "warning": f"履歴記録失敗(更新は完了): {e}",
+            "new_category": new_cat,
+            "new_search_tags": new_tags,
+        })
+
+    return jsonify({
+        "ok": True,
+        "batch_id": batch_id,
+        "new_category": new_cat,
+        "new_search_tags": new_tags,
+    })
+
