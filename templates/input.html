@@ -226,6 +226,64 @@
 </div>
 {% endif %}
 
+<!-- Session 31 Step 6: AIカテゴリ提案モーダル -->
+<style>
+.aic-suggest-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10000; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.aic-suggest-box {
+    background: #fff; border-radius: 14px; max-width: 380px; width: 100%;
+    padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.aic-suggest-title {
+    font-weight: 700; font-size: 1rem; color: #e65100;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+.aic-suggest-msg {
+    font-size: 0.9rem; color: #202124; line-height: 1.5;
+    margin-bottom: 14px;
+}
+.aic-suggest-msg b {
+    color: #e65100; font-size: 1rem;
+}
+.aic-suggest-reason {
+    font-size: 0.78rem; color: #5f6368; padding: 8px 10px;
+    background: #f8f9fa; border-radius: 8px; margin-bottom: 14px;
+}
+.aic-suggest-actions {
+    display: flex; gap: 8px;
+}
+.aic-suggest-actions button {
+    flex: 1; padding: 12px; border-radius: 8px; font-weight: 700;
+    font-size: 0.92rem; cursor: pointer; border: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
+.aic-suggest-yes { background: #f57c00; color: #fff; }
+.aic-suggest-no  { background: #fff; color: #5f6368; border: 1px solid #dadce0 !important; }
+</style>
+<div id="aic-suggest-overlay" class="aic-suggest-overlay" style="display:none;">
+    <div class="aic-suggest-box">
+        <div class="aic-suggest-title">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            AIカテゴリ提案
+        </div>
+        <div class="aic-suggest-msg" id="aic-suggest-msg"></div>
+        <div class="aic-suggest-reason" id="aic-suggest-reason"></div>
+        <div class="aic-suggest-actions">
+            <button type="button" class="aic-suggest-no" onclick="aicSuggestResolve(false)">
+                <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+                その他のまま
+            </button>
+            <button type="button" class="aic-suggest-yes" onclick="aicSuggestResolve(true)">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>
+                変更して保存
+            </button>
+        </div>
+    </div>
+</div>
+
 <form method="POST" action="/input" enctype="multipart/form-data" id="input-form">
 
     <div class="form-group">
@@ -377,6 +435,34 @@ window.saveRecord = async function() {
     if (!content) {
         alert('内容を入力してください');
         return;
+    }
+
+    // === Session 31 Step 6: AIカテゴリ提案 ===
+    const curCat = document.getElementById('selected-category').value || 'その他';
+    if (curCat === 'その他' && content && content.trim().length >= 5) {
+        try {
+            const sgResp = await fetch('/api/records/suggest_category', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: content, current_category: 'その他'})
+            });
+            const sgData = await sgResp.json();
+            if (sgData.ok && sgData.result &&
+                sgData.result.confidence === 'high' &&
+                sgData.result.category &&
+                sgData.result.category !== 'その他') {
+                const userYes = await aicSuggestModalShow(sgData.result);
+                if (userYes) {
+                    const selCat = document.getElementById('selected-category');
+                    selCat.value = sgData.result.category;
+                    if (typeof renderCategoryPicker === 'function') {
+                        try { renderCategoryPicker(); } catch(e) {}
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[suggest_category] failed:', e);
+        }
     }
 
     const btn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
@@ -931,5 +1017,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+</script>
+
+<script>
+// === Session 31 Step 6: AI提案モーダル制御 ===
+let _aicSuggestResolver = null;
+
+function aicSuggestModalShow(result) {
+    return new Promise((resolve) => {
+        _aicSuggestResolver = resolve;
+        const overlay = document.getElementById('aic-suggest-overlay');
+        const msg = document.getElementById('aic-suggest-msg');
+        const reason = document.getElementById('aic-suggest-reason');
+        msg.innerHTML = 'この記録は <b>「' + escapeAic(result.category) + '」</b> にカテゴライズされる内容と推測しますが、変更しますか?';
+        reason.textContent = '判定理由: ' + (result.reason || '(理由なし)');
+        overlay.style.display = 'flex';
+    });
+}
+
+function aicSuggestResolve(yes) {
+    document.getElementById('aic-suggest-overlay').style.display = 'none';
+    if (_aicSuggestResolver) {
+        _aicSuggestResolver(yes);
+        _aicSuggestResolver = null;
+    }
+}
+
+function escapeAic(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 </script>
 {% endblock %}

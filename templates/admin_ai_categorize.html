@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+{% block title %}AIカテゴリ自動振り分け - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.aic-wrap { padding: 12px; max-width: 720px; margin: 0 auto; }
+.aic-header {
+    background: #fff3e0;
+    border: 2px solid #f57c00;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+}
+.aic-header-title {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 1rem; color: #e65100;
+    margin-bottom: 6px;
+}
+.aic-header-desc {
+    font-size: 0.82rem; color: #5f6368; line-height: 1.5;
+}
+.aic-toolbar {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.aic-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.aic-btn {
+    background: #f57c00; color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-weight: 700; font-size: 0.9rem;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.aic-btn:disabled { background: #ccc; cursor: not-allowed; }
+.aic-btn-secondary {
+    background: #fff; color: #5f6368; border: 1px solid #dadce0;
+}
+.aic-stats {
+    background: #f1f3f4; border-radius: 8px; padding: 8px 12px;
+    font-size: 0.82rem; color: #3c4043; margin-bottom: 10px;
+}
+.aic-list {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    max-height: 60vh; overflow-y: auto;
+}
+.aic-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid #f1f3f4;
+    font-size: 0.85rem;
+}
+.aic-row:last-child { border-bottom: none; }
+.aic-row input[type="checkbox"] { margin-top: 4px; flex-shrink: 0; }
+.aic-row-body { flex: 1; min-width: 0; }
+.aic-row-meta {
+    font-size: 0.75rem; color: #5f6368; margin-bottom: 3px;
+}
+.aic-row-content {
+    color: #202124; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.aic-progress {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 14px; margin-top: 14px;
+}
+.aic-progress-bar {
+    width: 100%; height: 10px; background: #f1f3f4; border-radius: 5px;
+    overflow: hidden; margin-top: 8px;
+}
+.aic-progress-bar-fill {
+    height: 100%; background: #f57c00; transition: width 0.3s;
+}
+.aic-results {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 14px; margin-top: 14px;
+}
+.aic-result-item {
+    padding: 10px; margin-bottom: 8px; border-radius: 8px;
+    background: #f8f9fa; font-size: 0.85rem;
+}
+.aic-result-high { border-left: 4px solid #34a853; }
+.aic-result-low  { border-left: 4px solid #9aa0a6; }
+.aic-result-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 700; margin-right: 6px;
+}
+.aic-tag-high { background: #e6f4ea; color: #137333; }
+.aic-tag-low  { background: #f1f3f4; color: #5f6368; }
+.aic-empty {
+    padding: 30px 20px; text-align: center;
+    color: #5f6368; font-size: 0.9rem;
+}
+.aic-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #1a73e8; text-decoration: none;
+    font-size: 0.85rem; margin-bottom: 10px;
+}
+/* === Step5: セグメント切替 === */
+.aic-segment {
+    display: flex; gap: 4px;
+    background: #f1f3f4; border-radius: 10px; padding: 4px;
+    margin-bottom: 14px;
+}
+.aic-seg-btn {
+    flex: 1; padding: 10px 12px;
+    background: transparent; border: none; border-radius: 8px;
+    font-size: 0.88rem; font-weight: 700; color: #5f6368;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.aic-seg-btn.active {
+    background: #fff; color: #e65100;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+/* === Step5: 結果アイテムのチェックボックス === */
+.aic-result-item { position: relative; display: flex; gap: 10px; align-items: flex-start; }
+.aic-result-item input[type="checkbox"] { margin-top: 4px; flex-shrink: 0; }
+.aic-result-body { flex: 1; min-width: 0; }
+/* === Step5: 適用バー === */
+.aic-apply-bar {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 10px 12px; margin-top: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    position: sticky; bottom: 10px; z-index: 5;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.aic-apply-bar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; }
+.aic-apply-btn {
+    background: #34a853; color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-weight: 700; font-size: 0.9rem;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto;
+}
+.aic-apply-btn:disabled { background: #ccc; cursor: not-allowed; }
+/* === Step5: 履歴一覧 === */
+.aic-history-empty {
+    padding: 40px 20px; text-align: center; color: #5f6368; font-size: 0.9rem;
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+}
+.aic-batch {
+    background: #fff; border: 1px solid #dadce0; border-radius: 10px;
+    padding: 12px; margin-bottom: 10px;
+}
+.aic-batch-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 6px; cursor: pointer;
+}
+.aic-batch-title { font-weight: 700; font-size: 0.92rem; }
+.aic-batch-meta { font-size: 0.75rem; color: #5f6368; }
+.aic-batch-rb-btn {
+    background: #fff; border: 1px solid #ea4335; color: #ea4335;
+    border-radius: 8px; padding: 6px 10px; font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; margin-left: auto;
+    display: inline-flex; align-items: center; gap: 4px;
+}
+.aic-batch-rb-btn:disabled { border-color: #ccc; color: #999; cursor: not-allowed; }
+.aic-batch-items { margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f3f4; }
+.aic-batch-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 0; font-size: 0.82rem;
+    border-bottom: 1px dashed #f1f3f4;
+}
+.aic-batch-item:last-child { border-bottom: none; }
+.aic-batch-item-rb {
+    background: transparent; border: 1px solid #dadce0; color: #5f6368;
+    border-radius: 6px; padding: 3px 8px; font-size: 0.72rem;
+    cursor: pointer; margin-left: auto;
+}
+.aic-batch-item-rb:disabled { color: #ccc; border-color: #eee; cursor: not-allowed; }
+.aic-rolled-back { color: #999; text-decoration: line-through; }
+.aic-batch-rolled-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 0.72rem; background: #f1f3f4; color: #5f6368;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="aic-wrap">
+    <a href="/admin" class="aic-back">
+        <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>管理者MENUへ戻る
+    </a>
+
+    <div class="aic-header">
+        <div class="aic-header-title">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            AIカテゴリ自動振り分け
+        </div>
+        <div class="aic-header-desc">
+            「その他」カテゴリの記録を AI(Gemini)が判定し、適切なカテゴリを提案します。<br>
+            <b>判定はAIによる提案です。必ず人が確認してから適用してください。</b>
+        </div>
+    </div>
+
+    <!-- セグメント切替 -->
+    <div class="aic-segment">
+        <button class="aic-seg-btn active" id="aic-seg-judge" onclick="aicSwitchSegment('judge')">
+            <span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>
+            振り分け
+        </button>
+        <button class="aic-seg-btn" id="aic-seg-history" onclick="aicSwitchSegment('history')">
+            <span class="material-symbols-outlined" style="font-size:18px;">history</span>
+            適用履歴
+        </button>
+    </div>
+
+    <div id="aic-pane-judge">
+
+    <div class="aic-stats">
+        全 <b id="aic-total">{{ records|length }}</b> 件の「その他」記録があります(最新100件まで表示)
+    </div>
+
+    <div class="aic-toolbar">
+        <label>
+            <input type="checkbox" id="aic-select-all" onchange="aicToggleAll(this)">
+            すべて選択
+        </label>
+        <span style="flex:1; font-size:0.82rem; color:#5f6368;">
+            選択中: <b id="aic-selected-count">0</b> 件
+        </span>
+        <button class="aic-btn" id="aic-judge-btn" onclick="aicJudge()" disabled>
+            <span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>
+            選択を判定
+        </button>
+        <button class="aic-btn aic-btn-secondary" id="aic-stop-btn" onclick="aicRequestStop()" style="display:none;">
+            <span class="material-symbols-outlined" style="font-size:18px;">stop_circle</span>
+            中断
+        </button>
+    </div>
+
+    {% if records %}
+    <div class="aic-list" id="aic-list">
+        {% for r in records %}
+        <label class="aic-row">
+            <input type="checkbox" class="aic-cb" value="{{ r.id }}" onchange="aicUpdateSelected()">
+            <div class="aic-row-body">
+                <div class="aic-row-meta">
+                    {{ r.created_at_jst }} / {{ r.staff_name }} / {{ r.user_name }}
+                </div>
+                <div class="aic-row-content">{{ r.content }}</div>
+            </div>
+        </label>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="aic-list">
+        <div class="aic-empty">
+            「その他」カテゴリの記録はありません。
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="aic-progress" id="aic-progress" style="display:none;">
+        <div style="font-weight:700; font-size:0.9rem;">
+            判定中... <span id="aic-progress-text">0/0</span>
+        </div>
+        <div class="aic-progress-bar">
+            <div class="aic-progress-bar-fill" id="aic-progress-fill" style="width:0%;"></div>
+        </div>
+    </div>
+
+    <div class="aic-results" id="aic-results" style="display:none;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+            <div style="font-weight:700; font-size:0.95rem;">判定結果</div>
+            <button class="aic-btn-secondary" id="aic-toggle-low-btn" onclick="aicToggleLowVisible()" style="padding:5px 10px;font-size:0.75rem;border-radius:6px;border:1px solid #dadce0;background:#fff;color:#5f6368;cursor:pointer;">
+                「維持」を非表示
+            </button>
+        </div>
+        <div id="aic-results-summary" style="font-size:0.82rem; color:#5f6368; margin-bottom:10px;"></div>
+        <div id="aic-results-list"></div>
+        <!-- 適用バー(粘着) -->
+        <div class="aic-apply-bar" id="aic-apply-bar" style="display:none;">
+            <label>
+                <input type="checkbox" id="aic-apply-select-all" onchange="aicApplyToggleAll(this)">
+                すべて選択
+            </label>
+            <span style="font-size:0.82rem;color:#5f6368;">
+                適用対象: <b id="aic-apply-count">0</b> 件
+            </span>
+            <button class="aic-apply-btn" id="aic-apply-btn" onclick="aicApply()" disabled>
+                <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
+                選択を適用
+            </button>
+        </div>
+    </div>
+    </div><!-- /aic-pane-judge -->
+
+    <!-- 履歴ペイン -->
+    <div id="aic-pane-history" style="display:none;">
+        <div id="aic-history-loading" style="text-align:center;padding:30px;color:#5f6368;">
+            読み込み中...
+        </div>
+        <div id="aic-history-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function aicToggleAll(el) {
+    document.querySelectorAll('.aic-cb').forEach(cb => { cb.checked = el.checked; });
+    aicUpdateSelected();
+}
+
+function aicUpdateSelected() {
+    const cbs = document.querySelectorAll('.aic-cb:checked');
+    document.getElementById('aic-selected-count').textContent = cbs.length;
+    document.getElementById('aic-judge-btn').disabled = (cbs.length === 0);
+}
+
+// バッチ処理の状態管理
+const BATCH_SIZE = 10;
+let aicStopRequested = false;
+
+function aicRequestStop() {
+    aicStopRequested = true;
+    const stopBtn = document.getElementById('aic-stop-btn');
+    if (stopBtn) {
+        stopBtn.disabled = true;
+        stopBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">hourglass_empty</span>停止中...';
+    }
+}
+
+function aicChunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+
+function aicAppendResultRow(r, listEl) {
+    const div = document.createElement('div');
+    const isHigh = r.confidence === 'high';
+    div.className = 'aic-result-item ' + (isHigh ? 'aic-result-high' : 'aic-result-low');
+    div.dataset.recordId = r.record_id;
+    div.dataset.newCategory = r.category;
+    div.dataset.aiReason = r.reason || '';
+    div.dataset.confidence = r.confidence;
+    const tagClass = isHigh ? 'aic-tag-high' : 'aic-tag-low';
+    const tagLabel = isHigh ? '変更推奨' : '維持';
+    // チェックボックスは high で「カテゴリ != その他」のときのみ表示&初期ON
+    const showCheckbox = isHigh && r.category && r.category !== 'その他';
+    const checkboxHtml = showCheckbox
+        ? `<input type="checkbox" class="aic-apply-cb" checked onchange="aicApplyUpdateCount()">`
+        : '';
+    div.innerHTML =
+        checkboxHtml +
+        `<div class="aic-result-body">` +
+        `<div style="margin-bottom:4px;">` +
+        `<span class="aic-result-tag ${tagClass}">${tagLabel}</span>` +
+        `<b>その他 → ${escapeHtml(r.category)}</b> ` +
+        `<span style="color:#5f6368;">(理由: ${escapeHtml(r.reason)})</span>` +
+        `</div>` +
+        `<div style="font-size:0.78rem; color:#5f6368; margin-bottom:3px;">` +
+        `record_id: ${r.record_id}` +
+        `</div>` +
+        `<div style="font-size:0.82rem; color:#202124;">` +
+        escapeHtml((r.content || '').slice(0, 200)) +
+        `</div>` +
+        `</div>`;
+    listEl.appendChild(div);
+}
+
+function aicUpdateSummary(allResults, totalRequested, batchErrors) {
+    const highCount = allResults.filter(r => r.confidence === 'high').length;
+    const lowCount  = allResults.filter(r => r.confidence === 'low').length;
+    const errMsg = batchErrors > 0
+        ? ` / <span style="color:#ea4335;">バッチ失敗: ${batchErrors}件</span>`
+        : '';
+    document.getElementById('aic-results-summary').innerHTML =
+        `判定済み <b>${allResults.length}/${totalRequested}</b> 件 / ` +
+        `<span style="color:#137333;">変更推奨: ${highCount}件</span> / ` +
+        `<span style="color:#5f6368;">維持: ${lowCount}件</span>` +
+        errMsg;
+}
+
+async function aicJudge() {
+    const cbs = document.querySelectorAll('.aic-cb:checked');
+    const ids = Array.from(cbs).map(cb => parseInt(cb.value, 10));
+    if (ids.length === 0) return;
+
+    const btn = document.getElementById('aic-judge-btn');
+    const stopBtn = document.getElementById('aic-stop-btn');
+    btn.disabled = true;
+    aicStopRequested = false;
+    if (stopBtn) {
+        stopBtn.style.display = 'inline-flex';
+        stopBtn.disabled = false;
+        stopBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">stop_circle</span>中断';
+    }
+
+    const progressEl = document.getElementById('aic-progress');
+    const progressText = document.getElementById('aic-progress-text');
+    const progressFill = document.getElementById('aic-progress-fill');
+    const resultsEl = document.getElementById('aic-results');
+    const listEl = document.getElementById('aic-results-list');
+
+    progressEl.style.display = 'block';
+    resultsEl.style.display = 'block';
+    progressText.textContent = `0/${ids.length}`;
+    progressFill.style.width = '0%';
+    listEl.innerHTML = '';
+
+    const batches = aicChunk(ids, BATCH_SIZE);
+    const allResults = [];
+    let batchErrors = 0;
+    let processedCount = 0;
+
+    for (let i = 0; i < batches.length; i++) {
+        if (aicStopRequested) break;
+
+        try {
+            const resp = await fetch('/api/admin/ai-categorize/judge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ record_ids: batches[i] })
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                batchErrors++;
+                console.error('batch error:', data.error);
+            } else {
+                const results = data.results || [];
+                results.forEach(r => {
+                    allResults.push(r);
+                    aicAppendResultRow(r, listEl);
+                });
+            }
+        } catch (e) {
+            batchErrors++;
+            console.error('batch fetch error:', e);
+        }
+
+        processedCount += batches[i].length;
+        const pct = Math.round((processedCount / ids.length) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = `${processedCount}/${ids.length}`;
+        aicUpdateSummary(allResults, ids.length, batchErrors);
+    }
+
+    // 完了処理
+    if (stopBtn) stopBtn.style.display = 'none';
+    btn.disabled = false;
+
+    if (aicStopRequested) {
+        const note = document.createElement('div');
+        note.style.cssText = 'padding:10px;background:#fff3e0;border-radius:8px;color:#e65100;font-size:0.85rem;margin-top:10px;';
+        note.textContent = `中断しました。${allResults.length} 件判定済み。`;
+        listEl.appendChild(note);
+    }
+
+    // 適用バー表示(highで「その他」以外があれば)
+    const hasApplicable = allResults.some(r => r.confidence === 'high' && r.category && r.category !== 'その他');
+    if (hasApplicable) {
+        document.getElementById('aic-apply-bar').style.display = 'flex';
+        aicApplyUpdateCount();
+    }
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// === Step5: セグメント切替 ===
+function aicSwitchSegment(name) {
+    document.getElementById('aic-seg-judge').classList.toggle('active', name === 'judge');
+    document.getElementById('aic-seg-history').classList.toggle('active', name === 'history');
+    document.getElementById('aic-pane-judge').style.display = name === 'judge' ? '' : 'none';
+    document.getElementById('aic-pane-history').style.display = name === 'history' ? '' : 'none';
+    if (name === 'history') {
+        aicLoadHistory();
+    }
+}
+
+// === Step5: 「維持」表示切替 ===
+let aicLowHidden = false;
+function aicToggleLowVisible() {
+    aicLowHidden = !aicLowHidden;
+    document.querySelectorAll('.aic-result-low').forEach(el => {
+        el.style.display = aicLowHidden ? 'none' : '';
+    });
+    document.getElementById('aic-toggle-low-btn').textContent = aicLowHidden
+        ? '「維持」を表示'
+        : '「維持」を非表示';
+}
+
+// === Step5: 適用 ===
+function aicApplyToggleAll(el) {
+    document.querySelectorAll('.aic-apply-cb').forEach(cb => { cb.checked = el.checked; });
+    aicApplyUpdateCount();
+}
+
+function aicApplyUpdateCount() {
+    const cbs = document.querySelectorAll('.aic-apply-cb:checked');
+    document.getElementById('aic-apply-count').textContent = cbs.length;
+    document.getElementById('aic-apply-btn').disabled = (cbs.length === 0);
+}
+
+async function aicApply() {
+    const items = [];
+    document.querySelectorAll('.aic-apply-cb:checked').forEach(cb => {
+        const item = cb.closest('.aic-result-item');
+        if (!item) return;
+        items.push({
+            record_id: parseInt(item.dataset.recordId, 10),
+            new_category: item.dataset.newCategory,
+            ai_reason: item.dataset.aiReason || '',
+        });
+    });
+    if (items.length === 0) return;
+    if (!confirm(`${items.length} 件にカテゴリ変更を適用します。よろしいですか?\n(後で履歴からロールバック可能)`)) return;
+
+    const btn = document.getElementById('aic-apply-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">hourglass_empty</span>適用中...';
+
+    try {
+        const resp = await fetch('/api/admin/ai-categorize/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({items})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert('適用エラー: ' + (data.error || '不明'));
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
+            return;
+        }
+        const errCount = (data.errors || []).length;
+        const msg = `${data.applied_count}/${data.total} 件適用完了。` +
+                    (errCount > 0 ? ` (失敗 ${errCount} 件)` : '') +
+                    `\nbatch_id: ${data.batch_id.slice(0, 8)}...`;
+        alert(msg);
+        // 適用済みアイテムを画面から消す or グレーアウト
+        document.querySelectorAll('.aic-apply-cb:checked').forEach(cb => {
+            const item = cb.closest('.aic-result-item');
+            if (item) {
+                item.style.opacity = '0.4';
+                cb.checked = false;
+                cb.disabled = true;
+            }
+        });
+        aicApplyUpdateCount();
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>選択を適用';
+    }
+}
+
+// === Step5: 履歴 ===
+async function aicLoadHistory() {
+    const loadingEl = document.getElementById('aic-history-loading');
+    const listEl = document.getElementById('aic-history-list');
+    loadingEl.style.display = 'block';
+    listEl.innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/admin/ai-categorize/history', {cache: 'no-store'});
+        const data = await resp.json();
+        loadingEl.style.display = 'none';
+        if (!data.ok) {
+            listEl.innerHTML = `<div class="aic-history-empty">履歴取得エラー: ${escapeHtml(data.error || '')}</div>`;
+            return;
+        }
+        const batches = data.batches || [];
+        if (batches.length === 0) {
+            listEl.innerHTML = '<div class="aic-history-empty">適用履歴はまだありません。</div>';
+            return;
+        }
+        batches.forEach(b => {
+            const batchDiv = document.createElement('div');
+            batchDiv.className = 'aic-batch';
+            batchDiv.dataset.batchId = b.batch_id;
+            const allRolledBack = b.rolled_back_count >= b.count;
+            const dt = new Date(b.applied_at);
+            const dtStr = isNaN(dt) ? (b.applied_at || '') :
+                `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+            batchDiv.innerHTML =
+                `<div class="aic-batch-head" onclick="aicToggleBatch(this)">` +
+                  `<span class="material-symbols-outlined" style="font-size:18px;color:#5f6368;">expand_more</span>` +
+                  `<div>` +
+                    `<div class="aic-batch-title">${b.count} 件適用` +
+                    (allRolledBack ? ` <span class="aic-batch-rolled-tag">ロールバック済み</span>` :
+                     b.rolled_back_count > 0 ? ` <span class="aic-batch-rolled-tag">${b.rolled_back_count}件戻し済</span>` : '') +
+                    `</div>` +
+                    `<div class="aic-batch-meta">${escapeHtml(dtStr)} / ${escapeHtml(b.applied_by || '不明')}</div>` +
+                  `</div>` +
+                  (allRolledBack
+                    ? `<button class="aic-batch-rb-btn" disabled>戻し済</button>`
+                    : `<button class="aic-batch-rb-btn" onclick="event.stopPropagation();aicRollbackBatch('${b.batch_id}', ${b.count - b.rolled_back_count})"><span class="material-symbols-outlined" style="font-size:14px;">undo</span>一括ロールバック</button>`) +
+                `</div>` +
+                `<div class="aic-batch-items" style="display:none;">` +
+                  b.items.map(it => {
+                      const rolled = !!it.rolled_back_at;
+                      return `<div class="aic-batch-item${rolled ? ' aic-rolled-back' : ''}">` +
+                          `<span style="font-size:0.78rem;color:#5f6368;">#${it.record_id}</span> ` +
+                          `<span>${escapeHtml(it.old_category)} → <b>${escapeHtml(it.new_category)}</b></span>` +
+                          (rolled
+                            ? `<button class="aic-batch-item-rb" disabled>戻し済</button>`
+                            : `<button class="aic-batch-item-rb" onclick="aicRollbackOne(${it.history_id}, this)">↩️ 戻す</button>`) +
+                          `</div>`;
+                  }).join('') +
+                `</div>`;
+            listEl.appendChild(batchDiv);
+        });
+    } catch (e) {
+        loadingEl.style.display = 'none';
+        listEl.innerHTML = `<div class="aic-history-empty">通信エラー: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function aicToggleBatch(headEl) {
+    const batchEl = headEl.closest('.aic-batch');
+    const itemsEl = batchEl.querySelector('.aic-batch-items');
+    const arrow = headEl.querySelector('.material-symbols-outlined');
+    const isOpen = itemsEl.style.display !== 'none';
+    itemsEl.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+async function aicRollbackBatch(batchId, remainingCount) {
+    if (!confirm(`このバッチの ${remainingCount} 件をロールバックします。\n適用前の状態に戻ります。よろしいですか?`)) return;
+    try {
+        const resp = await fetch('/api/admin/ai-categorize/rollback', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({batch_id: batchId})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert('ロールバックエラー: ' + (data.error || '不明'));
+            return;
+        }
+        const errCount = (data.errors || []).length;
+        alert(`${data.rolled_back_count}/${data.total} 件をロールバックしました。` +
+              (errCount > 0 ? ` (失敗 ${errCount} 件)` : ''));
+        aicLoadHistory();  // 履歴をリロード
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    }
+}
+
+async function aicRollbackOne(historyId, btnEl) {
+    if (!confirm('このレコードを適用前に戻します。よろしいですか?')) return;
+    btnEl.disabled = true;
+    try {
+        const resp = await fetch('/api/admin/ai-categorize/rollback', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({history_id: historyId})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert('ロールバックエラー: ' + (data.error || '不明'));
+            btnEl.disabled = false;
+            return;
+        }
+        aicLoadHistory();
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+        btnEl.disabled = false;
+    }
+}
+</script>
+{% endblock %}

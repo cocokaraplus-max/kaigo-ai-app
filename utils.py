@@ -245,3 +245,107 @@ def generate_search_tags(content, category=""):
         # メイン処理を止めないため、ログだけ出して空配列を返す
         print(f"[generate_search_tags] failed: {e}", flush=True)
         return []
+# === Session 31: AIカテゴリ自動振り分け ===
+
+# 8カテゴリと、それぞれの判定基準(プロンプト内で使う)
+AI_CATEGORY_DEFINITIONS = {
+    "入浴": "入浴・清拭・シャワー浴・足浴など、体を洗う/拭く行為そのものに関する記録",
+    "食事": "食事介助・食事摂取量・水分摂取・嚥下・好き嫌い・食事中の様子に関する記録",
+    "排泄": "排尿・排便・トイレ介助・オムツ交換・失禁・便秘・下痢に関する記録",
+    "コミュニケーション": "ご家族との面会・連絡、利用者本人との会話・傾聴、他職種との連携、申し送りなど、人とのやり取りが主体の記録",
+    "心身状況": "バイタル測定値、体調の変化、認知症状、精神状態、ADL/IADLの変化、睡眠状況など、利用者の心身の状態を記述した記録",
+    "訓練状況": "リハビリ・機能訓練・歩行訓練・口腔体操・レクリエーションを通じた機能維持など、訓練に関する記録",
+    "ヒヤリハット": "転倒・転落・誤薬・誤嚥・離設・けが・事故未遂など、安全に関わるインシデントの記録",
+    "その他": "上記7カテゴリのいずれにも明確に当てはまらない記録",
+}
+
+
+def classify_category(content: str, current_category: str = "その他") -> dict:
+    """
+    ケース記録の本文から、推奨カテゴリを判定する。
+    保守的判定: 確信が持てない場合は必ず「その他」を返す。
+    無理に7カテゴリのどれかに押し込まない。
+
+    Args:
+        content (str): ケース記録の本文
+        current_category (str): 現在のカテゴリ(参考情報。判定には影響させない)
+
+    Returns:
+        dict: {
+            "category": str,        # 推奨カテゴリ(8カテゴリのいずれか)
+            "confidence": str,      # "high" or "low"
+            "reason": str,          # 判定理由(短文)
+        }
+        confidence == "low" の時は category は必ず "その他"。
+        失敗時は {"category": "その他", "confidence": "low", "reason": "AI判定エラー"}。
+    """
+    if not content or not content.strip():
+        return {"category": "その他", "confidence": "low", "reason": "本文が空"}
+
+    try:
+        # カテゴリ定義をプロンプトに埋め込む
+        category_lines = "\n".join(
+            f"- {name}: {desc}" for name, desc in AI_CATEGORY_DEFINITIONS.items()
+        )
+
+        prompt = (
+            "あなたは介護記録のカテゴリ分類を行うアシスタントです。\n"
+            "以下の本文を読み、最もふさわしいカテゴリを8つの中から1つだけ選んでください。\n\n"
+            "【最重要原則】\n"
+            "・**保守的に判定してください**。明確に当てはまる場合のみ7カテゴリ(入浴/食事/排泄/コミュニケーション/心身状況/訓練状況/ヒヤリハット)に分類してください。\n"
+            "・少しでも迷う、複数カテゴリにまたがる、文脈が短すぎて判断できない、といった場合は **必ず「その他」** を返してください。\n"
+            "・無理に7カテゴリに押し込めるよりも、「その他」のままで残すほうが安全です。\n\n"
+            "【カテゴリ定義】\n"
+            f"{category_lines}\n\n"
+            "【出力形式】\n"
+            "以下のJSONのみを返してください(説明文・コードブロック不要):\n"
+            '{"category": "<カテゴリ名>", "confidence": "<high または low>", "reason": "<30文字以内の判定理由>"}\n\n'
+            "・confidence: 7カテゴリのいずれかにハッキリ当てはまるなら \"high\"、それ以外は \"low\"\n"
+            "・confidence が \"low\" の場合、category は必ず \"その他\" にしてください\n\n"
+            "【入力】\n"
+            f"本文: {content}\n\n"
+            "【出力】"
+        )
+
+        model = get_generative_model()
+        resp = model.generate_content([prompt])
+        text = (resp.text or "").strip()
+
+        import re as _re
+        import json as _json
+
+        # ```json ... ``` で囲まれていても拾えるよう、最初の { から最後の } までを抜く
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if not m:
+            return {"category": "その他", "confidence": "low", "reason": "AI応答パース失敗"}
+
+        data = _json.loads(m.group())
+        if not isinstance(data, dict):
+            return {"category": "その他", "confidence": "low", "reason": "AI応答が辞書形式でない"}
+
+        category = str(data.get("category", "その他")).strip()
+        confidence = str(data.get("confidence", "low")).strip().lower()
+        reason = str(data.get("reason", "")).strip()[:60]  # 30文字指示だが余裕を持って60で切る
+
+        # バリデーション: カテゴリは8つのいずれかでなければ「その他」に正規化
+        if category not in AI_CATEGORY_DEFINITIONS:
+            return {"category": "その他", "confidence": "low", "reason": f"未知のカテゴリ: {category}"}
+
+        # confidence は high/low のいずれか
+        if confidence not in ("high", "low"):
+            confidence = "low"
+
+        # confidence == low の場合、category は必ず「その他」に強制
+        if confidence == "low":
+            category = "その他"
+
+        # confidence == high で「その他」が返ってきた場合 → low に正規化(矛盾防止)
+        if confidence == "high" and category == "その他":
+            confidence = "low"
+
+        return {"category": category, "confidence": confidence, "reason": reason or "(理由なし)"}
+
+    except Exception as e:
+        # メイン処理を止めないため、ログだけ出してデフォルト値を返す
+        print(f"[classify_category] failed: {e}", flush=True)
+        return {"category": "その他", "confidence": "low", "reason": "AI判定エラー"}

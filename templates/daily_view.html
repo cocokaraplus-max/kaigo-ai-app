@@ -611,6 +611,65 @@
     text-align: center; padding: 32px 16px; color: #5f6368;
 }
 
+/* === Session 31 Step 6: カテゴリタグ + AI判定 === */
+.aic-card-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 0.7rem; font-weight: 700;
+    margin-left: 8px; vertical-align: middle;
+}
+.aic-card-tag .material-symbols-outlined { font-size: 13px; }
+.aic-card-cat-入浴 { background: #e8f0fe; color: #1a73e8; }
+.aic-card-cat-食事 { background: #fff3e0; color: #f57c00; }
+.aic-card-cat-排泄 { background: #e6f4ea; color: #137333; }
+.aic-card-cat-コミュニケーション { background: #f3e8ff; color: #7c3aed; }
+.aic-card-cat-心身状況 { background: #fce7f3; color: #be185d; }
+.aic-card-cat-訓練状況 { background: #cffafe; color: #0891b2; }
+.aic-card-cat-ヒヤリハット { background: #fce8e6; color: #c5221f; }
+.aic-card-cat-その他 { background: #f1f3f4; color: #5f6368; }
+
+.aic-card-judge-btn {
+    background: #fff; color: #f57c00; border: 1px solid #f57c00;
+    border-radius: 6px; padding: 4px 10px; font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.aic-card-judge-btn:disabled {
+    background: #f1f3f4; color: #9aa0a6; border-color: #dadce0; cursor: not-allowed;
+}
+
+/* AI判定モーダル */
+.aic-card-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10000; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.aic-card-box {
+    background: #fff; border-radius: 14px; max-width: 380px; width: 100%;
+    padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.aic-card-box-title {
+    font-weight: 700; font-size: 1rem; color: #e65100;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+.aic-card-box-msg {
+    font-size: 0.9rem; color: #202124; line-height: 1.5;
+    margin-bottom: 14px;
+}
+.aic-card-box-msg b { color: #e65100; font-size: 1rem; }
+.aic-card-box-reason {
+    font-size: 0.78rem; color: #5f6368; padding: 8px 10px;
+    background: #f8f9fa; border-radius: 8px; margin-bottom: 14px;
+}
+.aic-card-box-actions {
+    display: flex; gap: 8px;
+}
+.aic-card-box-actions button {
+    flex: 1; padding: 12px; border-radius: 8px; font-weight: 700;
+    font-size: 0.92rem; cursor: pointer; border: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
+.aic-card-yes { background: #f57c00; color: #fff; }
+.aic-card-no  { background: #fff; color: #5f6368; border: 1px solid #dadce0 !important; }
 </style>
 
 
@@ -725,6 +784,12 @@
                 <div class="record-meta">
                     <span class="material-symbols-outlined">schedule</span>
                     {{ r.time }} （{{ r.staff_name }}）
+                    {% if r.category %}
+                    <span class="aic-card-tag aic-card-cat-{{ r.category }}">
+                        <span class="material-symbols-outlined">label</span>
+                        {{ r.category }}
+                    </span>
+                    {% endif %}
                 </div>
                 <button type="button" class="must-read-toggle{% if r.must_read %} active{% endif %}"
                     id="mr-toggle-{{ r.id }}" onclick="toggleMustRead('{{ r.id }}')"
@@ -773,6 +838,10 @@
                 <button class="btn btn-sm btn-danger" onclick="deleteRecord('{{ r.id }}')">
                     <span class="material-symbols-outlined" style="color:white;">delete</span>
                     削除
+                </button>
+                <button class="aic-card-judge-btn" onclick="aicCardJudge('{{ r.id }}')" title="AIカテゴリ判定">
+                    <span class="material-symbols-outlined" style="font-size:14px;">auto_awesome</span>
+                    AI判定
                 </button>
             </div>
             {% endif %}
@@ -1599,5 +1668,145 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('cr-search-modal')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) crCloseSearch();
 });
+</script>
+
+<!-- Session 31 Step 6: AI判定モーダル -->
+<div id="aic-card-overlay" class="aic-card-overlay" style="display:none;">
+    <div class="aic-card-box">
+        <div class="aic-card-box-title">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            AIカテゴリ判定
+        </div>
+        <div class="aic-card-box-msg" id="aic-card-msg"></div>
+        <div class="aic-card-box-reason" id="aic-card-reason"></div>
+        <div class="aic-card-box-actions">
+            <button type="button" class="aic-card-no" onclick="aicCardClose()">
+                <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+                閉じる
+            </button>
+            <button type="button" class="aic-card-yes" id="aic-card-apply-btn" onclick="aicCardApply()">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>
+                変更を適用
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// === Session 31 Step 6: カードAI判定 ===
+let _aicCardCurrent = null;
+
+async function aicCardJudge(recordId) {
+    const btn = event.currentTarget;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">hourglass_empty</span>判定中...';
+    }
+    try {
+        const contentEl = document.getElementById('content-' + recordId);
+        const text = contentEl ? contentEl.textContent.trim() : '';
+        if (!text) {
+            alert('本文が空のため判定できません。');
+            return;
+        }
+        const cardEl = document.getElementById('record-' + recordId);
+        const tagEl = cardEl ? cardEl.querySelector('.aic-card-tag') : null;
+        const curCat = tagEl ? tagEl.textContent.trim().replace(/^label\s*/, '') : 'その他';
+
+        const resp = await fetch('/api/records/suggest_category', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content: text, current_category: curCat})
+        });
+        const data = await resp.json();
+        if (!data.ok || !data.result) {
+            alert('AI判定エラー: ' + (data.error || '不明'));
+            return;
+        }
+        const sg = data.result;
+        const sameCat = (sg.category === curCat);
+
+        const msgEl = document.getElementById('aic-card-msg');
+        const reasonEl = document.getElementById('aic-card-reason');
+        const applyBtn = document.getElementById('aic-card-apply-btn');
+
+        if (sg.confidence === 'low' || sameCat) {
+            msgEl.innerHTML = '<b>変更の必要なし</b><br>現在のカテゴリ「' + escapeAicCard(curCat) + '」のままで問題ないとAIが判定しました。';
+            reasonEl.textContent = '判定理由: ' + (sg.reason || '(理由なし)');
+            applyBtn.style.display = 'none';
+        } else {
+            msgEl.innerHTML = '<b>「' + escapeAicCard(sg.category) + '」</b> への変更を推奨します。<br>(現在: ' + escapeAicCard(curCat) + ')';
+            reasonEl.textContent = '判定理由: ' + (sg.reason || '(理由なし)');
+            applyBtn.style.display = 'inline-flex';
+            _aicCardCurrent = {recordId: recordId, suggestion: sg, oldCat: curCat};
+        }
+        document.getElementById('aic-card-overlay').style.display = 'flex';
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">auto_awesome</span>AI判定';
+        }
+    }
+}
+
+function aicCardClose() {
+    document.getElementById('aic-card-overlay').style.display = 'none';
+    _aicCardCurrent = null;
+}
+
+async function aicCardApply() {
+    if (!_aicCardCurrent) return;
+    const {recordId, suggestion} = _aicCardCurrent;
+
+    const applyBtn = document.getElementById('aic-card-apply-btn');
+    applyBtn.disabled = true;
+    applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">hourglass_empty</span>適用中...';
+
+    try {
+        const resp = await fetch('/api/records/' + encodeURIComponent(recordId) + '/apply_ai_category', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                new_category: suggestion.category,
+                ai_reason: suggestion.reason || ''
+            })
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert('適用エラー: ' + (data.error || '不明'));
+            applyBtn.disabled = false;
+            applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>変更を適用';
+            return;
+        }
+        const cardEl = document.getElementById('record-' + recordId);
+        if (cardEl) {
+            const tagEl = cardEl.querySelector('.aic-card-tag');
+            if (tagEl) {
+                tagEl.className = 'aic-card-tag aic-card-cat-' + suggestion.category;
+                tagEl.innerHTML = '<span class="material-symbols-outlined">label</span> ' + escapeAicCard(suggestion.category);
+            }
+        }
+        if (data.warning) {
+            alert('適用しました(注意: ' + data.warning + ')');
+        }
+        aicCardClose();
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+        applyBtn.disabled = false;
+        applyBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;color:#fff;">check</span>変更を適用';
+    }
+}
+
+function escapeAicCard(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 </script>
 {% endblock %}
