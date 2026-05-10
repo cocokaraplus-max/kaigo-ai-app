@@ -131,6 +131,10 @@
             <span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>
             選択を判定
         </button>
+        <button class="aic-btn aic-btn-secondary" id="aic-stop-btn" onclick="aicRequestStop()" style="display:none;">
+            <span class="material-symbols-outlined" style="font-size:18px;">stop_circle</span>
+            中断
+        </button>
     </div>
 
     {% if records %}
@@ -187,94 +191,131 @@ function aicUpdateSelected() {
     document.getElementById('aic-judge-btn').disabled = (cbs.length === 0);
 }
 
+// バッチ処理の状態管理
+const BATCH_SIZE = 10;
+let aicStopRequested = false;
+
+function aicRequestStop() {
+    aicStopRequested = true;
+    const stopBtn = document.getElementById('aic-stop-btn');
+    if (stopBtn) {
+        stopBtn.disabled = true;
+        stopBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">hourglass_empty</span>停止中...';
+    }
+}
+
+function aicChunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+
+function aicAppendResultRow(r, listEl) {
+    const div = document.createElement('div');
+    div.className = 'aic-result-item ' + (r.confidence === 'high' ? 'aic-result-high' : 'aic-result-low');
+    const tagClass = r.confidence === 'high' ? 'aic-tag-high' : 'aic-tag-low';
+    const tagLabel = r.confidence === 'high' ? '変更推奨' : '維持';
+    div.innerHTML =
+        `<div style="margin-bottom:4px;">` +
+        `<span class="aic-result-tag ${tagClass}">${tagLabel}</span>` +
+        `<b>その他 → ${escapeHtml(r.category)}</b> ` +
+        `<span style="color:#5f6368;">(理由: ${escapeHtml(r.reason)})</span>` +
+        `</div>` +
+        `<div style="font-size:0.78rem; color:#5f6368; margin-bottom:3px;">` +
+        `record_id: ${r.record_id}` +
+        `</div>` +
+        `<div style="font-size:0.82rem; color:#202124;">` +
+        escapeHtml((r.content || '').slice(0, 200)) +
+        `</div>`;
+    listEl.appendChild(div);
+}
+
+function aicUpdateSummary(allResults, totalRequested, batchErrors) {
+    const highCount = allResults.filter(r => r.confidence === 'high').length;
+    const lowCount  = allResults.filter(r => r.confidence === 'low').length;
+    const errMsg = batchErrors > 0
+        ? ` / <span style="color:#ea4335;">バッチ失敗: ${batchErrors}件</span>`
+        : '';
+    document.getElementById('aic-results-summary').innerHTML =
+        `判定済み <b>${allResults.length}/${totalRequested}</b> 件 / ` +
+        `<span style="color:#137333;">変更推奨: ${highCount}件</span> / ` +
+        `<span style="color:#5f6368;">維持: ${lowCount}件</span>` +
+        errMsg;
+}
+
 async function aicJudge() {
     const cbs = document.querySelectorAll('.aic-cb:checked');
     const ids = Array.from(cbs).map(cb => parseInt(cb.value, 10));
     if (ids.length === 0) return;
-    if (ids.length > 100) {
-        alert('一度に判定できるのは100件までです。');
-        return;
-    }
 
     const btn = document.getElementById('aic-judge-btn');
+    const stopBtn = document.getElementById('aic-stop-btn');
     btn.disabled = true;
+    aicStopRequested = false;
+    if (stopBtn) {
+        stopBtn.style.display = 'inline-flex';
+        stopBtn.disabled = false;
+        stopBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">stop_circle</span>中断';
+    }
 
     const progressEl = document.getElementById('aic-progress');
     const progressText = document.getElementById('aic-progress-text');
     const progressFill = document.getElementById('aic-progress-fill');
     const resultsEl = document.getElementById('aic-results');
+    const listEl = document.getElementById('aic-results-list');
 
     progressEl.style.display = 'block';
-    resultsEl.style.display = 'none';
+    resultsEl.style.display = 'block';
     progressText.textContent = `0/${ids.length}`;
     progressFill.style.width = '0%';
+    listEl.innerHTML = '';
 
-    // フェイク進捗(サーバ処理中、20秒で90%まで上げる)
-    let fakeProgress = 0;
-    const fakeTimer = setInterval(() => {
-        fakeProgress = Math.min(fakeProgress + 1, 90);
-        progressFill.style.width = fakeProgress + '%';
-        const fakeCount = Math.floor((fakeProgress / 100) * ids.length);
-        progressText.textContent = `${fakeCount}/${ids.length}`;
-    }, 200);
+    const batches = aicChunk(ids, BATCH_SIZE);
+    const allResults = [];
+    let batchErrors = 0;
+    let processedCount = 0;
 
-    try {
-        const resp = await fetch('/api/admin/ai-categorize/judge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ record_ids: ids })
-        });
-        const data = await resp.json();
-        clearInterval(fakeTimer);
-        progressFill.style.width = '100%';
-        progressText.textContent = `${ids.length}/${ids.length}`;
+    for (let i = 0; i < batches.length; i++) {
+        if (aicStopRequested) break;
 
-        if (!data.ok) {
-            alert('判定エラー: ' + (data.error || '不明'));
-            btn.disabled = false;
-            progressEl.style.display = 'none';
-            return;
+        try {
+            const resp = await fetch('/api/admin/ai-categorize/judge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ record_ids: batches[i] })
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                batchErrors++;
+                console.error('batch error:', data.error);
+            } else {
+                const results = data.results || [];
+                results.forEach(r => {
+                    allResults.push(r);
+                    aicAppendResultRow(r, listEl);
+                });
+            }
+        } catch (e) {
+            batchErrors++;
+            console.error('batch fetch error:', e);
         }
 
-        // 結果表示
-        const results = data.results || [];
-        const highCount = results.filter(r => r.confidence === 'high').length;
-        const lowCount  = results.filter(r => r.confidence === 'low').length;
+        processedCount += batches[i].length;
+        const pct = Math.round((processedCount / ids.length) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = `${processedCount}/${ids.length}`;
+        aicUpdateSummary(allResults, ids.length, batchErrors);
+    }
 
-        document.getElementById('aic-results-summary').innerHTML =
-            `合計 ${results.length} 件判定 / ` +
-            `<span style="color:#137333;">変更推奨(high): ${highCount} 件</span> / ` +
-            `<span style="color:#5f6368;">「その他」維持(low): ${lowCount} 件</span>`;
+    // 完了処理
+    if (stopBtn) stopBtn.style.display = 'none';
+    btn.disabled = false;
 
-        const listEl = document.getElementById('aic-results-list');
-        listEl.innerHTML = '';
-        results.forEach(r => {
-            const div = document.createElement('div');
-            div.className = 'aic-result-item ' + (r.confidence === 'high' ? 'aic-result-high' : 'aic-result-low');
-            const tagClass = r.confidence === 'high' ? 'aic-tag-high' : 'aic-tag-low';
-            const tagLabel = r.confidence === 'high' ? '変更推奨' : '維持';
-            div.innerHTML =
-                `<div style="margin-bottom:4px;">` +
-                `<span class="aic-result-tag ${tagClass}">${tagLabel}</span>` +
-                `<b>その他 → ${escapeHtml(r.category)}</b> ` +
-                `<span style="color:#5f6368;">(理由: ${escapeHtml(r.reason)})</span>` +
-                `</div>` +
-                `<div style="font-size:0.78rem; color:#5f6368; margin-bottom:3px;">` +
-                `record_id: ${r.record_id}` +
-                `</div>` +
-                `<div style="font-size:0.82rem; color:#202124;">` +
-                escapeHtml((r.content || '').slice(0, 200)) +
-                `</div>`;
-            listEl.appendChild(div);
-        });
-
-        resultsEl.style.display = 'block';
-        btn.disabled = false;
-    } catch (e) {
-        clearInterval(fakeTimer);
-        alert('通信エラー: ' + e.message);
-        btn.disabled = false;
-        progressEl.style.display = 'none';
+    if (aicStopRequested) {
+        const note = document.createElement('div');
+        note.style.cssText = 'padding:10px;background:#fff3e0;border-radius:8px;color:#e65100;font-size:0.85rem;margin-top:10px;';
+        note.textContent = `中断しました。${allResults.length} 件判定済み。`;
+        listEl.appendChild(note);
     }
 }
 

@@ -5201,8 +5201,8 @@ def api_admin_ai_categorize_judge():
 
     if not isinstance(record_ids, list) or len(record_ids) == 0:
         return jsonify({"ok": False, "error": "record_ids が空です"}), 400
-    if len(record_ids) > 100:
-        return jsonify({"ok": False, "error": "一度に判定できるのは100件までです"}), 400
+    if len(record_ids) > 20:
+        return jsonify({"ok": False, "error": "一度に判定できるのは20件までです(フロントは通常10件ずつバッチ送信)"}), 400
 
     # int に正規化(Jinja から文字列で来る可能性に備え)
     try:
