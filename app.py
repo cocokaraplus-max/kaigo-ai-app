@@ -1,8 +1,9 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, current_app
 from supabase import create_client
-from utils import classify_category
+from utils import classify_category, generate_search_tags
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
+import uuid
 import pytz
 import re
 import base64
@@ -5249,4 +5250,287 @@ def api_admin_ai_categorize_judge():
         })
 
     return jsonify({"ok": True, "results": results, "count": len(results)})
+
+
+
+# ============================================================
+# Session 31 Step 5: AIカテゴリ自動振り分け - 適用 / 履歴 / ロールバック
+# ============================================================
+@app.route('/api/admin/ai-categorize/apply', methods=['POST'])
+@login_required
+def api_admin_ai_categorize_apply():
+    """AI判定結果をDBに反映する。
+    body: {items: [{record_id, new_category, ai_reason}, ...]}
+    各レコードに対し:
+      - records.category と records.search_tags を UPDATE
+        (search_tags は新カテゴリで generate_search_tags を再生成)
+      - ai_categorize_history に INSERT (同じ batch_id で全件)
+    return: {ok, batch_id, applied_count, errors}
+    """
+    if not session.get("admin_authenticated", False):
+        return jsonify({"ok": False, "error": "管理者認証が必要です"}), 403
+
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items") or []
+
+    if not isinstance(items, list) or len(items) == 0:
+        return jsonify({"ok": False, "error": "items が空です"}), 400
+    if len(items) > 100:
+        return jsonify({"ok": False, "error": "一度に適用できるのは100件までです"}), 400
+
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット"}
+
+    normalized = []
+    for it in items:
+        try:
+            rid = int(it.get("record_id"))
+        except Exception:
+            continue
+        new_cat = str(it.get("new_category") or "").strip()
+        if new_cat not in VALID_CATEGORIES:
+            continue
+        ai_reason = str(it.get("ai_reason") or "")[:200]
+        normalized.append({"record_id": rid, "new_category": new_cat, "ai_reason": ai_reason})
+
+    if len(normalized) == 0:
+        return jsonify({"ok": False, "error": "有効な items がありません"}), 400
+
+    supabase = get_supabase()
+    record_ids = [n["record_id"] for n in normalized]
+
+    try:
+        res = supabase.table("records") \
+            .select("id,content,category,search_tags") \
+            .in_("id", record_ids) \
+            .eq("facility_code", f_code) \
+            .execute()
+        rows = res.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"記録取得エラー: {e}"}), 500
+
+    rows_by_id = {r["id"]: r for r in rows}
+
+    batch_id = str(uuid.uuid4())
+    applied_count = 0
+    errors = []
+
+    for n in normalized:
+        rid = n["record_id"]
+        new_cat = n["new_category"]
+        ai_reason = n["ai_reason"]
+        row = rows_by_id.get(rid)
+        if not row:
+            errors.append({"record_id": rid, "error": "対象レコードなし"})
+            continue
+        old_cat = row.get("category") or "その他"
+        old_tags = row.get("search_tags") or []
+        content_text = row.get("content") or ""
+
+        try:
+            new_tags = generate_search_tags(content_text, new_cat) or []
+        except Exception as e:
+            print(f"[ai-categorize/apply] generate_search_tags fail rid={rid}: {e}", flush=True)
+            new_tags = []
+
+        try:
+            supabase.table("records") \
+                .update({"category": new_cat, "search_tags": new_tags}) \
+                .eq("id", rid) \
+                .eq("facility_code", f_code) \
+                .execute()
+        except Exception as e:
+            errors.append({"record_id": rid, "error": f"UPDATE失敗: {e}"})
+            continue
+
+        try:
+            supabase.table("ai_categorize_history").insert({
+                "batch_id": batch_id,
+                "record_id": rid,
+                "old_category": old_cat,
+                "new_category": new_cat,
+                "old_search_tags": old_tags,
+                "new_search_tags": new_tags,
+                "ai_reason": ai_reason,
+                "applied_by": my_name,
+            }).execute()
+        except Exception as e:
+            print(f"[ai-categorize/apply] history insert fail rid={rid}: {e}", flush=True)
+            errors.append({"record_id": rid, "error": f"履歴記録失敗(更新は完了): {e}"})
+
+        applied_count += 1
+
+    return jsonify({
+        "ok": True,
+        "batch_id": batch_id,
+        "applied_count": applied_count,
+        "total": len(normalized),
+        "errors": errors,
+    })
+
+
+@app.route('/api/admin/ai-categorize/history')
+@login_required
+def api_admin_ai_categorize_history():
+    """過去の適用batch一覧。新しい順、最大50バッチ。"""
+    if not session.get("admin_authenticated", False):
+        return jsonify({"ok": False, "error": "管理者認証が必要です"}), 403
+
+    f_code = session["f_code"]
+    supabase = get_supabase()
+
+    try:
+        hist_res = supabase.table("ai_categorize_history") \
+            .select("id,batch_id,record_id,old_category,new_category,ai_reason,applied_by,applied_at,rolled_back_at") \
+            .order("applied_at", desc=True) \
+            .limit(2000) \
+            .execute()
+        hist_rows = hist_res.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"履歴取得エラー: {e}"}), 500
+
+    if not hist_rows:
+        return jsonify({"ok": True, "batches": []})
+
+    rec_ids = list({h["record_id"] for h in hist_rows})
+    try:
+        rec_res = supabase.table("records") \
+            .select("id") \
+            .in_("id", rec_ids) \
+            .eq("facility_code", f_code) \
+            .execute()
+        my_rec_ids = {r["id"] for r in (rec_res.data or [])}
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"records 確認エラー: {e}"}), 500
+
+    my_hist = [h for h in hist_rows if h["record_id"] in my_rec_ids]
+
+    batches_map = {}
+    for h in my_hist:
+        bid = h["batch_id"]
+        if bid not in batches_map:
+            batches_map[bid] = {
+                "batch_id": bid,
+                "applied_at": h["applied_at"],
+                "applied_by": h["applied_by"],
+                "count": 0,
+                "rolled_back_count": 0,
+                "items": [],
+            }
+        batches_map[bid]["count"] += 1
+        if h.get("rolled_back_at"):
+            batches_map[bid]["rolled_back_count"] += 1
+        batches_map[bid]["items"].append({
+            "history_id": h["id"],
+            "record_id": h["record_id"],
+            "old_category": h["old_category"],
+            "new_category": h["new_category"],
+            "ai_reason": h.get("ai_reason") or "",
+            "rolled_back_at": h.get("rolled_back_at"),
+        })
+
+    batches = sorted(
+        batches_map.values(),
+        key=lambda b: b["applied_at"] or "",
+        reverse=True,
+    )[:50]
+
+    return jsonify({"ok": True, "batches": batches})
+
+
+@app.route('/api/admin/ai-categorize/rollback', methods=['POST'])
+@login_required
+def api_admin_ai_categorize_rollback():
+    """ロールバック。
+    body:
+      {batch_id: uuid} → そのバッチの未ロールバック分を全件戻す
+      {history_id: int} → そのhistory 1件だけ戻す
+    """
+    if not session.get("admin_authenticated", False):
+        return jsonify({"ok": False, "error": "管理者認証が必要です"}), 403
+
+    f_code = session["f_code"]
+    payload = request.get_json(silent=True) or {}
+    batch_id = payload.get("batch_id")
+    history_id = payload.get("history_id")
+
+    if not batch_id and not history_id:
+        return jsonify({"ok": False, "error": "batch_id か history_id を指定してください"}), 400
+
+    supabase = get_supabase()
+
+    try:
+        if history_id:
+            try:
+                hid = int(history_id)
+            except Exception:
+                return jsonify({"ok": False, "error": "history_id は整数で指定してください"}), 400
+            hist_res = supabase.table("ai_categorize_history") \
+                .select("*") \
+                .eq("id", hid) \
+                .is_("rolled_back_at", "null") \
+                .execute()
+        else:
+            hist_res = supabase.table("ai_categorize_history") \
+                .select("*") \
+                .eq("batch_id", batch_id) \
+                .is_("rolled_back_at", "null") \
+                .execute()
+        hist_rows = hist_res.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"履歴取得エラー: {e}"}), 500
+
+    if not hist_rows:
+        return jsonify({"ok": False, "error": "対象の履歴がありません(既にロールバック済みか、存在しません)"}), 404
+
+    rec_ids = list({h["record_id"] for h in hist_rows})
+    try:
+        rec_res = supabase.table("records") \
+            .select("id") \
+            .in_("id", rec_ids) \
+            .eq("facility_code", f_code) \
+            .execute()
+        my_rec_ids = {r["id"] for r in (rec_res.data or [])}
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"records 確認エラー: {e}"}), 500
+
+    rolled_back_count = 0
+    errors = []
+
+    for h in hist_rows:
+        rid = h["record_id"]
+        if rid not in my_rec_ids:
+            errors.append({"history_id": h["id"], "error": "他施設のレコード(無視)"})
+            continue
+        old_cat = h.get("old_category") or "その他"
+        old_tags = h.get("old_search_tags") or []
+
+        try:
+            supabase.table("records") \
+                .update({"category": old_cat, "search_tags": old_tags}) \
+                .eq("id", rid) \
+                .eq("facility_code", f_code) \
+                .execute()
+        except Exception as e:
+            errors.append({"history_id": h["id"], "error": f"UPDATE失敗: {e}"})
+            continue
+
+        try:
+            supabase.table("ai_categorize_history") \
+                .update({"rolled_back_at": "now()"}) \
+                .eq("id", h["id"]) \
+                .execute()
+        except Exception as e:
+            print(f"[rollback] history mark fail hid={h['id']}: {e}", flush=True)
+            errors.append({"history_id": h["id"], "error": f"履歴更新失敗(records戻し済): {e}"})
+
+        rolled_back_count += 1
+
+    return jsonify({
+        "ok": True,
+        "rolled_back_count": rolled_back_count,
+        "total": len(hist_rows),
+        "errors": errors,
+    })
 
