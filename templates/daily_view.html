@@ -670,6 +670,73 @@
 }
 .aic-card-yes { background: #f57c00; color: #fff; }
 .aic-card-no  { background: #fff; color: #5f6368; border: 1px solid #dadce0 !important; }
+
+/* === Session 31 task-1: 手動カテゴリピッカー === */
+.aic-card-tag-editable {
+    border: 1px dashed transparent;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    font-family: inherit;
+}
+.aic-card-tag-editable:hover {
+    border-color: currentColor;
+}
+.aic-card-tag-editable:active {
+    transform: scale(0.95);
+}
+.aic-card-tag-edit-icon {
+    font-size: 11px !important;
+    margin-left: 2px;
+    opacity: 0.5;
+}
+
+.aic-manual-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10001; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.aic-manual-box {
+    background: #fff; border-radius: 14px; max-width: 360px; width: 100%;
+    padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.aic-manual-title {
+    font-weight: 700; font-size: 1rem; color: #202124;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.aic-manual-sub {
+    font-size: 0.78rem; color: #5f6368;
+    margin-bottom: 14px;
+}
+.aic-manual-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 14px;
+}
+.aic-manual-btn {
+    padding: 10px 8px; border-radius: 8px; font-weight: 700;
+    font-size: 0.85rem; cursor: pointer; border: 1px solid transparent;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    position: relative;
+}
+.aic-manual-btn .material-symbols-outlined { font-size: 14px; }
+.aic-manual-btn.aic-manual-current {
+    border-color: currentColor !important;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.05);
+}
+.aic-manual-btn.aic-manual-current::after {
+    content: "現在";
+    position: absolute;
+    top: -6px; right: -4px;
+    font-size: 0.6rem;
+    background: #202124; color: #fff;
+    border-radius: 8px;
+    padding: 1px 6px;
+}
+.aic-manual-cancel {
+    width: 100%; padding: 10px; border-radius: 8px; cursor: pointer;
+    background: #fff; color: #5f6368; border: 1px solid #dadce0;
+    font-weight: 700; font-size: 0.9rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
 </style>
 
 
@@ -785,10 +852,18 @@
                     <span class="material-symbols-outlined">schedule</span>
                     {{ r.time }} （{{ r.staff_name }}）
                     {% if r.category %}
+                    {% if r.can_edit %}
+                    <button type="button" class="aic-card-tag aic-card-tag-editable aic-card-cat-{{ r.category }}" onclick="aicManualPickerOpen('{{ r.id }}', this)" title="タップしてカテゴリを変更">
+                        <span class="material-symbols-outlined">label</span>
+                        {{ r.category }}
+                        <span class="material-symbols-outlined aic-card-tag-edit-icon">edit</span>
+                    </button>
+                    {% else %}
                     <span class="aic-card-tag aic-card-cat-{{ r.category }}">
                         <span class="material-symbols-outlined">label</span>
                         {{ r.category }}
                     </span>
+                    {% endif %}
                     {% endif %}
                 </div>
                 <button type="button" class="must-read-toggle{% if r.must_read %} active{% endif %}"
@@ -1862,6 +1937,157 @@ async function aicCardApply() {
 }
 
 function escapeAicCard(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+</script>
+
+<!-- Session 31 task-1: 手動カテゴリピッカー -->
+<div id="aic-manual-overlay" class="aic-manual-overlay" style="display:none;" onclick="aicManualPickerCloseIfBg(event)">
+    <div class="aic-manual-box">
+        <div class="aic-manual-title">
+            <span class="material-symbols-outlined">label</span>
+            カテゴリを変更
+        </div>
+        <div class="aic-manual-sub" id="aic-manual-sub">変更先を選択してください</div>
+        <div class="aic-manual-grid" id="aic-manual-grid">
+            <!-- JS でカテゴリボタン生成 -->
+        </div>
+        <button type="button" class="aic-manual-cancel" onclick="aicManualPickerClose()">
+            <span class="material-symbols-outlined">close</span>
+            キャンセル
+        </button>
+    </div>
+</div>
+
+<script>
+// === Session 31 task-1: 手動カテゴリピッカー ===
+const AIC_MANUAL_CATEGORIES = [
+    '入浴', '食事', '排泄', 'コミュニケーション',
+    '心身状況', '訓練状況', 'ヒヤリハット', 'その他'
+];
+let _aicManualPickerCtx = null;  // {recordId, currentCategory, anchorBtn}
+
+function aicManualPickerOpen(recordId, anchorBtn) {
+    // 現在のカテゴリを取得(button のテキストから)
+    let currentCat = 'その他';
+    if (anchorBtn) {
+        const cls = anchorBtn.className || '';
+        const m = cls.match(/aic-card-cat-([^\s]+)/);
+        if (m) currentCat = m[1];
+    }
+    _aicManualPickerCtx = {recordId: recordId, currentCategory: currentCat, anchorBtn: anchorBtn};
+
+    // グリッド生成
+    const grid = document.getElementById('aic-manual-grid');
+    grid.innerHTML = '';
+    AIC_MANUAL_CATEGORIES.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'aic-manual-btn aic-card-cat-' + cat + (cat === currentCat ? ' aic-manual-current' : '');
+        btn.innerHTML = '<span class="material-symbols-outlined">label</span>' + _aicManualEscape(cat);
+        btn.onclick = function() { aicManualPickerApply(cat); };
+        grid.appendChild(btn);
+    });
+
+    document.getElementById('aic-manual-sub').textContent = '現在: 「' + _aicManualEscape(currentCat) + '」 → 変更先を選択';
+    document.getElementById('aic-manual-overlay').style.display = 'flex';
+}
+
+function aicManualPickerClose() {
+    document.getElementById('aic-manual-overlay').style.display = 'none';
+    _aicManualPickerCtx = null;
+}
+
+function aicManualPickerCloseIfBg(evt) {
+    if (evt.target === evt.currentTarget) aicManualPickerClose();
+}
+
+async function aicManualPickerApply(newCat) {
+    if (!_aicManualPickerCtx) return;
+    const ctx = _aicManualPickerCtx;
+    if (newCat === ctx.currentCategory) {
+        // 同じカテゴリ選択 → 何もしないで閉じる
+        aicManualPickerClose();
+        return;
+    }
+
+    // ボタンを「適用中...」に
+    const grid = document.getElementById('aic-manual-grid');
+    const allBtns = grid.querySelectorAll('button');
+    allBtns.forEach(b => b.disabled = true);
+
+    let success = false;
+    let errorMsg = null;
+
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 30000);
+        try {
+            const resp = await fetch('/api/records/' + encodeURIComponent(ctx.recordId) + '/apply_ai_category', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({new_category: newCat, ai_reason: '手動変更'}),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!resp.ok) {
+                errorMsg = '変更エラー: HTTP ' + resp.status;
+            } else {
+                const data = await resp.json();
+                if (!data.ok) {
+                    errorMsg = '変更エラー: ' + (data.error || '不明');
+                } else {
+                    success = true;
+                }
+            }
+        } finally {
+            clearTimeout(timer);
+        }
+    } catch (e) {
+        if (e && e.name === 'AbortError') {
+            errorMsg = 'タイムアウト。ページをリロードして確認してください。';
+        } else {
+            errorMsg = '通信エラー: ' + (e && e.message ? e.message : '不明');
+        }
+    }
+
+    allBtns.forEach(b => b.disabled = false);
+
+    if (success) {
+        // カードのタグを更新
+        try {
+            const cardEl = document.getElementById('record-' + ctx.recordId);
+            if (cardEl) {
+                const tagEl = cardEl.querySelector('.aic-card-tag');
+                if (tagEl) {
+                    // クラス更新
+                    const newClass = tagEl.className.replace(/aic-card-cat-[^\s]+/, 'aic-card-cat-' + newCat);
+                    tagEl.className = newClass;
+                    // 中身更新 (button要素の場合は編集アイコンも保持)
+                    const isBtn = tagEl.tagName.toLowerCase() === 'button';
+                    if (isBtn) {
+                        tagEl.innerHTML = '<span class="material-symbols-outlined">label</span>' + _aicManualEscape(newCat) + '<span class="material-symbols-outlined aic-card-tag-edit-icon">edit</span>';
+                    } else {
+                        tagEl.innerHTML = '<span class="material-symbols-outlined">label</span>' + _aicManualEscape(newCat);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[aicManualPickerApply] tag update fail:', e);
+        }
+        aicManualPickerClose();
+    } else if (errorMsg) {
+        alert(errorMsg);
+    }
+}
+
+function _aicManualEscape(s) {
     if (s == null) return '';
     return String(s)
         .replace(/&/g, '&amp;')
