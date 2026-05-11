@@ -660,7 +660,8 @@ body.modal-open .bottom-nav {
     }
     .comments-sheet {
         max-width: 100%;
-        height: var(--sheet-h, 75vh);
+        /* キーボード閉じ時=60vh / 開き時=visualViewport の小さい方を採用 */
+        height: min(var(--sheet-h, 60vh), 60vh);
         max-height: 100dvh;
         border-radius: 16px 16px 0 0;
         animation: slideUp 0.22s ease;
