@@ -656,18 +656,23 @@ body.modal-open .bottom-nav {
 @media (max-width: 600px) {
     .comments-drawer {
         align-items: flex-end;
-        padding: 0;
+        /* 左右と下に余白を入れて、シートを画面端から離す(画面角丸との干渉回避) */
+        padding: 0 10px 10px 10px;
+        /* iPhone のホームバーやセーフエリア分も避ける */
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     }
     .comments-sheet {
         max-width: 100%;
+        width: 100%;
         /* キーボード閉じ時=60dvh / 開き時=visualViewport の小さい方を採用 */
         /* dvh(dynamic viewport height) を使うことで iOS の URL バー伸縮にも追従 */
         height: min(var(--sheet-h, 60dvh), 60dvh);
-        max-height: 100dvh;
-        border-radius: 16px 16px 0 0;
+        max-height: calc(100dvh - 20px);
+        /* 全周角丸(画面角と干渉しない、カード型) */
+        border-radius: 16px;
         animation: slideUp 0.22s ease;
-        /* iPhone のホームバー領域分の余白を内側に確保(入力欄が画面外に出ないように) */
-        padding-bottom: env(safe-area-inset-bottom, 0px);
+        /* 浮き感を出すための柔らかいシャドウ */
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
 }
 @keyframes fadeInScale {
