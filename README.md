@@ -1,10 +1,61 @@
-# TASUKARU介護AIアプリ 開発引き継ぎ(2026-04-30 第4セッション末)
+# TASUKARU介護AIアプリ 開発引き継ぎ
 
-## 📍 現在の状況サマリ
+> **最新更新: 2026-05-10 Session 31 終了時点**
+> 本READMEは Session 4 から累積形式で記録。最新は末尾、Session番号順に追記。
+> 過去Sessionの詳細は本ファイル内を `Session NN 引き継ぎ` で検索。
 
-**掲示板UI大幅刷新セッション完了 + dev/本番両方デプロイ完了**。第4セッションでは、掲示板にカテゴリー機能(タブ式UI + フィルタ + 既存投稿への割当)を完全実装し、見た目も整えた。
-**本番マージ + 本番Supabaseテーブル作成 + 動作確認すべて完了**。dev (`tasukaru-dev` Cloud Run) と 本番 (`tasukaru` Cloud Run) の両方で動作中。
-本番URL(`tasukaru-191764727533.asia-northeast1.run.app/board`)で実ユーザー(岸本さん他)がコンパクト化された新UIで投稿確認済み。
+## 📍 現在の状況サマリ(Session 31 終了時点)
+
+**AIカテゴリ自動振り分け機能を完全実装・本番リリース済み。dev/本番ともに健全稼働中。**
+
+新規Sessionを開始する Claude は **最初に以下の3点を読むこと**:
+1. このREADMEの末尾「Session 31 引き継ぎ」セクション(最新の教訓・不変事項・PENDINGタスク)
+2. ハンドオフ書類 `/Users/ZIMAX 1/Desktop/SESSION31_HANDOFF_FINAL.md`(8機能の実装詳細)
+3. 過去ハンドオフ `/Users/ZIMAX 1/Desktop/SESSION27-30_HANDOFF.md`(参考)
+
+### 直近の主な機能(Session 31 で本番リリース)
+
+1. **AIカテゴリ自動振り分け**: 8カテゴリ(入浴/食事/排泄/コミュニケーション/心身状況/訓練状況/ヒヤリハット/その他)
+2. **管理者向け一括振り分け画面**(`/admin/ai-categorize`、batch判定+履歴+ロールバック)
+3. **投稿時のAIカテゴリ提案モーダル**(`/input`)
+4. **カードのAI判定ボタン + カテゴリ色付きタグ**(`/daily_view`)
+5. **カードのタグタップで手動カテゴリ変更**(投稿者本人 or 管理者)
+
+### 次Sessionで取り組む課題(優先順)
+
+- **課題3**: 一括適用「10件まで」UI制限(シンプル・1時間)
+- **課題4**: 「休み連絡」カテゴリ追加(中規模、DB変更必要)
+- **LINE招待移行**: 規模大、要件ヒアリングから(別途持ち越し)
+
+### 本番デプロイ手順(変更なし、改めて再掲)
+```bash
+git checkout tasukaru
+git merge tasukaru-dev
+git push origin tasukaru
+gcloud run deploy tasukaru --source . --region asia-northeast1
+# 完了後は tasukaru-dev に戻す
+git checkout tasukaru-dev
+```
+
+---
+
+## 📚 過去Sessionの全体構成
+
+| Session | 主な内容 | 詳細場所 |
+|---|---|---|
+| Session 4 (2026-04-30) | 掲示板UI刷新 + カテゴリー機能 | 本READMEを下方検索 |
+| Session 9 | バイタル機能 Phase 2 + 再検査アラーム | 本READMEを下方検索 |
+| Session 18-19 | (本READMEに記録あり) | 本READMEを下方検索 |
+| Session 23-24 | SendGrid メール障害対応 / dev DB浄化 | 本READMEを下方検索 |
+| Session 25-30 | (本READMEに未記載) | `SESSION27-30_HANDOFF.md` 参照 |
+| Session 31 (2026-05-10) | AIカテゴリ自動振り分け 8機能リリース | **本READMEの末尾** + `SESSION31_HANDOFF_FINAL.md` |
+
+---
+
+## 🗄️ 過去のサマリ(参考、Session 4 時点)
+
+以下は2026-04-30 Session 4 終了時点の旧サマリ。
+過去の経緯確認用に残す。最新の起点としてはREADME末尾の Session 31 章を参照。
 
 ### 第4セッションでの主な成果
 1. **カレンダー色重複アラート機能を完全削除** (ユーザー要望で機能廃止)
@@ -22,6 +73,8 @@
 13. **box-shadow による隙間カバー**: `0 -50px 0 #f1f3f4` で sticky上部の透けを完全解消
 14. **本番マージ完了**: `tasukaru-dev` → `tasukaru` ブランチ自動マージワークフローによりCloud Build/Runへデプロイ
 15. **本番Supabase `board_categories` テーブル作成**: 本番のSupabaseプロジェクト `kaigo-ai-app` (`abvglnkwtdeoaazyqwyd`) にテーブル作成 + RLS無効化 + `board_posts.category_id` カラム追加
+
+---
 
 ---
 
