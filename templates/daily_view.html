@@ -626,6 +626,7 @@
 .aic-card-cat-心身状況 { background: #fce7f3; color: #be185d; }
 .aic-card-cat-訓練状況 { background: #cffafe; color: #0891b2; }
 .aic-card-cat-ヒヤリハット { background: #fce8e6; color: #c5221f; }
+.aic-card-cat-休み連絡 { background: #FBEAF0; color: #993556; }
 .aic-card-cat-その他 { background: #f1f3f4; color: #5f6368; }
 
 .aic-card-judge-btn {
@@ -2036,7 +2037,7 @@ function escapeAicCard(s) {
 // === Session 31 task-1: 手動カテゴリピッカー ===
 const AIC_MANUAL_CATEGORIES = [
     '入浴', '食事', '排泄', 'コミュニケーション',
-    '心身状況', '訓練状況', 'ヒヤリハット', 'その他'
+    '心身状況', '訓練状況', 'ヒヤリハット', '休み連絡', 'その他'
 ];
 let _aicManualPickerCtx = null;  // {recordId, currentCategory, anchorBtn}
 
