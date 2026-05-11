@@ -504,7 +504,7 @@
 .cr-search-fab:active { transform: scale(0.95); }
 .cr-search-fab .material-symbols-outlined { font-size: 28px; }
 
-/* Session 34: スピードダイヤル(右下メイン1つ、タップで上方向に展開) */
+/* Session 34: スピードダイヤル(右下メイン、斜め扇形に展開) */
 .dv-sd-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.12);
@@ -519,7 +519,7 @@
     right: 16px;
     width: 56px; height: 56px;
     border-radius: 50%;
-    background: #1a73e8;
+    background: #ec4899;
     color: #fff;
     border: none;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
@@ -532,25 +532,50 @@
 .dv-sd-main:active { transform: scale(0.95); }
 .dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.2s ease; }
 .dv-sd-main.is-open .material-symbols-outlined { transform: rotate(90deg); }
-.dv-sd-items {
-    position: fixed;
-    right: 16px;
-    bottom: 152px;
-    z-index: 951;
-    display: flex; flex-direction: column-reverse; align-items: flex-end;
-    gap: 12px;
-    pointer-events: none;
-}
+
+/* 各サブボタンは個別に絶対配置(扇形パターン) */
 .dv-sd-item {
+    position: fixed;
+    z-index: 951;
     display: flex; align-items: center; gap: 10px;
-    opacity: 0; transform: translateY(8px);
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    opacity: 0;
     pointer-events: none;
+    /* 閉じている時は全部メインボタン位置に重なる(画面外に飛び出さないよう中心へ) */
+    bottom: 152px;
+    right: 16px;
+    transform: translate(0, 0) scale(0.4);
+    transform-origin: center right;
+    transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.dv-sd-items.is-open .dv-sd-item { pointer-events: auto; opacity: 1; transform: translateY(0); }
-.dv-sd-items.is-open .dv-sd-item:nth-child(1) { transition-delay: 0.18s; }
-.dv-sd-items.is-open .dv-sd-item:nth-child(2) { transition-delay: 0.12s; }
-.dv-sd-items.is-open .dv-sd-item:nth-child(3) { transition-delay: 0.06s; }
+
+/* 検索: 扇の一番下(メインの少し上、やや左) */
+.dv-sd-items.is-open .dv-sd-item.dv-sd-pos-1 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 215px;
+    right: 50px;
+    transform: scale(1);
+    transition-delay: 0.05s;
+}
+/* 全て開く: 扇の真ん中(さらに上、もっと左) */
+.dv-sd-items.is-open .dv-sd-item.dv-sd-pos-2 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 257px;
+    right: 100px;
+    transform: scale(1);
+    transition-delay: 0.10s;
+}
+/* TOPへ: 扇の一番上(更に上、いちばん左) */
+.dv-sd-items.is-open .dv-sd-item.dv-sd-pos-3 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 280px;
+    right: 160px;
+    transform: scale(1);
+    transition-delay: 0.15s;
+}
+
 .dv-sd-item-label {
     background: #ffffff;
     color: #202124;
@@ -565,12 +590,13 @@
     width: 44px; height: 44px;
     border-radius: 50%;
     background: #ffffff;
-    color: #1a73e8;
+    color: #ec4899;
     border: none;
     box-shadow: 0 3px 8px rgba(0,0,0,0.15);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
     transition: transform 0.12s;
+    flex-shrink: 0;
 }
 .dv-sd-item-btn:active { transform: scale(0.92); }
 .dv-sd-item-btn .material-symbols-outlined { font-size: 22px; }
@@ -1172,27 +1198,27 @@
 <!-- Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル -->
 <!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
 
-<!-- Session 34: 右下スピードダイヤル(検索/全て開く/トップへ) -->
+<!-- Session 34: 右下スピードダイヤル(扇形展開: 下から検索 → 全て開く → TOPへ) -->
 <div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
 <div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
-    <div class="dv-sd-item">
+    <div class="dv-sd-item dv-sd-pos-1">
         <span class="dv-sd-item-label">検索</span>
         <button class="dv-sd-item-btn" type="button" aria-label="ケース記録を検索"
                 onclick="dvSdToggle(false); crOpenSearch();">
             <span class="material-symbols-outlined">search</span>
         </button>
     </div>
-    <div class="dv-sd-item">
+    <div class="dv-sd-item dv-sd-pos-2">
         <span class="dv-sd-item-label" id="dv-sd-toggle-label">全て開く</span>
         <button class="dv-sd-item-btn" type="button" aria-label="全てのケース記録を開く・閉じる"
                 onclick="dvSdToggleAll()">
             <span class="material-symbols-outlined" id="dv-sd-toggle-icon">unfold_more</span>
         </button>
     </div>
-    <div class="dv-sd-item">
-        <span class="dv-sd-item-label">トップへ</span>
+    <div class="dv-sd-item dv-sd-pos-3">
+        <span class="dv-sd-item-label">TOPへ</span>
         <button class="dv-sd-item-btn" type="button" aria-label="ページの先頭へ戻る"
-                onclick="dvSdToggle(false); window.scrollTo({top: 0, behavior: 'smooth'});">
+                onclick="dvSdScrollTop()">
             <span class="material-symbols-outlined">arrow_upward</span>
         </button>
     </div>
@@ -1701,6 +1727,33 @@ async function markRecordsAsViewedSilently(recordIds) {
 }
 
 // ========== Session 34: スピードダイヤル(右下メニュー) ==========
+// 「TOPへ戻る」を押した時のスクロール処理
+// スクロール対象が window 以外の可能性も考慮して多重フォールバック
+window.dvSdScrollTop = function() {
+    dvSdToggle(false); // まずメニューを閉じる
+    try {
+        // 1) 標準 API(モダン)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch(e) {
+        try { window.scrollTo(0, 0); } catch(_) {}
+    }
+    // 2) 古い iOS Safari は scrollTo({behavior}) を無視することがあるので保険
+    try { document.documentElement.scrollTop = 0; } catch(e) {}
+    try { document.body.scrollTop = 0; } catch(e) {}
+    // 3) アプリ内で独自のスクロールコンテナがある場合に備えて、main / .page-content 等の候補も
+    try {
+        var candidates = ['main', '.page-content', '.scroll-container', '#main-content'];
+        candidates.forEach(function(sel) {
+            var el = document.querySelector(sel);
+            if (el && el.scrollTo) {
+                try { el.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) {
+                    el.scrollTop = 0;
+                }
+            }
+        });
+    } catch(e) {}
+};
+
 window.dvSdToggle = function(force) {
     var main = document.getElementById('dv-sd-main');
     var items = document.getElementById('dv-sd-items');
