@@ -629,6 +629,41 @@
 .aic-card-cat-休み連絡 { background: #FBEAF0; color: #993556; }
 .aic-card-cat-その他 { background: #f1f3f4; color: #5f6368; }
 
+/* Session 33: 休み連絡カテゴリの「○○より連絡」表示 */
+.leave-reporter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: #FBEAF0;
+    color: #993556;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.leave-reporter-badge .material-symbols-outlined { font-size: 15px; }
+
+/* Session 33: 編集 UI 内の「誰から/関係性」ボタン */
+.leave-edit-btn, .leave-edit-rel-btn {
+    padding: 8px 14px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.88rem;
+    color: #202124;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.leave-edit-btn:hover, .leave-edit-rel-btn:hover { border-color: #EC4899; }
+.leave-edit-btn.selected, .leave-edit-rel-btn.selected {
+    background: #FBEAF0;
+    border-color: #EC4899;
+    color: #993556;
+    font-weight: 600;
+}
+
 .aic-card-judge-btn {
     background: #fff; color: #f57c00; border: 1px solid #f57c00;
     border-radius: 6px; padding: 4px 10px; font-size: 0.78rem; font-weight: 700;
@@ -740,22 +775,27 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: rgba(255,255,255,0.55);
+    background: rgba(255,255,255,0.7);
     border-radius: inherit;
 }
 .aic-manual-btn.aic-manual-applying::after {
-    content: "適用中";
+    content: "";
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #202124;
-    background: #fff;
-    padding: 3px 10px;
-    border-radius: 10px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    white-space: nowrap;
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid rgba(0,0,0,0.15);
+    border-top-color: #202124;
+    border-radius: 50%;
+    animation: aic-manual-spin 0.7s linear infinite;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    box-sizing: border-box;
+}
+@keyframes aic-manual-spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 .aic-manual-btn:disabled {
     cursor: not-allowed;
@@ -883,7 +923,10 @@
         </div>
 
         {% for r in data.normal_records %}
-        <div class="record-item" id="record-{{ r.id }}">
+        <div class="record-item" id="record-{{ r.id }}"
+             data-category="{{ r.category or '' }}"
+             data-leave-type="{{ r.leave_reporter_type or '' }}"
+             data-leave-relation="{{ r.leave_reporter_relation or '' }}">
             <div class="record-meta-row">
                 <div class="record-meta">
                     <span class="material-symbols-outlined">schedule</span>
@@ -915,6 +958,13 @@
                 style="cursor:pointer;" title="タップして確認">
                 <span class="material-symbols-outlined">priority_high</span>
                 閲覧必須(タップで確認)
+            </div>
+            {% endif %}
+            {# Session 33: 休み連絡カテゴリの「○○より連絡」表示 #}
+            {% if r.category == '休み連絡' and r.leave_reporter_type %}
+            <div class="leave-reporter-badge" id="leave-badge-{{ r.id }}">
+                <span class="material-symbols-outlined">person</span>
+                {% if r.leave_reporter_type == 'self' %}本人より連絡{% elif r.leave_reporter_type == 'family' %}{% if r.leave_reporter_relation %}{{ r.leave_reporter_relation }}から連絡{% else %}家族から連絡{% endif %}{% endif %}
             </div>
             {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
@@ -959,6 +1009,28 @@
             {% endif %}
 
             <div class="edit-area" id="edit-area-{{ r.id }}" style="display:none;">
+                {# Session 33: 休み連絡カテゴリのとき編集 UI 内に「誰から/関係性」を出す #}
+                <div class="leave-edit-block" id="leave-edit-block-{{ r.id }}" style="display:none; margin-bottom:10px;">
+                    <label class="form-label" style="font-size:0.85rem;">
+                        <span class="material-symbols-outlined">person</span>
+                        誰から
+                    </label>
+                    <div class="leave-btn-group" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
+                        <button type="button" class="leave-edit-btn" data-leave-type="self" data-record-id="{{ r.id }}">本人</button>
+                        <button type="button" class="leave-edit-btn" data-leave-type="family" data-record-id="{{ r.id }}">家族</button>
+                    </div>
+                    <input type="hidden" id="leave-edit-type-{{ r.id }}" value="">
+                    <div class="leave-edit-relation-block" id="leave-edit-relation-block-{{ r.id }}" style="display:none; margin-top:8px;">
+                        <label class="form-label" style="font-size:0.8rem;">関係性(任意)</label>
+                        <div class="leave-btn-group" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
+                            <button type="button" class="leave-edit-rel-btn" data-leave-rel="娘" data-record-id="{{ r.id }}">娘</button>
+                            <button type="button" class="leave-edit-rel-btn" data-leave-rel="息子" data-record-id="{{ r.id }}">息子</button>
+                            <button type="button" class="leave-edit-rel-btn" data-leave-rel="妻" data-record-id="{{ r.id }}">妻</button>
+                            <button type="button" class="leave-edit-rel-btn" data-leave-rel="夫" data-record-id="{{ r.id }}">夫</button>
+                        </div>
+                        <input type="text" id="leave-edit-rel-{{ r.id }}" class="form-control" placeholder="例: 義理の姉" style="margin-top:6px;">
+                    </div>
+                </div>
                 <textarea class="form-control" id="edit-text-{{ r.id }}" style="min-height:120px;"></textarea>
                 <div class="edit-actions">
                     <button class="btn btn-primary btn-sm" onclick="saveEdit('{{ r.id }}')">
@@ -1510,11 +1582,53 @@ async function markRecordsAsViewedSilently(recordIds) {
 window.startEdit = function(id, content) {
     document.getElementById('edit-text-'+id).value = content;
     document.getElementById('edit-area-'+id).style.display = 'block';
+    // Session 33: 休み連絡カテゴリの記録なら、編集 UI 内の「誰から/関係性」も初期化して表示
+    var recordEl = document.getElementById('record-' + id);
+    var leaveBlock = document.getElementById('leave-edit-block-' + id);
+    if (!recordEl || !leaveBlock) return;
+    var category = recordEl.getAttribute('data-category') || '';
+    if (category !== '休み連絡') {
+        leaveBlock.style.display = 'none';
+        return;
+    }
+    leaveBlock.style.display = 'block';
+    var curType = recordEl.getAttribute('data-leave-type') || '';
+    var curRel = recordEl.getAttribute('data-leave-relation') || '';
+    var typeInput = document.getElementById('leave-edit-type-' + id);
+    var relInput = document.getElementById('leave-edit-rel-' + id);
+    var relBlock = document.getElementById('leave-edit-relation-block-' + id);
+    if (typeInput) typeInput.value = curType;
+    if (relInput) relInput.value = curRel;
+    // 本人/家族ボタンの選択状態を反映
+    leaveBlock.querySelectorAll('.leave-edit-btn').forEach(function(b){
+        b.classList.toggle('selected', b.getAttribute('data-leave-type') === curType);
+    });
+    // 関係性候補ボタンの選択状態を反映
+    leaveBlock.querySelectorAll('.leave-edit-rel-btn').forEach(function(b){
+        b.classList.toggle('selected', b.getAttribute('data-leave-rel') === curRel);
+    });
+    // 関係性ブロックの表示は type=family のときだけ
+    if (relBlock) relBlock.style.display = (curType === 'family') ? 'block' : 'none';
 };
 window.cancelEdit = function(id) { document.getElementById('edit-area-'+id).style.display = 'none'; };
 window.saveEdit = async function(id) {
     const content = document.getElementById('edit-text-'+id).value;
-    const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,content})});
+    // Session 33: 休み連絡カテゴリの編集なら type/relation も送る
+    const recordEl = document.getElementById('record-' + id);
+    const category = recordEl ? (recordEl.getAttribute('data-category') || '') : '';
+    const payload = { id: id, content: content };
+    if (category === '休み連絡') {
+        const typeInput = document.getElementById('leave-edit-type-' + id);
+        const relInput = document.getElementById('leave-edit-rel-' + id);
+        const _type = typeInput ? typeInput.value : '';
+        if (!_type) {
+            alert('「誰から」を選択してください(本人 / 家族)');
+            return;
+        }
+        payload.leave_reporter_type = _type;
+        payload.leave_reporter_relation = relInput ? relInput.value : '';
+    }
+    const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if ((await res.json()).status === 'success') location.reload();
 };
 window.deleteRecord = async function(id) {
@@ -2013,6 +2127,53 @@ function escapeAicCard(s) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+
+// === Session 33: 編集 UI 内の「誰から/関係性」ボタンのイベント委譲ハンドラ ===
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.leave-edit-btn');
+    if (btn) {
+        var rid = btn.getAttribute('data-record-id');
+        var type = btn.getAttribute('data-leave-type');
+        var typeInput = document.getElementById('leave-edit-type-' + rid);
+        var relBlock = document.getElementById('leave-edit-relation-block-' + rid);
+        var relInput = document.getElementById('leave-edit-rel-' + rid);
+        var leaveBlock = document.getElementById('leave-edit-block-' + rid);
+        if (typeInput) typeInput.value = type;
+        if (leaveBlock) {
+            leaveBlock.querySelectorAll('.leave-edit-btn').forEach(function(b){
+                b.classList.toggle('selected', b.getAttribute('data-leave-type') === type);
+            });
+        }
+        if (relBlock) relBlock.style.display = (type === 'family') ? 'block' : 'none';
+        if (type === 'self') {
+            if (relInput) relInput.value = '';
+            if (leaveBlock) leaveBlock.querySelectorAll('.leave-edit-rel-btn').forEach(function(b){ b.classList.remove('selected'); });
+        }
+        return;
+    }
+    var relBtn = e.target.closest('.leave-edit-rel-btn');
+    if (relBtn) {
+        var rid2 = relBtn.getAttribute('data-record-id');
+        var rel = relBtn.getAttribute('data-leave-rel');
+        var relInput2 = document.getElementById('leave-edit-rel-' + rid2);
+        var leaveBlock2 = document.getElementById('leave-edit-block-' + rid2);
+        if (relInput2) relInput2.value = rel;
+        if (leaveBlock2) leaveBlock2.querySelectorAll('.leave-edit-rel-btn').forEach(function(b){
+            b.classList.toggle('selected', b.getAttribute('data-leave-rel') === rel);
+        });
+    }
+});
+// 自由入力欄が変わったら候補ボタンの選択状態を同期(委譲)
+document.addEventListener('input', function(e) {
+    var t = e.target;
+    if (!t || !t.id || t.id.indexOf('leave-edit-rel-') !== 0) return;
+    var rid = t.id.replace('leave-edit-rel-', '');
+    var leaveBlock = document.getElementById('leave-edit-block-' + rid);
+    if (!leaveBlock) return;
+    leaveBlock.querySelectorAll('.leave-edit-rel-btn').forEach(function(b){
+        b.classList.toggle('selected', b.getAttribute('data-leave-rel') === t.value);
+    });
+});
 </script>
 
 <!-- Session 31 task-1: 手動カテゴリピッカー -->
