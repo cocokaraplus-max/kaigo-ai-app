@@ -671,6 +671,18 @@ def input_view():
                     category = (request.form.get("category", "") or "その他").strip()
                     if not category:
                         category = "その他"
+                    # Session 33: 休み連絡カテゴリ専用フィールド(category=休み連絡 以外は None で保存)
+                    leave_reporter_type = (request.form.get("leave_reporter_type", "") or "").strip()
+                    leave_reporter_relation = (request.form.get("leave_reporter_relation", "") or "").strip()
+                    if category != "休み連絡":
+                        leave_reporter_type = None
+                        leave_reporter_relation = None
+                    else:
+                        # 休み連絡だが値が空のとき(理論上クライアント側で弾かれているが念のため)も None に
+                        if not leave_reporter_type:
+                            leave_reporter_type = None
+                        if not leave_reporter_relation:
+                            leave_reporter_relation = None
                     insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -680,7 +692,9 @@ def input_view():
                         "created_at": dt_record.isoformat(),
                         "image_urls": image_urls if image_urls else None,
                         "must_read": must_read_flag,
-                        "category": category
+                        "category": category,
+                        "leave_reporter_type": leave_reporter_type,
+                        "leave_reporter_relation": leave_reporter_relation
                     }).execute()
 
                     # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
