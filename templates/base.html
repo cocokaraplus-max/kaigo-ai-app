@@ -910,34 +910,30 @@ let lastUnreadCount = 0;
 let chatPollingTimer = null;
 
 async function checkUnreadMessages() {
-    // 掲示板ページでは未読バッジを更新しない(掲示板を開いた時点で既読扱い)
-    if (window.location.pathname !== '/board') {
-        try {
-            const res = await fetch('/api/board/unread_count');
-            if (res.ok) {
-                const data = await res.json();
-                const count = data.count || 0;
-                const badge = document.getElementById('chat-badge');
-                if (badge) {
-                    if (count > 0) {
-                        badge.textContent = count > 99 ? '99+' : count;
-                        badge.style.display = 'block';
-                    } else {
-                        badge.style.display = 'none';
-                    }
+    // Session 32: 掲示板ページでも未読バッジを更新(上タブと下メニューを一致させる)
+    try {
+        const res = await fetch('/api/board/unread_count');
+        if (res.ok) {
+            const data = await res.json();
+            const count = data.count || 0;
+            const badge = document.getElementById('chat-badge');
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = 'block';
+                } else {
+                    badge.style.display = 'none';
                 }
-                // 新着があったら通知音
-                if (count > lastUnreadCount && lastUnreadCount >= 0) {
-                    const isOnChat = location.pathname.startsWith('/chat');
-                    if (!isOnChat) window.playNotificationSound();
-                }
-                lastUnreadCount = count;
             }
-        } catch(e) {}
-    } else {
-        var cb = document.getElementById('chat-badge');
-        if (cb) cb.style.display = 'none';
-    }
+            // 新着があったら通知音(掲示板ページ・チャットページ以外で)
+            if (count > lastUnreadCount && lastUnreadCount >= 0) {
+                const isOnBoard = location.pathname === '/board';
+                const isOnChat = location.pathname.startsWith('/chat');
+                if (!isOnBoard && !isOnChat) window.playNotificationSound();
+            }
+            lastUnreadCount = count;
+        }
+    } catch(e) {}
     // Session 20: ケース記録の必読未読件数バッジ
     try {
         const r2 = await fetch('/api/records/unread_count');
@@ -963,9 +959,9 @@ async function checkUnreadMessages() {
 setTimeout(checkUnreadMessages, 2000);
 // 30秒ごとにチェック
 chatPollingTimer = setInterval(checkUnreadMessages, 30000);
-// 掲示板・トーク画面を開いたら即座にバッジをクリア
+// Session 32: チャット画面を開いたら即座にバッジをクリア(掲示板は対象外。掲示板は確認済みボタンで個別にカウント減少)
 document.addEventListener('click', e => {
-    const link = e.target.closest('a[href="/board"], a[href="/chat"], a[href^="/chat/"]');
+    const link = e.target.closest('a[href="/chat"], a[href^="/chat/"]');
     if (link) {
         setTimeout(() => {
             const badge = document.getElementById('chat-badge');
@@ -974,14 +970,7 @@ document.addEventListener('click', e => {
         }, 500);
     }
 });
-// SPA遷移で掲示板に来たときもバッジをクリア
-window.addEventListener('popstate', function() {
-    if (location.pathname === '/board') {
-        const badge = document.getElementById('chat-badge');
-        if (badge) badge.style.display = 'none';
-        lastUnreadCount = 0;
-    }
-});
+// 掲示板ページに来た時もバッジを保持(/api/board/unread_count を信頼)
 {% endif %}
 
 // ========== PWA Service Worker登録 ==========

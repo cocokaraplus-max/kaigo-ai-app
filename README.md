@@ -1,10 +1,78 @@
-# TASUKARU介護AIアプリ 開発引き継ぎ(2026-04-30 第4セッション末)
+# TASUKARU介護AIアプリ 開発引き継ぎ
 
-## 📍 現在の状況サマリ
+> **最新更新: 2026-05-11 Session 32 終了時点**
+> 本READMEは Session 4 から累積形式で記録。最新は末尾、Session番号順に追記。
+> 過去Sessionの詳細は本ファイル内を `Session NN 引き継ぎ` で検索。
 
-**掲示板UI大幅刷新セッション完了 + dev/本番両方デプロイ完了**。第4セッションでは、掲示板にカテゴリー機能(タブ式UI + フィルタ + 既存投稿への割当)を完全実装し、見た目も整えた。
-**本番マージ + 本番Supabaseテーブル作成 + 動作確認すべて完了**。dev (`tasukaru-dev` Cloud Run) と 本番 (`tasukaru` Cloud Run) の両方で動作中。
-本番URL(`tasukaru-191764727533.asia-northeast1.run.app/board`)で実ユーザー(岸本さん他)がコンパクト化された新UIで投稿確認済み。
+## 📍 現在の状況サマリ(Session 32 終了時点)
+
+**掲示板の「確認済み」とリアクションを完全分離 + ケース記録の閲覧カウント改善 + AI統合記録の一時非表示。dev完了、本番未反映。**
+
+新規Sessionを開始する Claude は **最初に以下の3点を読むこと**:
+1. このREADMEの末尾「Session 32 引き継ぎ」セクション(最新の教訓・不変事項・PENDINGタスク)
+2. ハンドオフ書類 `/Users/ZIMAX 1/Desktop/SESSION32_HANDOFF_FINAL.md`(8項目の実装詳細+本番リリース手順)
+3. 前回ハンドオフ `/Users/ZIMAX 1/Desktop/SESSION31_HANDOFF_FINAL.md`(参考)
+
+### 直近の主な機能(Session 32 で dev に実装、本番未反映)
+
+1. **掲示板カードUIクリーンアップ**: 緑✅Nチップ削除、確認/未確認ボタンの数字バッジ削除
+2. **下メニュー未読バッジ表示**: 掲示板ページでも未読数を表示(上タブと一致)
+3. **board_checks 専用テーブル新設**: 確認状態をリアクションから完全分離
+4. **/api/board/toggle_check 新API**: 確認状態のトグル専用エンドポイント
+5. **リアクション/確認の完全分離**: 他絵文字を押しても確認状態が変わらない
+6. **リアクションピッカーから ✅ 除外**: 純粋なリアクション専用
+7. **ケース記録の閲覧カウント改善**: 利用者アコーディオン展開時に自動既読化+カウント+1
+8. **AI統合記録の一時非表示**: カード+「生成して確定」ボタンを `{% if false %}` で隠す(コードは保持)
+
+### 🔴 最優先タスク:本番リリース(次Session最初に実施)
+
+詳細手順は `SESSION32_HANDOFF_FINAL.md` 参照。所要時間20-30分。要約:
+
+1. 本番 Supabase で `board_checks` テーブル新設(SQL は SESSION32 ハンドオフ参照)
+2. **RLS が disable になっているか必ず確認**(devで遭遇した既知の罠)
+3. 本番 Supabase で `board_reactions` の ✅ データを `board_checks` に移行
+4. `tasukaru-dev` → `tasukaru` ブランチへマージ、`gcloud run deploy tasukaru` で本番デプロイ
+5. iPhone で本番動作確認(チェックリストはハンドオフ参照)
+6. `git checkout tasukaru-dev` で dev に戻す
+
+### 次Sessionで取り組む課題(優先順)
+
+- **🔴 本番リリース**(Session 32 の成果を本番反映、最優先)
+- **🟡 モニタリングのカテゴリ別生成**(Session 32 で新規要件、AI統合記録の置き換え。要件ヒアリングから)
+- **🟡 課題3**(Session 31 持ち越し): 一括適用「10件まで」UI制限(シンプル・1時間)
+- **🟡 課題4**(Session 31 持ち越し): 「休み連絡」カテゴリ追加(中規模、DB変更必要)
+- **🟢 LINE招待移行**: 規模大、要件ヒアリングから(別途持ち越し)
+- **🟢 Phase 3c-②**: 旧 `board_reactions` の ✅ 行物理削除(本番安定後、任意)
+
+### 本番デプロイ手順(変更なし、改めて再掲)
+```bash
+git checkout tasukaru
+git merge tasukaru-dev
+git push origin tasukaru
+gcloud run deploy tasukaru --source . --region asia-northeast1
+# 完了後は tasukaru-dev に戻す
+git checkout tasukaru-dev
+```
+
+---
+
+## 📚 過去Sessionの全体構成
+
+| Session | 主な内容 | 詳細場所 |
+|---|---|---|
+| Session 4 (2026-04-30) | 掲示板UI刷新 + カテゴリー機能 | 本READMEを下方検索 |
+| Session 9 | バイタル機能 Phase 2 + 再検査アラーム | 本READMEを下方検索 |
+| Session 18-19 | (本READMEに記録あり) | 本READMEを下方検索 |
+| Session 23-24 | SendGrid メール障害対応 / dev DB浄化 | 本READMEを下方検索 |
+| Session 25-30 | (本READMEに未記載) | `SESSION27-30_HANDOFF.md` 参照 |
+| Session 31 (2026-05-10) | AIカテゴリ自動振り分け 8機能リリース | **本READMEの末尾** + `SESSION31_HANDOFF_FINAL.md` |
+
+---
+
+## 🗄️ 過去のサマリ(参考、Session 4 時点)
+
+以下は2026-04-30 Session 4 終了時点の旧サマリ。
+過去の経緯確認用に残す。最新の起点としてはREADME末尾の Session 31 章を参照。
 
 ### 第4セッションでの主な成果
 1. **カレンダー色重複アラート機能を完全削除** (ユーザー要望で機能廃止)
@@ -22,6 +90,8 @@
 13. **box-shadow による隙間カバー**: `0 -50px 0 #f1f3f4` で sticky上部の透けを完全解消
 14. **本番マージ完了**: `tasukaru-dev` → `tasukaru` ブランチ自動マージワークフローによりCloud Build/Runへデプロイ
 15. **本番Supabase `board_categories` テーブル作成**: 本番のSupabaseプロジェクト `kaigo-ai-app` (`abvglnkwtdeoaazyqwyd`) にテーブル作成 + RLS無効化 + `board_posts.category_id` カラム追加
+
+---
 
 ---
 
@@ -4059,3 +4129,111 @@ Session 24 の継続として Session 25 を開始する場合:
    - C: 別のメール基盤検討
 3. B-4(新規記録投稿時の AIタグ自動生成)に着手
 4. 余裕あれば B-5(検索 UI)、B-6(動作確認)、C(まとめて本番デプロイ)
+
+
+---
+
+# 🚀 Session 31 引き継ぎ(2026-05-10)
+
+## 📍 サマリ
+
+AIカテゴリ自動振り分け機能を本番リリース(8機能、両DB変更済み)。
+
+詳細実装ログは別ハンドオフ書類 `/Users/ZIMAX 1/Desktop/SESSION31_HANDOFF_FINAL.md` を参照。
+※ Session 25-30 の記録は本READMEには未記載。`SESSION27-30_HANDOFF.md` を参照。
+
+## 🗄️ DB変更(必須情報)
+
+両環境(dev/本番)に `ai_categorize_history` テーブル作成済み、**RLS無効化済み**。
+DDLとSQLは SESSION31_HANDOFF_FINAL.md 参照。
+
+※ 課題4「休み連絡」では `records.absence_reporter TEXT` カラムを追加予定(未実施)。
+   両環境でのSQL実行が必要。
+
+## 🎓 教訓追加(Session 31 で得たもの)
+
+### 教訓74: iOS Safari の `event.currentTarget` は async 関数の `await` 後で null になる
+- WebKit 固有の挙動。Chrome/Firefox では問題ない
+- 対処: `onclick="...(this)"` 経由でボタン参照を引数として渡す、または `getElementById` で取得
+- 本Sessionで「適用中...」のまま固まる症状(iPhone)の真因だった
+- daily_view.html の AI判定/適用ボタン、手動ピッカーで全て対処済み
+- **今後、新規追加するボタンで `await fetch()` を含む処理がある場合は注意**
+
+### 教訓75: 「反応が遅い」と「押した実感がない」は別問題
+- ユーザーが「反応が遅い」と訴えるとき、本当はサーバ処理時間ではなく
+  UIフィードバックの弱さが原因のことが多い
+- サーバ最適化(非同期化など)に走る前に、押した瞬間の視覚変化を強める方が低コスト・高効果
+- 今回は手動カテゴリ変更で「適用中」バッジ追加(`aic-manual-applying` クラス)だけで
+  体感的に解決した(処理時間自体は3-10秒のまま変えず)
+
+### 教訓76: テンプレートに `</body>` が無い継承テンプレでの JS 追加位置
+- `{% extends "base.html" %}` を使ってる input.html / daily_view.html には `</body>` がない
+- JS を末尾に追加するときは **最後の `{% endblock %}` の手前** にinjectすること
+- パッチスクリプトで `</body>` を探したら 0 件で sys.exit → 全変更が破棄される事故が起きた
+- パッチは「全変更を一気に書き込み、途中失敗時は何もせずに終了」する設計を維持
+
+### 教訓77: Cloud Run のリクエストタイムアウトは 120 秒
+- 一括適用 API が 47件で 120秒に到達 → 500 エラー
+- 1件あたり ~10秒(`generate_search_tags` の Gemini API が律速)
+- 20件超の一括処理はサーバ側で完走できない
+- 対策: フロント側で 10件ずつチャンク化して送信(課題3で対応予定)
+
+## ⚠️ 不変事項(継続+新規)
+
+過去のSession 22-24 の不変事項は **すべて継続**(タスカルくん画像、Step 3 Firebase Push 禁止、英語コミットメッセージ、admin_settings upsert禁止、等)。
+
+### 新規(Session 31 追加)
+
+- **AIカテゴリ「コミュニケーション」の定義は厳格化済み**
+  - 旧定義(人とのやり取り全般)で判定された過去レコードと、新定義の判定結果は
+    異なる可能性あり。再判定する場合は注意
+  - 新定義: 利用者本人の自発的・能動的な交流、または職員が意図的に働きかけて生まれた交流のみ。
+    職員が一方的にサービスを提供しただけの場面は対象外
+- **一括適用 API は 20件超で Cloud Run 120秒 timeout に引っかかる**
+  - 既知の制約。課題3「10件まで制限」で対応予定
+- **新規追加するボタンで `event.currentTarget` を await 後に使わない**(教訓74)
+- **継承テンプレへのJS追加は `{% endblock %}` の手前にinject**(教訓76)
+
+## 📋 PENDING タスク
+
+### 優先度: 高
+1. **課題3**: 一括適用「10件まで」UI制限(シンプル・1時間)
+   - ユーザー指示「10件ごとでもいいかもね」
+   - 11件目以降の選択時に警告 or 適用ボタンを disable
+2. **課題4**: 「休み連絡」カテゴリ追加(中規模・2-3時間)
+   - 9カテゴリ目として追加
+   - DB: `records.absence_reporter TEXT` カラム追加(両環境)
+   - 連絡者: 本人 / 家族(誰か記入)
+   - input.html: カテゴリ選択イベントで条件付き表示
+   - daily_view.html: カード表示+編集UI
+
+### 優先度: 中
+3. **LINE招待への移行**(規模大、要件ヒアリングから)
+   - 招待リンク? LIFF統合? LINE Bot連携?
+   - 既存ユーザー(Supabase Auth)→ LINE移行の段取り
+
+### 優先度: 低
+4. dev rid=5084 の search_tags が「ヒヤリハット」のまま残ってる
+   - 運用影響なし、cleanup候補
+
+## 📁 ファイル状態(Session 31 終了時、2026-05-10)
+
+| ファイル | 現状 |
+|---|---|
+| README.md | 本セクションで更新 |
+| app.py | AIカテゴリ系API 6本追加(~+170行) |
+| utils.py | `classify_category()` + AI_CATEGORY_DEFINITIONS 追加、コミュニケーション定義厳格化済み |
+| templates/input.html | AIカテゴリ提案モーダル追加 |
+| templates/daily_view.html | カテゴリタグ表示、AI判定ボタン、手動カテゴリピッカー追加 |
+| templates/admin_ai_categorize.html | 新規(管理者向け一括振り分け画面) |
+| templates/admin.html | ケース記録タブからAI振り分け画面へリンク |
+| Supabase 両環境 | `ai_categorize_history` テーブル追加・RLS無効化済み |
+| 本番リビジョン | `tasukaru-00371-96b` 以降(Session 31 全機能反映済み) |
+
+## 🚀 Session 32 開始時のスタートポイント
+
+1. **README.md と SESSION31_HANDOFF_FINAL.md を読み込んで全体把握**
+2. ユーザーから優先課題を確認(課題3 → 課題4 → LINE の順を推奨)
+3. 課題3を選んだ場合: シンプルなので即実装→デプロイ→確認
+4. 課題4を選んだ場合: DB変更(両環境SQL実行)から段階的に
+5. LINEを選んだ場合: 要件ヒアリングから(招待方式、認証統合の有無、移行ロードマップ)
