@@ -4297,8 +4297,11 @@ def board():
             rres = supabase.table("board_reactions").select("*").in_("post_id", post_ids).execute()
             for r in (rres.data or []):
                 pid = r["post_id"]
-                if pid not in reactions_data: reactions_data[pid] = {}
                 em = r["reaction"]
+                # Session 32 Phase 3c: ✅ は board_checks に移行済みなのでスキップ
+                if em == '✅':
+                    continue
+                if pid not in reactions_data: reactions_data[pid] = {}
                 if em not in reactions_data[pid]: reactions_data[pid][em] = []
                 reactions_data[pid][em].append(r["staff_name"])
             rdres = supabase.table("board_reads").select("post_id,staff_name").in_("post_id", post_ids).execute()
