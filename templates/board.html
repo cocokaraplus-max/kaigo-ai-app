@@ -942,12 +942,14 @@ body.modal-open .bottom-nav {
     {% if post_reactions %}
     <div class="post-reactions" id="reactions-{{ post.id }}">
         {% for emoji, names in post_reactions.items() %}
+        {% if emoji != '✅' %}
         <div class="reaction-chip {% if my_name in names %}mine{% endif %}"
             onclick="event.stopPropagation();toggleReaction({{ post.id }}, '{{ emoji }}')"
             title="{{ names|join('、') }}">
             <span class="emoji">{{ emoji }}</span>
             <span class="count">{{ names|length }}</span>
         </div>
+        {% endif %}
         {% endfor %}
     </div>
     {% else %}
@@ -970,7 +972,6 @@ body.modal-open .bottom-nav {
         <button class="post-action-btn {% if checked %}checked{% else %}unchecked{% endif %}" onclick="event.stopPropagation();toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
             <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}radio_button_unchecked{% endif %}</span>
             <span class="check-label">{% if checked %}確認済み{% else %}未確認{% endif %}</span>
-            {% if not checked and check_count > 0 %}<span class="badge">{{ check_count }}</span>{% endif %}
         </button>
         <button class="post-action-btn" onclick="event.stopPropagation();openReactionPicker({{ post.id }})">
             <span class="material-symbols-outlined">add_reaction</span>
@@ -2170,18 +2171,9 @@ window.toggleReaction = async function(postId, emoji) {
                     // ラベル切替
                     var label = btn.querySelector('.check-label');
                     if (label) label.textContent = isMine ? '確認済み' : '未確認';
-                    // バッジ: 自分が確認済みなら消す、未確認なら他の確認者数を表示
+                    // バッジは廃止(Session 32: テキストのみで意味を伝える)
                     var badge = btn.querySelector('.badge');
-                    if (!isMine && names.length > 0) {
-                        if (!badge) {
-                            badge = document.createElement('span');
-                            badge.className = 'badge';
-                            btn.appendChild(badge);
-                        }
-                        badge.textContent = names.length;
-                    } else if (badge) {
-                        badge.remove();
-                    }
+                    if (badge) badge.remove();
                 }
                 // 未読カウントを即時再計算(✅トグルで未読/既読が切り替わるため)
                 if (typeof updateUnreadCount === 'function') updateUnreadCount();
