@@ -966,10 +966,9 @@ body.modal-open .bottom-nav {
     {% endif %}
 
     <!-- アクションバー -->
-    {% set checked = my_name in reactions_data.get(post.id, {}).get('✅', []) %}
-    {% set check_count = reactions_data.get(post.id, {}).get('✅', [])|length %}
+    {% set checked = my_name in checks_data.get(post.id, []) %}
     <div class="post-actions">
-        <button class="post-action-btn {% if checked %}checked{% else %}unchecked{% endif %}" onclick="event.stopPropagation();toggleReaction({{ post.id }}, '✅')" id="check-btn-{{ post.id }}">
+        <button class="post-action-btn {% if checked %}checked{% else %}unchecked{% endif %}" onclick="event.stopPropagation();toggleCheck({{ post.id }})" id="check-btn-{{ post.id }}">
             <span class="material-symbols-outlined">{% if checked %}check_circle{% else %}radio_button_unchecked{% endif %}</span>
             <span class="check-label">{% if checked %}確認済み{% else %}未確認{% endif %}</span>
         </button>
@@ -1280,7 +1279,7 @@ body.modal-open .bottom-nav {
     <div class="reaction-picker-sheet">
         <div style="width:36px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 14px;"></div>
         <div class="reaction-grid" id="reaction-grid">
-            {% for emoji in ['✅','👍','❤️','😊','👏','🙏','💪','😄','🤔','👀','⭐','🎉'] %}
+            {% for emoji in ['👍','❤️','😊','👏','🙏','💪','😄','🤔','👀','⭐','🎉'] %}
             <div class="reaction-item" data-emoji="{{ emoji }}">{{ emoji }}</div>
             {% endfor %}
         </div>
@@ -1303,6 +1302,7 @@ const STAFFS       = {{ staffs | tojson }};
 // 詳細モーダル用: サーバから受け取ったデータをJS化
 const POSTS_DATA      = {{ posts | tojson }};
 const REACTIONS_DATA  = {{ reactions_data | tojson }};
+const CHECKS_DATA     = {{ checks_data | tojson }};
 const POST_CATEGORIES = {{ post_categories | tojson }};
 var selectedPostCategoryId = '';
 var editSelectedCategoryId = '';
@@ -1464,8 +1464,8 @@ window.applyBoardTabFilter = function() {
         if (tab === 'all') {
             show = true;
         } else if (tab === 'unread') {
-            // 未読: (自分が✅を押していない) OR (自分以外が書いた未読コメントがある)
-            var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
+            // Session 32: 未読 = (自分が確認済みボタンを押していない) OR (自分以外が書いた未読コメントがある)
+            var checks = CHECKS_DATA[postId] || [];
             var checksMissing = checks.indexOf(MY_NAME) === -1;
             // コメント未読数は DOM の .badge から取得(server 側で算出済)
             var cmtBadge = card.querySelector('.post-action-btn:last-child .badge');
@@ -1482,12 +1482,12 @@ window.applyBoardTabFilter = function() {
 };
 
 // ===== 未読件数の計算と表示 =====
-// 未読 = (自分が✅を押していない) OR (自分以外が書いた未読コメントがある)
+// Session 32: 未読 = (自分が確認済みボタンを押していない) OR (自分以外が書いた未読コメントがある)
 window.updateUnreadCount = function() {
     var unreadCount = 0;
     document.querySelectorAll('.post-card').forEach(function(card) {
         var postId = parseInt(card.dataset.postId, 10);
-        var checks = (REACTIONS_DATA[postId] && REACTIONS_DATA[postId]['✅']) || [];
+        var checks = CHECKS_DATA[postId] || [];
         var checksMissing = checks.indexOf(MY_NAME) === -1;
         var cmtBadge = card.querySelector('.post-action-btn:last-child .badge');
         var unreadCmt = cmtBadge ? (parseInt(cmtBadge.textContent, 10) > 0) : false;
@@ -2142,8 +2142,10 @@ async function submitPost() {
     }
 }
 
-// ===== リアクション =====
+// ===== リアクション(✅以外の純粋なリアクションのみ) =====
 window.toggleReaction = async function(postId, emoji) {
+    // Session 32: ✅ は別エンドポイント(toggleCheck)を使うのでガード
+    if (emoji === '✅') return;
     try {
         var res = await fetch('/api/board/react', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2151,35 +2153,48 @@ window.toggleReaction = async function(postId, emoji) {
         });
         var data = await res.json();
         if (data.status === 'success') {
-            // REACTIONS_DATA キャッシュを最新に更新(未読カウント計算で参照される)
+            // REACTIONS_DATA キャッシュを最新に更新
             if (typeof REACTIONS_DATA !== 'undefined') {
                 REACTIONS_DATA[postId] = data.reactions;
             }
             updateReactionsUI(postId, data.reactions);
-            // 確認済み/未確認ボタンの更新
-            if (emoji === '✅') {
-                var btn = document.getElementById('check-btn-' + postId);
-                var names = data.reactions['✅'] || [];
-                var isMine = names.includes(MY_NAME);
-                if (btn) {
-                    // class 切替(checked/unchecked排他)
-                    btn.classList.toggle('checked', isMine);
-                    btn.classList.toggle('unchecked', !isMine);
-                    // アイコン切替
-                    var icon = btn.querySelector('.material-symbols-outlined');
-                    if (icon) icon.textContent = isMine ? 'check_circle' : 'radio_button_unchecked';
-                    // ラベル切替
-                    var label = btn.querySelector('.check-label');
-                    if (label) label.textContent = isMine ? '確認済み' : '未確認';
-                    // バッジは廃止(Session 32: テキストのみで意味を伝える)
-                    var badge = btn.querySelector('.badge');
-                    if (badge) badge.remove();
-                }
-                // 未読カウントを即時再計算(✅トグルで未読/既読が切り替わるため)
-                if (typeof updateUnreadCount === 'function') updateUnreadCount();
-            }
         }
     } catch(e) {}
+};
+
+// ===== 確認済みトグル(リアクションとは独立した処理) =====
+window.toggleCheck = async function(postId) {
+    var btn = document.getElementById('check-btn-' + postId);
+    // 連打防止のため一時的に無効化
+    if (btn) btn.style.pointerEvents = 'none';
+    try {
+        var res = await fetch('/api/board/toggle_check', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ post_id: postId })
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            var names = data.checked_names || [];
+            // CHECKS_DATA キャッシュを最新に更新(未読カウント計算で参照される)
+            if (typeof CHECKS_DATA !== 'undefined') {
+                CHECKS_DATA[postId] = names;
+            }
+            var isMine = names.indexOf(MY_NAME) !== -1;
+            if (btn) {
+                btn.classList.toggle('checked', isMine);
+                btn.classList.toggle('unchecked', !isMine);
+                var icon = btn.querySelector('.material-symbols-outlined');
+                if (icon) icon.textContent = isMine ? 'check_circle' : 'radio_button_unchecked';
+                var label = btn.querySelector('.check-label');
+                if (label) label.textContent = isMine ? '確認済み' : '未確認';
+            }
+            // 未読カウントを即時再計算
+            if (typeof updateUnreadCount === 'function') updateUnreadCount();
+        }
+    } catch(e) {}
+    finally {
+        if (btn) btn.style.pointerEvents = '';
+    }
 };
 
 function updateReactionsUI(postId, reactions) {
@@ -2686,9 +2701,9 @@ window.showPostDetail = function(postId) {
         reactionsContainer.innerHTML = '';
     }
 
-    // 確認済み一覧
+    // 確認済み一覧(Session 32: CHECKS_DATA から取得)
     var checkedContainer = document.getElementById('pd-checked-container');
-    var checkedNames = (reactions['✅']) || [];
+    var checkedNames = (CHECKS_DATA && CHECKS_DATA[post.id]) || [];
     if (checkedNames.length > 0) {
         var cHtml = '<div class="post-detail-section">';
         cHtml += '<div class="post-detail-section-title"><span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>確認済み (' + checkedNames.length + '人)</div>';
