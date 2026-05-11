@@ -660,11 +660,14 @@ body.modal-open .bottom-nav {
     }
     .comments-sheet {
         max-width: 100%;
-        /* キーボード閉じ時=60vh / 開き時=visualViewport の小さい方を採用 */
-        height: min(var(--sheet-h, 60vh), 60vh);
+        /* キーボード閉じ時=60dvh / 開き時=visualViewport の小さい方を採用 */
+        /* dvh(dynamic viewport height) を使うことで iOS の URL バー伸縮にも追従 */
+        height: min(var(--sheet-h, 60dvh), 60dvh);
         max-height: 100dvh;
         border-radius: 16px 16px 0 0;
         animation: slideUp 0.22s ease;
+        /* iPhone のホームバー領域分の余白を内側に確保(入力欄が画面外に出ないように) */
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 }
 @keyframes fadeInScale {
