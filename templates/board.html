@@ -638,7 +638,7 @@ body.modal-open .bottom-nav {
     display: flex; align-items: center; gap: 4px;
 }
 
-/* ========== コメントドロワー(中央配置) ========== */
+/* ========== コメントドロワー(PC=中央 / モバイル=下端シート) ========== */
 .comments-drawer {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.4); z-index: 99998;
@@ -652,6 +652,20 @@ body.modal-open .bottom-nav {
     height: 70vh; max-height: 75vh; display: flex; flex-direction: column;
     animation: fadeInScale 0.18s ease;
 }
+/* モバイル(600px以下): 下端シートとして使う。高さは JS の visualViewport から指定 */
+@media (max-width: 600px) {
+    .comments-drawer {
+        align-items: flex-end;
+        padding: 0;
+    }
+    .comments-sheet {
+        max-width: 100%;
+        height: var(--sheet-h, 75vh);
+        max-height: 100dvh;
+        border-radius: 16px 16px 0 0;
+        animation: slideUp 0.22s ease;
+    }
+}
 @keyframes fadeInScale {
     from { transform: scale(0.96); opacity: 0; }
     to   { transform: scale(1);    opacity: 1; }
@@ -659,6 +673,23 @@ body.modal-open .bottom-nav {
 @keyframes slideUp {
     from { transform: translateY(40px); opacity: 0; }
     to   { transform: translateY(0);    opacity: 1; }
+}
+/* 空状態(コメントがまだ無いとき)の見栄え */
+.comments-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px 16px; color: #9aa0a6;
+    text-align: center; gap: 8px;
+    min-height: 120px;
+}
+.comments-empty-icon {
+    font-size: 36px; opacity: 0.45;
+    line-height: 1;
+}
+.comments-empty-main {
+    font-size: 0.88rem; font-weight: 600; color: #80868b;
+}
+.comments-empty-sub {
+    font-size: 0.75rem; color: #b4b6b9;
 }
 .comments-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -2247,10 +2278,34 @@ function showNav() {
     if (nav) nav.style.display = '';
 }
 
+
+// ========== iOS Safari キーボード対応: visualViewport トラッカー ==========
+// キーボード出現時にコメントドロワーの上部が画面外にはみ出す問題を回避するため、
+// シートの高さ(--sheet-h)を visualViewport.height に追従させる。
+// PC では CSS のメディアクエリにより --sheet-h は使われないので無害。
+function aicUpdateSheetHeight() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    document.documentElement.style.setProperty('--sheet-h', vv.height + 'px');
+}
+function aicAttachViewportTracker() {
+    if (!window.visualViewport) return;
+    aicUpdateSheetHeight();
+    window.visualViewport.addEventListener('resize', aicUpdateSheetHeight);
+    window.visualViewport.addEventListener('scroll', aicUpdateSheetHeight);
+}
+function aicDetachViewportTracker() {
+    if (!window.visualViewport) return;
+    window.visualViewport.removeEventListener('resize', aicUpdateSheetHeight);
+    window.visualViewport.removeEventListener('scroll', aicUpdateSheetHeight);
+    document.documentElement.style.removeProperty('--sheet-h');
+}
+
 window.openComments = async function(postId) {
     currentPostId = postId;
     hideNav();
     document.getElementById('comments-drawer').classList.add('show');
+    aicAttachViewportTracker();
     lockBodyScroll();
     await loadComments(postId);
     // コメントを開いたらその投稿のコメント数バッジをすべて消す
@@ -2261,6 +2316,7 @@ window.openComments = async function(postId) {
 
 function closeComments() {
     document.getElementById('comments-drawer').classList.remove('show');
+    aicDetachViewportTracker();
     unlockBodyScroll();
     currentPostId = null;
     showNav();
@@ -2278,7 +2334,11 @@ async function loadComments(postId) {
         var list = document.getElementById('comments-list');
         list.innerHTML = '';
         if (!data.comments || !data.comments.length) {
-            list.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;font-size:0.85rem;">まだコメントがありません</div>';
+            list.innerHTML = '<div class="comments-empty">'
+                + '<div class="comments-empty-icon">💬</div>'
+                + '<div class="comments-empty-main">まだコメントはありません</div>'
+                + '<div class="comments-empty-sub">下の入力欄から最初のコメントを送信できます</div>'
+                + '</div>';
             return;
         }
         data.comments.forEach(function(c) {
@@ -2316,10 +2376,12 @@ async function loadComments(postId) {
         // 編集モーダルを閉じる
         document.getElementById('comment-edit-close-btn').addEventListener('click', function() {
             document.getElementById('comment-edit-drawer').classList.remove('show');
+            aicDetachViewportTracker();
         });
         // 編集モーダルのキャンセルボタン
         document.getElementById('comment-edit-cancel-btn').addEventListener('click', function() {
             document.getElementById('comment-edit-drawer').classList.remove('show');
+            aicDetachViewportTracker();
         });
         // 編集ボタン
         list.querySelectorAll('.comment-edit-btn').forEach(function(btn) {
@@ -2330,6 +2392,7 @@ async function loadComments(postId) {
                 document.getElementById('comment-edit-id').value = commentId;
                 document.getElementById('comment-edit-textarea').value = commentText;
                 document.getElementById('comment-edit-drawer').classList.add('show');
+                aicAttachViewportTracker();
             });
         });
         // 保存ボタン
@@ -2347,6 +2410,7 @@ async function loadComments(postId) {
                     .querySelector('.comment-text')
                     .innerHTML = newContent.replace(/@([^\s]+)/g, '<span class="mention">@$1</span>');
                 document.getElementById('comment-edit-drawer').classList.remove('show');
+                aicDetachViewportTracker();
                 alert('コメントを更新しました');
             }
         });
