@@ -767,42 +767,67 @@
     border-radius: 8px;
     padding: 1px 6px;
 }
-/* === Session 31 UX改善: 手動ピッカーの「適用中」フィードバック === */
-.aic-manual-btn.aic-manual-applying {
-    position: relative;
-}
-.aic-manual-btn.aic-manual-applying::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: rgba(255,255,255,0.7);
-    border-radius: inherit;
-}
-.aic-manual-btn.aic-manual-applying::after {
-    content: "";
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: 20px;
-    height: 20px;
-    border: 2.5px solid rgba(0,0,0,0.15);
-    border-top-color: #202124;
-    border-radius: 50%;
-    animation: aic-manual-spin 0.7s linear infinite;
-    background: transparent;
-    box-shadow: none;
-    padding: 0;
-    box-sizing: border-box;
-}
-@keyframes aic-manual-spin {
-    to { transform: translate(-50%, -50%) rotate(360deg); }
-}
+/* === Session 33: 「適用中」はモーダル全体を覆ってタスカルくん影を歩かせる === */
 .aic-manual-btn:disabled {
     cursor: not-allowed;
     opacity: 0.5;
 }
-.aic-manual-btn.aic-manual-applying:disabled {
-    opacity: 1;  /* 「適用中」表示中は opacity を戻して overlay が見えるように */
+.aic-manual-box {
+    position: relative;
+}
+.aic-manual-applying-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 14px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    overflow: hidden;
+    z-index: 10;
+}
+.aic-manual-applying-overlay.is-active {
+    display: flex;
+}
+.aic-tasukaru-lane {
+    position: relative;
+    width: 100%;
+    height: 160px;
+}
+.aic-tasukaru-walker {
+    position: absolute;
+    top: 50%;
+    margin-top: -70px;
+    width: 140px;
+    height: 140px;
+    animation: aicTasukaruWalk 3s linear infinite;
+}
+.aic-tasukaru-walker img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: brightness(0) opacity(0.5);
+    animation: aicTasukaruBob 0.4s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+.aic-tasukaru-label {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #202124;
+}
+.aic-tasukaru-sub {
+    font-size: 0.78rem;
+    color: #5f6368;
+}
+@keyframes aicTasukaruWalk {
+    0%   { left: -120px; }
+    100% { left: calc(100% + 120px); }
+}
+@keyframes aicTasukaruBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
 }
 
 .aic-manual-cancel {
@@ -2191,6 +2216,16 @@ document.addEventListener('input', function(e) {
             <span class="material-symbols-outlined">close</span>
             キャンセル
         </button>
+        {# Session 33: 適用中はモーダル全体を覆ってタスカルくん影が歩く #}
+        <div class="aic-manual-applying-overlay" id="aic-manual-applying-overlay">
+            <div class="aic-tasukaru-lane">
+                <div class="aic-tasukaru-walker">
+                    <img src="{{ url_for('static', filename='tasukaruカラー.png') }}" alt="">
+                </div>
+            </div>
+            <div class="aic-tasukaru-label">変更中…</div>
+            <div class="aic-tasukaru-sub">タスカルくんが届けています</div>
+        </div>
     </div>
 </div>
 
@@ -2246,22 +2281,14 @@ async function aicManualPickerApply(newCat) {
         return;
     }
 
-    // === UX改善: 押されたボタン+全ボタンに「適用中」フィードバック ===
+    // Session 33: モーダル全体にタスカルくん歩行オーバーレイ
     const grid = document.getElementById('aic-manual-grid');
     const allBtns = grid.querySelectorAll('button');
-    let pressedBtn = null;
-    allBtns.forEach(b => {
-        if (b.textContent && b.textContent.trim().indexOf(newCat) !== -1) {
-            pressedBtn = b;
-        }
-        b.disabled = true;
-    });
-    if (pressedBtn) {
-        pressedBtn.classList.add('aic-manual-applying');
-    }
-    // キャンセルボタンも無効化
+    allBtns.forEach(b => { b.disabled = true; });
     const cancelBtn = document.querySelector('.aic-manual-cancel');
     if (cancelBtn) cancelBtn.disabled = true;
+    const applyingOverlay = document.getElementById('aic-manual-applying-overlay');
+    if (applyingOverlay) applyingOverlay.classList.add('is-active');
 
     let success = false;
     let errorMsg = null;
@@ -2298,11 +2325,9 @@ async function aicManualPickerApply(newCat) {
         }
     }
 
-    allBtns.forEach(b => {
-        b.disabled = false;
-        b.classList.remove('aic-manual-applying');
-    });
+    allBtns.forEach(b => { b.disabled = false; });
     if (cancelBtn) cancelBtn.disabled = false;
+    if (applyingOverlay) applyingOverlay.classList.remove('is-active');
 
     if (success) {
         // カードのタグを更新
