@@ -4627,29 +4627,22 @@ def api_board_react():
 @login_required
 def api_board_toggle_check():
     # 投稿の確認済みフラグをトグル(リアクションとは独立した board_checks テーブルを使用)
-    import traceback
     try:
         data = request.json or {}
         f_code = session["f_code"]
         my_name = session["my_name"]
-        print(f"[toggle_check] start: f_code={f_code!r}, my_name={my_name!r}, data={data!r}", flush=True)
         supabase = get_supabase()
         post_id = data.get("post_id")
         if not post_id:
             return jsonify({"status": "error", "message": "post_id is required"}), 400
-        print(f"[toggle_check] post_id={post_id!r} (type={type(post_id).__name__})", flush=True)
         # 既に確認済みか
-        print(f"[toggle_check] SELECT board_checks where post_id={post_id} and staff_name={my_name!r}", flush=True)
         existing = supabase.table("board_checks").select("id").eq("post_id", post_id).eq("staff_name", my_name).execute()
-        print(f"[toggle_check] SELECT result: data={existing.data!r}", flush=True)
         if existing.data:
             # 削除(未確認に戻す)
-            print(f"[toggle_check] DELETE id={existing.data[0]['id']}", flush=True)
             supabase.table("board_checks").delete().eq("id", existing.data[0]["id"]).execute()
             action = "removed"
         else:
             # 追加(確認済みにする)
-            print(f"[toggle_check] INSERT facility_code={f_code!r}, post_id={post_id}, staff_name={my_name!r}", flush=True)
             supabase.table("board_checks").insert({
                 "facility_code": f_code, "post_id": post_id,
                 "staff_name": my_name,
@@ -4658,11 +4651,8 @@ def api_board_toggle_check():
         # 最新の確認済み名前一覧を取得して返す
         cres = supabase.table("board_checks").select("staff_name").eq("post_id", post_id).execute()
         checked_names = [r["staff_name"] for r in (cres.data or [])]
-        print(f"[toggle_check] OK: action={action}, checked_names={checked_names!r}", flush=True)
         return jsonify({"status": "success", "action": action, "checked_names": checked_names})
     except Exception as e:
-        print(f"[toggle_check ERROR] {type(e).__name__}: {e}", flush=True)
-        print(f"[toggle_check TRACEBACK]\n{traceback.format_exc()}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

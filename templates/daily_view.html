@@ -845,6 +845,8 @@
     </div>
     <div class="user-accordion-body {% if user == target_user %}open{% endif %}" id="body-{{ loop.index }}">
 
+        {# Session 32: AI統合記録の表示と生成ボタンを一時的に非表示(モニタリングのカテゴリ別生成に置き換え予定) #}
+        {% if false %}
         {% if data.ai_record %}
         <div class="ai-record-card">
             <div class="ai-record-label">
@@ -870,6 +872,7 @@
             <span class="material-symbols-outlined">auto_awesome</span>
             {{ date_label }} ケース記録を生成して確定
         </button>
+        {% endif %}
         {% endif %}
 
         <hr class="divider" style="margin:0 0 12px;">
@@ -1469,9 +1472,40 @@ window.jumpToDayView = function(dateStr) {
     else window.location.href = '/daily_view?date=' + dateStr;
 };
 window.toggleAccordion = function(idx) {
-    document.getElementById('body-'+idx).classList.toggle('open');
+    var body = document.getElementById('body-'+idx);
+    var wasOpen = body.classList.contains('open');
+    body.classList.toggle('open');
     document.getElementById('arrow-'+idx).classList.toggle('open');
+    // Session 32: 開かれた瞬間に、その利用者の記録を既読化
+    if (!wasOpen) {
+        var recordIds = Array.from(body.querySelectorAll('.record-item'))
+            .map(function(el){ return parseInt((el.id || '').replace('record-',''), 10); })
+            .filter(function(n){ return !isNaN(n); });
+        if (recordIds.length > 0) {
+            markRecordsAsViewedSilently(recordIds);
+        }
+    }
 };
+
+// Session 32: 静かに記録を既読化(エラーは黙殺、成功時のみ画面のカウントを+1)
+async function markRecordsAsViewedSilently(recordIds) {
+    try {
+        var res = await fetch('/api/mark_records_read', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({record_ids: recordIds})
+        });
+        var data = await res.json();
+        if (data.status === 'success' && data.marked_ids && data.marked_ids.length > 0) {
+            data.marked_ids.forEach(function(rid){
+                var countEl = document.getElementById('read-count-' + rid);
+                if (countEl) {
+                    var current = parseInt(countEl.textContent || '0', 10);
+                    countEl.textContent = current + 1;
+                }
+            });
+        }
+    } catch(e) { /* 静かに失敗 */ }
+}
 window.startEdit = function(id, content) {
     document.getElementById('edit-text-'+id).value = content;
     document.getElementById('edit-area-'+id).style.display = 'block';
