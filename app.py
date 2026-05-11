@@ -4257,6 +4257,7 @@ def board():
     comments_count = {}
     reactions_data = {}
     read_data = {}
+    checks_data = {}  # Session 32: 確認済み状態(board_checks テーブル)
     # === カテゴリー機能 ===
     board_categories = []
     post_categories = {}
@@ -4305,6 +4306,15 @@ def board():
                 pid = r["post_id"]
                 if pid not in read_data: read_data[pid] = []
                 read_data[pid].append(r["staff_name"])
+            # Session 32: 確認済み(board_checks)を取得
+            try:
+                chres = supabase.table("board_checks").select("post_id,staff_name").in_("post_id", post_ids).execute()
+                for r in (chres.data or []):
+                    pid = r["post_id"]
+                    if pid not in checks_data: checks_data[pid] = []
+                    checks_data[pid].append(r["staff_name"])
+            except Exception as e:
+                print(f"board_checks load error: {e}")
             # 投稿ごとのカテゴリー情報をマップ化
             try:
                 posts_with_cat = supabase.table("board_posts").select("id,category_id").in_("id", post_ids).execute()
@@ -4344,7 +4354,7 @@ def board():
         posts=posts, icons=icons, my_name=my_name,
         my_color=staff_color(my_name), my_initial=staff_initial(my_name),
         comments_count=comments_count, reactions_data=reactions_data,
-        read_data=read_data, staffs=staffs,
+        read_data=read_data, checks_data=checks_data, staffs=staffs,
         board_categories=board_categories, post_categories=post_categories,
         is_admin=is_admin_flag,
         patient_names=patient_names,
@@ -4610,6 +4620,41 @@ def api_board_react():
         return jsonify({"status": "success", "action": action, "reactions": reactions})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# Session 32: 確認済み(board_checks)のトグル ===========================
+@app.route("/api/board/toggle_check", methods=["POST"])
+@login_required
+def api_board_toggle_check():
+    # 投稿の確認済みフラグをトグル(リアクションとは独立した board_checks テーブルを使用)
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        post_id = data.get("post_id")
+        if not post_id:
+            return jsonify({"status": "error", "message": "post_id is required"}), 400
+        # 既に確認済みか
+        existing = supabase.table("board_checks").select("id").eq("post_id", post_id).eq("staff_name", my_name).execute()
+        if existing.data:
+            # 削除(未確認に戻す)
+            supabase.table("board_checks").delete().eq("id", existing.data[0]["id"]).execute()
+            action = "removed"
+        else:
+            # 追加(確認済みにする)
+            supabase.table("board_checks").insert({
+                "facility_code": f_code, "post_id": post_id,
+                "staff_name": my_name,
+            }).execute()
+            action = "added"
+        # 最新の確認済み名前一覧を取得して返す
+        cres = supabase.table("board_checks").select("staff_name").eq("post_id", post_id).execute()
+        checked_names = [r["staff_name"] for r in (cres.data or [])]
+        return jsonify({"status": "success", "action": action, "checked_names": checked_names})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route("/api/board/unread_count")
 @login_required
