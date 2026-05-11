@@ -504,6 +504,77 @@
 .cr-search-fab:active { transform: scale(0.95); }
 .cr-search-fab .material-symbols-outlined { font-size: 28px; }
 
+/* Session 34: スピードダイヤル(右下メイン1つ、タップで上方向に展開) */
+.dv-sd-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.12);
+    z-index: 940;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+.dv-sd-overlay.is-open { opacity: 1; pointer-events: auto; }
+.dv-sd-main {
+    position: fixed;
+    bottom: 152px;
+    right: 16px;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 952;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.15s;
+}
+.dv-sd-main:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.dv-sd-main:active { transform: scale(0.95); }
+.dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.2s ease; }
+.dv-sd-main.is-open .material-symbols-outlined { transform: rotate(90deg); }
+.dv-sd-items {
+    position: fixed;
+    right: 16px;
+    bottom: 152px;
+    z-index: 951;
+    display: flex; flex-direction: column-reverse; align-items: flex-end;
+    gap: 12px;
+    pointer-events: none;
+}
+.dv-sd-item {
+    display: flex; align-items: center; gap: 10px;
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+}
+.dv-sd-items.is-open .dv-sd-item { pointer-events: auto; opacity: 1; transform: translateY(0); }
+.dv-sd-items.is-open .dv-sd-item:nth-child(1) { transition-delay: 0.18s; }
+.dv-sd-items.is-open .dv-sd-item:nth-child(2) { transition-delay: 0.12s; }
+.dv-sd-items.is-open .dv-sd-item:nth-child(3) { transition-delay: 0.06s; }
+.dv-sd-item-label {
+    background: #ffffff;
+    color: #202124;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    white-space: nowrap;
+}
+.dv-sd-item-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #1a73e8;
+    border: none;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.12s;
+}
+.dv-sd-item-btn:active { transform: scale(0.92); }
+.dv-sd-item-btn .material-symbols-outlined { font-size: 22px; }
+
 .cr-search-modal {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.5);
@@ -1099,8 +1170,36 @@
 </div>
 
 <!-- Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル -->
-<button id="cr-search-fab" class="cr-search-fab" type="button" aria-label="ケース記録を検索" onclick="crOpenSearch()">
-    <span class="material-symbols-outlined">search</span>
+<!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
+
+<!-- Session 34: 右下スピードダイヤル(検索/全て開く/トップへ) -->
+<div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
+<div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
+    <div class="dv-sd-item">
+        <span class="dv-sd-item-label">検索</span>
+        <button class="dv-sd-item-btn" type="button" aria-label="ケース記録を検索"
+                onclick="dvSdToggle(false); crOpenSearch();">
+            <span class="material-symbols-outlined">search</span>
+        </button>
+    </div>
+    <div class="dv-sd-item">
+        <span class="dv-sd-item-label" id="dv-sd-toggle-label">全て開く</span>
+        <button class="dv-sd-item-btn" type="button" aria-label="全てのケース記録を開く・閉じる"
+                onclick="dvSdToggleAll()">
+            <span class="material-symbols-outlined" id="dv-sd-toggle-icon">unfold_more</span>
+        </button>
+    </div>
+    <div class="dv-sd-item">
+        <span class="dv-sd-item-label">トップへ</span>
+        <button class="dv-sd-item-btn" type="button" aria-label="ページの先頭へ戻る"
+                onclick="dvSdToggle(false); window.scrollTo({top: 0, behavior: 'smooth'});">
+            <span class="material-symbols-outlined">arrow_upward</span>
+        </button>
+    </div>
+</div>
+<button id="dv-sd-main" class="dv-sd-main" type="button" aria-label="メニューを開く"
+        onclick="dvSdToggle()">
+    <span class="material-symbols-outlined">menu</span>
 </button>
 
 <div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
@@ -1571,18 +1670,14 @@ window.jumpToDayView = function(dateStr) {
 };
 window.toggleAccordion = function(idx) {
     var body = document.getElementById('body-'+idx);
-    var wasOpen = body.classList.contains('open');
     body.classList.toggle('open');
     document.getElementById('arrow-'+idx).classList.toggle('open');
-    // Session 32: 開かれた瞬間に、その利用者の記録を既読化
-    if (!wasOpen) {
-        var recordIds = Array.from(body.querySelectorAll('.record-item'))
-            .map(function(el){ return parseInt((el.id || '').replace('record-',''), 10); })
-            .filter(function(n){ return !isNaN(n); });
-        if (recordIds.length > 0) {
-            markRecordsAsViewedSilently(recordIds);
-        }
-    }
+    // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
+    // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
+    // 開いた直後に画面内に入った記録は dvRecordObserver が既読化する
+    dvObserveRecordsIn(body);
+    // スピードダイヤル開閉状態を更新(全て開く/閉じるラベル切り替え)
+    dvSdUpdateToggleLabel();
 };
 
 // Session 32: 静かに記録を既読化(エラーは黙殺、成功時のみ画面のカウントを+1)
@@ -1604,6 +1699,131 @@ async function markRecordsAsViewedSilently(recordIds) {
         }
     } catch(e) { /* 静かに失敗 */ }
 }
+
+// ========== Session 34: スピードダイヤル(右下メニュー) ==========
+window.dvSdToggle = function(force) {
+    var main = document.getElementById('dv-sd-main');
+    var items = document.getElementById('dv-sd-items');
+    var overlay = document.getElementById('dv-sd-overlay');
+    if (!main || !items || !overlay) return;
+    var wantOpen = (typeof force === 'boolean') ? force : !main.classList.contains('is-open');
+    main.classList.toggle('is-open', wantOpen);
+    items.classList.toggle('is-open', wantOpen);
+    overlay.classList.toggle('is-open', wantOpen);
+    main.setAttribute('aria-label', wantOpen ? 'メニューを閉じる' : 'メニューを開く');
+    items.setAttribute('aria-hidden', wantOpen ? 'false' : 'true');
+    var icon = main.querySelector('.material-symbols-outlined');
+    if (icon) icon.textContent = wantOpen ? 'close' : 'menu';
+    if (wantOpen) dvSdUpdateToggleLabel();
+};
+
+// 開いているアコーディオンの数を数えて「全て開く / 全て閉じる」のラベルとアイコンを切り替える
+window.dvSdUpdateToggleLabel = function() {
+    var openCount = document.querySelectorAll('.user-accordion-body.open').length;
+    var totalCount = document.querySelectorAll('.user-accordion-body').length;
+    var icon = document.getElementById('dv-sd-toggle-icon');
+    var label = document.getElementById('dv-sd-toggle-label');
+    if (!icon || !label) return;
+    // 1つでも開いていれば「全て閉じる」、全て閉じていれば「全て開く」
+    if (openCount > 0) {
+        icon.textContent = 'unfold_less';
+        label.textContent = (openCount === totalCount) ? '全て閉じる' : '全て閉じる';
+    } else {
+        icon.textContent = 'unfold_more';
+        label.textContent = '全て開く';
+    }
+};
+
+// 「全て開く/閉じる」トグル: 1つでも開いてれば全閉、全閉なら全開
+window.dvSdToggleAll = function() {
+    var bodies = document.querySelectorAll('.user-accordion-body');
+    var arrows = document.querySelectorAll('.user-accordion-arrow');
+    var anyOpen = Array.from(bodies).some(function(b) { return b.classList.contains('open'); });
+    if (anyOpen) {
+        // 全て閉じる
+        bodies.forEach(function(b) { b.classList.remove('open'); });
+        arrows.forEach(function(a) { a.classList.remove('open'); });
+    } else {
+        // 全て開く(既読化はしない、画面に入った時点で IntersectionObserver が拾う)
+        bodies.forEach(function(b) {
+            b.classList.add('open');
+            dvObserveRecordsIn(b);
+        });
+        arrows.forEach(function(a) { a.classList.add('open'); });
+    }
+    dvSdUpdateToggleLabel();
+    dvSdToggle(false); // メニューを閉じる
+};
+
+// ========== Session 34: IntersectionObserver で「画面に表示された記録」を既読化 ==========
+// 開いたアコーディオン内の record-item を監視。viewport に 300ms 以上滞在したら既読化。
+var dvViewedRecordIds = new Set();
+var dvPendingTimers = new Map();
+var dvRecordObserver = null;
+
+function dvEnsureObserver() {
+    if (dvRecordObserver) return dvRecordObserver;
+    if (!('IntersectionObserver' in window)) return null;
+    dvRecordObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            var el = entry.target;
+            var idMatch = (el.id || '').match(/^record-(\d+)$/);
+            if (!idMatch) return;
+            var rid = parseInt(idMatch[1], 10);
+            if (dvViewedRecordIds.has(rid)) {
+                dvRecordObserver.unobserve(el);
+                return;
+            }
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+                // 半分以上画面内に入った → 300ms 後に既読化
+                if (!dvPendingTimers.has(rid)) {
+                    var t = setTimeout(function() {
+                        dvPendingTimers.delete(rid);
+                        // 改めて画面内かチェック
+                        var rect = el.getBoundingClientRect();
+                        var vh = window.innerHeight || document.documentElement.clientHeight;
+                        var visible = rect.top < vh && rect.bottom > 0;
+                        if (visible && !dvViewedRecordIds.has(rid)) {
+                            dvViewedRecordIds.add(rid);
+                            dvRecordObserver.unobserve(el);
+                            markRecordsAsViewedSilently([rid]);
+                        }
+                    }, 300);
+                    dvPendingTimers.set(rid, t);
+                }
+            } else {
+                // 画面外に出た → 待機中のタイマーをキャンセル
+                if (dvPendingTimers.has(rid)) {
+                    clearTimeout(dvPendingTimers.get(rid));
+                    dvPendingTimers.delete(rid);
+                }
+            }
+        });
+    }, { threshold: [0, 0.5, 1.0] });
+    return dvRecordObserver;
+}
+
+// 指定したコンテナ(=アコーディオン body)内の .record-item を observe 対象に追加
+window.dvObserveRecordsIn = function(container) {
+    var obs = dvEnsureObserver();
+    if (!obs) return;
+    var items = (container || document).querySelectorAll('.record-item');
+    items.forEach(function(el) {
+        var idMatch = (el.id || '').match(/^record-(\d+)$/);
+        if (!idMatch) return;
+        var rid = parseInt(idMatch[1], 10);
+        if (dvViewedRecordIds.has(rid)) return;
+        obs.observe(el);
+    });
+};
+
+// 初期表示: target_user により最初から open になっているアコーディオンの中身も observe する
+document.addEventListener('DOMContentLoaded', function() {
+    var openBodies = document.querySelectorAll('.user-accordion-body.open');
+    openBodies.forEach(function(body) { dvObserveRecordsIn(body); });
+    dvSdUpdateToggleLabel();
+});
+
 window.startEdit = function(id, content) {
     document.getElementById('edit-text-'+id).value = content;
     document.getElementById('edit-area-'+id).style.display = 'block';
