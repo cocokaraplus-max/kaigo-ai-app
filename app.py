@@ -671,6 +671,18 @@ def input_view():
                     category = (request.form.get("category", "") or "その他").strip()
                     if not category:
                         category = "その他"
+                    # Session 33: 休み連絡カテゴリ専用フィールド(category=休み連絡 以外は None で保存)
+                    leave_reporter_type = (request.form.get("leave_reporter_type", "") or "").strip()
+                    leave_reporter_relation = (request.form.get("leave_reporter_relation", "") or "").strip()
+                    if category != "休み連絡":
+                        leave_reporter_type = None
+                        leave_reporter_relation = None
+                    else:
+                        # 休み連絡だが値が空のとき(理論上クライアント側で弾かれているが念のため)も None に
+                        if not leave_reporter_type:
+                            leave_reporter_type = None
+                        if not leave_reporter_relation:
+                            leave_reporter_relation = None
                     insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -680,7 +692,9 @@ def input_view():
                         "created_at": dt_record.isoformat(),
                         "image_urls": image_urls if image_urls else None,
                         "must_read": must_read_flag,
-                        "category": category
+                        "category": category,
+                        "leave_reporter_type": leave_reporter_type,
+                        "leave_reporter_relation": leave_reporter_relation
                     }).execute()
 
                     # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
@@ -3620,7 +3634,15 @@ def api_update_record():
         if not data or not data.get("id") or data.get("content") is None:
             return jsonify({"status": "error", "message": "id と content は必須です"}), 400
         supabase = get_supabase()
-        supabase.table("records").update({"content": data["content"]}).eq("id", data["id"]).execute()
+        update_payload = {"content": data["content"]}
+        # Session 33: 休み連絡カテゴリの編集で送られたら type/relation も更新
+        # (payload に含まれない場合は既存値を維持)
+        if "leave_reporter_type" in data:
+            _t = (data.get("leave_reporter_type") or "").strip() or None
+            _r = (data.get("leave_reporter_relation") or "").strip() or None
+            update_payload["leave_reporter_type"] = _t
+            update_payload["leave_reporter_relation"] = _r
+        supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -5328,7 +5350,8 @@ def api_admin_ai_categorize_apply():
     if len(items) > 100:
         return jsonify({"ok": False, "error": "一度に適用できるのは100件までです"}), 400
 
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット"}
+    # Session 33: 「休み連絡」を含む
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡"}
 
     normalized = []
     for it in items:
@@ -5626,7 +5649,8 @@ def api_records_apply_ai_category(record_id):
     new_cat = (payload.get("new_category") or "").strip()
     ai_reason = str(payload.get("ai_reason") or "")[:200]
 
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット"}
+    # Session 33: 「休み連絡」を含む
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡"}
     if new_cat not in VALID_CATEGORIES:
         return jsonify({"ok": False, "error": "不正なカテゴリです"}), 400
 
@@ -5666,8 +5690,14 @@ def api_records_apply_ai_category(record_id):
 
     # records UPDATE
     try:
+        update_dict = {"category": new_cat, "search_tags": new_tags}
+        # Session 33: 「休み連絡 → 他カテゴリ」に変えるときは leave_reporter_* を None クリア
+        # (「他カテゴリ → 休み連絡」のときは値が空のまま記録されるので、編集ボタンから後入力する運用)
+        if old_cat == "休み連絡" and new_cat != "休み連絡":
+            update_dict["leave_reporter_type"] = None
+            update_dict["leave_reporter_relation"] = None
         supabase.table("records") \
-            .update({"category": new_cat, "search_tags": new_tags}) \
+            .update(update_dict) \
             .eq("id", record_id) \
             .eq("facility_code", f_code) \
             .execute()

@@ -1,72 +1,48 @@
 # TASUKARU介護AIアプリ 開発引き継ぎ
 
-> **最新更新: 2026-05-11 Session 32 終了時点**
+> **最新更新: 2026-05-11 Session 33 開始時点(Session 32 本番リリース完了直後)**
 > 本READMEは Session 4 から累積形式で記録。最新は末尾、Session番号順に追記。
 > 過去Sessionの詳細は本ファイル内を `Session NN 引き継ぎ` で検索。
 
-## 📍 現在の状況サマリ(Session 32 終了時点)
+## 📍 現在の状況サマリ(Session 33 開始時点 / Session 32 本番リリース完了)
 
-**掲示板の「確認済み」とリアクションを完全分離 + ケース記録の閲覧カウント改善 + AI統合記録の一時非表示。dev完了、本番未反映。**
+**Session 32 で実装した「掲示板の確認とリアクション完全分離 + ケース記録閲覧カウント改善 + AI統合記録の一時非表示」を本番リリース完了。Session 33 は次のタスク選定から。**
 
 新規Sessionを開始する Claude は **最初に以下の3点を読むこと**:
-1. このREADMEの末尾「Session 32 引き継ぎ」セクション(最新の教訓・不変事項・PENDINGタスク)
-2. ハンドオフ書類 `/Users/ZIMAX 1/Desktop/SESSION32_HANDOFF_FINAL.md`(8項目の実装詳細+本番リリース手順)
-3. 前回ハンドオフ `/Users/ZIMAX 1/Desktop/SESSION31_HANDOFF_FINAL.md`(参考)
+1. このREADMEの末尾「Session 32 引き継ぎ」セクション(教訓・不変事項・PENDINGタスク)
+2. ハンドオフ書類 `docs/SESSION33_HANDOFF.md`(Session 32 本番リリース実績 + Session 33 タスク候補)
+3. 必要に応じて `/Users/ZIMAX 1/Desktop/SESSION32_HANDOFF_FINAL.md`(Session 32 の実装詳細を参照したい場合)
 
-### 直近の主な機能(Session 32 で dev に実装、本番未反映)
+### Session 32 で本番に届いた機能(2026-05-11 リリース済)
 
 1. **掲示板カードUIクリーンアップ**: 緑✅Nチップ削除、確認/未確認ボタンの数字バッジ削除
 2. **下メニュー未読バッジ表示**: 掲示板ページでも未読数を表示(上タブと一致)
-3. **board_checks 専用テーブル新設**: 確認状態をリアクションから完全分離
+3. **board_checks 専用テーブル新設**: 確認状態をリアクションから完全分離(本番207件移行済)
 4. **/api/board/toggle_check 新API**: 確認状態のトグル専用エンドポイント
 5. **リアクション/確認の完全分離**: 他絵文字を押しても確認状態が変わらない
 6. **リアクションピッカーから ✅ 除外**: 純粋なリアクション専用
 7. **ケース記録の閲覧カウント改善**: 利用者アコーディオン展開時に自動既読化+カウント+1
 8. **AI統合記録の一時非表示**: カード+「生成して確定」ボタンを `{% if false %}` で隠す(コードは保持)
 
-### 🔴 最優先タスク:本番リリース(次Session最初に実施)
+### Session 33 の取り組み候補(優先順)
 
-詳細手順は `SESSION32_HANDOFF_FINAL.md` 参照。所要時間20-30分。要約:
-
-1. 本番 Supabase で `board_checks` テーブル新設(SQL は SESSION32 ハンドオフ参照)
-2. **RLS が disable になっているか必ず確認**(devで遭遇した既知の罠)
-3. 本番 Supabase で `board_reactions` の ✅ データを `board_checks` に移行
-4. `tasukaru-dev` → `tasukaru` ブランチへマージ、`gcloud run deploy tasukaru` で本番デプロイ
-5. iPhone で本番動作確認(チェックリストはハンドオフ参照)
-6. `git checkout tasukaru-dev` で dev に戻す
-
-### 次Sessionで取り組む課題(優先順)
-
-- **🔴 本番リリース**(Session 32 の成果を本番反映、最優先)
 - **🟡 モニタリングのカテゴリ別生成**(Session 32 で新規要件、AI統合記録の置き換え。要件ヒアリングから)
 - **🟡 課題3**(Session 31 持ち越し): 一括適用「10件まで」UI制限(シンプル・1時間)
 - **🟡 課題4**(Session 31 持ち越し): 「休み連絡」カテゴリ追加(中規模、DB変更必要)
 - **🟢 LINE招待移行**: 規模大、要件ヒアリングから(別途持ち越し)
 - **🟢 Phase 3c-②**: 旧 `board_reactions` の ✅ 行物理削除(本番安定後、任意)
+- **🟢 debug log 整理**: `api_board_toggle_check` に残る `print` 系ログ(commit `6219728`)を将来掃除(実害なし)
 
-### 本番デプロイ手順(変更なし、改めて再掲)
+### 本番デプロイ手順(変更なし、再掲)
 ```bash
 git checkout tasukaru
-git merge tasukaru-dev
+git merge tasukaru-dev --no-ff -m "Merge tasukaru-dev into tasukaru: <要約>"
 git push origin tasukaru
-gcloud run deploy tasukaru --source . --region asia-northeast1
-# 完了後は tasukaru-dev に戻す
+# Cloud Build が自動発火、Cloud Run デプロイまで約2-5分
 git checkout tasukaru-dev
 ```
 
----
-
-## 📚 過去Sessionの全体構成
-
-| Session | 主な内容 | 詳細場所 |
-|---|---|---|
-| Session 4 (2026-04-30) | 掲示板UI刷新 + カテゴリー機能 | 本READMEを下方検索 |
-| Session 9 | バイタル機能 Phase 2 + 再検査アラーム | 本READMEを下方検索 |
-| Session 18-19 | (本READMEに記録あり) | 本READMEを下方検索 |
-| Session 23-24 | SendGrid メール障害対応 / dev DB浄化 | 本READMEを下方検索 |
-| Session 25-30 | (本READMEに未記載) | `SESSION27-30_HANDOFF.md` 参照 |
-| Session 31 (2026-05-10) | AIカテゴリ自動振り分け 8機能リリース | **本READMEの末尾** + `SESSION31_HANDOFF_FINAL.md` |
-
+DBスキーマ変更を伴う場合は、**本番 Supabase の SQL を先に流してから**コードを push すること(Session 33 冒頭リリースで実証済)。
 ---
 
 ## 🗄️ 過去のサマリ(参考、Session 4 時点)

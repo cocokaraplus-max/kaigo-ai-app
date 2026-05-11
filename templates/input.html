@@ -195,6 +195,32 @@
     inset: 0;
     z-index: 99;
 }
+
+/* Session 33: 休み連絡カテゴリ専用フォーム */
+.leave-btn-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.leave-btn {
+    padding: 10px 18px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.92rem;
+    color: #202124;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.leave-btn:hover { border-color: #EC4899; }
+.leave-btn.selected {
+    background: #FBEAF0;
+    border-color: #EC4899;
+    color: #993556;
+    font-weight: 600;
+}
 </style>
 {% endblock %}
 
@@ -385,6 +411,31 @@
         <input type="hidden" id="selected-category" name="category" value="その他">
     </div>
 
+    <!-- Session 33: 休み連絡カテゴリ専用フォーム(category=休み連絡 のときだけ display:block) -->
+    <div class="form-group" id="leave-form-block" style="display:none;">
+        <label class="form-label">
+            <span class="material-symbols-outlined">person</span>
+            誰から
+        </label>
+        <div class="leave-btn-group">
+            <button type="button" class="leave-btn" data-leave-type="self">本人</button>
+            <button type="button" class="leave-btn" data-leave-type="family">家族</button>
+        </div>
+        <input type="hidden" id="leave-reporter-type" name="leave_reporter_type" value="">
+
+        <div id="leave-relation-block" style="display:none; margin-top:14px;">
+            <label class="form-label" style="font-size:0.88rem;">関係性(任意)</label>
+            <div class="leave-btn-group">
+                <button type="button" class="leave-btn" data-leave-rel="娘">娘</button>
+                <button type="button" class="leave-btn" data-leave-rel="息子">息子</button>
+                <button type="button" class="leave-btn" data-leave-rel="妻">妻</button>
+                <button type="button" class="leave-btn" data-leave-rel="夫">夫</button>
+            </div>
+            <input type="text" id="leave-reporter-relation" name="leave_reporter_relation"
+                   class="form-control" placeholder="例: 義理の姉" style="margin-top:8px;">
+        </div>
+    </div>
+
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
@@ -437,6 +488,16 @@ window.saveRecord = async function() {
         return;
     }
 
+    // Session 33: 休み連絡カテゴリのとき「誰から」必須
+    const _curCatForLeave = document.getElementById('selected-category').value;
+    if (_curCatForLeave === '休み連絡') {
+        const _repType = document.getElementById('leave-reporter-type').value;
+        if (!_repType) {
+            alert('「誰から」を選択してください(本人 / 家族)');
+            return;
+        }
+    }
+
     // === Session 31 Step 6: AIカテゴリ提案 ===
     const curCat = document.getElementById('selected-category').value || 'その他';
     if (curCat === 'その他' && content && content.trim().length >= 5) {
@@ -475,6 +536,9 @@ window.saveRecord = async function() {
         formData.append('record_date', recordDate);
         formData.append('must_read', document.getElementById('must-read-flag').value);
         formData.append('category', document.getElementById('selected-category').value || 'その他');
+        // Session 33: 休み連絡カテゴリ専用フィールド(他カテゴリのときは空文字)
+        formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
+        formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
 
         // 写真を圧縮してから追加
         const photoInput = document.querySelector('input[name="photos"]');
@@ -524,6 +588,16 @@ window.saveRecord = async function() {
             var selCat = document.getElementById('selected-category');
             if (selCat) selCat.value = 'その他';
             renderCategoryPicker();
+            // Session 33: 休み連絡フォームもリセット
+            var lvBlock = document.getElementById('leave-form-block');
+            var lvType = document.getElementById('leave-reporter-type');
+            var lvRel = document.getElementById('leave-reporter-relation');
+            var lvRelBlock = document.getElementById('leave-relation-block');
+            if (lvBlock) lvBlock.style.display = 'none';
+            if (lvRelBlock) lvRelBlock.style.display = 'none';
+            if (lvType) lvType.value = '';
+            if (lvRel) lvRel.value = '';
+            document.querySelectorAll('.leave-btn.selected').forEach(function(b){ b.classList.remove('selected'); });
             if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
             if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
             if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
@@ -1002,6 +1076,67 @@ window.selectCategoryOption = function(optEl) {
     if (sel) sel.value = name;
     renderCategoryPicker();
     closeCategoryPicker();
+    // Session 33: 休み連絡フォームの表示切替
+    updateLeaveFormVisibility();
+};
+
+// Session 33: 休み連絡フォームの表示切替・初期化
+window.updateLeaveFormVisibility = function() {
+    var sel = document.getElementById('selected-category');
+    var block = document.getElementById('leave-form-block');
+    if (!sel || !block) return;
+    var isLeave = (sel.value === '休み連絡');
+    block.style.display = isLeave ? 'block' : 'none';
+    if (!isLeave) {
+        // 休み連絡以外に切り替わったら入力値・選択状態をクリア
+        var lvType = document.getElementById('leave-reporter-type');
+        var lvRel = document.getElementById('leave-reporter-relation');
+        var lvRelBlock = document.getElementById('leave-relation-block');
+        if (lvType) lvType.value = '';
+        if (lvRel) lvRel.value = '';
+        if (lvRelBlock) lvRelBlock.style.display = 'none';
+        document.querySelectorAll('.leave-btn.selected').forEach(function(b){ b.classList.remove('selected'); });
+    }
+};
+
+window.initLeaveFormHandlers = function() {
+    // 本人 / 家族ボタン
+    document.querySelectorAll('.leave-btn[data-leave-type]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var type = btn.getAttribute('data-leave-type');
+            var lvType = document.getElementById('leave-reporter-type');
+            var lvRelBlock = document.getElementById('leave-relation-block');
+            var lvRel = document.getElementById('leave-reporter-relation');
+            if (lvType) lvType.value = type;
+            document.querySelectorAll('.leave-btn[data-leave-type]').forEach(function(b){ b.classList.remove('selected'); });
+            btn.classList.add('selected');
+            // 家族のときだけ関係性ブロックを開く
+            if (lvRelBlock) lvRelBlock.style.display = (type === 'family') ? 'block' : 'none';
+            if (type === 'self') {
+                if (lvRel) lvRel.value = '';
+                document.querySelectorAll('.leave-btn[data-leave-rel]').forEach(function(b){ b.classList.remove('selected'); });
+            }
+        });
+    });
+    // 関係性候補ボタン
+    document.querySelectorAll('.leave-btn[data-leave-rel]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var rel = btn.getAttribute('data-leave-rel');
+            var lvRel = document.getElementById('leave-reporter-relation');
+            if (lvRel) lvRel.value = rel;
+            document.querySelectorAll('.leave-btn[data-leave-rel]').forEach(function(b){ b.classList.remove('selected'); });
+            btn.classList.add('selected');
+        });
+    });
+    // 自由入力時は候補ボタンの選択状態を入力値に合わせる
+    var lvRelInput = document.getElementById('leave-reporter-relation');
+    if (lvRelInput) {
+        lvRelInput.addEventListener('input', function() {
+            document.querySelectorAll('.leave-btn[data-leave-rel]').forEach(function(b){
+                b.classList.toggle('selected', b.getAttribute('data-leave-rel') === lvRelInput.value);
+            });
+        });
+    }
 };
 
 function escapeHtml(s) {
@@ -1014,6 +1149,10 @@ function escapeHtml(s) {
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof loadRecordCategories === 'function') {
         loadRecordCategories();
+    }
+    // Session 33: 休み連絡フォームのイベントハンドラ初期化
+    if (typeof initLeaveFormHandlers === 'function') {
+        initLeaveFormHandlers();
     }
 });
 
