@@ -1,6 +1,6 @@
 # TASUKARU 介護AIアプリ — 開発引き継ぎ(ミニマム版)
 
-> **最新更新: 2026-05-11 Session 33 完了(本番リリース済)**
+> **最新更新: 2026-05-12 Session 34 完了(本番リリース予定)**
 > このファイルは「次セッションを始める Claude が最初に読むだけで仕事が始められる」ことを目的に**ミニマム化**してある。過去 Session の詳細ログは git history を `git log --all --oneline` で参照する。Session 33 までの累積 README は git の `tasukaru-dev` ブランチ履歴(`README.md` 旧版)に残っている。
 
 ---
@@ -143,10 +143,42 @@
 | #31 | daily_view のカテゴリ変更モーダルは JS ハードコード(`AIC_MANUAL_CATEGORIES`)、DB の `record_categories` とは別世界(Session 33) |
 | #32 | ファイル受領時は SHA-256 で必ずハッシュ照合(Chrome キャッシュ vs 添付ファイル)。整合性確認なしに編集進めない(Session 33) |
 | #33 | カテゴリ追加は最低 4-5 箇所同時更新が必要: `record_categories` テーブル / `AIC_MANUAL_CATEGORIES` 配列 / `VALID_CATEGORIES` set 2 箇所 / `AI_CATEGORY_DEFINITIONS` dict(Session 33) |
+| #34 | 視覚的なズレを「数値変更で試行錯誤」しない。**実機の `getBoundingClientRect` で位置を実測**してから修正する。デバッグオーバーレイを画面に直接出す方式が iPhone Safari でも開発者ツール不要で確実(Session 34) |
+| #35 | CSS の `bottom` 値の差 = **同サイズ要素の中心間距離**。要素サイズ補正は不要(Session 34、肉球配置で半径計算を間違えた経験から) |
+| #36 | `position: fixed` 要素は CSS で**閉時の初期位置を明示**しないと、座標未指定でデフォルト位置(左上 or 元の HTML位置)に出る。アニメーション元位置として `bottom`/`right` を必ず指定する(Session 34、スピードダイヤルのラベルで発生) |
+| #37 | ZIMAX さんの口頭/文字説明だけで UI の正確な配置を理解しない。**手書きスケッチ画像をもらうのが最も確実**。「肉球配置」のような具体的なメタファーが出たら即座に確認する(Session 34) |
 
 ---
 
 ## 6. 直近セッションのサマリ(過去 2-3 件だけ)
+
+### Session 34(2026-05-12)完了 — 掲示板コメントドロワー改善 + ケース記録スピードダイヤル(肉球配置)
+**dev push 済み、本番リリース未実施**
+
+#### A) 掲示板コメントドロワー改修(`templates/board.html`)
+- iOS でコメント送信時にキーボード出現で画面真っ白問題 → `visualViewport` トラッカーで追従
+- シート高さ 60vh 制限、`dvh` (dynamic viewport height) で iOS URL バー伸縮対応
+- 全周フローティング(カード型): ドロワーに左右 10px + 下 10px パディング + `env(safe-area-inset-bottom)`
+- シート全周角丸 16px + 軽いシャドウで iPhone の画面角丸との干渉解消
+- 空状態をリッチ表示(💬アイコン + メイン文 + サブ文)
+- 最終ハッシュ: `6d59588d5d4da2935082396d7203392cbf9c7c3ef5e25cc068c515cb702c9f34`
+
+#### B) ケース記録スピードダイヤル(`templates/daily_view.html`)
+- 既存の独立 FAB(検索)を削除、**右下ピンクのメインボタン(✕)** に統合
+- 3つのサブボタンを**肉球配置**で放射状に展開:
+  - 検索: 真上 90°、ラベルは縦書き(検→索)
+  - 全て開く: 左斜め 135°、ラベルは縦書きを-45°回転(放射線上に文字下端を沿わす)
+  - TOPへ: 真左 180°、ラベルは横書き
+- ボタンサイズはメインと同じ 56px、半径 75px(ボタン同士の隙間あり)
+- ラベルとボタンを分離した CSS 構造(`.dv-sd-btn-N` と `.dv-sd-label-N`)
+- 既読化を「アコーディオン展開」から **`IntersectionObserver` による画面表示ベース**に変更
+- TOPへスクロール強化(window/documentElement/body/全要素の4段階フォールバック)
+- 最終ハッシュ: `7f317c56ab1a221513156a38e7815e4b03b4016a89d7aa3db4364c1cc8e6bf9b`
+
+#### C) 苦戦した経緯(教訓 #34, #37 の元)
+- 「肉球配置」の理解に何度もすり合わせが必要だった
+- 推測ベースで数値を変えるループに陥り、**実機デバッグオーバーレイで `getBoundingClientRect` を実測**して原因特定
+- CSS の `bottom` 差を「ボタンサイズ補正込み」と勘違いし(教訓 #35)、半径計算が間違っていた
 
 ### Session 33(2026-05-11)完了 — 休み連絡カテゴリ追加 + タスカルくん歩行
 **本番リリース commit**: `b8529b9`
@@ -167,19 +199,28 @@
 - ケース記録の利用者アコーディオン展開で自動既読化+カウント+1
 - AI 統合記録の一時非表示機能
 
-### Session 31(2026-05-10)完了 — AI カテゴリ自動振り分け
-- AI が記録本文を読んで 8 カテゴリ(当時)に自動分類
-- 管理者 MENU の「AI 自動カテゴリ判定」機能(一括判定+適用+巻き戻し)
-- 個別記録のカテゴリ変更モーダル(`AIC_MANUAL_CATEGORIES` 配列)
-- カテゴリピッカー UI(記録入力画面)
-
 ---
 
-## 7. 既知の未対応事項(次セッションでの対応候補)
+## 7. 既知の未対応事項(次セッション=Session 35 での対応候補)
 
+### 🔴 最優先: Session 34 の本番リリース
+dev に push 済みだが本番未反映。両ファイルともコードのみ(DB変更なし)なので DB→コード順は不要。
+- `templates/board.html`: コメントドロワー全周フローティング
+- `templates/daily_view.html`: スピードダイヤル肉球配置 + IntersectionObserver既読化 + TOPへスクロール強化
+- 手順: `git checkout tasukaru` → `git pull origin tasukaru` → `git merge tasukaru-dev` → `git push origin tasukaru` → Cloud Build 待ち → 本番 iPhone 確認 → `git checkout tasukaru-dev`
+
+### 🟡 Session 33 から持ち越し
 - **dev の `cocokaraplus-5526` にヒヤリハットがまだ無い** → 本番と揃えるため次セッションで追加(DB操作のみ)
+  ```sql
+  UPDATE record_categories SET sort_order = 9 WHERE facility_code = 'cocokaraplus-5526' AND name = 'その他';
+  UPDATE record_categories SET sort_order = 8 WHERE facility_code = 'cocokaraplus-5526' AND name = '休み連絡';
+  INSERT INTO record_categories (facility_code, name, color, sort_order, is_default) VALUES ('cocokaraplus-5526', 'ヒヤリハット', '#EF4444', 7, false);
+  ```
 - 旧 README(累積版、4216 行)が git history に残っている。完全に消すか、`docs/README_ARCHIVE.md` として保存するか判断が必要
 - 休み連絡カテゴリの AI 判定精度を実運用で観察(low confidence で「その他」に倒れる頻度確認)
+
+### 🟢 余裕があれば
+- Session 34 の改修で既読化挙動が変わった(展開→画面表示ベース)ので、運用後に違和感ないかフィードバック確認
 
 ---
 
@@ -195,7 +236,7 @@ git log --oneline -5                      # 直近 5 commit を確認
 # Chrome タブを開く(可能なら)
 # - dev daily_view, 本番 top, 本番 Cloud Build, dev Supabase, 本番 Supabase
 
-# このREADMEと SESSION34_HANDOFF.md を Claude に提示
+# このREADMEと SESSION35_HANDOFF.md を Claude に提示
 ```
 
 ---
