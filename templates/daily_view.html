@@ -623,36 +623,31 @@
     transition-delay: 0.15s;
 }
 
-/* === 開時のラベル位置(各放射線上、ボタンと重ならない位置に配置) === */
-/* 実機データ(innerHeight=812, ボタン全56px)に基づく計算 */
+/* === 開時のラベル位置(各放射線上、ボタンから十分離して重なり回避) === */
 
-/* 検索ラベル: 検索ボタンの真上、ボタン中心と揃える */
-/* ボタン1 center y = 557, ボタン上端 529 → ラベル下端 525(隙間4px), bottom = 287 */
-/* ラベル中心 x = ボタン中心 right=44 → ラベル幅約21px、ラベル right = 44 - 10 = 34 */
+/* 検索ラベル: 検索ボタンの真上、隙間8px */
 .dv-sd-items.is-open .dv-sd-label-1 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 287px;
+    bottom: 291px;
     right: 34px;
     text-orientation: upright;
 }
-/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、ボタン左上に離して配置 */
+/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、外側に大きく離して重なり回避 */
 .dv-sd-items.is-open .dv-sd-label-2 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 247px;
-    right: 112px;
+    bottom: 239px;
+    right: 103px;
     transform: rotate(-45deg);
     transform-origin: bottom right;
     text-orientation: upright;
 }
-/* TOPへラベル: TOPボタンの真左、ボタン中心と揃える */
-/* ボタン3 center y = 632 → ラベル中心 y = 632, bottom = 169 */
-/* ラベル右端 = ボタン左端 250 - 4 = 246, right = 402 - 246 = 156 */
+/* TOPへラベル: TOPボタンの真左、隙間8px */
 .dv-sd-items.is-open .dv-sd-label-3 {
     opacity: 1;
     bottom: 169px;
-    right: 156px;
+    right: 161px;
 }
 
 .cr-search-modal {
