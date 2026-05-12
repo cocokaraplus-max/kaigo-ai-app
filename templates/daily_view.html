@@ -574,12 +574,17 @@
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
+    /* 閉じている時はメインボタン位置に隠れる(座標未指定で左下に出るバグの修正) */
+    bottom: 152px;
+    right: 16px;
     /* 背景: 白半透明 + 角丸 + 軽い影でボタンと統一感 */
     background: rgba(255, 255, 255, 0.92);
     border-radius: 6px;
     padding: 4px 7px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.10);
-    transition: opacity 0.22s ease 0.10s;
+    transition: opacity 0.22s ease 0.10s,
+                bottom 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+                right 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 /* 縦書きラベル(検索、全て開く)はパディングを縦長に */
 .dv-sd-label.is-vertical {
@@ -618,33 +623,36 @@
     transition-delay: 0.15s;
 }
 
-/* === 開時のラベル位置(各放射線上にボタン中心と揃えて配置) === */
+/* === 開時のラベル位置(各放射線上、ボタンと重ならない位置に配置) === */
+/* 実機データ(innerHeight=812, ボタン全56px)に基づく計算 */
 
-/* 検索ラベル: 検索ボタンの真上、center x = main center x */
-/* 縦書きラベル幅約20px、ラベル中心が right=44 になるよう right=34 */
+/* 検索ラベル: 検索ボタンの真上、ボタン中心と揃える */
+/* ボタン1 center y = 557, ボタン上端 529 → ラベル下端 525(隙間4px), bottom = 287 */
+/* ラベル中心 x = ボタン中心 right=44 → ラベル幅約21px、ラベル right = 44 - 10 = 34 */
 .dv-sd-items.is-open .dv-sd-label-1 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 260px;
+    bottom: 287px;
     right: 34px;
     text-orientation: upright;
 }
-/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、ボタン左上に配置 */
+/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、ボタン左上に離して配置 */
 .dv-sd-items.is-open .dv-sd-label-2 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 240px;
-    right: 105px;
+    bottom: 247px;
+    right: 112px;
     transform: rotate(-45deg);
     transform-origin: bottom right;
     text-orientation: upright;
 }
-/* TOPへラベル: TOPボタンの真左、center y = main center y */
-/* 横書きラベル高さ約22px、ラベル中心bottom=152+28=180、ラベルbottom=180-11=169 */
+/* TOPへラベル: TOPボタンの真左、ボタン中心と揃える */
+/* ボタン3 center y = 632 → ラベル中心 y = 632, bottom = 169 */
+/* ラベル右端 = ボタン左端 250 - 4 = 246, right = 402 - 246 = 156 */
 .dv-sd-items.is-open .dv-sd-label-3 {
     opacity: 1;
-    bottom: 168px;
-    right: 158px;
+    bottom: 169px;
+    right: 156px;
 }
 
 .cr-search-modal {
