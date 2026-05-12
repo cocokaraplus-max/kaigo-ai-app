@@ -329,10 +329,13 @@
   position: fixed;
   inset: 0;
   z-index: 9999;
-  display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+}
+/* hidden 属性が CSS display: flex に負けないよう、表示時のみ display を指定 */
+.vas-modal:not([hidden]) {
+  display: flex;
 }
 .vas-modal-overlay {
   position: absolute;
