@@ -586,13 +586,15 @@
     padding: 7px 4px;
 }
 
-/* === 開時のボタン位置(半径75px、ボタン同士均等に離れる、メインボタン中心 bottom:180/right:44 基準) === */
+/* === 開時のボタン位置(半径75px、修正後: bottom差 = 中心間距離) === */
+/* メイン基準: bottom:152px right:16px。各サブボタンも56px同サイズ。 */
+/* 角度 → bottom差 = R×sin(θ), right差 = R×cos(180°-θ) */
 
-/* 検索: 真上 90° → bottom +75, right +0(画面端からは16pxでメインと揃う) */
+/* 検索: 真上 90° → bottom +75, right +0 */
 .dv-sd-items.is-open .dv-sd-btn-1 {
     pointer-events: auto;
     opacity: 1;
-    bottom: 255px;
+    bottom: 227px;
     right: 16px;
     transform: scale(1);
     transition-delay: 0.05s;
@@ -601,12 +603,12 @@
 .dv-sd-items.is-open .dv-sd-btn-2 {
     pointer-events: auto;
     opacity: 1;
-    bottom: 233px;
+    bottom: 205px;
     right: 69px;
     transform: scale(1);
     transition-delay: 0.10s;
 }
-/* TOPへ: 真左 180° → bottom +0(×と同じ高さ), right +75 */
+/* TOPへ: 真左 180° → bottom +0(×と同高), right +75 */
 .dv-sd-items.is-open .dv-sd-btn-3 {
     pointer-events: auto;
     opacity: 1;
@@ -616,30 +618,29 @@
     transition-delay: 0.15s;
 }
 
-/* === 開時のラベル位置(各放射線の延長線上に正確に乗せる) === */
+/* === 開時のラベル位置(各放射線上にボタン中心と揃えて配置) === */
 
-/* 検索ラベル: ×と検索ボタンを結ぶ垂直線上、ボタンの真上に近接
-   検索ボタン中心 right=44 → ラベル右端 right=36(ラベル幅半分8px分左へオフセット) */
+/* 検索ラベル: 検索ボタンの真上、center x = main center x */
+/* 縦書きラベル幅約20px、ラベル中心が right=44 になるよう right=34 */
 .dv-sd-items.is-open .dv-sd-label-1 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 285px;
-    right: 36px;
+    bottom: 260px;
+    right: 34px;
     text-orientation: upright;
 }
-/* 全て開くラベル: ×と全て開くボタンを結ぶ45°線の延長上、ボタンの左上に近接
-   ボタン中心(180+53, 44+53)、外側方向(135°)へ延長してラベル下端を放射線に乗せる */
+/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、ボタン左上に配置 */
 .dv-sd-items.is-open .dv-sd-label-2 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 268px;
-    right: 113px;
+    bottom: 240px;
+    right: 105px;
     transform: rotate(-45deg);
     transform-origin: bottom right;
     text-orientation: upright;
 }
-/* TOPへラベル: ×とTOPへボタンを結ぶ水平線上、ボタンの真左に近接
-   TOPへボタン中心 bottom=180 → ラベル中心 bottom=180-11=169(横書きラベル高さ22px) */
+/* TOPへラベル: TOPボタンの真左、center y = main center y */
+/* 横書きラベル高さ約22px、ラベル中心bottom=152+28=180、ラベルbottom=180-11=169 */
 .dv-sd-items.is-open .dv-sd-label-3 {
     opacity: 1;
     bottom: 168px;
