@@ -616,31 +616,34 @@
     transition-delay: 0.15s;
 }
 
-/* === 開時のラベル位置(各放射線の延長線上、ボタン外側に余白) === */
+/* === 開時のラベル位置(各放射線の延長線上に正確に乗せる) === */
 
-/* 検索ラベル: 真上の延長線上、縦書き(検→索の順) */
+/* 検索ラベル: ×と検索ボタンを結ぶ垂直線上、ボタンの真上に近接
+   検索ボタン中心 right=44 → ラベル右端 right=36(ラベル幅半分8px分左へオフセット) */
 .dv-sd-items.is-open .dv-sd-label-1 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 313px;
-    right: 32px;
+    bottom: 285px;
+    right: 36px;
     text-orientation: upright;
 }
-/* 全て開くラベル: 左斜め45°の延長線上、縦書きを-45°回転(全が左上、くが×側) */
+/* 全て開くラベル: ×と全て開くボタンを結ぶ45°線の延長上、ボタンの左上に近接
+   ボタン中心(180+53, 44+53)、外側方向(135°)へ延長してラベル下端を放射線に乗せる */
 .dv-sd-items.is-open .dv-sd-label-2 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 288px;
-    right: 125px;
+    bottom: 268px;
+    right: 113px;
     transform: rotate(-45deg);
     transform-origin: bottom right;
     text-orientation: upright;
 }
-/* TOPへラベル: 真左の延長線上、横書き */
+/* TOPへラベル: ×とTOPへボタンを結ぶ水平線上、ボタンの真左に近接
+   TOPへボタン中心 bottom=180 → ラベル中心 bottom=180-11=169(横書きラベル高さ22px) */
 .dv-sd-items.is-open .dv-sd-label-3 {
     opacity: 1;
     bottom: 168px;
-    right: 152px;
+    right: 158px;
 }
 
 .cr-search-modal {
