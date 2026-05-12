@@ -147,13 +147,69 @@
 | #35 | CSS の `bottom` 値の差 = **同サイズ要素の中心間距離**。要素サイズ補正は不要(Session 34、肉球配置で半径計算を間違えた経験から) |
 | #36 | `position: fixed` 要素は CSS で**閉時の初期位置を明示**しないと、座標未指定でデフォルト位置(左上 or 元の HTML位置)に出る。アニメーション元位置として `bottom`/`right` を必ず指定する(Session 34、スピードダイヤルのラベルで発生) |
 | #37 | ZIMAX さんの口頭/文字説明だけで UI の正確な配置を理解しない。**手書きスケッチ画像をもらうのが最も確実**。「肉球配置」のような具体的なメタファーが出たら即座に確認する(Session 34) |
+| #38 | **ハンドオフ書の記載は鵜呑みにせず、現状確認 SELECT / git log / ハッシュ照合を最初に実行する**。ハンドオフ書とリポジトリ実態がズレている可能性は常にある。Session 35 で 3 件発動: ①Session 34 本番リリース実は完了済み(ハンドオフ書は未実施と記載) ②record_vas 初回 CREATE が想定外スキーマで作成された(原因不明、SELECT で検出 → DROP & 再作成) ③dev ヒヤリハットは想定通り未追加(Session 35) |
 
 ---
 
 ## 6. 直近セッションのサマリ(過去 2-3 件だけ)
 
+### Session 35(2026-05-12)完了 — 本番リリース確認 + dev ヒヤリハット追加 + 新規 3 機能の設計
+**dev push 済み(設計ドキュメントのみ)、新規 3 機能のコード実装は Session 36 以降**
+
+#### A) Session 34 の本番リリース確認(教訓 #38 発動)
+ハンドオフ書では「未実施」だったが、git log で確認したところ既に完了済みだった(commit `fa01b06`)。
+ハッシュ照合で完全一致を確認後、README と SESSION35_HANDOFF.md の docs push を実施(commit `bb7e681`)。
+
+#### B) dev cocokaraplus-5526 にヒヤリハット追加(Session 33 持ち越し)
+本番と完全に揃った状態に。SQL 3 文を実行:
+- `その他` を sort_order 9 へ移動
+- `休み連絡` を sort_order 8 へ移動
+- `ヒヤリハット` を sort_order 7, color `#EF4444` で INSERT
+本番との CSV ハッシュ照合で完全一致確認(`f72641dd...`)。
+
+#### C) 新規 3 機能の設計フェーズ(コード実装は Session 36 以降)
+ZIMAX さんの発案で「モニタリング書類をケアマネ向けに視覚的に分かりやすく改変したい」から派生:
+
+**機能 1: VAS 入力機能**(Phase 2.A、Session 36 推奨)
+- VAS = 疼痛尺度(0〜10)を構造化記録
+- 心身状況・訓練状況カテゴリのみ表示、任意入力
+- 人体図(illustAC 線画、商用 OK 確認済み)上にタップで部位選択
+- 31 部位(正面 27 + 背面 8)、左右両側 + 単独 5
+- 本番では `static/img/body/` に画像配置予定
+
+**機能 2: 月次評価データ管理**(Phase 2.B、Session 37 推奨)
+- 既存モニタリング書類の項目を DB 化(従来は Excel 出力後の手書きで二度手間)
+- 体重、出席率、目標達成状況(短期/長期 × 機能/活動/参加)、自由文 3 項目
+- 新規希望/満足度/サービス適切性も含む
+- 22 項目を 1 行に集約、UNIQUE (facility_code, user_name, year_month)
+
+**機能 3: ケアマネ提出書類生成**(Phase 2.C、Session 38-39 推奨)
+- A4 縦 1 枚、案 A ベース(連携依頼セクション削除版)
+- 出力形式: HTML → PDF → Excel の優先順位(WeasyPrint 候補)
+- 将来は事業所ごとに 10 タイプ程度の様式切り替え可能に(段階的拡張、まず自社 1 種類から)
+
+#### D) DB スキーマ作成(dev のみ、本番未適用)
+**`record_vas`** (8 カラム):
+```sql
+CREATE TABLE record_vas (id BIGSERIAL PRIMARY KEY, record_id BIGINT NOT NULL, facility_code TEXT NOT NULL, user_name TEXT NOT NULL, part TEXT NOT NULL, side TEXT NOT NULL, vas_value SMALLINT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+```
+
+**`patient_evaluations`** (23 カラム + UNIQUE):
+- 識別 4 + 測定値 3 + 短期目標達成 3 + 長期目標達成 3 + 自由文 3 + モニタリング 4 + タイムスタンプ 2
+- `CREATE UNIQUE INDEX uq_patient_eval_user_month ON patient_evaluations (facility_code, user_name, year_month);`
+
+#### E) 設計ドキュメント作成
+- `docs/CARE_MANAGER_REPORT_DESIGN.md` (23 KB, 493 行) — 3 機能の完全設計書
+- `docs/SESSION36_HANDOFF.md` (8.5 KB, 267 行) — Session 36 のハンドオフ書
+
+#### F) 苦戦した経緯(教訓 #38 の元)
+- record_vas 初回 CREATE で「Success」が出たのに、SELECT で確認したら設計と違うスキーマだった
+- 原因不明だが、SQL Editor の autocomplete 暴走(教訓 #27)の派生疑い
+- DROP & 再作成 + 検証 SELECT で解消
+- → ハンドオフ書を盲信せず、現状確認 SELECT/git log/ハッシュ照合を**最初に**実行する重要性
+
 ### Session 34(2026-05-12)完了 — 掲示板コメントドロワー改善 + ケース記録スピードダイヤル(肉球配置)
-**dev push 済み、本番リリース未実施**
+**本番リリース commit**: `fa01b06`(Session 35 で確認)
 
 #### A) 掲示板コメントドロワー改修(`templates/board.html`)
 - iOS でコメント送信時にキーボード出現で画面真っ白問題 → `visualViewport` トラッカーで追従
@@ -201,25 +257,35 @@
 
 ---
 
-## 7. 既知の未対応事項(次セッション=Session 35 での対応候補)
+## 7. 既知の未対応事項(次セッション=Session 36 での対応候補)
 
-### 🔴 最優先: Session 34 の本番リリース
-dev に push 済みだが本番未反映。両ファイルともコードのみ(DB変更なし)なので DB→コード順は不要。
-- `templates/board.html`: コメントドロワー全周フローティング
-- `templates/daily_view.html`: スピードダイヤル肉球配置 + IntersectionObserver既読化 + TOPへスクロール強化
-- 手順: `git checkout tasukaru` → `git pull origin tasukaru` → `git merge tasukaru-dev` → `git push origin tasukaru` → Cloud Build 待ち → 本番 iPhone 確認 → `git checkout tasukaru-dev`
+### 🔴 最優先: Phase 2.A VAS 入力機能の実装(Session 36 着手推奨)
+DB は dev に適用済み(`record_vas`)。コード実装フェーズに入る。
+- 人体図画像を `static/img/body/` に配置(body_front.png, body_back.png)
+- `templates/_vas_widget.html` (部分テンプレート、SVG + JS)
+- `templates/record_input.html` 改修(心身状況・訓練状況選択時に VAS 表示)
+- `app.py` の記録保存 API で record_vas にも INSERT
+- `templates/daily_view.html` で VAS 表示追加
+- dev 動作確認後、本番 Supabase に record_vas 適用 → コード push(教訓 #30: DB→コード順)
+- 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §1 を参照
 
-### 🟡 Session 33 から持ち越し
-- **dev の `cocokaraplus-5526` にヒヤリハットがまだ無い** → 本番と揃えるため次セッションで追加(DB操作のみ)
-  ```sql
-  UPDATE record_categories SET sort_order = 9 WHERE facility_code = 'cocokaraplus-5526' AND name = 'その他';
-  UPDATE record_categories SET sort_order = 8 WHERE facility_code = 'cocokaraplus-5526' AND name = '休み連絡';
-  INSERT INTO record_categories (facility_code, name, color, sort_order, is_default) VALUES ('cocokaraplus-5526', 'ヒヤリハット', '#EF4444', 7, false);
-  ```
-- 旧 README(累積版、4216 行)が git history に残っている。完全に消すか、`docs/README_ARCHIVE.md` として保存するか判断が必要
-- 休み連絡カテゴリの AI 判定精度を実運用で観察(low confidence で「その他」に倒れる頻度確認)
+### 🟡 Phase 2.B 月次評価機能(Session 37 推奨)
+DB は dev に適用済み(`patient_evaluations` + UNIQUE 制約)。
+- 新規画面 `/evaluations` (月次評価入力フォーム)
+- `evaluation_helper.py` (UPSERT ロジック)
+- `monitoring_integration.py` 改修(評価データの統合取得)
+- 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §2 を参照
+
+### 🟠 Phase 2.C ケアマネ書類生成(Session 38-39 推奨)
+- `care_manager_report.html` + `care_manager_report_gen.py` 作成
+- WeasyPrint 導入(requirements.txt + Dockerfile 更新)
+- mappings/<facility>/care_manager_standard.json で様式定義
+- 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §3 を参照
 
 ### 🟢 余裕があれば
+- 本番 Supabase に record_vas / patient_evaluations 適用(Phase 2.A 着手前、教訓 #30)
+- 旧 README(累積版、4216 行)が git history に残っている。完全に消すか、`docs/README_ARCHIVE.md` として保存するか判断が必要
+- 休み連絡カテゴリの AI 判定精度を実運用で観察(low confidence で「その他」に倒れる頻度確認)
 - Session 34 の改修で既読化挙動が変わった(展開→画面表示ベース)ので、運用後に違和感ないかフィードバック確認
 
 ---
@@ -236,7 +302,7 @@ git log --oneline -5                      # 直近 5 commit を確認
 # Chrome タブを開く(可能なら)
 # - dev daily_view, 本番 top, 本番 Cloud Build, dev Supabase, 本番 Supabase
 
-# このREADMEと SESSION35_HANDOFF.md を Claude に提示
+# このREADMEと docs/SESSION36_HANDOFF.md を Claude に提示
 ```
 
 ---

@@ -712,6 +712,36 @@ def input_view():
                     except Exception as _tag_err:
                         print(f"[search_tags] generation failed for new record: {_tag_err}", flush=True)
 
+                    # Session 36: VAS データを record_vas テーブルに一括 INSERT。失敗してもメイン処理は止めない
+                    try:
+                        if new_id:
+                            vas_json = request.form.get("vas_records", "") or ""
+                            vas_list = json.loads(vas_json) if vas_json.strip() else []
+                            vas_rows = []
+                            for v in vas_list:
+                                if not isinstance(v, dict):
+                                    continue
+                                part = v.get("part")
+                                side = v.get("side")
+                                value = v.get("value")
+                                if not part or not side:
+                                    continue
+                                if not isinstance(value, int) or value < 0 or value > 10:
+                                    continue
+                                vas_rows.append({
+                                    "record_id": new_id,
+                                    "facility_code": f_code,
+                                    "user_name": m.group(2),
+                                    "part": part,
+                                    "side": side,
+                                    "vas_value": value,
+                                })
+                            if vas_rows:
+                                supabase.table("record_vas").insert(vas_rows).execute()
+                                print(f"[vas_records] saved {len(vas_rows)} entries for record {new_id}", flush=True)
+                    except Exception as _vas_err:
+                        print(f"[vas_records] save failed for new record: {_vas_err}", flush=True)
+
                     content = ""
                     selected_patient = ""
                     user_name = m.group(2)
@@ -775,6 +805,24 @@ def daily_view():
                 except Exception:
                     pass
 
+            # Session 36: 当日記録の VAS データをまとめて取得
+            vas_by_record = {}
+            if day_record_ids:
+                try:
+                    vr = supabase.table("record_vas").select("record_id, part, side, vas_value").eq("facility_code", f_code).in_("record_id", day_record_ids).execute()
+                    if vr.data:
+                        for row in vr.data:
+                            rid = row["record_id"]
+                            if rid not in vas_by_record:
+                                vas_by_record[rid] = []
+                            vas_by_record[rid].append({
+                                "part": row["part"],
+                                "side": row["side"],
+                                "vas_value": row["vas_value"],
+                            })
+                except Exception as _vas_get_err:
+                    print(f"[record_vas] fetch failed for daily_view: {_vas_get_err}", flush=True)
+
             for r in res.data:
                 user = r["user_name"]
                 if user not in records:
@@ -789,6 +837,8 @@ def daily_view():
                     r["read_staffs"] = r_reads
                     r["read_count"] = len(r_reads)
                     r["is_read_by_me"] = (r["id"] in my_read_ids)
+                    # Session 36: VAS データを付与(なければ空配列)
+                    r["vas_records"] = vas_by_record.get(r["id"], [])
                     records[user]["normal_records"].append(r)
     except Exception as e:
         pass
@@ -3643,6 +3693,47 @@ def api_update_record():
             update_payload["leave_reporter_type"] = _t
             update_payload["leave_reporter_relation"] = _r
         supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
+
+        # Session 36: VAS データの UPSERT(全削除 → 再 INSERT)
+        # payload に vas_records が含まれていれば実施。含まれていなければ既存 VAS を維持。
+        if "vas_records" in data:
+            try:
+                # 既存の権限チェック用に records から facility_code, user_name を取得
+                rec_row = supabase.table("records").select("facility_code, user_name").eq("id", data["id"]).execute()
+                if rec_row.data:
+                    rec_facility = rec_row.data[0]["facility_code"]
+                    rec_user_name = rec_row.data[0]["user_name"]
+                    # 既存 VAS を全削除
+                    supabase.table("record_vas").delete().eq("record_id", data["id"]).execute()
+                    # 新規 VAS を一括 INSERT(空配列なら何も入れない)
+                    vas_list = data.get("vas_records") or []
+                    vas_rows = []
+                    for v in vas_list:
+                        if not isinstance(v, dict):
+                            continue
+                        part = v.get("part")
+                        side = v.get("side")
+                        value = v.get("vas_value") if "vas_value" in v else v.get("value")
+                        if not part or not side:
+                            continue
+                        if not isinstance(value, int) or value < 0 or value > 10:
+                            continue
+                        vas_rows.append({
+                            "record_id": data["id"],
+                            "facility_code": rec_facility,
+                            "user_name": rec_user_name,
+                            "part": part,
+                            "side": side,
+                            "vas_value": value,
+                        })
+                    if vas_rows:
+                        supabase.table("record_vas").insert(vas_rows).execute()
+                        print(f"[vas_records] updated {len(vas_rows)} entries for record {data['id']}", flush=True)
+                    else:
+                        print(f"[vas_records] cleared all entries for record {data['id']}", flush=True)
+            except Exception as _vas_upd_err:
+                print(f"[vas_records] update failed for record {data['id']}: {_vas_upd_err}", flush=True)
+
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

@@ -983,6 +983,172 @@
     font-weight: 700; font-size: 0.9rem;
     display: inline-flex; align-items: center; justify-content: center; gap: 4px;
 }
+
+/* ========== Session 36: VAS 表示 + 編集 ========== */
+.vas-display {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff5f5;
+  border-left: 3px solid #c62828;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  color: #c62828;
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.vas-display .material-symbols-outlined {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.vas-display-label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.vas-display-chip {
+  display: inline-block;
+  margin-right: 6px;
+  font-weight: 500;
+}
+.vas-display-chip::after {
+  content: '、';
+  color: #c62828;
+}
+.vas-display-chip:last-child::after {
+  content: '';
+}
+.vas-display-empty {
+  color: #b71c1c;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+/* 編集モード内の VAS プレビュー & 編集ボタン */
+.edit-vas-block {
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+.edit-vas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #5f6368;
+  margin-bottom: 6px;
+}
+.edit-vas-header-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: #c62828;
+}
+.edit-vas-header-title .material-symbols-outlined {
+  font-size: 18px;
+}
+.edit-vas-edit-btn {
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.edit-vas-edit-btn .material-symbols-outlined {
+  font-size: 14px;
+}
+.edit-vas-preview {
+  font-size: 0.85rem;
+  color: #c62828;
+  min-height: 20px;
+}
+.edit-vas-preview-empty {
+  color: #9e9e9e;
+  font-style: italic;
+}
+
+/* 共有 VAS 編集モーダル */
+#vas-edit-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px 16px 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#vas-edit-modal-overlay[hidden] {
+  display: none;
+}
+#vas-edit-modal-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  max-width: 480px;
+  width: 100%;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  margin-bottom: 80px;  /* iPhone 下部タブを避けるため */
+  display: flex;
+  flex-direction: column;
+}
+/* モーダル内のウィジェットは人体図エリアを縮小して縦に収める */
+#vas-edit-modal-card .vas-body-wrap {
+  max-width: 220px;
+}
+#vas-edit-modal-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1a73e8;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#vas-edit-modal-actions {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding: 10px 0 8px;
+  border-top: 1px solid #e0e0e0;
+  z-index: 2;
+  flex-shrink: 0;
+}
+#vas-edit-modal-actions button {
+  padding: 10px 18px;
+  border-radius: 6px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  min-height: 44px;  /* iOS タップ領域標準 */
+}
+#vas-edit-modal-actions button.btn-primary {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+  font-weight: 600;
+}
 </style>
 
 
@@ -1141,6 +1307,18 @@
             {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>
 
+            {# Session 36: VAS データ表示(赤色) #}
+            {% if r.vas_records %}
+            <div class="vas-display" id="vas-display-{{ r.id }}"
+                 data-vas-records='{{ r.vas_records | tojson }}'>
+              <span class="material-symbols-outlined">accessibility_new</span>
+              <span class="vas-display-label">痛み・違和感(VAS):</span>
+              <span class="vas-display-list" id="vas-display-list-{{ r.id }}">
+                {% for v in r.vas_records %}<span class="vas-display-chip" data-part="{{ v.part }}">{{ v.part }} {{ v.vas_value }}</span>{% endfor %}
+              </span>
+            </div>
+            {% endif %}
+
             {% if r.image_urls %}
             <div class="photo-grid">
                 {% for url in r.image_urls %}
@@ -1202,6 +1380,23 @@
                         </div>
                         <input type="text" id="leave-edit-rel-{{ r.id }}" class="form-control" placeholder="例: 義理の姉" style="margin-top:6px;">
                     </div>
+                </div>
+                {# Session 36: VAS 編集ブロック(編集モード時のみ表示)#}
+                <div class="edit-vas-block" id="edit-vas-block-{{ r.id }}">
+                    <div class="edit-vas-header">
+                        <span class="edit-vas-header-title">
+                            <span class="material-symbols-outlined">accessibility_new</span>
+                            痛み・違和感(VAS)
+                        </span>
+                        <button type="button" class="edit-vas-edit-btn" onclick="openVasEditModal('{{ r.id }}')">
+                            <span class="material-symbols-outlined">edit</span>編集
+                        </button>
+                    </div>
+                    <div class="edit-vas-preview" id="edit-vas-preview-{{ r.id }}">
+                        <span class="edit-vas-preview-empty">未入力(編集ボタンで追加できます)</span>
+                    </div>
+                    {# 確定送信用 hidden input #}
+                    <input type="hidden" id="edit-vas-records-{{ r.id }}" value="[]">
                 </div>
                 <textarea class="form-control" id="edit-text-{{ r.id }}" style="min-height:120px;"></textarea>
                 <div class="edit-actions">
@@ -1324,6 +1519,22 @@
     <span class="material-symbols-outlined">home</span>
     TOP画面へ
 </a>
+
+{# Session 36: 共有 VAS 編集モーダル(編集モードから openVasEditModal() で開く) #}
+<div id="vas-edit-modal-overlay" hidden>
+  <div id="vas-edit-modal-card">
+    <div id="vas-edit-modal-title">
+      <span class="material-symbols-outlined">accessibility_new</span>
+      痛み・違和感(VAS)を編集
+    </div>
+    {# _vas_widget.html を埋め込む。中で window.VasWidget が定義される #}
+    {% include '_vas_widget.html' %}
+    <div id="vas-edit-modal-actions">
+      <button type="button" onclick="closeVasEditModal()">キャンセル</button>
+      <button type="button" class="btn-primary" onclick="applyVasEditModal()">この内容で確定</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -1938,6 +2149,25 @@ document.addEventListener('DOMContentLoaded', function() {
 window.startEdit = function(id, content) {
     document.getElementById('edit-text-'+id).value = content;
     document.getElementById('edit-area-'+id).style.display = 'block';
+
+    // Session 36: VAS データを編集ブロックにロード
+    try {
+        const vasDisp = document.getElementById('vas-display-' + id);
+        const editVasInput = document.getElementById('edit-vas-records-' + id);
+        let vasArr = [];
+        if (vasDisp) {
+            const raw = vasDisp.getAttribute('data-vas-records') || '[]';
+            try { vasArr = JSON.parse(raw) || []; } catch(e) { vasArr = []; }
+        }
+        if (editVasInput) {
+            editVasInput.value = JSON.stringify(vasArr);
+        }
+        // プレビュー描画
+        vasUpdateEditPreview(id, vasArr);
+    } catch(e) {
+        console.warn('[vas] startEdit init failed:', e);
+    }
+
     // Session 33: 休み連絡カテゴリの記録なら、編集 UI 内の「誰から/関係性」も初期化して表示
     var recordEl = document.getElementById('record-' + id);
     var leaveBlock = document.getElementById('leave-edit-block-' + id);
@@ -1984,9 +2214,135 @@ window.saveEdit = async function(id) {
         payload.leave_reporter_type = _type;
         payload.leave_reporter_relation = relInput ? relInput.value : '';
     }
+    // Session 36: VAS 編集データを送信(常に送る。空配列なら既存 VAS 全削除)
+    try {
+        const editVasInput = document.getElementById('edit-vas-records-' + id);
+        if (editVasInput) {
+            let vasArr = [];
+            try { vasArr = JSON.parse(editVasInput.value || '[]'); } catch(e) { vasArr = []; }
+            // value キーを vas_value に正規化(_vas_widget の getRecords は value、API は vas_value どちらでも受ける実装)
+            payload.vas_records = (vasArr || []).map(v => ({
+                part: v.part,
+                side: v.side,
+                vas_value: (typeof v.vas_value === 'number') ? v.vas_value : v.value
+            }));
+        }
+    } catch(e) {
+        console.warn('[vas] saveEdit vas_records collect failed:', e);
+    }
     const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if ((await res.json()).status === 'success') location.reload();
 };
+
+// ==========================================================================
+// Session 36: VAS 編集モーダル制御
+// ==========================================================================
+// 現在編集中のレコード ID(モーダルで複数記録に対応するため)
+let vasEditCurrentRecordId = null;
+
+window.openVasEditModal = function(id) {
+    vasEditCurrentRecordId = id;
+    // 編集ブロックの hidden input から VAS データを読み出してウィジェットにセット
+    const editVasInput = document.getElementById('edit-vas-records-' + id);
+    let vasArr = [];
+    if (editVasInput) {
+        try { vasArr = JSON.parse(editVasInput.value || '[]'); } catch(e) { vasArr = []; }
+    }
+    // VasWidget の API でセット(value/vas_value の名称差を吸収)
+    if (window.VasWidget) {
+        const normalized = (vasArr || []).map(v => ({
+            part: v.part,
+            side: v.side,
+            value: (typeof v.value === 'number') ? v.value : v.vas_value
+        }));
+        try { window.VasWidget.setRecords(normalized); } catch(e) { console.warn(e); }
+        // モーダル内のウィジェットは常に表示状態にする(input.html のカテゴリ依存制御は不要)
+        try { window.VasWidget.show(); } catch(e) {}
+        // アコーディオンも開いた状態にする
+        const w = document.getElementById('vas-widget');
+        if (w) w.classList.remove('vas-collapsed');
+        const toggle = document.getElementById('vas-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    }
+    document.getElementById('vas-edit-modal-overlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+};
+window.closeVasEditModal = function() {
+    document.getElementById('vas-edit-modal-overlay').hidden = true;
+    document.body.style.overflow = '';
+    vasEditCurrentRecordId = null;
+};
+window.applyVasEditModal = function() {
+    if (!vasEditCurrentRecordId) return;
+    const id = vasEditCurrentRecordId;
+    let records = [];
+    if (window.VasWidget) {
+        try { records = window.VasWidget.getRecords() || []; } catch(e) { records = []; }
+    }
+    // 編集ブロックの hidden input に書き戻し(vas_value キーに揃える)
+    const editVasInput = document.getElementById('edit-vas-records-' + id);
+    if (editVasInput) {
+        const normalized = records.map(v => ({
+            part: v.part,
+            side: v.side,
+            vas_value: v.value
+        }));
+        editVasInput.value = JSON.stringify(normalized);
+    }
+    // プレビュー描画も更新
+    vasUpdateEditPreview(id, records);
+    closeVasEditModal();
+};
+
+// VAS 編集ブロックのプレビュー部分を更新(部位 ID → 日本語ラベル変換、ALL_PARTS は _vas_widget.html 由来)
+function vasUpdateEditPreview(id, vasArr) {
+    const preview = document.getElementById('edit-vas-preview-' + id);
+    if (!preview) return;
+    if (!vasArr || vasArr.length === 0) {
+        preview.innerHTML = '<span class="edit-vas-preview-empty">未入力(編集ボタンで追加できます)</span>';
+        return;
+    }
+    const partsMap = (window.VAS_ALL_PARTS || {});
+    const parts = vasArr.map(v => {
+        const def = partsMap[v.part];
+        const label = def ? def.label : v.part;
+        const val = (typeof v.value === 'number') ? v.value : v.vas_value;
+        return label + ' ' + val;
+    });
+    preview.textContent = parts.join('、');
+}
+
+// ページ読み込み時:既存の vas-display を日本語ラベルに置換(部位 ID → 日本語)
+function vasInitDisplayLabels() {
+    const partsMap = (window.VAS_ALL_PARTS || {});
+    if (Object.keys(partsMap).length === 0) {
+        // ALL_PARTS がまだ取れてない場合は次フレームで再試行
+        setTimeout(vasInitDisplayLabels, 50);
+        return;
+    }
+    document.querySelectorAll('.vas-display-list').forEach(function(listEl) {
+        const chips = listEl.querySelectorAll('.vas-display-chip');
+        chips.forEach(function(chip) {
+            const partId = chip.getAttribute('data-part');
+            const def = partsMap[partId];
+            if (def && def.label) {
+                // テキスト末尾の数字部分を保持し、先頭の部位 ID を日本語に置換
+                const txt = chip.textContent.trim();
+                const m = txt.match(/^(\S+)\s+(\d+)$/);
+                if (m) {
+                    chip.textContent = def.label + ' ' + m[2];
+                }
+            }
+        });
+    });
+}
+// DOMContentLoaded で実行
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', vasInitDisplayLabels);
+} else {
+    vasInitDisplayLabels();
+}
+
 window.deleteRecord = async function(id) {
     if (!confirm('本当に削除しますか？\nこの操作は取り消せません。')) return;
     const res = await fetch('/api/delete_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
