@@ -539,7 +539,7 @@
 .dv-sd-btn {
     position: fixed;
     z-index: 951;
-    width: 38px; height: 38px;
+    width: 56px; height: 56px;
     border-radius: 50%;
     background: #ffffff;
     color: #ec4899;
@@ -550,8 +550,8 @@
     opacity: 0;
     pointer-events: none;
     /* 閉じている時はメインボタン位置に重なって縮む */
-    bottom: 161px;
-    right: 25px;
+    bottom: 152px;
+    right: 16px;
     transform: scale(0.4);
     transform-origin: center;
     transition: opacity 0.22s ease,
@@ -560,7 +560,7 @@
                 transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .dv-sd-btn:active { transform: scale(0.92); }
-.dv-sd-btn .material-symbols-outlined { font-size: 20px; }
+.dv-sd-btn .material-symbols-outlined { font-size: 26px; }
 
 /* ラベル共通スタイル(ボタンと一緒にフェードイン、背景付き) */
 .dv-sd-label {
@@ -586,43 +586,43 @@
     padding: 7px 4px;
 }
 
-/* === 開時のボタン位置(半径51px、×との隙間1mm・サブ同士1px隙間、メインボタン中心 bottom:180/right:44 基準) === */
+/* === 開時のボタン位置(半径75px、ボタン同士均等に離れる、メインボタン中心 bottom:180/right:44 基準) === */
 
-/* 検索: 真上 90° → bottom +51, right +0 */
+/* 検索: 真上 90° → bottom +75, right +0(画面端からは16pxでメインと揃う) */
 .dv-sd-items.is-open .dv-sd-btn-1 {
     pointer-events: auto;
     opacity: 1;
-    bottom: 231px;
-    right: 25px;
+    bottom: 255px;
+    right: 16px;
     transform: scale(1);
     transition-delay: 0.05s;
 }
-/* 全て開く: 左斜め上 135° → bottom +36, right +36 */
+/* 全て開く: 左斜め上 135° → bottom +53, right +53 */
 .dv-sd-items.is-open .dv-sd-btn-2 {
     pointer-events: auto;
     opacity: 1;
-    bottom: 216px;
-    right: 61px;
+    bottom: 233px;
+    right: 69px;
     transform: scale(1);
     transition-delay: 0.10s;
 }
-/* TOPへ: 真左 180° → bottom +0, right +51 */
+/* TOPへ: 真左 180° → bottom +0(×と同じ高さ), right +75 */
 .dv-sd-items.is-open .dv-sd-btn-3 {
     pointer-events: auto;
     opacity: 1;
-    bottom: 180px;
-    right: 76px;
+    bottom: 152px;
+    right: 91px;
     transform: scale(1);
     transition-delay: 0.15s;
 }
 
-/* === 開時のラベル位置(各放射線の延長線上、背景パディング分の余裕含む) === */
+/* === 開時のラベル位置(各放射線の延長線上、ボタン外側に余白) === */
 
 /* 検索ラベル: 真上の延長線上、縦書き(検→索の順) */
 .dv-sd-items.is-open .dv-sd-label-1 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 280px;
+    bottom: 313px;
     right: 32px;
     text-orientation: upright;
 }
@@ -630,8 +630,8 @@
 .dv-sd-items.is-open .dv-sd-label-2 {
     opacity: 1;
     writing-mode: vertical-rl;
-    bottom: 262px;
-    right: 105px;
+    bottom: 288px;
+    right: 125px;
     transform: rotate(-45deg);
     transform-origin: bottom right;
     text-orientation: upright;
@@ -639,8 +639,8 @@
 /* TOPへラベル: 真左の延長線上、横書き */
 .dv-sd-items.is-open .dv-sd-label-3 {
     opacity: 1;
-    bottom: 188px;
-    right: 105px;
+    bottom: 168px;
+    right: 152px;
 }
 
 .cr-search-modal {
