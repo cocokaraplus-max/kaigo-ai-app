@@ -1248,9 +1248,6 @@
 <!-- Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル -->
 <!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
 
-<!-- Session 34 デバッグ用: 実機での実位置を画面に表示 -->
-<div id="dv-sd-debug" style="position: fixed; top: 60px; left: 8px; right: 8px; background: rgba(220, 50, 50, 0.92); color: #fff; font-family: monospace; font-size: 10px; line-height: 1.3; padding: 8px; border-radius: 6px; z-index: 9999; display: none; white-space: pre; max-height: 50vh; overflow: auto;"></div>
-
 <!-- Session 34: 右下スピードダイヤル(肉球配置: 各ボタンが×に密着、ラベルは放射線延長上) -->
 <div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
 <div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
@@ -1829,76 +1826,6 @@ window.dvSdToggle = function(force) {
     var icon = main.querySelector('.material-symbols-outlined');
     if (icon) icon.textContent = wantOpen ? 'close' : 'menu';
     if (wantOpen) dvSdUpdateToggleLabel();
-    // Session 34 デバッグ: 開く時に実位置を表示
-    if (wantOpen) {
-        setTimeout(dvSdDumpDebug, 400); // アニメーション完了後に測定
-    } else {
-        var dbg = document.getElementById('dv-sd-debug');
-        if (dbg) dbg.style.display = 'none';
-    }
-};
-
-// 各要素の実位置を画面に表示するデバッグ関数
-window.dvSdDumpDebug = function() {
-    var dbg = document.getElementById('dv-sd-debug');
-    if (!dbg) return;
-    var lines = [];
-    lines.push('=== Viewport ===');
-    lines.push('innerWidth=' + window.innerWidth + ' innerHeight=' + window.innerHeight);
-    if (window.visualViewport) {
-        var vv = window.visualViewport;
-        lines.push('visualVP: w=' + Math.round(vv.width) + ' h=' + Math.round(vv.height) + ' offsetTop=' + Math.round(vv.offsetTop));
-    }
-    lines.push('scrollY=' + Math.round(window.scrollY));
-    lines.push('');
-    lines.push('=== Buttons (getBoundingClientRect) ===');
-    var ids = [
-        { id: 'dv-sd-main', name: 'main(×)' },
-        { sel: '.dv-sd-btn-1', name: 'btn-1(検索)' },
-        { sel: '.dv-sd-btn-2', name: 'btn-2(開閉)' },
-        { sel: '.dv-sd-btn-3', name: 'btn-3(TOP)' },
-        { sel: '.dv-sd-label-1', name: 'lbl-1(検索)' },
-        { sel: '.dv-sd-label-2', name: 'lbl-2(開閉)' },
-        { sel: '.dv-sd-label-3', name: 'lbl-3(TOP)' }
-    ];
-    ids.forEach(function(o) {
-        var el = o.id ? document.getElementById(o.id) : document.querySelector(o.sel);
-        if (!el) { lines.push(o.name + ': NOT FOUND'); return; }
-        var r = el.getBoundingClientRect();
-        var cs = window.getComputedStyle(el);
-        var cx = r.left + r.width / 2;
-        var cy = r.top + r.height / 2;
-        lines.push(o.name + ':');
-        lines.push('  rect L=' + Math.round(r.left) + ' T=' + Math.round(r.top) + ' W=' + Math.round(r.width) + ' H=' + Math.round(r.height));
-        lines.push('  center=(' + Math.round(cx) + ',' + Math.round(cy) + ')');
-        lines.push('  css bottom=' + cs.bottom + ' right=' + cs.right);
-    });
-    // メインボタン中心からの相対位置と角度を計算
-    var mainEl = document.getElementById('dv-sd-main');
-    if (mainEl) {
-        var mr = mainEl.getBoundingClientRect();
-        var mcx = mr.left + mr.width / 2;
-        var mcy = mr.top + mr.height / 2;
-        lines.push('');
-        lines.push('=== Relative to main center (' + Math.round(mcx) + ',' + Math.round(mcy) + ') ===');
-        ['.dv-sd-btn-1', '.dv-sd-btn-2', '.dv-sd-btn-3'].forEach(function(sel, i) {
-            var el = document.querySelector(sel);
-            if (!el) return;
-            var r = el.getBoundingClientRect();
-            var cx = r.left + r.width / 2;
-            var cy = r.top + r.height / 2;
-            var dx = cx - mcx;
-            var dy = cy - mcy;
-            var dist = Math.sqrt(dx*dx + dy*dy);
-            var ang = Math.atan2(-dy, dx) * 180 / Math.PI; // 反時計回り、真右=0、真上=90
-            var name = ['btn-1(検索)', 'btn-2(開閉)', 'btn-3(TOP)'][i];
-            lines.push(name + ': dx=' + Math.round(dx) + ' dy=' + Math.round(dy) + ' dist=' + Math.round(dist) + 'px ang=' + Math.round(ang) + '°');
-        });
-        lines.push('');
-        lines.push('期待値: 検索=90° 開閉=135° TOP=180°');
-    }
-    dbg.textContent = lines.join('\n');
-    dbg.style.display = 'block';
 };
 
 // 開いているアコーディオンの数を数えて「全て開く / 全て閉じる」のラベルとアイコンを切り替える
