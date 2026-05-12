@@ -1,0 +1,763 @@
+{# ==========================================================================
+   _vas_widget.html — VAS (Visual Analog Scale) 入力ウィジェット partial
+   ==========================================================================
+   Session 36 / Phase 2.A
+   - 自己完結型 partial:input.html から {% include '_vas_widget.html' %} 一行で組込
+   - 54 部位(FRONT 31 + BACK 23):ZIMAX さん調整済みポリゴン
+   - タップで部位選択 → 数値選択モーダル(0-10 NRS) → リスト表示
+   - フォーム送信時、hidden input #vas-records-json に JSON 文字列で同梱される
+   - 公開 API: window.VasWidget.getRecords() / setRecords() / clear()
+
+   関連:
+   - DB:  record_vas (id, record_id, facility_code, user_name, part, side, vas_value, created_at)
+   - 親:  templates/input.html(category=心身状況 or 訓練状況 のとき表示制御)
+   - 表示:templates/daily_view.html(記録カード内に簡易表示)
+   ========================================================================== #}
+
+<div id="vas-widget" class="vas-widget" hidden>
+  <div class="vas-header">
+    <div class="vas-title">
+      <span class="material-symbols-outlined">accessibility_new</span>
+      <span>痛み・違和感(VAS)</span>
+      <span class="vas-hint">部位をタップ → 0〜10 で評価</span>
+    </div>
+    <div class="vas-tabs" role="tablist">
+      <button type="button" class="vas-tab active" data-tab="front" role="tab" aria-selected="true">
+        <span class="material-symbols-outlined">visibility</span>正面
+      </button>
+      <button type="button" class="vas-tab" data-tab="back" role="tab" aria-selected="false">
+        <span class="material-symbols-outlined">turn_right</span>背面
+      </button>
+    </div>
+  </div>
+
+  <div class="vas-canvas">
+    {# FRONT パネル #}
+    <div class="vas-panel active" data-panel="front">
+      <div class="vas-body-wrap">
+        <img class="vas-body-img"
+             src="{{ url_for('static', filename='img/body/body_front.png') }}"
+             alt="人体図(正面)">
+        <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
+             id="vas-svg-front" aria-label="VAS 部位選択(正面)"></svg>
+      </div>
+    </div>
+    {# BACK パネル #}
+    <div class="vas-panel" data-panel="back">
+      <div class="vas-body-wrap">
+        <img class="vas-body-img"
+             src="{{ url_for('static', filename='img/body/body_back.png') }}"
+             alt="人体図(背面)">
+        <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
+             id="vas-svg-back" aria-label="VAS 部位選択(背面)"></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="vas-list-wrap">
+    <div class="vas-list-header">
+      <span class="material-symbols-outlined">format_list_bulleted</span>
+      入力済み(<span id="vas-count">0</span>件)
+    </div>
+    <div id="vas-list" class="vas-list">
+      <div class="vas-empty">部位をタップして VAS を記録してください</div>
+    </div>
+  </div>
+
+  <input type="hidden" name="vas_records" id="vas-records-json" value="[]">
+</div>
+
+{# ===== モーダル(0-10 NRS 数値選択)===== #}
+<div id="vas-modal" class="vas-modal" hidden>
+  <div class="vas-modal-overlay"></div>
+  <div class="vas-modal-card" role="dialog" aria-modal="true" aria-labelledby="vas-modal-title">
+    <div class="vas-modal-title" id="vas-modal-title">
+      <span id="vas-modal-part-label">部位</span> の VAS
+    </div>
+    <div class="vas-modal-desc">
+      0 = 痛みなし / 10 = 想像できる最大の痛み
+    </div>
+    <div class="vas-scale">
+      {# 0-10 のボタンを生成 #}
+      {% for i in range(11) %}
+      <button type="button" class="vas-scale-btn" data-value="{{ i }}">{{ i }}</button>
+      {% endfor %}
+    </div>
+    <div class="vas-modal-actions">
+      <button type="button" class="vas-modal-btn vas-modal-cancel" id="vas-modal-cancel">キャンセル</button>
+      <button type="button" class="vas-modal-btn vas-modal-delete" id="vas-modal-delete" hidden>この部位を削除</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* ==========================================================================
+   VAS ウィジェット スタイル
+   ========================================================================== */
+.vas-widget {
+  background: #fafbfc;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.vas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.vas-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a73e8;
+}
+.vas-title .material-symbols-outlined {
+  font-size: 22px;
+}
+.vas-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #80868b;
+  margin-left: 6px;
+}
+.vas-tabs {
+  display: flex;
+  gap: 4px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid #e0e0e0;
+}
+.vas-tab {
+  padding: 7px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #5f6368;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-tab .material-symbols-outlined {
+  font-size: 18px;
+}
+.vas-tab.active {
+  background: #1a73e8;
+  color: #fff;
+  font-weight: 500;
+}
+.vas-canvas {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  overflow: hidden;
+}
+.vas-panel {
+  display: none;
+}
+.vas-panel.active {
+  display: block;
+}
+.vas-body-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  /* aspect-ratio で viewBox 250×500 = 1:2 を維持 */
+  aspect-ratio: 1 / 2;
+  background: #fafafa;
+}
+.vas-body-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.vas-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: manipulation;
+}
+/* ポリゴン本体 */
+.vas-region {
+  fill: rgba(26, 115, 232, 0.05);
+  stroke: rgba(26, 115, 232, 0.25);
+  stroke-width: 0.6;
+  pointer-events: visiblePainted;
+  cursor: pointer;
+  transition: fill 0.15s, stroke-width 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-region:hover {
+  fill: rgba(26, 115, 232, 0.15);
+  stroke-width: 1.2;
+}
+/* 値別の色分け(VAS 値で fill を上書き)*/
+.vas-region.val-0  { fill: rgba(158, 158, 158, 0.55); stroke: #616161; stroke-width: 1.2; }
+.vas-region.val-1  { fill: rgba(255, 235, 59, 0.55); stroke: #f9a825; stroke-width: 1.2; }
+.vas-region.val-2  { fill: rgba(255, 215, 0, 0.6);    stroke: #f9a825; stroke-width: 1.2; }
+.vas-region.val-3  { fill: rgba(255, 193, 7, 0.65);   stroke: #f57f17; stroke-width: 1.2; }
+.vas-region.val-4  { fill: rgba(255, 152, 0, 0.65);   stroke: #ef6c00; stroke-width: 1.2; }
+.vas-region.val-5  { fill: rgba(255, 112, 67, 0.7);   stroke: #e64a19; stroke-width: 1.2; }
+.vas-region.val-6  { fill: rgba(255, 87, 34, 0.75);   stroke: #d84315; stroke-width: 1.2; }
+.vas-region.val-7  { fill: rgba(244, 67, 54, 0.75);   stroke: #c62828; stroke-width: 1.2; }
+.vas-region.val-8  { fill: rgba(229, 57, 53, 0.8);    stroke: #b71c1c; stroke-width: 1.2; }
+.vas-region.val-9  { fill: rgba(198, 40, 40, 0.85);   stroke: #7f0000; stroke-width: 1.4; }
+.vas-region.val-10 { fill: rgba(183, 28, 28, 0.9);    stroke: #4a0000; stroke-width: 1.5; }
+/* 値テキスト(ポリゴン中心)*/
+.vas-region-value {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* ===== 入力済みリスト ===== */
+.vas-list-wrap {
+  margin-top: 10px;
+}
+.vas-list-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #5f6368;
+  margin-bottom: 6px;
+}
+.vas-list-header .material-symbols-outlined {
+  font-size: 16px;
+}
+.vas-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;
+}
+.vas-empty {
+  width: 100%;
+  font-size: 0.8rem;
+  color: #9e9e9e;
+  padding: 6px 2px;
+  font-style: italic;
+}
+.vas-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 5px 5px 10px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 14px;
+  font-size: 0.83rem;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-chip-label {
+  font-weight: 500;
+  color: #202124;
+}
+.vas-chip-value {
+  display: inline-block;
+  min-width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #fff;
+  background: #1a73e8;
+  padding: 0 4px;
+}
+.vas-chip[data-val="0"]  .vas-chip-value { background: #9e9e9e; }
+.vas-chip[data-val="1"]  .vas-chip-value,
+.vas-chip[data-val="2"]  .vas-chip-value,
+.vas-chip[data-val="3"]  .vas-chip-value { background: #f9a825; }
+.vas-chip[data-val="4"]  .vas-chip-value,
+.vas-chip[data-val="5"]  .vas-chip-value,
+.vas-chip[data-val="6"]  .vas-chip-value { background: #ef6c00; }
+.vas-chip[data-val="7"]  .vas-chip-value,
+.vas-chip[data-val="8"]  .vas-chip-value { background: #c62828; }
+.vas-chip[data-val="9"]  .vas-chip-value,
+.vas-chip[data-val="10"] .vas-chip-value { background: #7f0000; }
+.vas-chip-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #9e9e9e;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-chip-del:hover {
+  background: #ffebee;
+  color: #c62828;
+}
+.vas-chip-del .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* ===== モーダル ===== */
+.vas-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.vas-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-modal-card {
+  position: relative;
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 380px;
+  z-index: 1;
+}
+.vas-modal-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1a73e8;
+  margin-bottom: 4px;
+  text-align: center;
+}
+.vas-modal-desc {
+  font-size: 0.78rem;
+  color: #80868b;
+  margin-bottom: 14px;
+  text-align: center;
+}
+.vas-scale {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.vas-scale-btn {
+  padding: 12px 0;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 0;
+}
+/* 値ごとの色プレビュー(モーダルのボタンも値別配色) */
+.vas-scale-btn[data-value="0"]  { background: #f5f5f5; color: #616161; }
+.vas-scale-btn[data-value="1"]  { background: #fff9c4; color: #5d4037; }
+.vas-scale-btn[data-value="2"]  { background: #fff59d; color: #5d4037; }
+.vas-scale-btn[data-value="3"]  { background: #ffe082; color: #4e342e; }
+.vas-scale-btn[data-value="4"]  { background: #ffb74d; color: #3e2723; }
+.vas-scale-btn[data-value="5"]  { background: #ff8a65; color: #fff; }
+.vas-scale-btn[data-value="6"]  { background: #ff7043; color: #fff; }
+.vas-scale-btn[data-value="7"]  { background: #ef5350; color: #fff; }
+.vas-scale-btn[data-value="8"]  { background: #e53935; color: #fff; }
+.vas-scale-btn[data-value="9"]  { background: #c62828; color: #fff; }
+.vas-scale-btn[data-value="10"] { background: #7f0000; color: #fff; }
+.vas-scale-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.vas-scale-btn.selected {
+  outline: 3px solid #1a73e8;
+  outline-offset: 1px;
+}
+.vas-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+.vas-modal-btn {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.vas-modal-cancel {
+  color: #5f6368;
+}
+.vas-modal-delete {
+  color: #c62828;
+  border-color: #ffcdd2;
+  background: #fff5f5;
+}
+.vas-modal-delete:hover {
+  background: #ffebee;
+}
+
+/* ===== 狭幅対応 ===== */
+@media (max-width: 380px) {
+  .vas-scale-btn { font-size: 0.85rem; padding: 10px 0; }
+  .vas-title { font-size: 0.88rem; }
+  .vas-hint { display: none; }
+}
+</style>
+
+<script>
+(function() {
+'use strict';
+
+// ==========================================================================
+// VAS 部位定義(Session 36 ZIMAX 調整済み 54 部位、ポリゴン形式)
+// ==========================================================================
+const VAS_PARTS_FRONT = [
+  {id:"head",label:"頭部",side:"center",points:[[113,13],[128,9],[142,12],[154,28],[149,39],[127,44],[105,39],[101,29]]},
+  {id:"neck",label:"頚部",side:"center",points:[[112,72],[118,77],[124,82],[136,80],[141,74],[145,86],[137,90],[128,88],[118,89],[110,86]]},
+  {id:"shoulder_region_l",label:"左肩部",side:"l",points:[[146,85],[160,91],[170,93],[163,104],[153,98],[140,89]]},
+  {id:"shoulder_region_r",label:"右肩部",side:"r",points:[[93,89],[100,87],[112,89],[108,95],[94,101],[84,94]]},
+  {id:"shoulder_joint_l",label:"左肩関節",side:"l",points:[[168,98],[178,94],[188,98],[190,106],[188,114],[178,118],[168,114],[166,106]]},
+  {id:"shoulder_joint_r",label:"右肩関節",side:"r",points:[[70,100],[80,96],[90,100],[92,108],[90,116],[80,120],[70,116],[68,108]]},
+  {id:"chest",label:"胸部",side:"center",points:[[94,102],[109,96],[113,91],[126,91],[141,90],[149,98],[160,103],[166,112],[166,123],[166,134],[167,158],[148,158],[129,152],[109,158],[89,157],[90,121]]},
+  {id:"upper_arm_l",label:"左上腕部",side:"l",points:[[167,115],[178,120],[190,114],[194,150],[197,168],[172,168],[169,152]]},
+  {id:"upper_arm_r",label:"右上腕部",side:"r",points:[[66,113],[76,121],[89,118],[86,150],[84,168],[58,164],[62,150]]},
+  {id:"elbow_l",label:"左肘",side:"l",points:[[196,168],[184,168],[174,169],[178,194],[188,193],[200,190]]},
+  {id:"elbow_r",label:"右肘",side:"r",points:[[59,165],[71,167],[81,169],[76,186],[78,194],[67,194],[59,192],[55,189]]},
+  {id:"forearm_l",label:"左前腕部",side:"l",points:[[177,194],[200,190],[206,212],[210,231],[190,235],[184,219]]},
+  {id:"forearm_r",label:"右前腕部",side:"r",points:[[54,190],[64,195],[78,193],[70,221],[64,236],[44,234]]},
+  {id:"hip_joint_l",label:"左股関節",side:"l",points:[[141,243],[149,233],[162,231],[172,234],[174,261],[172,264],[155,266],[144,263],[129,257]]},
+  {id:"hip_joint_r",label:"右股関節",side:"r",points:[[83,233],[105,233],[113,242],[119,248],[124,257],[100,267],[84,267],[82,254]]},
+  {id:"wrist_l",label:"左手関節",side:"l",points:[[190,235],[202,234],[209,232],[215,245],[204,248],[195,251]]},
+  {id:"wrist_r",label:"右手関節",side:"r",points:[[62,237],[60,250],[38,247],[45,235]]},
+  {id:"thigh_l",label:"左大腿部",side:"l",points:[[129,259],[151,268],[173,266],[172,291],[166,322],[132,322],[132,295]]},
+  {id:"thigh_r",label:"右大腿部",side:"r",points:[[83,267],[103,268],[125,259],[124,295],[122,320],[88,321],[85,292]]},
+  {id:"knee_joint_l",label:"左膝関節",side:"l",points:[[132,323],[149,323],[166,323],[162,342],[165,362],[151,360],[138,360],[135,342]]},
+  {id:"knee_joint_r",label:"右膝関節",side:"r",points:[[88,322],[106,322],[123,321],[121,342],[119,361],[105,360],[91,360],[93,341]]},
+  {id:"lower_leg_l",label:"左下腿部",side:"l",points:[[137,360],[149,361],[165,362],[164,394],[160,434],[140,435],[139,415],[134,394]]},
+  {id:"lower_leg_r",label:"右下腿部",side:"r",points:[[90,360],[104,360],[119,361],[120,394],[114,434],[96,433],[91,393]]},
+  {id:"ankle_joint_l",label:"左足関節",side:"l",points:[[141,436],[150,435],[160,435],[160,452],[141,453]]},
+  {id:"ankle_joint_r",label:"右足関節",side:"r",points:[[95,434],[115,435],[115,452],[94,450]]},
+  {id:"foot_l",label:"左足部",side:"l",points:[[139,452],[151,452],[160,452],[164,463],[172,476],[165,478],[144,481],[144,474],[138,467]]},
+  {id:"foot_r",label:"右足部",side:"r",points:[[94,450],[104,452],[115,453],[117,466],[113,472],[111,480],[91,478],[84,475],[89,465]]},
+  {id:"palm_l",label:"左手掌部",side:"l",points:[[194,250],[216,245],[221,262],[215,271],[201,270],[196,266],[197,263]]},
+  {id:"palm_r",label:"右手掌部",side:"r",points:[[37,246],[60,250],[60,263],[60,268],[53,273],[41,271],[35,266]]},
+  {id:"fingers_palmar_l",label:"左指掌側",side:"l",points:[[194,267],[200,270],[214,271],[220,262],[217,244],[238,268],[234,271],[221,261],[228,294],[217,296],[205,297],[189,289]]},
+  {id:"fingers_palmar_r",label:"右指掌側",side:"r",points:[[34,267],[42,272],[56,272],[62,266],[65,288],[51,294],[41,296],[28,293],[33,262],[22,270],[19,266],[37,247],[34,261]]}
+];
+
+const VAS_PARTS_BACK = [
+  {id:"head_back",label:"頭部後頭",side:"center",points:[[99,16],[120,8],[140,15],[147,34],[150,50],[142,60],[135,71],[120,70],[105,71],[99,62],[93,50],[92,39]]},
+  {id:"neck_back",label:"頚部後頚",side:"center",points:[[106,71],[135,72],[135,80],[146,89],[97,89],[105,80]]},
+  {id:"upper_back",label:"上背部",side:"center",points:[[83,90],[151,89],[166,123],[161,153],[79,153],[76,122]]},
+  {id:"lower_back",label:"下背部",side:"center",points:[[81,154],[160,153],[156,185],[85,185]]},
+  {id:"waist",label:"腰部",side:"center",points:[[84,186],[158,186],[157,196],[160,206],[164,219],[79,220],[81,208],[83,197]]},
+  {id:"buttock_l",label:"左殿部",side:"l",points:[[77,220],[120,220],[120,229],[120,239],[120,249],[120,259],[112,268],[100,271],[86,266],[75,257],[73,245]]},
+  {id:"buttock_r",label:"右殿部",side:"r",points:[[120,220],[141,220],[164,220],[165,241],[166,256],[160,266],[145,272],[128,269],[122,258],[120,243]]},
+  {id:"thigh_l_back",label:"左大腿部裏",side:"l",points:[[74,259],[85,267],[99,273],[110,270],[119,265],[115,301],[115,312],[81,312],[77,301]]},
+  {id:"thigh_r_back",label:"右大腿部裏",side:"r",points:[[122,262],[132,271],[141,273],[153,270],[166,260],[161,314],[125,312],[123,283]]},
+  {id:"lower_leg_l_back",label:"左下腿部裏",side:"l",points:[[83,355],[111,355],[114,391],[107,421],[108,456],[89,457],[88,424],[82,391]]},
+  {id:"lower_leg_r_back",label:"右下腿部裏",side:"r",points:[[130,356],[157,355],[158,393],[152,420],[152,454],[132,454],[134,422],[128,391]]},
+  {id:"upper_arm_l_back",label:"左上腕後面",side:"l",points:[[64,97],[82,93],[74,123],[78,158],[71,178],[51,172],[58,115]]},
+  {id:"upper_arm_r_back",label:"右上腕後面",side:"r",points:[[153,92],[175,96],[181,116],[187,149],[189,178],[171,179],[162,157],[165,140],[165,119]]},
+  {id:"forearm_l_back",label:"左前腕後面",side:"l",points:[[48,183],[52,174],[70,179],[70,201],[52,248],[34,245],[42,210]]},
+  {id:"forearm_r_back",label:"右前腕後面",side:"r",points:[[171,180],[190,179],[198,202],[205,241],[188,243],[172,203]]},
+  {id:"dorsum_l",label:"左手背部",side:"l",points:[[33,246],[51,246],[52,254],[55,269],[47,272],[33,274],[26,271],[27,263],[27,248]]},
+  {id:"dorsum_r",label:"右手背部",side:"r",points:[[189,244],[206,241],[215,249],[213,261],[214,270],[201,273],[188,267],[188,252]]},
+  {id:"fingers_dorsal_l",label:"左指背側",side:"l",points:[[21,292],[25,263],[12,270],[11,265],[18,259],[26,250],[25,272],[38,275],[55,270],[58,287],[39,299],[25,296]]},
+  {id:"fingers_dorsal_r",label:"右指背側",side:"r",points:[[188,269],[215,271],[214,248],[223,260],[232,269],[229,272],[215,263],[221,291],[212,297],[199,297],[183,289]]},
+  {id:"popliteal_l",label:"左膝窩",side:"l",points:[[87,325],[97,321],[107,325],[109,333],[107,341],[97,345],[87,341],[85,333]]},
+  {id:"popliteal_r",label:"右膝窩",side:"r",points:[[133,325],[143,321],[153,325],[155,333],[153,341],[143,345],[133,341],[131,333]]},
+  {id:"ankle_l_back",label:"左足関節後面",side:"l",points:[[90,461],[98,459],[106,461],[107,467],[106,473],[98,475],[90,473],[89,467]]},
+  {id:"ankle_r_back",label:"右足関節後面",side:"r",points:[[134,461],[142,459],[150,461],[151,467],[150,473],[142,475],[134,473],[133,467]]}
+];
+
+// 全部位を id でルックアップできる Map(daily_view 等から参照される想定)
+const ALL_PARTS = {};
+VAS_PARTS_FRONT.forEach(p => { ALL_PARTS[p.id] = p; });
+VAS_PARTS_BACK.forEach(p => { ALL_PARTS[p.id] = p; });
+
+// ==========================================================================
+// 状態管理
+// ==========================================================================
+// records: [{ part: 'thigh_l', side: 'l', value: 5 }] の配列
+// 同じ part が複数記録されることはない(再選択で上書き)
+let records = [];
+let currentPartId = null;   // モーダル表示中の部位 ID
+
+// ==========================================================================
+// DOM ヘルパー
+// ==========================================================================
+const $widget = document.getElementById('vas-widget');
+const $modal = document.getElementById('vas-modal');
+const $modalPartLabel = document.getElementById('vas-modal-part-label');
+const $modalDelete = document.getElementById('vas-modal-delete');
+const $list = document.getElementById('vas-list');
+const $count = document.getElementById('vas-count');
+const $jsonInput = document.getElementById('vas-records-json');
+const $svgFront = document.getElementById('vas-svg-front');
+const $svgBack = document.getElementById('vas-svg-back');
+
+function pointsToStr(points) {
+  return points.map(p => p[0] + ',' + p[1]).join(' ');
+}
+function centroid(points) {
+  let sx = 0, sy = 0;
+  for (const [x, y] of points) { sx += x; sy += y; }
+  return [sx / points.length, sy / points.length];
+}
+function findRecord(partId) {
+  return records.find(r => r.part === partId);
+}
+
+// ==========================================================================
+// SVG 描画
+// ==========================================================================
+function renderSide(svg, parts) {
+  // 一旦クリア(既存子要素を削除)
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  parts.forEach(p => {
+    const rec = findRecord(p.id);
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', pointsToStr(p.points));
+    let cls = 'vas-region';
+    if (rec !== undefined) cls += ' val-' + rec.value;
+    poly.setAttribute('class', cls);
+    poly.setAttribute('data-part', p.id);
+    poly.setAttribute('data-label', p.label);
+    poly.setAttribute('data-side', p.side);
+    poly.addEventListener('click', onPartTap);
+    svg.appendChild(poly);
+
+    // 値ラベル(VAS が入力されている場合のみ)
+    if (rec !== undefined) {
+      const [cx, cy] = centroid(p.points);
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', cx);
+      text.setAttribute('y', cy);
+      text.setAttribute('class', 'vas-region-value');
+      text.textContent = rec.value;
+      svg.appendChild(text);
+    }
+  });
+}
+
+function renderAll() {
+  renderSide($svgFront, VAS_PARTS_FRONT);
+  renderSide($svgBack, VAS_PARTS_BACK);
+  renderList();
+  syncHidden();
+}
+
+// ==========================================================================
+// リスト描画
+// ==========================================================================
+function renderList() {
+  $count.textContent = records.length;
+  if (records.length === 0) {
+    $list.innerHTML = '<div class="vas-empty">部位をタップして VAS を記録してください</div>';
+    return;
+  }
+  $list.innerHTML = '';
+  records.forEach(r => {
+    const part = ALL_PARTS[r.part];
+    if (!part) return;
+    const chip = document.createElement('div');
+    chip.className = 'vas-chip';
+    chip.setAttribute('data-val', r.value);
+    chip.setAttribute('data-part', r.part);
+    chip.innerHTML =
+      '<span class="vas-chip-label">' + part.label + '</span>' +
+      '<span class="vas-chip-value">' + r.value + '</span>' +
+      '<button type="button" class="vas-chip-del" aria-label="削除">' +
+      '<span class="material-symbols-outlined">close</span></button>';
+    chip.querySelector('.vas-chip-del').addEventListener('click', function(e) {
+      e.stopPropagation();
+      removeRecord(r.part);
+    });
+    chip.querySelector('.vas-chip-label').addEventListener('click', function() {
+      openModalForPart(r.part);
+    });
+    chip.querySelector('.vas-chip-value').addEventListener('click', function() {
+      openModalForPart(r.part);
+    });
+    $list.appendChild(chip);
+  });
+}
+
+// ==========================================================================
+// hidden input への JSON 同期
+// ==========================================================================
+function syncHidden() {
+  $jsonInput.value = JSON.stringify(records);
+}
+
+// ==========================================================================
+// レコード操作
+// ==========================================================================
+function setRecord(partId, value) {
+  const part = ALL_PARTS[partId];
+  if (!part) return;
+  const existing = findRecord(partId);
+  if (existing) {
+    existing.value = value;
+  } else {
+    records.push({ part: partId, side: part.side, value: value });
+  }
+  renderAll();
+}
+function removeRecord(partId) {
+  records = records.filter(r => r.part !== partId);
+  renderAll();
+}
+
+// ==========================================================================
+// モーダル
+// ==========================================================================
+function openModalForPart(partId) {
+  const part = ALL_PARTS[partId];
+  if (!part) return;
+  currentPartId = partId;
+  $modalPartLabel.textContent = part.label;
+  const existing = findRecord(partId);
+  // 削除ボタンは既に値があるときのみ表示
+  if (existing) {
+    $modalDelete.hidden = false;
+  } else {
+    $modalDelete.hidden = true;
+  }
+  // 現在値があれば選択状態にハイライト
+  document.querySelectorAll('.vas-scale-btn').forEach(btn => {
+    if (existing && parseInt(btn.getAttribute('data-value'), 10) === existing.value) {
+      btn.classList.add('selected');
+    } else {
+      btn.classList.remove('selected');
+    }
+  });
+  $modal.hidden = false;
+  document.body.style.overflow = 'hidden';  // 背景スクロール抑制
+}
+function closeModal() {
+  $modal.hidden = true;
+  currentPartId = null;
+  document.body.style.overflow = '';
+}
+
+function onPartTap(e) {
+  e.stopPropagation();
+  const partId = e.currentTarget.getAttribute('data-part');
+  openModalForPart(partId);
+}
+
+// 数値ボタン
+document.querySelectorAll('.vas-scale-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    if (currentPartId === null) return;
+    const value = parseInt(btn.getAttribute('data-value'), 10);
+    setRecord(currentPartId, value);
+    closeModal();
+  });
+});
+
+// モーダルの閉じる系
+document.getElementById('vas-modal-cancel').addEventListener('click', closeModal);
+$modalDelete.addEventListener('click', function() {
+  if (currentPartId !== null) removeRecord(currentPartId);
+  closeModal();
+});
+$modal.querySelector('.vas-modal-overlay').addEventListener('click', closeModal);
+document.addEventListener('keydown', function(e) {
+  if (!$modal.hidden && e.key === 'Escape') closeModal();
+});
+
+// ==========================================================================
+// タブ切り替え
+// ==========================================================================
+document.querySelectorAll('.vas-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    const target = tab.getAttribute('data-tab');
+    document.querySelectorAll('.vas-tab').forEach(t => {
+      t.classList.toggle('active', t === tab);
+      t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+    });
+    document.querySelectorAll('.vas-panel').forEach(p => {
+      p.classList.toggle('active', p.getAttribute('data-panel') === target);
+    });
+  });
+});
+
+// ==========================================================================
+// 公開 API
+// ==========================================================================
+window.VasWidget = {
+  // 現在の記録を取得(フォーム送信前の最終確認用)
+  getRecords: function() {
+    return records.slice();
+  },
+  // 既存記録をセット(daily_view からの編集オープン用、将来用)
+  setRecords: function(arr) {
+    if (!Array.isArray(arr)) return;
+    records = arr.filter(r => r && ALL_PARTS[r.part] && Number.isInteger(r.value) && r.value >= 0 && r.value <= 10)
+                 .map(r => ({ part: r.part, side: ALL_PARTS[r.part].side, value: r.value }));
+    renderAll();
+  },
+  // 全クリア
+  clear: function() {
+    records = [];
+    renderAll();
+  },
+  // ウィジェットの表示/非表示制御(input.html のカテゴリ変更時に呼ぶ)
+  show: function() {
+    $widget.hidden = false;
+  },
+  hide: function() {
+    $widget.hidden = true;
+    // 非表示時はデータもクリアして hidden input を空にする
+    // (誤って心身状況/訓練状況 以外のカテゴリに切り替えた時、VAS データが残らないように)
+    records = [];
+    renderAll();
+  },
+  isVisible: function() {
+    return !$widget.hidden;
+  }
+};
+
+// ==========================================================================
+// 初期描画
+// ==========================================================================
+renderAll();
+
+})();
+</script>

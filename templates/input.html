@@ -411,6 +411,9 @@
         <input type="hidden" id="selected-category" name="category" value="その他">
     </div>
 
+    {# Session 36: VAS 入力ウィジェット(カテゴリ=心身状況/訓練状況 のときだけ表示)#}
+    {% include '_vas_widget.html' %}
+
     <!-- Session 33: 休み連絡カテゴリ専用フォーム(category=休み連絡 のときだけ display:block) -->
     <div class="form-group" id="leave-form-block" style="display:none;">
         <label class="form-label">
@@ -518,6 +521,13 @@ window.saveRecord = async function() {
                     selCat.value = sgData.result.category;
                     if (typeof renderCategoryPicker === 'function') {
                         try { renderCategoryPicker(); } catch(e) {}
+                    }
+                    // Session 36: AI 提案でカテゴリが書き換わった後、カテゴリ依存フォームの表示も切替
+                    if (typeof updateLeaveFormVisibility === 'function') {
+                        try { updateLeaveFormVisibility(); } catch(e) {}
+                    }
+                    if (typeof updateVasWidgetVisibility === 'function') {
+                        try { updateVasWidgetVisibility(); } catch(e) {}
                     }
                 }
             }
@@ -1078,6 +1088,8 @@ window.selectCategoryOption = function(optEl) {
     closeCategoryPicker();
     // Session 33: 休み連絡フォームの表示切替
     updateLeaveFormVisibility();
+    // Session 36: VAS ウィジェットの表示切替(心身状況/訓練状況 のとき表示)
+    updateVasWidgetVisibility();
 };
 
 // Session 33: 休み連絡フォームの表示切替・初期化
@@ -1096,6 +1108,20 @@ window.updateLeaveFormVisibility = function() {
         if (lvRel) lvRel.value = '';
         if (lvRelBlock) lvRelBlock.style.display = 'none';
         document.querySelectorAll('.leave-btn.selected').forEach(function(b){ b.classList.remove('selected'); });
+    }
+};
+
+// Session 36: VAS ウィジェットの表示切替・初期化
+window.updateVasWidgetVisibility = function() {
+    var sel = document.getElementById('selected-category');
+    if (!sel) return;
+    if (!window.VasWidget) return;  // _vas_widget.html がまだロード前なら無視
+    var cat = sel.value;
+    var isVasCategory = (cat === '心身状況' || cat === '訓練状況');
+    if (isVasCategory) {
+        window.VasWidget.show();
+    } else {
+        window.VasWidget.hide();
     }
 };
 
