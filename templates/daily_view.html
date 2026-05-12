@@ -504,6 +504,153 @@
 .cr-search-fab:active { transform: scale(0.95); }
 .cr-search-fab .material-symbols-outlined { font-size: 28px; }
 
+/* Session 34: スピードダイヤル(右下メイン、斜め扇形に展開) */
+.dv-sd-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.12);
+    z-index: 940;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+.dv-sd-overlay.is-open { opacity: 1; pointer-events: auto; }
+.dv-sd-main {
+    position: fixed;
+    bottom: 152px;
+    right: 16px;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #ec4899;
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 952;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.15s;
+}
+.dv-sd-main:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.dv-sd-main:active { transform: scale(0.95); }
+.dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.3s ease; }
+.dv-sd-main.is-open .material-symbols-outlined { transform: rotate(180deg); }
+
+/* === 肉球配置: ボタンとラベルを分離して個別に絶対配置 === */
+
+/* サブボタン共通スタイル */
+.dv-sd-btn {
+    position: fixed;
+    z-index: 951;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #ec4899;
+    border: none;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    /* 閉じている時はメインボタン位置に重なって縮む */
+    bottom: 152px;
+    right: 16px;
+    transform: scale(0.4);
+    transform-origin: center;
+    transition: opacity 0.22s ease,
+                bottom 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+                right 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+                transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dv-sd-btn:active { transform: scale(0.92); }
+.dv-sd-btn .material-symbols-outlined { font-size: 26px; }
+
+/* ラベル共通スタイル(ボタンと一緒にフェードイン、背景付き) */
+.dv-sd-label {
+    position: fixed;
+    z-index: 951;
+    color: #2c2c2a;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    /* 閉じている時はメインボタン位置に隠れる(座標未指定で左下に出るバグの修正) */
+    bottom: 152px;
+    right: 16px;
+    /* 背景: 白半透明 + 角丸 + 軽い影でボタンと統一感 */
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 6px;
+    padding: 4px 7px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+    transition: opacity 0.22s ease 0.10s,
+                bottom 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+                right 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* 縦書きラベル(検索、全て開く)はパディングを縦長に */
+.dv-sd-label.is-vertical {
+    padding: 7px 4px;
+}
+
+/* === 開時のボタン位置(半径75px、修正後: bottom差 = 中心間距離) === */
+/* メイン基準: bottom:152px right:16px。各サブボタンも56px同サイズ。 */
+/* 角度 → bottom差 = R×sin(θ), right差 = R×cos(180°-θ) */
+
+/* 検索: 真上 90° → bottom +75, right +0 */
+.dv-sd-items.is-open .dv-sd-btn-1 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 227px;
+    right: 16px;
+    transform: scale(1);
+    transition-delay: 0.05s;
+}
+/* 全て開く: 左斜め上 135° → bottom +53, right +53 */
+.dv-sd-items.is-open .dv-sd-btn-2 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 205px;
+    right: 69px;
+    transform: scale(1);
+    transition-delay: 0.10s;
+}
+/* TOPへ: 真左 180° → bottom +0(×と同高), right +75 */
+.dv-sd-items.is-open .dv-sd-btn-3 {
+    pointer-events: auto;
+    opacity: 1;
+    bottom: 152px;
+    right: 91px;
+    transform: scale(1);
+    transition-delay: 0.15s;
+}
+
+/* === 開時のラベル位置(各放射線上、ボタンから十分離して重なり回避) === */
+
+/* 検索ラベル: 検索ボタンの真上、隙間8px */
+.dv-sd-items.is-open .dv-sd-label-1 {
+    opacity: 1;
+    writing-mode: vertical-rl;
+    bottom: 291px;
+    right: 34px;
+    text-orientation: upright;
+}
+/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、外側に十分離して重なり回避
+   ラベルrect=62×62、メインから150px距離の135°方向に中心配置 */
+.dv-sd-items.is-open .dv-sd-label-2 {
+    opacity: 1;
+    writing-mode: vertical-rl;
+    bottom: 265px;
+    right: 119px;
+    transform: rotate(-45deg);
+    transform-origin: bottom right;
+    text-orientation: upright;
+}
+/* TOPへラベル: TOPボタンの真左、隙間8px */
+.dv-sd-items.is-open .dv-sd-label-3 {
+    opacity: 1;
+    bottom: 169px;
+    right: 161px;
+}
+
 .cr-search-modal {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.5);
@@ -1099,8 +1246,35 @@
 </div>
 
 <!-- Session 29 (B-5): ケース記録キーワード検索 FAB + モーダル -->
-<button id="cr-search-fab" class="cr-search-fab" type="button" aria-label="ケース記録を検索" onclick="crOpenSearch()">
-    <span class="material-symbols-outlined">search</span>
+<!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
+
+<!-- Session 34: 右下スピードダイヤル(肉球配置: 各ボタンが×に密着、ラベルは放射線延長上) -->
+<div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
+<div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
+    <!-- 検索: 真上、ラベルは縦書きで真上の延長線上 -->
+    <button class="dv-sd-btn dv-sd-btn-1" type="button" aria-label="ケース記録を検索"
+            onclick="dvSdToggle(false); crOpenSearch();">
+        <span class="material-symbols-outlined">search</span>
+    </button>
+    <span class="dv-sd-label dv-sd-label-1 is-vertical">検索</span>
+
+    <!-- 全て開く: 左斜め上45°、ラベルは縦書きを45°回転で延長線上 -->
+    <button class="dv-sd-btn dv-sd-btn-2" type="button" aria-label="全てのケース記録を開く・閉じる"
+            onclick="dvSdToggleAll()">
+        <span class="material-symbols-outlined" id="dv-sd-toggle-icon">unfold_more</span>
+    </button>
+    <span class="dv-sd-label dv-sd-label-2 is-vertical" id="dv-sd-toggle-label">全て開く</span>
+
+    <!-- TOPへ: 真左、ラベルは横書きで真左の延長線上 -->
+    <button class="dv-sd-btn dv-sd-btn-3" type="button" aria-label="ページの先頭へ戻る"
+            onclick="dvSdScrollTop()">
+        <span class="material-symbols-outlined">arrow_upward</span>
+    </button>
+    <span class="dv-sd-label dv-sd-label-3">TOPへ</span>
+</div>
+<button id="dv-sd-main" class="dv-sd-main" type="button" aria-label="メニューを開く"
+        onclick="dvSdToggle()">
+    <span class="material-symbols-outlined">menu</span>
 </button>
 
 <div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
@@ -1571,18 +1745,14 @@ window.jumpToDayView = function(dateStr) {
 };
 window.toggleAccordion = function(idx) {
     var body = document.getElementById('body-'+idx);
-    var wasOpen = body.classList.contains('open');
     body.classList.toggle('open');
     document.getElementById('arrow-'+idx).classList.toggle('open');
-    // Session 32: 開かれた瞬間に、その利用者の記録を既読化
-    if (!wasOpen) {
-        var recordIds = Array.from(body.querySelectorAll('.record-item'))
-            .map(function(el){ return parseInt((el.id || '').replace('record-',''), 10); })
-            .filter(function(n){ return !isNaN(n); });
-        if (recordIds.length > 0) {
-            markRecordsAsViewedSilently(recordIds);
-        }
-    }
+    // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
+    // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
+    // 開いた直後に画面内に入った記録は dvRecordObserver が既読化する
+    dvObserveRecordsIn(body);
+    // スピードダイヤル開閉状態を更新(全て開く/閉じるラベル切り替え)
+    dvSdUpdateToggleLabel();
 };
 
 // Session 32: 静かに記録を既読化(エラーは黙殺、成功時のみ画面のカウントを+1)
@@ -1604,6 +1774,167 @@ async function markRecordsAsViewedSilently(recordIds) {
         }
     } catch(e) { /* 静かに失敗 */ }
 }
+
+// ========== Session 34: スピードダイヤル(右下メニュー) ==========
+// 「TOPへ戻る」を押した時のスクロール処理
+// スクロール対象が window 以外の可能性も考慮して、複数手段で確実にトップへ
+window.dvSdScrollTop = function() {
+    dvSdToggle(false); // メニューを閉じる
+
+    // 1) window 自体のスクロール(モダンブラウザ標準)
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e) {
+        try { window.scrollTo(0, 0); } catch(_) {}
+    }
+    // 2) html / body の scrollTop も明示的にゼロへ(古い iOS Safari 対策)
+    try { document.documentElement.scrollTop = 0; } catch(e) {}
+    try { document.body.scrollTop = 0; } catch(e) {}
+    // 3) 既知の名前付きスクロールコンテナ
+    var named = ['main', '.page-content', '.scroll-container', '#main-content', '#content', '.app-content'];
+    named.forEach(function(sel) {
+        try {
+            var el = document.querySelector(sel);
+            if (el) {
+                if (el.scrollTo) { try { el.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) { el.scrollTop = 0; } }
+                else el.scrollTop = 0;
+            }
+        } catch(e) {}
+    });
+    // 4) ページ内で実際にスクロール位置を持っている要素を総当たり
+    //    (base.html 側で独自スクロールコンテナを使っていても、これでカバーできる)
+    try {
+        var all = document.querySelectorAll('body *');
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            if (el.scrollTop && el.scrollTop > 0) {
+                try { el.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) { el.scrollTop = 0; }
+            }
+        }
+    } catch(e) {}
+};
+
+window.dvSdToggle = function(force) {
+    var main = document.getElementById('dv-sd-main');
+    var items = document.getElementById('dv-sd-items');
+    var overlay = document.getElementById('dv-sd-overlay');
+    if (!main || !items || !overlay) return;
+    var wantOpen = (typeof force === 'boolean') ? force : !main.classList.contains('is-open');
+    main.classList.toggle('is-open', wantOpen);
+    items.classList.toggle('is-open', wantOpen);
+    overlay.classList.toggle('is-open', wantOpen);
+    main.setAttribute('aria-label', wantOpen ? 'メニューを閉じる' : 'メニューを開く');
+    items.setAttribute('aria-hidden', wantOpen ? 'false' : 'true');
+    var icon = main.querySelector('.material-symbols-outlined');
+    if (icon) icon.textContent = wantOpen ? 'close' : 'menu';
+    if (wantOpen) dvSdUpdateToggleLabel();
+};
+
+// 開いているアコーディオンの数を数えて「全て開く / 全て閉じる」のラベルとアイコンを切り替える
+window.dvSdUpdateToggleLabel = function() {
+    var openCount = document.querySelectorAll('.user-accordion-body.open').length;
+    var totalCount = document.querySelectorAll('.user-accordion-body').length;
+    var icon = document.getElementById('dv-sd-toggle-icon');
+    var label = document.getElementById('dv-sd-toggle-label');
+    if (!icon || !label) return;
+    // 1つでも開いていれば「全て閉じる」、全て閉じていれば「全て開く」
+    if (openCount > 0) {
+        icon.textContent = 'unfold_less';
+        label.textContent = (openCount === totalCount) ? '全て閉じる' : '全て閉じる';
+    } else {
+        icon.textContent = 'unfold_more';
+        label.textContent = '全て開く';
+    }
+};
+
+// 「全て開く/閉じる」トグル: 1つでも開いてれば全閉、全閉なら全開
+window.dvSdToggleAll = function() {
+    var bodies = document.querySelectorAll('.user-accordion-body');
+    var arrows = document.querySelectorAll('.user-accordion-arrow');
+    var anyOpen = Array.from(bodies).some(function(b) { return b.classList.contains('open'); });
+    if (anyOpen) {
+        // 全て閉じる
+        bodies.forEach(function(b) { b.classList.remove('open'); });
+        arrows.forEach(function(a) { a.classList.remove('open'); });
+    } else {
+        // 全て開く(既読化はしない、画面に入った時点で IntersectionObserver が拾う)
+        bodies.forEach(function(b) {
+            b.classList.add('open');
+            dvObserveRecordsIn(b);
+        });
+        arrows.forEach(function(a) { a.classList.add('open'); });
+    }
+    dvSdUpdateToggleLabel();
+    dvSdToggle(false); // メニューを閉じる
+};
+
+// ========== Session 34: IntersectionObserver で「画面に表示された記録」を既読化 ==========
+// 開いたアコーディオン内の record-item を監視。viewport に 300ms 以上滞在したら既読化。
+var dvViewedRecordIds = new Set();
+var dvPendingTimers = new Map();
+var dvRecordObserver = null;
+
+function dvEnsureObserver() {
+    if (dvRecordObserver) return dvRecordObserver;
+    if (!('IntersectionObserver' in window)) return null;
+    dvRecordObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            var el = entry.target;
+            var idMatch = (el.id || '').match(/^record-(\d+)$/);
+            if (!idMatch) return;
+            var rid = parseInt(idMatch[1], 10);
+            if (dvViewedRecordIds.has(rid)) {
+                dvRecordObserver.unobserve(el);
+                return;
+            }
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+                // 半分以上画面内に入った → 300ms 後に既読化
+                if (!dvPendingTimers.has(rid)) {
+                    var t = setTimeout(function() {
+                        dvPendingTimers.delete(rid);
+                        // 改めて画面内かチェック
+                        var rect = el.getBoundingClientRect();
+                        var vh = window.innerHeight || document.documentElement.clientHeight;
+                        var visible = rect.top < vh && rect.bottom > 0;
+                        if (visible && !dvViewedRecordIds.has(rid)) {
+                            dvViewedRecordIds.add(rid);
+                            dvRecordObserver.unobserve(el);
+                            markRecordsAsViewedSilently([rid]);
+                        }
+                    }, 300);
+                    dvPendingTimers.set(rid, t);
+                }
+            } else {
+                // 画面外に出た → 待機中のタイマーをキャンセル
+                if (dvPendingTimers.has(rid)) {
+                    clearTimeout(dvPendingTimers.get(rid));
+                    dvPendingTimers.delete(rid);
+                }
+            }
+        });
+    }, { threshold: [0, 0.5, 1.0] });
+    return dvRecordObserver;
+}
+
+// 指定したコンテナ(=アコーディオン body)内の .record-item を observe 対象に追加
+window.dvObserveRecordsIn = function(container) {
+    var obs = dvEnsureObserver();
+    if (!obs) return;
+    var items = (container || document).querySelectorAll('.record-item');
+    items.forEach(function(el) {
+        var idMatch = (el.id || '').match(/^record-(\d+)$/);
+        if (!idMatch) return;
+        var rid = parseInt(idMatch[1], 10);
+        if (dvViewedRecordIds.has(rid)) return;
+        obs.observe(el);
+    });
+};
+
+// 初期表示: target_user により最初から open になっているアコーディオンの中身も observe する
+document.addEventListener('DOMContentLoaded', function() {
+    var openBodies = document.querySelectorAll('.user-accordion-body.open');
+    openBodies.forEach(function(body) { dvObserveRecordsIn(body); });
+    dvSdUpdateToggleLabel();
+});
+
 window.startEdit = function(id, content) {
     document.getElementById('edit-text-'+id).value = content;
     document.getElementById('edit-area-'+id).style.display = 'block';
