@@ -566,6 +566,8 @@ const VAS_PARTS_BACK = [
 const ALL_PARTS = {};
 VAS_PARTS_FRONT.forEach(p => { ALL_PARTS[p.id] = p; });
 VAS_PARTS_BACK.forEach(p => { ALL_PARTS[p.id] = p; });
+// Session 36: 他テンプレ(daily_view.html 等)からの部位ラベル参照用にグローバル公開
+window.VAS_ALL_PARTS = ALL_PARTS;
 
 // ==========================================================================
 // 状態管理
