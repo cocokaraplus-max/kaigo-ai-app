@@ -1,6 +1,6 @@
 # TASUKARU 介護AIアプリ — 開発引き継ぎ(ミニマム版)
 
-> **最新更新: 2026-05-12 Session 34 完了(本番リリース予定)**
+> **最新更新: 2026-05-13 Session 36 完了(Phase 2.A 本番リリース達成)**
 > このファイルは「次セッションを始める Claude が最初に読むだけで仕事が始められる」ことを目的に**ミニマム化**してある。過去 Session の詳細ログは git history を `git log --all --oneline` で参照する。Session 33 までの累積 README は git の `tasukaru-dev` ブランチ履歴(`README.md` 旧版)に残っている。
 
 ---
@@ -148,10 +148,56 @@
 | #36 | `position: fixed` 要素は CSS で**閉時の初期位置を明示**しないと、座標未指定でデフォルト位置(左上 or 元の HTML位置)に出る。アニメーション元位置として `bottom`/`right` を必ず指定する(Session 34、スピードダイヤルのラベルで発生) |
 | #37 | ZIMAX さんの口頭/文字説明だけで UI の正確な配置を理解しない。**手書きスケッチ画像をもらうのが最も確実**。「肉球配置」のような具体的なメタファーが出たら即座に確認する(Session 34) |
 | #38 | **ハンドオフ書の記載は鵜呑みにせず、現状確認 SELECT / git log / ハッシュ照合を最初に実行する**。ハンドオフ書とリポジトリ実態がズレている可能性は常にある。Session 35 で 3 件発動: ①Session 34 本番リリース実は完了済み(ハンドオフ書は未実施と記載) ②record_vas 初回 CREATE が想定外スキーマで作成された(原因不明、SELECT で検出 → DROP & 再作成) ③dev ヒヤリハットは想定通り未追加(Session 35) |
+| #39 | 左右別がある部位(`_l` / `_r`)は**本人視点(医療慣習)**で命名する。画面座標で `_l` を画面左にすると医療職と齟齬が出る(Session 36、VAS 部位 ID) |
+| #40 | SVG ドラッグ UI で `pointerdown` イベント直後に DOM 要素を再生成するとブラウザの pointer capture が切れてドラッグが続かない。状態だけ変えて、再描画は `pointerup` まで遅延する(Session 36、ポリゴンエディタ) |
+| #41 | 設計時の部位/項目リストは**最初に「臨床的に意味のある全部位」を機械的に列挙**。UI 都合で減らさない。後から追加するのは大変(Session 36、VAS 部位定義 54 箇所) |
+| #42 | CSS `display: flex` を直接付けると HTML `hidden` 属性に勝つ。モーダル等で `hidden` 属性を有効にしたいときは **`:not([hidden])` セレクタ**を併用する。例: `.vas-modal:not([hidden]) { display: flex }`(Session 36、モーダル開きっぱなしバグ) |
+| #43 | **iPhone モーダルは下端タブで隠れる**。Safari ホームバー + ナビバーで画面下 80-100px が覆われる。対策: モーダル overlay は `align-items: flex-start`(上寄せ)、カードに `margin-bottom: 80px`、アクションボタンは `position: sticky; bottom: 0` + `min-height: 44px`(iOS HIG)(Session 36、VAS 編集モーダル) |
+| #44 | **手動構築 FormData の `append` 漏れに注意**。`new FormData()` で空を作り `formData.append(...)` で個別追加するパターンでは、フォームに新フィールドを追加したら JS 側も更新が必要。新フィールド追加時は `grep "formData.append" templates/xxx.html` で append 一覧を確認するクセを(Session 36、VAS データが保存されなかった原因) |
+| #45 | **ハンドオフ書の「適用済み」記述を盲信せず、実 DB クエリで再確認**(教訓 #38 の拡張)。Session 35 ハンドオフ書には「dev に `patient_evaluations` 適用済み」と書かれていたが、Session 36 で `information_schema` で確認したら未作成だった(Session 36) |
 
 ---
 
 ## 6. 直近セッションのサマリ(過去 2-3 件だけ)
+
+### Session 36(2026-05-13)完了 — Phase 2.A VAS 入力機能 実装・本番リリース 🎉
+
+**dev + 本番両方リリース済み。iPhone 動作確認 OK。**
+
+#### A) 実装内容
+- 人体図画像 `static/img/body/body_front.png` `body_back.png` を配置
+- `templates/_vas_widget.html`(852 行、SVG ポリゴン 54 部位 = 正面 31 + 背面 23、モーダル + 値選択 UI)
+- `templates/input.html` に VAS ウィジェット組み込み(カテゴリ「心身状況」「訓練状況」選択時のみ表示、アコーディオン化)
+- `app.py /input` POST:VAS データを `record_vas` テーブルに一括 INSERT
+- `app.py daily_view`:`record_vas` を JOIN で取得 → 各 record に `vas_records` 添付
+- `app.py /api/update_record`:VAS データの UPSERT(全削除 → 再 INSERT 戦略)
+- `templates/daily_view.html`:記録カード下に**赤色 VAS 表示**(JS で部位 ID → 日本語ラベル変換)+ 編集モード共有モーダル
+
+#### B) DB 状態
+- **`record_vas` テーブル(8 カラム)**: **dev・本番両方適用済み** ✅
+- `patient_evaluations` テーブル: dev・本番ともに**未作成**(Phase 2.B 着手時に作る、教訓 #30)
+- Session 35 ハンドオフ書の「dev に patient_evaluations 適用済み」は誤情報だった → 教訓 #45 案件
+
+#### C) 解決したバグ 3 件
+1. モーダル開きっぱなし(commit `77bcae9`):CSS `display:flex` が HTML `hidden` 属性に勝った → `:not([hidden])` で防ぐ(教訓 #42)
+2. VAS データ 0 件保存(commit `24d9aef`):`saveRecord()` の手動構築 FormData に `vas_records` の append が漏れていた。Chrome MCP `javascript_tool` で `saveRecord.toString()` を確認して判明(教訓 #44)
+3. iPhone でモーダル確定ボタン押せない(commit `96f836b`):下端タブで「キャンセル」「確定」が隠れる → 上寄せ + sticky bottom + 下マージン(教訓 #43)
+
+#### D) コミット履歴(Session 36 全体)
+```
+96f836b fix(vas): iPhone-friendly VAS edit modal (sticky bottom action buttons)
+d89406d feat(vas): display + edit VAS records in daily_view (Session 36 Step 6)
+24d9aef fix(vas): include vas_records in saveRecord FormData
+56cf5dc feat(vas): persist VAS records + collapsible accordion UI (Session 36 Phase 2.A)
+77bcae9 fix(vas): modal hidden attribute now respected (was overridden by display:flex)
+cb25d97 feat(vas): add VAS widget for 心身状況/訓練状況 (Session 36 Phase 2.A WIP)
+```
+本番マージ: `4487148`(`bb7e681..4487148 tasukaru -> tasukaru`)
+
+#### E) Session 36 で新規発動の教訓
+#39(本人視点の左右ID)/ #40(pointerdown 直後の再描画禁止)/ #41(臨床全部位を最初に列挙)/ #42(`display:flex` vs `hidden`)/ #43(iPhone 下端タブ対策)/ #44(手動 FormData append 漏れ)/ #45(ハンドオフ書「適用済み」を実 DB 確認)
+
+---
 
 ### Session 35(2026-05-12)完了 — 本番リリース確認 + dev ヒヤリハット追加 + 新規 3 機能の設計
 **dev push 済み(設計ドキュメントのみ)、新規 3 機能のコード実装は Session 36 以降**
@@ -247,32 +293,22 @@ CREATE TABLE record_vas (id BIGSERIAL PRIMARY KEY, record_id BIGINT NOT NULL, fa
 - AI カテゴリ判定が「休み連絡」も対象に(「誰から」までは AI に推測させない設計)
 - ついでに `cocokaraplus-5526` にヒヤリハットも追加(色: `#EF4444`、dev は未対応 → 次セッションで反映)
 
-### Session 32(2026-05-11)完了 — 掲示板分離 + ケース記録閲覧改善
-**本番リリース commit**: `4df54ad`
-- 掲示板の「確認」と「リアクション」を完全分離(`board_checks` テーブル新設、207 件移行)
-- 確認/未確認ボタンの数字バッジ削除、緑✅Nチップ削除
-- 下メニューの未読バッジを掲示板ページでも表示
-- ケース記録の利用者アコーディオン展開で自動既読化+カウント+1
-- AI 統合記録の一時非表示機能
+(Session 32 以前は git log を参照)
 
 ---
 
-## 7. 既知の未対応事項(次セッション=Session 36 での対応候補)
+## 7. 既知の未対応事項(次セッション=Session 37 での対応候補)
 
-### 🔴 最優先: Phase 2.A VAS 入力機能の実装(Session 36 着手推奨)
-DB は dev に適用済み(`record_vas`)。コード実装フェーズに入る。
-- 人体図画像を `static/img/body/` に配置(body_front.png, body_back.png)
-- `templates/_vas_widget.html` (部分テンプレート、SVG + JS)
-- `templates/record_input.html` 改修(心身状況・訓練状況選択時に VAS 表示)
-- `app.py` の記録保存 API で record_vas にも INSERT
-- `templates/daily_view.html` で VAS 表示追加
-- dev 動作確認後、本番 Supabase に record_vas 適用 → コード push(教訓 #30: DB→コード順)
-- 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §1 を参照
+### ✅ 完了: Phase 2.A VAS 入力機能(Session 36 で本番リリース達成)
+- `record_vas` テーブル: dev・本番両方適用済み
+- 入力 UI / 表示 / 編集すべて完成、iPhone 動作確認 OK
+- 詳細は上記 Session 36 サマリ参照
 
-### 🟡 Phase 2.B 月次評価機能(Session 37 推奨)
-DB は dev に適用済み(`patient_evaluations` + UNIQUE 制約)。
-- 新規画面 `/evaluations` (月次評価入力フォーム)
-- `evaluation_helper.py` (UPSERT ロジック)
+### 🟡 最優先: Phase 2.B 月次評価機能(Session 37 着手推奨)
+- DB: `patient_evaluations` テーブル + UNIQUE 制約は **dev・本番ともに未作成**(Session 35 ハンドオフ書の「適用済み」は誤情報だった、教訓 #45 で確認)
+- 着手前に**まず DB 適用**(dev → 動作確認 → 本番。教訓 #30: DB → コード順)
+- 新規画面 `/evaluations`(月次評価入力フォーム、22 項目)
+- `evaluation_helper.py`(UPSERT ロジック)
 - `monitoring_integration.py` 改修(評価データの統合取得)
 - 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §2 を参照
 
@@ -283,10 +319,12 @@ DB は dev に適用済み(`patient_evaluations` + UNIQUE 制約)。
 - 詳細は `docs/CARE_MANAGER_REPORT_DESIGN.md` §3 を参照
 
 ### 🟢 余裕があれば
-- 本番 Supabase に record_vas / patient_evaluations 適用(Phase 2.A 着手前、教訓 #30)
+- AI 統合記録に VAS データを含める(現状は `records.content` だけを参照しているが、`record_vas` の値も AI プロンプトに渡せばより質の高い統合記録になる)
+- 月間 VAS グラフ(部位ごとの VAS 値推移を折れ線で表示)
+- 印刷スタイル(VAS リスト含む記録カードの PDF/印刷向けレイアウト)
 - 旧 README(累積版、4216 行)が git history に残っている。完全に消すか、`docs/README_ARCHIVE.md` として保存するか判断が必要
 - 休み連絡カテゴリの AI 判定精度を実運用で観察(low confidence で「その他」に倒れる頻度確認)
-- Session 34 の改修で既読化挙動が変わった(展開→画面表示ベース)ので、運用後に違和感ないかフィードバック確認
+- 作業用 HTML ファイル `vas_coordinates_editor.html` と `vas_polygon_editor_v2.html`(Untracked、座標調整用の使い捨てツール)を削除
 
 ---
 
@@ -302,7 +340,7 @@ git log --oneline -5                      # 直近 5 commit を確認
 # Chrome タブを開く(可能なら)
 # - dev daily_view, 本番 top, 本番 Cloud Build, dev Supabase, 本番 Supabase
 
-# このREADMEと docs/SESSION36_HANDOFF.md を Claude に提示
+# このREADMEと docs/SESSION37_HANDOFF.md を Claude に提示
 ```
 
 ---
