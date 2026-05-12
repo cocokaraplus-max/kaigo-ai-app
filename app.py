@@ -712,6 +712,36 @@ def input_view():
                     except Exception as _tag_err:
                         print(f"[search_tags] generation failed for new record: {_tag_err}", flush=True)
 
+                    # Session 36: VAS データを record_vas テーブルに一括 INSERT。失敗してもメイン処理は止めない
+                    try:
+                        if new_id:
+                            vas_json = request.form.get("vas_records", "") or ""
+                            vas_list = json.loads(vas_json) if vas_json.strip() else []
+                            vas_rows = []
+                            for v in vas_list:
+                                if not isinstance(v, dict):
+                                    continue
+                                part = v.get("part")
+                                side = v.get("side")
+                                value = v.get("value")
+                                if not part or not side:
+                                    continue
+                                if not isinstance(value, int) or value < 0 or value > 10:
+                                    continue
+                                vas_rows.append({
+                                    "record_id": new_id,
+                                    "facility_code": f_code,
+                                    "user_name": m.group(2),
+                                    "part": part,
+                                    "side": side,
+                                    "vas_value": value,
+                                })
+                            if vas_rows:
+                                supabase.table("record_vas").insert(vas_rows).execute()
+                                print(f"[vas_records] saved {len(vas_rows)} entries for record {new_id}", flush=True)
+                    except Exception as _vas_err:
+                        print(f"[vas_records] save failed for new record: {_vas_err}", flush=True)
+
                     content = ""
                     selected_patient = ""
                     user_name = m.group(2)

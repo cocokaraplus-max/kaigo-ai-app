@@ -14,13 +14,19 @@
    - 表示:templates/daily_view.html(記録カード内に簡易表示)
    ========================================================================== #}
 
-<div id="vas-widget" class="vas-widget" hidden>
-  <div class="vas-header">
+<div id="vas-widget" class="vas-widget vas-collapsed" hidden>
+  <button type="button" id="vas-toggle" class="vas-header" aria-expanded="false" aria-controls="vas-body">
     <div class="vas-title">
       <span class="material-symbols-outlined">accessibility_new</span>
       <span>痛み・違和感(VAS)</span>
-      <span class="vas-hint">部位をタップ → 0〜10 で評価</span>
+      <span class="vas-hint vas-hint-closed">タップして記録します</span>
+      <span class="vas-hint vas-hint-open">部位をタップ → 0〜10 で評価</span>
+      <span id="vas-header-badge" class="vas-header-badge" hidden>0件入力済み</span>
     </div>
+    <span class="material-symbols-outlined vas-chevron">expand_more</span>
+  </button>
+
+  <div id="vas-body" class="vas-body">
     <div class="vas-tabs" role="tablist">
       <button type="button" class="vas-tab active" data-tab="front" role="tab" aria-selected="true">
         <span class="material-symbols-outlined">visibility</span>正面
@@ -29,38 +35,38 @@
         <span class="material-symbols-outlined">turn_right</span>背面
       </button>
     </div>
-  </div>
 
-  <div class="vas-canvas">
-    {# FRONT パネル #}
-    <div class="vas-panel active" data-panel="front">
-      <div class="vas-body-wrap">
-        <img class="vas-body-img"
-             src="{{ url_for('static', filename='img/body/body_front.png') }}"
-             alt="人体図(正面)">
-        <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
-             id="vas-svg-front" aria-label="VAS 部位選択(正面)"></svg>
+    <div class="vas-canvas">
+      {# FRONT パネル #}
+      <div class="vas-panel active" data-panel="front">
+        <div class="vas-body-wrap">
+          <img class="vas-body-img"
+               src="{{ url_for('static', filename='img/body/body_front.png') }}"
+               alt="人体図(正面)">
+          <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
+               id="vas-svg-front" aria-label="VAS 部位選択(正面)"></svg>
+        </div>
+      </div>
+      {# BACK パネル #}
+      <div class="vas-panel" data-panel="back">
+        <div class="vas-body-wrap">
+          <img class="vas-body-img"
+               src="{{ url_for('static', filename='img/body/body_back.png') }}"
+               alt="人体図(背面)">
+          <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
+               id="vas-svg-back" aria-label="VAS 部位選択(背面)"></svg>
+        </div>
       </div>
     </div>
-    {# BACK パネル #}
-    <div class="vas-panel" data-panel="back">
-      <div class="vas-body-wrap">
-        <img class="vas-body-img"
-             src="{{ url_for('static', filename='img/body/body_back.png') }}"
-             alt="人体図(背面)">
-        <svg class="vas-overlay" viewBox="0 0 250 500" preserveAspectRatio="xMidYMid meet"
-             id="vas-svg-back" aria-label="VAS 部位選択(背面)"></svg>
-      </div>
-    </div>
-  </div>
 
-  <div class="vas-list-wrap">
-    <div class="vas-list-header">
-      <span class="material-symbols-outlined">format_list_bulleted</span>
-      入力済み(<span id="vas-count">0</span>件)
-    </div>
-    <div id="vas-list" class="vas-list">
-      <div class="vas-empty">部位をタップして VAS を記録してください</div>
+    <div class="vas-list-wrap">
+      <div class="vas-list-header">
+        <span class="material-symbols-outlined">format_list_bulleted</span>
+        入力済み(<span id="vas-count">0</span>件)
+      </div>
+      <div id="vas-list" class="vas-list">
+        <div class="vas-empty">部位をタップして VAS を記録してください</div>
+      </div>
     </div>
   </div>
 
@@ -107,7 +113,25 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 12px;
+  /* アコーディオンヘッダ(button 要素のためデフォルトリセット)*/
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+  border-radius: 8px;
+}
+.vas-header:hover {
+  background: rgba(26, 115, 232, 0.06);
+}
+.vas-header:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
 }
 .vas-title {
   display: flex;
@@ -116,6 +140,8 @@
   font-size: 0.95rem;
   font-weight: 600;
   color: #1a73e8;
+  flex: 1;
+  flex-wrap: wrap;
 }
 .vas-title .material-symbols-outlined {
   font-size: 22px;
@@ -125,6 +151,36 @@
   font-weight: 400;
   color: #80868b;
   margin-left: 6px;
+}
+.vas-header-badge {
+  display: inline-block;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+}
+/* シェブロン(展開矢印)*/
+.vas-chevron {
+  font-size: 22px !important;
+  color: #5f6368;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+/* 開閉状態の制御 */
+.vas-widget.vas-collapsed .vas-body {
+  display: none;
+}
+.vas-widget:not(.vas-collapsed) .vas-chevron {
+  transform: rotate(180deg);
+}
+/* 開いてるときは "タップして記録します" を隠し、開いた用ヒントを表示。逆も然り */
+.vas-widget.vas-collapsed .vas-hint-open { display: none; }
+.vas-widget:not(.vas-collapsed) .vas-hint-closed { display: none; }
+.vas-body {
+  margin-top: 10px;
 }
 .vas-tabs {
   display: flex;
@@ -581,7 +637,21 @@ function renderAll() {
   renderSide($svgFront, VAS_PARTS_FRONT);
   renderSide($svgBack, VAS_PARTS_BACK);
   renderList();
+  renderBadge();
   syncHidden();
+}
+
+// アコーディオンヘッダの件数バッジを更新
+function renderBadge() {
+  const badge = document.getElementById('vas-header-badge');
+  if (!badge) return;
+  if (records.length === 0) {
+    badge.hidden = true;
+    badge.textContent = '';
+  } else {
+    badge.hidden = false;
+    badge.textContent = records.length + ' 件入力済み';
+  }
 }
 
 // ==========================================================================
@@ -704,6 +774,20 @@ $modal.querySelector('.vas-modal-overlay').addEventListener('click', closeModal)
 document.addEventListener('keydown', function(e) {
   if (!$modal.hidden && e.key === 'Escape') closeModal();
 });
+
+// ==========================================================================
+// アコーディオン開閉(ヘッダクリックでトグル)
+// ==========================================================================
+const $toggle = document.getElementById('vas-toggle');
+const $vasWidget = document.getElementById('vas-widget');
+if ($toggle && $vasWidget) {
+  $toggle.addEventListener('click', function(e) {
+    e.preventDefault();
+    const willCollapse = !$vasWidget.classList.contains('vas-collapsed');
+    $vasWidget.classList.toggle('vas-collapsed');
+    $toggle.setAttribute('aria-expanded', willCollapse ? 'false' : 'true');
+  });
+}
 
 // ==========================================================================
 // タブ切り替え
