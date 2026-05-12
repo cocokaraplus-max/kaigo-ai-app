@@ -549,6 +549,8 @@ window.saveRecord = async function() {
         // Session 33: 休み連絡カテゴリ専用フィールド(他カテゴリのときは空文字)
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
         formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
+        // Session 36: VAS 入力データ
+        formData.append('vas_records', document.getElementById('vas-records-json')?.value || '[]');
 
         // 写真を圧縮してから追加
         const photoInput = document.querySelector('input[name="photos"]');
