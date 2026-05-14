@@ -217,7 +217,7 @@
 .eval-sticky-actions {
     position: fixed;
     left: 0; right: 0;
-    bottom: calc(env(safe-area-inset-bottom) + 80px);
+    bottom: calc(env(safe-area-inset-bottom) + 60px);
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -252,7 +252,7 @@
 
 /* ========== トースト ========== */
 .eval-toast {
-    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 160px);
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 140px);
     transform: translateX(-50%) translateY(60px);
     background: #202124; color: #fff;
     padding: 12px 20px; border-radius: 28px;
@@ -480,7 +480,7 @@
             <span class="material-symbols-outlined">person</span>
             利用者を選ぶ <span style="color:#ea4335;">*</span>
         </label>
-        <div class="eval-patient-search">
+        <div class="eval-patient-search" id="eval-patient-search-wrap">
             <span class="material-symbols-outlined search-icon">search</span>
             <input type="text" id="eval-patient-search-input" class="form-control"
                 placeholder="名前・ふりがな・カルテ番号で検索..."
@@ -1231,8 +1231,10 @@ async function evalDoSelectPatient(patientId) {
     evalState.currentEvalId = null;
     evalState.lockAcquired = false;
 
-    // UI 反映
-    document.getElementById('eval-patient-search-input').style.display = 'none';
+    // UI 反映: search wrap (虫眼鏡含む) と候補リスト両方を確実に閉じる
+    document.getElementById('eval-patient-search-wrap').style.display = 'none';
+    document.getElementById('eval-patient-candidates').classList.remove('show');
+    document.getElementById('eval-patient-candidates').innerHTML = '';
     document.getElementById('eval-patient-badge').classList.add('show');
     document.getElementById('eval-patient-name').textContent = `(No.${p.chart || '-'}) ${p.name} (${p.kana})`;
     document.getElementById('eval-no-patient-hint').style.display = 'none';
@@ -1255,7 +1257,7 @@ window.evalClearPatient = async function() {
     evalState.currentEvalId = null;
     evalState.lockAcquired = false;
 
-    document.getElementById('eval-patient-search-input').style.display = '';
+    document.getElementById('eval-patient-search-wrap').style.display = '';
     document.getElementById('eval-patient-search-input').value = '';
     document.getElementById('eval-patient-badge').classList.remove('show');
     document.getElementById('eval-no-patient-hint').style.display = '';
@@ -1862,7 +1864,8 @@ window.evalEditFromDetail = async function() {
     evalState.currentEvalId = ev.id;
     evalState.lockAcquired = false;
 
-    document.getElementById('eval-patient-search-input').style.display = 'none';
+    document.getElementById('eval-patient-search-wrap').style.display = 'none';
+    document.getElementById('eval-patient-candidates').classList.remove('show');
     document.getElementById('eval-patient-badge').classList.add('show');
     document.getElementById('eval-patient-name').textContent = `(No.${patient.chart || '-'}) ${patient.name} (${patient.kana})`;
     document.getElementById('eval-no-patient-hint').style.display = 'none';
