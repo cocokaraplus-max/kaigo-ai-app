@@ -4874,14 +4874,15 @@ def api_board_unread_count():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
-        # 未読投稿
+        # 未読投稿(Session 42: 「確認済みボタンを押す」まで未読。board_checks 基準に統一。
+        #  以前は board_reads(閲覧したか)を見ていたため上タブ/下バッジと数が合わなかった)
         all_posts = supabase.table("board_posts").select("id").eq("facility_code", f_code).execute()
         all_ids = [p["id"] for p in (all_posts.data or [])]
         post_unread = 0
         if all_ids:
-            read_posts = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
-            read_ids = set(r["post_id"] for r in (read_posts.data or []))
-            post_unread = len([i for i in all_ids if i not in read_ids])
+            checked_posts = supabase.table("board_checks").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            checked_ids = set(r["post_id"] for r in (checked_posts.data or []))
+            post_unread = len([i for i in all_ids if i not in checked_ids])
         # 未読コメント(自分以外作のみカウント)
         comment_unread = 0
         try:
