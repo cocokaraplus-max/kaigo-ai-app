@@ -1189,23 +1189,16 @@ window.evalFilterPatients = function(q) {
         cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';
     } else {
         cands.innerHTML = hits.map(p =>
-            `<div class="eval-candidate-item" data-id="${p.id}">
+            `<div class="eval-candidate-item" data-id="${p.id}" onclick="evalTrySelectPatient(${p.id})">
                 (No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})
             </div>`
         ).join('');
-        cands.querySelectorAll('.eval-candidate-item[data-id]').forEach(el => {
-            el.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                evalTrySelectPatient(parseInt(el.dataset.id, 10));
-            });
-        });
     }
     cands.classList.add('show');
 };
 
 // 利用者を選ぼうとする (既存入力がある場合は確認)
-function evalTrySelectPatient(patientId) {
+window.evalTrySelectPatient = function(patientId) {
     document.getElementById('eval-patient-candidates').classList.remove('show');
 
     // 既に選択中で、内容が入力されている場合は確認モーダル
@@ -1215,7 +1208,7 @@ function evalTrySelectPatient(patientId) {
         return;
     }
     evalDoSelectPatient(patientId);
-}
+};
 
 window.evalConfirmDiscard = function() {
     if (evalState.pendingPatientId) {
