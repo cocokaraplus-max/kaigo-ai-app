@@ -55,9 +55,12 @@
 }
 .eval-candidates.show { display: block; }
 .eval-candidate-item {
-    padding: 10px 14px; font-size: 0.88rem; cursor: pointer;
+    padding: 12px 14px; font-size: 0.88rem; cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
-    -webkit-tap-highlight-color: transparent;
+    -webkit-tap-highlight-color: rgba(26, 115, 232, 0.2);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
 }
 .eval-candidate-item:last-child { border-bottom: none; }
 .eval-candidate-item:active { background: #e8f0fe; }
@@ -1189,7 +1192,10 @@ window.evalFilterPatients = function(q) {
         cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';
     } else {
         cands.innerHTML = hits.map(p =>
-            `<div class="eval-candidate-item" data-id="${p.id}" onclick="evalTrySelectPatient(${p.id})">
+            `<div class="eval-candidate-item" data-id="${p.id}"
+                ontouchstart="event.preventDefault(); evalTrySelectPatient(${p.id});"
+                onmousedown="event.preventDefault(); evalTrySelectPatient(${p.id});"
+                onclick="event.preventDefault(); return false;">
                 (No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})
             </div>`
         ).join('');
@@ -1199,6 +1205,12 @@ window.evalFilterPatients = function(q) {
 
 // 利用者を選ぼうとする (既存入力がある場合は確認)
 window.evalTrySelectPatient = function(patientId) {
+    // 短時間で同じ ID が複数回呼ばれるのを防ぐ (touch + mouse の二重発火対策)
+    if (window._evalLastSelectId === patientId && Date.now() - (window._evalLastSelectTime || 0) < 500) {
+        return;
+    }
+    window._evalLastSelectId = patientId;
+    window._evalLastSelectTime = Date.now();
     document.getElementById('eval-patient-candidates').classList.remove('show');
 
     // 既に選択中で、内容が入力されている場合は確認モーダル
