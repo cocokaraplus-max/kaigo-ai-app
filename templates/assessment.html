@@ -1787,7 +1787,11 @@ function evalRenderDetail(ev) {
     const s = ev._status || {};
     let html = '';
 
-    html += detailRow('完成状態', `<span class="eval-status-pill ${s.color}">${s.label}</span>`);
+    html += `
+        <div class="eval-detail-row">
+            <div class="eval-detail-label">完成状態</div>
+            <div class="eval-detail-value"><span class="eval-status-pill ${s.color}">${escapeHtml(s.label)}</span></div>
+        </div>`;
     html += detailRow('介護区分', ev.care_classification);
     html += detailRow('評価者', ev.evaluator_name);
     html += detailRow('訓練目標', ev.training_goal);
