@@ -1,6 +1,6 @@
 # TASUKARU 介護AIアプリ — 開発引き継ぎ(ミニマム版)
 
-> **最新更新: 2026-05-14 Session 37 完了(Phase 2.B 詳細設計フェーズ達成)**
+> **最新更新: 2026-05-14 Session 40 完了(評価データ71件の本番移行完了 / バイタル再検査機能は誤診と判明)**
 > このファイルは「次セッションを始める Claude が最初に読むだけで仕事が始められる」ことを目的に**ミニマム化**してある。過去 Session の詳細ログは git history を `git log --all --oneline` で参照する。Session 33 までの累積 README は git の `tasukaru-dev` ブランチ履歴(`README.md` 旧版)に残っている。
 
 ---
@@ -161,10 +161,93 @@
 | #49 | **介護保険制度の区分(要介護/要支援/事業対象者)で評価方式が変わる、UI も DB も区分対応で設計**。要介護=ICF三軸(心身機能・活動・参加)、要支援/事業対象者=単純に短期/長期目標達成のみ。評価フォームは区分によって動的に切り替わる(Session 37) |
 | #50 | **「捨てる勇気」の設計判断**。既存データを CSV 保管後に廃止することで、汎用設計を獲得できる。Session 37 では旧 `assessments` テーブル(1 事業所のみ 77 件)を CSV 保管 → 廃止 → 22 項目構造化フォームで新規構築、と判断。データを引きずらない方が結果的にクリーン(Session 37) |
 | #51 | **マスタデータの一元管理ビジョンを早期に組み込み、各画面の関数を「将来マスタ参照可」設計に**。`get_initial_training_goal()` 等の初期値取得関数を、マスタ未整備でも動く構造(優先順位: マスタ → 先月評価 → フォールバック)にしておけば、後でマスタ画面ができた時に関数の中身だけ差し替えれば全画面に反映される(Session 37) |
+| #52 | **既存の動く実装があれば、ゼロから作らず流用する**。Session 38 で月次評価フォームを実装する際、旧 `assessment.html` の利用者選択 UI やレイアウトを流用した(Session 38) |
+| #53 | **業務フォームの保存ボタンは、フォーム末尾の通常配置(static)が最も確実**。`position: sticky`/`fixed` は iPhone でキーボードや下端タブと干渉しやすい。長い業務フォームでは末尾配置が無難(Session 38) |
+| #54 | **iPhone Safari の document click ハンドラは setTimeout 遅延が必要なことがある**。動的に追加した要素の外側クリック判定などで、追加直後の click が即発火してしまうケースがある(Session 38) |
+| #55 | **ハッシュ照合の徹底が誤 push を複数回防いだ**。Session 38 でファイル受領のたびに SHA-256 照合を行い、ローカルとリモートの差分を投入前に検出できた(教訓 #32 の実効性確認、Session 38) |
+| #56 | **「本番に〇〇するだけ」の前提は、まず実 DB で対象の存在を確認する**。Session 39 ハンドオフ書は「本番の `patient_evaluations` に ALTER でカラム追加」としていたが、本番にテーブル自体が無かった。`ALTER` の前に `information_schema.tables` で対象テーブルの存在を確認していれば、エラーを出す前に気付けた(教訓 #45 の具体化、Session 39) |
+| #57 | **テーブル定義の取得は「カラム + 制約 + インデックス」の3点セットで**。`pg_constraint` だけ見ると `CREATE UNIQUE INDEX` 由来の UNIQUE インデックスを取りこぼす。インデックスは `pg_indexes` で別途取得する(Session 39) |
+| #58 | **テーブルの「正体」はコード参照とデータ有無で判断する**。dev にあって本番に無いテーブルが「未使用の残骸」か「現役機能」かは、スキーマだけでは分からない。`grep` でコード参照、`count(*)` でデータ有無を確認して初めて判断できる(Session 39) |
+| #59 | **dev で作ったものが本番に反映漏れするパターンが複数回起きている**。`patient_evaluations`・`vital_recheck_schedules` で同種の事故が確認された。スキーマ変更の本番リリース時は「対象が本番に存在するか」をチェックリスト化する。将来的にはマイグレーション管理の導入を検討(Session 39) |
+| #60 | **ハンドオフ書の「最優先タスク」「疑い」「完了」も、それ自体が裏取り対象**。教訓 #38・#45 は「適用済み記述を実 DB で確認」だったが、Session 40 ではハンドオフ書の診断・判断・優先順位そのものが誤っていた(`vital_recheck_schedules` の「本番で壊れている疑い」は誤診で、本番では正常稼働していた)。記述は「事実」も「診断」も「完了宣言」も、実 DB・実コード・実機・ログで裏取りしてから動く(Session 40) |
+| #61 | **Supabase で作業するときは環境タブを1枚に固定する**。本番(`abvglnkwtdeoaazyqwyd`)と dev(`otjevnmoycnvaxeltrtj`)のタブを複数開いていたため、どの SQL 結果がどの環境のものか何度も見失った。`current_database()` 等では環境を確実に判別できない場合がある(`project_ref` が null になる)。ブラウザの URL(`/dashboard/project/<ref>/`)を目視するのが最も確実(Session 40) |
+| #62 | **本番への書き込み(INSERT 等)の前に「戻し方」を先に決める**。Session 40 の71件投入では、`updated_at` を `DEFAULT now()` に任せて投入時刻で揃え、`DELETE ... WHERE updated_at >= '投入時刻'` で投入分だけ切り戻せる状態を用意してから実行した。新規 INSERT のみ・トランザクション一括・移行元 CSV の完全保全、と合わせて三重に「戻せる」状態を作る(Session 40) |
+| #63 | **dev はデモ環境。本番とは別 DB・別データ・別利用者**。dev は扱う利用者名すら本番と全く異なる。dev のテーブル件数・内容は「本番の正解」の根拠にならない。dev で動作確認したことは本番で確認したことにはならない(教訓 #34 の実機確認は「本番」実機で行う)(Session 40) |
 
 ---
 
 ## 6. 直近セッションのサマリ(過去 2-3 件だけ)
+
+### Session 40(2026-05-14)完了 — 評価データ71件の本番移行完了 / バイタル再検査機能は誤診と判明
+
+**コード変更なし。本番 DB へのデータ投入作業と文書整理のみ。**
+
+#### A) `vital_recheck_schedules` 調査(Session 39 ハンドオフ書の「最優先タスク」)
+- Session 39 ハンドオフ書は「本番に `vital_recheck_schedules` が無い」「本番で機能が壊れている疑い」とし最優先タスクとしていたが、実 DB・実コード・Cloud Run ログ・本番アプリ実機まで全て裏取りした結果、**本番テーブルは元から存在し CRUD も正常稼働していた**。本番アプリで再検査予約を1件登録し着地（id 7）も確認。ハンドオフ書の診断は誤りだった（教訓 #60）
+- 調査中に「本番と dev の Supabase を取り違えて観測する」事故を繰り返した（教訓 #61）
+
+#### B) `patient_evaluations` が本番 0 件と発覚 → 71 件を移行
+- A の調査中、本番 `patient_evaluations` が **0 件**であることが発覚。Session 39 で旧 `assessments` を DROP する前に取得した CSV バックアップ（本物 77 件）が、新形式に移行されないまま放置されていた
+- 旧 `assessments`（15 列）→ 新 `patient_evaluations`（29 列）の移行マッピングを設計（8 列を対応づけ、ICF 三軸など 20 列は NULL）
+- 77 件中「同一施設×同一利用者×同一月」の重複 6 件（二重登録 5 + 会議録欠落の再保存 1）を除外し、**71 件を本番 `patient_evaluations` に投入完了**。本番アプリでの表示・編集・保存も実機確認
+
+#### C) バグ 2 件の正体特定（修正は Session 41）
+1. 月次評価詳細モーダルの「完成状態」欄に HTML タグが文字列表示される（`assessment.html` 1790 行目が `detailRow` に HTML を渡している。`detailRow` は `escapeHtml` する正しい設計）
+2. 「再検査の予約」登録直後に「取得エラー: Load failed」が一瞬出る（`vitals.html` の `saveRecheckSchedule` で `.ics` ダウンロードの `a.click()` がカレンダー遷移を起こし、直後の一覧再取得 fetch が中断される）
+
+#### D) Session 40 で新規発動の教訓
+#60（ハンドオフ書の診断も裏取り対象）/ #61（Supabase は環境タブ 1 枚に固定）/ #62（本番書き込み前に戻し方を決める）/ #63（dev はデモ環境、本番とは別物）
+
+#### E) 関連ファイル
+- `assessments_prod_2026-05-14.csv` — 移行元（本物 77 件、完全保全。Session 41 タスクでも使用）
+- `patient_evaluations_IMPORT.csv` — 本番投入した最終ファイル（71 件）
+
+---
+
+### Session 39(2026-05-14)完了 — Phase 2.B 月次評価機能の本番リリース完了
+
+Session 38 で dev 環境に実装・動作確認した Phase 2.B を本番環境にリリース完了。
+
+**本番リリースの内容:**
+- 本番 Supabase（`abvglnkwtdeoaazyqwyd`）に `patient_evaluations` テーブルを新規作成（29 カラム + UNIQUE インデックス + CHECK 制約 9 個）
+- 本番 `patients` テーブルに `care_level` カラム追加（7→8 カラム）
+- `tasukaru-dev` → `tasukaru` をマージ・push、本番 Cloud Run へデプロイ（リビジョン `tasukaru-00381-2hv`）
+- 旧 `assessments` テーブルを dev・本番の両方から DROP（本番データ 77 件は CSV バックアップ済み）
+
+**当初想定からの変更点:**
+- ハンドオフ書は「本番の `patient_evaluations` に `ALTER` で 6 カラム追加」する想定だったが、実際には本番に `patient_evaluations` テーブル自体が存在しなかった。`CREATE TABLE` + `CREATE UNIQUE INDEX` + `ALTER`（care_level）の 3 文に組み直して対応（教訓 #56）
+- Session 39 ではコードファイルの変更は一切なし（DB 作業と git マージのみ）
+
+> **※ Session 40 での訂正**: Session 39 ハンドオフ書に「`vital_recheck_schedules` が本番未反映」「本番リリース完了」と記載されたが、Session 40 の調査で前者は誤診（本番で正常稼働していた）、後者は「器は作られたがデータ移行が未実施」だったことが判明。詳細は Session 40 サマリ参照。
+
+#### Session 39 で発動の教訓
+#56（「本番に〇〇するだけ」は対象の存在を実 DB で確認）/ #57（テーブル定義はカラム+制約+インデックスの 3 点セット）/ #58（テーブルの正体はコード参照とデータ有無で判断）/ #59（dev→本番の反映漏れパターンが複数回）
+
+---
+
+### Session 38(2026-05-14)完了 — Phase 2.B 月次評価機能の実装
+
+旧「自由文 6 項目 + AI 生成」形式のアセスメント画面を、**29 カラムの構造化フォーム + 過去評価フィルタ機能**に全面刷新。dev 環境で動作確認完了（本番リリースは Session 39）。
+
+**変更ファイル:**
+- `templates/assessment.html` — 全面書き換え（構造化フォーム、5 セクションアコーディオン、介護区分による動的 UI、編集ロック、3 色バッジ、過去評価タブ）
+- `app.py` — 旧 4 API 削除（generate_assessment / save_assessment / get_assessment / parse_assessment_file）、新 5 API 追加（save_patient_evaluation / get_patient_evaluations / get_patient_evaluation / acquire_edit_lock / release_edit_lock）、`/assessment` route 改修
+- `evaluation_helper.py` — 新規作成（558 行、7 関数）。初期値取得・編集ロック・完成状態判定・UPSERT を担当
+
+**DB スキーマ変更（dev 適用済み / 本番は Session 39 で適用）:**
+- `patient_evaluations`: +6 カラム（training_goal, care_classification, editing_by, editing_started_at, short_goal_status, long_goal_status）→ 23→29 カラム
+- `patients`: +1 カラム（care_level）→ 7→8 カラム
+
+**設計のポイント:**
+- 介護保険区分（要介護 / 要支援 / 事業対象者）で評価方式が変わる。要介護は ICF 三軸、要支援・事業対象者は単純な短期・長期 2 項目
+- 編集競合は悲観的ロック方式（10 分タイムアウト）
+- 旧 `assessments` の `ai_change`/`ai_challenge` は「生テキスト → AI 生成」で作られていた。この AI 生成機能を新しい器に再実装するのが、後続の要望 A の本質（「まず評価の器を作ってから AI 機能を乗せる」という意図的な段階分け）
+
+#### Session 38 で発動の教訓
+#52（既存の動く実装は流用）/ #53（業務フォームの保存ボタンは末尾通常配置）/ #54（iPhone Safari の document click は setTimeout 遅延が必要なことがある）/ #55（ハッシュ照合の徹底が誤 push を防ぐ）
+
+---
+
 
 ### Session 37(2026-05-14)完了 — Phase 2.B 月次評価機能の詳細設計フェーズ達成 🎯
 
@@ -267,27 +350,32 @@ cb25d97 feat(vas): add VAS widget for 心身状況/訓練状況 (Session 36 Phas
 
 ---
 
-## 7. 既知の未対応事項(次セッション=Session 38 での対応候補)
+## 7. 既知の未対応事項(次セッション=Session 41 での対応候補)
 
-### ✅ 完了: Phase 2.A VAS 入力機能(Session 36 で本番リリース達成)
-### ✅ 完了: Phase 2.B 詳細設計(Session 37 で 12 論点全確定)
+### ✅ 完了済み
+- Phase 2.A VAS 入力機能(Session 36 で本番リリース)
+- Phase 2.B 月次評価機能 — 詳細設計(S37)・実装(S38)・本番リリース(S39)・評価データ71件の本番移行(S40)
+- 旧 `assessments` テーブルは dev・本番とも DROP 済み(S39)、本物データ77件は CSV 保全済み
 
-### 🟡 最優先: Phase 2.B コード実装(Session 38 推奨)
-- Phase 2: DB 準備
-  - **本番 `assessments` テーブル 77 件を CSV エクスポート**(Session 38 着手前必須、データ消失防止)
-  - dev に DDL 4 文実行(`docs/SESSION38_HANDOFF.md` 参照)
-- Phase 3: `templates/assessment.html` 全面書き換え(38 KB)
-- Phase 4: `app.py` の /assessment route + 新 API 5 つ
-- Phase 5: `evaluation_helper.py` 新規作成
-- Phase 6: dev push + Cloud Build + iPhone 動作確認
-- 詳細は `docs/SESSION38_HANDOFF.md` 参照
+### 🟡 最優先: バグ 2 件の修正(Session 41 / 正体・修正方針は Session 40 で確定済み)
+どちらも調査不要で実装に入れる。実装は dev で修正 → dev 実機検証 → 本番 の順（教訓 #30, #34, #48）。
 
-### 🟠 Session 39 以降
-- dev 動作確認後、`assessments` テーブル DROP(dev)
-- 本番 Supabase に DDL 4 文適用 + tasukaru ブランチへマージ
-- 本番動作確認後、本番 `assessments` テーブル DROP
-- Phase 2.C ケアマネ書類生成
-- Phase 2.D 利用者マスタ整備(短期目標/長期目標/担当ケアマネ/介護度等の一元管理 + 既存介護ソフトからの CSV インポート)
+- **バグ A**: 月次評価詳細モーダルの「完成状態」欄に HTML タグが文字列表示される
+  - `assessment.html` の `detailRow()` は `escapeHtml` する正しい設計。1790 行目だけ HTML を渡しているのが原因
+  - 修正: 1790 行目を `detailRow` に通さず HTML を直接組み立てる（`detailRow` 関数は変更しない）
+- **バグ B**: 「再検査の予約」登録直後に「取得エラー: Load failed」が一瞬出る（データ保存自体は成功）
+  - `vitals.html` の `saveRecheckSchedule` で `.ics` ダウンロードの `a.click()` がカレンダー遷移を起こし、直後の一覧再取得 fetch が中断される
+  - 修正: `loadRecheckSchedules()` を `downloadICS()` より前に呼ぶ（順序入れ替え）
+
+### 🟠 Session 41 のその他タスク
+- **移行データの「必須項目未入力」問題**: S40 で移行した 71 件は介護区分等が NULL のため、現場で編集・保存しようとすると「必須項目未入力」で弾かれる。必須チェックの扱いを要検討
+- **`achievement`（会議録の生テキスト）の最終的な置き場所**: S40 では暫定的に `special_notes` に移行。要望 A の「生データ読み込み欄」設計が決まったら 71 件分を移し替える（移行元は `assessments_prod_2026-05-14.csv` に保全）
+- **スキーマ全体の棚卸し（カラム単位）**: テーブル単位の棚卸しは S40 で実施済み。カラム単位は未実施。ただし dev はデモ環境のため「本番の各テーブルが `app.py` と整合しているか」を軸に確認する（教訓 #63）
+
+### 🟠 新要望(設計フェーズ・教訓 #48)
+- **要望 A**: 月次評価「記録と課題」セクションの刷新。音声・MP3・ファイル読み込み対応 / 内容の AI 自動振り分け / 機能訓練指導員→ケアマネ向け評価文生成（ハルシネーション抑制が最重要論点）/ 利用日数の自動カウント / 利用者 DB の必須化。旧画面にあった「生テキスト→AI生成」機能の新しい器への再実装が本質
+- **要望 B**: 過去評価の削除機能（管理者限定・復元可能）。論理削除（`deleted_at`/`deleted_by`）方式を推奨
+- Phase 2.C ケアマネ書類生成 / Phase 2.D 利用者マスタ整備
 
 ### 🟢 余裕があれば
 - AI 統合記録に VAS データを含める
@@ -295,6 +383,7 @@ cb25d97 feat(vas): add VAS widget for 心身状況/訓練状況 (Session 36 Phas
 - 印刷スタイル
 - 作業用 HTML ファイル `vas_coordinates_editor.html` と `vas_polygon_editor_v2.html`(Untracked)の削除
 - 旧 README(累積版、4216 行)の整理判断
+- マイグレーション管理（スキーマ変更を SQL ファイルで版管理）の導入検討（教訓 #59）
 
 ---
 
@@ -310,7 +399,7 @@ git log --oneline -5                      # 直近 5 commit を確認
 # Chrome タブを開く(可能なら)
 # - dev daily_view, 本番 top, 本番 Cloud Build, dev Supabase, 本番 Supabase
 
-# このREADMEと docs/SESSION38_HANDOFF.md を Claude に提示
+# このREADMEと docs/SESSION41_HANDOFF.md を Claude に提示
 ```
 
 ---
