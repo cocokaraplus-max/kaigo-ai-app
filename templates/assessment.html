@@ -1181,14 +1181,11 @@ window.evalFilterPatients = function(q) {
     ).slice(0, 15);
 
     if (!hits.length) {
-        cands.innerHTML = '<button type="button" class="eval-candidate-item" style="color:#80868b;" disabled>該当なし</button>';
+        cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';
     } else {
+        // input.html と同じ方式: <div onclick> 直接、余計なイベントは付けない
         cands.innerHTML = hits.map(p =>
-            `<button type="button" class="eval-candidate-item" data-id="${p.id}"
-                onpointerdown="document.getElementById('eval-patient-search-input').blur();"
-                onclick="evalTrySelectPatient(${p.id})">
-                (No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})
-            </button>`
+            `<div class="eval-candidate-item" onclick="evalTrySelectPatient(${p.id})">(No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})</div>`
         ).join('');
     }
     cands.classList.add('show');
@@ -1196,12 +1193,6 @@ window.evalFilterPatients = function(q) {
 
 // 利用者を選ぼうとする (既存入力がある場合は確認)
 window.evalTrySelectPatient = function(patientId) {
-    // 短時間で同じ ID が複数回呼ばれるのを防ぐ (touch + mouse の二重発火対策)
-    if (window._evalLastSelectId === patientId && Date.now() - (window._evalLastSelectTime || 0) < 500) {
-        return;
-    }
-    window._evalLastSelectId = patientId;
-    window._evalLastSelectTime = Date.now();
     document.getElementById('eval-patient-candidates').classList.remove('show');
 
     // 既に選択中で、内容が入力されている場合は確認モーダル
@@ -1269,11 +1260,14 @@ window.evalClearPatient = async function() {
     evalResetForm();
 };
 
-// クリックで候補リスト閉じる
-document.addEventListener('click', e => {
-    if (!e.target.closest('#eval-patient-search-input') && !e.target.closest('#eval-patient-candidates')) {
-        const cands = document.getElementById('eval-patient-candidates');
-        if (cands) cands.classList.remove('show');
+// クリックで候補リスト閉じる (input.html と同じ: setTimeout 200ms 遅延)
+// 遅延させることで、候補の onclick が先に発火する余裕を与える (iPhone Safari 対策の核心)
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.eval-patient-search') && !e.target.closest('#eval-patient-candidates')) {
+        setTimeout(function() {
+            const cands = document.getElementById('eval-patient-candidates');
+            if (cands) cands.classList.remove('show');
+        }, 200);
     }
 });
 
