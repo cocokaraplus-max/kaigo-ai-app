@@ -213,13 +213,24 @@
     border-color: #1a73e8; background: #e8f0fe; color: #1a73e8;
 }
 
-/* ========== sticky 保存ボタン (教訓 #43: bottom-nav 上に配置) ========== */
+/* ========== fixed 保存ボタン (教訓 #43: bottom-nav 上に常時固定、フォームを覆わない) ========== */
 .eval-sticky-actions {
-    position: sticky; bottom: calc(env(safe-area-inset-bottom) + 60px);
-    background: linear-gradient(to bottom, rgba(255,255,255,0.0), rgba(255,255,255,0.95) 30%, #fff 60%);
-    padding: 14px 0 8px;
-    margin: 16px -8px -8px;
-    z-index: 10;
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom) + 60px);
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 14px 12px;
+    z-index: 50;
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+}
+/* fixed 保存ボタン分、フォーム末尾に余白を確保 (ボタンが最後の入力欄を覆わないように) */
+#eval-form-body {
+    padding-bottom: 140px;
 }
 .eval-save-btn {
     width: 100%; padding: 16px;
