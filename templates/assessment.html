@@ -1185,6 +1185,7 @@ window.evalFilterPatients = function(q) {
     } else {
         cands.innerHTML = hits.map(p =>
             `<button type="button" class="eval-candidate-item" data-id="${p.id}"
+                onpointerdown="document.getElementById('eval-patient-search-input').blur();"
                 onclick="evalTrySelectPatient(${p.id})">
                 (No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})
             </button>`
