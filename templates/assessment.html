@@ -55,12 +55,18 @@
 }
 .eval-candidates.show { display: block; }
 .eval-candidate-item {
-    padding: 12px 14px; font-size: 0.88rem; cursor: pointer;
+    display: block;
+    width: 100%;
+    padding: 14px 14px;
+    font-size: 0.88rem;
+    text-align: left;
+    background: #fff;
+    border: none;
     border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    font-family: inherit;
+    color: #202124;
     -webkit-tap-highlight-color: rgba(26, 115, 232, 0.2);
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: manipulation;
 }
 .eval-candidate-item:last-child { border-bottom: none; }
 .eval-candidate-item:active { background: #e8f0fe; }
@@ -216,24 +222,10 @@
     border-color: #1a73e8; background: #e8f0fe; color: #1a73e8;
 }
 
-/* ========== fixed 保存ボタン (教訓 #43: bottom-nav 上に常時固定、フォームを覆わない) ========== */
+/* ========== 保存ボタン (フォーム末尾の通常配置、シンプル且つ確実) ========== */
 .eval-sticky-actions {
-    position: fixed;
-    left: 0; right: 0;
-    bottom: calc(env(safe-area-inset-bottom) + 60px);
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-top: 1px solid #e0e0e0;
-    padding: 10px 14px 12px;
-    z-index: 50;
-    max-width: 480px;
-    margin: 0 auto;
-    box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
-}
-/* fixed 保存ボタン分、フォーム末尾に余白を確保 (ボタンが最後の入力欄を覆わないように) */
-#eval-form-body {
-    padding-bottom: 160px;
+    margin-top: 24px;
+    padding: 14px 0 8px;
 }
 .eval-save-btn {
     width: 100%; padding: 16px;
@@ -255,7 +247,7 @@
 
 /* ========== トースト ========== */
 .eval-toast {
-    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 140px);
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 100px);
     transform: translateX(-50%) translateY(60px);
     background: #202124; color: #fff;
     padding: 12px 20px; border-radius: 28px;
@@ -1189,15 +1181,13 @@ window.evalFilterPatients = function(q) {
     ).slice(0, 15);
 
     if (!hits.length) {
-        cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';
+        cands.innerHTML = '<button type="button" class="eval-candidate-item" style="color:#80868b;" disabled>該当なし</button>';
     } else {
         cands.innerHTML = hits.map(p =>
-            `<div class="eval-candidate-item" data-id="${p.id}"
-                ontouchstart="event.preventDefault(); evalTrySelectPatient(${p.id});"
-                onmousedown="event.preventDefault(); evalTrySelectPatient(${p.id});"
-                onclick="event.preventDefault(); return false;">
+            `<button type="button" class="eval-candidate-item" data-id="${p.id}"
+                onclick="evalTrySelectPatient(${p.id})">
                 (No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})
-            </div>`
+            </button>`
         ).join('');
     }
     cands.classList.add('show');
