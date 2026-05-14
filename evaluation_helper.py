@@ -507,6 +507,7 @@ def fetch_patient_evaluations(
     supabase,
     facility_code: str,
     user_name: str = None,
+    user_names: list = None,
     year_month_from: str = None,
     year_month_to: str = None,
     sort_by: str = "year_month_desc",
@@ -517,7 +518,11 @@ def fetch_patient_evaluations(
     Args:
         supabase: Supabase Client instance
         facility_code: 施設コード(必須)
-        user_name: 利用者名フィルタ(任意)
+        user_name: 利用者名フィルタ・完全一致(任意、後方互換用)
+        user_names: 利用者名フィルタ・複数候補のいずれかに一致(任意)。
+                    指定時は user_name より優先。空リストを渡した場合は
+                    「該当者なし」とみなし空の結果を返す(検索ワードがマスタに
+                    一度も一致しなかったケースを呼び出し側が表現できる)。
         year_month_from: 対象月の下限 'YYYY-MM'(任意)
         year_month_to: 対象月の上限 'YYYY-MM'(任意)
         sort_by: 'year_month_desc' / 'year_month_asc' / 'user_name' / 'updated_at_desc'
@@ -527,9 +532,17 @@ def fetch_patient_evaluations(
         list of dict(評価レコード + 'status' フィールド付き)
     """
     try:
-        q = supabase.table("patient_evaluations").select("*").eq("facility_code", facility_code)
-        if user_name:
-            q = q.eq("user_name", user_name)
+        # user_names が「明示的に渡された」かどうかで分岐する。
+        # None = 未指定(従来どおり user_name を見る) / [] = 該当者なし / [...] = 候補で絞る
+        if user_names is not None:
+            if len(user_names) == 0:
+                return []  # 検索ワードがどの利用者にも一致しなかった
+            q = supabase.table("patient_evaluations").select("*").eq("facility_code", facility_code)
+            q = q.in_("user_name", user_names)
+        else:
+            q = supabase.table("patient_evaluations").select("*").eq("facility_code", facility_code)
+            if user_name:
+                q = q.eq("user_name", user_name)
         if year_month_from:
             q = q.gte("year_month", year_month_from)
         if year_month_to:

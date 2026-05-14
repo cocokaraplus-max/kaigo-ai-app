@@ -1166,19 +1166,26 @@ window.evalToggleSection = function(sectionId) {
 // 利用者選択
 // ===========================================================================
 window.evalFilterPatients = function(q) {
-    const ql = (q || '').trim().toLowerCase();
-    const qKata = (q || '').trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
-    const qHira = (q || '').trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    // 検索ワードを正規化: 前後空白除去 + 全空白(半角/全角)除去 + 小文字化。
+    // 氏名・ふりがなが「青木 利夫」のようにスペース区切りでも
+    // 「青木利夫」で引けるようにする。app.py の _normalize_search_text と挙動を揃える。
+    const norm = s => (s || '').replace(/\s+/g, '').toLowerCase();
+    const ql = norm(q);
+    const qKata = ql.replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = ql.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
     const cands = document.getElementById('eval-patient-candidates');
 
     if (!ql) { cands.classList.remove('show'); cands.innerHTML = ''; return; }
 
-    const hits = PATIENTS.filter(p =>
-        p.name.toLowerCase().includes(ql)
-        || p.kana.toLowerCase().includes(ql)
-        || p.kana.includes(qKata) || p.kana.includes(qHira)
-        || (p.chart && p.chart.toString().includes(ql))
-    ).slice(0, 15);
+    const hits = PATIENTS.filter(p => {
+        const pName = norm(p.name);
+        const pKana = norm(p.kana);
+        const pChart = norm(p.chart != null ? p.chart.toString() : '');
+        return pName.includes(ql)
+            || pKana.includes(ql)
+            || pKana.includes(qKata) || pKana.includes(qHira)
+            || (pChart && pChart.includes(ql));
+    }).slice(0, 15);
 
     if (!hits.length) {
         cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';

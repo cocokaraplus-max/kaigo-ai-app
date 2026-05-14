@@ -3024,6 +3024,58 @@ def api_save_patient_evaluation():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _normalize_search_text(s):
+    """検索用にテキストを正規化する。
+    - 全空白(半角/全角)を除去
+    - 小文字化
+    assessment.html の evalFilterPatients(JS) と挙動を揃えるための共通処理。
+    """
+    if not s:
+        return ""
+    return re.sub(r"\s+", "", str(s)).lower()
+
+
+def _hira_to_kata(s):
+    """ひらがな → カタカナ"""
+    return "".join(
+        chr(ord(c) + 0x60) if "\u3041" <= c <= "\u3096" else c
+        for c in (s or "")
+    )
+
+
+def _kata_to_hira(s):
+    """カタカナ → ひらがな"""
+    return "".join(
+        chr(ord(c) - 0x60) if "\u30A1" <= c <= "\u30F6" else c
+        for c in (s or "")
+    )
+
+
+def _patient_matches_query(patient, raw_query):
+    """利用者1人が検索ワードに一致するか判定する。
+    漢字氏名・ふりがな・カルテ番号のいずれかへの部分一致。
+    空白は両側で無視。ひらがな/カタカナは相互変換して比較。
+    assessment.html の evalFilterPatients(JS) と同じ判定。
+    """
+    q = _normalize_search_text(raw_query)
+    if not q:
+        return False
+    q_kata = _hira_to_kata(q)
+    q_hira = _kata_to_hira(q)
+
+    name = _normalize_search_text(patient.get("user_name"))
+    kana = _normalize_search_text(patient.get("user_kana"))
+    chart = _normalize_search_text(patient.get("chart_number"))
+
+    if q in name:
+        return True
+    if kana and (q in kana or q_kata in kana or q_hira in kana):
+        return True
+    if chart and q in chart:
+        return True
+    return False
+
+
 @app.route('/api/get_patient_evaluations')
 @login_required
 def api_get_patient_evaluations():
@@ -3044,9 +3096,43 @@ def api_get_patient_evaluations():
         except ValueError:
             limit = 100
 
+        # --- 利用者名フィルタ(漢字/ふりがな/カルテ番号、空白無視、ひらカナ相互) ---
+        # 検索ワードを利用者マスタに当てて、一致した利用者の user_name 候補を作る。
+        # patient_evaluations には user_name(漢字氏名)しか無いため、ふりがな・
+        # カルテ番号での検索はマスタ経由で利用者を特定してから評価を絞る。
+        matched_user_names = None  # None = フィルタなし(全件)
+        if user_name:
+            try:
+                patients = get_patients(supabase, f_code)
+            except Exception:
+                patients = []
+            matched = [
+                p["user_name"] for p in patients
+                if _patient_matches_query(p, user_name)
+            ]
+            # マスタに一致が無くても、評価データ側の user_name 直接一致を拾う
+            # フォールバック(マスタ未登録のまま評価だけ存在するケースの保険)。
+            if matched:
+                # 重複除去(同名利用者がマスタに複数居る場合も1回でよい)
+                matched_user_names = list(dict.fromkeys(matched))
+            else:
+                q_norm = _normalize_search_text(user_name)
+                try:
+                    fb = supabase.table("patient_evaluations") \
+                        .select("user_name") \
+                        .eq("facility_code", f_code) \
+                        .execute()
+                    fb_names = [
+                        r["user_name"] for r in (fb.data or [])
+                        if q_norm in _normalize_search_text(r.get("user_name"))
+                    ]
+                except Exception:
+                    fb_names = []
+                matched_user_names = list(dict.fromkeys(fb_names))  # 空なら[] = 該当なし
+
         records = fetch_patient_evaluations(
             supabase, f_code,
-            user_name=user_name,
+            user_names=matched_user_names,
             year_month_from=ym_from,
             year_month_to=ym_to,
             sort_by=sort_by,
