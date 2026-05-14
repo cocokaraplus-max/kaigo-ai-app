@@ -996,12 +996,13 @@ body.modal-open .bottom-nav {
     <div class="post-reactions" id="reactions-{{ post.id }}"></div>
     {% endif %}
 
-    <!-- 既読(一覧では人数のみ) -->
-    {% set readers = read_data.get(post.id, []) %}
-    {% if readers %}
+    <!-- 確認済み(一覧では人数のみ。Session 42: board_reads(閲覧)ではなく
+         board_checks(確認済みボタンを押した人)を表示するよう変更) -->
+    {% set checked_people = checks_data.get(post.id, []) %}
+    {% if checked_people %}
     <div class="post-reads">
-        <span class="material-symbols-outlined" style="font-size:13px;">visibility</span>
-        {{ readers|length }}人が確認
+        <span class="material-symbols-outlined" style="font-size:13px;">check_circle</span>
+        {{ checked_people|length }}人が確認
     </div>
     {% endif %}
 
@@ -1522,19 +1523,22 @@ window.applyBoardTabFilter = function() {
 };
 
 // ===== 未読件数の計算と表示 =====
-// Session 32: 未読 = (自分が確認済みボタンを押していない) OR (自分以外が書いた未読コメントがある)
-window.updateUnreadCount = function() {
-    var unreadCount = 0;
-    document.querySelectorAll('.post-card').forEach(function(card) {
-        var postId = parseInt(card.dataset.postId, 10);
-        var checks = CHECKS_DATA[postId] || [];
-        var checksMissing = checks.indexOf(MY_NAME) === -1;
-        var cmtBadge = card.querySelector('.post-action-btn:last-child .badge');
-        var unreadCmt = cmtBadge ? (parseInt(cmtBadge.textContent, 10) > 0) : false;
-        if (checksMissing || unreadCmt) unreadCount++;
-    });
+// Session 42: 未読カウントはサーバ側 /api/board/unread_count に一本化。
+//  未読 = 「確認済みボタンを押していない投稿」の件数 + 「自分以外が書いた未読コメント」の件数。
+//  下ナビの掲示板バッジ(base.html)と完全に同じAPIを参照するため、両者の数字が必ず一致する。
+//  (以前は DOM 上の投稿カードを走査して枚数を数えていたため、表示中30件しか見ておらず、
+//   かつ集計単位が枚数だったため下ナビバッジと数が合わなかった)
+window.updateUnreadCount = async function() {
     var badge = document.getElementById('unread-count');
-    if (badge) badge.textContent = unreadCount;
+    if (!badge) return;
+    try {
+        var res = await fetch('/api/board/unread_count');
+        if (!res.ok) return;
+        var data = await res.json();
+        badge.textContent = (data && typeof data.count === 'number') ? data.count : 0;
+    } catch (e) {
+        // 取得失敗時は表示を変更しない(古い値を残す)
+    }
 };
 
 // 初期化時に未読件数を計算
