@@ -4,6 +4,11 @@
 
 {% block extra_style %}
 <style>
+/* ==========================================================================
+   Phase 2.B 月次評価フォーム — Session 38
+   既存 VAS ウィジェット(_vas_widget.html)のスタイル踏襲
+   ========================================================================== */
+
 /* ========== タブ ========== */
 .tab-bar {
     display: flex; gap: 6px; margin-bottom: 1.2rem;
@@ -17,187 +22,428 @@
     background: #fff; font-size: 0.82rem; font-weight: 600;
     color: #5f6368; cursor: pointer; transition: all 0.15s;
     display: flex; align-items: center; gap: 4px;
+    -webkit-tap-highlight-color: transparent;
 }
 .tab-item.active { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
 /* ========== 利用者選択 ========== */
-.patient-select-card {
-    background: #f8f9fa; border-radius: 14px;
-    padding: 14px 16px; margin-bottom: 1rem;
-    border: 1.5px solid #e0e0e0;
-    display: flex; align-items: center; gap: 10px;
-    cursor: pointer; -webkit-tap-highlight-color: transparent;
+.eval-patient-search {
+    position: relative; margin-bottom: 8px;
 }
-.patient-select-card.selected { background: #e8f0fe; border-color: #1a73e8; }
-.patient-select-card .material-symbols-outlined { font-size: 22px; color: #1a73e8; }
-.patient-select-name { font-weight: 700; font-size: 0.95rem; color: #202124; }
-.patient-select-sub { font-size: 0.75rem; color: #80868b; margin-top: 2px; }
+.eval-patient-search input {
+    padding-left: 36px;
+}
+.eval-patient-search .search-icon {
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%); color: #80868b; font-size: 18px;
+}
+.eval-selected-badge {
+    display: none; background: #e8f0fe; border: 1.5px solid #1a73e8;
+    border-radius: 10px; padding: 8px 12px; margin-bottom: 8px;
+    align-items: center; gap: 8px;
+}
+.eval-selected-badge.show { display: flex; }
+.eval-selected-name { font-weight: 700; font-size: 0.9rem; flex: 1; }
+.eval-clear-btn { background: none; border: none; cursor: pointer; padding: 0; }
+.eval-candidates {
+    display: none; border: 1px solid #e0e0e0; border-radius: 10px;
+    overflow: hidden; max-height: 200px; overflow-y: auto;
+    background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    margin-bottom: 8px;
+}
+.eval-candidates.show { display: block; }
+.eval-candidate-item {
+    display: block;
+    width: 100%;
+    padding: 14px 14px;
+    font-size: 0.88rem;
+    text-align: left;
+    background: #fff;
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    font-family: inherit;
+    color: #202124;
+    -webkit-tap-highlight-color: rgba(26, 115, 232, 0.2);
+}
+.eval-candidate-item:last-child { border-bottom: none; }
+.eval-candidate-item:active { background: #e8f0fe; }
 
-/* ========== 入力フォーム ========== */
-.input-section {
-    background: #fff; border-radius: 14px;
-    border: 1.5px solid #e0e0e0;
-    padding: 16px; margin-bottom: 1rem;
+/* ========== ヒント / アラート ========== */
+.eval-hint {
+    background: #fff3cd; border: 1px solid #ffeaa7;
+    border-radius: 8px; padding: 12px 14px; margin: 12px 0;
+    color: #856404; font-size: 0.9rem;
+    align-items: center; gap: 8px;
 }
-.input-section-title {
+.eval-hint:not([hidden]) {
+    display: flex;
+}
+.eval-hint.eval-hint-info {
+    background: #e8f0fe; border-color: #aecbfa; color: #1967d2;
+}
+.eval-hint.eval-hint-lock {
+    background: #fce8e6; border-color: #f28b82; color: #c5221f;
+    flex-direction: column; align-items: stretch; gap: 8px;
+}
+.eval-hint-lock-actions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+}
+.eval-hint-lock-actions button {
+    flex: 1; min-width: 100px; padding: 8px 12px;
+    border-radius: 8px; border: none; font-size: 0.85rem;
+    font-weight: 600; cursor: pointer;
+}
+.eval-hint-lock-actions .btn-readonly {
+    background: #fff; border: 1.5px solid #c5221f; color: #c5221f;
+}
+.eval-hint-lock-actions .btn-force {
+    background: #c5221f; color: #fff;
+}
+
+/* ========== アコーディオン(VAS と統一) ========== */
+.eval-section {
+    background: #fafbfc; border: 1px solid #e0e0e0;
+    border-radius: 12px; padding: 14px; margin-bottom: 12px;
+}
+.eval-section-header {
+    display: flex; justify-content: space-between; align-items: center;
+    width: 100%; background: transparent; border: none;
+    padding: 4px 2px; cursor: pointer; text-align: left;
+    font: inherit; color: inherit;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s; border-radius: 8px;
+}
+.eval-section-header:hover { background: rgba(26, 115, 232, 0.06); }
+.eval-section-title {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.95rem; font-weight: 700; color: #1a73e8;
+    flex: 1;
+}
+.eval-section-title .material-symbols-outlined { font-size: 22px; }
+.eval-section-badge {
+    background: #80868b; color: #fff;
+    font-size: 0.7rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px;
+    margin-left: 6px;
+}
+.eval-section-badge.required { background: #ea4335; }
+.eval-section-badge.filled { background: #34a853; }
+.eval-chevron {
+    font-size: 22px !important; color: #5f6368;
+    transition: transform 0.2s; flex-shrink: 0;
+}
+.eval-section.collapsed .eval-section-body { display: none; }
+.eval-section:not(.collapsed) .eval-chevron { transform: rotate(180deg); }
+.eval-section-body {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* ========== セクション内のフィールド ========== */
+.eval-field { margin-bottom: 14px; }
+.eval-field:last-child { margin-bottom: 0; }
+.eval-field-label {
     display: flex; align-items: center; gap: 6px;
-    font-size: 0.85rem; font-weight: 700; color: #1a73e8;
-    margin-bottom: 12px;
+    font-size: 0.85rem; font-weight: 600;
+    color: #202124; margin-bottom: 6px;
 }
-.input-section-title .material-symbols-outlined { font-size: 18px; }
-
-/* ファイルドロップゾーン */
-.drop-zone {
-    border: 2px dashed #1a73e8; border-radius: 12px;
-    padding: 28px 16px; text-align: center;
-    color: #1a73e8; cursor: pointer;
-    transition: background 0.15s; margin-bottom: 12px;
-    background: #f0f6ff;
+.eval-field-label .req {
+    color: #ea4335; font-weight: 700; margin-left: 2px;
 }
-.drop-zone.dragover { background: #dbeafe; }
-.drop-zone .material-symbols-outlined { font-size: 36px; display: block; margin-bottom: 6px; }
-.drop-zone p { font-size: 0.85rem; font-weight: 600; margin: 0; }
-.drop-zone small { font-size: 0.75rem; color: #80868b; }
-
-/* 音声ボタン */
-.voice-btn {
-    width: 100%; padding: 16px;
-    border-radius: 14px; border: none;
-    background: linear-gradient(135deg, #1a73e8, #1557b0);
-    color: white; font-size: 1rem; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    cursor: pointer; margin-bottom: 12px;
-    box-shadow: 0 4px 12px rgba(26,115,232,0.3);
-}
-.voice-btn.recording {
-    background: linear-gradient(135deg, #ea4335, #c5221f);
-    animation: pulse 1s infinite;
-}
-@keyframes pulse { 0%,100% { box-shadow: 0 4px 12px rgba(234,67,53,0.3); } 50% { box-shadow: 0 4px 24px rgba(234,67,53,0.6); } }
-.voice-btn .material-symbols-outlined { font-size: 24px; }
-
-.voice-transcript {
-    background: #f8f9fa; border-radius: 10px;
-    padding: 12px 14px; font-size: 0.88rem;
-    color: #202124; min-height: 60px; line-height: 1.6;
-    margin-bottom: 8px; border: 1.5px solid #e0e0e0;
-    display: none;
-}
-.voice-transcript.show { display: block; }
-
-/* ========== AI生成ボタン ========== */
-.generate-btn {
-    width: 100%; padding: 16px;
-    border-radius: 14px; border: none;
-    background: linear-gradient(135deg, #34a853, #2d8f47);
-    color: white; font-size: 1rem; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    cursor: pointer; margin-bottom: 1.2rem;
-    box-shadow: 0 4px 12px rgba(52,168,83,0.3);
-    transition: opacity 0.15s;
-}
-.generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.generate-btn .material-symbols-outlined { font-size: 22px; }
-
-/* ========== 報告書プレビュー ========== */
-.report-preview {
-    background: #fff; border-radius: 14px;
-    border: 1.5px solid #e0e0e0; overflow: hidden;
-    margin-bottom: 1rem;
-}
-.report-header {
-    background: linear-gradient(135deg, #1a73e8, #1557b0);
-    padding: 16px 20px; color: white;
-}
-.report-header h2 { font-size: 1rem; font-weight: 800; margin: 0 0 4px; letter-spacing: 0.5px; }
-.report-header p { font-size: 0.8rem; opacity: 0.85; margin: 0; }
-.report-body { padding: 16px 20px; }
-.report-field { margin-bottom: 16px; }
-.report-field-label {
-    font-size: 0.75rem; font-weight: 700; color: #1a73e8;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
-}
-.report-field-label .material-symbols-outlined { font-size: 15px; }
-.report-field-value {
-    font-size: 0.9rem; line-height: 1.8; color: #202124;
-    background: #f8f9fa; border-radius: 8px;
-    padding: 10px 12px; border: 1px solid #e0e0e0;
-    min-height: 60px;
-}
-.report-field-value[contenteditable="true"] { outline: none; border-color: #1a73e8; background: #fff; }
-.report-field-value[contenteditable="true"]:focus { background: #fff; }
-.report-divider { border: none; border-top: 2px solid #e8f0fe; margin: 16px 0; }
-.report-actions {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 10px; padding: 0 20px 20px;
+.eval-field-label .material-symbols-outlined { font-size: 16px; color: #80868b; }
+.eval-field-help {
+    font-size: 0.75rem; color: #80868b; margin-top: 4px;
 }
 
-/* ========== 過去評価一覧 ========== */
-.assessment-card {
-    border: 1.5px solid #e0e0e0; border-radius: 12px;
-    padding: 14px 16px; margin-bottom: 10px;
-    cursor: pointer; -webkit-tap-highlight-color: transparent;
-    transition: border-color 0.15s;
+/* 数値入力(計測値) */
+.eval-number-input {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid #e0e0e0; border-radius: 8px;
+    font-size: 0.95rem; background: #fff;
 }
-.assessment-card:active { border-color: #1a73e8; background: #f0f6ff; }
-.assessment-card-header {
-    display: flex; align-items: center;
-    justify-content: space-between; margin-bottom: 6px;
+.eval-number-input:focus { outline: none; border-color: #1a73e8; }
+.eval-number-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
 }
-.assessment-card-name { font-weight: 700; font-size: 0.92rem; }
-.assessment-card-month {
-    font-size: 0.75rem; color: #80868b;
-    background: #f0f0f0; padding: 2px 8px; border-radius: 10px;
+.eval-number-unit { font-size: 0.85rem; color: #5f6368; padding-right: 6px; }
+
+/* セグメント型ボタン (radio) */
+.eval-segment {
+    display: flex; gap: 4px;
+    background: #f0f1f3; border-radius: 10px; padding: 3px;
 }
-.assessment-card-preview {
-    font-size: 0.8rem; color: #80868b;
-    overflow: hidden; text-overflow: ellipsis;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+.eval-segment-btn {
+    flex: 1; padding: 8px 6px;
+    border-radius: 7px; border: none;
+    background: transparent; color: #5f6368;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.eval-segment-btn:active { transform: scale(0.97); }
+.eval-segment-btn.active {
+    background: #1a73e8; color: #fff;
+    box-shadow: 0 2px 6px rgba(26,115,232,0.3);
+}
+.eval-segment-btn.active.danger { background: #ea4335; box-shadow: 0 2px 6px rgba(234,67,53,0.3); }
+.eval-segment-btn.active.warn { background: #fbbc04; color: #202124; box-shadow: 0 2px 6px rgba(251,188,4,0.3); }
+.eval-segment-btn.active.success { background: #34a853; box-shadow: 0 2px 6px rgba(52,168,83,0.3); }
+
+/* ICF 三軸表示 */
+.eval-icf-block { margin-bottom: 14px; }
+.eval-icf-block:last-child { margin-bottom: 0; }
+.eval-icf-title {
+    font-size: 0.82rem; font-weight: 700; color: #1a73e8;
+    margin-bottom: 8px; padding-bottom: 4px;
+    border-bottom: 1px dashed #aecbfa;
+}
+.eval-icf-row { margin-bottom: 10px; }
+.eval-icf-row:last-child { margin-bottom: 0; }
+.eval-icf-row-label {
+    font-size: 0.78rem; color: #5f6368; margin-bottom: 4px;
 }
 
-/* ========== ★ 音声プレイヤー ========== */
-.audio-player-wrap {
-    display: flex; align-items: center; gap: 10px;
-    background: #f0f6ff; border-radius: 12px;
-    padding: 10px 14px; margin-top: 8px;
-    border: 1.5px solid #1a73e8;
+/* 介護区分セレクタ */
+.eval-care-class-select {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
 }
-.audio-player-wrap .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
-.audio-player-wrap audio { flex: 1; height: 32px; }
-.audio-play-btn {
-    background: #1a73e8; border: none; border-radius: 50%;
-    width: 36px; height: 36px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-}
-.audio-play-btn .material-symbols-outlined { color: white; font-size: 20px; }
-
-/* ========== ローディング ========== */
-.ai-loading { display: none; text-align: center; padding: 24px; color: #1a73e8; }
-.ai-loading.show { display: block; }
-.ai-loading .material-symbols-outlined { font-size: 36px; animation: spin 1s linear infinite; display: block; margin-bottom: 8px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ========== 選択ボタン ========== */
-.type-btn {
-    padding: 12px 10px; border-radius: 12px;
-    border: 2px solid #e0e0e0; background: #f8f9fa;
+.eval-care-class-btn {
+    padding: 12px 8px; border-radius: 10px;
+    border: 1.5px solid #e0e0e0; background: #f8f9fa;
     text-align: center; cursor: pointer;
+    font-size: 0.88rem; font-weight: 600; color: #5f6368;
     transition: all 0.15s; -webkit-tap-highlight-color: transparent;
 }
-.type-btn.active { border-color: #1a73e8; background: #e8f0fe; }
-.type-btn.active span { color: #1a73e8; }
+.eval-care-class-btn.active {
+    border-color: #1a73e8; background: #e8f0fe; color: #1a73e8;
+}
 
-/* ========== 印刷用 ========== */
+/* ========== 保存ボタン (フォーム末尾の通常配置、シンプル且つ確実) ========== */
+.eval-sticky-actions {
+    margin-top: 24px;
+    padding: 14px 0 8px;
+}
+.eval-save-btn {
+    width: 100%; padding: 16px;
+    border-radius: 14px; border: none;
+    background: linear-gradient(135deg, #1a73e8, #1557b0);
+    color: white; font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(26,115,232,0.3);
+    transition: opacity 0.15s, transform 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.eval-save-btn:active { transform: scale(0.98); }
+.eval-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.eval-save-btn .material-symbols-outlined { font-size: 22px; }
+.eval-status-line {
+    font-size: 0.78rem; color: #5f6368; text-align: center;
+    margin-bottom: 8px; padding: 0 4px;
+}
+
+/* ========== トースト ========== */
+.eval-toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 100px);
+    transform: translateX(-50%) translateY(60px);
+    background: #202124; color: #fff;
+    padding: 12px 20px; border-radius: 28px;
+    font-size: 0.88rem; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    z-index: 1100; opacity: 0; pointer-events: none;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    display: flex; align-items: center; gap: 6px;
+    max-width: calc(100% - 32px);
+}
+.eval-toast.show {
+    opacity: 1; transform: translateX(-50%) translateY(0);
+}
+.eval-toast.success { background: #1e8e3e; }
+.eval-toast.error { background: #c5221f; }
+.eval-toast .material-symbols-outlined { font-size: 18px; }
+
+/* ========== モーダル(教訓 #42: :not([hidden]) で hidden 属性を尊重)========== */
+.eval-modal {
+    position: fixed; inset: 0; z-index: 1200;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 16px;
+}
+.eval-modal:not([hidden]) { display: flex; }
+.eval-modal-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.5);
+}
+.eval-modal-card {
+    position: relative; background: #fff; border-radius: 14px;
+    max-width: 440px; width: 100%;
+    max-height: calc(100vh - 200px); /* 教訓 #43: 下端タブ + sticky 保存ボタン分のマージン */
+    margin-bottom: calc(env(safe-area-inset-bottom) + 100px);
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.eval-modal-header {
+    padding: 16px 20px; border-bottom: 1px solid #e0e0e0;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; background: #fff; z-index: 2;
+}
+.eval-modal-title {
+    font-size: 1rem; font-weight: 700; color: #202124;
+    display: flex; align-items: center; gap: 8px;
+}
+.eval-modal-close {
+    background: none; border: none; cursor: pointer; padding: 4px;
+    color: #5f6368;
+}
+.eval-modal-body { padding: 16px 20px; }
+.eval-modal-actions {
+    position: sticky; bottom: 0;
+    padding: 12px 20px;
+    background: #fff; border-top: 1px solid #e0e0e0;
+    display: flex; gap: 8px; z-index: 2;
+}
+.eval-modal-actions button {
+    flex: 1; padding: 12px;
+    border-radius: 10px; border: none;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.eval-modal-actions .btn-cancel {
+    background: #f0f0f0; color: #5f6368;
+}
+.eval-modal-actions .btn-primary {
+    background: #1a73e8; color: #fff;
+}
+.eval-modal-actions .btn-success {
+    background: #34a853; color: #fff;
+}
+
+/* 詳細表示の項目 */
+.eval-detail-row {
+    margin-bottom: 12px; padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+.eval-detail-row:last-child { border-bottom: none; padding-bottom: 0; }
+.eval-detail-label {
+    font-size: 0.75rem; font-weight: 700; color: #5f6368;
+    margin-bottom: 4px;
+}
+.eval-detail-value {
+    font-size: 0.9rem; color: #202124;
+    line-height: 1.5; white-space: pre-wrap;
+}
+.eval-detail-value.empty {
+    color: #80868b; font-style: italic;
+}
+
+/* ========== 過去評価カード ========== */
+.eval-filter-bar {
+    background: #f8f9fa; border: 1.5px solid #e0e0e0;
+    border-radius: 12px; padding: 12px; margin-bottom: 14px;
+}
+.eval-filter-toggle {
+    display: flex; justify-content: space-between; align-items: center;
+    width: 100%; background: none; border: none; cursor: pointer;
+    padding: 0; font: inherit; color: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.eval-filter-toggle .label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.88rem; font-weight: 700; color: #1a73e8;
+}
+.eval-filter-body {
+    margin-top: 12px; display: grid; gap: 10px;
+}
+.eval-filter-bar.collapsed .eval-filter-body { display: none; }
+.eval-filter-bar:not(.collapsed) .eval-filter-toggle .material-symbols-outlined.chevron {
+    transform: rotate(180deg);
+}
+.eval-filter-toggle .chevron {
+    transition: transform 0.2s; color: #5f6368;
+}
+.eval-filter-row {
+    display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center;
+    font-size: 0.85rem;
+}
+.eval-filter-row label { color: #5f6368; font-weight: 600; }
+.eval-filter-row input,
+.eval-filter-row select {
+    padding: 6px 10px; border: 1.5px solid #e0e0e0;
+    border-radius: 8px; font-size: 0.85rem;
+    width: 100%; background: #fff;
+}
+.eval-filter-row .date-range {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; align-items: center;
+}
+.eval-filter-row .date-range span { color: #80868b; }
+
+.eval-card {
+    border: 1.5px solid #e0e0e0; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 10px;
+    cursor: pointer; background: #fff;
+    transition: border-color 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.eval-card:active { border-color: #1a73e8; background: #f0f6ff; }
+.eval-card-header {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 6px; gap: 8px;
+}
+.eval-card-name {
+    font-weight: 700; font-size: 0.95rem; color: #202124;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.eval-card-month {
+    font-size: 0.75rem; color: #5f6368;
+    background: #f0f0f0; padding: 3px 10px; border-radius: 12px;
+    flex-shrink: 0;
+}
+.eval-card-status-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 4px;
+    font-size: 0.78rem; color: #80868b;
+}
+.eval-status-pill {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 0.72rem; font-weight: 600;
+}
+.eval-status-pill.green { background: #e6f4ea; color: #137333; }
+.eval-status-pill.orange { background: #fef7e0; color: #ea8600; }
+.eval-status-pill.red { background: #fce8e6; color: #c5221f; }
+.eval-status-pill .material-symbols-outlined { font-size: 13px; }
+
+.eval-empty {
+    text-align: center; padding: 32px 16px;
+    color: #80868b; font-size: 0.88rem;
+}
+.eval-empty .material-symbols-outlined { font-size: 36px; display: block; margin-bottom: 8px; }
+
+/* ========== ローディング ========== */
+.eval-loading { text-align: center; padding: 24px; color: #1a73e8; }
+.eval-loading .material-symbols-outlined {
+    font-size: 32px; animation: eval-spin 1s linear infinite;
+    display: block; margin-bottom: 6px;
+}
+@keyframes eval-spin { to { transform: rotate(360deg); } }
+
+/* form-control: 共通 textarea / input スタイル(base.html 由来想定だが念のため) */
+.eval-textarea {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid #e0e0e0; border-radius: 8px;
+    font-size: 0.92rem; font-family: inherit;
+    background: #fff; resize: vertical; min-height: 80px;
+    line-height: 1.5;
+}
+.eval-textarea:focus { outline: none; border-color: #1a73e8; }
+.eval-textarea[readonly] { background: #f8f9fa; cursor: default; }
+
+/* 印刷スタイル(将来用に最小限) */
 @media print {
-    .bottom-nav, .tab-bar, .generate-btn, .voice-btn,
-    .drop-zone, .report-actions, .back-btn, .page-title,
-    .tab-panel:not(.active) { display: none !important; }
-    .report-preview { border: none; box-shadow: none; }
-    .report-header { background: #1a73e8 !important; -webkit-print-color-adjust: exact; }
+    .bottom-nav, .tab-bar, .eval-sticky-actions,
+    .eval-modal, .eval-toast, .eval-filter-bar { display: none !important; }
 }
 </style>
 {% endblock %}
@@ -205,581 +451,1477 @@
 {% block content %}
 <div class="page-title">
     <span class="material-symbols-outlined">assignment</span>
-    評価
+    月次評価
 </div>
 
 <!-- タブ -->
 <div class="tab-bar">
-    <div class="tab-item active" onclick="switchTab('input')">
+    <div class="tab-item active" onclick="evalSwitchTab('input', event)">
         <span class="material-symbols-outlined" style="font-size:15px;">edit_note</span>
         新規評価
     </div>
-    <div class="tab-item" onclick="switchTab('history')">
+    <div class="tab-item" onclick="evalSwitchTab('history', event)">
         <span class="material-symbols-outlined" style="font-size:15px;">history</span>
         過去の評価
     </div>
 </div>
 
 <!-- ========== 新規評価タブ ========== -->
-<div class="tab-panel active" id="tab-input">
+<div class="tab-panel active" id="eval-tab-input">
 
     <!-- 利用者選択 -->
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">person</span>
-            利用者を選ぶ
+            利用者を選ぶ <span style="color:#ea4335;">*</span>
         </label>
-        <div style="position:relative;margin-bottom:6px;">
-            <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#80868b;font-size:18px;">search</span>
-            <input type="text" id="patient-search-input" class="form-control"
-                placeholder="名前・ふりがなで検索..."
-                style="padding-left:36px;"
-                oninput="filterAssessmentPatients(this.value)"
+        <div class="eval-patient-search" id="eval-patient-search-wrap">
+            <span class="material-symbols-outlined search-icon">search</span>
+            <input type="text" id="eval-patient-search-input" class="form-control"
+                placeholder="名前・ふりがな・カルテ番号で検索..."
+                oninput="evalFilterPatients(this.value)"
                 autocomplete="off">
         </div>
-        <div id="patient-selected-badge" style="display:none;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;padding:8px 12px;margin-bottom:6px;align-items:center;gap:8px;">
+        <div id="eval-patient-badge" class="eval-selected-badge">
             <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">person</span>
-            <span id="patient-selected-label" style="font-weight:700;font-size:0.9rem;flex:1;"></span>
-            <button onclick="clearAssessmentPatient()" style="background:none;border:none;cursor:pointer;padding:0;">
+            <span class="eval-selected-name" id="eval-patient-name"></span>
+            <button class="eval-clear-btn" onclick="evalClearPatient()" type="button">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#80868b;">close</span>
             </button>
         </div>
-        <div id="patient-candidates-assess" style="display:none;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
-        <select id="patient-select" style="display:none;" onchange="onPatientSelect()">
-            <option value="">-- 利用者を選択 --</option>
-            {% for p in patients %}
-            <option value="{{ p.id }}"
-                data-name="{{ p.user_name }}"
-                data-kana="{{ p.user_kana }}"
-                data-birth="{{ p.birth_text }}"
-                data-disease="{{ p.disease_name or '' }}"
-                data-goal="{{ p.training_goal or '' }}"
-                data-cm="{{ p.care_manager or '' }}">
-                {{ p.user_name }}（{{ p.user_kana }}）
-            </option>
-            {% endfor %}
-        </select>
+        <div id="eval-patient-candidates" class="eval-candidates"></div>
+        <!-- 利用者データを保持(JSON で JS に渡す) -->
+        <script type="application/json" id="eval-patients-data">
+        [
+        {% for p in patients %}
+        {"id": {{ p.id }},
+         "name": {{ p.user_name|tojson }},
+         "kana": {{ (p.user_kana or '')|tojson }},
+         "chart": {{ (p.chart_number or '')|tojson }},
+         "care_level": {{ (p.care_level or '')|tojson }}}{% if not loop.last %},{% endif %}
+        {% endfor %}
+        ]
+        </script>
     </div>
 
-    <!-- 利用者未選択ヒント (Session 17) -->
-    <div id="patient-hint" style="background:#fff3cd; border:1px solid #ffeaa7; border-radius:8px; padding:12px 14px; margin:12px 0; color:#856404; font-size:0.9rem; display:flex; align-items:center; gap:8px;">
+    <!-- 対象月 + 評価者名 -->
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">calendar_month</span>
+            対象月 <span style="color:#ea4335;">*</span>
+        </label>
+        <input type="month" class="form-control" id="eval-year-month"
+               value="{{ this_month }}" onchange="evalCheckExistingMonth()">
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">
+            <span class="material-symbols-outlined">badge</span>
+            評価者 <span style="color:#ea4335;">*</span>
+        </label>
+        <input type="text" class="form-control" id="eval-evaluator-name"
+               value="{{ current_user }}" placeholder="評価者の氏名">
+    </div>
+
+    <!-- 利用者未選択ヒント -->
+    <div id="eval-no-patient-hint" class="eval-hint">
         <span class="material-symbols-outlined" style="color:#f0ad4e;">info</span>
         <span>まず上で <strong>利用者を選択</strong> してください。選択すると入力欄が表示されます。</span>
     </div>
 
-    <!-- 対象月 -->
-    <div class="form-group">
-        <label class="form-label">
-            <span class="material-symbols-outlined">calendar_month</span>
-            対象月
-        </label>
-        <input type="month" class="form-control" id="target-month" value="{{ this_month }}">
-    </div>
-
-    <!-- 訓練目標 -->
-    <div class="input-section" id="goal-section" style="display:none;">
-        <div class="input-section-title">
-            <span class="material-symbols-outlined">flag</span>
-            訓練目標
+    <!-- 編集ロックアラート(他職員が編集中) -->
+    <div id="eval-lock-alert" class="eval-hint eval-hint-lock" hidden>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined">lock</span>
+            <span><strong id="eval-lock-by">他職員</strong> が編集中です(<span id="eval-lock-age"></span>前)</span>
         </div>
-        <textarea class="form-control" id="training-goal" rows="2"
-            placeholder="例：歩行距離を伸ばして自宅内の移動を安全に行なう"></textarea>
-    </div>
-
-    <!-- 情報入力エリア (Session 17: 利用者選択後に表示) -->
-    <div class="input-section" id="input-section" style="display:none;">
-        <div class="input-section-title">
-            <span class="material-symbols-outlined">mic</span>
-            聴取内容の入力
-        </div>
-
-        <!-- PC -->
-        <div id="pc-input-area">
-            <div id="audio-mode-select" style="display:none;margin-bottom:10px;">
-                <div class="form-label" style="margin-bottom:6px;">
-                    <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
-                    録音の種類を選んでください
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <div class="type-btn active" id="mode-solo" onclick="selectAudioMode('solo')">
-                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">person</span>
-                        <span style="font-size:0.8rem;font-weight:700;">独り言メモ</span>
-                        <span style="font-size:0.7rem;color:#80868b;display:block;">スタッフが1人で話した録音</span>
-                    </div>
-                    <div class="type-btn" id="mode-dialog" onclick="selectAudioMode('dialog')">
-                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">forum</span>
-                        <span style="font-size:0.8rem;font-weight:700;">対話形式</span>
-                        <span style="font-size:0.7rem;color:#80868b;display:block;">利用者との会話録音</span>
-                    </div>
-                </div>
-            </div>
-            <div class="drop-zone" id="drop-zone"
-                onclick="document.getElementById('file-input').click()"
-                ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
-                <span class="material-symbols-outlined">upload_file</span>
-                <p>ファイルをドロップ または クリックして選択</p>
-                <small>PDF・テキスト・MP3・M4A・WAV対応</small>
-            </div>
-            <input type="file" id="file-input" accept=".pdf,.txt,.mp3,.m4a,.wav,.aac,.ogg,.webm" style="display:none"
-                onchange="handleFileSelect(event)">
-            <div id="file-status" style="font-size:0.8rem;color:#34a853;margin-bottom:8px;display:none;">
-                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">check_circle</span>
-                <span id="file-name"></span>
-            </div>
-        </div>
-
-        <!-- スマホ -->
-        <div id="sp-input-area" style="display:none;">
-            <div style="margin-bottom:10px;">
-                <div class="form-label" style="margin-bottom:6px;">
-                    <span class="material-symbols-outlined" style="font-size:15px;">settings_voice</span>
-                    録音の種類を選んでください
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <div class="type-btn active" id="sp-mode-solo" onclick="selectAudioMode('solo')">
-                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">person</span>
-                        <span style="font-size:0.8rem;font-weight:700;">独り言メモ</span>
-                        <span style="font-size:0.7rem;color:#80868b;display:block;">1人で話した録音</span>
-                    </div>
-                    <div class="type-btn" id="sp-mode-dialog" onclick="selectAudioMode('dialog')">
-                        <span class="material-symbols-outlined" style="font-size:22px;display:block;margin-bottom:4px;">forum</span>
-                        <span style="font-size:0.8rem;font-weight:700;">対話形式</span>
-                        <span style="font-size:0.7rem;color:#80868b;display:block;">利用者との会話録音</span>
-                    </div>
-                </div>
-            </div>
-            <button class="voice-btn" style="background:linear-gradient(135deg,#9c27b0,#6a1b9a);"
-                onclick="document.getElementById('audio-file-input').click()">
-                <span class="material-symbols-outlined">audio_file</span>
-                <span>録音ファイルをアップロード</span>
+        <div class="eval-hint-lock-actions">
+            <button type="button" class="btn-readonly" onclick="evalCancelEditFromLock()">
+                編集を中止
             </button>
-            <input type="file" id="audio-file-input" accept=".mp3,.m4a,.wav,.aac,.ogg,.webm" style="display:none"
-                onchange="handleFileSelect(event)">
-            <div id="sp-file-status" style="font-size:0.8rem;color:#34a853;margin-bottom:8px;display:none;">
-                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">check_circle</span>
-                <span id="sp-file-name"></span>
-            </div>
-            <div style="font-size:0.75rem;color:#80868b;text-align:center;margin:8px 0;">または リアルタイム音声入力</div>
-            <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">
-                <span class="material-symbols-outlined">mic</span>
-                <span id="voice-btn-label">タップして音声入力</span>
+            <button type="button" class="btn-force" onclick="evalForceAcquireLock()">
+                強制的にロック取得して編集
             </button>
-            <div class="voice-transcript" id="voice-transcript"></div>
-        </div>
-
-        <div style="font-size:0.75rem;color:#80868b;text-align:center;margin-bottom:12px;">または</div>
-
-        <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label"><span class="material-symbols-outlined">trending_up</span>今月の訓練達成度</label>
-            <textarea class="form-control" id="achievement" rows="3" placeholder="例：歩行訓練を週3回実施。当初の目標距離の80%を達成。"></textarea>
-        </div>
-        <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label"><span class="material-symbols-outlined">home</span>自宅での取り組み</label>
-            <textarea class="form-control" id="home-effort" rows="3" placeholder="例：毎朝10分のストレッチを継続。家族のサポートで階段昇降を練習中。"></textarea>
-        </div>
-        <div class="form-group" style="margin-bottom:10px;">
-            <label class="form-label"><span class="material-symbols-outlined">fitness_center</span>デイでの訓練進捗</label>
-            <textarea class="form-control" id="training-progress" rows="3" placeholder="例：平行棒歩行から歩行器歩行へ移行。バランス訓練も開始。"></textarea>
-        </div>
-        <div class="form-group">
-            <label class="form-label"><span class="material-symbols-outlined">notes</span>その他・気づき</label>
-            <textarea class="form-control" id="other-notes" rows="2" placeholder="例：本人のモチベーションが高く、訓練への参加態度も良好。"></textarea>
         </div>
     </div>
 
-    <!-- AI生成ボタン -->
-    <button class="generate-btn" id="generate-btn" onclick="generateReport()" style="display:none;">
-        <span class="material-symbols-outlined">auto_awesome</span>
-        AI報告書を生成する
-    </button>
+    <!-- 入力フォーム本体(利用者選択後に表示) -->
+    <div id="eval-form-body" style="display:none;">
 
-    <div class="ai-loading" id="ai-loading">
-        <span class="material-symbols-outlined">sync</span>
-        AIが報告書を生成しています...
-    </div>
-
-    <!-- 報告書プレビュー -->
-    <div class="report-preview" id="report-preview" style="display:none;">
-        <div class="report-header">
-            <h2>📋 個別機能訓練 月次評価報告書</h2>
-            <p id="rpt-meta"></p>
-        </div>
-        <div class="report-body">
-            <div class="report-field">
-                <div class="report-field-label"><span class="material-symbols-outlined">person</span>利用者情報</div>
-                <div class="report-field-value" id="rpt-patient-info"></div>
-            </div>
-            <div class="report-field">
-                <div class="report-field-label"><span class="material-symbols-outlined">flag</span>訓練目標</div>
-                <div class="report-field-value" id="rpt-goal"></div>
-            </div>
-            <hr class="report-divider">
-            <div class="report-field">
-                <div class="report-field-label"><span class="material-symbols-outlined">trending_up</span>個別機能訓練実施による変化</div>
-                <div class="report-field-value" id="rpt-change" contenteditable="true"></div>
-            </div>
-            <div class="report-field">
-                <div class="report-field-label"><span class="material-symbols-outlined">warning</span>個別機能訓練実施における課題とその要因</div>
-                <div class="report-field-value" id="rpt-challenge" contenteditable="true"></div>
-            </div>
-            <!-- ★ 音声プレイヤー（音声がある場合に表示） -->
-            <div id="rpt-audio-wrap" style="display:none;margin-top:8px;">
-                <div class="report-field-label">
-                    <span class="material-symbols-outlined">mic</span>録音音声
+        <!-- ========== セクション 1: 訓練目標 (初期: 開) ========== -->
+        <div class="eval-section" id="eval-section-goal">
+            <button type="button" class="eval-section-header"
+                    onclick="evalToggleSection('eval-section-goal')">
+                <div class="eval-section-title">
+                    <span class="material-symbols-outlined">flag</span>
+                    <span>訓練目標</span>
+                    <span class="eval-section-badge required" id="eval-badge-goal">必須</span>
                 </div>
-                <div class="audio-player-wrap">
-                    <span class="material-symbols-outlined">headphones</span>
-                    <audio id="rpt-audio-player" controls style="flex:1;height:36px;"></audio>
-                </div>
-            </div>
-        </div>
-        <div class="report-actions">
-            <button class="btn btn-primary" onclick="saveAssessment()">
-                <span class="material-symbols-outlined" style="color:white;">save</span>保存
+                <span class="material-symbols-outlined eval-chevron">expand_more</span>
             </button>
-            <button class="btn" onclick="printReport()" style="background:#34a853;color:white;border:none;">
-                <span class="material-symbols-outlined" style="color:white;">print</span>印刷/PDF
+            <div class="eval-section-body">
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">flag</span>
+                        訓練目標 <span class="req">*</span>
+                    </label>
+                    <textarea class="eval-textarea" id="eval-training-goal" rows="2"
+                              placeholder="例:歩行距離を伸ばして自宅内の移動を安全に行なう"
+                              oninput="evalUpdateStatus()"></textarea>
+                    <div class="eval-field-help">
+                        💡 先月の評価がある場合は自動入力されます。編集して上書き可能。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== セクション 2: 計測値 (初期: 閉) ========== -->
+        <div class="eval-section collapsed" id="eval-section-measure">
+            <button type="button" class="eval-section-header"
+                    onclick="evalToggleSection('eval-section-measure')">
+                <div class="eval-section-title">
+                    <span class="material-symbols-outlined">straighten</span>
+                    <span>計測値</span>
+                    <span class="eval-section-badge" id="eval-badge-measure">0/3</span>
+                </div>
+                <span class="material-symbols-outlined eval-chevron">expand_more</span>
+            </button>
+            <div class="eval-section-body">
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">scale</span>
+                        体重 (kg)
+                    </label>
+                    <div class="eval-number-row">
+                        <input type="number" class="eval-number-input" id="eval-weight-kg"
+                               step="0.1" min="0" max="200" placeholder="例: 50.5"
+                               oninput="evalUpdateStatus()">
+                        <span class="eval-number-unit">kg</span>
+                    </div>
+                </div>
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">event_available</span>
+                        出席回数
+                    </label>
+                    <div class="eval-number-row">
+                        <input type="number" class="eval-number-input" id="eval-attendance-count"
+                               step="1" min="0" max="31" placeholder="例: 8"
+                               oninput="evalUpdateStatus()">
+                        <span class="eval-number-unit">日</span>
+                    </div>
+                </div>
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">flag_circle</span>
+                        出席目標
+                    </label>
+                    <div class="eval-number-row">
+                        <input type="number" class="eval-number-input" id="eval-attendance-target"
+                               step="1" min="0" max="31" placeholder="例: 10"
+                               oninput="evalUpdateStatus()">
+                        <span class="eval-number-unit">日</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== セクション 3: 介護区分 + 目標達成状況 (初期: 閉) ========== -->
+        <div class="eval-section collapsed" id="eval-section-status">
+            <button type="button" class="eval-section-header"
+                    onclick="evalToggleSection('eval-section-status')">
+                <div class="eval-section-title">
+                    <span class="material-symbols-outlined">checklist</span>
+                    <span>目標達成状況</span>
+                    <span class="eval-section-badge required" id="eval-badge-status">必須</span>
+                </div>
+                <span class="material-symbols-outlined eval-chevron">expand_more</span>
+            </button>
+            <div class="eval-section-body">
+                <!-- 介護区分セレクタ -->
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">category</span>
+                        介護区分 <span class="req">*</span>
+                    </label>
+                    <div class="eval-care-class-select">
+                        <button type="button" class="eval-care-class-btn" data-value="要介護"
+                                onclick="evalSelectCareClass('要介護')">要介護</button>
+                        <button type="button" class="eval-care-class-btn" data-value="要支援"
+                                onclick="evalSelectCareClass('要支援')">要支援</button>
+                        <button type="button" class="eval-care-class-btn" data-value="事業対象者"
+                                onclick="evalSelectCareClass('事業対象者')">事業対象者</button>
+                    </div>
+                    <input type="hidden" id="eval-care-classification" value="">
+                    <div class="eval-field-help" id="eval-care-class-hint">
+                        💡 利用者の介護度から自動セットされます。手動で変更可能。
+                    </div>
+                </div>
+
+                <!-- 要介護用: ICF 三軸 (短期 3 + 長期 3) -->
+                <div id="eval-status-kaigo" style="display:none;">
+                    <div class="eval-icf-block">
+                        <div class="eval-icf-title">📍 短期目標(ICF 三軸)</div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">心身機能・身体構造</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-short-function', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-short-function', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-short-function', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-short-function" value="">
+                        </div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">活動(日常生活動作)</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-short-activity', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-short-activity', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-short-activity', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-short-activity" value="">
+                        </div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">参加(社会参加)</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-short-participation', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-short-participation', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-short-participation', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-short-participation" value="">
+                        </div>
+                    </div>
+                    <div class="eval-icf-block">
+                        <div class="eval-icf-title">🎯 長期目標(ICF 三軸)</div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">心身機能・身体構造</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-long-function', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-long-function', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-long-function', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-long-function" value="">
+                        </div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">活動(日常生活動作)</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-long-activity', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-long-activity', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-long-activity', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-long-activity" value="">
+                        </div>
+                        <div class="eval-icf-row">
+                            <div class="eval-icf-row-label">参加(社会参加)</div>
+                            <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-long-participation', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-long-participation', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-long-participation', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-long-participation" value="">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 要支援/事業対象者用: 単純 2 項目 -->
+                <div id="eval-status-simple" style="display:none;">
+                    <div class="eval-icf-row">
+                        <div class="eval-icf-row-label">📍 短期目標</div>
+                        <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-short-goal-simple', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-short-goal-simple', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-short-goal-simple', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-short-goal-simple" value="">
+                    </div>
+                    <div class="eval-icf-row" style="margin-top:14px;">
+                        <div class="eval-icf-row-label">🎯 長期目標</div>
+                        <div class="eval-segment">
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="達成" onclick="evalSelectSegment('eval-long-goal-simple', '達成')">
+                                    達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="一部達成" onclick="evalSelectSegment('eval-long-goal-simple', '一部達成')">
+                                    一部達成
+                                </button>
+                                <button type="button" class="eval-segment-btn"
+                                        data-value="未達成" onclick="evalSelectSegment('eval-long-goal-simple', '未達成')">
+                                    未達成
+                                </button>
+                            </div>
+                            <input type="hidden" id="eval-long-goal-simple" value="">
+                    </div>
+                </div>
+
+                <div id="eval-status-empty" class="eval-field-help" style="text-align:center;padding:20px 0;">
+                    上で介護区分を選択してください
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== セクション 4: 記録と課題 (初期: 閉) ========== -->
+        <div class="eval-section collapsed" id="eval-section-notes">
+            <button type="button" class="eval-section-header"
+                    onclick="evalToggleSection('eval-section-notes')">
+                <div class="eval-section-title">
+                    <span class="material-symbols-outlined">edit_note</span>
+                    <span>記録と課題</span>
+                    <span class="eval-section-badge" id="eval-badge-notes">0/3</span>
+                </div>
+                <span class="material-symbols-outlined eval-chevron">expand_more</span>
+            </button>
+            <div class="eval-section-body">
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">trending_up</span>
+                        訓練による変化
+                    </label>
+                    <textarea class="eval-textarea" id="eval-changes" rows="3"
+                              placeholder="例:歩行訓練を週3回実施。当初の目標距離の80%を達成。下肢筋力に明らかな改善あり。"
+                              oninput="evalUpdateStatus()"></textarea>
+                </div>
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">warning</span>
+                        課題とその要因
+                    </label>
+                    <textarea class="eval-textarea" id="eval-issues" rows="3"
+                              placeholder="例:屋外歩行時の不安感が残存。家族の付き添いに依存する状況が続いている。"
+                              oninput="evalUpdateStatus()"></textarea>
+                </div>
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">sticky_note_2</span>
+                        特記事項
+                    </label>
+                    <textarea class="eval-textarea" id="eval-special-notes" rows="2"
+                              placeholder="例:本人のモチベーション良好。家族の協力も得られている。"
+                              oninput="evalUpdateStatus()"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== セクション 5: モニタリング (初期: 閉) ========== -->
+        <div class="eval-section collapsed" id="eval-section-monitor">
+            <button type="button" class="eval-section-header"
+                    onclick="evalToggleSection('eval-section-monitor')">
+                <div class="eval-section-title">
+                    <span class="material-symbols-outlined">monitoring</span>
+                    <span>モニタリング</span>
+                    <span class="eval-section-badge" id="eval-badge-monitor">0/3</span>
+                </div>
+                <span class="material-symbols-outlined eval-chevron">expand_more</span>
+            </button>
+            <div class="eval-section-body">
+                <!-- 新規希望 -->
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">add_circle</span>
+                        新規希望・要望
+                    </label>
+                    <div class="eval-segment">
+                        <button type="button" class="eval-segment-btn"
+                                data-value="あり" onclick="evalSelectSegment('eval-new-requests-exist', 'あり')">
+                            あり
+                        </button>
+                        <button type="button" class="eval-segment-btn"
+                                data-value="なし" onclick="evalSelectSegment('eval-new-requests-exist', 'なし')">
+                            なし
+                        </button>
+                    </div>
+                    <input type="hidden" id="eval-new-requests-exist" value="">
+                </div>
+                <div class="eval-field" id="eval-new-requests-detail-field" style="display:none;">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">notes</span>
+                        希望・要望の詳細
+                    </label>
+                    <textarea class="eval-textarea" id="eval-new-requests-detail" rows="2"
+                              placeholder="新規希望の内容を記入してください"
+                              oninput="evalUpdateStatus()"></textarea>
+                </div>
+
+                <!-- 満足度 -->
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">sentiment_satisfied</span>
+                        サービスへの満足度
+                    </label>
+                    <div class="eval-segment">
+                        <button type="button" class="eval-segment-btn"
+                                data-value="○" onclick="evalSelectSegment('eval-satisfaction', '○')">
+                            ○ 満足
+                        </button>
+                        <button type="button" class="eval-segment-btn"
+                                data-value="△" onclick="evalSelectSegment('eval-satisfaction', '△')">
+                            △ やや
+                        </button>
+                        <button type="button" class="eval-segment-btn"
+                                data-value="×" onclick="evalSelectSegment('eval-satisfaction', '×')">
+                            × 不満
+                        </button>
+                    </div>
+                    <input type="hidden" id="eval-satisfaction" value="">
+                </div>
+
+                <!-- サービス適切性 -->
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        サービス内容の適切性
+                    </label>
+                    <div class="eval-segment">
+                        <button type="button" class="eval-segment-btn"
+                                data-value="○" onclick="evalSelectSegment('eval-service-appropriateness', '○')">
+                            ○ 適切
+                        </button>
+                        <button type="button" class="eval-segment-btn"
+                                data-value="△" onclick="evalSelectSegment('eval-service-appropriateness', '△')">
+                            △ 概ね
+                        </button>
+                        <button type="button" class="eval-segment-btn"
+                                data-value="×" onclick="evalSelectSegment('eval-service-appropriateness', '×')">
+                            × 要見直し
+                        </button>
+                    </div>
+                    <input type="hidden" id="eval-service-appropriateness" value="">
+                </div>
+            </div>
+        </div>
+
+        <!-- sticky 保存ボタン -->
+        <div class="eval-sticky-actions">
+            <div class="eval-status-line" id="eval-status-line">
+                <span id="eval-status-summary">必須項目を入力してください</span>
+            </div>
+            <button class="eval-save-btn" id="eval-save-btn" onclick="evalSave()" type="button">
+                <span class="material-symbols-outlined">save</span>
+                <span id="eval-save-btn-label">保存する</span>
             </button>
         </div>
     </div>
 </div>
 
 <!-- ========== 過去の評価タブ ========== -->
-<div class="tab-panel" id="tab-history">
-    {% if assessments %}
-    {% for a in assessments %}
-    <div class="assessment-card" onclick="loadAssessment('{{ a.id }}')">
-        <div class="assessment-card-header">
-            <span class="assessment-card-name">{{ a.user_name }}</span>
-            <span class="assessment-card-month">{{ a.target_month }}</span>
+<div class="tab-panel" id="eval-tab-history">
+
+    <!-- フィルタバー(折りたたみ) -->
+    <div class="eval-filter-bar collapsed" id="eval-filter-bar">
+        <button type="button" class="eval-filter-toggle" onclick="evalToggleFilter()">
+            <span class="label">
+                <span class="material-symbols-outlined">filter_alt</span>
+                絞り込み・並び替え
+            </span>
+            <span class="material-symbols-outlined chevron">expand_more</span>
+        </button>
+        <div class="eval-filter-body">
+            <div class="eval-filter-row">
+                <label>利用者:</label>
+                <input type="text" id="eval-filter-user" placeholder="(全員)"
+                       oninput="evalLoadHistory()">
+            </div>
+            <div class="eval-filter-row">
+                <label>対象月:</label>
+                <div class="date-range">
+                    <input type="month" id="eval-filter-from" onchange="evalLoadHistory()">
+                    <span>〜</span>
+                    <input type="month" id="eval-filter-to" onchange="evalLoadHistory()">
+                </div>
+            </div>
+            <div class="eval-filter-row">
+                <label>状態:</label>
+                <select id="eval-filter-status" onchange="evalLoadHistory()">
+                    <option value="all">すべて</option>
+                    <option value="complete">完成のみ</option>
+                    <option value="partial">一部未入力</option>
+                    <option value="incomplete">必須未入力</option>
+                </select>
+            </div>
+            <div class="eval-filter-row">
+                <label>並び順:</label>
+                <select id="eval-filter-sort" onchange="evalLoadHistory()">
+                    <option value="year_month_desc">月降順(新→旧)</option>
+                    <option value="year_month_asc">月昇順(旧→新)</option>
+                    <option value="user_name">利用者名順</option>
+                    <option value="updated_at_desc">最終編集順</option>
+                </select>
+            </div>
         </div>
-        <div class="assessment-card-preview">{{ a.ai_change or '（生成なし）' }}</div>
-        {% if a.audio_url %}
-        <div class="audio-player-wrap" style="margin-top:8px;" onclick="event.stopPropagation()">
-            <span class="material-symbols-outlined">mic</span>
-            <audio controls style="flex:1;height:32px;">
-                <source src="{{ a.audio_url }}">
-            </audio>
+    </div>
+
+    <!-- 評価カード一覧 -->
+    <div id="eval-history-list">
+        <div class="eval-loading">
+            <span class="material-symbols-outlined">sync</span>
+            読み込み中…
         </div>
-        {% endif %}
     </div>
-    {% endfor %}
-    {% else %}
-    <div class="alert" style="background:#f8f9fa;color:#80868b;border:1.5px solid #e0e0e0;">
-        <span class="material-symbols-outlined">info</span>
-        まだ評価が保存されていません。
-    </div>
-    {% endif %}
 </div>
+
+<!-- ========== モーダル: 同月既存データのロード確認 ========== -->
+<div id="eval-modal-existing" class="eval-modal" hidden>
+    <div class="eval-modal-overlay" onclick="evalCloseModal('eval-modal-existing')"></div>
+    <div class="eval-modal-card">
+        <div class="eval-modal-header">
+            <div class="eval-modal-title">
+                <span class="material-symbols-outlined">history</span>
+                既存データあり
+            </div>
+            <button type="button" class="eval-modal-close" onclick="evalCloseModal('eval-modal-existing')">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="eval-modal-body">
+            <p style="margin-top:0;">
+                <strong id="eval-existing-month"></strong> の評価データが既に存在します。
+            </p>
+            <p style="font-size:0.85rem;color:#5f6368;">
+                読み込んで編集しますか?「キャンセル」を選ぶと、新規入力モードのまま続行します
+                (保存時に既存データが上書きされます)。
+            </p>
+        </div>
+        <div class="eval-modal-actions">
+            <button type="button" class="btn-cancel" onclick="evalCloseModal('eval-modal-existing')">
+                キャンセル
+            </button>
+            <button type="button" class="btn-primary" onclick="evalLoadExistingData()">
+                読み込む
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル: 利用者変更時の破棄確認 ========== -->
+<div id="eval-modal-discard" class="eval-modal" hidden>
+    <div class="eval-modal-overlay" onclick="evalCloseModal('eval-modal-discard')"></div>
+    <div class="eval-modal-card">
+        <div class="eval-modal-header">
+            <div class="eval-modal-title">
+                <span class="material-symbols-outlined">warning</span>
+                入力中の内容を破棄しますか?
+            </div>
+        </div>
+        <div class="eval-modal-body">
+            <p style="margin-top:0;">
+                利用者を変更すると、現在入力中の内容は失われます。
+            </p>
+            <p style="font-size:0.85rem;color:#5f6368;">
+                変更してよろしいですか?
+            </p>
+        </div>
+        <div class="eval-modal-actions">
+            <button type="button" class="btn-cancel" onclick="evalCloseModal('eval-modal-discard')">
+                キャンセル
+            </button>
+            <button type="button" class="btn-primary" onclick="evalConfirmDiscard()">
+                破棄して変更
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル: 過去評価の詳細表示(読み取り専用)========== -->
+<div id="eval-modal-detail" class="eval-modal" hidden>
+    <div class="eval-modal-overlay" onclick="evalCloseModal('eval-modal-detail')"></div>
+    <div class="eval-modal-card">
+        <div class="eval-modal-header">
+            <div class="eval-modal-title">
+                <span class="material-symbols-outlined">description</span>
+                <span id="eval-detail-title">評価の詳細</span>
+            </div>
+            <button type="button" class="eval-modal-close" onclick="evalCloseModal('eval-modal-detail')">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="eval-modal-body" id="eval-detail-body">
+            <!-- JS で動的生成 -->
+        </div>
+        <div class="eval-modal-actions">
+            <button type="button" class="btn-cancel" onclick="evalCloseModal('eval-modal-detail')">
+                閉じる
+            </button>
+            <button type="button" class="btn-success" onclick="evalEditFromDetail()">
+                <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">edit</span>
+                編集する
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- トースト -->
+<div id="eval-toast" class="eval-toast"></div>
+
 {% endblock %}
 
 {% block extra_script %}
 <script>
 (function(){
-window.switchTab = function(name) {
+// ============================================================================
+// 月次評価フォーム — JavaScript
+// Session 38 / Phase 2.B
+// ============================================================================
+
+'use strict';
+
+// ===========================================================================
+// グローバル状態
+// ===========================================================================
+const PATIENTS = JSON.parse(document.getElementById('eval-patients-data').textContent || '[]');
+
+let evalState = {
+    selectedPatient: null,    // {id, name, kana, chart, care_level}
+    currentEvalId: null,      // 編集中の評価 ID (null=新規)
+    careClass: '',            // '要介護' / '要支援' / '事業対象者'
+    pendingPatientId: null,   // 利用者変更の確認待ち
+    pendingExisting: null,    // 同月既存データの確認待ち
+    lockAcquired: false,      // 現在ロックを保持しているか
+    detailEval: null,         // 過去評価モーダルで開いてる評価データ
+};
+
+// ===========================================================================
+// タブ切替
+// ===========================================================================
+window.evalSwitchTab = function(name, event) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
-    event.currentTarget.classList.add('active');
-}
+    document.getElementById('eval-tab-' + name).classList.add('active');
+    if (event) event.currentTarget.classList.add('active');
 
-const isMobile = /iPhone|Android/i.test(navigator.userAgent);
-if (isMobile) {
-    document.getElementById('sp-input-area').style.display = 'block';
-    document.getElementById('pc-input-area').style.display = 'none';
-}
-
-let audioMode = 'solo';
-let currentAudioUrl = ''; // ★ 現在の音声URL保持
-
-window.selectAudioMode = function(mode) {
-    audioMode = mode;
-    ['mode-solo','mode-dialog'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.toggle('active', (id === 'mode-solo') === (mode === 'solo'));
-    });
-    ['sp-mode-solo','sp-mode-dialog'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.toggle('active', (id === 'sp-mode-solo') === (mode === 'solo'));
-    });
-}
-
-window.showAudioModeSelector = function(show) {
-    const el = document.getElementById('audio-mode-select');
-    if (el) el.style.display = show ? 'block' : 'none';
-}
-
-const ASSESS_PATIENTS = [...document.querySelectorAll('#patient-select option')].filter(o => o.value).map(o => ({
-    id: o.value, name: o.dataset.name, kana: o.dataset.kana, label: o.text,
-}));
-
-window.filterAssessmentPatients = function(q) {
-    const ql = q.trim().toLowerCase();
-    const qKata = q.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
-    const qHira = q.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
-    const cands = document.getElementById('patient-candidates-assess');
-    if (!ql) { cands.style.display = 'none'; return; }
-    const hits = ASSESS_PATIENTS.filter(p =>
-        p.name.toLowerCase().includes(ql) || p.kana.toLowerCase().includes(ql) ||
-        p.kana.includes(qKata) || p.kana.includes(qHira)
-    ).slice(0, 15);
-    if (!hits.length) {
-        cands.innerHTML = '<div style="padding:10px 14px;color:#80868b;font-size:0.85rem;">該当なし</div>';
-    } else {
-        cands.innerHTML = hits.map(p =>
-            `<div data-id="${p.id}" data-name="${p.name}"
-                style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;"
-                ontouchstart="this.style.background='#e8f0fe'" ontouchend="this.style.background=''">
-                ${p.label}
-            </div>`
-        ).join('');
-        cands.querySelectorAll('[data-id]').forEach(el => {
-            el.addEventListener('mousedown', e => { e.preventDefault(); selectAssessmentPatient(el.dataset.id, el.dataset.name); });
-            el.addEventListener('touchend', e => { e.preventDefault(); selectAssessmentPatient(el.dataset.id, el.dataset.name); });
-        });
+    if (name === 'history') {
+        evalLoadHistory();
     }
-    cands.style.display = 'block';
 };
 
-window.selectAssessmentPatient = function(id, name) {
-    const sel = document.getElementById('patient-select');
-    sel.value = id;
-    document.getElementById('patient-search-input').style.display = 'none';
-    const badge = document.getElementById('patient-selected-badge');
-    badge.style.display = 'flex';
-    document.getElementById('patient-selected-label').textContent = name;
-    document.getElementById('patient-candidates-assess').style.display = 'none';
-    onPatientSelect();
+// ===========================================================================
+// アコーディオン
+// ===========================================================================
+window.evalToggleSection = function(sectionId) {
+    document.getElementById(sectionId).classList.toggle('collapsed');
 };
 
-window.clearAssessmentPatient = function() {
-    document.getElementById('patient-select').value = '';
-    document.getElementById('patient-search-input').style.display = 'block';
-    document.getElementById('patient-search-input').value = '';
-    document.getElementById('patient-selected-badge').style.display = 'none';
-    document.getElementById('goal-section').style.display = 'none';
+// ===========================================================================
+// 利用者選択
+// ===========================================================================
+window.evalFilterPatients = function(q) {
+    const ql = (q || '').trim().toLowerCase();
+    const qKata = (q || '').trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    const qHira = (q || '').trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const cands = document.getElementById('eval-patient-candidates');
+
+    if (!ql) { cands.classList.remove('show'); cands.innerHTML = ''; return; }
+
+    const hits = PATIENTS.filter(p =>
+        p.name.toLowerCase().includes(ql)
+        || p.kana.toLowerCase().includes(ql)
+        || p.kana.includes(qKata) || p.kana.includes(qHira)
+        || (p.chart && p.chart.toString().includes(ql))
+    ).slice(0, 15);
+
+    if (!hits.length) {
+        cands.innerHTML = '<div class="eval-candidate-item" style="color:#80868b;">該当なし</div>';
+    } else {
+        // input.html と同じ方式: <div onclick> 直接、余計なイベントは付けない
+        cands.innerHTML = hits.map(p =>
+            `<div class="eval-candidate-item" onclick="evalTrySelectPatient(${p.id})">(No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})</div>`
+        ).join('');
+    }
+    cands.classList.add('show');
 };
 
-document.addEventListener('click', e => {
-    if (!e.target.closest('#patient-search-input') && !e.target.closest('#patient-candidates-assess')) {
-        const cands = document.getElementById('patient-candidates-assess');
-        if (cands) cands.style.display = 'none';
+// 利用者を選ぼうとする (既存入力がある場合は確認)
+window.evalTrySelectPatient = function(patientId) {
+    document.getElementById('eval-patient-candidates').classList.remove('show');
+
+    // 既に選択中で、内容が入力されている場合は確認モーダル
+    if (evalState.selectedPatient && evalState.selectedPatient.id !== patientId && evalHasInput()) {
+        evalState.pendingPatientId = patientId;
+        evalOpenModal('eval-modal-discard');
+        return;
+    }
+    evalDoSelectPatient(patientId);
+};
+
+window.evalConfirmDiscard = function() {
+    if (evalState.pendingPatientId) {
+        evalCloseModal('eval-modal-discard');
+        evalDoSelectPatient(evalState.pendingPatientId);
+        evalState.pendingPatientId = null;
+    }
+};
+
+async function evalDoSelectPatient(patientId) {
+    const p = PATIENTS.find(x => x.id === patientId);
+    if (!p) return;
+
+    // 既存ロックがあれば解放(別利用者選択 = 前の編集を放棄)
+    if (evalState.lockAcquired && evalState.currentEvalId) {
+        await evalReleaseLock();
+    }
+
+    evalState.selectedPatient = p;
+    evalState.currentEvalId = null;
+    evalState.lockAcquired = false;
+
+    // UI 反映: search wrap (虫眼鏡含む) と候補リスト両方を確実に閉じる
+    document.getElementById('eval-patient-search-wrap').style.display = 'none';
+    document.getElementById('eval-patient-candidates').classList.remove('show');
+    document.getElementById('eval-patient-candidates').innerHTML = '';
+    document.getElementById('eval-patient-badge').classList.add('show');
+    document.getElementById('eval-patient-name').textContent = `(No.${p.chart || '-'}) ${p.name} (${p.kana})`;
+    document.getElementById('eval-no-patient-hint').style.display = 'none';
+    document.getElementById('eval-form-body').style.display = '';
+    document.getElementById('eval-lock-alert').hidden = true;
+
+    // フォームをリセット
+    evalResetForm();
+
+    // 該当月の既存データ確認 + 初期値取得
+    await evalCheckExistingMonth();
+}
+
+window.evalClearPatient = async function() {
+    if (evalHasInput() && !confirm('入力中の内容を破棄しますか?')) return;
+    if (evalState.lockAcquired && evalState.currentEvalId) {
+        await evalReleaseLock();
+    }
+    evalState.selectedPatient = null;
+    evalState.currentEvalId = null;
+    evalState.lockAcquired = false;
+
+    document.getElementById('eval-patient-search-wrap').style.display = '';
+    document.getElementById('eval-patient-search-input').value = '';
+    document.getElementById('eval-patient-badge').classList.remove('show');
+    document.getElementById('eval-no-patient-hint').style.display = '';
+    document.getElementById('eval-form-body').style.display = 'none';
+    document.getElementById('eval-lock-alert').hidden = true;
+    evalResetForm();
+};
+
+// クリックで候補リスト閉じる (input.html と同じ: setTimeout 200ms 遅延)
+// 遅延させることで、候補の onclick が先に発火する余裕を与える (iPhone Safari 対策の核心)
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.eval-patient-search') && !e.target.closest('#eval-patient-candidates')) {
+        setTimeout(function() {
+            const cands = document.getElementById('eval-patient-candidates');
+            if (cands) cands.classList.remove('show');
+        }, 200);
     }
 });
 
-window.onPatientSelect = function() {
-    const sel = document.getElementById('patient-select');
-    const opt = sel.options[sel.selectedIndex];
-    const hint = document.getElementById('patient-hint');
-    const inputSec = document.getElementById('input-section');
-    const genBtn = document.getElementById('generate-btn');
-    if (!opt.value) {
-        document.getElementById('goal-section').style.display = 'none';
-        if (hint) hint.style.display = 'flex';
-        if (inputSec) inputSec.style.display = 'none';
-        if (genBtn) genBtn.style.display = 'none';
-        return;
+// ===========================================================================
+// 既存データ確認 + 初期値取得
+// ===========================================================================
+window.evalCheckExistingMonth = async function() {
+    if (!evalState.selectedPatient) return;
+
+    // 編集中で月を変えた場合、まずロック解放
+    if (evalState.lockAcquired && evalState.currentEvalId) {
+        await evalReleaseLock();
+        evalState.currentEvalId = null;
+        evalState.lockAcquired = false;
     }
-    document.getElementById('goal-section').style.display = 'block';
-    document.getElementById('training-goal').value = opt.dataset.goal || '';
-    if (hint) hint.style.display = 'none';
-    if (inputSec) inputSec.style.display = '';
-    if (genBtn) genBtn.style.display = '';
-}
 
-const audioExts = ['.mp3','.m4a','.wav','.aac','.ogg','.webm'];
-
-window.dragOver = function(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
-window.dragLeave = function(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
-window.dropFile = async function(e) {
-    e.preventDefault();
-    document.getElementById('drop-zone').classList.remove('dragover');
-    const file = e.dataTransfer.files[0];
-    if (file) { showAudioModeSelector(audioExts.some(ext => file.name.toLowerCase().endsWith(ext))); await readFile(file); }
-}
-window.handleFileSelect = async function(e) {
-    const file = e.target.files[0];
-    if (file) { showAudioModeSelector(audioExts.some(ext => file.name.toLowerCase().endsWith(ext))); await readFile(file); }
-}
-window.readFile = async function(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('audio_mode', audioMode);
-
-    const statusEl = document.getElementById('file-status') || document.getElementById('sp-file-status');
-    const nameEl   = document.getElementById('file-name')   || document.getElementById('sp-file-name');
-    if (statusEl) statusEl.style.display = 'block';
-    if (nameEl)   nameEl.textContent = `読み込み中: ${file.name}`;
+    const userName = evalState.selectedPatient.name;
+    const yearMonth = document.getElementById('eval-year-month').value;
+    if (!yearMonth) return;
 
     try {
-        const res = await fetch('/api/parse_assessment_file', { method: 'POST', body: formData });
+        const res = await fetch(`/api/get_patient_evaluation?user_name=${encodeURIComponent(userName)}&year_month=${encodeURIComponent(yearMonth)}`);
         const data = await res.json();
-        if (data.status === 'success') {
-            // ★ 音声URLを保持
-            currentAudioUrl = data.audio_url || '';
-            if (nameEl) nameEl.textContent = `✓ ${file.name} 読み込み完了`;
-            document.getElementById('achievement').value        = data.achievement || '';
-            document.getElementById('home-effort').value        = data.home_effort || '';
-            document.getElementById('training-progress').value  = data.training_progress || '';
-            document.getElementById('other-notes').value        = data.other_notes || '';
-            if (data.transcript) {
-                const ta = document.getElementById('voice-transcript');
-                if (ta) { ta.classList.add('show'); ta.textContent = data.transcript; }
-            }
-        } else {
-            if (nameEl) nameEl.textContent = `エラー: ${data.message || '読み込みに失敗しました'}`;
+
+        if (data.status !== 'success') {
+            console.warn('[eval] check existing failed:', data.message);
+            return;
         }
-    } catch(e) {
-        if (nameEl) nameEl.textContent = '読み込みに失敗しました';
-    }
-}
 
-let recognition = null; let isRecording = false; let fullTranscript = '';
-
-window.toggleVoice = function() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        alert('このブラウザは音声入力に対応していません。'); return;
-    }
-    isRecording ? stopVoice() : startVoice();
-}
-
-window.startVoice = function() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = 'ja-JP'; recognition.continuous = true; recognition.interimResults = true;
-    recognition.onresult = (e) => {
-        let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-            if (e.results[i].isFinal) fullTranscript += e.results[i][0].transcript;
-            else interim = e.results[i][0].transcript;
+        // 初期値セット(訓練目標、介護区分)
+        const initial = data.initial_values || {};
+        if (initial.training_goal && !document.getElementById('eval-training-goal').value) {
+            document.getElementById('eval-training-goal').value = initial.training_goal;
         }
-        const el = document.getElementById('voice-transcript');
-        el.classList.add('show'); el.textContent = fullTranscript + interim;
-    };
-    recognition.onend = () => { if (isRecording) recognition.start(); };
-    recognition.start(); isRecording = true;
-    document.getElementById('voice-btn').classList.add('recording');
-    document.getElementById('voice-btn-label').textContent = 'タップして停止';
-}
+        if (initial.care_classification && !evalState.careClass) {
+            evalSelectCareClass(initial.care_classification);
+        }
 
-window.stopVoice = function() {
-    if (recognition) recognition.stop(); isRecording = false;
-    document.getElementById('voice-btn').classList.remove('recording');
-    document.getElementById('voice-btn-label').textContent = 'タップして音声入力';
-    if (fullTranscript.trim()) document.getElementById('other-notes').value = fullTranscript.trim();
-}
+        // 既存データがあれば確認モーダル
+        if (data.evaluation) {
+            evalState.pendingExisting = data.evaluation;
+            document.getElementById('eval-existing-month').textContent = formatYearMonth(yearMonth);
+            evalOpenModal('eval-modal-existing');
+        }
 
-window.generateReport = async function() {
-    const patientSel = document.getElementById('patient-select');
-    if (!patientSel.value) { alert('利用者を選択してください'); return; }
-    const opt = patientSel.options[patientSel.selectedIndex];
-    const payload = {
-        patient_id: patientSel.value, patient_name: opt.dataset.name,
-        patient_kana: opt.dataset.kana, patient_birth: opt.dataset.birth,
-        disease_name: opt.dataset.disease, care_manager: opt.dataset.cm,
-        training_goal: document.getElementById('training-goal').value,
-        target_month: document.getElementById('target-month').value,
-        achievement: document.getElementById('achievement').value,
-        home_effort: document.getElementById('home-effort').value,
-        training_progress: document.getElementById('training-progress').value,
-        other_notes: document.getElementById('other-notes').value,
-        audio_url: currentAudioUrl, // ★ 音声URLも含める
-    };
-    if (!payload.achievement && !payload.home_effort && !payload.training_progress && !payload.other_notes) {
-        alert('聴取内容を入力してください'); return;
+        evalUpdateStatus();
+    } catch (e) {
+        console.error('[eval] check existing error:', e);
     }
-    document.getElementById('generate-btn').disabled = true;
-    document.getElementById('ai-loading').classList.add('show');
-    document.getElementById('report-preview').style.display = 'none';
+};
+
+window.evalLoadExistingData = async function() {
+    evalCloseModal('eval-modal-existing');
+    if (!evalState.pendingExisting) return;
+    const ev = evalState.pendingExisting;
+    evalState.pendingExisting = null;
+    evalFillForm(ev);
+
+    // ロック取得 (P4=A: ロード時にロック)
+    evalState.currentEvalId = ev.id;
+    await evalAcquireLock();
+};
+
+// ===========================================================================
+// 編集ロック
+// ===========================================================================
+async function evalAcquireLock() {
+    if (!evalState.currentEvalId) return;
     try {
-        const res = await fetch('/api/generate_assessment', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
+        const res = await fetch('/api/acquire_edit_lock', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({evaluation_id: evalState.currentEvalId}),
         });
         const data = await res.json();
-        if (data.status === 'success') showReport(payload, data);
-        else alert('生成に失敗しました: ' + (data.message || ''));
-    } catch(e) { alert('通信エラーが発生しました'); }
-    finally {
-        document.getElementById('generate-btn').disabled = false;
-        document.getElementById('ai-loading').classList.remove('show');
+        if (data.status === 'success') {
+            evalState.lockAcquired = true;
+            document.getElementById('eval-lock-alert').hidden = true;
+        } else if (data.status === 'conflict') {
+            evalState.lockAcquired = false;
+            evalShowLockAlert(data);
+        }
+    } catch (e) {
+        console.error('[eval] acquire lock error:', e);
     }
 }
 
-window.showReport = function(payload, data) {
-    const preview = document.getElementById('report-preview');
-    const monthStr = payload.target_month.replace('-', '年') + '月';
-    document.getElementById('rpt-meta').textContent = `${monthStr} ／ 作成日: ${new Date().toLocaleDateString('ja-JP')}`;
-    document.getElementById('rpt-patient-info').textContent =
-        `${payload.patient_name}（${payload.patient_kana}）　${payload.patient_birth}　疾患名：${payload.disease_name || '未入力'}　担当CM：${payload.care_manager || '未入力'}`;
-    document.getElementById('rpt-goal').textContent = payload.training_goal || '未入力';
-    document.getElementById('rpt-change').textContent = data.ai_change;
-    document.getElementById('rpt-challenge').textContent = data.ai_challenge;
-
-    // ★ 音声プレイヤーを表示
-    const audioUrl = payload.audio_url || currentAudioUrl || '';
-    const audioWrap = document.getElementById('rpt-audio-wrap');
-    const audioPlayer = document.getElementById('rpt-audio-player');
-    if (audioUrl) {
-        audioPlayer.src = audioUrl;
-        audioWrap.style.display = 'block';
-    } else {
-        audioWrap.style.display = 'none';
+async function evalReleaseLock() {
+    if (!evalState.currentEvalId) return;
+    try {
+        // Beacon API は離脱時のみ。通常時は通常の fetch
+        await fetch('/api/release_edit_lock', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({evaluation_id: evalState.currentEvalId}),
+        });
+    } catch (e) {
+        console.warn('[eval] release lock error:', e);
     }
-
-    window._reportPayload = payload;
-    window._reportData = data;
-    preview.style.display = 'block';
-    preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    evalState.lockAcquired = false;
 }
 
-window.saveAssessment = async function() {
-    if (!window._reportPayload) return;
-    const payload = {
-        ...window._reportPayload,
-        ai_change:    document.getElementById('rpt-change').innerText.trim(),
-        ai_challenge: document.getElementById('rpt-challenge').innerText.trim(),
-        audio_url:    currentAudioUrl,
-    };
-    const res = await fetch('/api/save_assessment', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
+function evalShowLockAlert(data) {
+    const alert = document.getElementById('eval-lock-alert');
+    document.getElementById('eval-lock-by').textContent = data.editing_by || '他職員';
+    const ageMin = Math.floor((data.lock_age_seconds || 0) / 60);
+    document.getElementById('eval-lock-age').textContent = ageMin === 0 ? '1 分以内' : `約 ${ageMin} 分`;
+    alert.hidden = false;
+}
+
+window.evalCancelEditFromLock = function() {
+    document.getElementById('eval-lock-alert').hidden = true;
+    evalClearPatient();
+};
+
+window.evalForceAcquireLock = async function() {
+    if (!confirm('他職員が編集中ですが、強制的にロックを取得して編集しますか?\n(相手の編集内容を上書きする可能性があります)')) return;
+    // 注意: 現在の悲観的ロックは「タイムアウトしたら自動解放」設計なので、
+    // 強制取得は別の API は用意していない。ここでは諦めて手動でリロードを促す。
+    showToast('現状は手動の強制取得はありません。最大 10 分でロックが自動解放されます。', 'error');
+};
+
+// ページ離脱時にロック解放(Beacon API)
+window.addEventListener('beforeunload', function() {
+    if (evalState.lockAcquired && evalState.currentEvalId) {
+        try {
+            navigator.sendBeacon(
+                '/api/release_edit_lock',
+                new Blob([JSON.stringify({evaluation_id: evalState.currentEvalId})], {type: 'application/json'})
+            );
+        } catch (e) {}
+    }
+});
+
+// ===========================================================================
+// 介護区分セレクタ
+// ===========================================================================
+window.evalSelectCareClass = function(value) {
+    evalState.careClass = value;
+    document.getElementById('eval-care-classification').value = value;
+
+    document.querySelectorAll('.eval-care-class-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === value);
     });
-    const data = await res.json();
-    if (data.status === 'success') alert('保存しました');
-    else alert('保存に失敗しました');
+
+    document.getElementById('eval-status-empty').style.display = 'none';
+    if (value === '要介護') {
+        document.getElementById('eval-status-kaigo').style.display = '';
+        document.getElementById('eval-status-simple').style.display = 'none';
+    } else if (value === '要支援' || value === '事業対象者') {
+        document.getElementById('eval-status-kaigo').style.display = 'none';
+        document.getElementById('eval-status-simple').style.display = '';
+    } else {
+        document.getElementById('eval-status-kaigo').style.display = 'none';
+        document.getElementById('eval-status-simple').style.display = 'none';
+        document.getElementById('eval-status-empty').style.display = '';
+    }
+    evalUpdateStatus();
+};
+
+// ===========================================================================
+// セグメントボタン (radio 代替)
+// ===========================================================================
+window.evalSelectSegment = function(hiddenId, value) {
+    document.getElementById(hiddenId).value = value;
+
+    // 親 .eval-segment 内の他のボタンの active を外す
+    const hidden = document.getElementById(hiddenId);
+    let segment = hidden.previousElementSibling;
+    while (segment && !segment.classList.contains('eval-segment')) {
+        segment = segment.previousElementSibling;
+    }
+    if (segment) {
+        segment.querySelectorAll('.eval-segment-btn').forEach(btn => {
+            btn.classList.remove('active', 'success', 'warn', 'danger');
+            if (btn.dataset.value === value) {
+                btn.classList.add('active');
+                if (value === '達成' || value === 'あり' || value === '○') btn.classList.add('success');
+                else if (value === '一部達成' || value === '△') btn.classList.add('warn');
+                else if (value === '未達成' || value === 'なし' || value === '×') btn.classList.add('danger');
+            }
+        });
+    }
+
+    // 新規希望 = あり の時は詳細欄を表示
+    if (hiddenId === 'eval-new-requests-exist') {
+        document.getElementById('eval-new-requests-detail-field').style.display =
+            (value === 'あり') ? '' : 'none';
+    }
+
+    evalUpdateStatus();
+};
+
+// ===========================================================================
+// フォーム入力の収集 / 復元 / リセット
+// ===========================================================================
+function evalCollectFormData() {
+    if (!evalState.selectedPatient) return null;
+
+    const data = {
+        user_name: evalState.selectedPatient.name,
+        year_month: document.getElementById('eval-year-month').value,
+        evaluator_name: document.getElementById('eval-evaluator-name').value.trim(),
+        care_classification: document.getElementById('eval-care-classification').value || null,
+        training_goal: document.getElementById('eval-training-goal').value.trim(),
+        weight_kg: document.getElementById('eval-weight-kg').value || null,
+        attendance_count: document.getElementById('eval-attendance-count').value || null,
+        attendance_target: document.getElementById('eval-attendance-target').value || null,
+        changes_by_training: document.getElementById('eval-changes').value.trim(),
+        issues_and_causes: document.getElementById('eval-issues').value.trim(),
+        special_notes: document.getElementById('eval-special-notes').value.trim(),
+        new_requests_exist: document.getElementById('eval-new-requests-exist').value || null,
+        new_requests_detail: document.getElementById('eval-new-requests-detail').value.trim(),
+        satisfaction: document.getElementById('eval-satisfaction').value || null,
+        service_appropriateness: document.getElementById('eval-service-appropriateness').value || null,
+    };
+
+    // 介護区分による分岐
+    if (data.care_classification === '要介護') {
+        data.short_goal_function_status = document.getElementById('eval-short-function').value || null;
+        data.short_goal_activity_status = document.getElementById('eval-short-activity').value || null;
+        data.short_goal_participation_status = document.getElementById('eval-short-participation').value || null;
+        data.long_goal_function_status = document.getElementById('eval-long-function').value || null;
+        data.long_goal_activity_status = document.getElementById('eval-long-activity').value || null;
+        data.long_goal_participation_status = document.getElementById('eval-long-participation').value || null;
+    } else if (data.care_classification === '要支援' || data.care_classification === '事業対象者') {
+        data.short_goal_status = document.getElementById('eval-short-goal-simple').value || null;
+        data.long_goal_status = document.getElementById('eval-long-goal-simple').value || null;
+    }
+    return data;
 }
 
-window.printReport = function() { window.print(); }
+function evalFillForm(ev) {
+    if (!ev) return;
+    document.getElementById('eval-year-month').value = ev.year_month || '';
+    document.getElementById('eval-evaluator-name').value = ev.evaluator_name || '';
+    document.getElementById('eval-training-goal').value = ev.training_goal || '';
+    document.getElementById('eval-weight-kg').value = ev.weight_kg ?? '';
+    document.getElementById('eval-attendance-count').value = ev.attendance_count ?? '';
+    document.getElementById('eval-attendance-target').value = ev.attendance_target ?? '';
+    document.getElementById('eval-changes').value = ev.changes_by_training || '';
+    document.getElementById('eval-issues').value = ev.issues_and_causes || '';
+    document.getElementById('eval-special-notes').value = ev.special_notes || '';
+    document.getElementById('eval-new-requests-detail').value = ev.new_requests_detail || '';
 
-window.loadAssessment = async function(id) {
-    const res = await fetch('/api/get_assessment?id=' + id);
-    const data = await res.json();
-    if (!data.data) return;
-    const a = data.data;
+    if (ev.care_classification) evalSelectCareClass(ev.care_classification);
+
+    // 各 segment を復元
+    [['eval-new-requests-exist', ev.new_requests_exist],
+     ['eval-satisfaction', ev.satisfaction],
+     ['eval-service-appropriateness', ev.service_appropriateness],
+     ['eval-short-function', ev.short_goal_function_status],
+     ['eval-short-activity', ev.short_goal_activity_status],
+     ['eval-short-participation', ev.short_goal_participation_status],
+     ['eval-long-function', ev.long_goal_function_status],
+     ['eval-long-activity', ev.long_goal_activity_status],
+     ['eval-long-participation', ev.long_goal_participation_status],
+     ['eval-short-goal-simple', ev.short_goal_status],
+     ['eval-long-goal-simple', ev.long_goal_status],
+    ].forEach(([id, val]) => {
+        if (val) evalSelectSegment(id, val);
+    });
+
+    evalUpdateStatus();
+}
+
+function evalResetForm() {
+    ['eval-training-goal', 'eval-weight-kg', 'eval-attendance-count', 'eval-attendance-target',
+     'eval-changes', 'eval-issues', 'eval-special-notes', 'eval-new-requests-detail'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    ['eval-new-requests-exist', 'eval-satisfaction', 'eval-service-appropriateness',
+     'eval-short-function', 'eval-short-activity', 'eval-short-participation',
+     'eval-long-function', 'eval-long-activity', 'eval-long-participation',
+     'eval-short-goal-simple', 'eval-long-goal-simple', 'eval-care-classification'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    document.querySelectorAll('.eval-segment-btn').forEach(b => b.classList.remove('active', 'success', 'warn', 'danger'));
+    document.querySelectorAll('.eval-care-class-btn').forEach(b => b.classList.remove('active'));
+
+    document.getElementById('eval-new-requests-detail-field').style.display = 'none';
+    document.getElementById('eval-status-kaigo').style.display = 'none';
+    document.getElementById('eval-status-simple').style.display = 'none';
+    document.getElementById('eval-status-empty').style.display = '';
+
+    evalState.careClass = '';
+    evalUpdateStatus();
+}
+
+function evalHasInput() {
+    return ['eval-training-goal', 'eval-changes', 'eval-issues', 'eval-special-notes',
+            'eval-new-requests-detail', 'eval-weight-kg', 'eval-attendance-count', 'eval-attendance-target'
+           ].some(id => {
+        const el = document.getElementById(id);
+        return el && el.value && el.value.trim() !== '';
+    }) || ['eval-care-classification', 'eval-satisfaction', 'eval-service-appropriateness',
+           'eval-new-requests-exist'].some(id => {
+        const el = document.getElementById(id);
+        return el && el.value;
+    });
+}
+
+// ===========================================================================
+// 完成状態判定 (3 色バッジ)
+// ===========================================================================
+function evalUpdateStatus() {
+    const data = evalCollectFormData();
+    if (!data) return;
+
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const missingRequired = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));
+
+    // セクションごとのバッジ更新
+    evalUpdateSectionBadges(data);
+
+    // 全体ステータス
+    const statusLine = document.getElementById('eval-status-summary');
+    const btn = document.getElementById('eval-save-btn');
+    if (missingRequired.length > 0) {
+        statusLine.innerHTML = `<span style="color:#ea4335;">⚠ 必須項目が ${missingRequired.length} 個未入力です</span>`;
+        btn.style.opacity = '0.7';
+    } else {
+        statusLine.innerHTML = `<span style="color:#137333;">✓ 必須項目入力済み — 保存できます</span>`;
+        btn.style.opacity = '1';
+    }
+}
+
+function evalUpdateSectionBadges(data) {
+    // 訓練目標
+    const goalBadge = document.getElementById('eval-badge-goal');
+    if (data.training_goal && data.training_goal.trim()) {
+        goalBadge.className = 'eval-section-badge filled';
+        goalBadge.textContent = '入力済';
+    } else {
+        goalBadge.className = 'eval-section-badge required';
+        goalBadge.textContent = '必須';
+    }
+
+    // 計測値 (n/3)
+    const measureBadge = document.getElementById('eval-badge-measure');
+    const measureCount = [data.weight_kg, data.attendance_count, data.attendance_target].filter(v => v !== null && v !== '').length;
+    measureBadge.textContent = `${measureCount}/3`;
+    measureBadge.className = measureCount === 3 ? 'eval-section-badge filled' : 'eval-section-badge';
+
+    // 介護区分 + 達成状況 (必須: 介護区分のみ)
+    const statusBadge = document.getElementById('eval-badge-status');
+    if (data.care_classification) {
+        statusBadge.className = 'eval-section-badge filled';
+        statusBadge.textContent = '入力済';
+    } else {
+        statusBadge.className = 'eval-section-badge required';
+        statusBadge.textContent = '必須';
+    }
+
+    // 記録と課題 (n/3)
+    const notesBadge = document.getElementById('eval-badge-notes');
+    const notesCount = [data.changes_by_training, data.issues_and_causes, data.special_notes]
+        .filter(v => v && v.trim && v.trim()).length;
+    notesBadge.textContent = `${notesCount}/3`;
+    notesBadge.className = notesCount === 3 ? 'eval-section-badge filled' : 'eval-section-badge';
+
+    // モニタリング (n/3)
+    const monBadge = document.getElementById('eval-badge-monitor');
+    const monCount = [data.new_requests_exist, data.satisfaction, data.service_appropriateness].filter(v => v).length;
+    monBadge.textContent = `${monCount}/3`;
+    monBadge.className = monCount === 3 ? 'eval-section-badge filled' : 'eval-section-badge';
+}
+
+// ===========================================================================
+// 保存
+// ===========================================================================
+window.evalSave = async function() {
+    const data = evalCollectFormData();
+    if (!data) return;
+
+    // 必須チェック
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const labels = {user_name: '利用者', year_month: '対象月', care_classification: '介護区分',
+                    evaluator_name: '評価者', training_goal: '訓練目標'};
+    const missing = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));
+    if (missing.length > 0) {
+        showToast(`必須項目を入力してください: ${missing.map(k => labels[k]).join('、')}`, 'error');
+        return;
+    }
+
+    // 新規希望「あり」で詳細空 → 確認ダイアログ
+    if (data.new_requests_exist === 'あり' && (!data.new_requests_detail || !data.new_requests_detail.trim())) {
+        if (!confirm('新規希望「あり」を選択しましたが、詳細欄が空です。このまま保存しますか?')) return;
+    }
+
+    const btn = document.getElementById('eval-save-btn');
+    const label = document.getElementById('eval-save-btn-label');
+    btn.disabled = true;
+    label.textContent = '保存中…';
+
+    try {
+        const res = await fetch('/api/save_patient_evaluation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        const result = await res.json();
+
+        if (result.status === 'success') {
+            const modeMsg = result.mode === 'insert' ? '保存しました' : '更新しました';
+            showToast(modeMsg, 'success');
+            evalState.lockAcquired = false;
+            evalState.currentEvalId = null;
+            // フォームをリセット + 利用者選択も解除
+            evalState.selectedPatient = null;
+            document.getElementById('eval-patient-search-input').style.display = '';
+            document.getElementById('eval-patient-search-input').value = '';
+            document.getElementById('eval-patient-badge').classList.remove('show');
+            document.getElementById('eval-no-patient-hint').style.display = '';
+            document.getElementById('eval-form-body').style.display = 'none';
+            evalResetForm();
+        } else if (result.conflict) {
+            showToast(result.message || '他職員が編集中です', 'error');
+        } else {
+            showToast(result.message || '保存に失敗しました', 'error');
+        }
+    } catch (e) {
+        console.error('[eval] save error:', e);
+        showToast('通信エラーが発生しました', 'error');
+    } finally {
+        btn.disabled = false;
+        label.textContent = '保存する';
+    }
+};
+
+// ===========================================================================
+// 過去評価タブ
+// ===========================================================================
+window.evalToggleFilter = function() {
+    document.getElementById('eval-filter-bar').classList.toggle('collapsed');
+};
+
+window.evalLoadHistory = async function() {
+    const listEl = document.getElementById('eval-history-list');
+    listEl.innerHTML = '<div class="eval-loading"><span class="material-symbols-outlined">sync</span>読み込み中…</div>';
+
+    const params = new URLSearchParams();
+    const user = document.getElementById('eval-filter-user').value.trim();
+    const from = document.getElementById('eval-filter-from').value;
+    const to = document.getElementById('eval-filter-to').value;
+    const sort = document.getElementById('eval-filter-sort').value;
+    const statusF = document.getElementById('eval-filter-status').value;
+
+    if (user) params.set('user_name', user);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (sort) params.set('sort', sort);
+    if (statusF) params.set('status_filter', statusF);
+
+    try {
+        const res = await fetch('/api/get_patient_evaluations?' + params.toString());
+        const data = await res.json();
+
+        if (data.status !== 'success' || !data.evaluations || data.evaluations.length === 0) {
+            listEl.innerHTML = `
+                <div class="eval-empty">
+                    <span class="material-symbols-outlined">inbox</span>
+                    該当する評価はありません
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = data.evaluations.map(ev => {
+            const s = ev._status || {color: 'red', label: '?'};
+            return `
+                <div class="eval-card" data-eval-id="${ev.id}"
+                     onclick="evalShowDetail(${ev.id})">
+                    <div class="eval-card-header">
+                        <div class="eval-card-name">${escapeHtml(ev.user_name)}</div>
+                        <div class="eval-card-month">${escapeHtml(formatYearMonth(ev.year_month))}</div>
+                    </div>
+                    <div class="eval-card-status-row">
+                        <span class="eval-status-pill ${s.color}">
+                            <span class="material-symbols-outlined">
+                                ${s.color === 'green' ? 'check_circle' : (s.color === 'orange' ? 'incomplete_circle' : 'error')}
+                            </span>
+                            ${s.label}
+                        </span>
+                        <span>${escapeHtml(ev.care_classification || '-')}</span>
+                        <span style="margin-left:auto;">${escapeHtml(ev.evaluator_name || '')}</span>
+                    </div>
+                </div>`;
+        }).join('');
+
+        // 評価データを保持(モーダル表示用)
+        window._evalHistoryCache = data.evaluations;
+    } catch (e) {
+        console.error('[eval] history load error:', e);
+        listEl.innerHTML = `<div class="eval-empty">読み込みに失敗しました</div>`;
+    }
+};
+
+window.evalShowDetail = function(evalId) {
+    const cache = window._evalHistoryCache || [];
+    const ev = cache.find(x => x.id === evalId);
+    if (!ev) return;
+    evalState.detailEval = ev;
+
+    document.getElementById('eval-detail-title').textContent =
+        `${ev.user_name} / ${formatYearMonth(ev.year_month)}`;
+
+    const body = document.getElementById('eval-detail-body');
+    body.innerHTML = evalRenderDetail(ev);
+    evalOpenModal('eval-modal-detail');
+};
+
+function evalRenderDetail(ev) {
+    const s = ev._status || {};
+    let html = '';
+
+    html += detailRow('完成状態', `<span class="eval-status-pill ${s.color}">${s.label}</span>`);
+    html += detailRow('介護区分', ev.care_classification);
+    html += detailRow('評価者', ev.evaluator_name);
+    html += detailRow('訓練目標', ev.training_goal);
+
+    html += '<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
+    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">📏 計測値</div>`;
+    html += detailRow('体重', ev.weight_kg !== null && ev.weight_kg !== undefined ? `${ev.weight_kg} kg` : '');
+    html += detailRow('出席回数 / 目標', `${ev.attendance_count ?? '-'} / ${ev.attendance_target ?? '-'} 日`);
+
+    html += '<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
+    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">✅ 目標達成状況</div>`;
+    if (ev.care_classification === '要介護') {
+        html += detailRow('短期 心身機能', ev.short_goal_function_status);
+        html += detailRow('短期 活動', ev.short_goal_activity_status);
+        html += detailRow('短期 参加', ev.short_goal_participation_status);
+        html += detailRow('長期 心身機能', ev.long_goal_function_status);
+        html += detailRow('長期 活動', ev.long_goal_activity_status);
+        html += detailRow('長期 参加', ev.long_goal_participation_status);
+    } else {
+        html += detailRow('短期目標', ev.short_goal_status);
+        html += detailRow('長期目標', ev.long_goal_status);
+    }
+
+    html += '<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
+    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">📝 記録と課題</div>`;
+    html += detailRow('訓練による変化', ev.changes_by_training);
+    html += detailRow('課題とその要因', ev.issues_and_causes);
+    html += detailRow('特記事項', ev.special_notes);
+
+    html += '<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
+    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">👁 モニタリング</div>`;
+    html += detailRow('新規希望', ev.new_requests_exist);
+    if (ev.new_requests_exist === 'あり') {
+        html += detailRow('希望の詳細', ev.new_requests_detail);
+    }
+    html += detailRow('満足度', ev.satisfaction);
+    html += detailRow('サービス適切性', ev.service_appropriateness);
+
+    return html;
+}
+
+function detailRow(label, value) {
+    const empty = !value || value === '';
+    return `
+        <div class="eval-detail-row">
+            <div class="eval-detail-label">${escapeHtml(label)}</div>
+            <div class="eval-detail-value ${empty ? 'empty' : ''}">${empty ? '(未入力)' : escapeHtml(String(value))}</div>
+        </div>`;
+}
+
+window.evalEditFromDetail = async function() {
+    const ev = evalState.detailEval;
+    if (!ev) return;
+    evalCloseModal('eval-modal-detail');
+
+    // 利用者を探して選択
+    const patient = PATIENTS.find(p => p.name === ev.user_name);
+    if (!patient) {
+        showToast('該当の利用者が見つかりません', 'error');
+        return;
+    }
+
+    // 新規評価タブに切替
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-input').classList.add('active');
-    document.querySelector('.tab-item').classList.add('active');
-    document.getElementById('target-month').value = a.target_month || '';
-    document.getElementById('training-goal').value = a.training_goal || '';
-    document.getElementById('achievement').value = a.achievement || '';
-    document.getElementById('home-effort').value = a.home_effort || '';
-    document.getElementById('training-progress').value = a.training_progress || '';
-    document.getElementById('other-notes').value = a.other_notes || '';
-    const sel = document.getElementById('patient-select');
-    for (let opt of sel.options) {
-        if (opt.dataset.name === a.user_name) { sel.value = opt.value; break; }
-    }
-    document.getElementById('goal-section').style.display = 'block';
-    // ★ 過去評価の音声URLを復元
-    currentAudioUrl = a.audio_url || '';
-    showReport(
-        { patient_name: a.user_name, patient_kana: '', patient_birth: '', disease_name: '', care_manager: '',
-          training_goal: a.training_goal || '', target_month: a.target_month, audio_url: currentAudioUrl },
-        { ai_change: a.ai_change || '', ai_challenge: a.ai_challenge || '' }
-    );
+    document.getElementById('eval-tab-input').classList.add('active');
+    document.querySelectorAll('.tab-item')[0].classList.add('active');
+
+    // 利用者選択 (確認なしで進める、過去評価の編集なので)
+    evalState.selectedPatient = patient;
+    evalState.currentEvalId = ev.id;
+    evalState.lockAcquired = false;
+
+    document.getElementById('eval-patient-search-wrap').style.display = 'none';
+    document.getElementById('eval-patient-candidates').classList.remove('show');
+    document.getElementById('eval-patient-badge').classList.add('show');
+    document.getElementById('eval-patient-name').textContent = `(No.${patient.chart || '-'}) ${patient.name} (${patient.kana})`;
+    document.getElementById('eval-no-patient-hint').style.display = 'none';
+    document.getElementById('eval-form-body').style.display = '';
+    document.getElementById('eval-lock-alert').hidden = true;
+
+    evalResetForm();
+    evalFillForm(ev);
+    await evalAcquireLock();
+};
+
+// ===========================================================================
+// モーダル操作
+// ===========================================================================
+function evalOpenModal(id) {
+    document.getElementById(id).hidden = false;
 }
+window.evalCloseModal = function(id) {
+    document.getElementById(id).hidden = true;
+};
+
+// ===========================================================================
+// トースト
+// ===========================================================================
+function showToast(msg, type) {
+    const toast = document.getElementById('eval-toast');
+    toast.className = 'eval-toast ' + (type || '') + ' show';
+    const icon = type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info');
+    toast.innerHTML = `<span class="material-symbols-outlined">${icon}</span>${escapeHtml(msg)}`;
+    setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+// ===========================================================================
+// ユーティリティ
+// ===========================================================================
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+function formatYearMonth(ym) {
+    if (!ym) return '';
+    const m = ym.match(/^(\d{4})-(\d{2})$/);
+    return m ? `${m[1]}年${parseInt(m[2], 10)}月` : ym;
+}
+
+// ===========================================================================
+// 初期化
+// ===========================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    evalUpdateStatus();
+});
+// 既に DOMContentLoaded 後でも安全に動くよう即時実行
+if (document.readyState !== 'loading') {
+    evalUpdateStatus();
+}
+
 })();
 </script>
 {% endblock %}

@@ -1,6 +1,15 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, current_app
 from supabase import create_client
 from utils import classify_category, generate_search_tags
+from evaluation_helper import (
+    get_initial_training_goal,
+    get_initial_care_classification,
+    acquire_edit_lock,
+    release_edit_lock,
+    evaluation_status,
+    upsert_patient_evaluation,
+    fetch_patient_evaluations,
+)
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
 import uuid
@@ -2954,224 +2963,211 @@ def api_calendar_events():
 @app.route('/assessment')
 @login_required
 def assessment():
+    """月次評価画面 (Session 38 Phase 2.B で全面刷新)
+
+    旧: 自由文 6 個 + AI 生成 (assessments テーブル)
+    新: 22 項目構造化フォーム + 過去評価フィルタ (patient_evaluations テーブル)
+    """
     f_code = session["f_code"]
+    my_name = session.get("my_name", "")
     supabase = get_supabase()
     patients = get_patients(supabase, f_code)
-    # patientsにdisease_name/care_manager/training_goalを追加
+
+    # patients に care_level を追加(介護区分の初期値用)
     try:
-        res = supabase.table("patients").select("id,disease_name,care_manager,training_goal").eq("facility_code", f_code).execute()
+        res = supabase.table("patients").select("id, care_level").eq("facility_code", f_code).execute()
         extra = {r["id"]: r for r in (res.data or [])}
         for p in patients:
             e = extra.get(p["id"], {})
-            p["disease_name"] = e.get("disease_name") or ""
-            p["care_manager"]  = e.get("care_manager") or ""
-            p["training_goal"] = e.get("training_goal") or ""
-    except:
+            p["care_level"] = e.get("care_level") or ""
+    except Exception:
         for p in patients:
-            p["disease_name"] = p["care_manager"] = p["training_goal"] = ""
-    # 過去評価一覧
-    assessments = []
-    try:
-        a_res = supabase.table("assessments").select("id,user_name,target_month,ai_change").eq("facility_code", f_code).order("target_month", desc=True).limit(50).execute()
-        assessments = a_res.data or []
-    except:
-        pass
+            p["care_level"] = ""
+
     this_month = datetime.now(tokyo_tz).strftime("%Y-%m")
-    return render("assessment.html", patients=patients, assessments=assessments, this_month=this_month)
+    return render(
+        "assessment.html",
+        patients=patients,
+        this_month=this_month,
+        current_user=my_name,
+    )
 
-@app.route('/api/generate_assessment', methods=['POST'])
+
+@app.route('/api/save_patient_evaluation', methods=['POST'])
 @login_required
-def api_generate_assessment():
+def api_save_patient_evaluation():
+    """評価データの UPSERT (新規 or 更新を自動判定)"""
     try:
-        from utils import get_generative_model, upload_audio_to_supabase
-        data = request.json
-        name       = data.get("patient_name", "")
-        birth      = data.get("patient_birth", "")
-        disease    = data.get("disease_name", "未記載")
-        goal       = data.get("training_goal", "未記載")
-        month      = data.get("target_month", "")
-        achievement       = data.get("achievement", "")
-        home_effort       = data.get("home_effort", "")
-        training_progress = data.get("training_progress", "")
-        other_notes       = data.get("other_notes", "")
-
-        prompt = f"""あなたは通所介護事業所の機能訓練指導員です。
-以下の情報をもとに、ケアマネジャーへ提出する「個別機能訓練 月次評価報告書」の2項目を作成してください。
-
-【利用者情報】
-氏名: {name}　生年月日: {birth}　疾患名: {disease}
-訓練目標: {goal}
-対象月: {month}
-
-【今月の状況】
-・訓練達成度: {achievement or '（記載なし）'}
-・自宅での取り組み: {home_effort or '（記載なし）'}
-・デイでの訓練進捗: {training_progress or '（記載なし）'}
-・その他・気づき: {other_notes or '（記載なし）'}
-
-【作成ルール】
-・機能訓練指導員としての専門的立場から、客観的事実に基づいて記述する
-・ICFの視点（①心身機能・身体構造、②活動、③参加）を意識して記述する
-・情報の虚偽・誇張・憶測は一切行わない。記載のない情報は補完しない
-・ケアマネジャーが読みやすい「です・ます調」の報告書口調で記述する
-・専門用語は使いつつも簡潔に。1項目あたり3〜4文、100〜150字程度
-・箇条書きは使わず、流れのある文章で書く
-
-【個別機能訓練実施による変化】
-（今月の訓練を通じて確認できた心身機能・ADL・意欲等の変化を、機能訓練指導員の視点から記述）
-
-【個別機能訓練実施における課題とその要因】
-（現在残存する課題、その背景となる要因、今後の訓練方針を記述）
-
-回答はJSON形式のみで返してください（説明文・コードブロック不要）：
-{{"ai_change": "変化の文章", "ai_challenge": "課題の文章"}}"""
-
-        model = get_generative_model()
-        resp = model.generate_content([prompt])
-        text = resp.text.strip()
-        # JSON抽出
-        import re as _re
-        m = _re.search(r'\{.*\}', text, _re.DOTALL)
-        if m:
-            import json as _json
-            result = _json.loads(m.group())
-            return jsonify({"status": "success", "ai_change": result.get("ai_change",""), "ai_challenge": result.get("ai_challenge","")})
-        # フォールバック：テキストをそのまま返す
-        return jsonify({"status": "success", "ai_change": text, "ai_challenge": ""})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/save_assessment', methods=['POST'])
-@login_required
-def api_save_assessment():
-    try:
-        data = request.json
+        data = request.json or {}
         f_code = session["f_code"]
-        my_name = session["my_name"]
+        my_name = session.get("my_name", "")
+        data["facility_code"] = f_code  # クライアント指定は無視 (セキュリティ)
+
         supabase = get_supabase()
-        supabase.table("assessments").insert({
-            "facility_code":    f_code,
-            "patient_id":       data.get("patient_id") or None,
-            "user_name":        data.get("patient_name",""),
-            "target_month":     data.get("target_month",""),
-            "achievement":      data.get("achievement",""),
-            "home_effort":      data.get("home_effort",""),
-            "training_progress":data.get("training_progress",""),
-            "other_notes":      data.get("other_notes",""),
-            "ai_change":        data.get("ai_change",""),
-            "ai_challenge":     data.get("ai_challenge",""),
-            "audio_url":          data.get("audio_url",""),
-            "created_by":       my_name,
-        }).execute()
-        # 訓練目標をpatientsに保存
-        if data.get("patient_id") and data.get("training_goal"):
-            supabase.table("patients").update({"training_goal": data["training_goal"]}).eq("id", data["patient_id"]).execute()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        result = upsert_patient_evaluation(supabase, data, my_name)
 
-@app.route('/api/get_assessment')
-@login_required
-def api_get_assessment():
-    try:
-        f_code = session["f_code"]
-        supabase = get_supabase()
-        res = supabase.table("assessments").select("*").eq("id", request.args.get("id")).eq("facility_code", f_code).execute()
-        return jsonify({"data": res.data[0] if res.data else None})
-    except Exception as e:
-        return jsonify({"data": None}), 500
-
-@app.route('/api/parse_assessment_file', methods=['POST'])
-@login_required
-def api_parse_assessment_file():
-    """PC/スマホ用：アップロードファイル（テキスト・PDF・音声）をGeminiで解析"""
-    try:
-        from utils import get_generative_model, upload_audio_to_supabase
-        file = request.files.get('file')
-        if not file:
-            return jsonify({"status": "error", "message": "ファイルなし"})
-        filename = file.filename.lower()
-        file_bytes = file.read()
-        audio_mode = request.form.get('audio_mode', 'solo')  # solo or dialog
-
-        # MIMEタイプ判定
-        audio_exts = ('.mp3', '.m4a', '.wav', '.aac', '.ogg', '.webm')
-        is_audio = any(filename.endswith(ext) for ext in audio_exts)
-        is_pdf   = filename.endswith('.pdf')
-
-        json_schema = """{
-  "transcript": "文字起こし全文",
-  "achievement": "今月の訓練達成度に関する内容",
-  "home_effort": "自宅での取り組みに関する内容",
-  "training_progress": "デイでの訓練進捗に関する内容",
-  "other_notes": "その他・気づき・本人の様子など"
-}"""
-
-        if is_audio:
-            ext_mime = {
-                '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
-                '.wav': 'audio/wav',  '.aac': 'audio/aac',
-                '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
-            }
-            mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/mpeg')
-
-            if audio_mode == 'dialog':
-                prompt = f"""これはデイサービスのスタッフと利用者の対話録音です。
-会話を正確に文字起こしし、スタッフの発言・利用者の返答から
-介護評価に必要な情報を読み取って以下の4項目に整理してください。
-利用者本人の言葉や様子も積極的に反映してください。
-該当する情報がない項目は空文字にしてください。
-JSON形式のみで返してください（説明文不要）：
-
-{json_schema}"""
-            else:
-                prompt = f"""これはデイサービスの介護スタッフが利用者の状況について自分一人で話したメモ録音です。
-スタッフの独り言・口述メモとして内容を正確に文字起こしし、
-介護評価の観点から以下の4項目に分類・整理してください。
-該当する情報がない項目は空文字にしてください。
-JSON形式のみで返してください（説明文不要）：
-
-{json_schema}"""
-
-            model = get_generative_model()
-            resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
-
-        elif is_pdf:
-            prompt = f"""以下のPDF文書から介護記録・評価に関する情報を読み取り、JSON形式のみで返してください。
-
-{json_schema}"""
-            model = get_generative_model()
-            resp = model.generate_content([{"mime_type": "application/pdf", "data": file_bytes}, prompt])
-
+        if result.get("success"):
+            return jsonify({
+                "status": "success",
+                "id": result.get("id"),
+                "mode": result.get("mode"),
+            })
         else:
-            text = file_bytes.decode('utf-8', errors='ignore')
-            prompt = f"""以下のテキストから介護評価に関する情報を整理し、JSON形式のみで返してください。
+            status_code = 409 if result.get("conflict") else 400
+            return jsonify({
+                "status": "error",
+                "message": result.get("error", "保存に失敗しました"),
+                "conflict": result.get("conflict", False),
+                "editing_by": result.get("editing_by", ""),
+            }), status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-{text}
 
-{json_schema}"""
-            model = get_generative_model()
-            resp = model.generate_content([prompt])
+@app.route('/api/get_patient_evaluations')
+@login_required
+def api_get_patient_evaluations():
+    """過去評価の一覧取得 (過去の評価タブ用、フィルタ + ソート対応)"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
 
-        audio_url = ""
-        if is_audio:
-            try:
-                supabase_s = get_supabase()
-                audio_url = upload_audio_to_supabase(supabase_s, file_bytes, filename, session.get("f_code","unknown"))
-            except Exception as _ae:
-                print(f"音声保存エラー: {_ae}")
-        import re as _re, json as _json
-        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
-        if m:
-            result = _json.loads(m.group())
-            return jsonify({"status": "success", "is_audio": is_audio, "audio_mode": audio_mode, "audio_url": audio_url, **result})
+        user_name = (request.args.get("user_name") or "").strip() or None
+        ym_from = (request.args.get("from") or "").strip() or None
+        ym_to = (request.args.get("to") or "").strip() or None
+        sort_by = request.args.get("sort") or "year_month_desc"
+        status_filter = request.args.get("status_filter") or "all"
+
+        try:
+            limit = int(request.args.get("limit") or 100)
+            limit = max(1, min(500, limit))
+        except ValueError:
+            limit = 100
+
+        records = fetch_patient_evaluations(
+            supabase, f_code,
+            user_name=user_name,
+            year_month_from=ym_from,
+            year_month_to=ym_to,
+            sort_by=sort_by,
+            limit=limit,
+        )
+
+        if status_filter == "complete":
+            records = [r for r in records if r["_status"]["color"] == "green"]
+        elif status_filter == "partial":
+            records = [r for r in records if r["_status"]["color"] == "orange"]
+        elif status_filter == "incomplete":
+            records = [r for r in records if r["_status"]["color"] == "red"]
+
         return jsonify({
-            "status": "success", "is_audio": is_audio, "audio_mode": audio_mode,
-            "transcript": resp.text, "achievement": "",
-            "home_effort": "", "training_progress": "", "other_notes": resp.text, "audio_url": audio_url
+            "status": "success",
+            "evaluations": records,
+            "total": len(records),
         })
     except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "evaluations": [], "total": 0}), 500
+
+
+@app.route('/api/get_patient_evaluation')
+@login_required
+def api_get_patient_evaluation():
+    """特定月の評価レコードを取得 (同月既存チェック + 自動ロード用)"""
+    try:
+        f_code = session["f_code"]
+        user_name = (request.args.get("user_name") or "").strip()
+        year_month = (request.args.get("year_month") or "").strip()
+
+        if not user_name or not year_month:
+            return jsonify({
+                "status": "error",
+                "message": "user_name と year_month が必要です"
+            }), 400
+
+        supabase = get_supabase()
+
+        res = supabase.table("patient_evaluations") \
+            .select("*") \
+            .eq("facility_code", f_code) \
+            .eq("user_name", user_name) \
+            .eq("year_month", year_month) \
+            .limit(1) \
+            .execute()
+
+        evaluation = (res.data or [None])[0]
+        if evaluation:
+            evaluation["_status"] = evaluation_status(evaluation)
+
+        initial_values = {
+            "training_goal": get_initial_training_goal(supabase, f_code, user_name, year_month),
+            "care_classification": get_initial_care_classification(supabase, f_code, user_name, year_month),
+        }
+
+        return jsonify({
+            "status": "success",
+            "evaluation": evaluation,
+            "initial_values": initial_values,
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error", "message": str(e),
+            "evaluation": None, "initial_values": {"training_goal": "", "care_classification": ""}
+        }), 500
+
+
+@app.route('/api/acquire_edit_lock', methods=['POST'])
+@login_required
+def api_acquire_edit_lock():
+    """編集ロックを取得 (悲観的ロック、10 分タイムアウト)"""
+    try:
+        data = request.json or {}
+        evaluation_id = data.get("evaluation_id")
+        if not evaluation_id:
+            return jsonify({"status": "error", "message": "evaluation_id が必要です"}), 400
+
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        result = acquire_edit_lock(supabase, evaluation_id, my_name)
+
+        if result.get("success"):
+            return jsonify({"status": "success"})
+        else:
+            return jsonify({
+                "status": "conflict",
+                "editing_by": result.get("editing_by", ""),
+                "editing_started_at": result.get("editing_started_at", ""),
+                "lock_age_seconds": result.get("lock_age_seconds", 0),
+                "error": result.get("error", ""),
+            }), 409
+    except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/release_edit_lock', methods=['POST'])
+@login_required
+def api_release_edit_lock():
+    """編集ロックを解放 (保存完了 or キャンセル時、Beacon API 対応)"""
+    try:
+        if request.is_json:
+            data = request.json or {}
+        else:
+            try:
+                import json as _json
+                data = _json.loads(request.get_data(as_text=True) or "{}")
+            except Exception:
+                data = {}
+
+        evaluation_id = data.get("evaluation_id")
+        if not evaluation_id:
+            return jsonify({"status": "success"})
+
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        release_edit_lock(supabase, evaluation_id, my_name)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "success", "warning": str(e)})
+
 
 @app.route('/numerology')
 @login_required
