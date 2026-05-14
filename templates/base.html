@@ -955,8 +955,10 @@ async function checkUnreadMessages() {
 
 // ログイン済みのときだけポーリング開始
 {% if session.get('f_code') %}
-// 初回チェック
-setTimeout(checkUnreadMessages, 2000);
+// 初回チェック(Session 42: 2000ms→200msに短縮。ページ遷移のたびにバッジが
+//  約2秒消えてから表示されていたため。完全な0msではなく、初期描画と
+//  API取得2本の競合を避けるため最小限の200msは残す)
+setTimeout(checkUnreadMessages, 200);
 // 30秒ごとにチェック
 chatPollingTimer = setInterval(checkUnreadMessages, 30000);
 // Session 32: チャット画面を開いたら即座にバッジをクリア(掲示板は対象外。掲示板は確認済みボタンで個別にカウント減少)
