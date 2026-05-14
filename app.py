@@ -2520,12 +2520,23 @@ def api_add_today_patient():
         if patient_id:
             patient_id = str(patient_id)
             # 既存利用者: visit_daysに該当曜日を追記
-            existing = supabase.table("patient_visit_days").select("id,weekdays,user_name").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
+            existing = supabase.table("patient_visit_days").select("id,weekdays,user_name,ampm_per_day").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
             if existing.data:
                 old_days = existing.data[0].get("weekdays") or ""
                 if weekday_num not in old_days:
                     new_days = old_days + weekday_num
-                    supabase.table("patient_visit_days").update({"weekdays": new_days}).eq("id", existing.data[0]["id"]).execute()
+                    # weekdays だけでなく ampm_per_day(曜日ごとのAM/PM/ALL)も更新する。
+                    # renderPatientList(vitals.html)は ampm_per_day を見て表示を絞るため、
+                    # ここで当該曜日キーを入れないと「追加したのに一覧に出ない」状態になる。
+                    apd = existing.data[0].get("ampm_per_day")
+                    if not isinstance(apd, dict):
+                        apd = {}
+                    if weekday_num not in apd:
+                        apd[weekday_num] = "ALL"
+                    supabase.table("patient_visit_days").update({
+                        "weekdays": new_days,
+                        "ampm_per_day": apd,
+                    }).eq("id", existing.data[0]["id"]).execute()
             else:
                 # patient_visit_days行が無い場合は新規作成(user_name必要)
                 user_name = data.get("user_name", "")
@@ -2538,6 +2549,7 @@ def api_add_today_patient():
                     "patient_id": patient_id,
                     "user_name": user_name,
                     "weekdays": weekday_num,
+                    "ampm_per_day": {weekday_num: "ALL"},
                 }).execute()
             # 除外フラグが残っていたら解除(再追加=表示復活)
             supabase.table("vital_daily_excludes").delete().eq("facility_code", f_code).eq("patient_id", patient_id).eq("excluded_date", date_str).execute()
@@ -2559,6 +2571,7 @@ def api_add_today_patient():
                 "patient_id": new_id,
                 "user_name": user_name,
                 "weekdays": weekday_num,
+                "ampm_per_day": {weekday_num: "ALL"},
             }).execute()
             return jsonify({"status": "success", "patient_id": new_id, "user_name": user_name, "is_new": True})
     except Exception as e:
