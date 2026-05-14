@@ -3452,6 +3452,16 @@ async function doAddTodayPatientSilent(payload) {
         if (!VISIT_DAYS[pid].includes(String(currentWeekday))) {
             VISIT_DAYS[pid] += String(currentWeekday);
         }
+        // AMPM_PER_DAY も同じ曜日キーを 'ALL' で更新する。
+        // renderPatientList は AMPM_PER_DAY を見て当日表示を絞る(todayAmpm==='NONE'で非表示)ため、
+        // ここを更新しないと「追加したのにリロードするまで一覧に出ない」状態になる。
+        // サーバー側(api_add_today_patient)も weekdays 追加時に ampm_per_day を 'ALL' で入れるので値は一致する。
+        if (!AMPM_PER_DAY[pid] || typeof AMPM_PER_DAY[pid] !== 'object') {
+            AMPM_PER_DAY[pid] = {};
+        }
+        if (!AMPM_PER_DAY[pid][String(currentWeekday)]) {
+            AMPM_PER_DAY[pid][String(currentWeekday)] = 'ALL';
+        }
         EXCLUDES_TODAY = EXCLUDES_TODAY.filter(x => x !== pid);
         return true;
     } catch (e) {
