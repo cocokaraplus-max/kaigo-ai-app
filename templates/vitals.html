@@ -2284,19 +2284,21 @@ window.saveRecheckSchedule = async function(pid, vitalId) {
             alert('予約の保存に失敗しました: ' + (result.message || ''));
             return;
         }
-        // .icsファイル生成 + ダウンロード
+        // 入力欄リセット + 一覧再取得(.icsダウンロードより前に完了させる:
+        //  iOS Safariで a.click() のカレンダー遷移が後続のfetchを中断し
+        //  「取得エラー: Load failed」が出るのを防ぐため)
+        timeInput.value = '';
+        if (noteInput) noteInput.value = '';
+        const section = document.getElementById(`recheck-section-${pid}`);
+        if (section) section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
+        await loadRecheckSchedules(pid);
+        // .icsファイル生成 + ダウンロード(一覧再取得が終わってから最後に実行)
         downloadICS({
             scheduled_at: scheduledDate.toISOString(),
             user_name: userName,
             note: note,
             patient_id: pid,
         });
-        // 入力欄リセット + 一覧再取得
-        timeInput.value = '';
-        if (noteInput) noteInput.value = '';
-        const section = document.getElementById(`recheck-section-${pid}`);
-        if (section) section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
-        await loadRecheckSchedules(pid);
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
