@@ -542,7 +542,7 @@
             <span class="material-symbols-outlined search-icon">search</span>
             <input type="text" id="eval-patient-search-input" class="form-control"
                 placeholder="名前・ふりがな・カルテ番号で検索..."
-                oninput="evalFilterPatients(this.value)"
+                oninput="if(!this._composing)evalFilterPatients(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;evalFilterPatients(this.value)"
                 autocomplete="off">
         </div>
         <div id="eval-patient-badge" class="eval-selected-badge">
