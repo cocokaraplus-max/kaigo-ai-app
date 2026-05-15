@@ -676,7 +676,17 @@ window.selectPatient = function(value, label) {
     document.getElementById('patient-search').style.display = 'none';
     document.getElementById('candidates').classList.remove('show');
 }
-
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('patient-search');
+    if (el) {
+        el.addEventListener('blur', function() {
+            setTimeout(function() {
+                var c = document.getElementById('candidates');
+                if (c) c.classList.remove('show');
+            }, 300);
+        });
+    }
+});
 window.clearPatient = function() {
     document.getElementById('patient-value').value = '';
     document.getElementById('selected-badge').style.display = 'none';
