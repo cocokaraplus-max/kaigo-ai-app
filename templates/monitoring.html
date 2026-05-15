@@ -153,8 +153,7 @@ function searchPatient(query) {
     const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
     const candidates = document.getElementById('patient-candidates');
     if (!q) { candidates.style.display = 'none'; return; }
-    const filtered = [] ||
-        MONITORING_PATIENTS.filter(p =>
+    const filtered = MONITORING_PATIENTS.filter(p =>
             p.name.toLowerCase().includes(q) ||
             p.kana.toLowerCase().includes(q) ||
             p.kana.includes(qKata) || p.kana.includes(qHira) ||
