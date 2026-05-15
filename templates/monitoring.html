@@ -66,7 +66,7 @@
         <input type="text" id="patient-search" class="form-control"
             placeholder="ひらがな・漢字・カルテ番号で検索"
             oninput="if(!this._composing)searchPatient(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchPatient(this.value)"
-            onfocus="searchPatient(this.value)"
+            
             autocomplete="off"
             style="width:100%; padding:10px 14px; border:1.5px solid #e0e0e0; border-radius:10px; font-size:0.95rem; box-sizing:border-box;">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
