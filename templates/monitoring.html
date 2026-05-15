@@ -168,7 +168,7 @@ function searchPatient(query) {
         candidates.querySelectorAll('[data-idx]').forEach((el, i) => {
             const p = filtered[i];
             el.addEventListener('mousedown', e => { e.preventDefault(); selectPatient(p.value, p.label); });
-            el.addEventListener('touchend', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+el.addEventListener('touchstart', e => { e.preventDefault(); selectPatient(p.value, p.label); });
         });
     }
     candidates.style.display = 'block';
