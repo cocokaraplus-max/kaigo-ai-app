@@ -51,7 +51,7 @@
         <input type="text" id="patient-search" class="form-control"
             placeholder="例:やまだ / 山田 / 001"
             oninput="searchPatient(this.value)"
-            onfocus="searchPatient(this.value)"
+
             autocomplete="off">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
@@ -162,6 +162,7 @@ const HISTORY_PATIENTS = [
 (function(){
 
 function searchPatient(query) {
+    if (window._patientSelected) return;
     const q = query.trim().toLowerCase();
     const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
     const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
@@ -185,7 +186,8 @@ function searchPatient(query) {
         candidates.querySelectorAll('[data-idx]').forEach((el, i) => {
             const p = filtered[i];
             el.addEventListener('mousedown', e => { e.preventDefault(); selectPatient(p.value, p.label); });
-            el.addEventListener('touchend', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+            el.addEventListener('touchstart', e => { e.preventDefault(); selectPatient(p.value, p.label); });
+            el.addEventListener('click', e => { if(!('ontouchstart' in window)) selectPatient(p.value, p.label); });
         });
     }
     candidates.style.display = 'block';
@@ -193,7 +195,11 @@ function searchPatient(query) {
 window.searchPatient = searchPatient;
 
 function selectPatient(value, label) {
-    document.getElementById('patient-search').style.display = 'none';
+    window._patientSelected = true;
+    setTimeout(function(){ window._patientSelected = false; }, 1000);
+    var searchEl = document.getElementById('patient-search');
+    searchEl.blur();
+    searchEl.style.display = 'none';
     document.getElementById('patient-selected-label').textContent = label;
     const badge = document.getElementById('patient-selected-badge');
     badge.style.display = 'flex';
@@ -205,6 +211,7 @@ function selectPatient(value, label) {
 window.selectPatient = selectPatient;
 
 function clearPatient() {
+    window._patientSelected = false;
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
