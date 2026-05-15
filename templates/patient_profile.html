@@ -1,0 +1,796 @@
+{% extends "base.html" %}
+{% block title %}利用者情報 - TASUKARU{% endblock %}
+{% block nav_patient_profile %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ========================================
+   利用者基本情報ページ - patient_profile.html
+   Session 43
+   ======================================== */
+
+.profile-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ヘッダー */
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--color-primary, #1a73e8);
+}
+.profile-header h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #202124);
+  margin: 0;
+}
+.profile-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* CSVインポートバナー */
+.csv-banner {
+  background: #e8f0fe;
+  border: 1.5px solid #1a73e8;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.csv-banner-icon { font-size: 1.4rem; }
+.csv-banner-text { flex: 1; font-size: 0.85rem; color: #1a73e8; }
+.csv-banner-text strong { display: block; margin-bottom: 2px; }
+.csv-import-btn {
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.csv-import-btn:hover { background: #1557b0; }
+
+/* 利用者選択 */
+.patient-select-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.patient-select-bar select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+.patient-new-btn {
+  background: #34a853;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.patient-new-btn:hover { background: #2d9248; }
+
+/* セクションカード */
+.profile-section {
+  background: #fff;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.profile-section-header {
+  background: #f8f9fa;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a73e8;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.profile-section-body {
+  padding: 16px;
+}
+
+/* フォームグリッド */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.form-grid.full { grid-template-columns: 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group.span2 { grid-column: span 2; }
+.form-group label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #5f6368;
+}
+.form-group label .required {
+  color: #ea4335;
+  margin-left: 2px;
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 9px 12px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #1a73e8;
+  outline: none;
+}
+.form-group textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* 期間グループ */
+.period-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.period-group input { flex: 1; }
+.period-group span {
+  font-size: 0.8rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* 保存ボタン */
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1.5px solid #e0e0e0;
+  padding: 12px 16px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  z-index: 100;
+}
+.btn-save {
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 28px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-save:hover { background: #1557b0; }
+.btn-cancel {
+  background: #fff;
+  color: #5f6368;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 11px 20px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.btn-cancel:hover { background: #f5f5f5; }
+.btn-delete {
+  background: #fff;
+  color: #ea4335;
+  border: 1.5px solid #ea4335;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-right: auto;
+}
+.btn-delete:hover { background: #fce8e6; }
+
+/* CSVモーダル */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.modal-box h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.modal-box p {
+  font-size: 0.83rem;
+  color: #5f6368;
+  margin: 0 0 16px;
+}
+.csv-drop-zone {
+  border: 2px dashed #1a73e8;
+  border-radius: 8px;
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8f9fe;
+  transition: background 0.15s;
+}
+.csv-drop-zone:hover { background: #e8f0fe; }
+.csv-drop-zone p { color: #1a73e8; margin: 0; font-size: 0.88rem; }
+.csv-mapping-info {
+  margin-top: 12px;
+  font-size: 0.78rem;
+  color: #888;
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* 年齢バッジ */
+.age-badge {
+  display: inline-block;
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+/* トースト */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #202124;
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  opacity: 0;
+  transition: all 0.3s;
+  z-index: 2000;
+  white-space: nowrap;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .form-group.span2 { grid-column: span 1; }
+  .profile-header h1 { font-size: 1rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+
+  <!-- ヘッダー -->
+  <div class="profile-header">
+    <h1>👤 利用者基本情報</h1>
+  </div>
+
+  <!-- CSVインポートバナー -->
+  <div class="csv-banner">
+    <div class="csv-banner-icon">📥</div>
+    <div class="csv-banner-text">
+      <strong>まもる君クラウド CSV取込対応</strong>
+      利用者情報をCSVで一括インポートできます
+    </div>
+    <button class="csv-import-btn" onclick="openCsvModal()">CSV取込</button>
+  </div>
+
+  <!-- 利用者選択 -->
+  <div class="patient-select-bar">
+    <select id="patient-select" onchange="loadPatient(this.value)">
+      <option value="">── 利用者を選択 ──</option>
+      {% for p in patients %}
+      <option value="{{ p.id }}" {% if selected and selected.id == p.id %}selected{% endif %}>
+        {{ p.user_name }}（{{ p.patient_number }}）
+      </option>
+      {% endfor %}
+    </select>
+    <button class="patient-new-btn" onclick="newPatient()">＋ 新規</button>
+  </div>
+
+  <!-- フォーム -->
+  <form id="profile-form" onsubmit="saveProfile(event)">
+    <input type="hidden" id="profile-id" value="{{ selected.id if selected else '' }}">
+
+    <!-- 基本情報（まもる君CSV対応） -->
+    <div class="profile-section">
+      <div class="profile-section-header">📋 基本情報（まもる君CSV対応項目）</div>
+      <div class="profile-section-body">
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label>利用者番号<span class="required">*</span></label>
+            <input type="text" id="patient_number" name="patient_number"
+              value="{{ selected.patient_number if selected else '' }}"
+              placeholder="例: 000123" required>
+          </div>
+
+          <div class="form-group">
+            <label>介護度</label>
+            <select id="care_level" name="care_level">
+              <option value="">選択してください</option>
+              {% for level in ['要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
+              <option value="{{ level }}" {% if selected and selected.care_level == level %}selected{% endif %}>{{ level }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>氏名<span class="required">*</span></label>
+            <input type="text" id="user_name" name="user_name"
+              value="{{ selected.user_name if selected else '' }}"
+              placeholder="例: 山田 花子" required>
+          </div>
+
+          <div class="form-group">
+            <label>カナ</label>
+            <input type="text" id="user_name_kana" name="user_name_kana"
+              value="{{ selected.user_name_kana if selected else '' }}"
+              placeholder="例: ヤマダ ハナコ">
+          </div>
+
+          <div class="form-group">
+            <label>生年月日</label>
+            <input type="date" id="birth_date" name="birth_date"
+              value="{{ selected.birth_date if selected else '' }}"
+              onchange="updateAge()">
+          </div>
+
+          <div class="form-group">
+            <label>性別</label>
+            <select id="gender" name="gender">
+              <option value="">選択</option>
+              <option value="女性" {% if selected and selected.gender == '女性' %}selected{% endif %}>女性</option>
+              <option value="男性" {% if selected and selected.gender == '男性' %}selected{% endif %}>男性</option>
+              <option value="その他" {% if selected and selected.gender == 'その他' %}selected{% endif %}>その他</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>〒</label>
+            <input type="text" id="postal_code" name="postal_code"
+              value="{{ selected.postal_code if selected else '' }}"
+              placeholder="例: 123-4567">
+          </div>
+
+          <div class="form-group span2">
+            <label>住所</label>
+            <input type="text" id="address" name="address"
+              value="{{ selected.address if selected else '' }}"
+              placeholder="例: 愛知県名古屋市中区...">
+          </div>
+
+          <div class="form-group span2">
+            <label>認定有効期間</label>
+            <div class="period-group">
+              <input type="date" id="certification_start_date" name="certification_start_date"
+                value="{{ selected.certification_start_date if selected else '' }}">
+              <span>〜</span>
+              <input type="date" id="certification_end_date" name="certification_end_date"
+                value="{{ selected.certification_end_date if selected else '' }}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>支援事業所</label>
+            <input type="text" id="support_office" name="support_office"
+              value="{{ selected.support_office if selected else '' }}"
+              placeholder="例: ○○居宅介護支援事業所">
+          </div>
+
+          <div class="form-group">
+            <label>担当介護支援専門員</label>
+            <input type="text" id="care_manager_name" name="care_manager_name"
+              value="{{ selected.care_manager_name if selected else '' }}"
+              placeholder="例: 鈴木 一郎">
+          </div>
+
+          <div class="form-group span2">
+            <label>委託先事業所</label>
+            <input type="text" id="delegate_office" name="delegate_office"
+              value="{{ selected.delegate_office if selected else '' }}"
+              placeholder="例: △△訪問介護事業所">
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- TASUKARU追加情報 -->
+    <div class="profile-section">
+      <div class="profile-section-header">🏥 TASUKARU追加情報</div>
+      <div class="profile-section-body">
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label>利用開始日</label>
+            <input type="date" id="service_start_date" name="service_start_date"
+              value="{{ selected.service_start_date if selected else '' }}">
+          </div>
+
+          <div class="form-group">
+            <!-- 年齢表示スペース -->
+            <label>年齢</label>
+            <div style="padding: 9px 12px; border: 1.5px solid #e0e0e0; border-radius: 6px; background: #f8f9fa; font-size: 0.88rem; color: #5f6368;" id="age-display">
+              生年月日を入力してください
+            </div>
+          </div>
+
+          <div class="form-group span2">
+            <label>既往歴</label>
+            <textarea id="medical_history" name="medical_history"
+              placeholder="例: 脳梗塞（2018年）、高血圧、糖尿病">{{ selected.medical_history if selected else '' }}</textarea>
+          </div>
+
+          <div class="form-group span2">
+            <label>家族構成</label>
+            <textarea id="family_structure" name="family_structure"
+              placeholder="例: 長女と二人暮らし（長女：50代、日中は仕事）">{{ selected.family_structure if selected else '' }}</textarea>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 目標設定 -->
+    <div class="profile-section">
+      <div class="profile-section-header">🎯 目標設定</div>
+      <div class="profile-section-body">
+        <div class="form-grid full">
+
+          <div class="form-group">
+            <label>長期目標</label>
+            <textarea id="long_goal" name="long_goal"
+              placeholder="例: 自宅内を安全に移動し、家族と穏やかな生活を送ることができる">{{ selected.long_goal if selected else '' }}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label>長期目標期間</label>
+            <div class="period-group">
+              <input type="date" id="long_goal_period_from" name="long_goal_period_from"
+                value="{{ selected.long_goal_period_from if selected else '' }}">
+              <span>〜</span>
+              <input type="date" id="long_goal_period_to" name="long_goal_period_to"
+                value="{{ selected.long_goal_period_to if selected else '' }}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>短期目標</label>
+            <textarea id="short_goal" name="short_goal"
+              placeholder="例: 手すりを使って廊下を安全に歩くことができる">{{ selected.short_goal if selected else '' }}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label>短期目標期間</label>
+            <div class="period-group">
+              <input type="date" id="short_goal_period_from" name="short_goal_period_from"
+                value="{{ selected.short_goal_period_from if selected else '' }}">
+              <span>〜</span>
+              <input type="date" id="short_goal_period_to" name="short_goal_period_to"
+                value="{{ selected.short_goal_period_to if selected else '' }}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>備考</label>
+            <textarea id="notes" name="notes"
+              placeholder="その他特記事項">{{ selected.notes if selected else '' }}</textarea>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 保存バー -->
+    <div class="save-bar">
+      {% if selected %}
+      <button type="button" class="btn-delete" onclick="deleteProfile()">削除</button>
+      {% endif %}
+      <button type="button" class="btn-cancel" onclick="cancelEdit()">キャンセル</button>
+      <button type="submit" class="btn-save">💾 保存</button>
+    </div>
+
+  </form>
+</div>
+
+<!-- CSVインポートモーダル -->
+<div class="modal-overlay" id="csv-modal">
+  <div class="modal-box">
+    <h3>📥 まもる君クラウド CSV取込</h3>
+    <p>まもる君クラウドから出力したCSVファイルを選択してください。<br>利用者情報を自動で読み込みます。</p>
+    <div class="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()"
+         ondragover="event.preventDefault()" ondrop="handleCsvDrop(event)">
+      <div style="font-size: 2rem; margin-bottom: 8px;">📄</div>
+      <p>クリックまたはドラッグ＆ドロップ</p>
+      <p style="color: #888; font-size: 0.78rem; margin-top: 4px;">対応形式: CSV（文字コード: Shift-JIS / UTF-8）</p>
+    </div>
+    <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
+    <div class="csv-mapping-info">
+      <strong>自動マッピング項目：</strong><br>
+      利用者番号 / 氏名 / カナ / 〒 / 住所 / 生年月日 / 性別 / 介護度 / 認定有効期間 / 支援事業所 / 担当介護支援専門員 / 委託先事業所
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCsvModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ========================================
+// 利用者基本情報 JavaScript
+// ========================================
+
+const SUPABASE_URL = '{{ supabase_url }}';
+const SUPABASE_KEY = '{{ supabase_anon_key }}';
+const FACILITY_CODE = '{{ session.facility_code }}';
+
+// 年齢計算
+function updateAge() {
+  const birth = document.getElementById('birth_date').value;
+  const display = document.getElementById('age-display');
+  if (!birth) { display.textContent = '生年月日を入力してください'; return; }
+  const today = new Date();
+  const b = new Date(birth);
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  display.textContent = `${age} 歳`;
+  display.style.color = '#202124';
+}
+
+// 初期年齢表示
+document.addEventListener('DOMContentLoaded', () => {
+  updateAge();
+});
+
+// 利用者選択
+function loadPatient(id) {
+  if (!id) { newPatient(); return; }
+  window.location.href = `/patient_profile?id=${id}`;
+}
+
+// 新規
+function newPatient() {
+  document.getElementById('profile-form').reset();
+  document.getElementById('profile-id').value = '';
+  document.getElementById('age-display').textContent = '生年月日を入力してください';
+}
+
+// 保存
+async function saveProfile(e) {
+  e.preventDefault();
+  const id = document.getElementById('profile-id').value;
+  const fields = [
+    'patient_number','user_name','user_name_kana','postal_code','address',
+    'birth_date','gender','care_level','certification_start_date','certification_end_date',
+    'support_office','care_manager_name','delegate_office',
+    'medical_history','family_structure','service_start_date',
+    'long_goal','long_goal_period_from','long_goal_period_to',
+    'short_goal','short_goal_period_from','short_goal_period_to','notes'
+  ];
+  const data = { facility_code: FACILITY_CODE };
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    data[f] = el ? (el.value || null) : null;
+  });
+  data.updated_at = new Date().toISOString();
+
+  try {
+    const url = id
+      ? `${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}`
+      : `${SUPABASE_URL}/rest/v1/patient_profiles`;
+    const method = id ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    if (!id && result[0]?.id) {
+      document.getElementById('profile-id').value = result[0].id;
+    }
+    showToast('✅ 保存しました');
+    setTimeout(() => location.reload(), 1000);
+  } catch(err) {
+    showToast('❌ 保存に失敗しました: ' + err.message);
+  }
+}
+
+// 削除
+async function deleteProfile() {
+  const id = document.getElementById('profile-id').value;
+  if (!id) return;
+  if (!confirm('この利用者情報を削除しますか？')) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    showToast('🗑️ 削除しました');
+    setTimeout(() => location.href = '/patient_profile', 1000);
+  } catch(err) {
+    showToast('❌ 削除に失敗しました');
+  }
+}
+
+function cancelEdit() {
+  location.reload();
+}
+
+// CSVモーダル
+function openCsvModal() { document.getElementById('csv-modal').classList.add('show'); }
+function closeCsvModal() { document.getElementById('csv-modal').classList.remove('show'); }
+
+// CSVドロップ
+function handleCsvDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) handleCsvFile(file);
+}
+
+// CSVファイル処理
+function handleCsvFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  // Shift-JIS対応
+  reader.onload = (e) => {
+    const text = e.target.result;
+    parseMamorukunCsv(text);
+  };
+  // Shift-JISを試みる
+  try {
+    reader.readAsText(file, 'Shift-JIS');
+  } catch {
+    reader.readAsText(file, 'UTF-8');
+  }
+}
+
+// まもる君CSVパース＆一括登録
+function parseMamorukunCsv(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) { showToast('❌ CSVが空です'); return; }
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+
+  // まもる君の列名マッピング
+  const COL_MAP = {
+    '利用者番号': 'patient_number',
+    '氏名':       'user_name',
+    'カナ':       'user_name_kana',
+    '〒':         'postal_code',
+    '住所':       'address',
+    '生年月日':   'birth_date',
+    '性別':       'gender',
+    '介護度':     'care_level',
+    '認定有効期間開始': 'certification_start_date',
+    '認定有効期間終了': 'certification_end_date',
+    '認定有効期間':     'certification_start_date', // 単一列の場合
+    '支援事業所':       'support_office',
+    '担当介護支援専門員': 'care_manager_name',
+    '委託先事業所':     'delegate_office',
+  };
+
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    if (values.length < 2) continue;
+    const row = { facility_code: FACILITY_CODE, updated_at: new Date().toISOString() };
+    headers.forEach((h, idx) => {
+      const field = COL_MAP[h];
+      if (field) {
+        let val = values[idx] || null;
+        // 日付フォーマット変換（YYYY/MM/DD → YYYY-MM-DD）
+        if (val && (field.includes('date') || field.includes('period'))) {
+          val = val.replace(/\//g, '-');
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) val = null;
+        }
+        row[field] = val;
+      }
+    });
+    if (row.patient_number) records.push(row);
+  }
+
+  if (records.length === 0) { showToast('❌ 有効なデータが見つかりません'); return; }
+
+  // 確認後一括登録
+  if (!confirm(`${records.length}件の利用者情報を取り込みます。\n既存データは上書きされます。よろしいですか？`)) return;
+  bulkUpsert(records);
+}
+
+// 一括UPSERT
+async function bulkUpsert(records) {
+  closeCsvModal();
+  showToast(`⏳ ${records.length}件を登録中...`);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(records)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    showToast(`✅ ${records.length}件を取り込みました`);
+    setTimeout(() => location.reload(), 1500);
+  } catch(err) {
+    showToast('❌ 取込に失敗しました: ' + err.message);
+  }
+}
+
+// トースト表示
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+{% endblock %}

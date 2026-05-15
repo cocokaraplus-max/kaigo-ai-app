@@ -4,950 +4,1238 @@
 
 {% block extra_style %}
 <style>
-/* adminページではSPAを無効化 */
+/* ========================================
+   管理者MENU - admin.html Session 43刷新版
+   3タブ構成: 利用者管理 / 職員管理 / 設定
+   ======================================== */
+
+/* タブバー */
 .tab-bar {
-    display: flex;
-    overflow-x: auto;
-    gap: 6px;
-    margin-bottom: 1.2rem;
-    padding-bottom: 4px;
-    scrollbar-width: none;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1.2rem;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .tab-bar::-webkit-scrollbar { display: none; }
 .tab-item {
-    white-space: nowrap;
-    padding: 8px 14px;
-    border-radius: 20px;
-    border: 1.5px solid #E0E0E0;
-    background: #FFFFFF;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #5f6368;
-    cursor: pointer;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  white-space: nowrap;
+  padding: 9px 16px;
+  border-radius: 20px;
+  border: 1.5px solid #e0e0e0;
+  background: #fff;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #5f6368;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  -webkit-tap-highlight-color: transparent;
 }
-.tab-item .material-symbols-outlined { font-size: 15px; }
+.tab-item .material-symbols-outlined { font-size: 16px; }
 .tab-item.active {
-    background: #e8f0fe;
-    color: #1a73e8;
-    border-color: #1a73e8;
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-color: #1a73e8;
 }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
 /* アコーディオン */
 .accordion-block {
-    border: 1.5px solid #e0e0e0;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 10px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
 }
 .accordion-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    background: #f8f9fa;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8f9fa;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  gap: 8px;
 }
 .accordion-head:active { background: #f0f0f0; }
+.acc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
 .acc-arrow {
-    font-size: 20px;
-    color: #80868b;
-    transition: transform 0.2s;
+  font-size: 20px;
+  color: #80868b;
+  transition: transform 0.2s;
+  flex-shrink: 0;
 }
 .acc-arrow.open { transform: rotate(180deg); }
 .accordion-body {
-    display: none;
-    padding: 16px;
-    border-top: 1px solid #e0e0e0;
+  display: none;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
 }
 .accordion-body.open { display: block; }
 
-/* 利用者編集カード */
-.patient-edit-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid #f0f0f0;
-    gap: 10px;
+/* セクションボックス */
+.section-box {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
 }
-.patient-edit-card:last-of-type { border-bottom: none; }
-.patient-edit-info { flex: 1; min-width: 0; }
-.patient-edit-name {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #202124;
+.section-box-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #202124;
+  margin-bottom: 12px;
 }
-.patient-edit-kana {
-    font-size: 0.75rem;
-    color: #80868b;
-    margin-top: 2px;
-    padding-left: 21px;
-}
-.patient-edit-actions {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-}
-.edit-btn {
-    background: #e8f0fe !important;
-    color: #1a73e8 !important;
-    border-color: #c5d8f8 !important;
-    font-size: 0.78rem !important;
-    padding: 7px 10px !important;
-    height: auto !important;
-}
-.delete-btn {
-    background: #ea4335 !important;
-    color: white !important;
-    border: none !important;
-    font-size: 0.78rem !important;
-    padding: 7px 10px !important;
-    height: auto !important;
+.section-box-title .material-symbols-outlined {
+  font-size: 18px;
+  color: #1a73e8;
 }
 
-/* 編集フォーム */
+/* 利用者カード */
+.patient-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+  gap: 10px;
+}
+.patient-card:last-of-type { border-bottom: none; }
+.patient-card-info { flex: 1; min-width: 0; }
+.patient-card-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #202124;
+}
+.patient-card-sub {
+  font-size: 0.75rem;
+  color: #80868b;
+  margin-top: 2px;
+  padding-left: 4px;
+}
+.patient-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* スタッフカード */
+.staff-card {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+.staff-card .material-symbols-outlined { font-size: 18px; }
+
+/* ボタン */
+.edit-btn {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  border-color: #c5d8f8 !important;
+  font-size: 0.78rem !important;
+  padding: 7px 10px !important;
+  height: auto !important;
+}
+.delete-btn {
+  background: #ea4335 !important;
+  color: white !important;
+  border: none !important;
+  font-size: 0.78rem !important;
+  padding: 7px 10px !important;
+  height: auto !important;
+}
+
+/* 編集フォームエリア */
 .edit-form-area {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 14px;
-    margin: 4px 0 8px;
-    border: 1.5px solid #e0e0e0;
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 14px;
+  margin: 4px 0 8px;
+  border: 1.5px solid #e0e0e0;
+}
+
+/* 誕生日入力 */
+.birth-input-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.birth-text { font-size: 0.9rem !important; }
+.birth-date {
+  width: 44px !important;
+  padding: 10px 6px !important;
+  text-align: center;
+  cursor: pointer;
+}
+.birth-result {
+  font-size: 0.78rem;
+  margin-top: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  display: none;
+}
+.birth-result.ok { display: block; background: #e6f4ea; color: #1e7e34; }
+.birth-result.err { display: block; background: #fce8e6; color: #c5221f; }
+
+/* CSV・写真取込エリア */
+.import-zone {
+  border: 2px dashed #1a73e8;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8f9fe;
+  transition: background 0.15s;
+  margin-bottom: 12px;
+}
+.import-zone:hover, .import-zone.drag-over { background: #e8f0fe; }
+.import-zone .material-symbols-outlined {
+  font-size: 36px;
+  color: #1a73e8;
+  display: block;
+  margin-bottom: 8px;
+}
+.import-zone p {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a73e8;
+}
+.import-zone small {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #80868b;
+}
+
+/* スキャン結果 */
+.scan-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: #fff;
+}
+.scan-result-item input[type="checkbox"] {
+  accent-color: #1a73e8;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 /* 削除確認モーダル */
 .modal-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 .modal-box {
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    width: 100%;
-    max-width: 340px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
 }
 .modal-icon {
-    width: 52px;
-    height: 52px;
-    background: #fce8e6;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 14px;
+  width: 52px;
+  height: 52px;
+  background: #fce8e6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
 }
 .modal-icon .material-symbols-outlined { font-size: 28px; color: #ea4335; }
 .modal-title {
-    text-align: center;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #202124;
-    margin-bottom: 12px;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #202124;
+  margin-bottom: 12px;
 }
 .modal-warning {
-    background: #fef7e0;
-    border: 1.5px solid #f9d71c;
-    border-radius: 10px;
-    padding: 12px 14px;
-    font-size: 0.82rem;
-    color: #7c4a00;
-    margin-bottom: 18px;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    line-height: 1.5;
+  background: #fef7e0;
+  border: 1.5px solid #f9d71c;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  color: #7c4a00;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
 }
 .modal-warning .material-symbols-outlined {
-    font-size: 18px;
-    color: #f9ab00;
-    flex-shrink: 0;
-    margin-top: 1px;
+  font-size: 18px;
+  color: #f9ab00;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 .modal-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.birth-input-wrap {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-    align-items: center;
+/* インポート結果テーブル */
+.csv-preview-table {
+  width: 100%;
+  font-size: 0.78rem;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  display: block;
 }
-.birth-text { font-size: 0.9rem !important; }
-.birth-date { width: 44px !important; padding: 10px 6px !important; text-align: center; cursor: pointer; }
-.birth-result {
-    font-size: 0.78rem;
-    margin-top: 5px;
-    padding: 5px 10px;
-    border-radius: 8px;
-    display: none;
+.csv-preview-table th {
+  background: #e8f0fe;
+  color: #1a73e8;
+  padding: 6px 8px;
+  text-align: left;
+  white-space: nowrap;
 }
-.birth-result.ok { display: block; background: #e6f4ea; color: #1e7e34; }
-.birth-result.err { display: block; background: #fce8e6; color: #c5221f; }
-    display: flex;
-    align-items: center;
-    padding: 12px 14px;
-    border: 1px solid #e0e0e0;
-    border-radius: 10px;
-    margin-bottom: 8px;
-    gap: 10px;
+.csv-preview-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
 }
-.staff-card .material-symbols-outlined { font-size: 18px; }
+.csv-preview-table tr:last-child td { border-bottom: none; }
 
-.section-box {
-    background: #f8f9fa;
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 14px;
+/* バッジ */
+.badge {
+  display: inline-block;
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
-.section-box-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: #202124;
-    margin-bottom: 12px;
+.badge-green { background: #e6f4ea; color: #1e7e34; }
+.badge-red { background: #fce8e6; color: #c5221f; }
+
+/* 権限トグル */
+.perm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #5f6368;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 4px 8px;
+  border: 1px solid #e0e0e0;
 }
-.section-box-title .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
+.perm-toggle input {
+  accent-color: #1a73e8;
+  width: 14px;
+  height: 14px;
+}
+.perm-toggle-admin { background: #fff8e1; border-color: #f4d35e; }
 </style>
 {% endblock %}
 
 {% block content %}
 <a href="/top" class="back-btn">
-    <span class="material-symbols-outlined">home</span>
-    TOP画面へ
+  <span class="material-symbols-outlined">home</span>TOP画面へ
 </a>
 
 <div class="page-title">
-    <span class="material-symbols-outlined">admin_panel_settings</span>
-    管理者MENU
+  <span class="material-symbols-outlined">admin_panel_settings</span>
+  管理者MENU
 </div>
 
 {% if not authenticated %}
+{# ===== 認証画面 ===== #}
 <style>
-.auth-type-select {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 10px; margin-bottom: 16px;
-}
-.auth-type-btn {
-    padding: 16px 10px; border-radius: 14px;
-    border: 2px solid #e0e0e0; background: #f8f9fa;
-    text-align: center; cursor: pointer;
-    transition: all 0.15s; -webkit-tap-highlight-color: transparent;
-}
+.auth-type-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.auth-type-btn { padding: 16px 10px; border-radius: 14px; border: 2px solid #e0e0e0; background: #f8f9fa; text-align: center; cursor: pointer; transition: all 0.15s; -webkit-tap-highlight-color: transparent; }
 .auth-type-btn.active-admin { border-color: #1a73e8; background: #e8f0fe; }
-.auth-type-btn.active-dev   { border-color: #9c27b0; background: #f3e5f5; }
+.auth-type-btn.active-dev { border-color: #9c27b0; background: #f3e5f5; }
 .auth-type-btn .material-symbols-outlined { font-size: 28px; display: block; margin-bottom: 6px; }
 .auth-type-btn.active-admin .material-symbols-outlined { color: #1a73e8; }
-.auth-type-btn.active-dev   .material-symbols-outlined { color: #9c27b0; }
+.auth-type-btn.active-dev .material-symbols-outlined { color: #9c27b0; }
 .auth-type-btn .auth-btn-label { font-size: 0.85rem; font-weight: 700; color: #5f6368; }
 .auth-type-btn.active-admin .auth-btn-label { color: #1a73e8; }
-.auth-type-btn.active-dev   .auth-btn-label { color: #9c27b0; }
+.auth-type-btn.active-dev .auth-btn-label { color: #9c27b0; }
 .auth-type-btn .auth-btn-sub { font-size: 0.7rem; color: #b0b8c1; margin-top: 2px; }
 .auth-submit-admin { background: #1a73e8 !important; }
-.auth-submit-dev   { background: #9c27b0 !important; }
+.auth-submit-dev { background: #9c27b0 !important; }
 </style>
-
 <div class="form-group">
-    <div class="page-title" style="margin-bottom:1rem;">
-        <span class="material-symbols-outlined">admin_panel_settings</span>
-        メニュー選択
+  <div class="auth-type-select">
+    <div class="auth-type-btn active-admin" id="btn-admin" onclick="selectAuthType('admin')">
+      <span class="material-symbols-outlined">manage_accounts</span>
+      <div class="auth-btn-label">管理者MENU</div>
+      <div class="auth-btn-sub">施設の管理者向け</div>
     </div>
-
-    <div class="auth-type-select">
-        <div class="auth-type-btn active-admin" id="btn-admin" onclick="selectAuthType('admin')">
-            <span class="material-symbols-outlined">manage_accounts</span>
-            <div class="auth-btn-label">管理者MENU</div>
-            <div class="auth-btn-sub">施設の管理者向け</div>
-        </div>
-        <div class="auth-type-btn" id="btn-dev" onclick="selectAuthType('dev')">
-            <span class="material-symbols-outlined">code</span>
-            <div class="auth-btn-label">開発者MENU</div>
-            <div class="auth-btn-sub">開発者専用</div>
-        </div>
+    <div class="auth-type-btn" id="btn-dev" onclick="selectAuthType('dev')">
+      <span class="material-symbols-outlined">code</span>
+      <div class="auth-btn-label">開発者MENU</div>
+      <div class="auth-btn-sub">開発者専用</div>
     </div>
-
-    <form method="POST" action="/admin_auth" id="auth-form">
-        <input type="hidden" name="mode" id="auth-mode" value="admin">
-        <label class="form-label">
-            <span class="material-symbols-outlined">lock</span>
-            <span id="auth-pw-label">管理者パスワード</span>
-        </label>
-        <div style="position:relative;">
-            <input type="password" name="admin_pw" class="form-control"
-                style="margin-bottom:12px;padding-right:44px;" id="auth-pw-input"
-                placeholder="パスワードを入力">
-            <span onclick="togglePw('auth-pw-input','auth-pw-eye')"
-                style="position:absolute;right:12px;top:calc(50% - 6px);transform:translateY(-50%);cursor:pointer;color:#80868b;">
-                <span class="material-symbols-outlined" id="auth-pw-eye" style="font-size:20px;">visibility</span>
-            </span>
-        </div>
-        {% if error %}
-        <div class="alert alert-error" style="margin-bottom:12px;">
-            <span class="material-symbols-outlined">error</span>
-            {{ error }}
-        </div>
-        {% endif %}
-        <button type="submit" class="btn btn-primary auth-submit-admin" id="auth-submit-btn">
-            <span class="material-symbols-outlined">login</span>
-            <span id="auth-submit-label">管理者MENUへ</span>
-        </button>
-    </form>
+  </div>
+  <form method="POST" action="/admin_auth" id="auth-form">
+    <input type="hidden" name="mode" id="auth-mode" value="admin">
+    <label class="form-label">
+      <span class="material-symbols-outlined">lock</span>
+      <span id="auth-pw-label">管理者パスワード</span>
+    </label>
+    <div style="position:relative;">
+      <input type="password" name="admin_pw" class="form-control"
+        style="margin-bottom:12px;padding-right:44px;" id="auth-pw-input"
+        placeholder="パスワードを入力">
+      <span onclick="togglePw('auth-pw-input','auth-pw-eye')"
+        style="position:absolute;right:12px;top:calc(50% - 6px);transform:translateY(-50%);cursor:pointer;color:#80868b;">
+        <span class="material-symbols-outlined" id="auth-pw-eye" style="font-size:20px;">visibility</span>
+      </span>
+    </div>
+    {% if error %}
+    <div class="alert alert-error" style="margin-bottom:12px;">
+      <span class="material-symbols-outlined">error</span>{{ error }}
+    </div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary auth-submit-admin" id="auth-submit-btn">
+      <span class="material-symbols-outlined">login</span>
+      <span id="auth-submit-label">管理者MENUへ</span>
+    </button>
+  </form>
 </div>
-
 <script>
 (function(){
-    // {% if dev_mode is defined and dev_mode %}
-    var initMode = '{{ "dev" if dev_mode else "admin" }}';
-    // {% endif %}
-    window.selectAuthType = function(type) {
-        const btnAdmin = document.getElementById('btn-admin');
-        const btnDev   = document.getElementById('btn-dev');
-        const mode     = document.getElementById('auth-mode');
-        const label    = document.getElementById('auth-pw-label');
-        const submit   = document.getElementById('auth-submit-btn');
-        const submitLbl= document.getElementById('auth-submit-label');
-        const input    = document.getElementById('auth-pw-input');
-
-        btnAdmin.className = 'auth-type-btn' + (type==='admin' ? ' active-admin' : '');
-        btnDev.className   = 'auth-type-btn' + (type==='dev'   ? ' active-dev'   : '');
-        mode.value = type;
-
-        if (type === 'dev') {
-            label.textContent = '開発者パスワード';
-            submit.className = 'btn btn-primary auth-submit-dev';
-            submitLbl.textContent = '開発者MENUへ';
-            input.placeholder = '開発者パスワードを入力';
-        } else {
-            label.textContent = '管理者パスワード';
-            submit.className = 'btn btn-primary auth-submit-admin';
-            submitLbl.textContent = '管理者MENUへ';
-            input.placeholder = 'パスワードを入力';
-        }
-    };
-    // エラー時に前回のモードを復元
-    if (typeof initMode !== 'undefined' && initMode === 'dev') {
-        selectAuthType('dev');
-    }
+  var initMode = '{{ "dev" if dev_mode is defined and dev_mode else "admin" }}';
+  window.selectAuthType = function(type) {
+    document.getElementById('btn-admin').className = 'auth-type-btn' + (type==='admin' ? ' active-admin' : '');
+    document.getElementById('btn-dev').className   = 'auth-type-btn' + (type==='dev'   ? ' active-dev'   : '');
+    document.getElementById('auth-mode').value = type;
+    var isAdmin = type === 'admin';
+    document.getElementById('auth-pw-label').textContent   = isAdmin ? '管理者パスワード' : '開発者パスワード';
+    document.getElementById('auth-submit-btn').className   = 'btn btn-primary ' + (isAdmin ? 'auth-submit-admin' : 'auth-submit-dev');
+    document.getElementById('auth-submit-label').textContent = isAdmin ? '管理者MENUへ' : '開発者MENUへ';
+    document.getElementById('auth-pw-input').placeholder   = isAdmin ? 'パスワードを入力' : '開発者パスワードを入力';
+  };
+  if (initMode === 'dev') selectAuthType('dev');
 })();
 </script>
 
 {% else %}
+{# ===== 管理者MENU本体 ===== #}
 
+{# ---- タブバー ---- #}
 <div class="tab-bar">
-    <button class="tab-item active" onclick="switchTab('patients', this)">
-        <span class="material-symbols-outlined">group</span>利用者管理
-    </button>
-    <button class="tab-item" onclick="switchTab('invite', this)">
-        <span class="material-symbols-outlined">person_add</span>職員招待
-    </button>
-    <button class="tab-item" onclick="switchTab('settings', this)">
-        <span class="material-symbols-outlined">settings</span>設定
-    </button>
-    <button class="tab-item" onclick="switchTab('security', this)">
-        <span class="material-symbols-outlined">security</span>セキュリティ
-    </button>
-    <button class="tab-item" onclick="switchTab('staff', this)">
-        <span class="material-symbols-outlined">manage_accounts</span>スタッフ管理
-    </button>
-    <button class="tab-item" onclick="switchTab('records', this)">
-        <span class="material-symbols-outlined">description</span>ケース記録
-    </button>
+  <button class="tab-item active" onclick="switchTab('patients', this)">
+    <span class="material-symbols-outlined">group</span>利用者管理
+  </button>
+  <button class="tab-item" onclick="switchTab('staff', this)">
+    <span class="material-symbols-outlined">manage_accounts</span>職員管理
+  </button>
+  <button class="tab-item" onclick="switchTab('settings', this)">
+    <span class="material-symbols-outlined">settings</span>設定
+  </button>
 </div>
 
-<!-- 利用者管理 -->
+{# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
 
-    <!-- 写真から一括読み取り -->
-    <div class="accordion-block" style="border:1.5px solid #1a73e8;background:#f0f6ff;">
-        <div class="accordion-head" onclick="toggleAcc('scan')" style="background:#f0f6ff;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">document_scanner</span>
-                <span style="font-weight:700;font-size:0.92rem;color:#1a73e8;">📷 写真から一括読み取り（AI）</span>
-            </div>
-            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-scan">expand_more</span>
+  {# ---- まもる君CSVインポート ---- #}
+  <div class="accordion-block" style="border-color:#1a73e8;">
+    <div class="accordion-head" onclick="toggleAcc('csv')" style="background:#f0f6ff;">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;">upload_file</span>
+        <span style="color:#1a73e8;">まもる君クラウド CSV取込</span>
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-csv">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-csv">
+      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+        まもる君クラウドから出力したCSVをドロップまたは選択。利用者番号・氏名・カナ・住所・生年月日・介護度・担当ケアマネ等を自動取込します。
+      </div>
+      <div class="import-zone" id="csv-drop-zone"
+        onclick="document.getElementById('csv-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over');"
+        ondragleave="this.classList.remove('drag-over');"
+        ondrop="handleCsvDrop(event)">
+        <span class="material-symbols-outlined">table_view</span>
+        <p>CSVファイルをドロップ または クリックして選択</p>
+        <small>対応形式: .csv（Shift-JIS / UTF-8）</small>
+      </div>
+      <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
+      <div id="csv-preview-area" style="display:none;">
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;" id="csv-preview-title"></div>
+        <div style="overflow-x:auto;margin-bottom:12px;" id="csv-preview-table-wrap"></div>
+        <button class="btn btn-primary" onclick="bulkUpsertPatients()" style="width:100%;">
+          <span class="material-symbols-outlined" style="color:white;">group_add</span>
+          <span id="csv-import-btn-label">一括取込を実行</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ---- 写真からAIスキャン ---- #}
+  <div class="accordion-block" style="border-color:#34a853;">
+    <div class="accordion-head" onclick="toggleAcc('scan')" style="background:#f0faf3;">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#34a853;">document_scanner</span>
+        <span style="color:#34a853;">写真からAI読み取り</span>
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-scan">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-scan">
+      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+        利用者名簿・介護ソフト画面・紙の名簿の写真をアップロード。AIが名前・生年月日を自動読み取りします。
+      </div>
+      <div class="import-zone" id="scan-drop-zone"
+        onclick="document.getElementById('scan-photo-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over');"
+        ondragleave="this.classList.remove('drag-over');"
+        ondrop="onScanDrop(event)">
+        <span class="material-symbols-outlined">add_a_photo</span>
+        <p>写真をタップして選択 またはドロップ</p>
+        <small>JPG / PNG / HEIC 対応</small>
+      </div>
+      <input type="file" id="scan-photo-input" accept="image/*" style="display:none" onchange="onScanFileSelect(this)">
+      <div id="scan-preview" style="display:none;margin-bottom:12px;">
+        <img id="scan-preview-img" style="width:100%;border-radius:8px;border:1px solid #e0e0e0;">
+      </div>
+      <button class="btn btn-primary" id="scan-btn" onclick="scanPatients()" style="display:none;width:100%;margin-bottom:12px;background:#34a853;">
+        <span class="material-symbols-outlined" style="color:white;">auto_awesome</span>
+        AIで読み取る
+      </button>
+      <div id="scan-loading" style="display:none;text-align:center;padding:16px;">
+        <span class="material-symbols-outlined" style="font-size:32px;color:#34a853;animation:spin 1s linear infinite;">sync</span>
+        <div style="font-size:0.85rem;color:#34a853;margin-top:8px;font-weight:700;">AIが読み取り中...</div>
+      </div>
+      <div id="scan-results" style="display:none;">
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:6px;">読み取り結果（確認・修正して登録）</div>
+        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:10px;">✅ チェックした利用者のみ登録されます</div>
+        <div id="scan-results-list"></div>
+        <button class="btn btn-primary" onclick="registerScannedPatients()" style="width:100%;margin-top:10px;background:#34a853;">
+          <span class="material-symbols-outlined" style="color:white;">group_add</span>
+          チェックした利用者を一括登録
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ---- 新規手入力登録 ---- #}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('new-patient')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#34a853;">person_add</span>
+        新規手入力登録
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new-patient">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-new-patient">
+      <div class="form-group">
+        <label class="form-label">利用者番号（カルテNo）</label>
+        <input type="text" id="new-patient-number" class="form-control" placeholder="例: 000123">
+      </div>
+      <div class="form-group">
+        <label class="form-label">氏名 <span style="color:#ea4335;">*</span></label>
+        <input type="text" id="new-user-name" class="form-control" placeholder="例: 山田 花子">
+      </div>
+      <div class="form-group">
+        <label class="form-label">カナ</label>
+        <input type="text" id="new-user-kana" class="form-control" placeholder="例: ヤマダ ハナコ">
+      </div>
+      <div class="form-group">
+        <label class="form-label">生年月日</label>
+        <div class="birth-input-wrap">
+          <input type="text" id="new-birth-text" class="form-control birth-text"
+            placeholder="例: S20.3.15 / 1945/3/15"
+            oninput="parseBirthInput(this.value,'new-birth-date','new-birth-result')" autocomplete="off">
+          <input type="date" id="new-birth-date" class="form-control birth-date"
+            onchange="syncDateToText(this.value,'new-birth-text','new-birth-result')">
         </div>
-        <div class="accordion-body" id="acc-body-scan">
-            <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-                利用者名簿・介護ソフト画面・紙の名簿など、名前と生年月日が載っている表の写真をアップロードするとAIが自動で読み取ります。
-            </div>
+        <div class="birth-result" id="new-birth-result"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">介護度</label>
+        <select id="new-care-level" class="form-control">
+          <option value="">選択</option>
+          {% for lv in ['要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
+          <option value="{{ lv }}">{{ lv }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="addPatientProfile()">
+        <span class="material-symbols-outlined">add</span>登録する
+      </button>
+    </div>
+  </div>
 
-            <!-- 画像アップロードエリア -->
-            <div id="scan-drop-zone"
-                style="border:2px dashed #1a73e8;border-radius:12px;padding:24px;text-align:center;cursor:pointer;background:#fff;margin-bottom:12px;"
-                onclick="document.getElementById('scan-photo-input').click()"
-                ondragover="event.preventDefault();this.style.background='#e8f0fe';"
-                ondragleave="this.style.background='#fff';"
-                ondrop="onScanDrop(event)">
-                <span class="material-symbols-outlined" style="font-size:36px;color:#1a73e8;">upload_file</span>
-                <div style="font-size:0.85rem;font-weight:700;color:#1a73e8;margin-top:8px;">写真をタップして選択</div>
-                <div style="font-size:0.75rem;color:#80868b;margin-top:4px;">または画像をここにドロップ</div>
+  {# ---- 利用者一覧・編集 ---- #}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('patient-list')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;">group</span>
+        利用者一覧・編集
+        <span class="badge">{{ patient_profiles|length if patient_profiles else 0 }}名</span>
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-patient-list">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-patient-list">
+      {% if patient_profiles %}
+        {% for p in patient_profiles %}
+        <div class="patient-card" id="pc-{{ p.id }}">
+          <div class="patient-card-info">
+            <div class="patient-card-name">
+              <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
+              {{ p.user_name }}
+              {% if p.care_level %}<span class="badge" style="font-size:0.68rem;">{{ p.care_level }}</span>{% endif %}
             </div>
-            <input type="file" id="scan-photo-input" accept="image/*" style="display:none;" onchange="onScanFileSelect(this)">
-
-            <!-- プレビュー -->
-            <div id="scan-preview" style="display:none;margin-bottom:12px;">
-                <img id="scan-preview-img" style="width:100%;border-radius:8px;border:1px solid #e0e0e0;">
+            <div class="patient-card-sub">
+              {{ p.user_name_kana or '' }}
+              {% if p.patient_number %} ・ No.{{ p.patient_number }}{% endif %}
             </div>
-
-            <!-- 読み取りボタン -->
-            <button class="btn btn-primary" id="scan-btn" onclick="scanPatients()" style="display:none;width:100%;margin-bottom:12px;">
-                <span class="material-symbols-outlined" style="color:white;">auto_awesome</span>
-                AIで名前・生年月日を読み取る
+          </div>
+          <div class="patient-card-actions">
+            <button class="btn btn-sm edit-btn" onclick="openPatientEditForm('{{ p.id }}')">
+              <span class="material-symbols-outlined" style="font-size:15px;">edit</span>編集
             </button>
-
-            <!-- ローディング -->
-            <div id="scan-loading" style="display:none;text-align:center;padding:16px;">
-                <span class="material-symbols-outlined" style="font-size:32px;color:#1a73e8;animation:spin 1s linear infinite;">sync</span>
-                <div style="font-size:0.85rem;color:#1a73e8;margin-top:8px;font-weight:700;">AIが読み取り中...</div>
-            </div>
-
-            <!-- 読み取り結果 -->
-            <div id="scan-results" style="display:none;">
-                <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">
-                    読み取り結果（確認・修正してから登録してください）
-                </div>
-                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:10px;">
-                    ✅チェックした利用者のみ登録されます
-                </div>
-                <div id="scan-results-list"></div>
-                <button class="btn btn-primary" onclick="registerScannedPatients()" style="width:100%;margin-top:10px;">
-                    <span class="material-symbols-outlined" style="color:white;">group_add</span>
-                    チェックした利用者を一括登録
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 新規登録 -->
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;"><a href="/mapping" style="flex:1;display:flex;align-items:center;gap:10px;padding:16px 18px;background:#e8f0fe;border-radius:12px;border:2px solid #1a73e8;text-decoration:none;color:#1a73e8;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined" style="font-size:22px;">grid_view</span>書式マッピング設定<span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span></a><a href="/help" target="_blank" style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;background:#fff;border-radius:50%;border:2px solid #1a73e8;text-decoration:none;color:#1a73e8;font-weight:700;font-size:1.1rem;flex-shrink:0;" title="操作マニュアル">?</a></div>
-<div class="accordion-block">
-        <div class="accordion-head" onclick="toggleAcc('new')">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#34a853;font-size:18px;">person_add</span>
-                <span style="font-weight:700;font-size:0.92rem;">新規登録</span>
-            </div>
-            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new">expand_more</span>
-        </div>
-        <div class="accordion-body" id="acc-body-new">
-            <div class="form-group">
-                <label class="form-label">カルテNo</label>
-                <input type="text" id="new-chart" class="form-control" placeholder="例：001">
-            </div>
-            <div class="form-group">
-                <label class="form-label">氏名</label>
-                <input type="text" id="new-name" class="form-control" placeholder="例：山田 太郎">
-            </div>
-            <div class="form-group">
-                <label class="form-label">かな</label>
-                <input type="text" id="new-kana" class="form-control" placeholder="例：やまだ たろう">
-            </div>
-            <div class="form-group">
-                <label class="form-label">
-                    <span class="material-symbols-outlined">cake</span>
-                    誕生日
-                </label>
-                <div class="birth-input-wrap">
-                    <input type="text" id="new-birth-text" class="form-control birth-text"
-                        placeholder="例：S20.3.15 / 昭和20年3月15日 / 1945/3/15"
-                        oninput="parseBirthInput(this.value, 'new-birth-date', 'new-birth-result')"
-                        autocomplete="off">
-                    <input type="date" id="new-birth-date" class="form-control birth-date"
-                        onchange="syncDateToText(this.value, 'new-birth-text', 'new-birth-result')">
-                </div>
-                <div class="birth-result" id="new-birth-result"></div>
-            </div>
-            <button class="btn btn-primary" onclick="addPatient()">
-                <span class="material-symbols-outlined">add</span>登録する
+            <button class="btn btn-sm delete-btn" onclick="confirmDeletePatient('{{ p.id }}','{{ p.user_name }}')">
+              <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
             </button>
+          </div>
         </div>
-    </div>
-
-    <!-- 利用者編集 -->
-    <div class="accordion-block">
-        <div class="accordion-head" onclick="toggleAcc('edit')">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">manage_accounts</span>
-                <span style="font-weight:700;font-size:0.92rem;">利用者編集</span>
-            </div>
-            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-edit">expand_more</span>
-        </div>
-        <div class="accordion-body" id="acc-body-edit">
-            {% if patients %}
-            {% for p in patients %}
-            <div class="patient-edit-card" id="pec-{{ p.id }}">
-                <div class="patient-edit-info">
-                    <div class="patient-edit-name">
-                        <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
-                        No.{{ p.chart_number }}　{{ p.user_name }}
-                    </div>
-                    <div class="patient-edit-kana">{{ p.user_kana }}</div>
-                </div>
-                <div class="patient-edit-actions">
-                    <button class="btn btn-sm edit-btn" onclick="openEditForm('{{ p.id }}')">
-                        <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
-                        編集
-                    </button>
-                    <button class="btn btn-sm delete-btn" onclick="confirmDelete('{{ p.id }}', '{{ p.user_name }}')">
-                        <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
-                        削除
-                    </button>
-                </div>
-            </div>
-            <div class="edit-form-area" id="ef-{{ p.id }}" style="display:none;">
-                <div class="form-group" style="margin-bottom:8px;">
-                    <label class="form-label" style="font-size:0.75rem;">カルテNo</label>
-                    <input type="text" id="ef-chart-{{ p.id }}" class="form-control" value="{{ p.chart_number }}">
-                </div>
-                <div class="form-group" style="margin-bottom:8px;">
-                    <label class="form-label" style="font-size:0.75rem;">氏名</label>
-                    <input type="text" id="ef-name-{{ p.id }}" class="form-control" value="{{ p.user_name }}">
-                </div>
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label class="form-label" style="font-size:0.75rem;">かな</label>
-                    <input type="text" id="ef-kana-{{ p.id }}" class="form-control" value="{{ p.user_kana }}">
-                </div>
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label class="form-label" style="font-size:0.75rem;">
-                        <span class="material-symbols-outlined">cake</span>誕生日
-                    </label>
-                    <div class="birth-input-wrap">
-                        <input type="text" id="ef-birth-text-{{ p.id }}" class="form-control birth-text"
-                            placeholder="例：S20.3.15 / 1945/3/15"
-                            value="{{ p.birth_text or '' }}"
-                            oninput="parseBirthInput(this.value, 'ef-birth-date-{{ p.id }}', 'ef-birth-result-{{ p.id }}')"
-                            autocomplete="off">
-                        <input type="date" id="ef-birth-date-{{ p.id }}" class="form-control birth-date"
-                            value="{{ p.birth_date or '' }}"
-                            onchange="syncDateToText(this.value, 'ef-birth-text-{{ p.id }}', 'ef-birth-result-{{ p.id }}')">
-                    </div>
-                    <div class="birth-result" id="ef-birth-result-{{ p.id }}"></div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <button class="btn btn-primary btn-sm" onclick="savePatientEdit('{{ p.id }}')">
-                        <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>確定
-                    </button>
-                    <button class="btn btn-sm" onclick="closeEditForm('{{ p.id }}')">
-                        <span class="material-symbols-outlined" style="font-size:15px;">close</span>キャンセル
-                    </button>
-                </div>
-            </div>
-            {% endfor %}
-            {% else %}
-            <div class="alert alert-info" style="margin:0;">
-                <span class="material-symbols-outlined">info</span>
-                利用者が登録されていません。
-            </div>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<!-- 職員招待 -->
-<div class="tab-panel" id="tab-invite">
-
-    <!-- QRコード発行 -->
-    <div class="section-box" style="background:linear-gradient(135deg,#e8f0fe,#f3e5f5);border:1.5px solid #90caf9;margin-bottom:12px;">
-        <div class="section-box-title" style="color:#1a73e8;">
-            <span class="material-symbols-outlined" style="color:#1a73e8;">qr_code</span>
-            招待QRコードを発行
-        </div>
-        <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-            QRコードを表示してスタッフのスマホで読み取ってもらうと、スタッフが自分で名前とパスワードを登録できます。有効時間は<b>30分</b>です。
-        </div>
-        <button class="btn btn-primary" onclick="issueInviteQR()">
-            <span class="material-symbols-outlined">qr_code_2</span>
-            QRコードを発行する
-        </button>
-        <div id="invite-qr-area" style="display:none;margin-top:16px;text-align:center;">
-            <div id="invite-qr-code" style="display:inline-block;padding:12px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>
-            <div style="font-size:0.78rem;color:#80868b;margin-top:8px;">⏰ 30分後に自動失効</div>
-            <div style="font-size:0.75rem;color:#5f6368;margin-top:4px;word-break:break-all;" id="invite-url-text"></div>
-        </div>
-    </div>
-    <!-- 新規スタッフ登録 -->
-    <div class="accordion-block">
-        <div class="accordion-head" onclick="toggleAcc('new-staff')">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#34a853;font-size:18px;">person_add</span>
-                <span style="font-weight:700;font-size:0.92rem;">新規スタッフ登録</span>
-            </div>
-            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new-staff">expand_more</span>
-        </div>
-        <div class="accordion-body" id="acc-body-new-staff">
-            <div class="form-group">
-                <label class="form-label">スタッフ名</label>
-                <input type="text" id="new-staff-name" class="form-control" placeholder="例：田中 花子">
-            </div>
-            <div class="form-group">
-                <label class="form-label">パスワード</label>
-                <input type="password" id="new-staff-pw" class="form-control" placeholder="ログイン用パスワード">
-            </div>
-            <div class="form-group">
-                <label class="form-label">パスワード確認</label>
-                <input type="password" id="new-staff-pw2" class="form-control" placeholder="もう一度入力">
-            </div>
-            <div id="new-staff-error" class="alert alert-error" style="display:none;margin-bottom:12px;">
-                <span class="material-symbols-outlined">error</span>
-                <span id="new-staff-error-msg"></span>
-            </div>
-            <button class="btn btn-primary" onclick="addStaff()">
-                <span class="material-symbols-outlined">person_add</span>登録する
+        <div class="edit-form-area" id="pef-{{ p.id }}" style="display:none;">
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">利用者番号</label>
+            <input type="text" id="pef-number-{{ p.id }}" class="form-control" value="{{ p.patient_number or '' }}">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">氏名</label>
+            <input type="text" id="pef-name-{{ p.id }}" class="form-control" value="{{ p.user_name }}">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">カナ</label>
+            <input type="text" id="pef-kana-{{ p.id }}" class="form-control" value="{{ p.user_name_kana or '' }}">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">介護度</label>
+            <select id="pef-care-{{ p.id }}" class="form-control">
+              <option value="">選択</option>
+              {% for lv in ['要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
+              <option value="{{ lv }}" {% if p.care_level == lv %}selected{% endif %}>{{ lv }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="savePatientProfileEdit('{{ p.id }}')">
+              <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
             </button>
+            <button class="btn btn-sm" onclick="document.getElementById('pef-{{ p.id }}').style.display='none'">
+              <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
+            </button>
+          </div>
+          <div style="margin-top:8px;">
+            <a href="/patient_profile?id={{ p.id }}" style="font-size:0.78rem;color:#1a73e8;text-decoration:none;">
+              <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">open_in_new</span>
+              詳細情報（目標・既往歴など）を編集
+            </a>
+          </div>
         </div>
+        {% endfor %}
+      {% else %}
+        <div class="alert alert-info" style="margin:0;">
+          <span class="material-symbols-outlined">info</span>
+          利用者が登録されていません。CSVまたは手入力で登録してください。
+        </div>
+      {% endif %}
     </div>
+  </div>
 
-    <!-- 登録済みスタッフ一覧 -->
-    <div class="accordion-block" style="margin-top:12px;">
-        <div class="accordion-head" onclick="toggleAcc('staff-list')">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">group</span>
-                <span style="font-weight:700;font-size:0.92rem;">登録済みスタッフ</span>
-            </div>
-            <span class="material-symbols-outlined acc-arrow" id="acc-arrow-staff-list">expand_more</span>
-        </div>
-        <div class="accordion-body" id="acc-body-staff-list">
-            {% if registered_staffs %}
-            {% for s in registered_staffs %}
-            <div class="staff-card">
-                <span class="material-symbols-outlined" style="color:#1a73e8;">person</span>
-                <div style="flex:1;font-weight:600;">{{ s.staff_name }}</div>
-                <div style="font-size:0.75rem;color:#80868b;">{{ s.created_at[:10] if s.created_at else '' }}</div>
-                <button class="btn btn-sm delete-btn" style="margin-left:8px;" onclick="deleteStaff('{{ s.id }}', '{{ s.staff_name }}')">
-                    <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
-                </button>
-            </div>
-            {% endfor %}
-            {% else %}
-            <div class="alert alert-info" style="margin:0;">
-                <span class="material-symbols-outlined">info</span>
-                登録済みスタッフはいません。
-            </div>
-            {% endif %}
-        </div>
-    </div>
+</div>{# /tab-patients #}
 
-    <!-- ログイン情報の案内 -->
-    <div class="section-box" style="margin-top:12px;background:#f8f9fa;">
-        <div class="section-box-title">
-            <span class="material-symbols-outlined">info</span>スタッフへの案内
-        </div>
-        <div style="font-size:0.85rem;color:#5f6368;line-height:1.8;">
-            スタッフには以下を伝えてください：<br>
-            <b>ログインURL：</b>アプリのURL<br>
-            <b>施設コード：</b>{{ f_code }}<br>
-            <b>パスワード：</b>登録時に設定したもの
-        </div>
-    </div>
-</div>
-
-<!-- 設定 -->
-<div class="tab-panel" id="tab-settings">
-    <div class="section-box">
-        <div class="section-box-title">
-            <span class="material-symbols-outlined">lock_reset</span>パスワード変更
-        </div>
-        <div class="form-group">
-            <input type="password" id="new-pw" class="form-control" placeholder="新しいパスワード">
-        </div>
-        <button class="btn btn-primary" onclick="updatePassword()">
-            <span class="material-symbols-outlined">save</span>更新
-        </button>
-    </div>
-    <div class="section-box">
-        <div class="section-box-title">
-            <span class="material-symbols-outlined">format_list_numbered</span>履歴の表示件数
-        </div>
-        <input type="range" id="hist-limit" min="10" max="100" value="{{ hist_limit }}" style="width:100%;" oninput="document.getElementById('hist-val').textContent=this.value">
-        <div style="text-align:center; font-weight:700; margin:8px 0;" id="hist-val">{{ hist_limit }}</div>
-        <button class="btn btn-primary" onclick="updateHistLimit()">
-            <span class="material-symbols-outlined">save</span>保存
-        </button>
-    </div>
-
-    <!-- Claude閲覧許可は開発者MENUへ移動 -->
-</div>
-
-<!-- セキュリティ -->
-<div class="tab-panel" id="tab-security">
-    {% if blocked %}
-    {% for b in blocked %}
-    <div class="staff-card">
-        <span class="material-symbols-outlined" style="color:#ea4335;">block</span>
-        <div style="flex:1; font-weight:600;">{{ b.staff_name or b.device_id }}</div>
-        <button class="btn btn-sm" onclick="unblockDevice('{{ b.id }}')">
-            <span class="material-symbols-outlined">lock_open</span>復帰
-        </button>
-    </div>
-    {% endfor %}
-    {% else %}
-    <div class="alert alert-info">
-        <span class="material-symbols-outlined">info</span>
-        ブロック中のスタッフはいません。
-    </div>
-    {% endif %}
-</div>
-
-<!-- スタッフ管理 -->
+{# ==================== 職員管理タブ ==================== #}
 <div class="tab-panel" id="tab-staff">
-    <div style="background:#e8f0fe;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.8rem;color:#1557b0;display:flex;align-items:center;gap:8px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">edit_note</span>
-        <span><b>📋 掲示板権限</b>（ペンアイコン）をONにすると、他のスタッフの投稿も編集・削除できます</span>
+
+  {# ---- QRコード招待 ---- #}
+  <div class="section-box" style="background:linear-gradient(135deg,#e8f0fe,#f3e5f5);border:1.5px solid #90caf9;">
+    <div class="section-box-title" style="color:#1a73e8;">
+      <span class="material-symbols-outlined" style="color:#1a73e8;">qr_code</span>
+      招待QRコードを発行
     </div>
-    <div style="background:#fff8e1;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:0.8rem;color:#a06200;display:flex;align-items:center;gap:8px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">admin_panel_settings</span>
-        <span><b>👑 管理者権限</b>（王冠アイコン）をONにすると、管理者MENUに入れます。最低1人は必要です。</span>
+    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+      QRコードをスタッフのスマホで読み取ると自分で登録できます。有効時間は<b>30分</b>です。
     </div>
-    <div id="managers-count-bar" style="background:#f1f3f4;border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:0.8rem;color:#3c4043;display:flex;align-items:center;gap:8px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">groups</span>
-        <span>現在の管理者: <b id="managers-count-num">{{ admin_managers|length }}</b>人</span>
+    <button class="btn btn-primary" onclick="issueInviteQR()">
+      <span class="material-symbols-outlined">qr_code_2</span>QRコードを発行する
+    </button>
+    <div id="invite-qr-area" style="display:none;margin-top:16px;text-align:center;">
+      <div id="invite-qr-code" style="display:inline-block;padding:12px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>
+      <div style="font-size:0.78rem;color:#80868b;margin-top:8px;">⏰ 30分後に自動失効</div>
+      <div style="font-size:0.75rem;color:#5f6368;margin-top:4px;word-break:break-all;" id="invite-url-text"></div>
     </div>
-    {% for s in staff_list %}
-    <div class="staff-card" id="sc-{{ loop.index }}">
+  </div>
+
+  {# ---- 新規スタッフ登録 ---- #}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('new-staff')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#34a853;">person_add</span>
+        新規スタッフ登録
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new-staff">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-new-staff">
+      <div class="form-group">
+        <label class="form-label">スタッフ名</label>
+        <input type="text" id="new-staff-name" class="form-control" placeholder="例: 田中 花子">
+      </div>
+      <div class="form-group">
+        <label class="form-label">パスワード</label>
+        <input type="password" id="new-staff-pw" class="form-control" placeholder="ログイン用パスワード">
+      </div>
+      <div class="form-group">
+        <label class="form-label">パスワード確認</label>
+        <input type="password" id="new-staff-pw2" class="form-control" placeholder="もう一度入力">
+      </div>
+      <div id="new-staff-error" class="alert alert-error" style="display:none;margin-bottom:12px;">
+        <span class="material-symbols-outlined">error</span>
+        <span id="new-staff-error-msg"></span>
+      </div>
+      <button class="btn btn-primary" onclick="addStaff()">
+        <span class="material-symbols-outlined">person_add</span>登録する
+      </button>
+    </div>
+  </div>
+
+  {# ---- スタッフ権限・管理 ---- #}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('staff-perm')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;">group</span>
+        スタッフ一覧・権限管理
+        <span class="badge">{{ staff_list|length }}名</span>
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-staff-perm">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-staff-perm">
+      <div style="background:#e8f0fe;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78rem;color:#1557b0;">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">edit_note</span>
+        <b>掲示板権限</b>: ON→他スタッフの投稿も編集・削除可
+        ／
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">admin_panel_settings</span>
+        <b>管理者権限</b>: ON→管理者MENUに入れる（最低1人必須）
+      </div>
+      <div style="font-size:0.8rem;color:#3c4043;margin-bottom:10px;">
+        現在の管理者: <b id="managers-count-num">{{ admin_managers|length }}</b>人
+      </div>
+      {% for s in staff_list %}
+      <div class="staff-card" id="sc-{{ loop.index }}">
         <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
-            {% if s.blocked %}block{% else %}person{% endif %}
+          {% if s.blocked %}block{% else %}person{% endif %}
         </span>
         <div style="flex:1;">
-            <div style="font-weight:600;">{{ s.name }}</div>
-            {% if s.birth_date %}
-            <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
-            {% endif %}
+          <div style="font-weight:600;font-size:0.9rem;">{{ s.name }}</div>
+          {% if s.birth_text %}
+          <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
+          {% endif %}
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-            <!-- 掲示板編集権限トグル -->
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.75rem;color:#5f6368;background:#f8f9fa;border-radius:8px;padding:4px 8px;border:1px solid #e0e0e0;"
-                title="掲示板の編集・削除権限">
-                <input type="checkbox" id="board-edit-{{ loop.index }}"
-                    {% if s.name in board_editors %}checked{% endif %}
-                    onchange="toggleBoardEditor('{{ s.name }}', this.checked)"
-                    style="accent-color:#1a73e8;width:14px;height:14px;">
-                <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
-            </label>
-            <!-- 管理者権限トグル(王冠アイコン) -->
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.75rem;color:#5f6368;background:#fff8e1;border-radius:8px;padding:4px 8px;border:1px solid #f4d35e;"
-                title="管理者MENUに入れる権限">
-                <input type="checkbox" id="admin-mng-{{ loop.index }}"
-                    data-staff-name="{{ s.name }}"
-                    {% if s.name in admin_managers %}checked{% endif %}
-                    onchange="toggleAdminManager('{{ s.name }}', this.checked, this)"
-                    style="accent-color:#f9ab00;width:14px;height:14px;">
-                <span class="material-symbols-outlined" style="font-size:14px;color:#a06200;">admin_panel_settings</span>
-            </label>
-            <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}', '{{ s.name }}', '{{ s.birth_date or '' }}')">
-                <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
-            </button>
-            {% if not s.blocked %}
-            <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')">
-                <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
-            </button>
-            {% endif %}
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+          <label class="perm-toggle" title="掲示板編集権限">
+            <input type="checkbox" id="board-edit-{{ loop.index }}"
+              {% if s.name in board_editors %}checked{% endif %}
+              onchange="toggleBoardEditor('{{ s.name }}', this.checked)">
+            <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
+          </label>
+          <label class="perm-toggle perm-toggle-admin" title="管理者権限">
+            <input type="checkbox" id="admin-mng-{{ loop.index }}"
+              data-staff-name="{{ s.name }}"
+              {% if s.name in admin_managers %}checked{% endif %}
+              onchange="toggleAdminManager('{{ s.name }}', this.checked, this)"
+              style="accent-color:#f9ab00;">
+            <span class="material-symbols-outlined" style="font-size:14px;color:#a06200;">admin_panel_settings</span>
+          </label>
+          <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}','{{ s.name }}','{{ s.birth_date or '' }}')" title="誕生日設定">
+            <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
+          </button>
+          {% if not s.blocked %}
+          <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')" title="ブロック">
+            <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
+          </button>
+          {% endif %}
         </div>
-    </div>
-    <div class="edit-form-area" id="sbf-{{ loop.index }}" style="display:none;">
+      </div>
+      <div class="edit-form-area" id="sbf-{{ loop.index }}" style="display:none;">
         <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">
-                <span class="material-symbols-outlined">cake</span>{{ s.name }}の誕生日
-            </label>
-            <div class="birth-input-wrap">
-                <input type="text" id="sbf-text-{{ loop.index }}" class="form-control birth-text"
-                    placeholder="例：S20.3.15 / 1945/3/15"
-                    value="{{ s.birth_text or '' }}"
-                    oninput="parseBirthInput(this.value, 'sbf-date-{{ loop.index }}', 'sbf-result-{{ loop.index }}')"
-                    autocomplete="off">
-                <input type="date" id="sbf-date-{{ loop.index }}" class="form-control birth-date"
-                    value="{{ s.birth_date or '' }}"
-                    onchange="syncDateToText(this.value, 'sbf-text-{{ loop.index }}', 'sbf-result-{{ loop.index }}')">
-            </div>
-            <div class="birth-result" id="sbf-result-{{ loop.index }}"></div>
+          <label class="form-label" style="font-size:0.75rem;">{{ s.name }}の誕生日</label>
+          <div class="birth-input-wrap">
+            <input type="text" id="sbf-text-{{ loop.index }}" class="form-control birth-text"
+              placeholder="例: S20.3.15 / 1945/3/15"
+              value="{{ s.birth_text or '' }}"
+              oninput="parseBirthInput(this.value,'sbf-date-{{ loop.index }}','sbf-result-{{ loop.index }}')" autocomplete="off">
+            <input type="date" id="sbf-date-{{ loop.index }}" class="form-control birth-date"
+              value="{{ s.birth_date or '' }}"
+              onchange="syncDateToText(this.value,'sbf-text-{{ loop.index }}','sbf-result-{{ loop.index }}')">
+          </div>
+          <div class="birth-result" id="sbf-result-{{ loop.index }}"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <button class="btn btn-primary btn-sm" onclick="saveStaffBirth('{{ s.name }}', '{{ loop.index }}')">
-                <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
-            </button>
-            <button class="btn btn-sm" onclick="document.getElementById('sbf-{{ loop.index }}').style.display='none'">
-                <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
-            </button>
+          <button class="btn btn-primary btn-sm" onclick="saveStaffBirth('{{ s.name }}','{{ loop.index }}')">
+            <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
+          </button>
+          <button class="btn btn-sm" onclick="document.getElementById('sbf-{{ loop.index }}').style.display='none'">
+            <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
+          </button>
         </div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-</div>
+  </div>
 
-<!-- ケース記録 -->
-<div class="tab-panel" id="tab-records">
-    <div class="section-box">
-        <div class="section-box-title">
-            <span class="material-symbols-outlined">auto_awesome</span>AIカテゴリ自動振り分け
-        </div>
-        <div style="font-size:0.85rem;color:#5f6368;margin-bottom:12px;line-height:1.5;">
-            「その他」カテゴリで投稿された記録を、AI(Gemini)が本文から判定し、適切なカテゴリに振り分けます。<br>
-            <b>判定はAIによる提案です。必ず人が確認してから適用してください。</b>
-        </div>
-        <a href="/admin/ai-categorize" style="display:flex;align-items:center;gap:10px;padding:16px 18px;background:#fff3e0;border-radius:12px;border:2px solid #f57c00;text-decoration:none;color:#e65100;font-weight:700;font-size:0.95rem;">
-            <span class="material-symbols-outlined" style="font-size:22px;">category</span>
-            AIカテゴリ自動振り分け画面へ
-            <span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span>
-        </a>
+  {# ---- ブロック中スタッフ ---- #}
+  {% if blocked %}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('blocked')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#ea4335;">block</span>
+        ブロック中スタッフ
+        <span class="badge badge-red">{{ blocked|length }}</span>
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-blocked">expand_more</span>
     </div>
-</div>
+    <div class="accordion-body" id="acc-body-blocked">
+      {% for b in blocked %}
+      <div class="staff-card">
+        <span class="material-symbols-outlined" style="color:#ea4335;">block</span>
+        <div style="flex:1;font-weight:600;">{{ b.staff_name or b.device_id }}</div>
+        <button class="btn btn-sm edit-btn" onclick="unblockDevice('{{ b.id }}')">
+          <span class="material-symbols-outlined" style="font-size:15px;">lock_open</span>復帰
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
-<button class="btn" style="margin-top:1.5rem; color:#ea4335; border-color:#ea4335;" onclick="adminLogout()">
-    <span class="material-symbols-outlined" style="color:#ea4335;">logout</span>
-    管理者MENUから退出
+  {# ---- 施設コード案内 ---- #}
+  <div class="section-box" style="margin-top:4px;">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">info</span>スタッフへの案内
+    </div>
+    <div style="font-size:0.85rem;color:#5f6368;line-height:1.8;">
+      <b>施設コード：</b>{{ f_code }}<br>
+      <b>ログインURL：</b>アプリのURL<br>
+      <b>パスワード：</b>登録時に設定したもの
+    </div>
+  </div>
+
+</div>{# /tab-staff #}
+
+{# ==================== 設定タブ ==================== #}
+<div class="tab-panel" id="tab-settings">
+
+  {# ---- パスワード変更 ---- #}
+  <div class="section-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">lock_reset</span>管理者パスワード変更
+    </div>
+    <div class="form-group">
+      <input type="password" id="new-pw" class="form-control" placeholder="新しいパスワード">
+    </div>
+    <button class="btn btn-primary" onclick="updatePassword()">
+      <span class="material-symbols-outlined">save</span>更新
+    </button>
+  </div>
+
+  {# ---- 表示件数 ---- #}
+  <div class="section-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">format_list_numbered</span>履歴の表示件数
+    </div>
+    <input type="range" id="hist-limit" min="10" max="100" value="{{ hist_limit }}"
+      style="width:100%;" oninput="document.getElementById('hist-val').textContent=this.value">
+    <div style="text-align:center;font-weight:700;margin:8px 0;" id="hist-val">{{ hist_limit }}</div>
+    <button class="btn btn-primary" onclick="updateHistLimit()">
+      <span class="material-symbols-outlined">save</span>保存
+    </button>
+  </div>
+
+  {# ---- AIカテゴリ自動振り分け ---- #}
+  <div class="section-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">auto_awesome</span>AIカテゴリ自動振り分け
+    </div>
+    <div style="font-size:0.85rem;color:#5f6368;margin-bottom:12px;line-height:1.5;">
+      「その他」カテゴリのケース記録をAI(Gemini)が自動で振り分けます。<b>必ず人が確認してから適用してください。</b>
+    </div>
+    <a href="/admin/ai-categorize" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:#fff3e0;border-radius:12px;border:2px solid #f57c00;text-decoration:none;color:#e65100;font-weight:700;font-size:0.92rem;">
+      <span class="material-symbols-outlined" style="font-size:20px;">category</span>
+      AIカテゴリ自動振り分け画面へ
+      <span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span>
+    </a>
+  </div>
+
+  {# ---- 書式マッピング ---- #}
+  <div class="section-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">grid_view</span>書式マッピング設定
+    </div>
+    <a href="/mapping" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:#e8f0fe;border-radius:12px;border:2px solid #1a73e8;text-decoration:none;color:#1a73e8;font-weight:700;font-size:0.92rem;">
+      <span class="material-symbols-outlined" style="font-size:20px;">grid_view</span>
+      書式マッピング設定画面へ
+      <span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span>
+    </a>
+  </div>
+
+</div>{# /tab-settings #}
+
+{# ---- 退出ボタン ---- #}
+<button class="btn" style="margin-top:1.5rem;color:#ea4335;border-color:#ea4335;" onclick="adminLogout()">
+  <span class="material-symbols-outlined" style="color:#ea4335;">logout</span>
+  管理者MENUから退出
 </button>
 
 {% endif %}
 
-<!-- 削除確認モーダル -->
+{# ---- 削除確認モーダル ---- #}
 <div class="modal-overlay" id="delete-modal" style="display:none;">
-    <div class="modal-box">
-        <div class="modal-icon">
-            <span class="material-symbols-outlined">delete_forever</span>
-        </div>
-        <div class="modal-title" id="modal-title">削除の確認</div>
-        <div class="modal-warning">
-            <span class="material-symbols-outlined">warning</span>
-            <span>この操作は取り消せません。削除するとすべての記録から利用者情報が参照できなくなります。</span>
-        </div>
-        <div class="modal-actions">
-            <button class="btn btn-sm" style="background:#ea4335;color:white;border:none;height:auto;padding:12px;" onclick="executeDelete()">
-                <span class="material-symbols-outlined" style="font-size:16px;color:white;">delete</span>
-                削除する
-            </button>
-            <button class="btn btn-sm" style="height:auto;padding:12px;" onclick="closeModal()">
-                <span class="material-symbols-outlined" style="font-size:16px;">close</span>
-                キャンセル
-            </button>
-        </div>
+  <div class="modal-box">
+    <div class="modal-icon">
+      <span class="material-symbols-outlined">delete_forever</span>
     </div>
+    <div class="modal-title" id="modal-title">削除の確認</div>
+    <div class="modal-warning">
+      <span class="material-symbols-outlined">warning</span>
+      <span id="modal-warning-text">この操作は取り消せません。</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" style="background:#ea4335;color:white;border:none;height:auto;padding:12px;" onclick="executeDelete()">
+        <span class="material-symbols-outlined" style="font-size:16px;color:white;">delete</span>削除する
+      </button>
+      <button class="btn btn-sm" style="height:auto;padding:12px;" onclick="closeModal()">
+        <span class="material-symbols-outlined" style="font-size:16px;">close</span>キャンセル
+      </button>
+    </div>
+  </div>
 </div>
 
-<a href="/top" class="back-btn">
-    <span class="material-symbols-outlined">home</span>
-    TOP画面へ
+<a href="/top" class="back-btn" style="margin-top:1rem;">
+  <span class="material-symbols-outlined">home</span>TOP画面へ
 </a>
 {% endblock %}
 
 {% block extra_script %}
 <script src="/static/admin.js"></script>
 <script>
-// 掲示板編集権限トグル
-var _boardEditors = {{ board_editors | tojson }};
+// ========================================
+// 管理者MENU追加スクリプト（Session 43）
+// admin.jsの既存関数を補完・上書き
+// ========================================
 
-async function toggleBoardEditor(staffName, checked) {
-    if (checked) {
-        if (!_boardEditors.includes(staffName)) _boardEditors.push(staffName);
-    } else {
-        _boardEditors = _boardEditors.filter(function(n) { return n !== staffName; });
-    }
-    try {
-        var res = await fetch('/api/board/set_editors', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ editors: _boardEditors })
-        });
-        var data = await res.json();
-        if (data.status === 'success') {
-            var toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
-            toast.textContent = checked
-                ? '✅ ' + staffName + ' に掲示板編集権限を付与しました'
-                : '🚫 ' + staffName + ' の掲示板編集権限を解除しました';
-            document.body.appendChild(toast);
-            setTimeout(function() { toast.remove(); }, 3000);
-        } else {
-            alert('保存に失敗しました: ' + (data.message || ''));
-        }
-    } catch(e) {
-        alert('エラー: ' + e.message);
-    }
+const SUPABASE_URL  = '{{ supabase_url }}';
+const SUPABASE_KEY  = '{{ supabase_anon_key }}';
+const FACILITY_CODE = '{{ session.facility_code }}';
+
+// ---- patient_profiles 新規登録 ----
+async function addPatientProfile() {
+  const num  = document.getElementById('new-patient-number').value.trim();
+  const name = document.getElementById('new-user-name').value.trim();
+  const kana = document.getElementById('new-user-kana').value.trim();
+  const birth= document.getElementById('new-birth-date').value || null;
+  const care = document.getElementById('new-care-level').value || null;
+  if (!name) { alert('氏名は必須です'); return; }
+  const data = {
+    facility_code: FACILITY_CODE,
+    patient_number: num || null,
+    user_name: name,
+    user_name_kana: kana || null,
+    birth_date: birth,
+    care_level: care,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    showAdminToast('✅ 登録しました');
+    setTimeout(() => location.reload(), 1200);
+  } catch(e) {
+    showAdminToast('❌ 登録失敗: ' + e.message);
+  }
 }
 
-// 管理者権限トグル
+// ---- patient_profiles 編集フォーム開閉 ----
+function openPatientEditForm(id) {
+  document.getElementById('pef-' + id).style.display = 'block';
+}
+
+// ---- patient_profiles 編集保存 ----
+async function savePatientProfileEdit(id) {
+  const data = {
+    patient_number: document.getElementById('pef-number-' + id).value || null,
+    user_name:      document.getElementById('pef-name-' + id).value,
+    user_name_kana: document.getElementById('pef-kana-' + id).value || null,
+    care_level:     document.getElementById('pef-care-' + id).value || null,
+    updated_at:     new Date().toISOString()
+  };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    showAdminToast('✅ 保存しました');
+    setTimeout(() => location.reload(), 1000);
+  } catch(e) {
+    showAdminToast('❌ 保存失敗: ' + e.message);
+  }
+}
+
+// ---- 利用者削除 ----
+let _deletePatientId = null;
+function confirmDeletePatient(id, name) {
+  _deletePatientId = id;
+  _deleteMode = 'patient';
+  document.getElementById('modal-title').textContent = `「${name}」を削除しますか？`;
+  document.getElementById('modal-warning-text').textContent =
+    'この操作は取り消せません。利用者情報がすべて削除されます。';
+  document.getElementById('delete-modal').style.display = 'flex';
+}
+
+let _deleteMode = 'patient';
+async function executeDelete() {
+  closeModal();
+  if (_deleteMode === 'patient' && _deletePatientId) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${_deletePatientId}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      showAdminToast('🗑️ 削除しました');
+      setTimeout(() => location.reload(), 1000);
+    } catch(e) { showAdminToast('❌ 削除失敗'); }
+  } else {
+    // 既存のexecuteDelete（staffsテーブル）はadmin.jsに任せる
+    if (typeof _legacyExecuteDelete === 'function') _legacyExecuteDelete();
+  }
+}
+
+// ---- CSVインポート（まもる君クラウド対応） ----
+let _csvRecords = [];
+
+function handleCsvDrop(e) {
+  e.preventDefault();
+  document.getElementById('csv-drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleCsvFile(file);
+}
+
+function handleCsvFile(file) {
+  if (!file) return;
+  // Shift-JIS → TextDecoder
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let text;
+    try {
+      const decoder = new TextDecoder('shift-jis');
+      text = decoder.decode(new Uint8Array(e.target.result));
+    } catch {
+      text = new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));
+    }
+    parseMamorukunCsv(text);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+const CSV_COL_MAP = {
+  '利用者番号':         'patient_number',
+  '氏名':              'user_name',
+  'カナ':              'user_name_kana',
+  '〒':               'postal_code',
+  '住所':              'address',
+  '生年月日':           'birth_date',
+  '性別':              'gender',
+  '介護度':            'care_level',
+  '認定有効期間開始':    'certification_start_date',
+  '認定有効期間終了':    'certification_end_date',
+  '認定有効期間':        'certification_start_date',
+  '支援事業所':         'support_office',
+  '担当介護支援専門員':  'care_manager_name',
+  '委託先事業所':       'delegate_office',
+};
+
+function parseMamorukunCsv(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) { showAdminToast('❌ CSVが空です'); return; }
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+  _csvRecords = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g,''));
+    if (!vals.some(v => v)) continue;
+    const row = { facility_code: FACILITY_CODE, updated_at: new Date().toISOString() };
+    headers.forEach((h, idx) => {
+      const field = CSV_COL_MAP[h];
+      if (field) {
+        let val = vals[idx] || null;
+        if (val && field.includes('date')) val = val.replace(/\//g,'-').replace(/\./g,'-');
+        if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) val = null;
+        row[field] = val;
+      }
+    });
+    if (row.user_name || row.patient_number) _csvRecords.push(row);
+  }
+  if (_csvRecords.length === 0) { showAdminToast('❌ 有効なデータが見つかりません'); return; }
+
+  // プレビュー表示
+  const area = document.getElementById('csv-preview-area');
+  document.getElementById('csv-preview-title').textContent = `${_csvRecords.length}件を読み込みました（内容を確認してから取込してください）`;
+  const tbl = `<table class="csv-preview-table">
+    <thead><tr><th>利用者番号</th><th>氏名</th><th>カナ</th><th>介護度</th><th>生年月日</th></tr></thead>
+    <tbody>${_csvRecords.slice(0,10).map(r => `
+      <tr>
+        <td>${r.patient_number||''}</td>
+        <td>${r.user_name||''}</td>
+        <td>${r.user_name_kana||''}</td>
+        <td>${r.care_level||''}</td>
+        <td>${r.birth_date||''}</td>
+      </tr>`).join('')}
+    ${_csvRecords.length > 10 ? `<tr><td colspan="5" style="color:#80868b;text-align:center;">...他${_csvRecords.length-10}件</td></tr>` : ''}
+    </tbody>
+  </table>`;
+  document.getElementById('csv-preview-table-wrap').innerHTML = tbl;
+  document.getElementById('csv-import-btn-label').textContent = `${_csvRecords.length}件を一括取込`;
+  area.style.display = 'block';
+}
+
+async function bulkUpsertPatients() {
+  if (_csvRecords.length === 0) return;
+  showAdminToast(`⏳ ${_csvRecords.length}件を登録中...`);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(_csvRecords)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    showAdminToast(`✅ ${_csvRecords.length}件を取り込みました`);
+    setTimeout(() => location.reload(), 1500);
+  } catch(e) {
+    showAdminToast('❌ 取込失敗: ' + e.message);
+  }
+}
+
+// ---- 権限管理（admin.jsから移植・改善） ----
+var _boardEditors  = {{ board_editors | tojson }};
 var _adminManagers = {{ admin_managers | tojson }};
 
+async function toggleBoardEditor(staffName, checked) {
+  _boardEditors = checked
+    ? [...new Set([..._boardEditors, staffName])]
+    : _boardEditors.filter(n => n !== staffName);
+  try {
+    const res = await fetch('/api/board/set_editors', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ editors: _boardEditors })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      showAdminToast(checked ? `✅ ${staffName} に掲示板権限を付与` : `🚫 ${staffName} の掲示板権限を解除`);
+    } else { alert('保存失敗: ' + (data.message||'')); }
+  } catch(e) { alert('エラー: ' + e.message); }
+}
+
 async function toggleAdminManager(staffName, checked, inputEl) {
-    // セーフティ確認(自分自身を OFF にする時)
-    if (!checked) {
-        // managers_info で自分の名前と現状確認
-        try {
-            var infoRes = await fetch('/api/admin/managers_info', { credentials: 'include' });
-            var info = await infoRes.json();
-            if (info.my_name === staffName) {
-                if (!confirm('あなた自身の管理者権限をOFFにしようとしています。\n\n管理者MENUに二度と入れなくなる可能性があります。\n本当によろしいですか?')) {
-                    if (inputEl) inputEl.checked = true;  // 元に戻す
-                    return;
-                }
-            }
-            // 超管理者は OFF にできない
-            if ((info.super_admins || []).indexOf(staffName) !== -1) {
-                alert('「' + staffName + '」は施設の超管理者(初期登録メール管理者)のため、管理者権限を外すことはできません。');
-                if (inputEl) inputEl.checked = true;
-                return;
-            }
-        } catch(e) { /* 取得失敗時は通常のセーフティに任せる */ }
-    }
-    // 配列を更新
-    var updated;
-    if (checked) {
-        updated = _adminManagers.slice();
-        if (!updated.includes(staffName)) updated.push(staffName);
-    } else {
-        updated = _adminManagers.filter(function(n) { return n !== staffName; });
-    }
+  if (!checked) {
     try {
-        var res = await fetch('/api/admin/set_managers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ managers: updated })
-        });
-        var data = await res.json();
-        if (data.status === 'success') {
-            _adminManagers = data.managers || updated;
-            // バッジの数値更新
-            var num = document.getElementById('managers-count-num');
-            if (num) num.textContent = _adminManagers.length;
-            // 超管理者が自動的に追加された場合、UI チェック状態を同期
-            (data.managers || []).forEach(function(name) {
-                document.querySelectorAll('input[id^="admin-mng-"]').forEach(function(inp) {
-                    if (inp.dataset.staffName === name) inp.checked = true;
-                });
-            });
-            var toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34a853;color:#fff;padding:10px 20px;border-radius:20px;font-weight:700;z-index:9999;font-size:0.85rem;';
-            toast.textContent = checked
-                ? '👑 ' + staffName + ' に管理者権限を付与しました'
-                : '🔓 ' + staffName + ' の管理者権限を解除しました';
-            document.body.appendChild(toast);
-            setTimeout(function() { toast.remove(); }, 3000);
-        } else {
-            // エラー(0人禁止など) → トグルを元に戻す
-            if (inputEl) inputEl.checked = !checked;
-            alert('保存に失敗しました: ' + (data.message || ''));
-        }
-    } catch(e) {
-        if (inputEl) inputEl.checked = !checked;
-        alert('エラー: ' + e.message);
-    }
+      const info = await fetch('/api/admin/managers_info').then(r=>r.json());
+      if (info.my_name === staffName && !confirm('自分自身の管理者権限をOFFにします。よろしいですか？')) {
+        inputEl.checked = true; return;
+      }
+      if ((info.super_admins||[]).includes(staffName)) {
+        alert(`「${staffName}」は超管理者のため外せません`); inputEl.checked = true; return;
+      }
+    } catch(e) {}
+  }
+  const updated = checked
+    ? [...new Set([..._adminManagers, staffName])]
+    : _adminManagers.filter(n => n !== staffName);
+  try {
+    const res = await fetch('/api/admin/set_managers', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ managers: updated })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      _adminManagers = data.managers || updated;
+      document.getElementById('managers-count-num').textContent = _adminManagers.length;
+      showAdminToast(checked ? `👑 ${staffName} に管理者権限を付与` : `🔓 ${staffName} の管理者権限を解除`);
+    } else { inputEl.checked = !checked; alert('保存失敗: ' + (data.message||'')); }
+  } catch(e) { inputEl.checked = !checked; alert('エラー: ' + e.message); }
+}
+
+// ---- トースト ----
+function showAdminToast(msg) {
+  let t = document.getElementById('admin-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'admin-toast';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:#202124;color:#fff;border-radius:8px;padding:10px 20px;font-size:0.88rem;opacity:0;transition:all 0.3s;z-index:2000;white-space:nowrap;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  t.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 3000);
 }
 </script>
 {% endblock %}
