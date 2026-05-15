@@ -148,6 +148,7 @@ const MONITORING_PATIENTS = [
 ];
 
 function searchPatient(query) {
+    if (window._patientSelected) return;
     const q = query.trim().toLowerCase();
     const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
     const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
@@ -176,6 +177,8 @@ el.addEventListener('click', e => { if(!('ontouchstart' in window)) selectPatien
 window.searchPatient = searchPatient;
 
 function selectPatient(value, label) {
+    window._patientSelected = true;
+    setTimeout(function(){ window._patientSelected = false; }, 1000);
     var searchEl = document.getElementById('patient-search');
     searchEl.blur();
     searchEl.style.display = 'none';
@@ -199,6 +202,7 @@ window.selectPatient = selectPatient;
 })();
 
 function clearPatient() {
+    window._patientSelected = false;
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
