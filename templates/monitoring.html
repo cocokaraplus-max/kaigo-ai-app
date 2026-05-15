@@ -184,6 +184,17 @@ function selectPatient(value, label) {
     document.getElementById('patientSelect').value = value;
 }
 window.selectPatient = selectPatient;
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('patient-search');
+    if (el) {
+        el.addEventListener('blur', function() {
+            setTimeout(function() {
+                var c = document.getElementById('patient-candidates');
+                if (c) c.style.display = 'none';
+            }, 300);
+        });
+    }
+});
 
 function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
