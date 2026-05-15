@@ -45,7 +45,7 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem 1.5rem;
+            padding: 1.5rem 1.2rem 5rem;
             position: relative;
             z-index: 0;
         }
@@ -250,6 +250,11 @@ body.nav-editing {
 
         /* ボトムナビ */
         .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
             display: flex;
@@ -260,10 +265,7 @@ body.nav-editing {
             padding-bottom: env(safe-area-inset-bottom, 0px);
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
-            flex-shrink: 0;
             width: 100%;
-            max-width: 480px;
-            margin: 0 auto;
             touch-action: pan-x;
             overscroll-behavior-x: contain;
         }
@@ -607,7 +609,6 @@ body.nav-editing {
     </div>
     {% endif %}
 
-    <div style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
     <div class="page-wrapper">
         {% block content %}{% endblock %}
     </div>
@@ -682,7 +683,6 @@ body.nav-editing {
     </nav>
     {% endif %}
     {% endblock %}
-    </div>
 
 <script>
 // ========== SPAルーター ==========
