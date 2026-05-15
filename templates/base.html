@@ -6,7 +6,7 @@
     <!-- PWA設定 -->
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-obile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TASUKARU">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1a73e8">
@@ -876,6 +876,18 @@ function updateNavActive(url) {
 window.addEventListener('load', () => {
     history.replaceState({ url: window.location.pathname }, '', window.location.pathname);
     updateNavActive(window.location.pathname);
+    // スクロール位置復元（ページトップへ移動トグルOFF時）
+    if (!getNavScrollTop()) {
+        try {
+            var _key = 'tasukaru_scroll_' + window.location.pathname;
+            var _saved = sessionStorage.getItem(_key);
+            if (_saved) {
+                var _wrapper = document.querySelector('.page-wrapper');
+                if (_wrapper) { _wrapper.scrollTop = parseInt(_saved) || 0; }
+                sessionStorage.removeItem(_key);
+            }
+        } catch(e) {}
+    }
 });
 </script>
 
