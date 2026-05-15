@@ -469,18 +469,18 @@
 {# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
 
-  {# ---- まもる君CSVインポート ---- #}
+  {# ---- CSVインポート ---- #}
   <div class="accordion-block" style="border-color:#1a73e8;">
     <div class="accordion-head" onclick="toggleAcc('csv')" style="background:#f0f6ff;">
       <div class="acc-title">
         <span class="material-symbols-outlined" style="color:#1a73e8;">upload_file</span>
-        <span style="color:#1a73e8;">まもる君クラウド CSV取込</span>
+        <span style="color:#1a73e8;">CSV取込</span>
       </div>
       <span class="material-symbols-outlined acc-arrow" id="acc-arrow-csv">expand_more</span>
     </div>
     <div class="accordion-body" id="acc-body-csv">
       <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-        まもる君クラウドから出力したCSVをドロップまたは選択。利用者番号・氏名・カナ・住所・生年月日・介護度・担当ケアマネ等を自動取込します。
+        CSVファイルをドロップまたは選択してください。利用者番号・氏名・カナ・住所・生年月日・介護度・担当ケアマネ等を自動取込します。
       </div>
       <div class="import-zone" id="csv-drop-zone"
         onclick="document.getElementById('csv-file-input').click()"
@@ -1086,6 +1086,13 @@ function handleCsvFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
+// カタカナ→ひらがな変換
+function kataToHira(str) {
+  if (!str) return '';
+  return str.replace(/[\u30A1-\u30F6]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60)
+  );
+}
 const CSV_COL_MAP = {
   '利用者番号':         'patient_number',
   '氏名':              'user_name',
@@ -1118,6 +1125,8 @@ function parseMamorukunCsv(text) {
         let val = vals[idx] || null;
         if (val && field.includes('date')) val = val.replace(/\//g,'-').replace(/\./g,'-');
         if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) val = null;
+        // カナフィールドはひらがなに変換
+        if (field === 'user_name_kana' && val) val = kataToHira(val);
         row[field] = val;
       }
     });

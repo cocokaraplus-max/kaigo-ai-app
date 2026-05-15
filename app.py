@@ -163,21 +163,26 @@ def birth_to_wareki_text(birth_date_str):
 
 def get_patients(supabase, f_code):
     try:
-        res = supabase.table("patients").select("*").eq("facility_code", f_code).order("user_kana").execute()
+        res = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).order("user_name_kana").execute()
         patients = []
         for r in res.data:
-            kana = r.get('user_kana') or ""
-            chart = str(r['chart_number'])
-            name = r['user_name']
+            kana  = r.get('user_name_kana') or ""
+            chart = str(r.get('patient_number') or "")
+            name  = r.get('user_name') or ""
             patients.append({
                 "value": f"(No.{chart}) [{name}] {kana}",
                 "label": f"(No.{chart}) [{name}] {kana}",
                 "id": r["id"],
                 "chart_number": chart,
+                "patient_number": chart,
                 "user_name": name,
                 "user_kana": kana,
+                "user_name_kana": kana,
                 "birth_date": r.get("birth_date") or "",
                 "birth_text": birth_to_wareki_text(r.get("birth_date")),
+                "care_level": r.get("care_level") or "",
+                "long_goal": r.get("long_goal") or "",
+                "short_goal": r.get("short_goal") or "",
             })
         return patients
     except:
