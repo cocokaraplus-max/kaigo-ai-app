@@ -445,6 +445,69 @@
     .bottom-nav, .tab-bar, .eval-sticky-actions,
     .eval-modal, .eval-toast, .eval-filter-bar { display: none !important; }
 }
+
+/* ===== 要望A 第1弾: 元データブロック ===== */
+.eval-source-voice-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 18px; border-radius: 24px; border: none; cursor: pointer;
+    font-size: 0.88rem; font-weight: 700; transition: background 0.2s;
+    background: #e8f0fe; color: #1a73e8;
+}
+.eval-source-voice-btn.recording {
+    background: #fce8e6; color: #d93025;
+    animation: eval-pulse 1.2s ease-in-out infinite;
+}
+@keyframes eval-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.4); }
+    50%      { box-shadow: 0 0 0 8px rgba(217,48,37,0); }
+}
+.eval-source-transcript {
+    min-height: 36px; font-size: 0.82rem; color: #5f6368;
+    padding: 6px 8px; background: #f8f9fa; border-radius: 8px;
+    margin-top: 6px; white-space: pre-wrap; display: none;
+}
+.eval-source-transcript.active { display: block; }
+.eval-source-file-row {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+}
+.eval-source-file-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 16px; border-radius: 24px; border: none; cursor: pointer;
+    font-size: 0.88rem; font-weight: 700;
+    background: #e6f4ea; color: #137333; transition: background 0.2s;
+}
+.eval-source-file-btn:active { background: #ceead6; }
+.eval-source-mode-row {
+    display: none; align-items: center; gap: 8px;
+    margin-top: 10px; padding: 10px 12px;
+    background: #fff8e1; border-radius: 10px;
+    font-size: 0.82rem;
+}
+.eval-source-mode-row.visible { display: flex; }
+.eval-source-mode-btn {
+    padding: 6px 14px; border-radius: 16px; border: 2px solid #e0e0e0;
+    background: #fff; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    color: #5f6368; transition: all 0.15s;
+}
+.eval-source-mode-btn.selected {
+    background: #1a73e8; border-color: #1a73e8; color: #fff;
+}
+.eval-source-guide {
+    display: none; margin-top: 10px; padding: 10px 12px;
+    background: #fff3e0; border-left: 4px solid #f9ab00;
+    border-radius: 0 8px 8px 0; font-size: 0.82rem; color: #5f3c00; line-height: 1.6;
+}
+.eval-source-guide.visible { display: block; }
+.eval-source-spinner {
+    display: none; align-items: center; gap: 8px;
+    margin-top: 8px; font-size: 0.82rem; color: #1a73e8; font-weight: 700;
+}
+.eval-source-spinner.visible { display: flex; }
+.eval-source-spinner-icon {
+    animation: eval-spin 1s linear infinite;
+    font-size: 18px;
+}
+@keyframes eval-spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -834,6 +897,69 @@
                 <span class="material-symbols-outlined eval-chevron">expand_more</span>
             </button>
             <div class="eval-section-body">
+                <!-- ===== 要望A 第1弾: 元データブロック ===== -->
+                <div class="eval-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">text_snippet</span>
+                        元データ（音声・ファイル・写真・テキスト入力）
+                    </label>
+
+                    <!-- 入口1: その場で音声入力 -->
+                    <button type="button" class="eval-source-voice-btn" id="eval-voice-btn"
+                            onclick="evalToggleVoice()">
+                        <span class="material-symbols-outlined">mic</span>
+                        <span id="eval-voice-btn-label">音声入力を開始</span>
+                    </button>
+                    <div class="eval-source-transcript" id="eval-voice-transcript"></div>
+
+                    <!-- 入口3: ファイルアップロード / カメラ撮影 -->
+                    <div class="eval-source-file-row">
+                        <button type="button" class="eval-source-file-btn"
+                                onclick="document.getElementById('eval-file-input').click()">
+                            <span class="material-symbols-outlined">attach_file</span>
+                            ファイル・写真を選択
+                        </button>
+                        <button type="button" class="eval-source-file-btn"
+                                onclick="evalOpenCamera()">
+                            <span class="material-symbols-outlined">photo_camera</span>
+                            カメラで撮影
+                        </button>
+                    </div>
+                    <!-- ファイル選択 input（非表示） -->
+                    <input type="file" id="eval-file-input" style="display:none;"
+                           accept=".mp3,.m4a,.wav,.aac,.ogg,.webm,.jpg,.jpeg,.png,.heic,.pdf,.txt"
+                           onchange="evalHandleFile(event)">
+
+                    <!-- モード選択（音声ファイル選択時のみ表示） -->
+                    <div class="eval-source-mode-row" id="eval-audio-mode-row">
+                        <span style="font-weight:700;color:#5f3c00;white-space:nowrap;">録音の種類：</span>
+                        <button type="button" class="eval-source-mode-btn selected" id="eval-mode-solo"
+                                onclick="evalSelectAudioMode('solo')">独り言</button>
+                        <button type="button" class="eval-source-mode-btn" id="eval-mode-dialog"
+                                onclick="evalSelectAudioMode('dialog')">対話（利用者との会話）</button>
+                    </div>
+
+                    <!-- 処理中スピナー -->
+                    <div class="eval-source-spinner" id="eval-source-spinner">
+                        <span class="material-symbols-outlined eval-source-spinner-icon">sync</span>
+                        文字化しています...
+                    </div>
+
+                    <!-- 確認ガイド（文字化完了後に表示） -->
+                    <div class="eval-source-guide" id="eval-source-guide">
+                        ⚠️ <strong>これは生の文字起こし／読み取り結果です。要約ではありません。</strong><br>
+                        次に進む前に内容を確認し、間違いや不要な部分を修正してください。<br>
+                        特に対話モードや手書きOCRは聞き取り・読み取りミスが混ざることがあります。
+                    </div>
+
+                    <!-- 入口2 兼 全入口の出口: 元データ textarea -->
+                    <textarea class="eval-textarea" id="eval-source-data" rows="6"
+                              style="margin-top:10px;"
+                              placeholder="ここに元データが集まります。直接入力・貼り付けも可能です。"
+                              oninput="evalUpdateStatus()"></textarea>
+                </div>
+                <!-- ===== 元データブロック ここまで ===== -->
+
                 <div class="eval-field">
                     <label class="eval-field-label">
                         <span class="material-symbols-outlined">trending_up</span>
@@ -1932,6 +2058,293 @@ document.addEventListener('DOMContentLoaded', function() {
 if (document.readyState !== 'loading') {
     evalUpdateStatus();
 }
+
+// ===========================================================================
+// 要望A 第1弾: 元データブロック — 入口1・入口3・カメラ
+// ===========================================================================
+
+// ---------- 共通ヘルパー ----------
+/** 元データ欄にテキストを追記し、evalUpdateStatus() を明示呼び出し */
+function evalAppendSourceData(text) {
+    const ta = document.getElementById('eval-source-data');
+    if (!ta) return;
+    const existing = ta.value.trim();
+    ta.value = existing ? existing + '\n\n' + text : text;
+    evalUpdateStatus();
+}
+
+/** 確認ガイドを表示 */
+function evalShowGuide() {
+    const g = document.getElementById('eval-source-guide');
+    if (g) g.classList.add('visible');
+}
+
+/** スピナー表示/非表示 */
+function evalShowSpinner(visible) {
+    const s = document.getElementById('eval-source-spinner');
+    if (s) s.classList.toggle('visible', visible);
+}
+
+// ---------- 入口1: その場で音声入力（SpeechRecognition） ----------
+let evalSpeechRecognition = null;
+let evalVoiceRecording    = false;
+let evalVoiceInterim      = '';
+
+window.evalToggleVoice = function() {
+    if (evalVoiceRecording) {
+        evalStopVoice();
+    } else {
+        evalStartVoice();
+    }
+};
+
+window.evalStartVoice = function() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+        alert('このブラウザは音声入力に対応していません。');
+        return;
+    }
+    evalSpeechRecognition = new SR();
+    evalSpeechRecognition.lang            = 'ja-JP';
+    evalSpeechRecognition.continuous      = true;
+    evalSpeechRecognition.interimResults  = true;
+
+    const transcript = document.getElementById('eval-voice-transcript');
+    const btn        = document.getElementById('eval-voice-btn');
+    const label      = document.getElementById('eval-voice-btn-label');
+
+    evalSpeechRecognition.onresult = function(e) {
+        let interim = '';
+        let final   = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+                final += e.results[i][0].transcript;
+            } else {
+                interim += e.results[i][0].transcript;
+            }
+        }
+        if (final) evalVoiceInterim += final;
+        if (transcript) {
+            transcript.textContent = evalVoiceInterim + interim;
+            transcript.classList.add('active');
+        }
+    };
+
+    evalSpeechRecognition.onerror = function(e) {
+        console.error('SpeechRecognition error:', e.error);
+        evalStopVoice();
+    };
+
+    evalSpeechRecognition.onend = function() {
+        // continuous=true でも途切れることがあるので録音中なら再開
+        if (evalVoiceRecording) evalSpeechRecognition.start();
+    };
+
+    evalVoiceRecording = true;
+    evalVoiceInterim   = '';
+    if (transcript) { transcript.textContent = ''; transcript.classList.add('active'); }
+    if (btn)   btn.classList.add('recording');
+    if (label) label.textContent = '■ 停止';
+    evalSpeechRecognition.start();
+};
+
+window.evalStopVoice = function() {
+    evalVoiceRecording = false;
+    if (evalSpeechRecognition) {
+        evalSpeechRecognition.onend = null;  // 再開ループ解除
+        evalSpeechRecognition.stop();
+        evalSpeechRecognition = null;
+    }
+    const btn   = document.getElementById('eval-voice-btn');
+    const label = document.getElementById('eval-voice-btn-label');
+    if (btn)   btn.classList.remove('recording');
+    if (label) label.textContent = '音声入力を開始';
+
+    // 結果を元データ欄に追記
+    const transcript = document.getElementById('eval-voice-transcript');
+    const text = transcript ? transcript.textContent.trim() : '';
+    if (text) {
+        evalAppendSourceData(text);
+        evalShowGuide();
+    }
+    if (transcript) transcript.classList.remove('active');
+    evalVoiceInterim = '';
+};
+
+// ---------- 入口3: モード選択（音声ファイル時のみ） ----------
+let evalAudioMode = 'solo';
+
+window.evalSelectAudioMode = function(mode) {
+    evalAudioMode = mode;
+    document.getElementById('eval-mode-solo').classList.toggle('selected', mode === 'solo');
+    document.getElementById('eval-mode-dialog').classList.toggle('selected', mode === 'dialog');
+};
+
+window.evalShowAudioModeSelector = function(show) {
+    const row = document.getElementById('eval-audio-mode-row');
+    if (row) row.classList.toggle('visible', show);
+};
+
+// ---------- 入口3: ファイル選択 ----------
+const EVAL_AUDIO_EXTS = new Set(['.mp3','.m4a','.wav','.aac','.ogg','.webm']);
+
+window.evalHandleFile = function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    // 拡張子を取得
+    const ext = ('.' + file.name.split('.').pop()).toLowerCase();
+    const isAudio = EVAL_AUDIO_EXTS.has(ext);
+
+    // モード選択UI: 音声ファイルのみ表示
+    evalShowAudioModeSelector(isAudio);
+
+    // スピナー表示
+    evalShowSpinner(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (isAudio) formData.append('audio_mode', evalAudioMode);
+
+    fetch('/api/evaluation/ingest_file', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            evalShowSpinner(false);
+            if (data.status === 'success' && data.text) {
+                evalAppendSourceData(data.text);
+                evalShowGuide();
+            } else {
+                alert('文字化に失敗しました。\n' + (data.message || ''));
+            }
+        })
+        .catch(err => {
+            evalShowSpinner(false);
+            alert('通信エラーが発生しました: ' + err);
+        });
+
+    // inputをリセット（同じファイルを再選択できるように）
+    event.target.value = '';
+};
+
+// ---------- 入口3: カメラ撮影（vitals.htmlのopenCameraを参考に評価画面用として実装） ----------
+let evalCameraStream = null;
+
+window.evalOpenCamera = function() {
+    // カメラモーダルが存在しない場合は動的に生成
+    let modal = document.getElementById('eval-camera-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'eval-camera-modal';
+        modal.style.cssText = [
+            'display:none;position:fixed;top:0;left:0;right:0;bottom:0;',
+            'background:#000;z-index:99999;flex-direction:column;',
+            'align-items:center;padding:env(safe-area-inset-top,0) 12px env(safe-area-inset-bottom,0);',
+            'box-sizing:border-box;overflow:hidden;'
+        ].join('');
+        modal.innerHTML = `
+<div style="width:100%;max-width:480px;height:100%;display:flex;flex-direction:column;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;flex-shrink:0;">
+    <div style="color:#fff;font-size:0.82rem;font-weight:700;">手書きメモや書類を画面に収めて撮影</div>
+    <button onclick="evalCloseCamera()"
+      style="width:32px;height:32px;background:rgba(255,255,255,0.2);border:none;border-radius:50%;
+             color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+      <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+    </button>
+  </div>
+  <div id="eval-camera-view" style="flex:1;position:relative;overflow:hidden;border-radius:12px;min-height:0;">
+    <video id="eval-camera-video" autoplay playsinline muted
+      style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+  </div>
+  <div style="flex-shrink:0;text-align:center;padding:14px 0 12px;">
+    <button onclick="evalCapturePhoto()"
+      style="width:68px;height:68px;border-radius:50%;background:#fff;border:4px solid #1a73e8;
+             display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+             box-shadow:0 4px 16px rgba(26,115,232,0.4);">
+      <span class="material-symbols-outlined" style="font-size:32px;color:#1a73e8;">camera</span>
+    </button>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.72rem;margin-top:6px;">タップして撮影</div>
+  </div>
+  <div id="eval-camera-result" style="display:none;flex:1;overflow-y:auto;text-align:center;padding:8px;">
+    <canvas id="eval-camera-canvas" style="width:100%;border-radius:12px;display:block;"></canvas>
+    <div id="eval-camera-ocr-indicator"
+      style="display:flex;align-items:center;justify-content:center;gap:8px;
+             color:#fff;font-size:0.9rem;font-weight:700;padding:10px;">
+      <span class="material-symbols-outlined" style="animation:eval-spin 1s linear infinite;">sync</span>
+      AIが文字を読み取っています...
+    </div>
+  </div>
+</div>`;
+        document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    document.getElementById('eval-camera-view').style.display = 'flex';
+    document.getElementById('eval-camera-view').style.flexDirection = 'column';
+    document.getElementById('eval-camera-result').style.display = 'none';
+
+    navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    }).then(stream => {
+        evalCameraStream = stream;
+        const video = document.getElementById('eval-camera-video');
+        video.srcObject = stream;
+        video.setAttribute('playsinline', 'true');
+        video.muted = true;
+        video.play().catch(e => console.error('video.play() failed:', e));
+    }).catch(() => {
+        alert('カメラへのアクセスが許可されていません');
+        evalCloseCamera();
+    });
+};
+
+window.evalCloseCamera = function() {
+    if (evalCameraStream) {
+        evalCameraStream.getTracks().forEach(t => t.stop());
+        evalCameraStream = null;
+    }
+    const modal = document.getElementById('eval-camera-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.evalCapturePhoto = function() {
+    const video  = document.getElementById('eval-camera-video');
+    const canvas = document.getElementById('eval-camera-canvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    document.getElementById('eval-camera-view').style.display   = 'none';
+    document.getElementById('eval-camera-result').style.display = 'block';
+    document.getElementById('eval-camera-ocr-indicator').style.display = 'flex';
+
+    if (evalCameraStream) {
+        evalCameraStream.getTracks().forEach(t => t.stop());
+        evalCameraStream = null;
+    }
+
+    canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append('file', blob, 'capture.jpg');
+        fetch('/api/evaluation/ingest_file', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('eval-camera-ocr-indicator').style.display = 'none';
+                if (data.status === 'success' && data.text) {
+                    evalAppendSourceData(data.text);
+                    evalShowGuide();
+                    evalCloseCamera();
+                } else {
+                    alert('文字読み取りに失敗しました。\n' + (data.message || ''));
+                    evalCloseCamera();
+                }
+            })
+            .catch(err => {
+                document.getElementById('eval-camera-ocr-indicator').style.display = 'none';
+                alert('通信エラーが発生しました: ' + err);
+                evalCloseCamera();
+            });
+    }, 'image/jpeg', 0.9);
+};
 
 })();
 </script>

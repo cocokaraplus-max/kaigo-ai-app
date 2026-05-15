@@ -3268,6 +3268,171 @@ def api_release_edit_lock():
         return jsonify({"status": "success", "warning": str(e)})
 
 
+# ==========================================
+# 要望A 第1弾: 元データ収集 — ファイル文字化API
+# ==========================================
+
+@app.route('/api/evaluation/ingest_file', methods=['POST'])
+@login_required
+def api_evaluation_ingest_file():
+    """
+    入口3: アップロードされたファイルを文字化して返す。
+    対応形式:
+      音声系: mp3/m4a/wav/aac/ogg/webm → Gemini で文字起こし
+      画像系: jpg/jpeg/png/heic         → Gemini で OCR
+      文書系: txt                        → そのまま返す
+              pdf                        → テキスト入りPDF はテキスト抽出、
+                                           スキャンPDF は Gemini で OCR
+    受け取り: multipart/form-data
+      file       : アップロードファイル (必須)
+      audio_mode : 'solo' or 'dialog'  (音声ファイル時のみ使用、省略時='solo')
+    返す: {"status":"success","text":"文字化された全文"}
+    第1弾は文字化のみ。要約・整理・構造化は一切しない。
+    """
+    try:
+        from utils import get_generative_model, upload_audio_to_supabase
+        import io
+
+        f = request.files.get('file')
+        if not f:
+            return jsonify({"status": "error", "message": "ファイルがありません"}), 400
+
+        filename  = (f.filename or '').lower()
+        file_bytes = f.read()
+        if not file_bytes:
+            return jsonify({"status": "error", "message": "ファイルが空です"}), 400
+
+        audio_mode = request.form.get('audio_mode', 'solo')  # 'solo' or 'dialog'
+
+        # ---------- ファイル種別の判定 ----------
+        audio_exts = {'.mp3', '.m4a', '.wav', '.aac', '.ogg', '.webm'}
+        image_exts = {'.jpg', '.jpeg', '.png', '.heic'}
+
+        ext = ''
+        for candidate in audio_exts | image_exts | {'.pdf', '.txt'}:
+            if filename.endswith(candidate):
+                ext = candidate
+                break
+
+        # ---------- txt: そのまま返す ----------
+        if ext == '.txt':
+            try:
+                text = file_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                text = file_bytes.decode('shift_jis', errors='replace')
+            return jsonify({"status": "success", "text": text.strip()})
+
+        model = get_generative_model()
+
+        # ---------- 音声: Gemini で文字起こし ----------
+        if ext in audio_exts:
+            mime_map = {
+                '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+                '.wav': 'audio/wav',  '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
+            }
+            mime = mime_map.get(ext, 'audio/webm')
+
+            # ストレージに一時保存（評価確定時に削除）
+            f_code = session.get("f_code", "unknown")
+            supabase = get_supabase()
+            upload_audio_to_supabase(supabase, file_bytes, f.filename or 'audio', f_code)
+
+            if audio_mode == 'dialog':
+                prompt = """これは介護施設における機能訓練指導員と利用者の会話の録音です。
+会話をそのまま文字起こししてください。
+
+【厳守ルール】
+・文字起こしに徹する。要約・整理・補完・推測・創作を一切しない
+・可能であれば話者を区別し「スタッフ:」「利用者:」のように表記する
+・話者の区別が困難な場合は区別なしで全文を文字起こしする
+・聞き取れない箇所は[聞き取り不明瞭]と記載する（補完・推測は禁止）
+・利用者の辻褄の合わない発言・事実と違って聞こえる発言も修正せずそのまま文字起こしする
+・フィラー（「あー」「えー」等）はそのまま記載する"""
+            else:
+                prompt = """これは介護施設の機能訓練指導員が月次評価について口頭で述べた音声です。
+発話内容をそのまま文字起こししてください。
+
+【厳守ルール】
+・文字起こしに徹する。要約・整理・補完・推測・創作を一切しない
+・1人の発話として素直に文字起こしする
+・聞き取れない箇所は[聞き取り不明瞭]と記載する（補完・推測は禁止）
+・フィラー（「あー」「えー」等）はそのまま記載する"""
+
+            resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
+            return jsonify({"status": "success", "text": resp.text.strip()})
+
+        # ---------- 画像: Gemini で OCR ----------
+        if ext in image_exts:
+            mime_map = {
+                '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                '.png': 'image/png',  '.heic': 'image/heic',
+            }
+            mime = mime_map.get(ext, 'image/jpeg')
+            prompt = """この画像に書かれている文字をすべてそのまま読み取ってください。
+
+【厳守ルール】
+・書かれている文字をそのまま読み取る。要約・整理・補完・推測・創作を一切しない
+・判読できない文字は[判読不能]と記載する
+・書かれていない情報を追加しない
+・レイアウト（改行・段落）も元の形に近い形で再現する"""
+            resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
+            return jsonify({"status": "success", "text": resp.text.strip()})
+
+        # ---------- PDF ----------
+        if ext == '.pdf':
+            # まずテキスト抽出を試みる（テキスト入りPDF）
+            extracted = ""
+            try:
+                from pdfminer.high_level import extract_text as pdf_extract_text
+                extracted = pdf_extract_text(io.BytesIO(file_bytes)).strip()
+            except Exception:
+                extracted = ""
+
+            # テキストが十分に取れた場合はそのまま返す
+            if len(extracted) > 50:
+                return jsonify({"status": "success", "text": extracted})
+
+            # テキストが少ない → スキャンPDF → 先頭ページを画像化してGemini OCR
+            try:
+                from PIL import Image as PILImage
+                import fitz  # PyMuPDF（未インストール時は除外）
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                page = doc[0]
+                mat = fitz.Matrix(2, 2)  # 解像度2倍
+                pix = page.get_pixmap(matrix=mat)
+                img_bytes = pix.tobytes("jpeg")
+                prompt = """このPDFをスキャンした画像に書かれている文字をすべてそのまま読み取ってください。
+
+【厳守ルール】
+・書かれている文字をそのまま読み取る。要約・整理・補完・推測・創作を一切しない
+・判読できない文字は[判読不能]と記載する
+・書かれていない情報を追加しない"""
+                resp = model.generate_content([{"mime_type": "image/jpeg", "data": img_bytes}, prompt])
+                return jsonify({"status": "success", "text": resp.text.strip()})
+            except ImportError:
+                # PyMuPDF未インストール: Gemini に直接PDFバイトを渡す
+                prompt = """このPDFに書かれている文字をすべてそのまま読み取ってください。
+
+【厳守ルール】
+・書かれている文字をそのまま読み取る。要約・整理・補完・推測・創作を一切しない
+・判読できない文字は[判読不能]と記載する
+・書かれていない情報を追加しない"""
+                resp = model.generate_content([{"mime_type": "application/pdf", "data": file_bytes}, prompt])
+                return jsonify({"status": "success", "text": resp.text.strip()})
+
+        # 対応外の拡張子
+        return jsonify({
+            "status": "error",
+            "message": f"対応していないファイル形式です（{ext or '不明'}）。"
+                       "対応形式: mp3/m4a/wav/aac/ogg/webm/jpg/jpeg/png/heic/pdf/txt"
+        }), 400
+
+    except Exception as e:
+        print(f"[ingest_file error] {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/numerology')
 @login_required
 def numerology():
