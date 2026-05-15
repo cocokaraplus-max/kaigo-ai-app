@@ -184,7 +184,7 @@ function selectPatient(value, label) {
     document.getElementById('patientSelect').value = value;
 }
 window.selectPatient = selectPatient;
-document.addEventListener('DOMContentLoaded', function() {
+(function() {
     var el = document.getElementById('patient-search');
     if (el) {
         el.addEventListener('blur', function() {
@@ -194,7 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 300);
         });
     }
-});
+})();
 
 function clearPatient() {
     document.getElementById('patient-search').style.display = 'block';
