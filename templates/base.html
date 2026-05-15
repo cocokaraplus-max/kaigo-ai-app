@@ -882,9 +882,15 @@ window.addEventListener('load', () => {
             var _key = 'tasukaru_scroll_' + window.location.pathname;
             var _saved = sessionStorage.getItem(_key);
             if (_saved) {
-                var _wrapper = document.querySelector('.page-wrapper');
-                if (_wrapper) { _wrapper.scrollTop = parseInt(_saved) || 0; }
                 sessionStorage.removeItem(_key);
+                var _pos = parseInt(_saved) || 0;
+                // rAFを2重にして確実に描画後に復元（iOS Safari対策）
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() {
+                        var _wrapper = document.querySelector('.page-wrapper');
+                        if (_wrapper) { _wrapper.scrollTop = _pos; }
+                    });
+                });
             }
         } catch(e) {}
     }
