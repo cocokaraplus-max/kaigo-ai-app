@@ -632,6 +632,7 @@ window.saveRecord = async function() {
 };
 
 window.searchPatient = function(query) {
+    if (window._patientSelected) return;
     const q = query.trim();
     const candidates = document.getElementById('candidates');
     if (!q) { candidates.classList.remove('show'); return; }
@@ -675,6 +676,8 @@ window.renderCandidates = function(list) {
 }
 
 window.selectPatient = function(value, label) {
+    window._patientSelected = true;
+    setTimeout(function(){ window._patientSelected = false; }, 1000);
     document.getElementById('patient-value').value = value;
     document.getElementById('selected-label').textContent = label;
     document.getElementById('selected-badge').style.display = 'flex';
@@ -693,6 +696,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 window.clearPatient = function() {
+    window._patientSelected = false;
     document.getElementById('patient-value').value = '';
     document.getElementById('selected-badge').style.display = 'none';
     document.getElementById('patient-search').style.display = 'block';
