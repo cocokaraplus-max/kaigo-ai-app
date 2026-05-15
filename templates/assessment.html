@@ -447,27 +447,9 @@
     .eval-modal, .eval-toast, .eval-filter-bar { display: none !important; }
 }
 
-/* ===== 要望A 第1弾: 元データブロック ===== */
-.eval-source-voice-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 10px 18px; border-radius: 24px; border: none; cursor: pointer;
-    font-size: 0.88rem; font-weight: 700; transition: background 0.2s;
-    background: #e8f0fe; color: #1a73e8;
-}
-.eval-source-voice-btn.recording {
-    background: #fce8e6; color: #d93025;
-    animation: eval-pulse 1.2s ease-in-out infinite;
-}
-@keyframes eval-pulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.4); }
-    50%      { box-shadow: 0 0 0 8px rgba(217,48,37,0); }
-}
-.eval-source-transcript {
-    min-height: 36px; font-size: 0.82rem; color: #5f6368;
-    padding: 6px 8px; background: #f8f9fa; border-radius: 8px;
-    margin-top: 6px; white-space: pre-wrap; display: none;
-}
-.eval-source-transcript.active { display: block; }
+/* ===== 元データブロック（Session 44: MediaRecorder + Gemini） ===== */
+
+/* ファイル・カメラ行 */
 .eval-source-file-row {
     display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
 }
@@ -478,6 +460,8 @@
     background: #e6f4ea; color: #137333; transition: background 0.2s;
 }
 .eval-source-file-btn:active { background: #ceead6; }
+
+/* ファイルアップロード時のモード選択（ファイル選択時のみ表示） */
 .eval-source-mode-row {
     display: none; align-items: center; gap: 8px;
     margin-top: 10px; padding: 10px 12px;
@@ -509,6 +493,179 @@
     font-size: 18px;
 }
 @keyframes eval-spin { to { transform: rotate(360deg); } }
+
+/* ── 新音声録音カード ── */
+.ev-voice-card {
+    background: #fff;
+    border: 1px solid #e8eaed;
+    border-radius: 14px;
+    padding: 14px 14px 16px;
+    margin-bottom: 10px;
+}
+/* モードタブ */
+.ev-mode-tabs {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border: 1px solid #e0e0e0; border-radius: 10px;
+    overflow: hidden; margin-bottom: 14px;
+}
+.ev-mode-tab {
+    padding: 9px 6px; text-align: center;
+    background: #f8f9fa; border: none; cursor: pointer;
+    font-size: 0.82rem; font-weight: 700; color: #80868b;
+    line-height: 1.4; transition: background 0.15s;
+}
+.ev-mode-tab:first-child { border-right: 1px solid #e0e0e0; }
+.ev-mode-tab.active { background: #e8f0fe; color: #1a73e8; }
+.ev-mode-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+.ev-mode-sub  { font-size: 0.72rem; font-weight: 400; color: #9aa0a6; display: block; margin-top: 1px; }
+.ev-mode-tab.active .ev-mode-sub { color: #4285f4; }
+/* 録音エリア */
+.ev-rec-area {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 8px;
+    padding: 6px 0 10px;
+}
+/* 待機ボタン */
+.ev-btn-idle {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #1a73e8; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+}
+.ev-btn-idle::before {
+    content: ''; position: absolute; inset: -5px;
+    border-radius: 50%; border: 1.5px solid #a8c7fa;
+}
+.ev-btn-idle .material-symbols-outlined { font-size: 28px; color: #fff; }
+/* 録音中ボタン */
+.ev-btn-rec {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #fff; border: 3px solid #ea4335; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+}
+.ev-btn-rec-sq {
+    width: 26px; height: 26px; border-radius: 6px; background: #ea4335;
+}
+.ev-ring1 {
+    position: absolute; inset: -10px; border-radius: 50%;
+    border: 1.5px solid #ea4335; opacity: .35;
+    animation: ev-ripple 1.8s ease-out infinite;
+}
+.ev-ring2 {
+    position: absolute; inset: -18px; border-radius: 50%;
+    border: 1px solid #ea4335; opacity: .18;
+    animation: ev-ripple 1.8s ease-out .6s infinite;
+}
+@keyframes ev-ripple {
+    0%   { transform: scale(.85); opacity: .4; }
+    100% { transform: scale(1.05); opacity: 0; }
+}
+/* 一時停止中ボタン */
+.ev-btn-paused {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #f8f9fa; border: 3px dashed #dadce0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.ev-btn-paused .material-symbols-outlined { font-size: 28px; color: #1a73e8; }
+/* 波形 */
+.ev-waveform { display: flex; align-items: center; gap: 3px; height: 22px; }
+.ev-wbar {
+    width: 3px; border-radius: 2px; background: #ea4335; opacity: .7;
+    animation: ev-wave var(--evd) ease-in-out infinite alternate;
+}
+.ev-wbar.flat { animation: none; height: 3px; background: #dadce0; }
+@keyframes ev-wave { from { height: 4px; } to { height: var(--evh); } }
+/* タイマー・ヒント */
+.ev-timer {
+    font-size: 20px; font-weight: 700; color: #202124;
+    font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+.ev-timer.recording { color: #ea4335; }
+.ev-timer.paused    { color: #80868b; }
+.ev-hint { font-size: 11px; color: #80868b; }
+/* サブボタン（一時停止・完了） */
+.ev-sub-btns { display: flex; align-items: center; gap: 16px; }
+.ev-sub-col  { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ev-sub-btn {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 1px solid #dadce0; background: #fff;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ev-sub-btn .material-symbols-outlined { font-size: 18px; color: #80868b; }
+.ev-sub-btn.pause .material-symbols-outlined { color: #1a73e8; }
+.ev-sub-btn.stop  .material-symbols-outlined { color: #ea4335; }
+.ev-sub-label { font-size: 10px; color: #80868b; }
+/* 一時停止バナー */
+.ev-pause-banner {
+    display: none; align-items: center; gap: 6px;
+    padding: 7px 10px; background: #e8f0fe; border-radius: 8px;
+    margin-bottom: 8px; font-size: 12px; font-weight: 700; color: #1a73e8;
+}
+.ev-pause-banner.visible { display: flex; }
+.ev-pause-banner .material-symbols-outlined { font-size: 15px; }
+/* 文字起こしボックス */
+.ev-tx-box {
+    background: #f8f9fa; border-radius: 10px;
+    padding: 10px 12px; min-height: 60px; margin-top: 4px;
+}
+.ev-tx-label { font-size: 10px; color: #9aa0a6; margin-bottom: 5px; }
+.ev-tx-mono  { font-size: 0.82rem; color: #202124; line-height: 1.75; white-space: pre-wrap; }
+/* 話者バッジ（対面会話モード） */
+.ev-spk-row  { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 7px; }
+.ev-spk-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+    white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+.ev-spk-staff { background: #e8f0fe; color: #1558d6; }
+.ev-spk-user  { background: #e6f4ea; color: #137333; }
+.ev-spk-text  { font-size: 0.82rem; color: #202124; line-height: 1.65; }
+.ev-spk-text.muted { color: #9aa0a6; }
+/* 編集UI（録音完了後） */
+.ev-edit-wrap { margin-top: 4px; }
+.ev-edit-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+}
+.ev-edit-title {
+    font-size: 13px; font-weight: 700; color: #202124;
+    display: flex; align-items: center; gap: 5px;
+}
+.ev-edit-title .material-symbols-outlined { font-size: 16px; color: #137333; }
+.ev-edit-done-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+    background: #e6f4ea; color: #137333;
+}
+.ev-edit-meta { display: flex; gap: 6px; margin-bottom: 10px; }
+.ev-edit-chip {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: #5f6368;
+    background: #f1f3f4; border-radius: 99px; padding: 3px 9px;
+}
+.ev-edit-chip .material-symbols-outlined { font-size: 13px; }
+.ev-edit-row  { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+.ev-edit-field {
+    flex: 1; font-size: 0.82rem; color: #202124; line-height: 1.65;
+    background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 10px;
+    padding: 7px 10px; resize: none; width: 100%;
+    font-family: inherit; min-height: 44px;
+}
+.ev-edit-field:focus { outline: none; border-color: #1a73e8; background: #fff; }
+.ev-action-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;
+}
+.ev-btn-secondary {
+    padding: 10px; border: 1px solid #dadce0; border-radius: 10px;
+    background: #fff; font-size: 0.85rem; font-weight: 700; color: #202124;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.ev-btn-secondary .material-symbols-outlined { font-size: 16px; }
+.ev-btn-primary {
+    padding: 10px; border: none; border-radius: 10px;
+    background: #1a73e8; font-size: 0.85rem; font-weight: 700; color: #fff;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.ev-btn-primary .material-symbols-outlined { font-size: 16px; }
 </style>
 {% endblock %}
 
@@ -907,15 +1064,145 @@
                         元データ（音声・ファイル・写真・テキスト入力）
                     </label>
 
-                    <!-- 入口1: その場で音声入力 -->
-                    <button type="button" class="eval-source-voice-btn" id="eval-voice-btn"
-                            onclick="evalToggleVoice()">
-                        <span class="material-symbols-outlined">mic</span>
-                        <span id="eval-voice-btn-label">音声入力を開始</span>
-                    </button>
-                    <div class="eval-source-transcript" id="eval-voice-transcript"></div>
+                    <!-- ===== 音声録音カード（Session 44: MediaRecorder + Gemini） ===== -->
+                    <div class="ev-voice-card" id="ev-voice-card">
 
-                    <!-- 入口3: ファイルアップロード / カメラ撮影 -->
+                        <!-- モードタブ -->
+                        <div class="ev-mode-tabs">
+                            <button type="button" class="ev-mode-tab active" id="ev-tab-solo"
+                                    onclick="evSelectMode('solo')">
+                                <span class="material-symbols-outlined ev-mode-icon">person</span>
+                                独り言
+                                <span class="ev-mode-sub">職員のみ話す</span>
+                            </button>
+                            <button type="button" class="ev-mode-tab" id="ev-tab-dialog"
+                                    onclick="evSelectMode('dialog')">
+                                <span class="material-symbols-outlined ev-mode-icon">group</span>
+                                対面会話
+                                <span class="ev-mode-sub">話者を自動分離</span>
+                            </button>
+                        </div>
+
+                        <!-- 待機中 -->
+                        <div class="ev-rec-area" id="ev-state-idle">
+                            <button type="button" class="ev-btn-idle" onclick="evStartRecording()">
+                                <span class="material-symbols-outlined">mic</span>
+                            </button>
+                            <div class="ev-timer">00:00</div>
+                            <div class="ev-hint">タップして録音開始</div>
+                        </div>
+
+                        <!-- 録音中 -->
+                        <div class="ev-rec-area" id="ev-state-recording" style="display:none;">
+                            <button type="button" class="ev-btn-rec">
+                                <div class="ev-ring1"></div>
+                                <div class="ev-ring2"></div>
+                                <div class="ev-btn-rec-sq"></div>
+                            </button>
+                            <div class="ev-waveform">
+                                <div class="ev-wbar" style="--evd:.6s;--evh:18px"></div>
+                                <div class="ev-wbar" style="--evd:.4s;--evh:10px"></div>
+                                <div class="ev-wbar" style="--evd:.8s;--evh:22px"></div>
+                                <div class="ev-wbar" style="--evd:.5s;--evh:14px"></div>
+                                <div class="ev-wbar" style="--evd:.7s;--evh:20px"></div>
+                                <div class="ev-wbar" style="--evd:.45s;--evh:8px"></div>
+                                <div class="ev-wbar" style="--evd:.65s;--evh:16px"></div>
+                                <div class="ev-wbar" style="--evd:.55s;--evh:12px"></div>
+                                <div class="ev-wbar" style="--evd:.75s;--evh:18px"></div>
+                            </div>
+                            <div class="ev-timer recording" id="ev-timer-rec">00:00</div>
+                            <div class="ev-sub-btns">
+                                <div class="ev-sub-col">
+                                    <button type="button" class="ev-sub-btn pause"
+                                            onclick="evPauseRecording()">
+                                        <span class="material-symbols-outlined">pause</span>
+                                    </button>
+                                    <div class="ev-sub-label">一時停止</div>
+                                </div>
+                                <div class="ev-sub-col">
+                                    <button type="button" class="ev-sub-btn stop"
+                                            onclick="evStopRecording()">
+                                        <span class="material-symbols-outlined">stop</span>
+                                    </button>
+                                    <div class="ev-sub-label">完了</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 一時停止中 -->
+                        <div class="ev-rec-area" id="ev-state-paused" style="display:none;">
+                            <button type="button" class="ev-btn-paused" onclick="evResumeRecording()">
+                                <span class="material-symbols-outlined">play_arrow</span>
+                            </button>
+                            <div class="ev-waveform">
+                                <div class="ev-wbar flat"></div><div class="ev-wbar flat"></div>
+                                <div class="ev-wbar flat"></div><div class="ev-wbar flat"></div>
+                                <div class="ev-wbar flat"></div><div class="ev-wbar flat"></div>
+                                <div class="ev-wbar flat"></div><div class="ev-wbar flat"></div>
+                                <div class="ev-wbar flat"></div>
+                            </div>
+                            <div class="ev-timer paused" id="ev-timer-paused">00:00</div>
+                            <div class="ev-sub-btns">
+                                <div class="ev-sub-col">
+                                    <button type="button" class="ev-sub-btn pause"
+                                            onclick="evResumeRecording()">
+                                        <span class="material-symbols-outlined" style="color:#1a73e8">play_arrow</span>
+                                    </button>
+                                    <div class="ev-sub-label">再開</div>
+                                </div>
+                                <div class="ev-sub-col">
+                                    <button type="button" class="ev-sub-btn stop"
+                                            onclick="evStopRecording()">
+                                        <span class="material-symbols-outlined">stop</span>
+                                    </button>
+                                    <div class="ev-sub-label">完了</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 一時停止バナー -->
+                        <div class="ev-pause-banner" id="ev-pause-banner">
+                            <span class="material-symbols-outlined">pause_circle</span>
+                            一時停止中 — タップして録音を再開
+                        </div>
+
+                        <!-- 文字起こし中スピナー -->
+                        <div class="eval-source-spinner" id="ev-transcribe-spinner">
+                            <span class="material-symbols-outlined eval-source-spinner-icon">sync</span>
+                            文字起こし中...
+                        </div>
+
+                        <!-- 編集UI（録音完了後） -->
+                        <div class="ev-edit-wrap" id="ev-edit-wrap" style="display:none;">
+                            <div class="ev-edit-header">
+                                <div class="ev-edit-title">
+                                    <span class="material-symbols-outlined">check_circle</span>
+                                    録音完了
+                                </div>
+                                <span class="ev-edit-done-badge" id="ev-edit-mode-badge">独り言モード</span>
+                            </div>
+                            <div class="ev-edit-meta">
+                                <span class="ev-edit-chip">
+                                    <span class="material-symbols-outlined">schedule</span>
+                                    <span id="ev-edit-duration">0秒</span>
+                                </span>
+                            </div>
+                            <div id="ev-edit-segments"></div>
+                            <div class="ev-action-row">
+                                <button type="button" class="ev-btn-secondary" onclick="evRetakeRecording()">
+                                    <span class="material-symbols-outlined">replay</span>
+                                    録り直す
+                                </button>
+                                <button type="button" class="ev-btn-primary" onclick="evConfirmTranscript()">
+                                    <span class="material-symbols-outlined">check</span>
+                                    確定して追加
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ===== 音声録音カードここまで ===== -->
+
+                    <!-- ファイルアップロード / カメラ撮影 -->
                     <div class="eval-source-file-row">
                         <button type="button" class="eval-source-file-btn"
                                 onclick="document.getElementById('eval-file-input').click()">
@@ -928,12 +1215,11 @@
                             カメラで撮影
                         </button>
                     </div>
-                    <!-- ファイル選択 input（非表示） -->
                     <input type="file" id="eval-file-input" style="display:none;"
                            accept=".mp3,.m4a,.wav,.aac,.ogg,.webm,.jpg,.jpeg,.png,.heic,.pdf,.txt"
                            onchange="evalHandleFile(event)">
 
-                    <!-- モード選択（音声ファイル選択時のみ表示） -->
+                    <!-- モード選択（ファイルアップロード時のみ表示） -->
                     <div class="eval-source-mode-row" id="eval-audio-mode-row">
                         <span style="font-weight:700;color:#5f3c00;white-space:nowrap;">録音の種類：</span>
                         <button type="button" class="eval-source-mode-btn selected" id="eval-mode-solo"
@@ -2088,93 +2374,249 @@ function evalShowSpinner(visible) {
     if (s) s.classList.toggle('visible', visible);
 }
 
-// ---------- 入口1: その場で音声入力（SpeechRecognition） ----------
-let evalSpeechRecognition = null;
-let evalVoiceRecording    = false;
-let evalVoiceInterim      = '';
+// ============================================================
+// 音声録音（Session 44: MediaRecorder + Gemini）
+// ============================================================
+let evMediaRecorder  = null;
+let evAudioChunks    = [];
+let evMode           = 'solo';      // 'solo' | 'dialog'
+let evState          = 'idle';      // 'idle' | 'recording' | 'paused' | 'done'
+let evElapsed        = 0;           // 録音経過秒数
+let evTimerInterval  = null;
+let evMimeType       = 'audio/webm';
 
-window.evalToggleVoice = function() {
-    if (evalVoiceRecording) {
-        evalStopVoice();
-    } else {
-        evalStartVoice();
+// モード切替
+window.evSelectMode = function(mode) {
+    if (evState !== 'idle') return; // 録音中は切替不可
+    evMode = mode;
+    document.getElementById('ev-tab-solo').classList.toggle('active', mode === 'solo');
+    document.getElementById('ev-tab-dialog').classList.toggle('active', mode === 'dialog');
+};
+
+// UI状態切替
+function evShowState(state) {
+    evState = state;
+    document.getElementById('ev-state-idle').style.display      = state === 'idle'      ? 'flex' : 'none';
+    document.getElementById('ev-state-recording').style.display = state === 'recording' ? 'flex' : 'none';
+    document.getElementById('ev-state-paused').style.display    = state === 'paused'    ? 'flex' : 'none';
+    const banner = document.getElementById('ev-pause-banner');
+    if (banner) banner.classList.toggle('visible', state === 'paused');
+}
+
+// タイマー
+function evFormatTime(sec) {
+    const m = String(Math.floor(sec / 60)).padStart(2, '0');
+    const s = String(sec % 60).padStart(2, '0');
+    return m + ':' + s;
+}
+function evStartTimer() {
+    evTimerInterval = setInterval(function() {
+        evElapsed++;
+        const t = evFormatTime(evElapsed);
+        const r = document.getElementById('ev-timer-rec');
+        const p = document.getElementById('ev-timer-paused');
+        if (r) r.textContent = t;
+        if (p) p.textContent = t;
+    }, 1000);
+}
+function evStopTimer() {
+    clearInterval(evTimerInterval);
+    evTimerInterval = null;
+}
+
+// 録音開始
+window.evStartRecording = async function() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // MIMEタイプ選定（iPhoneはaudio/mp4、それ以外はwebm）
+        evMimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                   : MediaRecorder.isTypeSupported('audio/mp4')  ? 'audio/mp4'
+                   : 'audio/ogg';
+        evMediaRecorder = new MediaRecorder(stream, { mimeType: evMimeType });
+        evAudioChunks   = [];
+        evElapsed       = 0;
+
+        evMediaRecorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) evAudioChunks.push(e.data);
+        };
+        evMediaRecorder.onstop = function() {
+            stream.getTracks().forEach(t => t.stop());
+            evSendToGemini();
+        };
+
+        evMediaRecorder.start(1000); // 1秒ごとにchunk
+        evShowState('recording');
+        evStartTimer();
+    } catch (err) {
+        console.error('マイクアクセスエラー:', err);
+        alert('マイクへのアクセスが許可されていません。\nブラウザの設定からマイクを許可してください。');
     }
 };
 
-window.evalStartVoice = function() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-        alert('このブラウザは音声入力に対応していません。');
-        return;
+// 一時停止
+window.evPauseRecording = function() {
+    if (evMediaRecorder && evMediaRecorder.state === 'recording') {
+        evMediaRecorder.pause();
+        evStopTimer();
+        evShowState('paused');
     }
-    evalSpeechRecognition = new SR();
-    evalSpeechRecognition.lang            = 'ja-JP';
-    evalSpeechRecognition.continuous      = true;
-    evalSpeechRecognition.interimResults  = true;
+};
 
-    const transcript = document.getElementById('eval-voice-transcript');
-    const btn        = document.getElementById('eval-voice-btn');
-    const label      = document.getElementById('eval-voice-btn-label');
+// 再開
+window.evResumeRecording = function() {
+    if (evMediaRecorder && evMediaRecorder.state === 'paused') {
+        evMediaRecorder.resume();
+        evStartTimer();
+        evShowState('recording');
+    }
+};
 
-    evalSpeechRecognition.onresult = function(e) {
-        let interim = '';
-        let final   = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-            if (e.results[i].isFinal) {
-                final += e.results[i][0].transcript;
+// 停止（完了）
+window.evStopRecording = function() {
+    evStopTimer();
+    if (evMediaRecorder && evMediaRecorder.state !== 'inactive') {
+        evMediaRecorder.stop(); // → onstop → evSendToGemini
+    }
+    evShowState('idle'); // スピナーに切り替わるまでの一瞬idle
+    document.getElementById('ev-transcribe-spinner').classList.add('visible');
+};
+
+// Geminiへ送信（/api/transcribeを流用）
+async function evSendToGemini() {
+    const blob     = new Blob(evAudioChunks, { type: evMimeType });
+    const duration = evElapsed;
+
+    // base64変換
+    const reader = new FileReader();
+    reader.onload = async function() {
+        const base64 = reader.result.split(',')[1];
+        try {
+            // 対面会話モードは /api/evaluation/ingest_file を使う（audio_mode=dialog対応）
+            let result;
+            if (evMode === 'dialog') {
+                const formData = new FormData();
+                const ext = evMimeType.includes('mp4') ? 'm4a' : evMimeType.includes('ogg') ? 'ogg' : 'webm';
+                formData.append('file', blob, 'recording.' + ext);
+                formData.append('audio_mode', 'dialog');
+                const res  = await fetch('/api/evaluation/ingest_file', { method: 'POST', body: formData });
+                const data = await res.json();
+                result = (data.status === 'success') ? data.text : null;
             } else {
-                interim += e.results[i][0].transcript;
+                const res  = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audio_data: base64, audio_mime: evMimeType })
+                });
+                const data = await res.json();
+                result = data.text || null;
             }
+
+            document.getElementById('ev-transcribe-spinner').classList.remove('visible');
+            if (result) {
+                evShowEditUI(result, duration);
+            } else {
+                alert('文字起こしに失敗しました。もう一度お試しください。');
+                evShowState('idle');
+            }
+        } catch (err) {
+            console.error('[evSendToGemini]', err);
+            document.getElementById('ev-transcribe-spinner').classList.remove('visible');
+            alert('通信エラーが発生しました: ' + err);
+            evShowState('idle');
         }
-        if (final) evalVoiceInterim += final;
-        if (transcript) {
-            transcript.textContent = evalVoiceInterim + interim;
-            transcript.classList.add('active');
-        }
     };
+    reader.readAsDataURL(blob);
+}
 
-    evalSpeechRecognition.onerror = function(e) {
-        console.error('SpeechRecognition error:', e.error);
-        evalStopVoice();
-    };
+// 編集UI表示
+function evShowEditUI(text, duration) {
+    evState = 'done';
+    const wrap    = document.getElementById('ev-edit-wrap');
+    const badge   = document.getElementById('ev-edit-mode-badge');
+    const durEl   = document.getElementById('ev-edit-duration');
+    const segsEl  = document.getElementById('ev-edit-segments');
 
-    evalSpeechRecognition.onend = function() {
-        // continuous=true でも途切れることがあるので録音中なら再開
-        if (evalVoiceRecording) evalSpeechRecognition.start();
-    };
+    if (badge)  badge.textContent = evMode === 'dialog' ? '対面会話モード' : '独り言モード';
+    if (durEl)  durEl.textContent = duration + '秒';
 
-    evalVoiceRecording = true;
-    evalVoiceInterim   = '';
-    if (transcript) { transcript.textContent = ''; transcript.classList.add('active'); }
-    if (btn)   btn.classList.add('recording');
-    if (label) label.textContent = '■ 停止';
-    evalSpeechRecognition.start();
-};
-
-window.evalStopVoice = function() {
-    evalVoiceRecording = false;
-    if (evalSpeechRecognition) {
-        evalSpeechRecognition.onend = null;  // 再開ループ解除
-        evalSpeechRecognition.stop();
-        evalSpeechRecognition = null;
+    // セグメント生成
+    segsEl.innerHTML = '';
+    if (evMode === 'dialog') {
+        // 対面会話: 「職員:」「利用者:」のパターンを解析して話者ごとに分割
+        const lines = text.split('\n').filter(l => l.trim());
+        lines.forEach(function(line) {
+            const row   = document.createElement('div');
+            row.className = 'ev-edit-row';
+            const isStaff = /^(職員|スタッフ|指導員)\s*[：:]/i.test(line);
+            const isUser  = /^(利用者|患者|ご利用者)\s*[：:]/i.test(line);
+            const content = line.replace(/^[^：:]+[：:]/, '').trim();
+            const badge   = document.createElement('span');
+            badge.className = 'ev-spk-badge ' + (isUser ? 'ev-spk-user' : 'ev-spk-staff');
+            badge.textContent = isUser ? '利用者' : '職員';
+            const ta    = document.createElement('textarea');
+            ta.className = 'ev-edit-field';
+            ta.value    = content || line;
+            ta.rows     = 2;
+            ta.dataset.speaker = isUser ? 'user' : 'staff';
+            row.appendChild(badge);
+            row.appendChild(ta);
+            segsEl.appendChild(row);
+        });
+        // パース結果が空なら全文をひとつのエリアに
+        if (!lines.length) evAppendPlainTextarea(segsEl, text);
+    } else {
+        evAppendPlainTextarea(segsEl, text);
     }
-    const btn   = document.getElementById('eval-voice-btn');
-    const label = document.getElementById('eval-voice-btn-label');
-    if (btn)   btn.classList.remove('recording');
-    if (label) label.textContent = '音声入力を開始';
 
-    // 結果を元データ欄に追記
-    const transcript = document.getElementById('eval-voice-transcript');
-    const text = transcript ? transcript.textContent.trim() : '';
-    if (text) {
-        evalAppendSourceData(text);
+    if (wrap) wrap.style.display = 'block';
+}
+
+function evAppendPlainTextarea(parent, text) {
+    const ta = document.createElement('textarea');
+    ta.className = 'ev-edit-field';
+    ta.value = text;
+    ta.rows  = 5;
+    ta.style.marginBottom = '8px';
+    parent.appendChild(ta);
+}
+
+// 確定して元データ欄に追加
+window.evConfirmTranscript = function() {
+    const segsEl = document.getElementById('ev-edit-segments');
+    const areas  = segsEl.querySelectorAll('textarea');
+    let result   = '';
+    if (evMode === 'dialog') {
+        areas.forEach(function(ta) {
+            const spk = ta.dataset.speaker === 'user' ? '利用者' : '職員';
+            if (ta.value.trim()) result += spk + '：' + ta.value.trim() + '\n';
+        });
+    } else {
+        areas.forEach(function(ta) { result += ta.value.trim() + '\n'; });
+    }
+    if (result.trim()) {
+        evalAppendSourceData(result.trim());
         evalShowGuide();
     }
-    if (transcript) transcript.classList.remove('active');
-    evalVoiceInterim = '';
+    evRetakeRecording(); // UIをリセット
 };
 
-// ---------- 入口3: モード選択（音声ファイル時のみ） ----------
+// 録り直す（UIリセット）
+window.evRetakeRecording = function() {
+    evAudioChunks = [];
+    evElapsed     = 0;
+    evStopTimer();
+    const wrap = document.getElementById('ev-edit-wrap');
+    if (wrap) wrap.style.display = 'none';
+    document.getElementById('ev-edit-segments').innerHTML = '';
+    document.getElementById('ev-transcribe-spinner').classList.remove('visible');
+    const r = document.getElementById('ev-timer-rec');
+    const p = document.getElementById('ev-timer-paused');
+    if (r) r.textContent = '00:00';
+    if (p) p.textContent = '00:00';
+    evShowState('idle');
+};
+
+// ---------- ファイルアップロード時のモード選択 ----------
 let evalAudioMode = 'solo';
 
 window.evalSelectAudioMode = function(mode) {
