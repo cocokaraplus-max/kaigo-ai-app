@@ -605,6 +605,7 @@ const PATIENTS = [
     { value: {{ p.value | tojson }}, label: {{ p.label | tojson }}, name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
     {% endfor %}
 ];
+window._patientList = PATIENTS;
 
 // ========== 記録保存 ==========
 window.saveRecord = async function() {
