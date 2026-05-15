@@ -663,8 +663,13 @@ window.renderCandidates = function(list) {
         candidates.innerHTML = list.map(p => {
             const v = String(p.value).replace(/'/g, "\\'");
             const l = String(p.label).replace(/'/g, "\\'");
-            return `<div class="search-candidate-item" ontouchstart="event.preventDefault();window.selectPatient('${v}','${l}')" onclick="if(!('ontouchstart' in window))window.selectPatient('${v}','${l}')">${p.label}</div>`;
+            return `<div class="search-candidate-item" data-value="${v}" data-label="${l}">${p.label}</div>`;
         }).join('');
+        candidates.querySelectorAll('[data-value]').forEach(function(el) {
+            var v = el.dataset.value, l = el.dataset.label;
+            el.addEventListener('touchstart', function(e) { e.preventDefault(); window.selectPatient(v, l); });
+            el.addEventListener('click', function(e) { if(!('ontouchstart' in window)) window.selectPatient(v, l); });
+        });
         candidates.classList.add('show');
     }
 }
