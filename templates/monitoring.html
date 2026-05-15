@@ -176,7 +176,9 @@ el.addEventListener('touchstart', e => { e.preventDefault(); selectPatient(p.val
 window.searchPatient = searchPatient;
 
 function selectPatient(value, label) {
-    document.getElementById('patient-search').style.display = 'none';
+    var searchEl = document.getElementById('patient-search');
+    searchEl.blur();
+    searchEl.style.display = 'none';
     document.getElementById('patient-selected-label').textContent = label;
     const badge = document.getElementById('patient-selected-badge');
     badge.style.display = 'flex';
