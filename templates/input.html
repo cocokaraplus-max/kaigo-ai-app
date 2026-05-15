@@ -31,6 +31,61 @@
 .upload-area .material-symbols-outlined { font-size: 32px; display: block; margin-bottom: 6px; }
 .ai-btn-wrap { margin: 0.8rem 0; }
 
+/* ===== 音声録音カード Session 44 ===== */
+.inp-voice-card { border: 1.5px solid #e0e0e0; border-radius: 12px; background: #fff; overflow: hidden; }
+.inp-v-sep { border-top: 1px solid #f0f0f0; }
+.inp-v-idle { padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+.inp-v-idle-btn { width: 52px; height: 52px; border-radius: 50%; background: #1a73e8; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+.inp-v-idle-btn::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid #a8c7fa; }
+.inp-v-idle-btn .material-symbols-outlined { font-size: 24px; color: #fff; }
+.inp-v-idle-text .t1 { font-size: 13px; font-weight: 600; color: #202124; }
+.inp-v-idle-text .t2 { font-size: 11px; color: #9aa0a6; margin-top: 2px; }
+.inp-v-rec { padding: 12px 16px 14px; }
+.inp-v-rec-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.inp-v-rec-btn { width: 52px; height: 52px; border-radius: 50%; background: #fff; border: 2.5px solid #ea4335; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
+.inp-v-rec-sq { width: 20px; height: 20px; border-radius: 4px; background: #ea4335; }
+.inp-v-ring1 { position: absolute; inset: -8px; border-radius: 50%; border: 1.5px solid #ea4335; opacity: .3; animation: inpRipple 1.8s ease-out infinite; }
+.inp-v-ring2 { position: absolute; inset: -15px; border-radius: 50%; border: 1px solid #ea4335; opacity: .15; animation: inpRipple 1.8s ease-out .6s infinite; }
+@keyframes inpRipple { 0%{transform:scale(.85);opacity:.4} 100%{transform:scale(1.05);opacity:0} }
+.inp-v-meta { flex: 1; }
+.inp-v-timer { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; color: #ea4335; }
+.inp-v-timer.paused { color: #80868b; }
+.inp-v-rec-lbl { font-size: 11px; color: #ea4335; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+.inp-v-rec-lbl.paused { color: #9aa0a6; }
+.inp-v-dot { width: 6px; height: 6px; border-radius: 50%; background: #ea4335; animation: inpDot 1s ease-in-out infinite alternate; }
+@keyframes inpDot { from{opacity:1} to{opacity:.2} }
+.inp-v-wave { display: flex; align-items: center; gap: 2px; height: 16px; margin-top: 3px; }
+.inp-v-wbar { width: 3px; border-radius: 2px; background: #ea4335; opacity:.6; animation: inpWave var(--iwd) ease-in-out infinite alternate; }
+.inp-v-wbar.flat { animation: none; height: 3px; background: #dadce0; }
+@keyframes inpWave { from{height:3px} to{height:var(--iwh)} }
+.inp-v-actions { display: flex; gap: 8px; }
+.inp-v-act { flex: 1; padding: 8px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-act .material-symbols-outlined { font-size: 15px; }
+.inp-v-pause { border: 1.5px solid #dadce0; background: #fff; color: #1a73e8; }
+.inp-v-stop  { border: 1.5px solid #fcc; background: #fff5f5; color: #ea4335; }
+.inp-v-paused { padding: 10px 16px 14px; }
+.inp-v-pb { background: #e8f0fe; border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: #1558d6; display: flex; align-items: center; gap: 5px; }
+.inp-v-pb .material-symbols-outlined { font-size: 14px; }
+.inp-v-paused-btn { width: 52px; height: 52px; border-radius: 50%; background: #f8f9fa; border: 2.5px dashed #dadce0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.inp-v-paused-btn .material-symbols-outlined { font-size: 24px; color: #1a73e8; }
+.inp-v-spinner { display: none; align-items: center; gap: 8px; padding: 14px 16px; font-size: 13px; color: #1a73e8; font-weight: 600; }
+.inp-v-spinner.visible { display: flex; }
+.inp-v-spinner-icon { animation: inpSpin 1s linear infinite; font-size: 18px; }
+@keyframes inpSpin { to { transform: rotate(360deg); } }
+.inp-v-done { padding: 12px 16px 16px; }
+.inp-v-done-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.inp-v-done-title { font-size: 13px; font-weight: 600; color: #137333; display: flex; align-items: center; gap: 5px; }
+.inp-v-done-title .material-symbols-outlined { font-size: 16px; }
+.inp-v-done-chip { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: #e6f4ea; color: #137333; font-weight: 600; display: flex; align-items: center; gap: 3px; }
+.inp-v-done-chip .material-symbols-outlined { font-size: 12px; }
+.inp-v-ta { width: 100%; font-size: 13px; color: #202124; line-height: 1.7; background: #f8f9fa; border: 1.5px solid #e0e0e0; border-radius: 10px; padding: 9px 11px; resize: none; font-family: inherit; margin-bottom: 10px; }
+.inp-v-ta:focus { outline: none; border-color: #1a73e8; }
+.inp-v-done-actions { display: flex; gap: 8px; }
+.inp-v-retry { flex: 1; padding: 9px; border: 1.5px solid #dadce0; border-radius: 10px; background: #fff; font-size: 12px; font-weight: 600; color: #5f6368; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-retry .material-symbols-outlined { font-size: 15px; }
+.inp-v-ok { flex: 2; padding: 9px; border: none; border-radius: 10px; background: #1a73e8; font-size: 12px; font-weight: 600; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-ok .material-symbols-outlined { font-size: 15px; }
+
 .search-wrapper { position: relative; }
 .search-candidates {
     position: absolute;
@@ -362,33 +417,108 @@
             <span class="material-symbols-outlined">mic</span>
             音声入力
         </label>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-    <button type="button" class="btn btn-primary btn-sm" id="rec-btn" onclick="toggleRecording()">
-        <span class="material-symbols-outlined">mic</span>
-        録音開始
-    </button>
-    <button type="button" id="pause-btn" onclick="togglePause()"
-        style="display:none; align-items:center; gap:5px; padding:8px 16px;
-               background:#f59e0b; color:#fff; border:none; border-radius:10px;
-               font-size:0.85rem; cursor:pointer; font-weight:600;">
-        ⏸ 一時停止
-    </button>
-    <span id="rec-status" style="font-size:0.82rem; color:#5f6368;"></span>
-</div>
+        <div class="inp-voice-card">
+            <!-- 待機中 -->
+            <div id="inp-state-idle" class="inp-v-idle">
+                <button type="button" class="inp-v-idle-btn" onclick="inpStartRecording()">
+                    <span class="material-symbols-outlined">mic</span>
+                </button>
+                <div class="inp-v-idle-text">
+                    <div class="t1">タップして録音開始</div>
+                    <div class="t2">停止後にAIが自動で文字起こし</div>
+                </div>
+            </div>
+            <!-- 録音中 -->
+            <div id="inp-state-recording" class="inp-v-rec" style="display:none;">
+                <div class="inp-v-rec-top">
+                    <div class="inp-v-rec-btn">
+                        <div class="inp-v-ring1"></div>
+                        <div class="inp-v-ring2"></div>
+                        <div class="inp-v-rec-sq"></div>
+                    </div>
+                    <div class="inp-v-meta">
+                        <div class="inp-v-timer" id="inp-v-timer">00:00</div>
+                        <div class="inp-v-rec-lbl"><div class="inp-v-dot"></div>録音中</div>
+                        <div class="inp-v-wave">
+                            <div class="inp-v-wbar" style="--iwd:.6s;--iwh:14px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.4s;--iwh:8px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.8s;--iwh:16px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.5s;--iwh:10px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.7s;--iwh:14px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.45s;--iwh:6px"></div>
+                            <div class="inp-v-wbar" style="--iwd:.65s;--iwh:12px"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="inp-v-actions">
+                    <button type="button" class="inp-v-act inp-v-pause" onclick="inpPauseRecording()">
+                        <span class="material-symbols-outlined">pause</span>一時停止
+                    </button>
+                    <button type="button" class="inp-v-act inp-v-stop" onclick="inpStopRecording()">
+                        <span class="material-symbols-outlined">stop</span>完了
+                    </button>
+                </div>
+            </div>
+            <!-- 一時停止中 -->
+            <div id="inp-state-paused" class="inp-v-paused" style="display:none;">
+                <div class="inp-v-pb">
+                    <span class="material-symbols-outlined">pause_circle</span>
+                    一時停止中 — タップして再開
+                </div>
+                <div class="inp-v-rec-top">
+                    <div class="inp-v-paused-btn" onclick="inpResumeRecording()">
+                        <span class="material-symbols-outlined">play_arrow</span>
+                    </div>
+                    <div class="inp-v-meta">
+                        <div class="inp-v-timer paused" id="inp-v-timer-p">00:00</div>
+                        <div class="inp-v-rec-lbl paused">停止中</div>
+                        <div class="inp-v-wave">
+                            <div class="inp-v-wbar flat"></div><div class="inp-v-wbar flat"></div>
+                            <div class="inp-v-wbar flat"></div><div class="inp-v-wbar flat"></div>
+                            <div class="inp-v-wbar flat"></div><div class="inp-v-wbar flat"></div>
+                            <div class="inp-v-wbar flat"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="inp-v-actions">
+                    <button type="button" class="inp-v-act inp-v-pause" onclick="inpResumeRecording()">
+                        <span class="material-symbols-outlined">play_arrow</span>再開
+                    </button>
+                    <button type="button" class="inp-v-act inp-v-stop" onclick="inpStopRecording()">
+                        <span class="material-symbols-outlined">stop</span>完了
+                    </button>
+                </div>
+            </div>
+            <!-- 文字起こし中 -->
+            <div id="inp-v-spinner" class="inp-v-spinner">
+                <span class="material-symbols-outlined inp-v-spinner-icon">sync</span>
+                文字起こし中...
+            </div>
+            <!-- 完了・編集 -->
+            <div id="inp-state-done" class="inp-v-done" style="display:none;">
+                <div class="inp-v-done-hd">
+                    <div class="inp-v-done-title">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        文字起こし完了
+                    </div>
+                    <div class="inp-v-done-chip">
+                        <span class="material-symbols-outlined">schedule</span>
+                        <span id="inp-v-duration">0秒</span>
+                    </div>
+                </div>
+                <textarea class="inp-v-ta" id="inp-v-result" rows="4"></textarea>
+                <div class="inp-v-done-actions">
+                    <button type="button" class="inp-v-retry" onclick="inpRetake()">
+                        <span class="material-symbols-outlined">replay</span>録り直す
+                    </button>
+                    <button type="button" class="inp-v-ok" onclick="inpConfirm()">
+                        <span class="material-symbols-outlined">check</span>記録に追加する
+                    </button>
+                </div>
+            </div>
+        </div>
         <input type="hidden" name="audio_data" id="audio-data">
         <input type="hidden" name="audio_mime" id="audio-mime">
-    </div>
-
-    <div class="ai-btn-wrap">
-        <button type="button" class="btn btn-primary" id="ai-btn" onclick="aiTranscribe()" style="display:none;">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            AI文章化
-        </button>
-        <div id="ai-loading" style="display:none;" class="alert alert-info">
-            <span class="material-symbols-outlined">hourglass_top</span>
-            AIが文章を作成中です...
-        </div>
-    </div>
 
     <!-- Session 21: カテゴリ選択(iOS Picker風カスタムドロップダウン) -->
     <div class="form-group" id="category-group">
@@ -610,9 +740,7 @@ window.saveRecord = async function() {
             if (lvType) lvType.value = '';
             if (lvRel) lvRel.value = '';
             document.querySelectorAll('.leave-btn.selected').forEach(function(b){ b.classList.remove('selected'); });
-            if (document.getElementById('audio-data')) document.getElementById('audio-data').value = '';
-            if (document.getElementById('ai-btn')) document.getElementById('ai-btn').style.display = 'none';
-            if (document.getElementById('rec-status')) document.getElementById('rec-status').textContent = '';
+            if (typeof inpRetake === 'function') inpRetake();
 
             // ページ先頭にスクロール
             window.scrollTo(0, 0);
@@ -749,215 +877,138 @@ window.previewPhotos = function(input) {
     });
 }
 
-// ========== 音声入力（改善版: 一時停止・再開・エラー強化）==========
-let mediaRecorder = null;
-let audioChunks = [];
-let allAudioBlobs = [];
-let isRecording = false;
-let isPaused = false;
-let currentStream = null;
-let audioMimeType = '';
+// ========== 音声録音（Session 44: MediaRecorder + Gemini） ==========
+let inpMediaRecorder = null;
+let inpAudioChunks   = [];
+let inpElapsed       = 0;
+let inpTimerInterval = null;
+let inpMimeType      = 'audio/webm';
+let inpRecState      = 'idle'; // idle | recording | paused | done
 
-function updateVoiceUI() {
-    const btn = document.getElementById('rec-btn');
-    const pauseBtn = document.getElementById('pause-btn');
-    const status = document.getElementById('rec-status');
-    if (!isRecording && !isPaused) {
-        btn.innerHTML = '<span class="material-symbols-outlined">mic</span> 録音開始';
-        btn.style.background = '';
-        btn.style.color = '';
-        if (pauseBtn) pauseBtn.style.display = 'none';
-        if (allAudioBlobs.length > 0) {
-            status.textContent = '録音完了 ✅（AIテキスト変換ボタンを押してください）';
-            status.style.color = '#16a34a';
-        } else {
-            status.textContent = '';
-        }
-    } else if (isRecording && !isPaused) {
-        btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音終了';
-        btn.style.background = '#ea4335';
-        btn.style.color = '#fff';
-        if (pauseBtn) {
-            pauseBtn.style.display = 'inline-flex';
-            pauseBtn.textContent = '⏸ 一時停止';
-            pauseBtn.style.background = '#f59e0b';
-        }
-        status.textContent = '🔴 録音中...';
-        status.style.color = '#ea4335';
-    } else if (isPaused) {
-        btn.innerHTML = '<span class="material-symbols-outlined">stop_circle</span> 録音終了';
-        btn.style.background = '#ea4335';
-        btn.style.color = '#fff';
-        if (pauseBtn) {
-            pauseBtn.style.display = 'inline-flex';
-            pauseBtn.textContent = '▶ 再開';
-            pauseBtn.style.background = '#2563eb';
-        }
-        status.textContent = '⏸ 一時停止中 — 「再開」でまた録音できます';
-        status.style.color = '#f59e0b';
-    }
+function inpShowState(state) {
+    inpRecState = state;
+    document.getElementById('inp-state-idle').style.display      = state === 'idle'      ? 'flex' : 'none';
+    document.getElementById('inp-state-recording').style.display = state === 'recording' ? 'block' : 'none';
+    document.getElementById('inp-state-paused').style.display    = state === 'paused'    ? 'block' : 'none';
+    document.getElementById('inp-v-spinner').classList.toggle('visible', state === 'spinner');
+    document.getElementById('inp-state-done').style.display      = state === 'done'      ? 'block' : 'none';
 }
 
-window.toggleRecording = async function() {
-    const status = document.getElementById('rec-status');
-    if (!isRecording && !isPaused) {
-        try {
-            currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
-            audioMimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
-            mediaRecorder = new MediaRecorder(currentStream, audioMimeType ? { mimeType: audioMimeType } : {});
-            audioChunks = [];
-            mediaRecorder.ondataavailable = e => {
-                if (e.data && e.data.size > 0) audioChunks.push(e.data);
-            };
-            mediaRecorder.onstop = () => {
-                if (audioChunks.length > 0) {
-                    const blob = new Blob(audioChunks, { type: audioMimeType || 'audio/webm' });
-                    allAudioBlobs.push(blob);
-                    audioChunks = [];
-                }
-            };
-            mediaRecorder.start(500);
-            isRecording = true;
-            isPaused = false;
-            updateVoiceUI();
-        } catch(e) {
-            if (e.name === 'NotAllowedError') {
-                status.textContent = '❌ マイクの許可が必要です。ブラウザの設定を確認してください。';
-            } else if (e.name === 'NotFoundError') {
-                status.textContent = '❌ マイクが見つかりません。接続を確認してください。';
-            } else {
-                status.textContent = '❌ マイクエラー: ' + e.message;
-            }
-            status.style.color = '#ea4335';
-        }
-    } else {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-        }
-        if (currentStream) {
-            currentStream.getTracks().forEach(t => t.stop());
-            currentStream = null;
-        }
-        isRecording = false;
-        isPaused = false;
-        setTimeout(async () => {
-            await buildFinalAudio();
-            updateVoiceUI();
-        }, 300);
+function inpFmtTime(s) {
+    return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+function inpStartTimer() {
+    inpTimerInterval = setInterval(function() {
+        inpElapsed++;
+        const t = inpFmtTime(inpElapsed);
+        const a = document.getElementById('inp-v-timer');
+        const b = document.getElementById('inp-v-timer-p');
+        if (a) a.textContent = t;
+        if (b) b.textContent = t;
+    }, 1000);
+}
+function inpStopTimer() { clearInterval(inpTimerInterval); inpTimerInterval = null; }
+
+window.inpStartRecording = async function() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        inpMimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                    : MediaRecorder.isTypeSupported('audio/mp4')  ? 'audio/mp4' : 'audio/ogg';
+        inpMediaRecorder = new MediaRecorder(stream, { mimeType: inpMimeType });
+        inpAudioChunks = [];
+        inpElapsed = 0;
+        inpMediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) inpAudioChunks.push(e.data); };
+        inpMediaRecorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); inpSendToGemini(); };
+        inpMediaRecorder.start(1000);
+        inpShowState('recording');
+        inpStartTimer();
+    } catch(e) {
+        alert('マイクへのアクセスが許可されていません。\nブラウザの設定からマイクを許可してください。');
     }
 };
 
-window.togglePause = async function() {
-    if (!isRecording && !isPaused) return;
-    const status = document.getElementById('rec-status');
-    if (!isPaused) {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-        }
-        isRecording = false;
-        isPaused = true;
-        updateVoiceUI();
-    } else {
-        try {
-            if (!currentStream || currentStream.getTracks().every(t => t.readyState === 'ended')) {
-                currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            }
-            audioChunks = [];
-            mediaRecorder = new MediaRecorder(currentStream, audioMimeType ? { mimeType: audioMimeType } : {});
-            mediaRecorder.ondataavailable = e => {
-                if (e.data && e.data.size > 0) audioChunks.push(e.data);
-            };
-            mediaRecorder.onstop = () => {
-                if (audioChunks.length > 0) {
-                    allAudioBlobs.push(new Blob(audioChunks, { type: audioMimeType || 'audio/webm' }));
-                    audioChunks = [];
-                }
-            };
-            mediaRecorder.start(500);
-            isRecording = true;
-            isPaused = false;
-            updateVoiceUI();
-        } catch(e) {
-            status.textContent = '❌ 再開に失敗しました: ' + e.message;
-            status.style.color = '#ea4335';
-        }
+window.inpPauseRecording = function() {
+    if (inpMediaRecorder && inpMediaRecorder.state === 'recording') {
+        inpMediaRecorder.pause();
+        inpStopTimer();
+        inpShowState('paused');
     }
 };
 
-async function buildFinalAudio() {
-    if (allAudioBlobs.length === 0) return;
-    const finalBlob = new Blob(allAudioBlobs, { type: audioMimeType || 'audio/webm' });
-    return new Promise(resolve => {
-        const reader = new FileReader();
-        reader.onload = e => {
-            document.getElementById('audio-data').value = e.target.result.split(',')[1];
-            document.getElementById('audio-mime').value = finalBlob.type;
-            document.getElementById('ai-btn').style.display = 'flex';
-            resolve();
-        };
-        reader.readAsDataURL(finalBlob);
-    });
-}
+window.inpResumeRecording = function() {
+    if (inpMediaRecorder && inpMediaRecorder.state === 'paused') {
+        inpMediaRecorder.resume();
+        inpStartTimer();
+        inpShowState('recording');
+    }
+};
 
-window.aiTranscribe = async function() {
-    const audioData = document.getElementById('audio-data').value;
-    const audioMime = document.getElementById('audio-mime').value;
-    const status = document.getElementById('rec-status');
-    if (!audioData) return;
-    document.getElementById('ai-btn').style.display = 'none';
-    document.getElementById('ai-loading').style.display = 'flex';
-    status.textContent = '🤖 AI文字起こし中...';
-    status.style.color = '#2563eb';
-    const MAX_RETRY = 2;
-    let lastError = null;
-    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
-            const res = await fetch('/api/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audio_data: audioData, audio_mime: audioMime }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (!res.ok) {
-                const errText = await res.text();
-                throw new Error('サーバーエラー ' + res.status + ': ' + errText.slice(0, 100));
-            }
-            const data = await res.json();
-            if (data.text) {
-                const textarea = document.getElementById('content-area');
-                const existing = textarea.value.trim();
-                textarea.value = existing ? existing + '\n' + data.text : data.text;
-                status.textContent = '✅ 文字起こし完了！内容を確認して保存してください。';
-                status.style.color = '#16a34a';
-                allAudioBlobs = [];
-                document.getElementById('audio-data').value = '';
-                document.getElementById('ai-loading').style.display = 'none';
-                return;
-            } else if (data.error) {
-                throw new Error(data.error);
-            } else {
-                throw new Error('テキストが取得できませんでした');
-            }
-        } catch(e) {
-            lastError = e;
-            if (e.name === 'AbortError') {
-                lastError = new Error('タイムアウト（60秒）しました。音声が長すぎる可能性があります。');
-                break;
-            }
-            if (attempt < MAX_RETRY) {
-                status.textContent = '⚠️ 一時エラー、再試行中(' + attempt + '/' + MAX_RETRY + ')...';
-                await new Promise(r => setTimeout(r, 2000));
+window.inpStopRecording = function() {
+    inpStopTimer();
+    if (inpMediaRecorder && inpMediaRecorder.state !== 'inactive') {
+        inpMediaRecorder.stop();
+    }
+    inpShowState('spinner');
+};
+
+async function inpSendToGemini() {
+    const blob = new Blob(inpAudioChunks, { type: inpMimeType });
+    const duration = inpElapsed;
+    const reader = new FileReader();
+    reader.onload = async function() {
+        const base64 = reader.result.split(',')[1];
+        const MAX_RETRY = 2;
+        let lastError = null;
+        for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+            try {
+                const controller = new AbortController();
+                const tid = setTimeout(() => controller.abort(), 60000);
+                const res = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audio_data: base64, audio_mime: inpMimeType }),
+                    signal: controller.signal
+                });
+                clearTimeout(tid);
+                const data = await res.json();
+                if (data.text) {
+                    document.getElementById('inp-v-result').value = data.text;
+                    const dur = document.getElementById('inp-v-duration');
+                    if (dur) dur.textContent = duration + '秒';
+                    inpShowState('done');
+                    return;
+                }
+                throw new Error(data.error || 'テキストが取得できませんでした');
+            } catch(e) {
+                lastError = e;
+                if (e.name === 'AbortError') { lastError = new Error('タイムアウトしました'); break; }
+                if (attempt < MAX_RETRY) await new Promise(r => setTimeout(r, 2000));
             }
         }
+        alert('文字起こしに失敗しました: ' + (lastError?.message || '不明なエラー'));
+        inpShowState('idle');
+    };
+    reader.readAsDataURL(blob);
+}
+
+window.inpConfirm = function() {
+    const text = (document.getElementById('inp-v-result')?.value || '').trim();
+    if (text) {
+        const ta = document.getElementById('content-area');
+        if (ta) ta.value = ta.value.trim() ? ta.value.trim() + '\n' + text : text;
     }
-    status.textContent = '❌ 文字起こし失敗: ' + (lastError?.message || '不明なエラー');
-    status.style.color = '#ea4335';
-    document.getElementById('ai-btn').style.display = 'flex';
-    document.getElementById('ai-loading').style.display = 'none';
+    inpRetake();
+};
+
+window.inpRetake = function() {
+    inpAudioChunks = [];
+    inpElapsed = 0;
+    inpStopTimer();
+    const t1 = document.getElementById('inp-v-timer');
+    const t2 = document.getElementById('inp-v-timer-p');
+    if (t1) t1.textContent = '00:00';
+    if (t2) t2.textContent = '00:00';
+    inpShowState('idle');
 };
 
 
