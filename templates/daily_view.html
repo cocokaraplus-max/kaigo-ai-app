@@ -1177,7 +1177,7 @@
 </div>
 <!-- 利用者検索(利用者タブ時のみ表示) -->
 <div id="dv-user-search" class="dv-user-search" style="display:none;">
-    <input type="text" id="dv-search-input" placeholder="名前・ふりがな・カルテNoで検索" oninput="if(!this._composing)searchPatients(this.value)"  oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchPatients(this.value)"  autocomplete="off">
+    <input type="text" id="dv-search-input" placeholder="名前・ふりがな・カルテNoで検索" oninput="searchPatients(this.value)" onfocus="searchPatients(this.value)" autocomplete="off">
     <div id="dv-search-results" class="dv-search-results"></div>
     <div id="dv-selected-user" class="dv-selected-user"></div>
 </div>

@@ -696,7 +696,7 @@
     <div class="form-group" style="margin-bottom:10px;">
         <div class="search-wrapper">
             <input type="text" class="form-control" id="history-search"
-                placeholder="利用者名で検索" oninput="if(!this._composing)searchHistoryPatient(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchHistoryPatient(this.value)"
+                placeholder="利用者名で検索" oninput="searchHistoryPatient(this.value)"
                 onfocus="searchHistoryPatient(this.value)" autocomplete="off">
             <div class="search-candidates" id="history-candidates" style="display:none;"></div>
         </div>

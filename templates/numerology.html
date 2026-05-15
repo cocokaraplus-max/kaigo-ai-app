@@ -186,7 +186,7 @@
     <div class="search-wrapper">
         <input type="text" id="num-search" class="form-control"
             placeholder="名前・ふりがな・カルテ番号で検索"
-            oninput="if(!this._composing)searchPerson(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchPerson(this.value)"
+            oninput="searchPerson(this.value)"
             onfocus="searchPerson(this.value)"
             autocomplete="off">
         <div class="search-candidates" id="num-candidates"></div>

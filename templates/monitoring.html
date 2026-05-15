@@ -65,8 +65,8 @@
     <div style="position:relative;">
         <input type="text" id="patient-search" class="form-control"
             placeholder="ひらがな・漢字・カルテ番号で検索"
-            oninput="if(!this._composing)searchPatient(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchPatient(this.value)"
-            
+            oninput="searchPatient(this.value)"
+            onfocus="searchPatient(this.value)"
             autocomplete="off"
             style="width:100%; padding:10px 14px; border:1.5px solid #e0e0e0; border-radius:10px; font-size:0.95rem; box-sizing:border-box;">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
@@ -148,7 +148,6 @@ const MONITORING_PATIENTS = [
 ];
 
 function searchPatient(query) {
-    if(window._patientSelected) return;
     const q = query.trim().toLowerCase();
     const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
     const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
@@ -177,7 +176,6 @@ function searchPatient(query) {
 window.searchPatient = searchPatient;
 
 function selectPatient(value, label) {
-    window._patientSelected = true;
     document.getElementById('patient-search').style.display = 'none';
     document.getElementById('patient-selected-label').textContent = label;
     const badge = document.getElementById('patient-selected-badge');
@@ -188,7 +186,6 @@ function selectPatient(value, label) {
 window.selectPatient = selectPatient;
 
 function clearPatient() {
-    window._patientSelected = false;
     document.getElementById('patient-search').style.display = 'block';
     document.getElementById('patient-search').value = '';
     document.getElementById('patient-selected-badge').style.display = 'none';
