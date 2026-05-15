@@ -3800,6 +3800,59 @@ def admin():
 
 # ==========================================
 
+@app.route('/patient_profile')
+@login_required
+def patient_profile():
+    supabase = get_supabase()
+    f_code   = session.get('facility_code', '')
+    sel_id   = request.args.get('id')
+    try:
+        res = supabase.table('patient_profiles') \
+            .select('id, user_name, user_name_kana, patient_number') \
+            .eq('facility_code', f_code) \
+            .order('user_name_kana') \
+            .execute()
+        patients = res.data or []
+    except Exception:
+        patients = []
+    selected = None
+    if sel_id:
+        try:
+            res = supabase.table('patient_profiles') \
+                .select('*') \
+                .eq('id', sel_id) \
+                .eq('facility_code', f_code) \
+                .single() \
+                .execute()
+            selected = res.data
+        except Exception:
+            selected = None
+    return render_template(
+        'patient_profile.html',
+        patients=patients,
+        selected=selected,
+        supabase_url=os.environ.get('SUPABASE_URL', ''),
+        supabase_anon_key=os.environ.get('SUPABASE_KEY', '')
+    )
+
+@app.route('/api/patient_profile/get_by_patient_number')
+@login_required
+def api_get_patient_profile_by_number():
+    supabase = get_supabase()
+    f_code   = session.get('facility_code', '')
+    p_number = request.args.get('patient_number', '')
+    if not p_number:
+        return jsonify({'error': 'patient_number required'}), 400
+    try:
+        res = supabase.table('patient_profiles') \
+            .select('*') \
+            .eq('facility_code', f_code) \
+            .eq('patient_number', p_number) \
+            .single() \
+            .execute()
+        return jsonify({'data': res.data})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @app.route('/mapping')
 @login_required
 def mapping():
