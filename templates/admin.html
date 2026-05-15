@@ -611,7 +611,7 @@
       {% if patient_profiles %}
         {% for p in patient_profiles %}
         <div class="patient-card" id="pc-{{ p.id }}">
-          <div class="patient-card-info">
+          <a href="/patient_profile?id={{ p.id }}" class="patient-card-info" style="text-decoration:none;color:inherit;">
             <div class="patient-card-name">
               <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
               {{ p.user_name }}
@@ -621,7 +621,7 @@
               {{ p.user_name_kana or '' }}
               {% if p.patient_number %} ・ No.{{ p.patient_number }}{% endif %}
             </div>
-          </div>
+          </a>
           <div class="patient-card-actions">
             <button class="btn btn-sm edit-btn" onclick="openPatientEditForm('{{ p.id }}')">
               <span class="material-symbols-outlined" style="font-size:15px;">edit</span>編集
@@ -660,12 +660,6 @@
             <button class="btn btn-sm" onclick="document.getElementById('pef-{{ p.id }}').style.display='none'">
               <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
             </button>
-          </div>
-          <div style="margin-top:8px;">
-            <a href="/patient_profile?id={{ p.id }}" style="font-size:0.78rem;color:#1a73e8;text-decoration:none;">
-              <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">open_in_new</span>
-              詳細情報（目標・既往歴など）を編集
-            </a>
           </div>
         </div>
         {% endfor %}
