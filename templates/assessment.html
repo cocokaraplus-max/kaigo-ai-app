@@ -560,7 +560,7 @@
         <script type="application/json" id="eval-patients-data">
         [
         {% for p in patients %}
-        {"id": {{ p.id }},
+        {"id": {{ p.id|tojson }},
          "name": {{ p.user_name|tojson }},
          "kana": {{ (p.user_kana or '')|tojson }},
          "chart": {{ (p.chart_number or '')|tojson }},
@@ -1321,7 +1321,7 @@ window.evalFilterPatients = function(q) {
     } else {
         // input.html と同じ方式: <div onclick> 直接、余計なイベントは付けない
         cands.innerHTML = hits.map(p =>
-            `<div class="eval-candidate-item" onclick="evalTrySelectPatient(${p.id})">(No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})</div>`
+            `<div class="eval-candidate-item" onclick="evalTrySelectPatient('${p.id}')">(No.${p.chart || '-'}) ${escapeHtml(p.name)} (${escapeHtml(p.kana)})</div>`
         ).join('');
     }
     cands.classList.add('show');
