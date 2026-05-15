@@ -45,7 +45,7 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem 1.5rem;
+            padding: 1.5rem 1.2rem 5rem;
             position: relative;
             z-index: 0;
         }
@@ -250,6 +250,11 @@ body.nav-editing {
 
         /* ボトムナビ */
         .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
             display: flex;
@@ -570,6 +575,22 @@ body.nav-editing {
                 </div>
             </div>
 
+            <!-- メニュータップ時のスクロール設定 -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">swap_vert</span>メニュータップ時の動作
+                </div>
+                <div class="setting-row-toggle">
+                    <div class="setting-row-info">
+                        <div class="setting-row-name">ページトップへ移動</div>
+                        <div class="setting-row-desc">メニューをタップした時に画面を先頭に戻す</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="nav-scroll-top-toggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
             <!-- メニュー並び順 -->
             <div class="setting-section">
                 <div class="setting-section-label">
@@ -670,12 +691,48 @@ body.nav-editing {
 // ========== SPAルーター ==========
 
 // onclick属性から直接呼ばれる関数（iPhoneでも確実に動く）
+// ナビスクロールトップ設定
+var NAV_SCROLL_KEY = 'tasukaru_nav_scroll_top';
+function getNavScrollTop() {
+    try { return localStorage.getItem(NAV_SCROLL_KEY) !== 'false'; } catch(e) { return true; }
+}
+function setNavScrollTop(val) {
+    try { localStorage.setItem(NAV_SCROLL_KEY, val ? 'true' : 'false'); } catch(e) {}
+}
+// トグル初期化
+(function() {
+    var toggle = document.getElementById('nav-scroll-top-toggle');
+    if (toggle) {
+        toggle.checked = getNavScrollTop();
+        toggle.addEventListener('change', function() {
+            setNavScrollTop(this.checked);
+        });
+    }
+})();
+
 function spaNav(event, url) {
-    // admin・history・numerologyは通常遷移（JSが複雑なためSPA非対応）
-    // SPAナビゲーション無効化: 全ページを通常遷移に統一
-    // (event.preventDefault しないことで、ブラウザ標準のリンク動作が走る)
+    if (!getNavScrollTop()) {
+        try {
+            var wrapper = document.querySelector('.page-wrapper');
+            if (wrapper) { sessionStorage.setItem('tasukaru_scroll_' + window.location.pathname, wrapper.scrollTop); }
+        } catch(e) {}
+    }
     return;
 }
+
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!getNavScrollTop()) {
+            try {
+                var saved = sessionStorage.getItem('tasukaru_scroll_' + window.location.pathname);
+                if (saved) {
+                    var wrapper = document.querySelector('.page-wrapper');
+                    if (wrapper) wrapper.scrollTop = parseInt(saved, 10);
+                }
+            } catch(e) {}
+        }
+    });
+})();
 
 async function navigateTo(url, pushState = true) {
     console.log('[SPA] navigateTo:', url);
