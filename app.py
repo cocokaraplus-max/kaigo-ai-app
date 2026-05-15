@@ -3775,20 +3775,28 @@ def admin():
     if claude_url:
         claude_url = request.host_url.rstrip('/') + claude_url
 
+    patient_profiles = []
+    try:
+        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level').eq('facility_code', f_code).order('user_name_kana').execute()
+        patient_profiles = pp_res.data or []
+    except: pass
+
     return render_template("admin.html",
         authenticated=authenticated,
         dev_mode=False,
         patients=patients,
+        patient_profiles=patient_profiles,
         blocked=blocked,
         staff_list=staff_list,
         hist_limit=hist_limit,
         error=None,
         claude_url=claude_url,
         registered_staffs=registered_staffs,
-        f_code=f_code
-    ,
-            board_editors=board_editors_list,
-            admin_managers=admin_managers_list)
+        f_code=f_code,
+        board_editors=board_editors_list,
+        admin_managers=admin_managers_list,
+        supabase_url=os.environ.get('SUPABASE_URL', ''),
+        supabase_anon_key=os.environ.get('SUPABASE_KEY', ''))
 
 # ==========================================
 
