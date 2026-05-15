@@ -45,7 +45,7 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem calc(env(safe-area-inset-bottom) + 5rem);
+            padding: 1.5rem 1.2rem 1.5rem;
             position: relative;
             z-index: 0;
         }
@@ -250,11 +250,6 @@ body.nav-editing {
 
         /* ボトムナビ */
         .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
             display: flex;
@@ -262,12 +257,12 @@ body.nav-editing {
             overflow-y: hidden;
             scrollbar-width: none;
             padding: 0;
-            padding-bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
+            padding-bottom: env(safe-area-inset-bottom, 0px);
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
             flex-shrink: 0;
-            max-width: 480px;
             width: 100%;
+            max-width: 480px;
             margin: 0 auto;
             touch-action: pan-x;
             overscroll-behavior-x: contain;
