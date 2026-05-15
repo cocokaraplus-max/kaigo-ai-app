@@ -2991,16 +2991,6 @@ def assessment():
     supabase = get_supabase()
     patients = get_patients(supabase, f_code)
 
-    # patients に care_level を追加(介護区分の初期値用)
-    try:
-        res = supabase.table("patients").select("id, care_level").eq("facility_code", f_code).execute()
-        extra = {r["id"]: r for r in (res.data or [])}
-        for p in patients:
-            e = extra.get(p["id"], {})
-            p["care_level"] = e.get("care_level") or ""
-    except Exception:
-        for p in patients:
-            p["care_level"] = ""
 
     this_month = datetime.now(tokyo_tz).strftime("%Y-%m")
     return render(
