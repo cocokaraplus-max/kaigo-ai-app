@@ -51,7 +51,7 @@
         <input type="text" id="patient-search" class="form-control"
             placeholder="例:やまだ / 山田 / 001"
             oninput="if(!this._composing)searchPatient(this.value)" oncompositionstart="this._composing=true" oncompositionend="this._composing=false;searchPatient(this.value)"
-            onfocus="searchPatient(this.value)"
+            
             autocomplete="off">
         <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
             background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
