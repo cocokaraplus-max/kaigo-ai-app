@@ -2546,7 +2546,7 @@ def api_add_today_patient():
                 # patient_visit_days行が無い場合は新規作成(user_name必要)
                 user_name = data.get("user_name", "")
                 if not user_name:
-                    p_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("id", patient_id).execute()
+                    p_res = supabase.table("patient_profiles").select("user_name").eq("facility_code", f_code).eq("id", patient_id).execute()
                     if p_res.data:
                         user_name = p_res.data[0].get("user_name", "")
                 supabase.table("patient_visit_days").insert({
