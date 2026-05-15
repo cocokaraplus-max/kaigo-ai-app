@@ -5,92 +5,72 @@
 
 ---
 
-## ✅ Session 43（2026-05-15）完了項目
+## ✅ Session 44（2026-05-15）完了項目
 
-### 1. 利用者基本情報DB構築
-- **Supabaseに`patient_profiles`テーブルを新規作成**
-  - まもる君クラウドCSV対応項目（利用者番号・氏名・カナ・住所・生年月日・性別・介護度・認定有効期間・支援事業所・担当ケアマネ・委託先事業所）
-  - TASUKARU追加項目（既往歴・家族構成・利用開始日・長短期目標・期間）
-- **旧`patients`テーブルから51件を`patient_profiles`に移行**（氏名・ふりがな・カルテNo・生年月日）
-- **関連テーブルのpatient_idをUUIDに一括更新**
-  - `patient_visit_days` ✅
-  - `vitals` ✅
-  - `vital_daily_excludes` ✅（bigint→text型変換も実施）
-  - `vital_recheck_schedules` ✅
+### 1. assessment.html — 音声入力をMediaRecorder + Geminiに刷新
+- **旧実装（Web Speech API）を完全廃止**
+- MediaRecorder で録音 → Gemini（`/api/transcribe` / `/api/evaluation/ingest_file`）で文字起こし
+- **独り言モード**（職員のみ）/ **対面会話モード**（話者自動分離）のタブ切替
+- 待機中 → 録音中 → 一時停止 ⇄ 再開 → 編集・確定 の4状態UI
+- 録音中：波形アニメ・リップルエフェクト・タイマー表示
+- 停止後：話者別編集エリア・「録り直す」「確定して追加」ボタン
+- コミット: `6268ef8`
 
-### 2. 管理者メニュー刷新
-- **admin.htmlを3タブ構成に全面刷新**
-  - 利用者管理タブ：CSV取込・写真AIスキャン・手入力登録・一覧編集
-  - 職員管理タブ：招待QR・新規登録・権限管理・ブロック
-  - 設定タブ：パスワード変更・表示件数・AIカテゴリ振り分け
-- **まもる君クラウドCSVインポート機能**（Shift-JIS対応・カタカナ→ひらがな自動変換）
-- **patient_profile.html新規作成**（詳細情報・目標設定ページ）
+### 2. input.html — 録音UIをMediaRecorder + Geminiに刷新
+- **旧実装（MediaRecorder + 手動「AI文章化」ボタン）を刷新**
+- 停止後に自動でGemini文字起こし → 「記録に追加する」で content-area に流し込み
+- 独り言モードのみ（対面会話不要）
+- 同じく待機・録音中・一時停止・完了編集の4状態UI
+- 写真アップロードエリアは**現行デザインのまま完全維持**
+- コミット: `a96ec03`
 
-### 3. app.py修正
-- `get_patients`関数を`patient_profiles`テーブル参照に統一
-- `/patient_profile`ルートとAPIを新規追加
-- `/api/add_today_patient`を`patient_profiles`対応に修正
-- assessment.htmlのcare_level重複取得を削除
-
-### 4. iPhone利用者検索バグ修正（難航）
-- **assessment.html**：UUID対応・候補リストz-index修正
-- **history.html**（モニタリングメニューの実体）：touchstart・選択ロックフラグ追加
-- **input.html**（記録入力）：addEventListener方式・選択ロックフラグ追加
-- `_patientSelected`フラグで選択後の再検索を防止
+### 3. 技術選定の検討・決定
+- AssemblyAI / Whisper WASM / Web Speech API などを比較検討
+- **Geminiで統一**（追加費用ゼロ・日本語精度高・話者分離対応・既存スタック流用）
+- オフライン対応はネイティブアプリ化時に再検討
 
 ---
 
-## ⚠️ Session 43の反省点
+## ⚠️ Session 44の反省点
 
-### 1. ファイルの特定ミス（最大の問題）
-- 「モニタリング」ナビメニューが実際には`/history`ページに繋がっていた
-- `monitoring.html`を何度修正しても効果がなかった理由
-- **教訓：iPhoneのSafari開発者ツールで実際のURLを最初に確認すべきだった**
+### 1. デザイン意図の確認不足
+- 「現行デザインを残す」の範囲が何度も食い違った
+- **教訓：スクショを受け取ったら「触る箇所」「触らない箇所」を最初に箇条書きで確認する**
 
-### 2. Chrome連携の自律操作リスク
-- Session 42でClaudeが勝手にGitHubにコミットしてしまった
-- コミットメッセージは新しいが中身は旧バージョンという状態が発生
-- **教訓：Chrome連携でのGitHub操作は必ず確認を取ること**
-
-### 3. 段階的な確認不足
-- iPhoneで「変わらない」が続いた際、Cloud Build反映確認より先にコードを変更し続けた
-- **教訓：`curl`でdevのソースを確認してから次の修正に進む**
-
-### 4. patient_idのUUID移行影響範囲の把握が遅れた
-- `get_patients`を変更した時点で全テーブルのpatient_idが不一致になることを予測できなかった
-- **教訓：テーブル変更時は依存テーブルを先にリストアップする**
+### 2. 段階的なデザイン提案が有効
+- モックを何パターか見せてから実装に入る流れがうまく機能した
+- **教訓：デザインは必ずモックで合意を取ってから実装**
 
 ---
 
-## 📋 残タスク（Session 44以降）
+## 📋 残タスク（Session 45以降）
 
 ### 🔴 優先度高
 
+#### モニタリング報告書の印刷機能
+- Session 45で着手予定
+
 #### 第2弾：AI評価文生成
-- 元データ（音声・写真・PDF・テキスト）からGeminiでAI生成
-- 出力：「訓練による変化」「課題とその要因」
-- `patient_profiles`から利用者基本情報（介護度・長短期目標・既往歴）をAIに渡す
+- 元データ（音声・写真・PDF）→ Gemini →「訓練による変化」「課題とその要因」
+- `patient_profiles`から利用者情報（介護度・長短期目標・既往歴）をAIに渡す
 - `/api/evaluation/generate`エンドポイントを新規作成
 
 #### 利用者基本情報ページの動作確認
 - devで`/patient_profile`ページの動作確認
-- まもる君CSVの実際の取込テスト（列名マッピング確認）
-- 管理者メニューの利用者管理タブの動作確認
+- まもる君CSVの実際の取込テスト（本番環境が必要）
 
 ### 🟡 優先度中
 
 #### assessment.htmlとpatient_profilesの連動
 - 利用者選択時に`patient_profiles`から介護度・長短期目標を自動セット
-- `/api/patient_profile/get_by_patient_number`APIは実装済み
 
 #### assessment.html第1弾の復元
-- Session 42で作った元データセクション（音声・ファイル・カメラ）がGitHubに未反映
+- Session 42で作った元データセクションがGitHubに未反映
 - 第2弾実装前に復元が必要
 
 ### 🟢 優先度低
 
 #### 検索のもたつき改善（記録入力）
-- 一応動くようになったが若干もたつきがある
 - blur処理の300msタイムアウトを調整する余地あり
 
 ---
@@ -117,27 +97,31 @@
 | ファイル | 役割 |
 |---------|------|
 | `app.py` | Flaskメイン（6000行超） |
-| `templates/assessment.html` | 月次評価画面 |
+| `templates/assessment.html` | 月次評価画面（Session 44刷新） |
 | `templates/history.html` | モニタリングメニューの実体（注意！） |
-| `templates/input.html` | 記録入力 |
+| `templates/input.html` | 記録入力（Session 44刷新） |
 | `templates/admin.html` | 管理者メニュー（Session 43刷新） |
 | `templates/patient_profile.html` | 利用者詳細情報（Session 43新規） |
 | `monitoring_integration.py` | モニタリング機能（別ファイル） |
+
+### 音声入力アーキテクチャ（Session 44確定）
+| 画面 | 録音方式 | 文字起こし | 話者分離 |
+|------|---------|-----------|---------|
+| assessment.html | MediaRecorder | Gemini | ✅ 対面会話モード |
+| input.html | MediaRecorder | Gemini | ❌ 独り言のみ |
+| vitals.html | MediaRecorder | Gemini | ❌ バイタル抽出 |
 
 ---
 
 ## 📝 次のセッション冒頭でやること
 
-1. devで動作確認（iPhone）
-   - 記録入力の利用者検索
-   - 管理者メニュー→利用者管理タブ
-   - patient_profileページ（`/patient_profile`）
-2. まもる君CSVの実際の取込テスト
-3. 第2弾AI評価文生成の実装開始
+1. モニタリング報告書の印刷機能の実装
+   - 現状の`monitoring_integration.py`と`history.html`の構造確認
+   - 印刷レイアウト・帳票デザインの検討
 
 ---
 
-**最終更新**: Session 43（2026-05-15）
+**最終更新**: Session 44（2026-05-15）
 **ブランチ**: tasukaru-dev
-**最新コミット**: 0ac14c3
-**ステータス**: 🟢 利用者DB構築完了・iPhone検索バグ修正完了
+**最新コミット**: a96ec03
+**ステータス**: 🟢 音声入力UI刷新完了（assessment・input両対応）
