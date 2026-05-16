@@ -3223,5 +3223,153 @@ window.openRecordsModal = function(userName, accordionIdx) {
 
 });
 
+
+// ── 読み上げ機能（Web Speech API） ──────────────────────────────
+var _tts_speaking = false;
+var _tts_currentBtn = null;
+
+function _ttsStop() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    _tts_speaking = false;
+    if (_tts_currentBtn) {
+        var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
+        if (icon) icon.textContent = 'volume_up';
+        _tts_currentBtn.style.color = '#1a73e8';
+        _tts_currentBtn = null;
+    }
+    var allBtn = document.getElementById('speak-all-btn');
+    if (allBtn) {
+        allBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">campaign</span> その日のAI要約を全員分読み上げ';
+        allBtn.style.background = 'linear-gradient(135deg,#1a73e8,#1557b0)';
+    }
+}
+
+window.speakSummary = function(idx, btn) {
+    if (!window.speechSynthesis) { alert('読み上げに対応していません'); return; }
+    if (_tts_speaking) { _ttsStop(); return; }
+    var el = document.getElementById('ai-content-' + idx);
+    if (!el) return;
+    var text = el.textContent.trim();
+    if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
+        alert('AI要約を先に生成してください'); return;
+    }
+    var utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'ja-JP'; utt.rate = 0.95;
+    utt.onend = _ttsStop; utt.onerror = _ttsStop;
+    _tts_speaking = true;
+    _tts_currentBtn = btn;
+    var icon = btn.querySelector('.material-symbols-outlined');
+    if (icon) icon.textContent = 'stop_circle';
+    btn.style.color = '#ea4335';
+    window.speechSynthesis.speak(utt);
+};
+
+window.speakAllSummaries = function(btn) {
+    if (!window.speechSynthesis) { alert('読み上げに対応していません'); return; }
+    if (_tts_speaking) { _ttsStop(); return; }
+    var cards = document.querySelectorAll('[id^="ai-content-"]');
+    var items = [];
+    cards.forEach(function(el) {
+        var idx = el.id.replace('ai-content-', '');
+        var body = document.getElementById('body-' + idx);
+        var header = body ? body.previousElementSibling : null;
+        var nameEl = header ? header.querySelector('.user-accordion-title') : null;
+        var name = nameEl ? nameEl.textContent.trim() : '';
+        var text = el.textContent.trim();
+        if (text && text.indexOf('タップして開くと') !== 0 && text.indexOf('生成中') < 0) {
+            items.push({ name: name.replace('様', ''), text: text });
+        }
+    });
+    if (items.length === 0) { alert('AI要約がまだ生成されていません。各利用者をタップして要約を生成してください'); return; }
+    _tts_speaking = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">stop_circle</span> 停止';
+    btn.style.background = 'linear-gradient(135deg,#ea4335,#c62828)';
+    var i = 0;
+    function next() {
+        if (!_tts_speaking || i >= items.length) { _ttsStop(); return; }
+        var item = items[i++];
+        var utt = new SpeechSynthesisUtterance((item.name ? item.name + 'さん。' : '') + item.text);
+        utt.lang = 'ja-JP'; utt.rate = 0.95;
+        utt.onend = function() { if (_tts_speaking) setTimeout(next, 600); };
+        utt.onerror = _ttsStop;
+        window.speechSynthesis.speak(utt);
+    }
+    next();
+};
+
+
+// ── 読み上げ機能（Web Speech API） ──────────────────────────────
+var _tts_speaking = false;
+var _tts_currentBtn = null;
+
+function _ttsStop() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    _tts_speaking = false;
+    if (_tts_currentBtn) {
+        var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
+        if (icon) icon.textContent = 'volume_up';
+        _tts_currentBtn.style.color = '#1a73e8';
+        _tts_currentBtn = null;
+    }
+    var allBtn = document.getElementById('speak-all-btn');
+    if (allBtn) {
+        allBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">campaign</span> その日のAI要約を全員分読み上げ';
+        allBtn.style.background = 'linear-gradient(135deg,#1a73e8,#1557b0)';
+    }
+}
+
+window.speakSummary = function(idx, btn) {
+    if (!window.speechSynthesis) { alert('読み上げに対応していません'); return; }
+    if (_tts_speaking) { _ttsStop(); return; }
+    var el = document.getElementById('ai-content-' + idx);
+    if (!el) return;
+    var text = el.textContent.trim();
+    if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
+        alert('AI要約を先に生成してください'); return;
+    }
+    var utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'ja-JP'; utt.rate = 0.95;
+    utt.onend = _ttsStop; utt.onerror = _ttsStop;
+    _tts_speaking = true;
+    _tts_currentBtn = btn;
+    var icon = btn.querySelector('.material-symbols-outlined');
+    if (icon) icon.textContent = 'stop_circle';
+    btn.style.color = '#ea4335';
+    window.speechSynthesis.speak(utt);
+};
+
+window.speakAllSummaries = function(btn) {
+    if (!window.speechSynthesis) { alert('読み上げに対応していません'); return; }
+    if (_tts_speaking) { _ttsStop(); return; }
+    var cards = document.querySelectorAll('[id^="ai-content-"]');
+    var items = [];
+    cards.forEach(function(el) {
+        var idx = el.id.replace('ai-content-', '');
+        var body = document.getElementById('body-' + idx);
+        var header = body ? body.previousElementSibling : null;
+        var nameEl = header ? header.querySelector('.user-accordion-title') : null;
+        var name = nameEl ? nameEl.textContent.trim() : '';
+        var text = el.textContent.trim();
+        if (text && text.indexOf('タップして開くと') !== 0 && text.indexOf('生成中') < 0) {
+            items.push({ name: name.replace('様', ''), text: text });
+        }
+    });
+    if (items.length === 0) { alert('AI要約がまだ生成されていません。各利用者をタップして要約を生成してください'); return; }
+    _tts_speaking = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">stop_circle</span> 停止';
+    btn.style.background = 'linear-gradient(135deg,#ea4335,#c62828)';
+    var i = 0;
+    function next() {
+        if (!_tts_speaking || i >= items.length) { _ttsStop(); return; }
+        var item = items[i++];
+        var utt = new SpeechSynthesisUtterance((item.name ? item.name + 'さん。' : '') + item.text);
+        utt.lang = 'ja-JP'; utt.rate = 0.95;
+        utt.onend = function() { if (_tts_speaking) setTimeout(next, 600); };
+        utt.onerror = _ttsStop;
+        window.speechSynthesis.speak(utt);
+    }
+    next();
+};
+
 </script>
 {% endblock %}
