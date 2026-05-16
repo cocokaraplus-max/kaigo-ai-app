@@ -711,16 +711,12 @@ function setNavScrollTop(val) {
 })();
 
 function spaNav(event, url) {
-    return;
-}
-window.addEventListener('beforeunload', function() {
     try {
         var nav = document.querySelector('.bottom-nav');
-        if (nav && nav.scrollLeft > 0) {
-            localStorage.setItem('tasukaru_nav_left', nav.scrollLeft);
-        }
+        if (nav) { localStorage.setItem('tasukaru_nav_left', nav.scrollLeft); }
     } catch(e) {}
-});
+    return;
+}
 window.addEventListener('load', function() {
     (function() {
         try {
@@ -1399,8 +1395,6 @@ window.startNavEditMode = function() {
     nav.addEventListener('click', navEditClickBlocker, true);
     // ★ iOS Safari の長押しコンテキストメニュー(リンクプレビュー)もブロック
     nav.addEventListener('contextmenu', navEditContextMenuBlocker, true);
-    // ナビを最上部にスクロール
-    nav.scrollLeft = 0;
 };
 
 window.stopNavEditMode = function() {
