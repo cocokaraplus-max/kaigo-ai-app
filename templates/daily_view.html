@@ -3174,6 +3174,37 @@ function prefetchAllSummaries() {
 // ページロード時に先読み開始
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(prefetchAllSummaries, 1000);
+
+// ── 個別記録モーダル ──────────────────────────────────────────────
+window.openRecordsModal = function(userName, accordionIdx) {
+    var container = document.getElementById('records-hidden-' + accordionIdx);
+    if (!container) return;
+    var items = container.querySelectorAll('.record-item');
+    var html = '';
+    items.forEach(function(item) {
+        var meta = item.querySelector('.record-meta');
+        var content = item.querySelector('.record-content');
+        var category = item.querySelector('.aic-card-tag');
+        var vasDisplay = item.querySelector('.vas-display');
+        var photoGrid = item.querySelector('.photo-grid');
+        var actions = item.querySelector('.record-actions');
+        html += '<div style="border:1px solid #e8eaed;border-radius:12px;padding:14px;margin-bottom:12px;">';
+        html += '<div style="font-size:0.82rem;font-weight:600;color:#5f6368;margin-bottom:8px;">';
+        html += (meta ? meta.textContent.trim().replace(/\s+/g, ' ') : '') + '</div>';
+        if (category) html += '<div style="margin-bottom:8px;">' + category.outerHTML + '</div>';
+        html += '<div style="font-size:0.92rem;line-height:1.8;color:#202124;white-space:pre-wrap;margin-bottom:10px;">';
+        html += (content ? content.textContent.trim() : '') + '</div>';
+        if (vasDisplay) html += vasDisplay.outerHTML;
+        if (photoGrid) html += photoGrid.outerHTML;
+        if (actions) html += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' + actions.innerHTML + '</div>';
+        html += '</div>';
+    });
+    document.getElementById('modal-user-name').textContent = userName + ' 様';
+    document.getElementById('modal-records-list').innerHTML = html || '<div style="color:#9aa0a6;text-align:center;padding:20px;">記録はありません</div>';
+    document.getElementById('record-modal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+};
+
 });
 
 </script>
