@@ -1,44 +1,5 @@
 {% extends "base.html" %}
 {% block title %}ケース記録閲覧 - TASUKARU
-// ── AI日次要約機能 ──────────────────────────────────────────────
-async function loadDailySummary(userName, idx, dateStr) {
-    const aiContent = document.getElementById('ai-content-' + idx);
-    if (!aiContent) return;
-    aiContent.innerHTML = '<span style="color:#1a73e8;display:flex;align-items:center;gap:6px;font-size:0.85rem;"><span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span>AI要約を生成中...</span>';
-    try {
-        const res = await fetch('/api/generate_daily_summary', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({user_name: userName, date: dateStr})
-        });
-        const data = await res.json();
-        if (data.summary) {
-            aiContent.textContent = data.summary;
-        } else {
-            aiContent.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">' + (data.error || '生成に失敗しました') + '</span>';
-        }
-    } catch(e) {
-        aiContent.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラーが発生しました</span>';
-    }
-}
-
-async function regenDailySummary(userName, idx, dateStr) {
-    // キャッシュを無視して強制再生成
-    const aiContent = document.getElementById('ai-content-' + idx);
-    if (!aiContent) return;
-    aiContent.innerHTML = '<span style="color:#1a73e8;display:flex;align-items:center;gap:6px;font-size:0.85rem;"><span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span>再生成中...</span>';
-    try {
-        const res = await fetch('/api/generate_daily_summary', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({user_name: userName, date: dateStr, force: true})
-        });
-        const data = await res.json();
-        if (data.summary) {
-            aiContent.textContent = data.summary;
-        } else {
-            aiContent.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">' + (data.error || '生成に失敗しました') + '</span>';
-        }
     } catch(e) {
         aiContent.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラーが発生しました</span>';
     }
@@ -1257,7 +1218,7 @@ if (!document.querySelector('#spin-style')) {
         <div class="calendar-days" id="cal-days"></div>
     </div>
 </div>
-<div id="dv-records-wrapper" data-date="{{ selected_date }}">
+<div id="dv-records-wrapper" data-date="{{ selected_date }}" data-users='{{ records.keys() | list | tojson }}'>
 
 {% if not records %}
 <div class="alert alert-info" id="records-area">
@@ -1993,11 +1954,11 @@ window.jumpToDayView = function(dateStr) {
     else window.location.href = '/daily_view?date=' + dateStr;
 };
 window.toggleAccordion = function(idx, userName) {
-    // AI要約: 開いたときに自動生成
+    // AI要約: 開いたときに自動生成（キャッシュ済みなら即表示）
     if (!document.getElementById('body-'+idx).classList.contains('open')) {
-        var dateInput = document.getElementById('date-input') || document.querySelector('input[name="date"]');
-        var dateStr = dateInput ? dateInput.value : '';
-        if (dateStr && userName) setTimeout(function(){ loadDailySummary(userName, idx, dateStr); }, 100);
+        var dateStr = (typeof selectedDate !== 'undefined') ? selectedDate : '';
+        if (!dateStr) { var w = document.getElementById('dv-records-wrapper'); dateStr = w ? w.dataset.date : ''; }
+        if (dateStr && userName) setTimeout(function(){ loadDailySummary(userName, idx, dateStr); }, 50);
     }
     var body = document.getElementById('body-'+idx);
     body.classList.toggle('open');
@@ -3098,4 +3059,102 @@ function _aicManualEscape(s) {
         .replace(/'/g, '&#39;');
 }
 </script>
+
+// ── AI日次要約 ────────────────────────────────────────────
+function getDailyDate() {
+    var wrapper = document.getElementById('dv-records-wrapper');
+    if (wrapper && wrapper.dataset.date) return wrapper.dataset.date;
+    var sd = document.getElementById('selected-date-val');
+    if (sd) return sd.value;
+    // selectedDateはJinja変数として1787行目付近に定義済み
+    if (typeof selectedDate !== 'undefined' && selectedDate) return selectedDate;
+    return '';
+}
+async function loadDailySummary(userName, idx, dateStr) {
+    var ac = document.getElementById('ai-content-'+idx);
+    if (!ac) return;
+    if (!dateStr) dateStr = getDailyDate();
+    ac.innerHTML = '<span style="color:#1a73e8;display:flex;align-items:center;gap:6px;font-size:0.85rem;">'
+        + '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span>'
+        + 'AI要約を生成中...</span>';
+    try {
+        var res = await fetch('/api/generate_daily_summary', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_name: userName, date: dateStr})
+        });
+        var data = await res.json();
+        if (data.summary) {
+            ac.textContent = data.summary;
+        } else {
+            ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
+                + (data.error || '生成に失敗しました') + '</span>';
+        }
+    } catch(e) {
+        ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラー</span>';
+    }
+}
+async function regenDailySummary(userName, idx) {
+    var ac = document.getElementById('ai-content-'+idx);
+    if (!ac) return;
+    var dateStr = getDailyDate();
+    ac.innerHTML = '<span style="color:#1a73e8;display:flex;align-items:center;gap:6px;font-size:0.85rem;">'
+        + '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span>'
+        + '再生成中...</span>';
+    try {
+        var res = await fetch('/api/generate_daily_summary', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_name: userName, date: dateStr, force: true})
+        });
+        var data = await res.json();
+        if (data.summary) {
+            ac.textContent = data.summary;
+        } else {
+            ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
+                + (data.error || '生成に失敗しました') + '</span>';
+        }
+    } catch(e) {
+        ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラー</span>';
+    }
+}
+
+
+// ── AI要約バックグラウンド先読み ───────────────────────────
+function prefetchAllSummaries() {
+    var wrapper = document.getElementById('dv-records-wrapper');
+    if (!wrapper) return;
+    var dateStr = wrapper.dataset.date || ((typeof selectedDate !== 'undefined') ? selectedDate : '');
+    if (!dateStr) return;
+    var usersJson = wrapper.dataset.users;
+    if (!usersJson) return;
+    try {
+        var users = JSON.parse(usersJson);
+        // 1秒後から順番に先読み（UIをブロックしないよう間隔を空ける）
+        users.forEach(function(userName, i) {
+            setTimeout(function() {
+                fetch('/api/generate_daily_summary', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_name: userName, date: dateStr})
+                }).then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.summary) {
+                        // キャッシュに保存してあるので次に開いたとき即表示される
+                        // すでに開いているアコーディオンがあれば即反映
+                        var ac = document.getElementById('ai-content-' + (i+1));
+                        if (ac && ac.querySelector('span[style*="9aa0a6"]')) {
+                            ac.textContent = data.summary;
+                        }
+                    }
+                }).catch(function(){});
+            }, 1000 + i * 800); // 1秒後から0.8秒間隔で順番に
+        });
+    } catch(e) {}
+}
+// ページロード時に先読み開始
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(prefetchAllSummaries, 1000);
+});
+
 {% endblock %}
