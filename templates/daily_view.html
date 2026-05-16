@@ -195,7 +195,11 @@
     margin-bottom: 6px;
 }
 .record-meta .material-symbols-outlined { font-size: 15px; }
-.record-content { font-size: 0.9rem; line-height: 1.7; }
+.record-content { font-size: 0.9rem; line-height: 1.7; display: none; }
+.record-content.open { display: block; }
+.record-meta-row { cursor: pointer; }
+.record-toggle-icon { font-size: 16px; color: #9aa0a6; transition: transform 0.2s; }
+.record-item.expanded .record-toggle-icon { transform: rotate(180deg); }
 .record-actions {
     display: flex;
     gap: 8px;
@@ -1250,7 +1254,7 @@
              data-category="{{ r.category or '' }}"
              data-leave-type="{{ r.leave_reporter_type or '' }}"
              data-leave-relation="{{ r.leave_reporter_relation or '' }}">
-            <div class="record-meta-row">
+            <div class="record-meta-row" onclick="toggleRecordContent(this)">
                 <div class="record-meta">
                     <span class="material-symbols-outlined">schedule</span>
                     {{ r.time }} （{{ r.staff_name }}）
@@ -1274,6 +1278,7 @@
                     title="閲覧必須を切り替え">
                     <span class="material-symbols-outlined">{% if r.must_read %}star{% else %}star_outline{% endif %}</span>
                 </button>
+                <span class="material-symbols-outlined record-toggle-icon">expand_more</span>
             </div>
             {% if r.must_read and not r.is_read_by_me %}
             <div class="must-read-badge" id="mr-badge-{{ r.id }}"
@@ -1312,10 +1317,11 @@
             </div>
             {% endif %}
 
-            <div class="read-chip" onclick="toggleReadList('{{ r.id }}')">
+            <div class="read-chip"{% if is_admin %} onclick="toggleReadList('{{ r.id }}')" style="cursor:pointer;"{% else %} style="cursor:default;"{% endif %}>
                 <span class="material-symbols-outlined">check</span>
                 <span id="read-count-{{ r.id }}">{{ r.read_count or 0 }}</span>人
             </div>
+            {% if is_admin %}
             <div class="read-list" id="read-list-{{ r.id }}">
                 <div id="read-list-content-{{ r.id }}">
                     {% if r.read_staffs %}
@@ -1326,6 +1332,7 @@
                 </div>
             </div>
 
+            {% endif %}
             {% if r.can_edit %}
             <div class="record-actions">
                 <button class="btn btn-sm" onclick="startEdit('{{ r.id }}', `{{ r.content | replace('`', '\\`') }}`)">
