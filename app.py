@@ -4203,8 +4203,8 @@ def api_tts_enabled():
 @login_required
 def api_tts_toggle():
     """管理者がTTSのON/OFFを切り替える"""
-    if not session.get('admin_authenticated'):
-        return jsonify({'error': '管理者権限が必要です'}), 403
+    if not session.get('dev_authenticated'):
+        return jsonify({'error': '開発者権限が必要です'}), 403
     f_code = session['f_code']
     supabase = get_supabase()
     try:

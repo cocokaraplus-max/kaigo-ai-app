@@ -312,5 +312,48 @@ window.logoutDev = async function() {
     location.href = '/admin';
 };
 })();
+
+// TTS施設別トグル
+(function() {
+    fetch('/api/tts_enabled')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var list = document.getElementById('tts-facility-list');
+            if (!list) return;
+            list.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;">' +
+                '<div style="flex:1;">' +
+                '<div style="font-weight:600;font-size:0.9rem;">現在の施設: ' + (data.enabled ? 'ON' : 'OFF') + '</div>' +
+                '<div style="font-size:0.78rem;color:#80868b;">読み上げ機能を有効にする施設を管理します</div>' +
+                '</div>' +
+                '<label class="toggle-switch" style="margin:0;">' +
+                '<input type="checkbox" id="tts-dev-toggle" ' + (data.enabled ? 'checked' : '') + ' onchange="toggleTTSDev(this.checked)">' +
+                '<span class="toggle-slider"></span>' +
+                '</label></div>';
+        }).catch(function(){});
+})();
+
+window.toggleTTSDev = function(enabled) {
+    fetch('/api/tts_toggle', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled})
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        var label = document.querySelector('#tts-facility-list div[style*="font-weight"]');
+        if (label) label.textContent = '現在の施設: ' + (data.enabled ? 'ON' : 'OFF');
+    }).catch(function(){});
+};
+
 </script>
+
+<!-- TTS施設別設定 -->
+<div class="section-box" style="margin-top:1.5rem;">
+    <div class="section-box-title" style="display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined">volume_up</span>
+        AI要約 読み上げ機能（施設別）
+    </div>
+    <div id="tts-facility-list" style="margin-top:8px;"></div>
+</div>
+
 {% endblock %}
