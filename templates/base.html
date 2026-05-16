@@ -711,11 +711,8 @@ function setNavScrollTop(val) {
 })();
 
 function spaNav(event, url) {
-    try {
-        var nav = document.querySelector('.bottom-nav');
-        if (nav) { localStorage.setItem('tasukaru_nav_left', nav.scrollLeft); }
-    } catch(e) {}
     return;
+}
 }
 window.addEventListener('load', function() {
     (function() {
@@ -724,6 +721,15 @@ window.addEventListener('load', function() {
             var saved = parseInt(localStorage.getItem('tasukaru_nav_left') || '0', 10);
             if (nav && saved > 0) {
                 nav.scrollLeft = saved;
+                if (nav && saved > 0) {
+                nav.scrollLeft = saved;
+            }
+            // スクロール位置を随時保存
+            if (nav) {
+                nav.addEventListener('scroll', function() {
+                    localStorage.setItem('tasukaru_nav_left', nav.scrollLeft);
+                });
+            }
             }
         } catch(e) {}
     })();
