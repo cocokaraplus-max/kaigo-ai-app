@@ -622,7 +622,6 @@
             <div class="patient-card-name">
               <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
               {{ p.user_name }}
-              {% if p.care_level %}<span class="badge" style="font-size:0.68rem;">{{ p.care_level }}</span>{% endif %}
             </div>
             <div class="patient-card-sub">
               {{ p.user_name_kana or '' }}
