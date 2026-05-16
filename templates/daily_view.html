@@ -1245,6 +1245,11 @@
             </div>
         </div>
 
+        <button onclick="openRecordsModal('{{ user }}', {{ loop.index }})" style="width:100%;padding:10px;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:10px;color:#5f6368;font-size:0.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">edit_note</span>
+            個別記録 {{ data.normal_records | length }}件を見る
+        </button>
+        <div style="display:none;" id="records-hidden-{{ loop.index }}">
         <hr class="divider" style="margin:0 0 12px;">
         <div class="section-subtitle">
             <span class="material-symbols-outlined">notes</span>
@@ -1404,6 +1409,7 @@
                 </div>
             </div>
         </div>
+        </div><!-- /records-hidden -->
         {% endfor %}
 
     </div>
@@ -1531,20 +1537,18 @@
 
 <!-- 個別記録モーダル -->
 <div id="record-modal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.5);" onclick="closeRecordModal(event)">
-    <div style="position:absolute; bottom:0; left:0; right:0; background:#fff; border-radius:16px 16px 0 0; max-height:85vh; overflow-y:auto; padding:20px 16px 32px;">
-        <div style="display:flex; align-items:center; margin-bottom:12px;">
+    <div style="position:absolute; bottom:0; left:0; right:0; background:#fff; border-radius:16px 16px 0 0; max-height:88vh; overflow-y:auto; padding:20px 16px 40px;">
+        <div style="display:flex; align-items:center; margin-bottom:16px;">
             <div style="flex:1;">
-                <div id="modal-meta" style="font-size:0.85rem; color:#5f6368; font-weight:600;"></div>
+                <div id="modal-user-name" style="font-size:1rem; font-weight:700; color:#202124;"></div>
+                <div id="modal-date-label" style="font-size:0.8rem; color:#80868b;"></div>
             </div>
-            <button onclick="closeRecordModal()" style="background:none; border:none; cursor:pointer; padding:4px;">
+            <button onclick="document.getElementById('record-modal').style.display='none';document.body.style.overflow='';"
+                style="background:none; border:none; cursor:pointer; padding:4px;">
                 <span class="material-symbols-outlined" style="font-size:24px; color:#80868b;">close</span>
             </button>
         </div>
-        <div id="modal-category" style="margin-bottom:10px;"></div>
-        <div id="modal-content" style="font-size:0.95rem; line-height:1.8; color:#202124; white-space:pre-wrap; margin-bottom:16px;"></div>
-        <div id="modal-vas" style="margin-bottom:12px;"></div>
-        <div id="modal-photos" style="margin-bottom:12px;"></div>
-        <div id="modal-actions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+        <div id="modal-records-list"></div>
     </div>
 </div>
 
