@@ -1363,5 +1363,48 @@ function showAdminToast(msg) {
 }
 
 
+// TTS音声設定（管理者）
+(function() {
+    fetch('/api/tts_settings')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.enabled) return;
+            var box = document.getElementById('tts-voice-settings-box');
+            if (box) box.style.display = 'block';
+            var vr = document.querySelector('input[name="tts-voice"][value="' + data.voice + '"]');
+            if (vr) vr.checked = true;
+            var sp = document.getElementById('tts-speed');
+            var pt = document.getElementById('tts-pitch');
+            if (sp) { sp.value = data.speed; document.getElementById('tts-speed-val').textContent = parseFloat(data.speed).toFixed(2) + '倍'; }
+            if (pt) { pt.value = data.pitch; document.getElementById('tts-pitch-val').textContent = parseFloat(data.pitch).toFixed(1); }
+        }).catch(function(){});
+})();
+
+window.saveTTSVoiceSettings = function() {
+    var voice = (document.querySelector('input[name="tts-voice"]:checked') || {}).value || 'ja-JP-Wavenet-B';
+    var speed = parseFloat((document.getElementById('tts-speed') || {}).value || 1.0);
+    var pitch = parseFloat((document.getElementById('tts-pitch') || {}).value || 0.0);
+    fetch('/api/tts_settings', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({voice: voice, speed: speed, pitch: pitch})
+    }).then(function(r) { return r.json(); })
+    .then(function(data) { if (data.error) alert(data.error); }).catch(function(){});
+};
+
+window.testTTSAdmin = function() {
+    saveTTSVoiceSettings();
+    setTimeout(function() {
+        fetch('/api/tts_speak', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text: 'テストです。読み上げ機能の確認です。'})
+        }).then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.audioContent) { new Audio('data:audio/mp3;base64,' + data.audioContent).play(); }
+            else { alert(data.error || '失敗しました'); }
+        });
+    }, 400);
+};
+
+
 </script>
 {% endblock %}
