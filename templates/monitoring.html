@@ -238,30 +238,51 @@ function setChar(el) {
     : `各カテゴリ${currentChar}文字程度で生成します`;
 }
 
-// 利用者検索
+// 利用者検索（/api/patients_cache を使用）
 const searchInput = document.getElementById("patient-search");
 const suggestions = document.getElementById("patient-suggestions");
+let allPatients = [];
 let searchTimer = null;
+
+// ページロード時に全利用者をキャッシュ
+fetch('/api/patients_cache')
+  .then(r => r.json())
+  .then(data => { allPatients = data.patients || []; });
+
+function parsePatient(val) {
+  // value形式: "(No.042) [山田花子] やまだはなこ"
+  const karteMatch = val.match(/No\.([^)]+)/);
+  const nameMatch = val.match(/\[([^\]]+)\]/);
+  const kanaMatch = val.match(/\]\s*(.+)$/);
+  return {
+    name: nameMatch ? nameMatch[1] : val,
+    karte: karteMatch ? karteMatch[1] : "",
+    kana: kanaMatch ? kanaMatch[1].trim() : "",
+    value: val
+  };
+}
+
 searchInput.addEventListener("input", function() {
   clearTimeout(searchTimer);
-  const q = this.value.trim();
+  const q = this.value.trim().toLowerCase();
   if (!q) { suggestions.style.display = "none"; return; }
   searchTimer = setTimeout(() => {
-    fetch(`/api/search_patients?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (!data.patients || !data.patients.length) { suggestions.style.display = "none"; return; }
-        suggestions.innerHTML = "";
-        data.patients.forEach(p => {
-          const div = document.createElement("div");
-          div.style.cssText = "padding:10px 13px;cursor:pointer;font-size:0.88rem;border-bottom:1px solid #f0f0f0;";
-          div.textContent = `${p.name}（${p.karte || ""}）`;
-          div.onmousedown = () => selectPatient(p);
-          suggestions.appendChild(div);
-        });
-        suggestions.style.display = "block";
-      });
-  }, 300);
+    const matched = allPatients.filter(p => {
+      const v = (p.value || "").toLowerCase();
+      return v.includes(q);
+    }).slice(0, 10);
+    if (!matched.length) { suggestions.style.display = "none"; return; }
+    suggestions.innerHTML = "";
+    matched.forEach(p => {
+      const parsed = parsePatient(p.value);
+      const div = document.createElement("div");
+      div.style.cssText = "padding:10px 13px;cursor:pointer;font-size:0.88rem;border-bottom:1px solid #f0f0f0;";
+      div.textContent = `${parsed.name}（カルテ: ${parsed.karte}）`;
+      div.onmousedown = () => selectPatient(parsed);
+      suggestions.appendChild(div);
+    });
+    suggestions.style.display = "block";
+  }, 200);
 });
 searchInput.addEventListener("blur", () => setTimeout(() => suggestions.style.display = "none", 200));
 
