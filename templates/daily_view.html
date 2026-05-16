@@ -3378,7 +3378,7 @@ function _ttsAllPlayCurrent() {
 
 // 一括読み上げ 開始
 window.speakAllSummaries = function() {
-    if (_tts_speaking) { _ttsStop(); return; }
+    if (_tts_speaking || _ttsAllCheckInterval) { _ttsStop(); return; }
 
     // まず全員のアコーディオンを展開してAI要約を生成する
     var accordions = document.querySelectorAll('.user-accordion');
