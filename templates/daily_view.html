@@ -3265,7 +3265,7 @@ function _ttsStop() {
     _tts_speaking = false;
     if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
-    if (_tts_currentAudio) { try { _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     if (_tts_currentBtn) {
         var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
         if (icon) icon.textContent = 'volume_up';
@@ -3467,7 +3467,7 @@ function _speakAllStart() {
 // 前の方へ
 window.speakAllPrev = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex = Math.max(0, _ttsAllIndex - 1);
     _ttsAllPlayCurrent();
 };
@@ -3475,7 +3475,7 @@ window.speakAllPrev = function() {
 // 次の方へ
 window.speakAllNext = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex++;
     if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
     _ttsAllPlayCurrent();
