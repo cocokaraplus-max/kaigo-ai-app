@@ -929,11 +929,6 @@
       <span class="material-symbols-outlined" style="margin-left:auto;font-size:18px;">arrow_forward</span>
     </a>
   </div>
-  {# ---- TTS読み上げ設定 ---- #}
-  <div class="section-box">
-    <div class="section-box-title">
-      <span class="material-symbols-outlined">volume_up</span>AI要約 読み上げ機能
-    </div>
     <div style="display:flex;align-items:center;gap:12px;padding:10px 0;">
       <div style="flex:1;">
         <div style="font-size:0.88rem;color:#5f6368;">ケース記録のAI要約を音声で読み上げます（この事業所のみ有効）</div>
@@ -1320,26 +1315,6 @@ function showAdminToast(msg) {
   }, 3000);
 }
 
-// TTS設定読み込みと切り替え
-(function() {
-    fetch('/api/tts_enabled')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var cb = document.getElementById('tts-toggle');
-            if (cb) cb.checked = data.enabled;
-        }).catch(function(){});
-})();
-
-window.toggleTTS = function(enabled) {
-    fetch('/api/tts_toggle', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({enabled: enabled})
-    }).then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.error) { alert(data.error); }
-    }).catch(function(){});
-};
 
 </script>
 {% endblock %}
