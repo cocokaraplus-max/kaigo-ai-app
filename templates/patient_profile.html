@@ -342,7 +342,7 @@
 
     <!-- 基本情報（まもる君CSV対応） -->
     <div class="profile-section">
-      <div class="profile-section-header">📋 基本情報（まもる君CSV対応項目）</div>
+      <div class="profile-section-header">📋 基本情報</div>
       <div class="profile-section-body">
         <div class="form-grid">
 
@@ -446,7 +446,7 @@
 
     <!-- TASUKARU追加情報 -->
     <div class="profile-section">
-      <div class="profile-section-header">🏥 TASUKARU追加情報</div>
+      <div class="profile-section-header">🏥 追加情報</div>
       <div class="profile-section-body">
         <div class="form-grid">
 
@@ -679,7 +679,9 @@ async function deleteProfile() {
 }
 
 function cancelEdit() {
-  location.reload();
+  if (confirm('編集内容を破棄して前の画面に戻りますか？')) {
+    history.back();
+  }
 }
 
 // CSVモーダル
