@@ -4184,6 +4184,55 @@ def api_daily_records():
 
 
 
+
+@app.route('/api/tts_speak', methods=['POST'])
+@login_required
+def api_tts_speak():
+    """Google WaveNet TTSで音声合成して返す"""
+    f_code = session['f_code']
+    supabase = get_supabase()
+    # TTS有効チェック
+    try:
+        res = supabase.table('admin_settings').select('value').eq(
+            'facility_code', f_code).eq('key', 'tts_enabled').execute()
+        enabled = res.data[0]['value'] == 'true' if res.data else False
+    except:
+        enabled = False
+    if not enabled:
+        return jsonify({'error': 'TTSはこの施設では有効ではありません'}), 403
+
+    try:
+        import requests as req_lib
+        data = request.json
+        text = data.get('text', '')
+        if not text:
+            return jsonify({'error': 'テキストがありません'}), 400
+
+        api_key = os.environ.get('GOOGLE_TTS_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'TTS APIキーが設定されていません'}), 500
+
+        url = f'https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}'
+        payload = {
+            'input': {'text': text},
+            'voice': {
+                'languageCode': 'ja-JP',
+                'name': 'ja-JP-Wavenet-B',
+                'ssmlGender': 'FEMALE'
+            },
+            'audioConfig': {
+                'audioEncoding': 'MP3',
+                'speakingRate': 1.0,
+                'pitch': 0.0
+            }
+        }
+        r = req_lib.post(url, json=payload, timeout=10)
+        r.raise_for_status()
+        audio_content = r.json().get('audioContent', '')
+        return jsonify({'audioContent': audio_content})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/tts_enabled')
 @login_required
 def api_tts_enabled():
