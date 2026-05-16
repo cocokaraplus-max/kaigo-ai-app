@@ -3246,6 +3246,7 @@ var _tts_speaking = false;
 var _tts_currentBtn = null;
 var _tts_currentAudio = null;
 var _tts_wakeLock = null;
+var _ttsAllCheckInterval = null;
 var _ttsAllItems = [];
 var _ttsAllIndex = 0;
 
@@ -3262,8 +3263,9 @@ function _ttsReleaseWakeLock() {
 
 function _ttsStop() {
     _tts_speaking = false;
+    if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
-    if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     if (_tts_currentBtn) {
         var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
         if (icon) icon.textContent = 'volume_up';
@@ -3376,7 +3378,7 @@ function _ttsAllPlayCurrent() {
 
 // 一括読み上げ 開始
 window.speakAllSummaries = function() {
-    if (_tts_speaking) { _ttsStop(); return; }
+    if (_tts_speaking || _ttsAllCheckInterval) { _ttsStop(); return; }
 
     // まず全員のアコーディオンを展開してAI要約を生成する
     var accordions = document.querySelectorAll('.user-accordion');
@@ -3412,7 +3414,7 @@ window.speakAllSummaries = function() {
 
         var maxWait = 30;
         var waited = 0;
-        var checkInterval = setInterval(function() {
+        _ttsAllCheckInterval = setInterval(function() {
             waited++;
             var cards2 = document.querySelectorAll('[id^="ai-content-"]');
             var allReady = true;
@@ -3421,8 +3423,8 @@ window.speakAllSummaries = function() {
                 if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
             });
             if (allReady || waited >= maxWait) {
-                clearInterval(checkInterval);
-                _speakAllStart();
+                clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null;
+                if (_tts_speaking) _speakAllStart();
             } else {
                 if (progressEl) progressEl.textContent = 'AI要約を生成中… (' + waited + 's)';
             }
@@ -3465,7 +3467,7 @@ function _speakAllStart() {
 // 前の方へ
 window.speakAllPrev = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex = Math.max(0, _ttsAllIndex - 1);
     _ttsAllPlayCurrent();
 };
@@ -3473,7 +3475,7 @@ window.speakAllPrev = function() {
 // 次の方へ
 window.speakAllNext = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex++;
     if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
     _ttsAllPlayCurrent();
