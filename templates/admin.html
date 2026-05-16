@@ -940,6 +940,63 @@
     </div>
   </div>
 
+  {# ---- TTS音声設定（読み上げ機能がONの施設のみ表示） ---- #}
+  <div class="section-box" id="tts-voice-settings-box" style="display:none;">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">tune</span>読み上げ音声設定
+    </div>
+    <!-- 声の種類 -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:0.82rem;font-weight:700;color:#5f6368;margin-bottom:8px;">声の種類</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
+          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-A" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 A（落ち着き）
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
+          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-B" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 B（標準）
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
+          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-C" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 C（低め）
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
+          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-D" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 D（明瞭）
+        </label>
+      </div>
+    </div>
+    <!-- 読み上げ速度 -->
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#5f6368;">読み上げ速度</div>
+        <div style="font-size:0.88rem;font-weight:700;color:#1a73e8;" id="tts-speed-val">1.0倍</div>
+      </div>
+      <input type="range" id="tts-speed" min="0.75" max="1.5" step="0.05" value="1.0"
+        style="width:100%;"
+        oninput="document.getElementById('tts-speed-val').textContent=parseFloat(this.value).toFixed(2)+'倍'"
+        onchange="saveTTSVoiceSettings()">
+      <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#9aa0a6;margin-top:2px;">
+        <span>ゆっくり(0.75)</span><span>標準(1.0)</span><span>速め(1.5)</span>
+      </div>
+    </div>
+    <!-- 音の高さ -->
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#5f6368;">音の高さ</div>
+        <div style="font-size:0.88rem;font-weight:700;color:#1a73e8;" id="tts-pitch-val">0.0</div>
+      </div>
+      <input type="range" id="tts-pitch" min="-5" max="5" step="0.5" value="0"
+        style="width:100%;"
+        oninput="document.getElementById('tts-pitch-val').textContent=parseFloat(this.value).toFixed(1)"
+        onchange="saveTTSVoiceSettings()">
+      <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#9aa0a6;margin-top:2px;">
+        <span>低め(-5)</span><span>標準(0)</span><span>高め(+5)</span>
+      </div>
+    </div>
+    <!-- テスト再生 -->
+    <button onclick="testTTSAdmin()" style="width:100%;padding:10px;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;color:#1a73e8;font-weight:600;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+      <span class="material-symbols-outlined" style="font-size:18px;">play_arrow</span>
+      この設定でテスト再生
+    </button>
+  </div>
 </div>{# /tab-settings #}
 
 {# ---- 退出ボタン ---- #}

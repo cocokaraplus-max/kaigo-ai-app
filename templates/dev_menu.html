@@ -266,6 +266,24 @@
     開発者MENUからログアウト
 </button>
 
+
+<div class="section-box" style="margin-top:1.5rem;">
+    <div class="section-box-title" style="display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined">volume_up</span>
+        AI要約 読み上げ機能（施設別ON/OFF）
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;">
+        <div style="flex:1;">
+            <div style="font-weight:600;font-size:0.9rem;" id="tts-status-label">読み上げ機能: 確認中...</div>
+            <div style="font-size:0.78rem;color:#80868b;">声の種類・速度は管理者MENUの設定タブで変更できます</div>
+        </div>
+        <label class="toggle-switch" style="margin:0;">
+            <input type="checkbox" id="tts-dev-toggle" onchange="onTTSToggle(this.checked)">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_script %}
@@ -313,178 +331,30 @@ window.logoutDev = async function() {
 };
 })();
 
-// TTS設定読み込み
+// TTS ON/OFF（開発者のみ）
 (function() {
     fetch('/api/tts_settings')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             var toggle = document.getElementById('tts-dev-toggle');
             if (toggle) toggle.checked = data.enabled;
-            updateTTSLabel(data.enabled);
-            if (data.enabled) {
-                document.getElementById('tts-detail-settings').style.display = 'block';
-            }
-            // 声の種類
-            var voiceRadio = document.querySelector('input[name="tts-voice"][value="' + data.voice + '"]');
-            if (voiceRadio) voiceRadio.checked = true;
-            updateVoiceButtons(data.voice);
-            // 速度・ピッチ
-            var speedEl = document.getElementById('tts-speed');
-            var pitchEl = document.getElementById('tts-pitch');
-            if (speedEl) { speedEl.value = data.speed; document.getElementById('tts-speed-val').textContent = parseFloat(data.speed).toFixed(2) + '倍'; }
-            if (pitchEl) { pitchEl.value = data.pitch; document.getElementById('tts-pitch-val').textContent = parseFloat(data.pitch).toFixed(1); }
+            var label = document.getElementById('tts-status-label');
+            if (label) label.textContent = '読み上げ機能: ' + (data.enabled ? 'ON' : 'OFF');
         }).catch(function(){});
 })();
 
-function updateTTSLabel(enabled) {
+window.onTTSToggle = function(enabled) {
     var label = document.getElementById('tts-status-label');
     if (label) label.textContent = '読み上げ機能: ' + (enabled ? 'ON' : 'OFF');
-}
-
-function updateVoiceButtons(voice) {
-    document.querySelectorAll('input[name="tts-voice"]').forEach(function(r) {
-        var lbl = r.parentElement;
-        if (r.value === voice) {
-            lbl.style.borderColor = '#1a73e8';
-            lbl.style.background = '#e8f0fe';
-            lbl.style.color = '#1557b0';
-        } else {
-            lbl.style.borderColor = '#e0e0e0';
-            lbl.style.background = '#fff';
-            lbl.style.color = '#202124';
-        }
-    });
-}
-
-window.onTTSToggle = function(enabled) {
-    var detail = document.getElementById('tts-detail-settings');
-    if (detail) detail.style.display = enabled ? 'block' : 'none';
-    updateTTSLabel(enabled);
-    saveTTSSettings();
-};
-
-window.saveTTSSettings = function() {
-    var enabled = document.getElementById('tts-dev-toggle').checked;
-    var voice = (document.querySelector('input[name="tts-voice"]:checked') || {}).value || 'ja-JP-Wavenet-B';
-    var speed = parseFloat(document.getElementById('tts-speed').value || 1.0);
-    var pitch = parseFloat(document.getElementById('tts-pitch').value || 0.0);
-    updateVoiceButtons(voice);
     fetch('/api/tts_settings', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({enabled: enabled, voice: voice, speed: speed, pitch: pitch})
+        body: JSON.stringify({enabled: enabled})
     }).then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.error) alert(data.error);
-    }).catch(function(){});
-};
-
-window.testTTS = function() {
-    var voice = (document.querySelector('input[name="tts-voice"]:checked') || {}).value || 'ja-JP-Wavenet-B';
-    var speed = parseFloat(document.getElementById('tts-speed').value || 1.0);
-    var pitch = parseFloat(document.getElementById('tts-pitch').value || 0.0);
-    // 設定を保存してからテスト再生
-    fetch('/api/tts_settings', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            enabled: document.getElementById('tts-dev-toggle').checked,
-            voice: voice, speed: speed, pitch: pitch
-        })
-    }).then(function() {
-        return fetch('/api/tts_speak', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({text: 'テストです。読み上げ機能の確認です。'})
-        });
-    }).then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.audioContent) {
-            var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-            audio.play();
-        } else {
-            alert(data.error || '再生に失敗しました');
-        }
-    }).catch(function(e) { alert('エラー: ' + e); });
+    .then(function(data) { if (data.error) alert(data.error); })
+    .catch(function(){});
 };
 
 </script>
-
-<!-- TTS施設別設定 -->
-<div class="section-box" style="margin-top:1.5rem;">
-    <div class="section-box-title" style="display:flex;align-items:center;gap:8px;">
-        <span class="material-symbols-outlined">volume_up</span>
-        AI要約 読み上げ機能（施設別）
-    </div>
-    <!-- ON/OFFトグル -->
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f0f0f0;">
-        <div style="flex:1;">
-            <div style="font-weight:600;font-size:0.9rem;" id="tts-status-label">読み上げ機能: OFF</div>
-            <div style="font-size:0.78rem;color:#80868b;">ONにすると詳細設定が表示されます</div>
-        </div>
-        <label class="toggle-switch" style="margin:0;">
-            <input type="checkbox" id="tts-dev-toggle" onchange="onTTSToggle(this.checked)">
-            <span class="toggle-slider"></span>
-        </label>
-    </div>
-    <!-- 詳細設定（トグルON時のみ表示） -->
-    <div id="tts-detail-settings" style="display:none;margin-top:14px;">
-        <!-- 声の種類 -->
-        <div style="margin-bottom:16px;">
-            <div style="font-size:0.82rem;font-weight:700;color:#5f6368;margin-bottom:8px;">声の種類</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <label id="voice-btn-A" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-                    <input type="radio" name="tts-voice" value="ja-JP-Wavenet-A" onchange="saveTTSSettings()" style="margin:0;">
-                    女性 A（落ち着き）
-                </label>
-                <label id="voice-btn-B" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-                    <input type="radio" name="tts-voice" value="ja-JP-Wavenet-B" onchange="saveTTSSettings()" style="margin:0;">
-                    女性 B（標準）
-                </label>
-                <label id="voice-btn-C" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-                    <input type="radio" name="tts-voice" value="ja-JP-Wavenet-C" onchange="saveTTSSettings()" style="margin:0;">
-                    男性 C（低め）
-                </label>
-                <label id="voice-btn-D" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-                    <input type="radio" name="tts-voice" value="ja-JP-Wavenet-D" onchange="saveTTSSettings()" style="margin:0;">
-                    男性 D（明瞭）
-                </label>
-            </div>
-        </div>
-        <!-- 読み上げ速度 -->
-        <div style="margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <div style="font-size:0.82rem;font-weight:700;color:#5f6368;">読み上げ速度</div>
-                <div style="font-size:0.88rem;font-weight:700;color:#1a73e8;" id="tts-speed-val">1.0倍</div>
-            </div>
-            <input type="range" id="tts-speed" min="0.75" max="1.5" step="0.05" value="1.0"
-                style="width:100%;"
-                oninput="document.getElementById('tts-speed-val').textContent=parseFloat(this.value).toFixed(2)+'倍'"
-                onchange="saveTTSSettings()">
-            <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#9aa0a6;margin-top:2px;">
-                <span>ゆっくり(0.75)</span><span>標準(1.0)</span><span>速め(1.5)</span>
-            </div>
-        </div>
-        <!-- 音の高さ -->
-        <div style="margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <div style="font-size:0.82rem;font-weight:700;color:#5f6368;">音の高さ</div>
-                <div style="font-size:0.88rem;font-weight:700;color:#1a73e8;" id="tts-pitch-val">0.0</div>
-            </div>
-            <input type="range" id="tts-pitch" min="-5" max="5" step="0.5" value="0"
-                style="width:100%;"
-                oninput="document.getElementById('tts-pitch-val').textContent=parseFloat(this.value).toFixed(1)"
-                onchange="saveTTSSettings()">
-            <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#9aa0a6;margin-top:2px;">
-                <span>低め(-5)</span><span>標準(0)</span><span>高め(+5)</span>
-            </div>
-        </div>
-        <!-- テスト再生 -->
-        <button onclick="testTTS()" style="width:100%;padding:10px;background:#e8f0fe;border:1.5px solid #1a73e8;border-radius:10px;color:#1a73e8;font-weight:600;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-            <span class="material-symbols-outlined" style="font-size:18px;">play_arrow</span>
-            この設定でテスト再生
-        </button>
-    </div>
-</div>
 
 {% endblock %}
