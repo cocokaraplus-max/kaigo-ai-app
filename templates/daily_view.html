@@ -14,10 +14,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 12px 12px 12px 16px;
     background: #f8f9fa;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    gap: 0;
 }
 .user-accordion-header:active { background: #f0f0f0; }
 .user-accordion-title {
@@ -26,12 +27,15 @@
     gap: 8px;
     font-weight: 700;
     font-size: 0.95rem;
+    flex: 1;
+    min-width: 0;
 }
 .user-accordion-title .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
 .user-accordion-arrow {
-    font-size: 20px;
-    color: #80868b;
+    font-size: 22px;
+    color: #1a73e8;
     transition: transform 0.2s;
+    flex-shrink: 0;
 }
 .user-accordion-body {
     padding: 14px 16px;
@@ -1157,9 +1161,9 @@
 }
 
 /* 付箋ボタン */
-.bookmark-btn { opacity: 0.25; transition: opacity 0.15s; }
-.bookmark-btn:active { opacity: 0.7; }
-.bookmark-btn.bookmarked .material-symbols-outlined { color: #f9a825 !important; }
+.bookmark-btn { opacity: 0.35; transition: opacity 0.2s, color 0.2s; }
+.bookmark-btn:active { opacity: 0.9; transform: scale(1.15); }
+.bookmark-btn.bookmarked .material-symbols-outlined { color: #f9a825 !important; font-variation-settings: 'FILL' 1; }
 .bookmark-btn.bookmarked { opacity: 1 !important; }
 </style>
 
@@ -1269,7 +1273,7 @@
           <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
             onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
             title="付箋をつける"
-            style="background:none; border:none; cursor:pointer; padding:4px; color:#ccc; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
+            style="background:none; border:none; cursor:pointer; padding:8px 4px 8px 8px; color:#d0d0d0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
             <span class="material-symbols-outlined" style="font-size:20px;">bookmark</span>
           </button>
     </div>
