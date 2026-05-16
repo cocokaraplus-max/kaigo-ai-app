@@ -1,19 +1,5 @@
 {% extends "base.html" %}
-{% block title %}ケース記録閲覧 - TASUKARU
-    } catch(e) {
-        aiContent.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラーが発生しました</span>';
-    }
-}
-
-// spinアニメーション（未定義の場合のみ追加）
-if (!document.querySelector('#spin-style')) {
-    const s = document.createElement('style');
-    s.id = 'spin-style';
-    s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
-    document.head.appendChild(s);
-}
-
-{% endblock %}
+{% block title %}ケース記録閲覧 - TASUKARU{% endblock %}
 {% block nav_daily %}active{% endblock %}
 
 {% block extra_style %}
