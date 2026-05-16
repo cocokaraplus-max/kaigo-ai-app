@@ -1,17 +1,12 @@
 {% extends "base.html" %}
-{% block title %}モニタリング生成 - TASUKARU{% endblock %}
+{% block title %}ケース記録 - TASUKARU{% endblock %}
 {% block nav_history %}active{% endblock %}
 
 {% block content %}
-<a href="/top" class="back-btn">
-    <span class="material-symbols-outlined">home</span>
-    TOP画面へ
-</a>
-
 <div class="page-title" style="display:flex; justify-content:space-between; align-items:center; position:relative;">
     <div style="display:flex; align-items:center; gap:8px;">
-        <span class="material-symbols-outlined">monitoring</span>
-        モニタリング生成
+        <span class="material-symbols-outlined">folder_open</span>
+        ケース記録
     </div>
     <button type="button" onclick="toggleGearMenu(event)"
         style="background:#f1f3f4; border:none; border-radius:50%; width:36px; height:36px;
@@ -25,264 +20,249 @@
            style="display:flex; align-items:center; gap:10px; padding:10px 12px;
                   color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
             <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">description</span>
-            AI書類作成
-        </a>
-        <a href="/patient-info"
-           style="display:flex; align-items:center; gap:10px; padding:10px 12px;
-                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
-            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">person_book</span>
-            利用者情報
-        </a>
-        <a href="/patient-info/import"
-           style="display:flex; align-items:center; gap:10px; padding:10px 12px;
-                  color:#202124; text-decoration:none; font-size:0.88rem; border-radius:8px;">
-            <span class="material-symbols-outlined" style="color:#1a73e8; font-size:20px;">upload_file</span>
-            Excel取込
+            AI書類作成（月次）
         </a>
     </div>
 </div>
 
-<div class="form-group">
-    <label class="form-label">
-        <span class="material-symbols-outlined">person</span>
-        利用者を選択(ひらがな・漢字・カルテ番号で検索)
-    </label>
-    <div style="position:relative;">
-        <input type="text" id="patient-search" class="form-control"
-            placeholder="例:やまだ / 山田 / 001"
-            oninput="searchPatient(this.value)"
-
-            autocomplete="off">
-        <div id="patient-candidates" style="display:none; position:absolute; top:100%; left:0; right:0;
-            background:#fff; border:1.5px solid #1a73e8; border-radius:10px;
-            z-index:100; max-height:220px; overflow-y:auto;
-            box-shadow:0 4px 12px rgba(0,0,0,0.1);">
-        </div>
-    </div>
-    <div id="patient-selected-badge" style="display:none; margin-top:8px;
-        padding:10px 14px; background:#e8f0fe; border-radius:10px;
-        font-size:0.88rem; font-weight:600; color:#1557b0;
-        align-items:center; gap:8px;">
-        <span class="material-symbols-outlined">person</span>
-        <span id="patient-selected-label"></span>
-        <span onclick="clearPatient()" style="margin-left:auto; cursor:pointer; font-size:0.78rem; color:#80868b;">変更</span>
-    </div>
-    <select id="patient-select" style="display:none;" onchange="onPatientChange()">
-        <option value="">---</option>
-        {% for p in patients %}
-        <option value="{{ p.value }}" {% if selected_patient == p.value %}selected{% endif %}>{{ p.label }}</option>
-        {% endfor %}
-    </select>
-</div>
-
-<div id="options-area" style="display:{% if selected_patient %}block{% else %}none{% endif %};">
-    <div class="form-group">
-        <label class="form-label">
-            <span class="material-symbols-outlined">calendar_month</span>
-            対象月
-        </label>
-        <select class="form-control" id="month-select">
-            {% for m in months %}
-            <option value="{{ m.value }}">{{ m.label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label class="form-label">
-            <span class="material-symbols-outlined">text_fields</span>
-            生成する文字数の目安
-        </label>
-        <div style="display:flex; gap:8px;">
-            {% for c in ['100文字', '200文字', '300文字'] %}
-            <label style="flex:1; display:flex; align-items:center; justify-content:center; padding:10px; border:1.5px solid #E0E0E0; border-radius:10px; cursor:pointer; font-size:0.88rem; font-weight:600;">
-                <input type="radio" name="char_limit" value="{{ c }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="updateCharBtn(this)">
-                {{ c }}
-            </label>
-            {% endfor %}
-        </div>
-    </div>
-
-    <button class="btn btn-primary" id="gen-btn" onclick="generateMonitoring()">
-        <span class="material-symbols-outlined">auto_awesome</span>
-        1ヶ月の要約を生成
+<!-- 日付選択 -->
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
+    <button onclick="changeDate(-1)" style="background:#f1f3f4; border:none; border-radius:50%; width:36px; height:36px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+        <span class="material-symbols-outlined" style="font-size:20px;">chevron_left</span>
+    </button>
+    <input type="date" id="date-picker" class="form-control" style="flex:1; text-align:center; font-weight:600;" onchange="loadRecords()">
+    <button onclick="changeDate(1)" style="background:#f1f3f4; border:none; border-radius:50%; width:36px; height:36px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+        <span class="material-symbols-outlined" style="font-size:20px;">chevron_right</span>
     </button>
 </div>
 
-<div id="loading" style="display:none; margin-top:1rem;" class="alert alert-info">
-    <span class="material-symbols-outlined">hourglass_top</span>
-    AIが集計中です...
+<!-- 全員まとめて開くボタン -->
+<button id="expand-all-btn" onclick="expandAll()" style="display:none; width:100%; padding:10px; background:#e8f0fe; border:1.5px solid #1a73e8; border-radius:10px; color:#1a73e8; font-weight:600; font-size:0.9rem; cursor:pointer; margin-bottom:1rem; gap:8px; align-items:center; justify-content:center;">
+    <span class="material-symbols-outlined" style="font-size:18px;">auto_awesome</span>
+    全員のAI要約をまとめて生成
+</button>
+
+<div id="loading" style="display:none; text-align:center; padding:2rem; color:#80868b;">
+    <span class="material-symbols-outlined" style="font-size:40px; animation:spin 1s linear infinite;">progress_activity</span>
+    <div style="margin-top:8px;">記録を読み込み中...</div>
 </div>
 
-<div id="result-area" style="display:{% if result %}block{% else %}none{% endif %}; margin-top:1.2rem;">
-    <hr class="divider">
-    <div class="form-group">
-        <label class="form-label">
-            <span class="material-symbols-outlined">description</span>
-            生成結果(編集可能)
-        </label>
-        <textarea class="form-control" id="result-text" style="min-height:200px;">{{ result }}</textarea>
-    </div>
-    <button class="btn" onclick="copyResult()">
-        <span class="material-symbols-outlined">content_copy</span>
-        コピー
-    </button>
+<div id="no-records" style="display:none; text-align:center; padding:3rem 1rem; color:#80868b;">
+    <span class="material-symbols-outlined" style="font-size:48px; opacity:0.4;">inbox</span>
+    <div style="margin-top:8px; font-size:0.9rem;">この日の記録はありません</div>
 </div>
 
-<a href="/top" class="back-btn">
-    <span class="material-symbols-outlined">home</span>
-    TOP画面へ
-</a>
+<div id="patient-list"></div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.patient-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; margin-bottom:12px; overflow:hidden; transition:box-shadow 0.2s; }
+.patient-card.expanded { box-shadow:0 4px 16px rgba(26,115,232,0.12); border-color:#1a73e8; }
+.patient-header { display:flex; align-items:center; padding:14px 16px; cursor:pointer; gap:10px; user-select:none; }
+.patient-name { font-weight:700; font-size:1rem; color:#202124; flex:1; }
+.record-count-badge { background:#f1f3f4; color:#5f6368; border-radius:20px; padding:2px 10px; font-size:0.78rem; font-weight:600; }
+.chevron-icon { color:#80868b; transition:transform 0.2s; font-size:20px; }
+.expanded .chevron-icon { transform:rotate(180deg); }
+.patient-body { display:none; padding:0 16px 16px; }
+.expanded .patient-body { display:block; }
+.summary-area { background:linear-gradient(135deg,#e8f0fe 0%,#f0f4ff 100%); border-radius:10px; padding:14px; margin-bottom:12px; position:relative; }
+.summary-label { display:flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; color:#1557b0; margin-bottom:8px; }
+.summary-text { font-size:0.9rem; line-height:1.7; color:#202124; }
+.summary-loading { display:flex; align-items:center; gap:8px; color:#1a73e8; font-size:0.88rem; }
+.summary-stale-badge { display:inline-flex; align-items:center; gap:4px; background:#fef3c7; color:#92400e; border-radius:6px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-top:6px; cursor:pointer; border:none; }
+.regen-btn { position:absolute; top:10px; right:10px; background:none; border:none; cursor:pointer; color:#1a73e8; padding:4px; border-radius:6px; display:flex; align-items:center; }
+.regen-btn:hover { background:rgba(26,115,232,0.08); }
+.record-accordion { border:1px solid #f0f0f0; border-radius:8px; margin-bottom:6px; overflow:hidden; }
+.record-header { display:flex; align-items:center; padding:10px 12px; cursor:pointer; gap:8px; background:#fafafa; }
+.record-header:hover { background:#f5f5f5; }
+.record-staff { font-size:0.82rem; font-weight:600; color:#5f6368; flex:1; }
+.record-time { font-size:0.78rem; color:#9aa0a6; }
+.record-body { display:none; padding:10px 12px; font-size:0.88rem; line-height:1.6; color:#202124; border-top:1px solid #f0f0f0; background:#fff; white-space:pre-wrap; }
+.record-body.open { display:block; }
+</style>
 {% endblock %}
 
 {% block extra_script %}
 <script>
 window.toggleGearMenu = function(e) {
     e.stopPropagation();
-    const menu = document.getElementById('gearMenu');
+    var menu = document.getElementById('gearMenu');
     if (!menu) return;
     menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
 };
 document.addEventListener('click', function(e) {
-    const menu = document.getElementById('gearMenu');
+    var menu = document.getElementById('gearMenu');
     if (menu && menu.style.display !== 'none' && !e.target.closest('#gearMenu') && !e.target.closest('[onclick*="toggleGearMenu"]')) {
         menu.style.display = 'none';
     }
 });
 </script>
 <script>
-const HISTORY_PATIENTS = [
-    {% for p in patients %}
-    { value: {{ p.value | tojson }}, label: {{ p.label | tojson }},
-      name: {{ p.user_name | tojson }}, kana: {{ p.user_kana | tojson }}, chart: {{ p.chart_number | tojson }} },
-    {% endfor %}
-];
-</script>
-<script>
-(function(){
+(function() {
+var today = new Date();
+var todayStr = today.toLocaleDateString('sv-SE');
+var picker = document.getElementById('date-picker');
+picker.value = todayStr;
+picker.max = todayStr;
 
-function searchPatient(query) {
-    if (window._patientSelected) return;
-    const q = query.trim().toLowerCase();
-    const qKata = query.trim().replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
-    const qHira = query.trim().replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
-    const candidates = document.getElementById('patient-candidates');
-    const filtered = q === '' ? HISTORY_PATIENTS :
-        HISTORY_PATIENTS.filter(p =>
-            p.name.toLowerCase().includes(q) ||
-            p.kana.toLowerCase().includes(q) ||
-            p.kana.includes(qKata) || p.kana.includes(qHira) ||
-            p.chart.toLowerCase().includes(q)
-        );
-    if (filtered.length === 0) {
-        candidates.innerHTML = '<div style="padding:12px 14px;color:#80868b;font-size:0.88rem;">該当なし</div>';
-    } else {
-        candidates.innerHTML = filtered.map((p, i) =>
-            `<div data-idx="${i}"
-                style="padding:12px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;">
-                ${p.label}
-            </div>`
-        ).join('');
-        candidates.querySelectorAll('[data-idx]').forEach((el, i) => {
-            const p = filtered[i];
-            el.addEventListener('mousedown', e => { e.preventDefault(); selectPatient(p.value, p.label); });
-            el.addEventListener('touchstart', e => { e.preventDefault(); selectPatient(p.value, p.label); });
-            el.addEventListener('click', e => { if(!('ontouchstart' in window)) selectPatient(p.value, p.label); });
-        });
-    }
-    candidates.style.display = 'block';
-}
-window.searchPatient = searchPatient;
-
-function selectPatient(value, label) {
-    window._patientSelected = true;
-    setTimeout(function(){ window._patientSelected = false; }, 1000);
-    var searchEl = document.getElementById('patient-search');
-    searchEl.blur();
-    searchEl.style.display = 'none';
-    document.getElementById('patient-selected-label').textContent = label;
-    const badge = document.getElementById('patient-selected-badge');
-    badge.style.display = 'flex';
-    document.getElementById('patient-candidates').style.display = 'none';
-    const sel = document.getElementById('patient-select');
-    sel.value = value;
-    onPatientChange();
-}
-window.selectPatient = selectPatient;
-
-function clearPatient() {
-    window._patientSelected = false;
-    document.getElementById('patient-search').style.display = 'block';
-    document.getElementById('patient-search').value = '';
-    document.getElementById('patient-selected-badge').style.display = 'none';
-    document.getElementById('patient-select').value = '';
-    onPatientChange();
-}
-window.clearPatient = clearPatient;
-
-document.addEventListener('click', e => {
-    if (!e.target.closest('[id^="patient"]')) {
-        setTimeout(() => { const c = document.getElementById('patient-candidates'); if(c) c.style.display = 'none'; }, 200);
-    }
-});
-
-function onPatientChange() {
-    const v = document.getElementById('patient-select').value;
-    document.getElementById('options-area').style.display = v ? 'block' : 'none';
-}
-window.onPatientChange = onPatientChange;
-
-window.updateCharBtn = function(el) {
-    document.querySelectorAll('input[name="char_limit"]').forEach(r => {
-        r.parentElement.style.borderColor = r.checked ? '#1a73e8' : '#E0E0E0';
-        r.parentElement.style.color = r.checked ? '#1a73e8' : '#202124';
-        r.parentElement.style.background = r.checked ? '#e8f0fe' : '#fff';
-    });
+window.changeDate = function(delta) {
+    var d = new Date(picker.value);
+    d.setDate(d.getDate() + delta);
+    var newStr = d.toLocaleDateString('sv-SE');
+    if (newStr > todayStr) return;
+    picker.value = newStr;
+    loadRecords();
 };
-document.querySelectorAll('input[name="char_limit"]').forEach(r => { if(r.checked) window.updateCharBtn(r); });
 
-async function generateMonitoring() {
-    const patient = document.getElementById('patient-select').value;
-    const month = document.getElementById('month-select').value;
-    const charLimit = document.querySelector('input[name="char_limit"]:checked').value;
-    if (!patient) return;
-    document.getElementById('gen-btn').disabled = true;
-    document.getElementById('loading').style.display = 'flex';
-    document.getElementById('result-area').style.display = 'none';
+var _currentPatients = [];
+
+window.loadRecords = async function() {
+    var date = picker.value;
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('no-records').style.display = 'none';
+    document.getElementById('patient-list').innerHTML = '';
+    document.getElementById('expand-all-btn').style.display = 'none';
     try {
-        const res = await fetch('/api/generate_monitoring', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ patient, month, char_limit: charLimit })
-        });
-        const data = await res.json();
-        if (data.text) {
-            document.getElementById('result-text').value = data.text;
-            document.getElementById('result-area').style.display = 'block';
-        } else {
-            alert(data.error || '生成に失敗しました');
-        }
-    } catch(e) {
-        alert('生成に失敗しました');
-    } finally {
+        var res = await fetch('/api/daily_records?date=' + date);
+        var data = await res.json();
+        if (data.error) throw new Error(data.error);
+        _currentPatients = data.patients || [];
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('gen-btn').disabled = false;
+        if (_currentPatients.length === 0) {
+            document.getElementById('no-records').style.display = 'block';
+            return;
+        }
+        document.getElementById('expand-all-btn').style.display = 'flex';
+        renderPatientList(_currentPatients, date);
+    } catch(e) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('no-records').style.display = 'block';
     }
-}
-window.generateMonitoring = generateMonitoring;
+};
 
-function copyResult() {
-    const text = document.getElementById('result-text').value;
-    navigator.clipboard.writeText(text).then(() => {
-        const btn = event.target.closest('button');
-        btn.innerHTML = '<span class="material-symbols-outlined">check</span> コピーしました';
-        setTimeout(() => {
-            btn.innerHTML = '<span class="material-symbols-outlined">content_copy</span> コピー';
-        }, 2000);
-    });
+function renderPatientList(patients, date) {
+    var list = document.getElementById('patient-list');
+    list.innerHTML = '';
+    patients.forEach(function(p, idx) { list.appendChild(buildPatientCard(p, date, idx)); });
 }
-window.copyResult = copyResult;
 
+function buildPatientCard(p, date, idx) {
+    var card = document.createElement('div');
+    card.className = 'patient-card';
+    card.id = 'card-' + idx;
+    var header = document.createElement('div');
+    header.className = 'patient-header';
+    header.innerHTML = '<span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">person</span>' +
+        '<span class="patient-name">' + esc(p.user_name) + '</span>' +
+        '<span class="record-count-badge">' + p.record_count + '件</span>' +
+        '<span class="material-symbols-outlined chevron-icon">expand_more</span>';
+    header.addEventListener('click', function() { toggleCard(card, p, date); });
+    card.appendChild(header);
+    var body = document.createElement('div');
+    body.className = 'patient-body';
+    body.innerHTML = buildBodyHTML(p);
+    card.appendChild(body);
+    return card;
+}
+
+function buildBodyHTML(p) {
+    var sc = '';
+    if (p.summary) {
+        sc = '<div class="summary-text">' + esc(p.summary) + '</div>';
+        if (p.summary_stale) sc += '<button class="summary-stale-badge" onclick="regenSummary(this)">' +
+            '<span class="material-symbols-outlined" style="font-size:14px;">update</span>新しい記録があります。タップして再生成</button>';
+    } else {
+        sc = '<div class="summary-loading"><span class="material-symbols-outlined" style="font-size:18px;color:#9aa0a6;">auto_awesome</span>' +
+            '<span style="color:#9aa0a6;font-size:0.85rem;">名前をタップするとAI要約を生成します</span></div>';
+    }
+    var rh = p.records.map(function(r) {
+        var time = new Date(r.created_at).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+        var cat = r.category ? '<span style="background:#e8f0fe;color:#1557b0;border-radius:4px;padding:1px 6px;font-size:0.72rem;margin-left:4px;">' + esc(r.category) + '</span>' : '';
+        return '<div class="record-accordion"><div class="record-header" onclick="this.nextElementSibling.classList.toggle(\'open\')">' +
+            '<span class="material-symbols-outlined" style="font-size:16px;color:#9aa0a6;">edit_note</span>' +
+            '<span class="record-staff">' + esc(r.staff_name) + cat + '</span>' +
+            '<span class="record-time">' + time + '</span>' +
+            '<span class="material-symbols-outlined" style="font-size:16px;color:#c0c0c0;">expand_more</span>' +
+            '</div><div class="record-body">' + esc(r.content) + '</div></div>';
+    }).join('');
+    return '<div class="summary-area" data-user="' + esc(p.user_name) + '">' +
+        '<div class="summary-label"><span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span>AI要約</div>' +
+        '<button class="regen-btn" onclick="regenSummary(this)" title="再生成"><span class="material-symbols-outlined" style="font-size:16px;">refresh</span></button>' +
+        sc + '</div>' +
+        '<div style="font-size:0.78rem;font-weight:600;color:#80868b;margin-bottom:8px;padding-left:4px;">個別記録（' + p.records.length + '件）</div>' + rh;
+}
+
+async function toggleCard(card, p, date) {
+    var was = card.classList.contains('expanded');
+    card.classList.toggle('expanded');
+    if (!was && (!p.summary || p.summary_stale)) await genSummary(card, p, date);
+}
+
+async function genSummary(card, p, date) {
+    var sa = card.querySelector('.summary-area');
+    if (!sa) return;
+    var old = sa.querySelector('.summary-text,.summary-loading,.summary-stale-badge');
+    if (old) old.remove();
+    var le = document.createElement('div');
+    le.className = 'summary-loading';
+    le.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span> AI要約を生成中...';
+    sa.appendChild(le);
+    try {
+        var res = await fetch('/api/generate_daily_summary', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({user_name: p.user_name, date: date})
+        });
+        var data = await res.json();
+        if (le.parentNode) le.remove();
+        var stale = sa.querySelector('.summary-stale-badge');
+        if (stale) stale.remove();
+        if (data.summary) {
+            p.summary = data.summary; p.summary_stale = false;
+            var te = document.createElement('div');
+            te.className = 'summary-text'; te.textContent = data.summary;
+            sa.appendChild(te);
+        } else {
+            var ee = document.createElement('div');
+            ee.style.cssText = 'color:#d93025;font-size:0.85rem;';
+            ee.textContent = data.error || '生成に失敗しました';
+            sa.appendChild(ee);
+        }
+    } catch(e) { if (le.parentNode) le.remove(); }
+}
+
+window.regenSummary = async function(el) {
+    var card = el.closest('.patient-card');
+    var sa = el.closest('.summary-area');
+    var uname = sa.dataset.user;
+    var date = picker.value;
+    var p = _currentPatients.find(function(x){ return x.user_name === uname; });
+    if (!p) return;
+    p.summary = null; p.summary_stale = true;
+    await genSummary(card, p, date);
+};
+
+window.expandAll = async function() {
+    var date = picker.value;
+    var btn = document.getElementById('expand-all-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span> 生成中...';
+    for (var i = 0; i < _currentPatients.length; i++) {
+        var p = _currentPatients[i];
+        var card = document.getElementById('card-' + i);
+        if (!card) continue;
+        card.classList.add('expanded');
+        if (!p.summary || p.summary_stale) await genSummary(card, p, date);
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span> 全員展開済み';
+};
+
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadRecords();
 })();
 </script>
 {% endblock %}
