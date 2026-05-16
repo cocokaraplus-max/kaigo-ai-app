@@ -323,18 +323,6 @@
     <button class="csv-import-btn" onclick="openCsvModal()">CSV取込</button>
   </div>
 
-  <!-- 利用者選択 -->
-  <div class="patient-select-bar">
-    <select id="patient-select" onchange="loadPatient(this.value)">
-      <option value="">── 利用者を選択 ──</option>
-      {% for p in patients %}
-      <option value="{{ p.id }}" {% if selected and selected.id == p.id %}selected{% endif %}>
-        {{ p.user_name }}（{{ p.patient_number }}）
-      </option>
-      {% endfor %}
-    </select>
-    <button class="patient-new-btn" onclick="newPatient()">＋ 新規</button>
-  </div>
 
   <!-- フォーム -->
   <form id="profile-form" onsubmit="saveProfile(event)">

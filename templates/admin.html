@@ -614,12 +614,7 @@
           oninput="filterPatientList(this.value)"
           style="font-size:0.9rem;">
       </div>
-      <div style="padding:8px 0 12px;">
-        <input type="text" id="patient-list-search" class="form-control"
-          placeholder="名前・カナ・番号で絞り込み"
-          oninput="filterPatientList(this.value)"
-          style="font-size:0.9rem;">
-      </div>
+      
       {% if patient_profiles %}
         {% for p in patient_profiles %}
         <div class="patient-card" id="pc-{{ p.id }}">
