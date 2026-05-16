@@ -4213,23 +4213,90 @@ def api_tts_speak():
             return jsonify({'error': 'TTS APIキーが設定されていません'}), 500
 
         url = f'https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}'
+        # DB設定を取得
+        try:
+            s_res = supabase.table('admin_settings').select('key, value').eq(
+                'facility_code', f_code).in_('key', ['tts_voice', 'tts_speed', 'tts_pitch']).execute()
+            s = {r['key']: r['value'] for r in (s_res.data or [])}
+        except:
+            s = {}
+        voice_name = s.get('tts_voice', 'ja-JP-Wavenet-B')
+        speed = float(s.get('tts_speed', '1.0'))
+        pitch = float(s.get('tts_pitch', '0.0'))
+        gender = 'FEMALE' if voice_name in ['ja-JP-Wavenet-A', 'ja-JP-Wavenet-B'] else 'MALE'
+
         payload = {
             'input': {'text': text},
             'voice': {
                 'languageCode': 'ja-JP',
-                'name': 'ja-JP-Wavenet-B',
-                'ssmlGender': 'FEMALE'
+                'name': voice_name,
+                'ssmlGender': gender
             },
             'audioConfig': {
                 'audioEncoding': 'MP3',
-                'speakingRate': 1.0,
-                'pitch': 0.0
+                'speakingRate': speed,
+                'pitch': pitch
             }
         }
         r = req_lib.post(url, json=payload, timeout=10)
         r.raise_for_status()
         audio_content = r.json().get('audioContent', '')
         return jsonify({'audioContent': audio_content})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tts_settings')
+@login_required
+def api_tts_settings():
+    """施設のTTS設定を返す"""
+    f_code = session['f_code']
+    supabase = get_supabase()
+    try:
+        res = supabase.table('admin_settings').select('key, value').eq(
+            'facility_code', f_code).in_('key', ['tts_enabled', 'tts_voice', 'tts_speed', 'tts_pitch']).execute()
+        settings = {r['key']: r['value'] for r in (res.data or [])}
+    except:
+        settings = {}
+    return jsonify({
+        'enabled': settings.get('tts_enabled', 'false') == 'true',
+        'voice':   settings.get('tts_voice', 'ja-JP-Wavenet-B'),
+        'speed':   float(settings.get('tts_speed', '1.0')),
+        'pitch':   float(settings.get('tts_pitch', '0.0'))
+    })
+
+
+@app.route('/api/tts_settings', methods=['POST'])
+@login_required
+def api_tts_settings_update():
+    """開発者がTTS設定を更新する"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'error': '開発者権限が必要です'}), 403
+    f_code = session['f_code']
+    supabase = get_supabase()
+    try:
+        data = request.json
+        updates = {}
+        if 'enabled' in data:
+            updates['tts_enabled'] = 'true' if data['enabled'] else 'false'
+        if 'voice' in data:
+            updates['tts_voice'] = data['voice']
+        if 'speed' in data:
+            updates['tts_speed'] = str(data['speed'])
+        if 'pitch' in data:
+            updates['tts_pitch'] = str(data['pitch'])
+
+        for key, value in updates.items():
+            res = supabase.table('admin_settings').select('id').eq(
+                'facility_code', f_code).eq('key', key).execute()
+            if res.data:
+                supabase.table('admin_settings').update({'value': value}).eq(
+                    'facility_code', f_code).eq('key', key).execute()
+            else:
+                supabase.table('admin_settings').insert({
+                    'facility_code': f_code, 'key': key, 'value': value
+                }).execute()
+        return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
