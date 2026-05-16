@@ -711,12 +711,16 @@ function setNavScrollTop(val) {
 })();
 
 function spaNav(event, url) {
-    try {
-        var nav = document.querySelector('.bottom-nav');
-        if (nav) { localStorage.setItem('tasukaru_nav_left', nav.scrollLeft); }
-    } catch(e) {}
     return;
 }
+window.addEventListener('beforeunload', function() {
+    try {
+        var nav = document.querySelector('.bottom-nav');
+        if (nav && nav.scrollLeft > 0) {
+            localStorage.setItem('tasukaru_nav_left', nav.scrollLeft);
+        }
+    } catch(e) {}
+});
 window.addEventListener('load', function() {
     (function() {
         try {
