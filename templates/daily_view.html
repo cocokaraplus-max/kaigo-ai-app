@@ -3336,14 +3336,6 @@ function _ttsPlayText(text, onEnd) {
         }
     }).catch(function() { if (onEnd) onEnd(); });
 }
-            audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-            audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-            audio.play().catch(function() { if (onEnd) onEnd(); });
-        } else {
-            if (onEnd) onEnd();
-        }
-    }).catch(function() { if (onEnd) onEnd(); });
-}
 
 // 個別読み上げ
 window.speakSummary = function(idx, btn) {
