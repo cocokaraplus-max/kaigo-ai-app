@@ -714,7 +714,13 @@ function spaNav(event, url) {
     if (!getNavScrollTop()) {
         try {
             var wrapper = document.querySelector('.page-wrapper');
-            if (wrapper) { localStorage.setItem('tasukaru_scroll_' + window.location.pathname, wrapper.scrollTop); }
+            var pos = wrapper ? Math.round(wrapper.scrollTop) : 0;
+            if (pos > 10) {
+                event.preventDefault();
+                var sep = url.indexOf('?') >= 0 ? '&' : '?';
+                window.location.href = url + sep + '_sc=' + pos;
+                return;
+            }
         } catch(e) {}
     }
     return;
@@ -723,18 +729,14 @@ window.addEventListener('load', function() {
     (function() {
         if (!getNavScrollTop()) {
             try {
-                var key = 'tasukaru_scroll_' + window.location.pathname;
-                var saved = localStorage.getItem(key);
-                if (saved) {
-                    localStorage.removeItem(key);
-                    var pos = parseInt(saved, 10);
-                    var wrapper = document.querySelector('.page-wrapper');
+                var params = new URLSearchParams(window.location.search);
+                var pos = parseInt(params.get('_sc') || '0', 10);
+                if (pos > 0) {
+                    history.replaceState(null, '', wi                    history.repl             var wrapper = document.querySelector('.page-wrapper');
                     if (wrapper) {
                         wrapper.scrollTop = pos;
                         setTimeout(function() { wrapper.scrollTop = pos; }, 100);
-                        setTimeout(function() { wrapper.scrollTop = pos; }, 300);
-                        setTimeout(function() { wrapper.scrollTop = pos; }, 600);
-                        setTimeout(function() { wrapper.scrollTop = pos; }, 1000);
+                        setTimeout(function() { wrapper.scrollTop = pos; }, 500);
                     }
                 }
             } catch(e) {}
