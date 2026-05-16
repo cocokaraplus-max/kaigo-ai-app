@@ -3337,6 +3337,62 @@ function _ttsAllPlayCurrent() {
 // 一括読み上げ 開始
 window.speakAllSummaries = function() {
     if (_tts_speaking) { _ttsStop(); return; }
+
+    // まず全員のアコーディオンを展開してAI要約を生成する
+    var accordions = document.querySelectorAll('.user-accordion');
+    var needsGenerate = false;
+    accordions.forEach(function(acc) {
+        var idx = acc.id.replace('accordion-', '');
+        var el = document.getElementById('ai-content-' + idx);
+        var text = el ? el.textContent.trim() : '';
+        if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
+            // 未生成ならアコーディオンを開いて生成をトリガー
+            var body = document.getElementById('body-' + idx);
+            if (body && !body.classList.contains('open')) {
+                var nameEl = acc.querySelector('.user-accordion-title');
+                var userName = nameEl ? nameEl.textContent.trim().replace(/\s+/g, ' ') : '';
+                // personアイコンのテキストを除外
+                var spans = nameEl ? nameEl.querySelectorAll('span') : [];
+                spans.forEach(function(s){ userName = userName.replace(s.textContent, ''); });
+                userName = userName.replace('様', '').trim();
+                if (typeof toggleAccordion === 'function') toggleAccordion(parseInt(idx), userName);
+            }
+            needsGenerate = true;
+        }
+    });
+
+    if (needsGenerate) {
+        // 生成完了を待ってから読み上げ開始
+        var progressEl = document.getElementById('speak-all-progress');
+        var allBtn = document.getElementById('speak-all-btn');
+        var controls = document.getElementById('speak-all-controls');
+        if (allBtn) allBtn.style.display = 'none';
+        if (controls) { controls.style.display = ''; }
+        if (progressEl) progressEl.textContent = 'AI要約を生成中…';
+
+        var maxWait = 30;
+        var waited = 0;
+        var checkInterval = setInterval(function() {
+            waited++;
+            var cards2 = document.querySelectorAll('[id^="ai-content-"]');
+            var allReady = true;
+            cards2.forEach(function(el) {
+                var t = el.textContent.trim();
+                if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
+            });
+            if (allReady || waited >= maxWait) {
+                clearInterval(checkInterval);
+                _speakAllStart();
+            } else {
+                if (progressEl) progressEl.textContent = 'AI要約を生成中… (' + waited + 's)';
+            }
+        }, 1000);
+    } else {
+        _speakAllStart();
+    }
+};
+
+function _speakAllStart() {
     var cards = document.querySelectorAll('[id^="ai-content-"]');
     _ttsAllItems = [];
     cards.forEach(function(el) {
@@ -3346,11 +3402,14 @@ window.speakAllSummaries = function() {
         var accordion = document.getElementById('accordion-' + idx);
         var nameEl = accordion ? accordion.querySelector('.user-accordion-title') : null;
         var rawName = nameEl ? nameEl.textContent.trim() : '';
-        var name = rawName.replace(/Person\s*/gi, '').replace(/\s+/g, ' ').trim();
+        var spans = nameEl ? nameEl.querySelectorAll('span') : [];
+        spans.forEach(function(s){ rawName = rawName.replace(s.textContent, ''); });
+        var name = rawName.replace(/\s+/g, ' ').trim();
         _ttsAllItems.push({ name: name, text: text });
     });
     if (_ttsAllItems.length === 0) {
-        alert('各利用者をタップしてAI要約を生成してからお試しください'); return;
+        alert('各利用者をタップしてAI要約を生成してからお試しください');
+        _ttsStop(); return;
     }
     _ttsAllIndex = 0;
     _tts_speaking = true;
@@ -3360,7 +3419,7 @@ window.speakAllSummaries = function() {
     if (allBtn) allBtn.style.display = 'none';
     if (controls) controls.style.display = '';
     _ttsAllPlayCurrent();
-};
+}
 
 // 前の方へ
 window.speakAllPrev = function() {
