@@ -3228,9 +3228,24 @@ window.openRecordsModal = function(userName, accordionIdx) {
 var _tts_speaking = false;
 var _tts_currentBtn = null;
 var _tts_currentAudio = null;
+var _tts_wakeLock = null;
+var _ttsAllItems = [];
+var _ttsAllIndex = 0;
+
+function _ttsAcquireWakeLock() {
+    if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(function(lock) {
+            _tts_wakeLock = lock;
+        }).catch(function() {});
+    }
+}
+function _ttsReleaseWakeLock() {
+    if (_tts_wakeLock) { _tts_wakeLock.release().catch(function(){}); _tts_wakeLock = null; }
+}
 
 function _ttsStop() {
     _tts_speaking = false;
+    _ttsReleaseWakeLock();
     if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
     if (_tts_currentBtn) {
         var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
@@ -3239,10 +3254,9 @@ function _ttsStop() {
         _tts_currentBtn = null;
     }
     var allBtn = document.getElementById('speak-all-btn');
-    if (allBtn) {
-        allBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">campaign</span> その日のAI要約を全員分読み上げ';
-        allBtn.style.background = 'linear-gradient(135deg,#1a73e8,#1557b0)';
-    }
+    var controls = document.getElementById('speak-all-controls');
+    if (allBtn) allBtn.style.display = '';
+    if (controls) controls.style.display = 'none';
 }
 
 function _ttsPlayText(text, onEnd) {
@@ -3255,15 +3269,19 @@ function _ttsPlayText(text, onEnd) {
         if (data.audioContent) {
             var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
             _tts_currentAudio = audio;
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({ title: 'TASUKARU 読み上げ', artist: 'AI要約' });
+            }
             audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
             audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-            audio.play();
+            audio.play().catch(function() { if (onEnd) onEnd(); });
         } else {
             if (onEnd) onEnd();
         }
     }).catch(function() { if (onEnd) onEnd(); });
 }
 
+// 個別読み上げ
 window.speakSummary = function(idx, btn) {
     if (_tts_speaking) { _ttsStop(); return; }
     var el = document.getElementById('ai-content-' + idx);
@@ -3277,41 +3295,75 @@ window.speakSummary = function(idx, btn) {
     var icon = btn.querySelector('.material-symbols-outlined');
     if (icon) icon.textContent = 'stop_circle';
     btn.style.color = '#ea4335';
+    _ttsAcquireWakeLock();
     _ttsPlayText(text, _ttsStop);
 };
 
-window.speakAllSummaries = function(btn) {
-    if (_tts_speaking) { _ttsStop(); return; }
-    var cards = document.querySelectorAll('[id^="ai-content-"]');
-    var items = [];
-    cards.forEach(function(el) {
-        var idx = el.id.replace('ai-content-', '');
-        var body = document.getElementById('body-' + idx);
-        var header = body ? body.previousElementSibling : null;
-        var nameEl = header ? header.querySelector('.user-accordion-title') : null;
-        var name = nameEl ? nameEl.textContent.trim() : '';
-        var text = el.textContent.trim();
-        if (text && text.indexOf('タップして開くと') !== 0 && text.indexOf('生成中') < 0) {
-            items.push({ name: name.replace('様', ''), text: text });
+// 一括: 現在の人を再生
+function _ttsAllPlayCurrent() {
+    if (!_tts_speaking || _ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
+    var item = _ttsAllItems[_ttsAllIndex];
+    var progress = document.getElementById('speak-all-progress');
+    if (progress) {
+        progress.textContent = item.name + '「' + (_ttsAllIndex + 1) + ' / ' + _ttsAllItems.length + '」';
+    }
+    var name = item.name.replace(/様$/, '').trim();
+    var fullText = (name ? name + '様。' : '') + item.text;
+    _ttsPlayText(fullText, function() {
+        if (_tts_speaking) {
+            _ttsAllIndex++;
+            setTimeout(_ttsAllPlayCurrent, 500);
         }
     });
-    if (items.length === 0) { alert('AI要約がまだ生成されていません。各利用者をタップして要約を生成してください'); return; }
-    _tts_speaking = true;
-    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">stop_circle</span> 停止';
-    btn.style.background = 'linear-gradient(135deg,#ea4335,#c62828)';
-    var i = 0;
-    function next() {
-        if (!_tts_speaking || i >= items.length) { _ttsStop(); return; }
-        var item = items[i++];
-        var fullText = (item.name ? item.name + 'さん。' : '') + item.text;
-        _ttsPlayText(fullText, function() {
-            if (_tts_speaking) setTimeout(next, 600);
-        });
+}
+
+// 一括読み上げ 開始
+window.speakAllSummaries = function() {
+    if (_tts_speaking) { _ttsStop(); return; }
+    var cards = document.querySelectorAll('[id^="ai-content-"]');
+    _ttsAllItems = [];
+    cards.forEach(function(el) {
+        var text = el.textContent.trim();
+        if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) return;
+        var idx = el.id.replace('ai-content-', '');
+        var accordion = document.getElementById('accordion-' + idx);
+        var nameEl = accordion ? accordion.querySelector('.user-accordion-title') : null;
+        var rawName = nameEl ? nameEl.textContent.trim() : '';
+        var name = rawName.replace(/Person\s*/gi, '').replace(/\s+/g, ' ').trim();
+        _ttsAllItems.push({ name: name, text: text });
+    });
+    if (_ttsAllItems.length === 0) {
+        alert('各利用者をタップしてAI要約を生成してからお試しください'); return;
     }
-    next();
+    _ttsAllIndex = 0;
+    _tts_speaking = true;
+    _ttsAcquireWakeLock();
+    var allBtn = document.getElementById('speak-all-btn');
+    var controls = document.getElementById('speak-all-controls');
+    if (allBtn) allBtn.style.display = 'none';
+    if (controls) controls.style.display = '';
+    _ttsAllPlayCurrent();
 };
 
+// 前の方へ
+window.speakAllPrev = function() {
+    if (!_tts_speaking) return;
+    if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
+    _ttsAllIndex = Math.max(0, _ttsAllIndex - 1);
+    _ttsAllPlayCurrent();
+};
 
+// 次の方へ
+window.speakAllNext = function() {
+    if (!_tts_speaking) return;
+    if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
+    _ttsAllIndex++;
+    if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
+    _ttsAllPlayCurrent();
+};
+
+// 停止
+window.speakAllStop = function() { _ttsStop(); };
 
 // ── TTS有効チェック ──────────────────────────────────────────────
 (function() {
