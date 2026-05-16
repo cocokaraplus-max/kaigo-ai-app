@@ -4210,13 +4210,14 @@ def api_generate_daily_summary():
             return jsonify({'error': '記録がありません'}), 404
 
         latest_record_at = records[-1]['created_at']
+        force = data.get('force', False)
         try:
             cached = supabase.table('daily_summaries').select(
                 'summary, last_record_at'
             ).eq('facility_code', f_code).eq(
                 'user_name', user_name
             ).eq('summary_date', date_str).execute()
-            if cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
+            if not force and cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
                 return jsonify({'summary': cached.data[0]['summary'], 'cached': True})
         except:
             pass
