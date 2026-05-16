@@ -3472,9 +3472,9 @@ def numerology():
     return render("numerology.html", patients=patients)
 
 
-@app.route('/history')
+@app.route('/case_records')
 @login_required
-def history():
+def case_records():
     f_code = session["f_code"]
     supabase = get_supabase()
     patients = get_patients(supabase, f_code)
@@ -3486,7 +3486,7 @@ def history():
         while m <= 0:
             m += 12; y -= 1
         months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
-    return render("history.html", patients=patients, months=months, result="")
+    return render("case_records.html")
 
 @app.route('/admin_auth', methods=['POST'])
 @login_required
@@ -4111,6 +4111,11 @@ def api_generate_monitoring():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+
+@app.route('/history')
+def history_redirect():
+    return redirect(url_for('case_records'))
 
 @app.route('/api/daily_records')
 @login_required
