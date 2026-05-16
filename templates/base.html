@@ -713,14 +713,12 @@ function setNavScrollTop(val) {
 function spaNav(event, url) {
     return;
 }
-}
+
 window.addEventListener('load', function() {
     (function() {
         try {
             var nav = document.querySelector('.bottom-nav');
             var saved = parseInt(localStorage.getItem('tasukaru_nav_left') || '0', 10);
-            if (nav && saved > 0) {
-                nav.scrollLeft = saved;
                 if (nav && saved > 0) {
                 nav.scrollLeft = saved;
             }
