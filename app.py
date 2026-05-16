@@ -4183,6 +4183,47 @@ def api_daily_records():
         return jsonify({'error': str(e)}), 500
 
 
+
+@app.route('/api/tts_enabled')
+@login_required
+def api_tts_enabled():
+    """施設のTTS有効フラグを返す"""
+    f_code = session['f_code']
+    supabase = get_supabase()
+    try:
+        res = supabase.table('admin_settings').select('value').eq(
+            'facility_code', f_code).eq('key', 'tts_enabled').execute()
+        enabled = res.data[0]['value'] == 'true' if res.data else False
+    except:
+        enabled = False
+    return jsonify({'enabled': enabled})
+
+
+@app.route('/api/tts_toggle', methods=['POST'])
+@login_required
+def api_tts_toggle():
+    """管理者がTTSのON/OFFを切り替える"""
+    if not session.get('admin_authenticated'):
+        return jsonify({'error': '管理者権限が必要です'}), 403
+    f_code = session['f_code']
+    supabase = get_supabase()
+    try:
+        data = request.json
+        enabled = 'true' if data.get('enabled') else 'false'
+        # 既存レコードを確認
+        res = supabase.table('admin_settings').select('id').eq(
+            'facility_code', f_code).eq('key', 'tts_enabled').execute()
+        if res.data:
+            supabase.table('admin_settings').update({'value': enabled}).eq(
+                'facility_code', f_code).eq('key', 'tts_enabled').execute()
+        else:
+            supabase.table('admin_settings').insert({
+                'facility_code': f_code, 'key': 'tts_enabled', 'value': enabled
+            }).execute()
+        return jsonify({'enabled': enabled == 'true'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():

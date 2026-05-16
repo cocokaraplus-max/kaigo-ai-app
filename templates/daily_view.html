@@ -3371,5 +3371,22 @@ window.speakAllSummaries = function(btn) {
     next();
 };
 
+
+// ── TTS有効チェック ──────────────────────────────────────────────
+(function() {
+    fetch('/api/tts_enabled')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.enabled) {
+                // TTS無効：ボタンを非表示
+                var bar = document.getElementById('speak-all-bar');
+                if (bar) bar.style.display = 'none';
+                document.querySelectorAll('[id^="speak-btn-"]').forEach(function(btn) {
+                    btn.style.display = 'none';
+                });
+            }
+        }).catch(function(){});
+})();
+
 </script>
 {% endblock %}
