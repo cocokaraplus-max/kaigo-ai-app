@@ -6281,3 +6281,4 @@ def api_records_apply_ai_category(record_id):
         "new_search_tags": new_tags,
     })
 
+# cache bust 2026年 5月16日 土曜日 20時14分56秒 JST
