@@ -714,23 +714,31 @@ function spaNav(event, url) {
     if (!getNavScrollTop()) {
         try {
             var wrapper = document.querySelector('.page-wrapper');
-            if (wrapper) { sessionStorage.setItem('tasukaru_scroll_' + window.location.pathname, wrapper.scrollTop); }
+            if (wrapper) { localStorage.setItem('tasukaru_scroll_' + window.location.pathname, wrapper.scrollTop); }
         } catch(e) {}
     }
     return;
 }
-
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         if (!getNavScrollTop()) {
             try {
-                var saved = sessionStorage.getItem('tasukaru_scroll_' + window.location.pathname);
+                var key = 'tasukaru_scroll_' + window.location.pathname;
+                var saved = localStorage.getItem(key);
                 if (saved) {
+                    localStorage.removeItem(key);
+                    var pos = parseInt(saved, 10);
                     var wrapper = document.querySelector('.page-wrapper');
-                    if (wrapper) wrapper.scrollTop = parseInt(saved, 10);
+                    if (wrapper) {
+                        wrapper.scrollTop = pos;
+                        setTimeout(function() { wrapper.scrollTop = pos; }, 100);
+                        setTimeout(function() { wrapper.scrollTop = pos; }, 300);
+                    }
                 }
             } catch(e) {}
         }
+    });
+})();
     });
 })();
 
