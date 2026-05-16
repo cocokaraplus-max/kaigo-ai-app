@@ -14,10 +14,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 12px 12px 12px 16px;
     background: #f8f9fa;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    gap: 0;
 }
 .user-accordion-header:active { background: #f0f0f0; }
 .user-accordion-title {
@@ -26,12 +27,15 @@
     gap: 8px;
     font-weight: 700;
     font-size: 0.95rem;
+    flex: 1;
+    min-width: 0;
 }
 .user-accordion-title .material-symbols-outlined { font-size: 18px; color: #1a73e8; }
 .user-accordion-arrow {
-    font-size: 20px;
-    color: #80868b;
+    font-size: 22px;
+    color: #1a73e8;
     transition: transform 0.2s;
+    flex-shrink: 0;
 }
 .user-accordion-body {
     padding: 14px 16px;
@@ -1155,6 +1159,12 @@
   border-color: #1a73e8;
   font-weight: 600;
 }
+
+/* 付箋ボタン */
+.bookmark-btn { opacity: 0.35; transition: opacity 0.2s, color 0.2s; }
+.bookmark-btn:active { opacity: 0.9; transform: scale(1.15); }
+.bookmark-btn.bookmarked .material-symbols-outlined { color: #f9a825 !important; font-variation-settings: 'FILL' 1; }
+.bookmark-btn.bookmarked { opacity: 1 !important; }
 </style>
 
 
@@ -1244,6 +1254,14 @@
         </div>
     </div>
 </div>
+    <!-- ブックマーク（付箋）UI -->
+    <div id="bookmark-bar" style="display:none; margin-bottom:8px; padding:10px 12px; background:#fffde7; border:1.5px solid #fdd835; border-radius:10px; font-size:0.85rem; color:#5d4037; align-items:center; flex-wrap:wrap; gap:6px;">
+      <span class="material-symbols-outlined" style="font-size:18px; color:#f9a825;">bookmark</span>
+      <span id="bookmark-label" style="flex:1; font-weight:700; margin-left:4px;"></span>
+      <button onclick="_bookmarkJump()" style="padding:4px 12px; background:#fdd835; border:none; border-radius:6px; font-size:0.82rem; font-weight:700; cursor:pointer; color:#5d4037; white-space:nowrap;">続きから読む</button>
+      <button onclick="_bookmarkClear()" style="padding:4px 8px; background:#fff; border:1px solid #ddd; border-radius:6px; font-size:0.78rem; cursor:pointer; color:#999;">クリア</button>
+    </div>
+
 {% for user, data in records.items() %}
 <div class="user-accordion" id="accordion-{{ loop.index }}" {% if user == target_user %}data-target="true"{% endif %}>
     <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
@@ -1252,6 +1270,12 @@
             {{ user }} 様
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
+          <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
+            onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
+            title="付箋をつける"
+            style="background:none; border:none; cursor:pointer; padding:8px 4px 8px 8px; color:#d0d0d0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
+            <span class="material-symbols-outlined" style="font-size:20px;">bookmark</span>
+          </button>
     </div>
     <div class="user-accordion-body {% if user == target_user %}open{% endif %}" id="body-{{ loop.index }}">
 
@@ -3247,6 +3271,7 @@ var _tts_currentBtn = null;
 var _tts_currentAudio = null;
 var _tts_wakeLock = null;
 var _ttsAllCheckInterval = null;
+    var _ttsPlaySeq = 0;
 var _ttsAllItems = [];
 var _ttsAllIndex = 0;
 
@@ -3262,6 +3287,7 @@ function _ttsReleaseWakeLock() {
 }
 
 function _ttsStop() {
+    _ttsPlaySeq++;
     _tts_speaking = false;
     if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
@@ -3297,12 +3323,13 @@ function _ttsUnlockAudio() {
 }
 
 function _ttsPlayText(text, onEnd) {
+    var mySeq = ++_ttsPlaySeq;
     fetch('/api/tts_speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({text: text})
     }).then(function(r) { return r.json(); }).then(function(data) {
-        if (!_tts_speaking) return;
+        if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
         if (data.audioContent) {
             // Base64をArrayBufferに変換しAudioContext経由で再生（iOS対応）
             var binary = atob(data.audioContent);
@@ -3315,7 +3342,7 @@ function _ttsPlayText(text, onEnd) {
                     var src = _ttsAudioContext.createBufferSource();
                     src.buffer = decoded;
                     src.connect(_ttsAudioContext.destination);
-                    src.onended = function() { if (onEnd) onEnd(); };
+                    src.onended = function() { if (mySeq !== _ttsPlaySeq) return; if (onEnd) onEnd(); };
                     src.start(0);
                     _tts_currentAudio = src;
                 }, function() {
@@ -3484,7 +3511,81 @@ window.speakAllNext = function() {
 // 停止
 window.speakAllStop = function() { _ttsStop(); };
 
-// ── TTS有効チェック ──────────────────────────────────────────────
+  // ── 付箋（ブックマーク）機能 ─────────────────────────────────────
+  (function() {
+    var BKEY = 'tasukaru_bookmark_v2';
+
+    function _bmLoad() {
+      try {
+        var raw = localStorage.getItem(BKEY);
+        if (!raw) return;
+        var bm = JSON.parse(raw);
+        var urlDate = new URLSearchParams(window.location.search).get('date') || '';
+        if (bm.date !== urlDate) return;
+        var bar = document.getElementById('bookmark-bar');
+        var lbl = document.getElementById('bookmark-label');
+        if (bar) { bar.style.display = 'flex'; }
+        if (lbl) lbl.textContent = bm.name + ' から続き';
+        var btn = document.getElementById('bookmark-btn-' + bm.idx);
+        if (btn) btn.classList.add('bookmarked');
+      } catch(e) {}
+    }
+
+    window._bookmarkSet = function(idx, name) {
+      try {
+        var urlDate = new URLSearchParams(window.location.search).get('date') || '';
+        var raw = localStorage.getItem(BKEY);
+        if (raw) {
+          var old = JSON.parse(raw);
+          var oldBtn = document.getElementById('bookmark-btn-' + old.idx);
+          if (oldBtn) oldBtn.classList.remove('bookmarked');
+          if (old.idx === idx && old.date === urlDate) {
+            localStorage.removeItem(BKEY);
+            var bar2 = document.getElementById('bookmark-bar');
+            if (bar2) bar2.style.display = 'none';
+            return;
+          }
+          if (!confirm('「' + old.name + '」の付箋を外して\n「' + name + '」に付け替えますか？')) {
+            if (oldBtn) oldBtn.classList.add('bookmarked');
+            return;
+          }
+        }
+        localStorage.setItem(BKEY, JSON.stringify({ idx: idx, name: name, date: urlDate }));
+        var btn = document.getElementById('bookmark-btn-' + idx);
+        if (btn) btn.classList.add('bookmarked');
+        var bar = document.getElementById('bookmark-bar');
+        var lbl = document.getElementById('bookmark-label');
+        if (bar) { bar.style.display = 'flex'; }
+        if (lbl) lbl.textContent = name + ' から続き';
+      } catch(e) {}
+    };
+
+    window._bookmarkJump = function() {
+      try {
+        var bm = JSON.parse(localStorage.getItem(BKEY) || 'null');
+        if (!bm) return;
+        var el = document.getElementById('accordion-' + bm.idx);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch(e) {}
+    };
+
+    window._bookmarkClear = function() {
+      try {
+        var bm = JSON.parse(localStorage.getItem(BKEY) || 'null');
+        if (bm) {
+          var btn = document.getElementById('bookmark-btn-' + bm.idx);
+          if (btn) btn.classList.remove('bookmarked');
+        }
+        localStorage.removeItem(BKEY);
+        var bar = document.getElementById('bookmark-bar');
+        if (bar) bar.style.display = 'none';
+      } catch(e) {}
+    };
+
+    _bmLoad();
+  })();
+
+  // ── TTS有効チェック ──────────────────────────────────────────────
 (function() {
     fetch('/api/tts_enabled')
         .then(function(r) { return r.json(); })

@@ -249,6 +249,14 @@
             <div class="toc-ic" style="background:#bf360c;"><span class="material-symbols-outlined" style="color:#fff;">emergency</span></div>
             <span class="toc-lbl">災害時モード</span>
         </a>
+        <a class="toc-a" style="background:#e8f0fe;" href="#s-tts">
+            <div class="toc-ic" style="background:#1a73e8;"><span class="material-symbols-outlined" style="color:#fff;">campaign</span></div>
+            <span class="toc-lbl">AI読み上げ</span>
+        </a>
+        <a class="toc-a" style="background:#fffde7;" href="#s-bookmark">
+            <div class="toc-ic" style="background:#f9a825;"><span class="material-symbols-outlined" style="color:#fff;">bookmark</span></div>
+            <span class="toc-lbl">付箋機能</span>
+        </a>
         <a class="toc-a" style="background:#e8f0fe;" href="#s-vitals-input">
             <div class="toc-ic" style="background:#1a73e8;"><span class="material-symbols-outlined" style="color:#fff;">monitoring</span></div>
             <span class="toc-lbl">バイタル測定</span>
@@ -589,6 +597,156 @@
             <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
             <span>結果は新しい順に最大100件まで表示されます。100件を超える場合は「上位100件まで表示」と出るので、期間や利用者で絞り込んでください。</span>
         </div>
+    </div>
+</div>
+
+<!-- ===== AI読み上げ ===== -->
+<div class="sc" id="s-tts">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f0fe;">
+            <span class="material-symbols-outlined" style="font-size:26px;color:#1a73e8;">campaign</span>
+        </div>
+        <div>
+            <div class="sc-ttl">AI読み上げ</div>
+            <div class="sc-sub">ケース記録をGoogleの自然な音声で読み上げ</div>
+        </div>
+    </div>
+    <div class="sc-bd">
+
+        <div class="bbl">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん"
+                 style="background:#1558d0;border-radius:50%;width:56px;height:56px;
+                        object-fit:contain;flex-shrink:0;">
+            <div class="bbl-msg">
+                記録を<b>耳で聞きながら</b>移動できるよ！<br>
+                全員まとめて・一人ずつ・前後スキップも自由自在🎧
+            </div>
+        </div>
+
+        <!-- UIモックアップ -->
+        <div class="mock">
+            <div style="background:linear-gradient(135deg,#1a73e8,#1557b0);border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="color:#fff;font-size:20px;">campaign</span>
+                <span style="color:#fff;font-weight:700;font-size:0.88rem;">その日のAI要約を全員分読み上げ</span>
+            </div>
+            <div style="background:#e8f0fe;border-radius:8px;padding:7px 12px;text-align:center;font-size:0.85rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">
+                山田 花子様「3 / 8」
+            </div>
+            <div style="display:flex;gap:6px;">
+                <div style="flex:1;background:#f1f3f4;border-radius:8px;padding:8px;text-align:center;font-size:0.8rem;color:#5f6368;display:flex;align-items:center;justify-content:center;gap:3px;">
+                    <span class="material-symbols-outlined" style="font-size:16px;">skip_previous</span>前の方
+                </div>
+                <div style="flex:1;background:linear-gradient(135deg,#ea4335,#c62828);border-radius:8px;padding:8px;text-align:center;font-size:0.8rem;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;gap:3px;">
+                    <span class="material-symbols-outlined" style="font-size:16px;">stop_circle</span>停止
+                </div>
+                <div style="flex:1;background:#f1f3f4;border-radius:8px;padding:8px;text-align:center;font-size:0.8rem;color:#5f6368;display:flex;align-items:center;justify-content:center;gap:3px;">
+                    次の方<span class="material-symbols-outlined" style="font-size:16px;">skip_next</span>
+                </div>
+            </div>
+            <div style="text-align:center;font-size:0.75rem;color:#80868b;margin-top:6px;">↑ 読み上げ中のコントロールバー</div>
+        </div>
+
+        <!-- ステップ -->
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">1</div>
+            <div>
+                <div class="step-t">記録のある日をカレンダーで選ぶ</div>
+                <div class="step-d">ケース記録画面でカレンダーから日付をタップします</div>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">2</div>
+            <div>
+                <div class="step-t">「全員分読み上げ」ボタンをタップ</div>
+                <div class="step-d">AI要約をまだ生成していない方は自動生成してから読み上げを開始します</div>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-n" style="background:#1a73e8;">3</div>
+            <div>
+                <div class="step-t">前の方・次の方で自由にスキップ</div>
+                <div class="step-d">停止ボタンでいつでも終了できます。個別の🔊ボタンで1人だけ読み上げることも可能です</div>
+            </div>
+        </div>
+
+        <div class="hint" style="background:#e8f0fe;color:#1a37e8;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>iPhoneでも安心！Wake Lock機能により画面を暗くしても音声が途切れません。移動中のながら聞きに便利です🎧</span>
+        </div>
+
+    </div>
+</div>
+
+<!-- ===== 付箋機能 ===== -->
+<div class="sc" id="s-bookmark">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#fffde7;">
+            <span class="material-symbols-outlined" style="font-size:26px;color:#f9a825;">bookmark</span>
+        </div>
+        <div>
+            <div class="sc-ttl">付箋機能</div>
+            <div class="sc-sub">どこまで読んだか記録して、続きから再開</div>
+        </div>
+    </div>
+    <div class="sc-bd">
+
+        <div class="bbl">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん"
+                 style="background:#1558d0;border-radius:50%;width:56px;height:56px;
+                        object-fit:contain;flex-shrink:0;">
+            <div class="bbl-msg">
+                途中まで読んで中断しても大丈夫！<br>
+                付箋をつけておけば<b>次回も続きからすぐ読める</b>よ📑
+            </div>
+        </div>
+
+        <!-- UIモックアップ -->
+        <div class="mock">
+            <!-- 付箋バー -->
+            <div style="background:#fffde7;border:1.5px solid #fdd835;border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+                <span class="material-symbols-outlined" style="color:#f9a825;font-size:18px;">bookmark</span>
+                <span style="flex:1;font-weight:700;font-size:0.85rem;color:#5d4037;">田中 正雄様 から続き</span>
+                <div style="background:#fdd835;border-radius:6px;padding:4px 10px;font-size:0.78rem;font-weight:700;color:#5d4037;white-space:nowrap;">続きから読む</div>
+                <div style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:0.75rem;color:#999;">クリア</div>
+            </div>
+            <!-- アコーディオン行サンプル -->
+            <div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:18px;">person</span>
+                <span style="flex:1;font-weight:700;font-size:0.88rem;color:#202124;">田中 正雄 様</span>
+                <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">expand_more</span>
+                <span class="material-symbols-outlined" style="color:#f9a825;font-size:20px;">bookmark</span>
+            </div>
+            <div style="text-align:center;font-size:0.75rem;color:#80868b;margin-top:6px;">↑ 右端の🔖ボタンで付箋セット。黄色になると有効</div>
+        </div>
+
+        <!-- ステップ -->
+        <div class="step">
+            <div class="step-n" style="background:#f9a825;">1</div>
+            <div>
+                <div class="step-t">読み途中の利用者行の右端🔖をタップ</div>
+                <div class="step-d">アイコンが黄色に変わって付箋がセットされます。もう一度タップで解除</div>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-n" style="background:#f9a825;">2</div>
+            <div>
+                <div class="step-t">次回ページを開くと続きバーが表示される</div>
+                <div class="step-d">同じ日付のページを開くと、上部に「◯◯様から続き」のバーが自動表示されます</div>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-n" style="background:#f9a825;">3</div>
+            <div>
+                <div class="step-t">「続きから読む」でその場所にジャンプ</div>
+                <div class="step-d">「クリア」ボタンで付箋を外せます。付箋は1つのみ、この端末だけに保存されます</div>
+            </div>
+        </div>
+
+        <div class="hint" style="background:#fffde7;color:#5d4037;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>付箋は日付をまたぐと自動でリセットされます。翌日は新しい気持ちでスタート！</span>
+        </div>
+
     </div>
 </div>
 
