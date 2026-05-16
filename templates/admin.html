@@ -940,16 +940,16 @@
       <div style="font-size:0.82rem;font-weight:700;color:#5f6368;margin-bottom:8px;">声の種類</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-A" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 A（落ち着き）
+          <input type="radio" name="tts-voice" value="ja-JP-Neural2-B" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 B（Neural2・自然）
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-B" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 B（標準）
+          <input type="radio" name="tts-voice" value="ja-JP-Neural2-B" onchange="saveTTSVoiceSettings()" style="margin:0;">女性 B（Neural2・標準）
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-C" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 C（低め）
+          <input type="radio" name="tts-voice" value="ja-JP-Neural2-C" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 C（Neural2・低め）
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.85rem;">
-          <input type="radio" name="tts-voice" value="ja-JP-Wavenet-D" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 D（明瞭）
+          <input type="radio" name="tts-voice" value="ja-JP-Neural2-C" onchange="saveTTSVoiceSettings()" style="margin:0;">男性 C（Neural2・明瞭）
         </label>
       </div>
     </div>
@@ -1381,7 +1381,7 @@ function showAdminToast(msg) {
 })();
 
 window.saveTTSVoiceSettings = function() {
-    var voice = (document.querySelector('input[name="tts-voice"]:checked') || {}).value || 'ja-JP-Wavenet-B';
+    var voice = (document.querySelector('input[name="tts-voice"]:checked') || {}).value || 'ja-JP-Neural2-B';
     var speed = parseFloat((document.getElementById('tts-speed') || {}).value || 1.0);
     var pitch = parseFloat((document.getElementById('tts-pitch') || {}).value || 0.0);
     fetch('/api/tts_settings', {

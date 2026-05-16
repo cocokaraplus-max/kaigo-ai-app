@@ -4223,7 +4223,7 @@ def api_tts_speak():
         voice_name = s.get('tts_voice', 'ja-JP-Wavenet-B')
         speed = float(s.get('tts_speed', '1.0'))
         pitch = float(s.get('tts_pitch', '0.0'))
-        gender = 'FEMALE' if voice_name in ['ja-JP-Wavenet-A', 'ja-JP-Wavenet-B'] else 'MALE'
+        gender = 'FEMALE' if voice_name in ['ja-JP-Wavenet-A', 'ja-JP-Wavenet-B', 'ja-JP-Neural2-B', 'ja-JP-Neural2-A'] else 'MALE'
 
         payload = {
             'input': {'text': text},
