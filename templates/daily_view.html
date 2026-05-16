@@ -182,9 +182,15 @@
 
 /* 個別記録 */
 .record-item {
-    padding: 12px 0;
-    border-bottom: 1px dashed #f0f0f0;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    background: #fafafa;
+    cursor: pointer;
+    transition: background 0.15s;
 }
+.record-item:hover, .record-item:active { background: #f0f4ff; }
 .record-item:last-child { border-bottom: none; }
 .record-meta {
     display: flex;
@@ -196,10 +202,6 @@
 }
 .record-meta .material-symbols-outlined { font-size: 15px; }
 .record-content { font-size: 0.9rem; line-height: 1.7; display: none; }
-.record-content.open { display: block; }
-.record-meta-row { cursor: pointer; }
-.record-toggle-icon { font-size: 16px; color: #9aa0a6; transition: transform 0.2s; }
-.record-item.expanded .record-toggle-icon { transform: rotate(180deg); }
 .record-actions {
     display: flex;
     gap: 8px;
@@ -1254,7 +1256,7 @@
              data-category="{{ r.category or '' }}"
              data-leave-type="{{ r.leave_reporter_type or '' }}"
              data-leave-relation="{{ r.leave_reporter_relation or '' }}">
-            <div class="record-meta-row" onclick="toggleRecordContent(this)">
+            <div class="record-meta-row" onclick="openRecordModal('{{ r.id }}')" style="cursor:pointer;">
                 <div class="record-meta">
                     <span class="material-symbols-outlined">schedule</span>
                     {{ r.time }} （{{ r.staff_name }}）
@@ -1278,7 +1280,6 @@
                     title="閲覧必須を切り替え">
                     <span class="material-symbols-outlined">{% if r.must_read %}star{% else %}star_outline{% endif %}</span>
                 </button>
-                <span class="material-symbols-outlined record-toggle-icon">expand_more</span>
             </div>
             {% if r.must_read and not r.is_read_by_me %}
             <div class="must-read-badge" id="mr-badge-{{ r.id }}"
@@ -1527,6 +1528,26 @@
     </div>
   </div>
 </div>
+
+<!-- 個別記録モーダル -->
+<div id="record-modal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.5);" onclick="closeRecordModal(event)">
+    <div style="position:absolute; bottom:0; left:0; right:0; background:#fff; border-radius:16px 16px 0 0; max-height:85vh; overflow-y:auto; padding:20px 16px 32px;">
+        <div style="display:flex; align-items:center; margin-bottom:12px;">
+            <div style="flex:1;">
+                <div id="modal-meta" style="font-size:0.85rem; color:#5f6368; font-weight:600;"></div>
+            </div>
+            <button onclick="closeRecordModal()" style="background:none; border:none; cursor:pointer; padding:4px;">
+                <span class="material-symbols-outlined" style="font-size:24px; color:#80868b;">close</span>
+            </button>
+        </div>
+        <div id="modal-category" style="margin-bottom:10px;"></div>
+        <div id="modal-content" style="font-size:0.95rem; line-height:1.8; color:#202124; white-space:pre-wrap; margin-bottom:16px;"></div>
+        <div id="modal-vas" style="margin-bottom:12px;"></div>
+        <div id="modal-photos" style="margin-bottom:12px;"></div>
+        <div id="modal-actions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_script %}
