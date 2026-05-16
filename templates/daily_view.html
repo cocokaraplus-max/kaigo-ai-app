@@ -1219,6 +1219,14 @@
 </div>
 {% else %}
 <div id="records-area"></div>
+<div id="speak-all-bar" style="display:none; margin-bottom:12px;">
+    <button onclick="speakAllSummaries(this)"
+        id="speak-all-btn"
+        style="width:100%;padding:12px;background:linear-gradient(135deg,#1a73e8,#1557b0);border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:20px;">campaign</span>
+        その日のAI要約を全員分読み上げ
+    </button>
+</div>
 {% for user, data in records.items() %}
 <div class="user-accordion" id="accordion-{{ loop.index }}" {% if user == target_user %}data-target="true"{% endif %}>
     <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
@@ -1234,11 +1242,19 @@
             <div class="ai-record-label">
                 <span class="material-symbols-outlined">auto_awesome</span>
                 AI要約
+                <div style="margin-left:auto;display:flex;gap:2px;">
+                <button onclick="speakSummary({{ loop.index }}, this)"
+                    id="speak-btn-{{ loop.index }}"
+                    style="background:none;border:none;cursor:pointer;color:#1a73e8;display:flex;align-items:center;padding:2px 6px;border-radius:6px;"
+                    title="読み上げ">
+                    <span class="material-symbols-outlined" style="font-size:16px;">volume_up</span>
+                </button>
                 <button onclick="regenDailySummary('{{ user }}', {{ loop.index }})"
-                    style="margin-left:auto;background:none;border:none;cursor:pointer;color:#1a73e8;display:flex;align-items:center;padding:2px 6px;border-radius:6px;"
+                    style="background:none;border:none;cursor:pointer;color:#1a73e8;display:flex;align-items:center;padding:2px 6px;border-radius:6px;"
                     title="再生成">
                     <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
                 </button>
+                </div>
             </div>
             <div class="ai-record-content" id="ai-content-{{ loop.index }}">
                 <span style="color:#9aa0a6;font-size:0.85rem;">タップして開くとAI要約を生成します</span>
