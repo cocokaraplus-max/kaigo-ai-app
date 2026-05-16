@@ -4111,6 +4111,139 @@ def api_generate_monitoring():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/daily_records')
+@login_required
+def api_daily_records():
+    """指定日の全利用者ケース記録を返す（ケース記録一覧画面用）"""
+    f_code = session['f_code']
+    supabase = get_supabase()
+    date_str = request.args.get('date')
+    if not date_str:
+        date_str = datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+    try:
+        day_start = tokyo_tz.localize(datetime.strptime(date_str, '%Y-%m-%d'))
+        day_end   = day_start + timedelta(days=1)
+        res = supabase.table('records').select(
+            'id, user_name, staff_name, content, category, created_at'
+        ).eq('facility_code', f_code).gte(
+            'created_at', day_start.isoformat()
+        ).lt(
+            'created_at', day_end.isoformat()
+        ).neq('staff_name', 'AI統合記録').order('created_at').execute()
+        records = res.data or []
+
+        from collections import OrderedDict
+        grouped = OrderedDict()
+        for r in records:
+            uname = r['user_name']
+            if uname not in grouped:
+                grouped[uname] = []
+            grouped[uname].append(r)
+
+        summaries = {}
+        if grouped:
+            try:
+                s_res = supabase.table('daily_summaries').select(
+                    'user_name, summary, last_record_at'
+                ).eq('facility_code', f_code).eq(
+                    'summary_date', date_str
+                ).in_('user_name', list(grouped.keys())).execute()
+                for s in (s_res.data or []):
+                    summaries[s['user_name']] = s
+            except:
+                pass
+
+        result = []
+        for uname, recs in grouped.items():
+            latest_record_at = recs[-1]['created_at']
+            cached = summaries.get(uname)
+            summary_text = None
+            summary_stale = True
+            if cached:
+                if cached['last_record_at'] >= latest_record_at:
+                    summary_text = cached['summary']
+                    summary_stale = False
+            result.append({
+                'user_name': uname,
+                'record_count': len(recs),
+                'latest_record_at': latest_record_at,
+                'summary': summary_text,
+                'summary_stale': summary_stale,
+                'records': recs
+            })
+
+        return jsonify({'date': date_str, 'patients': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/generate_daily_summary', methods=['POST'])
+@login_required
+def api_generate_daily_summary():
+    """利用者×日付のAI要約を生成してキャッシュ保存"""
+    f_code = session['f_code']
+    supabase = get_supabase()
+    try:
+        data = request.json
+        user_name = data['user_name']
+        date_str  = data['date']
+
+        day_start = tokyo_tz.localize(datetime.strptime(date_str, '%Y-%m-%d'))
+        day_end   = day_start + timedelta(days=1)
+
+        res = supabase.table('records').select(
+            'content, staff_name, created_at'
+        ).eq('facility_code', f_code).eq(
+            'user_name', user_name
+        ).gte('created_at', day_start.isoformat()).lt(
+            'created_at', day_end.isoformat()
+        ).neq('staff_name', 'AI統合記録').order('created_at').execute()
+
+        records = res.data or []
+        if not records:
+            return jsonify({'error': '記録がありません'}), 404
+
+        latest_record_at = records[-1]['created_at']
+        try:
+            cached = supabase.table('daily_summaries').select(
+                'summary, last_record_at'
+            ).eq('facility_code', f_code).eq(
+                'user_name', user_name
+            ).eq('summary_date', date_str).execute()
+            if cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
+                return jsonify({'summary': cached.data[0]['summary'], 'cached': True})
+        except:
+            pass
+
+        contents = [r['content'] for r in records]
+        recs_text = '\n'.join(contents)
+        from utils import get_generative_model
+        model = get_generative_model()
+        prompt = (
+            f"以下は{date_str}の{user_name}さんに関する介護記録です。"
+            "職員が記入した記録を、要点を押さえて簡潔に要約してください。"
+            "箇条書きは使わず自然な文章で、200文字程度でまとめてください。"
+            "職員名や主語は不要です。\n\n" + recs_text
+        )
+        summary = model.generate_content([prompt]).text.strip()
+
+        try:
+            supabase.table('daily_summaries').upsert({
+                'facility_code':  f_code,
+                'user_name':      user_name,
+                'summary_date':   date_str,
+                'summary':        summary,
+                'last_record_at': latest_record_at,
+                'updated_at':     datetime.now(tokyo_tz).isoformat()
+            }, on_conflict='facility_code,user_name,summary_date').execute()
+        except:
+            pass
+
+        return jsonify({'summary': summary, 'cached': False})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/admin_login', methods=['POST'])
 @login_required
 def api_admin_login():
