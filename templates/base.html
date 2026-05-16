@@ -711,36 +711,21 @@ function setNavScrollTop(val) {
 })();
 
 function spaNav(event, url) {
-    if (!getNavScrollTop()) {
-        try {
-            var wrapper = document.querySelector('.page-wrapper');
-            var pos = wrapper ? Math.round(wrapper.scrollTop) : 0;
-            if (pos > 10) {
-                event.preventDefault();
-                var sep = url.indexOf('?') >= 0 ? '&' : '?';
-                window.location.href = url + sep + '_sc=' + pos;
-                return;
-            }
-        } catch(e) {}
-    }
+    try {
+        var nav = document.querySelector('.bottom-nav');
+        if (nav) { localStorage.setItem('tasukaru_nav_left', nav.scrollLeft); }
+    } catch(e) {}
     return;
 }
 window.addEventListener('load', function() {
     (function() {
-        if (!getNavScrollTop()) {
-            try {
-                var params = new URLSearchParams(window.location.search);
-                var pos = parseInt(params.get('_sc') || '0', 10);
-                if (pos > 0) {
-                    history.replaceState(null, '', wi                    history.repl             var wrapper = document.querySelector('.page-wrapper');
-                    if (wrapper) {
-                        wrapper.scrollTop = pos;
-                        setTimeout(function() { wrapper.scrollTop = pos; }, 100);
-                        setTimeout(function() { wrapper.scrollTop = pos; }, 500);
-                    }
-                }
-            } catch(e) {}
-        }
+        try {
+            var nav = document.querySelector('.bottom-nav');
+            var saved = parseInt(localStorage.getItem('tasukaru_nav_left') || '0', 10);
+            if (nav && saved > 0) {
+                nav.scrollLeft = saved;
+            }
+        } catch(e) {}
     })();
 });
 
@@ -886,18 +871,7 @@ function updateNavActive(url) {
 window.addEventListener('load', () => {
     history.replaceState({ url: window.location.pathname }, '', window.location.pathname);
     updateNavActive(window.location.pathname);
-    // スクロール位置復元（ページトップへ移動トグルOFF時）
-    if (!getNavScrollTop()) {
-        try {
-            var _key = 'tasukaru_scroll_' + window.location.pathname;
-            var _saved = sessionStorage.getItem(_key);
-            if (_saved) {
-                var _wrapper = document.querySelector('.page-wrapper');
-                if (_wrapper) { _wrapper.scrollTop = parseInt(_saved) || 0; }
-                sessionStorage.removeItem(_key);
-            }
-        } catch(e) {}
-    }
+
 });
 </script>
 
