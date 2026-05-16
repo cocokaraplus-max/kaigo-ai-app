@@ -3799,7 +3799,7 @@ def admin():
 @login_required
 def patient_profile():
     supabase = get_supabase()
-    f_code   = session.get('facility_code', '')
+    f_code   = session.get('f_code', '')
     sel_id   = request.args.get('id')
     try:
         res = supabase.table('patient_profiles') \
@@ -3834,7 +3834,7 @@ def patient_profile():
 @login_required
 def api_get_patient_profile_by_number():
     supabase = get_supabase()
-    f_code   = session.get('facility_code', '')
+    f_code   = session.get('f_code', '')
     p_number = request.args.get('patient_number', '')
     if not p_number:
         return jsonify({'error': 'patient_number required'}), 400
