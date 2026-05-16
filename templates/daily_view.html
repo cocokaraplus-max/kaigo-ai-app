@@ -3246,6 +3246,7 @@ var _tts_speaking = false;
 var _tts_currentBtn = null;
 var _tts_currentAudio = null;
 var _tts_wakeLock = null;
+var _ttsAllCheckInterval = null;
 var _ttsAllItems = [];
 var _ttsAllIndex = 0;
 
@@ -3262,6 +3263,7 @@ function _ttsReleaseWakeLock() {
 
 function _ttsStop() {
     _tts_speaking = false;
+    if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
     if (_tts_currentAudio) { _tts_currentAudio.pause(); _tts_currentAudio = null; }
     if (_tts_currentBtn) {
@@ -3412,7 +3414,7 @@ window.speakAllSummaries = function() {
 
         var maxWait = 30;
         var waited = 0;
-        var checkInterval = setInterval(function() {
+        _ttsAllCheckInterval = setInterval(function() {
             waited++;
             var cards2 = document.querySelectorAll('[id^="ai-content-"]');
             var allReady = true;
@@ -3421,8 +3423,8 @@ window.speakAllSummaries = function() {
                 if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
             });
             if (allReady || waited >= maxWait) {
-                clearInterval(checkInterval);
-                _speakAllStart();
+                clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null;
+                if (_tts_speaking) _speakAllStart();
             } else {
                 if (progressEl) progressEl.textContent = 'AI要約を生成中… (' + waited + 's)';
             }
