@@ -251,9 +251,9 @@ body.nav-editing {
         /* ボトムナビ */
         .bottom-nav {
             position: fixed;
-            bottom: env(safe-area-inset-bottom, 0px);
-            left: 0;
-            right: 0;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 1000;
             background: #ffffff;
             border-top: 1px solid #e0e0e0;
@@ -262,10 +262,13 @@ body.nav-editing {
             overflow-y: hidden;
             scrollbar-width: none;
             padding: 0;
-            padding-bottom: 0;
+            padding-bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
+            flex-shrink: 0;
+            max-width: 480px;
             width: 100%;
+            margin: 0 auto;
             touch-action: pan-x;
             overscroll-behavior-x: contain;
         }
