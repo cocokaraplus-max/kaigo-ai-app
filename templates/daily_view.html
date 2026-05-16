@@ -3245,7 +3245,6 @@ function _ttsStop() {
 }
 
 window.speakSummary = function(idx, btn) {
-    if (!window.speechSynthesis) { alert('読み上げに対応していません'); return; }
     if (_tts_speaking) { _ttsStop(); return; }
     var el = document.getElementById('ai-content-' + idx);
     if (!el) return;
@@ -3253,15 +3252,12 @@ window.speakSummary = function(idx, btn) {
     if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
         alert('AI要約を先に生成してください'); return;
     }
-    var utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'ja-JP'; utt.rate = 0.95;
-    utt.onend = _ttsStop; utt.onerror = _ttsStop;
     _tts_speaking = true;
     _tts_currentBtn = btn;
     var icon = btn.querySelector('.material-symbols-outlined');
     if (icon) icon.textContent = 'stop_circle';
     btn.style.color = '#ea4335';
-    window.speechSynthesis.speak(utt);
+    _ttsPlayText(text, _ttsStop);
 };
 
 window.speakAllSummaries = function(btn) {
@@ -3288,11 +3284,10 @@ window.speakAllSummaries = function(btn) {
     function next() {
         if (!_tts_speaking || i >= items.length) { _ttsStop(); return; }
         var item = items[i++];
-        var utt = new SpeechSynthesisUtterance((item.name ? item.name + 'さん。' : '') + item.text);
-        utt.lang = 'ja-JP'; utt.rate = 0.95;
-        utt.onend = function() { if (_tts_speaking) setTimeout(next, 600); };
-        utt.onerror = _ttsStop;
-        window.speechSynthesis.speak(utt);
+        var fullText = (item.name ? item.name + 'さん。' : '') + item.text;
+        _ttsPlayText(fullText, function() {
+            if (_tts_speaking) setTimeout(next, 600);
+        });
     }
     next();
 };
