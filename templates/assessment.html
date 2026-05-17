@@ -798,57 +798,6 @@
             </div>
         </div>
 
-        <!-- ========== セクション 2: 計測値 (初期: 閉) ========== -->
-        <div class="eval-section collapsed" id="eval-section-measure">
-            <button type="button" class="eval-section-header"
-                    onclick="evalToggleSection('eval-section-measure')">
-                <div class="eval-section-title">
-                    <span class="material-symbols-outlined">straighten</span>
-                    <span>計測値</span>
-                    <span class="eval-section-badge" id="eval-badge-measure">0/3</span>
-                </div>
-                <span class="material-symbols-outlined eval-chevron">expand_more</span>
-            </button>
-            <div class="eval-section-body">
-                <div class="eval-field">
-                    <label class="eval-field-label">
-                        <span class="material-symbols-outlined">scale</span>
-                        体重 (kg)
-                    </label>
-                    <div class="eval-number-row">
-                        <input type="number" class="eval-number-input" id="eval-weight-kg"
-                               step="0.1" min="0" max="200" placeholder="例: 50.5"
-                               oninput="evalUpdateStatus()">
-                        <span class="eval-number-unit">kg</span>
-                    </div>
-                </div>
-                <div class="eval-field">
-                    <label class="eval-field-label">
-                        <span class="material-symbols-outlined">event_available</span>
-                        出席回数
-                    </label>
-                    <div class="eval-number-row">
-                        <input type="number" class="eval-number-input" id="eval-attendance-count"
-                               step="1" min="0" max="31" placeholder="例: 8"
-                               oninput="evalUpdateStatus()">
-                        <span class="eval-number-unit">日</span>
-                    </div>
-                </div>
-                <div class="eval-field">
-                    <label class="eval-field-label">
-                        <span class="material-symbols-outlined">flag_circle</span>
-                        出席目標
-                    </label>
-                    <div class="eval-number-row">
-                        <input type="number" class="eval-number-input" id="eval-attendance-target"
-                               step="1" min="0" max="31" placeholder="例: 10"
-                               oninput="evalUpdateStatus()">
-                        <span class="eval-number-unit">日</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- ========== セクション 3: 介護区分 + 目標達成状況 (初期: 閉) ========== -->
         <div class="eval-section collapsed" id="eval-section-status">
             <button type="button" class="eval-section-header"
@@ -1895,9 +1844,6 @@ function evalCollectFormData() {
         evaluator_name: document.getElementById('eval-evaluator-name').value.trim(),
         care_classification: document.getElementById('eval-care-classification').value || null,
         training_goal: document.getElementById('eval-training-goal').value.trim(),
-        weight_kg: document.getElementById('eval-weight-kg').value || null,
-        attendance_count: document.getElementById('eval-attendance-count').value || null,
-        attendance_target: document.getElementById('eval-attendance-target').value || null,
         changes_by_training: document.getElementById('eval-changes').value.trim(),
         issues_and_causes: document.getElementById('eval-issues').value.trim(),
         special_notes: document.getElementById('eval-special-notes').value.trim(),
@@ -1927,9 +1873,6 @@ function evalFillForm(ev) {
     document.getElementById('eval-year-month').value = ev.year_month || '';
     document.getElementById('eval-evaluator-name').value = ev.evaluator_name || '';
     document.getElementById('eval-training-goal').value = ev.training_goal || '';
-    document.getElementById('eval-weight-kg').value = ev.weight_kg ?? '';
-    document.getElementById('eval-attendance-count').value = ev.attendance_count ?? '';
-    document.getElementById('eval-attendance-target').value = ev.attendance_target ?? '';
     document.getElementById('eval-changes').value = ev.changes_by_training || '';
     document.getElementById('eval-issues').value = ev.issues_and_causes || '';
     document.getElementById('eval-special-notes').value = ev.special_notes || '';
@@ -1957,7 +1900,7 @@ function evalFillForm(ev) {
 }
 
 function evalResetForm() {
-    ['eval-training-goal', 'eval-weight-kg', 'eval-attendance-count', 'eval-attendance-target',
+    ['eval-training-goal',
      'eval-changes', 'eval-issues', 'eval-special-notes', 'eval-new-requests-detail'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -1985,7 +1928,7 @@ function evalResetForm() {
 
 function evalHasInput() {
     return ['eval-training-goal', 'eval-changes', 'eval-issues', 'eval-special-notes',
-            'eval-new-requests-detail', 'eval-weight-kg', 'eval-attendance-count', 'eval-attendance-target'
+            'eval-new-requests-detail'
            ].some(id => {
         const el = document.getElementById(id);
         return el && el.value && el.value.trim() !== '';
@@ -2031,12 +1974,6 @@ function evalUpdateSectionBadges(data) {
         goalBadge.className = 'eval-section-badge required';
         goalBadge.textContent = '必須';
     }
-
-    // 計測値 (n/3)
-    const measureBadge = document.getElementById('eval-badge-measure');
-    const measureCount = [data.weight_kg, data.attendance_count, data.attendance_target].filter(v => v !== null && v !== '').length;
-    measureBadge.textContent = `${measureCount}/3`;
-    measureBadge.className = measureCount === 3 ? 'eval-section-badge filled' : 'eval-section-badge';
 
     // 介護区分 + 達成状況 (必須: 介護区分のみ)
     const statusBadge = document.getElementById('eval-badge-status');
