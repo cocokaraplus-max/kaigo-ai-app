@@ -19,7 +19,7 @@ import base64
 import json
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
+app.secret_key = os.environ.get("SECRET_KEY", "tasuk***********************************")
 
 # ===== Session persistence for PWA/mobile =====
 # Keep users logged in across browser restarts (up to 30 days)
@@ -269,7 +269,7 @@ def get_admin_managers(supabase, f_code):
                 supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
             else:
                 supabase.table("admin_settings").insert({
-                    "facility_code": f_code, "key": "admin_managers", "value": value_json
+                    "facility_code": f_code, "key": "admin*********", "value": value_json
                 }).execute()
         except: pass
     return initial
@@ -4511,7 +4511,7 @@ def api_tts_toggle():
                 'facility_code', f_code).eq('key', 'tts_enabled').execute()
         else:
             supabase.table('admin_settings').insert({
-                'facility_code': f_code, 'key': 'tts_enabled', 'value': enabled
+                'facility_code': f_code, 'key': 'tts_e******', 'value': enabled
             }).execute()
         return jsonify({'enabled': enabled == 'true'})
     except Exception as e:
@@ -4743,7 +4743,7 @@ def api_update_password():
         if existing.data:
             supabase.table("admin_settings").update({"value": data["password"]}).eq("facility_code", f_code).eq("key", "admin_password").execute()
         else:
-            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": data["password"]}).execute()
+            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin*********", "value": data["password"]}).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -4761,7 +4761,7 @@ def api_update_hist_limit():
             supabase.table("admin_settings").update({"value": str(data["limit"])}).eq("facility_code", f_code).eq("key", "history_limit").execute()
         else:
             supabase.table("admin_settings").insert({
-                "facility_code": f_code, "key": "history_limit", "value": str(data["limit"])
+                "facility_code": f_code, "key": "histo********", "value": str(data["limit"])
             }).execute()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -4793,7 +4793,7 @@ def api_board_set_editors():
         else:
             supabase.table("admin_settings").insert({
                 "facility_code": f_code,
-                "key": "board_editors",
+                "key": "board********",
                 "value": value_json
             }).execute()
         return jsonify({"status": "success"})
@@ -4868,7 +4868,7 @@ def api_admin_set_managers():
         else:
             supabase.table("admin_settings").insert({
                 "facility_code": f_code,
-                "key": "admin_managers",
+                "key": "admin*********",
                 "value": value_json
             }).execute()
         return jsonify({"status": "success", "managers": managers})
@@ -4914,7 +4914,7 @@ def api_block_staff():
                     if existing.data:
                         supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
                     else:
-                        supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_managers", "value": value_json}).execute()
+                        supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin*********", "value": value_json}).execute()
                 except: pass
         except: pass
         supabase.table("blocked_devices").insert({
@@ -6616,3 +6616,172 @@ def api_records_apply_ai_category(record_id):
     })
 
 # cache bust 2026年 5月16日 土曜日 20時14分56秒 JST
+
+
+# ============================================================
+# Session 49: 体力測定・体重記録 (fitness_tests / body_weights)
+# ============================================================
+@app.route('/fitness')
+@login_required
+def fitness_page():
+    """体力測定・体重 記録ページ (1ページ2セクション)"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render(
+        "fitness.html",
+        patients=patients,
+        today=today,
+    )
+
+
+@app.route('/api/save_body_weight', methods=['POST'])
+@login_required
+def api_save_body_weight():
+    """体重を1件保存 (同一利用者・同一日付は upsert)"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        patient_id = str(data.get("patient_id", "")).strip()
+        user_name = data.get("user_name", "").strip()
+        measured_date = data.get("measured_date", "").strip()
+        weight_kg = data.get("weight_kg", None)
+
+        if not patient_id or not measured_date:
+            return jsonify({"status": "error",
+                            "message": "利用者と測定日は必須です"}), 400
+        if weight_kg in (None, ""):
+            return jsonify({"status": "error",
+                            "message": "体重を入力してください"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": user_name,
+            "measured_date": measured_date,
+            "weight_kg": weight_kg,
+            "note": data.get("note", ""),
+            "staff_name": my_name,
+            "updated_at": "now()",
+        }
+
+        existing = supabase.table("body_weights").select("id").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).eq(
+            "measured_date", measured_date).execute()
+
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("body_weights").update(payload).eq("id", rid).execute()
+        else:
+            res = supabase.table("body_weights").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/save_fitness_test', methods=['POST'])
+@login_required
+def api_save_fitness_test():
+    """体力測定を1件保存 (同一利用者・同一日付は upsert)。
+    各指標は入力があったものだけ保存し、空欄は None で送る。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        patient_id = str(data.get("patient_id", "")).strip()
+        user_name = data.get("user_name", "").strip()
+        measured_date = data.get("measured_date", "").strip()
+
+        if not patient_id or not measured_date:
+            return jsonify({"status": "error",
+                            "message": "利用者と測定日は必須です"}), 400
+
+        def num_or_none(v):
+            if v in (None, ""):
+                return None
+            return v
+
+        metrics = {
+            "grip_right": num_or_none(data.get("grip_right")),
+            "grip_left": num_or_none(data.get("grip_left")),
+            "standing_balance_sec": num_or_none(data.get("standing_balance_sec")),
+            "tug_sec": num_or_none(data.get("tug_sec")),
+            "walk_5m_sec": num_or_none(data.get("walk_5m_sec")),
+            "sit_stand_30sec": num_or_none(data.get("sit_stand_30sec")),
+        }
+
+        # 全項目空ならエラー (測定値が1つもないレコードは作らない)
+        if all(v is None for v in metrics.values()):
+            return jsonify({"status": "error",
+                            "message": "測定値を1つ以上入力してください"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": user_name,
+            "measured_date": measured_date,
+            "note": data.get("note", ""),
+            "staff_name": my_name,
+            "updated_at": "now()",
+        }
+        payload.update(metrics)
+
+        existing = supabase.table("fitness_tests").select("id").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).eq(
+            "measured_date", measured_date).execute()
+
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("fitness_tests").update(payload).eq("id", rid).execute()
+        else:
+            res = supabase.table("fitness_tests").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/fitness_history')
+@login_required
+def api_fitness_history():
+    """指定利用者の体重・体力測定の履歴を返す (新しい順)。
+    患者は patient_id で絞る。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        patient_id = str(request.args.get("patient_id", "")).strip()
+        if not patient_id:
+            return jsonify({"weights": [], "fitness": []})
+
+        w = supabase.table("body_weights").select(
+            "id, measured_date, weight_kg, note, staff_name"
+        ).eq("facility_code", f_code).eq(
+            "patient_id", patient_id).order(
+            "measured_date", desc=True).execute()
+
+        ft = supabase.table("fitness_tests").select(
+            "id, measured_date, grip_right, grip_left, standing_balance_sec, "
+            "tug_sec, walk_5m_sec, sit_stand_30sec, note, staff_name"
+        ).eq("facility_code", f_code).eq(
+            "patient_id", patient_id).order(
+            "measured_date", desc=True).execute()
+
+        return jsonify({
+            "weights": w.data or [],
+            "fitness": ft.data or [],
+        })
+    except Exception as e:
+        return jsonify({"weights": [], "fitness": [], "error": str(e)}), 500
+
+
