@@ -65,6 +65,86 @@
   .result-card { border:1px solid #ccc; margin-bottom:8px; break-inside:avoid; }
   .result-text { font-size:10pt; line-height:1.6; }
 }
+
+/* ===== Session 49: モニタリング報告書 印刷レイアウト ===== */
+/* 通常時は report-sheet を非表示。プレビュー時/印刷時のみ表示 */
+#report-sheet { display:none; }
+#report-sheet.preview-on {
+  display:block; max-width:760px; margin:20px auto;
+  background:#fff; border:1px solid #ccc; padding:18px 20px;
+}
+.rep-root { font-family:'Hiragino Sans','Noto Sans JP',sans-serif; color:#202124; font-size:11px; line-height:1.5; }
+.rep-head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+.rep-title { font-size:17px; font-weight:600; color:#0C447C; letter-spacing:0.04em; }
+.rep-date { font-size:10px; color:#888780; }
+.rep-date b { color:#202124; font-size:11px; font-weight:600; }
+.rep-2col { display:flex; gap:10px; margin-bottom:8px; align-items:stretch; }
+.rep-box { flex:1; border:0.5px solid #C9C7BD; border-radius:3px; padding:7px 11px; }
+.rep-box.fac { background:#FBFAF6; display:flex; align-items:center; gap:9px; }
+.rep-fac-logo { width:40px; height:40px; border-radius:4px; object-fit:contain; flex-shrink:0; background:#E6F1FB; }
+.rep-cm-office { font-size:11px; font-weight:600; }
+.rep-cm-name { font-size:11px; margin-top:3px; }
+.rep-fac-cat { font-size:9px; color:#5F5E5A; }
+.rep-fac-name { font-size:12px; font-weight:600; }
+.rep-fac-addr { font-size:9px; color:#5F5E5A; margin-top:2px; }
+.rep-user { display:flex; border:0.5px solid #C9C7BD; border-radius:3px; margin-bottom:8px; background:#F1EFE8; overflow:hidden; }
+.rep-user-main { flex:1; padding:6px 11px; display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; font-size:10px; }
+.rep-user-kana { font-size:8px; color:#888780; display:block; line-height:1.2; }
+.rep-user-name { font-size:13px; font-weight:600; color:#202124; display:block; line-height:1.2; }
+.rep-user-meta-l { color:#888780; font-size:9px; margin-right:5px; }
+.rep-user-author { min-width:96px; padding:6px 9px; border-left:0.5px solid #C9C7BD; background:#fff; display:flex; flex-direction:column; justify-content:center; }
+.rep-user-author span:first-child { color:#888780; font-size:8px; }
+.rep-user-author span:last-child { font-size:11px; font-weight:600; margin-top:2px; }
+.rep-goals { display:flex; gap:8px; margin-bottom:8px; }
+.rep-goal-col { flex:1; }
+.rep-goal-h { font-size:11px; font-weight:600; color:#0C447C; margin-bottom:4px; }
+.rep-goal-h small { font-size:9px; color:#888780; font-weight:400; }
+.rep-tbl { width:100%; border-collapse:collapse; font-size:9px; }
+.rep-tbl td { border:0.5px solid #E0E0E0; padding:4px 5px; }
+.rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
+.rep-tbl td.st { width:52px; text-align:center; color:#BA7517; font-weight:600; }
+.rep-free2 { display:flex; gap:8px; margin-bottom:8px; }
+.rep-free { flex:1; border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; }
+.rep-free-h { font-size:10px; font-weight:600; color:#04342C; margin-bottom:4px; }
+.rep-free-b { font-size:9px; line-height:1.55; white-space:pre-wrap; }
+.rep-sec-h { font-size:11px; font-weight:600; color:#0C447C; border-left:3px solid #378ADD; padding-left:7px; margin:0 0 5px; }
+.rep-mon-tbl { width:100%; border-collapse:collapse; font-size:9px; margin-bottom:8px; }
+.rep-mon-tbl td { border:0.5px solid #E0E0E0; padding:5px 7px; vertical-align:top; }
+.rep-mon-tbl td.cat { width:74px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
+.rep-fit-h { display:flex; justify-content:space-between; align-items:baseline; border-left:3px solid #1D9E75; padding-left:7px; margin-bottom:5px; }
+.rep-fit-h span:first-child { font-size:11px; font-weight:600; color:#04342C; }
+.rep-fit-h span:last-child { font-size:8px; color:#888780; }
+.rep-fit-grid { display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap; }
+.rep-fit-card { flex:1; min-width:90px; border:0.5px solid #E0E0E0; border-radius:3px; padding:4px 6px; }
+.rep-fit-card-h { font-size:8px; color:#5F5E5A; display:flex; justify-content:space-between; }
+.rep-fit-card-h b { color:#0F6E56; }
+.rep-special { border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; margin-bottom:8px; font-size:9px; }
+.rep-special b { color:#04342C; font-weight:600; }
+.rep-req { border:0.5px solid #C9C7BD; border-radius:3px; overflow:hidden; margin-bottom:6px; }
+.rep-req-top { display:flex; align-items:center; border-bottom:0.5px solid #E0E0E0; }
+.rep-req-top .l { flex:1; padding:5px 9px; font-size:9px; }
+.rep-req-top .r { padding:5px 11px; font-size:9px; border-left:0.5px solid #E0E0E0; display:flex; gap:14px; }
+.rep-req-body { display:flex; }
+.rep-req-body .l { width:96px; padding:5px 9px; font-size:9px; color:#5F5E5A; background:#FAFBFF; border-right:0.5px solid #E0E0E0; }
+.rep-req-body .r { flex:1; padding:5px 9px; font-size:9px; min-height:22px; }
+.rep-sat { display:flex; gap:8px; align-items:stretch; font-size:9px; margin-bottom:6px; }
+.rep-sat-box { border:0.5px solid #C9C7BD; border-radius:3px; padding:5px 11px; display:flex; align-items:center; gap:6px; }
+.rep-sat-box .v { font-size:13px; font-weight:600; color:#0F6E56; }
+.rep-sat-leg { flex:1; display:flex; align-items:center; justify-content:flex-end; font-size:7px; color:#B4B2A9; }
+.rep-foot { border-top:0.5px solid #E0E0E0; padding-top:6px; margin-top:8px; text-align:right; font-size:8px; color:#888780; }
+.rep-print-bar { max-width:760px; margin:12px auto; display:flex; gap:10px; align-items:center; justify-content:center; }
+.rep-print-bar select { padding:8px 10px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.85rem; }
+.rep-print-bar button { padding:9px 18px; border:none; border-radius:9px; background:#1a73e8; color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; }
+.rep-print-bar button.close { background:#9aa0a6; }
+@media print {
+  body * { visibility:hidden !important; }
+  #report-sheet, #report-sheet * { visibility:visible !important; }
+  #report-sheet { display:block !important; position:absolute; left:0; top:0; width:100%; margin:0; padding:0; border:none; }
+  .rep-print-bar, nav, .bottom-nav { display:none !important; }
+  @page { size:A4 portrait; margin:12mm; }
+  .rep-goals, .rep-free2, .rep-mon-tbl tr { break-inside:avoid; }
+}
+
 </style>
 {% endblock %}
 
@@ -157,7 +237,7 @@
     <div class="result-footer">
       <button class="btn-save" onclick="saveReport(false)">💾 下書き保存</button>
       <button class="btn-confirm" onclick="saveReport(true)">✅ 確定保存</button>
-      <button class="btn-print" onclick="window.print()">🖨 印刷</button>
+      <button class="btn-print" onclick="openReportPreview(false)">🖨 報告書プレビュー / 印刷</button>
     </div>
   </div>
 
@@ -499,4 +579,277 @@ function hideLoading() {
   document.getElementById("loading-overlay").classList.remove("active");
 }
 </script>
+<!-- ===== Session 49: モニタリング報告書 印刷シート ===== -->
+<div id="report-sheet">
+  <div class="rep-root" id="rep-root"></div>
+  <div class="rep-print-bar" id="rep-print-bar">
+    <span style="font-size:0.82rem;color:#5f6368;">作成者</span>
+    <select id="rep-author"><option value="">（選択）</option></select>
+    <button onclick="doReportPrint()">🖨 印刷 / PDF保存</button>
+    <button class="close" onclick="closeReportPreview()">閉じる</button>
+  </div>
+</div>
+
+<script>
+// ===== Session 49: モニタリング報告書 描画 =====
+function repEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function repNl(s){ return repEsc(s).replace(/\n/g,'<br>'); }
+
+// 体力測定スパークライン（入力のある指標のみ）
+function repSpark(vals){
+  var v = vals.filter(function(x){ return x!=null && x!=='' && !isNaN(x); }).map(Number);
+  if(v.length<2) return '';
+  var mn=Math.min.apply(null,v), mx=Math.max.apply(null,v), rng=(mx-mn)||1;
+  var pts=v.map(function(y,i){
+    var x=3+i*(64/(v.length-1));
+    var yy=11-((y-mn)/rng)*8;
+    return x.toFixed(0)+','+yy.toFixed(0);
+  }).join(' ');
+  return '<svg viewBox="0 0 70 13" style="width:100%;height:auto;display:block;"><polyline points="'+pts+'" fill="none" stroke="#1D9E75" stroke-width="1.8"/></svg>';
+}
+
+function repGoalRows(ev, span){
+  // span: 'short' or 'long'。要介護=ICF三軸、要支援/事業対象者=単一
+  var cls = (ev.care_classification||'');
+  var rows='';
+  if(cls==='要介護'){
+    var axes=[['機能','function'],['活動','activity'],['参加','participation']];
+    axes.forEach(function(a){
+      var goal = ev[span+'_goal_'+a[1]] || ev[a[1]+'_'+span+'_goal'] || '—';
+      var st   = ev[span+'_goal_'+a[1]+'_status'] || '—';
+      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="st">'+repEsc(st)+'</td></tr>';
+    });
+  } else {
+    var g = ev[span+'_goal_simple'] || ev[span+'_goal'] || ev.training_goal || '—';
+    var s = ev[span+'_goal_status'] || '—';
+    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="st">'+repEsc(s)+'</td></tr>';
+  }
+  return rows;
+}
+
+function repMark(v){
+  if(v==='良好'||v==='○'||v==='良い') return '○';
+  if(v==='一部課題'||v==='△'||v==='どちらともいえない') return '△';
+  if(v==='要改善'||v==='×'||v==='悪い') return '×';
+  return v ? repEsc(v) : '—';
+}
+
+function buildReport(d){
+  var p=d.patient||{}, cm=d.caremanager||{}, ev=d.evaluation||{}, mon=d.monitoring||{},
+      fac=d.facility||{}, fit=d.fitness||[], wt=d.weights||[];
+  var author = document.getElementById('rep-author');
+  var authorName = (author && author.value) || '';
+
+  // 施設ロゴ（設定あればimg、なければ枠なし）
+  var logoHtml = fac.facility_logo_url
+    ? '<img class="rep-fac-logo" src="'+fac.facility_logo_url+'">' : '';
+  // 施設住所行
+  var facAddr = [];
+  if(fac.facility_postal_code) facAddr.push('〒'+repEsc(fac.facility_postal_code));
+  if(fac.facility_address) facAddr.push(repEsc(fac.facility_address));
+  if(fac.facility_tel) facAddr.push('TEL '+repEsc(fac.facility_tel));
+  if(fac.facility_fax) facAddr.push('FAX '+repEsc(fac.facility_fax));
+
+  // モニタリング本文（カテゴリ別・記録のあるもののみ）
+  var monRows='';
+  var cats = mon.categories || mon.category_texts || null;
+  if(cats && typeof cats==='object'){
+    Object.keys(cats).forEach(function(k){
+      var t=cats[k];
+      if(t && String(t).indexOf('報告はありませんでした')===-1 && String(t).trim()!==''){
+        monRows+='<tr><td class="cat">'+repEsc(k)+'</td><td>'+repNl(t)+'</td></tr>';
+      }
+    });
+  } else if(mon.full_text || mon.report_text){
+    monRows='<tr><td class="cat">報告</td><td>'+repNl(mon.full_text||mon.report_text)+'</td></tr>';
+  }
+  if(!monRows) monRows='<tr><td class="cat">—</td><td style="color:#B4B2A9;">この月のモニタリング記録はありません</td></tr>';
+
+  // 体力測定カード（入力のある指標のみ）
+  function metric(label, key, unit){
+    var vals=fit.map(function(f){ return f[key]; });
+    var sp=repSpark(vals);
+    if(!sp) return '';
+    var nums=vals.filter(function(x){return x!=null&&x!==''&&!isNaN(x);}).map(Number);
+    var trend=nums.length?(nums[0]+'→'+nums[nums.length-1]):'';
+    return '<div class="rep-fit-card"><div class="rep-fit-card-h"><span>'+label+(unit?'('+unit+')':'')+'</span><b>'+trend+'</b></div>'+sp+'</div>';
+  }
+  var fitCards='';
+  fitCards+=metric('体重','_w','kg_dummy'); // 体重はweights側で別途
+  // 体重（body_weights）
+  var wv=wt.map(function(w){ return w.weight_kg; });
+  var wsp=repSpark(wv);
+  var wcard = wsp ? '<div class="rep-fit-card"><div class="rep-fit-card-h"><span>体重(kg)</span><b>'+(wv.filter(function(x){return x!=null;}).length?(wv[0]+'→'+wv[wv.length-1]):'')+'</b></div>'+wsp+'</div>' : '';
+  fitCards = wcard
+    + metric('握力右','grip_right','kg')
+    + metric('握力左','grip_left','kg')
+    + metric('片足立ち','standing_balance_sec','秒')
+    + metric('TUG','tug_sec','秒')
+    + metric('5m歩行','walk_5m_sec','秒')
+    + metric('立ち座り','sit_stand_30sec','回');
+  var fitBlock = fitCards
+    ? '<div class="rep-fit-h"><span>体力測定の推移</span><span>直近6ヶ月・入力のある指標のみ</span></div><div class="rep-fit-grid">'+fitCards+'</div>'
+    : '';
+
+  // 新しい希望
+  var hasReq = (ev.new_requests_exist===true||ev.new_requests_exist==='あり'||ev.new_requests_exist==='true');
+  var reqMark = hasReq
+    ? '<span style="font-weight:600;">☑ あり</span><span>□ なし</span>'
+    : '<span>□ あり</span><span style="font-weight:600;">☑ なし</span>';
+
+  var birth = p.birth_text || p.birth_date || '';
+  var html =
+  '<div class="rep-head"><div class="rep-title">モニタリング報告書／評価表</div>'+
+  '<div class="rep-date">作成日　<b>'+repEsc(d._today||'')+'</b></div></div>'+
+
+  '<div class="rep-2col">'+
+    '<div class="rep-box"><div class="rep-cm-office">'+repEsc(cm.support_office||'—')+'</div>'+
+    '<div class="rep-cm-name">'+repEsc(cm.care_manager_name||'—')+'　様</div></div>'+
+    '<div class="rep-box fac">'+logoHtml+
+      '<div><div class="rep-fac-cat">機能訓練型デイサービス</div>'+
+      '<div class="rep-fac-name">'+repEsc(fac.facility_name||'—')+'</div>'+
+      '<div class="rep-fac-addr">'+(facAddr.join('　')||'')+'</div></div></div>'+
+  '</div>'+
+
+  '<div class="rep-user"><div class="rep-user-main">'+
+    '<div><span class="rep-user-kana">'+repEsc(p.user_name_kana||p.user_kana||'')+'</span>'+
+    '<span class="rep-user-name">'+repEsc(p.user_name||p.value||'—')+'</span></div>'+
+    '<div><span class="rep-user-meta-l">生年月日</span>'+repEsc(birth)+'</div>'+
+    '<div><span class="rep-user-meta-l">要介護度</span><b>'+repEsc(cm.care_level||ev.care_classification||'—')+'</b></div>'+
+  '</div><div class="rep-user-author"><span>作成担当者</span><span>'+repEsc(authorName||'—')+'</span></div></div>'+
+
+  '<div class="rep-goals">'+
+    '<div class="rep-goal-col"><div class="rep-goal-h">【短期目標】</div>'+
+      '<table class="rep-tbl">'+repGoalRows(ev,'short')+'</table></div>'+
+    '<div class="rep-goal-col"><div class="rep-goal-h">【長期目標】</div>'+
+      '<table class="rep-tbl">'+repGoalRows(ev,'long')+'</table></div>'+
+  '</div>'+
+
+  '<div class="rep-free2">'+
+    '<div class="rep-free"><div class="rep-free-h">個別機能訓練実施による変化</div>'+
+      '<div class="rep-free-b">'+repNl(ev.changes_by_training||ev['eval-changes']||'—')+'</div></div>'+
+    '<div class="rep-free"><div class="rep-free-h">課題とその要因</div>'+
+      '<div class="rep-free-b">'+repNl(ev.issues_and_causes||ev['eval-issues']||'—')+'</div></div>'+
+  '</div>'+
+
+  '<div class="rep-sec-h">モニタリング（カテゴリ別・記録のあるもの）</div>'+
+  '<table class="rep-mon-tbl">'+monRows+'</table>'+
+
+  fitBlock+
+
+  '<div class="rep-special"><b>特記事項：</b>'+repNl(ev.special_notes||ev['eval-special-notes']||'—')+'</div>'+
+
+  '<div class="rep-req"><div class="rep-req-top"><div class="l">新しい希望や要望はあるか</div>'+
+    '<div class="r">'+reqMark+'</div></div>'+
+    '<div class="rep-req-body"><div class="l">「あり」の場合の内容</div>'+
+    '<div class="r">'+repNl(hasReq?(ev.new_requests_detail||''):'')+'</div></div></div>'+
+
+  '<div class="rep-sat">'+
+    '<div class="rep-sat-box"><span style="color:#5F5E5A;">利用者・家族の満足度</span><span class="v">'+repMark(ev.satisfaction)+'</span></div>'+
+    '<div class="rep-sat-box"><span style="color:#5F5E5A;">サービス提供内容が適切か</span><span class="v">'+repMark(ev.service_appropriateness)+'</span></div>'+
+    '<div class="rep-sat-leg">○：良好／△：一部課題／×：要改善</div>'+
+  '</div>'+
+
+  '<div class="rep-foot">TASUKARU 自動生成　'+repEsc(d._today||'')+'</div>';
+
+  document.getElementById('rep-root').innerHTML = html;
+}
+
+// サンプルデータ（プレビュー用・確定モックv6準拠）
+function reportSampleData(){
+  return {
+    _today:'令和8年3月31日',
+    patient:{ user_name:'宇井 静子', user_name_kana:'ウィ シズコ', birth_text:'昭和20年1月25日(79歳)' },
+    caremanager:{ support_office:'ウィズケアプランセンター', care_manager_name:'越野 幸恵', care_level:'要介護1' },
+    evaluation:{
+      care_classification:'要介護',
+      short_goal_function:'認知機能を維持・向上する', short_goal_function_status:'目標継続',
+      short_goal_activity:'状況に合わせた歩行ができる', short_goal_activity_status:'目標継続',
+      short_goal_participation:'状況に合わせた歩行ができる', short_goal_participation_status:'目標継続',
+      long_goal_function:'頼まれたことを覚えられる', long_goal_function_status:'目標継続',
+      long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'目標継続',
+      long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'目標継続',
+      changes_by_training:'前回の機能低下から順調に回復し、歩行速度なども改善傾向。膝を使わない歩行を癖付けている為、転倒予防も意識しながら訓練を行なう。',
+      issues_and_causes:'認知機能面は緩やかに低下。近時記憶の低下が明確に確認でき、体験した出来事が記憶に残りにくい様子。',
+      special_notes:'3/9(月)に自室で転倒し右大腿部骨折により入院。訓練は3/8(日)まで。入院により訓練は不十分にしか行なえませんでした。',
+      new_requests_exist:false, new_requests_detail:'',
+      satisfaction:'良好', service_appropriateness:'良好'
+    },
+    monitoring:{ categories:{
+      '心身状況':'下肢筋力向上・身体機能訓練・歩行訓練を継続。バイタルは安定して経過している。',
+      '訓練状況':'脳トレや集団体操を実施。指先を動かし脳への刺激を継続して行なった。',
+      'コミュニケーション':'レク・外出レクを実施。日頃の悩みや不安などの傾聴を行なった。'
+    }},
+    fitness:[
+      {measured_date:'2025-10-01',grip_right:14,tug_sec:24},
+      {measured_date:'2025-11-01',grip_right:14,tug_sec:24},
+      {measured_date:'2025-12-01',grip_right:15,tug_sec:23},
+      {measured_date:'2026-01-01',grip_right:15,tug_sec:22},
+      {measured_date:'2026-02-01',grip_right:16,tug_sec:22},
+      {measured_date:'2026-03-01',grip_right:16,tug_sec:21}
+    ],
+    weights:[
+      {measured_date:'2025-10-01',weight_kg:38},{measured_date:'2025-11-01',weight_kg:38},
+      {measured_date:'2025-12-01',weight_kg:37},{measured_date:'2026-01-01',weight_kg:37},
+      {measured_date:'2026-02-01',weight_kg:36},{measured_date:'2026-03-01',weight_kg:36}
+    ],
+    facility:{ facility_name:'ココカラプラス', facility_postal_code:'123-4567',
+      facility_address:'○○県○○市○○町1-2-3', facility_tel:'012-345-6789', facility_fax:'012-345-6780',
+      facility_logo_url:'' },
+    staff_list:['岸本 朋子','田中 一郎','佐藤 花子']
+  };
+}
+
+function fillAuthorOptions(list){
+  var sel=document.getElementById('rep-author');
+  if(!sel) return;
+  sel.innerHTML='<option value="">（選択）</option>';
+  (list||[]).forEach(function(n){
+    var o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
+  });
+}
+
+var _reportData=null;
+function openReportPreview(useSample){
+  if(useSample){
+    _reportData=reportSampleData();
+    fillAuthorOptions(_reportData.staff_list);
+    buildReport(_reportData);
+    document.getElementById('report-sheet').classList.add('preview-on');
+    return;
+  }
+  // 実データ：選択中の利用者・対象月からAPI取得
+  var uname = (window.selectedPatient && (selectedPatient.name||selectedPatient.user_name)) || '';
+  var ym = document.getElementById('target-month') ? document.getElementById('target-month').value : '';
+  if(!uname || !ym){ alert('利用者と対象月を選んでください'); return; }
+  fetch('/api/monitoring_report_data?user_name='+encodeURIComponent(uname)+'&year_month='+encodeURIComponent(ym))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.status!=='success'){ alert(d.message||'データ取得に失敗しました'); return; }
+      d._today = new Date().toLocaleDateString('ja-JP-u-ca-japanese',{era:'long',year:'numeric',month:'long',day:'numeric'});
+      _reportData=d;
+      fillAuthorOptions(d.staff_list);
+      buildReport(d);
+      document.getElementById('report-sheet').classList.add('preview-on');
+      document.getElementById('report-sheet').scrollIntoView({behavior:'smooth'});
+    })
+    .catch(function(e){ alert('通信エラー: '+e); });
+}
+function closeReportPreview(){
+  document.getElementById('report-sheet').classList.remove('preview-on');
+}
+function doReportPrint(){
+  if(_reportData) buildReport(_reportData); // 作成者選択を反映して再描画
+  window.print();
+}
+// 作成者変更時に再描画（担当者名を反映）
+document.addEventListener('change', function(e){
+  if(e.target && e.target.id==='rep-author' && _reportData) buildReport(_reportData);
+});
+// URL ?preview=1 でサンプルプレビュー自動表示
+document.addEventListener('DOMContentLoaded', function(){
+  if(location.search.indexOf('preview=1')!==-1){ openReportPreview(true); }
+});
+</script>
+
 {% endblock %}
