@@ -90,12 +90,12 @@ body.report-preview-open nav { display:none !important; }
 .rep-title { font-size:17px; font-weight:600; color:#0C447C; letter-spacing:0.04em; }
 .rep-date { font-size:10px; color:#888780; }
 .rep-date b { color:#202124; font-size:11px; font-weight:600; }
-.rep-2col { display:flex; gap:10px; margin-bottom:8px; align-items:stretch; }
-.rep-box { flex:1; border:0.5px solid #C9C7BD; border-radius:3px; padding:7px 11px; }
+.rep-2col { display:flex; gap:10px; margin-bottom:8px; align-items:stretch; min-height:72px; }
+.rep-box { flex:1; border:0.5px solid #C9C7BD; border-radius:4px; padding:12px 16px; }
 .rep-box.fac { background:#FBFAF6; display:flex; align-items:center; gap:9px; }
 .rep-fac-logo { width:40px; height:40px; border-radius:4px; object-fit:contain; flex-shrink:0; background:#E6F1FB; }
-.rep-cm-office { font-size:13px; font-weight:700; color:#202124; }
-.rep-cm-name { font-size:12px; font-weight:600; margin-top:4px; color:#202124; }
+.rep-cm-office { font-size:15px; font-weight:700; color:#202124; border-left:3px solid #1a73e8; padding-left:8px; }
+.rep-cm-name { font-size:13px; font-weight:600; margin-top:6px; color:#202124; padding-left:11px; }
 .rep-fac-cat { font-size:9px; color:#5F5E5A; }
 .rep-fac-name { font-size:12px; font-weight:600; }
 .rep-fac-addr { font-size:9px; color:#5F5E5A; margin-top:2px; }
@@ -827,16 +827,14 @@ function reportSampleData(){
     caremanager:{ support_office:'ウィズケアプランセンター', care_manager_name:'越野 幸恵', care_level:'要介護1' },
     evaluation:{
       care_classification:'要介護',
+      training_goal:'歩行器を使って安全に廊下を往復できる（新目標）',
       short_goal_function:'認知機能を維持・向上する', short_goal_function_status:'目標継続',
       short_goal_activity:'状況に合わせた歩行ができる', short_goal_activity_status:'目標継続',
       short_goal_participation:'状況に合わせた歩行ができる', short_goal_participation_status:'目標継続',
       long_goal_function:'頼まれたことを覚えられる', long_goal_function_status:'一部達成',
       long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'達成',
       long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'未達成',
-      short_goal_function_cont:'継続', short_goal_activity_cont:'継続', short_goal_participation_cont:'継続',
-      long_goal_function_cont:'変更', long_goal_function_new:'転倒なく安全に歩行できる',
-      long_goal_activity_cont:'継続', long_goal_participation_cont:'変更',
-      long_goal_participation_new:'週1回以上のレクに自ら参加できる',
+
       changes_by_training:'前月からの継続的な訓練により、下肢筋力の回復が顕著に見られ、歩行速度・歩幅ともに改善傾向にある。膝関節への負担を軽減した正しい歩行フォームの定着を目指し、平行棒・歩行器を用いた反復練習を実施。バランス能力の向上も確認でき、立ち上がり動作が安定してきた。引き続き転倒予防を意識した訓練を継続する。',
       issues_and_causes:'認知機能面では近時記憶の低下が継続しており、当日の訓練内容や出来事を後から思い出すことが困難な場面が増えている。日課表や写真カードを活用した見当識訓練を導入したが、日によって反応のばらつきがある。意欲・情動面は比較的安定しているため、本人のペースに合わせた関わりと、脳活性化を意識した訓練メニューの工夫を継続する必要がある。',
       special_notes:'3/9(月)に自室で転倒し右大腿部骨折により入院。訓練は3/8(日)まで。入院により訓練は不十分にしか行なえませんでした。',
