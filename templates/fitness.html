@@ -15,6 +15,13 @@
   font-size:0.92rem; background:#fff; box-sizing:border-box;
 }
 .fit-row input:focus, .fit-row select:focus { outline:none; border-color:#1a73e8; }
+.fit-row input[type="date"] {
+  -webkit-appearance:none; appearance:none;
+  text-align:left; min-width:0; max-width:100%;
+  display:block; line-height:1.2;
+}
+.fit-row input[type="date"]::-webkit-date-and-time-value { text-align:left; }
+.fit-row input[type="date"]::-webkit-calendar-picker-indicator { margin-left:auto; }
 .fit-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }
 .fit-grid2 .fit-row { margin-bottom:0; }
 .fit-grid2 .fit-row input { width:100%; box-sizing:border-box; }
