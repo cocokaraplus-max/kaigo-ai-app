@@ -661,31 +661,44 @@ function repContCls(c){
   return '';
 }
 function repGoalRows(ev, span){
-  // span: 'short' or 'long'。要介護=ICF三軸、要支援/事業対象者=単一
-  var cls = (ev.care_classification||'');
-  var rows='';
+  // 列順: 軸名 | 目標テキスト | 継続/変更 | 達成度
+  // cont: training_goal 有無で全軸共通判定
+  var cls  = (ev.care_classification||'');
+  var cont = ev.training_goal ? '変更' : '継続';
+  var newg = ev.training_goal || '';
+  var rows = '';
   if(cls==='要介護'){
     var axes=[['機能','function'],['活動','activity'],['参加','participation']];
     axes.forEach(function(a){
       var goal = ev[span+'_goal_'+a[1]] || '—';
       var st   = ev[span+'_goal_'+a[1]+'_status'] || '—';
-      var cont = ev[span+'_goal_'+a[1]+'_cont'] || '';
-      var newg = ev[span+'_goal_'+a[1]+'_new'] || '';
-      var contCell = cont ? '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>' : '<td class="rep-tbl-cont"></td>';
-      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="'+repStCls(st)+'">'+repEsc(st)+'</td>'+contCell+'</tr>';
-      if(cont==='変更' && newg){
-        rows+='<tr><td class="k" style="color:#e37400;">↳新</td><td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td></tr>';
-      }
+      rows += '<tr>'
+        + '<td class="k">'+a[0]+'</td>'
+        + '<td>'+repEsc(goal)+'</td>'
+        + '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>'
+        + '<td class="'+repStCls(st)+'">'+repEsc(st)+'</td>'
+        + '</tr>';
     });
-  } else {
-    var g = ev[span+'_goal_simple'] || ev[span+'_goal'] || ev.training_goal || '—';
-    var s = ev[span+'_goal_status'] || '—';
-    var cont = ev[span+'_goal_cont'] || '';
-    var newg = ev[span+'_goal_new'] || '';
-    var contCell = cont ? '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>' : '<td class="rep-tbl-cont"></td>';
-    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="'+repStCls(s)+'">'+repEsc(s)+'</td>'+contCell+'</tr>';
     if(cont==='変更' && newg){
-      rows+='<tr><td class="k" style="color:#e37400;">↳新</td><td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td></tr>';
+      rows += '<tr>'
+        + '<td class="k" style="color:#e37400;font-size:8px;">↳新目標</td>'
+        + '<td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td>'
+        + '</tr>';
+    }
+  } else {
+    var g = ev[span+'_goal_simple'] || ev[span+'_goal'] || '—';
+    var s = ev[span+'_goal_status'] || '—';
+    rows = '<tr>'
+      + '<td class="k">目標</td>'
+      + '<td>'+repEsc(g)+'</td>'
+      + '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>'
+      + '<td class="'+repStCls(s)+'">'+repEsc(s)+'</td>'
+      + '</tr>';
+    if(cont==='変更' && newg){
+      rows += '<tr>'
+        + '<td class="k" style="color:#e37400;font-size:8px;">↳新目標</td>'
+        + '<td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td>'
+        + '</tr>';
     }
   }
   return rows;
