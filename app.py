@@ -6812,3 +6812,72 @@ def api_fitness_history():
         return jsonify({"weights": [], "fitness": [], "error": str(e)}), 500
 
 
+
+
+# ============================================================
+# Session 49: 施設情報（住所・電話・ロゴ）取得/保存
+# 報告書印刷の施設欄に自動反映される
+# ============================================================
+@app.route('/api/admin/facility_info')
+@login_required
+def api_admin_facility_info():
+    """現在の施設情報を返す（管理者MENU施設情報セクション用）"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("facilities").select(
+            "facility_name, facility_postal_code, facility_address, "
+            "facility_tel, facility_fax, facility_logo_url"
+        ).eq("facility_code", f_code).execute()
+
+        if res.data:
+            d = res.data[0]
+            return jsonify({
+                "status": "success",
+                "facility_name": d.get("facility_name") or "",
+                "facility_postal_code": d.get("facility_postal_code") or "",
+                "facility_address": d.get("facility_address") or "",
+                "facility_tel": d.get("facility_tel") or "",
+                "facility_fax": d.get("facility_fax") or "",
+                "facility_logo_url": d.get("facility_logo_url") or "",
+            })
+        return jsonify({"status": "success",
+                        "facility_name": "", "facility_postal_code": "",
+                        "facility_address": "", "facility_tel": "",
+                        "facility_fax": "", "facility_logo_url": ""})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/save_facility_info', methods=['POST'])
+@login_required
+def api_admin_save_facility_info():
+    """施設情報を保存（住所・電話・FAX・郵便番号・ロゴ）。
+    施設名は変更しない（登録済みのものを使用）。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+
+        # ロゴはBase64データURL想定。サイズ上限を設けて肥大を防ぐ
+        logo = data.get("facility_logo_url", "")
+        if logo and len(logo) > 1_500_000:  # 約1.5MB（Base64文字列長）
+            return jsonify({"status": "error",
+                            "message": "ロゴ画像が大きすぎます（2MB以下の画像にしてください）"}), 400
+
+        payload = {
+            "facility_postal_code": str(data.get("facility_postal_code", "")).strip(),
+            "facility_address": str(data.get("facility_address", "")).strip(),
+            "facility_tel": str(data.get("facility_tel", "")).strip(),
+            "facility_fax": str(data.get("facility_fax", "")).strip(),
+        }
+        # ロゴは送られてきた時だけ更新（空送信で既存ロゴを消さない配慮）
+        if "facility_logo_url" in data:
+            payload["facility_logo_url"] = logo
+
+        supabase.table("facilities").update(payload).eq(
+            "facility_code", f_code).execute()
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

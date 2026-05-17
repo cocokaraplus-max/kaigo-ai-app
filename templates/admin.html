@@ -442,7 +442,7 @@
     document.getElementById('auth-mode').value = type;
     var isAdmin = type === 'admin';
     document.getElementById('auth-pw-label').textContent   = isAdmin ? '管理者パスワード' : '開発者パスワード';
-    document.getElementById('auth-submit-btn').className   = 'btn btn-primary ' + (isAdmin ? 'auth-submit-admin' : 'auth-submit-dev');
+    document.getElementById('auth-submit-btn').className   = 'btn btn-primary ' + (isAdmin ? 'auth-submit-admin': 'auth-**********');
     document.getElementById('auth-submit-label').textContent = isAdmin ? '管理者MENUへ' : '開発者MENUへ';
     document.getElementById('auth-pw-input').placeholder   = isAdmin ? 'パスワードを入力' : '開発者パスワードを入力';
   };
@@ -877,6 +877,57 @@
 {# ==================== 設定タブ ==================== #}
 <div class="tab-panel" id="tab-settings">
 
+  {# ---- 施設情報（報告書に印刷される） ---- #}
+  <div class="section-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">apartment</span>施設情報（モニタリング報告書に印刷されます）
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">施設名</label>
+      <input type="text" id="fac-name" class="form-control" readonly
+        style="background:#f1f3f4;color:#5f6368;" placeholder="（登録済み）">
+      <div style="font-size:0.74rem;color:#9aa0a6;margin-top:3px;">※ 施設名の変更は運営者にご連絡ください</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">郵便番号</label>
+      <input type="text" id="fac-postal" class="form-control" placeholder="例: 471-0832">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">住所</label>
+      <input type="text" id="fac-address" class="form-control" placeholder="例: 愛知県豊田市丸山町7丁目49番地6">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">電話番号</label>
+      <input type="text" id="fac-tel" class="form-control" placeholder="例: 0565-41-7804">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">FAX番号</label>
+      <input type="text" id="fac-fax" class="form-control" placeholder="例: 0565-41-7814">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-size:0.8rem;color:#5f6368;">施設ロゴ（任意）</label>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <div id="fac-logo-preview"
+          style="width:64px;height:64px;border:1.5px dashed #c9c7bd;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#b4b2a9;font-size:0.7rem;text-align:center;overflow:hidden;flex-shrink:0;">
+          なし
+        </div>
+        <div style="flex:1;">
+          <input type="file" id="fac-logo-file" accept="image/png,image/jpeg"
+            onchange="onFacilityLogoSelected(event)" style="font-size:0.82rem;">
+          <div style="font-size:0.74rem;color:#9aa0a6;margin-top:4px;">PNG / JPG・2MBまで。未設定なら報告書にロゴは出ません。</div>
+          <button type="button" onclick="clearFacilityLogo()"
+            style="margin-top:6px;font-size:0.76rem;padding:5px 10px;border:1px solid #e0e0e0;border-radius:7px;background:#fff;color:#5f6368;cursor:pointer;">
+            ロゴを削除
+          </button>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="saveFacilityInfo()">
+      <span class="material-symbols-outlined">save</span>施設情報を保存
+    </button>
+    <div id="fac-msg" style="font-size:0.82rem;text-align:center;margin-top:8px;min-height:18px;"></div>
+  </div>
+
   {# ---- パスワード変更 ---- #}
   <div class="section-box">
     <div class="section-box-title">
@@ -1035,6 +1086,99 @@
 const SUPABASE_URL  = '{{ supabase_url }}';
 const SUPABASE_KEY  = '{{ supabase_anon_key }}';
 const FACILITY_CODE = '{{ session.facility_code }}';
+
+// ========================================
+// Session 49: 施設情報（住所・電話・ロゴ）
+// ========================================
+let _facLogoData = null;  // null=変更なし, ''=削除, 'data:image...'=新規
+
+async function loadFacilityInfo() {
+  try {
+    const r = await fetch('/api/admin/facility_info');
+    const j = await r.json();
+    if (j.status !== 'success') return;
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+    set('fac-name', j.facility_name);
+    set('fac-postal', j.facility_postal_code);
+    set('fac-address', j.facility_address);
+    set('fac-tel', j.facility_tel);
+    set('fac-fax', j.facility_fax);
+    const prev = document.getElementById('fac-logo-preview');
+    if (prev) {
+      if (j.facility_logo_url) {
+        prev.innerHTML = '<img src="' + j.facility_logo_url +
+          '" style="width:100%;height:100%;object-fit:contain;">';
+      } else {
+        prev.textContent = 'なし';
+      }
+    }
+    _facLogoData = null;
+  } catch (e) { /* セクション未表示時など無視 */ }
+}
+
+function onFacilityLogoSelected(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    alert('画像が大きすぎます（2MB以下にしてください）');
+    ev.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    _facLogoData = e.target.result;  // data:image/...;base64,xxxx
+    const prev = document.getElementById('fac-logo-preview');
+    if (prev) prev.innerHTML = '<img src="' + _facLogoData +
+      '" style="width:100%;height:100%;object-fit:contain;">';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearFacilityLogo() {
+  _facLogoData = '';
+  const prev = document.getElementById('fac-logo-preview');
+  if (prev) prev.textContent = 'なし';
+  const f = document.getElementById('fac-logo-file');
+  if (f) f.value = '';
+}
+
+async function saveFacilityInfo() {
+  const msg = document.getElementById('fac-msg');
+  const payload = {
+    facility_postal_code: document.getElementById('fac-postal').value.trim(),
+    facility_address: document.getElementById('fac-address').value.trim(),
+    facility_tel: document.getElementById('fac-tel').value.trim(),
+    facility_fax: document.getElementById('fac-fax').value.trim(),
+  };
+  // _facLogoData: null=変更なし(送らない), ''=削除, 'data:...'=新規
+  if (_facLogoData !== null) {
+    payload.facility_logo_url = _facLogoData;
+  }
+  try {
+    const r = await fetch('/api/admin/save_facility_info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json();
+    if (j.status === 'success') {
+      msg.textContent = '施設情報を保存しました';
+      msg.style.color = '#0F6E56';
+      _facLogoData = null;
+    } else {
+      msg.textContent = j.message || '保存に失敗しました';
+      msg.style.color = '#c5221f';
+    }
+  } catch (e) {
+    msg.textContent = '通信エラー: ' + e;
+    msg.style.color = '#c5221f';
+  }
+}
+
+// 設定タブ表示時／ページ読込時に施設情報を取得
+document.addEventListener('DOMContentLoaded', function () {
+  if (document.getElementById('fac-name')) loadFacilityInfo();
+});
 
 // ---- patient_profiles 新規登録 ----
 async function addPatientProfile() {
