@@ -192,6 +192,13 @@
 }
 .eval-segment-btn.active.danger { background: #ea4335; box-shadow: 0 2px 6px rgba(234,67,53,0.3); }
 .eval-segment-btn.active.cont { background: #e37400; box-shadow: 0 2px 6px rgba(227,116,0,0.3); }
+.eval-cont-row { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.eval-cont-label { font-size:0.75rem; color:#5f6368; font-weight:600; min-width:50px; }
+.eval-cont-btn { padding:5px 14px; border-radius:7px; font-size:0.78rem; font-weight:700; border:1.5px solid #e0e0e0; background:#fff; color:#5f6368; cursor:pointer; transition:all .15s; }
+.eval-cont-btn.active.cont-keep { border-color:#1a73e8; background:#e8f0fe; color:#1a73e8; }
+.eval-cont-btn.active.cont-change { border-color:#e37400; background:#fff8e7; color:#e37400; }
+.eval-new-goal { margin-top:6px; width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #e37400; font-size:0.85rem; background:#fff8e7; box-sizing:border-box; resize:vertical; min-height:56px; display:none; }
+.eval-new-goal.show { display:block; }
 .eval-segment-btn.active.warn { background: #fbbc04; color: #202124; box-shadow: 0 2px 6px rgba(251,188,4,0.3); }
 .eval-segment-btn.active.success { background: #34a853; box-shadow: 0 2px 6px rgba(52,168,83,0.3); }
 
@@ -856,6 +863,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-function" value="">
+                            <input type="hidden" id="eval-short-function-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-short-function-cont', 'eval-short-function-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-short-function-cont', 'eval-short-function-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-short-function-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                         <div class="eval-icf-row">
                             <div class="eval-icf-row-label">活動(日常生活動作)</div>
@@ -878,6 +899,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-activity" value="">
+                            <input type="hidden" id="eval-short-activity-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-short-activity-cont', 'eval-short-activity-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-short-activity-cont', 'eval-short-activity-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-short-activity-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                         <div class="eval-icf-row">
                             <div class="eval-icf-row-label">参加(社会参加)</div>
@@ -900,6 +935,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-participation" value="">
+                            <input type="hidden" id="eval-short-participation-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-short-participation-cont', 'eval-short-participation-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-short-participation-cont', 'eval-short-participation-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-short-participation-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                     </div>
                     <div class="eval-icf-block">
@@ -925,6 +974,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-function" value="">
+                            <input type="hidden" id="eval-long-function-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-long-function-cont', 'eval-long-function-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-long-function-cont', 'eval-long-function-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-long-function-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                         <div class="eval-icf-row">
                             <div class="eval-icf-row-label">活動(日常生活動作)</div>
@@ -947,6 +1010,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-activity" value="">
+                            <input type="hidden" id="eval-long-activity-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-long-activity-cont', 'eval-long-activity-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-long-activity-cont', 'eval-long-activity-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-long-activity-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                         <div class="eval-icf-row">
                             <div class="eval-icf-row-label">参加(社会参加)</div>
@@ -969,6 +1046,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-participation" value="">
+                            <input type="hidden" id="eval-long-participation-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-long-participation-cont', 'eval-long-participation-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-long-participation-cont', 'eval-long-participation-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-long-participation-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                         </div>
                     </div>
                 </div>
@@ -996,6 +1087,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-goal-simple" value="">
+                            <input type="hidden" id="eval-short-goal-simple-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-short-goal-simple-cont', 'eval-short-goal-simple-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-short-goal-simple-cont', 'eval-short-goal-simple-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-short-goal-simple-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                     </div>
                     <div class="eval-icf-row" style="margin-top:14px;">
                         <div class="eval-icf-row-label">🎯 長期目標</div>
@@ -1018,6 +1123,20 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-goal-simple" value="">
+                            <input type="hidden" id="eval-long-goal-simple-cont" value="">
+                            <div class="eval-cont-row">
+                                <span class="eval-cont-label">目標</span>
+                                <button type="button" class="eval-cont-btn" data-value="継続"
+                                    onclick="evalSelectCont('eval-long-goal-simple-cont', 'eval-long-goal-simple-new', '継続')">
+                                    継続
+                                </button>
+                                <button type="button" class="eval-cont-btn" data-value="変更"
+                                    onclick="evalSelectCont('eval-long-goal-simple-cont', 'eval-long-goal-simple-new', '変更')">
+                                    変更
+                                </button>
+                            </div>
+                            <textarea id="eval-long-goal-simple-new" class="eval-new-goal"
+                                placeholder="新規目標を入力してください"></textarea>
                     </div>
                 </div>
 
@@ -1895,9 +2014,38 @@ function evalCollectFormData() {
         data.long_goal_function_status = document.getElementById('eval-long-function').value || null;
         data.long_goal_activity_status = document.getElementById('eval-long-activity').value || null;
         data.long_goal_participation_status = document.getElementById('eval-long-participation').value || null;
+        // 継続/変更
+        const kaigoContFields = [
+            ['short_goal_function_cont','eval-short-function-cont'],
+            ['short_goal_function_new','eval-short-function-new'],
+            ['short_goal_activity_cont','eval-short-activity-cont'],
+            ['short_goal_activity_new','eval-short-activity-new'],
+            ['short_goal_participation_cont','eval-short-participation-cont'],
+            ['short_goal_participation_new','eval-short-participation-new'],
+            ['long_goal_function_cont','eval-long-function-cont'],
+            ['long_goal_function_new','eval-long-function-new'],
+            ['long_goal_activity_cont','eval-long-activity-cont'],
+            ['long_goal_activity_new','eval-long-activity-new'],
+            ['long_goal_participation_cont','eval-long-participation-cont'],
+            ['long_goal_participation_new','eval-long-participation-new'],
+        ];
+        kaigoContFields.forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (el) data[key] = el.value || null;
+        });
     } else if (data.care_classification === '要支援' || data.care_classification === '事業対象者') {
         data.short_goal_status = document.getElementById('eval-short-goal-simple').value || null;
         data.long_goal_status = document.getElementById('eval-long-goal-simple').value || null;
+        const simpleContFields = [
+            ['short_goal_cont','eval-short-goal-simple-cont'],
+            ['short_goal_new','eval-short-goal-simple-new'],
+            ['long_goal_cont','eval-long-goal-simple-cont'],
+            ['long_goal_new','eval-long-goal-simple-new'],
+        ];
+        simpleContFields.forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (el) data[key] = el.value || null;
+        });
     }
     return data;
 }
@@ -1928,6 +2076,24 @@ function evalFillForm(ev) {
      ['eval-long-goal-simple', ev.long_goal_status],
     ].forEach(([id, val]) => {
         if (val) evalSelectSegment(id, val);
+    });
+
+    // 継続/変更復元
+    const contPairs = [
+        ['eval-short-function-cont', ev.short_goal_function_cont, 'eval-short-function-new'],
+        ['eval-short-activity-cont', ev.short_goal_activity_cont, 'eval-short-activity-new'],
+        ['eval-short-participation-cont', ev.short_goal_participation_cont, 'eval-short-participation-new'],
+        ['eval-long-function-cont', ev.long_goal_function_cont, 'eval-long-function-new'],
+        ['eval-long-activity-cont', ev.long_goal_activity_cont, 'eval-long-activity-new'],
+        ['eval-long-participation-cont', ev.long_goal_participation_cont, 'eval-long-participation-new'],
+        ['eval-short-goal-simple-cont', ev.short_goal_cont, 'eval-short-goal-simple-new'],
+        ['eval-long-goal-simple-cont', ev.long_goal_cont, 'eval-long-goal-simple-new'],
+    ];
+    contPairs.forEach(([contId, contVal, newId]) => {
+        if (contVal) evalSelectCont(contId, newId, contVal);
+        const newEl = document.getElementById(newId);
+        const newVal = ev[newId.replace('eval-','').replace(/-/g,'_').replace('_new','_new')] || '';
+        if (newEl && newVal) { newEl.value = newVal; if (contVal==='変更') newEl.classList.add('show'); }
     });
 
     evalUpdateStatus();

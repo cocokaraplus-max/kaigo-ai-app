@@ -116,6 +116,9 @@ body.report-preview-open nav { display:none !important; }
 .rep-tbl td { border:0.5px solid #E0E0E0; padding:4px 5px; }
 .rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
 .rep-tbl td.st { width:58px; text-align:center; font-weight:700; font-size:9px; }
+.rep-tbl-cont { width:38px; text-align:center; font-size:9px; font-weight:700; border-radius:3px; }
+.rep-tbl-cont.cont-keep { color:#1a73e8; background:#e8f0fe; }
+.rep-tbl-cont.cont-chg  { color:#e37400; background:#fff8e7; }
 .rep-tbl td.st-cont  { color:#BA7517; background:#FFF8E7; }
 .rep-tbl td.st-done  { color:#1a7a3c; background:#E6F4EA; }
 .rep-tbl td.st-part  { color:#1a55a8; background:#E8F0FE; }
@@ -652,6 +655,11 @@ function repStCls(st){
   if(st==='目標継続') return 'st st-cont';
   return 'st st-other';
 }
+function repContCls(c){
+  if(c==='継続') return 'cont-keep';
+  if(c==='変更') return 'cont-chg';
+  return '';
+}
 function repGoalRows(ev, span){
   // span: 'short' or 'long'。要介護=ICF三軸、要支援/事業対象者=単一
   var cls = (ev.care_classification||'');
@@ -659,14 +667,26 @@ function repGoalRows(ev, span){
   if(cls==='要介護'){
     var axes=[['機能','function'],['活動','activity'],['参加','participation']];
     axes.forEach(function(a){
-      var goal = ev[span+'_goal_'+a[1]] || ev[a[1]+'_'+span+'_goal'] || '—';
+      var goal = ev[span+'_goal_'+a[1]] || '—';
       var st   = ev[span+'_goal_'+a[1]+'_status'] || '—';
-      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="'+repStCls(st)+'">'+repEsc(st)+'</td></tr>';
+      var cont = ev[span+'_goal_'+a[1]+'_cont'] || '';
+      var newg = ev[span+'_goal_'+a[1]+'_new'] || '';
+      var contCell = cont ? '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>' : '<td class="rep-tbl-cont"></td>';
+      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="'+repStCls(st)+'">'+repEsc(st)+'</td>'+contCell+'</tr>';
+      if(cont==='変更' && newg){
+        rows+='<tr><td class="k" style="color:#e37400;">↳新</td><td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td></tr>';
+      }
     });
   } else {
     var g = ev[span+'_goal_simple'] || ev[span+'_goal'] || ev.training_goal || '—';
     var s = ev[span+'_goal_status'] || '—';
-    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="'+repStCls(s)+'">'+repEsc(s)+'</td></tr>';
+    var cont = ev[span+'_goal_cont'] || '';
+    var newg = ev[span+'_goal_new'] || '';
+    var contCell = cont ? '<td class="rep-tbl-cont '+repContCls(cont)+'">'+repEsc(cont)+'</td>' : '<td class="rep-tbl-cont"></td>';
+    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="'+repStCls(s)+'">'+repEsc(s)+'</td>'+contCell+'</tr>';
+    if(cont==='変更' && newg){
+      rows+='<tr><td class="k" style="color:#e37400;">↳新</td><td colspan="3" style="color:#e37400;font-weight:600;">'+repEsc(newg)+'</td></tr>';
+    }
   }
   return rows;
 }
@@ -813,6 +833,10 @@ function reportSampleData(){
       long_goal_function:'頼まれたことを覚えられる', long_goal_function_status:'一部達成',
       long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'達成',
       long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'未達成',
+      short_goal_function_cont:'継続', short_goal_activity_cont:'継続', short_goal_participation_cont:'継続',
+      long_goal_function_cont:'変更', long_goal_function_new:'転倒なく安全に歩行できる',
+      long_goal_activity_cont:'継続', long_goal_participation_cont:'変更',
+      long_goal_participation_new:'週1回以上のレクに自ら参加できる',
       changes_by_training:'前月からの継続的な訓練により、下肢筋力の回復が顕著に見られ、歩行速度・歩幅ともに改善傾向にある。膝関節への負担を軽減した正しい歩行フォームの定着を目指し、平行棒・歩行器を用いた反復練習を実施。バランス能力の向上も確認でき、立ち上がり動作が安定してきた。引き続き転倒予防を意識した訓練を継続する。',
       issues_and_causes:'認知機能面では近時記憶の低下が継続しており、当日の訓練内容や出来事を後から思い出すことが困難な場面が増えている。日課表や写真カードを活用した見当識訓練を導入したが、日によって反応のばらつきがある。意欲・情動面は比較的安定しているため、本人のペースに合わせた関わりと、脳活性化を意識した訓練メニューの工夫を継続する必要がある。',
       special_notes:'3/9(月)に自室で転倒し右大腿部骨折により入院。訓練は3/8(日)まで。入院により訓練は不十分にしか行なえませんでした。',
