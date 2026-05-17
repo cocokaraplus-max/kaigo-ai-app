@@ -99,11 +99,12 @@ body.report-preview-open nav { display:none !important; }
 .rep-fac-cat { font-size:9px; color:#5F5E5A; }
 .rep-fac-name { font-size:12px; font-weight:600; }
 .rep-fac-addr { font-size:9px; color:#5F5E5A; margin-top:2px; }
-.rep-user { display:flex; border:0.5px solid #C9C7BD; border-radius:3px; margin-bottom:8px; background:#F1EFE8; overflow:hidden; }
+.rep-user { display:flex; border: 2px solid #1a73e8; border-radius:3px; margin-bottom:8px; background: #e8f0fe; overflow:hidden; }
 .rep-user-main { flex:1; padding:6px 11px; display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; font-size:10px; }
 .rep-user-kana { font-size:8px; color:#888780; display:block; line-height:1.2; }
 .rep-user-name { font-size:13px; font-weight:600; color:#202124; display:block; line-height:1.2; }
 .rep-user-meta-l { color:#888780; font-size:9px; margin-right:5px; }
+        .rep-care-badge { display: inline-block; border: 1.5px solid #1a73e8; color: #1a73e8; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 7px; margin-left: 2px; }
 .rep-user-author { min-width:96px; padding:6px 9px; border-left:0.5px solid #C9C7BD; background:#fff; display:flex; flex-direction:column; justify-content:center; }
 .rep-user-author span:first-child { color:#888780; font-size:8px; }
 .rep-user-author span:last-child { font-size:11px; font-weight:600; margin-top:2px; }
@@ -730,7 +731,7 @@ function buildReport(d){
     '<div><span class="rep-user-kana">'+repEsc(p.user_name_kana||p.user_kana||'')+'</span>'+
     '<span class="rep-user-name">'+repEsc(p.user_name||p.value||'—')+'</span></div>'+
     '<div><span class="rep-user-meta-l">生年月日</span>'+repEsc(birth)+'</div>'+
-    '<div><span class="rep-user-meta-l">要介護度</span><b>'+repEsc(cm.care_level||ev.care_classification||'—')+'</b></div>'+
+    '<div><b class="rep-care-badge">'+repEsc(cm.care_level||ev.care_classification||'—')+'</b></div>'+
   '</div><div class="rep-user-author"><span>作成担当者</span><span>'+repEsc(authorName||'—')+'</span></div></div>'+
 
   '<div class="rep-goals">'+
@@ -784,16 +785,16 @@ function reportSampleData(){
       long_goal_function:'頼まれたことを覚えられる', long_goal_function_status:'目標継続',
       long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'目標継続',
       long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'目標継続',
-      changes_by_training:'前回の機能低下から順調に回復し、歩行速度なども改善傾向。膝を使わない歩行を癖付けている為、転倒予防も意識しながら訓練を行なう。',
-      issues_and_causes:'認知機能面は緩やかに低下。近時記憶の低下が明確に確認でき、体験した出来事が記憶に残りにくい様子。',
+      changes_by_training:'前月からの継続的な訓練により、下肢筋力の回復が顕著に見られ、歩行速度・歩幅ともに改善傾向にある。膝関節への負担を軽減した正しい歩行フォームの定着を目指し、平行棒・歩行器を用いた反復練習を実施。バランス能力の向上も確認でき、立ち上がり動作が安定してきた。引き続き転倒予防を意識した訓練を継続する。',
+      issues_and_causes:'認知機能面では近時記憶の低下が継続しており、当日の訓練内容や出来事を後から思い出すことが困難な場面が増えている。日課表や写真カードを活用した見当識訓練を導入したが、日によって反応のばらつきがある。意欲・情動面は比較的安定しているため、本人のペースに合わせた関わりと、脳活性化を意識した訓練メニューの工夫を継続する必要がある。',
       special_notes:'3/9(月)に自室で転倒し右大腿部骨折により入院。訓練は3/8(日)まで。入院により訓練は不十分にしか行なえませんでした。',
       new_requests_exist:false, new_requests_detail:'',
       satisfaction:'良好', service_appropriateness:'良好'
     },
     monitoring:{ categories:{
-      '心身状況':'下肢筋力向上・身体機能訓練・歩行訓練を継続。バイタルは安定して経過している。',
-      '訓練状況':'脳トレや集団体操を実施。指先を動かし脳への刺激を継続して行なった。',
-      'コミュニケーション':'レク・外出レクを実施。日頃の悩みや不安などの傾聴を行なった。'
+      '心身状況':'下肢筋力向上を目的とした個別訓練・身体機能訓練・歩行訓練を継続して実施した。血圧・脈拍・体温・SpO2ともに安定した値で経過しており、体調不良による欠席はなし。体重はやや減少傾向にあるため、栄養面での経過観察を継続する。',
+      '訓練状況':'脳活性化を目的とした計算ドリル・パズル・書字訓練を週3回実施。集団体操では指先・上肢・体幹の協調運動を取り入れ、参加意欲も高く継続できている。個別訓練では歩行訓練に加え、起立着座の反復動作を通じて下肢・体幹の筋力維持を図った。',
+      'コミュニケーション':'月2回の外出レクリエーションに参加し、社会参加意欲の維持に繋がっている。日常会話は良好で他利用者との交流も積極的。日頃感じている不安（家族への心配、体調への懸念）について傾聴の場を設け、精神的な安定を支援した。表情は穏やかで情緒は安定している。'
     }},
     fitness:[
       {measured_date:'2025-10-01',grip_right:14,tug_sec:24},
