@@ -116,12 +116,12 @@ body.report-preview-open nav { display:none !important; }
 .rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
 .rep-tbl td.st { width:52px; text-align:center; color:#BA7517; font-weight:600; }
 .rep-free2 { display:flex; gap:8px; margin-bottom:8px; }
-.rep-free { flex:1; border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; }
-.rep-free-h { font-size: 11px; font-weight:600; color:#04342C; margin-bottom:4px; }
+.rep-free { flex:1; border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; min-height: 80px; }
+.rep-free-h { font-size: 11px; font-weight: 600; color: #0c447c; border-left: 3px solid #378add; padding-left: 7px; margin: 0 0 5px; }
 .rep-free-b { font-size: 11px; line-height:1.55; white-space:pre-wrap; }
 .rep-sec-h { font-size:11px; font-weight:600; color:#0C447C; border-left:3px solid #378ADD; padding-left:7px; margin:0 0 5px; }
 .rep-mon-tbl { width:100%; border-collapse:collapse; font-size:9px; margin-bottom:8px; }
-.rep-mon-tbl td { border:0.5px solid #E0E0E0; padding:5px 7px; vertical-align:top; }
+.rep-mon-tbl td { border:0.5px solid #E0E0E0; padding:5px 7px; vertical-align:top; min-height: 72px; }
 .rep-mon-tbl td.cat { width:74px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
 .rep-fit-h { display:flex; justify-content:space-between; align-items:baseline; border-left:3px solid #1D9E75; padding-left:7px; margin-bottom:5px; }
 .rep-fit-h span:first-child { font-size:11px; font-weight:600; color:#04342C; }
@@ -144,7 +144,7 @@ body.report-preview-open nav { display:none !important; }
 .rep-sat-box .v { font-size:13px; font-weight:600; color:#0F6E56; }
 .rep-sat-leg { flex:1; display:flex; align-items:center; justify-content:flex-end; font-size:7px; color:#B4B2A9; }
 .rep-foot { border-top:0.5px solid #E0E0E0; padding-top:6px; margin-top:8px; text-align:right; font-size:8px; color:#888780; }
-.rep-print-bar { max-width:760px; margin:12px auto; display:flex; gap:10px; align-items:center; justify-content:center; }
+.rep-print-bar { max-width:740px; margin:12px auto; display:flex; gap:10px; align-items:center; justify-content:center; }
 .rep-print-bar select { padding:8px 10px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.85rem; }
 .rep-print-bar button { padding:9px 18px; border:none; border-radius:9px; background:#1a73e8; color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; }
 .rep-print-bar button.close { background:#9aa0a6; }
@@ -747,7 +747,7 @@ function buildReport(d){
       '<div class="rep-free-b">'+repNl(ev.issues_and_causes||ev['eval-issues']||'—')+'</div></div>'+
   '</div>'+
 
-  '<div class="rep-sec-h">モニタリング（カテゴリ別・記録のあるもの）</div>'+
+  '<div class="rep-sec-h">モニタリング</div>'+
   '<table class="rep-mon-tbl">'+monRows+'</table>'+
 
   fitBlock+
@@ -762,10 +762,10 @@ function buildReport(d){
   '<div class="rep-sat">'+
     '<div class="rep-sat-box"><span style="color:#5F5E5A;">利用者・家族の満足度</span><span class="v">'+repMark(ev.satisfaction)+'</span></div>'+
     '<div class="rep-sat-box"><span style="color:#5F5E5A;">サービス提供内容が適切か</span><span class="v">'+repMark(ev.service_appropriateness)+'</span></div>'+
-    '<div class="rep-sat-leg">○：良好／△：一部課題／×：要改善</div>'+
+    ''+
   '</div>'+
 
-  '<div class="rep-foot">TASUKARU 自動生成　'+repEsc(d._today||'')+'</div>';
+  '<div class="rep-foot">'+repEsc(d._today||'')+'</div>';
 
   document.getElementById('rep-root').innerHTML = html;
 }
