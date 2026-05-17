@@ -141,7 +141,44 @@
   #report-sheet, #report-sheet * { visibility:visible !important; }
   #report-sheet { display:block !important; position:absolute; left:0; top:0; width:100%; margin:0; padding:0; border:none; }
   .rep-print-bar, nav, .bottom-nav { display:none !important; }
-  @page { size:A4 portrait; margin:12mm; }
+  @page { size:A4 portrait; margin:8mm; }
+  /* A4紙面をしっかり使う：基準フォントを拡大し全要素を連動拡大 */
+  .rep-root { font-size:14px !important; line-height:1.55 !important; }
+  .rep-title { font-size:22px !important; }
+  .rep-date { font-size:13px !important; }
+  .rep-date b { font-size:14px !important; }
+  .rep-cm-office { font-size:14px !important; }
+  .rep-cm-name { font-size:14px !important; }
+  .rep-fac-name { font-size:16px !important; }
+  .rep-fac-cat, .rep-fac-addr { font-size:11px !important; }
+  .rep-fac-logo { width:54px !important; height:54px !important; }
+  .rep-user-kana { font-size:11px !important; }
+  .rep-user-name { font-size:18px !important; }
+  .rep-user-main { font-size:13px !important; }
+  .rep-user-meta-l { font-size:12px !important; }
+  .rep-user-author { min-width:120px !important; }
+  .rep-user-author span:last-child { font-size:14px !important; }
+  .rep-goal-h { font-size:14px !important; }
+  .rep-goal-h small { font-size:11px !important; }
+  .rep-tbl { font-size:12px !important; }
+  .rep-tbl td.k { width:48px !important; }
+  .rep-tbl td.st { width:64px !important; }
+  .rep-free-h { font-size:13px !important; }
+  .rep-free-b { font-size:12px !important; line-height:1.6 !important; }
+  .rep-sec-h { font-size:14px !important; }
+  .rep-mon-tbl { font-size:12px !important; }
+  .rep-mon-tbl td.cat { width:92px !important; }
+  .rep-fit-h span:first-child { font-size:14px !important; }
+  .rep-fit-h span:last-child { font-size:10px !important; }
+  .rep-fit-card-h { font-size:11px !important; }
+  .rep-special { font-size:12px !important; }
+  .rep-req-top .l, .rep-req-top .r, .rep-req-body .l, .rep-req-body .r { font-size:12px !important; }
+  .rep-sat { font-size:12px !important; }
+  .rep-sat-box .v { font-size:16px !important; }
+  .rep-sat-leg { font-size:9px !important; }
+  .rep-foot { font-size:10px !important; }
+  .rep-2col, .rep-user, .rep-goals, .rep-free2 { margin-bottom:11px !important; }
+  .rep-mon-tbl, .rep-special, .rep-req { margin-bottom:11px !important; }
   .rep-goals, .rep-free2, .rep-mon-tbl tr { break-inside:avoid; }
 }
 
