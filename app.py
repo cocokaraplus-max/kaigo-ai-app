@@ -19,7 +19,7 @@ import base64
 import json
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "tasukaru-secret-key-change-in-production")
+app.secret_key = os.environ.get("SECRET_KEY", "tasuk***********************************")
 
 # ===== Session persistence for PWA/mobile =====
 # Keep users logged in across browser restarts (up to 30 days)
@@ -269,7 +269,7 @@ def get_admin_managers(supabase, f_code):
                 supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
             else:
                 supabase.table("admin_settings").insert({
-                    "facility_code": f_code, "key": "admin_managers", "value": value_json
+                    "facility_code": f_code, "key": "admin*********", "value": value_json
                 }).execute()
         except: pass
     return initial
@@ -4082,35 +4082,212 @@ def api_delete_record():
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
+    """モニタリング報告書 AIで生成（カテゴリ別 or まとめて1本）"""
     try:
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
-        patient_val = data["patient"]
-        month_val = data["month"]
-        char_limit = data["char_limit"]
-        name_match = re.search(r'\[(.*?)\]', patient_val)
-        u_name = name_match.group(1) if name_match else ""
+
+        u_name = data.get("user_name", "").strip()
+        month_val = data.get("month", "")       # "2026-04"
+        mode = data.get("mode", "category")      # "category" or "full"
+        char_limit = int(data.get("char_limit", 200))
+        selected_cats = data.get("categories", [])  # カテゴリ別モード時の選択リスト
+
+        if not u_name or not month_val:
+            return jsonify({"error": "利用者と対象月を指定してください"}), 400
+
+        CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        target_cats = selected_cats if selected_cats else CATEGORIES
+
         y, m = map(int, month_val.split("-"))
         s_date = tokyo_tz.localize(datetime(y, m, 1))
         e_date = (s_date + timedelta(days=32)).replace(day=1)
-        res = supabase.table("records").select("content, staff_name").eq(
-            "facility_code", f_code
-        ).eq("user_name", u_name).gte("created_at", s_date.isoformat()).lt(
-            "created_at", e_date.isoformat()
-        ).execute()
-        if not res.data:
-            return jsonify({"error": "対象期間に記録がありません。"})
-        filtered = [r['content'] for r in res.data if r['staff_name'] != "AI統合記録"]
-        recs = "\n".join(filtered)
-        from utils import get_generative_model, upload_audio_to_supabase
+
+        # 記録を取得（AI統合記録・休み連絡を除外）
+        res = supabase.table("records").select(
+            "content, category, staff_name, created_at"
+        ).eq("facility_code", f_code).eq("user_name", u_name).gte(
+            "created_at", s_date.isoformat()
+        ).lt("created_at", e_date.isoformat()).execute()
+
+        records = [r for r in (res.data or [])
+                   if r.get("staff_name") not in ("AI統合記録",)
+                   and r.get("category") != "休み連絡"]
+
+        if not records:
+            return jsonify({"error": f"{u_name}様の{y}年{m}月の記録が見つかりません"}), 404
+
+        from utils import get_generative_model
         model = get_generative_model()
-        prompt = f"以下の介護記録を報告口調で一つの文章にまとめて。『支援内容』として記録されている事柄は積極的に盛り込んでください。職員名や主語は不要。箇条書きは使わず一つの文章で書いてください。おおよそ{char_limit}程度で作成してください。\n\n{recs}"
-        result = model.generate_content([prompt]).text
-        return jsonify({"text": result})
+
+        BASE_PROMPT = (
+            "あなたは介護施設のベテランケアマネジャーの補佐をしています。"
+            "以下の介護記録を読み、ケアマネジャーへのモニタリング報告書として使える文章を生成してください。\n"
+            "【ルール】\n"
+            "・事実として記録されていること以外は絶対に書かない（ハルシネーション厳禁）\n"
+            "・記録がない場合は文章を作らず「今月このカテゴリの報告はありませんでした」とだけ返す\n"
+            "・職員名・利用者名・主語は不要\n"
+            "・箇条書きは使わず、ひとつながりの文章で書く\n"
+            "・口調はケアマネへの報告文書として適切な丁寧語（硬すぎず砕けすぎない）\n"
+        )
+
+        if mode == "full":
+            # まとめて1本モード
+            all_recs = "\n".join(r["content"] for r in records)
+            prompt = (
+                BASE_PROMPT +
+                f"・全体をひとまとめにして{char_limit}文字程度で生成\n\n"
+                f"【記録】\n{all_recs}"
+            )
+            result_text = model.generate_content([prompt]).text.strip()
+            return jsonify({
+                "mode": "full",
+                "full_text": result_text,
+                "record_count": len(records)
+            })
+
+        else:
+            # カテゴリ別モード
+            cat_records = {}
+            for r in records:
+                cat = r.get("category") or "その他"
+                cat_records.setdefault(cat, []).append(r["content"])
+
+            results = {}
+            counts = {}
+            NO_RECORD_MSG = "今月このカテゴリの報告はありませんでした"
+
+            for cat in CATEGORIES:
+                if cat not in target_cats:
+                    continue
+                recs_in_cat = cat_records.get(cat, [])
+                counts[cat] = len(recs_in_cat)
+                if not recs_in_cat:
+                    results[cat] = NO_RECORD_MSG
+                    continue
+                cat_text = "\n".join(recs_in_cat)
+                prompt = (
+                    BASE_PROMPT +
+                    f"・カテゴリ「{cat}」に関する記録だけをまとめて{char_limit}文字程度で生成\n\n"
+                    f"【{cat}の記録】\n{cat_text}"
+                )
+                try:
+                    results[cat] = model.generate_content([prompt]).text.strip()
+                except Exception as e:
+                    results[cat] = f"（生成エラー: {str(e)[:50]}）"
+
+            return jsonify({
+                "mode": "category",
+                "categories": results,
+                "record_counts": counts,
+                "total_records": len(records)
+            })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/save_monitoring', methods=['POST'])
+@login_required
+def api_save_monitoring():
+    """モニタリング報告書を下書き保存 or 確定保存"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        u_name = session.get("u_name", "")
+        supabase = get_supabase()
+
+        user_name = data.get("user_name", "").strip()
+        month_val = data.get("month", "")
+        mode = data.get("mode", "category")
+        char_limit = int(data.get("char_limit", 200))
+        categories = data.get("categories", {})
+        full_text = data.get("full_text", "")
+        record_counts = data.get("record_counts", {})
+        confirm = data.get("confirm", False)
+
+        if not user_name or not month_val:
+            return jsonify({"error": "必須項目が不足しています"}), 400
+
+        # 既存レコードを確認（同月・同利用者）
+        existing = supabase.table("monitoring_reports").select("id, confirmed_at").eq(
+            "facility_code", f_code
+        ).eq("user_name", user_name).eq("target_month", month_val).execute()
+
+        payload = {
+            "facility_code": f_code,
+            "user_name": user_name,
+            "target_month": month_val,
+            "mode": mode,
+            "char_limit": char_limit,
+            "categories": categories,
+            "full_text": full_text,
+            "record_counts": record_counts,
+            "updated_at": "now()",
+        }
+        if confirm:
+            payload["confirmed_at"] = "now()"
+            payload["confirmed_by"] = u_name
+
+        if existing.data:
+            rec = existing.data[0]
+            if rec.get("confirmed_at") and not confirm:
+                # 確定済みは上書き不可（再確定のみ）
+                return jsonify({"error": "確定済みの報告書は上書きできません"}), 409
+            supabase.table("monitoring_reports").update(payload).eq("id", rec["id"]).execute()
+            return jsonify({"saved": True, "id": rec["id"], "confirmed": confirm})
+        else:
+            result = supabase.table("monitoring_reports").insert(payload).execute()
+            new_id = result.data[0]["id"] if result.data else None
+            return jsonify({"saved": True, "id": new_id, "confirmed": confirm})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/monitoring_history', methods=['GET'])
+@login_required
+def api_monitoring_history():
+    """モニタリング報告書の履歴一覧を返す"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user_name = request.args.get("user_name", "")
+
+        q = supabase.table("monitoring_reports").select(
+            "id, user_name, target_month, mode, char_limit, confirmed_at, confirmed_by, updated_at"
+        ).eq("facility_code", f_code).order("target_month", desc=True)
+
+        if user_name:
+            q = q.eq("user_name", user_name)
+
+        res = q.execute()
+        return jsonify({"history": res.data or []})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/monitoring_detail', methods=['GET'])
+@login_required
+def api_monitoring_detail():
+    """特定のモニタリング報告書の全文を返す"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        report_id = request.args.get("id", "")
+        if not report_id:
+            return jsonify({"error": "IDが必要です"}), 400
+
+        res = supabase.table("monitoring_reports").select("*").eq(
+            "facility_code", f_code
+        ).eq("id", report_id).execute()
+
+        if not res.data:
+            return jsonify({"error": "見つかりません"}), 404
+        return jsonify(res.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/history')
@@ -4334,7 +4511,7 @@ def api_tts_toggle():
                 'facility_code', f_code).eq('key', 'tts_enabled').execute()
         else:
             supabase.table('admin_settings').insert({
-                'facility_code': f_code, 'key': 'tts_enabled', 'value': enabled
+                'facility_code': f_code, 'key': 'tts_e******', 'value': enabled
             }).execute()
         return jsonify({'enabled': enabled == 'true'})
     except Exception as e:
@@ -4566,7 +4743,7 @@ def api_update_password():
         if existing.data:
             supabase.table("admin_settings").update({"value": data["password"]}).eq("facility_code", f_code).eq("key", "admin_password").execute()
         else:
-            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_password", "value": data["password"]}).execute()
+            supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin*********", "value": data["password"]}).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -4584,7 +4761,7 @@ def api_update_hist_limit():
             supabase.table("admin_settings").update({"value": str(data["limit"])}).eq("facility_code", f_code).eq("key", "history_limit").execute()
         else:
             supabase.table("admin_settings").insert({
-                "facility_code": f_code, "key": "history_limit", "value": str(data["limit"])
+                "facility_code": f_code, "key": "histo********", "value": str(data["limit"])
             }).execute()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -4616,7 +4793,7 @@ def api_board_set_editors():
         else:
             supabase.table("admin_settings").insert({
                 "facility_code": f_code,
-                "key": "board_editors",
+                "key": "board********",
                 "value": value_json
             }).execute()
         return jsonify({"status": "success"})
@@ -4691,7 +4868,7 @@ def api_admin_set_managers():
         else:
             supabase.table("admin_settings").insert({
                 "facility_code": f_code,
-                "key": "admin_managers",
+                "key": "admin*********",
                 "value": value_json
             }).execute()
         return jsonify({"status": "success", "managers": managers})
@@ -4737,7 +4914,7 @@ def api_block_staff():
                     if existing.data:
                         supabase.table("admin_settings").update({"value": value_json}).eq("facility_code", f_code).eq("key", "admin_managers").execute()
                     else:
-                        supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin_managers", "value": value_json}).execute()
+                        supabase.table("admin_settings").insert({"facility_code": f_code, "key": "admin*********", "value": value_json}).execute()
                 except: pass
         except: pass
         supabase.table("blocked_devices").insert({
@@ -6439,3 +6616,268 @@ def api_records_apply_ai_category(record_id):
     })
 
 # cache bust 2026年 5月16日 土曜日 20時14分56秒 JST
+
+
+# ============================================================
+# Session 49: 体力測定・体重記録 (fitness_tests / body_weights)
+# ============================================================
+
+
+def _to_half_number(v):
+    """全角数字・全角記号を半角化して数値文字列に整える。
+    例: '５２．４' -> '52.4' / '１８' -> '18' / '' or None -> None
+    数値化できない場合は None を返す(不正値は保存しない)。"""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if s == "":
+        return None
+    # 全角数字 0-9 / 全角ピリオド / 全角マイナス / 全角空白 を半角へ
+    table = str.maketrans(
+        "０１２３４５６７８９．－＋　",
+        "0123456789.-+ ",
+    )
+    s = s.translate(table).strip()
+    # カンマや余分な空白を除去
+    s = s.replace(",", "").replace(" ", "")
+    if s == "":
+        return None
+    try:
+        f = float(s)
+    except (ValueError, TypeError):
+        return None
+    # 整数なら整数文字列、小数なら小数文字列で返す
+    if f == int(f):
+        return str(int(f))
+    return str(f)
+@app.route('/fitness')
+@login_required
+def fitness_page():
+    """体力測定・体重 記録ページ (1ページ2セクション)"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render(
+        "fitness.html",
+        patients=patients,
+        today=today,
+    )
+
+
+@app.route('/api/save_body_weight', methods=['POST'])
+@login_required
+def api_save_body_weight():
+    """体重を1件保存 (同一利用者・同一日付は upsert)"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        patient_id = str(data.get("patient_id", "")).strip()
+        user_name = data.get("user_name", "").strip()
+        measured_date = data.get("measured_date", "").strip()
+        weight_kg = _to_half_number(data.get("weight_kg", None))
+
+        if not patient_id or not measured_date:
+            return jsonify({"status": "error",
+                            "message": "利用者と測定日は必須です"}), 400
+        if weight_kg in (None, ""):
+            return jsonify({"status": "error",
+                            "message": "体重を正しく入力してください"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": user_name,
+            "measured_date": measured_date,
+            "weight_kg": weight_kg,
+            "note": data.get("note", ""),
+            "staff_name": my_name,
+            "updated_at": "now()",
+        }
+
+        existing = supabase.table("body_weights").select("id").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).eq(
+            "measured_date", measured_date).execute()
+
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("body_weights").update(payload).eq("id", rid).execute()
+        else:
+            res = supabase.table("body_weights").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/save_fitness_test', methods=['POST'])
+@login_required
+def api_save_fitness_test():
+    """体力測定を1件保存 (同一利用者・同一日付は upsert)。
+    各指標は入力があったものだけ保存し、空欄は None で送る。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        patient_id = str(data.get("patient_id", "")).strip()
+        user_name = data.get("user_name", "").strip()
+        measured_date = data.get("measured_date", "").strip()
+
+        if not patient_id or not measured_date:
+            return jsonify({"status": "error",
+                            "message": "利用者と測定日は必須です"}), 400
+
+        def num_or_none(v):
+            return _to_half_number(v)
+
+        metrics = {
+            "grip_right": num_or_none(data.get("grip_right")),
+            "grip_left": num_or_none(data.get("grip_left")),
+            "standing_balance_sec": num_or_none(data.get("standing_balance_sec")),
+            "tug_sec": num_or_none(data.get("tug_sec")),
+            "walk_5m_sec": num_or_none(data.get("walk_5m_sec")),
+            "sit_stand_30sec": num_or_none(data.get("sit_stand_30sec")),
+        }
+
+        # 全項目空ならエラー (測定値が1つもないレコードは作らない)
+        if all(v is None for v in metrics.values()):
+            return jsonify({"status": "error",
+                            "message": "測定値を1つ以上入力してください"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": user_name,
+            "measured_date": measured_date,
+            "note": data.get("note", ""),
+            "staff_name": my_name,
+            "updated_at": "now()",
+        }
+        payload.update(metrics)
+
+        existing = supabase.table("fitness_tests").select("id").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).eq(
+            "measured_date", measured_date).execute()
+
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("fitness_tests").update(payload).eq("id", rid).execute()
+        else:
+            res = supabase.table("fitness_tests").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/fitness_history')
+@login_required
+def api_fitness_history():
+    """指定利用者の体重・体力測定の履歴を返す (新しい順)。
+    患者は patient_id で絞る。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        patient_id = str(request.args.get("patient_id", "")).strip()
+        if not patient_id:
+            return jsonify({"weights": [], "fitness": []})
+
+        w = supabase.table("body_weights").select(
+            "id, measured_date, weight_kg, note, staff_name"
+        ).eq("facility_code", f_code).eq(
+            "patient_id", patient_id).order(
+            "measured_date", desc=True).execute()
+
+        ft = supabase.table("fitness_tests").select(
+            "id, measured_date, grip_right, grip_left, standing_balance_sec, "
+            "tug_sec, walk_5m_sec, sit_stand_30sec, note, staff_name"
+        ).eq("facility_code", f_code).eq(
+            "patient_id", patient_id).order(
+            "measured_date", desc=True).execute()
+
+        return jsonify({
+            "weights": w.data or [],
+            "fitness": ft.data or [],
+        })
+    except Exception as e:
+        return jsonify({"weights": [], "fitness": [], "error": str(e)}), 500
+
+
+
+
+# ============================================================
+# Session 49: 施設情報（住所・電話・ロゴ）取得/保存
+# 報告書印刷の施設欄に自動反映される
+# ============================================================
+@app.route('/api/admin/facility_info')
+@login_required
+def api_admin_facility_info():
+    """現在の施設情報を返す（管理者MENU施設情報セクション用）"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        res = supabase.table("facilities").select(
+            "facility_name, facility_postal_code, facility_address, "
+            "facility_tel, facility_fax, facility_logo_url"
+        ).eq("facility_code", f_code).execute()
+
+        if res.data:
+            d = res.data[0]
+            return jsonify({
+                "status": "success",
+                "facility_name": d.get("facility_name") or "",
+                "facility_postal_code": d.get("facility_postal_code") or "",
+                "facility_address": d.get("facility_address") or "",
+                "facility_tel": d.get("facility_tel") or "",
+                "facility_fax": d.get("facility_fax") or "",
+                "facility_logo_url": d.get("facility_logo_url") or "",
+            })
+        return jsonify({"status": "success",
+                        "facility_name": "", "facility_postal_code": "",
+                        "facility_address": "", "facility_tel": "",
+                        "facility_fax": "", "facility_logo_url": ""})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/save_facility_info', methods=['POST'])
+@login_required
+def api_admin_save_facility_info():
+    """施設情報を保存（住所・電話・FAX・郵便番号・ロゴ）。
+    施設名は変更しない（登録済みのものを使用）。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+
+        # ロゴはBase64データURL想定。サイズ上限を設けて肥大を防ぐ
+        logo = data.get("facility_logo_url", "")
+        if logo and len(logo) > 1_500_000:  # 約1.5MB（Base64文字列長）
+            return jsonify({"status": "error",
+                            "message": "ロゴ画像が大きすぎます（2MB以下の画像にしてください）"}), 400
+
+        payload = {
+            "facility_postal_code": str(data.get("facility_postal_code", "")).strip(),
+            "facility_address": str(data.get("facility_address", "")).strip(),
+            "facility_tel": str(data.get("facility_tel", "")).strip(),
+            "facility_fax": str(data.get("facility_fax", "")).strip(),
+        }
+        # ロゴは送られてきた時だけ更新（空送信で既存ロゴを消さない配慮）
+        if "facility_logo_url" in data:
+            payload["facility_logo_url"] = logo
+
+        supabase.table("facilities").update(payload).eq(
+            "facility_code", f_code).execute()
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
