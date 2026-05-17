@@ -6881,3 +6881,131 @@ def api_admin_save_facility_info():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ============================================================
+# Session 49: モニタリング報告書 印刷用データ集約API（ステップA）
+# 利用者・年月を指定し、報告書1枚に必要な全データをまとめて返す。
+# 既存APIのロジックを踏襲。既存ルートは一切変更しない。
+# ============================================================
+@app.route('/api/monitoring_report_data')
+@login_required
+def api_monitoring_report_data():
+    """報告書印刷用：利用者・ケアマネ・評価・モニタリング本文・
+    体力測定・体重・施設情報をまとめて返す"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user_name = (request.args.get("user_name") or "").strip()
+        year_month = (request.args.get("year_month") or "").strip()
+        if not user_name or not year_month:
+            return jsonify({"status": "error",
+                            "message": "user_name と year_month が必要です"}), 400
+
+        result = {"status": "success"}
+
+        # ---- 1. 利用者情報＋ふりがな（get_patients から該当者を抽出） ----
+        patient = None
+        try:
+            for p in get_patients(supabase, f_code):
+                if p.get("user_name") == user_name or p.get("value") == user_name:
+                    patient = p
+                    break
+        except Exception:
+            patient = None
+        result["patient"] = patient or {}
+
+        # ---- 2. ケアマネ情報（patient_profiles） ----
+        caremanager = {}
+        try:
+            prof = supabase.table("patient_profiles").select(
+                "user_name, user_name_kana, support_office, "
+                "care_manager_name, delegate_office, care_level"
+            ).eq("facility_code", f_code).eq("user_name", user_name).execute()
+            if prof.data:
+                caremanager = prof.data[0]
+        except Exception:
+            caremanager = {}
+        result["caremanager"] = caremanager
+
+        # ---- 3. 評価6項目＋目標達成状況（patient_evaluations 当月） ----
+        evaluation = {}
+        try:
+            ev = supabase.table("patient_evaluations").select("*").eq(
+                "facility_code", f_code).eq(
+                "user_name", user_name).eq(
+                "year_month", year_month).execute()
+            if ev.data:
+                evaluation = ev.data[0]
+        except Exception:
+            evaluation = {}
+        result["evaluation"] = evaluation
+
+        # ---- 4. モニタリング本文（monitoring_reports 当月・最新1件） ----
+        monitoring = {}
+        try:
+            mr = supabase.table("monitoring_reports").select("*").eq(
+                "facility_code", f_code).eq(
+                "user_name", user_name).eq(
+                "year_month", year_month).order(
+                "id", desc=True).limit(1).execute()
+            if mr.data:
+                monitoring = mr.data[0]
+        except Exception:
+            monitoring = {}
+        result["monitoring"] = monitoring
+
+        # ---- 5. 体力測定の推移（fitness_tests 直近6ヶ月） ----
+        fitness = []
+        try:
+            ft = supabase.table("fitness_tests").select("*").eq(
+                "facility_code", f_code).eq(
+                "user_name", user_name).order(
+                "measured_date", desc=True).limit(6).execute()
+            if ft.data:
+                fitness = list(reversed(ft.data))  # 古い順に
+        except Exception:
+            fitness = []
+        result["fitness"] = fitness
+
+        # ---- 6. 体重の推移（body_weights 直近6ヶ月） ----
+        weights = []
+        try:
+            bw = supabase.table("body_weights").select("*").eq(
+                "facility_code", f_code).eq(
+                "user_name", user_name).order(
+                "measured_date", desc=True).limit(6).execute()
+            if bw.data:
+                weights = list(reversed(bw.data))
+        except Exception:
+            weights = []
+        result["weights"] = weights
+
+        # ---- 7. 施設情報（facilities） ----
+        facility = {}
+        try:
+            fac = supabase.table("facilities").select(
+                "facility_name, facility_postal_code, facility_address, "
+                "facility_tel, facility_fax, facility_logo_url"
+            ).eq("facility_code", f_code).execute()
+            if fac.data:
+                facility = fac.data[0]
+        except Exception:
+            facility = {}
+        result["facility"] = facility
+
+        # ---- 8. 職員リスト（作成者プルダウン用） ----
+        staff_list = []
+        try:
+            st = supabase.table("staffs").select("staff_name").eq(
+                "facility_code", f_code).eq("is_active", True).execute()
+            if st.data:
+                staff_list = [s["staff_name"] for s in st.data
+                              if s.get("staff_name")]
+        except Exception:
+            staff_list = []
+        result["staff_list"] = staff_list
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

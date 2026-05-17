@@ -191,6 +191,14 @@
     box-shadow: 0 2px 6px rgba(26,115,232,0.3);
 }
 .eval-segment-btn.active.danger { background: #ea4335; box-shadow: 0 2px 6px rgba(234,67,53,0.3); }
+.eval-segment-btn.active.cont { background: #e37400; box-shadow: 0 2px 6px rgba(227,116,0,0.3); }
+.eval-cont-row { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.eval-cont-label { font-size:0.75rem; color:#5f6368; font-weight:600; min-width:50px; }
+.eval-cont-btn { padding:5px 14px; border-radius:7px; font-size:0.78rem; font-weight:700; border:1.5px solid #e0e0e0; background:#fff; color:#5f6368; cursor:pointer; transition:all .15s; }
+.eval-cont-btn.active.cont-keep { border-color:#1a73e8; background:#e8f0fe; color:#1a73e8; }
+.eval-cont-btn.active.cont-change { border-color:#e37400; background:#fff8e7; color:#e37400; }
+.eval-new-goal { margin-top:6px; width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #e37400; font-size:0.85rem; background:#fff8e7; box-sizing:border-box; resize:vertical; min-height:56px; display:none; }
+.eval-new-goal.show { display:block; }
 .eval-segment-btn.active.warn { background: #fbbc04; color: #202124; box-shadow: 0 2px 6px rgba(251,188,4,0.3); }
 .eval-segment-btn.active.success { background: #34a853; box-shadow: 0 2px 6px rgba(52,168,83,0.3); }
 
@@ -849,7 +857,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-short-function', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-short-function" value="">
                         </div>
                         <div class="eval-icf-row">
@@ -867,7 +875,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-short-activity', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-short-activity" value="">
                         </div>
                         <div class="eval-icf-row">
@@ -885,7 +893,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-short-participation', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-short-participation" value="">
                         </div>
                     </div>
@@ -906,7 +914,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-long-function', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-long-function" value="">
                         </div>
                         <div class="eval-icf-row">
@@ -924,7 +932,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-long-activity', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-long-activity" value="">
                         </div>
                         <div class="eval-icf-row">
@@ -942,7 +950,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-long-participation', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-long-participation" value="">
                         </div>
                     </div>
@@ -965,7 +973,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-short-goal-simple', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-short-goal-simple" value="">
                     </div>
                     <div class="eval-icf-row" style="margin-top:14px;">
@@ -983,7 +991,7 @@
                                         data-value="未達成" onclick="evalSelectSegment('eval-long-goal-simple', '未達成')">
                                     未達成
                                 </button>
-                            </div>
+</div>
                             <input type="hidden" id="eval-long-goal-simple" value="">
                     </div>
                 </div>
@@ -1819,6 +1827,7 @@ window.evalSelectSegment = function(hiddenId, value) {
                 if (value === '達成' || value === 'あり' || value === '○') btn.classList.add('success');
                 else if (value === '一部達成' || value === '△') btn.classList.add('warn');
                 else if (value === '未達成' || value === 'なし' || value === '×') btn.classList.add('danger');
+                else if (value === '目標継続') btn.classList.add('cont');
             }
         });
     }
@@ -1865,6 +1874,11 @@ function evalCollectFormData() {
         data.short_goal_status = document.getElementById('eval-short-goal-simple').value || null;
         data.long_goal_status = document.getElementById('eval-long-goal-simple').value || null;
     }
+    // training_goal 入力有無で継続/変更を全軸共通で自動判定
+    const _contVal = data.training_goal ? '変更' : '継続';
+    ['short_goal_function_cont','short_goal_activity_cont','short_goal_participation_cont',
+     'long_goal_function_cont','long_goal_activity_cont','long_goal_participation_cont',
+     'short_goal_cont','long_goal_cont'].forEach(k => { data[k] = _contVal; });
     return data;
 }
 
@@ -1895,6 +1909,7 @@ function evalFillForm(ev) {
     ].forEach(([id, val]) => {
         if (val) evalSelectSegment(id, val);
     });
+
 
     evalUpdateStatus();
 }
