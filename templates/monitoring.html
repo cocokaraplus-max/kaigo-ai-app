@@ -69,14 +69,16 @@
 /* ===== Session 49: モニタリング報告書 印刷レイアウト ===== */
 /* 通常時は report-sheet を非表示。プレビュー時/印刷時のみ表示 */
 #report-sheet { display:none; }
+body.report-preview-open .bottom-nav,
+body.report-preview-open nav { display:none !important; }
 #report-sheet.preview-on {
   display:block; position:fixed; left:0; top:0; right:0; bottom:0;
-  z-index:9000; background:rgba(0,0,0,0.35); overflow-y:auto;
+  z-index:2147483000; background:rgba(0,0,0,0.4); overflow-y:auto;
   padding:24px 0 90px;
 }
 #report-sheet.preview-on #rep-root {
-  width:760px; max-width:94vw; margin:0 auto;
-  background:#fff; border:1px solid #ccc; padding:18px 20px; box-sizing:border-box;
+  width:740px; max-width:96vw; margin:0 auto;
+  background:#fff; border:1px solid #ccc; padding:18px 22px; box-sizing:border-box;
 }
 #report-sheet.preview-on .rep-print-bar {
   position:fixed; left:0; right:0; bottom:0; z-index:9001;
@@ -828,7 +830,7 @@ function openReportPreview(useSample){
     _reportData=reportSampleData();
     fillAuthorOptions(_reportData.staff_list);
     buildReport(_reportData);
-    document.getElementById('report-sheet').classList.add('preview-on');
+    document.body.classList.add('report-preview-open');document.getElementById('report-sheet').classList.add('preview-on');
     return;
   }
   // 実データ：選択中の利用者・対象月からAPI取得
@@ -843,13 +845,13 @@ function openReportPreview(useSample){
       _reportData=d;
       fillAuthorOptions(d.staff_list);
       buildReport(d);
-      document.getElementById('report-sheet').classList.add('preview-on');
+      document.body.classList.add('report-preview-open');document.getElementById('report-sheet').classList.add('preview-on');
       document.getElementById('report-sheet').scrollIntoView({behavior:'smooth'});
     })
     .catch(function(e){ alert('通信エラー: '+e); });
 }
 function closeReportPreview(){
-  document.getElementById('report-sheet').classList.remove('preview-on');
+  document.body.classList.remove('report-preview-open');document.getElementById('report-sheet').classList.remove('preview-on');
 }
 function doReportPrint(){
   if(_reportData) buildReport(_reportData); // 作成者選択を反映して再描画
