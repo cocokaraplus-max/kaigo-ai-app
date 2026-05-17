@@ -82,7 +82,7 @@ body.report-preview-open nav { display:none !important; }
 }
 #report-sheet.preview-on .rep-print-bar {
   position:fixed; left:0; right:0; bottom:0; z-index:9001;
-  background:#fff; border-top:1px solid #e0e0e0; margin:0; padding:12px;
+  background:#fff; border-top:1px solid #e0e0e0; margin:0; padding:12px 0;
 }
 .rep-root { font-family:'Hiragino Sans','Noto Sans JP',sans-serif; color:#202124; font-size:12px; line-height:1.5; width:100%; }
 .rep-root, .rep-root table { width:100% !important; }
@@ -115,7 +115,12 @@ body.report-preview-open nav { display:none !important; }
 .rep-tbl { width:100%; border-collapse:collapse; font-size:9px; }
 .rep-tbl td { border:0.5px solid #E0E0E0; padding:4px 5px; }
 .rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
-.rep-tbl td.st { width:52px; text-align:center; color:#BA7517; font-weight:600; }
+.rep-tbl td.st { width:58px; text-align:center; font-weight:700; font-size:9px; }
+.rep-tbl td.st-cont  { color:#BA7517; background:#FFF8E7; }
+.rep-tbl td.st-done  { color:#1a7a3c; background:#E6F4EA; }
+.rep-tbl td.st-part  { color:#1a55a8; background:#E8F0FE; }
+.rep-tbl td.st-fail  { color:#c0392b; background:#FCE8E6; }
+.rep-tbl td.st-other { color:#5f6368; }
 .rep-free2 { display:flex; gap:8px; margin-bottom:8px; }
 .rep-free { flex:1; border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; min-height: 80px; }
 .rep-free-h { font-size: 11px; font-weight: 600; color: #0c447c; border-left: 3px solid #378add; padding-left: 7px; margin: 0 0 5px; }
@@ -633,12 +638,12 @@ function repGoalRows(ev, span){
     axes.forEach(function(a){
       var goal = ev[span+'_goal_'+a[1]] || ev[a[1]+'_'+span+'_goal'] || '—';
       var st   = ev[span+'_goal_'+a[1]+'_status'] || '—';
-      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="st">'+repEsc(st)+'</td></tr>';
+      rows+='<tr><td class="k">'+a[0]+'</td><td>'+repEsc(goal)+'</td><td class="'+repStCls(st)+'">'+repEsc(st)+'</td></tr>';
     });
   } else {
     var g = ev[span+'_goal_simple'] || ev[span+'_goal'] || ev.training_goal || '—';
     var s = ev[span+'_goal_status'] || '—';
-    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="st">'+repEsc(s)+'</td></tr>';
+    rows='<tr><td class="k">目標</td><td>'+repEsc(g)+'</td><td class="'+repStCls(s)+'">'+repEsc(s)+'</td></tr>';
   }
   return rows;
 }
@@ -780,11 +785,11 @@ function reportSampleData(){
     evaluation:{
       care_classification:'要介護',
       short_goal_function:'認知機能を維持・向上する', short_goal_function_status:'目標継続',
-      short_goal_activity:'状況に合わせた歩行ができる', short_goal_activity_status:'目標継続',
-      short_goal_participation:'状況に合わせた歩行ができる', short_goal_participation_status:'目標継続',
+      short_goal_activity:'状況に合わせた歩行ができる', short_goal_activity_status:'達成',
+      short_goal_participation:'状況に合わせた歩行ができる', short_goal_participation_status:'一部達成',
       long_goal_function:'頼まれたことを覚えられる', long_goal_function_status:'目標継続',
-      long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'目標継続',
-      long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'目標継続',
+      long_goal_activity:'歩行器で不安なく歩ける', long_goal_activity_status:'未達成',
+      long_goal_participation:'歩行器で不安なく歩ける', long_goal_participation_status:'達成',
       changes_by_training:'前月からの継続的な訓練により、下肢筋力の回復が顕著に見られ、歩行速度・歩幅ともに改善傾向にある。膝関節への負担を軽減した正しい歩行フォームの定着を目指し、平行棒・歩行器を用いた反復練習を実施。バランス能力の向上も確認でき、立ち上がり動作が安定してきた。引き続き転倒予防を意識した訓練を継続する。',
       issues_and_causes:'認知機能面では近時記憶の低下が継続しており、当日の訓練内容や出来事を後から思い出すことが困難な場面が増えている。日課表や写真カードを活用した見当識訓練を導入したが、日によって反応のばらつきがある。意欲・情動面は比較的安定しているため、本人のペースに合わせた関わりと、脳活性化を意識した訓練メニューの工夫を継続する必要がある。',
       special_notes:'3/9(月)に自室で転倒し右大腿部骨折により入院。訓練は3/8(日)まで。入院により訓練は不十分にしか行なえませんでした。',
