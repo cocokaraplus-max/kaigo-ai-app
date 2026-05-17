@@ -629,6 +629,13 @@ function repSpark(vals){
   return '<svg viewBox="0 0 70 13" style="width:100%;height:auto;display:block;"><polyline points="'+pts+'" fill="none" stroke="#1D9E75" stroke-width="1.8"/></svg>';
 }
 
+function repStCls(st){
+  if(st==='達成')    return 'st st-done';
+  if(st==='一部達成') return 'st st-part';
+  if(st==='未達成')  return 'st st-fail';
+  if(st==='目標継続') return 'st st-cont';
+  return 'st st-other';
+}
 function repGoalRows(ev, span){
   // span: 'short' or 'long'。要介護=ICF三軸、要支援/事業対象者=単一
   var cls = (ev.care_classification||'');
