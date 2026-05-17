@@ -6621,6 +6621,35 @@ def api_records_apply_ai_category(record_id):
 # ============================================================
 # Session 49: 体力測定・体重記録 (fitness_tests / body_weights)
 # ============================================================
+
+
+def _to_half_number(v):
+    """全角数字・全角記号を半角化して数値文字列に整える。
+    例: '５２．４' -> '52.4' / '１８' -> '18' / '' or None -> None
+    数値化できない場合は None を返す(不正値は保存しない)。"""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if s == "":
+        return None
+    # 全角数字 0-9 / 全角ピリオド / 全角マイナス / 全角空白 を半角へ
+    table = str.maketrans(
+        "０１２３４５６７８９．－＋　",
+        "0123456789.-+ ",
+    )
+    s = s.translate(table).strip()
+    # カンマや余分な空白を除去
+    s = s.replace(",", "").replace(" ", "")
+    if s == "":
+        return None
+    try:
+        f = float(s)
+    except (ValueError, TypeError):
+        return None
+    # 整数なら整数文字列、小数なら小数文字列で返す
+    if f == int(f):
+        return str(int(f))
+    return str(f)
 @app.route('/fitness')
 @login_required
 def fitness_page():
@@ -6649,14 +6678,14 @@ def api_save_body_weight():
         patient_id = str(data.get("patient_id", "")).strip()
         user_name = data.get("user_name", "").strip()
         measured_date = data.get("measured_date", "").strip()
-        weight_kg = data.get("weight_kg", None)
+        weight_kg = _to_half_number(data.get("weight_kg", None))
 
         if not patient_id or not measured_date:
             return jsonify({"status": "error",
                             "message": "利用者と測定日は必須です"}), 400
         if weight_kg in (None, ""):
             return jsonify({"status": "error",
-                            "message": "体重を入力してください"}), 400
+                            "message": "体重を正しく入力してください"}), 400
 
         payload = {
             "facility_code": f_code,
@@ -6706,9 +6735,7 @@ def api_save_fitness_test():
                             "message": "利用者と測定日は必須です"}), 400
 
         def num_or_none(v):
-            if v in (None, ""):
-                return None
-            return v
+            return _to_half_number(v)
 
         metrics = {
             "grip_right": num_or_none(data.get("grip_right")),

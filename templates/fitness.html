@@ -82,7 +82,7 @@
       </div>
       <div class="fit-row">
         <label>体重 (kg)</label>
-        <input type="number" id="w-kg" step="0.1" min="0" max="200" placeholder="例: 52.4">
+        <input type="text" id="w-kg" inputmode="decimal" placeholder="例: 52.4" onblur="fitNormalizeField(this)">
       </div>
     </div>
     <div class="fit-row">
@@ -105,30 +105,30 @@
 
     <div class="metric-row">
       <div class="m-label">握力 <small>右</small></div>
-      <input type="number" id="f-grip-r" step="0.1" min="0" max="80">
+      <input type="text" id="f-grip-r" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">kg</span>
       <div class="m-label" style="flex:0 0 auto;"><small>左</small></div>
-      <input type="number" id="f-grip-l" step="0.1" min="0" max="80">
+      <input type="text" id="f-grip-l" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">kg</span>
     </div>
     <div class="metric-row">
       <div class="m-label">片足立ち <small>（開眼）</small></div>
-      <input type="number" id="f-balance" step="0.1" min="0" max="300">
+      <input type="text" id="f-balance" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
       <div class="m-label">TUG <small>（立ち上がり歩行）</small></div>
-      <input type="number" id="f-tug" step="0.1" min="0" max="120">
+      <input type="text" id="f-tug" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
       <div class="m-label">5m歩行</div>
-      <input type="number" id="f-walk5m" step="0.1" min="0" max="120">
+      <input type="text" id="f-walk5m" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
       <div class="m-label">立ち座り <small>（30秒）</small></div>
-      <input type="number" id="f-sitstand" step="1" min="0" max="60">
+      <input type="text" id="f-sitstand" inputmode="numeric" onblur="fitNormalizeField(this)">
       <span class="m-unit">回</span>
     </div>
     <div class="fit-row" style="margin-top:10px;">
@@ -155,6 +155,27 @@
 
 {% block extra_script %}
 <script>
+// 全角数字・全角記号を半角化する(現場で全角入力されても通るように)
+function fitToHalf(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).trim();
+  if (s === '') return '';
+  s = s.replace(/[０-９]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+  });
+  s = s.replace(/．/g, '.').replace(/－/g, '-').replace(/＋/g, '+')
+       .replace(/　/g, '').replace(/[ ,]/g, '');
+  return s;
+}
+
+// 入力欄のフォーカスが外れたら半角表示に直す
+function fitNormalizeField(el) {
+  const half = fitToHalf(el.value);
+  if (half === '') { el.value = ''; return; }
+  const n = parseFloat(half);
+  el.value = isNaN(n) ? '' : half;
+}
+
 let FIT_PATIENTS = [];
 let FIT_SELECTED = null;
 
@@ -211,7 +232,7 @@ function setMsg(id, text, ok) {
 
 async function saveWeight() {
   if (!FIT_SELECTED) { setMsg('w-msg', '利用者を選択してください', false); return; }
-  const kg = document.getElementById('w-kg').value;
+  const kg = fitToHalf(document.getElementById('w-kg').value);
   const date = document.getElementById('w-date').value;
   if (!date) { setMsg('w-msg', '測定日を入力してください', false); return; }
   if (kg === '') { setMsg('w-msg', '体重を入力してください', false); return; }
@@ -252,12 +273,12 @@ async function saveFitness() {
     patient_id: FIT_SELECTED.id,
     user_name: FIT_SELECTED.user_name,
     measured_date: date,
-    grip_right: document.getElementById('f-grip-r').value,
-    grip_left: document.getElementById('f-grip-l').value,
-    standing_balance_sec: document.getElementById('f-balance').value,
-    tug_sec: document.getElementById('f-tug').value,
-    walk_5m_sec: document.getElementById('f-walk5m').value,
-    sit_stand_30sec: document.getElementById('f-sitstand').value,
+    grip_right: fitToHalf(document.getElementById('f-grip-r').value),
+    grip_left: fitToHalf(document.getElementById('f-grip-l').value),
+    standing_balance_sec: fitToHalf(document.getElementById('f-balance').value),
+    tug_sec: fitToHalf(document.getElementById('f-tug').value),
+    walk_5m_sec: fitToHalf(document.getElementById('f-walk5m').value),
+    sit_stand_30sec: fitToHalf(document.getElementById('f-sitstand').value),
     note: document.getElementById('f-note').value,
   };
   const hasAny = ['grip_right','grip_left','standing_balance_sec',
