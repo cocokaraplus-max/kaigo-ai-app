@@ -77,15 +77,13 @@
       <span class="material-symbols-outlined">monitor_weight</span>
       体重を記録
     </div>
-    <div class="fit-grid2">
-      <div class="fit-row">
-        <label>測定日</label>
-        <input type="date" id="w-date" value="{{ today }}">
-      </div>
-      <div class="fit-row">
-        <label>体重 (kg)</label>
-        <input type="text" id="w-kg" inputmode="decimal" placeholder="例: 52.4" onblur="fitNormalizeField(this)">
-      </div>
+    <div class="fit-row">
+      <label>測定日</label>
+      <input type="date" id="w-date" value="{{ today }}">
+    </div>
+    <div class="fit-row">
+      <label>体重 (kg)</label>
+      <input type="text" id="w-kg" inputmode="decimal" placeholder="例: 52.4" onblur="fitNormalizeField(this)">
     </div>
     <div class="fit-row">
       <label>備考（任意）</label>
