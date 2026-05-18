@@ -1238,8 +1238,8 @@
     <button onclick="speakAllSummaries()"
         id="speak-all-btn"
         style="width:100%;padding:12px;background:linear-gradient(135deg,#1a73e8,#1557b0);border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
-        <span class="material-symbols-outlined" style="font-size:20px;">campaign</span>
-        その日のAI要約を全員分読み上げ
+        <span class="material-symbols-outlined" id="speak-all-icon" style="font-size:20px;">campaign</span>
+        <span id="speak-all-label">その日のAI要約を全員分読み上げ</span>
     </button>
     <div id="speak-all-controls" style="display:none; margin-top:8px;">
         <div id="speak-all-progress" style="text-align:center;font-size:0.88rem;color:#1a73e8;margin-bottom:8px;font-weight:700;padding:6px;background:#e8f0fe;border-radius:8px;"></div>
@@ -3233,6 +3233,8 @@ async function loadDailySummary(userName, idx, dateStr) {
         var data = await res.json();
         if (data.summary) {
             ac.textContent = data.summary;
+            // 全員分生成済みかチェックしてボタンを更新
+            _dvCheckAllSummariesReady();
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
                 + (data.error || '生成に失敗しました') + '</span>';
@@ -3342,6 +3344,37 @@ window.openRecordsModal = function(userName, accordionIdx) {
     document.getElementById('record-modal').style.display = 'block';
     document.body.style.overflow = 'hidden';
 };
+
+// 全員のAI要約が生成済みかチェックしてボタンを更新
+function _dvCheckAllSummariesReady() {
+    var bar = document.getElementById('speak-all-bar');
+    if (!bar || bar.style.display === 'none') return;
+    var cards = document.querySelectorAll('[id^="ai-content-"]');
+    var allReady = true;
+    cards.forEach(function(el) {
+        var t = el.textContent.trim();
+        if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) {
+            allReady = false;
+        }
+    });
+    var btn = document.getElementById('speak-all-btn');
+    var label = document.getElementById('speak-all-label');
+    var icon = document.getElementById('speak-all-icon');
+    if (!btn || !label) return;
+    if (allReady) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        label.textContent = 'その日のAI要約を全員分読み上げ';
+        if (icon) icon.textContent = 'campaign';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.cursor = 'not-allowed';
+        label.textContent = 'AI要約生成中…完了したら自動で有効になります';
+        if (icon) icon.textContent = 'hourglass_empty';
+    }
+}
 
 window.closeRecordModal = function(e) {
     // 背景（オーバーレイ）タップで閉じる
