@@ -2130,7 +2130,7 @@ function evalUpdateStatus() {
     }
 }
 
-function evalShowGoalDisplay(mode) {
+window.evalShowGoalDisplay = function(mode) {
     var gdK = document.getElementById('goal-display-kaigo');
     var gdS = document.getElementById('goal-display-simple');
     var gdE = document.getElementById('goal-display-empty');
@@ -2138,7 +2138,7 @@ function evalShowGoalDisplay(mode) {
     if (gdS) gdS.style.display = (mode === 'simple') ? '' : 'none';
     if (gdE) gdE.style.display = (mode === 'none' || !mode) ? '' : 'none';
 }
-function evalSetGoalDisplay(initial) {
+window.evalSetGoalDisplay = function(initial) {
     if (!initial) return;
     var fields = {
         'gd-short-function':      initial.short_goal_function,
