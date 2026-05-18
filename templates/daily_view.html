@@ -2043,6 +2043,8 @@ window.toggleAccordion = function(idx, userName) {
     }
     var body = document.getElementById('body-'+idx);
     body.classList.toggle('open');
+    // インラインスタイルをリセット（startEditFromModal等で設定された場合に備えて）
+    body.style.display = '';
     document.getElementById('arrow-'+idx).classList.toggle('open');
     // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
     // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
@@ -2247,7 +2249,7 @@ window.startEditFromModal = function(id) {
         if (container) container.style.display = 'block';
         // アコーディオン本体も開く
         var accordionBody = recordEl.closest('.user-accordion-body');
-        if (accordionBody) accordionBody.style.display = 'block';
+        if (accordionBody) accordionBody.classList.add('open');
     }
     // 3. data-content-raw から内容を取得して startEdit を呼ぶ
     var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
@@ -3225,7 +3227,7 @@ async function loadDailySummary(userName, idx, dateStr) {
         if (data.summary) {
             ac.textContent = data.summary;
             // 待機中の再生ボタンがあれば自動再生
-            var waitingBtn = document.querySelector('[data-speak-waiting="' + idx + '"]');
+            var waitingBtn = document.querySelector('[data-speak-waiting="' + String(idx) + '"]');
             if (waitingBtn) {
                 waitingBtn.removeAttribute('data-speak-waiting');
                 var icon = waitingBtn.querySelector('.material-symbols-outlined');
@@ -3491,7 +3493,10 @@ window.speakSummary = function(idx, btn) {
     var text = el.textContent.trim();
     if (text.indexOf('生成中') >= 0 || text.indexOf('再生成中') >= 0) {
         // 待機中フラグをボタンに記録（regenDailySummary完了時に自動再生）
-        if (btn) btn.setAttribute('data-speak-waiting', idx);
+        if (btn) {
+            btn.setAttribute('data-speak-waiting', String(idx));
+            console.log('[TTS] waiting for generation, idx=', idx);
+        }
         var icon = btn ? btn.querySelector('.material-symbols-outlined') : null;
         if (icon) icon.textContent = 'hourglass_empty';
         return;
