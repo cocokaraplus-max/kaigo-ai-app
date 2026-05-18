@@ -117,8 +117,8 @@ body.report-preview-open nav { display:none !important; }
 .rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
 .rep-tbl td.st { width:58px; text-align:center; font-weight:700; font-size:9px; }
 .rep-tbl-cont { width:38px; text-align:center; font-size:9px; font-weight:700; border-radius:3px; }
-.rep-tbl-cont.cont-keep { color:#1a73e8; background:#e8f0fe; }
-.rep-tbl-cont.cont-chg  { color:#e37400; background:#fff8e7; }
+.rep-tbl-cont.cont-keep { color:#5F6368; background:#F1F3F4; }
+.rep-tbl-cont.cont-chg  { color:#E65100; background:#FFF3E0; }
 .rep-tbl td.st-cont  { color:#BA7517; background:#FFF8E7; }
 .rep-tbl td.st-done  { color:#1a7a3c; background:#E6F4EA; }
 .rep-tbl td.st-part  { color:#1a55a8; background:#E8F0FE; }
@@ -827,7 +827,7 @@ function buildReport(d){
     ''+
   '</div>'+
 
-  '<div class="rep-foot">'+repEsc(d._today||'')+'</div>';
+  '';
 
   document.getElementById('rep-root').innerHTML = html;
 }
