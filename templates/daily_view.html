@@ -1316,6 +1316,7 @@
         {% for r in data.normal_records %}
         <div class="record-item" id="record-{{ r.id }}"
              data-category="{{ r.category or '' }}"
+             data-content-raw="{{ r.content | e | replace('"', '&quot;') }}"
              data-leave-type="{{ r.leave_reporter_type or '' }}"
              data-leave-relation="{{ r.leave_reporter_relation or '' }}">
             <div class="record-meta-row" onclick="openRecordModal('{{ r.id }}')" style="cursor:pointer;">
@@ -1398,7 +1399,7 @@
             {% endif %}
             {% if r.can_edit %}
             <div class="record-actions">
-                <button class="btn btn-sm edit-record-btn" data-id="{{ r.id }}" data-content="{{ r.content | e }}">
+                <button class="btn btn-sm edit-record-btn" data-id="{{ r.id }}">
                     <span class="material-symbols-outlined">edit</span>
                     編集
                 </button>
@@ -2227,14 +2228,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Android対応: 編集ボタンのイベント委譲
+// data-content 廃止 → record div の data-content-raw から取得
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('.edit-record-btn');
     if (!btn) return;
     var id = btn.getAttribute('data-id');
-    var content = btn.getAttribute('data-content');
-    if (id && content !== null) {
-        startEdit(id, content);
-    }
+    if (!id) return;
+    var recordEl = document.getElementById('record-' + id);
+    var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
+    startEdit(id, content || '');
 });
 
 window.startEdit = function(id, content) {
