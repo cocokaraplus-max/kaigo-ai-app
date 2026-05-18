@@ -3533,7 +3533,6 @@ window.speakSummary = function(idx, btn) {
     var icon = btn.querySelector('.material-symbols-outlined');
     if (icon) icon.textContent = 'stop_circle';
     btn.style.color = '#ea4335';
-    _ttsUnlockAudio();
     _ttsAcquireWakeLock();
     _ttsPlayText(text, _ttsStop);
 };
@@ -3629,7 +3628,6 @@ function _speakAllStart() {
     }
     _ttsAllIndex = 0;
     _tts_speaking = true;
-    _ttsUnlockAudio();
     _ttsAcquireWakeLock();
     var allBtn = document.getElementById('speak-all-btn');
     var controls = document.getElementById('speak-all-controls');
