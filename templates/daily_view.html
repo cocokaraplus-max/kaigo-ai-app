@@ -1166,10 +1166,11 @@
 }
 
 /* 付箋ボタン */
-.bookmark-btn { opacity: 0.35; transition: opacity 0.2s, color 0.2s; }
-.bookmark-btn:active { opacity: 0.9; transform: scale(1.15); }
-.bookmark-btn.bookmarked .material-symbols-outlined { color: #f9a825 !important; font-variation-settings: 'FILL' 1; }
-.bookmark-btn.bookmarked { opacity: 1 !important; }
+.bookmark-btn { opacity: 0.5; transition: opacity 0.2s, color 0.2s, background 0.2s; border-radius: 6px; }
+.bookmark-btn:active { opacity: 1; transform: scale(1.15); }
+.bookmark-btn .material-symbols-outlined { color: #90a4ae; }
+.bookmark-btn.bookmarked .material-symbols-outlined { color: #ff6f00 !important; font-variation-settings: 'FILL' 1; }
+.bookmark-btn.bookmarked { opacity: 1 !important; background: #fff3e0; }
 </style>
 
 
@@ -1270,17 +1271,17 @@
 {% for user, data in records.items() %}
 <div class="user-accordion" id="accordion-{{ loop.index }}" {% if user == target_user %}data-target="true"{% endif %}>
     <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
+          <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
+            onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
+            title="付箋をつける"
+            style="background:none; border:none; cursor:pointer; padding:6px 6px 6px 0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
+            <span class="material-symbols-outlined" style="font-size:22px;">bookmark</span>
+          </button>
         <div class="user-accordion-title">
             <span class="material-symbols-outlined">person</span>
             {{ user }} 様
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
-          <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
-            onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
-            title="付箋をつける"
-            style="background:none; border:none; cursor:pointer; padding:8px 4px 8px 8px; color:#d0d0d0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
-            <span class="material-symbols-outlined" style="font-size:20px;">bookmark</span>
-          </button>
     </div>
     <div class="user-accordion-body {% if user == target_user %}open{% endif %}" id="body-{{ loop.index }}">
 
