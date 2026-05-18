@@ -1726,6 +1726,40 @@ def api_send_room_message():
         print(f"send_room_message error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/mark_all_read', methods=['POST'])
+@login_required
+def api_mark_all_read():
+    """掲示板 + ケース記録を一括既読にする"""
+    try:
+        f_code = session['f_code']
+        my_name = session['my_name']
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # --- 掲示板: 全ルームの last_read_at を更新 ---
+        rooms_res = supabase.table('chat_members').select('room_id').eq('facility_code', f_code).eq('staff_name', my_name).execute()
+        room_ids = [r['room_id'] for r in (rooms_res.data or [])]
+        for room_id in room_ids:
+            supabase.table('chat_members').update({'last_read_at': now_iso}).eq('room_id', room_id).eq('staff_name', my_name).execute()
+
+        # --- ケース記録: 未読の must_read 記録を全て既読に ---
+        must_res = supabase.table('records').select('id').eq('facility_code', f_code).eq('must_read', True).execute()
+        all_ids = [r['id'] for r in (must_res.data or [])]
+        if all_ids:
+            existing = supabase.table('record_reads').select('record_id').eq('facility_code', f_code).eq('staff_name', my_name).in_('record_id', all_ids).execute()
+            existing_ids = set(r['record_id'] for r in (existing.data or []))
+            to_insert = [
+                {'facility_code': f_code, 'record_id': rid, 'staff_name': my_name}
+                for rid in all_ids if rid not in existing_ids
+            ]
+            if to_insert:
+                supabase.table('record_reads').insert(to_insert).execute()
+
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/mark_read', methods=['POST'])
 @login_required
 def api_mark_read():

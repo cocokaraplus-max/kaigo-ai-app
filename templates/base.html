@@ -630,6 +630,13 @@ body.nav-editing {
 
     {% block bottom_nav %}
     {% if session.get('f_code') %}
+    <!-- 全既読ボタン（バッジが出ているときのみ表示） -->
+    <div id="mark-all-read-bar" style="display:none;position:fixed;bottom:calc(var(--bottom-nav-height, 74px) + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:100%;max-width:var(--page-max-width,480px);z-index:999;padding:0 12px 4px;box-sizing:border-box;pointer-events:none;">
+        <button onclick="markAllRead()" style="pointer-events:auto;width:100%;padding:7px 0;background:#ea4335;color:#fff;border:none;border-radius:10px;font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+            <span class="material-symbols-outlined" style="font-size:16px;">done_all</span>
+            全て既読にする
+        </button>
+    </div>
     <nav class="bottom-nav">
         <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
             <span class="material-symbols-outlined">home</span>
@@ -1089,6 +1096,7 @@ async function checkUnreadMessages() {
             const d2 = await r2.json();
             const c2 = d2.count || 0;
             const db = document.getElementById('daily-badge');
+            setTimeout(updateMarkAllReadBar, 100);
             if (db) {
                 if (c2 > 0) {
                     db.textContent = c2 > 99 ? '99+' : c2;
@@ -1120,6 +1128,34 @@ document.addEventListener('click', e => {
         }, 500);
     }
 });
+// 全既読バーの表示制御
+function updateMarkAllReadBar() {
+    var chatBadge = document.getElementById('chat-badge');
+    var dailyBadge = document.getElementById('daily-badge');
+    var bar = document.getElementById('mark-all-read-bar');
+    if (!bar) return;
+    var chatVisible = chatBadge && chatBadge.style.display !== 'none' && chatBadge.textContent !== '0';
+    var dailyVisible = dailyBadge && dailyBadge.style.display !== 'none' && dailyBadge.textContent !== '0';
+    bar.style.display = (chatVisible || dailyVisible) ? 'block' : 'none';
+}
+
+async function markAllRead() {
+    var bar = document.getElementById('mark-all-read-bar');
+    var btn = bar ? bar.querySelector('button') : null;
+    if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+    try {
+        await fetch('/api/mark_all_read', { method: 'POST', credentials: 'include' });
+        // バッジを即座にクリア
+        var chatBadge = document.getElementById('chat-badge');
+        var dailyBadge = document.getElementById('daily-badge');
+        if (chatBadge) chatBadge.style.display = 'none';
+        if (dailyBadge) dailyBadge.style.display = 'none';
+        if (bar) bar.style.display = 'none';
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">done_all</span> 全て既読にする'; }
+    }
+}
+
 // 掲示板ページに来た時もバッジを保持(/api/board/unread_count を信頼)
 {% endif %}
 
