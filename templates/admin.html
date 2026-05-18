@@ -1223,42 +1223,28 @@ function openPatientEditForm(id) {
 
 // ---- patient_profiles 編集保存 ----
 async function savePatientProfileEdit(id) {
-  const nameEl = document.getElementById('pef-name-' + id);
-  if (!nameEl || !nameEl.value.trim()) {
-    showAdminToast('❌ 氏名は必須です');
-    return;
-  }
   const data = {
-    patient_number: document.getElementById('pef-number-' + id)?.value || null,
-    user_name:      nameEl.value.trim(),
-    user_name_kana: document.getElementById('pef-kana-' + id)?.value || null,
-    care_level:     document.getElementById('pef-care-' + id)?.value || null,
+    patient_number: document.getElementById('pef-number-' + id).value || null,
+    user_name:      document.getElementById('pef-name-' + id).value,
+    user_name_kana: document.getElementById('pef-kana-' + id).value || null,
+    care_level:     document.getElementById('pef-care-' + id).value || null,
     updated_at:     new Date().toISOString()
   };
-  // birth_date があれば含める
-  const birthEl = document.getElementById('pef-birth-' + id);
-  if (birthEl) data.birth_date = birthEl.value || null;
-
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}&facility_code=eq.${FACILITY_CODE}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'return=minimal'
+        'Authorization': `Bearer ${SUPABASE_KEY}`
       },
       body: JSON.stringify(data)
     });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(res.status + ' ' + errText);
-    }
+    if (!res.ok) throw new Error(await res.text());
     showAdminToast('✅ 保存しました');
     setTimeout(() => location.reload(), 1000);
   } catch(e) {
     showAdminToast('❌ 保存失敗: ' + e.message);
-    console.error('[savePatientProfileEdit]', e);
   }
 }
 
