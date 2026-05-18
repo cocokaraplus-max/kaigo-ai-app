@@ -639,7 +639,7 @@ async function saveProfile(e) {
       document.getElementById('profile-id').value = result[0].id;
     }
     showToast('✅ 保存しました');
-    setTimeout(() => location.reload(), 1000);
+    setTimeout(() => history.back(), 1500);
   } catch(err) {
     showToast('❌ 保存に失敗しました: ' + err.message);
   }
