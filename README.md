@@ -473,3 +473,145 @@ PCでブラウザ幅いっぱい表示、利用者情報・体力体重・バイ
 4. §5-5「次にやること」の手順を実行。
 5. 見た目確定 → ユーザー確認 → 本番マージ → 残タスク（§6 A〜D）の優先順位をユーザーに確認して進める。
 
+
+
+---
+<!-- SESSION 50 HANDOVER: 20260518-122353 -->
+
+# TASUKARU Session 50 引き継ぎ書
+
+## 基本情報
+- リポジトリ: `cocokaraplus-max/kaigo-ai-app`
+- 開発ブランチ: `tasukaru-dev` / 本番: `tasukaru`
+- ローカル: `/Users/ZIMAX 1/dev/kaigo-ai-app/`
+- dev URL: `https://tasukaru-dev-191764727533.asia-northeast1.run.app`
+- 本番URL: `https://tasukaru-191764727533.asia-northeast1.run.app`
+- 本番Supabase: `abvglnkwtdeoaazyqwyd`
+- dev Supabase: `otjevnmoycnvaxeltrtj`
+
+---
+
+## Session 50 完了内容（本番マージ済み）
+
+### モニタリング報告書（印刷第2段階）✅
+- タイトル「モニタリング報告書／評価表」中央揃え（gridレイアウト）
+- 報告書幅740px固定
+- ケアマネ枠：事業所名15px・青左ボーダー・padding 12px 16px
+- 施設枠：TEL・FAXを住所と別行に
+- 目標表示：軸名｜目標テキスト｜継続/変更(グレー/アンバー)｜達成度(色分け)の4列
+  - 変更時「↳新目標」行を追加表示
+  - 継続/変更は training_goal 入力有無ではなく各軸個別の `_cont` フィールドを参照
+- ボトムバー：display:flex; justify-content:center で完全中央揃え
+- 下部フッター日付削除（タイトル右に既にあるため）
+- 継続バッジ色：グレー(#F1F3F4/#5F6368)、変更バッジ色：アンバー(#FFF3E0/#E65100)
+
+### 評価ページ ✅
+- 「訓練目標」入力欄→現在の目標表示エリアに変更
+  - 要介護：機能・活動・参加 × 短期・長期の6軸表示テーブル
+  - 要支援/事業対象者：短期・長期の2軸表示テーブル
+  - 前月の patient_evaluations から各軸目標を自動取得（evaluation_helper.py）
+- 各軸に「新規目標」テキストエリア追加（入力あり=変更、なし=継続で自動判定）
+- 継続/変更ボタン削除（自動判定のため不要）
+- ICF軸ラベル修正：「心身機能・身体構造」→「機能」、「活動(日常生活動作)」→「活動」、「参加(社会参加)」→「参加」
+- ラベルCSSを青色・大きめフォント（0.92rem・背景#e8f0fe）に変更
+- セクションカラー追加（現在の目標=青、目標達成状況=緑、記録=黄、モニタリング=紫）
+- training_goal の必須バッジ・必須判定を削除
+
+### 管理者MENU ✅
+- 職員管理の staff_list を `records` テーブル→`staffs` テーブルベースに変更
+  - 記録未入力スタッフ（PC1・PC2等）も職員一覧に表示される
+  - これにより管理者権限の付与が可能に
+
+### Androidバグ修正 ✅
+- ケース記録編集ボタン：onclick+バッククォート方式→data属性+イベント委譲方式に変更（Android互換性）
+- page-wrapper の padding-bottom：8rem固定→`max(8rem, calc(env(safe-area-inset-bottom) + 5rem))` に変更（Android ナビバー対応）
+
+---
+
+## DB変更（本番・dev両方で実施済み）
+
+### patient_evaluations テーブルに16カラム追加
+```sql
+ALTER TABLE patient_evaluations
+  ADD COLUMN IF NOT EXISTS short_goal_function_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_function_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_activity_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_activity_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_participation_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_participation_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_function_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_function_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_activity_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_activity_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_participation_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_participation_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS short_goal_new TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_cont TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS long_goal_new TEXT DEFAULT '';
+```
+
+---
+
+## 評価ページの現在の仕様
+
+### 目標表示（現在の目標セクション）
+- `evaluation_helper.py` の `get_initial_goal_values()` で前月データから取得
+- app.py の `initial_values` に各軸目標が含まれる
+- JS: `evalSetGoalDisplay(initial)` で表示、`evalShowGoalDisplay(mode)` で介護区分切替
+
+### 新規目標入力フィールドID
+- 要介護: `short_goal_function_new`, `short_goal_activity_new`, `short_goal_participation_new`
+- 要介護: `long_goal_function_new`, `long_goal_activity_new`, `long_goal_participation_new`
+- 要支援/事業対象者: `short_goal_new`, `long_goal_new`
+
+### 継続/変更判定ロジック（collectEvalData内）
+```js
+// 各軸の新規目標を収集（入力あり=変更、なし=継続で自動判定）
+data[key] = val || null;
+data[key.replace('_new', '_cont')] = val ? '変更' : '継続';
+```
+
+---
+
+## PENDING問題
+
+### evalShowGoalDisplay が undefined になる問題
+- 関数は `window.evalShowGoalDisplay` として定義済み（assessment.html 2133行）
+- 呼び出し側（evalSelectCareClass）より後に定義されているが window スコープなので問題ないはず
+- devでは動作確認できていないため本番で実際に利用者選択後の挙動を確認が必要
+- もし動作しない場合: 関数定義をスクリプトブロック先頭に移動する
+
+---
+
+## 保留タスク（§6残り）
+- A. 目標管理の利用者情報紐付け（大規模・evaluation_helper.py取得済み）
+- B. バイタル入力改修4項目
+- C. PC専用一括入力画面
+- D. 方式B（サーバーPDF生成）
+
+---
+
+## 重要な知見
+- `staff_list` は staffs テーブルから取得（records テーブルでは未使用スタッフが出ない）
+- 管理者MENU：`admin_settings` の `admin_managers` キーに名前がないと入れない
+  - 新スタッフをSupabaseで直接追加後、管理者MENUから権限付与が必要
+- 報告書の継続/変更判定：各軸個別の `_cont` フィールドを参照（training_goal共通判定は廃止）
+- Android編集ボタン：onclick+バッククォートは非互換 → data属性+イベント委譲方式を使う
+- `page-wrapper`の`max-width:480px`制限→報告書プレビューは`position:fixed`でオーバーレイ化して回避
+
+---
+
+## 直近のgitコミット（tasukaru-dev）
+```
+93c74ed fix: edit button data-attr for Android compatibility
+854cead fix: page-wrapper padding-bottom safe-area for Android
+3f92dab fix: make evalShowGoalDisplay window-scoped
+79b78f2 fix: add section colors to assessment page
+c7541c9 fix: icf axis label bigger and colored blue
+eba10c9 fix: add evalShowGoalDisplay evalSetGoalDisplay functions
+1684e87 fix: remove training_goal required badge and error
+dfcd2d3 feat: show current goals by axis in assessment page
+58edad1 feat: per-axis new goal textarea, remove cont buttons
+dae7d9d fix: admin staff_list from staffs table not records
+```
