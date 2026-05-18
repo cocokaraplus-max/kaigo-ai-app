@@ -786,7 +786,7 @@
                 <div class="eval-section-title">
                     <span class="material-symbols-outlined">flag</span>
                     <span>訓練目標</span>
-                    <span class="eval-section-badge required" id="eval-badge-goal">必須</span>
+                    
                 </div>
                 <span class="material-symbols-outlined eval-chevron">expand_more</span>
             </button>
@@ -836,7 +836,7 @@
                         </table>
                     </div>
                     <div id="goal-display-empty" class="eval-field-help">
-                        💡 上で介護区分を選択すると目標が表示されます。
+                        💡 前月の目標が表示されます。利用者を選択してください。
                     </div>
                 </div>
             </div>
@@ -2125,15 +2125,9 @@ function evalUpdateStatus() {
 }
 
 function evalUpdateSectionBadges(data) {
-    // 訓練目標
+    // 訓練目標バッジ（表示のみになったため判定スキップ）
     const goalBadge = document.getElementById('eval-badge-goal');
-    if (data.training_goal && data.training_goal.trim()) {
-        goalBadge.className = 'eval-section-badge filled';
-        goalBadge.textContent = '入力済';
-    } else {
-        goalBadge.className = 'eval-section-badge required';
-        goalBadge.textContent = '必須';
-    }
+    if (goalBadge) { goalBadge.className = 'eval-section-badge filled'; goalBadge.textContent = ''; }
 
     // 介護区分 + 達成状況 (必須: 介護区分のみ)
     const statusBadge = document.getElementById('eval-badge-status');
