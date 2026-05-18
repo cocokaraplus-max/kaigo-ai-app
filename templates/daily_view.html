@@ -1398,7 +1398,7 @@
             {% endif %}
             {% if r.can_edit %}
             <div class="record-actions">
-                <button class="btn btn-sm" onclick="startEdit('{{ r.id }}', `{{ r.content | replace('`', '\\`') }}`)">
+                <button class="btn btn-sm edit-record-btn" data-id="{{ r.id }}" data-content="{{ r.content | e }}">
                     <span class="material-symbols-outlined">edit</span>
                     編集
                 </button>
@@ -2224,6 +2224,17 @@ document.addEventListener('DOMContentLoaded', function() {
     var openBodies = document.querySelectorAll('.user-accordion-body.open');
     openBodies.forEach(function(body) { dvObserveRecordsIn(body); });
     dvSdUpdateToggleLabel();
+});
+
+// Android対応: 編集ボタンのイベント委譲
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.edit-record-btn');
+    if (!btn) return;
+    var id = btn.getAttribute('data-id');
+    var content = btn.getAttribute('data-content');
+    if (id && content !== null) {
+        startEdit(id, content);
+    }
 });
 
 window.startEdit = function(id, content) {
