@@ -45,7 +45,7 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem 8rem;
+            padding: 1.5rem 1.2rem max(8rem, calc(env(safe-area-inset-bottom) + 5rem));
             position: relative;
             z-index: 0;
         }

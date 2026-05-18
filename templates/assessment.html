@@ -109,6 +109,10 @@
     background: #fafbfc; border: 1px solid #e0e0e0;
     border-radius: 12px; padding: 14px; margin-bottom: 12px;
 }
+#eval-section-goal    { background: #f0f7ff; border-color: #c5dcf8; }
+#eval-section-status  { background: #f0fff4; border-color: #b7e8c8; }
+#eval-section-notes   { background: #fffbf0; border-color: #f0e0a8; }
+#eval-section-monitor { background: #fdf0ff; border-color: #e0b8f0; }
 .eval-section-header {
     display: flex; justify-content: space-between; align-items: center;
     width: 100%; background: transparent; border: none;
@@ -213,7 +217,9 @@
 .eval-icf-row { margin-bottom: 10px; }
 .eval-icf-row:last-child { margin-bottom: 0; }
 .eval-icf-row-label {
-    font-size: 0.78rem; color: #5f6368; margin-bottom: 4px;
+    font-size: 0.92rem; font-weight: 700; color: #1a73e8;
+    margin-bottom: 6px; padding: 3px 10px;
+    background: #e8f0fe; border-radius: 6px; display: inline-block;
 }
 
 /* 介護区分セレクタ */
@@ -786,7 +792,7 @@
                 <div class="eval-section-title">
                     <span class="material-symbols-outlined">flag</span>
                     <span>訓練目標</span>
-                    <span class="eval-section-badge required" id="eval-badge-goal">必須</span>
+                    
                 </div>
                 <span class="material-symbols-outlined eval-chevron">expand_more</span>
             </button>
@@ -794,13 +800,49 @@
                 <div class="eval-field">
                     <label class="eval-field-label">
                         <span class="material-symbols-outlined">flag</span>
-                        訓練目標 <span class="req">*</span>
+                        現在の目標
                     </label>
-                    <textarea class="eval-textarea" id="eval-training-goal" rows="2"
-                              placeholder="例:歩行距離を伸ばして自宅内の移動を安全に行なう"
-                              oninput="evalUpdateStatus()"></textarea>
-                    <div class="eval-field-help">
-                        💡 先月の評価がある場合は自動入力されます。編集して上書き可能。
+                    <input type="hidden" id="eval-training-goal" value="">
+                    <!-- 要介護: 6軸表示 -->
+                    <div id="goal-display-kaigo" style="display:none;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                            <tr style="background:#f8f9fa;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;width:60px;"></td>
+                                <td style="padding:4px 8px;font-weight:700;color:#1a73e8;">短期目標</td>
+                                <td style="padding:4px 8px;font-weight:700;color:#1a73e8;">長期目標</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">機能</td>
+                                <td id="gd-short-function" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-function" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">活動</td>
+                                <td id="gd-short-activity" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-activity" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">参加</td>
+                                <td id="gd-short-participation" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-participation" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <!-- 要支援/事業対象者: 2軸表示 -->
+                    <div id="goal-display-simple" style="display:none;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;width:60px;">短期</td>
+                                <td id="gd-short-simple" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">長期</td>
+                                <td id="gd-long-simple" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div id="goal-display-empty" class="eval-field-help">
+                        💡 前月の目標が表示されます。利用者を選択してください。
                     </div>
                 </div>
             </div>
@@ -843,7 +885,7 @@
                     <div class="eval-icf-block">
                         <div class="eval-icf-title">📍 短期目標(ICF 三軸)</div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">心身機能・身体構造</div>
+                            <div class="eval-icf-row-label">機能</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-short-function', '達成')">
@@ -859,9 +901,15 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-function" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-short-function-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-short-function-current-text"></span></div>
+                                <textarea class="eval-textarea" id="short_goal_function_new" rows="2"
+                                    placeholder="機能・短期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">活動(日常生活動作)</div>
+                            <div class="eval-icf-row-label">活動</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-short-activity', '達成')">
@@ -877,9 +925,15 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-activity" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-short-activity-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-short-activity-current-text"></span></div>
+                                <textarea class="eval-textarea" id="short_goal_activity_new" rows="2"
+                                    placeholder="活動・短期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">参加(社会参加)</div>
+                            <div class="eval-icf-row-label">参加</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-short-participation', '達成')">
@@ -895,12 +949,18 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-participation" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-short-participation-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-short-participation-current-text"></span></div>
+                                <textarea class="eval-textarea" id="short_goal_participation_new" rows="2"
+                                    placeholder="参加・短期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                     </div>
                     <div class="eval-icf-block">
                         <div class="eval-icf-title">🎯 長期目標(ICF 三軸)</div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">心身機能・身体構造</div>
+                            <div class="eval-icf-row-label">機能</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-long-function', '達成')">
@@ -916,9 +976,15 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-function" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-long-function-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-long-function-current-text"></span></div>
+                                <textarea class="eval-textarea" id="long_goal_function_new" rows="2"
+                                    placeholder="機能・長期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">活動(日常生活動作)</div>
+                            <div class="eval-icf-row-label">活動</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-long-activity', '達成')">
@@ -934,9 +1000,15 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-activity" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-long-activity-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-long-activity-current-text"></span></div>
+                                <textarea class="eval-textarea" id="long_goal_activity_new" rows="2"
+                                    placeholder="活動・長期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                         <div class="eval-icf-row">
-                            <div class="eval-icf-row-label">参加(社会参加)</div>
+                            <div class="eval-icf-row-label">参加</div>
                             <div class="eval-segment">
                                 <button type="button" class="eval-segment-btn"
                                         data-value="達成" onclick="evalSelectSegment('eval-long-participation', '達成')">
@@ -952,6 +1024,12 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-participation" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-long-participation-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-long-participation-current-text"></span></div>
+                                <textarea class="eval-textarea" id="long_goal_participation_new" rows="2"
+                                    placeholder="参加・長期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -975,6 +1053,12 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-short-goal-simple" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-short-goal-simple-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-short-goal-simple-current-text"></span></div>
+                                <textarea class="eval-textarea" id="short_goal_new" rows="2"
+                                    placeholder="短期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                     </div>
                     <div class="eval-icf-row" style="margin-top:14px;">
                         <div class="eval-icf-row-label">🎯 長期目標</div>
@@ -993,6 +1077,12 @@
                                 </button>
 </div>
                             <input type="hidden" id="eval-long-goal-simple" value="">
+                            <div style="margin-top:6px;">
+                                <div id="eval-long-goal-simple-current" style="font-size:0.75rem;color:#80868b;margin-bottom:3px;display:none;">現在の目標: <span id="eval-long-goal-simple-current-text"></span></div>
+                                <textarea class="eval-textarea" id="long_goal_new" rows="2"
+                                    placeholder="長期目標の新規目標（変更する場合のみ入力）"
+                                    oninput="evalUpdateStatus()" style="font-size:0.82rem;"></textarea>
+                            </div>
                     </div>
                 </div>
 
@@ -1678,9 +1768,8 @@ window.evalCheckExistingMonth = async function() {
 
         // 初期値セット(訓練目標、介護区分)
         const initial = data.initial_values || {};
-        if (initial.training_goal && !document.getElementById('eval-training-goal').value) {
-            document.getElementById('eval-training-goal').value = initial.training_goal;
-        }
+        // 各軸の現在目標を表示エリアにセット
+        evalSetGoalDisplay(initial);
         if (initial.care_classification && !evalState.careClass) {
             evalSelectCareClass(initial.care_classification);
         }
@@ -1796,12 +1885,15 @@ window.evalSelectCareClass = function(value) {
     if (value === '要介護') {
         document.getElementById('eval-status-kaigo').style.display = '';
         document.getElementById('eval-status-simple').style.display = 'none';
+        evalShowGoalDisplay('kaigo');
     } else if (value === '要支援' || value === '事業対象者') {
         document.getElementById('eval-status-kaigo').style.display = 'none';
         document.getElementById('eval-status-simple').style.display = '';
+        evalShowGoalDisplay('simple');
     } else {
         document.getElementById('eval-status-kaigo').style.display = 'none';
         document.getElementById('eval-status-simple').style.display = 'none';
+        evalShowGoalDisplay('none');
         document.getElementById('eval-status-empty').style.display = '';
     }
     evalUpdateStatus();
@@ -1874,11 +1966,26 @@ function evalCollectFormData() {
         data.short_goal_status = document.getElementById('eval-short-goal-simple').value || null;
         data.long_goal_status = document.getElementById('eval-long-goal-simple').value || null;
     }
-    // training_goal 入力有無で継続/変更を全軸共通で自動判定
-    const _contVal = data.training_goal ? '変更' : '継続';
-    ['short_goal_function_cont','short_goal_activity_cont','short_goal_participation_cont',
-     'long_goal_function_cont','long_goal_activity_cont','long_goal_participation_cont',
-     'short_goal_cont','long_goal_cont'].forEach(k => { data[k] = _contVal; });
+    // 各軸の新規目標を収集（入力あり=変更、なし=継続で自動判定）
+    const _axisNewFields = [
+        ['short_goal_function_new',      'short_goal_function_new'],
+        ['short_goal_activity_new',      'short_goal_activity_new'],
+        ['short_goal_participation_new', 'short_goal_participation_new'],
+        ['long_goal_function_new',       'long_goal_function_new'],
+        ['long_goal_activity_new',       'long_goal_activity_new'],
+        ['long_goal_participation_new',  'long_goal_participation_new'],
+        ['short_goal_new',               'short_goal_new'],
+        ['long_goal_new',                'long_goal_new'],
+    ];
+    _axisNewFields.forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (el) {
+            const val = el.value.trim();
+            data[key] = val || null;
+            // 新規目標入力有無で継続/変更を自動判定
+            data[key.replace('_new', '_cont')] = val ? '変更' : '継続';
+        }
+    });
     return data;
 }
 
@@ -1910,11 +2017,55 @@ function evalFillForm(ev) {
         if (val) evalSelectSegment(id, val);
     });
 
+    // 各軸の新規目標を復元＋現在の目標を表示
+    const _axisNewRestore = [
+        ['short_goal_function_new',      ev.short_goal_function_new,      'eval-short-function-current',      ev.short_goal_function],
+        ['short_goal_activity_new',      ev.short_goal_activity_new,      'eval-short-activity-current',      ev.short_goal_activity],
+        ['short_goal_participation_new', ev.short_goal_participation_new, 'eval-short-participation-current', ev.short_goal_participation],
+        ['long_goal_function_new',       ev.long_goal_function_new,       'eval-long-function-current',       ev.long_goal_function],
+        ['long_goal_activity_new',       ev.long_goal_activity_new,       'eval-long-activity-current',       ev.long_goal_activity],
+        ['long_goal_participation_new',  ev.long_goal_participation_new,  'eval-long-participation-current',  ev.long_goal_participation],
+        ['short_goal_new',               ev.short_goal_new,               'eval-short-goal-simple-current',   ev.short_goal_simple || ev.training_goal],
+        ['long_goal_new',                ev.long_goal_new,                'eval-long-goal-simple-current',    ev.long_goal_simple],
+    ];
+    _axisNewRestore.forEach(([newId, newVal, curId, curVal]) => {
+        const newEl = document.getElementById(newId);
+        if (newEl && newVal) newEl.value = newVal;
+        const curEl = document.getElementById(curId);
+        if (curEl && curVal) {
+            curEl.style.display = '';
+            const textEl = document.getElementById(curId + '-text');
+            if (textEl) textEl.textContent = curVal;
+        }
+    });
+
+    // 各軸個別の継続/変更・新規目標を復元
+    const _axisRestorePairs = [
+        ['eval-short-function-cont',      ev.short_goal_function_cont,      'eval-short-function-new',       ev.short_goal_function_new],
+        ['eval-short-activity-cont',      ev.short_goal_activity_cont,      'eval-short-activity-new',       ev.short_goal_activity_new],
+        ['eval-short-participation-cont', ev.short_goal_participation_cont, 'eval-short-participation-new',  ev.short_goal_participation_new],
+        ['eval-long-function-cont',       ev.long_goal_function_cont,       'eval-long-function-new',        ev.long_goal_function_new],
+        ['eval-long-activity-cont',       ev.long_goal_activity_cont,       'eval-long-activity-new',        ev.long_goal_activity_new],
+        ['eval-long-participation-cont',  ev.long_goal_participation_cont,  'eval-long-participation-new',   ev.long_goal_participation_new],
+        ['eval-short-goal-simple-cont',   ev.short_goal_cont,               'eval-short-goal-simple-new',    ev.short_goal_new],
+        ['eval-long-goal-simple-cont',    ev.long_goal_cont,                'eval-long-goal-simple-new',     ev.long_goal_new],
+    ];
+    _axisRestorePairs.forEach(([contId, contVal, newId, newVal]) => {
+        if (contVal) evalSelectContAxis(contId, newId, contVal);
+        const newEl = document.getElementById(newId);
+        if (newEl && newVal) { newEl.value = newVal; if (contVal === '変更') newEl.classList.add('show'); }
+    });
+
 
     evalUpdateStatus();
 }
 
 function evalResetForm() {
+    ['short_goal_function_new','short_goal_activity_new','short_goal_participation_new',
+     'long_goal_function_new','long_goal_activity_new','long_goal_participation_new',
+     'short_goal_new','long_goal_new'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
     ['eval-training-goal',
      'eval-changes', 'eval-issues', 'eval-special-notes', 'eval-new-requests-detail'].forEach(id => {
         const el = document.getElementById(id);
@@ -1961,7 +2112,7 @@ function evalUpdateStatus() {
     const data = evalCollectFormData();
     if (!data) return;
 
-    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name'];
     const missingRequired = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));
 
     // セクションごとのバッジ更新
@@ -1979,16 +2130,35 @@ function evalUpdateStatus() {
     }
 }
 
+window.evalShowGoalDisplay = function(mode) {
+    var gdK = document.getElementById('goal-display-kaigo');
+    var gdS = document.getElementById('goal-display-simple');
+    var gdE = document.getElementById('goal-display-empty');
+    if (gdK) gdK.style.display = (mode === 'kaigo') ? '' : 'none';
+    if (gdS) gdS.style.display = (mode === 'simple') ? '' : 'none';
+    if (gdE) gdE.style.display = (mode === 'none' || !mode) ? '' : 'none';
+}
+window.evalSetGoalDisplay = function(initial) {
+    if (!initial) return;
+    var fields = {
+        'gd-short-function':      initial.short_goal_function,
+        'gd-long-function':       initial.long_goal_function,
+        'gd-short-activity':      initial.short_goal_activity,
+        'gd-long-activity':       initial.long_goal_activity,
+        'gd-short-participation': initial.short_goal_participation,
+        'gd-long-participation':  initial.long_goal_participation,
+        'gd-short-simple':        initial.short_goal_simple,
+        'gd-long-simple':         initial.long_goal_simple,
+    };
+    Object.keys(fields).forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = fields[id] || '（未設定）';
+    });
+}
 function evalUpdateSectionBadges(data) {
-    // 訓練目標
+    // 訓練目標バッジ（表示のみになったため判定スキップ）
     const goalBadge = document.getElementById('eval-badge-goal');
-    if (data.training_goal && data.training_goal.trim()) {
-        goalBadge.className = 'eval-section-badge filled';
-        goalBadge.textContent = '入力済';
-    } else {
-        goalBadge.className = 'eval-section-badge required';
-        goalBadge.textContent = '必須';
-    }
+    if (goalBadge) { goalBadge.className = 'eval-section-badge filled'; goalBadge.textContent = ''; }
 
     // 介護区分 + 達成状況 (必須: 介護区分のみ)
     const statusBadge = document.getElementById('eval-badge-status');
@@ -2022,7 +2192,7 @@ window.evalSave = async function() {
     if (!data) return;
 
     // 必須チェック
-    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name'];
     const labels = {user_name: '利用者', year_month: '対象月', care_classification: '介護区分',
                     evaluator_name: '評価者', training_goal: '訓練目標'};
     const missing = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));

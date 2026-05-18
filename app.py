@@ -4,6 +4,7 @@ from utils import classify_category, generate_search_tags
 from evaluation_helper import (
     get_initial_training_goal,
     get_initial_care_classification,
+    get_initial_goal_values,
     acquire_edit_lock,
     release_edit_lock,
     evaluation_status,
@@ -3192,9 +3193,11 @@ def api_get_patient_evaluation():
         if evaluation:
             evaluation["_status"] = evaluation_status(evaluation)
 
+        _goal_vals = get_initial_goal_values(supabase, f_code, user_name, year_month)
         initial_values = {
             "training_goal": get_initial_training_goal(supabase, f_code, user_name, year_month),
             "care_classification": get_initial_care_classification(supabase, f_code, user_name, year_month),
+            **_goal_vals,
         }
 
         return jsonify({
