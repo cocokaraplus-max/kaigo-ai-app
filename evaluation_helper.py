@@ -131,6 +131,40 @@ def get_initial_training_goal(supabase, facility_code: str, user_name: str, targ
     return ""
 
 
+def get_initial_goal_values(supabase, facility_code: str, user_name: str, target_month: str) -> dict:
+    """各軸の目標初期値を返す。
+    前月の patient_evaluations から各軸の目標テキストを取得する。
+    要介護: short/long × function/activity/participation の6軸
+    要支援/事業対象者: short/long_goal_simple の2軸
+    Returns:
+        dict with keys:
+            short_goal_function, short_goal_activity, short_goal_participation,
+            long_goal_function, long_goal_activity, long_goal_participation,
+            short_goal_simple, long_goal_simple
+    """
+    result = {
+        "short_goal_function": "", "short_goal_activity": "", "short_goal_participation": "",
+        "long_goal_function": "",  "long_goal_activity": "",  "long_goal_participation": "",
+        "short_goal_simple": "", "long_goal_simple": "",
+    }
+    try:
+        res = supabase.table("patient_evaluations") \
+            .select(",".join(result.keys())) \
+            .eq("facility_code", facility_code) \
+            .eq("user_name", user_name) \
+            .lt("year_month", target_month) \
+            .order("year_month", desc=True) \
+            .limit(1) \
+            .execute()
+        if res.data and res.data[0]:
+            for key in result:
+                val = res.data[0].get(key)
+                if val:
+                    result[key] = val
+    except Exception:
+        pass
+    return result
+
 def get_initial_care_classification(supabase, facility_code: str, user_name: str, target_month: str) -> str:
     """介護区分の初期値を返す。
 

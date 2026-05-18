@@ -794,13 +794,49 @@
                 <div class="eval-field">
                     <label class="eval-field-label">
                         <span class="material-symbols-outlined">flag</span>
-                        訓練目標 <span class="req">*</span>
+                        現在の目標
                     </label>
-                    <textarea class="eval-textarea" id="eval-training-goal" rows="2"
-                              placeholder="例:歩行距離を伸ばして自宅内の移動を安全に行なう"
-                              oninput="evalUpdateStatus()"></textarea>
-                    <div class="eval-field-help">
-                        💡 先月の評価がある場合は自動入力されます。編集して上書き可能。
+                    <input type="hidden" id="eval-training-goal" value="">
+                    <!-- 要介護: 6軸表示 -->
+                    <div id="goal-display-kaigo" style="display:none;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                            <tr style="background:#f8f9fa;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;width:60px;"></td>
+                                <td style="padding:4px 8px;font-weight:700;color:#1a73e8;">短期目標</td>
+                                <td style="padding:4px 8px;font-weight:700;color:#1a73e8;">長期目標</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">機能</td>
+                                <td id="gd-short-function" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-function" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">活動</td>
+                                <td id="gd-short-activity" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-activity" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">参加</td>
+                                <td id="gd-short-participation" style="padding:4px 8px;color:#202124;">—</td>
+                                <td id="gd-long-participation" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <!-- 要支援/事業対象者: 2軸表示 -->
+                    <div id="goal-display-simple" style="display:none;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;width:60px;">短期</td>
+                                <td id="gd-short-simple" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                            <tr style="border-top:1px solid #e0e0e0;">
+                                <td style="padding:4px 8px;font-weight:700;color:#5f6368;">長期</td>
+                                <td id="gd-long-simple" style="padding:4px 8px;color:#202124;">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div id="goal-display-empty" class="eval-field-help">
+                        💡 上で介護区分を選択すると目標が表示されます。
                     </div>
                 </div>
             </div>
@@ -1726,9 +1762,8 @@ window.evalCheckExistingMonth = async function() {
 
         // 初期値セット(訓練目標、介護区分)
         const initial = data.initial_values || {};
-        if (initial.training_goal && !document.getElementById('eval-training-goal').value) {
-            document.getElementById('eval-training-goal').value = initial.training_goal;
-        }
+        // 各軸の現在目標を表示エリアにセット
+        evalSetGoalDisplay(initial);
         if (initial.care_classification && !evalState.careClass) {
             evalSelectCareClass(initial.care_classification);
         }
@@ -1844,12 +1879,15 @@ window.evalSelectCareClass = function(value) {
     if (value === '要介護') {
         document.getElementById('eval-status-kaigo').style.display = '';
         document.getElementById('eval-status-simple').style.display = 'none';
+        evalShowGoalDisplay('kaigo');
     } else if (value === '要支援' || value === '事業対象者') {
         document.getElementById('eval-status-kaigo').style.display = 'none';
         document.getElementById('eval-status-simple').style.display = '';
+        evalShowGoalDisplay('simple');
     } else {
         document.getElementById('eval-status-kaigo').style.display = 'none';
         document.getElementById('eval-status-simple').style.display = 'none';
+        evalShowGoalDisplay('none');
         document.getElementById('eval-status-empty').style.display = '';
     }
     evalUpdateStatus();
@@ -2068,7 +2106,7 @@ function evalUpdateStatus() {
     const data = evalCollectFormData();
     if (!data) return;
 
-    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name'];
     const missingRequired = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));
 
     // セクションごとのバッジ更新
@@ -2129,7 +2167,7 @@ window.evalSave = async function() {
     if (!data) return;
 
     // 必須チェック
-    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name', 'training_goal'];
+    const required = ['user_name', 'year_month', 'care_classification', 'evaluator_name'];
     const labels = {user_name: '利用者', year_month: '対象月', care_classification: '介護区分',
                     evaluator_name: '評価者', training_goal: '訓練目標'};
     const missing = required.filter(k => !data[k] || (typeof data[k] === 'string' && !data[k].trim()));
