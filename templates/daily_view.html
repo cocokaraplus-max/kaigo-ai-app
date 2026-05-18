@@ -2321,7 +2321,15 @@ window.startEdit = function(id, content) {
     // 関係性ブロックの表示は type=family のときだけ
     if (relBlock) relBlock.style.display = (curType === 'family') ? 'block' : 'none';
 };
-window.cancelEdit = function(id) { document.getElementById('edit-area-'+id).style.display = 'none'; };
+window.cancelEdit = function(id) {
+    document.getElementById('edit-area-'+id).style.display = 'none';
+    // records-hidden を元に戻す
+    var recordEl = document.getElementById('record-' + id);
+    if (recordEl) {
+        var container = recordEl.closest('[id^="records-hidden-"]');
+        if (container) container.style.display = 'none';
+    }
+};
 window.saveEdit = async function(id) {
     const content = document.getElementById('edit-text-'+id).value;
     // Session 33: 休み連絡カテゴリの編集なら type/relation も送る
@@ -2356,7 +2364,16 @@ window.saveEdit = async function(id) {
         console.warn('[vas] saveEdit vas_records collect failed:', e);
     }
     const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if ((await res.json()).status === 'success') location.reload();
+    const result = await res.json();
+    if (result.status === 'success') {
+        // records-hidden を元に戻してからリロード
+        var recordEl2 = document.getElementById('record-' + id);
+        if (recordEl2) {
+            var container2 = recordEl2.closest('[id^="records-hidden-"]');
+            if (container2) container2.style.display = 'none';
+        }
+        location.reload();
+    }
 };
 
 // ==========================================================================
