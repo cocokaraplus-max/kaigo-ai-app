@@ -3504,7 +3504,12 @@ window.speakSummary = function(idx, btn) {
         return;
     }
     if (!text || text.indexOf('タップして開くと') === 0) {
-        alert('AI要約を先に生成してください'); return;
+        // まだ未生成→待機モード（loadDailySummary完了後に自動再生）
+        if (btn) btn.setAttribute('data-speak-waiting', String(idx));
+        var iw = btn ? btn.querySelector('.material-symbols-outlined') : null;
+        if (iw) iw.textContent = 'hourglass_empty';
+        _ttsUnlockAudio();
+        return;
     }
     _tts_speaking = true;
     _tts_currentBtn = btn;
