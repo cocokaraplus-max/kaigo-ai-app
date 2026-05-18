@@ -2227,6 +2227,33 @@ document.addEventListener('DOMContentLoaded', function() {
     dvSdUpdateToggleLabel();
 });
 
+// モーダル内の編集ボタン用: モーダルを閉じてから元の編集UIを開く
+window.startEditFromModal = function(id) {
+    // 1. モーダルを閉じる
+    var modal = document.getElementById('record-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+    // 2. records-hidden-* コンテナを表示（非表示になっている場合）
+    var recordEl = document.getElementById('record-' + id);
+    if (recordEl) {
+        var container = recordEl.closest('[id^="records-hidden-"]');
+        if (container) container.style.display = 'block';
+        // アコーディオン本体も開く
+        var accordionBody = recordEl.closest('.user-accordion-body');
+        if (accordionBody) accordionBody.style.display = 'block';
+    }
+    // 3. data-content-raw から内容を取得して startEdit を呼ぶ
+    var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
+    window.startEdit(String(id), content || '');
+    // 4. 編集エリアにスクロール
+    var editArea = document.getElementById('edit-area-' + id);
+    if (editArea) {
+        setTimeout(function() { editArea.scrollIntoView({behavior:'smooth', block:'center'}); }, 100);
+    }
+};
+
 // Android対応: 編集ボタンのイベント委譲
 // data-content 廃止 → record div の data-content-raw から取得
 document.addEventListener('click', function(e) {
@@ -3266,7 +3293,17 @@ window.openRecordsModal = function(userName, accordionIdx) {
         html += (content ? content.textContent.trim() : '') + '</div>';
         if (vasDisplay) html += vasDisplay.outerHTML;
         if (photoGrid) html += photoGrid.outerHTML;
-        if (actions) html += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' + actions.innerHTML + '</div>';
+        if (actions) {
+            // 編集ボタンだけ特別処理: モーダルを閉じてから直接 startEditFromModal を呼ぶ
+            var actionsClone = actions.cloneNode(true);
+            var editBtnInModal = actionsClone.querySelector('.edit-record-btn');
+            if (editBtnInModal) {
+                var rid = editBtnInModal.getAttribute('data-id');
+                // onclick を直接設定（イベント委譲ではなく確実に動く方式）
+                editBtnInModal.setAttribute('onclick', 'startEditFromModal(' + rid + ')');
+            }
+            html += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' + actionsClone.innerHTML + '</div>';
+        }
         html += '</div>';
     });
     document.getElementById('modal-user-name').textContent = userName + ' 様';
