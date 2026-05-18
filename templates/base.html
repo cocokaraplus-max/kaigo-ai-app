@@ -1966,18 +1966,18 @@ document.addEventListener('click', function(e) {
     </div>
     <!-- 数字パッド -->
     <div style="display:grid;grid-template-columns:repeat(3,72px);gap:12px;margin-bottom:16px;" id="lock-numpad">
-        <button onclick="lockInput('1')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">1</button>
-        <button onclick="lockInput('2')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">2</button>
-        <button onclick="lockInput('3')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">3</button>
-        <button onclick="lockInput('4')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">4</button>
-        <button onclick="lockInput('5')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">5</button>
-        <button onclick="lockInput('6')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">6</button>
-        <button onclick="lockInput('7')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">7</button>
-        <button onclick="lockInput('8')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">8</button>
-        <button onclick="lockInput('9')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">9</button>
+        <button data-digit="1" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">1</button>
+        <button data-digit="2" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">2</button>
+        <button data-digit="3" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">3</button>
+        <button data-digit="4" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">4</button>
+        <button data-digit="5" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">5</button>
+        <button data-digit="6" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">6</button>
+        <button data-digit="7" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">7</button>
+        <button data-digit="8" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">8</button>
+        <button data-digit="9" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">9</button>
         <div></div>
-        <button onclick="lockInput('0')" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;">0</button>
-        <button onclick="lockDelete()" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:1.1rem;cursor:pointer;">⌫</button>
+        <button data-digit="0" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;font-weight:700;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">0</button>
+        <button data-delete="1" style="height:72px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:1.1rem;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;">⌫</button>
     </div>
 
 </div>
@@ -2019,7 +2019,7 @@ document.addEventListener('click', function(e) {
         lockInput_val += digit;
         updateDots();
         if (lockInput_val.length === 4) {
-            setTimeout(checkPasscode, 100);
+            setTimeout(checkPasscode, 80);
         }
     };
 
@@ -2027,6 +2027,38 @@ document.addEventListener('click', function(e) {
         lockInput_val = lockInput_val.slice(0, -1);
         updateDots();
     };
+
+    // touchstart で即反応（300ms遅延を回避）
+    var numpad = document.getElementById('lock-numpad');
+    if (numpad) {
+        numpad.addEventListener('touchstart', function(e) {
+            var btn = e.target.closest('button');
+            if (!btn) return;
+            e.preventDefault(); // click イベントの重複発火を防ぐ
+            // 即時視覚フィードバック
+            btn.style.background = 'rgba(255,255,255,0.4)';
+            setTimeout(function() {
+                btn.style.background = btn.dataset.delete
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'rgba(255,255,255,0.15)';
+            }, 150);
+            if (btn.dataset.delete) {
+                window.lockDelete();
+            } else if (btn.dataset.digit !== undefined) {
+                window.lockInput(btn.dataset.digit);
+            }
+        }, { passive: false });
+        // マウス/PC用フォールバック
+        numpad.addEventListener('click', function(e) {
+            var btn = e.target.closest('button');
+            if (!btn) return;
+            if (btn.dataset.delete) {
+                window.lockDelete();
+            } else if (btn.dataset.digit !== undefined) {
+                window.lockInput(btn.dataset.digit);
+            }
+        });
+    }
 
     function checkPasscode() {
         var saved = localStorage.getItem(LOCK_PASSCODE_KEY);
