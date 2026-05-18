@@ -3450,29 +3450,20 @@ function _ttsPlayText(text, onEnd) {
     }).then(function(r) { return r.json(); }).then(function(data) {
         if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
         if (data.audioContent) {
-            // Base64をArrayBufferに変換しAudioContext経由で再生（iOS対応）
-            var binary = atob(data.audioContent);
-            var bytes = new Uint8Array(binary.length);
-            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            var arrayBuf = bytes.buffer;
-            if (_ttsAudioContext && _ttsAudioContext.state !== 'closed') {
-                _ttsAudioContext.decodeAudioData(arrayBuf, function(decoded) {
-                    if (!_tts_speaking) return;
-                    var src = _ttsAudioContext.createBufferSource();
-                    src.buffer = decoded;
-                    src.connect(_ttsAudioContext.destination);
-                    src.onended = function() { if (mySeq !== _ttsPlaySeq) return; if (onEnd) onEnd(); };
-                    src.start(0);
-                    _tts_currentAudio = src;
-                }, function() {
-                    // デコード失敗時はフォールバック
-                    var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-                    _tts_currentAudio = audio;
-                    audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.play().catch(function() { if (onEnd) onEnd(); });
-                });
-            } else {
+            // Audio タグ方式で再生（iOS/Android 自動再生対応）
+            var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+            _tts_currentAudio = audio;
+            audio.onended = function() {
+                if (mySeq !== _ttsPlaySeq) return;
+                _tts_currentAudio = null;
+                if (onEnd) onEnd();
+            };
+            audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
+            audio.play().catch(function(e) {
+                console.warn('[TTS] play failed:', e);
+                if (onEnd) onEnd();
+            });
+            if (false) {  // 旧AudioContext方式（無効化）
                 var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
                 _tts_currentAudio = audio;
                 audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
