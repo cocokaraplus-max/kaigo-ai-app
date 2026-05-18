@@ -1726,6 +1726,40 @@ def api_send_room_message():
         print(f"send_room_message error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/mark_all_read', methods=['POST'])
+@login_required
+def api_mark_all_read():
+    """掲示板 + ケース記録を一括既読にする"""
+    try:
+        f_code = session['f_code']
+        my_name = session['my_name']
+        supabase = get_supabase()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # --- 掲示板: 全ルームの last_read_at を更新 ---
+        rooms_res = supabase.table('chat_members').select('room_id').eq('facility_code', f_code).eq('staff_name', my_name).execute()
+        room_ids = [r['room_id'] for r in (rooms_res.data or [])]
+        for room_id in room_ids:
+            supabase.table('chat_members').update({'last_read_at': now_iso}).eq('room_id', room_id).eq('staff_name', my_name).execute()
+
+        # --- ケース記録: 未読の must_read 記録を全て既読に ---
+        must_res = supabase.table('records').select('id').eq('facility_code', f_code).eq('must_read', True).execute()
+        all_ids = [r['id'] for r in (must_res.data or [])]
+        if all_ids:
+            existing = supabase.table('record_reads').select('record_id').eq('facility_code', f_code).eq('staff_name', my_name).in_('record_id', all_ids).execute()
+            existing_ids = set(r['record_id'] for r in (existing.data or []))
+            to_insert = [
+                {'facility_code': f_code, 'record_id': rid, 'staff_name': my_name}
+                for rid in all_ids if rid not in existing_ids
+            ]
+            if to_insert:
+                supabase.table('record_reads').insert(to_insert).execute()
+
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/mark_read', methods=['POST'])
 @login_required
 def api_mark_read():
@@ -3428,6 +3462,60 @@ def api_evaluation_ingest_file():
 
     except Exception as e:
         print(f"[ingest_file error] {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+@app.route('/api/evaluation/ai_fill', methods=['POST'])
+@login_required
+def api_evaluation_ai_fill():
+    """文字起こし元データから訓練による変化・課題とその要因をAI生成"""
+    try:
+        from utils import get_generative_model
+        import json as _json
+        data = request.json or {}
+        source_text = (data.get('source_data') or '').strip()
+        if not source_text:
+            return jsonify({"status": "error", "message": "元データが空です"}), 400
+
+        model = get_generative_model()
+
+        prompt = (
+            "あなたは介護施設で働く機能訓練指導員（理学療法士・作業療法士・柔道整復師等）です。\n"
+            "以下の文字起こし内容をもとに、ケアマネージャーへの報告文として以下の2項目を作成してください。\n\n"
+            "【必須ルール】\n"
+            "・機能訓練指導員の視点からケアマネージャーへ伝える報告文として書く\n"
+            "・堅すぎず砕けすぎない、現場感のある丁寧な口調（です・ます調）\n"
+            "・箇条書きは使わず、ひとつながりの文章で書く\n"
+            "・職員名・利用者名・主語は不要\n"
+            "・事実として元データに述べられていること以外は絶対に書かない（ハルシネーション厳禁）\n"
+            "・記録にない内容を補完・推測・創作しない\n\n"
+            "【訓練による変化】\n"
+            "・訓練の実施内容・身体機能の変化・改善点を記載\n"
+            "・該当内容がない場合は空文字を返す\n\n"
+            "【課題とその要因】\n"
+            "・残存する問題・その原因・対応が必要な点を記載\n"
+            "・該当内容がない場合は空文字を返す\n\n"
+            "【出力形式】JSONのみ。前後の説明・マークダウン不要。\n"
+            '{"changes_by_training": "...", "issues_and_causes": "..."}\n\n'
+            "【元データ】\n"
+            + source_text
+        )
+
+        resp = model.generate_content([prompt])
+        raw = resp.text.strip()
+        raw = re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
+        raw = re.sub(r'```$', '', raw).strip()
+
+        parsed = _json.loads(raw)
+        return jsonify({
+            "status": "success",
+            "changes_by_training": parsed.get("changes_by_training", ""),
+            "issues_and_causes":   parsed.get("issues_and_causes", ""),
+        })
+
+    except Exception as e:
+        print(f"[ai_fill error] {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

@@ -320,6 +320,7 @@ ALL_FIELDS_KAIGO = (
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",
     # 自由文
+    "source_data",
     "changes_by_training", "issues_and_causes", "special_notes",
     # モニタリング(new_requests_detail は条件付きなので含めない)
     "new_requests_exist", "satisfaction", "service_appropriateness",
@@ -333,6 +334,7 @@ ALL_FIELDS_SHIEN_OR_TAISHOU = (
     # 短期/長期(単純)
     "short_goal_status", "long_goal_status",
     # 自由文
+    "source_data",
     "changes_by_training", "issues_and_causes", "special_notes",
     # モニタリング
     "new_requests_exist", "satisfaction", "service_appropriateness",
@@ -426,6 +428,7 @@ ALLOWED_UPSERT_KEYS = (
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",
     "short_goal_status", "long_goal_status",
+    "source_data",
     "changes_by_training", "issues_and_causes", "special_notes",
     "new_requests_exist", "new_requests_detail",
     "satisfaction", "service_appropriateness",

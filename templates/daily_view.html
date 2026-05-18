@@ -547,6 +547,31 @@
 .dv-sd-main:active { transform: scale(0.95); }
 .dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.3s ease; }
 .dv-sd-main.is-open .material-symbols-outlined { transform: rotate(180deg); }
+/* スワイプ隠し: ボタン群をラップするコンテナ */
+#dv-sd-wrap {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#dv-sd-wrap.is-hidden {
+    transform: translateX(calc(72px + env(safe-area-inset-right, 0px)));
+}
+/* 引き出しタブ（隠れているときだけ表示） */
+#dv-sd-tab {
+    position: fixed;
+    bottom: 160px;
+    right: 0;
+    width: 20px;
+    height: 48px;
+    background: #ec4899;
+    border-radius: 8px 0 0 8px;
+    z-index: 951;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: -2px 2px 6px rgba(0,0,0,0.2);
+}
+#dv-sd-tab.visible { display: flex; }
+#dv-sd-tab .material-symbols-outlined { font-size: 14px; color: #fff; }
 
 /* === 肉球配置: ボタンとラベルを分離して個別に絶対配置 === */
 
@@ -1166,10 +1191,11 @@
 }
 
 /* 付箋ボタン */
-.bookmark-btn { opacity: 0.35; transition: opacity 0.2s, color 0.2s; }
-.bookmark-btn:active { opacity: 0.9; transform: scale(1.15); }
-.bookmark-btn.bookmarked .material-symbols-outlined { color: #f9a825 !important; font-variation-settings: 'FILL' 1; }
-.bookmark-btn.bookmarked { opacity: 1 !important; }
+.bookmark-btn { opacity: 0.5; transition: opacity 0.2s, color 0.2s, background 0.2s; border-radius: 6px; }
+.bookmark-btn:active { opacity: 1; transform: scale(1.15); }
+.bookmark-btn .material-symbols-outlined { color: #90a4ae; }
+.bookmark-btn.bookmarked .material-symbols-outlined { color: #ff6f00 !important; font-variation-settings: 'FILL' 1; }
+.bookmark-btn.bookmarked { opacity: 1 !important; background: #fff3e0; }
 </style>
 
 
@@ -1270,17 +1296,17 @@
 {% for user, data in records.items() %}
 <div class="user-accordion" id="accordion-{{ loop.index }}" {% if user == target_user %}data-target="true"{% endif %}>
     <div class="user-accordion-header" onclick="toggleAccordion({{ loop.index }}, '{{ user }}')">
+          <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
+            onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
+            title="付箋をつける"
+            style="background:none; border:none; cursor:pointer; padding:6px 6px 6px 0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
+            <span class="material-symbols-outlined" style="font-size:22px;">bookmark</span>
+          </button>
         <div class="user-accordion-title">
             <span class="material-symbols-outlined">person</span>
             {{ user }} 様
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
-          <button class="bookmark-btn" id="bookmark-btn-{{ loop.index }}"
-            onclick="event.stopPropagation(); _bookmarkSet({{ loop.index }}, '{{ user }}様')"
-            title="付箋をつける"
-            style="background:none; border:none; cursor:pointer; padding:8px 4px 8px 8px; color:#d0d0d0; flex-shrink:0; -webkit-tap-highlight-color:transparent;">
-            <span class="material-symbols-outlined" style="font-size:20px;">bookmark</span>
-          </button>
     </div>
     <div class="user-accordion-body {% if user == target_user %}open{% endif %}" id="body-{{ loop.index }}">
 
@@ -1506,6 +1532,8 @@
 <!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
 
 <!-- Session 34: 右下スピードダイヤル(肉球配置: 各ボタンが×に密着、ラベルは放射線延長上) -->
+<!-- スワイプで隠せるラッパー -->
+<div id="dv-sd-wrap">
 <div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
 <div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
     <!-- 検索: 真上、ラベルは縦書きで真上の延長線上 -->
@@ -1515,14 +1543,14 @@
     </button>
     <span class="dv-sd-label dv-sd-label-1 is-vertical">検索</span>
 
-    <!-- 全て開く: 左斜め上45°、ラベルは縦書きを45°回転で延長線上 -->
+    <!-- 全て開く: 左斜め上45° -->
     <button class="dv-sd-btn dv-sd-btn-2" type="button" aria-label="全てのケース記録を開く・閉じる"
             onclick="dvSdToggleAll()">
         <span class="material-symbols-outlined" id="dv-sd-toggle-icon">unfold_more</span>
     </button>
     <span class="dv-sd-label dv-sd-label-2 is-vertical" id="dv-sd-toggle-label">全て開く</span>
 
-    <!-- TOPへ: 真左、ラベルは横書きで真左の延長線上 -->
+    <!-- TOPへ: 真左 -->
     <button class="dv-sd-btn dv-sd-btn-3" type="button" aria-label="ページの先頭へ戻る"
             onclick="dvSdScrollTop()">
         <span class="material-symbols-outlined">arrow_upward</span>
@@ -1533,6 +1561,11 @@
         onclick="dvSdToggle()">
     <span class="material-symbols-outlined">menu</span>
 </button>
+</div>
+<!-- 引き出しタブ（隠れているときだけ表示） -->
+<div id="dv-sd-tab" onclick="dvSdShow()">
+    <span class="material-symbols-outlined">chevron_left</span>
+</div>
 
 <div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
     <div class="cr-search-modal-content">
@@ -2111,6 +2144,41 @@ window.dvSdScrollTop = function() {
 };
 
 window.dvSdToggle = function(force) {
+    // スワイプで隠す機能
+    (function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (!wrap) return;
+        var startX = 0, startY = 0, tracking = false;
+        wrap.addEventListener('touchstart', function(e) {
+            if (e.touches.length !== 1) return;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            tracking = true;
+        }, { passive: true });
+        wrap.addEventListener('touchend', function(e) {
+            if (!tracking) return;
+            tracking = false;
+            var dx = (e.changedTouches[0].clientX - startX);
+            var dy = Math.abs(e.changedTouches[0].clientY - startY);
+            if (dx > 40 && dy < 40) dvSdHide();  // 右スワイプで隠す
+        }, { passive: true });
+    })();
+
+    window.dvSdHide = function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (wrap) wrap.classList.add('is-hidden');
+        if (tab)  tab.classList.add('visible');
+        dvSdToggle(false);
+    };
+    window.dvSdShow = function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (wrap) wrap.classList.remove('is-hidden');
+        if (tab)  tab.classList.remove('visible');
+    };
+
     var main = document.getElementById('dv-sd-main');
     var items = document.getElementById('dv-sd-items');
     var overlay = document.getElementById('dv-sd-overlay');
@@ -3245,19 +3313,12 @@ async function loadDailySummary(userName, idx, dateStr) {
                 var label2 = document.getElementById('speak-all-label');
                 var icon2 = document.getElementById('speak-all-icon');
                 if (!btn2 || !label2) return;
-                if (allReady) {
-                    btn2.disabled = false;
-                    btn2.style.opacity = '1';
-                    btn2.style.cursor = 'pointer';
-                    label2.textContent = 'その日のAI要約を全員分読み上げ';
-                    if (icon2) icon2.textContent = 'campaign';
-                } else {
-                    btn2.disabled = true;
-                    btn2.style.opacity = '0.6';
-                    btn2.style.cursor = 'not-allowed';
-                    label2.textContent = 'AI要約生成中…完了したら自動で有効になります';
-                    if (icon2) icon2.textContent = 'hourglass_empty';
-                }
+                // ボタンは常に有効（生成中でも押せる）
+                btn2.disabled = false;
+                btn2.style.opacity = '1';
+                btn2.style.cursor = 'pointer';
+                label2.textContent = 'その日のAI要約を全員分読み上げ';
+                if (icon2) icon2.textContent = 'campaign';
             })();
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
@@ -3453,7 +3514,7 @@ function _ttsStop() {
     _tts_speaking = false;
     if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     if (_tts_currentBtn) {
         var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
         if (icon) icon.textContent = 'volume_up';
@@ -3486,46 +3547,43 @@ function _ttsUnlockAudio() {
 
 function _ttsPlayText(text, onEnd) {
     var mySeq = ++_ttsPlaySeq;
+    // iOS制約対策: タップの文脈でAudio要素を先に生成しておく
+    // fetchの.then()内でnew Audio()すると再生ブロックされるため
+    var audio = new Audio();
+    audio.preload = 'auto';
+    _tts_currentAudio = audio;
     fetch('/api/tts_speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({text: text})
     }).then(function(r) { return r.json(); }).then(function(data) {
-        if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
+        if (mySeq !== _ttsPlaySeq || !_tts_speaking) {
+            audio.src = ''; return;
+        }
         if (data.audioContent) {
-            // Base64をArrayBufferに変換しAudioContext経由で再生（iOS対応）
-            var binary = atob(data.audioContent);
-            var bytes = new Uint8Array(binary.length);
-            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            var arrayBuf = bytes.buffer;
-            if (_ttsAudioContext && _ttsAudioContext.state !== 'closed') {
-                _ttsAudioContext.decodeAudioData(arrayBuf, function(decoded) {
-                    if (!_tts_speaking) return;
-                    var src = _ttsAudioContext.createBufferSource();
-                    src.buffer = decoded;
-                    src.connect(_ttsAudioContext.destination);
-                    src.onended = function() { if (mySeq !== _ttsPlaySeq) return; if (onEnd) onEnd(); };
-                    src.start(0);
-                    _tts_currentAudio = src;
-                }, function() {
-                    // デコード失敗時はフォールバック
-                    var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-                    _tts_currentAudio = audio;
-                    audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.play().catch(function() { if (onEnd) onEnd(); });
-                });
-            } else {
-                var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-                _tts_currentAudio = audio;
-                audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                audio.play().catch(function() { if (onEnd) onEnd(); });
-            }
+            audio.onended = function() {
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            };
+            audio.onerror = function() {
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            };
+            // srcをセットするとiOSが事前作成したAudio要素として認識し再生を許可する
+            audio.src = 'data:audio/mp3;base64,' + data.audioContent;
+            audio.play().catch(function(e) {
+                console.warn('[TTS] play failed:', e);
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            });
         } else {
+            _tts_currentAudio = null;
             if (onEnd) onEnd();
         }
-    }).catch(function() { if (onEnd) onEnd(); });
+    }).catch(function() {
+        _tts_currentAudio = null;
+        if (onEnd) onEnd();
+    });
 }
 
 // 個別読み上げ
@@ -3542,16 +3600,35 @@ window.speakSummary = function(idx, btn) {
     var icon = btn.querySelector('.material-symbols-outlined');
     if (icon) icon.textContent = 'stop_circle';
     btn.style.color = '#ea4335';
-    _ttsUnlockAudio();
     _ttsAcquireWakeLock();
     _ttsPlayText(text, _ttsStop);
 };
 
 // 一括: 現在の人を再生
 function _ttsAllPlayCurrent() {
-    if (!_tts_speaking || _ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
+    if (!_tts_speaking) return;
+    // 全員分終了
+    if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
     var item = _ttsAllItems[_ttsAllIndex];
     var progress = document.getElementById('speak-all-progress');
+
+    // まだ生成中の人の番になったら待つ
+    var el = document.getElementById('ai-content-' + item.idx);
+    var currentText = el ? el.textContent.trim() : '';
+    var isGenerating = !currentText
+        || currentText.indexOf('タップして開くと') === 0
+        || currentText.indexOf('生成中') >= 0
+        || currentText.indexOf('再生成中') >= 0;
+
+    if (isGenerating) {
+        if (progress) progress.textContent = item.name + ' のAI要約を生成中…';
+        setTimeout(_ttsAllPlayCurrent, 800);
+        return;
+    }
+
+    // 最新テキストをitemに反映（生成完了後に取得）
+    item.text = el ? el.textContent.trim() : item.text;
+
     if (progress) {
         progress.textContent = item.name + '「' + (_ttsAllIndex + 1) + ' / ' + _ttsAllItems.length + '」';
     }
@@ -3567,68 +3644,41 @@ function _ttsAllPlayCurrent() {
 
 // 一括読み上げ 開始
 window.speakAllSummaries = function() {
+    // 再生中なら停止
     if (_tts_speaking || _ttsAllCheckInterval) { _ttsStop(); return; }
 
-    // まず全員のアコーディオンを展開してAI要約を生成する
+    // iOS対策: タップの文脈でAudioContextを即アンロック
+    _ttsUnlockAudio();
+
+    // 未開の全アコーディオンを展開してAI要約生成をトリガー
     var accordions = document.querySelectorAll('.user-accordion');
-    var needsGenerate = false;
     accordions.forEach(function(acc) {
         var idx = acc.id.replace('accordion-', '');
         var el = document.getElementById('ai-content-' + idx);
         var text = el ? el.textContent.trim() : '';
-        if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
-            // 未生成ならアコーディオンを開いて生成をトリガー
-            var body = document.getElementById('body-' + idx);
+        var body = document.getElementById('body-' + idx);
+        if (!text || text.indexOf('タップして開くと') === 0) {
+            // 未生成 → アコーディオンを開いて生成トリガー
             if (body && !body.classList.contains('open')) {
                 var nameEl = acc.querySelector('.user-accordion-title');
                 var userName = nameEl ? nameEl.textContent.trim().replace(/\s+/g, ' ') : '';
-                // personアイコンのテキストを除外
                 var spans = nameEl ? nameEl.querySelectorAll('span') : [];
                 spans.forEach(function(s){ userName = userName.replace(s.textContent, ''); });
                 userName = userName.replace('様', '').trim();
                 if (typeof toggleAccordion === 'function') toggleAccordion(parseInt(idx), userName);
             }
-            needsGenerate = true;
         }
     });
 
-    if (needsGenerate) {
-        // 生成完了を待ってから読み上げ開始
-        var progressEl = document.getElementById('speak-all-progress');
-        var allBtn = document.getElementById('speak-all-btn');
-        var controls = document.getElementById('speak-all-controls');
-        if (allBtn) allBtn.style.display = 'none';
-        if (controls) { controls.style.display = ''; }
-        if (progressEl) progressEl.textContent = 'AI要約を生成中…';
-
-        var maxWait = 30;
-        var waited = 0;
-        _ttsAllCheckInterval = setInterval(function() {
-            waited++;
-            var cards2 = document.querySelectorAll('[id^="ai-content-"]');
-            var allReady = true;
-            cards2.forEach(function(el) {
-                var t = el.textContent.trim();
-                if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
-            });
-            if (allReady || waited >= maxWait) {
-                clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null;
-                if (_tts_speaking) _speakAllStart();
-            } else {
-                if (progressEl) progressEl.textContent = 'AI要約を生成中… (' + waited + 's)';
-            }
-        }, 1000);
-    } else {
-        _speakAllStart();
-    }
+    // 生成完了を待たずに即読み上げ開始（生成中の人は_ttsAllPlayCurrentで待機）
+    _speakAllStart();
 };
 
 function _speakAllStart() {
     var cards = document.querySelectorAll('[id^="ai-content-"]');
     _ttsAllItems = [];
     cards.forEach(function(el) {
-        var text = el.textContent.trim();
-        if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) return;
+        // 生成中・未生成の人も含める（_ttsAllPlayCurrentで待機する）
         var idx = el.id.replace('ai-content-', '');
         var accordion = document.getElementById('accordion-' + idx);
         var nameEl = accordion ? accordion.querySelector('.user-accordion-title') : null;
@@ -3636,15 +3686,15 @@ function _speakAllStart() {
         var spans = nameEl ? nameEl.querySelectorAll('span') : [];
         spans.forEach(function(s){ rawName = rawName.replace(s.textContent, ''); });
         var name = rawName.replace(/\s+/g, ' ').trim();
-        _ttsAllItems.push({ name: name, text: text });
+        var text = el.textContent.trim();
+        _ttsAllItems.push({ name: name, text: text, idx: idx });
     });
     if (_ttsAllItems.length === 0) {
-        alert('各利用者をタップしてAI要約を生成してからお試しください');
+        alert('利用者が見つかりません');
         _ttsStop(); return;
     }
     _ttsAllIndex = 0;
     _tts_speaking = true;
-    _ttsUnlockAudio();
     _ttsAcquireWakeLock();
     var allBtn = document.getElementById('speak-all-btn');
     var controls = document.getElementById('speak-all-controls');
@@ -3656,7 +3706,7 @@ function _speakAllStart() {
 // 前の方へ
 window.speakAllPrev = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex = Math.max(0, _ttsAllIndex - 1);
     _ttsAllPlayCurrent();
 };
@@ -3664,7 +3714,7 @@ window.speakAllPrev = function() {
 // 次の方へ
 window.speakAllNext = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex++;
     if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
     _ttsAllPlayCurrent();
@@ -3761,40 +3811,14 @@ window.speakAllStop = function() { _ttsStop(); };
                     var label0 = document.getElementById('speak-all-label');
                     var icon0 = document.getElementById('speak-all-icon');
                     if (btn0 && label0) {
-                        btn0.disabled = true;
-                        btn0.style.opacity = '0.6';
-                        btn0.style.cursor = 'not-allowed';
-                        label0.textContent = 'AI要約生成中…完了したら自動で有効になります';
-                        if (icon0) icon0.textContent = 'hourglass_empty';
+                        // 生成中でもすぐ押せる（生成中の人は順番が来たら待機して再生）
+                        btn0.disabled = false;
+                        btn0.style.opacity = '1';
+                        btn0.style.cursor = 'pointer';
+                        label0.textContent = 'その日のAI要約を全員分読み上げ';
+                        if (icon0) icon0.textContent = 'campaign';
                     }
-                    // 1秒ごと全員分生成済みか監視
-                    var _speakAllCheckTimer = setInterval(function() {
-                        var cards = document.querySelectorAll('[id^="ai-content-"]');
-                        if (cards.length === 0) return;
-                        var allReady = true;
-                        cards.forEach(function(el) {
-                            var t = el.textContent.trim();
-                            if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0 || t.indexOf('再生成中') >= 0) allReady = false;
-                        });
-                        var b = document.getElementById('speak-all-btn');
-                        var l = document.getElementById('speak-all-label');
-                        var ic = document.getElementById('speak-all-icon');
-                        if (!b || !l) return;
-                        if (allReady) {
-                            b.disabled = false;
-                            b.style.opacity = '1';
-                            b.style.cursor = 'pointer';
-                            l.textContent = 'その日のAI要約を全員分読み上げ';
-                            if (ic) ic.textContent = 'campaign';
-                            clearInterval(_speakAllCheckTimer);
-                        } else {
-                            b.disabled = true;
-                            b.style.opacity = '0.6';
-                            b.style.cursor = 'not-allowed';
-                            l.textContent = 'AI要約生成中…完了したら自動で有効になります';
-                            if (ic) ic.textContent = 'hourglass_empty';
-                        }
-                    }, 1000);
+                    // ボタン監視タイマー不要（常に有効）
                 }
                 document.querySelectorAll('[id^="speak-btn-"]').forEach(function(btn) {
                     btn.style.display = '';
