@@ -547,6 +547,31 @@
 .dv-sd-main:active { transform: scale(0.95); }
 .dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.3s ease; }
 .dv-sd-main.is-open .material-symbols-outlined { transform: rotate(180deg); }
+/* スワイプ隠し: ボタン群をラップするコンテナ */
+#dv-sd-wrap {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#dv-sd-wrap.is-hidden {
+    transform: translateX(calc(72px + env(safe-area-inset-right, 0px)));
+}
+/* 引き出しタブ（隠れているときだけ表示） */
+#dv-sd-tab {
+    position: fixed;
+    bottom: 160px;
+    right: 0;
+    width: 20px;
+    height: 48px;
+    background: #ec4899;
+    border-radius: 8px 0 0 8px;
+    z-index: 951;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: -2px 2px 6px rgba(0,0,0,0.2);
+}
+#dv-sd-tab.visible { display: flex; }
+#dv-sd-tab .material-symbols-outlined { font-size: 14px; color: #fff; }
 
 /* === 肉球配置: ボタンとラベルを分離して個別に絶対配置 === */
 
@@ -1507,6 +1532,8 @@
 <!-- Session 34: 検索ボタンはスピードダイヤル内に統合したため、独立FABは削除 -->
 
 <!-- Session 34: 右下スピードダイヤル(肉球配置: 各ボタンが×に密着、ラベルは放射線延長上) -->
+<!-- スワイプで隠せるラッパー -->
+<div id="dv-sd-wrap">
 <div id="dv-sd-overlay" class="dv-sd-overlay" onclick="dvSdToggle(false)"></div>
 <div id="dv-sd-items" class="dv-sd-items" aria-hidden="true">
     <!-- 検索: 真上、ラベルは縦書きで真上の延長線上 -->
@@ -1516,14 +1543,14 @@
     </button>
     <span class="dv-sd-label dv-sd-label-1 is-vertical">検索</span>
 
-    <!-- 全て開く: 左斜め上45°、ラベルは縦書きを45°回転で延長線上 -->
+    <!-- 全て開く: 左斜め上45° -->
     <button class="dv-sd-btn dv-sd-btn-2" type="button" aria-label="全てのケース記録を開く・閉じる"
             onclick="dvSdToggleAll()">
         <span class="material-symbols-outlined" id="dv-sd-toggle-icon">unfold_more</span>
     </button>
     <span class="dv-sd-label dv-sd-label-2 is-vertical" id="dv-sd-toggle-label">全て開く</span>
 
-    <!-- TOPへ: 真左、ラベルは横書きで真左の延長線上 -->
+    <!-- TOPへ: 真左 -->
     <button class="dv-sd-btn dv-sd-btn-3" type="button" aria-label="ページの先頭へ戻る"
             onclick="dvSdScrollTop()">
         <span class="material-symbols-outlined">arrow_upward</span>
@@ -1534,6 +1561,11 @@
         onclick="dvSdToggle()">
     <span class="material-symbols-outlined">menu</span>
 </button>
+</div>
+<!-- 引き出しタブ（隠れているときだけ表示） -->
+<div id="dv-sd-tab" onclick="dvSdShow()">
+    <span class="material-symbols-outlined">chevron_left</span>
+</div>
 
 <div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
     <div class="cr-search-modal-content">
@@ -2112,6 +2144,41 @@ window.dvSdScrollTop = function() {
 };
 
 window.dvSdToggle = function(force) {
+    // スワイプで隠す機能
+    (function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (!wrap) return;
+        var startX = 0, startY = 0, tracking = false;
+        wrap.addEventListener('touchstart', function(e) {
+            if (e.touches.length !== 1) return;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            tracking = true;
+        }, { passive: true });
+        wrap.addEventListener('touchend', function(e) {
+            if (!tracking) return;
+            tracking = false;
+            var dx = (e.changedTouches[0].clientX - startX);
+            var dy = Math.abs(e.changedTouches[0].clientY - startY);
+            if (dx > 40 && dy < 40) dvSdHide();  // 右スワイプで隠す
+        }, { passive: true });
+    })();
+
+    window.dvSdHide = function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (wrap) wrap.classList.add('is-hidden');
+        if (tab)  tab.classList.add('visible');
+        dvSdToggle(false);
+    };
+    window.dvSdShow = function() {
+        var wrap = document.getElementById('dv-sd-wrap');
+        var tab  = document.getElementById('dv-sd-tab');
+        if (wrap) wrap.classList.remove('is-hidden');
+        if (tab)  tab.classList.remove('visible');
+    };
+
     var main = document.getElementById('dv-sd-main');
     var items = document.getElementById('dv-sd-items');
     var overlay = document.getElementById('dv-sd-overlay');
