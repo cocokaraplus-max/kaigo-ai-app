@@ -3499,6 +3499,8 @@ window.speakSummary = function(idx, btn) {
         }
         var icon = btn ? btn.querySelector('.material-symbols-outlined') : null;
         if (icon) icon.textContent = 'hourglass_empty';
+        // ジェスチャー内でAudioContextを事前解除（自動再生時に使用）
+        _ttsUnlockAudio();
         return;
     }
     if (!text || text.indexOf('タップして開くと') === 0) {
