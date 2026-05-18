@@ -3235,8 +3235,6 @@ async function loadDailySummary(userName, idx, dateStr) {
             ac.textContent = data.summary;
             // 全員分生成済みかチェックしてボタンを更新
             (function() {
-                var bar = document.getElementById('speak-all-bar');
-                if (!bar || bar.style.display === 'none') return;
                 var cards = document.querySelectorAll('[id^="ai-content-"]');
                 var allReady = true;
                 cards.forEach(function(el) {
