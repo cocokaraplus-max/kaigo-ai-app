@@ -515,6 +515,11 @@
 .cr-search-fab .material-symbols-outlined { font-size: 28px; }
 
 /* Session 34: スピードダイヤル(右下メイン、斜め扇形に展開) */
+/* Android ボトムナビ分の余白確保 */
+.page-wrapper {
+    padding-bottom: max(8rem, calc(env(safe-area-inset-bottom) + 7rem)) !important;
+}
+
 .dv-sd-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.12);
