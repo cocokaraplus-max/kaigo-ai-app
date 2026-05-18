@@ -515,9 +515,9 @@
 .cr-search-fab .material-symbols-outlined { font-size: 28px; }
 
 /* Session 34: スピードダイヤル(右下メイン、斜め扇形に展開) */
-/* Android/iOS ボトムナビ分の余白確保（ナビ高さ約74px+余白） */
+/* Android ボトムナビ分の余白確保 */
 .page-wrapper {
-    padding-bottom: max(14rem, calc(env(safe-area-inset-bottom) + 13rem)) !important;
+    padding-bottom: max(8rem, calc(env(safe-area-inset-bottom) + 7rem)) !important;
 }
 
 .dv-sd-overlay {
@@ -1238,8 +1238,8 @@
     <button onclick="speakAllSummaries()"
         id="speak-all-btn"
         style="width:100%;padding:12px;background:linear-gradient(135deg,#1a73e8,#1557b0);border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
-        <span class="material-symbols-outlined" id="speak-all-icon" style="font-size:20px;">campaign</span>
-        <span id="speak-all-label">その日のAI要約を全員分読み上げ</span>
+        <span class="material-symbols-outlined" style="font-size:20px;">campaign</span>
+        その日のAI要約を全員分読み上げ
     </button>
     <div id="speak-all-controls" style="display:none; margin-top:8px;">
         <div id="speak-all-progress" style="text-align:center;font-size:0.88rem;color:#1a73e8;margin-bottom:8px;font-weight:700;padding:6px;background:#e8f0fe;border-radius:8px;"></div>
@@ -1600,7 +1600,7 @@
 
 <!-- 個別記録モーダル -->
 <div id="record-modal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.5);" onclick="closeRecordModal(event)">
-    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:calc(100% - 32px); max-width:480px; background:#fff; border-radius:16px; max-height:75vh; overflow-y:auto; padding:20px 16px 24px;">
+    <div style="position:absolute; bottom:0; left:0; right:0; background:#fff; border-radius:16px 16px 0 0; max-height:88vh; overflow-y:auto; padding:20px 16px 100px;">
         <div style="display:flex; align-items:center; margin-bottom:16px;">
             <div style="flex:1;">
                 <div id="modal-user-name" style="font-size:1rem; font-weight:700; color:#202124;"></div>
@@ -2043,7 +2043,6 @@ window.toggleAccordion = function(idx, userName) {
     }
     var body = document.getElementById('body-'+idx);
     body.classList.toggle('open');
-    body.style.display = '';  // インラインスタイルをリセット
     document.getElementById('arrow-'+idx).classList.toggle('open');
     // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
     // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
@@ -2248,7 +2247,7 @@ window.startEditFromModal = function(id) {
         if (container) container.style.display = 'block';
         // アコーディオン本体も開く
         var accordionBody = recordEl.closest('.user-accordion-body');
-        if (accordionBody) accordionBody.classList.add('open');
+        if (accordionBody) accordionBody.style.display = 'block';
     }
     // 3. data-content-raw から内容を取得して startEdit を呼ぶ
     var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
@@ -2322,15 +2321,7 @@ window.startEdit = function(id, content) {
     // 関係性ブロックの表示は type=family のときだけ
     if (relBlock) relBlock.style.display = (curType === 'family') ? 'block' : 'none';
 };
-window.cancelEdit = function(id) {
-    document.getElementById('edit-area-'+id).style.display = 'none';
-    // records-hidden を元に戻す
-    var recordEl = document.getElementById('record-' + id);
-    if (recordEl) {
-        var container = recordEl.closest('[id^="records-hidden-"]');
-        if (container) container.style.display = 'none';
-    }
-};
+window.cancelEdit = function(id) { document.getElementById('edit-area-'+id).style.display = 'none'; };
 window.saveEdit = async function(id) {
     const content = document.getElementById('edit-text-'+id).value;
     // Session 33: 休み連絡カテゴリの編集なら type/relation も送る
@@ -2365,16 +2356,7 @@ window.saveEdit = async function(id) {
         console.warn('[vas] saveEdit vas_records collect failed:', e);
     }
     const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const result = await res.json();
-    if (result.status === 'success') {
-        // records-hidden を元に戻してからリロード
-        var recordEl2 = document.getElementById('record-' + id);
-        if (recordEl2) {
-            var container2 = recordEl2.closest('[id^="records-hidden-"]');
-            if (container2) container2.style.display = 'none';
-        }
-        location.reload();
-    }
+    if ((await res.json()).status === 'success') location.reload();
 };
 
 // ==========================================================================
@@ -2489,15 +2471,7 @@ if (document.readyState === 'loading') {
 window.deleteRecord = async function(id) {
     if (!confirm('本当に削除しますか？\nこの操作は取り消せません。')) return;
     const res = await fetch('/api/delete_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-    const result = await res.json();
-    if (result.status === 'success') {
-        var recordEl2 = document.getElementById('record-' + id);
-        if (recordEl2) {
-            var container2 = recordEl2.closest('[id^="records-hidden-"]');
-            if (container2) container2.style.display = 'none';
-        }
-        location.reload();
-    }
+    if ((await res.json()).status === 'success') location.reload();
 };
 window.generateAI = async function(user, idx) {
     const btn = document.querySelector(`#accordion-${idx} .btn-primary`);
@@ -3233,34 +3207,6 @@ async function loadDailySummary(userName, idx, dateStr) {
         var data = await res.json();
         if (data.summary) {
             ac.textContent = data.summary;
-            // 全員分生成済みかチェックしてボタンを更新
-            (function() {
-                var bar = document.getElementById('speak-all-bar');
-                if (!bar || bar.style.display === 'none') return;
-                var cards = document.querySelectorAll('[id^="ai-content-"]');
-                var allReady = true;
-                cards.forEach(function(el) {
-                    var t = el.textContent.trim();
-                    if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
-                });
-                var btn2 = document.getElementById('speak-all-btn');
-                var label2 = document.getElementById('speak-all-label');
-                var icon2 = document.getElementById('speak-all-icon');
-                if (!btn2 || !label2) return;
-                if (allReady) {
-                    btn2.disabled = false;
-                    btn2.style.opacity = '1';
-                    btn2.style.cursor = 'pointer';
-                    label2.textContent = 'その日のAI要約を全員分読み上げ';
-                    if (icon2) icon2.textContent = 'campaign';
-                } else {
-                    btn2.disabled = true;
-                    btn2.style.opacity = '0.6';
-                    btn2.style.cursor = 'not-allowed';
-                    label2.textContent = 'AI要約生成中…完了したら自動で有効になります';
-                    if (icon2) icon2.textContent = 'hourglass_empty';
-                }
-            })();
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
                 + (data.error || '生成に失敗しました') + '</span>';
@@ -3370,61 +3316,6 @@ window.openRecordsModal = function(userName, accordionIdx) {
     document.getElementById('record-modal').style.display = 'block';
     document.body.style.overflow = 'hidden';
 };
-
-// 全員のAI要約が生成済みかチェックしてボタンを更新
-window._dvCheckAllSummariesReady = function() {
-    var bar = document.getElementById('speak-all-bar');
-    if (!bar || bar.style.display === 'none') return;
-    var cards = document.querySelectorAll('[id^="ai-content-"]');
-    var allReady = true;
-    cards.forEach(function(el) {
-        var t = el.textContent.trim();
-        if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) {
-            allReady = false;
-        }
-    });
-    var btn = document.getElementById('speak-all-btn');
-    var label = document.getElementById('speak-all-label');
-    var icon = document.getElementById('speak-all-icon');
-    if (!btn || !label) return;
-    if (allReady) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-        label.textContent = 'その日のAI要約を全員分読み上げ';
-        if (icon) icon.textContent = 'campaign';
-    } else {
-        btn.disabled = true;
-        btn.style.opacity = '0.6';
-        btn.style.cursor = 'not-allowed';
-        label.textContent = 'AI要約生成中…完了したら自動で有効になります';
-        if (icon) icon.textContent = 'hourglass_empty';
-    }
-}
-
-window.closeRecordModal = function(e) {
-    // 背景（オーバーレイ）タップで閉じる
-    // e.target がモーダル自体 or モーダルの直接の子でない場合も対応
-    var modal = document.getElementById('record-modal');
-    if (!modal) return;
-    if (e.target === modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }
-};
-
-// record-modal が非表示になった時に必ず overflow を戻す（フェイルセーフ）
-var _recordModalObserver = new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-        if (m.target.id === 'record-modal' && m.target.style.display === 'none') {
-            document.body.style.overflow = '';
-        }
-    });
-});
-document.addEventListener('DOMContentLoaded', function() {
-    var modal = document.getElementById('record-modal');
-    if (modal) _recordModalObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
-});
 
 });
 
@@ -3757,19 +3648,7 @@ window.speakAllStop = function() { _ttsStop(); };
             if (data.enabled) {
                 // TTS有効：ボタンを表示
                 var bar = document.getElementById('speak-all-bar');
-                if (bar) {
-                    bar.style.display = 'block';
-                    var btn0 = document.getElementById('speak-all-btn');
-                    var label0 = document.getElementById('speak-all-label');
-                    var icon0 = document.getElementById('speak-all-icon');
-                    if (btn0 && label0) {
-                        btn0.disabled = true;
-                        btn0.style.opacity = '0.6';
-                        btn0.style.cursor = 'not-allowed';
-                        label0.textContent = 'AI要約生成中…完了したら自動で有効になります';
-                        if (icon0) icon0.textContent = 'hourglass_empty';
-                    }
-                }
+                if (bar) bar.style.display = 'block';
                 document.querySelectorAll('[id^="speak-btn-"]').forEach(function(btn) {
                     btn.style.display = '';
                 });
