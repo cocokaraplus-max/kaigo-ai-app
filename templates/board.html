@@ -860,7 +860,7 @@ body.modal-open .bottom-nav {
             <span class="material-symbols-outlined">campaign</span>
             掲示板
         </div>
-        <button id="board-mark-all-read-btn" onclick="markAllRead()"
+        <button id="board-mark-all-read-btn" onclick="boardMarkAllRead()"
             style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;
                    border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;
                    font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
@@ -1989,6 +1989,23 @@ window.__patientHay = function(name) {
     var info = window.__patientLookup ? window.__patientLookup[n] : null;
     if (!info) return window.__normalizeForSearch(n);
     return window.__normalizeForSearch(n + ' ' + info.kana + ' ' + info.chart);
+};
+
+// 全既読ボタン（掲示板ページ用）
+window.boardMarkAllRead = async function() {
+    var btn = document.getElementById('board-mark-all-read-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    try {
+        await fetch('/api/mark_all_read', { method: 'POST', credentials: 'include' });
+        var chatBadge = document.getElementById('chat-badge');
+        if (chatBadge) chatBadge.style.display = 'none';
+        if (btn) btn.style.display = 'none';
+        showToast('全て既読にしました', 'success');
+    } catch(e) {
+        showToast('エラーが発生しました', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
 };
 
 // ===== 掲示板検索機能 =====

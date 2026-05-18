@@ -1231,7 +1231,7 @@
         <span class="material-symbols-outlined">calendar_month</span>
         ケース記録閲覧
     </div>
-    <button id="dv-mark-all-read-btn" onclick="markAllRead()" style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+    <button id="dv-mark-all-read-btn" onclick="dvMarkAllRead()" style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
         <span class="material-symbols-outlined" style="font-size:14px;">done_all</span>
         全既読
     </button>
@@ -2129,6 +2129,27 @@ async function markRecordsAsViewedSilently(recordIds) {
     } catch(e) { /* 静かに失敗 */ }
 }
 
+// 全既読ボタン（ケース記録ページ用）
+window.dvMarkAllRead = async function() {
+    var btn = document.getElementById('dv-mark-all-read-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    try {
+        await fetch('/api/mark_all_read', { method: 'POST', credentials: 'include' });
+        // バッジを即座にクリア
+        var dailyBadge = document.getElementById('daily-badge');
+        if (dailyBadge) dailyBadge.style.display = 'none';
+        if (btn) btn.style.display = 'none';
+        // 未読タブのバッジもクリア
+        var unreadCount = document.getElementById('dv-tab-unread-count');
+        if (unreadCount) unreadCount.style.display = 'none';
+        showToast('全て既読にしました', 'success');
+    } catch(e) {
+        showToast('エラーが発生しました', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+};
+
 // ========== Session 34: スピードダイヤル(右下メニュー) ==========
 // 「TOPへ戻る」を押した時のスクロール処理
 // スクロール対象が window 以外の可能性も考慮して、複数手段で確実にトップへ
@@ -2262,7 +2283,7 @@ window.dvSdToggle = function(force) {
             var newLeft = wrapStartLeft + dx;
             var newBottom = wrapStartBottom - dy;
             // 画面内に制限（下部ナビバー高さ約90pxを確保）
-            var NAV_H = 90;
+            var NAV_H = 130; // ナビバー約74px + safe-area + 余白
             newLeft = Math.max(0, Math.min(window.innerWidth - 56, newLeft));
             newBottom = Math.max(NAV_H, Math.min(window.innerHeight - 80, newBottom));
             wrap.style.left = newLeft + 'px';
