@@ -3234,7 +3234,33 @@ async function loadDailySummary(userName, idx, dateStr) {
         if (data.summary) {
             ac.textContent = data.summary;
             // 全員分生成済みかチェックしてボタンを更新
-            _dvCheckAllSummariesReady();
+            (function() {
+                var bar = document.getElementById('speak-all-bar');
+                if (!bar || bar.style.display === 'none') return;
+                var cards = document.querySelectorAll('[id^="ai-content-"]');
+                var allReady = true;
+                cards.forEach(function(el) {
+                    var t = el.textContent.trim();
+                    if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0) allReady = false;
+                });
+                var btn2 = document.getElementById('speak-all-btn');
+                var label2 = document.getElementById('speak-all-label');
+                var icon2 = document.getElementById('speak-all-icon');
+                if (!btn2 || !label2) return;
+                if (allReady) {
+                    btn2.disabled = false;
+                    btn2.style.opacity = '1';
+                    btn2.style.cursor = 'pointer';
+                    label2.textContent = 'その日のAI要約を全員分読み上げ';
+                    if (icon2) icon2.textContent = 'campaign';
+                } else {
+                    btn2.disabled = true;
+                    btn2.style.opacity = '0.6';
+                    btn2.style.cursor = 'not-allowed';
+                    label2.textContent = 'AI要約生成中…完了したら自動で有効になります';
+                    if (icon2) icon2.textContent = 'hourglass_empty';
+                }
+            })();
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
                 + (data.error || '生成に失敗しました') + '</span>';
@@ -3346,7 +3372,7 @@ window.openRecordsModal = function(userName, accordionIdx) {
 };
 
 // 全員のAI要約が生成済みかチェックしてボタンを更新
-function _dvCheckAllSummariesReady() {
+window._dvCheckAllSummariesReady = function() {
     var bar = document.getElementById('speak-all-bar');
     if (!bar || bar.style.display === 'none') return;
     var cards = document.querySelectorAll('[id^="ai-content-"]');
