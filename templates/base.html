@@ -716,6 +716,8 @@ function setNavScrollTop(val) {
 })();
 
 function spaNav(event, url) {
+    // ページ離脱前に overflow を必ずリセット（モーダル等で hidden になったまま遷移するのを防ぐ）
+    document.body.style.overflow = '';
     return;
 }
 
@@ -739,6 +741,9 @@ window.addEventListener('load', function() {
 
 async function navigateTo(url, pushState = true) {
     console.log('[SPA] navigateTo:', url);
+
+    // ページ離脱前に overflow を必ずリセット
+    document.body.style.overflow = '';
 
     // SPA遷移時にカメラモーダルを閉じる（バイタルページから離れる場合）
     const camModal = document.getElementById('camera-modal');
