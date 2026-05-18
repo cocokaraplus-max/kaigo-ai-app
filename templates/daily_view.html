@@ -3757,7 +3757,19 @@ window.speakAllStop = function() { _ttsStop(); };
             if (data.enabled) {
                 // TTS有効：ボタンを表示
                 var bar = document.getElementById('speak-all-bar');
-                if (bar) bar.style.display = 'block';
+                if (bar) {
+                    bar.style.display = 'block';
+                    var btn0 = document.getElementById('speak-all-btn');
+                    var label0 = document.getElementById('speak-all-label');
+                    var icon0 = document.getElementById('speak-all-icon');
+                    if (btn0 && label0) {
+                        btn0.disabled = true;
+                        btn0.style.opacity = '0.6';
+                        btn0.style.cursor = 'not-allowed';
+                        label0.textContent = 'AI要約生成中…完了したら自動で有効になります';
+                        if (icon0) icon0.textContent = 'hourglass_empty';
+                    }
+                }
                 document.querySelectorAll('[id^="speak-btn-"]').forEach(function(btn) {
                     btn.style.display = '';
                 });
