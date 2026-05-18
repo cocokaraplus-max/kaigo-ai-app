@@ -3447,7 +3447,7 @@ function _ttsStop() {
     _tts_speaking = false;
     if (_ttsAllCheckInterval) { clearInterval(_ttsAllCheckInterval); _ttsAllCheckInterval = null; }
     _ttsReleaseWakeLock();
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     if (_tts_currentBtn) {
         var icon = _tts_currentBtn.querySelector('.material-symbols-outlined');
         if (icon) icon.textContent = 'volume_up';
@@ -3480,46 +3480,43 @@ function _ttsUnlockAudio() {
 
 function _ttsPlayText(text, onEnd) {
     var mySeq = ++_ttsPlaySeq;
+    // iOS制約対策: タップの文脈でAudio要素を先に生成しておく
+    // fetchの.then()内でnew Audio()すると再生ブロックされるため
+    var audio = new Audio();
+    audio.preload = 'auto';
+    _tts_currentAudio = audio;
     fetch('/api/tts_speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({text: text})
     }).then(function(r) { return r.json(); }).then(function(data) {
-        if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
+        if (mySeq !== _ttsPlaySeq || !_tts_speaking) {
+            audio.src = ''; return;
+        }
         if (data.audioContent) {
-            // Base64をArrayBufferに変換しAudioContext経由で再生（iOS対応）
-            var binary = atob(data.audioContent);
-            var bytes = new Uint8Array(binary.length);
-            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            var arrayBuf = bytes.buffer;
-            if (_ttsAudioContext && _ttsAudioContext.state !== 'closed') {
-                _ttsAudioContext.decodeAudioData(arrayBuf, function(decoded) {
-                    if (!_tts_speaking) return;
-                    var src = _ttsAudioContext.createBufferSource();
-                    src.buffer = decoded;
-                    src.connect(_ttsAudioContext.destination);
-                    src.onended = function() { if (mySeq !== _ttsPlaySeq) return; if (onEnd) onEnd(); };
-                    src.start(0);
-                    _tts_currentAudio = src;
-                }, function() {
-                    // デコード失敗時はフォールバック
-                    var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-                    _tts_currentAudio = audio;
-                    audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                    audio.play().catch(function() { if (onEnd) onEnd(); });
-                });
-            } else {
-                var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-                _tts_currentAudio = audio;
-                audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-                audio.play().catch(function() { if (onEnd) onEnd(); });
-            }
+            audio.onended = function() {
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            };
+            audio.onerror = function() {
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            };
+            // srcをセットするとiOSが事前作成したAudio要素として認識し再生を許可する
+            audio.src = 'data:audio/mp3;base64,' + data.audioContent;
+            audio.play().catch(function(e) {
+                console.warn('[TTS] play failed:', e);
+                if (_tts_currentAudio === audio) _tts_currentAudio = null;
+                if (mySeq === _ttsPlaySeq && onEnd) onEnd();
+            });
         } else {
+            _tts_currentAudio = null;
             if (onEnd) onEnd();
         }
-    }).catch(function() { if (onEnd) onEnd(); });
+    }).catch(function() {
+        _tts_currentAudio = null;
+        if (onEnd) onEnd();
+    });
 }
 
 // 個別読み上げ
@@ -3644,7 +3641,7 @@ function _speakAllStart() {
 // 前の方へ
 window.speakAllPrev = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex = Math.max(0, _ttsAllIndex - 1);
     _ttsAllPlayCurrent();
 };
@@ -3652,7 +3649,7 @@ window.speakAllPrev = function() {
 // 次の方へ
 window.speakAllNext = function() {
     if (!_tts_speaking) return;
-    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.stop ? _tts_currentAudio.stop() : _tts_currentAudio.pause(); } catch(e){} _tts_currentAudio = null; }
+    if (_tts_currentAudio) { try { _tts_currentAudio.onended = null; _tts_currentAudio.pause(); _tts_currentAudio.src = ''; } catch(e){} _tts_currentAudio = null; }
     _ttsAllIndex++;
     if (_ttsAllIndex >= _ttsAllItems.length) { _ttsStop(); return; }
     _ttsAllPlayCurrent();
