@@ -2166,6 +2166,19 @@ window.dvSdScrollTop = function() {
     } catch(e) {}
 };
 
+// メニュー展開方向を位置に応じて切り替え
+function _dvSdUpdateDirection(isRight) {
+    var wrap = document.getElementById('dv-sd-wrap');
+    if (!wrap) return;
+    if (isRight) {
+        // 右側にいるとき: サブボタンを左・左上・上に展開
+        wrap.setAttribute('data-pos', 'right');
+    } else {
+        // 左側にいるとき: サブボタンを右・右上・上に展開
+        wrap.setAttribute('data-pos', 'left');
+    }
+}
+
 window.dvSdToggle = function(force) {
     // ドラッグ移動 + ダブルタップ最小化
     (function() {
@@ -2182,7 +2195,7 @@ window.dvSdToggle = function(force) {
             if (isDragging) return;
             tapCount++;
             if (tapCount === 1) {
-                tapTimer = setTimeout(function() { tapCount = 0; }, 350);
+                tapTimer = setTimeout(function() { tapCount = 0; }, 200);
             } else if (tapCount >= 2) {
                 clearTimeout(tapTimer);
                 tapCount = 0;
@@ -2248,9 +2261,10 @@ window.dvSdToggle = function(force) {
             moved = true;
             var newLeft = wrapStartLeft + dx;
             var newBottom = wrapStartBottom - dy;
-            // 画面内に制限
+            // 画面内に制限（下部ナビバー高さ約90pxを確保）
+            var NAV_H = 90;
             newLeft = Math.max(0, Math.min(window.innerWidth - 56, newLeft));
-            newBottom = Math.max(80, Math.min(window.innerHeight - 80, newBottom));
+            newBottom = Math.max(NAV_H, Math.min(window.innerHeight - 80, newBottom));
             wrap.style.left = newLeft + 'px';
             wrap.style.bottom = newBottom + 'px';
             wrap.style.right = 'auto';
@@ -2263,11 +2277,14 @@ window.dvSdToggle = function(force) {
             // 左右どちらかの端にスナップ
             var currentLeft = parseInt(wrap.style.left || '0');
             var mid = window.innerWidth / 2;
-            var snapLeft = currentLeft < mid
-                ? 16
-                : window.innerWidth - 56 - 16;
+            var isRight = currentLeft >= mid;
+            var snapLeft = isRight
+                ? window.innerWidth - 56 - 16
+                : 16;
             wrap.style.left = snapLeft + 'px';
             wrap.style.right = 'auto';
+            // メニュー展開方向を位置に応じて切り替え
+            _dvSdUpdateDirection(isRight);
         }, { passive: true });
     })();
 
