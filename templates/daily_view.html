@@ -3767,6 +3767,34 @@ window.speakAllStop = function() { _ttsStop(); };
                         label0.textContent = 'AI要約生成中…完了したら自動で有効になります';
                         if (icon0) icon0.textContent = 'hourglass_empty';
                     }
+                    // 1秒ごと全員分生成済みか監視
+                    var _speakAllCheckTimer = setInterval(function() {
+                        var cards = document.querySelectorAll('[id^="ai-content-"]');
+                        if (cards.length === 0) return;
+                        var allReady = true;
+                        cards.forEach(function(el) {
+                            var t = el.textContent.trim();
+                            if (!t || t.indexOf('タップして開くと') === 0 || t.indexOf('生成中') >= 0 || t.indexOf('再生成中') >= 0) allReady = false;
+                        });
+                        var b = document.getElementById('speak-all-btn');
+                        var l = document.getElementById('speak-all-label');
+                        var ic = document.getElementById('speak-all-icon');
+                        if (!b || !l) return;
+                        if (allReady) {
+                            b.disabled = false;
+                            b.style.opacity = '1';
+                            b.style.cursor = 'pointer';
+                            l.textContent = 'その日のAI要約を全員分読み上げ';
+                            if (ic) ic.textContent = 'campaign';
+                            clearInterval(_speakAllCheckTimer);
+                        } else {
+                            b.disabled = true;
+                            b.style.opacity = '0.6';
+                            b.style.cursor = 'not-allowed';
+                            l.textContent = 'AI要約生成中…完了したら自動で有効になります';
+                            if (ic) ic.textContent = 'hourglass_empty';
+                        }
+                    }, 1000);
                 }
                 document.querySelectorAll('[id^="speak-btn-"]').forEach(function(btn) {
                     btn.style.display = '';
