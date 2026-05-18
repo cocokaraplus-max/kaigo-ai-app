@@ -3224,12 +3224,33 @@ async function loadDailySummary(userName, idx, dateStr) {
         var data = await res.json();
         if (data.summary) {
             ac.textContent = data.summary;
+            // 待機中の再生ボタンがあれば自動再生
+            var waitingBtn = document.querySelector('[data-speak-waiting="' + idx + '"]');
+            if (waitingBtn) {
+                waitingBtn.removeAttribute('data-speak-waiting');
+                var icon = waitingBtn.querySelector('.material-symbols-outlined');
+                if (icon) icon.textContent = 'volume_up';
+                window.speakSummary(idx, waitingBtn);
+            }
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
                 + (data.error || '生成に失敗しました') + '</span>';
+            // 待機中ボタンもリセット
+            var waitingBtn2 = document.querySelector('[data-speak-waiting="' + idx + '"]');
+            if (waitingBtn2) {
+                waitingBtn2.removeAttribute('data-speak-waiting');
+                var icon2 = waitingBtn2.querySelector('.material-symbols-outlined');
+                if (icon2) icon2.textContent = 'volume_up';
+            }
         }
     } catch(e) {
         ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラー</span>';
+        var waitingBtn3 = document.querySelector('[data-speak-waiting="' + idx + '"]');
+        if (waitingBtn3) {
+            waitingBtn3.removeAttribute('data-speak-waiting');
+            var icon3 = waitingBtn3.querySelector('.material-symbols-outlined');
+            if (icon3) icon3.textContent = 'volume_up';
+        }
     }
 }
 async function regenDailySummary(userName, idx) {
@@ -3469,16 +3490,10 @@ window.speakSummary = function(idx, btn) {
     if (!el) return;
     var text = el.textContent.trim();
     if (text.indexOf('生成中') >= 0 || text.indexOf('再生成中') >= 0) {
+        // 待機中フラグをボタンに記録（regenDailySummary完了時に自動再生）
+        if (btn) btn.setAttribute('data-speak-waiting', idx);
         var icon = btn ? btn.querySelector('.material-symbols-outlined') : null;
         if (icon) icon.textContent = 'hourglass_empty';
-        var waitInterval = setInterval(function() {
-            var newText = el.textContent.trim();
-            if (newText.indexOf('生成中') < 0 && newText.indexOf('再生成中') < 0) {
-                clearInterval(waitInterval);
-                if (icon) icon.textContent = 'volume_up';
-                window.speakSummary(idx, btn);
-            }
-        }, 500);
         return;
     }
     if (!text || text.indexOf('タップして開くと') === 0) {
