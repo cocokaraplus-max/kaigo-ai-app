@@ -3721,18 +3721,14 @@ def admin():
         except:
             staff_with_birth = {}
         try:
-            res_s = supabase.table("records").select("staff_name").eq("facility_code", f_code).execute()
-            if res_s.data:
-                names = sorted(set([r['staff_name'] for r in res_s.data if r['staff_name'] and r['staff_name'] != "AI統合記録"]))
-                for name in names:
-                    is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
-                    bd = staff_with_birth.get(name)
-                    staff_list.append({
-                        "name": name,
-                        "blocked": is_b,
-                        "birth_date": bd or "",
-                        "birth_text": birth_to_wareki_text(bd) if bd else ""
-                    })
+            for name, bd in sorted(staff_with_birth.items()):
+                is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
+                staff_list.append({
+                    "name": name,
+                    "blocked": is_b,
+                    "birth_date": bd or "",
+                    "birth_text": birth_to_wareki_text(bd) if bd else ""
+                })
         except: pass
         try:
             res_l = supabase.table("admin_settings").select("value").eq("key", "history_limit").eq("facility_code", f_code).execute()
