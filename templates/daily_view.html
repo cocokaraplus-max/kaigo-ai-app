@@ -3317,6 +3317,13 @@ window.openRecordsModal = function(userName, accordionIdx) {
     document.body.style.overflow = 'hidden';
 };
 
+window.closeRecordModal = function(e) {
+    if (e.target === document.getElementById('record-modal')) {
+        document.getElementById('record-modal').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+};
+
 });
 
 
