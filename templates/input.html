@@ -251,29 +251,14 @@
     z-index: 99;
 }
 
-/* input ページ: 固定保存バー分の余白を確保 */
+/* input ページ: ボトムナビ分の余白を確保してスクロールで保存ボタンが見える */
 .page-wrapper {
-    padding-bottom: max(9rem, calc(env(safe-area-inset-bottom) + 8rem)) !important;
+    padding-bottom: max(10rem, calc(env(safe-area-inset-bottom) + 9rem)) !important;
 }
-/* 保存ボタン固定バー */
-.inp-save-bar {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 480px;
-    padding: 10px 16px;
-    padding-bottom: max(10px, calc(env(safe-area-inset-bottom) + 10px));
-    background: rgba(255,255,255,0.97);
-    backdrop-filter: blur(8px);
-    border-top: 1px solid #e0e0e0;
-    box-sizing: border-box;
-    z-index: 1200;
-}
+/* 保存ボタン */
 .inp-save-btn {
     width: 100%;
-    padding: 14px;
+    padding: 16px;
     font-size: 1rem;
     font-weight: 700;
     border-radius: 12px;
@@ -281,6 +266,7 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
+    margin-top: 8px;
 }
 
 /* Session 33: 休み連絡カテゴリ専用フォーム */
@@ -619,15 +605,12 @@
         <input type="hidden" id="must-read-flag" value="0">
     </div>
 
-</form>
-
-<!-- 保存ボタン固定バー（Android ナビバー safe-area 対応） -->
-<div class="inp-save-bar">
     <button type="button" class="btn btn-primary inp-save-btn" onclick="saveRecord()">
         <span class="material-symbols-outlined">save</span>
         保存
     </button>
-</div>
+</form>
+
 
 <a href="/top" class="back-btn">
     <span class="material-symbols-outlined">home</span>
