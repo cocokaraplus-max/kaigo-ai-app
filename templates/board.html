@@ -855,9 +855,18 @@ body.modal-open .bottom-nav {
 <!-- ヘッダー全体を sticky 化(タイトル+投稿ボタン+タブ+検索バー) -->
 <div class="board-sticky-stack">
 <div class="board-header">
-    <div class="page-title board-title" style="margin-bottom:0;">
-        <span class="material-symbols-outlined">campaign</span>
-        掲示板
+    <div class="page-title board-title" style="margin-bottom:0;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined">campaign</span>
+            掲示板
+        </div>
+        <button id="board-mark-all-read-btn" onclick="markAllRead()"
+            style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;
+                   border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;
+                   font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+            <span class="material-symbols-outlined" style="font-size:14px;">done_all</span>
+            全既読
+        </button>
     </div>
     <button class="new-post-btn" id="new-post-btn">
         <span class="material-symbols-outlined">edit_square</span>

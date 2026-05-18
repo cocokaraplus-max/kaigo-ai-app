@@ -1226,9 +1226,15 @@
     TOP画面へ
 </a>
 
-<div class="page-title">
-    <span class="material-symbols-outlined">calendar_month</span>
-    ケース記録閲覧
+<div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:6px;">
+        <span class="material-symbols-outlined">calendar_month</span>
+        ケース記録閲覧
+    </div>
+    <button id="dv-mark-all-read-btn" onclick="markAllRead()" style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        <span class="material-symbols-outlined" style="font-size:14px;">done_all</span>
+        全既読
+    </button>
 </div>
 
 <!-- Session 19: DAY/利用者 タブ + Session 20: 未読タブ -->

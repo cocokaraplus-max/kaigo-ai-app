@@ -631,13 +631,6 @@ body.nav-editing {
 
     {% block bottom_nav %}
     {% if session.get('f_code') %}
-    <!-- 全既読ボタン（バッジが出ているときのみ表示） -->
-    <div id="mark-all-read-bar" style="display:none;position:fixed;bottom:calc(var(--bottom-nav-height, 74px) + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:100%;max-width:var(--page-max-width,480px);z-index:999;padding:0 12px 4px;box-sizing:border-box;pointer-events:none;">
-        <button onclick="markAllRead()" style="pointer-events:auto;width:100%;padding:7px 0;background:#ea4335;color:#fff;border:none;border-radius:10px;font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
-            <span class="material-symbols-outlined" style="font-size:16px;">done_all</span>
-            全て既読にする
-        </button>
-    </div>
     <nav class="bottom-nav">
         <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
             <span class="material-symbols-outlined">home</span>
@@ -1133,11 +1126,14 @@ document.addEventListener('click', e => {
 function updateMarkAllReadBar() {
     var chatBadge = document.getElementById('chat-badge');
     var dailyBadge = document.getElementById('daily-badge');
-    var bar = document.getElementById('mark-all-read-bar');
-    if (!bar) return;
     var chatVisible = chatBadge && chatBadge.style.display !== 'none' && chatBadge.textContent !== '0';
     var dailyVisible = dailyBadge && dailyBadge.style.display !== 'none' && dailyBadge.textContent !== '0';
-    bar.style.display = (chatVisible || dailyVisible) ? 'block' : 'none';
+    // ケース記録ページのボタン
+    var dvBtn = document.getElementById('dv-mark-all-read-btn');
+    if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
+    // 掲示板ページのボタン
+    var boardBtn = document.getElementById('board-mark-all-read-btn');
+    if (boardBtn) boardBtn.style.display = chatVisible ? 'flex' : 'none';
 }
 
 async function markAllRead() {
