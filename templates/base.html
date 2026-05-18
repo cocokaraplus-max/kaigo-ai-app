@@ -32,12 +32,14 @@
             color: #202124;
             height: 100vh;
             overflow: hidden;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
         }
 
+        :root { --page-max-width: 480px; }
         .page-wrapper {
-            max-width: 480px;
+            max-width: var(--page-max-width);
             width: 100%;
             margin: 0 auto;
             background: #FFFFFF;
@@ -48,6 +50,12 @@
             padding: 1.5rem 1.2rem max(8rem, calc(env(safe-area-inset-bottom) + 5rem));
             position: relative;
             z-index: 0;
+        }
+        /* PC可変幅リサイズハンドル */
+        @media (min-width: 768px) {
+            #page-resize-handle {
+                display: block !important;
+            }
         }
 
         /* Material Symbols */
@@ -612,6 +620,10 @@ body.nav-editing {
     </div>
     {% endif %}
 
+    <!-- PC幅リサイズハンドル（PCのみ表示） -->
+    <div id="page-resize-handle" style="display:none;position:fixed;top:50%;right:calc(50% - var(--page-max-width)/2 - 8px);transform:translateY(-50%);width:16px;height:60px;background:#e0e0e0;border-radius:8px;cursor:ew-resize;z-index:9999;display:flex;align-items:center;justify-content:center;opacity:0.6;transition:opacity 0.2s;" title="ドラッグで幅を変更">
+        <div style="width:4px;height:30px;background:#9aa0a6;border-radius:2px;"></div>
+    </div>
     <div class="page-wrapper">
         {% block content %}{% endblock %}
     </div>
@@ -712,6 +724,76 @@ function setNavScrollTop(val) {
         toggle.addEventListener('change', function() {
             setNavScrollTop(this.checked);
         });
+    }
+})();
+
+// PC幅リサイズ機能
+(function() {
+    var STORAGE_KEY = 'tasukaru_page_width';
+    var MIN_WIDTH = 360;
+    var MAX_WIDTH = 1400;
+    var handle = null;
+    var dragging = false;
+    var startX = 0;
+    var startWidth = 480;
+
+    function applyWidth(w) {
+        w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
+        document.documentElement.style.setProperty('--page-max-width', w + 'px');
+        // ハンドル位置を更新
+        if (handle) handle.style.right = 'calc(50% - ' + w + 'px / 2 - 8px)';
+    }
+
+    function initResize() {
+        handle = document.getElementById('page-resize-handle');
+        if (!handle) return;
+
+        // 保存済み幅を復元
+        var saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+        if (saved >= MIN_WIDTH) applyWidth(saved);
+
+        // PCのみ表示
+        if (window.innerWidth >= 768) {
+            handle.style.display = 'flex';
+        }
+        window.addEventListener('resize', function() {
+            handle.style.display = window.innerWidth >= 768 ? 'flex' : 'none';
+        });
+
+        handle.addEventListener('mousedown', function(e) {
+            dragging = true;
+            startX = e.clientX;
+            var cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--page-max-width'), 10) || 480;
+            startWidth = cur;
+            handle.style.opacity = '1';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            // 右端ハンドルを左右にドラッグ → 幅を変更
+            // 右に引っ張ると広くなる
+            var delta = (e.clientX - startX) * 2;
+            applyWidth(startWidth + delta);
+        });
+        document.addEventListener('mouseup', function(e) {
+            if (!dragging) return;
+            dragging = false;
+            handle.style.opacity = '0.6';
+            var cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--page-max-width'), 10) || 480;
+            localStorage.setItem(STORAGE_KEY, cur);
+        });
+
+        // ダブルクリックでリセット
+        handle.addEventListener('dblclick', function() {
+            applyWidth(480);
+            localStorage.removeItem(STORAGE_KEY);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initResize);
+    } else {
+        initResize();
     }
 })();
 
