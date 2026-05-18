@@ -3431,6 +3431,56 @@ def api_evaluation_ingest_file():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+@app.route('/api/evaluation/ai_fill', methods=['POST'])
+@login_required
+def api_evaluation_ai_fill():
+    """文字起こし元データから訓練による変化・課題とその要因をAI生成"""
+    try:
+        from utils import get_generative_model
+        import json as _json
+        data = request.json or {}
+        source_text = (data.get('source_data') or '').strip()
+        if not source_text:
+            return jsonify({"status": "error", "message": "元データが空です"}), 400
+
+        model = get_generative_model()
+
+        prompt = (
+            "あなたは介護施設の機能訓練指導員の記録補助AIです。\n"
+            "以下は機能訓練に関する音声・メモの文字起こし内容です。\n"
+            "この内容を読み、以下の2項目を抽出・整理してください。\n\n"
+            "【訓練による変化】\n"
+            "・訓練の実施内容・身体機能の変化・改善点を記載\n"
+            "・事実として述べられていること以外は書かない\n"
+            "・該当内容がない場合は空文字を返す\n\n"
+            "【課題とその要因】\n"
+            "・残存する問題・その原因・対応が必要な点を記載\n"
+            "・事実として述べられていること以外は書かない\n"
+            "・該当内容がない場合は空文字を返す\n\n"
+            "【出力形式】JSONのみ。前後の説明・マークダウン不要。\n"
+            '{"changes_by_training": "...", "issues_and_causes": "..."}\n\n'
+            "【元データ】\n"
+            + source_text
+        )
+
+        resp = model.generate_content([prompt])
+        raw = resp.text.strip()
+        raw = re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
+        raw = re.sub(r'```$', '', raw).strip()
+
+        parsed = _json.loads(raw)
+        return jsonify({
+            "status": "success",
+            "changes_by_training": parsed.get("changes_by_training", ""),
+            "issues_and_causes":   parsed.get("issues_and_causes", ""),
+        })
+
+    except Exception as e:
+        print(f"[ai_fill error] {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/numerology')
 @login_required
 def numerology():

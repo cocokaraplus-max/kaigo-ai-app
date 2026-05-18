@@ -1293,6 +1293,16 @@
                               style="margin-top:10px;"
                               placeholder="ここに元データが集まります。直接入力・貼り付けも可能です。"
                               oninput="evalUpdateStatus()"></textarea>
+                    <button type="button" id="eval-ai-fill-btn"
+                            style="display:none;width:100%;margin-top:10px;padding:10px 0;
+                                   border-radius:10px;border:none;
+                                   background:linear-gradient(135deg,#1a73e8,#0d47a1);
+                                   color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;"
+                            onclick="evalAiFill()">
+                        <span class="material-symbols-outlined"
+                              style="font-size:16px;vertical-align:middle;margin-right:4px;">auto_awesome</span>
+                        AI生成（訓練による変化・課題とその要因）
+                    </button>
                 </div>
                 <!-- ===== 元データブロック ここまで ===== -->
 
@@ -1945,6 +1955,7 @@ function evalCollectFormData() {
         evaluator_name: document.getElementById('eval-evaluator-name').value.trim(),
         care_classification: document.getElementById('eval-care-classification').value || null,
         training_goal: document.getElementById('eval-training-goal').value.trim(),
+        source_data: document.getElementById('eval-source-data').value.trim(),
         changes_by_training: document.getElementById('eval-changes').value.trim(),
         issues_and_causes: document.getElementById('eval-issues').value.trim(),
         special_notes: document.getElementById('eval-special-notes').value.trim(),
@@ -1994,6 +2005,7 @@ function evalFillForm(ev) {
     document.getElementById('eval-year-month').value = ev.year_month || '';
     document.getElementById('eval-evaluator-name').value = ev.evaluator_name || '';
     document.getElementById('eval-training-goal').value = ev.training_goal || '';
+    document.getElementById('eval-source-data').value = ev.source_data || '';
     document.getElementById('eval-changes').value = ev.changes_by_training || '';
     document.getElementById('eval-issues').value = ev.issues_and_causes || '';
     document.getElementById('eval-special-notes').value = ev.special_notes || '';
@@ -2067,7 +2079,8 @@ function evalResetForm() {
         const el = document.getElementById(id); if (el) el.value = '';
     });
     ['eval-training-goal',
-     'eval-changes', 'eval-issues', 'eval-special-notes', 'eval-new-requests-detail'].forEach(id => {
+     'eval-changes', 'eval-issues', 'eval-special-notes', 'eval-new-requests-detail',
+     'eval-source-data'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -2476,7 +2489,46 @@ if (document.readyState !== 'loading') {
 
 // ---------- 共通ヘルパー ----------
 /** 元データ欄にテキストを追記し、evalUpdateStatus() を明示呼び出し */
+
+window.evalAiFill = async function() {
+    const sourceText = (document.getElementById('eval-source-data').value || '').trim();
+    if (!sourceText) {
+        showToast('元データが空です。先に録音または入力してください。', 'error');
+        return;
+    }
+    const btn = document.getElementById('eval-ai-fill-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">sync</span>AI生成中...';
+    try {
+        const res = await fetch('/api/evaluation/ai_fill', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ source_data: sourceText }),
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if (data.changes_by_training) {
+                document.getElementById('eval-changes').value = data.changes_by_training;
+            }
+            if (data.issues_and_causes) {
+                document.getElementById('eval-issues').value = data.issues_and_causes;
+            }
+            evalUpdateStatus();
+            showToast('AI生成が完了しました', 'success');
+        } else {
+            showToast('AI生成に失敗しました: ' + (data.message || ''), 'error');
+        }
+    } catch(e) {
+        showToast('通信エラーが発生しました', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">auto_awesome</span>AI生成（訓練による変化・課題とその要因）';
+    }
+};
+
 function evalAppendSourceData(text) {
+    const btn = document.getElementById('eval-ai-fill-btn');
+    if (btn) btn.style.display = 'block';
     const ta = document.getElementById('eval-source-data');
     if (!ta) return;
     const existing = ta.value.trim();
