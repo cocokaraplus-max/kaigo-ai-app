@@ -2124,6 +2124,31 @@ function evalUpdateStatus() {
     }
 }
 
+function evalShowGoalDisplay(mode) {
+    var gdK = document.getElementById('goal-display-kaigo');
+    var gdS = document.getElementById('goal-display-simple');
+    var gdE = document.getElementById('goal-display-empty');
+    if (gdK) gdK.style.display = (mode === 'kaigo') ? '' : 'none';
+    if (gdS) gdS.style.display = (mode === 'simple') ? '' : 'none';
+    if (gdE) gdE.style.display = (mode === 'none' || !mode) ? '' : 'none';
+}
+function evalSetGoalDisplay(initial) {
+    if (!initial) return;
+    var fields = {
+        'gd-short-function':      initial.short_goal_function,
+        'gd-long-function':       initial.long_goal_function,
+        'gd-short-activity':      initial.short_goal_activity,
+        'gd-long-activity':       initial.long_goal_activity,
+        'gd-short-participation': initial.short_goal_participation,
+        'gd-long-participation':  initial.long_goal_participation,
+        'gd-short-simple':        initial.short_goal_simple,
+        'gd-long-simple':         initial.long_goal_simple,
+    };
+    Object.keys(fields).forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = fields[id] || '（未設定）';
+    });
+}
 function evalUpdateSectionBadges(data) {
     // 訓練目標バッジ（表示のみになったため判定スキップ）
     const goalBadge = document.getElementById('eval-badge-goal');
