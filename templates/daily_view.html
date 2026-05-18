@@ -3468,7 +3468,20 @@ window.speakSummary = function(idx, btn) {
     var el = document.getElementById('ai-content-' + idx);
     if (!el) return;
     var text = el.textContent.trim();
-    if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
+    if (text.indexOf('生成中') >= 0 || text.indexOf('再生成中') >= 0) {
+        var icon = btn ? btn.querySelector('.material-symbols-outlined') : null;
+        if (icon) icon.textContent = 'hourglass_empty';
+        var waitInterval = setInterval(function() {
+            var newText = el.textContent.trim();
+            if (newText.indexOf('生成中') < 0 && newText.indexOf('再生成中') < 0) {
+                clearInterval(waitInterval);
+                if (icon) icon.textContent = 'volume_up';
+                window.speakSummary(idx, btn);
+            }
+        }, 500);
+        return;
+    }
+    if (!text || text.indexOf('タップして開くと') === 0) {
         alert('AI要約を先に生成してください'); return;
     }
     _tts_speaking = true;
