@@ -2043,6 +2043,7 @@ window.toggleAccordion = function(idx, userName) {
     }
     var body = document.getElementById('body-'+idx);
     body.classList.toggle('open');
+    body.style.display = '';  // インラインスタイルをリセット
     document.getElementById('arrow-'+idx).classList.toggle('open');
     // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
     // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
@@ -2247,7 +2248,7 @@ window.startEditFromModal = function(id) {
         if (container) container.style.display = 'block';
         // アコーディオン本体も開く
         var accordionBody = recordEl.closest('.user-accordion-body');
-        if (accordionBody) accordionBody.style.display = 'block';
+        if (accordionBody) accordionBody.classList.add('open');
     }
     // 3. data-content-raw から内容を取得して startEdit を呼ぶ
     var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
@@ -2488,7 +2489,15 @@ if (document.readyState === 'loading') {
 window.deleteRecord = async function(id) {
     if (!confirm('本当に削除しますか？\nこの操作は取り消せません。')) return;
     const res = await fetch('/api/delete_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-    if ((await res.json()).status === 'success') location.reload();
+    const result = await res.json();
+    if (result.status === 'success') {
+        var recordEl2 = document.getElementById('record-' + id);
+        if (recordEl2) {
+            var container2 = recordEl2.closest('[id^="records-hidden-"]');
+            if (container2) container2.style.display = 'none';
+        }
+        location.reload();
+    }
 };
 window.generateAI = async function(user, idx) {
     const btn = document.querySelector(`#accordion-${idx} .btn-primary`);
