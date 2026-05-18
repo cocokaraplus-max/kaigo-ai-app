@@ -2043,8 +2043,6 @@ window.toggleAccordion = function(idx, userName) {
     }
     var body = document.getElementById('body-'+idx);
     body.classList.toggle('open');
-    // インラインスタイルをリセット（startEditFromModal等で設定された場合に備えて）
-    body.style.display = '';
     document.getElementById('arrow-'+idx).classList.toggle('open');
     // Session 34: 既読化はアコーディオン開閉ではなく、画面表示(IntersectionObserver)で行うように変更
     // Session 32 で「開いた瞬間に全記録を既読化」していたが、一括展開と相性が悪いため撤廃
@@ -2249,7 +2247,7 @@ window.startEditFromModal = function(id) {
         if (container) container.style.display = 'block';
         // アコーディオン本体も開く
         var accordionBody = recordEl.closest('.user-accordion-body');
-        if (accordionBody) accordionBody.classList.add('open');
+        if (accordionBody) accordionBody.style.display = 'block';
     }
     // 3. data-content-raw から内容を取得して startEdit を呼ぶ
     var content = recordEl ? recordEl.getAttribute('data-content-raw') : '';
@@ -3226,33 +3224,12 @@ async function loadDailySummary(userName, idx, dateStr) {
         var data = await res.json();
         if (data.summary) {
             ac.textContent = data.summary;
-            // 待機中の再生ボタンがあれば自動再生
-            var waitingBtn = document.querySelector('[data-speak-waiting="' + String(idx) + '"]');
-            if (waitingBtn) {
-                waitingBtn.removeAttribute('data-speak-waiting');
-                var icon = waitingBtn.querySelector('.material-symbols-outlined');
-                if (icon) icon.textContent = 'volume_up';
-                window.speakSummary(idx, waitingBtn);
-            }
         } else {
             ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">'
                 + (data.error || '生成に失敗しました') + '</span>';
-            // 待機中ボタンもリセット
-            var waitingBtn2 = document.querySelector('[data-speak-waiting="' + idx + '"]');
-            if (waitingBtn2) {
-                waitingBtn2.removeAttribute('data-speak-waiting');
-                var icon2 = waitingBtn2.querySelector('.material-symbols-outlined');
-                if (icon2) icon2.textContent = 'volume_up';
-            }
         }
     } catch(e) {
         ac.innerHTML = '<span style="color:#d93025;font-size:0.85rem;">通信エラー</span>';
-        var waitingBtn3 = document.querySelector('[data-speak-waiting="' + idx + '"]');
-        if (waitingBtn3) {
-            waitingBtn3.removeAttribute('data-speak-waiting');
-            var icon3 = waitingBtn3.querySelector('.material-symbols-outlined');
-            if (icon3) icon3.textContent = 'volume_up';
-        }
     }
 }
 async function regenDailySummary(userName, idx) {
@@ -3443,10 +3420,6 @@ function _ttsUnlockAudio() {
 
 function _ttsPlayText(text, onEnd) {
     var mySeq = ++_ttsPlaySeq;
-    // iOS対応: タップコンテキスト内でAudioを事前作成してロック解除
-    var audio = new Audio();
-    audio.src = '';
-    _tts_currentAudio = audio;
     fetch('/api/tts_speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -3454,20 +3427,29 @@ function _ttsPlayText(text, onEnd) {
     }).then(function(r) { return r.json(); }).then(function(data) {
         if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
         if (data.audioContent) {
-            // 事前作成済みのAudioにsrcをセットして再生
-            audio.src = 'data:audio/mp3;base64,' + data.audioContent;
-            audio.onended = function() {
-                if (mySeq !== _ttsPlaySeq) return;
-                _tts_currentAudio = null;
-                if (onEnd) onEnd();
-            };
-            audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
-            audio.load();
-            audio.play().catch(function(e) {
-                console.warn('[TTS] play failed:', e);
-                if (onEnd) onEnd();
-            });
-            if (false) {  // 旧AudioContext方式（無効化）
+            // Base64をArrayBufferに変換しAudioContext経由で再生（iOS対応）
+            var binary = atob(data.audioContent);
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var arrayBuf = bytes.buffer;
+            if (_ttsAudioContext && _ttsAudioContext.state !== 'closed') {
+                _ttsAudioContext.decodeAudioData(arrayBuf, function(decoded) {
+                    if (!_tts_speaking) return;
+                    var src = _ttsAudioContext.createBufferSource();
+                    src.buffer = decoded;
+                    src.connect(_ttsAudioContext.destination);
+                    src.onended = function() { if (mySeq !== _ttsPlaySeq) return; if (onEnd) onEnd(); };
+                    src.start(0);
+                    _tts_currentAudio = src;
+                }, function() {
+                    // デコード失敗時はフォールバック
+                    var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+                    _tts_currentAudio = audio;
+                    audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
+                    audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
+                    audio.play().catch(function() { if (onEnd) onEnd(); });
+                });
+            } else {
                 var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
                 _tts_currentAudio = audio;
                 audio.onended = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
@@ -3486,25 +3468,8 @@ window.speakSummary = function(idx, btn) {
     var el = document.getElementById('ai-content-' + idx);
     if (!el) return;
     var text = el.textContent.trim();
-    if (text.indexOf('生成中') >= 0 || text.indexOf('再生成中') >= 0) {
-        // 待機中フラグをボタンに記録（regenDailySummary完了時に自動再生）
-        if (btn) {
-            btn.setAttribute('data-speak-waiting', String(idx));
-            console.log('[TTS] waiting for generation, idx=', idx);
-        }
-        var icon = btn ? btn.querySelector('.material-symbols-outlined') : null;
-        if (icon) icon.textContent = 'hourglass_empty';
-        // ジェスチャー内でAudioContextを事前解除（自動再生時に使用）
-        _ttsUnlockAudio();
-        return;
-    }
-    if (!text || text.indexOf('タップして開くと') === 0) {
-        // まだ未生成→待機モード（loadDailySummary完了後に自動再生）
-        if (btn) btn.setAttribute('data-speak-waiting', String(idx));
-        var iw = btn ? btn.querySelector('.material-symbols-outlined') : null;
-        if (iw) iw.textContent = 'hourglass_empty';
-        _ttsUnlockAudio();
-        return;
+    if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
+        alert('AI要約を先に生成してください'); return;
     }
     _tts_speaking = true;
     _tts_currentBtn = btn;
