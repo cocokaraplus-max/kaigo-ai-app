@@ -279,7 +279,7 @@
 /* トースト */
 .toast {
   position: fixed;
-  bottom: 80px;
+  bottom: 140px;
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: #202124;
@@ -289,7 +289,7 @@
   font-size: 0.88rem;
   opacity: 0;
   transition: all 0.3s;
-  z-index: 2000;
+  z-index: 9999;
   white-space: nowrap;
 }
 .toast.show {
@@ -345,7 +345,7 @@
             <label>介護度</label>
             <select id="care_level" name="care_level">
               <option value="">選択してください</option>
-              {% for level in ['要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
+              {% for level in ['事業対象者','要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
               <option value="{{ level }}" {% if selected and selected.care_level == level %}selected{% endif %}>{{ level }}</option>
               {% endfor %}
             </select>
@@ -565,7 +565,7 @@
 
 const SUPABASE_URL = '{{ supabase_url }}';
 const SUPABASE_KEY = '{{ supabase_anon_key }}';
-const FACILITY_CODE = '{{ session.facility_code }}';
+const FACILITY_CODE = '{{ session.f_code }}';
 
 // 年齢計算
 function updateAge() {
@@ -639,7 +639,7 @@ async function saveProfile(e) {
       document.getElementById('profile-id').value = result[0].id;
     }
     showToast('✅ 保存しました');
-    setTimeout(() => location.reload(), 1000);
+    setTimeout(() => history.back(), 2500);
   } catch(err) {
     showToast('❌ 保存に失敗しました: ' + err.message);
   }
