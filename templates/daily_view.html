@@ -3443,6 +3443,10 @@ function _ttsUnlockAudio() {
 
 function _ttsPlayText(text, onEnd) {
     var mySeq = ++_ttsPlaySeq;
+    // iOS対応: タップコンテキスト内でAudioを事前作成してロック解除
+    var audio = new Audio();
+    audio.src = '';
+    _tts_currentAudio = audio;
     fetch('/api/tts_speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -3450,15 +3454,15 @@ function _ttsPlayText(text, onEnd) {
     }).then(function(r) { return r.json(); }).then(function(data) {
         if (mySeq !== _ttsPlaySeq || !_tts_speaking) return;
         if (data.audioContent) {
-            // Audio タグ方式で再生（iOS/Android 自動再生対応）
-            var audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-            _tts_currentAudio = audio;
+            // 事前作成済みのAudioにsrcをセットして再生
+            audio.src = 'data:audio/mp3;base64,' + data.audioContent;
             audio.onended = function() {
                 if (mySeq !== _ttsPlaySeq) return;
                 _tts_currentAudio = null;
                 if (onEnd) onEnd();
             };
             audio.onerror = function() { _tts_currentAudio = null; if (onEnd) onEnd(); };
+            audio.load();
             audio.play().catch(function(e) {
                 console.warn('[TTS] play failed:', e);
                 if (onEnd) onEnd();
