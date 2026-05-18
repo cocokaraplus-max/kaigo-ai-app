@@ -3335,11 +3335,28 @@ window.openRecordsModal = function(userName, accordionIdx) {
 };
 
 window.closeRecordModal = function(e) {
-    if (e.target === document.getElementById('record-modal')) {
-        document.getElementById('record-modal').style.display = 'none';
+    // 背景（オーバーレイ）タップで閉じる
+    // e.target がモーダル自体 or モーダルの直接の子でない場合も対応
+    var modal = document.getElementById('record-modal');
+    if (!modal) return;
+    if (e.target === modal) {
+        modal.style.display = 'none';
         document.body.style.overflow = '';
     }
 };
+
+// record-modal が非表示になった時に必ず overflow を戻す（フェイルセーフ）
+var _recordModalObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+        if (m.target.id === 'record-modal' && m.target.style.display === 'none') {
+            document.body.style.overflow = '';
+        }
+    });
+});
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('record-modal');
+    if (modal) _recordModalObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
+});
 
 });
 
