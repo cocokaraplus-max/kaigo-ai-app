@@ -528,10 +528,15 @@
     transition: opacity 0.18s ease;
 }
 .dv-sd-overlay.is-open { opacity: 1; pointer-events: auto; }
-.dv-sd-main {
+#dv-sd-wrap {
     position: fixed;
     bottom: 152px;
     right: 16px;
+    width: 56px;
+    z-index: 952;
+}
+.dv-sd-main {
+    position: relative;
     width: 56px; height: 56px;
     border-radius: 50%;
     background: #ec4899;
@@ -547,31 +552,45 @@
 .dv-sd-main:active { transform: scale(0.95); }
 .dv-sd-main .material-symbols-outlined { font-size: 28px; transition: transform 0.3s ease; }
 .dv-sd-main.is-open .material-symbols-outlined { transform: rotate(180deg); }
-/* スワイプ隠し: ボタン群をラップするコンテナ */
+/* ドラッグ移動 + ダブルタップ最小化 */
 #dv-sd-wrap {
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: left 0.3s cubic-bezier(0.4,0,0.2,1),
+                bottom 0.3s cubic-bezier(0.4,0,0.2,1);
+    cursor: grab;
 }
-#dv-sd-wrap.is-hidden {
-    transform: translateX(calc(72px + env(safe-area-inset-right, 0px)));
+#dv-sd-wrap.dragging {
+    transition: none;
+    cursor: grabbing;
 }
-/* 引き出しタブ（隠れているときだけ表示） */
-#dv-sd-tab {
-    position: fixed;
-    bottom: 160px;
-    right: 0;
-    width: 20px;
-    height: 48px;
-    background: #ec4899;
-    border-radius: 8px 0 0 8px;
-    z-index: 951;
+/* 最小化状態 */
+#dv-sd-main.minimized {
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    opacity: 0.5;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+#dv-sd-main.minimized .material-symbols-outlined {
     display: none;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: -2px 2px 6px rgba(0,0,0,0.2);
 }
-#dv-sd-tab.visible { display: flex; }
-#dv-sd-tab .material-symbols-outlined { font-size: 14px; color: #fff; }
+/* ダブルタップヒント */
+#dv-sd-hint {
+    position: fixed;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 8px;
+    z-index: 960;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+}
+#dv-sd-hint.show { opacity: 1; }
+/* タブは不要になったので非表示 */
+#dv-sd-tab { display: none !important; }
 
 /* === 肉球配置: ボタンとラベルを分離して個別に絶対配置 === */
 
@@ -1562,10 +1581,8 @@
     <span class="material-symbols-outlined">menu</span>
 </button>
 </div>
-<!-- 引き出しタブ（隠れているときだけ表示） -->
-<div id="dv-sd-tab" onclick="dvSdShow()">
-    <span class="material-symbols-outlined">chevron_left</span>
-</div>
+<!-- ダブルタップヒント -->
+<div id="dv-sd-hint">ダブルタップで最小化</div>
 
 <div id="cr-search-modal" class="cr-search-modal" role="dialog" aria-modal="true" aria-label="ケース記録検索">
     <div class="cr-search-modal-content">
@@ -2144,40 +2161,109 @@ window.dvSdScrollTop = function() {
 };
 
 window.dvSdToggle = function(force) {
-    // スワイプで隠す機能
+    // ドラッグ移動 + ダブルタップ最小化
     (function() {
         var wrap = document.getElementById('dv-sd-wrap');
-        var tab  = document.getElementById('dv-sd-tab');
-        if (!wrap) return;
-        var startX = 0, startY = 0, tracking = false;
+        var mainBtn = document.getElementById('dv-sd-main');
+        var hint = document.getElementById('dv-sd-hint');
+        if (!wrap || !mainBtn) return;
+
+        // ---- ダブルタップ最小化 ----
+        var tapCount = 0, tapTimer = null;
+        var minimized = false;
+
+        mainBtn.addEventListener('touchend', function(e) {
+            if (isDragging) return;
+            tapCount++;
+            if (tapCount === 1) {
+                tapTimer = setTimeout(function() { tapCount = 0; }, 350);
+            } else if (tapCount >= 2) {
+                clearTimeout(tapTimer);
+                tapCount = 0;
+                e.preventDefault();
+                e.stopPropagation();
+                if (!minimized) {
+                    minimized = true;
+                    mainBtn.classList.add('minimized');
+                    dvSdToggle(false);
+                    // ヒント表示
+                    if (hint) {
+                        var r = wrap.getBoundingClientRect();
+                        hint.style.left = Math.max(8, r.left - 130) + 'px';
+                        hint.style.top = (r.top + r.height/2 - 12) + 'px';
+                        hint.textContent = 'ダブルタップで元に戻る';
+                        hint.classList.add('show');
+                        setTimeout(function(){ hint.classList.remove('show'); }, 2000);
+                    }
+                } else {
+                    minimized = false;
+                    mainBtn.classList.remove('minimized');
+                }
+            }
+        });
+
+        // 最小化中はdvSdToggleをブロック
+        var _origDvSdToggle = window.dvSdToggle;
+        window.dvSdToggle = function(open) {
+            if (minimized && open !== false) return;
+            _origDvSdToggle.apply(this, arguments);
+        };
+
+        // ---- ドラッグ移動 ----
+        var isDragging = false;
+        var dragStartX = 0, dragStartY = 0;
+        var wrapStartLeft = 0, wrapStartBottom = 0;
+        var DRAG_THRESHOLD = 8;
+        var moved = false;
+
         wrap.addEventListener('touchstart', function(e) {
             if (e.touches.length !== 1) return;
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            tracking = true;
+            var t = e.touches[0];
+            dragStartX = t.clientX;
+            dragStartY = t.clientY;
+            var style = window.getComputedStyle(wrap);
+            wrapStartLeft = parseInt(wrap.style.left || '') || (window.innerWidth - 16 - 56);
+            wrapStartBottom = parseInt(wrap.style.bottom || '') || 152;
+            moved = false;
         }, { passive: true });
+
+        wrap.addEventListener('touchmove', function(e) {
+            if (e.touches.length !== 1) return;
+            var t = e.touches[0];
+            var dx = t.clientX - dragStartX;
+            var dy = t.clientY - dragStartY;
+            if (!isDragging && Math.sqrt(dx*dx + dy*dy) > DRAG_THRESHOLD) {
+                isDragging = true;
+                wrap.classList.add('dragging');
+                dvSdToggle(false);
+            }
+            if (!isDragging) return;
+            e.preventDefault();
+            moved = true;
+            var newLeft = wrapStartLeft + dx;
+            var newBottom = wrapStartBottom - dy;
+            // 画面内に制限
+            newLeft = Math.max(0, Math.min(window.innerWidth - 56, newLeft));
+            newBottom = Math.max(80, Math.min(window.innerHeight - 80, newBottom));
+            wrap.style.left = newLeft + 'px';
+            wrap.style.bottom = newBottom + 'px';
+            wrap.style.right = 'auto';
+        }, { passive: false });
+
         wrap.addEventListener('touchend', function(e) {
-            if (!tracking) return;
-            tracking = false;
-            var dx = (e.changedTouches[0].clientX - startX);
-            var dy = Math.abs(e.changedTouches[0].clientY - startY);
-            if (dx > 40 && dy < 40) dvSdHide();  // 右スワイプで隠す
+            if (!isDragging) return;
+            isDragging = false;
+            wrap.classList.remove('dragging');
+            // 左右どちらかの端にスナップ
+            var currentLeft = parseInt(wrap.style.left || '0');
+            var mid = window.innerWidth / 2;
+            var snapLeft = currentLeft < mid
+                ? 16
+                : window.innerWidth - 56 - 16;
+            wrap.style.left = snapLeft + 'px';
+            wrap.style.right = 'auto';
         }, { passive: true });
     })();
-
-    window.dvSdHide = function() {
-        var wrap = document.getElementById('dv-sd-wrap');
-        var tab  = document.getElementById('dv-sd-tab');
-        if (wrap) wrap.classList.add('is-hidden');
-        if (tab)  tab.classList.add('visible');
-        dvSdToggle(false);
-    };
-    window.dvSdShow = function() {
-        var wrap = document.getElementById('dv-sd-wrap');
-        var tab  = document.getElementById('dv-sd-tab');
-        if (wrap) wrap.classList.remove('is-hidden');
-        if (tab)  tab.classList.remove('visible');
-    };
 
     var main = document.getElementById('dv-sd-main');
     var items = document.getElementById('dv-sd-items');
