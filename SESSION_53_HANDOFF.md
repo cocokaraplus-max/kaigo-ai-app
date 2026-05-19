@@ -35,20 +35,31 @@ Session 53の引き継ぎファイルを読んで、残タスクから作業を�
 
 ## Session 52 完了済み修正（本番反映済み）
 
-### 本番反映済み
-- calendar.html: モーダルpadding修正、削除エラーハンドリング、ケース記録連動
-- assessment.html: source_data保存対応、AI生成ボタン追加
-- daily_view.html: 付箋ボタン左端移動、TTS Audio要素方式、FAB→サイドドロワー、全既読ボタン
-- board.html: 全既読ボタン、boardMarkAllRead関数
-- base.html: overflow修正、PC可変幅、全既読JS、出納帳ナビアイコン（岸本洋幸/デモ職員Aのみ）
-- admin.html: facility_code修正、overflow-x
-- input.html: 休み連絡日付入力欄
-- manual.html: サイドドロワー説明、休み連絡×カレンダー連携説明追加
-- app.py: ai_fill、mark_all_read、カレンダー連動
+### 掲示板関連
+- board.html: メンション投稿のis_private対応（メンションのみ投稿は指定した人だけ表示）
+- board.html: メンション検索でひらがな・カタカナ両方ヒット
+- board.html: スタッフにふりがなデータ追加（data-kana属性）
+- app.py: unread_countでis_privateフィルタリング（メンションされていない人にバッジが付かない）
+- app.py: mark_all_readでis_privateフィルタリング
+- app.py: board_postsにis_privateカラム追加・保存対応
+- DB: board_posts に is_private BOOLEAN DEFAULT FALSE 追加（dev+prod両方）
+- DB: 既存メンション付き投稿を is_private=TRUE に更新済み
 
-### dev(tasukaru-dev)のみ・本番未反映
-- ledger.html: 出納帳ページ（仕訳帳/試算表/CSV取込/領収書OCR/勘定科目/設定）
-- app.py: 出納帳API全般（entries/entry/trial_balance/import_csv/ocr_receipt/accounts/settings/divisions/cash_fill）
+### 休み連絡関連
+- input.html: 休み連絡の「誰から」にケアマネ・その他を追加
+- input.html: その他選択時に自由記載欄が表示される
+
+### 評価ページ
+- assessment.html: 保存後に利用者検索欄が消える問題を修正
+
+### ふりがな統一
+- admin.html: 利用者登録のふりがなplaceholderをひらがなに変更
+- patient_profile.html: ふりがな入力欄をひらがなに、カタカナ入力で自動変換
+
+### 出納帳（dev=tasukaru-devのみ・本番未反映）
+- ledger.html: 仕訳帳/試算表/CSV取込/領収書OCR/勘定科目/設定タブ
+- 設定タブ: 事業部管理トグル・事業部追加/編集/削除
+- app.py: 出納帳API全般
 
 ---
 
@@ -77,12 +88,16 @@ ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS short_goal_period_from DAT
 ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS short_goal_period_to DATE DEFAULT NULL;
 ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL;
 
+-- 掲示板
+ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT FALSE;
+
 -- 出納帳（dev + prod両方で実施済み）
 CREATE TABLE IF NOT EXISTS accounts (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, tax_type TEXT DEFAULT 'taxable', is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS journal_entries (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL, entry_date DATE NOT NULL, debit_account_id BIGINT REFERENCES accounts(id), credit_account_id BIGINT REFERENCES accounts(id), amount INTEGER NOT NULL, tax_amount INTEGER DEFAULT 0, description TEXT, receipt_urls JSONB DEFAULT '[]', source TEXT DEFAULT 'manual', created_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS receipts (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL, image_url TEXT NOT NULL, ocr_result JSONB DEFAULT '{}', entry_id BIGINT REFERENCES journal_entries(id), created_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS ledger_divisions (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL, name TEXT NOT NULL, is_active BOOLEAN DEFAULT TRUE);
 CREATE TABLE IF NOT EXISTS ledger_settings (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL UNIQUE, auto_cash_fill BOOLEAN DEFAULT FALSE, divisions_enabled BOOLEAN DEFAULT FALSE);
+CREATE TABLE IF NOT EXISTS ledger_permissions (id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL, staff_name TEXT DEFAULT NULL, auto_cash_fill BOOLEAN DEFAULT FALSE, cash_source_division_id BIGINT DEFAULT NULL, inter_division_fill BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE, granted_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
 ```
 
 ---
@@ -91,35 +106,34 @@ CREATE TABLE IF NOT EXISTS ledger_settings (id BIGSERIAL PRIMARY KEY, facility_c
 
 ### 優先度：最高
 
-#### 1. 出納帳の動作確認・本番マージ
-- 現状: tasukaru-devのみ動作確認中
-- アクセス制限: facility_code=cocokaraplus-5526 かつ 岸本洋幸のみ（devはDEMO001+デモ職員Aも可）
-- 確認済み: 仕訳帳・勘定科目タブ表示OK
-- 未確認: 設定タブのボタン動作・仕訳保存・試算表
-- 本番マージ前にdevで全機能確認すること
-
-#### 2. 出納帳 Phase 3（残機能）
-- [ ] 試算表PDF出力
-- [ ] 消費税集計表示
-- [ ] 事業間資金移動の自動記録（現金自動補填機能）
-- [ ] 現金残高リアルタイム表示
-- [ ] 領収書OCRから仕訳自動生成の動作確認
+#### 1. 出納帳 動作確認・本番マージ
+- 現状: tasukaru-devのみ。本番未反映。
+- アクセス: facility_code=cocokaraplus-5526 かつ 岸本洋幸のみ（devはDEMO001+デモ職員Aも可）
+- 残実装:
+  - [ ] 開発者MENUに出納帳アクセス管理を追加（施設・ユーザー単位で許可）
+  - [ ] 試算表PDF出力
+  - [ ] 消費税集計表示
+  - [ ] 現金自動補填機能（岸本洋幸専用・施設ごとトグル）
+  - [ ] 事業間資金移動の自動記録
+  - [ ] 本番マージ
 
 ### 優先度：高
 
-#### 3. モニタリング生成の「今日は」→日付変換
+#### 2. モニタリング生成の「今日は」→日付変換
 - ケース記録内の「今日は」「本日は」→created_atの日付に変換してからAI生成
 
-#### 4. 評価ページ音声入力の保存確認
-- source_dataの保存は実装済み・現場確認が必要
+#### 3. 掲示板スタッフ検索のふりがな
+- staffsテーブルにstaff_name_kanaカラムが必要
+- 現状: kana_mapからkanaを取得しているが、staffsテーブルにstaff_name_kanaがなければ空になる
+- 確認: staffsテーブルにstaff_name_kanaカラムがあるか確認が必要
 
 ### 優先度：中
 
-#### 5. admin.html 利用者検索機能の確認
+#### 4. admin.html 利用者検索機能の確認
 
 ### 優先度：低
 
-#### 6. 保留タスク
+#### 5. 保留タスク
 - A. 目標管理の利用者情報紐付け
 - B. バイタル入力改修4項目
 - C. PC専用一括入力画面
@@ -134,6 +148,11 @@ CREATE TABLE IF NOT EXISTS ledger_settings (id BIGSERIAL PRIMARY KEY, facility_c
 - commitの前に git branch で確認
 - 本番へは git checkout tasukaru && git merge tasukaru-dev && git push origin tasukaru
 
+### 掲示板is_private
+- is_private=TRUE: mention_namesに含まれるスタッフ + 投稿者のみ表示・バッジカウント
+- 既存投稿はUPDATE済み（mention_names != '[]' → is_private=TRUE）
+- unread_count・mark_all_readともにis_privateフィルタリング済み
+
 ### 出納帳アクセス制限
 ```python
 LEDGER_ALLOWED_FACILITY = 'cocokaraplus-5526'
@@ -143,26 +162,20 @@ LEDGER_DEV_USER = 'デモ職員A'
 ```
 
 ### 出納帳 実装済みAPI
-- GET/POST /api/ledger/settings - 設定取得・保存
-- GET /api/ledger/divisions - 事業部一覧
-- POST /api/ledger/division - 事業部登録・更新
-- DELETE /api/ledger/division/<id> - 事業部削除
-- POST /api/ledger/cash_fill - 日次現金自動補填
-- GET /api/ledger/accounts - 勘定科目一覧
-- POST /api/ledger/account - 勘定科目登録・更新
-- DELETE /api/ledger/account/<id> - 勘定科目削除
-- GET /api/ledger/entries?month=YYYY-MM - 仕訳一覧
-- POST /api/ledger/entry - 仕訳登録・更新
-- DELETE /api/ledger/entry/<id> - 仕訳削除
-- GET /api/ledger/trial_balance?month=YYYY-MM - 試算表
-- POST /api/ledger/import_csv - CSVインポート（Gemini自動仕訳）
-- POST /api/ledger/ocr_receipt - 領収書OCR（Gemini）
-
-### 出納帳 初期勘定科目（初回アクセス時に自動投入）
-- 資産: 現金(101)/普通預金(102)/売掛金(103)
-- 負債: 買掛金(201)/未払金(202)/借入金(203)
-- 収益: 介護報酬売上(401)/自費売上(402)/雑収入(403)
-- 費用: 給与手当(501)/法定福利費(502)/地代家賃(503)/水道光熱費(504)/通信費(505)/消耗品費(506)/車両費(507)/外注費(508)/雑費(509)
+- GET/POST /api/ledger/settings
+- GET /api/ledger/divisions
+- POST /api/ledger/division
+- DELETE /api/ledger/division/<id>
+- POST /api/ledger/cash_fill
+- GET /api/ledger/accounts
+- POST /api/ledger/account
+- DELETE /api/ledger/account/<id>
+- GET /api/ledger/entries?month=YYYY-MM
+- POST /api/ledger/entry
+- DELETE /api/ledger/entry/<id>
+- GET /api/ledger/trial_balance?month=YYYY-MM
+- POST /api/ledger/import_csv
+- POST /api/ledger/ocr_receipt
 
 ### カレンダー連動
 - records.calendar_event_id（UUID型）でカレンダーイベントと紐付け
@@ -173,7 +186,3 @@ LEDGER_DEV_USER = 'デモ職員A'
 ### iOS Audio制約
 - new Audio()をタップ時に先に作成、srcは後から差し替え
 - _ttsUnlockAudio()は不要（むしろ邪魔）
-
-### Supabase直接アクセス（admin.html）
-- patient_profilesはSupabaseに直接PATCH
-- facility_codeを必ずpayloadに含める（RLS対策）
