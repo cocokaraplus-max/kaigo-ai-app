@@ -4108,7 +4108,7 @@ JSON配列のみ。マークダウン不要。
         # Claude APIで自動仕訳生成
         client = _anthropic.Anthropic()
         message = client.messages.create(
-            model='claude-sonnet-4-20250514',
+            model='claude-sonnet-4-5',
             max_tokens=2000,
             messages=[{'role': 'user', 'content': prompt}]
         )
