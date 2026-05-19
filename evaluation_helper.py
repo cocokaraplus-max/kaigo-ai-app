@@ -425,9 +425,18 @@ ALLOWED_UPSERT_KEYS = (
     "facility_code", "user_name", "year_month", "evaluator_name",
     "weight_kg", "attendance_count", "attendance_target",
     "training_goal", "care_classification",
+    # 目標達成ステータス
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",
     "short_goal_status", "long_goal_status",
+    # 新規目標（入力時に更新）
+    "short_goal_function_new", "short_goal_activity_new", "short_goal_participation_new",
+    "long_goal_function_new", "long_goal_activity_new", "long_goal_participation_new",
+    "short_goal_new", "long_goal_new",
+    # 継続/変更フラグ
+    "short_goal_function_cont", "short_goal_activity_cont", "short_goal_participation_cont",
+    "long_goal_function_cont", "long_goal_activity_cont", "long_goal_participation_cont",
+    "short_goal_cont", "long_goal_cont",
     "source_data",
     "changes_by_training", "issues_and_causes", "special_notes",
     "new_requests_exist", "new_requests_detail",
