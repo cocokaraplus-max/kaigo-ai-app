@@ -572,8 +572,17 @@
         <div class="leave-btn-group">
             <button type="button" class="leave-btn" data-leave-type="self">本人</button>
             <button type="button" class="leave-btn" data-leave-type="family">家族</button>
+            <button type="button" class="leave-btn" data-leave-type="caremanager">ケアマネ</button>
+            <button type="button" class="leave-btn" data-leave-type="other">その他</button>
         </div>
         <input type="hidden" id="leave-reporter-type" name="leave_reporter_type" value="">
+
+        <!-- その他自由記載 -->
+        <div id="leave-other-block" style="display:none; margin-top:14px;">
+            <label class="form-label" style="font-size:0.88rem;">詳細（任意）</label>
+            <input type="text" id="leave-other-detail" name="leave_other_detail"
+                   class="form-control" placeholder="例: 病院のソーシャルワーカーから">
+        </div>
 
         <div id="leave-relation-block" style="display:none; margin-top:14px;">
             <label class="form-label" style="font-size:0.88rem;">関係性(任意)</label>
@@ -659,6 +668,7 @@ window.saveRecord = async function() {
     // Session 33: 休み連絡カテゴリのとき「誰から」必須
     const _curCatForLeave = document.getElementById('selected-category').value;
     // 休み連絡選択時にデフォルト日付を設定
+    // 休み連絡選択時にデフォルト日付を設定
     if (_curCatForLeave === '休み連絡') {
         var recDate = document.getElementById('record-date')?.value || '{{ today }}';
         var startEl = document.getElementById('leave-date-start');
@@ -723,6 +733,8 @@ window.saveRecord = async function() {
         const leaveEnd = document.getElementById('leave-date-end')?.value || '';
         formData.append('leave_date_start', leaveStart);
         formData.append('leave_date_end', leaveEnd || leaveStart);
+        const leaveOther = document.getElementById('leave-other-detail')?.value || '';
+        formData.append('leave_other_detail', leaveOther);
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
         formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
         // Session 36: VAS 入力データ
@@ -779,6 +791,8 @@ window.saveRecord = async function() {
             // Session 33: 休み連絡フォームもリセット
             document.getElementById('leave-date-start') && (document.getElementById('leave-date-start').value = '');
             document.getElementById('leave-date-end') && (document.getElementById('leave-date-end').value = '');
+            document.getElementById('leave-other-detail') && (document.getElementById('leave-other-detail').value = '');
+            document.getElementById('leave-other-block') && (document.getElementById('leave-other-block').style.display = 'none');
             var lvBlock = document.getElementById('leave-form-block');
             var lvType = document.getElementById('leave-reporter-type');
             var lvRel = document.getElementById('leave-reporter-relation');
@@ -1258,6 +1272,9 @@ window.initLeaveFormHandlers = function() {
             btn.classList.add('selected');
             // 家族のときだけ関係性ブロックを開く
             if (lvRelBlock) lvRelBlock.style.display = (type === 'family') ? 'block' : 'none';
+            // その他のときだけ自由記載欄を開く
+            var otherBlock = document.getElementById('leave-other-block');
+            if (otherBlock) otherBlock.style.display = (type === 'other') ? 'block' : 'none';
             if (type === 'self') {
                 if (lvRel) lvRel.value = '';
                 document.querySelectorAll('.leave-btn[data-leave-rel]').forEach(function(b){ b.classList.remove('selected'); });
