@@ -1298,7 +1298,9 @@
              data-category="{{ r.category or '' }}"
              data-content-raw="{{ r.content | e | replace('"', '&quot;') }}"
              data-leave-type="{{ r.leave_reporter_type or '' }}"
-             data-leave-relation="{{ r.leave_reporter_relation or '' }}">
+             data-leave-relation="{{ r.leave_reporter_relation or '' }}"
+             data-leave-date-start="{{ r.leave_date_start or '' }}"
+             data-leave-date-end="{{ r.leave_date_end or '' }}">
             <div class="record-meta-row" onclick="openRecordModal('{{ r.id }}')" style="cursor:pointer;">
                 <div class="record-meta">
                     <span class="material-symbols-outlined">schedule</span>
@@ -1397,6 +1399,19 @@
             <div class="edit-area" id="edit-area-{{ r.id }}" style="display:none;">
                 {# Session 33: 休み連絡カテゴリのとき編集 UI 内に「誰から/関係性」を出す #}
                 <div class="leave-edit-block" id="leave-edit-block-{{ r.id }}" style="display:none; margin-bottom:10px;">
+                    <!-- 休み日付編集 -->
+                    <div style="margin-bottom:12px;">
+                        <label class="form-label" style="font-size:0.85rem;">
+                            <span class="material-symbols-outlined">event</span>
+                            休み日付
+                        </label>
+                        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-top:4px;">
+                            <input type="date" class="form-control" id="leave-edit-start-{{ r.id }}" style="font-size:0.85rem;">
+                            <span style="color:#80868b;font-size:0.8rem;">〜</span>
+                            <input type="date" class="form-control" id="leave-edit-end-{{ r.id }}" style="font-size:0.85rem;">
+                        </div>
+                        <div style="font-size:0.72rem;color:#9aa0a6;margin-top:3px;">左側のみ入力した場合は1日がケース記録・カレンダーに自動適用されます</div>
+                    </div>
                     <label class="form-label" style="font-size:0.85rem;">
                         <span class="material-symbols-outlined">person</span>
                         誰から
@@ -2347,6 +2362,16 @@ window.startEdit = function(id, content) {
     leaveBlock.style.display = 'block';
     var curType = recordEl.getAttribute('data-leave-type') || '';
     var curRel = recordEl.getAttribute('data-leave-relation') || '';
+    var curStart = recordEl.getAttribute('data-leave-date-start') || '';
+    var curEnd = recordEl.getAttribute('data-leave-date-end') || '';
+    var startInput = document.getElementById('leave-edit-start-' + id);
+    var endInput = document.getElementById('leave-edit-end-' + id);
+    if (startInput) startInput.value = curStart;
+    if (endInput) endInput.value = curEnd || curStart;
+    // 左日付変更時に右に同日を自動セット
+    if (startInput) startInput.addEventListener('change', function() {
+        if (endInput && !endInput.value) endInput.value = startInput.value;
+    });
     var typeInput = document.getElementById('leave-edit-type-' + id);
     var relInput = document.getElementById('leave-edit-rel-' + id);
     var relBlock = document.getElementById('leave-edit-relation-block-' + id);
@@ -2388,6 +2413,15 @@ window.saveEdit = async function(id) {
         }
         payload.leave_reporter_type = _type;
         payload.leave_reporter_relation = relInput ? relInput.value : '';
+        // 休み日付をペイロードに追加
+        const startInput = document.getElementById('leave-edit-start-' + id);
+        const endInput = document.getElementById('leave-edit-end-' + id);
+        const startVal = startInput ? startInput.value : '';
+        const endVal = endInput ? endInput.value : '';
+        if (startVal) {
+            payload.leave_date_start = startVal;
+            payload.leave_date_end = endVal || startVal;
+        }
     }
     // Session 36: VAS 編集データを送信(常に送る。空配列なら既存 VAS 全削除)
     try {

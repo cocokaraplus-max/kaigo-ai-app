@@ -4797,7 +4797,49 @@ def api_update_record():
             _r = (data.get("leave_reporter_relation") or "").strip() or None
             update_payload["leave_reporter_type"] = _t
             update_payload["leave_reporter_relation"] = _r
+        # 休み日付変更
+        new_leave_start = (data.get("leave_date_start") or "").strip() or None
+        new_leave_end = (data.get("leave_date_end") or "").strip() or None
+        if new_leave_start:
+            update_payload["leave_date_start"] = new_leave_start
+            update_payload["leave_date_end"] = new_leave_end or new_leave_start
+            # contentを再生成
+            try:
+                from datetime import datetime as _dt3
+                _ls3 = _dt3.strptime(new_leave_start, "%Y-%m-%d")
+                _ls3_str = f"{_ls3.month}月{_ls3.day}日"
+                _reporter_map3 = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                _type3 = (data.get("leave_reporter_type") or "").strip()
+                _reporter3 = _reporter_map3.get(_type3, "")
+                if new_leave_end and new_leave_end != new_leave_start:
+                    _le3 = _dt3.strptime(new_leave_end, "%Y-%m-%d")
+                    _le3_str = f"{_le3.month}月{_le3.day}日"
+                    _period3 = f"{_ls3_str}〜{_le3_str}"
+                else:
+                    _period3 = _ls3_str
+                if _reporter3:
+                    update_payload["content"] = f"{_period3}はお休みと{_reporter3}から連絡がありました。"
+                else:
+                    update_payload["content"] = f"{_period3}はお休みと連絡がありました。"
+            except Exception as _ce3:
+                print(f"[休み編集content再生成エラー] {_ce3}", flush=True)
         supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
+        # 休み日付変更時にカレンダーイベントも同期
+        if new_leave_start:
+            try:
+                rec_row = supabase.table("records").select("calendar_event_id,user_name").eq("id", data["id"]).execute()
+                if rec_row.data:
+                    cal_event_id = rec_row.data[0].get("calendar_event_id")
+                    user_name_cal = rec_row.data[0].get("user_name", "")
+                    if cal_event_id:
+                        supabase.table("calendar_events").update({
+                            "event_date": new_leave_start,
+                            "end_date": new_leave_end or new_leave_start,
+                            "title": f"{user_name_cal}様 お休み",
+                        }).eq("id", cal_event_id).execute()
+                        print(f"[休み編集] カレンダーイベント {cal_event_id} を{new_leave_start}に更新", flush=True)
+            except Exception as _cal_upd:
+                print(f"[休み編集カレンダー同期エラー] {_cal_upd}", flush=True)
 
         # Session 36: VAS データの UPSERT(全削除 → 再 INSERT)
         # payload に vas_records が含まれていれば実施。含まれていなければ既存 VAS を維持。
