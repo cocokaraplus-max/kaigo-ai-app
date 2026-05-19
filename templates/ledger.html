@@ -230,23 +230,7 @@
     </div>
 </div>
 
-<!-- 設定ペイン -->
 
-<!-- 事業部入力モーダル -->
-<div class="ledger-modal" id="division-modal">
-    <div class="ledger-modal-content">
-        <div class="ledger-modal-title" id="division-modal-title">事業部を追加</div>
-        <input type="hidden" id="division-id">
-        <div class="ledger-form-group">
-            <label class="ledger-form-label">事業部名</label>
-            <input type="text" class="ledger-form-control" id="division-name" placeholder="例: 接骨院">
-        </div>
-        <div class="ledger-btn-row">
-            <button class="ledger-btn cancel" onclick="closeDivisionModal()">キャンセル</button>
-            <button class="ledger-btn primary" onclick="saveDivision()">保存</button>
-        </div>
-    </div>
-</div>
 
 <!-- 勘定科目入力モーダル -->
 <div class="ledger-modal" id="account-modal">
@@ -303,6 +287,7 @@
         <div class="ledger-form-group">
             <label class="ledger-form-label">借方（お金の使い道）</label>
             <select class="ledger-form-control" id="entry-debit">
+                <option value="">科目を選択</option>
                 {% for acc in accounts %}
                 <option value="{{ acc.id }}" data-category="{{ acc.category }}">{{ acc.code }} {{ acc.name }}</option>
                 {% endfor %}
@@ -311,6 +296,7 @@
         <div class="ledger-form-group">
             <label class="ledger-form-label">貸方（お金の出所）</label>
             <select class="ledger-form-control" id="entry-credit">
+                <option value="">科目を選択</option>
                 {% for acc in accounts %}
                 <option value="{{ acc.id }}" data-category="{{ acc.category }}">{{ acc.code }} {{ acc.name }}</option>
                 {% endfor %}
@@ -461,7 +447,13 @@ async function loadTrialBalance() {
     document.getElementById('trial-balance-content').innerHTML = html;
 }
 
-function openEntryModal(entry) {
+async function openEntryModal(entry) {
+// accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
+if (allAccounts.length === 0) {
+const _r = await fetch('/api/ledger/accounts');
+const _d = await _r.json();
+if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSelects(); }
+}
     document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
     document.getElementById('entry-id').value = entry ? entry.id : '';
     const today = new Date().toISOString().slice(0,10);
@@ -645,10 +637,11 @@ function renderAccounts() {
 }
 
 function updateAccountSelects() {
+    const _ph = '<option value="">科目を選択</option>';
     const options = allAccounts.filter(a => a.is_active !== false)
         .map(a => `<option value="${a.id}">${a.code} ${a.name}</option>`).join('');
-    document.getElementById('entry-debit').innerHTML = options;
-    document.getElementById('entry-credit').innerHTML = options;
+    document.getElementById('entry-debit').innerHTML = _ph + options;
+    document.getElementById('entry-credit').innerHTML = _ph + options;
 }
 
 function openAccountModal(account) {
@@ -859,133 +852,6 @@ async function saveDivision() {
     }
 }
 
-
-// ===== 設定・事業部管理 =====
-
-function updateToggleUI(type, on) {
-    const bg = document.getElementById(`toggle-${type}-bg`);
-    const knob = document.getElementById(`toggle-${type}-knob`);
-    if (bg) bg.style.background = on ? '#1a73e8' : '#ccc';
-    if (knob) knob.style.left = on ? '23px' : '3px';
-    if (type === 'fill') {
-        const sec = document.getElementById('cash-fill-section');
-        if (sec) sec.style.display = on ? '' : 'none';
-    }
-    if (type === 'div') {
-        const sec = document.getElementById('divisions-section');
-        if (sec) sec.style.display = on ? '' : 'none';
-    }
-}
-
-async function saveSettings() {
-    const payload = {
-        auto_cash_fill: document.getElementById('toggle-auto-fill').checked,
-        divisions_enabled: document.getElementById('toggle-divisions').checked,
-    };
-    updateToggleUI('fill', payload.auto_cash_fill);
-    updateToggleUI('div', payload.divisions_enabled);
-    await fetch('/api/ledger/settings', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-    });
-    if (payload.auto_cash_fill) calcTodayExpense();
-}
-
-async function calcTodayExpense() {
-    const today = new Date().toISOString().slice(0,10);
-    const res = await fetch('/api/ledger/entries?month=' + today.slice(0,7));
-    const data = await res.json();
-    if (data.status !== 'success') return;
-    const todayEntries = (data.entries || []).filter(e => e.entry_date === today);
-    const total = todayEntries.reduce((s, e) => {
-        const debit = e.debit || {};
-        return debit.category === '費用' ? s + e.amount : s;
-    }, 0);
-    const el = document.getElementById('today-expense');
-    if (el) el.textContent = '¥' + total.toLocaleString();
-}
-
-async function doCashFill() {
-    const today = new Date().toISOString().slice(0,10);
-    const res = await fetch('/api/ledger/cash_fill', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({date: today})
-    });
-    const data = await res.json();
-    if (data.status === 'success') {
-        alert(data.message);
-        loadEntries();
-        calcTodayExpense();
-    } else {
-        alert('エラー: ' + (data.message||''));
-    }
-}
-
-function renderDivisions() {
-    const list = document.getElementById('divisions-list');
-    if (!list) return;
-    if (!currentDivisions.length) {
-        list.innerHTML = '<div style="text-align:center;padding:16px;color:#9aa0a6;font-size:0.82rem;">事業部が登録されていません</div>';
-        return;
-    }
-    list.innerHTML = currentDivisions.map(d => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f3f4;">
-            <span style="font-size:0.85rem;font-weight:700;color:#202124;">${d.name}</span>
-            <div style="display:flex;gap:6px;">
-                <button class="entry-btn" onclick="editDivision(${d.id})"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>
-                <button class="entry-btn danger" onclick="deleteDivision(${d.id})"><span class="material-symbols-outlined" style="font-size:14px;">delete</span></button>
-            </div>
-        </div>
-    `).join('');
-}
-
-function openDivisionModal(div) {
-    document.getElementById('division-modal-title').textContent = div ? '事業部を編集' : '事業部を追加';
-    document.getElementById('division-id').value = div ? div.id : '';
-    document.getElementById('division-name').value = div ? div.name : '';
-    document.getElementById('division-modal').classList.add('show');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeDivisionModal() {
-    document.getElementById('division-modal').classList.remove('show');
-    document.body.style.overflow = '';
-}
-
-function editDivision(id) {
-    const d = currentDivisions.find(x => x.id === id);
-    if (d) openDivisionModal(d);
-}
-
-async function deleteDivision(id) {
-    if (!confirm('この事業部を削除しますか？')) return;
-    const res = await fetch('/api/ledger/division/' + id, {method:'DELETE'});
-    const data = await res.json();
-    if (data.status === 'success') loadSettings();
-    else alert('削除失敗: ' + (data.message||''));
-}
-
-async function saveDivision() {
-    const id = document.getElementById('division-id').value;
-    const name = document.getElementById('division-name').value.trim();
-    if (!name) { alert('事業部名を入力してください'); return; }
-    const payload = {name};
-    if (id) payload.id = parseInt(id);
-    const res = await fetch('/api/ledger/division', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.status === 'success') {
-        closeDivisionModal();
-        loadSettings();
-    } else {
-        alert('保存失敗: ' + (data.message||''));
-    }
-}
 
 </script>
 {% endblock %}
