@@ -2239,8 +2239,10 @@ window.evalSave = async function() {
             evalState.currentEvalId = null;
             // フォームをリセット + 利用者選択も解除
             evalState.selectedPatient = null;
+            document.getElementById('eval-patient-search-wrap').style.display = '';
             document.getElementById('eval-patient-search-input').style.display = '';
             document.getElementById('eval-patient-search-input').value = '';
+            document.getElementById('eval-patient-candidates').classList.remove('show');
             document.getElementById('eval-patient-badge').classList.remove('show');
             document.getElementById('eval-no-patient-hint').style.display = '';
             document.getElementById('eval-form-body').style.display = 'none';
