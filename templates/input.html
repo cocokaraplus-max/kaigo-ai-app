@@ -660,7 +660,9 @@ window.saveRecord = async function() {
         alert('利用者を選択してください');
         return;
     }
-    if (!content) {
+    // 休み連絡の場合はcontentはサーバー側で自動生成するのでバリデーションをスキップ
+    const _catForValidate = document.getElementById('selected-category')?.value || '';
+    if (!content && _catForValidate !== '休み連絡') {
         alert('内容を入力してください');
         return;
     }
