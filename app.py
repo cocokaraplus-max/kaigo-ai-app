@@ -5969,7 +5969,13 @@ def board():
                 print(f"post_categories error: {e}")
     except Exception as e:
         print(f"board detail error: {e}")
-    staffs = [name for name in icons.keys()]
+    # staffsにふりがなを追加（メンション検索でひらがな/カタカナ入力対応）
+    try:
+        kana_res = supabase.table("staffs").select("staff_name,staff_name_kana").eq("facility_code", f_code).eq("is_active", True).execute()
+        kana_map = {r["staff_name"]: (r.get("staff_name_kana") or "") for r in (kana_res.data or [])}
+    except:
+        kana_map = {}
+    staffs = [{"name": name, "kana": kana_map.get(name, "")} for name in icons.keys()]
     # 利用者リスト(投稿時の選択 + 検索フィルタ用)
     patient_names = []
     try:
@@ -6310,9 +6316,18 @@ def api_board_unread_count():
         my_name = session["my_name"]
         supabase = get_supabase()
         # 未読投稿(Session 42: 「確認済みボタンを押す」まで未読。board_checks 基準に統一。
-        #  以前は board_reads(閲覧したか)を見ていたため上タブ/下バッジと数が合わなかった)
-        all_posts = supabase.table("board_posts").select("id").eq("facility_code", f_code).execute()
-        all_ids = [p["id"] for p in (all_posts.data or [])]
+        #  is_private=Trueの投稿は自分がmention_namesに含まれるか投稿者のみカウント)
+        all_posts = supabase.table("board_posts").select("id,is_private,mention_names,staff_name").eq("facility_code", f_code).execute()
+        # is_privateフィルタリング
+        visible_ids = []
+        for p in (all_posts.data or []):
+            if p.get("is_private"):
+                mentions = p.get("mention_names") or []
+                if my_name in mentions or p.get("staff_name") == my_name:
+                    visible_ids.append(p["id"])
+            else:
+                visible_ids.append(p["id"])
+        all_ids = visible_ids
         post_unread = 0
         if all_ids:
             checked_posts = supabase.table("board_checks").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
@@ -6341,9 +6356,12 @@ def api_board_mark_all_read():
         f_code = session["f_code"]
         my_name = session["my_name"]
         supabase = get_supabase()
-        # 全投稿を既読化
-        all_posts = supabase.table("board_posts").select("id").eq("facility_code", f_code).execute()
-        all_ids = [p["id"] for p in (all_posts.data or [])]
+        # 全投稿を既読化（is_private=Trueは自分がメンションされているもののみ）
+        all_posts = supabase.table("board_posts").select("id,is_private,mention_names,staff_name").eq("facility_code", f_code).execute()
+        all_ids = [
+            p["id"] for p in (all_posts.data or [])
+            if not p.get("is_private") or my_name in (p.get("mention_names") or []) or p.get("staff_name") == my_name
+        ]
         post_added = 0
         if all_ids:
             existing = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()

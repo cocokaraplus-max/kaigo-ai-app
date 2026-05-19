@@ -1165,10 +1165,10 @@ body.modal-open .bottom-nav {
             </div>
             <div id="mention-chips" style="display:none;border:1.5px solid #e0e0e0;border-radius:10px;overflow:hidden;max-height:160px;overflow-y:auto;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
                 {% for s in staffs %}
-                <div class="mention-chip" data-name="{{ s }}"
+                <div class="mention-chip" data-name="{{ s.name }}" data-kana="{{ s.kana }}"
                     style="padding:10px 14px;font-size:0.88rem;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;border-radius:0;">
                     <span class="material-symbols-outlined" style="font-size:16px;color:#80868b;">person</span>
-                    {{ s }}
+                    {{ s.name }}
                 </div>
                 {% endfor %}
             </div>
@@ -1772,7 +1772,9 @@ window.filterMentions = function(q) {
     var hits = 0;
     document.querySelectorAll('.mention-chip').forEach(function(chip) {
         var name = window.__normalizeForSearch(chip.dataset.name);
-        var show = name.includes(ql) && !selectedMentions.includes(chip.dataset.name);
+        var kana = window.__normalizeForSearch(chip.dataset.kana || '');
+        var qlHira = typeof kataToHira !== 'undefined' ? kataToHira(ql) : ql;
+        var show = (name.includes(ql) || kana.includes(qlHira) || kana.includes(ql)) && !selectedMentions.includes(chip.dataset.name);
         chip.style.display = show ? '' : 'none';
         if (show) hits++;
     });

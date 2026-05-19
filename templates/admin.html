@@ -570,7 +570,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
       </div>
       <div class="form-group">
         <label class="form-label">カナ</label>
-        <input type="text" id="new-user-kana" class="form-control" placeholder="例: ヤマダ ハナコ">
+        <input type="text" id="new-user-kana" class="form-control" placeholder="例: やまだ はなこ" oninput="this.value=kataToHira(this.value)">
       </div>
       <div class="form-group">
         <label class="form-label">生年月日</label>
