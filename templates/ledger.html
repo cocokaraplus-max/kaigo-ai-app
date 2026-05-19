@@ -864,28 +864,6 @@ async function saveDivision() {
 let currentSettings = {};
 let currentDivisions = [];
 
-async function loadSettings() {
-    const res = await fetch('/api/ledger/settings');
-    const data = await res.json();
-    if (data.status !== 'success') return;
-    currentSettings = data.settings || {};
-    currentDivisions = data.divisions || [];
-
-    // トグル状態を反映
-    const fillToggle = document.getElementById('toggle-auto-fill');
-    const divToggle = document.getElementById('toggle-divisions');
-    if (fillToggle) {
-        fillToggle.checked = currentSettings.auto_cash_fill || false;
-        updateToggleUI('fill', fillToggle.checked);
-    }
-    if (divToggle) {
-        divToggle.checked = currentSettings.divisions_enabled || false;
-        updateToggleUI('div', divToggle.checked);
-    }
-    renderDivisions();
-    if (currentSettings.auto_cash_fill) calcTodayExpense();
-}
-
 function updateToggleUI(type, on) {
     const bg = document.getElementById(`toggle-${type}-bg`);
     const knob = document.getElementById(`toggle-${type}-knob`);
