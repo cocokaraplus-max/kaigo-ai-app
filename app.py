@@ -4100,7 +4100,7 @@ def api_ledger_import_csv():
 
 【出力形式】
 JSON配列のみ。マークダウン不要。
-[{"entry_date":"YYYY-MM-DD","debit_code":"101","credit_code":"401","amount":50000,"description":"利用料入金"}]
+[{{"entry_date":"YYYY-MM-DD","debit_code":"101","credit_code":"401","amount":50000,"description":"利用料入金"}}]
 
 【CSVデータ】
 {content[:4000]}"""
