@@ -75,7 +75,6 @@
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
     <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
     <button class="ledger-tab" onclick="switchTab('settings')" id="tab-settings">設定</button>
-    <button class="ledger-tab" onclick="switchTab('settings')" id="tab-settings">設定</button>
 </div>
 
 <!-- 月ナビ -->
@@ -232,47 +231,6 @@
 </div>
 
 <!-- 設定ペイン -->
-<div id="pane-settings" style="display:none;">
-
-    <!-- 現金自動補填機能トグル -->
-    <div class="entry-card" style="margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div>
-                <div style="font-size:0.88rem;font-weight:800;color:#202124;">現金自動補填機能</div>
-                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">日次で経費合計を現金入金として自動記録します</div>
-            </div>
-            <label style="position:relative;display:inline-block;width:44px;height:24px;">
-                <input type="checkbox" id="toggle-auto-fill" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
-                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggle-fill-bg"></span>
-                <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;" id="toggle-fill-knob"></span>
-            </label>
-        </div>
-        <!-- 補填ボタン（ONのときのみ表示） -->
-        <div id="cash-fill-section" style="display:none;border-top:1px solid #f1f3f4;padding-top:10px;">
-            <div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;">今日の経費合計: <b id="today-expense">計算中...</b></div>
-            <button class="ledger-btn primary" style="width:100%;" onclick="doCashFill()">今日の経費分を現金入金として記録</button>
-        </div>
-    </div>
-
-    <!-- 事業部管理 -->
-    <div class="entry-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div>
-                <div style="font-size:0.88rem;font-weight:800;color:#202124;">事業部管理</div>
-                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">複数事業間の資金移動を管理します</div>
-            </div>
-            <label style="position:relative;display:inline-block;width:44px;height:24px;">
-                <input type="checkbox" id="toggle-divisions" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
-                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggle-div-bg"></span>
-                <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;" id="toggle-div-knob"></span>
-            </label>
-        </div>
-        <div id="divisions-section" style="display:none;">
-            <div id="divisions-list" style="margin-bottom:10px;"></div>
-            <button class="ledger-btn primary" style="width:100%;" onclick="openDivisionModal()">+ 事業部を追加</button>
-        </div>
-    </div>
-</div>
 
 <!-- 事業部入力モーダル -->
 <div class="ledger-modal" id="division-modal">
