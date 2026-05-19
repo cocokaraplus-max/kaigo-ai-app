@@ -2875,7 +2875,7 @@ def api_save_calendar_event():
                             update_payload["content"] = new_memo
                         if update_payload:
                             supabase.table("records").update(update_payload).eq("id", rec["id"]).execute()
-                            print(f"[カレンダー同期] record {rec["id"]} を更新: {list(update_payload.keys())}", flush=True)
+                            print(f"[カレンダー同期] record " + str(rec["id"]) + " を更新: " + str(list(update_payload.keys())), flush=True)
                 except Exception as _upd_err:
                     print(f"[calendar sync update] failed: {_upd_err}", flush=True)
             return jsonify({"status": "success", "id": event_id})
