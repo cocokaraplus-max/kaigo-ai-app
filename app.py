@@ -5879,8 +5879,18 @@ def board():
     supabase = get_supabase()
     posts = []
     try:
-        res = supabase.table("board_posts").select("*").eq("facility_code", f_code).order("is_pinned", desc=True).order("created_at", desc=True).limit(30).execute()
-        posts = res.data or []
+        res = supabase.table("board_posts").select("*").eq("facility_code", f_code).order("is_pinned", desc=True).order("created_at", desc=True).limit(100).execute()
+        all_posts = res.data or []
+        # is_private=Trueの投稿は自分がmention_namesに含まれるか投稿者のみ表示
+        posts = []
+        for p in all_posts:
+            if p.get("is_private"):
+                mentions_list = p.get("mention_names") or []
+                if my_name in mentions_list or p.get("staff_name") == my_name:
+                    posts.append(p)
+            else:
+                posts.append(p)
+        posts = posts[:30]
     except Exception as e:
         print(f"board error: {e}")
     icons = get_staff_icons(supabase, f_code)
@@ -6028,12 +6038,14 @@ def api_board_create_post():
                 category_id = int(category_id_raw)
             except (TypeError, ValueError):
                 category_id = None
+        is_private = request.form.get("is_private", "0") == "1"
         insert_payload = {
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
             "file_urls": [], "audio_url": audio_url,
             "mention_names": mentions, "patient_names": patient_names,
             "is_pinned": False,
+            "is_private": is_private,
         }
         if category_id is not None:
             insert_payload["category_id"] = category_id
