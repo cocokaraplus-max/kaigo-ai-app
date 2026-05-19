@@ -855,9 +855,21 @@ body.modal-open .bottom-nav {
 <!-- ヘッダー全体を sticky 化(タイトル+投稿ボタン+タブ+検索バー) -->
 <div class="board-sticky-stack">
 <div class="board-header">
-    <div class="page-title board-title" style="margin-bottom:0;">
-        <span class="material-symbols-outlined">campaign</span>
-        掲示板
+    <div class="page-title board-title" style="margin-bottom:0;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined">campaign</span>
+            掲示板
+        </div>
+        <div id="board-mark-all-read-wrap" style="display:none;">
+            <button id="board-mark-all-read-btn" onclick="boardMarkAllRead()"
+                style="display:flex;align-items:center;gap:4px;background:#fce8e6;
+                       color:#c62828;border:none;border-radius:8px;padding:5px 10px;
+                       font-size:0.75rem;font-weight:700;cursor:pointer;
+                       -webkit-tap-highlight-color:transparent;">
+                <span class="material-symbols-outlined" style="font-size:14px;">done_all</span>
+                全既読
+            </button>
+        </div>
     </div>
     <button class="new-post-btn" id="new-post-btn">
         <span class="material-symbols-outlined">edit_square</span>
@@ -899,16 +911,7 @@ body.modal-open .bottom-nav {
 </div>
 </div><!-- /board-sticky-stack -->
 <!-- 全既読ボタン（sticky外に配置してz-index問題回避） -->
-<div id="board-mark-all-read-wrap" style="display:none;margin-bottom:8px;">
-    <button id="board-mark-all-read-btn" onclick="boardMarkAllRead()"
-        style="display:flex;align-items:center;gap:6px;background:#fce8e6;color:#c62828;
-               border:1px solid #f5c6c4;border-radius:8px;padding:6px 12px;
-               font-size:0.78rem;font-weight:700;cursor:pointer;
-               -webkit-tap-highlight-color:transparent;width:100%;justify-content:center;">
-        <span class="material-symbols-outlined" style="font-size:16px;">done_all</span>
-        全て既読にする
-    </button>
-</div>
+<div id="board-mark-all-read-wrap" style="display:none;"></div>
 
 
 <!-- 投稿一覧 -->
