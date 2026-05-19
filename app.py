@@ -4959,7 +4959,7 @@ def api_generate_monitoring():
                 + (f"・休日情報は必ず文中に含めること\n\n" if leave_text else "\n")
                 + leave_section
                 + f"『記録』\n{all_recs}"
-            )            )
+            )
             result_text = model.generate_content([prompt]).text.strip()
             return jsonify({
                 "mode": "full",
