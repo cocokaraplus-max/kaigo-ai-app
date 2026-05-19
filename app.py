@@ -3610,6 +3610,8 @@ def api_evaluation_ai_fill():
 # ============================================================
 LEDGER_ALLOWED_FACILITY = 'cocokaraplus-5526'
 LEDGER_ALLOWED_USER = '岸本洋幸'
+LEDGER_DEV_FACILITY = 'DEMO001'
+LEDGER_DEV_USER = 'デモ職員A'
 
 def ledger_access_required(f):
     """出納帳専用アクセス制限デコレータ"""
