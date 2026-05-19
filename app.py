@@ -735,7 +735,7 @@ def input_view():
                             if leave_date_start:
                                 cal_id = _get_or_create_system_calendar(supabase, f_code, my_name)
                                 if cal_id:
-                                    cal_res = supabase.table("calendar_events").insert({
+                                    cal_payload = {
                                         "facility_code": f_code,
                                         "calendar_id": cal_id,
                                         "title": f"{user_name_for_cal}様 お休み",
@@ -745,12 +745,21 @@ def input_view():
                                         "color": "#e53935",
                                         "memo": content,
                                         "created_by": my_name,
-                                    }).execute()
+                                    }
+                                    cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
+                                    cal_event_id = None
                                     if cal_res.data:
                                         cal_event_id = cal_res.data[0]["id"]
+                                    else:
+                                        # dataが空の場合はSELECTで取得
+                                        fetch_res = supabase.table("calendar_events").select("id").eq("facility_code", f_code).eq("calendar_id", cal_id).eq("event_date", leave_date_start).eq("created_by", my_name).order("id", desc=True).limit(1).execute()
+                                        if fetch_res.data:
+                                            cal_event_id = fetch_res.data[0]["id"]
+                                    if cal_event_id:
                                         supabase.table("records").update(
                                             {"calendar_event_id": cal_event_id}
                                         ).eq("id", new_id).execute()
+                                        print(f"[calendar sync] linked record {new_id} to event {cal_event_id}", flush=True)
                         except Exception as _cal_err:
                             print(f"[calendar sync] failed: {_cal_err}", flush=True)
 
