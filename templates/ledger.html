@@ -142,7 +142,10 @@
     </div>
     <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="importCSV(this)">
     <div id="csv-preview" style="display:none;">
-        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">AI仕訳プレビュー</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-size:0.85rem;font-weight:700;color:#202124;">AI仕訳プレビュー</div>
+    <div id="csv-count" style="font-size:0.78rem;color:#5f6368;"></div>
+</div>
         <div id="csv-preview-list"></div>
         <button class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>
     </div>
@@ -574,20 +577,31 @@ async function importCSV(input) {
     csvSuggestions = data.suggestions || [];
     const preview = document.getElementById('csv-preview');
     const list = document.getElementById('csv-preview-list');
-    list.innerHTML = csvSuggestions.map((s,i) => `
-        <div class="entry-card">
+    // 科目コード→科目名のマッピングを作成
+    const codeToName = {};
+    allAccounts.forEach(a => { codeToName[a.code] = a.name; });
+    list.innerHTML = csvSuggestions.map((s,i) => {
+        const debitName = codeToName[String(s.debit_code)] || s.debit_code || '';
+        const creditName = codeToName[String(s.credit_code)] || s.credit_code || '';
+        const isIncome = creditName.includes('売上') || creditName.includes('収益');
+        const amtClass = isIncome ? 'income' : 'expense';
+        const amtSign = isIncome ? '+' : '-';
+        return `
+        <div class="entry-card" style="border-left:3px solid ${isIncome?'#34a853':'#ea4335'};">
             <div class="entry-card-header">
                 <span class="entry-date">${s.entry_date||''}</span>
-                <span class="entry-amount">¥${(s.amount||0).toLocaleString()}</span>
+                <span class="entry-amount ${amtClass}">${amtSign}¥${(s.amount||0).toLocaleString()}</span>
             </div>
             <div class="entry-accounts">
-                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 6px;border-radius:4px;">${s.debit_code||''}</span>
+                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${debitName}</span>
                 <span class="material-symbols-outlined" style="font-size:14px;">arrow_forward</span>
-                <span style="background:#fce8f6;color:#ec4899;padding:2px 6px;border-radius:4px;">${s.credit_code||''}</span>
+                <span style="background:#fce8f6;color:#ec4899;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${creditName}</span>
             </div>
-            <div class="entry-desc">${s.description||''}</div>
-        </div>
-    `).join('');
+            <div class="entry-desc" style="font-size:0.8rem;color:#5f6368;margin-top:4px;">${s.description||''}</div>
+        </div>`;
+    }).join('');
+    const countEl = document.getElementById('csv-count');
+    if (countEl) countEl.textContent = `${csvSuggestions.length}件の仕訳を検出`;
     preview.style.display = '';
     input.value = '';
 }
