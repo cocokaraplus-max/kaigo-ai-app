@@ -3823,28 +3823,18 @@ def api_ledger_import_csv():
         # 勘定科目一覧を取得
         acc_res = supabase.table('accounts').select('id,code,name,category').eq('facility_code', f_code).execute()
         accounts = acc_res.data or []
-        acc_list = '
-'.join([f"{a['code']} {a['name']}({a['category']})" for a in accounts])
+        acc_list = '\n'.join([f"{a['code']} {a['name']}({a['category']})" for a in accounts])
         prompt = (
-            f"以下はCSVデータです。各行を会計仕訳に変換してください。
-"
-            f"利用可能な勘定科目:
-{acc_list}
-
-"
-            f"出力形式: JSONのみ。配列で返す。
-"
-            f'[{{"entry_date":"YYYY-MM-DD","debit_code":"XXX","credit_code":"XXX","amount":0,"description":"説明"}},...]
-
-'
-            f"CSVデータ:
-{content[:3000]}"
+            "以下はCSVデータです。各行を会計仕訳に変換してください。\n"
+            f"利用可能な勘定科目:\n{acc_list}\n\n"
+            "出力形式: JSONのみ。配列で返す。\n"
+            '[{"entry_date":"YYYY-MM-DD","debit_code":"XXX","credit_code":"XXX","amount":0,"description":"説明"},...]\n\n'
+            f"CSVデータ:\n{content[:3000]}"
         )
         resp = model.generate_content([prompt])
         raw = resp.text.strip()
         import re as _re, json as _json
-        raw = _re.sub(r'^```[a-zA-Z]*
-?', '', raw).strip()
+        raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
         raw = _re.sub(r'```$', '', raw).strip()
         suggestions = _json.loads(raw)
         # account codeからidに変換
@@ -3892,17 +3882,14 @@ def api_ledger_ocr_receipt():
             if f.filename.lower().endswith('.png'):
                 mime = 'image/png'
             prompt = (
-                "この領収書・レシートから以下の情報をJSONで抽出してください。
-"
-                '{"date":"YYYY-MM-DD","amount":0,"tax_amount":0,"vendor":"店名","description":"内容","tax_rate":10}
-'
+                "この領収書・レシートから以下の情報をJSONで抽出してください。\n"
+                '{"date":"YYYY-MM-DD","amount":0,"tax_amount":0,"vendor":"店名","description":"内容","tax_rate":10}\n'
                 "判読できない場合はnullを入れてください。JSONのみ返してください。"
             )
             resp = model.generate_content([{"mime_type": mime, "data": img_bytes}, prompt])
             raw = resp.text.strip()
             import re as _re, json as _json
-            raw = _re.sub(r'^```[a-zA-Z]*
-?', '', raw).strip()
+            raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
             raw = _re.sub(r'```$', '', raw).strip()
             ocr = _json.loads(raw)
             # 画像をSupabaseにアップロード
