@@ -1225,6 +1225,7 @@ function openPatientEditForm(id) {
 // ---- patient_profiles 編集保存 ----
 async function savePatientProfileEdit(id) {
   const data = {
+    facility_code:  FACILITY_CODE,
     patient_number: document.getElementById('pef-number-' + id)?.value || null,
     user_name:      document.getElementById('pef-name-' + id)?.value || '',
     user_name_kana: document.getElementById('pef-kana-' + id)?.value || null,
