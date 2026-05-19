@@ -4053,7 +4053,7 @@ def api_ledger_trial_balance():
 @app.route('/api/ledger/import_csv', methods=['POST'])
 @login_required
 def api_ledger_import_csv():
-    """CSVインポート（売上・銀行明細）"""
+    """CSVインポート（売上・銀行明細）- Claude APIでAI自動科目推定"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
     _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
@@ -4062,54 +4062,84 @@ def api_ledger_import_csv():
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
-        from utils import get_generative_model
-        import csv, io
+        import anthropic as _anthropic, json as _json, re as _re
         f = request.files.get('file')
-        csv_type = request.form.get('csv_type', 'auto')  # auto/smaregi/bank
+        csv_type = request.form.get('csv_type', 'auto')
         if not f:
             return jsonify({'status': 'error', 'message': 'ファイルがありません'}), 400
         content = f.read().decode('utf-8-sig', errors='replace')
-        # Geminiで自動仕訳
-        model = get_generative_model()
         # 勘定科目一覧を取得
         acc_res = supabase.table('accounts').select('id,code,name,category').eq('facility_code', f_code).execute()
         accounts = acc_res.data or []
         acc_list = '\n'.join([f"{a['code']} {a['name']}({a['category']})" for a in accounts])
-        prompt = (
-            "以下はCSVデータです。各行を会計仕訳に変換してください。\n"
-            f"利用可能な勘定科目:\n{acc_list}\n\n"
-            "出力形式: JSONのみ。配列で返す。\n"
-            '[{"entry_date":"YYYY-MM-DD","debit_code":"XXX","credit_code":"XXX","amount":0,"description":"説明"},...]\n\n'
-            f"CSVデータ:\n{content[:3000]}"
+        # CSVタイプ別のヒント
+        type_hints = {
+            'auto': '一般的なCSVか銀行明細か売上データです。形式を自動判定してください。',
+            'smaregi': 'Smaregi(スマレジ)の売上データです。売上は充当金の収益になります。',
+            'bank': '銀行口座の引落し明細です。出金は費用、入金は収益または販売歌入です。',
+            'card': 'クレジットカード明細です。利用歌は未払金/当座の負債になります。',
+        }
+        type_hint = type_hints.get(csv_type, '')
+        prompt = f"""あなたは介護施設の会計担当者です。以下のCSVデータを会計仕訳に変換してください。
+
+【CSVの種類のヒント】
+{type_hint}
+
+【利用可能な勘定科目一覧】
+{acc_list}
+
+【仕訳ルール】
+- 介護施設の一般的な科目属性：
+  ・利用者からの利用料収入 → 借方:普通預金/現金、貸方:売上高
+  ・銀行からの入金 → 借方:普通預金、貸方:売上高または貲掴金
+  ・費用の引落し → 借方:各費用科目、貸方:普通預金/現金
+  ・負債返済 → 借方:負債科目、貸方:普通預金
+- 金額は正の整数で返す（マイナス不可）
+- 日付はYYYY-MM-DD形式
+- descriptionは日本語で簡潔に
+
+【出力形式】
+JSON配列のみ。マークダウン不要。
+[{{"entry_date":"YYYY-MM-DD","debit_code":"101","credit_code":"401","amount":50000,"description":"利用料入金"}}]
+
+【CSVデータ】
+{content[:4000]}"""
+
+        # Claude APIで自動仕訳生成
+        client = _anthropic.Anthropic()
+        message = client.messages.create(
+            model='claude-sonnet-4-20250514',
+            max_tokens=2000,
+            messages=[{{'role': 'user', 'content': prompt}}]
         )
-        resp = model.generate_content([prompt])
-        raw = resp.text.strip()
-        import re as _re, json as _json
+        raw = message.content[0].text.strip()
         raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
         raw = _re.sub(r'```$', '', raw).strip()
         suggestions = _json.loads(raw)
-        # account codeからidに変換
-        code_to_id = {a['code']: a['id'] for a in accounts}
+        # account codeからidに変換（コードまたは名前でマッチ）
+        code_to_id = {{a['code']: a['id'] for a in accounts}}
+        name_to_id = {{a['name']: a['id'] for a in accounts}}
         entries = []
         for s in suggestions:
-            debit_id = code_to_id.get(s.get('debit_code'))
-            credit_id = code_to_id.get(s.get('credit_code'))
-            if debit_id and credit_id:
-                entries.append({
+            debit_id = code_to_id.get(str(s.get('debit_code'))) or name_to_id.get(s.get('debit_code'))
+            credit_id = code_to_id.get(str(s.get('credit_code'))) or name_to_id.get(s.get('credit_code'))
+            if debit_id and credit_id and int(s.get('amount', 0)) > 0:
+                entries.append({{
                     'facility_code': f_code,
                     'entry_date': s['entry_date'],
                     'debit_account_id': debit_id,
                     'credit_account_id': credit_id,
                     'amount': int(s.get('amount', 0)),
+                    'tax_amount': int(s.get('tax_amount', 0)),
                     'description': s.get('description', ''),
                     'source': csv_type,
                     'created_by': my_name,
-                })
+                }})
         if entries:
             supabase.table('journal_entries').insert(entries).execute()
-        return jsonify({'status': 'success', 'imported': len(entries), 'suggestions': suggestions})
+        return jsonify({{'status': 'success', 'imported': len(entries), 'suggestions': suggestions}})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({{'status': 'error', 'message': str(e)}}), 500
 
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required
