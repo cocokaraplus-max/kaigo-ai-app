@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+{% block title %}出納帳 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* ========================================
+   出納帳 ledger.html
+   ======================================== */
+.ledger-tabs { display:flex; gap:6px; margin-bottom:16px; overflow-x:auto; scrollbar-width:none; }
+.ledger-tab { padding:8px 16px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.82rem; font-weight:700; cursor:pointer; white-space:nowrap; color:#5f6368; }
+.ledger-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+
+.ledger-month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.ledger-month-label { font-size:1rem; font-weight:800; color:#202124; }
+.ledger-month-btn { background:none; border:1.5px solid #e0e0e0; border-radius:8px; padding:6px 12px; cursor:pointer; font-size:0.85rem; color:#5f6368; }
+
+.entry-card { background:#fff; border-radius:12px; border:1.5px solid #e8eaed; padding:12px 14px; margin-bottom:8px; }
+.entry-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.entry-date { font-size:0.78rem; color:#5f6368; }
+.entry-amount { font-size:1rem; font-weight:800; color:#202124; }
+.entry-amount.income { color:#34a853; }
+.entry-amount.expense { color:#ea4335; }
+.entry-accounts { font-size:0.78rem; color:#5f6368; display:flex; align-items:center; gap:6px; }
+.entry-desc { font-size:0.82rem; color:#202124; margin-top:4px; }
+.entry-actions { display:flex; gap:6px; margin-top:8px; }
+.entry-btn { padding:4px 10px; border-radius:6px; border:1px solid #e0e0e0; background:#fff; font-size:0.72rem; cursor:pointer; color:#5f6368; }
+.entry-btn.danger { color:#ea4335; border-color:#ea4335; }
+
+.summary-card { background:linear-gradient(135deg,#1a73e8,#0d47a1); border-radius:14px; padding:16px; margin-bottom:16px; color:#fff; }
+.summary-row { display:flex; justify-content:space-between; margin-bottom:6px; }
+.summary-label { font-size:0.82rem; opacity:0.85; }
+.summary-value { font-size:0.92rem; font-weight:800; }
+.summary-divider { border:none; border-top:1px solid rgba(255,255,255,0.3); margin:8px 0; }
+.summary-balance { font-size:1.1rem; font-weight:900; }
+
+.trial-balance-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.trial-balance-table th { background:#e8f0fe; color:#1a73e8; padding:6px 8px; text-align:left; font-weight:700; }
+.trial-balance-table td { padding:6px 8px; border-bottom:1px solid #f1f3f4; }
+.trial-balance-table tr:hover td { background:#f8f9fa; }
+.trial-section-header { background:#f1f3f4; font-weight:800; color:#202124; padding:8px; border-radius:6px; margin:10px 0 4px; font-size:0.82rem; }
+
+.fab-add { position:fixed; bottom:calc(80px + env(safe-area-inset-bottom)); right:16px; width:52px; height:52px; border-radius:50%; background:#1a73e8; color:#fff; border:none; box-shadow:0 4px 12px rgba(26,115,232,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:900; }
+
+/* モーダル */
+.ledger-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; align-items:flex-end; justify-content:center; }
+.ledger-modal.show { display:flex; }
+.ledger-modal-content { background:#fff; border-radius:20px 20px 0 0; width:100%; max-width:480px; padding:20px; max-height:85vh; overflow-y:auto; padding-bottom:max(env(safe-area-inset-bottom) + 20px, 30px); }
+.ledger-modal-title { font-size:1rem; font-weight:800; color:#202124; margin-bottom:16px; }
+.ledger-form-group { margin-bottom:14px; }
+.ledger-form-label { font-size:0.78rem; font-weight:700; color:#5f6368; margin-bottom:4px; display:block; }
+.ledger-form-control { width:100%; padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.85rem; box-sizing:border-box; }
+.ledger-form-control:focus { outline:none; border-color:#1a73e8; }
+.ledger-btn-row { display:flex; gap:8px; margin-top:16px; }
+.ledger-btn { flex:1; padding:12px; border-radius:10px; border:none; font-size:0.88rem; font-weight:700; cursor:pointer; }
+.ledger-btn.primary { background:#1a73e8; color:#fff; }
+.ledger-btn.cancel { background:#f1f3f4; color:#5f6368; }
+
+.csv-drop-zone { border:2px dashed #c9c7bd; border-radius:12px; padding:24px; text-align:center; color:#5f6368; font-size:0.85rem; cursor:pointer; margin-bottom:12px; }
+.csv-drop-zone:hover { border-color:#1a73e8; background:#f8f9ff; }
+.receipt-preview { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+.receipt-thumb { border-radius:8px; overflow:hidden; aspect-ratio:1; background:#f1f3f4; }
+.receipt-thumb img { width:100%; height:100%; object-fit:cover; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-title">
+    <span class="material-symbols-outlined">account_balance</span>
+    出納帳
+</div>
+
+<!-- タブ -->
+<div class="ledger-tabs">
+    <button class="ledger-tab active" onclick="switchTab('journal')" id="tab-journal">仕訳帳</button>
+    <button class="ledger-tab" onclick="switchTab('trial')" id="tab-trial">試算表</button>
+    <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
+    <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
+</div>
+
+<!-- 月ナビ -->
+<div class="ledger-month-nav">
+    <button class="ledger-month-btn" onclick="changeMonth(-1)">◀</button>
+    <div class="ledger-month-label" id="month-label"></div>
+    <button class="ledger-month-btn" onclick="changeMonth(1)">▶</button>
+</div>
+
+<!-- ===== 仕訳帳タブ ===== -->
+<div id="pane-journal">
+    <!-- 月次サマリー -->
+    <div class="summary-card" id="summary-card" style="display:none;">
+        <div class="summary-row">
+            <span class="summary-label">収益合計</span>
+            <span class="summary-value" id="sum-income">¥0</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">費用合計</span>
+            <span class="summary-value" id="sum-expense">¥0</span>
+        </div>
+        <hr class="summary-divider">
+        <div class="summary-row">
+            <span class="summary-label">差引損益</span>
+            <span class="summary-balance" id="sum-balance">¥0</span>
+        </div>
+    </div>
+    <div id="entries-list">
+        <div style="text-align:center;padding:40px 20px;color:#9aa0a6;">
+            <span class="material-symbols-outlined" style="font-size:48px;display:block;margin-bottom:8px;">receipt_long</span>
+            仕訳がありません。右下の＋ボタンから追加してください。
+        </div>
+    </div>
+</div>
+
+<!-- ===== 試算表タブ ===== -->
+<div id="pane-trial" style="display:none;">
+    <div id="trial-balance-content">
+        <div style="text-align:center;padding:40px;color:#9aa0a6;">月を選択して試算表を表示</div>
+    </div>
+</div>
+
+<!-- ===== CSV取込タブ ===== -->
+<div id="pane-import" style="display:none;">
+    <div style="background:#e8f0fe;border-radius:12px;padding:14px;margin-bottom:16px;font-size:0.82rem;color:#1a73e8;">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">auto_awesome</span>
+        AIが自動で勘定科目を推定して仕訳を作成します。内容を確認してから保存してください。
+    </div>
+    <div style="margin-bottom:12px;">
+        <label style="font-size:0.78rem;font-weight:700;color:#5f6368;display:block;margin-bottom:4px;">CSVの種類</label>
+        <select class="ledger-form-control" id="csv-type">
+            <option value="auto">自動判定</option>
+            <option value="smaregi">スマレジ</option>
+            <option value="bank">銀行明細</option>
+            <option value="card">カード利用履歴</option>
+        </select>
+    </div>
+    <div class="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
+        <span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>
+        CSVファイルをタップして選択<br>
+        <span style="font-size:0.72rem;">スマレジ・銀行明細・カード利用履歴など</span>
+    </div>
+    <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="importCSV(this)">
+    <div id="csv-preview" style="display:none;">
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;">AI仕訳プレビュー</div>
+        <div id="csv-preview-list"></div>
+        <button class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>
+    </div>
+</div>
+
+<!-- ===== 領収書OCRタブ ===== -->
+<div id="pane-receipt" style="display:none;">
+    <div style="background:#fff3e0;border-radius:12px;padding:14px;margin-bottom:16px;font-size:0.82rem;color:#e65100;">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">tips_and_updates</span>
+        複数枚まとめて選択できます。AIが金額・日付・店名を自動読取します。
+    </div>
+    <div class="csv-drop-zone" onclick="document.getElementById('receipt-input').click()">
+        <span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">receipt</span>
+        領収書・レシートの写真を選択<br>
+        <span style="font-size:0.72rem;">複数枚まとめて選択OK（JPEG/PNG）</span>
+    </div>
+    <input type="file" id="receipt-input" accept="image/*" multiple style="display:none;" onchange="ocrReceipts(this)">
+    <div id="receipt-results"></div>
+</div>
+
+<!-- 仕訳追加FAB -->
+<button class="fab-add" onclick="openEntryModal()" id="fab-add">
+    <span class="material-symbols-outlined" style="font-size:28px;">add</span>
+</button>
+
+<!-- ===== 仕訳入力モーダル ===== -->
+<div class="ledger-modal" id="entry-modal">
+    <div class="ledger-modal-content">
+        <div class="ledger-modal-title" id="entry-modal-title">仕訳を追加</div>
+        <input type="hidden" id="entry-id">
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">日付</label>
+            <input type="date" class="ledger-form-control" id="entry-date">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">借方（お金の使い道）</label>
+            <select class="ledger-form-control" id="entry-debit">
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}" data-category="{{ acc.category }}">{{ acc.code }} {{ acc.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">貸方（お金の出所）</label>
+            <select class="ledger-form-control" id="entry-credit">
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}" data-category="{{ acc.category }}">{{ acc.code }} {{ acc.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">金額（円）</label>
+            <input type="number" class="ledger-form-control" id="entry-amount" placeholder="例: 10000">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">消費税額（円・任意）</label>
+            <input type="number" class="ledger-form-control" id="entry-tax" placeholder="例: 1000" value="0">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">摘要</label>
+            <input type="text" class="ledger-form-control" id="entry-desc" placeholder="例: 事務用品購入">
+        </div>
+        <div class="ledger-btn-row">
+            <button class="ledger-btn cancel" onclick="closeEntryModal()">キャンセル</button>
+            <button class="ledger-btn primary" onclick="saveEntry()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const ACCOUNTS = {{ accounts | tojson }};
+let currentMonth = '';
+let currentEntries = [];
+let csvSuggestions = [];
+
+// 初期化
+(function() {
+    const now = new Date();
+    currentMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    updateMonthLabel();
+    loadEntries();
+})();
+
+function updateMonthLabel() {
+    const [y, m] = currentMonth.split('-');
+    document.getElementById('month-label').textContent = y + '年' + parseInt(m) + '月';
+}
+
+function changeMonth(delta) {
+    const [y, m] = currentMonth.split('-').map(Number);
+    const d = new Date(y, m-1+delta, 1);
+    currentMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    updateMonthLabel();
+    loadEntries();
+    if (document.getElementById('tab-trial').classList.contains('active')) {
+        loadTrialBalance();
+    }
+}
+
+function switchTab(tab) {
+    ['journal','trial','import','receipt'].forEach(t => {
+        document.getElementById('pane-'+t).style.display = t===tab ? '' : 'none';
+        document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    });
+    document.getElementById('fab-add').style.display = tab==='journal' ? 'flex' : 'none';
+    if (tab === 'trial') loadTrialBalance();
+}
+
+async function loadEntries() {
+    const res = await fetch('/api/ledger/entries?month=' + currentMonth);
+    const data = await res.json();
+    if (data.status !== 'success') return;
+    currentEntries = data.entries || [];
+    renderEntries();
+    renderSummary();
+}
+
+function renderEntries() {
+    const list = document.getElementById('entries-list');
+    if (!currentEntries.length) {
+        list.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#9aa0a6;"><span class="material-symbols-outlined" style="font-size:48px;display:block;margin-bottom:8px;">receipt_long</span>仕訳がありません。右下の＋ボタンから追加してください。</div>';
+        document.getElementById('summary-card').style.display = 'none';
+        return;
+    }
+    document.getElementById('summary-card').style.display = '';
+    list.innerHTML = currentEntries.map(e => {
+        const debit = e.debit || {};
+        const credit = e.credit || {};
+        const isIncome = credit.category === '収益';
+        const amtClass = isIncome ? 'income' : 'expense';
+        const amtSign = isIncome ? '+' : '-';
+        return `<div class="entry-card">
+            <div class="entry-card-header">
+                <span class="entry-date">${e.entry_date}</span>
+                <span class="entry-amount ${amtClass}">${amtSign}¥${e.amount.toLocaleString()}</span>
+            </div>
+            <div class="entry-accounts">
+                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 6px;border-radius:4px;">${debit.name||''}</span>
+                <span class="material-symbols-outlined" style="font-size:14px;">arrow_forward</span>
+                <span style="background:#fce8f6;color:#ec4899;padding:2px 6px;border-radius:4px;">${credit.name||''}</span>
+            </div>
+            ${e.description ? `<div class="entry-desc">${e.description}</div>` : ''}
+            <div class="entry-actions">
+                <button class="entry-btn" onclick="editEntry(${e.id})">編集</button>
+                <button class="entry-btn danger" onclick="deleteEntry(${e.id})">削除</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderSummary() {
+    let income = 0, expense = 0;
+    currentEntries.forEach(e => {
+        const credit = e.credit || {};
+        if (credit.category === '収益') income += e.amount;
+        else if (credit.category === '資産' || credit.category === '負債') expense += e.amount;
+    });
+    // 費用科目への借方
+    currentEntries.forEach(e => {
+        const debit = e.debit || {};
+        if (debit.category === '費用') expense += e.amount;
+    });
+    const balance = income - expense;
+    document.getElementById('sum-income').textContent = '¥' + income.toLocaleString();
+    document.getElementById('sum-expense').textContent = '¥' + expense.toLocaleString();
+    const balEl = document.getElementById('sum-balance');
+    balEl.textContent = (balance >= 0 ? '+' : '') + '¥' + balance.toLocaleString();
+    balEl.style.color = balance >= 0 ? '#a8d8a8' : '#ffb3b3';
+}
+
+async function loadTrialBalance() {
+    const res = await fetch('/api/ledger/trial_balance?month=' + currentMonth);
+    const data = await res.json();
+    if (data.status !== 'success') return;
+    const tb = data.trial_balance;
+    const [y, m] = currentMonth.split('-');
+    let html = `<div style="font-size:0.85rem;font-weight:800;color:#202124;margin-bottom:12px;">${y}年${parseInt(m)}月 試算表</div>`;
+    const catOrder = ['収益','費用','資産','負債'];
+    catOrder.forEach(cat => {
+        const rows = tb[cat] || [];
+        if (!rows.length) return;
+        const total = rows.reduce((s,r) => s + Math.abs(r.balance), 0);
+        html += `<div class="trial-section-header">${cat}　合計: ¥${total.toLocaleString()}</div>`;
+        html += '<table class="trial-balance-table"><tr><th>科目</th><th style="text-align:right;">借方</th><th style="text-align:right;">貸方</th><th style="text-align:right;">残高</th></tr>';
+        rows.forEach(r => {
+            html += `<tr><td>${r.code} ${r.name}</td><td style="text-align:right;">¥${r.debit.toLocaleString()}</td><td style="text-align:right;">¥${r.credit.toLocaleString()}</td><td style="text-align:right;font-weight:700;">¥${Math.abs(r.balance).toLocaleString()}</td></tr>`;
+        });
+        html += '</table>';
+    });
+    document.getElementById('trial-balance-content').innerHTML = html;
+}
+
+function openEntryModal(entry) {
+    document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
+    document.getElementById('entry-id').value = entry ? entry.id : '';
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('entry-date').value = entry ? entry.entry_date : today;
+    document.getElementById('entry-debit').value = entry ? entry.debit_account_id : '';
+    document.getElementById('entry-credit').value = entry ? entry.credit_account_id : '';
+    document.getElementById('entry-amount').value = entry ? entry.amount : '';
+    document.getElementById('entry-tax').value = entry ? (entry.tax_amount||0) : 0;
+    document.getElementById('entry-desc').value = entry ? (entry.description||'') : '';
+    document.getElementById('entry-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEntryModal() {
+    document.getElementById('entry-modal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function editEntry(id) {
+    const e = currentEntries.find(x => x.id === id);
+    if (e) openEntryModal(e);
+}
+
+async function deleteEntry(id) {
+    if (!confirm('この仕訳を削除しますか？')) return;
+    const res = await fetch('/api/ledger/entry/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.status === 'success') {
+        loadEntries();
+    } else {
+        alert('削除に失敗しました: ' + (data.message||''));
+    }
+}
+
+async function saveEntry() {
+    const id = document.getElementById('entry-id').value;
+    const payload = {
+        entry_date: document.getElementById('entry-date').value,
+        debit_account_id: parseInt(document.getElementById('entry-debit').value),
+        credit_account_id: parseInt(document.getElementById('entry-credit').value),
+        amount: parseInt(document.getElementById('entry-amount').value) || 0,
+        tax_amount: parseInt(document.getElementById('entry-tax').value) || 0,
+        description: document.getElementById('entry-desc').value,
+    };
+    if (id) payload.id = parseInt(id);
+    if (!payload.entry_date || !payload.amount) {
+        alert('日付と金額は必須です');
+        return;
+    }
+    const res = await fetch('/api/ledger/entry', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        closeEntryModal();
+        loadEntries();
+    } else {
+        alert('保存に失敗しました: ' + (data.message||''));
+    }
+}
+
+async function importCSV(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('csv_type', document.getElementById('csv-type').value);
+    const btn = document.querySelector('#pane-import .csv-drop-zone');
+    btn.textContent = 'AI解析中...';
+    const res = await fetch('/api/ledger/import_csv', { method: 'POST', body: formData });
+    const data = await res.json();
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
+    if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
+    csvSuggestions = data.suggestions || [];
+    const preview = document.getElementById('csv-preview');
+    const list = document.getElementById('csv-preview-list');
+    list.innerHTML = csvSuggestions.map((s,i) => `
+        <div class="entry-card">
+            <div class="entry-card-header">
+                <span class="entry-date">${s.entry_date||''}</span>
+                <span class="entry-amount">¥${(s.amount||0).toLocaleString()}</span>
+            </div>
+            <div class="entry-accounts">
+                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 6px;border-radius:4px;">${s.debit_code||''}</span>
+                <span class="material-symbols-outlined" style="font-size:14px;">arrow_forward</span>
+                <span style="background:#fce8f6;color:#ec4899;padding:2px 6px;border-radius:4px;">${s.credit_code||''}</span>
+            </div>
+            <div class="entry-desc">${s.description||''}</div>
+        </div>
+    `).join('');
+    preview.style.display = '';
+    input.value = '';
+}
+
+async function confirmCSVImport() {
+    alert(csvSuggestions.length + '件の仕訳を取込みました！');
+    document.getElementById('csv-preview').style.display = 'none';
+    switchTab('journal');
+    loadEntries();
+}
+
+async function ocrReceipts(input) {
+    const files = input.files;
+    if (!files.length) return;
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+    const zone = document.querySelector('#pane-receipt .csv-drop-zone');
+    zone.textContent = 'OCR処理中...';
+    const res = await fetch('/api/ledger/ocr_receipt', { method: 'POST', body: formData });
+    const data = await res.json();
+    zone.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">receipt</span>領収書・レシートの写真を選択<br><span style="font-size:0.72rem;">複数枚まとめて選択OK（JPEG/PNG）</span>';
+    if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
+    const results = document.getElementById('receipt-results');
+    results.innerHTML = data.results.map(r => {
+        const ocr = r.ocr || {};
+        return `<div class="entry-card">
+            ${r.image_url ? `<img src="${r.image_url}" style="width:100%;border-radius:8px;margin-bottom:8px;max-height:120px;object-fit:cover;">` : ''}
+            <div style="font-size:0.82rem;color:#202124;">
+                <div>📅 ${ocr.date||'不明'}</div>
+                <div>💴 ¥${(ocr.amount||0).toLocaleString()}（税 ¥${(ocr.tax_amount||0).toLocaleString()}）</div>
+                <div>🏪 ${ocr.vendor||'不明'}</div>
+                <div>📝 ${ocr.description||''}</div>
+            </div>
+            <button class="ledger-btn primary" style="margin-top:8px;width:100%;" onclick="createEntryFromOCR(${JSON.stringify(ocr).replace(/"/g,'&quot;')})">この内容で仕訳を作成</button>
+        </div>`;
+    }).join('');
+    input.value = '';
+}
+
+function createEntryFromOCR(ocr) {
+    openEntryModal({
+        entry_date: ocr.date || new Date().toISOString().slice(0,10),
+        debit_account_id: '',
+        credit_account_id: '',
+        amount: ocr.amount || 0,
+        tax_amount: ocr.tax_amount || 0,
+        description: ocr.vendor ? ocr.vendor + ' ' + (ocr.description||'') : (ocr.description||''),
+    });
+}
+</script>
+{% endblock %}

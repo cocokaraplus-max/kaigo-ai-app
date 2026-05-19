@@ -3603,6 +3603,324 @@ def api_evaluation_ai_fill():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+# ============================================================
+# 出納帳機能 (Phase 1)
+# アクセス制限: facility_code=cocokaraplus-5526 かつ 岸本洋幸のみ
+# ============================================================
+LEDGER_ALLOWED_FACILITY = 'cocokaraplus-5526'
+LEDGER_ALLOWED_USER = '岸本洋幸'
+
+def ledger_access_required(f):
+    """出納帳専用アクセス制限デコレータ"""
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect('/login')
+        if session.get('f_code') != LEDGER_ALLOWED_FACILITY:
+            return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+        if session.get('my_name') != LEDGER_ALLOWED_USER:
+            return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/ledger')
+@login_required
+def ledger():
+    """出納帳トップページ"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return redirect('/top')
+    supabase = get_supabase()
+    # 勘定科目マスタ（なければ初期データを投入）
+    acc_res = supabase.table('accounts').select('*').eq('facility_code', f_code).order('code').execute()
+    accounts = acc_res.data or []
+    if not accounts:
+        # 初期勘定科目を投入
+        default_accounts = [
+            # 資産
+            {'facility_code': f_code, 'code': '101', 'name': '現金', 'category': '資産', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '102', 'name': '普通預金', 'category': '資産', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '103', 'name': '売掛金', 'category': '資産', 'tax_type': 'none'},
+            # 負債
+            {'facility_code': f_code, 'code': '201', 'name': '買掛金', 'category': '負債', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '202', 'name': '未払金', 'category': '負債', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '203', 'name': '借入金', 'category': '負債', 'tax_type': 'none'},
+            # 収益
+            {'facility_code': f_code, 'code': '401', 'name': '介護報酬売上', 'category': '収益', 'tax_type': 'exempt'},
+            {'facility_code': f_code, 'code': '402', 'name': '自費売上', 'category': '収益', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '403', 'name': '雑収入', 'category': '収益', 'tax_type': 'taxable'},
+            # 費用
+            {'facility_code': f_code, 'code': '501', 'name': '給与手当', 'category': '費用', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '502', 'name': '法定福利費', 'category': '費用', 'tax_type': 'none'},
+            {'facility_code': f_code, 'code': '503', 'name': '地代家賃', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '504', 'name': '水道光熱費', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '505', 'name': '通信費', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '506', 'name': '消耗品費', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '507', 'name': '車両費', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '508', 'name': '外注費', 'category': '費用', 'tax_type': 'taxable'},
+            {'facility_code': f_code, 'code': '509', 'name': '雑費', 'category': '費用', 'tax_type': 'taxable'},
+        ]
+        supabase.table('accounts').insert(default_accounts).execute()
+        acc_res = supabase.table('accounts').select('*').eq('facility_code', f_code).order('code').execute()
+        accounts = acc_res.data or []
+    return render_template('ledger.html', accounts=accounts)
+
+@app.route('/api/ledger/entries', methods=['GET'])
+@login_required
+def api_ledger_entries():
+    """仕訳一覧取得"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        year_month = request.args.get('month', '')  # 例: 2026-05
+        query = supabase.table('journal_entries').select(
+            '*, debit:debit_account_id(code,name,category), credit:credit_account_id(code,name,category)'
+        ).eq('facility_code', f_code)
+        if year_month:
+            y, m = year_month.split('-')
+            from datetime import date
+            start = date(int(y), int(m), 1).isoformat()
+            if int(m) == 12:
+                end = date(int(y)+1, 1, 1).isoformat()
+            else:
+                end = date(int(y), int(m)+1, 1).isoformat()
+            query = query.gte('entry_date', start).lt('entry_date', end)
+        res = query.order('entry_date', desc=False).execute()
+        return jsonify({'status': 'success', 'entries': res.data or []})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/entry', methods=['POST'])
+@login_required
+def api_ledger_entry_save():
+    """仕訳登録・更新"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        payload = {
+            'facility_code': f_code,
+            'entry_date': data['entry_date'],
+            'debit_account_id': data['debit_account_id'],
+            'credit_account_id': data['credit_account_id'],
+            'amount': int(data['amount']),
+            'tax_amount': int(data.get('tax_amount', 0)),
+            'description': data.get('description', ''),
+            'source': data.get('source', 'manual'),
+            'created_by': my_name,
+        }
+        entry_id = data.get('id')
+        if entry_id:
+            supabase.table('journal_entries').update(payload).eq('id', entry_id).eq('facility_code', f_code).execute()
+            return jsonify({'status': 'success', 'id': entry_id})
+        else:
+            res = supabase.table('journal_entries').insert(payload).execute()
+            new_id = res.data[0]['id'] if res.data else None
+            return jsonify({'status': 'success', 'id': new_id})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/entry/<int:entry_id>', methods=['DELETE'])
+@login_required
+def api_ledger_entry_delete(entry_id):
+    """仕訳削除"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        supabase.table('journal_entries').delete().eq('id', entry_id).eq('facility_code', f_code).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/trial_balance', methods=['GET'])
+@login_required
+def api_ledger_trial_balance():
+    """試算表生成"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        year_month = request.args.get('month', '')
+        query = supabase.table('journal_entries').select(
+            '*, debit:debit_account_id(id,code,name,category), credit:credit_account_id(id,code,name,category)'
+        ).eq('facility_code', f_code)
+        if year_month:
+            y, m = year_month.split('-')
+            from datetime import date
+            start = date(int(y), int(m), 1).isoformat()
+            if int(m) == 12:
+                end = date(int(y)+1, 1, 1).isoformat()
+            else:
+                end = date(int(y), int(m)+1, 1).isoformat()
+            query = query.gte('entry_date', start).lt('entry_date', end)
+        res = query.execute()
+        entries = res.data or []
+        # 勘定科目ごとに集計
+        balances = {}
+        for e in entries:
+            amt = e['amount']
+            for side, acc in [('debit', e.get('debit')), ('credit', e.get('credit'))]:
+                if not acc:
+                    continue
+                acc_id = acc['id']
+                if acc_id not in balances:
+                    balances[acc_id] = {
+                        'code': acc['code'],
+                        'name': acc['name'],
+                        'category': acc['category'],
+                        'debit': 0, 'credit': 0
+                    }
+                balances[acc_id][side] += amt
+        # カテゴリ別に整理
+        result = {'資産': [], '負債': [], '収益': [], '費用': [], '純資産': []}
+        for acc_id, b in sorted(balances.items(), key=lambda x: x[1]['code']):
+            cat = b['category']
+            if cat in result:
+                result[cat].append({
+                    'code': b['code'],
+                    'name': b['name'],
+                    'debit': b['debit'],
+                    'credit': b['credit'],
+                    'balance': b['debit'] - b['credit']
+                })
+        return jsonify({'status': 'success', 'trial_balance': result})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/import_csv', methods=['POST'])
+@login_required
+def api_ledger_import_csv():
+    """CSVインポート（売上・銀行明細）"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        from utils import get_generative_model
+        import csv, io
+        f = request.files.get('file')
+        csv_type = request.form.get('csv_type', 'auto')  # auto/smaregi/bank
+        if not f:
+            return jsonify({'status': 'error', 'message': 'ファイルがありません'}), 400
+        content = f.read().decode('utf-8-sig', errors='replace')
+        # Geminiで自動仕訳
+        model = get_generative_model()
+        # 勘定科目一覧を取得
+        acc_res = supabase.table('accounts').select('id,code,name,category').eq('facility_code', f_code).execute()
+        accounts = acc_res.data or []
+        acc_list = '
+'.join([f"{a['code']} {a['name']}({a['category']})" for a in accounts])
+        prompt = (
+            f"以下はCSVデータです。各行を会計仕訳に変換してください。
+"
+            f"利用可能な勘定科目:
+{acc_list}
+
+"
+            f"出力形式: JSONのみ。配列で返す。
+"
+            f'[{{"entry_date":"YYYY-MM-DD","debit_code":"XXX","credit_code":"XXX","amount":0,"description":"説明"}},...]
+
+'
+            f"CSVデータ:
+{content[:3000]}"
+        )
+        resp = model.generate_content([prompt])
+        raw = resp.text.strip()
+        import re as _re, json as _json
+        raw = _re.sub(r'^```[a-zA-Z]*
+?', '', raw).strip()
+        raw = _re.sub(r'```$', '', raw).strip()
+        suggestions = _json.loads(raw)
+        # account codeからidに変換
+        code_to_id = {a['code']: a['id'] for a in accounts}
+        entries = []
+        for s in suggestions:
+            debit_id = code_to_id.get(s.get('debit_code'))
+            credit_id = code_to_id.get(s.get('credit_code'))
+            if debit_id and credit_id:
+                entries.append({
+                    'facility_code': f_code,
+                    'entry_date': s['entry_date'],
+                    'debit_account_id': debit_id,
+                    'credit_account_id': credit_id,
+                    'amount': int(s.get('amount', 0)),
+                    'description': s.get('description', ''),
+                    'source': csv_type,
+                    'created_by': my_name,
+                })
+        if entries:
+            supabase.table('journal_entries').insert(entries).execute()
+        return jsonify({'status': 'success', 'imported': len(entries), 'suggestions': suggestions})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/ocr_receipt', methods=['POST'])
+@login_required
+def api_ledger_ocr_receipt():
+    """領収書OCR"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    try:
+        from utils import get_generative_model, upload_images_to_supabase
+        supabase = get_supabase()
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'status': 'error', 'message': 'ファイルがありません'}), 400
+        model = get_generative_model()
+        results = []
+        for f in files:
+            img_bytes = f.read()
+            mime = 'image/jpeg'
+            if f.filename.lower().endswith('.png'):
+                mime = 'image/png'
+            prompt = (
+                "この領収書・レシートから以下の情報をJSONで抽出してください。
+"
+                '{"date":"YYYY-MM-DD","amount":0,"tax_amount":0,"vendor":"店名","description":"内容","tax_rate":10}
+'
+                "判読できない場合はnullを入れてください。JSONのみ返してください。"
+            )
+            resp = model.generate_content([{"mime_type": mime, "data": img_bytes}, prompt])
+            raw = resp.text.strip()
+            import re as _re, json as _json
+            raw = _re.sub(r'^```[a-zA-Z]*
+?', '', raw).strip()
+            raw = _re.sub(r'```$', '', raw).strip()
+            ocr = _json.loads(raw)
+            # 画像をSupabaseにアップロード
+            urls = upload_images_to_supabase(supabase, [f], f_code)
+            image_url = urls[0] if urls else ''
+            # receiptsテーブルに保存
+            rec_res = supabase.table('receipts').insert({
+                'facility_code': f_code,
+                'image_url': image_url,
+                'ocr_result': ocr,
+                'created_by': my_name,
+            }).execute()
+            receipt_id = rec_res.data[0]['id'] if rec_res.data else None
+            results.append({'receipt_id': receipt_id, 'ocr': ocr, 'image_url': image_url})
+        return jsonify({'status': 'success', 'results': results})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/numerology')
 @login_required
 def numerology():
