@@ -3618,9 +3618,11 @@ def ledger_access_required(f):
     def decorated(*args, **kwargs):
         if not session.get('logged_in'):
             return redirect('/login')
-        if session.get('f_code') != LEDGER_ALLOWED_FACILITY:
-            return jsonify({'status': 'error', 'message': '権限がありません'}), 403
-        if session.get('my_name') != LEDGER_ALLOWED_USER:
+        _fc = session.get('f_code')
+        _mn = session.get('my_name')
+        _ok = (_fc == LEDGER_ALLOWED_FACILITY and _mn == LEDGER_ALLOWED_USER)
+        _dev = (_fc == LEDGER_DEV_FACILITY and _mn == LEDGER_DEV_USER)
+        if not _ok and not _dev:
             return jsonify({'status': 'error', 'message': '権限がありません'}), 403
         return f(*args, **kwargs)
     return decorated
@@ -3631,7 +3633,9 @@ def ledger():
     """出納帳トップページ"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    is_allowed = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    is_dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not is_allowed and not is_dev:
         return redirect('/top')
     supabase = get_supabase()
     # 勘定科目マスタ（なければ初期データを投入）
@@ -3674,7 +3678,9 @@ def api_ledger_entries():
     """仕訳一覧取得"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
@@ -3702,7 +3708,9 @@ def api_ledger_entry_save():
     """仕訳登録・更新"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
@@ -3735,7 +3743,9 @@ def api_ledger_entry_delete(entry_id):
     """仕訳削除"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
@@ -3750,7 +3760,9 @@ def api_ledger_trial_balance():
     """試算表生成"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
@@ -3807,7 +3819,9 @@ def api_ledger_import_csv():
     """CSVインポート（売上・銀行明細）"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
@@ -3866,7 +3880,9 @@ def api_ledger_ocr_receipt():
     """領収書OCR"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    if f_code != LEDGER_ALLOWED_FACILITY or my_name != LEDGER_ALLOWED_USER:
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     try:
         from utils import get_generative_model, upload_images_to_supabase
