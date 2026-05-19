@@ -1067,15 +1067,23 @@ window.saveEvent = async function() {
 // ===== 予定削除 =====
 window.deleteEvent = async function() {
     if (!editingEventId || !confirm('この予定を削除しますか？')) return;
-    const res = await fetch('/api/delete_calendar_event', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({id: editingEventId})
-    });
-    if ((await res.json()).status === 'success') {
-        const idx = ALL_EVENTS.findIndex(e=>e.id===editingEventId);
-        if (idx>=0) ALL_EVENTS.splice(idx,1);
-        closeModal('event-modal');
-        renderCalendar();
+    try {
+        const res = await fetch('/api/delete_calendar_event', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id: editingEventId})
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const idx = ALL_EVENTS.findIndex(e=>e.id==editingEventId);
+            if (idx>=0) ALL_EVENTS.splice(idx,1);
+            editingEventId = null;
+            closeModal('event-modal');
+            renderCalendar();
+        } else {
+            alert('削除に失敗しました: ' + (data.message || ''));
+        }
+    } catch(e) {
+        alert('通信エラー: ' + e);
     }
 };
 
