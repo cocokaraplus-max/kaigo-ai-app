@@ -2808,18 +2808,27 @@ def api_save_calendar_event():
         event_id = data.get("id")
         if event_id:
             supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
-            # 連動ケース記録の日付を更新
+            # 連動ケース記録の日付・内容を更新
             new_event_date = payload.get("event_date")
-            if new_event_date:
+            new_memo = payload.get("memo")
+            if new_event_date or new_memo is not None:
                 try:
                     rec_res = supabase.table("records").select("id,created_at").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
                     for rec in (rec_res.data or []):
-                        old_dt = datetime.fromisoformat(str(rec["created_at"]).replace("Z", "+00:00"))
-                        new_dt = tokyo_tz.localize(datetime.combine(
-                            datetime.strptime(new_event_date, "%Y-%m-%d").date(),
-                            old_dt.astimezone(tokyo_tz).time()
-                        ))
-                        supabase.table("records").update({"created_at": new_dt.isoformat()}).eq("id", rec["id"]).execute()
+                        update_payload = {}
+                        # 日付更新
+                        if new_event_date:
+                            old_dt = datetime.fromisoformat(str(rec["created_at"]).replace("Z", "+00:00"))
+                            new_dt = tokyo_tz.localize(datetime.combine(
+                                datetime.strptime(new_event_date, "%Y-%m-%d").date(),
+                                old_dt.astimezone(tokyo_tz).time()
+                            ))
+                            update_payload["created_at"] = new_dt.isoformat()
+                        # メモ（内容）更新
+                        if new_memo is not None:
+                            update_payload["content"] = new_memo
+                        if update_payload:
+                            supabase.table("records").update(update_payload).eq("id", rec["id"]).execute()
                 except Exception as _upd_err:
                     print(f"[calendar sync update] failed: {_upd_err}", flush=True)
             return jsonify({"status": "success", "id": event_id})
