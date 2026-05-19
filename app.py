@@ -698,6 +698,33 @@ def input_view():
                             leave_reporter_type = None
                         if not leave_reporter_relation:
                             leave_reporter_relation = None
+                    # 休み連絡の場合はcontentを自動生成
+                    leave_date_start_val = (request.form.get("leave_date_start", "") or "").strip()
+                    leave_date_end_val = (request.form.get("leave_date_end", "") or "").strip()
+                    if category == "休み連絡" and leave_date_start_val:
+                        try:
+                            from datetime import datetime as _dt
+                            _ls = _dt.strptime(leave_date_start_val, "%Y-%m-%d")
+                            _ls_str = f"{_ls.month}月{_ls.day}日"
+                            # 誰からの記述を作成
+                            _reporter_map = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                            _reporter = _reporter_map.get(leave_reporter_type or "", "")
+                            _other_detail = (request.form.get("leave_other_detail", "") or "").strip()
+                            if leave_reporter_type == "other" and _other_detail:
+                                _reporter = _other_detail
+                            # 休み期間が複数日の場合
+                            if leave_date_end_val and leave_date_end_val != leave_date_start_val:
+                                _le = _dt.strptime(leave_date_end_val, "%Y-%m-%d")
+                                _le_str = f"{_le.month}月{_le.day}日"
+                                _period = f"{_ls_str}〜{_le_str}"
+                            else:
+                                _period = _ls_str
+                            if _reporter:
+                                content = f"{_period}はお休みと{_reporter}から連絡がありました。"
+                            else:
+                                content = f"{_period}はお休みと連絡がありました。"
+                        except Exception as _ce:
+                            print(f"[休み連絡content生成エラー] {_ce}", flush=True)
                     insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -709,7 +736,9 @@ def input_view():
                         "must_read": must_read_flag,
                         "category": category,
                         "leave_reporter_type": leave_reporter_type,
-                        "leave_reporter_relation": leave_reporter_relation
+                        "leave_reporter_relation": leave_reporter_relation,
+                        "leave_date_start": leave_date_start_val if category == "休み連絡" else None,
+                        "leave_date_end": (leave_date_end_val or leave_date_start_val) if category == "休み連絡" else None,
                     }).execute()
 
                     # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
@@ -4874,7 +4903,35 @@ def api_generate_monitoring():
                    if r.get("staff_name") not in ("AI統合記録",)
                    and r.get("category") != "休み連絡"]
 
-        if not records:
+        # 休み連絡レコードから実際の休日情報を取得
+        leave_res = supabase.table("records").select(
+            "leave_date_start, leave_date_end, leave_reporter_type"
+        ).eq("facility_code", f_code).eq("user_name", u_name).eq(
+            "category", "休み連絡"
+        ).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
+        leave_records = leave_res.data or []
+
+        # 実際の休日情報をテキストに変換
+        leave_notes = []
+        for lr in leave_records:
+            _ls = lr.get("leave_date_start")
+            _le = lr.get("leave_date_end")
+            if not _ls:
+                continue
+            try:
+                from datetime import datetime as _dt2
+                _ls_d = _dt2.strptime(_ls[:10], "%Y-%m-%d")
+                _ls_str = f"{_ls_d.month}月{_ls_d.day}日"
+                if _le and _le[:10] != _ls[:10]:
+                    _le_d = _dt2.strptime(_le[:10], "%Y-%m-%d")
+                    _le_str = f"{_le_d.month}月{_le_d.day}日"
+                    leave_notes.append(f"{_ls_str}〜{_le_str}はお休みされました。")
+                else:
+                    leave_notes.append(f"{_ls_str}はお休みされました。")
+            except Exception:
+                pass
+
+        if not records and not leave_notes:
             return jsonify({"error": f"{u_name}様の{y}年{m}月の記録が見つかりません"}), 404
 
         from utils import get_generative_model
@@ -4894,11 +4951,15 @@ def api_generate_monitoring():
         if mode == "full":
             # まとめて1本モード
             all_recs = "\n".join(r["content"] for r in records)
+            leave_text = ("\n".join(leave_notes) + "\n") if leave_notes else ""
+            leave_section = f"『休日情報』\n{leave_text}\n" if leave_text else ""
             prompt = (
                 BASE_PROMPT +
-                f"・全体をひとまとめにして{char_limit}文字程度で生成\n\n"
-                f"【記録】\n{all_recs}"
-            )
+                f"・全体をひとまとめにして{char_limit}文字程度で生成\n"
+                + (f"・休日情報は必ず文中に含めること\n\n" if leave_text else "\n")
+                + leave_section
+                + f"『記録』\n{all_recs}"
+            )            )
             result_text = model.generate_content([prompt]).text.strip()
             return jsonify({
                 "mode": "full",
