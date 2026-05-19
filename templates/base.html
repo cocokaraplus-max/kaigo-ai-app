@@ -1131,9 +1131,9 @@ function updateMarkAllReadBar() {
     // ケース記録ページのボタン
     var dvBtn = document.getElementById('dv-mark-all-read-btn');
     if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
-    // 掲示板ページのボタン
-    var boardBtn = document.getElementById('board-mark-all-read-btn');
-    if (boardBtn) boardBtn.style.display = chatVisible ? 'flex' : 'none';
+    // 掲示板ページのボタン（wrapごと表示/非表示）
+    var boardWrap = document.getElementById('board-mark-all-read-wrap');
+    if (boardWrap) boardWrap.style.display = chatVisible ? 'block' : 'none';
 }
 
 async function markAllRead() {

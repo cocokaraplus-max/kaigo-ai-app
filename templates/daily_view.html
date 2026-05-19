@@ -591,6 +591,21 @@
 #dv-sd-hint.show { opacity: 1; }
 /* タブは不要になったので非表示 */
 #dv-sd-tab { display: none !important; }
+/* 左側配置時: 右方向に縦展開 */
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-btn-1 { right: auto; left: 16px; bottom: 227px; }
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-btn-2 { right: auto; left: 16px; bottom: 295px; }
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-btn-3 { right: auto; left: 16px; bottom: 363px; }
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-label-1 { right: auto; left: 80px; bottom: 243px; }
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-label-2 { right: auto; left: 80px; bottom: 311px; }
+#dv-sd-wrap[data-pos='left'] .dv-sd-items.is-open .dv-sd-label-3 { right: auto; left: 80px; bottom: 379px; }
+/* 上部配置時: 下方向に縦展開 */
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-btn-1 { bottom: auto; top: calc(100% + 8px); right: 16px; }
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-btn-2 { bottom: auto; top: calc(100% + 76px); right: 16px; }
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-btn-3 { bottom: auto; top: calc(100% + 144px); right: 16px; }
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-label-1 { bottom: auto; top: calc(100% + 24px); right: 80px; }
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-label-2 { bottom: auto; top: calc(100% + 92px); right: 80px; }
+#dv-sd-wrap[data-pos='top'] .dv-sd-items.is-open .dv-sd-label-3 { bottom: auto; top: calc(100% + 160px); right: 80px; }
+
 
 /* === 肉球配置: ボタンとラベルを分離して個別に絶対配置 === */
 
@@ -654,60 +669,37 @@
 /* メイン基準: bottom:152px right:16px。各サブボタンも56px同サイズ。 */
 /* 角度 → bottom差 = R×sin(θ), right差 = R×cos(180°-θ) */
 
-/* 検索: 真上 90° → bottom +75, right +0 */
+/* === デフォルト(右側): 真上に縦展開 === */
 .dv-sd-items.is-open .dv-sd-btn-1 {
-    pointer-events: auto;
-    opacity: 1;
-    bottom: 227px;
-    right: 16px;
-    transform: scale(1);
-    transition-delay: 0.05s;
+    pointer-events: auto; opacity: 1;
+    bottom: 227px; right: 16px;
+    transform: scale(1); transition-delay: 0.03s;
 }
-/* 全て開く: 左斜め上 135° → bottom +53, right +53 */
 .dv-sd-items.is-open .dv-sd-btn-2 {
-    pointer-events: auto;
-    opacity: 1;
-    bottom: 205px;
-    right: 69px;
-    transform: scale(1);
-    transition-delay: 0.10s;
+    pointer-events: auto; opacity: 1;
+    bottom: 295px; right: 16px;
+    transform: scale(1); transition-delay: 0.06s;
 }
-/* TOPへ: 真左 180° → bottom +0(×と同高), right +75 */
 .dv-sd-items.is-open .dv-sd-btn-3 {
-    pointer-events: auto;
-    opacity: 1;
-    bottom: 152px;
-    right: 91px;
-    transform: scale(1);
-    transition-delay: 0.15s;
+    pointer-events: auto; opacity: 1;
+    bottom: 363px; right: 16px;
+    transform: scale(1); transition-delay: 0.09s;
 }
 
 /* === 開時のラベル位置(各放射線上、ボタンから十分離して重なり回避) === */
 
-/* 検索ラベル: 検索ボタンの真上、隙間8px */
 .dv-sd-items.is-open .dv-sd-label-1 {
-    opacity: 1;
-    writing-mode: vertical-rl;
-    bottom: 291px;
-    right: 34px;
-    text-orientation: upright;
+    opacity: 1; writing-mode: horizontal-tb;
+    bottom: 243px; right: 80px; text-orientation: mixed;
 }
-/* 全て開くラベル: 開閉ボタンの放射線上(45°方向)、外側に十分離して重なり回避
-   ラベルrect=62×62、メインから150px距離の135°方向に中心配置 */
 .dv-sd-items.is-open .dv-sd-label-2 {
-    opacity: 1;
-    writing-mode: vertical-rl;
-    bottom: 265px;
-    right: 119px;
-    transform: rotate(-45deg);
-    transform-origin: bottom right;
-    text-orientation: upright;
+    opacity: 1; writing-mode: horizontal-tb;
+    bottom: 311px; right: 80px;
+    transform: none; text-orientation: mixed;
 }
-/* TOPへラベル: TOPボタンの真左、隙間8px */
 .dv-sd-items.is-open .dv-sd-label-3 {
-    opacity: 1;
-    bottom: 169px;
-    right: 161px;
+    opacity: 1; writing-mode: horizontal-tb;
+    bottom: 379px; right: 80px;
 }
 
 .cr-search-modal {
@@ -2191,63 +2183,26 @@ window.dvSdScrollTop = function() {
 function _dvSdUpdateDirection(isRight) {
     var wrap = document.getElementById('dv-sd-wrap');
     if (!wrap) return;
-    if (isRight) {
-        // 右側にいるとき: サブボタンを左・左上・上に展開
-        wrap.setAttribute('data-pos', 'right');
+    var currentBottom = parseInt(wrap.style.bottom || '152');
+    var screenH = window.innerHeight;
+    // 上部にいる場合（画面上半分）: 下方向展開
+    if (currentBottom > screenH * 0.5) {
+        wrap.setAttribute('data-pos', 'top');
+    } else if (isRight) {
+        // 右側: 上方向展開（デフォルト）
+        wrap.removeAttribute('data-pos');
     } else {
-        // 左側にいるとき: サブボタンを右・右上・上に展開
+        // 左側: 右方向展開
         wrap.setAttribute('data-pos', 'left');
     }
 }
 
 window.dvSdToggle = function(force) {
-    // ドラッグ移動 + ダブルタップ最小化
+    // ドラッグ移動のみ（ダブルタップ最小化なし）
     (function() {
         var wrap = document.getElementById('dv-sd-wrap');
         var mainBtn = document.getElementById('dv-sd-main');
-        var hint = document.getElementById('dv-sd-hint');
         if (!wrap || !mainBtn) return;
-
-        // ---- ダブルタップ最小化 ----
-        var tapCount = 0, tapTimer = null;
-        var minimized = false;
-
-        mainBtn.addEventListener('touchend', function(e) {
-            if (isDragging) return;
-            tapCount++;
-            if (tapCount === 1) {
-                tapTimer = setTimeout(function() { tapCount = 0; }, 200);
-            } else if (tapCount >= 2) {
-                clearTimeout(tapTimer);
-                tapCount = 0;
-                e.preventDefault();
-                e.stopPropagation();
-                if (!minimized) {
-                    minimized = true;
-                    mainBtn.classList.add('minimized');
-                    dvSdToggle(false);
-                    // ヒント表示
-                    if (hint) {
-                        var r = wrap.getBoundingClientRect();
-                        hint.style.left = Math.max(8, r.left - 130) + 'px';
-                        hint.style.top = (r.top + r.height/2 - 12) + 'px';
-                        hint.textContent = 'ダブルタップで元に戻る';
-                        hint.classList.add('show');
-                        setTimeout(function(){ hint.classList.remove('show'); }, 2000);
-                    }
-                } else {
-                    minimized = false;
-                    mainBtn.classList.remove('minimized');
-                }
-            }
-        });
-
-        // 最小化中はdvSdToggleをブロック
-        var _origDvSdToggle = window.dvSdToggle;
-        window.dvSdToggle = function(open) {
-            if (minimized && open !== false) return;
-            _origDvSdToggle.apply(this, arguments);
-        };
 
         // ---- ドラッグ移動 ----
         var isDragging = false;
@@ -2261,9 +2216,9 @@ window.dvSdToggle = function(force) {
             var t = e.touches[0];
             dragStartX = t.clientX;
             dragStartY = t.clientY;
-            var style = window.getComputedStyle(wrap);
-            wrapStartLeft = parseInt(wrap.style.left || '') || (window.innerWidth - 16 - 56);
-            wrapStartBottom = parseInt(wrap.style.bottom || '') || 152;
+            var rect = wrap.getBoundingClientRect();
+            wrapStartLeft = rect.left;
+            wrapStartBottom = window.innerHeight - rect.bottom;
             moved = false;
         }, { passive: true });
 

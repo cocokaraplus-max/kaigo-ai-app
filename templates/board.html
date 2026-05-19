@@ -855,18 +855,9 @@ body.modal-open .bottom-nav {
 <!-- ヘッダー全体を sticky 化(タイトル+投稿ボタン+タブ+検索バー) -->
 <div class="board-sticky-stack">
 <div class="board-header">
-    <div class="page-title board-title" style="margin-bottom:0;display:flex;align-items:center;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:6px;">
-            <span class="material-symbols-outlined">campaign</span>
-            掲示板
-        </div>
-        <button id="board-mark-all-read-btn" onclick="boardMarkAllRead()"
-            style="display:none;align-items:center;gap:4px;background:#fce8e6;color:#c62828;
-                   border:none;border-radius:8px;padding:5px 10px;font-size:0.75rem;
-                   font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-            <span class="material-symbols-outlined" style="font-size:14px;">done_all</span>
-            全既読
-        </button>
+    <div class="page-title board-title" style="margin-bottom:0;">
+        <span class="material-symbols-outlined">campaign</span>
+        掲示板
     </div>
     <button class="new-post-btn" id="new-post-btn">
         <span class="material-symbols-outlined">edit_square</span>
@@ -907,6 +898,17 @@ body.modal-open .bottom-nav {
     </div>
 </div>
 </div><!-- /board-sticky-stack -->
+<!-- 全既読ボタン（sticky外に配置してz-index問題回避） -->
+<div id="board-mark-all-read-wrap" style="display:none;margin-bottom:8px;">
+    <button id="board-mark-all-read-btn" onclick="boardMarkAllRead()"
+        style="display:flex;align-items:center;gap:6px;background:#fce8e6;color:#c62828;
+               border:1px solid #f5c6c4;border-radius:8px;padding:6px 12px;
+               font-size:0.78rem;font-weight:700;cursor:pointer;
+               -webkit-tap-highlight-color:transparent;width:100%;justify-content:center;">
+        <span class="material-symbols-outlined" style="font-size:16px;">done_all</span>
+        全て既読にする
+    </button>
+</div>
 
 
 <!-- 投稿一覧 -->
@@ -1993,13 +1995,24 @@ window.__patientHay = function(name) {
 
 // 全既読ボタン（掲示板ページ用）
 window.boardMarkAllRead = async function() {
+    var wrap = document.getElementById('board-mark-all-read-wrap');
     var btn = document.getElementById('board-mark-all-read-btn');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
     try {
-        await fetch('/api/mark_all_read', { method: 'POST', credentials: 'include' });
+        // /api/board/mark_all_read で掲示板の全投稿を確認済みにする
+        await fetch('/api/board/mark_all_read', { method: 'POST', credentials: 'include' });
         var chatBadge = document.getElementById('chat-badge');
         if (chatBadge) chatBadge.style.display = 'none';
-        if (btn) btn.style.display = 'none';
+        if (wrap) wrap.style.display = 'none';
+        // 全投稿の確認ボタンUIを更新
+        document.querySelectorAll('.post-action-btn.unchecked').forEach(function(b) {
+            b.classList.remove('unchecked');
+            b.classList.add('checked');
+            var icon = b.querySelector('.material-symbols-outlined');
+            var label = b.querySelector('.check-label');
+            if (icon) icon.textContent = 'check_circle';
+            if (label) label.textContent = '確認済み';
+        });
         showToast('全て既読にしました', 'success');
     } catch(e) {
         showToast('エラーが発生しました', 'error');
