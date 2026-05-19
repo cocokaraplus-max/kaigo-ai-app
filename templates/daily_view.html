@@ -2368,10 +2368,14 @@ window.startEdit = function(id, content) {
     var endInput = document.getElementById('leave-edit-end-' + id);
     if (startInput) startInput.value = curStart;
     if (endInput) endInput.value = curEnd || curStart;
-    // 左日付変更時に右に同日を自動セット
-    if (startInput) startInput.addEventListener('change', function() {
-        if (endInput && !endInput.value) endInput.value = startInput.value;
-    });
+    // 左日付変更時に右に同日を自動セット（重複登録防止のため新関数属性で管理）
+    if (startInput) {
+        if (startInput._leaveHandler) startInput.removeEventListener('change', startInput._leaveHandler);
+        startInput._leaveHandler = function() {
+            if (endInput) endInput.value = startInput.value;
+        };
+        startInput.addEventListener('change', startInput._leaveHandler);
+    }
     var typeInput = document.getElementById('leave-edit-type-' + id);
     var relInput = document.getElementById('leave-edit-rel-' + id);
     var relBlock = document.getElementById('leave-edit-relation-block-' + id);

@@ -2838,27 +2838,44 @@ def api_save_calendar_event():
         event_id = data.get("id")
         if event_id:
             supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
-            # 連動ケース記録の日付・内容を更新
+            # 連動ケース記録の内容を更新（カレンダー→ケース記録）
             new_event_date = payload.get("event_date")
             new_memo = payload.get("memo")
             if new_event_date or new_memo is not None:
                 try:
-                    rec_res = supabase.table("records").select("id,created_at").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
+                    rec_res = supabase.table("records").select("id,created_at,leave_reporter_type,category").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
                     for rec in (rec_res.data or []):
                         update_payload = {}
-                        # 日付更新
-                        if new_event_date:
-                            old_dt = datetime.fromisoformat(str(rec["created_at"]).replace("Z", "+00:00"))
-                            new_dt = tokyo_tz.localize(datetime.combine(
-                                datetime.strptime(new_event_date, "%Y-%m-%d").date(),
-                                old_dt.astimezone(tokyo_tz).time()
-                            ))
-                            update_payload["created_at"] = new_dt.isoformat()
-                        # メモ（内容）更新
-                        if new_memo is not None:
+                        # 日付変更時: created_atは入力日のまま保持。leave_date_start/endを更新しcontentを再生成
+                        if new_event_date and rec.get("category") == "休み連絡":
+                            update_payload["leave_date_start"] = new_event_date
+                            update_payload["leave_date_end"] = payload.get("end_date") or new_event_date
+                            # contentを再生成
+                            try:
+                                from datetime import datetime as _dt4
+                                _ls4 = _dt4.strptime(new_event_date, "%Y-%m-%d")
+                                _ls4_str = f"{_ls4.month}月{_ls4.day}日"
+                                _end4 = payload.get("end_date") or new_event_date
+                                if _end4 != new_event_date:
+                                    _le4 = _dt4.strptime(_end4, "%Y-%m-%d")
+                                    _period4 = f"{_ls4_str}〜{_le4.month}月{_le4.day}日"
+                                else:
+                                    _period4 = _ls4_str
+                                _reporter_map4 = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                                _type4 = rec.get("leave_reporter_type") or ""
+                                _reporter4 = _reporter_map4.get(_type4, "")
+                                if _reporter4:
+                                    update_payload["content"] = f"{_period4}はお休みと{_reporter4}から連絡がありました。"
+                                else:
+                                    update_payload["content"] = f"{_period4}はお休みと連絡がありました。"
+                            except Exception as _ce4:
+                                print(f"[カレンダー同期 content再生成エラー] {_ce4}", flush=True)
+                        # メモ（内容）更新（休み連絡以外の記録のみ）
+                        if new_memo is not None and rec.get("category") != "休み連絡":
                             update_payload["content"] = new_memo
                         if update_payload:
                             supabase.table("records").update(update_payload).eq("id", rec["id"]).execute()
+                            print(f"[カレンダー同期] record {rec["id"]} を更新: {list(update_payload.keys())}", flush=True)
                 except Exception as _upd_err:
                     print(f"[calendar sync update] failed: {_upd_err}", flush=True)
             return jsonify({"status": "success", "id": event_id})

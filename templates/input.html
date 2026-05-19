@@ -861,7 +861,12 @@ window.renderCandidates = function(list) {
         candidates.querySelectorAll('[data-value]').forEach(function(el) {
             var v = el.dataset.value, l = el.dataset.label;
             el.addEventListener('touchstart', function(e) { e.preventDefault(); window.selectPatient(v, l); });
-            el.addEventListener('click', function(e) { if(!('ontouchstart' in window)) window.selectPatient(v, l); });
+            el.addEventListener('mousedown', function(e) { e.preventDefault(); });
+            el.addEventListener('click', function(e) {
+                var searchEl = document.getElementById('patient-search');
+                if (searchEl && searchEl._isComposing) return;
+                if (!('ontouchstart' in window)) window.selectPatient(v, l);
+            });
         });
         candidates.classList.add('show');
     }
