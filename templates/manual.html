@@ -453,6 +453,53 @@
         <img src="/static/img/guide/category-open.png" alt="カテゴリ選択パネル(開いた状態)" class="gd-shot">
         <div class="gd-shot-cap">↑ 8つのカテゴリから選択<br>(色付きの丸で見分けやすい)</div>
 
+        <!-- 休み連絡×カレンダー連携 -->
+        <div class="sc-hd" style="padding:16px 0 10px;">
+            <div class="sc-ic" style="background:#fff3e0;width:40px;height:40px;border-radius:12px;flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:22px;color:#ff9800;">event_busy</span></div>
+            <div><div class="sc-ttl" style="font-size:0.95rem;">休み連絡とカレンダー連携</div><div class="sc-sub">お休み日程を自動でカレンダーに登録</div></div>
+        </div>
+
+        <div class="mb" style="border-left-color:#ff9800;">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">「休み連絡」カテゴリを選ぶと<b style="color:#ff9800;">休み期間の入力欄</b>が出てくるよ！保存すると<b style="color:#ff9800;">カレンダーに自動登録</b>されるから二重入力なし！📅</div>
+        </div>
+
+        <div style="font-size:0.76rem;font-weight:700;color:#5f6368;margin-bottom:6px;text-align:center;">▼ 休み連絡選択時の入力画面</div>
+        <div class="phone-mock">
+            <div class="phone-mock-bar">
+                <div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">edit_note</span>記録入力</div>
+            </div>
+            <div class="phone-mock-body">
+                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:3px;">カテゴリ</div>
+                <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:8px;padding:8px 12px;font-size:0.82rem;color:#e65100;font-weight:700;margin-bottom:10px;">休み連絡 ✓</div>
+                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:4px;">誰から</div>
+                <div style="display:flex;gap:6px;margin-bottom:12px;">
+                    <div style="flex:1;background:#fff3e0;border:2px solid #ff9800;border-radius:8px;padding:7px;text-align:center;font-size:0.78rem;font-weight:700;color:#e65100;">本人</div>
+                    <div style="flex:1;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:8px;padding:7px;text-align:center;font-size:0.78rem;color:#5f6368;">家族</div>
+                </div>
+                <div style="font-size:0.75rem;color:#ff9800;font-weight:800;margin-bottom:5px;display:flex;align-items:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:16px;">event</span>休み期間</div>
+                <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;margin-bottom:4px;">
+                    <div style="background:#fff;border:2px solid #ff9800;border-radius:8px;padding:7px 10px;font-size:0.78rem;color:#202124;">2026/05/20</div>
+                    <span style="font-size:0.82rem;color:#9aa0a6;">〜</span>
+                    <div style="background:#fff;border:2px solid #ff9800;border-radius:8px;padding:7px 10px;font-size:0.78rem;color:#202124;">2026/05/22</div>
+                </div>
+                <div style="font-size:0.68rem;color:#9aa0a6;margin-bottom:12px;">カレンダーに自動登録されます</div>
+                <div style="font-size:0.75rem;color:#5f6368;margin-bottom:3px;">内容</div>
+                <div style="background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:8px;padding:8px 10px;font-size:0.75rem;color:#5f6368;margin-bottom:12px;">体調不良のためお休みします</div>
+                <div style="background:#1a73e8;color:#fff;border-radius:10px;padding:10px;text-align:center;font-size:0.85rem;font-weight:700;">保存</div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">↑ 開始日〜終了日を指定。1日だけなら同じ日を入力</div>
+
+        <div class="point-box" style="border-left-color:#ff9800;background:#fff8f0;">
+            <div class="point-box-title" style="color:#ff9800;"><span class="material-symbols-outlined" style="font-size:18px;">sync</span>カレンダーとの相互連携</div>
+            <div style="font-size:0.82rem;line-height:1.8;color:#202124;">
+                ・ケース記録保存 → <b>カレンダーに「○○様 お休み」で自動登録</b><br>
+                ・カレンダーで日程変更 → <b>ケース記録の日付も自動変更</b><br>
+                ・カレンダーで削除 → <b>ケース記録も自動削除</b>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -505,7 +552,42 @@
                 </div>
             </div>
         </div>
-        <div class="gd-shot-cap">↑ ケース記録閲覧画面。右下のピンク🔍ボタンが検索ボタン</div>
+        <div class="gd-shot-cap">↑ ケース記録閲覧画面。右端のピンクのタブをタップしてメニューを開く</div>
+
+        <!-- ドロワー開いた状態 -->
+        <div style="font-size:0.76rem;font-weight:700;color:#5f6368;margin-bottom:6px;text-align:center;">▼ タップするとメニューが開く</div>
+        <div class="phone-mock">
+            <div class="phone-mock-bar">
+                <div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">calendar_month</span>ケース記録閲覧</div>
+            </div>
+            <div class="phone-mock-body" style="position:relative;min-height:190px;overflow:hidden;">
+                <div style="background:#f8f9fa;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:0.75rem;color:#5f6368;">📅 今日の記録</div>
+                <div style="background:#f8f9fa;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:0.75rem;color:#5f6368;">👤 田中 様</div>
+                <div style="background:#f8f9fa;border-radius:8px;padding:8px 10px;font-size:0.75rem;color:#5f6368;">👤 鈴木 様</div>
+                <div style="position:absolute;inset:0;background:rgba(0,0,0,0.1);"></div>
+                <div style="position:absolute;right:0;top:0;bottom:0;width:88px;background:#fff;border-left:1.5px solid #eedee8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px 0;">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                        <div style="width:44px;height:44px;border-radius:50%;background:#fce8f6;display:flex;align-items:center;justify-content:center;">
+                            <span class="material-symbols-outlined" style="font-size:22px;color:#ec4899;">search</span>
+                        </div>
+                        <div style="font-size:0.68rem;font-weight:700;color:#5f6368;">検索</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                        <div style="width:44px;height:44px;border-radius:50%;background:#e8f0fe;display:flex;align-items:center;justify-content:center;">
+                            <span class="material-symbols-outlined" style="font-size:22px;color:#1a73e8;">unfold_more</span>
+                        </div>
+                        <div style="font-size:0.68rem;font-weight:700;color:#5f6368;">全て開く</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                        <div style="width:44px;height:44px;border-radius:50%;background:#e6f4ea;display:flex;align-items:center;justify-content:center;">
+                            <span class="material-symbols-outlined" style="font-size:22px;color:#34a853;">arrow_upward</span>
+                        </div>
+                        <div style="font-size:0.68rem;font-weight:700;color:#5f6368;">TOPへ</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">↑ 検索・全て開く・TOPへ の3つが使えます</div>
 
         <!-- ===== キーワード検索の解説 ===== -->
         <div class="mb" style="margin-top:18px;">
@@ -564,7 +646,7 @@
         <div class="steps">
             <div class="step">
                 <div class="step-n" style="background:#ec4899;">1</div>
-                <div><div class="step-t">右下のピンク🔍ボタンをタップ</div><div class="step-d">ケース記録閲覧画面の右下にあるピンクのボタンが検索ボタンです</div></div>
+                <div><div class="step-t">画面右端のピンクのタブをタップ</div><div class="step-d">3つの点が並んだタブが画面右端に常に表示されています</div></div>
             </div>
             <div class="step">
                 <div class="step-n" style="background:#ec4899;">2</div>
