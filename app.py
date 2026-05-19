@@ -4100,7 +4100,7 @@ def api_ledger_import_csv():
 
 【出力形式】
 JSON配列のみ。マークダウン不要。
-[{{"entry_date":"YYYY-MM-DD","debit_code":"101","credit_code":"401","amount":50000,"description":"利用料入金"}}]
+[{"entry_date":"YYYY-MM-DD","debit_code":"101","credit_code":"401","amount":50000,"description":"利用料入金"}]
 
 【CSVデータ】
 {content[:4000]}"""
@@ -4110,21 +4110,21 @@ JSON配列のみ。マークダウン不要。
         message = client.messages.create(
             model='claude-sonnet-4-20250514',
             max_tokens=2000,
-            messages=[{{'role': 'user', 'content': prompt}}]
+            messages=[{'role': 'user', 'content': prompt}]
         )
         raw = message.content[0].text.strip()
         raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
         raw = _re.sub(r'```$', '', raw).strip()
         suggestions = _json.loads(raw)
         # account codeからidに変換（コードまたは名前でマッチ）
-        code_to_id = {{a['code']: a['id'] for a in accounts}}
-        name_to_id = {{a['name']: a['id'] for a in accounts}}
+        code_to_id = {a['code']: a['id'] for a in accounts}
+        name_to_id = {a['name']: a['id'] for a in accounts}
         entries = []
         for s in suggestions:
             debit_id = code_to_id.get(str(s.get('debit_code'))) or name_to_id.get(s.get('debit_code'))
             credit_id = code_to_id.get(str(s.get('credit_code'))) or name_to_id.get(s.get('credit_code'))
             if debit_id and credit_id and int(s.get('amount', 0)) > 0:
-                entries.append({{
+                entries.append({
                     'facility_code': f_code,
                     'entry_date': s['entry_date'],
                     'debit_account_id': debit_id,
@@ -4134,12 +4134,12 @@ JSON配列のみ。マークダウン不要。
                     'description': s.get('description', ''),
                     'source': csv_type,
                     'created_by': my_name,
-                }})
+                })
         if entries:
             supabase.table('journal_entries').insert(entries).execute()
-        return jsonify({{'status': 'success', 'imported': len(entries), 'suggestions': suggestions}})
+        return jsonify({'status': 'success', 'imported': len(entries), 'suggestions': suggestions})
     except Exception as e:
-        return jsonify({{'status': 'error', 'message': str(e)}}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required

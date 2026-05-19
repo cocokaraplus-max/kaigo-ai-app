@@ -8,3 +8,4 @@ qrcode[pil]
 gunicorn
 openpyxl==3.1.5
 pdfminer.six
+anthropic
