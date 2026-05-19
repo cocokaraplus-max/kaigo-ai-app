@@ -971,6 +971,22 @@ window.openEditEvent = function(id) {
     document.getElementById('ev-title').value = ev.title;
     document.getElementById('ev-start-date').value = ev.event_date;
     document.getElementById('ev-end-date').value = ev.end_date || ev.event_date;
+    // 左日付変更時に右側を同日に自動コピー（右側を手動変更した場合は期間として判断）
+    var _evStartEl = document.getElementById('ev-start-date');
+    var _evEndEl = document.getElementById('ev-end-date');
+    var _evEndManual = false;
+    if (_evEndEl) {
+        _evEndEl.removeEventListener('change', _evEndEl._manualHandler || function(){});
+        _evEndEl._manualHandler = function() { _evEndManual = true; };
+        _evEndEl.addEventListener('change', _evEndEl._manualHandler);
+    }
+    if (_evStartEl) {
+        _evStartEl.removeEventListener('change', _evStartEl._syncHandler || function(){});
+        _evStartEl._syncHandler = function() {
+            if (!_evEndManual && _evEndEl) _evEndEl.value = _evStartEl.value;
+        };
+        _evStartEl.addEventListener('change', _evStartEl._syncHandler);
+    }
     document.getElementById('ev-allday').checked = ev.all_day;
     document.getElementById('ev-time-row').style.display = ev.all_day ? 'none' : 'grid';
     if (!ev.all_day) {
@@ -1055,7 +1071,7 @@ window.saveEvent = async function() {
     if (data.status === 'success') {
         if (editingEventId) {
             const idx = ALL_EVENTS.findIndex(e=>e.id===editingEventId);
-            if (idx>=0) ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId};
+            if (idx>=0) ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId, memo:payload.memo};
         } else {
             ALL_EVENTS.push({...payload, id: data.id});
         }
@@ -1417,6 +1433,22 @@ window.showNewEventModal = function(dateStr) {
   document.getElementById('ev-title').value = '';
   document.getElementById('ev-start-date').value = dateStr;
   document.getElementById('ev-end-date').value = dateStr;
+  // 左日付変更時に右側を同日に自動コピー
+  var _nStartEl = document.getElementById('ev-start-date');
+  var _nEndEl = document.getElementById('ev-end-date');
+  var _nEndManual = false;
+  if (_nEndEl) {
+      _nEndEl.removeEventListener('change', _nEndEl._manualHandler || function(){});
+      _nEndEl._manualHandler = function() { _nEndManual = true; };
+      _nEndEl.addEventListener('change', _nEndEl._manualHandler);
+  }
+  if (_nStartEl) {
+      _nStartEl.removeEventListener('change', _nStartEl._syncHandler || function(){});
+      _nStartEl._syncHandler = function() {
+          if (!_nEndManual && _nEndEl) _nEndEl.value = _nStartEl.value;
+      };
+      _nStartEl.addEventListener('change', _nStartEl._syncHandler);
+  }
   document.getElementById('ev-allday').checked = true;
   document.getElementById('ev-time-row').style.display = 'none';
   document.getElementById('ev-start-time').value = '09:00';
