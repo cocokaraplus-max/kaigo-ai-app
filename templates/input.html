@@ -586,6 +586,20 @@
             <input type="text" id="leave-reporter-relation" name="leave_reporter_relation"
                    class="form-control" placeholder="例: 義理の姉" style="margin-top:8px;">
         </div>
+
+        <!-- 休み期間 -->
+        <div style="margin-top:16px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">event</span>
+                休み期間
+            </label>
+            <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
+                <input type="date" class="form-control" id="leave-date-start" name="leave_date_start">
+                <span style="color:#80868b;font-size:0.8rem;">〜</span>
+                <input type="date" class="form-control" id="leave-date-end" name="leave_date_end">
+            </div>
+            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">カレンダーに自動登録されます</div>
+        </div>
     </div>
 
     <div class="form-group">
@@ -644,7 +658,13 @@ window.saveRecord = async function() {
 
     // Session 33: 休み連絡カテゴリのとき「誰から」必須
     const _curCatForLeave = document.getElementById('selected-category').value;
+    // 休み連絡選択時にデフォルト日付を設定
     if (_curCatForLeave === '休み連絡') {
+        var recDate = document.getElementById('record-date')?.value || '{{ today }}';
+        var startEl = document.getElementById('leave-date-start');
+        var endEl = document.getElementById('leave-date-end');
+        if (startEl && !startEl.value) startEl.value = recDate;
+        if (endEl && !endEl.value) endEl.value = recDate;
         const _repType = document.getElementById('leave-reporter-type').value;
         if (!_repType) {
             alert('「誰から」を選択してください(本人 / 家族)');
@@ -698,6 +718,11 @@ window.saveRecord = async function() {
         formData.append('must_read', document.getElementById('must-read-flag').value);
         formData.append('category', document.getElementById('selected-category').value || 'その他');
         // Session 33: 休み連絡カテゴリ専用フィールド(他カテゴリのときは空文字)
+        // 休み期間をformDataに追加
+        const leaveStart = document.getElementById('leave-date-start')?.value || '';
+        const leaveEnd = document.getElementById('leave-date-end')?.value || '';
+        formData.append('leave_date_start', leaveStart);
+        formData.append('leave_date_end', leaveEnd || leaveStart);
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
         formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
         // Session 36: VAS 入力データ
@@ -752,6 +777,8 @@ window.saveRecord = async function() {
             if (selCat) selCat.value = 'その他';
             renderCategoryPicker();
             // Session 33: 休み連絡フォームもリセット
+            document.getElementById('leave-date-start') && (document.getElementById('leave-date-start').value = '');
+            document.getElementById('leave-date-end') && (document.getElementById('leave-date-end').value = '');
             var lvBlock = document.getElementById('leave-form-block');
             var lvType = document.getElementById('leave-reporter-type');
             var lvRel = document.getElementById('leave-reporter-relation');

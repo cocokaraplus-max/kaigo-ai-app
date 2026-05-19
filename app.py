@@ -726,6 +726,33 @@ def input_view():
                                 ).eq("id", new_id).execute()
                     except Exception as _tag_err:
                         print(f"[search_tags] generation failed for new record: {_tag_err}", flush=True)
+                    # 休み連絡カテゴリ: カレンダーに自動登録
+                    if category == "休み連絡" and new_id:
+                        try:
+                            leave_date_start = (request.form.get("leave_date_start", "") or "").strip()
+                            leave_date_end = (request.form.get("leave_date_end", "") or "").strip()
+                            user_name_for_cal = m.group(2)
+                            if leave_date_start:
+                                cal_id = _get_or_create_system_calendar(supabase, f_code, my_name)
+                                if cal_id:
+                                    cal_res = supabase.table("calendar_events").insert({
+                                        "facility_code": f_code,
+                                        "calendar_id": cal_id,
+                                        "title": f"{user_name_for_cal}様 お休み",
+                                        "event_date": leave_date_start,
+                                        "end_date": leave_date_end or leave_date_start,
+                                        "all_day": True,
+                                        "color": "#e53935",
+                                        "memo": content,
+                                        "created_by": my_name,
+                                    }).execute()
+                                    if cal_res.data:
+                                        cal_event_id = cal_res.data[0]["id"]
+                                        supabase.table("records").update(
+                                            {"calendar_event_id": cal_event_id}
+                                        ).eq("id", new_id).execute()
+                        except Exception as _cal_err:
+                            print(f"[calendar sync] failed: {_cal_err}", flush=True)
 
                     # Session 36: VAS データを record_vas テーブルに一括 INSERT。失敗してもメイン処理は止めない
                     try:
@@ -2772,6 +2799,20 @@ def api_save_calendar_event():
         event_id = data.get("id")
         if event_id:
             supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
+            # 連動ケース記録の日付を更新
+            new_event_date = payload.get("event_date")
+            if new_event_date:
+                try:
+                    rec_res = supabase.table("records").select("id,created_at").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
+                    for rec in (rec_res.data or []):
+                        old_dt = datetime.fromisoformat(str(rec["created_at"]).replace("Z", "+00:00"))
+                        new_dt = tokyo_tz.localize(datetime.combine(
+                            datetime.strptime(new_event_date, "%Y-%m-%d").date(),
+                            old_dt.astimezone(tokyo_tz).time()
+                        ))
+                        supabase.table("records").update({"created_at": new_dt.isoformat()}).eq("id", rec["id"]).execute()
+                except Exception as _upd_err:
+                    print(f"[calendar sync update] failed: {_upd_err}", flush=True)
             return jsonify({"status": "success", "id": event_id})
         else:
             res = supabase.table("calendar_events").insert(payload).execute()
@@ -2779,6 +2820,23 @@ def api_save_calendar_event():
             return jsonify({"status": "success", "id": new_id})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+def _get_or_create_system_calendar(supabase, f_code, owner_name):
+    """TASUKARUケース記録連動カレンダーを取得または作成する"""
+    res = supabase.table('calendars').select('id').eq('facility_code', f_code).eq('is_system', True).execute()
+    if res.data:
+        return res.data[0]['id']
+    ins = supabase.table('calendars').insert({
+        'facility_code': f_code,
+        'name': 'TASUKARUケース記録連動',
+        'color': '#e53935',
+        'category': 'JOB',
+        'owner_name': owner_name,
+        'is_system': True,
+        'is_private': False,
+    }).execute()
+    return ins.data[0]['id'] if ins.data else None
+
+
 @app.route('/api/delete_calendar_event', methods=['POST'])
 @login_required
 def api_delete_calendar_event():
@@ -2787,6 +2845,10 @@ def api_delete_calendar_event():
         event_id = data.get("id")
         f_code = session["f_code"]
         supabase = get_supabase()
+        # 連動しているケース記録があれば削除
+        rec_res = supabase.table("records").select("id").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
+        for rec in (rec_res.data or []):
+            supabase.table("records").delete().eq("id", rec["id"]).execute()
         supabase.table("calendar_events").delete().eq("id", event_id).eq("facility_code", f_code).execute()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -2801,10 +2863,12 @@ def api_delete_calendar():
         supabase = get_supabase()
         
         # カレンダーの権限確認（カテゴリで分岐）
-        cal_res = supabase.table("calendars").select("owner_name,category").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        cal_res = supabase.table("calendars").select("owner_name,category,is_system").eq("id", calendar_id).eq("facility_code", f_code).execute()
         if not cal_res.data:
             return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
         cal_data = cal_res.data[0]
+        if cal_data.get("is_system"):
+            return jsonify({"status": "error", "message": "このカレンダーは削除できません"}), 403
         category = cal_data.get("category") or "PRIVATE"
         is_owner = (cal_data["owner_name"] == my_name)
         is_admin = is_admin_user(supabase, f_code, my_name)
@@ -2847,10 +2911,12 @@ def api_update_calendar():
         supabase = get_supabase()
         
         # カレンダーの権限確認（カテゴリで分岐）
-        cal_res = supabase.table("calendars").select("owner_name,category").eq("id", calendar_id).eq("facility_code", f_code).execute()
+        cal_res = supabase.table("calendars").select("owner_name,category,is_system").eq("id", calendar_id).eq("facility_code", f_code).execute()
         if not cal_res.data:
             return jsonify({"status": "error", "message": "カレンダーが見つかりません"}), 404
         cal_data = cal_res.data[0]
+        if cal_data.get("is_system"):
+            return jsonify({"status": "error", "message": "このカレンダーは削除できません"}), 403
         category = cal_data.get("category") or "PRIVATE"
         is_owner = (cal_data["owner_name"] == my_name)
         is_admin = is_admin_user(supabase, f_code, my_name)
