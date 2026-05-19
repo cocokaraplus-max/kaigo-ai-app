@@ -665,7 +665,8 @@ def input_view():
         content = request.form.get("content", "").strip()
         photos = request.files.getlist("photos")
 
-        if not sel or sel == "" or not content:
+        _cat_for_check = request.form.get("category", "")
+        if not sel or sel == "" or (not content and _cat_for_check != "休み連絡"):
             error = "利用者と内容を入力してください。"
         else:
             try:
