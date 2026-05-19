@@ -73,6 +73,7 @@
     <button class="ledger-tab" onclick="switchTab('trial')" id="tab-trial">試算表</button>
     <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
+    <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
 </div>
 
 <!-- 月ナビ -->
@@ -158,6 +159,55 @@
     <div id="receipt-results"></div>
 </div>
 
+<!-- 勘定科目管理ペイン -->
+<div id="pane-accounts" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:0.85rem;font-weight:800;color:#202124;">勘定科目一覧</div>
+        <button class="ledger-btn primary" style="flex:none;padding:8px 14px;border-radius:10px;" onclick="openAccountModal()">
+            + 科目を追加
+        </button>
+    </div>
+    <div id="accounts-list"></div>
+</div>
+
+<!-- 勘定科目入力モーダル -->
+<div class="ledger-modal" id="account-modal">
+    <div class="ledger-modal-content">
+        <div class="ledger-modal-title" id="account-modal-title">勘定科目を追加</div>
+        <input type="hidden" id="account-id">
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">科目コード</label>
+            <input type="text" class="ledger-form-control" id="account-code" placeholder="例: 510">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">科目名</label>
+            <input type="text" class="ledger-form-control" id="account-name" placeholder="例: 接待費">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">カテゴリ</label>
+            <select class="ledger-form-control" id="account-category">
+                <option value="資産">資産</option>
+                <option value="負債">負債</option>
+                <option value="収益">収益</option>
+                <option value="費用" selected>費用</option>
+                <option value="純資産">純資産</option>
+            </select>
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">消費税区分</label>
+            <select class="ledger-form-control" id="account-tax">
+                <option value="taxable">課税</option>
+                <option value="exempt">非課税</option>
+                <option value="none">対象外</option>
+            </select>
+        </div>
+        <div class="ledger-btn-row">
+            <button class="ledger-btn cancel" onclick="closeAccountModal()">キャンセル</button>
+            <button class="ledger-btn primary" onclick="saveAccount()">保存</button>
+        </div>
+    </div>
+</div>
+
 <!-- 仕訳追加FAB -->
 <button class="fab-add" onclick="openEntryModal()" id="fab-add">
     <span class="material-symbols-outlined" style="font-size:28px;">add</span>
@@ -238,11 +288,12 @@ function changeMonth(delta) {
 }
 
 function switchTab(tab) {
-    ['journal','trial','import','receipt'].forEach(t => {
+    ['journal','trial','import','receipt','accounts'].forEach(t => {
         document.getElementById('pane-'+t).style.display = t===tab ? '' : 'none';
         document.getElementById('tab-'+t).classList.toggle('active', t===tab);
     });
     document.getElementById('fab-add').style.display = tab==='journal' ? 'flex' : 'none';
+    if (tab === 'accounts') loadAccounts();
     if (tab === 'trial') loadTrialBalance();
 }
 
@@ -472,5 +523,109 @@ function createEntryFromOCR(ocr) {
         description: ocr.vendor ? ocr.vendor + ' ' + (ocr.description||'') : (ocr.description||''),
     });
 }
+// ===== 勘定科目管理 =====
+let allAccounts = [];
+
+async function loadAccounts() {
+    const res = await fetch('/api/ledger/accounts');
+    const data = await res.json();
+    if (data.status !== 'success') return;
+    allAccounts = data.accounts || [];
+    renderAccounts();
+    // 仕訳モーダルselectも更新
+    updateAccountSelects();
+}
+
+function renderAccounts() {
+    const categories = ['資産', '負債', '収益', '費用', '純資産'];
+    const catColors = {'資産':'#e8f0fe', '負債':'#fce8f6', '収益':'#e6f4ea', '費用':'#fff3e0', '純資産':'#f1f3f4'};
+    const catTextColors = {'資産':'#1a73e8', '負債':'#ec4899', '収益':'#34a853', '費用':'#ff9800', '純資産':'#5f6368'};
+    const taxLabels = {'taxable':'課税', 'exempt':'非課税', 'none':'対象外'};
+    const list = document.getElementById('accounts-list');
+    let html = '';
+    categories.forEach(cat => {
+        const items = allAccounts.filter(a => a.category === cat && a.is_active !== false);
+        if (!items.length) return;
+        html += `<div style="font-size:0.78rem;font-weight:800;color:#5f6368;margin:12px 0 6px;">${cat}</div>`;
+        items.forEach(a => {
+            html += `<div class="entry-card" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="background:${catColors[cat]};color:${catTextColors[cat]};padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:700;">${a.code}</span>
+                    <span style="font-size:0.85rem;font-weight:700;color:#202124;">${a.name}</span>
+                    <span style="font-size:0.7rem;color:#9aa0a6;">${taxLabels[a.tax_type]||''}</span>
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button class="entry-btn" onclick="editAccount(${a.id})"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>
+                    <button class="entry-btn danger" onclick="deleteAccount(${a.id})"><span class="material-symbols-outlined" style="font-size:14px;">delete</span></button>
+                </div>
+            </div>`;
+        });
+    });
+    list.innerHTML = html || '<div style="text-align:center;padding:40px;color:#9aa0a6;">勘定科目がありません</div>';
+}
+
+function updateAccountSelects() {
+    const options = allAccounts.filter(a => a.is_active !== false)
+        .map(a => `<option value="${a.id}">${a.code} ${a.name}</option>`).join('');
+    document.getElementById('entry-debit').innerHTML = options;
+    document.getElementById('entry-credit').innerHTML = options;
+}
+
+function openAccountModal(account) {
+    document.getElementById('account-modal-title').textContent = account ? '勘定科目を編集' : '勘定科目を追加';
+    document.getElementById('account-id').value = account ? account.id : '';
+    document.getElementById('account-code').value = account ? account.code : '';
+    document.getElementById('account-name').value = account ? account.name : '';
+    document.getElementById('account-category').value = account ? account.category : '費用';
+    document.getElementById('account-tax').value = account ? account.tax_type : 'taxable';
+    document.getElementById('account-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeAccountModal() {
+    document.getElementById('account-modal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function editAccount(id) {
+    const a = allAccounts.find(x => x.id === id);
+    if (a) openAccountModal(a);
+}
+
+async function deleteAccount(id) {
+    if (!confirm('この勘定科目を削除しますか？')) return;
+    const res = await fetch('/api/ledger/account/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.status === 'success') {
+        loadAccounts();
+    } else {
+        alert('削除に失敗しました: ' + (data.message||''));
+    }
+}
+
+async function saveAccount() {
+    const id = document.getElementById('account-id').value;
+    const payload = {
+        code: document.getElementById('account-code').value.trim(),
+        name: document.getElementById('account-name').value.trim(),
+        category: document.getElementById('account-category').value,
+        tax_type: document.getElementById('account-tax').value,
+    };
+    if (!payload.code || !payload.name) { alert('コードと科目名は必須です'); return; }
+    if (id) payload.id = parseInt(id);
+    const res = await fetch('/api/ledger/account', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        closeAccountModal();
+        loadAccounts();
+    } else {
+        alert('保存に失敗しました: ' + (data.message||''));
+    }
+}
+
 </script>
 {% endblock %}

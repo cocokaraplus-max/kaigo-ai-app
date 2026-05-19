@@ -3674,6 +3674,69 @@ def ledger():
         accounts = acc_res.data or []
     return render_template('ledger.html', accounts=accounts)
 
+@app.route('/api/ledger/accounts', methods=['GET'])
+@login_required
+def api_ledger_accounts():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        res = supabase.table('accounts').select('*').eq('facility_code', f_code).order('code').execute()
+        return jsonify({'status': 'success', 'accounts': res.data or []})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/account', methods=['POST'])
+@login_required
+def api_ledger_account_save():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        payload = {
+            'facility_code': f_code,
+            'code': data['code'],
+            'name': data['name'],
+            'category': data['category'],
+            'tax_type': data.get('tax_type', 'taxable'),
+            'is_active': True,
+        }
+        acc_id = data.get('id')
+        if acc_id:
+            supabase.table('accounts').update(payload).eq('id', acc_id).eq('facility_code', f_code).execute()
+            return jsonify({'status': 'success', 'id': acc_id})
+        else:
+            res = supabase.table('accounts').insert(payload).execute()
+            new_id = res.data[0]['id'] if res.data else None
+            return jsonify({'status': 'success', 'id': new_id})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/account/<int:acc_id>', methods=['DELETE'])
+@login_required
+def api_ledger_account_delete(acc_id):
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        supabase.table('accounts').update({'is_active': False}).eq('id', acc_id).eq('facility_code', f_code).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/ledger/entries', methods=['GET'])
 @login_required
 def api_ledger_entries():
