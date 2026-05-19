@@ -112,6 +112,9 @@
 
 <!-- ===== 試算表タブ ===== -->
 <div id="pane-trial" style="display:none;">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+        <button class="ledger-btn primary" onclick="printTrialBalance()" style="font-size:0.8rem;padding:6px 14px;"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;margin-right:4px;">print</span>PDF出力</button>
+    </div>
     <div id="trial-balance-content">
         <div style="text-align:center;padding:40px;color:#9aa0a6;">月を選択して試算表を表示</div>
     </div>
@@ -408,13 +411,11 @@ function renderEntries() {
 function renderSummary() {
     let income = 0, expense = 0;
     currentEntries.forEach(e => {
-        const credit = e.credit || {};
-        if (credit.category === '収益') income += e.amount;
-        else if (credit.category === '資産' || credit.category === '負債') expense += e.amount;
-    });
-    // 費用科目への借方
-    currentEntries.forEach(e => {
         const debit = e.debit || {};
+        const credit = e.credit || {};
+        // 収益：貸方が収益科目
+        if (credit.category === '収益') income += e.amount;
+        // 費用：借方が費用科目
         if (debit.category === '費用') expense += e.amount;
     });
     const balance = income - expense;
@@ -423,6 +424,47 @@ function renderSummary() {
     const balEl = document.getElementById('sum-balance');
     balEl.textContent = (balance >= 0 ? '+' : '') + '¥' + balance.toLocaleString();
     balEl.style.color = balance >= 0 ? '#a8d8a8' : '#ffb3b3';
+}
+
+function printTrialBalance() {
+    const [y, m] = currentMonth.split('-');
+    const title = `${y}\u5e74${parseInt(m)}\u6708 \u8a66\u7b97\u8868`;
+    const content = document.getElementById('trial-balance-content').innerHTML;
+    if (!content || content.includes('\u6708\u3092\u9078\u629e')) {
+        alert('\u8868\u793a\u3059\u308b\u8a66\u7b97\u8868\u304c\u3042\u308a\u307e\u305b\u3093\u3002\u6708\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+        return;
+    }
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif; padding: 24px; color: #202124; }
+  h1 { font-size: 1.1rem; margin-bottom: 4px; }
+  .meta { font-size: 0.78rem; color: #5f6368; margin-bottom: 20px; }
+  .section-header { background: #f1f3f4; font-weight: 700; font-size: 0.85rem; padding: 6px 10px; border-radius: 4px; margin: 16px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 12px; }
+  th { background: #e8f0fe; color: #1a73e8; padding: 6px 8px; text-align: left; font-weight: 700; }
+  th:not(:first-child) { text-align: right; }
+  td { padding: 6px 8px; border-bottom: 1px solid #f1f3f4; }
+  td:not(:first-child) { text-align: right; }
+  tr:last-child td { font-weight: 700; }
+  .footer { margin-top: 24px; font-size: 0.72rem; color: #9aa0a6; border-top: 1px solid #e0e0e0; padding-top: 8px; }
+  @media print { button { display: none; } }
+</style>
+</head>
+<body>
+<h1>${title}</h1>
+<div class="meta">\u4f5c\u6210\u65e5\u6642: ${new Date().toLocaleString('ja-JP')} / TASUKARU</div>
+${content}
+<div class="footer">\u3053\u306e\u8a66\u7b97\u8868\u306fTASUKARU\u51fa\u7d0d\u5e33\u6a5f\u80fd\u304b\u3089\u51fa\u529b\u3055\u308c\u307e\u3057\u305f\u3002</div>
+</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 500);
 }
 
 async function loadTrialBalance() {
