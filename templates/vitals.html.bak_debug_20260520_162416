@@ -3737,9 +3737,8 @@ window.toggleBulkTempVoice = async function() {
     try {
         bulkTempRecorder = mime ? new MediaRecorder(bulkTempStream, { mimeType: mime }) : new MediaRecorder(bulkTempStream);
     } catch(e) { alert('録音開始失敗: ' + e.message); cleanupBulkTempStream(); return; }
-    bulkTempRecorder.ondataavailable = (ev) => { alert("[DEBUG] ondataavailable: size=" + (ev.data ? ev.data.size : 0)); if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
+    bulkTempRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
     bulkTempRecorder.onstop = async () => {
-        alert("[DEBUG] onstop 発火！ chunks=" + bulkTempChunks.length + " blobSizeは後で計算");
         const btn = document.getElementById('bulk-temp-btn');
         const lbl = document.getElementById('bulk-temp-lbl');
         if (btn) btn.classList.remove('recording');
@@ -3753,7 +3752,6 @@ window.toggleBulkTempVoice = async function() {
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
-    alert("[DEBUG] 録音開始！ recorder.state=" + bulkTempRecorder.state);
     const btn = document.getElementById('bulk-temp-btn');
     const lbl = document.getElementById('bulk-temp-lbl');
     if (btn) btn.classList.add('recording');
@@ -3767,14 +3765,12 @@ window.toggleBulkTempVoice = async function() {
     if (aiInd) aiInd.style.display = 'flex';
 };
 function stopBulkTempVoice() {
-    alert("[DEBUG] stopBulkTempVoice 呼び出し: recorder.state=" + (bulkTempRecorder ? bulkTempRecorder.state : "null"));
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
 }
 function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
 }
 async function sendBulkTempVoice(blob, ext) {
-    alert("[DEBUG] sendBulkTempVoice 呼び出し: blob.size=" + blob.size + " ext=" + ext);
     // 現在表示中の利用者リストを収集
     const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name }));
     const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
