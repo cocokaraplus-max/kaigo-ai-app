@@ -312,14 +312,61 @@ def is_board_editor_user(supabase, f_code, my_name, is_admin_authenticated=False
         return True
     if not my_name:
         return False
- def is_ledger_user(supabase, f_code, my_name, is_admin_authenticated=False):
+def is_ledger_user(supabase, f_code, my_name, is_admin_authenticated=False):
+    """Check if user can access ledger (admin_settings の ledger_users リストから判定)"""
     if is_admin_authenticated:
         return True
+    if not my_name:
+        return False
+# pyright: reportUndefinedVariable=false
+@app.route('/api/admin/toggle_ledger_access', methods=['POST'])
+def api_toggle_ledger_access():
+    if not session.get("admin_authenticated"):
+        return jsonify({"success": False, "msg": "権限がありません"}), 403
+    
+    import json as _json
+    f_code = session["f_code"]
+    data = request.get_json()
+    staff_name = data.get("staff_name")
+    can_ledger = data.get("can_ledger", False)
+    
     try:
-        result = supabase.table("users").select("can_ledger").eq("facility_code", f_code).eq("staff_name", my_name).execute()
-        return bool(result.data and result.data[0].get("can_ledger", False))
+        res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
+        
+        if res.data:
+            current_list = _json.loads(res.data[0].get("value") or "[]")
+        else:
+            current_list = []
+        
+        if can_ledger:
+            if staff_name not in current_list:
+                current_list.append(staff_name)
+        else:
+            current_list = [n for n in current_list if n != staff_name]
+        
+        new_value = _json.dumps(current_list, ensure_ascii=False)
+        
+        if res.data:
+            supabase.table("admin_settings").update({"value": new_value}).eq("facility_code", f_code).eq("key", "ledger_users").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code,
+                "key": "ledger_users",
+                "value": new_value
+            }).execute()
+        
+        return jsonify({"success": True, "msg": f"{staff_name} の出納帳権限を更新"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
+    try:
+        import json as _json
+        res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
+        if res.data and res.data[0].get("value"):
+            ledger_users = _json.loads(res.data[0]["value"])
+            return str(my_name) in [str(n) for n in ledger_users]
+        return False
     except:
-        return False   
+        return False  
     try:
         import json as _json
         res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "board_editors").execute()
