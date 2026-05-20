@@ -616,7 +616,7 @@
         </button>
     </div>
     <!-- メモパッドモーダル -->
-    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;resize:both;">
+    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;">
         <div id="memo-pad-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;cursor:grab;user-select:none;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">drag_indicator</span>
@@ -657,6 +657,15 @@
                 <button type="button" onclick="clearMemoCanvas()"
                     style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
             </div>
+        </div>
+        <!-- リサイズハンドル -->
+        <div id="memo-resize-handle"
+            style="position:absolute;bottom:0;right:0;width:20px;height:20px;cursor:se-resize;display:flex;align-items:flex-end;justify-content:flex-end;padding:3px;z-index:8001;touch-action:none;"
+            title="ドラッグでリサイズ">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <line x1="2" y1="10" x2="10" y2="2" stroke="#bbb" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="6" y1="10" x2="10" y2="6" stroke="#bbb" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
         </div>
     </div>
     <!-- 日付選択 -->
@@ -4108,6 +4117,68 @@ function initMemoCanvas() {
 
 
 
+
+
+// メモモーダル リサイズ機能
+(function() {
+    function initMemoResize() {
+        const handle = document.getElementById('memo-resize-handle');
+        const modal = document.getElementById('memo-pad-area');
+        if (!handle || !modal || handle._resizeInited) return;
+        handle._resizeInited = true;
+
+        let startX, startY, startW, startH;
+
+        function onStart(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const touch = e.touches ? e.touches[0] : e;
+            startX = touch.clientX;
+            startY = touch.clientY;
+            startW = modal.offsetWidth;
+            startH = modal.offsetHeight;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+            document.addEventListener('touchmove', onMove, {passive:false});
+            document.addEventListener('touchend', onEnd);
+        }
+        function onMove(e) {
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const newW = Math.max(220, startW + (touch.clientX - startX));
+            const newH = Math.max(180, startH + (touch.clientY - startY));
+            modal.style.width = newW + 'px';
+            modal.style.height = newH + 'px';
+            // textarea/canvasも高さを追従
+            const headerH = document.getElementById('memo-pad-header')?.offsetHeight || 44;
+            const footerH = 40;
+            const available = Math.max(80, newH - headerH - footerH - 10);
+            const ta = document.getElementById('memo-pad-text');
+            if (ta && document.getElementById('memo-keyboard-area')?.style.display !== 'none') {
+                ta.style.height = available + 'px';
+            }
+            const cv = document.getElementById('memo-canvas');
+            if (cv && document.getElementById('memo-draw-area')?.style.display !== 'none') {
+                cv.style.height = available + 'px';
+                cv.height = available;
+            }
+        }
+        function onEnd() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onEnd);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onEnd);
+        }
+        handle.addEventListener('mousedown', onStart);
+        handle.addEventListener('touchstart', onStart, {passive:false});
+    }
+
+    const _origToggle3 = window.toggleMemoPad;
+    window.toggleMemoPad = function() {
+        _origToggle3 && _origToggle3();
+        setTimeout(initMemoResize, 100);
+    };
+})();
 
 </script>
 {% endblock %}
