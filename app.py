@@ -4962,6 +4962,33 @@ def api_generate_monitoring():
         records = [r for r in (res.data or [])
                    if r.get("staff_name") not in ("AI統合記録",)
                    and r.get("category") != "休み連絡"]
+        def _replace_kyouha(record):
+            content_text = record.get("content") or ""
+            created_at = record.get("created_at") or ""
+            if not created_at or "今日" not in content_text:
+                return record
+            try:
+                from datetime import datetime as _dt3
+                import pytz as _pytz
+                _tz = _pytz.timezone("Asia/Tokyo")
+                _dt = _dt3.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(_tz)
+                _date_str = f"{_dt.month}月{_dt.day}日"
+                for _old, _new in [
+                    ("今日は", f"{_date_str}は"),
+                    ("今日も", f"{_date_str}も"),
+                    ("今日、", f"{_date_str}、"),
+                    ("今日。", f"{_date_str}。"),
+                    ("今日（", f"{_date_str}（"),
+                    ("今日の", f"{_date_str}の"),
+                    ("今日で", f"{_date_str}で"),
+                    ("今日から", f"{_date_str}から"),
+                    ("今日まで", f"{_date_str}まで"),
+                ]:
+                    content_text = content_text.replace(_old, _new)
+                return {**record, "content": content_text}
+            except Exception:
+                return record
+        records = [_replace_kyouha(r) for r in records]
 
         # 休み連絡レコードから実際の休日情報を取得
         leave_res = supabase.table("records").select(
