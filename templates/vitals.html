@@ -3816,6 +3816,34 @@ window.toggleBulkTempVoice = async function() {
     const aiInd = document.getElementById('ai-indicator');
     if (aiInd) aiInd.style.display = 'flex';
 };
+window.pauseBulkTempVoice = function() {
+    if (!bulkTempRecorder) return;
+    const pauseBtn = document.getElementById('bulk-pause-btn');
+    const pauseLbl = document.getElementById('bulk-pause-lbl');
+    const dot = document.getElementById('bulk-rec-dot');
+    const wave = document.getElementById('bulk-wave');
+    const lbl = document.getElementById('bulk-rec-lbl');
+    if (bulkTempRecorder.state === 'recording') {
+        bulkTempRecorder.pause();
+        if (pauseLbl) pauseLbl.textContent = '再開';
+        if (pauseBtn) { pauseBtn.style.background = '#ff6f00'; pauseBtn.style.color = '#fff'; }
+        const icon = pauseBtn ? pauseBtn.querySelector('.material-symbols-outlined') : null;
+        if (icon) icon.textContent = 'play_arrow';
+        if (dot) dot.style.animation = 'none';
+        if (wave) wave.style.opacity = '0.3';
+        if (lbl) lbl.textContent = '一時停止中';
+    } else if (bulkTempRecorder.state === 'paused') {
+        bulkTempRecorder.resume();
+        if (pauseLbl) pauseLbl.textContent = '一時停止';
+        if (pauseBtn) { pauseBtn.style.background = '#fff'; pauseBtn.style.color = '#e65100'; }
+        const icon = pauseBtn ? pauseBtn.querySelector('.material-symbols-outlined') : null;
+        if (icon) icon.textContent = 'pause';
+        if (dot) dot.style.animation = 'bulkPulse 1s infinite';
+        if (wave) wave.style.opacity = '1';
+        if (lbl) lbl.textContent = '録音中';
+    }
+};
+
 window.stopBulkTempVoice = function stopBulkTempVoice() {
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
 }
