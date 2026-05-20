@@ -965,9 +965,9 @@ window.openEventOrTask = function(id) {
 
 // ===== 予定編集 =====
 window.openEditEvent = function(id) {
-    const ev = ALL_EVENTS.find(e=>e.id===id);
+    const ev = ALL_EVENTS.find(e=>String(e.id)===String(id));
     if (!ev) return;
-    editingEventId = id;
+    editingEventId = String(id);
     document.getElementById('ev-title').value = ev.title;
     document.getElementById('ev-start-date').value = ev.event_date;
     document.getElementById('ev-end-date').value = ev.end_date || ev.event_date;
@@ -1070,7 +1070,7 @@ window.saveEvent = async function() {
     const data = await res.json();
     if (data.status === 'success') {
         if (editingEventId) {
-            const idx = ALL_EVENTS.findIndex(e=>e.id===editingEventId);
+            const idx = ALL_EVENTS.findIndex(e=>String(e.id)===String(editingEventId));
             if (idx>=0) ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId, memo:payload.memo};
         } else {
             ALL_EVENTS.push({...payload, id: data.id});
@@ -1090,7 +1090,7 @@ window.deleteEvent = async function() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            const idx = ALL_EVENTS.findIndex(e=>e.id==editingEventId);
+            const idx = ALL_EVENTS.findIndex(e=>String(e.id)===String(editingEventId));
             if (idx>=0) ALL_EVENTS.splice(idx,1);
             editingEventId = null;
             closeModal('event-modal');
