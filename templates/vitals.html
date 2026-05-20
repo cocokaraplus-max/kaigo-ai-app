@@ -3807,18 +3807,12 @@ window.toggleBulkTempVoice = async function() {
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
+    // 録音ボタンを隠して録音中バーを表示
     const btn = document.getElementById('bulk-temp-btn');
-    const lbl = document.getElementById('bulk-temp-lbl');
-    if (btn) btn.classList.add('recording');
-    const stopBtnEl = document.getElementById('bulk-stop-btn');
-    if (stopBtnEl) stopBtnEl.style.display = 'flex';
-    let rem = 30;
-    const recLbl = document.getElementById('bulk-rec-lbl');
-    const upd = () => { if (recLbl) recLbl.textContent = `録音中 ${rem}s`; };
-    upd();
-    bulkTempCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; } }, 1000);
-    bulkTempTimeout = setTimeout(() => stopBulkTempVoice(), 30000);
-    // 録音中はai-indicatorを表示
+    if (btn) { btn.classList.add('recording'); btn.style.display = 'none'; }
+    const recBar = document.getElementById('bulk-rec-bar');
+    if (recBar) recBar.style.display = 'block';
+    // ai-indicatorを表示
     const aiInd = document.getElementById('ai-indicator');
     if (aiInd) aiInd.style.display = 'flex';
 };
