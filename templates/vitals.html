@@ -615,12 +615,13 @@
             メモ
         </button>
     </div>
-    <!-- メモパッド -->
-    <div id="memo-pad-area" style="display:none;margin-bottom:10px;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;">
+    <!-- メモパッドモーダル -->
+    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;">
+        <div id="memo-pad-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;cursor:grab;user-select:none;">
             <div style="display:flex;align-items:center;gap:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">edit_note</span>
-                <span style="font-size:0.78rem;font-weight:700;color:#202124;">メモ帳</span>
+                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">drag_indicator</span>
+                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">edit_note</span>
+                <span style="font-size:0.78rem;font-weight:700;color:#202124;pointer-events:none;">メモ帳</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
                 <button type="button" id="memo-mode-keyboard" onclick="setMemoMode('keyboard')"
@@ -634,19 +635,19 @@
                     手書き
                 </button>
                 <button type="button" onclick="closeMemoPad()"
-                    style="background:none;border:none;color:#9aa0a6;cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;">&times;</button>
+                    style="background:none;border:none;color:#9aa0a6;cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;pointer-events:auto;">&times;</button>
             </div>
         </div>
         <div id="memo-keyboard-area">
-            <textarea id="memo-pad-text" placeholder="体温をメモ…（例：青木 36.5　阿部 37.0）"
-                style="width:100%;height:140px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
+            <textarea id="memo-pad-text" placeholder="体温をメモ…&#10;例: 青木 36.5 / 阿部 37.0"
+                style="width:100%;height:160px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
             <div style="display:flex;justify-content:flex-end;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
                 <button type="button" onclick="clearMemoText()"
                     style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
             </div>
         </div>
         <div id="memo-draw-area" style="display:none;">
-            <canvas id="memo-canvas" style="width:100%;height:160px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
+            <canvas id="memo-canvas" style="width:100%;height:180px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
             <div style="display:flex;justify-content:space-between;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
                 <button type="button" id="memo-eraser-btn" onclick="toggleEraser()"
                     style="display:flex;align-items:center;gap:3px;font-size:0.72rem;color:#5f6368;padding:4px 10px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;cursor:pointer;">
@@ -1542,12 +1543,11 @@ function buildVitalForm(p, v, dateStr) {
         const n = i + 1;
         return `<option value="${n}" ${n === nextOrder ? 'selected' : ''}>${n}回目</option>`;
     }).join('');
-    const orderSelect = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-        <label style="font-size:0.78rem;color:#5f6368;white-space:nowrap;">保存先:</label>
-        <select id="v-order-${p.id}" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #e0e0e0;background:#fff;">
+    const orderSelect = `<div style="display:flex;align-items:center;gap:4px;margin-bottom:6px;opacity:0.7;">
+        <select id="v-order-${p.id}" style="font-size:0.7rem;padding:2px 6px;border-radius:6px;border:1px solid #e0e0e0;background:#f8f9fa;color:#5f6368;">
             ${orderOptions}
         </select>
-        <span style="font-size:0.72rem;color:#80868b;">のデータとして保存</span>
+        <span style="font-size:0.7rem;color:#9aa0a6;">に保存</span>
     </div>`;
     return `
         ${summaryHtml}
@@ -3813,6 +3813,14 @@ let bulkTempChunks = [];
 let bulkTempCountdown = null;
 let bulkTempTimeout = null;
 
+window.updateBulkTempLabel = function() {
+    const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
+    const lbl = document.getElementById('bulk-temp-lbl');
+    if (lbl && lbl.textContent.indexOf('録音中') === -1) {
+        lbl.textContent = `${order}回目 体温一括入力`;
+    }
+};
+
 window.toggleBulkTempVoice = async function() {
     if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
         stopBulkTempVoice(); return;
@@ -4035,6 +4043,66 @@ function initMemoCanvas() {
             clearMemoCanvas();
         }
         if (origSpaNav) origSpaNav(e, url);
+    };
+})();
+
+
+// メモパッドドラッグ機能
+(function() {
+    function initMemoDrag() {
+        const modal = document.getElementById('memo-pad-area');
+        const header = document.getElementById('memo-pad-header');
+        if (!modal || !header || header._dragInited) return;
+        header._dragInited = true;
+        let startX, startY, startLeft, startTop;
+
+        function onStart(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SPAN') return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            startX = touch.clientX;
+            startY = touch.clientY;
+            const rect = modal.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            modal.style.right = 'auto';
+            modal.style.left = startLeft + 'px';
+            modal.style.top = startTop + 'px';
+            header.style.cursor = 'grabbing';
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+            document.addEventListener('touchmove', onMove, {passive:false});
+            document.addEventListener('touchend', onEnd);
+        }
+        function onMove(e) {
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            let newLeft = startLeft + dx;
+            let newTop = startTop + dy;
+            // 画面外に出ないよう制限
+            newLeft = Math.max(0, Math.min(window.innerWidth - modal.offsetWidth, newLeft));
+            newTop = Math.max(0, Math.min(window.innerHeight - 60, newTop));
+            modal.style.left = newLeft + 'px';
+            modal.style.top = newTop + 'px';
+        }
+        function onEnd() {
+            header.style.cursor = 'grab';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onEnd);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onEnd);
+        }
+        header.addEventListener('mousedown', onStart);
+        header.addEventListener('touchstart', onStart, {passive:false});
+    }
+
+    // toggleMemoPadをオーバーライドしてドラッグ初期化を追加
+    const _origToggle = window.toggleMemoPad;
+    window.toggleMemoPad = function() {
+        _origToggle && _origToggle();
+        setTimeout(initMemoDrag, 50);
     };
 })();
 
