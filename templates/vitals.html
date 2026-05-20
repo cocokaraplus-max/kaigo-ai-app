@@ -3673,8 +3673,6 @@ window.toggleMemoVoice = async function(pid) {
     const btn = document.getElementById('memo-voice-btn-' + pid);
     const lbl = document.getElementById('memo-voice-lbl-' + pid);
     if (btn) btn.classList.add('recording');
-    const stopBtn = document.getElementById('bulk-stop-btn');
-    if (stopBtn) stopBtn.style.display = 'flex';
     let rem = 20;
     const upd = () => { if (lbl) lbl.textContent = `${rem}s`; };
     upd();
@@ -3762,6 +3760,8 @@ window.toggleBulkTempVoice = async function() {
     const btn = document.getElementById('bulk-temp-btn');
     const lbl = document.getElementById('bulk-temp-lbl');
     if (btn) btn.classList.add('recording');
+    const stopBtnEl = document.getElementById('bulk-stop-btn');
+    if (stopBtnEl) stopBtnEl.style.display = 'flex';
     let rem = 30;
     const upd = () => { if (lbl) lbl.textContent = `録音中 ${rem}s（タップで終了）`; };
     upd();
