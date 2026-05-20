@@ -607,67 +607,6 @@
 
 <!-- ========== 記録タブ ========== -->
 <div class="tab-panel active" id="tab-record">
-    <!-- メモボタン -->
-    <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
-        <button type="button" id="memo-pad-toggle-btn" onclick="toggleMemoPad()"
-            style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;border:1.5px solid #e0e0e0;background:#fff;font-size:0.78rem;color:#5f6368;cursor:pointer;">
-            <span class="material-symbols-outlined" style="font-size:16px;pointer-events:none;">edit_note</span>
-            メモ
-        </button>
-    </div>
-    <!-- メモパッドモーダル -->
-    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;overflow:hidden;">
-        <div id="memo-pad-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;cursor:grab;user-select:none;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">drag_indicator</span>
-                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">edit_note</span>
-                <span style="font-size:0.78rem;font-weight:700;color:#202124;pointer-events:none;">メモ帳</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <button type="button" id="memo-mode-keyboard" onclick="setMemoMode('keyboard')"
-                    style="display:flex;align-items:center;gap:3px;padding:4px 9px;border-radius:6px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;font-size:0.72rem;cursor:pointer;">
-                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">keyboard</span>
-                    キーボード
-                </button>
-                <button type="button" id="memo-mode-draw" onclick="setMemoMode('draw')"
-                    style="display:flex;align-items:center;gap:3px;padding:4px 9px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.72rem;cursor:pointer;">
-                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">draw</span>
-                    手書き
-                </button>
-                <button type="button" onclick="closeMemoPad()"
-                    style="background:none;border:none;color:#9aa0a6;cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;pointer-events:auto;">&times;</button>
-            </div>
-        </div>
-        <div id="memo-keyboard-area">
-            <textarea id="memo-pad-text" placeholder="体温をメモ…&#10;例: 青木 36.5 / 阿部 37.0"
-                style="width:100%;height:150px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
-            <div style="display:flex;justify-content:flex-end;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
-                <button type="button" onclick="clearMemoText()"
-                    style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
-            </div>
-        </div>
-        <div id="memo-draw-area" style="display:none;">
-            <canvas id="memo-canvas" style="width:100%;height:170px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
-            <div style="display:flex;justify-content:space-between;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
-                <button type="button" id="memo-eraser-btn" onclick="toggleEraser()"
-                    style="display:flex;align-items:center;gap:3px;font-size:0.72rem;color:#5f6368;padding:4px 10px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;cursor:pointer;">
-                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">ink_eraser</span>
-                    消しゴム
-                </button>
-                <button type="button" onclick="clearMemoCanvas()"
-                    style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
-            </div>
-        </div>
-        <!-- リサイズハンドル -->
-        <div id="memo-resize-handle"
-            style="position:absolute;bottom:0;right:0;width:20px;height:20px;cursor:se-resize;display:flex;align-items:flex-end;justify-content:flex-end;padding:3px;z-index:8001;touch-action:none;"
-            title="ドラッグでリサイズ">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <line x1="2" y1="10" x2="10" y2="2" stroke="#bbb" stroke-width="1.5" stroke-linecap="round"/>
-                <line x1="6" y1="10" x2="10" y2="6" stroke="#bbb" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-        </div>
-    </div>
     <!-- 日付選択 -->
     <div class="form-group" style="margin-bottom:10px;">
         <div class="date-weekday-row">
@@ -738,26 +677,33 @@
             <span id="bulk-temp-lbl">1回目 体温一括入力</span>
         </button>
         <!-- 録音中バー（初期非表示） -->
-        <button type="button" id="bulk-stop-btn" onclick="stopBulkTempVoice()"
-            style="display:none;align-items:center;justify-content:space-between;border:1.5px solid #ff6f00;border-radius:10px;padding:10px 14px;cursor:pointer;";background:transparent;>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:8px;height:8px;border-radius:50%;background:#e53935;animation:bulkPulse 1s infinite;flex-shrink:0;pointer-events:none;"></div>
-                <span id="bulk-rec-lbl" style="font-size:0.85rem;font-weight:700;color:#e65100;pointer-events:none;">録音中 30s</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="display:flex;align-items:flex-end;gap:2px;height:18px;pointer-events:none;" id="bulk-wave">
+        <div id="bulk-rec-bar" style="display:none;border:1.5px solid #ff6f00;border-radius:10px;padding:8px 12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div id="bulk-rec-dot" style="width:8px;height:8px;border-radius:50%;background:#e53935;animation:bulkPulse 1s infinite;flex-shrink:0;"></div>
+                    <span id="bulk-rec-lbl" style="font-size:0.85rem;font-weight:700;color:#e65100;">録音中</span>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:2px;height:18px;" id="bulk-wave">
                     <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw1 .8s ease-in-out infinite;"></div>
                     <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw2 .7s ease-in-out infinite;"></div>
                     <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw3 .9s ease-in-out infinite;"></div>
                     <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw4 .6s ease-in-out infinite;"></div>
                     <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw5 1s ease-in-out infinite;"></div>
                 </div>
-                <div style="display:flex;align-items:center;gap:4px;background:#e53935;color:#fff;border-radius:8px;padding:6px 12px;font-size:0.78rem;font-weight:700;pointer-events:none;">
-                    <span class="material-symbols-outlined" style="font-size:14px;">stop</span>
-                    停止
-                </div>
             </div>
-        </button>
+            <div style="display:flex;gap:8px;">
+                <button type="button" id="bulk-pause-btn" onclick="pauseBulkTempVoice()"
+                    style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:8px;border-radius:8px;border:1.5px solid #ff6f00;background:#fff;color:#e65100;font-size:0.78rem;font-weight:700;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:14px;pointer-events:none;">pause</span>
+                    <span id="bulk-pause-lbl">一時停止</span>
+                </button>
+                <button type="button" id="bulk-stop-btn" onclick="stopBulkTempVoice()"
+                    style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:8px;border-radius:8px;border:none;background:#e53935;color:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:14px;pointer-events:none;">stop</span>
+                    停止・解析
+                </button>
+            </div>
+        </div>
         <!-- 解析結果 -->
         <div id="bulk-temp-result" style="margin-top:8px;display:none;"></div>
     </div>
@@ -3850,12 +3796,10 @@ window.toggleBulkTempVoice = async function() {
     bulkTempRecorder.onstop = async () => {
         const btn = document.getElementById('bulk-temp-btn');
         const lbl = document.getElementById('bulk-temp-lbl');
-        if (btn) btn.classList.remove('recording');
-        if (lbl) lbl.textContent = '全員の体温をまとめて入力';
-        const stopBtnOff = document.getElementById('bulk-stop-btn');
-        if (stopBtnOff) stopBtnOff.style.display = 'none';
-        if (bulkTempCountdown) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; }
-        if (bulkTempTimeout) { clearTimeout(bulkTempTimeout); bulkTempTimeout = null; }
+        if (btn) { btn.classList.remove('recording'); btn.style.display = 'flex'; }
+        const recBarOff = document.getElementById('bulk-rec-bar');
+        if (recBarOff) recBarOff.style.display = 'none';
+        updateBulkTempLabel();
         cleanupBulkTempStream();
         const usedMime = bulkTempRecorder.mimeType || mime || 'audio/webm';
         const blob = new Blob(bulkTempChunks, { type: usedMime });
