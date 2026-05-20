@@ -650,26 +650,58 @@
         </button>
     </div>
    <!-- 体温一括入力 -->
-    <div style="background:#fff8e1;border:1.5px solid #ffca28;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span class="material-symbols-outlined" style="color:#f57c00;font-size:20px;pointer-events:none;">thermometer</span>
-            <span style="font-size:0.85rem;font-weight:700;color:#e65100;">体温一括入力</span>
-            <select id="bulk-temp-order" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;cursor:pointer;">
+    <div style="background:#fff8e1;border:1.5px solid #ffca28;border-radius:14px;padding:12px 14px;margin-bottom:10px;">
+        <!-- ヘッダ行: アイコン+タイトル+回数セレクト -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span class="material-symbols-outlined" style="color:#f57c00;font-size:18px;pointer-events:none;">thermometer</span>
+                <span style="font-size:0.82rem;font-weight:700;color:#e65100;">体温一括入力</span>
+            </div>
+            <select id="bulk-temp-order" style="font-size:0.78rem;padding:3px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;color:#5f6368;cursor:pointer;">
                 <option value="1">1回目</option>
                 <option value="2">2回目</option>
                 <option value="3">3回目</option>
             </select>
-            <button type="button" id="bulk-temp-btn" onclick="toggleBulkTempVoice()" style="display:flex;align-items:center;gap:6px;background:#ff6f00;color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:0.82rem;font-weight:700;cursor:pointer;">
-                <span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">mic</span>
-                <span id="bulk-temp-lbl">全員の体温をまとめて入力</span>
-            </button>
-            <button type="button" id="bulk-stop-btn" onclick="stopBulkTempVoice()" style="display:none;align-items:center;gap:4px;background:#e53935;color:#fff;border:none;border-radius:20px;padding:6px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;">
-                <span class="material-symbols-outlined" style="font-size:16px;pointer-events:none;">stop</span>
-                停止
-            </button>
         </div>
-        <div id="bulk-temp-result" style="margin-top:6px;display:none;"></div>
+        <!-- 録音ボタン（平常時） -->
+        <button type="button" id="bulk-temp-btn" onclick="toggleBulkTempVoice()"
+            style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:#ff6f00;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:.01em;">
+            <span class="material-symbols-outlined" style="font-size:20px;pointer-events:none;">mic</span>
+            <span id="bulk-temp-lbl">全員の体温をまとめて入力</span>
+        </button>
+        <!-- 録音中バー（初期非表示） -->
+        <div id="bulk-stop-btn" onclick="stopBulkTempVoice()"
+            style="display:none;align-items:center;justify-content:space-between;border:1.5px solid #ff6f00;border-radius:10px;padding:10px 14px;cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:8px;height:8px;border-radius:50%;background:#e53935;animation:bulkPulse 1s infinite;flex-shrink:0;pointer-events:none;"></div>
+                <span id="bulk-rec-lbl" style="font-size:0.85rem;font-weight:700;color:#e65100;pointer-events:none;">録音中 30s</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:18px;pointer-events:none;" id="bulk-wave">
+                    <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw1 .8s ease-in-out infinite;"></div>
+                    <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw2 .7s ease-in-out infinite;"></div>
+                    <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw3 .9s ease-in-out infinite;"></div>
+                    <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw4 .6s ease-in-out infinite;"></div>
+                    <div style="width:3px;background:#ff6f00;border-radius:2px;animation:bw5 1s ease-in-out infinite;"></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;background:#e53935;color:#fff;border-radius:8px;padding:6px 12px;font-size:0.78rem;font-weight:700;pointer-events:none;">
+                    <span class="material-symbols-outlined" style="font-size:14px;">stop</span>
+                    停止
+                </div>
+            </div>
+        </div>
+        <!-- 解析結果 -->
+        <div id="bulk-temp-result" style="margin-top:8px;display:none;"></div>
     </div>
+    <style>
+    @keyframes bulkPulse{0%,100%{opacity:1}50%{opacity:.25}}
+    @keyframes bw1{0%,100%{height:6px}50%{height:16px}}
+    @keyframes bw2{0%,100%{height:12px}50%{height:4px}}
+    @keyframes bw3{0%,100%{height:16px}50%{height:8px}}
+    @keyframes bw4{0%,100%{height:8px}50%{height:14px}}
+    @keyframes bw5{0%,100%{height:10px}50%{height:4px}}
+    #bulk-temp-btn.recording{display:none!important;}
+    </style>
     <!-- 利用者一覧 -->
     <div id="patient-vitals-list"></div>
 
@@ -3763,7 +3795,8 @@ window.toggleBulkTempVoice = async function() {
     const stopBtnEl = document.getElementById('bulk-stop-btn');
     if (stopBtnEl) stopBtnEl.style.display = 'flex';
     let rem = 30;
-    const upd = () => { if (lbl) lbl.textContent = `録音中 ${rem}s（タップで終了）`; };
+    const recLbl = document.getElementById('bulk-rec-lbl');
+    const upd = () => { if (recLbl) recLbl.textContent = `録音中 ${rem}s`; };
     upd();
     bulkTempCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; } }, 1000);
     bulkTempTimeout = setTimeout(() => stopBulkTempVoice(), 30000);
