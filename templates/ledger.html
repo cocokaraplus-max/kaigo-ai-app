@@ -13,16 +13,16 @@
 .ledger-month-label { font-size:1rem; font-weight:800; color:#202124; }
 .ledger-month-btn { background:none; border:1.5px solid #e0e0e0; border-radius:8px; padding:6px 12px; cursor:pointer; font-size:0.85rem; color:#5f6368; }
 
-.entry-card { background:#fff; border-radius:12px; border:1.5px solid #e8eaed; padding:12px 14px; margin-bottom:8px; }
-.entry-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.entry-card { background:#fff; border-radius:12px; border:1.5px solid #e8eaed; padding:12px 14px; margin-bottom:8px; overflow:hidden; }
+.entry-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; }
 .entry-date { font-size:0.78rem; color:#5f6368; }
 .entry-amount { font-size:1rem; font-weight:800; color:#202124; }
 .entry-amount.income { color:#34a853; }
 .entry-amount.expense { color:#ea4335; }
 .entry-accounts { font-size:0.78rem; color:#5f6368; display:flex; align-items:center; gap:6px; }
 .entry-desc { font-size:0.82rem; color:#202124; margin-top:4px; }
-.entry-actions { display:flex; gap:6px; margin-top:8px; }
-.entry-btn { padding:4px 10px; border-radius:6px; border:1px solid #e0e0e0; background:#fff; font-size:0.72rem; cursor:pointer; color:#5f6368; }
+.entry-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.entry-btn { padding:6px 14px; border-radius:6px; border:1px solid #e0e0e0; background:#fff; font-size:0.78rem; cursor:pointer; color:#5f6368; min-width:52px; text-align:center; }
 .entry-btn.danger { color:#ea4335; border-color:#ea4335; }
 
 .summary-card { background:linear-gradient(135deg,#1a73e8,#0d47a1); border-radius:14px; padding:16px; margin-bottom:16px; color:#fff; }
@@ -451,7 +451,7 @@ function renderEntries() {
         const amtClass = isIncome ? 'income' : 'expense';
         const amtSign = isIncome ? '+' : '-';
         return `<div class="entry-card">
-            <div class="entry-card-header">
+            <div class="entry-card-header" style="min-width:0;">
                 <span class="entry-date">${e.entry_date}</span>
                 <span class="entry-amount ${amtClass}">${amtSign}¥${e.amount.toLocaleString()}</span>
             </div>
