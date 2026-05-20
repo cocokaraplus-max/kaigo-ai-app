@@ -663,7 +663,7 @@
                 <span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">mic</span>
                 <span id="bulk-temp-lbl">全員の体温をまとめて入力</span>
             </button>
-            <button type="button" id="bulk-stop-btn" onclick="stopBulkTempVoice()" style="display:none;align-items:center;gap:4px;background:#e53935;color:#fff;border:none;border-radius:20px;padding:6px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;">
+            <button type="button" onclick="stopBulkTempVoice()" style="display:flex;align-items:center;gap:4px;background:#e53935;color:#fff;border:none;border-radius:20px;padding:6px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;">
                 <span class="material-symbols-outlined" style="font-size:16px;pointer-events:none;">stop</span>
                 停止
             </button>
@@ -3673,8 +3673,6 @@ window.toggleMemoVoice = async function(pid) {
     const btn = document.getElementById('memo-voice-btn-' + pid);
     const lbl = document.getElementById('memo-voice-lbl-' + pid);
     if (btn) btn.classList.add('recording');
-    const stopBtn = document.getElementById('bulk-stop-btn');
-    if (stopBtn) stopBtn.style.display = 'flex';
     let rem = 20;
     const upd = () => { if (lbl) lbl.textContent = `${rem}s`; };
     upd();
@@ -3733,8 +3731,10 @@ window.toggleBulkTempVoice = async function() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('マイク入力に対応していません。'); return;
     }
+    alert("[DEBUG] getUserMedia 呼び出し前");
     try { bulkTempStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch (e) { alert('マイクへのアクセスが許可されていません。 err=' + e.message); return; }
+    alert("[DEBUG] getUserMedia 成功！");
     bulkTempChunks = [];
     const mime = pickVoiceMime();
     alert("[DEBUG] mime=" + mime);
@@ -3742,14 +3742,13 @@ window.toggleBulkTempVoice = async function() {
         bulkTempRecorder = mime ? new MediaRecorder(bulkTempStream, { mimeType: mime }) : new MediaRecorder(bulkTempStream);
     } catch(e) { alert('録音開始失敗: ' + e.message); cleanupBulkTempStream(); return; }
     alert("[DEBUG] MediaRecorder 生成成功！ state=" + bulkTempRecorder.state);
-    bulkTempRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
+    bulkTempRecorder.ondataavailable = (ev) => { alert("[DEBUG] ondataavailable: size=" + (ev.data ? ev.data.size : 0)); if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
     bulkTempRecorder.onstop = async () => {
+        alert("[DEBUG] onstop 発火！ chunks=" + bulkTempChunks.length + " blobSizeは後で計算");
         const btn = document.getElementById('bulk-temp-btn');
         const lbl = document.getElementById('bulk-temp-lbl');
         if (btn) btn.classList.remove('recording');
         if (lbl) lbl.textContent = '全員の体温をまとめて入力';
-        const stopBtnOff = document.getElementById('bulk-stop-btn');
-        if (stopBtnOff) stopBtnOff.style.display = 'none';
         if (bulkTempCountdown) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; }
         if (bulkTempTimeout) { clearTimeout(bulkTempTimeout); bulkTempTimeout = null; }
         cleanupBulkTempStream();
@@ -3759,6 +3758,7 @@ window.toggleBulkTempVoice = async function() {
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
+    alert("[DEBUG] 録音開始！ recorder.state=" + bulkTempRecorder.state);
     const btn = document.getElementById('bulk-temp-btn');
     const lbl = document.getElementById('bulk-temp-lbl');
     if (btn) btn.classList.add('recording');
@@ -3772,6 +3772,7 @@ window.toggleBulkTempVoice = async function() {
     if (aiInd) aiInd.style.display = 'flex';
 };
 function stopBulkTempVoice() {
+    alert("[DEBUG] stopBulkTempVoice 呼び出し: recorder.state=" + (bulkTempRecorder ? bulkTempRecorder.state : "null"));
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
 }
 function cleanupBulkTempStream() {
