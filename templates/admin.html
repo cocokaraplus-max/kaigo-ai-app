@@ -651,7 +651,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
             <input type="text" id="pef-name-{{ p.id }}" class="form-control" value="{{ p.user_name }}">
           </div>
           <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">カナ</label>
+            <label class="form-label" style="font-size:0.75rem;">ふりがな（ひらがな）</label>
             <input type="text" id="pef-kana-{{ p.id }}" class="form-control" value="{{ p.user_name_kana or '' }}">
           </div>
           <div class="form-group" style="margin-bottom:8px;">
@@ -1414,7 +1414,7 @@ function parseMamorukunCsv(text) {
   const area = document.getElementById('csv-preview-area');
   document.getElementById('csv-preview-title').textContent = `${_csvRecords.length}件を読み込みました（内容を確認してから取込してください）`;
   const tbl = `<table class="csv-preview-table">
-    <thead><tr><th>利用者番号</th><th>氏名</th><th>カナ</th><th>介護度</th><th>生年月日</th></tr></thead>
+    <thead><tr><th>利用者番号</th><th>氏名</th><th>ふりがな</th><th>介護度</th><th>生年月日</th></tr></thead>
     <tbody>${_csvRecords.slice(0,10).map(r => `
       <tr>
         <td>${r.patient_number||''}</td>
