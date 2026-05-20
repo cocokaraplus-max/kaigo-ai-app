@@ -3763,7 +3763,6 @@ let bulkTempCountdown = null;
 let bulkTempTimeout = null;
 
 window.toggleBulkTempVoice = async function() {
-    alert("[DEBUG] toggleBulkTempVoice 開始: recorder=" + (bulkTempRecorder ? bulkTempRecorder.state : "null"));
     if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
         stopBulkTempVoice(); return;
     }
@@ -3774,11 +3773,9 @@ window.toggleBulkTempVoice = async function() {
     catch (e) { alert('マイクへのアクセスが許可されていません。 err=' + e.message); return; }
     bulkTempChunks = [];
     const mime = pickVoiceMime();
-    alert("[DEBUG] mime=" + mime);
     try {
         bulkTempRecorder = mime ? new MediaRecorder(bulkTempStream, { mimeType: mime }) : new MediaRecorder(bulkTempStream);
     } catch(e) { alert('録音開始失敗: ' + e.message); cleanupBulkTempStream(); return; }
-    alert("[DEBUG] MediaRecorder 生成成功！ state=" + bulkTempRecorder.state);
     bulkTempRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
     bulkTempRecorder.onstop = async () => {
         const btn = document.getElementById('bulk-temp-btn');
@@ -3818,7 +3815,6 @@ window.cleanupBulkTempStream = function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
 }
 window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
-    alert("[DEBUG] sendBulkTempVoice 呼び出し: blob.size=" + blob.size + " ext=" + ext);
     // 現在表示中の利用者リストを収集
     const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name }));
     const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
