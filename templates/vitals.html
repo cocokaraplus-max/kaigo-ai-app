@@ -1477,7 +1477,7 @@ function buildVitalForm(p, v, dateStr) {
             <div class="vital-field">
                 <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
                 <div style="position:relative;">
-                    <input type="text" id="v-note-${p.id}" value="${v.note||}" placeholder="特記事項" style="padding-right:36px;width:100%;box-sizing:border-box;">
+                    <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項" style="padding-right:36px;width:100%;box-sizing:border-box;">
                     <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#34a853;color:#fff;border:none;border-radius:8px;width:28px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
                         <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:14px;">mic</span>
                     </button>
