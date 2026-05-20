@@ -71,6 +71,10 @@
 <div class="ledger-tabs">
     <button class="ledger-tab active" onclick="switchTab('journal')" id="tab-journal">仕訳帳</button>
     <button class="ledger-tab" onclick="switchTab('trial')" id="tab-trial">試算表</button>
+    <button class="ledger-tab" onclick="switchTab('cash')" id="tab-cash">現金出納帳</button>
+    <button class="ledger-tab" onclick="switchTab('bank')" id="tab-bank">預金出納帳</button>
+    <button class="ledger-tab" onclick="switchTab('card')" id="tab-card">経費クレカ帳</button>
+    <button class="ledger-tab" onclick="switchTab('sales')" id="tab-sales">売上台帳</button>
     <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
     <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
@@ -327,6 +331,54 @@
     </div>
 </div>
 
+
+<!-- ===== 現金出納帳 ===== -->
+<div id="pane-cash" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">現金出納帳</div>
+    <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('cash')">◎ Excel</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('cash')">◎ PDF印刷</button>
+    </div>
+  </div>
+  <div id="sub-ledger-cash"></div>
+</div>
+
+<!-- ===== 預金出納帳 ===== -->
+<div id="pane-bank" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">預金出納帳</div>
+    <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('bank')">◎ Excel</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('bank')">◎ PDF印刷</button>
+    </div>
+  </div>
+  <div id="sub-ledger-bank"></div>
+</div>
+
+<!-- ===== 経費クレカ帳 ===== -->
+<div id="pane-card" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">経費クレカ帳（未払金）</div>
+    <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('card')">◎ Excel</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('card')">◎ PDF印刷</button>
+    </div>
+  </div>
+  <div id="sub-ledger-card"></div>
+</div>
+
+<!-- ===== 売上台帳 ===== -->
+<div id="pane-sales" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">売上台帳</div>
+    <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('sales')">◎ Excel</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('sales')">◎ PDF印刷</button>
+    </div>
+  </div>
+  <div id="sub-ledger-sales"></div>
+</div>
 <script>
 const ACCOUNTS = {{ accounts | tojson }};
 let currentMonth = '';
@@ -358,15 +410,21 @@ function changeMonth(delta) {
 }
 
 function switchTab(tab) {
-    ['journal','trial','import','receipt','accounts','settings'].forEach(t => {
-        document.getElementById('pane-'+t).style.display = t===tab ? '' : 'none';
-        document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    ['仕訳帳','trial','cash','bank','card','sales','import','receipt','accounts','settings'].map(t => t==='仕訳帳' ? 'journal' : t).concat(['journal']).filter((v,i,a)=>a.indexOf(v)===i);
+    ['journal','trial','cash','bank','card','sales','import','receipt','accounts','settings'].forEach(t => {
+        const pane = document.getElementById('pane-'+t);
+        const tabEl = document.getElementById('tab-'+t);
+        if (pane) pane.style.display = t===tab ? '' : 'none';
+        if (tabEl) tabEl.classList.toggle('active', t===tab);
     });
     document.getElementById('fab-add').style.display = tab==='journal' ? 'flex' : 'none';
     if (tab === 'accounts') loadAccounts();
     if (tab === 'settings') loadSettings();
-    if (tab === 'settings') loadSettings();
     if (tab === 'trial') loadTrialBalance();
+    if (tab === 'cash') loadSubLedger('cash');
+    if (tab === 'bank') loadSubLedger('bank');
+    if (tab === 'card') loadSubLedger('card');
+    if (tab === 'sales') loadSubLedger('sales');
 }
 
 async function loadEntries() {
@@ -908,6 +966,165 @@ async function saveDivision() {
     }
 }
 
+
+
+// ===== 追加帳簿（現金出納帳・預金出納帳・経費クレカ帳・売上台帳）=====
+
+// 帳簿種別設定
+const SUB_LEDGER_CONFIG = {
+  cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', initBalance: 0 },
+  bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', initBalance: 0 },
+  card:  { label: '経費クレカ帳（未払金）', accountName: '未払金', matchFn: (e) => e.debit?.name==='未払金' || e.credit?.name==='未払金', balanceLabel: '未払残高', initBalance: 0 },
+  sales: { label: '売上台帳',           accountName: '売上',  matchFn: (e) => e.credit?.category==='収益', balanceLabel: '売上累計', initBalance: 0 },
+};
+
+let _subLedgerCache = {};
+
+async function loadSubLedger(type) {
+  const cfg = SUB_LEDGER_CONFIG[type];
+  if (!cfg) return;
+  const el = document.getElementById('sub-ledger-' + type);
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
+  try {
+    const res = await fetch('/api/ledger/entries?month=' + currentMonth);
+    const data = await res.json();
+    if (data.status !== 'success') { el.innerHTML = '<div style="color:red">読み込み失敗</div>'; return; }
+    const entries = (data.entries || []).filter(cfg.matchFn);
+    _subLedgerCache[type] = entries;
+    renderSubLedger(type, entries, cfg, el);
+  } catch(e) {
+    el.innerHTML = '<div style="color:red">エラー: ' + e.message + '</div>';
+  }
+}
+
+function renderSubLedger(type, entries, cfg, el) {
+  if (!entries.length) {
+    el.innerHTML = '<div style="text-align:center;color:#80868b;padding:30px;">この月のデータはありません</div>';
+    return;
+  }
+  const fmt = (n) => '¥' + Number(n).toLocaleString();
+  let balance = cfg.initBalance;
+  let totalIn = 0, totalOut = 0;
+  const acctName = cfg.accountName;
+
+  let rows = '';
+  entries.forEach(e => {
+    const isDebit = e.debit?.name === acctName || (type==='sales' && e.credit?.category==='収益');
+    let inAmt = 0, outAmt = 0;
+    if (type === 'sales') {
+      inAmt = e.amount;
+    } else if (e.debit?.name === acctName) {
+      inAmt = e.amount;
+    } else {
+      outAmt = e.amount;
+    }
+    balance += inAmt - outAmt;
+    totalIn += inAmt;
+    totalOut += outAmt;
+    const opposite = type==='sales'
+      ? (e.debit?.name || '')
+      : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
+    rows += `<tr>
+      <td>${e.entry_date}</td>
+      <td style="font-size:0.78rem;color:#5f6368;">${opposite}</td>
+      <td style="max-width:120px;font-size:0.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.description||''}</td>
+      <td style="text-align:right;color:#1a73e8;">${inAmt ? fmt(inAmt) : ''}</td>
+      <td style="text-align:right;color:#e53935;">${outAmt ? fmt(outAmt) : ''}</td>
+      <td style="text-align:right;font-weight:700;">${fmt(balance)}</td>
+    </tr>`;
+  });
+
+  el.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+      <thead>
+        <tr style="background:#e8f0fe;">
+          <th style="padding:6px 8px;text-align:left;white-space:nowrap;">日付</th>
+          <th style="padding:6px 8px;text-align:left;">相手科目</th>
+          <th style="padding:6px 8px;text-align:left;">摘要</th>
+          <th style="padding:6px 8px;text-align:right;">${type==='sales'?'売上顕':'入金'}</th>
+          <th style="padding:6px 8px;text-align:right;">${type==='sales'?'':'出金'}</th>
+          <th style="padding:6px 8px;text-align:right;">${cfg.balanceLabel}</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr style="background:#f8f9fa;font-weight:700;">
+          <td colspan="3" style="padding:6px 8px;">合計</td>
+          <td style="padding:6px 8px;text-align:right;color:#1a73e8;">${fmt(totalIn)}</td>
+          <td style="padding:6px 8px;text-align:right;color:#e53935;">${type==='sales'?'':fmt(totalOut)}</td>
+          <td style="padding:6px 8px;text-align:right;">${fmt(balance)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+  `;
+}
+
+function printSubLedger(type) {
+  const cfg = SUB_LEDGER_CONFIG[type];
+  const el = document.getElementById('sub-ledger-' + type);
+  if (!el) return;
+  const w = window.open('', '_blank', 'width=800,height=600');
+  w.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <title>${cfg.label} ${currentMonth}</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; margin: 15mm; }
+      h2 { font-size: 14pt; margin-bottom: 4px; }
+      p { font-size: 10pt; color: #555; margin-top: 0; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #e8f0fe; padding: 5px 8px; text-align: left; font-size: 10pt; }
+      td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 10pt; }
+      tfoot td { font-weight: bold; background: #f8f9fa; }
+      @media print { @page { size: A4; margin: 15mm; } }
+    </style>
+  </head><body>
+    <h2>${cfg.label}</h2>
+    <p>対象月: ${currentMonth}</p>
+    ${el.innerHTML}
+    <script>window.onload=()=>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+async function exportSubLedgerExcel(type) {
+  const cfg = SUB_LEDGER_CONFIG[type];
+  const entries = _subLedgerCache[type];
+  if (!entries || !entries.length) {
+    alert('データがありません。先に帳簿タブを開いてください。');
+    return;
+  }
+  // SheetJS を動的読み込み
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const acctName = cfg.accountName;
+  let balance = 0;
+  const header = ['日付', '相手科目', '摘要', type==='sales'?'売上顕':'入金', type==='sales'?'':'出金', cfg.balanceLabel];
+  const rows = entries.map(e => {
+    let inAmt = 0, outAmt = 0;
+    if (type === 'sales') { inAmt = e.amount; }
+    else if (e.debit?.name === acctName) { inAmt = e.amount; }
+    else { outAmt = e.amount; }
+    balance += inAmt - outAmt;
+    const opposite = type==='sales'
+      ? (e.debit?.name || '')
+      : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
+    return [e.entry_date, opposite, e.description||'', inAmt||'', type==='sales'?'':outAmt||'', balance];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:12},{wch:14},{wch:28},{wch:12},{wch:12},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, cfg.label);
+  XLSX.writeFile(wb, `${cfg.label}_${currentMonth}.xlsx`);
+}
 
 </script>
 {% endblock %}
