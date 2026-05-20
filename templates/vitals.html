@@ -3724,19 +3724,24 @@ let bulkTempCountdown = null;
 let bulkTempTimeout = null;
 
 window.toggleBulkTempVoice = async function() {
+    alert("[DEBUG] toggleBulkTempVoice 開始: recorder=" + (bulkTempRecorder ? bulkTempRecorder.state : "null"));
     if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
         stopBulkTempVoice(); return;
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('マイク入力に対応していません。'); return;
     }
+    alert("[DEBUG] getUserMedia 呼び出し前");
     try { bulkTempStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch (e) { alert('マイクへのアクセスが許可されていません。'); return; }
+    catch (e) { alert('マイクへのアクセスが許可されていません。 err=' + e.message); return; }
+    alert("[DEBUG] getUserMedia 成功！");
     bulkTempChunks = [];
     const mime = pickVoiceMime();
+    alert("[DEBUG] mime=" + mime);
     try {
         bulkTempRecorder = mime ? new MediaRecorder(bulkTempStream, { mimeType: mime }) : new MediaRecorder(bulkTempStream);
     } catch(e) { alert('録音開始失敗: ' + e.message); cleanupBulkTempStream(); return; }
+    alert("[DEBUG] MediaRecorder 生成成功！ state=" + bulkTempRecorder.state);
     bulkTempRecorder.ondataavailable = (ev) => { alert("[DEBUG] ondataavailable: size=" + (ev.data ? ev.data.size : 0)); if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
     bulkTempRecorder.onstop = async () => {
         alert("[DEBUG] onstop 発火！ chunks=" + bulkTempChunks.length + " blobSizeは後で計算");
