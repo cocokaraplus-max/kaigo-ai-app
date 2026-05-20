@@ -2878,6 +2878,35 @@ def api_save_calendar_event():
                             print(f"[カレンダー同期] record " + str(rec["id"]) + " を更新: " + str(list(update_payload.keys())), flush=True)
                 except Exception as _upd_err:
                     print(f"[calendar sync update] failed: {_upd_err}", flush=True)
+            # 休み連絡イベントの場合、memoも新しい日付で再生成
+            try:
+                ev_check = supabase.table("calendar_events").select("title").eq("id", event_id).execute()
+                if ev_check.data:
+                    title = ev_check.data[0].get("title", "")
+                    if "お休み" in title and new_event_date:
+                        # 対応するrecordのleave_reporter_typeを取得
+                        rec_for_memo = supabase.table("records").select("leave_reporter_type").eq("facility_code", f_code).eq("calendar_event_id", event_id).limit(1).execute()
+                        if rec_for_memo.data:
+                            _type_m = rec_for_memo.data[0].get("leave_reporter_type") or ""
+                            _reporter_map_m = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                            _reporter_m = _reporter_map_m.get(_type_m, "")
+                            from datetime import datetime as _dtm
+                            _ls_m = _dtm.strptime(new_event_date, "%Y-%m-%d")
+                            _ls_m_str = f"{_ls_m.month}月{_ls_m.day}日"
+                            _end_m = payload.get("end_date") or new_event_date
+                            if _end_m != new_event_date:
+                                _le_m = _dtm.strptime(_end_m, "%Y-%m-%d")
+                                _period_m = f"{_ls_m_str}〜{_le_m.month}月{_le_m.day}日"
+                            else:
+                                _period_m = _ls_m_str
+                            if _reporter_m:
+                                new_memo = f"{_period_m}はお休みと{_reporter_m}から連絡がありました。"
+                            else:
+                                new_memo = f"{_period_m}はお休みと連絡がありました。"
+                            supabase.table("calendar_events").update({"memo": new_memo}).eq("id", event_id).execute()
+                            print(f"[カレンダー同期] event {event_id} のmemoを更新: {new_memo}", flush=True)
+            except Exception as _memo_err:
+                print(f"[カレンダー同期 memo更新エラー] {_memo_err}", flush=True)
             return jsonify({"status": "success", "id": event_id})
         else:
             res = supabase.table("calendar_events").insert(payload).execute()
