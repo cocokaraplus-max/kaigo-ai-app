@@ -674,7 +674,7 @@
         <button type="button" id="bulk-temp-btn" onclick="toggleBulkTempVoice()"
             style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:#ff6f00;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:.01em;">
             <span class="material-symbols-outlined" style="font-size:20px;pointer-events:none;">mic</span>
-            <span id="bulk-temp-lbl">全員の体温を1回目としてまとめて入力</span>
+            <span id="bulk-temp-lbl">1回目 体温一括入力</span>
         </button>
         <!-- 録音中バー（初期非表示） -->
         <button type="button" id="bulk-stop-btn" onclick="stopBulkTempVoice()"
@@ -3767,7 +3767,7 @@ window.toggleBulkTempVoice = async function() {
         stopBulkTempVoice(); return;
     }
     const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
-    if (!confirm(`全員の体温を${order}回目のデータとして保存します。よろしいですか？`)) return;
+    if (!confirm(`体温を${order}回目のデータとして保存します。よろしいですか？`)) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('マイク入力に対応していません。'); return;
     }
@@ -3870,6 +3870,122 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
         bulkTempChunks = [];
     }
 }
+
+
+// ========== メモパッド ==========
+let _memoMode = 'keyboard';
+let _memoDrawing = false;
+let _memoEraser = false;
+let _memoHasContent = false;
+
+window.toggleMemoPad = function() {
+    const area = document.getElementById('memo-pad-area');
+    if (!area) return;
+    const isOpen = area.style.display !== 'none';
+    if (isOpen) {
+        closeMemoPad();
+    } else {
+        area.style.display = 'block';
+        initMemoCanvas();
+    }
+};
+
+window.closeMemoPad = function() {
+    const area = document.getElementById('memo-pad-area');
+    if (area) area.style.display = 'none';
+};
+
+window.setMemoMode = function(mode) {
+    _memoMode = mode;
+    const kb = document.getElementById('memo-keyboard-area');
+    const dr = document.getElementById('memo-draw-area');
+    const btnKb = document.getElementById('memo-mode-keyboard');
+    const btnDr = document.getElementById('memo-mode-draw');
+    if (mode === 'keyboard') {
+        if (kb) kb.style.display = 'block';
+        if (dr) dr.style.display = 'none';
+        if (btnKb) { btnKb.style.background='#1a73e8'; btnKb.style.color='#fff'; btnKb.style.borderColor='#1a73e8'; }
+        if (btnDr) { btnDr.style.background='#fff'; btnDr.style.color='#5f6368'; btnDr.style.borderColor='#e0e0e0'; }
+    } else {
+        if (kb) kb.style.display = 'none';
+        if (dr) dr.style.display = 'block';
+        if (btnDr) { btnDr.style.background='#1a73e8'; btnDr.style.color='#fff'; btnDr.style.borderColor='#1a73e8'; }
+        if (btnKb) { btnKb.style.background='#fff'; btnKb.style.color='#5f6368'; btnKb.style.borderColor='#e0e0e0'; }
+        initMemoCanvas();
+    }
+};
+
+window.clearMemoText = function() {
+    const t = document.getElementById('memo-pad-text');
+    if (t) t.value = '';
+    _memoHasContent = false;
+};
+
+window.clearMemoCanvas = function() {
+    const c = document.getElementById('memo-canvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    _memoHasContent = false;
+};
+
+window.toggleEraser = function() {
+    _memoEraser = !_memoEraser;
+    const btn = document.getElementById('memo-eraser-btn');
+    if (btn) {
+        btn.style.background = _memoEraser ? '#e0e0e0' : '#fff';
+        btn.style.fontWeight = _memoEraser ? '700' : '400';
+    }
+};
+
+function initMemoCanvas() {
+    const c = document.getElementById('memo-canvas');
+    if (!c || c._memoInited) return;
+    c._memoInited = true;
+    const rect = c.getBoundingClientRect();
+    c.width = c.offsetWidth || 300;
+    c.height = 160;
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = '#202124';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+
+    function getPos(e) {
+        const r = c.getBoundingClientRect();
+        const touch = e.touches ? e.touches[0] : e;
+        return { x: (touch.clientX - r.left) * (c.width / r.width), y: (touch.clientY - r.top) * (c.height / r.height) };
+    }
+    function start(e) { e.preventDefault(); _memoDrawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); _memoHasContent = true; }
+    function move(e) { e.preventDefault(); if (!_memoDrawing) return; const p = getPos(e); if (_memoEraser) { ctx.clearRect(p.x-10, p.y-10, 20, 20); } else { ctx.lineTo(p.x, p.y); ctx.stroke(); } }
+    function end(e) { _memoDrawing = false; }
+
+    c.addEventListener('mousedown', start);
+    c.addEventListener('mousemove', move);
+    c.addEventListener('mouseup', end);
+    c.addEventListener('touchstart', start, {passive:false});
+    c.addEventListener('touchmove', move, {passive:false});
+    c.addEventListener('touchend', end);
+}
+
+// ページ移動時の確認
+(function() {
+    const origSpaNav = window.spaNav;
+    window.spaNav = function(e, url) {
+        const area = document.getElementById('memo-pad-area');
+        const txt = document.getElementById('memo-pad-text');
+        const hasText = txt && txt.value.trim().length > 0;
+        const hasCanvas = _memoHasContent && _memoMode === 'draw';
+        if (area && area.style.display !== 'none' && (hasText || hasCanvas)) {
+            if (!confirm('メモをクリアしてページを移動しますか？')) {
+                if (e) e.preventDefault();
+                return;
+            }
+            clearMemoText();
+            clearMemoCanvas();
+        }
+        if (origSpaNav) origSpaNav(e, url);
+    };
+})();
 
 </script>
 {% endblock %}
