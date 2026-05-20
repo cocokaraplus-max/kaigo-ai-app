@@ -7946,3 +7946,83 @@ def api_monitoring_report_data():
         return jsonify(result)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/vital_bulk_temp', methods=['POST'])
+@login_required
+def api_vital_bulk_temp():
+    """体温一括入力: 音声をAIで解析し、全員分の体温を名前で振り分けて返す"""
+    try:
+        from utils import get_generative_model
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        audio = request.files.get('audio')
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or '').lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+        ext_mime = {
+            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+            '.wav': 'audio/wav',  '.aac': 'audio/aac',
+            '.ogg': 'audio/ogg',  '.webm': 'audio/webm',
+            '.mp4': 'audio/mp4',
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/webm')
+        # 利用者名リストをリクエストから取得
+        import json as _json
+        patients_json = request.form.get('patients', '[]')
+        patients = _json.loads(patients_json)
+        patient_names = [p['user_name'] for p in patients if p.get('user_name')]
+        names_str = '、'.join(patient_names)
+        prompt = f"""これは介護施設のスタッフが利用者全員の体温をまとめて報告している音声です。
+登録利用者名一覧: {names_str}
+
+音声から各利用者の体温を抱出してください。
+ルール:
+- 利用者名は登録名とできる限り一致させる（下の名、呼び捨て、姓のみでも可）
+- 体温は小数点1桁（例:36.5）
+- 言及のない利用者はtemperatureをnullにする
+- 数字の言い間違い（例:「サンジュ〄6分」=36.6など）も正しく整数化
+
+JSON形式のみで返してください（説明文・コードブロック禁止）:
+{{
+  "transcript": "発話の全文書き起こし",
+  "results": [
+    {{"user_name": "利用者名", "temperature": 小数 or null}},
+    ...
+  ]
+}}"""
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        import re as _re
+        m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "音声を認識できませんでした。もう一度お試しください。"})
+        result = _json.loads(m.group())
+        # patient_idと照合
+        ai_results = result.get('results', [])
+        matched = []
+        for p in patients:
+            pname = p.get('user_name', '')
+            temp = None
+            for r in ai_results:
+                rname = r.get('user_name', '')
+                # 完全一致 or 姓のみ or 名のみで一致
+                if rname and (rname in pname or pname in rname or
+                    (len(rname) >= 2 and rname in pname)):
+                    temp = r.get('temperature')
+                    break
+            matched.append({
+                'patient_id': p.get('patient_id') or p.get('id'),
+                'user_name': pname,
+                'temperature': temp,
+            })
+        return jsonify({
+            "status": "success",
+            "transcript": result.get('transcript', ''),
+            "results": matched
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

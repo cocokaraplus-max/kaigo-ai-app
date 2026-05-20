@@ -626,6 +626,24 @@
         <div class="wd-tab sat" data-day="6" onclick="selectWeekday(6)">土</div>
     </div>
 
+    <!-- 体温一括入力 -->
+    <div id="bulk-temp-bar" style="background:#fff8e1;border:1.5px solid #ffca28;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="material-symbols-outlined" style="color:#f57c00;font-size:20px;">thermometer</span>
+            <span style="font-size:0.85rem;font-weight:700;color:#e65100;">体温一括入力</span>
+            <select id="bulk-temp-order" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;">
+                <option value="1">1回目</option>
+                <option value="2">2回目</option>
+                <option value="3">3回目</option>
+            </select>
+            <button id="bulk-temp-btn" class="voice-btn" onclick="toggleBulkTempVoice()" style="background:#ff6f00;color:#fff;border:none;">
+                <span class="material-symbols-outlined">mic</span>
+                <span id="bulk-temp-lbl">全員の体温をまとめて入力</span>
+            </button>
+        </div>
+        <div id="bulk-temp-result" style="margin-top:6px;display:none;"></div>
+    </div>
+
     <!-- AM/PMタブ -->
     <div style="display:flex;gap:6px;margin-bottom:10px;">
         <button id="ampm-tab-all" onclick="selectAmpm('ALL')"
@@ -1077,6 +1095,26 @@ const VISIT_DAYS  = {{ visit_days | tojson }};
 const AMPM_DATA   = {{ ampm_data | tojson }};
 const AMPM_PER_DAY = {{ ampm_per_day | tojson }};
 const VITALS_DATA = {{ vitals_data | tojson }};
+// 全件キャッシュ(patient_id → [配列]) — 何回目表示用
+const VITALS_ALL_DATA = {};
+// 初期ロード時に全件をVITALS_ALL_DATAに格納
+(function(){
+  const all = {{ vitals_data | tojson }};
+  if (Array.isArray(all)) {
+    all.forEach(v => {
+      const pid = String(v.patient_id);
+      if (!VITALS_ALL_DATA[pid]) VITALS_ALL_DATA[pid] = [];
+      VITALS_ALL_DATA[pid].push(v);
+    });
+  } else {
+    Object.values(all).forEach(v => {
+      if (!v || !v.patient_id) return;
+      const pid = String(v.patient_id);
+      if (!VITALS_ALL_DATA[pid]) VITALS_ALL_DATA[pid] = [];
+      VITALS_ALL_DATA[pid].push(v);
+    });
+  }
+})();
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
 let EXCLUDES_TODAY = ({{ excludes_today | tojson }} || []).map(String);
@@ -1233,8 +1271,12 @@ async function reloadVitalsForDate(dateStr) {
         const vData = await vRes.json();
         // 既存のVITALS_DATAをクリアして再構築
         Object.keys(VITALS_DATA).forEach(k => delete VITALS_DATA[k]);
+        Object.keys(VITALS_ALL_DATA).forEach(k => delete VITALS_ALL_DATA[k]);
         (vData.vitals || []).forEach(v => {
-            VITALS_DATA[String(v.patient_id)] = v;
+            const pid = String(v.patient_id);
+            VITALS_DATA[pid] = v; // 最新の1件は上書きされる
+            if (!VITALS_ALL_DATA[pid]) VITALS_ALL_DATA[pid] = [];
+            VITALS_ALL_DATA[pid].push(v);
         });
         // 除外データ取得
         const eRes = await fetch('/api/vital_excludes?date=' + encodeURIComponent(dateStr));
@@ -1368,6 +1410,7 @@ function renderPatientList() {
 
     // スワイプ削除の初期化
     targets.forEach(p => initSwipeDelete(p.id, p.id, p.user_name));
+    window._currentPatients = targets.map(p => ({ id: String(p.id), user_name: p.user_name }));
 }
 
 function buildVitalForm(p, v, dateStr) {
@@ -1382,7 +1425,38 @@ function buildVitalForm(p, v, dateStr) {
                 placeholder="--">
         </div>`;
     }
+    // 入力済みサマリ構築(何回目まで記録されているか)
+    const allRecs = (VITALS_ALL_DATA[String(p.id)] || []);
+    const recCount = allRecs.length;
+    const nextOrder = recCount + 1;
+    let summaryHtml = '';
+    if (recCount > 0) {
+        const parts = allRecs.map((r, i) => {
+            const items = [];
+            if (r.bp_high != null && r.bp_low != null) items.push(`BP${r.bp_high}/${r.bp_low}`);
+            else if (r.bp_high != null) items.push(`BP上${r.bp_high}`);
+            if (r.pulse != null) items.push(`P${r.pulse}`);
+            if (r.temperature != null) items.push(`T${r.temperature}`);
+            if (r.spo2 != null) items.push(`O2${r.spo2}%`);
+            return `<span style="margin-right:6px;">${i+1}回目:${items.join(' ')}</span>`;
+        }).join('');
+        summaryHtml = `<div style="font-size:0.7rem;color:#1a73e8;margin-bottom:6px;padding:4px 6px;background:#e8f0fe;border-radius:6px;line-height:1.6;">入力済: ${parts}</div>`;
+    }
+    // 何回目セレクト
+    const orderOptions = Array.from({length: nextOrder}, (_, i) => {
+        const n = i + 1;
+        return `<option value="${n}" ${n === nextOrder ? 'selected' : ''}>${n}回目</option>`;
+    }).join('');
+    const orderSelect = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+        <label style="font-size:0.78rem;color:#5f6368;white-space:nowrap;">保存先:</label>
+        <select id="v-order-${p.id}" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #e0e0e0;background:#fff;">
+            ${orderOptions}
+        </select>
+        <span style="font-size:0.72rem;color:#80868b;">のデータとして保存</span>
+    </div>`;
     return `
+        ${summaryHtml}
+        ${orderSelect}
         <div class="vital-action-row">
             <button class="camera-btn" onclick="openCamera('${p.id}')">
                 <span class="material-symbols-outlined">photo_camera</span>
@@ -1402,7 +1476,13 @@ function buildVitalForm(p, v, dateStr) {
         <div class="vital-grid" style="grid-template-columns:1fr 1fr;">
             ${field('spo2','SpO2','%', v.spo2)}
             <div class="vital-field">
-                <label>メモ</label>
+                <label style="display:flex;align-items:center;justify-content:space-between;">
+                    メモ
+                    <button class="voice-btn" id="memo-voice-btn-${p.id}" onclick="toggleMemoVoice('${p.id}')" style="padding:2px 6px;font-size:0.7rem;min-width:unset;height:24px;border-radius:12px;">
+                        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">mic</span>
+                        <span id="memo-voice-lbl-${p.id}">音声</span>
+                    </button>
+                </label>
                 <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項">
             </div>
         </div>
@@ -1826,16 +1906,7 @@ async function sendVoiceToAI(blob, ext) {
             setIf('temperature');
             setIf('spo2');
 
-            // メモ欄：数値以外の発話があれば追記（既存メモを上書きしない）
-            if (data.memo && typeof data.memo === 'string' && data.memo.trim() !== '') {
-                const noteEl = document.getElementById(`v-note-${pid}`);
-                if (noteEl) {
-                    const cur = (noteEl.value || '').trim();
-                    noteEl.value = cur ? `${cur} / ${data.memo.trim()}` : data.memo.trim();
-                    // change イベントを発火して保存処理を走らせる
-                    try { noteEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
-                }
-            }
+            // メモ欄はメモ専用マイクボタンからのみ入力（通常音声では入れない）
 
             // アラートがあれば再検査チェックを自動ON（カメラと同じ）
             const vals = { bp_high:data.bp_high, bp_low:data.bp_low, pulse:data.pulse, temperature:data.temperature, spo2:data.spo2 };
@@ -3555,5 +3626,186 @@ window.removeRecheckTime = function(btn) {
 };
 
 })();
+
+// ===== メモ専用音声入力 =====
+let memoVoiceRecorder = null;
+let memoVoiceStream = null;
+let memoVoiceChunks = [];
+let memoVoicePid = null;
+let memoVoiceCountdown = null;
+let memoVoiceTimeout = null;
+
+window.toggleMemoVoice = async function(pid) {
+    if (memoVoiceRecorder && memoVoiceRecorder.state === 'recording' && memoVoicePid === pid) {
+        stopMemoVoice(); return;
+    }
+    if (memoVoiceRecorder && memoVoiceRecorder.state === 'recording') return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('マイク入力に対応していません。'); return;
+    }
+    try { memoVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { alert('マイクへのアクセスが許可されていません。'); return; }
+    memoVoicePid = pid;
+    memoVoiceChunks = [];
+    const mime = pickVoiceMime();
+    try {
+        memoVoiceRecorder = mime ? new MediaRecorder(memoVoiceStream, { mimeType: mime }) : new MediaRecorder(memoVoiceStream);
+    } catch(e) { alert('録音開始失敗: ' + e.message); cleanupMemoVoiceStream(); return; }
+    memoVoiceRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) memoVoiceChunks.push(ev.data); };
+    memoVoiceRecorder.onstop = () => {
+        const lbl = document.getElementById('memo-voice-lbl-' + memoVoicePid);
+        const btn = document.getElementById('memo-voice-btn-' + memoVoicePid);
+        if (lbl) lbl.textContent = '音声';
+        if (btn) btn.classList.remove('recording');
+        if (memoVoiceCountdown) { clearInterval(memoVoiceCountdown); memoVoiceCountdown = null; }
+        if (memoVoiceTimeout) { clearTimeout(memoVoiceTimeout); memoVoiceTimeout = null; }
+        cleanupMemoVoiceStream();
+        const usedMime = memoVoiceRecorder.mimeType || mime || 'audio/webm';
+        const blob = new Blob(memoVoiceChunks, { type: usedMime });
+        if (blob.size === 0) { alert('録音が空でした。'); return; }
+        sendMemoVoice(blob, mimeToExt(usedMime));
+    };
+    memoVoiceRecorder.start();
+    const btn = document.getElementById('memo-voice-btn-' + pid);
+    const lbl = document.getElementById('memo-voice-lbl-' + pid);
+    if (btn) btn.classList.add('recording');
+    let rem = 20;
+    const upd = () => { if (lbl) lbl.textContent = `${rem}s`; };
+    upd();
+    memoVoiceCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(memoVoiceCountdown); memoVoiceCountdown = null; } }, 1000);
+    memoVoiceTimeout = setTimeout(() => stopMemoVoice(), 20000);
+};
+function stopMemoVoice() {
+    try { if (memoVoiceRecorder && memoVoiceRecorder.state !== 'inactive') memoVoiceRecorder.stop(); } catch(e) {}
+}
+function cleanupMemoVoiceStream() {
+    if (memoVoiceStream) { try { memoVoiceStream.getTracks().forEach(t => t.stop()); } catch(e) {} memoVoiceStream = null; }
+}
+async function sendMemoVoice(blob, ext) {
+    const pid = memoVoicePid;
+    const noteEl = document.getElementById('v-note-' + pid);
+    if (!noteEl) return;
+    const formData = new FormData();
+    formData.append('audio', blob, 'memo_voice.' + ext);
+    document.getElementById('ai-indicator').style.display = 'flex';
+    try {
+        const res = await fetch('/api/vital_voice_parse', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('ai-indicator').style.display = 'none';
+        if (data.status === 'success') {
+            // メモにはトランスクリプト全文を入れる
+            const text = (data.memo && data.memo.trim()) ? data.memo.trim() : (data.transcript || '').trim();
+            if (text) {
+                const cur = (noteEl.value || '').trim();
+                noteEl.value = cur ? `${cur} / ${text}` : text;
+            }
+        } else {
+            alert('音声認識失敗: ' + (data.message || ''));
+        }
+    } catch(e) {
+        document.getElementById('ai-indicator').style.display = 'none';
+        alert('通信エラーが発生しました');
+    } finally {
+        memoVoicePid = null;
+        memoVoiceRecorder = null;
+        memoVoiceChunks = [];
+    }
+}
+
+// ===== 体温一括入力 =====
+let bulkTempRecorder = null;
+let bulkTempStream = null;
+let bulkTempChunks = [];
+let bulkTempCountdown = null;
+let bulkTempTimeout = null;
+
+window.toggleBulkTempVoice = async function() {
+    if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
+        stopBulkTempVoice(); return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('マイク入力に対応していません。'); return;
+    }
+    try { bulkTempStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { alert('マイクへのアクセスが許可されていません。'); return; }
+    bulkTempChunks = [];
+    const mime = pickVoiceMime();
+    try {
+        bulkTempRecorder = mime ? new MediaRecorder(bulkTempStream, { mimeType: mime }) : new MediaRecorder(bulkTempStream);
+    } catch(e) { alert('録音開始失敗: ' + e.message); cleanupBulkTempStream(); return; }
+    bulkTempRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) bulkTempChunks.push(ev.data); };
+    bulkTempRecorder.onstop = async () => {
+        const btn = document.getElementById('bulk-temp-btn');
+        const lbl = document.getElementById('bulk-temp-lbl');
+        if (btn) btn.classList.remove('recording');
+        if (lbl) lbl.textContent = '全員の体温をまとめて入力';
+        if (bulkTempCountdown) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; }
+        if (bulkTempTimeout) { clearTimeout(bulkTempTimeout); bulkTempTimeout = null; }
+        cleanupBulkTempStream();
+        const usedMime = bulkTempRecorder.mimeType || mime || 'audio/webm';
+        const blob = new Blob(bulkTempChunks, { type: usedMime });
+        if (blob.size === 0) { alert('録音が空でした。'); return; }
+        await sendBulkTempVoice(blob, mimeToExt(usedMime));
+    };
+    bulkTempRecorder.start();
+    const btn = document.getElementById('bulk-temp-btn');
+    const lbl = document.getElementById('bulk-temp-lbl');
+    if (btn) btn.classList.add('recording');
+    let rem = 30;
+    const upd = () => { if (lbl) lbl.textContent = `録音中 ${rem}s（タップで終了）`; };
+    upd();
+    bulkTempCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; } }, 1000);
+    bulkTempTimeout = setTimeout(() => stopBulkTempVoice(), 30000);
+};
+function stopBulkTempVoice() {
+    try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
+}
+function cleanupBulkTempStream() {
+    if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
+}
+async function sendBulkTempVoice(blob, ext) {
+    // 現在表示中の利用者リストを収集
+    const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name }));
+    const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
+    const formData = new FormData();
+    formData.append('audio', blob, 'bulk_temp.' + ext);
+    formData.append('patients', JSON.stringify(patients));
+    const resultDiv = document.getElementById('bulk-temp-result');
+    if (resultDiv) { resultDiv.style.display = 'block'; resultDiv.innerHTML = '<span style="color:#80868b;font-size:0.8rem;">AI解析中...</span>'; }
+    document.getElementById('ai-indicator').style.display = 'flex';
+    try {
+        const res = await fetch('/api/vital_bulk_temp', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('ai-indicator').style.display = 'none';
+        if (data.status !== 'success') {
+            if (resultDiv) resultDiv.innerHTML = `<span style="color:red">失敗: ${data.message||''}</span>`;
+            return;
+        }
+        // 体温を各利用者のフィールドにセット
+        let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">トランスクリプト: ${data.transcript||''}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+        (data.results || []).forEach(r => {
+            const el = document.getElementById('v-temperature-' + r.patient_id);
+            if (el && r.temperature != null) {
+                el.value = r.temperature;
+                onVitalInput(String(r.patient_id), 'temperature', r.temperature);
+                // 何回目セレクトを同期
+                const orderEl = document.getElementById('v-order-' + r.patient_id);
+                if (orderEl) orderEl.value = order;
+                resultHtml += `<span style="font-size:0.78rem;background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:10px;">${r.user_name}: ${r.temperature}℃ ✓</span>`;
+            } else if (r.temperature == null) {
+                resultHtml += `<span style="font-size:0.78rem;background:#f1f3f4;color:#80868b;padding:2px 8px;border-radius:10px;">${r.user_name}: 未検出</span>`;
+            }
+        });
+        resultHtml += '</div>';
+        if (resultDiv) resultDiv.innerHTML = resultHtml;
+    } catch(e) {
+        document.getElementById('ai-indicator').style.display = 'none';
+        if (resultDiv) resultDiv.innerHTML = `<span style="color:red">通信エラー</span>`;
+    } finally {
+        bulkTempRecorder = null;
+        bulkTempChunks = [];
+    }
+}
+
 </script>
 {% endblock %}
