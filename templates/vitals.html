@@ -607,6 +607,57 @@
 
 <!-- ========== 記録タブ ========== -->
 <div class="tab-panel active" id="tab-record">
+    <!-- メモボタン -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+        <button type="button" id="memo-pad-toggle-btn" onclick="toggleMemoPad()"
+            style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;border:1.5px solid #e0e0e0;background:#fff;font-size:0.78rem;color:#5f6368;cursor:pointer;">
+            <span class="material-symbols-outlined" style="font-size:16px;pointer-events:none;">edit_note</span>
+            メモ
+        </button>
+    </div>
+    <!-- メモパッド -->
+    <div id="memo-pad-area" style="display:none;margin-bottom:10px;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;">edit_note</span>
+                <span style="font-size:0.78rem;font-weight:700;color:#202124;">メモ帳</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button type="button" id="memo-mode-keyboard" onclick="setMemoMode('keyboard')"
+                    style="display:flex;align-items:center;gap:3px;padding:4px 9px;border-radius:6px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;font-size:0.72rem;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">keyboard</span>
+                    キーボード
+                </button>
+                <button type="button" id="memo-mode-draw" onclick="setMemoMode('draw')"
+                    style="display:flex;align-items:center;gap:3px;padding:4px 9px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;color:#5f6368;font-size:0.72rem;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">draw</span>
+                    手書き
+                </button>
+                <button type="button" onclick="closeMemoPad()"
+                    style="background:none;border:none;color:#9aa0a6;cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;">&times;</button>
+            </div>
+        </div>
+        <div id="memo-keyboard-area">
+            <textarea id="memo-pad-text" placeholder="体温をメモ…（例：青木 36.5　阿部 37.0）"
+                style="width:100%;height:140px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
+            <div style="display:flex;justify-content:flex-end;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
+                <button type="button" onclick="clearMemoText()"
+                    style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
+            </div>
+        </div>
+        <div id="memo-draw-area" style="display:none;">
+            <canvas id="memo-canvas" style="width:100%;height:160px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
+            <div style="display:flex;justify-content:space-between;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
+                <button type="button" id="memo-eraser-btn" onclick="toggleEraser()"
+                    style="display:flex;align-items:center;gap:3px;font-size:0.72rem;color:#5f6368;padding:4px 10px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:13px;pointer-events:none;">ink_eraser</span>
+                    消しゴム
+                </button>
+                <button type="button" onclick="clearMemoCanvas()"
+                    style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
+            </div>
+        </div>
+    </div>
     <!-- 日付選択 -->
     <div class="form-group" style="margin-bottom:10px;">
         <div class="date-weekday-row">
