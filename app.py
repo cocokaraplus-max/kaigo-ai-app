@@ -2907,7 +2907,13 @@ def api_save_calendar_event():
                             print(f"[カレンダー同期] event {event_id} のmemoを更新: {new_memo}", flush=True)
             except Exception as _memo_err:
                 print(f"[カレンダー同期 memo更新エラー] {_memo_err}", flush=True)
-            return jsonify({"status": "success", "id": event_id})
+            # 最新のmemoを取得してレスポンスに含める
+            try:
+                updated_ev = supabase.table("calendar_events").select("memo").eq("id", event_id).execute()
+                updated_memo = updated_ev.data[0]["memo"] if updated_ev.data else payload.get("memo", "")
+            except:
+                updated_memo = payload.get("memo", "")
+            return jsonify({"status": "success", "id": event_id, "memo": updated_memo})
         else:
             res = supabase.table("calendar_events").insert(payload).execute()
             new_id = res.data[0]["id"] if res.data else None

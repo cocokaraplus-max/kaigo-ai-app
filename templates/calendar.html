@@ -1069,11 +1069,18 @@ window.saveEvent = async function() {
     });
     const data = await res.json();
     if (data.status === 'success') {
+        // サーバーが返した最新memoを使用（休み連絡の日付変更時に再生成された値）
+        const serverMemo = data.memo !== undefined ? data.memo : payload.memo;
         if (editingEventId) {
             const idx = ALL_EVENTS.findIndex(e=>String(e.id)===String(editingEventId));
-            if (idx>=0) ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId, memo:payload.memo};
+            if (idx>=0) {
+                ALL_EVENTS[idx] = {...ALL_EVENTS[idx], ...payload, id:editingEventId, memo:serverMemo};
+            } else {
+                const oldIdx = ALL_EVENTS.findIndex(e=>e.id==editingEventId);
+                if (oldIdx>=0) ALL_EVENTS[oldIdx] = {...ALL_EVENTS[oldIdx], ...payload, id:editingEventId, memo:serverMemo};
+            }
         } else {
-            ALL_EVENTS.push({...payload, id: data.id});
+            ALL_EVENTS.push({...payload, id: data.id, memo:serverMemo});
         }
         closeModal('event-modal');
         renderCalendar();
