@@ -627,17 +627,17 @@
     </div>
 
     <!-- 体温一括入力 -->
-    <div id="bulk-temp-bar" style="background:#fff8e1;border:1.5px solid #ffca28;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
+    <div style="background:#fff8e1;border:1.5px solid #ffca28;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span class="material-symbols-outlined" style="color:#f57c00;font-size:20px;">thermometer</span>
+            <span class="material-symbols-outlined" style="color:#f57c00;font-size:20px;pointer-events:none;">thermometer</span>
             <span style="font-size:0.85rem;font-weight:700;color:#e65100;">体温一括入力</span>
-            <select id="bulk-temp-order" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;">
+            <select id="bulk-temp-order" style="font-size:0.8rem;padding:4px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;cursor:pointer;">
                 <option value="1">1回目</option>
                 <option value="2">2回目</option>
                 <option value="3">3回目</option>
             </select>
-            <button id="bulk-temp-btn" class="voice-btn" onclick="toggleBulkTempVoice()" style="background:#ff6f00;color:#fff;border:none;">
-                <span class="material-symbols-outlined">mic</span>
+            <button type="button" id="bulk-temp-btn" onclick="toggleBulkTempVoice()" style="display:flex;align-items:center;gap:6px;background:#ff6f00;color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:0.82rem;font-weight:700;cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">mic</span>
                 <span id="bulk-temp-lbl">全員の体温をまとめて入力</span>
             </button>
         </div>
@@ -1474,17 +1474,16 @@ function buildVitalForm(p, v, dateStr) {
             ${field('temperature','体温','℃', v.temperature)}
         </div>
         <div class="vital-grid" style="grid-template-columns:1fr 1fr;">
-            ${field('spo2','SpO2','%', v.spo2)}
             <div class="vital-field">
-                <label style="display:flex;align-items:center;justify-content:space-between;">
-                    メモ
-                    <button class="voice-btn" id="memo-voice-btn-${p.id}" onclick="toggleMemoVoice('${p.id}')" style="padding:2px 6px;font-size:0.7rem;min-width:unset;height:24px;border-radius:12px;">
-                        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">mic</span>
-                        <span id="memo-voice-lbl-${p.id}">音声</span>
+                <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
+                <div style="position:relative;">
+                    <input type="text" id="v-note-${p.id}" value="${v.note||}" placeholder="特記事項" style="padding-right:36px;width:100%;box-sizing:border-box;">
+                    <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#34a853;color:#fff;border:none;border-radius:8px;width:28px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
+                        <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:14px;">mic</span>
                     </button>
-                </label>
-                <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項">
+                </div>
             </div>
+            ${field('spo2','SpO2','%', v.spo2)}
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <input type="checkbox" id="v-recheck-${p.id}" ${v.recheck?'checked':''} style="accent-color:#ff6f00;width:16px;height:16px;">
