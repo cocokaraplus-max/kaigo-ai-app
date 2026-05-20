@@ -616,7 +616,7 @@
         </button>
     </div>
     <!-- メモパッドモーダル -->
-    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;">
+    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;overflow:hidden;">
         <div id="memo-pad-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;cursor:grab;user-select:none;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">drag_indicator</span>
@@ -3955,6 +3955,10 @@ window.toggleMemoPad = function() {
     } else {
         area.style.display = 'block';
         initMemoCanvas();
+        setTimeout(function() {
+            initMemoDrag();
+            initMemoResize();
+        }, 50);
     }
 };
 
