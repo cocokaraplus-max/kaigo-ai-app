@@ -3839,17 +3839,28 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
         // 体温を各利用者のフィールドにセット
         let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">トランスクリプト: ${data.transcript||''}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
         (data.results || []).forEach(r => {
-            const el = document.getElementById('v-temperature-' + r.patient_id);
-            if (el && r.temperature != null) {
-                el.value = r.temperature;
-                onVitalInput(String(r.patient_id), 'temperature', r.temperature);
-                // 何回目セレクトを同期
+            if (r.temperature == null) {
+                resultHtml += `<span style="font-size:0.78rem;background:#f1f3f4;color:#80868b;padding:2px 8px;border-radius:10px;">${r.user_name}: 未検出</span>`;
+                return;
+            }
+            // カードが閉じている場合は開く
+            const body = document.getElementById('vbody-' + r.patient_id);
+            if (body && !body.classList.contains('open')) {
+                body.classList.add('open');
+                const arrow = document.getElementById('varrow-' + r.patient_id);
+                if (arrow) arrow.style.transform = 'rotate(180deg)';
+            }
+            // 少し待ってから値をセット（DOM展開待ち）
+            setTimeout(() => {
+                const el = document.getElementById('v-temperature-' + r.patient_id);
+                if (el) {
+                    el.value = r.temperature;
+                    onVitalInput(String(r.patient_id), 'temperature', r.temperature);
+                }
                 const orderEl = document.getElementById('v-order-' + r.patient_id);
                 if (orderEl) orderEl.value = order;
-                resultHtml += `<span style="font-size:0.78rem;background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:10px;">${r.user_name}: ${r.temperature}℃ ✓</span>`;
-            } else if (r.temperature == null) {
-                resultHtml += `<span style="font-size:0.78rem;background:#f1f3f4;color:#80868b;padding:2px 8px;border-radius:10px;">${r.user_name}: 未検出</span>`;
-            }
+            }, 50);
+            resultHtml += `<span style="font-size:0.78rem;background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:10px;">${r.user_name}: ${r.temperature}℃ ✓</span>`;
         });
         resultHtml += '</div>';
         if (resultDiv) resultDiv.innerHTML = resultHtml;
