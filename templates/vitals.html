@@ -3760,6 +3760,9 @@ window.toggleBulkTempVoice = async function() {
     upd();
     bulkTempCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(bulkTempCountdown); bulkTempCountdown = null; } }, 1000);
     bulkTempTimeout = setTimeout(() => stopBulkTempVoice(), 30000);
+    // 録音中はai-indicatorを表示
+    const aiInd = document.getElementById('ai-indicator');
+    if (aiInd) aiInd.style.display = 'flex';
 };
 function stopBulkTempVoice() {
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
