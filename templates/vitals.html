@@ -1749,7 +1749,7 @@ let voiceStream = null;
 const VOICE_RECORD_SECONDS = 20;
 
 // MediaRecorder で使う MIME タイプを判定（iOS Safari は audio/mp4 が安定、Chrome は audio/webm）
-function pickVoiceMime() {
+window.pickVoiceMime = function pickVoiceMime() {
     if (typeof MediaRecorder === 'undefined') return null;
     const candidates = [
         'audio/webm;codecs=opus',
@@ -1766,7 +1766,7 @@ function pickVoiceMime() {
     return ''; // 空文字 = ブラウザのデフォルトに任せる
 }
 
-function mimeToExt(mime) {
+window.mimeToExt = function mimeToExt(mime) {
     if (!mime) return 'webm';
     if (mime.includes('mp4')) return 'mp4';
     if (mime.includes('aac')) return 'aac';
@@ -3681,13 +3681,13 @@ window.toggleMemoVoice = async function(pid) {
     memoVoiceCountdown = setInterval(() => { rem--; upd(); if (rem <= 0) { clearInterval(memoVoiceCountdown); memoVoiceCountdown = null; } }, 1000);
     memoVoiceTimeout = setTimeout(() => stopMemoVoice(), 20000);
 };
-function stopMemoVoice() {
+window.stopMemoVoice = function stopMemoVoice() {
     try { if (memoVoiceRecorder && memoVoiceRecorder.state !== 'inactive') memoVoiceRecorder.stop(); } catch(e) {}
 }
-function cleanupMemoVoiceStream() {
+window.cleanupMemoVoiceStream = function cleanupMemoVoiceStream() {
     if (memoVoiceStream) { try { memoVoiceStream.getTracks().forEach(t => t.stop()); } catch(e) {} memoVoiceStream = null; }
 }
-async function sendMemoVoice(blob, ext) {
+window.sendMemoVoice = async function sendMemoVoice(blob, ext) {
     const pid = memoVoicePid;
     const noteEl = document.getElementById('v-note-' + pid);
     if (!noteEl) return;
@@ -3771,13 +3771,13 @@ window.toggleBulkTempVoice = async function() {
     const aiInd = document.getElementById('ai-indicator');
     if (aiInd) aiInd.style.display = 'flex';
 };
-function stopBulkTempVoice() {
+window.stopBulkTempVoice = function stopBulkTempVoice() {
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
 }
-function cleanupBulkTempStream() {
+window.cleanupBulkTempStream = function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
 }
-async function sendBulkTempVoice(blob, ext) {
+window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
     alert("[DEBUG] sendBulkTempVoice 呼び出し: blob.size=" + blob.size + " ext=" + ext);
     // 現在表示中の利用者リストを収集
     const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name }));
