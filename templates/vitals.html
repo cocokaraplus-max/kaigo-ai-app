@@ -616,7 +616,7 @@
         </button>
     </div>
     <!-- メモパッドモーダル -->
-    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;">
+    <div id="memo-pad-area" style="display:none;position:fixed;top:80px;right:16px;width:300px;min-width:220px;min-height:200px;z-index:8000;border:1.5px solid #e0e0e0;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#fff;resize:both;">
         <div id="memo-pad-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e0e0e0;cursor:grab;user-select:none;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px;color:#5f6368;pointer-events:none;">drag_indicator</span>
@@ -640,14 +640,14 @@
         </div>
         <div id="memo-keyboard-area">
             <textarea id="memo-pad-text" placeholder="体温をメモ…&#10;例: 青木 36.5 / 阿部 37.0"
-                style="width:100%;height:160px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
+                style="width:100%;height:150px;min-height:100px;padding:10px 12px;border:none;resize:none;font-size:0.85rem;color:#202124;background:#fff;box-sizing:border-box;outline:none;"></textarea>
             <div style="display:flex;justify-content:flex-end;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
                 <button type="button" onclick="clearMemoText()"
                     style="font-size:0.72rem;color:#ea4335;padding:4px 10px;border-radius:6px;border:1px solid #ea4335;background:#fff;cursor:pointer;">クリア</button>
             </div>
         </div>
         <div id="memo-draw-area" style="display:none;">
-            <canvas id="memo-canvas" style="width:100%;height:180px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
+            <canvas id="memo-canvas" style="width:100%;height:170px;min-height:120px;background:#fff;cursor:crosshair;touch-action:none;display:block;"></canvas>
             <div style="display:flex;justify-content:space-between;padding:6px 10px;border-top:1px solid #f1f3f4;background:#fff;">
                 <button type="button" id="memo-eraser-btn" onclick="toggleEraser()"
                     style="display:flex;align-items:center;gap:3px;font-size:0.72rem;color:#5f6368;padding:4px 10px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;cursor:pointer;">
@@ -1536,7 +1536,7 @@ function buildVitalForm(p, v, dateStr) {
             if (r.spo2 != null) items.push(`O2${r.spo2}%`);
             return `<span style="margin-right:6px;">${i+1}回目:${items.join(' ')}</span>`;
         }).join('');
-        summaryHtml = `<div style="font-size:0.7rem;color:#1a73e8;margin-bottom:6px;padding:4px 6px;background:#e8f0fe;border-radius:6px;line-height:1.6;">入力済: ${parts}</div>`;
+        summaryHtml = `<div style="font-size:0.68rem;color:#b0b8c1;margin-bottom:3px;padding:2px 4px;">入力済: ${parts}</div>`;
     }
     // 何回目セレクト
     const orderOptions = Array.from({length: nextOrder}, (_, i) => {
@@ -4103,6 +4103,36 @@ function initMemoCanvas() {
     window.toggleMemoPad = function() {
         _origToggle && _origToggle();
         setTimeout(initMemoDrag, 50);
+    };
+})();
+
+
+// メモモーダルのリサイズを観察してtextarea/canvasを追従
+(function() {
+    function watchMemoResize() {
+        const modal = document.getElementById('memo-pad-area');
+        if (!modal || modal._resizeObserved) return;
+        modal._resizeObserved = true;
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(() => {
+            const h = modal.offsetHeight;
+            const headerH = 44;
+            const footerH = 40;
+            const available = Math.max(80, h - headerH - footerH);
+            const ta = document.getElementById('memo-pad-text');
+            if (ta) ta.style.height = available + 'px';
+            const cv = document.getElementById('memo-canvas');
+            if (cv) {
+                cv.style.height = available + 'px';
+                cv.height = available;
+            }
+        });
+        ro.observe(modal);
+    }
+    const _origToggle2 = window.toggleMemoPad;
+    window.toggleMemoPad = function() {
+        _origToggle2 && _origToggle2();
+        setTimeout(watchMemoResize, 100);
     };
 })();
 
