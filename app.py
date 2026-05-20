@@ -312,6 +312,14 @@ def is_board_editor_user(supabase, f_code, my_name, is_admin_authenticated=False
         return True
     if not my_name:
         return False
+ def is_ledger_user(supabase, f_code, my_name, is_admin_authenticated=False):
+    if is_admin_authenticated:
+        return True
+    try:
+        result = supabase.table("users").select("can_ledger").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        return bool(result.data and result.data[0].get("can_ledger", False))
+    except:
+        return False   
     try:
         import json as _json
         res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "board_editors").execute()
