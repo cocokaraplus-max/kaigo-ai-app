@@ -477,7 +477,7 @@
           <div class="form-group">
             <label>長期目標</label>
             <textarea id="long_goal" name="long_goal"
-              placeholder="例: 自宅内を安全に移動し、家族と穏やかな生活を送ることができる">{{ selected.long_goal if selected else '' }}</textarea>
+              placeholder="例: 自宅内を安全に移動し、家族と穏やかな生活を送ることができる">{{ selected.long_goal if selected and selected.long_goal else '' }}</textarea>
           </div>
           <div class="form-group">
             <label>長期目標期間</label>
@@ -492,7 +492,7 @@
           <div class="form-group">
             <label>短期目標</label>
             <textarea id="short_goal" name="short_goal"
-              placeholder="例: 手すりを使って廊下を安全に歩くことができる">{{ selected.short_goal if selected else '' }}</textarea>
+              placeholder="例: 手すりを使って廊下を安全に歩くことができる">{{ selected.short_goal if selected and selected.short_goal else '' }}</textarea>
           </div>
           <div class="form-group">
             <label>短期目標期間</label>
