@@ -160,7 +160,19 @@ def upload_audio_to_supabase(supabase, audio_bytes, filename, f_code):
     except Exception as e:
         print(f"音声アップロードエラー: {e}", flush=True)
         return ""
-
+def upload_pdf_to_supabase(supabase, pdf_file, f_code):
+    try:
+        file_name = f"{f_code}/{uuid.uuid4()}.pdf"
+        pdf_bytes = pdf_file.read()
+        supabase.storage.from_("board-files").upload(
+            path=file_name,
+            file=pdf_bytes,
+            file_options={"content-type": "application/pdf"}
+        )
+        return supabase.storage.from_("board-files").get_public_url(file_name)
+    except Exception as e:
+        print(f"PDFアップロードエラー: {e}", flush=True)
+        return ""
 
 # ==========================================
 # Session 29 (B-4): ケース記録のAI検索タグ自動生成

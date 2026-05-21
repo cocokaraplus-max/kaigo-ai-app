@@ -6304,6 +6304,11 @@ def api_board_create_post():
         if audio and audio.filename:
             from utils import upload_audio_to_supabase
             audio_url = upload_audio_to_supabase(supabase, audio.read(), audio.filename, f_code)
+            pdf_url = ""
+        pdf_file = request.files.get("pdf")
+        if pdf_file and pdf_file.filename:
+            from utils import upload_pdf_to_supabase
+            pdf_url = upload_pdf_to_supabase(supabase, pdf_file, f_code)
         # カテゴリー(任意、未指定なら未分類=NULL)
         category_id_raw = request.form.get("category_id", "").strip()
         category_id = None
@@ -6316,7 +6321,7 @@ def api_board_create_post():
         insert_payload = {
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
-            "file_urls": [], "audio_url": audio_url,
+            "file_urls": ([pdf_url] if pdf_url else []), "audio_url": audio_url,
             "mention_names": mentions, "patient_names": patient_names,
             "is_pinned": False,
             "is_private": is_private,

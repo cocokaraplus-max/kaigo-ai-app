@@ -990,6 +990,12 @@ body.modal-open .bottom-nav {
         音声メッセージ
     </span>
     {% endif %}
+    {% if post.file_urls and post.file_urls|length > 0 %}
+    <span class="post-audio-chip" onclick="event.stopPropagation();showPostDetail({{ post.id }})" style="color:#e53935;border-color:#e53935;">
+        <span class="material-symbols-outlined" style="color:#e53935;">picture_as_pdf</span>
+        PDF添付
+    </span>
+    {% endif %}
 
     <!-- リアクション -->
     {% set post_reactions = reactions_data.get(post.id, {}) %}
@@ -1061,6 +1067,7 @@ body.modal-open .bottom-nav {
         <div id="pd-patients-container"></div>
         <div id="pd-images-container"></div>
         <div id="pd-audio-container"></div>
+        <div id="pd-file-container"></div>
         <div id="pd-reactions-container"></div>
         <div id="pd-checked-container"></div>
         <div id="pd-readers-container"></div>
@@ -1210,6 +1217,10 @@ body.modal-open .bottom-nav {
                 <span class="material-symbols-outlined">mic</span>
                 音声
             </div>
+            <div class="attach-btn" id="pdf-attach-btn">
+                <span class="material-symbols-outlined">picture_as_pdf</span>
+                PDF
+            </div>
         </div>
         <div class="attach-preview" id="photo-preview"></div>
         <input type="file" id="photo-input" accept="image/*" multiple style="display:none">
@@ -1217,6 +1228,12 @@ body.modal-open .bottom-nav {
         <div id="audio-preview" style="font-size:0.8rem;color:#34a853;margin-bottom:10px;display:none;">
             <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">mic</span>
             <span id="audio-filename"></span>
+        </div>
+        <input type="file" id="pdf-input" accept=".pdf" style="display:none">
+        <div id="pdf-preview" style="font-size:0.8rem;color:#e53935;margin-bottom:10px;display:none;">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">picture_as_pdf</span>
+            <span id="pdf-filename"></span>
+            <span onclick="clearPdf()" style="margin-left:6px;cursor:pointer;color:#80868b;">✕</span>
         </div>
 
         <button class="post-submit-btn" id="post-submit-btn">
@@ -2127,10 +2144,11 @@ function closePostModal() {
     document.getElementById('post-modal').classList.remove('show');
     unlockBodyScroll();
     document.getElementById('post-textarea').value = '';
-    selectedPhotos = []; selectedAudio = null; selectedMentions = [];
+    selectedPhotos = []; selectedAudio = null; selectedPdf = null; selectedMentions = [];
     selectedPatients = [];
     document.getElementById('photo-preview').innerHTML = '';
     document.getElementById('audio-preview').style.display = 'none';
+    document.getElementById('pdf-preview').style.display = 'none';
     document.querySelectorAll('.mention-chip').forEach(function(c) { c.classList.remove('selected'); });
     document.getElementById('mention-selected-area').innerHTML = '';
     document.getElementById('mention-search').value = '';
@@ -2191,7 +2209,23 @@ document.getElementById('audio-input').addEventListener('change', function() {
         document.getElementById('audio-preview').style.display = 'block';
     }
 });
-
+// PDF添付
+var selectedPdf = null;
+document.getElementById('pdf-attach-btn').addEventListener('click', function() {
+    document.getElementById('pdf-input').click();
+});
+document.getElementById('pdf-input').addEventListener('change', function() {
+    if (this.files[0]) {
+        selectedPdf = this.files[0];
+        document.getElementById('pdf-filename').textContent = selectedPdf.name;
+        document.getElementById('pdf-preview').style.display = 'block';
+    }
+});
+function clearPdf() {
+    selectedPdf = null;
+    document.getElementById('pdf-input').value = '';
+    document.getElementById('pdf-preview').style.display = 'none';
+}
 // 投稿送信
 document.getElementById('post-submit-btn').addEventListener('click', submitPost);
 document.getElementById('post-submit-btn').addEventListener('touchend', function(e) { e.preventDefault(); submitPost(); });
@@ -2213,6 +2247,7 @@ async function submitPost() {
         formData.append('category_id', selectedPostCategoryId || '');
         selectedPhotos.forEach(function(f) { formData.append('photos', f); });
         if (selectedAudio) formData.append('audio', selectedAudio);
+        if (selectedPdf) formData.append('pdf', selectedPdf);
 
         var res = await fetch('/api/board/create_post', { method: 'POST', body: formData });
         var data = await res.json();
@@ -2798,6 +2833,21 @@ window.showPostDetail = function(postId) {
             + '<span class="material-symbols-outlined" style="color:#1a73e8;">mic</span>'
             + '<audio controls preload="metadata"><source src="' + post.audio_url + '"></audio>'
             + '</div>';
+    }
+    var fileContainer = document.getElementById('pd-file-container');
+    if (fileContainer) {
+        fileContainer.innerHTML = '';
+        if (post.file_urls && post.file_urls.length > 0) {
+            post.file_urls.forEach(function(url) {
+                fileContainer.innerHTML += '<div style="margin-top:10px;">'
+                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
+                    + '<span class="material-symbols-outlined" style="color:#e53935;">picture_as_pdf</span>'
+                    + '<span style="font-size:0.85rem;color:#e53935;font-weight:700;">PDF添付ファイル</span>'
+                    + '</div>'
+                    + '<iframe src="' + url + '" style="width:100%;height:500px;border:1px solid #e0e0e0;border-radius:8px;" loading="lazy"></iframe>'
+                    + '</div>';
+            });
+        }
     }
 
     // リアクション一覧(絵文字ごとに名前列挙)
