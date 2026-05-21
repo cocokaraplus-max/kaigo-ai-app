@@ -618,10 +618,16 @@ function setupGoalPeriodAuto(fromId, toId, months) {
   fromEl.addEventListener('change', function() {
     if (!this.value) return;
     const toEl = document.getElementById(toId);
-    if (toEl && !toEl.value) {
-      const d = new Date(this.value);
-      d.setMonth(d.getMonth() + months);
-      toEl.value = d.toISOString().slice(0, 10);
+    if (toEl) {
+      const parts = this.value.split('-');
+      const y = parseInt(parts[0]);
+      const m = parseInt(parts[1]) - 1;
+      const d = parseInt(parts[2]);
+      const result = new Date(y, m + months, d);
+      const yy = result.getFullYear();
+      const mm = String(result.getMonth() + 1).padStart(2, '0');
+      const dd = String(result.getDate()).padStart(2, '0');
+      toEl.value = `${yy}-${mm}-${dd}`;
     }
   });
 }
