@@ -206,7 +206,7 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
     """
     # ── ① patients.care_level からマッピング ──
     try:
-        res = supabase.table("patients") \
+        res = supabase.table("patient_profiles") \
             .select("care_level") \
             .eq("facility_code", facility_code) \
             .eq("user_name", user_name) \
