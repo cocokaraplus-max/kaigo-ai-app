@@ -477,9 +477,9 @@ body.nav-editing {
     <!-- 設定モーダル -->
     <!-- ★ 設定モーダル -->
     <!-- 目標期限確認モーダル -->
-    <div class="settings-modal" id="goal-check-modal">
-        <div class="settings-sheet" style="max-height:85vh;overflow-y:auto;">
-            <div class="settings-handle"></div>
+    <div id="goal-check-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;padding:16px;">
+        <div style="background:#fff;border-radius:16px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;padding:20px;animation:fadeInScale 0.18s ease;">
+            <div class="settings-handle" style="display:none;"></div>
             <div class="settings-title-row">
                 <div class="settings-title">
                     <span class="material-symbols-outlined">assignment_late</span>
@@ -495,9 +495,9 @@ body.nav-editing {
         </div>
     </div>
     <!-- 目標期限確認モーダル -->
-    <div class="settings-modal" id="goal-check-modal">
-        <div class="settings-sheet" style="max-height:85vh;overflow-y:auto;">
-            <div class="settings-handle"></div>
+    <div id="goal-check-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;padding:16px;">
+        <div style="background:#fff;border-radius:16px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;padding:20px;animation:fadeInScale 0.18s ease;">
+            <div class="settings-handle" style="display:none;"></div>
             <div class="settings-title-row">
                 <div class="settings-title">
                     <span class="material-symbols-outlined">assignment_late</span>
@@ -740,7 +740,7 @@ body.nav-editing {
             <span class="material-symbols-outlined">admin_panel_settings</span>
             管理者MENU
         </a>
-        <a href="/guide_ledger" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/guide_ledger')">
+        <a href="/manual" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/manual')">
             <span class="material-symbols-outlined">menu_book</span>
             ガイド
         </a>
@@ -1480,7 +1480,7 @@ function loadNavOrder() {
     // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
     // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
     var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/guide_ledger'];
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
     // 各 movable item の現在の参照を取得
     var byHref = {};
     items.forEach(function(el) {
@@ -1551,7 +1551,7 @@ window.startNavEditMode = function() {
     nav.classList.add('edit-mode');
     document.body.classList.add('nav-editing');
     // 各項目を「並び替え可」「固定」に分類
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/guide_ledger'];
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
     var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
     items.forEach(function(el) {
         var h = el.getAttribute('href');
@@ -1599,7 +1599,7 @@ window.stopNavEditMode = function() {
     nav.removeEventListener('click', navEditClickBlocker, true);
     nav.removeEventListener('contextmenu', navEditContextMenuBlocker, true);
     // 現在の DOM 順序を保存(href 配列、movable のみ)
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/guide_ledger'];
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
     var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
         .map(function(el) { return el.getAttribute('href'); })
         .filter(function(h) { return movableHrefs.indexOf(h) !== -1; });
@@ -1943,7 +1943,7 @@ window.openSettings = function() {
 function openSettings() { window.openSettings(); }
 async function openGoalCheckModal() {
     var m = document.getElementById('goal-check-modal');
-    m.classList.add('show');
+    m.style.display = 'flex';
     var content = document.getElementById('goal-check-content');
     content.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
     try {
@@ -1975,11 +1975,11 @@ async function openGoalCheckModal() {
     }
 }
 function closeGoalCheckModal() {
-    document.getElementById('goal-check-modal').classList.remove('show');
+    document.getElementById('goal-check-modal').style.display = 'none';
 }
 async function openGoalCheckModal() {
     var m = document.getElementById('goal-check-modal');
-    m.classList.add('show');
+    m.style.display = 'flex';
     var content = document.getElementById('goal-check-content');
     content.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
     try {
@@ -2013,7 +2013,7 @@ async function openGoalCheckModal() {
     }
 }
 function closeGoalCheckModal() {
-    document.getElementById('goal-check-modal').classList.remove('show');
+    document.getElementById('goal-check-modal').style.display = 'none';
 }
 window.closeSettings = function() {
     var m = document.getElementById('user-settings-modal');
