@@ -493,7 +493,26 @@ body.nav-editing {
                 <div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>
             </div>
         </div>
-    </div><div class="settings-modal" id="user-settings-modal">
+    </div>
+    <!-- 目標期限確認モーダル -->
+    <div class="settings-modal" id="goal-check-modal">
+        <div class="settings-sheet" style="max-height:85vh;overflow-y:auto;">
+            <div class="settings-handle"></div>
+            <div class="settings-title-row">
+                <div class="settings-title">
+                    <span class="material-symbols-outlined">assignment_late</span>
+                    目標期限確認
+                </div>
+                <button class="settings-close-btn" onclick="closeGoalCheckModal()">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div id="goal-check-content" style="padding:8px 0;">
+                <div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>
+            </div>
+        </div>
+    </div>
+    <div class="settings-modal" id="user-settings-modal">
         <div class="settings-sheet">
             <div class="settings-handle"></div>
             <div class="settings-title-row">
@@ -634,6 +653,9 @@ body.nav-editing {
         </button>
     </div>
     <div class="top-fab-area" id="top-fab-area">
+        <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
+            <span class="material-symbols-outlined">assignment_late</span>
+        </button>
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -1161,9 +1183,12 @@ function updateMarkAllReadBar() {
     // ケース記録ページのボタン
     var dvBtn = document.getElementById('dv-mark-all-read-btn');
     if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
-    // 掲示板ページのボタン（chat-badge連動）
+    // 掲示板ページのボタン（掲示板未読バッジに連動）
     var boardWrap = document.getElementById('board-mark-all-read-wrap');
-    if (boardWrap) boardWrap.style.display = chatVisible ? 'block' : 'none';
+    var boardBadge = document.getElementById('chat-badge');
+    var boardUnreadBadge = document.getElementById('board-nav-badge');
+    var boardVisible = (boardBadge && boardBadge.style.display !== 'none' && boardBadge.textContent !== '0');
+    if (boardWrap) boardWrap.style.display = boardVisible ? 'block' : 'none';
 }
 
 async function markAllRead() {
@@ -1928,6 +1953,42 @@ async function openGoalCheckModal() {
         var res = await fetch('/api/goal_check');
         var data = await res.json();
         if (data.status !== 'success' || data.patients.length === 0) {
+            content.innerHTML = '<div style="text-align:center;color:#34a853;padding:20px;">期限切れ・期限間近の目標はありません</div>';
+            return;
+        }
+        var html = '';
+        data.patients.forEach(function(p) {
+            var color = p.status === '期限切れ' ? '#e53935' : '#f57c00';
+            var bg = p.status === '期限切れ' ? '#fce8e6' : '#fff3e0';
+            html += '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+                + '<div><div style="font-weight:700;font-size:0.92rem;">' + p.user_name + '</div>'
+                + '<div style="font-size:0.78rem;color:#5f6368;">' + (p.care_level||'') + '</div></div>'
+                + '<span style="font-size:0.75rem;font-weight:700;color:' + color + ';background:' + bg + ';padding:3px 8px;border-radius:12px;">' + p.status + '</span>'
+                + '</div>'
+                + '<div style="font-size:0.78rem;color:#5f6368;margin-top:4px;">'
+                + (p.short_goal_to ? '短期: ' + p.short_goal_to + ' ' : '')
+                + (p.long_goal_to ? '長期: ' + p.long_goal_to : '') + '</div>'
+                + '<a href="/patient_profile?id=' + p.id + '" style="font-size:0.78rem;color:#1a73e8;">目標を更新する →</a>'
+                + '</div>';
+        });
+        content.innerHTML = html;
+    } catch(e) {
+        content.innerHTML = '<div style="color:#e53935;padding:20px;">読み込みに失敗しました</div>';
+    }
+}
+function closeGoalCheckModal() {
+    document.getElementById('goal-check-modal').classList.remove('show');
+}
+async function openGoalCheckModal() {
+    var m = document.getElementById('goal-check-modal');
+    m.classList.add('show');
+    var content = document.getElementById('goal-check-content');
+    content.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
+    try {
+        var res = await fetch('/api/goal_check');
+        var data = await res.json();
+        if (data.status !== 'success' || data.patients.length === 0) {
             content.innerHTML = '<div style="text-align:center;color:#34a853;padding:20px;">⭕ 期限切れ・期限間近の目標はありません</div>';
             return;
         }
@@ -2077,28 +2138,19 @@ document.addEventListener('input', function(e) {
         if (fabArea) fabArea.style.display = isTop ? '' : 'none';
         if (bellBtn) bellBtn.style.display = isTop ? '' : 'none';
         if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
-        // 目標確認ボタンはTOPのみ表示
-        if (goalBtn) goalBtn.style.display = isTop ? '' : 'none';
-        var goalFabArea = document.getElementById('goal-check-fab-area');
-        if (goalFabArea) goalFabArea.style.display = isTop ? '' : 'none';
-        // TOPページで期限切れチェック
-        if (isTop && goalBtn) {
-            fetch('/api/goal_check').then(r => r.json()).then(data => {
-                if (data.status === 'success' && data.patients.some(p => p.status === '期限切れ')) {
-                    goalBtn.querySelector('.material-symbols-outlined').style.color = '#e53935';
-                }
-            }).catch(() => {});
+        // 目標確認ボタンはTOPのみ表示・期限切れなら赤色
+        if (goalBtn) {
+            goalBtn.style.display = isTop ? '' : 'none';
+            if (isTop) {
+                fetch('/api/goal_check').then(r => r.json()).then(data => {
+                    if (data.status === 'success' && data.patients.some(p => p.status === '期限切れ')) {
+                        goalBtn.querySelector('.material-symbols-outlined').style.color = '#e53935';
+                    }
+                }).catch(() => {});
+            }
         }
     }
-    // DOM確実に読み込み後に実行
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', applyFabVisibility);
-    } else {
-        applyFabVisibility();
-    }
-    document.addEventListener('spaNavigate', applyFabVisibility);
-    window.addEventListener('popstate', applyFabVisibility);
-}
+    applyFabVisibility();
 })();
 // ===== 歯車・ベルボタンのイベントバインド =====
 // イベントはdocumentに委譲して確実に動作させる
