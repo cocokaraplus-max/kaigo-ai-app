@@ -237,7 +237,7 @@ body.nav-editing {
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
-            position: fixed; top: 16px; right: 16px;
+            position: fixed; top: 16px; left: 16px;
             display: flex; flex-direction: row; gap: 8px;
             z-index: 1000; pointer-events: auto;
             width: auto; align-items: center;
@@ -628,10 +628,12 @@ body.nav-editing {
             </div>
         </div>
     </div>
-    <div class="top-fab-area" id="top-fab-area">
-        <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認">
+    <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
+        <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
             <span class="material-symbols-outlined">assignment_late</span>
         </button>
+    </div>
+    <div class="top-fab-area" id="top-fab-area">
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -2067,19 +2069,17 @@ document.addEventListener('input', function(e) {
         var goalBtn = document.getElementById('goal-check-btn');
         var fabArea = document.getElementById('top-fab-area');
         var isTop = window.location.pathname === '/top' || window.location.pathname === '/';
-        // TOPのみベル+歯車+目標確認を表示、それ以外は全て非表示
+        // TOPのみベル+歯車を表示、それ以外は非表示
         if (fabArea) fabArea.style.display = isTop ? '' : 'none';
         if (bellBtn) bellBtn.style.display = isTop ? '' : 'none';
         if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
+        // 目標確認ボタンはTOPのみ表示
         if (goalBtn) goalBtn.style.display = isTop ? '' : 'none';
         // TOPページで期限切れチェック
-        if (isTop) {
+        if (isTop && goalBtn) {
             fetch('/api/goal_check').then(r => r.json()).then(data => {
                 if (data.status === 'success' && data.patients.some(p => p.status === '期限切れ')) {
-                    if (goalBtn) {
-                        goalBtn.style.color = '#e53935';
-                        goalBtn.querySelector('.material-symbols-outlined').style.color = '#e53935';
-                    }
+                    goalBtn.querySelector('.material-symbols-outlined').style.color = '#e53935';
                 }
             }).catch(() => {});
         }
