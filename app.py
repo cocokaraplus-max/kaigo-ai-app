@@ -5781,7 +5781,41 @@ def api_goal_check():
                     "status": overall_status,
                 })
         patients.sort(key=lambda x: (x["status"] != "期限切れ", x["user_name"]))
-        return jsonify({"status": "success", "patients": patients})
+
+        # 目標変更: 当月または前月の評価で新目標が入力されている人（翌月10日まで表示）
+        goal_changes = []
+        try:
+            # 表示対象月を決定（今月10日以前なら前月も対象）
+            if today.day <= 10:
+                target_months = [
+                    today.strftime('%Y-%m'),
+                    (today.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+                ]
+            else:
+                target_months = [today.strftime('%Y-%m')]
+
+            for ym in target_months:
+                ev_res = supabase.table("patient_evaluations").select(
+                    "user_name, year_month, training_goal, short_goal_new, long_goal_new"
+                ).eq("facility_code", f_code).eq("year_month", ym).execute()
+                for ev in (ev_res.data or []):
+                    tg = ev.get("training_goal") or ""
+                    sg = ev.get("short_goal_new") or ""
+                    lg = ev.get("long_goal_new") or ""
+                    new_goal = tg or sg or lg
+                    if new_goal:
+                        # 重複チェック
+                        if not any(g["user_name"] == ev["user_name"] for g in goal_changes):
+                            goal_changes.append({
+                                "user_name": ev["user_name"],
+                                "year_month": ym,
+                                "new_goal": new_goal,
+                            })
+            goal_changes.sort(key=lambda x: x["user_name"])
+        except Exception:
+            pass
+
+        return jsonify({"status": "success", "patients": patients, "goal_changes": goal_changes})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 @app.route('/api/update_patient_care_level', methods=['POST'])
