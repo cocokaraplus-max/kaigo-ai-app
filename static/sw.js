@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v9';
+const CACHE_VERSION = 'tasukaru-v10';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -71,10 +71,6 @@ self.addEventListener('fetch', event => {
   if (isHtmlRoute(url)) {
     event.respondWith(
       fetch(event.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone));
-        }
         return response;
       }).catch(() => {
         return caches.match(event.request).then(cached => {
