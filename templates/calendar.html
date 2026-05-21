@@ -33,23 +33,27 @@
 
 /* ===== カレンダー選択 ===== */
 .calendar-list {
-    display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;
+    display:flex; gap:6px; padding:8px 0 12px 0;
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    margin-bottom:8px;
 }
+.calendar-list::-webkit-scrollbar { display:none; }
 .cal-chip {
-    display:flex; align-items:center; gap:5px;
-    padding:4px 10px; border-radius:16px;
-    border:2px solid transparent; cursor:pointer;
-    font-size:0.75rem; font-weight:700; transition:all 0.15s;
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 12px 5px 5px; border-radius:18px;
+    background:#f5f5f5; border:1.5px solid transparent;
+    font-size:0.78rem; font-weight:500; cursor:pointer;
+    white-space:nowrap; flex-shrink:0; transition:all 0.15s;
     -webkit-tap-highlight-color:transparent;
 }
-.cal-chip.active { opacity:1; }
-.cal-chip.inactive { opacity:0.35; }
-.cal-chip-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.cal-chip-add {
-    padding:4px 10px; border-radius:16px;
-    border:1.5px dashed #1a73e8; color:#1a73e8;
-    font-size:0.75rem; font-weight:700; cursor:pointer; background:#fff;
+.cal-chip.active { background:#fff; border-color:currentColor; font-weight:600; }
+.cal-chip.inactive { opacity:0.5; }
+.cal-chip-dot {
+    width:5px !important; height:18px !important;
+    border-radius:2px !important; flex-shrink:0;
 }
+.cal-chip.inactive .cal-chip-dot { background:#ccc !important; }
+.cal-chip-add { display:none; }
 
 /* ===== 月表示グリッド ===== */
 .cal-grid-header {
@@ -296,7 +300,6 @@
         }
         .cal-menu-add:hover{ background:#e8f0fe; }
         /* hide elements that retain old data-id wiring */
-        #cal-chips-data{ display:none; }
         </style>
 {% endblock %}
 
@@ -347,35 +350,7 @@
       </div>
     </div>
   </div>
-<!-- カレンダー一覧チップ -->
-<div class="calendar-list" id="cal-chips-data">
-    <div class="cal-chip active" data-id="all" style="background:#f0f0f0;border-color:#e0e0e0;color:#202124;" onclick="toggleCalendar('all')">
-        <div class="cal-chip-dot" style="background:#888;"></div>
-        すべて
-    </div>
-    {% for cal in calendars %}
-    <div style="display:flex;align-items:center;gap:2px;">
-        <div class="cal-chip active" data-id="{{ cal.id }}"
-            style="background:{{ cal.color }}22;border-color:{{ cal.color }};"
-            onclick="toggleCalendar('{{ cal.id }}')">
-            <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
-            <span style="color:{{ cal.color }};">{{ cal.name }}</span>
-            {% if cal.is_private %}
-            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">lock</span>
-            {% else %}
-            <span class="material-symbols-outlined" style="font-size:12px;color:{{ cal.color }};">group</span>
-            {% endif %}
-        </div>
-        {% if cal.is_owner %}
-        <div onclick="openInviteModal('{{ cal.id }}','{{ cal.name }}')"
-            style="cursor:pointer;padding:2px 4px;color:#80868b;">
-            <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
-    <div class="cal-chip-add" onclick="openNewCalendar()">＋ 追加</div>
-</div>
+
 
 <!-- ツールバー -->
 <div class="cal-toolbar">
@@ -399,6 +374,21 @@
     </div>
 </div>
 
+<!-- カレンダー一覧チップ (Gスタイル：サイドバー風) -->
+<div class="calendar-list" id="cal-chips-data" style="display:flex;">
+    <div class="cal-chip active" data-id="all" style="color:#202124;" onclick="toggleCalendar('all')">
+        <div class="cal-chip-dot" style="background:#202124;"></div>
+        すべて
+    </div>
+    {% for cal in calendars %}
+    <div class="cal-chip active" data-id="{{ cal.id }}"
+        style="color:{{ cal.color }};"
+        onclick="toggleCalendar('{{ cal.id }}')">
+        <div class="cal-chip-dot" style="background:{{ cal.color }};"></div>
+        <span>{{ cal.name }}</span>
+    </div>
+    {% endfor %}
+</div>
 <!-- カレンダー本体 -->
 <div id="calendar-body" style="border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;margin-bottom:1rem;">
     <!-- 曜日ヘッダー -->
