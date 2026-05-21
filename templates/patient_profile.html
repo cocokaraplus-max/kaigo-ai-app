@@ -601,6 +601,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateAge();
   updateGoalSection();
   document.getElementById('care_level').addEventListener('change', updateGoalSection);
+  setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 3);
+  setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 6);
 });
 
 function updateGoalSection() {
@@ -623,8 +625,7 @@ function setupGoalPeriodAuto(fromId, toId, months) {
     }
   });
 }
-setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 3);
-setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 6);
+
 // 利用者選択
 function loadPatient(id) {
   if (!id) { newPatient(); return; }
