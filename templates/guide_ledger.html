@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block nav_manual %}active{% endblock %}
+{% block content %}
+<div style="padding:16px;max-width:600px;margin:0 auto;">
+  <div style="font-size:1.1rem;font-weight:800;color:#202124;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+    <span class="material-symbols-outlined" style="color:#1a73e8;">menu_book</span>
+    出納帳ガイド
+  </div>
+
+  <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="font-weight:800;color:#1a73e8;margin-bottom:8px;">📖 出納帳とは</div>
+    <div style="font-size:0.9rem;color:#5f6368;line-height:1.7;">
+      利用者の金銭管理を行うための帳票です。収入・支出を記録し、残高を管理します。
+    </div>
+  </div>
+
+  <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="font-weight:800;color:#1a73e8;margin-bottom:8px;">✏️ 記録の入力方法</div>
+    <div style="font-size:0.9rem;color:#5f6368;line-height:1.7;">
+      <div style="margin-bottom:6px;">① 対象の利用者を選択</div>
+      <div style="margin-bottom:6px;">② 「＋ 追加」ボタンをタップ</div>
+      <div style="margin-bottom:6px;">③ 日付・種別（収入/支出）・金額・摘要を入力</div>
+      <div>④ 「保存」をタップして完了</div>
+    </div>
+  </div>
+
+  <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="font-weight:800;color:#1a73e8;margin-bottom:8px;">🔒 権限について</div>
+    <div style="font-size:0.9rem;color:#5f6368;line-height:1.7;">
+      出納帳の閲覧・編集には管理者による権限付与が必要です。権限がない場合は管理者にご連絡ください。
+    </div>
+  </div>
+
+  <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="font-weight:800;color:#1a73e8;margin-bottom:8px;">📊 残高の確認</div>
+    <div style="font-size:0.9rem;color:#5f6368;line-height:1.7;">
+      入力した収入・支出から自動的に残高が計算されます。月ごとの集計も確認できます。
+    </div>
+  </div>
+
+  <div style="background:#e8f0fe;border-radius:12px;padding:16px;margin-bottom:12px;">
+    <div style="font-weight:800;color:#1a73e8;margin-bottom:8px;">❓ よくある質問</div>
+    <div style="font-size:0.9rem;color:#5f6368;line-height:1.7;">
+      <div style="margin-bottom:8px;"><b>Q: 間違えて入力した場合は？</b><br>該当の記録をタップして編集または削除できます。</div>
+      <div><b>Q: 過去の記録を見るには？</b><br>月を切り替えることで過去の記録を確認できます。</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

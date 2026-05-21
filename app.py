@@ -4594,6 +4594,11 @@ def api_bulk_register_patients():
         print(f"bulk_register error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/guide_ledger')
+@login_required
+def guide_ledger():
+    return render_template('guide_ledger.html')
+
 @app.route('/admin')
 @login_required
 def admin():
