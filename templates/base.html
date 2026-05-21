@@ -237,7 +237,7 @@ body.nav-editing {
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
-            position: fixed; top: 16px; left: 16px;
+            position: fixed; top: 16px; right: 16px;
             display: flex; flex-direction: row; gap: 8px;
             z-index: 1000; pointer-events: auto;
             width: auto; align-items: center;
@@ -628,7 +628,7 @@ body.nav-editing {
             </div>
         </div>
     </div>
-    <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
+    <div style="position:fixed;top:16px;left:16px;z-index:10000;pointer-events:auto;" id="goal-check-fab-area">
         <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
             <span class="material-symbols-outlined">assignment_late</span>
         </button>
@@ -1161,9 +1161,12 @@ function updateMarkAllReadBar() {
     // ケース記録ページのボタン
     var dvBtn = document.getElementById('dv-mark-all-read-btn');
     if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
-    // 掲示板ページのボタン（wrapごと表示/非表示）
+    // 掲示板ページのボタン（掲示板未読バッジに連動）
     var boardWrap = document.getElementById('board-mark-all-read-wrap');
-    if (boardWrap) boardWrap.style.display = chatVisible ? 'block' : 'none';
+    var boardBadge = document.getElementById('chat-badge');
+    var boardUnreadBadge = document.getElementById('board-nav-badge');
+    var boardVisible = (boardBadge && boardBadge.style.display !== 'none' && boardBadge.textContent !== '0');
+    if (boardWrap) boardWrap.style.display = boardVisible ? 'block' : 'none';
 }
 
 async function markAllRead() {
@@ -2059,6 +2062,10 @@ document.addEventListener('input', function(e) {
     if (fab && fab.parentNode !== document.body) {
         document.body.appendChild(fab);
     }
+    var goalFab = document.getElementById('goal-check-fab-area');
+    if (goalFab && goalFab.parentNode !== document.body) {
+        document.body.appendChild(goalFab);
+    }
 })();
 
 // ★ top-fab-area: TOPページのみベルを表示、それ以外は歯車のみ
@@ -2075,6 +2082,8 @@ document.addEventListener('input', function(e) {
         if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
         // 目標確認ボタンはTOPのみ表示
         if (goalBtn) goalBtn.style.display = isTop ? '' : 'none';
+        var goalFabArea = document.getElementById('goal-check-fab-area');
+        if (goalFabArea) goalFabArea.style.display = isTop ? '' : 'none';
         // TOPページで期限切れチェック
         if (isTop && goalBtn) {
             fetch('/api/goal_check').then(r => r.json()).then(data => {
