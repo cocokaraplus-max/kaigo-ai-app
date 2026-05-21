@@ -1042,9 +1042,13 @@ document.getElementById('ev-repeat').addEventListener('change', function() {
 });
 
 // ===== 予定保存 =====
+window._saving_event = window._saving_event || false;
 window.saveEvent = async function() {
+    if (window._saving_event) { console.warn('[saveEvent] already saving, ignored'); return; }
     const title = document.getElementById('ev-title').value.trim();
     if (!title) { alert('タイトルを入力してください'); return; }
+    window._saving_event = true;
+    try {
     const allDay = document.getElementById('ev-allday').checked;
     const calId = CALENDARS.length ? document.getElementById('ev-calendar').value : null;
     const payload = {
@@ -1085,8 +1089,13 @@ window.saveEvent = async function() {
         closeModal('event-modal');
         renderCalendar();
     } else { alert('保存に失敗しました'); }
+    } catch (e) {
+        console.error('[saveEvent] error:', e);
+        alert('保存中にエラーが発生しました');
+    } finally {
+        window._saving_event = false;
+    }
 };
-
 // ===== 予定削除 =====
 window.deleteEvent = async function() {
     if (!editingEventId || !confirm('この予定を削除しますか？')) return;
@@ -1249,6 +1258,10 @@ window.removeMember = async function(calId, staffName) {
 // ===== モーダル =====
 window.closeModal = function(id) {
     document.getElementById(id).classList.remove('show');
+    // バグ修正: editingEventIdリセット漏れによる予定上書き防止
+    if (id === 'event-modal' && typeof editingEventId !== 'undefined') {
+        editingEventId = null;
+    }
 };
 window.closeModalOutside = function(e, id) {
     if (e.target === document.getElementById(id)) closeModal(id);
