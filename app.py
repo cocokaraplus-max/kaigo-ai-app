@@ -5727,6 +5727,48 @@ def api_update_patient():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+@app.route('/api/goal_check')
+@login_required
+def api_goal_check():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        from datetime import date, timedelta
+        today = date.today()
+        warning_days = 30
+        res = supabase.table("patient_profiles").select(
+            "id, user_name, care_level, short_goal_period_to, long_goal_period_to"
+        ).eq("facility_code", f_code).execute()
+        patients = []
+        for p in (res.data or []):
+            short_to = p.get("short_goal_period_to")
+            long_to = p.get("long_goal_period_to")
+            status = None
+            if short_to:
+                d = date.fromisoformat(short_to)
+                if d < today:
+                    status = "期限切れ"
+                elif d <= today + timedelta(days=warning_days):
+                    status = "期限間近"
+            if long_to and status != "期限切れ":
+                d = date.fromisoformat(long_to)
+                if d < today:
+                    status = "期限切れ"
+                elif d <= today + timedelta(days=warning_days):
+                    status = status or "期限間近"
+            if status:
+                patients.append({
+                    "id": str(p["id"]),
+                    "user_name": p["user_name"],
+                    "care_level": p.get("care_level") or "",
+                    "short_goal_to": short_to,
+                    "long_goal_to": long_to,
+                    "status": status,
+                })
+        patients.sort(key=lambda x: (x["status"] != "期限切れ", x["user_name"]))
+        return jsonify({"status": "success", "patients": patients})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 @app.route('/api/update_patient_care_level', methods=['POST'])
 @login_required
 def api_update_patient_care_level():

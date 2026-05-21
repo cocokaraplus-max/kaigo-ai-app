@@ -610,7 +610,21 @@ function updateGoalSection() {
   document.getElementById('goal-simple').style.display = isSimple ? '' : 'none';
   document.getElementById('goal-kaigo').style.display = isKaigo ? '' : 'none';
 }
-
+function setupGoalPeriodAuto(fromId, toId, months) {
+  const fromEl = document.getElementById(fromId);
+  if (!fromEl) return;
+  fromEl.addEventListener('change', function() {
+    if (!this.value) return;
+    const toEl = document.getElementById(toId);
+    if (toEl && !toEl.value) {
+      const d = new Date(this.value);
+      d.setMonth(d.getMonth() + months);
+      toEl.value = d.toISOString().slice(0, 10);
+    }
+  });
+}
+setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 3);
+setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 6);
 // 利用者選択
 function loadPatient(id) {
   if (!id) { newPatient(); return; }
