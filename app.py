@@ -5748,27 +5748,37 @@ def api_goal_check():
         for p in (res.data or []):
             short_to = p.get("short_goal_period_to")
             long_to = p.get("long_goal_period_to")
-            status = None
+            short_status = None
+            long_status = None
             if short_to:
                 d = date.fromisoformat(short_to)
                 if d < today:
-                    status = "期限切れ"
+                    short_status = "期限切れ"
                 elif d <= today + timedelta(days=warning_days):
-                    status = "期限間近"
-            if long_to and status != "期限切れ":
+                    short_status = "期限間近"
+            if long_to:
                 d = date.fromisoformat(long_to)
                 if d < today:
-                    status = "期限切れ"
+                    long_status = "期限切れ"
                 elif d <= today + timedelta(days=warning_days):
-                    status = status or "期限間近"
-            if status:
+                    long_status = "期限間近"
+            # 全体のステータス（期限切れ優先）
+            if short_status == "期限切れ" or long_status == "期限切れ":
+                overall_status = "期限切れ"
+            elif short_status == "期限間近" or long_status == "期限間近":
+                overall_status = "期限間近"
+            else:
+                overall_status = None
+            if overall_status:
                 patients.append({
                     "id": str(p["id"]),
                     "user_name": p["user_name"],
                     "care_level": p.get("care_level") or "",
                     "short_goal_to": short_to,
+                    "short_status": short_status,
                     "long_goal_to": long_to,
-                    "status": status,
+                    "long_status": long_status,
+                    "status": overall_status,
                 })
         patients.sort(key=lambda x: (x["status"] != "期限切れ", x["user_name"]))
         return jsonify({"status": "success", "patients": patients})
