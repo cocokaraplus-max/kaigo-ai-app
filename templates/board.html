@@ -2024,9 +2024,9 @@ window.boardMarkAllRead = async function() {
         // /api/board/mark_all_read で掲示板の全投稿を確認済みにする
         await fetch('/api/board/mark_all_read', { method: 'POST', credentials: 'include' });
         var chatBadge = document.getElementById('chat-badge');
-        if (chatBadge) { chatBadge.style.display = 'none'; chatBadge.textContent = '0'; }
+        if (chatBadge) chatBadge.style.display = 'none';
         if (wrap) wrap.style.display = 'none';
-        // 掲示板未読バッジもクリア
+        // 掲示板未読バッジをクリア
         var unreadCount = document.getElementById('unread-count');
         if (unreadCount) unreadCount.textContent = '0';
         // 全投稿の確認ボタンUIを更新

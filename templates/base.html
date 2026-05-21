@@ -1161,11 +1161,10 @@ function updateMarkAllReadBar() {
     // ケース記録ページのボタン
     var dvBtn = document.getElementById('dv-mark-all-read-btn');
     if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
-    // 掲示板ページのボタン（掲示板未読バッジに連動）
+    // 掲示板ページのボタン（掲示板未読タブのカウントに連動）
     var boardWrap = document.getElementById('board-mark-all-read-wrap');
-    var boardBadge = document.getElementById('chat-badge');
-    var boardUnreadBadge = document.getElementById('board-nav-badge');
-    var boardVisible = (boardBadge && boardBadge.style.display !== 'none' && boardBadge.textContent !== '0');
+    var boardUnreadCount = document.getElementById('unread-count');
+    var boardVisible = boardUnreadCount && boardUnreadCount.textContent !== '0' && boardUnreadCount.textContent !== '';
     if (boardWrap) boardWrap.style.display = boardVisible ? 'block' : 'none';
 }
 

@@ -615,21 +615,31 @@ function updateGoalSection() {
 function setupGoalPeriodAuto(fromId, toId, months) {
   const fromEl = document.getElementById(fromId);
   if (!fromEl) return;
-  fromEl.addEventListener('change', function() {
-    if (!this.value) return;
+  function autoFill() {
+    if (!fromEl.value) return;
     const toEl = document.getElementById(toId);
     if (toEl) {
-      const parts = this.value.split('-');
+      const parts = fromEl.value.split('-');
       const y = parseInt(parts[0]);
-      const m = parseInt(parts[1]) - 1;
+      const mo = parseInt(parts[1]);
       const d = parseInt(parts[2]);
-      const result = new Date(y, m + months, d);
-      const yy = result.getFullYear();
-      const mm = String(result.getMonth() + 1).padStart(2, '0');
-      const dd = String(result.getDate()).padStart(2, '0');
+      // N ヶ月後の前日 = 開始日 + N ヶ月 - 1日
+      let newYear = y;
+      let newMonth = mo + months;
+      while (newMonth > 12) { newMonth -= 12; newYear++; }
+      // まずN ヶ月後の同日を求め、1日引く
+      const maxDay = new Date(newYear, newMonth, 0).getDate();
+      const sameDay = Math.min(d, maxDay);
+      // 1日前
+      const endDate = new Date(newYear, newMonth - 1, sameDay - 1);
+      const yy = String(endDate.getFullYear());
+      const mm = String(endDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(endDate.getDate()).padStart(2, '0');
       toEl.value = `${yy}-${mm}-${dd}`;
     }
-  });
+  }
+  fromEl.addEventListener('change', autoFill);
+  fromEl.addEventListener('blur', autoFill);
 }
 
 // 利用者選択
