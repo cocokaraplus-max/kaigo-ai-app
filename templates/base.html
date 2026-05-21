@@ -2090,7 +2090,12 @@ document.addEventListener('input', function(e) {
             }).catch(() => {});
         }
     }
-    applyFabVisibility();
+    // DOM確実に読み込み後に実行
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyFabVisibility);
+    } else {
+        applyFabVisibility();
+    }
     document.addEventListener('spaNavigate', applyFabVisibility);
     window.addEventListener('popstate', applyFabVisibility);
 }

@@ -6702,14 +6702,20 @@ def api_board_mark_all_read():
         ]
         post_added = 0
         if all_ids:
-            existing = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
-            existing_ids = set(r["post_id"] for r in (existing.data or []))
-            to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_ids]
-            if to_insert:
-                supabase.table("board_reads").insert(to_insert).execute()
-                post_added = len(to_insert)
+            # board_reads に書き込み
+            existing_reads = supabase.table("board_reads").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            existing_read_ids = set(r["post_id"] for r in (existing_reads.data or []))
+            reads_to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_read_ids]
+            if reads_to_insert:
+                supabase.table("board_reads").insert(reads_to_insert).execute()
+            # board_checks にも書き込み（未読カウントはこちらを参照）
+            existing_checks = supabase.table("board_checks").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            existing_check_ids = set(r["post_id"] for r in (existing_checks.data or []))
+            checks_to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_check_ids]
+            if checks_to_insert:
+                supabase.table("board_checks").insert(checks_to_insert).execute()
+                post_added = len(checks_to_insert)
         # コメントは「実際に開いて見るまで未読」にしたいので、ここでは既読化しない
-        # (Session 26 PR-A: 自動コメント既読化を削除)
         return jsonify({"status": "success", "count": post_added, "posts": post_added, "comments": 0})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
