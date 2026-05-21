@@ -1161,11 +1161,9 @@ function updateMarkAllReadBar() {
     // ケース記録ページのボタン
     var dvBtn = document.getElementById('dv-mark-all-read-btn');
     if (dvBtn) dvBtn.style.display = dailyVisible ? 'flex' : 'none';
-    // 掲示板ページのボタン（掲示板未読タブのカウントに連動）
+    // 掲示板ページのボタン（chat-badge連動）
     var boardWrap = document.getElementById('board-mark-all-read-wrap');
-    var boardUnreadCount = document.getElementById('unread-count');
-    var boardVisible = boardUnreadCount && boardUnreadCount.textContent !== '0' && boardUnreadCount.textContent !== '';
-    if (boardWrap) boardWrap.style.display = boardVisible ? 'block' : 'none';
+    if (boardWrap) boardWrap.style.display = chatVisible ? 'block' : 'none';
 }
 
 async function markAllRead() {
@@ -2093,8 +2091,10 @@ document.addEventListener('input', function(e) {
         }
     }
     applyFabVisibility();
-    // SPA遷移後も対応
-
+    document.addEventListener('spaNavigate', applyFabVisibility);
+    window.addEventListener('popstate', applyFabVisibility);
+}
+})();
 // ===== 歯車・ベルボタンのイベントバインド =====
 // イベントはdocumentに委譲して確実に動作させる
 document.addEventListener('click', function(e) {
