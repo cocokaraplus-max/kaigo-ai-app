@@ -1566,7 +1566,18 @@ window.updateUnreadCount = async function() {
         var res = await fetch('/api/board/unread_count');
         if (!res.ok) return;
         var data = await res.json();
-        badge.textContent = (data && typeof data.count === 'number') ? data.count : 0;
+        var count = (data && typeof data.count === 'number') ? data.count : 0;
+        badge.textContent = count;
+        // chat-badge（ナビバッジ）も同期
+        var chatBadge = document.getElementById('chat-badge');
+        if (chatBadge) {
+            if (count > 0) {
+                chatBadge.textContent = count > 99 ? '99+' : count;
+                chatBadge.style.display = 'block';
+            } else {
+                chatBadge.style.display = 'none';
+            }
+        }
     } catch (e) {
         // 取得失敗時は表示を変更しない(古い値を残す)
     }

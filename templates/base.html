@@ -1945,12 +1945,12 @@ async function openGoalCheckModal() {
     var m = document.getElementById('goal-check-modal');
     m.style.display = 'flex';
     var content = document.getElementById('goal-check-content');
-    content.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
+    content.innerHTML = '<div style="color:#80868b;padding:20px;">読み込み中...</div>';
     try {
         var res = await fetch('/api/goal_check');
         var data = await res.json();
         if (data.status !== 'success' || data.patients.length === 0) {
-            content.innerHTML = '<div style="text-align:center;color:#34a853;padding:20px;">期限切れ・期限間近の目標はありません</div>';
+            content.innerHTML = '<div style="color:#34a853;padding:20px;">期限切れ・期限間近の目標はありません</div>';
             return;
         }
         var html = '';
