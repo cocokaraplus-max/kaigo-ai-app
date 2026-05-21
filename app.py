@@ -5727,7 +5727,30 @@ def api_update_patient():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
-
+@app.route('/api/update_patient_care_level', methods=['POST'])
+@login_required
+def api_update_patient_care_level():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user_name = data.get("user_name")
+        care_classification = data.get("care_classification")
+        if not user_name or not care_classification:
+            return jsonify({"status": "error", "message": "パラメータ不足"}), 400
+        # care_classificationからcare_levelへのマッピング
+        care_map = {
+            "要介護": "要介護1",
+            "要支援": "要支援1",
+            "事業対象者": "事業対象者"
+        }
+        # patient_profilesのcare_levelを更新
+        supabase.table("patient_profiles").update({
+            "care_level": care_map.get(care_classification, care_classification)
+        }).eq("facility_code", f_code).eq("user_name", user_name).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 @app.route('/api/update_password', methods=['POST'])
 @login_required
 def api_update_password():

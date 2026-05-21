@@ -468,18 +468,17 @@
       </div>
     </div>
 
-    <!-- 目標設定 -->
+  <!-- 目標設定 -->
     <div class="profile-section">
       <div class="profile-section-header">🎯 目標設定</div>
       <div class="profile-section-body">
-        <div class="form-grid full">
-
+        <!-- 事業対象者・要支援用（2軸） -->
+        <div id="goal-simple" class="form-grid full" style="display:none;">
           <div class="form-group">
             <label>長期目標</label>
             <textarea id="long_goal" name="long_goal"
               placeholder="例: 自宅内を安全に移動し、家族と穏やかな生活を送ることができる">{{ selected.long_goal if selected else '' }}</textarea>
           </div>
-
           <div class="form-group">
             <label>長期目標期間</label>
             <div class="period-group">
@@ -490,13 +489,11 @@
                 value="{{ selected.long_goal_period_to if selected else '' }}">
             </div>
           </div>
-
           <div class="form-group">
             <label>短期目標</label>
             <textarea id="short_goal" name="short_goal"
               placeholder="例: 手すりを使って廊下を安全に歩くことができる">{{ selected.short_goal if selected else '' }}</textarea>
           </div>
-
           <div class="form-group">
             <label>短期目標期間</label>
             <div class="period-group">
@@ -507,13 +504,31 @@
                 value="{{ selected.short_goal_period_to if selected else '' }}">
             </div>
           </div>
-
+        </div>
+        <!-- 要介護用（機能・活動・参加 × 長期・短期） -->
+        <div id="goal-kaigo" class="form-grid full" style="display:none;">
+          {% for axis, label in [('function','機能'), ('activity','活動'), ('participation','参加')] %}
+          <div class="form-group" style="grid-column:1/-1;">
+            <label style="font-weight:800;color:#1a73e8;">【{{ label }}】</label>
+          </div>
+          <div class="form-group">
+            <label>長期目標（{{ label }}）</label>
+            <textarea id="long_goal_{{ axis }}" name="long_goal_{{ axis }}"
+              placeholder="長期目標（{{ label }}）を入力">{{ selected['long_goal_' + axis] if selected and selected['long_goal_' + axis] else '' }}</textarea>
+          </div>
+          <div class="form-group">
+            <label>短期目標（{{ label }}）</label>
+            <textarea id="short_goal_{{ axis }}" name="short_goal_{{ axis }}"
+              placeholder="短期目標（{{ label }}）を入力">{{ selected['short_goal_' + axis] if selected and selected['short_goal_' + axis] else '' }}</textarea>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="form-grid full">
           <div class="form-group">
             <label>備考</label>
             <textarea id="notes" name="notes"
               placeholder="その他特記事項">{{ selected.notes if selected else '' }}</textarea>
           </div>
-
         </div>
       </div>
     </div>
@@ -584,7 +599,17 @@ function updateAge() {
 // 初期年齢表示
 document.addEventListener('DOMContentLoaded', () => {
   updateAge();
+  updateGoalSection();
+  document.getElementById('care_level').addEventListener('change', updateGoalSection);
 });
+
+function updateGoalSection() {
+  const care = document.getElementById('care_level').value;
+  const isKaigo = ['要介護1','要介護2','要介護3','要介護4','要介護5'].includes(care);
+  const isSimple = ['事業対象者','要支援1','要支援2'].includes(care);
+  document.getElementById('goal-simple').style.display = isSimple ? '' : 'none';
+  document.getElementById('goal-kaigo').style.display = isKaigo ? '' : 'none';
+}
 
 // 利用者選択
 function loadPatient(id) {
@@ -609,7 +634,11 @@ async function saveProfile(e) {
     'support_office','care_manager_name','delegate_office',
     'medical_history','family_structure','service_start_date',
     'long_goal','long_goal_period_from','long_goal_period_to',
-    'short_goal','short_goal_period_from','short_goal_period_to','notes'
+    'short_goal','short_goal_period_from','short_goal_period_to',
+    'long_goal_function','short_goal_function',
+    'long_goal_activity','short_goal_activity',
+    'long_goal_participation','short_goal_participation',
+    'notes'
   ];
   const data = { facility_code: FACILITY_CODE };
   fields.forEach(f => {

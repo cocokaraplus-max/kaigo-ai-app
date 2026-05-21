@@ -868,11 +868,11 @@
                     </label>
                     <div class="eval-care-class-select">
                         <button type="button" class="eval-care-class-btn" data-value="要介護"
-                                onclick="evalSelectCareClass('要介護')">要介護</button>
+                                onclick="evalSelectCareClass('要介護', true)">要介護</button>
                         <button type="button" class="eval-care-class-btn" data-value="要支援"
-                                onclick="evalSelectCareClass('要支援')">要支援</button>
+                                onclick="evalSelectCareClass('要支援', true)">要支援</button>
                         <button type="button" class="eval-care-class-btn" data-value="事業対象者"
-                                onclick="evalSelectCareClass('事業対象者')">事業対象者</button>
+                                onclick="evalSelectCareClass('事業対象者', true)">事業対象者</button>
                     </div>
                     <input type="hidden" id="eval-care-classification" value="">
                     <div class="eval-field-help" id="eval-care-class-hint">
@@ -1883,14 +1883,31 @@ window.addEventListener('beforeunload', function() {
 // ===========================================================================
 // 介護区分セレクタ
 // ===========================================================================
-window.evalSelectCareClass = function(value) {
+window.evalSelectCareClass = function(value, fromUser) {
+    // ユーザー操作による変更の場合はアラート＋patient_profiles更新
+    if (fromUser && evalState.careClass && evalState.careClass !== value) {
+        if (!confirm(`介護区分を「${evalState.careClass}」から「${value}」に変更します。\n利用者情報の介護度も更新されます。よろしいですか？`)) {
+            return;
+        }
+        // patient_profilesのcare_levelを更新
+        if (evalState.selectedPatient) {
+            const careMap = {'要介護':'要介護1', '要支援':'要支援1', '事業対象者':'事業対象者'};
+            // care_classificationからcare_levelへのマッピングは大まかに行う
+            fetch(`/api/update_patient_care_level`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_name: evalState.selectedPatient.name,
+                    care_classification: value
+                })
+            }).catch(e => console.warn('care_level update failed:', e));
+        }
+    }
     evalState.careClass = value;
     document.getElementById('eval-care-classification').value = value;
-
     document.querySelectorAll('.eval-care-class-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.value === value);
     });
-
     document.getElementById('eval-status-empty').style.display = 'none';
     if (value === '要介護') {
         document.getElementById('eval-status-kaigo').style.display = '';
@@ -1908,7 +1925,6 @@ window.evalSelectCareClass = function(value) {
     }
     evalUpdateStatus();
 };
-
 // ===========================================================================
 // セグメントボタン (radio 代替)
 // ===========================================================================

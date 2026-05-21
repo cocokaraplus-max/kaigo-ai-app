@@ -163,6 +163,27 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
                     result[key] = val
     except Exception:
         pass
+    # patient_profilesからのフォールバック（evaluationsに値がない場合）
+    try:
+        prof = supabase.table("patient_profiles") \
+            .select("short_goal,long_goal,short_goal_function,short_goal_activity,short_goal_participation,long_goal_function,long_goal_activity,long_goal_participation") \
+            .eq("facility_code", facility_code) \
+            .eq("user_name", user_name) \
+            .limit(1) \
+            .execute()
+        if prof.data and prof.data[0]:
+            p = prof.data[0]
+            if not result["short_goal_simple"]:
+                result["short_goal_simple"] = p.get("short_goal") or ""
+            if not result["long_goal_simple"]:
+                result["long_goal_simple"] = p.get("long_goal") or ""
+            for axis in ["function", "activity", "participation"]:
+                if not result[f"short_goal_{axis}"]:
+                    result[f"short_goal_{axis}"] = p.get(f"short_goal_{axis}") or ""
+                if not result[f"long_goal_{axis}"]:
+                    result[f"long_goal_{axis}"] = p.get(f"long_goal_{axis}") or ""
+    except Exception:
+        pass
     return result
 
 def get_initial_care_classification(supabase, facility_code: str, user_name: str, target_month: str) -> str:
