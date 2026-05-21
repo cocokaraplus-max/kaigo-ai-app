@@ -1988,7 +1988,7 @@ async function openGoalCheckModal() {
         var html = '';
         if (expired.length > 0) {
             html += '<div style="margin-bottom:16px;">'
-                + '<div style="font-weight:800;color:#e53935;font-size:0.85rem;padding:6px 0;border-bottom:2px solid #fce8e6;margin-bottom:8px;">🔴 目標変更（期限切れ） ' + expired.length + '名</div>'
+                + '<div style="font-weight:800;color:#e53935;font-size:0.85rem;padding:6px 0;border-bottom:2px solid #fce8e6;margin-bottom:8px;">🔴 期限切れ ' + expired.length + '名</div>'
                 + renderPatients(expired)
                 + '</div>';
         }
