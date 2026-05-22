@@ -3750,6 +3750,24 @@ LEDGER_ALLOWED_USER = '岸本洋幸'
 LEDGER_DEV_FACILITY = 'DEMO001'
 LEDGER_DEV_USER = 'デモ職員A'
 
+@app.context_processor
+def inject_can_ledger():
+    try:
+        f_code = session.get('f_code')
+        my_name = session.get('my_name')
+        if not f_code or not my_name:
+            return {'can_ledger': False}
+        allowed = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+        dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+        if not allowed and not dev:
+            import json as _j
+            supabase = get_supabase()
+            r = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
+            lu = _j.loads(r.data[0]["value"]) if r.data else []
+            allowed = my_name in lu
+        return {'can_ledger': allowed or dev}
+    except:
+        return {'can_ledger': False}
 def ledger_access_required(f):
     """出納帳専用アクセス制限デコレータ"""
     from functools import wraps
