@@ -903,10 +903,18 @@ function openReportPreview(useSample){
     document.body.classList.add('report-preview-open');document.getElementById('report-sheet').classList.add('preview-on');
     return;
   }
+  // 生成済み結果があればAPIを叩かず直接表示
+  if(_reportData && !useSample){
+    buildReport(_reportData);
+    document.body.classList.add("report-preview-open");
+    document.getElementById("report-sheet").classList.add("preview-on");
+    document.getElementById("report-sheet").scrollIntoView({behavior:"smooth"});
+    return;
+  }
   // 実データ：選択中の利用者・対象月からAPI取得
-  var uname = (window.selectedPatient && (selectedPatient.name||selectedPatient.user_name)) || '';
-  var ym = document.getElementById('target-month') ? document.getElementById('target-month').value : '';
-  if(!uname || !ym){ alert('利用者と対象月を選んでください'); return; }
+  var uname = (selectedPatient && (selectedPatient.name||selectedPatient.user_name)) || "";
+  var ym = document.getElementById("target-month") ? document.getElementById("target-month").value : "";
+  if(!uname || !ym){ alert("利用者と対象月を選んでください"); return; }
   fetch('/api/monitoring_report_data?user_name='+encodeURIComponent(uname)+'&year_month='+encodeURIComponent(ym))
     .then(function(r){ return r.json(); })
     .then(function(d){
