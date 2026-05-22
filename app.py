@@ -6418,7 +6418,7 @@ def api_board_create_post():
         if audio and audio.filename:
             from utils import upload_audio_to_supabase
             audio_url = upload_audio_to_supabase(supabase, audio.read(), audio.filename, f_code)
-            pdf_url = ""
+        pdf_url = ""
         pdf_file = request.files.get("pdf")
         if pdf_file and pdf_file.filename:
             from utils import upload_pdf_to_supabase
