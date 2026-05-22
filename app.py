@@ -5184,29 +5184,12 @@ def api_generate_monitoring():
             ).eq("facility_code", f_code).eq("user_name", u_name).eq("year_month", month_val).execute()
             eval_data = eval_res.data[0] if eval_res.data else {}
             NO_EVAL_MSG = "評価ページにて評価を済ませてください"
-            all_recs_text = "\n".join(r["content"] for r in records)
             # 訓練による変化
             changes = eval_data.get("changes_by_training") or ""
-            if not changes:
-                if all_recs_text:
-                    try:
-                        cp = BASE_PROMPT + "・個別機能訓練実施による利用者の変化を100文字程度で説明\n\n『記録』\n" + all_recs_text
-                        changes = model.generate_content([cp]).text.strip()
-                    except:
-                        changes = NO_EVAL_MSG
-                else:
-                    changes = NO_EVAL_MSG
+            if not changes: changes = NO_EVAL_MSG
             # 課題とその要因
             issues = eval_data.get("issues_and_causes") or ""
-            if not issues:
-                if all_recs_text:
-                    try:
-                        ip = BASE_PROMPT + "・現在の課題とその要因を100文字程度で説明\n\n『記録』\n" + all_recs_text
-                        issues = model.generate_content([ip]).text.strip()
-                    except:
-                        issues = NO_EVAL_MSG
-                else:
-                    issues = NO_EVAL_MSG
+            if not issues: issues = NO_EVAL_MSG
             eval_extra = {
                 "changes_by_training": changes,
                 "issues_and_causes": issues,
