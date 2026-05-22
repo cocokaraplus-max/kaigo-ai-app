@@ -1252,6 +1252,10 @@ async function savePatientProfileEdit(id) {
       body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error(res.status + ': ' + await res.text());
+    // patientsテーブルも同期
+    const syncData2 = { user_name: data.user_name };
+    if (data.user_name_kana) syncData2.user_name_kana = data.user_name_kana;
+    fetch('/api/update_patient_birth', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(syncData2) }).catch(()=>{});
     showAdminToast('✅ 保存しました');
     // 編集フォームを閉じてカードを更新（リロードしない）
     var editArea = document.getElementById('pef-' + id);
