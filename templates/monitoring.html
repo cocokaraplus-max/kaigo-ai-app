@@ -402,6 +402,7 @@ function selectPatient(p) {
   loadHistory(p.name);
 }
 searchInput.addEventListener("focus", () => {
+  if (selectedPatient) return;
   searchInput.style.display = "";
   document.getElementById("patient-selected").style.display = "none";
   selectedPatient = null;
