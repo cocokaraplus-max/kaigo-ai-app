@@ -3757,10 +3757,17 @@ def ledger_access_required(f):
     def decorated(*args, **kwargs):
         if not session.get('logged_in'):
             return redirect('/login')
-        _fc = session.get('f_code')
-        _mn = session.get('my_name')
         _ok = (_fc == LEDGER_ALLOWED_FACILITY and _mn == LEDGER_ALLOWED_USER)
         _dev = (_fc == LEDGER_DEV_FACILITY and _mn == LEDGER_DEV_USER)
+        # admin_settingsのledger_usersも確認
+        try:
+            import json as _j
+            _sb = get_supabase()
+            _r = _sb.table("admin_settings").select("value").eq("facility_code", _fc).eq("key", "ledger_users").execute()
+            _lu = _j.loads(_r.data[0]["value"]) if _r.data else []
+            _ok = _ok or (_mn in _lu)
+        except: pass
+        if not _ok and not _dev:
         if not _ok and not _dev:
             return jsonify({'status': 'error', 'message': '権限がありません'}), 403
         return f(*args, **kwargs)
@@ -3772,11 +3779,17 @@ def ledger():
     """出納帳トップページ"""
     f_code = session.get('f_code')
     my_name = session.get('my_name')
-    is_allowed = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    supabase = get_supabase()
+    import json as _j2
+    try:
+        _r2 = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
+        _lu2 = _j2.loads(_r2.data[0]["value"]) if _r2.data else []
+        is_allowed = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER) or (my_name in _lu2)
+    except:
+        is_allowed = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
     is_dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
     if not is_allowed and not is_dev:
         return redirect('/top')
-    supabase = get_supabase()
     # 勘定科目マスタ（なければ初期データを投入）
     acc_res = supabase.table('accounts').select('*').eq('facility_code', f_code).order('code').execute()
     accounts = acc_res.data or []
