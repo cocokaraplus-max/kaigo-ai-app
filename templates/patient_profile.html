@@ -521,6 +521,27 @@
             <textarea id="short_goal_{{ axis }}" name="short_goal_{{ axis }}"
               placeholder="短期目標（{{ label }}）を入力">{{ selected['short_goal_' + axis] if selected and selected['short_goal_' + axis] else '' }}</textarea>
           </div>
+        <!-- 要介護用 目標期間 -->
+        <div class="form-group">
+          <label>長期目標期間</label>
+          <div class="period-group">
+            <input type="date" id="kaigo_long_goal_period_from" name="long_goal_period_from"
+              value="{{ selected.long_goal_period_from if selected else '' }}">
+            <span>〜</span>
+            <input type="date" id="kaigo_long_goal_period_to" name="long_goal_period_to"
+              value="{{ selected.long_goal_period_to if selected else '' }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>短期目標期間</label>
+          <div class="period-group">
+            <input type="date" id="kaigo_short_goal_period_from" name="short_goal_period_from"
+              value="{{ selected.short_goal_period_from if selected else '' }}">
+            <span>〜</span>
+            <input type="date" id="kaigo_short_goal_period_to" name="short_goal_period_to"
+              value="{{ selected.short_goal_period_to if selected else '' }}">
+          </div>
+        </div>  
           {% endfor %}
         </div>
         <div class="form-grid full">
@@ -603,6 +624,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('care_level').addEventListener('change', updateGoalSection);
   setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 3);
   setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 6);
+  setupGoalPeriodAuto('kaigo_short_goal_period_from', 'kaigo_short_goal_period_to', 3);
+  setupGoalPeriodAuto('kaigo_long_goal_period_from', 'kaigo_long_goal_period_to', 6);
 });
 
 function updateGoalSection() {
@@ -676,6 +699,13 @@ async function saveProfile(e) {
     const el = document.getElementById(f);
     data[f] = el ? (el.value || null) : null;
   });
+  const care = document.getElementById('care_level').value;
+  if (['要介護1','要介護2','要介護3','要介護4','要介護5'].includes(care)) {
+    ['long_goal_period_from','long_goal_period_to','short_goal_period_from','short_goal_period_to'].forEach(f => {
+      const el = document.getElementById('kaigo_' + f);
+      if (el) data[f] = el.value || null;
+    });
+  }
   data.updated_at = new Date().toISOString();
 
   try {
