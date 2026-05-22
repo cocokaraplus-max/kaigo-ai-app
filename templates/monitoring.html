@@ -916,6 +916,16 @@ function openReportPreview(useSample){
       if(d.status!=='success'){ alert(d.message||'データ取得に失敗しました'); return; }
       d._today = new Date().toLocaleDateString('ja-JP-u-ca-japanese',{era:'long',year:'numeric',month:'long',day:'numeric'});
       _reportData=d;
+      // AI生成結果をモニタリング本文としてマージ
+      if(currentResult){
+        if(currentResult.mode==="category" && currentResult.categories){
+          _reportData.monitoring = _reportData.monitoring || {};
+          _reportData.monitoring.categories = currentResult.categories;
+        } else if(currentResult.full_text){
+          _reportData.monitoring = _reportData.monitoring || {};
+          _reportData.monitoring.full_text = currentResult.full_text;
+        }
+      }
       fillAuthorOptions(d.staff_list);
       buildReport(d);
       document.body.classList.add('report-preview-open');document.getElementById('report-sheet').classList.add('preview-on');
