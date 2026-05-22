@@ -522,6 +522,8 @@
               placeholder="短期目標（{{ label }}）を入力">{{ selected['short_goal_' + axis] if selected and selected['short_goal_' + axis] else '' }}</textarea>
           </div>
         <!-- 要介護用 目標期間 -->
+          {% endfor %}
+        </div>
         <div class="form-group">
           <label>長期目標期間</label>
           <div class="period-group">
@@ -542,8 +544,6 @@
               value="{{ selected.short_goal_period_to if selected else '' }}">
           </div>
         </div>  
-          {% endfor %}
-        </div>
         <div class="form-grid full">
           <div class="form-group">
             <label>備考</label>
