@@ -3786,7 +3786,6 @@ def ledger_access_required(f):
             _ok = _ok or (_mn in _lu)
         except: pass
         if not _ok and not _dev:
-        if not _ok and not _dev:
             return jsonify({'status': 'error', 'message': '権限がありません'}), 403
         return f(*args, **kwargs)
     return decorated
