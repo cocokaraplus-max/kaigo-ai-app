@@ -554,6 +554,35 @@
       </div>
     </div>
 
+    <!-- 利用日登録 -->
+    {% if selected %}
+    <div class="profile-section">
+      <div class="profile-section-header">📅 利用日登録</div>
+      <div class="profile-section-body">
+        <div class="form-grid full">
+          <div class="form-group" style="grid-column:1/-1;">
+            <label>利用曜日・時間帯</label>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">
+              {% for key, label in [('mon','月'),('tue','火'),('wed','水'),('thu','木'),('fri','金'),('sat','土'),('sun','日')] %}
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <div style="font-weight:700;font-size:0.85rem;">{{ label }}</div>
+                <select id="vd-{{ key }}" style="font-size:0.8rem;padding:4px;border-radius:6px;border:1.5px solid #e0e0e0;">
+                  <option value="">なし</option>
+                  <option value="am">午前</option>
+                  <option value="pm">午後</option>
+                  <option value="all">終日</option>
+                </select>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <button type="button" onclick="saveVisitDayProfile()" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-weight:700;cursor:pointer;">💾 利用日を保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <!-- 保存バー -->
     <div class="save-bar">
       {% if selected %}
@@ -876,6 +905,35 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
+}
+// 利用日登録
+const PATIENT_ID = {{ patient_id | tojson }};
+const VISIT_DAY_DATA = {{ visit_day_data | tojson }};
+const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+(function initVisitDays(){
+  const apd = (VISIT_DAY_DATA && VISIT_DAY_DATA.ampm_per_day) || {};
+  DAY_KEYS.forEach(function(k){
+    const el = document.getElementById('vd-' + k);
+    if(el && apd[k]) el.value = apd[k];
+  });
+})();
+async function saveVisitDayProfile(){
+  if(!PATIENT_ID){ alert('利用者を選択してください'); return; }
+  const ampm_per_day = {};
+  const weekdays_arr = [];
+  DAY_KEYS.forEach(function(k){
+    const el = document.getElementById('vd-' + k);
+    if(el && el.value){ ampm_per_day[k] = el.value; weekdays_arr.push(k); }
+  });
+  const weekdays = weekdays_arr.join(',');
+  const user_name = document.getElementById('user_name')?.value || '';
+  const res = await fetch('/api/save_visit_day', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekdays: weekdays, ampm_per_day: ampm_per_day})
+  });
+  if(res.ok){ showToast('✅ 利用日を保存しました'); }
+  else{ showToast('❌ 保存に失敗しました'); }
 }
 </script>
 {% endblock %}

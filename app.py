@@ -4723,11 +4723,26 @@ def patient_profile():
             selected = res.data
         except Exception:
             selected = None
+            # patient_id と利用日データを取得
+    patient_id = None
+    visit_day_data = {}
+    if selected:
+        try:
+            pr = supabase.table('patients').select('id').eq('facility_code', f_code).eq('user_name', selected['user_name']).execute()
+            if pr.data:
+                patient_id = pr.data[0]['id']
+                vr = supabase.table('patient_visit_days').select('weekdays,ampm_per_day').eq('facility_code', f_code).eq('patient_id', patient_id).execute()
+                if vr.data:
+                    visit_day_data = vr.data[0]
+        except Exception:
+            pass
     return render_template(
         'patient_profile.html',
         patients=patients,
         selected=selected,
         supabase_url=os.environ.get('SUPABASE_URL', ''),
+        patient_id=patient_id,
+        visit_day_data=visit_day_data,
         supabase_anon_key=os.environ.get('SUPABASE_KEY', '')
     )
 
