@@ -925,6 +925,17 @@ function openReportPreview(useSample){
           _reportData.monitoring = _reportData.monitoring || {};
           _reportData.monitoring.full_text = currentResult.full_text;
         }
+        if(currentResult.eval_extra){
+          _reportData.evaluation = _reportData.evaluation || {};
+          var ex = currentResult.eval_extra;
+          if(ex.changes_by_training) _reportData.evaluation.changes_by_training = ex.changes_by_training;
+          if(ex.issues_and_causes) _reportData.evaluation.issues_and_causes = ex.issues_and_causes;
+          if(ex.special_notes) _reportData.evaluation.special_notes = ex.special_notes;
+          if(ex.satisfaction) _reportData.evaluation.satisfaction = ex.satisfaction;
+          if(ex.service_appropriateness) _reportData.evaluation.service_appropriateness = ex.service_appropriateness;
+          if(ex.new_requests_exist !== undefined) _reportData.evaluation.new_requests_exist = ex.new_requests_exist;
+          if(ex.new_requests_detail) _reportData.evaluation.new_requests_detail = ex.new_requests_detail;
+        }
       }
       fillAuthorOptions(d.staff_list);
       buildReport(d);

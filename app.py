@@ -5178,12 +5178,50 @@ def api_generate_monitoring():
                     results[cat] = model.generate_content([prompt]).text.strip()
                 except Exception as e:
                     results[cat] = f"（生成エラー: {str(e)[:50]}）"
-
+# 評価データ取得
+            eval_res = supabase.table("patient_evaluations").select(
+                "changes_by_training,issues_and_causes,special_notes,satisfaction,service_appropriateness,new_requests_exist,new_requests_detail"
+            ).eq("facility_code", f_code).eq("user_name", u_name).eq("year_month", month_val).execute()
+            eval_data = eval_res.data[0] if eval_res.data else {}
+            NO_EVAL_MSG = "評価ページにて評価を済ませてください"
+            all_recs_text = "\n".join(r["content"] for r in records)
+            # 訓練による変化
+            changes = eval_data.get("changes_by_training") or ""
+            if not changes:
+                if all_recs_text:
+                    try:
+                        cp = BASE_PROMPT + "・個別機能訓練実施による利用者の変化を100文字程度で説明\n\n『記録』\n" + all_recs_text
+                        changes = model.generate_content([cp]).text.strip()
+                    except:
+                        changes = NO_EVAL_MSG
+                else:
+                    changes = NO_EVAL_MSG
+            # 課題とその要因
+            issues = eval_data.get("issues_and_causes") or ""
+            if not issues:
+                if all_recs_text:
+                    try:
+                        ip = BASE_PROMPT + "・現在の課題とその要因を100文字程度で説明\n\n『記録』\n" + all_recs_text
+                        issues = model.generate_content([ip]).text.strip()
+                    except:
+                        issues = NO_EVAL_MSG
+                else:
+                    issues = NO_EVAL_MSG
+            eval_extra = {
+                "changes_by_training": changes,
+                "issues_and_causes": issues,
+                "special_notes": eval_data.get("special_notes") or "",
+                "satisfaction": eval_data.get("satisfaction") or "",
+                "service_appropriateness": eval_data.get("service_appropriateness") or "",
+                "new_requests_exist": eval_data.get("new_requests_exist"),
+                "new_requests_detail": eval_data.get("new_requests_detail") or "",
+            }
             return jsonify({
                 "mode": "category",
                 "categories": results,
                 "record_counts": counts,
-                "total_records": len(records)
+                "total_records": len(records),
+                "eval_extra": eval_extra
             })
 
     except Exception as e:
