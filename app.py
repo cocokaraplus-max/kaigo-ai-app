@@ -3762,9 +3762,14 @@ def inject_can_ledger():
         if not allowed and not dev:
             import json as _j
             supabase = get_supabase()
-            r = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
-            lu = _j.loads(r.data[0]["value"]) if r.data else []
-            allowed = my_name in lu
+            # 施設レベルの許可確認
+            fe = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_enabled").execute()
+            facility_enabled = bool(fe.data and fe.data[0].get("value") == "true")
+            if facility_enabled:
+                # 施設内スタッフレベルの許可確認
+                r = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
+                lu = _j.loads(r.data[0]["value"]) if r.data else []
+                allowed = my_name in lu
         return {'can_ledger': allowed or dev}
     except:
         return {'can_ledger': False}
@@ -5699,6 +5704,12 @@ def dev_menu():
     except: pass
 
     # 各施設のレコード数・スタッフ数
+    def _check_ledger_enabled(sb, facility_code):
+        try:
+            r = sb.table('admin_settings').select('value').eq('facility_code', facility_code).eq('key', 'ledger_enabled').execute()
+            return bool(r.data and r.data[0].get('value') == 'true')
+        except:
+            return False
     stats = []
     for fac in facilities:
         fc = fac["facility_code"]
@@ -5714,6 +5725,7 @@ def dev_menu():
                 "records": rec_count,
                 "staffs": staff_count,
                 "patients": patient_count,
+                "ledger_enabled": fc == LEDGER_ALLOWED_FACILITY or _check_ledger_enabled(supabase, fc),
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -5744,7 +5756,25 @@ def dev_menu():
         runtime_info=runtime_info,
         current_f_code=f_code,
     )
-
+@app.route('/api/dev/toggle_facility_ledger', methods=['POST'])
+def api_dev_toggle_facility_ledger():
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json
+    fc = data.get('facility_code', '').strip()
+    enabled = data.get('enabled', False)
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        res = supabase.table('admin_settings').select('id').eq('facility_code', fc).eq('key', 'ledger_enabled').execute()
+        if res.data:
+            supabase.table('admin_settings').update({'value': 'true' if enabled else 'false'}).eq('id', res.data[0]['id']).execute()
+        else:
+            supabase.table('admin_settings').insert({'facility_code': fc, 'key': 'ledger_enabled', 'value': 'true' if enabled else 'false'}).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 @app.route('/api/dev_logout', methods=['POST'])
 def api_dev_logout():
     session["dev_authenticated"] = False
