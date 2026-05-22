@@ -5699,7 +5699,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,created_at").order("created_at", desc=True).execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at").execute()
         facilities = res.data or []
     except: pass
 
@@ -5721,7 +5721,7 @@ def dev_menu():
                 "facility_code": fc,
                 "facility_name": fac.get("facility_name", fc),
                 "is_active": fac.get("is_active", True),
-                "created_at": fac.get("created_at", "")[:10],
+                "expires_at": fac.get("expires_at", "")[:10] if fac.get("expires_at") else "",
                 "records": rec_count,
                 "staffs": staff_count,
                 "patients": patient_count,

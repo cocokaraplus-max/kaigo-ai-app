@@ -178,7 +178,7 @@
                         <span class="badge-inactive">停止</span>
                         {% endif %}
                     </td>
-                    <td>{{ s.created_at }}</td>
+                    <td>{{ s.expires_at[:10] if s.expires_at else "-" }}</td>
                     <td style="text-align:right;">{{ s.patients }}</td>
                     <td style="text-align:right;">{{ s.staffs }}</td>
                     <td style="text-align:right;">{{ s.records }}</td>
