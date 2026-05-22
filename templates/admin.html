@@ -631,44 +631,10 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           </div>
           <div class="patient-card-actions">
             <a href="/patient_profile?id={{ p.id }}" class="btn btn-sm" style="background:#e8f0fe;color:#1a73e8;text-decoration:none;">
-              <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>詳細
-            </a>
-            <button class="btn btn-sm edit-btn" onclick="openPatientEditForm('{{ p.id }}')">
               <span class="material-symbols-outlined" style="font-size:15px;">edit</span>編集
-            </button>
+            </a>
             <button class="btn btn-sm delete-btn" onclick="confirmDeletePatient('{{ p.id }}','{{ p.user_name }}')">
               <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
-            </button>
-          </div>
-        </div>
-        <div class="edit-form-area" id="pef-{{ p.id }}" style="display:none;">
-          <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">利用者番号</label>
-            <input type="text" id="pef-number-{{ p.id }}" class="form-control" value="{{ p.patient_number or '' }}">
-          </div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">氏名</label>
-            <input type="text" id="pef-name-{{ p.id }}" class="form-control" value="{{ p.user_name }}">
-          </div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">ふりがな（ひらがな）</label>
-            <input type="text" id="pef-kana-{{ p.id }}" class="form-control" value="{{ p.user_name_kana or '' }}">
-          </div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label class="form-label" style="font-size:0.75rem;">介護度</label>
-            <select id="pef-care-{{ p.id }}" class="form-control">
-              <option value="">選択</option>
-              {% for lv in ['事業対象者','要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
-              <option value="{{ lv }}" {% if p.care_level == lv %}selected{% endif %}>{{ lv }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <button class="btn btn-primary btn-sm" onclick="savePatientProfileEdit('{{ p.id }}')">
-              <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
-            </button>
-            <button class="btn btn-sm" onclick="document.getElementById('pef-{{ p.id }}').style.display='none'">
-              <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
             </button>
           </div>
         </div>
@@ -1223,59 +1189,6 @@ async function addPatientProfile() {
     showAdminToast('❌ 登録失敗: ' + e.message);
   }
 }
-
-// ---- patient_profiles 編集フォーム開閉 ----
-function openPatientEditForm(id) {
-  document.getElementById('pef-' + id).style.display = 'block';
-}
-
-// ---- patient_profiles 編集保存 ----
-async function savePatientProfileEdit(id) {
-  const data = {
-    facility_code:  FACILITY_CODE,
-    patient_number: document.getElementById('pef-number-' + id)?.value || null,
-    user_name:      document.getElementById('pef-name-' + id)?.value || '',
-    user_name_kana: document.getElementById('pef-kana-' + id)?.value || null,
-    care_level:     document.getElementById('pef-care-' + id)?.value || null,
-    updated_at:     new Date().toISOString()
-  };
-  if (!data.user_name.trim()) { showAdminToast('❌ 氏名は必須です'); return; }
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify(data)
-    });
-    if (!res.ok) throw new Error(res.status + ': ' + await res.text());
-    // patientsテーブルも同期
-    const syncData2 = { user_name: data.user_name };
-    if (data.user_name_kana) syncData2.user_name_kana = data.user_name_kana;
-    fetch('/api/update_patient_birth', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(syncData2) }).catch(()=>{});
-    showAdminToast('✅ 保存しました');
-    // 編集フォームを閉じてカードを更新（リロードしない）
-    var editArea = document.getElementById('pef-' + id);
-    if (editArea) editArea.style.display = 'none';
-    // 氏名・読み仮名の表示を即時更新
-    var nameEl = document.querySelector('[data-pid="' + id + '"] .patient-name');
-    if (nameEl) nameEl.textContent = data.user_name;
-    var kanaEl = document.querySelector('[data-pid="' + id + '"] .patient-kana');
-    if (kanaEl && data.user_name_kana) kanaEl.textContent = data.user_name_kana;
-    // 2秒後に静かにリロード（スクロール位置を保持）
-    setTimeout(function() {
-      sessionStorage.setItem('admin_scroll', window.scrollY);
-      location.reload();
-    }, 2000);
-  } catch(e) {
-    showAdminToast('❌ 保存失敗: ' + e.message);
-    console.error('[savePatientProfileEdit]', e);
-  }
-}
-
 // ---- 利用者削除 ----
 let _deletePatientId = null;
 function confirmDeletePatient(id, name) {
