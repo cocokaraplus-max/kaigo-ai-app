@@ -610,6 +610,7 @@ function hideLoading() {
     <span style="font-size:0.82rem;color:#5f6368;">作成者</span>
     <select id="rep-author"><option value="">（選択）</option></select>
     <button onclick="doReportPrint()">🖨 印刷 / PDF保存</button>
+    <div id="ios-print-hint" style="display:none;font-size:0.78rem;color:#5f6368;text-align:center;margin-top:6px;">📱 iPhoneの場合: Safari下部の共有ボタン 　→「PDFとして保存」でPDF化できます</div>
     <button class="close" onclick="closeReportPreview()">閉じる</button>
   </div>
 </div>
@@ -922,8 +923,15 @@ function closeReportPreview(){
   document.body.classList.remove('report-preview-open');document.getElementById('report-sheet').classList.remove('preview-on');
 }
 function doReportPrint(){
-  if(_reportData) buildReport(_reportData); // 作成者選択を反映して再描画
-  window.print();
+  if(_reportData) buildReport(_reportData);
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var hint = document.getElementById("ios-print-hint");
+  if (isIOS) {
+    if (hint) hint.style.display = "";
+  } else {
+    if (hint) hint.style.display = "none";
+    window.print();
+  }
 }
 // 作成者変更時に再描画（担当者名を反映）
 document.addEventListener('change', function(e){
