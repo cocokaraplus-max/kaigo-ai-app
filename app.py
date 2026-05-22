@@ -6772,8 +6772,20 @@ def api_board_mark_all_read():
             if checks_to_insert:
                 supabase.table("board_checks").insert(checks_to_insert).execute()
                 post_added = len([c for c in checks_to_insert if c["staff_name"] == my_name])
-        # コメントは「実際に開いて見るまで未読」にしたいので、ここでは既読化しない
-        return jsonify({"status": "success", "count": post_added, "posts": post_added, "comments": 0})
+        # コメントも全既読化
+        comment_added = 0
+        try:
+            ccs = supabase.table("board_comments").select("id,staff_name").in_("post_id", all_ids).eq("facility_code", f_code).execute()
+            other_comment_ids = [c["id"] for c in (ccs.data or []) if c["staff_name"] != my_name]
+            if other_comment_ids:
+                existing_reads = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_comment_ids).execute()
+                read_ids = set(r["comment_id"] for r in (existing_reads.data or []))
+                to_insert = [{"comment_id": cid, "facility_code": f_code, "staff_name": my_name} for cid in other_comment_ids if cid not in read_ids]
+                if to_insert:
+                    supabase.table("board_comment_reads").insert(to_insert).execute()
+                    comment_added = len(to_insert)
+        except: pass
+        return jsonify({"status": "success", "count": post_added + comment_added, "posts": post_added, "comments": comment_added})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
