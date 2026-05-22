@@ -5756,6 +5756,21 @@ def dev_menu():
         runtime_info=runtime_info,
         current_f_code=f_code,
     )
+@app.route('/api/dev/update_facility_expiry', methods=['POST'])
+def api_dev_update_facility_expiry():
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json
+    fc = data.get('facility_code', '').strip()
+    expires_at = data.get('expires_at', '').strip()
+    if not fc or not expires_at:
+        return jsonify({'success': False, 'message': 'facility_code and expires_at required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'expires_at': expires_at}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 @app.route('/api/dev/toggle_facility_ledger', methods=['POST'])
 def api_dev_toggle_facility_ledger():
     if not session.get('dev_authenticated'):

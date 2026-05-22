@@ -159,7 +159,7 @@
                     <th>施設名</th>
                     <th>施設コード</th>
                     <th>状態</th>
-                    <th>登録日</th>
+                    <th>有効期限</th>
                     <th>利用者</th>
                     <th>スタッフ</th>
                     <th>記録数</th>
@@ -178,7 +178,12 @@
                         <span class="badge-inactive">停止</span>
                         {% endif %}
                     </td>
-                    <td>{{ s.expires_at[:10] if s.expires_at else "-" }}</td>
+                    <td>
+                        <span style="cursor:pointer;text-decoration:underline;color:#1a73e8;" 
+                            onclick="editExpiry('{{ s.facility_code }}', '{{ s.expires_at[:10] if s.expires_at else '' }}')">
+                            {{ s.expires_at[:10] if s.expires_at else "-" }}
+                        </span>
+                    </td>
                     <td style="text-align:right;">{{ s.patients }}</td>
                     <td style="text-align:right;">{{ s.staffs }}</td>
                     <td style="text-align:right;">{{ s.records }}</td>
@@ -377,6 +382,26 @@ async function toggleFacilityLedger(facilityCode, enabled) {
   } else {
     alert('失敗: ' + (data.message || ''));
     event.target.checked = !enabled;
+  }
+}
+async function editExpiry(facilityCode, currentExpiry) {
+  const newExpiry = prompt('有効期限を入力してください（例: 2099-12-31）\n施設: ' + facilityCode, currentExpiry || '2099-12-31');
+  if (!newExpiry) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newExpiry)) {
+    alert('日付形式が正しくありません（YYYY-MM-DD）');
+    return;
+  }
+  const res = await fetch('/api/dev/update_facility_expiry', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({facility_code: facilityCode, expires_at: newExpiry})
+  });
+  const data = await res.json();
+  if (data.success) {
+    alert('✅ 有効期限を ' + newExpiry + ' に更新しました');
+    location.reload();
+  } else {
+    alert('失敗: ' + (data.message || ''));
   }
 }
 </script>
