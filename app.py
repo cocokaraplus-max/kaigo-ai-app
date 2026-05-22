@@ -1083,7 +1083,7 @@ def api_records_search():
                 keywords.append(tok)
         keywords = keywords[:5]
 
-    LIMIT = 100
+    LIMIT = 5000
 
     try:
         query = supabase.table("records").select(
@@ -2248,7 +2248,7 @@ def api_vitals_history():
         f_code = session["f_code"]
         patient_id = request.args.get("patient_id")
         supabase = get_supabase()
-        res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("patient_id", patient_id).order("measured_date", desc=True).limit(60).execute()
+        res = supabase.table("vitals").select("*").eq("facility_code", f_code).eq("patient_id", patient_id).order("measured_date", desc=True).limit(1825).execute()
         return jsonify({"vitals": res.data or []})
     except Exception as e:
         return jsonify({"vitals": [], "error": str(e)})
@@ -6261,7 +6261,7 @@ def board():
     supabase = get_supabase()
     posts = []
     try:
-        res = supabase.table("board_posts").select("*").eq("facility_code", f_code).order("is_pinned", desc=True).order("created_at", desc=True).limit(100).execute()
+        res = supabase.table("board_posts").select("*").eq("facility_code", f_code).order("is_pinned", desc=True).order("created_at", desc=True).limit(5000).execute()
         all_posts = res.data or []
         # is_private=Trueの投稿は自分がmention_namesに含まれるか投稿者のみ表示
         posts = []
@@ -6272,7 +6272,6 @@ def board():
                     posts.append(p)
             else:
                 posts.append(p)
-        posts = posts[:30]
     except Exception as e:
         print(f"board error: {e}")
     icons = get_staff_icons(supabase, f_code)
