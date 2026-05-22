@@ -728,6 +728,11 @@ async function saveProfile(e) {
     if (!id && result[0]?.id) {
       document.getElementById('profile-id').value = result[0].id;
     }
+    // patientsテーブルのbirth_dateとuser_kanaも同期
+    const syncData = { user_name: data.user_name };
+    if (data.birth_date) syncData.birth_date = data.birth_date;
+    if (data.user_name_kana) syncData.user_name_kana = data.user_name_kana;
+    fetch('/api/update_patient_birth', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(syncData) }).catch(()=>{});
     showToast('✅ 保存しました');
     setTimeout(() => history.back(), 2500);
   } catch(err) {

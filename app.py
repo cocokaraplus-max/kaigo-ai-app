@@ -5753,6 +5753,28 @@ def api_update_patient():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+@app.route('/api/update_patient_birth', methods=['POST'])
+@login_required
+def api_update_patient_birth():
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user_name = data.get("user_name", "").strip()
+        birth_date = data.get("birth_date", "").strip()
+        user_kana = data.get("user_name_kana", "").strip()
+        if not user_name:
+            return jsonify({"status": "error", "message": "user_name required"}), 400
+        update_data = {}
+        if birth_date:
+            update_data["birth_date"] = birth_date
+        if user_kana:
+            update_data["user_kana"] = user_kana
+        if update_data:
+            supabase.table("patients").update(update_data).eq("facility_code", f_code).eq("user_name", user_name).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 @app.route('/api/goal_check')
 @login_required
 def api_goal_check():
