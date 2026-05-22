@@ -451,6 +451,8 @@ async function generateReport() {
     if (data.error) { alert(data.error); return; }
 
     currentResult = data;
+    currentResult._user_name = selectedPatient ? (selectedPatient.name||selectedPatient.user_name) : "";
+    currentResult._month = month;
     renderResult(data, month);
 
   } catch(e) {
@@ -903,18 +905,11 @@ function openReportPreview(useSample){
     document.body.classList.add('report-preview-open');document.getElementById('report-sheet').classList.add('preview-on');
     return;
   }
-  // 生成済み結果があればAPIを叩かず直接表示
-  if(_reportData && !useSample){
-    buildReport(_reportData);
-    document.body.classList.add("report-preview-open");
-    document.getElementById("report-sheet").classList.add("preview-on");
-    document.getElementById("report-sheet").scrollIntoView({behavior:"smooth"});
-    return;
-  }
-  // 実データ：選択中の利用者・対象月からAPI取得
   var uname = (selectedPatient && (selectedPatient.name||selectedPatient.user_name)) || "";
   var ym = document.getElementById("target-month") ? document.getElementById("target-month").value : "";
-  if(!uname || !ym){ alert("利用者と対象月を選んでください"); return; }
+  if(!uname && currentResult && currentResult._user_name) uname = currentResult._user_name;
+  if(!ym && currentResult && currentResult._month) ym = currentResult._month;
+  if(!uname || !ym){ alert("\u5229\u7528\u8005\u3068\u5bfe\u8c61\u6708\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044"); return; }
   fetch('/api/monitoring_report_data?user_name='+encodeURIComponent(uname)+'&year_month='+encodeURIComponent(ym))
     .then(function(r){ return r.json(); })
     .then(function(d){
