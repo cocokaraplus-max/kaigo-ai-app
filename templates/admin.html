@@ -755,14 +755,14 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
             <input type="checkbox" id="board-edit-{{ loop.index }}"
               {% if s.name in board_editors %}checked{% endif %}
               onchange="toggleBoardEditor('{{ s.name }}', this.checked)">
-              <label class="perm-toggle" title="出納帳アクセス権限">
+            <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
+          </label>
+          <label class="perm-toggle" title="出納帳アクセス権限">
             <input type="checkbox" id="ledger-{{ loop.index }}"
               name="ledger-{{ loop.index }}" class="perm-switch"
               {% if s.can_ledger %}checked{% endif %}
               onchange="toggleLedgerAccess('{{ s.name }}', this.checked)">
             <span class="material-symbols-outlined">account_balance</span>
-          </label>
-            <span class="material-symbols-outlined" style="font-size:14px;">edit_note</span>
           </label>
           <label class="perm-toggle perm-toggle-admin" title="管理者権限">
             <input type="checkbox" id="admin-mng-{{ loop.index }}"
