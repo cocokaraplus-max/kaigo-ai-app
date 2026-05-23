@@ -680,6 +680,7 @@ if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSel
     document.getElementById('entry-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
 } catch(err) { console.error('openEntryModal:', err); }
+}
 
 function closeEntryModal() {
     document.getElementById('entry-modal').classList.remove('show');
