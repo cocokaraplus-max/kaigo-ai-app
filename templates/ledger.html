@@ -568,6 +568,14 @@ const _r = await fetch('/api/ledger/accounts');
 const _d = await _r.json();
 if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSelects(); }
 }
+    if (currentDivisions.length === 0) {
+        var _sr = await fetch('/api/ledger/settings');
+        var _sd = await _sr.json();
+        if (_sd.status === 'success') {
+            currentSettings = _sd.settings || {};
+            currentDivisions = _sd.divisions || [];
+        }
+    }
     document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
     document.getElementById('entry-id').value = entry ? entry.id : '';
     const today = new Date().toISOString().slice(0,10);
