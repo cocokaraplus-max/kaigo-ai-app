@@ -4557,6 +4557,7 @@ def api_ledger_ocr_receipt():
         results = []
         for f in files:
             img_bytes = f.read()
+            f.seek(0)  # アップロード用にポインタリセット
             mime = 'image/jpeg'
             if f.filename.lower().endswith('.png'):
                 mime = 'image/png'
@@ -4571,6 +4572,18 @@ def api_ledger_ocr_receipt():
             raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
             raw = _re.sub(r'```$', '', raw).strip()
             ocr = _json.loads(raw)
+            # dateフォーマット正規化
+            import re as _re2
+            if ocr.get('date'):
+                d_str = str(ocr['date'])
+                d_match = _re2.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', d_str)
+                if d_match:
+                    ocr['date'] = f"{d_match.group(1)}-{d_match.group(2).zfill(2)}-{d_match.group(3).zfill(2)}"
+            # 金額を整数変換
+            try: ocr['amount'] = int(str(ocr.get('amount',0)).replace(',','').replace('円','') or 0)
+            except: ocr['amount'] = 0
+            try: ocr['tax_amount'] = int(str(ocr.get('tax_amount',0)).replace(',','').replace('円','') or 0)
+            except: ocr['tax_amount'] = 0
             # 画像をSupabaseにアップロード
             urls = upload_images_to_supabase(supabase, [f], f_code)
             image_url = urls[0] if urls else ''
