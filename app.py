@@ -4531,9 +4531,9 @@ JSON配列のみ。マークダウン不要。
                     'source': csv_type,
                     'created_by': my_name,
                 })
-        if entries:
-            supabase.table('journal_entries').insert(entries).execute()
-        return jsonify({'status': 'success', 'imported': len(entries), 'suggestions': suggestions})
+        # 保存はフロントの確認後に行う。suggestionsとentriesを返す
+        # entriesには内部ID変換済みのペイロードを含める
+        return jsonify({'status': 'success', 'imported': 0, 'suggestions': suggestions, 'entries': entries})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 

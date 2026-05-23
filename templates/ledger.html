@@ -464,7 +464,8 @@
 const ACCOUNTS = {{ accounts | tojson }};
 let currentMonth = '';
 let currentEntries = [];
-let csvSuggestions = [];
+var csvSuggestions = [];
+var csvEntries = [];
 
 // 初期化
 (function() {
@@ -798,11 +799,12 @@ async function importCSV(input) {
     btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
     if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
     csvSuggestions = data.suggestions || [];
+    csvEntries = data.entries || [];
     const preview = document.getElementById('csv-preview');
     const list = document.getElementById('csv-preview-list');
     // 科目コード→科目名のマッピングを作成
     const codeToName = {};
-    allAccounts.forEach(a => { codeToName[a.code] = a.name; });
+    (window.allAccounts||[]).forEach(a => { codeToName[a.code] = a.name; });
     list.innerHTML = csvSuggestions.map((s,i) => {
         const debitName = codeToName[String(s.debit_code)] || s.debit_code || '';
         const creditName = codeToName[String(s.credit_code)] || s.credit_code || '';
@@ -830,8 +832,24 @@ async function importCSV(input) {
 }
 
 async function confirmCSVImport() {
-    alert(csvSuggestions.length + '件の仕訳を取込みました！');
+    if (!csvEntries || csvEntries.length === 0) {
+        alert('取込める仕訳がありません');
+        return;
+    }
+    var ok = 0, fail = 0;
+    for (var e of csvEntries) {
+        var res = await fetch('/api/ledger/entry', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(e)
+        });
+        var d = await res.json();
+        if (d.status === 'success') ok++; else fail++;
+    }
+    alert(ok + '件の仕訳を取込みました！' + (fail ? '（' + fail + '件失敗）' : ''));
     document.getElementById('csv-preview').style.display = 'none';
+    csvSuggestions = [];
+    csvEntries = [];
     switchTab('journal');
     loadEntries();
 }
