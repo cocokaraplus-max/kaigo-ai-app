@@ -384,6 +384,28 @@
         </div>
     </div>
 </div>
+
+<!-- ===== 期首残高設定モーダル ===== -->
+<div class="ledger-modal" id="balance-modal">
+    <div class="ledger-modal-content">
+        <div class="ledger-modal-title">期首残高設定</div>
+        <div style="font-size:0.78rem;color:#5f6368;margin-bottom:12px;" id="balance-modal-desc"></div>
+        <input type="hidden" id="balance-type">
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">月</label>
+            <input type="month" class="ledger-form-control" id="balance-month">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">期首残高（円）</label>
+            <input type="number" class="ledger-form-control" id="balance-amount" placeholder="例: 50000">
+        </div>
+        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:12px;">※月初の残高を設定することで、過去の記録との差異を調整できます。</div>
+        <div class="ledger-btn-row">
+            <button class="ledger-btn cancel" onclick="closeBalanceModal()">キャンセル</button>
+            <button class="ledger-btn primary" onclick="saveBalance()">保存</button>
+        </div>
+    </div>
+</div>
 <!-- ===== 現金出納帳 ===== -->
 <div id="pane-cash" style="display:none;">
   <div style="margin-bottom:8px;">
@@ -394,6 +416,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">現金出納帳</div>
     <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('cash')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('cash')">◎ Excel</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('cash')">◎ PDF印刷</button>
     </div>
@@ -406,6 +429,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">預金出納帳</div>
     <div style="display:flex;gap:6px;">
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('bank')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('bank')">◎ Excel</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('bank')">◎ PDF印刷</button>
     </div>
@@ -623,6 +647,34 @@ function openTransferModal() {
 function closeTransferModal() {
     document.getElementById('transfer-modal').classList.remove('show');
 }
+function openBalanceModal(type) {
+    var labels = {cash: '現金出納帳', bank: '預金出納帳'};
+    document.getElementById('balance-type').value = type;
+    document.getElementById('balance-modal-desc').textContent = labels[type] + 'の期首残高を設定します。';
+    document.getElementById('balance-month').value = currentMonth;
+    // 既存値を読み込み
+    var key = 'ledger_balance_' + type + '_' + currentMonth;
+    var saved = localStorage.getItem(key);
+    document.getElementById('balance-amount').value = saved || '';
+    document.getElementById('balance-modal').classList.add('show');
+}
+function closeBalanceModal() {
+    document.getElementById('balance-modal').classList.remove('show');
+}
+function saveBalance() {
+    var type = document.getElementById('balance-type').value;
+    var month = document.getElementById('balance-month').value;
+    var amount = parseInt(document.getElementById('balance-amount').value) || 0;
+    var key = 'ledger_balance_' + type + '_' + month;
+    localStorage.setItem(key, amount);
+    closeBalanceModal();
+    loadSubLedger(type);
+}
+function getInitBalance(type) {
+    var key = 'ledger_balance_' + type + '_' + currentMonth;
+    return parseInt(localStorage.getItem(key)) || 0;
+}
+
 async function saveTransfer() {
     var fromDiv = document.getElementById('transfer-from').value;
     var toDiv = document.getElementById('transfer-to').value;
@@ -655,14 +707,14 @@ try {
 if (!window.allAccounts || window.allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
 const _d = await _r.json();
-if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSelects(); }
+if (_d.status === 'success') { window.allAccounts = _d.accounts || []; updateAccountSelects(); }
 }
     if (!window.currentDivisions || window.currentDivisions.length === 0) {
         var _sr = await fetch('/api/ledger/settings');
         var _sd = await _sr.json();
         if (_sd.status === 'success') {
-            currentSettings = _sd.settings || {};
-            currentDivisions = _sd.divisions || [];
+            window.currentSettings = _sd.settings || {};
+            window.currentDivisions = _sd.divisions || [];
         }
     }
     document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
@@ -830,7 +882,7 @@ async function loadAccounts() {
     const res = await fetch('/api/ledger/accounts');
     const data = await res.json();
     if (data.status !== 'success') return;
-    allAccounts = data.accounts || [];
+    window.allAccounts = data.accounts || [];
     renderAccounts();
     // 仕訳モーダルselectも更新
     updateAccountSelects();
@@ -937,8 +989,8 @@ async function loadSettings() {
     const res = await fetch('/api/ledger/settings');
     const data = await res.json();
     if (data.status !== 'success') return;
-    currentSettings = data.settings || {};
-    currentDivisions = data.divisions || [];
+    window.currentSettings = data.settings || {};
+    window.currentDivisions = data.divisions || [];
 
     // トグル状態を反映
     const fillToggle = document.getElementById('toggle-auto-fill');
@@ -1127,9 +1179,9 @@ async function saveDivision() {
 // ===== 追加帳簿（現金出納帳・預金出納帳・経費クレカ帳・売上台帳）=====
 
 // 帳簿種別設定
-const SUB_LEDGER_CONFIG = {
-  cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', initBalance: 0 },
-  bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', initBalance: 0 },
+var SUB_LEDGER_CONFIG = {
+  cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', get initBalance() { return getInitBalance("cash"); } },
+  bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', get initBalance() { return getInitBalance("bank"); } },
   card:  { label: '経費クレカ帳（未払金）', accountName: '未払金', matchFn: (e) => e.debit?.name==='未払金' || e.credit?.name==='未払金', balanceLabel: '未払残高', initBalance: 0 },
   sales: { label: '売上台帳',           accountName: '売上',  matchFn: (e) => e.credit?.category==='収益', balanceLabel: '売上累計', initBalance: 0 },
 };
