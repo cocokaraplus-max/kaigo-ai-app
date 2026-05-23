@@ -720,13 +720,11 @@ body.nav-editing {
             </div>
             掲示板
         </a>
-        {% if (session.get('f_code') == 'cocokaraplus-5526' and session.get('my_name') == '岐本洋幸') or (session.get('f_code') == 'DEMO001' and session.get('my_name') == 'デモ職員A') %}
         {% if can_ledger %}
         <a href="/ledger" class="bottom-nav-item" onclick="spaNav(event,'/ledger')">
             <span class="material-symbols-outlined">account_balance</span>
             出納帳
         </a>
-        {% endif %}
         {% endif %}
         <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
             <span class="material-symbols-outlined">cake</span>
