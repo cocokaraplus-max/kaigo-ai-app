@@ -657,7 +657,7 @@ const _r = await fetch('/api/ledger/accounts');
 const _d = await _r.json();
 if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSelects(); }
 }
-    if (currentDivisions.length === 0) {
+    if (!window.currentDivisions || window.currentDivisions.length === 0) {
         var _sr = await fetch('/api/ledger/settings');
         var _sd = await _sr.json();
         if (_sd.status === 'success') {
@@ -930,8 +930,8 @@ async function saveAccount() {
 
 
 // ===== 設定・事業部管理 =====
-let currentSettings = {};
-let currentDivisions = [];
+window.currentSettings = {};
+window.currentDivisions = [];
 
 async function loadSettings() {
     const res = await fetch('/api/ledger/settings');
