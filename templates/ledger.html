@@ -648,7 +648,7 @@ function onDivisionFilterChange() {
     loadEntries();
 }
 
-function openEntryModal(entry) {
+async function openEntryModal(entry) {
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
