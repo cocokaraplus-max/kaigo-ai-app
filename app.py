@@ -3958,6 +3958,135 @@ def api_ledger_division_delete(div_id):
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+def _ledger_recalc_day(supabase, f_code, target_date):
+    """指定日の現金残高を再計算し、自動補填仕訳を更新する。
+    現金自動補填機能ONの施設のみ実行。"""
+    try:
+        # 現金自動補填設定確認
+        s_res = supabase.table('ledger_settings').select('auto_cash_fill,cash_fill_division_id').eq('facility_code', f_code).execute()
+        if not s_res.data or not s_res.data[0].get('auto_cash_fill'):
+            return  # 機能OFFなら何もしない
+
+        fill_div_id = s_res.data[0].get('cash_fill_division_id')
+        settings_data = s_res.data[0]
+
+        # 現金科目取得
+        cash_res = supabase.table('accounts').select('id,name').eq('facility_code', f_code).eq('code', '101').execute()
+        if not cash_res.data:
+            return
+        cash_id = cash_res.data[0]['id']
+
+        # 事業主借科目取得（補填用）
+        owner_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '事業主借').execute()
+        if owner_res.data:
+            owner_id = owner_res.data[0]['id']
+        else:
+            ins = supabase.table('accounts').insert({
+                'facility_code': f_code, 'code': '300', 'name': '事業主借',
+                'category': '純資産', 'tax_type': 'none',
+            }).execute()
+            owner_id = ins.data[0]['id'] if ins.data else cash_id
+
+        # 事業間移動科目取得
+        transfer_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '事業間移動').execute()
+        if transfer_res.data:
+            transfer_id = transfer_res.data[0]['id']
+        else:
+            ins2 = supabase.table('accounts').insert({
+                'facility_code': f_code, 'code': '199', 'name': '事業間移動',
+                'category': '資産', 'tax_type': 'none',
+            }).execute()
+            transfer_id = ins2.data[0]['id'] if ins2.data else cash_id
+
+        # 当日の全仕訳取得（自動生成以外）
+        all_res = supabase.table('journal_entries').select(
+            'id,amount,debit_account_id,credit_account_id,source,division_id,'
+            'debit:debit_account_id(id,code,name,category),'
+            'credit:credit_account_id(id,code,name,category)'
+        ).eq('facility_code', f_code).eq('entry_date', target_date).execute()
+
+        all_entries = all_res.data or []
+
+        # 自動生成仕訳（auto_fill/transfer）と手動仕訳を分魔
+        auto_entries = [e for e in all_entries if e.get('source') in ('auto_fill', 'transfer')]
+        manual_entries = [e for e in all_entries if e.get('source') not in ('auto_fill', 'transfer')]
+
+        # 手動仕訳から計算
+        # 経費合計: 貸方=現金かつ借方=費用科目
+        expense_total = sum(
+            e['amount'] for e in manual_entries
+            if e.get('credit', {}) and e['credit_account_id'] == cash_id
+            and e.get('debit', {}) and e['debit'].get('category') == '費用'
+        )
+
+        # 銀行→現金入金合計: 借方=現金かつ貸方=普通領金または預金
+        bank_to_cash = sum(
+            e['amount'] for e in manual_entries
+            if e.get('debit', {}) and e['debit_account_id'] == cash_id
+            and e.get('credit', {}) and e['credit'].get('category') == '資産'
+            and e['credit'].get('code') in ('102', '103')
+        )
+
+        # 不足分を計算
+        shortage = expense_total - bank_to_cash
+
+        # 既存自動生成仕訳を全削除
+        for ae in auto_entries:
+            supabase.table('journal_entries').delete().eq('id', ae['id']).execute()
+
+        # 不足分がなければ終了
+        if shortage <= 0:
+            return
+
+        # 不足分を補填
+        # 補填元事業部が設定されている場合は事業間移動、なければ事業主借
+        if fill_div_id:
+            # 移動元（fill_div）出金仕訳
+            supabase.table('journal_entries').insert({
+                'facility_code': f_code,
+                'entry_date': target_date,
+                'debit_account_id': transfer_id,
+                'credit_account_id': cash_id,
+                'amount': shortage,
+                'tax_amount': 0,
+                'description': '現金補填（出金）',
+                'source': 'auto_fill',
+                'created_by': 'system',
+                'division_id': int(fill_div_id),
+            }).execute()
+            # 合流先（全事業共通または経費発生事業部）入金仕訳
+            supabase.table('journal_entries').insert({
+                'facility_code': f_code,
+                'entry_date': target_date,
+                'debit_account_id': cash_id,
+                'credit_account_id': transfer_id,
+                'amount': shortage,
+                'tax_amount': 0,
+                'description': '現金補填（入金）',
+                'source': 'auto_fill',
+                'created_by': 'system',
+                'division_id': None,
+            }).execute()
+        else:
+            # 事業主借で補填
+            supabase.table('journal_entries').insert({
+                'facility_code': f_code,
+                'entry_date': target_date,
+                'debit_account_id': cash_id,
+                'credit_account_id': owner_id,
+                'amount': shortage,
+                'tax_amount': 0,
+                'description': '現金自動補填',
+                'source': 'auto_fill',
+                'created_by': 'system',
+                'division_id': None,
+            }).execute()
+    except Exception as e:
+        # 再計算のエラーはサイレントにスキップ（本主処理に影響しない）
+        import logging
+        logging.warning(f'ledger_recalc_day error: {e}')
+
 @app.route('/api/ledger/cash_fill', methods=['POST'])
 @login_required
 def api_ledger_cash_fill():
@@ -4180,6 +4309,7 @@ def api_ledger_transfer():
         }
         r1 = supabase.table('journal_entries').insert(from_entry).execute()
         r2 = supabase.table('journal_entries').insert(to_entry).execute()
+        # 事業間移動は再計算不要（手動指定のため）
         return jsonify({
             'status': 'success',
             'message': f'事業間移動 ¥{amount:,} を記録しました',
@@ -4217,11 +4347,20 @@ def api_ledger_entry_save():
         }
         entry_id = data.get('id')
         if entry_id:
+            # 編集時: 旧日付も取得して両日を再計算
+            old_res = supabase.table('journal_entries').select('entry_date').eq('id', entry_id).execute()
+            old_date = old_res.data[0]['entry_date'] if old_res.data else None
             supabase.table('journal_entries').update(payload).eq('id', entry_id).eq('facility_code', f_code).execute()
+            dates_to_recalc = set([payload['entry_date']])
+            if old_date and old_date != payload['entry_date']:
+                dates_to_recalc.add(old_date)
+            for d in dates_to_recalc:
+                _ledger_recalc_day(supabase, f_code, d)
             return jsonify({'status': 'success', 'id': entry_id})
         else:
             res = supabase.table('journal_entries').insert(payload).execute()
             new_id = res.data[0]['id'] if res.data else None
+            _ledger_recalc_day(supabase, f_code, payload['entry_date'])
             return jsonify({'status': 'success', 'id': new_id})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -4238,7 +4377,12 @@ def api_ledger_entry_delete(entry_id):
         return jsonify({'status': 'error', 'message': '権限がありません'}), 403
     supabase = get_supabase()
     try:
+        # 削除前に日付を取得
+        del_res = supabase.table('journal_entries').select('entry_date').eq('id', entry_id).execute()
+        del_date = del_res.data[0]['entry_date'] if del_res.data else None
         supabase.table('journal_entries').delete().eq('id', entry_id).eq('facility_code', f_code).execute()
+        if del_date:
+            _ledger_recalc_day(supabase, f_code, del_date)
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
