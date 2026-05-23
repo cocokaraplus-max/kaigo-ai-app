@@ -577,6 +577,9 @@ if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSel
     document.getElementById('entry-amount').value = entry ? entry.amount : '';
     document.getElementById('entry-tax').value = entry ? (entry.tax_amount||0) : 0;
     document.getElementById('entry-desc').value = entry ? (entry.description||'') : '';
+    var _divSel = document.getElementById('entry-division');
+    if (_divSel) _divSel.value = (entry && entry.division_id) ? String(entry.division_id) : '';
+    updateDivisionSelects();
     document.getElementById('entry-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
 }
