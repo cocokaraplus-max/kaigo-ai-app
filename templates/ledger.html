@@ -1180,8 +1180,8 @@ async function saveDivision() {
 
 // 帳簿種別設定
 var SUB_LEDGER_CONFIG = {
-  cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', get initBalance() { return getInitBalance("cash"); } },
-  bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', get initBalance() { return getInitBalance("bank"); } },
+  cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', initBalance: 0 },
+  bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', initBalance: 0 },
   card:  { label: '経費クレカ帳（未払金）', accountName: '未払金', matchFn: (e) => e.debit?.name==='未払金' || e.credit?.name==='未払金', balanceLabel: '未払残高', initBalance: 0 },
   sales: { label: '売上台帳',           accountName: '売上',  matchFn: (e) => e.credit?.category==='収益', balanceLabel: '売上累計', initBalance: 0 },
 };
@@ -1214,7 +1214,8 @@ function renderSubLedger(type, entries, cfg, el) {
     return;
   }
   const fmt = (n) => '¥' + Number(n).toLocaleString();
-  let balance = cfg.initBalance;
+  var _balType = Object.keys(SUB_LEDGER_CONFIG).find(function(k){return SUB_LEDGER_CONFIG[k]===cfg;})||"";
+  let balance = (_balType==="cash"||_balType==="bank") ? getInitBalance(_balType) : 0;
   let totalIn = 0, totalOut = 0;
   const acctName = cfg.accountName;
 
