@@ -91,6 +91,13 @@
 
 <!-- ===== 仕訳帳タブ ===== -->
 <div id="pane-journal">
+    <!-- 事業部フィルター + 事業間移動 -->
+    <div id="division-filter-bar" style="display:none;margin-bottom:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <select id="journal-division-filter" class="ledger-form-control" style="flex:1;min-width:120px;font-size:0.82rem;" onchange="onDivisionFilterChange()">
+            <option value="all">全事業（まとめ）</option>
+        </select>
+        <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;white-space:nowrap;" onclick="openTransferModal()">⇄ 事業間移動</button>
+    </div>
     <!-- 月次サマリー -->
     <div class="summary-card" id="summary-card" style="display:none;">
         <div class="summary-row">
@@ -343,8 +350,47 @@
 </div>
 
 
+<!-- ===== 事業間移動モーダル ===== -->
+<div class="ledger-modal" id="transfer-modal">
+    <div class="ledger-modal-content">
+        <div class="ledger-modal-title">⇄ 事業間現金移動</div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">日付</label>
+            <input type="date" class="ledger-form-control" id="transfer-date">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">移動元事業部（出金）</label>
+            <select class="ledger-form-control" id="transfer-from">
+                <option value="">選択してください</option>
+            </select>
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">移動先事業部（入金）</label>
+            <select class="ledger-form-control" id="transfer-to">
+                <option value="">選択してください</option>
+            </select>
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">金額（円）</label>
+            <input type="number" class="ledger-form-control" id="transfer-amount" placeholder="例: 10000">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">摘要</label>
+            <input type="text" class="ledger-form-control" id="transfer-desc" placeholder="例: 接骨院→デイ立替払い">
+        </div>
+        <div class="ledger-btn-row">
+            <button class="ledger-btn cancel" onclick="closeTransferModal()">キャンセル</button>
+            <button class="ledger-btn primary" onclick="saveTransfer()">記録</button>
+        </div>
+    </div>
+</div>
 <!-- ===== 現金出納帳 ===== -->
 <div id="pane-cash" style="display:none;">
+  <div style="margin-bottom:8px;">
+    <select id="cash-division-filter" class="ledger-form-control" style="font-size:0.82rem;" onchange="loadSubLedger('cash')">
+        <option value="all">全事業（まとめ）</option>
+    </select>
+  </div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">現金出納帳</div>
     <div style="display:flex;gap:6px;">
@@ -439,7 +485,9 @@ function switchTab(tab) {
 }
 
 async function loadEntries() {
-    const res = await fetch('/api/ledger/entries?month=' + currentMonth);
+    const divF = document.getElementById('journal-division-filter');
+    const divParam = (divF && divF.value && divF.value !== 'all') ? '&division_id=' + divF.value : '';
+    const res = await fetch('/api/ledger/entries?month=' + currentMonth + divParam);
     const data = await res.json();
     if (data.status !== 'success') return;
     currentEntries = data.entries || [];
@@ -464,6 +512,7 @@ function renderEntries() {
         return `<div class="entry-card">
             <div class="entry-card-header" style="min-width:0;">
                 <span class="entry-date">${e.entry_date}</span>
+                ${(e.division_id && currentDivisions.find(d=>d.id===e.division_id)) ? '<span style="font-size:0.7rem;background:#e8f0fe;color:#1a73e8;border-radius:8px;padding:2px 7px;margin-left:4px;">' + currentDivisions.find(d=>d.id===e.division_id).name + '</span>' : ''}
                 <span class="entry-amount ${amtClass}">${amtSign}¥${e.amount.toLocaleString()}</span>
             </div>
             <div class="entry-accounts">
@@ -561,7 +610,45 @@ async function loadTrialBalance() {
     document.getElementById('trial-balance-content').innerHTML = html;
 }
 
-async function openEntryModal(entry) {
+async 
+function openTransferModal() {
+    document.getElementById('transfer-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('transfer-from').value = '';
+    document.getElementById('transfer-to').value = '';
+    document.getElementById('transfer-amount').value = '';
+    document.getElementById('transfer-desc').value = '';
+    document.getElementById('transfer-modal').classList.add('show');
+}
+function closeTransferModal() {
+    document.getElementById('transfer-modal').classList.remove('show');
+}
+async function saveTransfer() {
+    var fromDiv = document.getElementById('transfer-from').value;
+    var toDiv = document.getElementById('transfer-to').value;
+    var amount = parseInt(document.getElementById('transfer-amount').value) || 0;
+    var date = document.getElementById('transfer-date').value;
+    var desc = document.getElementById('transfer-desc').value || '事業間現金移動';
+    if (!fromDiv || !toDiv || !amount) { alert('必須項目を入力してください'); return; }
+    if (fromDiv === toDiv) { alert('移動元と移動先は異なる事業部を選んでください'); return; }
+    var res = await fetch('/api/ledger/transfer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({from_division_id: fromDiv, to_division_id: toDiv, amount: amount, entry_date: date, description: desc})
+    });
+    var data = await res.json();
+    if (data.status === 'success') {
+        alert(data.message);
+        closeTransferModal();
+        loadEntries();
+    } else {
+        alert('エラー: ' + (data.message || ''));
+    }
+}
+function onDivisionFilterChange() {
+    loadEntries();
+}
+
+function openEntryModal(entry) {
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
@@ -983,6 +1070,20 @@ function updateDivisionSelects() {
         if (sid) fS.value = String(sid);
         fS.onchange = saveSettings;
     }
+    // 各フィルタードロップダウンも更新
+    var filterIds = ['journal-division-filter','cash-division-filter','transfer-from','transfer-to'];
+    filterIds.forEach(function(fid) {
+        var sel = document.getElementById(fid);
+        if (!sel) return;
+        var cur = sel.value;
+        var isFilter = fid.includes('filter');
+        var baseOpt = isFilter ? '<option value="all">全事業（まとめ）</option>' : '<option value="">選択してください</option>';
+        sel.innerHTML = baseOpt + currentDivisions.map(function(d){ return '<option value="'+d.id+'">'+d.name+'</option>'; }).join('');
+        if (cur) sel.value = cur;
+    });
+    // 事業部がある時のみフィルターバーを表示
+    var jfb = document.getElementById('division-filter-bar');
+    if (jfb) jfb.style.display = (currentDivisions.length > 0) ? 'flex' : 'none';
 }
 
 function editDivision(id) {
@@ -1039,7 +1140,9 @@ async function loadSubLedger(type) {
   if (!el) return;
   el.innerHTML = '<div style="text-align:center;color:#80868b;padding:20px;">読み込み中...</div>';
   try {
-    const res = await fetch('/api/ledger/entries?month=' + currentMonth);
+    const _cashDivF = document.getElementById('cash-division-filter');
+    const _subDivParam = (_cashDivF && _cashDivF.value && _cashDivF.value !== 'all') ? '&division_id=' + _cashDivF.value : '';
+    const res = await fetch('/api/ledger/entries?month=' + currentMonth + _subDivParam);
     const data = await res.json();
     if (data.status !== 'success') { el.innerHTML = '<div style="color:red">読み込み失敗</div>'; return; }
     const entries = (data.entries || []).filter(cfg.matchFn);
@@ -1077,8 +1180,10 @@ function renderSubLedger(type, entries, cfg, el) {
     const opposite = type==='sales'
       ? (e.debit?.name || '')
       : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
+    const divName = e.division_id ? (currentDivisions.find(d=>d.id===e.division_id)||{name:''}).name : '';
     rows += `<tr>
       <td>${e.entry_date}</td>
+      <td style="font-size:0.7rem;color:#1a73e8;">${divName}</td>
       <td style="font-size:0.78rem;color:#5f6368;">${opposite}</td>
       <td style="max-width:120px;font-size:0.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.description||''}</td>
       <td style="text-align:right;color:#1a73e8;">${inAmt ? fmt(inAmt) : ''}</td>
@@ -1093,6 +1198,7 @@ function renderSubLedger(type, entries, cfg, el) {
       <thead>
         <tr style="background:#e8f0fe;">
           <th style="padding:6px 8px;text-align:left;white-space:nowrap;">日付</th>
+          <th style="padding:6px 8px;text-align:left;">事業部</th>
           <th style="padding:6px 8px;text-align:left;">相手科目</th>
           <th style="padding:6px 8px;text-align:left;">摘要</th>
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'売上顕':'入金'}</th>
@@ -1169,6 +1275,7 @@ async function exportSubLedgerExcel(type) {
     const opposite = type==='sales'
       ? (e.debit?.name || '')
       : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
+    const divName = e.division_id ? (currentDivisions.find(d=>d.id===e.division_id)||{name:''}).name : '';
     return [e.entry_date, opposite, e.description||'', inAmt||'', type==='sales'?'':outAmt||'', balance];
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);

@@ -3982,8 +3982,7 @@ def api_ledger_cash_fill():
         q = supabase.table('journal_entries').select(
             'amount, debit:debit_account_id(category)'
         ).eq('facility_code', f_code).eq('entry_date', target_date)
-        if division_id:
-            q = q.eq('division_id', division_id)
+        # 補填元事業部指定は仕訳の記録先に使う。経費集計は全事業対象
         res = q.execute()
         total_expense = sum(
             e['amount'] for e in (res.data or [])
@@ -4016,6 +4015,7 @@ def api_ledger_cash_fill():
             'entry_date': target_date,
             'debit_account_id': cash_id,
             'credit_account_id': credit_id,
+            'division_id': int(division_id) if division_id else None,
             'amount': total_expense,
             'description': f'{target_date} 日次現金補填（経費合計）',
             'source': 'auto_fill',
@@ -4114,8 +4114,78 @@ def api_ledger_entries():
             else:
                 end = date(int(y), int(m)+1, 1).isoformat()
             query = query.gte('entry_date', start).lt('entry_date', end)
+        div_filter = request.args.get('division_id')
+        if div_filter == 'none':
+            query = query.is_('division_id', 'null')
+        elif div_filter and div_filter != 'all':
+            query = query.eq('division_id', int(div_filter))
         res = query.order('entry_date', desc=False).execute()
         return jsonify({'status': 'success', 'entries': res.data or []})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/transfer', methods=['POST'])
+@login_required
+def api_ledger_transfer():
+    """事業間資金移動: A事業→B事業へ現金移動を両側に自動記録"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        from_div_id = data.get('from_division_id')
+        to_div_id = data.get('to_division_id')
+        amount = int(data.get('amount', 0))
+        entry_date = data.get('entry_date', datetime.now(tokyo_tz).strftime('%Y-%m-%d'))
+        description = data.get('description', '事業間現金移動')
+        if not from_div_id or not to_div_id or not amount:
+            return jsonify({'status': 'error', 'message': '必須項目が足りません'}), 400
+        # 現金科目取得
+        cash_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('code', '101').execute()
+        if not cash_res.data:
+            return jsonify({'status': 'error', 'message': '現金科目(101)が見つかりません'}), 400
+        cash_id = cash_res.data[0]['id']
+        # 事業間移動科目取得（なければ自動作成）
+        transfer_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '事業間移動').execute()
+        if transfer_res.data:
+            transfer_id = transfer_res.data[0]['id']
+        else:
+            ins = supabase.table('accounts').insert({
+                'facility_code': f_code, 'code': '199', 'name': '事業間移動',
+                'category': '資産', 'tax_type': 'none',
+            }).execute()
+            transfer_id = ins.data[0]['id'] if ins.data else cash_id
+        # 出金側（from事業部）: 借方=事業間移動, 貸方=現金
+        from_entry = {
+            'facility_code': f_code, 'entry_date': entry_date,
+            'debit_account_id': transfer_id, 'credit_account_id': cash_id,
+            'amount': amount, 'tax_amount': 0,
+            'description': description + '（出金）',
+            'source': 'transfer', 'created_by': my_name,
+            'division_id': int(from_div_id),
+        }
+        # 入金側（to事業部）: 借方=現金, 貸方=事業間移動
+        to_entry = {
+            'facility_code': f_code, 'entry_date': entry_date,
+            'debit_account_id': cash_id, 'credit_account_id': transfer_id,
+            'amount': amount, 'tax_amount': 0,
+            'description': description + '（入金）',
+            'source': 'transfer', 'created_by': my_name,
+            'division_id': int(to_div_id),
+        }
+        r1 = supabase.table('journal_entries').insert(from_entry).execute()
+        r2 = supabase.table('journal_entries').insert(to_entry).execute()
+        return jsonify({
+            'status': 'success',
+            'message': f'事業間移動 ¥{amount:,} を記録しました',
+            'from_id': r1.data[0]['id'] if r1.data else None,
+            'to_id': r2.data[0]['id'] if r2.data else None,
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
