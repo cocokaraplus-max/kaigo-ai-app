@@ -3863,7 +3863,8 @@ def api_ledger_settings_get():
         settings = s_res.data[0] if s_res.data else {
             'facility_code': f_code,
             'auto_cash_fill': False,
-            'divisions_enabled': False
+            'divisions_enabled': False,
+            'cash_fill_division_id': None,
         }
         # 事業部取得
         d_res = supabase.table('ledger_divisions').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
@@ -3884,10 +3885,12 @@ def api_ledger_settings_save():
     supabase = get_supabase()
     try:
         data = request.json or {}
+        _raw_div = data.get('cash_fill_division_id')
         payload = {
             'facility_code': f_code,
             'auto_cash_fill': data.get('auto_cash_fill', False),
             'divisions_enabled': data.get('divisions_enabled', False),
+            'cash_fill_division_id': int(_raw_div) if _raw_div else None,
         }
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
@@ -3970,6 +3973,11 @@ def api_ledger_cash_fill():
         data = request.json or {}
         target_date = data.get('date', datetime.now(tokyo_tz).strftime('%Y-%m-%d'))
         division_id = data.get('division_id')
+        # リクエストになければ設定から補填元事業部を取得
+        if not division_id:
+            _s = supabase.table('ledger_settings').select('cash_fill_division_id').eq('facility_code', f_code).execute()
+            if _s.data and _s.data[0].get('cash_fill_division_id'):
+                division_id = _s.data[0]['cash_fill_division_id']
         # 当日の費用合計を計算（借方が費用科目の仕訳）
         q = supabase.table('journal_entries').select(
             'amount, debit:debit_account_id(category)'
@@ -4124,6 +4132,7 @@ def api_ledger_entry_save():
     supabase = get_supabase()
     try:
         data = request.json or {}
+        _rdiv = data.get('division_id')
         payload = {
             'facility_code': f_code,
             'entry_date': data['entry_date'],
@@ -4134,6 +4143,7 @@ def api_ledger_entry_save():
             'description': data.get('description', ''),
             'source': data.get('source', 'manual'),
             'created_by': my_name,
+            'division_id': int(_rdiv) if _rdiv else None,
         }
         entry_id = data.get('id')
         if entry_id:

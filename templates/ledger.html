@@ -200,6 +200,10 @@
         </div>
         <!-- 補填ボタン（ONのときのみ表示） -->
         <div id="cash-fill-section" style="display:none;border-top:1px solid #f1f3f4;padding-top:10px;">
+            <div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">返済元事業部</div>
+            <select class="ledger-form-control" id="fill-division-select" style="margin-bottom:10px;font-size:0.82rem;">
+                <option value="">全事業共通（指定なし）</option>
+            </select>
             <div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;">今日の経費合計: <b id="today-expense">計算中...</b></div>
             <button class="ledger-btn primary" style="width:100%;" onclick="doCashFill()">今日の経費分を現金入金として記録</button>
         </div>
@@ -322,6 +326,12 @@
             <input type="number" class="ledger-form-control" id="entry-tax" placeholder="例: 1000" value="0">
         </div>
         <div class="ledger-form-group">
+        <div class="ledger-form-group" id="entry-division-group" style="display:none;">
+            <label class="ledger-form-label">事業部</label>
+            <select class="ledger-form-control" id="entry-division">
+                <option value="">指定なし</option>
+            </select>
+        </div>
             <label class="ledger-form-label">摘要</label>
             <input type="text" class="ledger-form-control" id="entry-desc" placeholder="例: 事務用品購入">
         </div>
@@ -594,6 +604,7 @@ async function deleteEntry(id) {
 
 async function saveEntry() {
     const id = document.getElementById('entry-id').value;
+    const _divEl = document.getElementById('entry-division');
     const payload = {
         entry_date: document.getElementById('entry-date').value,
         debit_account_id: parseInt(document.getElementById('entry-debit').value),
@@ -601,6 +612,7 @@ async function saveEntry() {
         amount: parseInt(document.getElementById('entry-amount').value) || 0,
         tax_amount: parseInt(document.getElementById('entry-tax').value) || 0,
         description: document.getElementById('entry-desc').value,
+        division_id: (_divEl && _divEl.value) ? parseInt(_divEl.value) : null,
     };
     if (id) payload.id = parseInt(id);
     if (!payload.entry_date || !payload.amount) {
@@ -839,6 +851,7 @@ async function loadSettings() {
         updateToggleUI('div', divToggle.checked);
     }
     renderDivisions();
+    updateDivisionSelects();
     if (currentSettings.auto_cash_fill) calcTodayExpense();
 }
 
@@ -858,9 +871,11 @@ function updateToggleUI(type, on) {
 }
 
 async function saveSettings() {
+    const _fillDivEl = document.getElementById('fill-division-select');
     const payload = {
         auto_cash_fill: document.getElementById('toggle-auto-fill').checked,
         divisions_enabled: document.getElementById('toggle-divisions').checked,
+        cash_fill_division_id: (_fillDivEl && _fillDivEl.value) ? parseInt(_fillDivEl.value) : null,
     };
     updateToggleUI('fill', payload.auto_cash_fill);
     updateToggleUI('div', payload.divisions_enabled);
@@ -888,10 +903,12 @@ async function calcTodayExpense() {
 
 async function doCashFill() {
     const today = new Date().toISOString().slice(0,10);
+    const _fdEl = document.getElementById('fill-division-select');
+    const _fdId = (_fdEl && _fdEl.value) ? parseInt(_fdEl.value) : null;
     const res = await fetch('/api/ledger/cash_fill', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({date: today})
+        body: JSON.stringify({date: today, division_id: _fdId})
     });
     const data = await res.json();
     if (data.status === 'success') {
@@ -932,6 +949,29 @@ function openDivisionModal(div) {
 function closeDivisionModal() {
     document.getElementById('division-modal').classList.remove('show');
     document.body.style.overflow = '';
+}
+
+function updateDivisionSelects() {
+    var eG = document.getElementById("entry-division-group");
+    var eS = document.getElementById("entry-division");
+    var fS = document.getElementById("fill-division-select");
+    var on = currentSettings.divisions_enabled && currentDivisions.length > 0;
+    if (eG) eG.style.display = on ? "" : "none";
+    if (eS) {
+        var cur = eS.value;
+        var opts = '<option value="">指定なし</option>';
+        currentDivisions.forEach(function(d) { opts += '<option value="' + d.id + '">' + d.name + '</option>'; });
+        eS.innerHTML = opts;
+        if (cur) eS.value = cur;
+    }
+    if (fS) {
+        var sid = currentSettings.cash_fill_division_id;
+        var fopts = '<option value="">全事業共通（指定なし）</option>';
+        currentDivisions.forEach(function(d) { fopts += '<option value="' + d.id + '">' + d.name + '</option>'; });
+        fS.innerHTML = fopts;
+        if (sid) fS.value = String(sid);
+        fS.onchange = saveSettings;
+    }
 }
 
 function editDivision(id) {
