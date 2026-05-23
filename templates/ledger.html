@@ -448,6 +448,7 @@ let csvSuggestions = [];
     currentMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
     updateMonthLabel();
     loadEntries();
+    loadSettings();
 })();
 
 function updateMonthLabel() {
@@ -649,6 +650,7 @@ function onDivisionFilterChange() {
 }
 
 async function openEntryModal(entry) {
+try {
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
@@ -677,7 +679,7 @@ if (_d.status === 'success') { allAccounts = _d.accounts || []; updateAccountSel
     updateDivisionSelects();
     document.getElementById('entry-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
-}
+} catch(err) { console.error('openEntryModal:', err); }
 
 function closeEntryModal() {
     document.getElementById('entry-modal').classList.remove('show');
