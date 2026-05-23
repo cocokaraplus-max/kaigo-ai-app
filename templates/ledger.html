@@ -537,7 +537,7 @@ function renderEntries() {
         return `<div class="entry-card">
             <div class="entry-card-header" style="min-width:0;">
                 <span class="entry-date">${e.entry_date}</span>
-                ${(e.division_id && currentDivisions.find(d=>d.id===e.division_id)) ? '<span style="font-size:0.7rem;background:#e8f0fe;color:#1a73e8;border-radius:8px;padding:2px 7px;margin-left:4px;">' + currentDivisions.find(d=>d.id===e.division_id).name + '</span>' : ''}
+                ${(e.division_id && (window.currentDivisions||[]).find(d=>d.id===e.division_id)) ? '<span style="font-size:0.7rem;background:#e8f0fe;color:#1a73e8;border-radius:8px;padding:2px 7px;margin-left:4px;">' + (window.currentDivisions||[]).find(d=>d.id===e.division_id).name + '</span>' : ''}
                 <span class="entry-amount ${amtClass}">${amtSign}¥${e.amount.toLocaleString()}</span>
             </div>
             <div class="entry-accounts">
@@ -1186,7 +1186,7 @@ var SUB_LEDGER_CONFIG = {
   sales: { label: '売上台帳',           accountName: '売上',  matchFn: (e) => e.credit?.category==='収益', balanceLabel: '売上累計', initBalance: 0 },
 };
 
-let _subLedgerCache = {};
+var _subLedgerCache = {};
 
 async function loadSubLedger(type) {
   const cfg = SUB_LEDGER_CONFIG[type];
@@ -1235,7 +1235,7 @@ function renderSubLedger(type, entries, cfg, el) {
     const opposite = type==='sales'
       ? (e.debit?.name || '')
       : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
-    const divName = e.division_id ? (currentDivisions.find(d=>d.id===e.division_id)||{name:''}).name : '';
+    const divName = e.division_id ? ((window.currentDivisions||[]).find(d=>d.id===e.division_id)||{name:''}).name : '';
     rows += `<tr>
       <td>${e.entry_date}</td>
       <td style="font-size:0.7rem;color:#1a73e8;">${divName}</td>
@@ -1330,7 +1330,7 @@ async function exportSubLedgerExcel(type) {
     const opposite = type==='sales'
       ? (e.debit?.name || '')
       : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
-    const divName = e.division_id ? (currentDivisions.find(d=>d.id===e.division_id)||{name:''}).name : '';
+    const divName = e.division_id ? ((window.currentDivisions||[]).find(d=>d.id===e.division_id)||{name:''}).name : '';
     return [e.entry_date, opposite, e.description||'', inAmt||'', type==='sales'?'':outAmt||'', balance];
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
