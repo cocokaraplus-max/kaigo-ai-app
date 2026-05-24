@@ -1544,6 +1544,10 @@ function buildVitalForm(p, v, dateStr) {
             記録を保存
         </button>
         ${v.id ? `<div style="font-size:0.72rem;color:#34a853;margin-top:6px;text-align:center;">✅ 本日記録済み</div>` : ''}
+        <button type="button" onclick="openShareBP('${p.id}','${p.user_name}')" style="width:100%;margin-top:10px;padding:10px;background:#fff;border:1.5px solid #1a73e8;border-radius:12px;color:#1a73e8;font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">share</span>
+            血圧履歴を共有
+        </button>
     `;
 }
 
@@ -4202,5 +4206,81 @@ function initMemoCanvas() {
     };
 })();
 
+
+// ========== 血圧履歴共有 ==========
+var _shareBpPid = null;
+var _shareBpName = null;
+var _shareBpHistory = [];
+
+window.openShareBP = async function(pid, userName) {
+    _shareBpPid = pid;
+    _shareBpName = userName;
+    var modal = document.getElementById('share-bp-modal');
+    var nameEl = document.getElementById('share-bp-name');
+    if (nameEl) nameEl.textContent = userName + ' 様の血圧履歴';
+    try {
+        var res = await fetch('/api/vitals_history?patient_id=' + encodeURIComponent(pid));
+        var data = await res.json();
+        _shareBpHistory = (data.vitals || []).filter(function(v) {
+            return v.bp_high != null || v.bp_low != null;
+        });
+    } catch(e) { _shareBpHistory = []; }
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closeShareBP = function() {
+    var modal = document.getElementById('share-bp-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.execShareBP = async function(days) {
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    var filtered = _shareBpHistory.filter(function(v) {
+        return new Date(v.measured_date) >= cutoff;
+    }).sort(function(a, b) {
+        return a.measured_date < b.measured_date ? -1 : 1;
+    });
+    if (filtered.length === 0) { alert('この期間の血圧記録がありません'); return; }
+    var today = new Date();
+    var todayStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
+    var lines = [];
+    lines.push('[' + _shareBpName + ' 様 血圧記録]');
+    lines.push('出力日: ' + todayStr + ' / 直近' + days + '日');
+    lines.push('');
+    filtered.forEach(function(v) {
+        var d = new Date(v.measured_date);
+        var w = ['日','月','火','水','木','金','土'][d.getDay()];
+        var dateLabel = (d.getMonth()+1) + '/' + d.getDate() + '(' + w + ')';
+        var bp = (v.bp_high != null ? v.bp_high : '-') + '/' + (v.bp_low != null ? v.bp_low : '-');
+        var pulse = v.pulse != null ? ' 脈' + v.pulse : '';
+        lines.push(dateLabel + ' 血圧 ' + bp + pulse);
+    });
+    lines.push('');
+    lines.push('※TASUKARUより出力');
+    var text = lines.join('\n');
+    closeShareBP();
+    if (navigator.share) {
+        try { await navigator.share({ text: text }); } catch(e) {}
+    } else {
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast('クリップボードにコピーしました');
+        } catch(e) { alert(text); }
+    }
+};
 </script>
+<!-- 血圧共有モーダル -->
+<div id="share-bp-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;max-width:480px;">
+        <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;" id="share-bp-name"></div>
+        <div style="font-size:0.8rem;color:#5f6368;margin-bottom:20px;">共有する期間を選択してください</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <button onclick="execShareBP(7)"  style="padding:14px;border-radius:12px;border:1.5px solid #e0e0e0;background:#f8f9fa;font-size:0.9rem;font-weight:700;cursor:pointer;">直近7日分</button>
+            <button onclick="execShareBP(30)" style="padding:14px;border-radius:12px;border:1.5px solid #e0e0e0;background:#f8f9fa;font-size:0.9rem;font-weight:700;cursor:pointer;">直近30日分</button>
+            <button onclick="execShareBP(90)" style="padding:14px;border-radius:12px;border:1.5px solid #e0e0e0;background:#f8f9fa;font-size:0.9rem;font-weight:700;cursor:pointer;">直近90日分</button>
+        </div>
+        <button onclick="closeShareBP()" style="margin-top:16px;width:100%;padding:12px;border-radius:12px;border:none;background:#f1f3f4;font-size:0.85rem;font-weight:700;cursor:pointer;color:#5f6368;">キャンセル</button>
+    </div>
+</div>
 {% endblock %}
