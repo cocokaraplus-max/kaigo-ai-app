@@ -92,7 +92,7 @@
 .patient-vital-body.open {
     display:block;
     /* ナビ+FAB の高さ分のスペーサー。スクロールしても保存ボタンがナビ下に隠れないように */
-    padding-bottom: 130px;
+    padding-bottom: 200px;
 }
 
 /* ===== バイタル入力エリア ===== */
@@ -3869,12 +3869,20 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
             return;
         }
         // 体温を各利用者のフィールドにセット
-        let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;">トランスクリプト: ${data.transcript||''}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+        // 編集可能な結果リストを生成
+        window.bulkTempEditData = {};
+        window.bulkTempResultList = [];
+        let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;">トランスクリプト: ${data.transcript||''}</div>`;
+        resultHtml += `<div style="display:flex;flex-direction:column;gap:6px;">`;
         (data.results || []).forEach(r => {
             if (r.temperature == null) {
-                resultHtml += `<span style="font-size:0.78rem;background:#f1f3f4;color:#80868b;padding:2px 8px;border-radius:10px;">${r.user_name}: 未検出</span>`;
+                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f1f3f4;border-radius:8px;">`;
+                resultHtml += `<span style="font-size:0.82rem;color:#80868b;flex:1;">${r.user_name}</span>`;
+                resultHtml += `<span style="font-size:0.78rem;color:#80868b;">未検出</span></div>`;
                 return;
             }
+            window.bulkTempResultList.push({ patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature });
+            window.bulkTempEditData[r.patient_id] = r.temperature;
             // カードが閉じている場合は開く
             const body = document.getElementById('vbody-' + r.patient_id);
             if (body && !body.classList.contains('open')) {
@@ -3885,16 +3893,26 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
             // 少し待ってから値をセット（DOM展開待ち）
             setTimeout(() => {
                 const el = document.getElementById('v-temperature-' + r.patient_id);
-                if (el) {
-                    el.value = r.temperature;
-                    onVitalInput(String(r.patient_id), 'temperature', r.temperature);
-                }
+                if (el) { el.value = r.temperature; onVitalInput(String(r.patient_id), 'temperature', r.temperature); }
                 const orderEl = document.getElementById('v-order-' + r.patient_id);
                 if (orderEl) orderEl.value = order;
             }, 50);
-            resultHtml += `<span style="font-size:0.78rem;background:#e6f4ea;color:#137333;padding:2px 8px;border-radius:10px;">${r.user_name}: ${r.temperature}℃ ✓</span>`;
+            resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
+            resultHtml += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
+            resultHtml += `<input type="number" step="0.1" min="34" max="42"`;
+            resultHtml += ` value="${r.temperature}"`;
+            resultHtml += ` data-pid="${r.patient_id}"`;
+            resultHtml += ` oninput="window.bulkTempEditData[${r.patient_id}]=parseFloat(this.value)||${r.temperature}"`;
+            resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #34a853;border-radius:6px;font-size:0.9rem;font-weight:700;color:#137333;text-align:center;">`;
+            resultHtml += ` <span style="font-size:0.78rem;color:#137333;">℃</span></div>`;
         });
-        resultHtml += '</div>';
+        resultHtml += `</div>`;
+        if (window.bulkTempResultList.length > 0) {
+            resultHtml += `<button type="button" onclick="window.registerBulkTemp(${order})"`;
+            resultHtml += ` style="width:100%;margin-top:10px;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">`;
+            resultHtml += `<span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">check_circle</span>`;
+            resultHtml += `この数値で登録 (${window.bulkTempResultList.length}名分)</button>`;
+        }
         if (resultDiv) resultDiv.innerHTML = resultHtml;
     } catch(e) {
         document.getElementById('ai-indicator').style.display = 'none';
@@ -3905,6 +3923,36 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
     }
 }
 
+
+// 一括体温「この数値で登録」ボタンの処理
+window.registerBulkTemp = function(order) {
+    const list = window.bulkTempResultList || [];
+    const editData = window.bulkTempEditData || {};
+    if (list.length === 0) return;
+    const btn = document.querySelector('[onclick^="window.registerBulkTemp"]');
+    if (btn) { btn.disabled = true; btn.textContent = '登録中...'; }
+    let count = 0;
+    list.forEach(r => {
+        const val = editData[r.patient_id] || r.temperature;
+        const el = document.getElementById('v-temperature-' + r.patient_id);
+        if (el) { el.value = val; onVitalInput(String(r.patient_id), 'temperature', val); }
+        const orderEl = document.getElementById('v-order-' + r.patient_id);
+        if (orderEl) orderEl.value = order;
+        setTimeout(() => {
+            const saveBtn = document.querySelector('#vbody-' + r.patient_id + ' .save-vital-btn');
+            if (saveBtn) saveBtn.click();
+        }, 200 + count * 400);
+        count++;
+    });
+    setTimeout(() => {
+        const resultDiv = document.getElementById('bulk-temp-result');
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div style="padding:8px 12px;background:#e6f4ea;border-radius:8px;color:#137333;font-size:0.85rem;font-weight:700;">✓ ${list.length}名分の体温を登録しました</div>`;
+        }
+        window.bulkTempResultList = [];
+        window.bulkTempEditData = {};
+    }, 200 + count * 400 + 600);
+};
 
 // ========== メモパッド ==========
 let _memoMode = 'keyboard';
