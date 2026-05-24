@@ -771,6 +771,13 @@
         </div>
     </div>
 
+    <!-- 血圧共有ボタン -->
+    <div id="history-share-wrap" style="display:none;margin-bottom:10px;">
+        <button type="button" onclick="openShareBP()" style="width:100%;padding:10px;background:#fff;border:1.5px solid #1a73e8;border-radius:12px;color:#1a73e8;font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">share</span>
+            血圧履歴を共有
+        </button>
+    </div>
     <!-- モード切替: リスト / グラフ -->
     <div class="history-mode-tabs" id="history-mode-tabs" style="display:none;">
         <div class="history-mode-tab active" data-mode="list" onclick="setHistoryMode('list')">
@@ -1544,10 +1551,6 @@ function buildVitalForm(p, v, dateStr) {
             記録を保存
         </button>
         ${v.id ? `<div style="font-size:0.72rem;color:#34a853;margin-top:6px;text-align:center;">✅ 本日記録済み</div>` : ''}
-        <button type="button" onclick="openShareBP('${p.id}','${p.user_name}')" style="width:100%;margin-top:10px;padding:10px;background:#fff;border:1.5px solid #1a73e8;border-radius:12px;color:#1a73e8;font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-            <span class="material-symbols-outlined" style="font-size:18px;">share</span>
-            血圧履歴を共有
-        </button>
     `;
 }
 
@@ -3034,6 +3037,7 @@ window.loadHistory = async function(pid, name) {
         _historyState.currentMonth = (document.getElementById('vital-date').value || TODAY).slice(0, 7);
     }
 
+    document.getElementById('history-share-wrap').style.display = 'block';
     document.getElementById('history-mode-tabs').style.display = 'flex';
     document.getElementById('history-month-nav').style.display = 'flex';
     document.querySelectorAll('.history-mode-tab').forEach(t => {
@@ -4212,19 +4216,21 @@ var _shareBpPid = null;
 var _shareBpName = null;
 var _shareBpHistory = [];
 
-window.openShareBP = async function(pid, userName) {
+window.openShareBP = async function() {
+    // 履歴タブで選択中の利用者を使用
+    var pid = _historyState && _historyState.pid;
+    var userName = _historyState && _historyState.name;
+    if (!pid) { alert('利用者を選択してください'); return; }
     _shareBpPid = pid;
     _shareBpName = userName;
     var modal = document.getElementById('share-bp-modal');
     var nameEl = document.getElementById('share-bp-name');
     if (nameEl) nameEl.textContent = userName + ' 様の血圧履歴';
-    try {
-        var res = await fetch('/api/vitals_history?patient_id=' + encodeURIComponent(pid));
-        var data = await res.json();
-        _shareBpHistory = (data.vitals || []).filter(function(v) {
-            return v.bp_high != null || v.bp_low != null;
-        });
-    } catch(e) { _shareBpHistory = []; }
+    // loadHistory時にallVitalsが取得済みなのでそのまま使う
+    var allVitals = (_historyState && _historyState.allVitals) || [];
+    _shareBpHistory = allVitals.filter(function(v) {
+        return v.bp_high != null || v.bp_low != null;
+    });
     if (modal) modal.style.display = 'flex';
 };
 
