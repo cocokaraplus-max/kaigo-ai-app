@@ -8711,25 +8711,29 @@ def line_send_invite():
         return jsonify({"error": "LINE not configured"}), 500
 
     if role == "admin":
-        text = f"【TASUKARU】新しい施設管理者の招待
-
-{target_name} 様
-
-以下のURLからTASUKARUにアクセスしてアカウントを作成してください。
-
-{invite_url}
-
-施設コード: {f_code}"
+        text = "\n".join([
+            "【TASUKARU】新しい施設管理者の招待",
+            "",
+            target_name + " 様",
+            "",
+            "以下のURLからTASUKARUにアクセスしてアカウントを作成してください。",
+            "",
+            invite_url,
+            "",
+            "施設コード: " + f_code,
+        ])
     else:
-        text = f"【TASUKARU】スタッフ招待
-
-{target_name} 様
-
-以下のURLからTASUKARUにログインしてください。
-
-{invite_url}
-
-施設コード: {f_code}"
+        text = "\n".join([
+            "【TASUKARU】スタッフ招待",
+            "",
+            target_name + " 様",
+            "",
+            "以下のURLからTASUKARUにログインしてください。",
+            "",
+            invite_url,
+            "",
+            "施設コード: " + f_code,
+        ])
 
     ok = line_send_message(admin_line_id, [{"type": "text", "text": text}])
     if ok:
@@ -8814,11 +8818,13 @@ def stripe_webhook():
                 }).eq("facility_code", f_code).execute()
                 print(f"[Stripe] facility {f_code} activated (plan={plan})", flush=True)
                 line_notify_admin(
-                    f"【TASUKARU】新規契約
-施設コード: {f_code}
-プラン: {plan}
-
-Stripeダッシュボードで確認してください。"
+                    "\n".join([
+                        "【TASUKARU】新規契約",
+                        "施設コード: " + f_code,
+                        "プラン: " + plan,
+                        "",
+                        "Stripeダッシュボードで確認してください。",
+                    ])
                 )
             except Exception as e:
                 print(f"[Stripe webhook] DB update error: {e}", flush=True)
