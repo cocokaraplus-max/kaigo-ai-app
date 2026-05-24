@@ -1470,7 +1470,7 @@ function buildVitalForm(p, v, dateStr) {
         return `<div class="vital-field">
             <label>${label}（${unit}）</label>
             <input type="number" step="${key==='temperature'?'0.1':'1'}"
-                id="v-${key}-${p.id}" value="${val||''}"
+                id="v-${key}-${p.id}" value=""
                 class="${alertCls}"
                 oninput="onVitalInput('${p.id}','${key}',this.value)"
                 placeholder="--">
