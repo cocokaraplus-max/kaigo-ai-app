@@ -8631,3 +8631,209 @@ JSON形式のみで返してください（説明文・コードブロック禁�
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==================================================
+# LINE Messaging API + Stripe サブスク
+# ==================================================
+import stripe
+import hashlib
+import hmac
+import base64
+import json as _json
+
+def get_line_headers():
+    token = get_secret("LINE_CHANNEL_ACCESS_TOKEN")
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+
+def line_send_message(user_id, messages):
+    """LINEユーザーにメッセージ送信"""
+    import urllib.request
+    payload = _json.dumps({
+        "to": user_id,
+        "messages": messages
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push",
+        data=payload,
+        headers=get_line_headers(),
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as res:
+            return res.status == 200
+    except Exception as e:
+        print(f"[LINE] send error: {e}", flush=True)
+        return False
+
+# --- LINE Webhook ---
+@app.route('/api/line/webhook', methods=['POST'])
+def line_webhook():
+    """LINEからのWebhook受信（管理者の返信で承認処理）"""
+    channel_secret = get_secret("LINE_CHANNEL_SECRET")
+    body = request.get_data(as_text=True)
+    sig = request.headers.get("X-Line-Signature", "")
+
+    # 署名検証
+    hash_ = hmac.new(channel_secret.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest()
+    expected = base64.b64encode(hash_).decode("utf-8")
+    if not hmac.compare_digest(expected, sig):
+        return jsonify({"error": "invalid signature"}), 400
+
+    data = request.get_json()
+    for event in data.get("events", []):
+        if event.get("type") == "message":
+            msg = event.get("message", {}).get("text", "").strip()
+            reply_token = event.get("replyToken")
+            # 将来的な承認処理をここに追加
+            print(f"[LINE webhook] message: {msg}", flush=True)
+
+    return jsonify({"status": "ok"}), 200
+
+# --- LINE 招待メッセージ送信 ---
+@app.route('/api/line/send_invite', methods=['POST'])
+def line_send_invite():
+    """施設管理者・スタッフにLINEで招待リンクを送る"""
+    f_code = session.get("facility_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+
+    data = request.get_json()
+    invite_url = data.get("invite_url", "")
+    target_name = data.get("target_name", "")
+    role = data.get("role", "staff")  # "admin" or "staff"
+
+    admin_line_id = get_secret("LINE_ADMIN_USER_ID")
+    if not admin_line_id:
+        return jsonify({"error": "LINE not configured"}), 500
+
+    if role == "admin":
+        text = f"【TASUKARU】新しい施設管理者の招待
+
+{target_name} 様
+
+以下のURLからTASUKARUにアクセスしてアカウントを作成してください。
+
+{invite_url}
+
+施設コード: {f_code}"
+    else:
+        text = f"【TASUKARU】スタッフ招待
+
+{target_name} 様
+
+以下のURLからTASUKARUにログインしてください。
+
+{invite_url}
+
+施設コード: {f_code}"
+
+    ok = line_send_message(admin_line_id, [{"type": "text", "text": text}])
+    if ok:
+        return jsonify({"status": "sent"})
+    else:
+        return jsonify({"error": "send failed"}), 500
+
+# --- LINE 開発者通知 ---
+def line_notify_admin(message):
+    """開発者（岸本さん）のLINEに通知を送る"""
+    admin_line_id = get_secret("LINE_ADMIN_USER_ID")
+    if not admin_line_id:
+        print("[LINE] LINE_ADMIN_USER_ID not set", flush=True)
+        return False
+    return line_send_message(admin_line_id, [{"type": "text", "text": message}])
+
+# --- Stripe 決済セッション作成 ---
+@app.route('/api/stripe/create_checkout', methods=['POST'])
+def stripe_create_checkout():
+    """Stripeサブスク決済セッションを作成してURLを返す"""
+    f_code = session.get("facility_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    data = request.get_json()
+    plan = data.get("plan", "basic")  # basic / pro
+    base_url = request.host_url.rstrip("/")
+
+    # プランごとの価格ID（Stripeダッシュボードで作成後に設定）
+    price_ids = {
+        "basic": get_secret("STRIPE_PRICE_BASIC"),
+        "pro":   get_secret("STRIPE_PRICE_PRO"),
+    }
+    price_id = price_ids.get(plan)
+    if not price_id:
+        return jsonify({"error": f"price not configured for plan: {plan}"}), 400
+
+    try:
+        checkout = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f"{base_url}/admin?stripe=success",
+            cancel_url=f"{base_url}/admin?stripe=cancel",
+            metadata={"facility_code": f_code, "plan": plan},
+            locale="ja",
+        )
+        return jsonify({"url": checkout.url})
+    except Exception as e:
+        print(f"[Stripe] checkout error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+# --- Stripe Webhook ---
+@app.route('/api/stripe/webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe決済完了時のWebhook → 自動有効化"""
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    webhook_secret = get_secret("STRIPE_WEBHOOK_SECRET")
+    payload = request.get_data()
+    sig = request.headers.get("Stripe-Signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
+    except Exception as e:
+        print(f"[Stripe webhook] verify error: {e}", flush=True)
+        return jsonify({"error": "invalid"}), 400
+
+    if event["type"] == "checkout.session.completed":
+        session_obj = event["data"]["object"]
+        f_code = session_obj.get("metadata", {}).get("facility_code")
+        plan = session_obj.get("metadata", {}).get("plan", "basic")
+        if f_code:
+            try:
+                supabase = get_supabase()
+                from datetime import datetime, timedelta
+                expires = (datetime.now() + timedelta(days=30)).isoformat()
+                supabase.table("facilities").update({
+                    "is_active": True,
+                    "plan": plan,
+                    "expires_at": expires,
+                    "stripe_subscription_id": session_obj.get("subscription")
+                }).eq("facility_code", f_code).execute()
+                print(f"[Stripe] facility {f_code} activated (plan={plan})", flush=True)
+                line_notify_admin(
+                    f"【TASUKARU】新規契約
+施設コード: {f_code}
+プラン: {plan}
+
+Stripeダッシュボードで確認してください。"
+                )
+            except Exception as e:
+                print(f"[Stripe webhook] DB update error: {e}", flush=True)
+
+    elif event["type"] == "customer.subscription.deleted":
+        # サブスク解約時
+        sub_id = event["data"]["object"]["id"]
+        try:
+            supabase = get_supabase()
+            supabase.table("facilities").update({
+                "is_active": False
+            }).eq("stripe_subscription_id", sub_id).execute()
+            print(f"[Stripe] subscription {sub_id} cancelled", flush=True)
+        except Exception as e:
+            print(f"[Stripe webhook] cancel error: {e}", flush=True)
+
+    return jsonify({"status": "ok"}), 200
+
