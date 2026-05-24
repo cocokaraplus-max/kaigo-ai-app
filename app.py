@@ -7126,22 +7126,17 @@ def api_board_mark_all_read():
             reads_to_insert = [{"post_id": pid, "facility_code": f_code, "staff_name": my_name} for pid in all_ids if pid not in existing_read_ids]
             if reads_to_insert:
                 supabase.table("board_reads").insert(reads_to_insert).execute()
-            # board_checks にも書き込み（全スタッフ分）
-            all_staff_res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).execute()
-            all_staff_names = [r["staff_name"] for r in (all_staff_res.data or [])]
-            if my_name not in all_staff_names:
-                all_staff_names.append(my_name)
-            existing_checks = supabase.table("board_checks").select("post_id,staff_name").eq("facility_code", f_code).execute()
-            existing_pairs = set((r["post_id"], r["staff_name"]) for r in (existing_checks.data or []))
+            # board_checks に自分の分だけ書き込む
+            existing_checks = supabase.table("board_checks").select("post_id").eq("facility_code", f_code).eq("staff_name", my_name).execute()
+            existing_check_ids = set(r["post_id"] for r in (existing_checks.data or []))
             checks_to_insert = [
-                {"post_id": pid, "facility_code": f_code, "staff_name": sname}
+                {"post_id": pid, "facility_code": f_code, "staff_name": my_name}
                 for pid in all_ids
-                for sname in all_staff_names
-                if (pid, sname) not in existing_pairs
+                if pid not in existing_check_ids
             ]
             if checks_to_insert:
                 supabase.table("board_checks").insert(checks_to_insert).execute()
-                post_added = len([c for c in checks_to_insert if c["staff_name"] == my_name])
+                post_added = len(checks_to_insert)
         # コメントも全既読化
         comment_added = 0
         try:
