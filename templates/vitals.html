@@ -1667,6 +1667,10 @@ window.saveVital = async function(pid, name, dateStr) {
     if (data.status === 'success') {
         // VITALS_DATAを最新の測定値で更新(カードのサマリ表示用)
         VITALS_DATA[pid] = {...VITALS_DATA[pid], ...payload, id: data.id};
+        // 保存後はVITALS_DATAの入力値をリセット（次回レンダリング時に値が残らないよう）
+        ['bp_high','bp_low','pulse','temperature','spo2','recheck','note'].forEach(k => {
+            delete VITALS_DATA[pid][k];
+        });
         const card = document.getElementById('vcard-'+pid);
         if (card) {
             card.className = 'patient-vital-card ' + (finalRecheck ? 'recheck' : '');
