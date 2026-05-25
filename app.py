@@ -197,6 +197,11 @@ def get_birthday_users(supabase, f_code):
     try:
         now = datetime.now(tokyo_tz)
         res = supabase.table("patients").select("user_name, birth_date").eq("facility_code", f_code).execute()
+        pp_res = supabase.table("patient_profiles").select("user_name, birth_date").eq("facility_code", f_code).execute()
+        pp_birth = {r["user_name"]: r["birth_date"] for r in (pp_res.data or []) if r.get("birth_date")}
+        for r in (res.data or []):
+            if not r.get("birth_date") and r["user_name"] in pp_birth:
+                r["birth_date"] = pp_birth[r["user_name"]]
         birthday_users = []
         for r in res.data:
             if not r.get("birth_date"):
@@ -697,8 +702,18 @@ def top():
     except:
         pass
 
+    # タスク取得（自分が関わる未完了のみ）
+    my_tasks = []
+    try:
+        task_res = supabase.table("tasks").select("id,title,due_date,priority,status,assigned_to,created_by").eq("facility_code", f_code).neq("status", "done").order("due_date").execute()
+        for t in (task_res.data or []):
+            if t.get("created_by") == my_name or my_name in (t.get("assigned_to") or []) or not t.get("assigned_to"):
+                my_tasks.append(t)
+    except:
+        pass
     return render("top.html", f_code=f_code, my_name=my_name, records=records,
         birthday_users=get_birthday_users(supabase, f_code),
+        my_tasks=my_tasks,
         my_icon_emoji=my_icon_emoji,
         my_icon_image_url=my_icon_image_url,
         my_color=staff_color(my_name),

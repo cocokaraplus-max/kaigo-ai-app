@@ -235,12 +235,51 @@
     </div>
 </div>
 
-{% if birthday_users %}
-<div class="birthday-section">
-    <div class="birthday-header">
-        <span class="material-symbols-outlined">cake</span>
-        今月お誕生日の利用者
+{% if my_tasks %}
+<div class="birthday-section" id="task-accordion" style="border-color:#1a73e8;">
+    <div class="birthday-header" onclick="toggleTaskAccordion()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">task_alt</span>
+            <span style="color:#1a73e8;">自分の未完了タスク</span>
+            <span style="background:#1a73e8;color:#fff;font-size:0.7rem;font-weight:700;border-radius:10px;padding:1px 7px;margin-left:4px;">{{ my_tasks|length }}</span>
+        </div>
+        <span class="material-symbols-outlined" id="task-chevron" style="font-size:18px;color:#9aa0a6;transition:transform 0.2s;">expand_more</span>
     </div>
+    <div id="task-body" style="display:none;">
+    {% for t in my_tasks %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f3f4;">
+        <div style="font-size:0.85rem;color:#3c4043;flex:1;">{{ t.title }}</div>
+        {% if t.due_date %}<div style="font-size:0.75rem;color:#9aa0a6;">{{ t.due_date }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    </div>
+</div>
+<script>
+function toggleTaskAccordion() {
+    var body = document.getElementById("task-body");
+    var chevron = document.getElementById("task-chevron");
+    if (body.style.display === "none") {
+        body.style.display = "block";
+        chevron.style.transform = "rotate(180deg)";
+    } else {
+        body.style.display = "none";
+        chevron.style.transform = "rotate(0deg)";
+    }
+}
+</script>
+<hr class="divider">
+{% endif %}
+{% if birthday_users %}
+<div class="birthday-section" id="birthday-accordion">
+    <div class="birthday-header" onclick="toggleBirthdayAccordion()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined">cake</span>
+            今月お誕生日の利用者
+            <span style="background:#e91e8c;color:#fff;font-size:0.7rem;font-weight:700;border-radius:10px;padding:1px 7px;margin-left:4px;">{{ birthday_users|length }}</span>
+        </div>
+        <span class="material-symbols-outlined" id="birthday-chevron" style="font-size:18px;color:#9aa0a6;transition:transform 0.2s;">expand_more</span>
+    </div>
+    <div id="birthday-body" style="display:none;">
     {% for b in birthday_users %}
     <div class="birthday-item">
         <div class="birthday-left">
@@ -251,7 +290,21 @@
         <div class="birthday-age">{{ b.age }}歳</div>
     </div>
     {% endfor %}
+    </div>
 </div>
+<script>
+function toggleBirthdayAccordion() {
+    var body = document.getElementById('birthday-body');
+    var chevron = document.getElementById('birthday-chevron');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        chevron.style.transform = 'rotate(180deg)';
+    } else {
+        body.style.display = 'none';
+        chevron.style.transform = 'rotate(0deg)';
+    }
+}
+</script>
 <hr class="divider">
 {% endif %}
 
