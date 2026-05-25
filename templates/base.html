@@ -695,6 +695,7 @@ body.nav-editing {
     <div class="page-wrapper">
         {% block content %}{% endblock %}
     </div>
+    {% block above_nav %}{% endblock %}
 
     {% block bottom_nav %}
     {% if session.get('f_code') %}

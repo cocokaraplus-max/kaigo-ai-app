@@ -586,14 +586,7 @@
       </div>
     </div>
     {% endif %}
-    <!-- 保存バー -->
-    <div class="save-bar" id="profile-save-bar">
-      {% if selected %}
-      <button type="button" class="btn-delete" onclick="deleteProfile()">削除</button>
-      {% endif %}
-      <button type="button" class="btn-cancel" onclick="cancelEdit()">キャンセル</button>
-      <button type="button" class="btn-save" onclick="saveProfile(event)">💾 保存</button>
-    </div>
+
 
   </form>
 </div>
@@ -957,4 +950,14 @@ async function saveVisitDayProfile(){
     if (bar) document.body.appendChild(bar);
   })();
 </script>
+{% endblock %}
+{% block above_nav %}
+    <!-- 保存バー -->
+    <div class="save-bar" id="profile-save-bar">
+      {% if selected %}
+      <button type="button" class="btn-delete" onclick="deleteProfile()">削除</button>
+      {% endif %}
+      <button type="button" class="btn-cancel" onclick="cancelEdit()">キャンセル</button>
+      <button type="button" class="btn-save" onclick="saveProfile(event)">💾 保存</button>
+    </div>
 {% endblock %}
