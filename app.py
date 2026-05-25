@@ -2262,12 +2262,14 @@ def api_save_visit_day():
         f_code = session["f_code"]
         supabase = get_supabase()
         # 後方互換: ampm_per_day が来ていれば一緒に保存
-        update_payload = {"weekdays": data["weekdays"]}
+        raw_wd = data.get("weekdays", "") or ""
+        normalized_wd = "".join(sorted(set(raw_wd.replace(",",""))))
+        update_payload = {"weekdays": normalized_wd}
         insert_payload = {
             "facility_code": f_code,
             "patient_id": data["patient_id"],
             "user_name": data["user_name"],
-            "weekdays": data["weekdays"],
+            "weekdays": normalized_wd,
         }
         if "ampm_per_day" in data:
             update_payload["ampm_per_day"] = data["ampm_per_day"]

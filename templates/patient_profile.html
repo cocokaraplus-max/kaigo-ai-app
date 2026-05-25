@@ -925,7 +925,7 @@ async function saveVisitDayProfile(){
     const el = document.getElementById('vd-' + k);
     if(el && el.value){ ampm_per_day[k] = el.value; weekdays_arr.push(k); }
   });
-  const weekdays = weekdays_arr.join(',');
+  const weekdays = weekdays_arr.join('');
   const user_name = document.getElementById('user_name')?.value || '';
   const res = await fetch('/api/save_visit_day', {
     method: 'POST',
