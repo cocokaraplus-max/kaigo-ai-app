@@ -939,7 +939,7 @@
                         <span style="font-size:0.7rem;font-weight:600;color:{{ lbl_color }};">{{ label }}</span>
                         <button type="button"
                                 class="weekday-btn weekday-btn-{{ state|lower }}"
-                                data-pid="{{ p.id }}"
+                                data-pid="{{ p.patient_int_id or p.id }}"
                                 data-name="{{ p.user_name }}"
                                 data-day="{{ day }}"
                                 data-state="{{ state }}"

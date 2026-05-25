@@ -165,6 +165,9 @@ def birth_to_wareki_text(birth_date_str):
 def get_patients(supabase, f_code):
     try:
         res = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).order("user_name_kana").execute()
+        # patientsテーブルの整数IDをuser_nameでマッピング
+        pt_res = supabase.table("patients").select("id,user_name").eq("facility_code", f_code).execute()
+        pt_id_map = {r["user_name"]: r["id"] for r in (pt_res.data or [])}
         patients = []
         for r in res.data:
             kana  = r.get('user_name_kana') or ""
@@ -174,6 +177,7 @@ def get_patients(supabase, f_code):
                 "value": f"(No.{chart}) [{name}] {kana}",
                 "label": f"(No.{chart}) [{name}] {kana}",
                 "id": r["id"],
+                "patient_int_id": pt_id_map.get(name),
                 "chart_number": chart,
                 "patient_number": chart,
                 "user_name": name,
@@ -2016,20 +2020,21 @@ def vitals():
     ampm_data = {}
     ampm_per_day_data = {}
     try:
-        pt_ids = {str(p["id"]) for p in patients}
+        int_id_map = {str(p["patient_int_id"]): p for p in patients if p.get("patient_int_id")}
         res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm,ampm_per_day").eq("facility_code", f_code).execute()
         for r in (res.data or []):
             pid = str(r["patient_id"])
-            if pid not in pt_ids:
+            if pid not in int_id_map:
                 continue
             visit_days[pid] = r.get("weekdays") or ""
             ampm_data[pid] = r.get("ampm") or "BOTH"
             apd = r.get("ampm_per_day")
             ampm_per_day_data[pid] = apd if isinstance(apd, dict) else {}
         for p in patients:
-            p["weekdays"] = visit_days.get(str(p["id"]), "")
-            p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
-            p["ampm_per_day"] = ampm_per_day_data.get(str(p["id"]), {})
+            int_id = str(p["patient_int_id"]) if p.get("patient_int_id") else ""
+            p["weekdays"] = visit_days.get(int_id, "")
+            p["ampm"] = ampm_data.get(int_id, "BOTH")
+            p["ampm_per_day"] = ampm_per_day_data.get(int_id, {})
     except Exception as e:
         print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
