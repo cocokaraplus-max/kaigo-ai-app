@@ -3773,6 +3773,14 @@ def inject_can_ledger():
         return {'can_ledger': allowed or dev}
     except:
         return {'can_ledger': False}
+@app.context_processor
+def inject_is_dev_user():
+    try:
+        my_name = session.get('my_name')
+        return {'is_dev_user': my_name == '岐本洋幸'}
+    except:
+        return {'is_dev_user': False}
+
 def ledger_access_required(f):
     """出納帳専用アクセス制限デコレータ"""
     from functools import wraps

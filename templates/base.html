@@ -738,6 +738,12 @@ body.nav-editing {
             <span class="material-symbols-outlined">admin_panel_settings</span>
             管理者MENU
         </a>
+        {% if is_dev_user %}
+        <a href="/dev" class="bottom-nav-item">
+            <span class="material-symbols-outlined">code</span>
+            開発者
+        </a>
+        {% endif %}
         <a href="/manual" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/manual')">
             <span class="material-symbols-outlined">menu_book</span>
             ガイド
