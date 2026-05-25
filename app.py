@@ -2425,6 +2425,37 @@ def api_update_vital():
         print(f"update_vital error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/bulk_temp_smart_save', methods=['POST'])
+@login_required
+def api_bulk_temp_smart_save():
+    try:
+        data = request.json
+        f_code = session['f_code']
+        my_name = session['my_name']
+        supabase = get_supabase()
+        patient_id = str(data.get('patient_id'))
+        temperature = data.get('temperature')
+        measured_date = data.get('measured_date')
+        user_name = data.get('user_name', '')
+        if not patient_id or temperature is None or not measured_date:
+            return jsonify({'status': 'error', 'message': 'missing params'}), 400
+        existing = supabase.table('vitals').select('id,temperature').eq('facility_code', f_code).eq('patient_id', patient_id).eq('measured_date', measured_date).order('measured_at', desc=True).execute()
+        target = None
+        for rec in (existing.data or []):
+            if rec.get('temperature') is None:
+                target = rec
+                break
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if target:
+            supabase.table('vitals').update({'temperature': temperature, 'staff_name': my_name}).eq('id', target['id']).execute()
+            return jsonify({'status': 'success', 'action': 'update', 'id': target['id']})
+        else:
+            res = supabase.table('vitals').insert({'facility_code': f_code, 'patient_id': patient_id, 'user_name': user_name, 'measured_date': measured_date, 'measured_at': now_iso, 'temperature': temperature, 'staff_name': my_name}).execute()
+            rid = res.data[0]['id'] if res.data else None
+            return jsonify({'status': 'success', 'action': 'insert', 'id': rid})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/delete_vital', methods=['POST'])
 @login_required
 def api_delete_vital():

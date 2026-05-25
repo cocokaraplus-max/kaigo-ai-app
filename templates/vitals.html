@@ -3988,33 +3988,35 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
 
 
 // 一括体温「この数値で登録」ボタンの処理
-window.registerBulkTemp = function(order) {
+window.registerBulkTemp = async function(order) {
     const list = window.bulkTempResultList || [];
     const editData = window.bulkTempEditData || {};
     if (list.length === 0) return;
     const btn = document.querySelector('[onclick^="window.registerBulkTemp"]');
     if (btn) { btn.disabled = true; btn.textContent = '登録中...'; }
-    let count = 0;
-    list.forEach(r => {
+    const dateStr = document.getElementById('vital-date')?.value || new Date().toISOString().slice(0,10);
+    let success = 0, fail = 0;
+    for (const r of list) {
         const val = editData[r.patient_id] || r.temperature;
-        const el = document.getElementById('v-temperature-' + r.patient_id);
-        if (el) { el.value = val; onVitalInput(String(r.patient_id), 'temperature', val); }
-        const orderEl = document.getElementById('v-order-' + r.patient_id);
-        if (orderEl) orderEl.value = order;
-        setTimeout(() => {
-            const saveBtn = document.querySelector('#vbody-' + r.patient_id + ' .save-vital-btn');
-            if (saveBtn) saveBtn.click();
-        }, 200 + count * 400);
-        count++;
-    });
-    setTimeout(() => {
-        const resultDiv = document.getElementById('bulk-temp-result');
-        if (resultDiv) {
-            resultDiv.innerHTML = `<div style="padding:8px 12px;background:#e6f4ea;border-radius:8px;color:#137333;font-size:0.85rem;font-weight:700;">✓ ${list.length}名分の体温を登録しました</div>`;
-        }
-        window.bulkTempResultList = [];
-        window.bulkTempEditData = {};
-    }, 200 + count * 400 + 600);
+        try {
+            const res = await fetch('/api/bulk_temp_smart_save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'include',
+                body: JSON.stringify({ patient_id: r.patient_id, user_name: r.user_name, temperature: val, measured_date: dateStr })
+            });
+            const data = await res.json();
+            if (data.status === "success") success++; else fail++;
+        } catch(e) { fail++; }
+    }
+    const resultDiv = document.getElementById('bulk-temp-result');
+    if (resultDiv) {
+        const msg = fail > 0 ? '✓ ' + success + '名登録完了 (' + fail + '名失敗)' : '✓ ' + success + '名分の体温を登録しました';
+        resultDiv.innerHTML = '<div style="padding:8px 12px;background:#e6f4ea;border-radius:8px;color:#137333;font-size:0.85rem;font-weight:700;">' + msg + '</div>';
+    }
+    window.bulkTempResultList = [];
+    window.bulkTempEditData = {};
+    setTimeout(() => { if (typeof loadVitals === "function") loadVitals(); }, 800);
 };
 
 // ========== メモパッド ==========
