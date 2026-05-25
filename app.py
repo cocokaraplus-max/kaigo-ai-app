@@ -2016,12 +2016,16 @@ def vitals():
     ampm_data = {}
     ampm_per_day_data = {}
     try:
+        pt_ids = {str(p["id"]) for p in patients}
         res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm,ampm_per_day").eq("facility_code", f_code).execute()
         for r in (res.data or []):
-            visit_days[str(r["patient_id"])] = r.get("weekdays") or ""
-            ampm_data[str(r["patient_id"])] = r.get("ampm") or "BOTH"
+            pid = str(r["patient_id"])
+            if pid not in pt_ids:
+                continue
+            visit_days[pid] = r.get("weekdays") or ""
+            ampm_data[pid] = r.get("ampm") or "BOTH"
             apd = r.get("ampm_per_day")
-            ampm_per_day_data[str(r["patient_id"])] = apd if isinstance(apd, dict) else {}
+            ampm_per_day_data[pid] = apd if isinstance(apd, dict) else {}
         for p in patients:
             p["weekdays"] = visit_days.get(str(p["id"]), "")
             p["ampm"] = ampm_data.get(str(p["id"]), "BOTH")
