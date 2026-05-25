@@ -591,7 +591,7 @@
     </div>
     {% endif %}
     <!-- 保存バー -->
-    <div class="save-bar">
+    <div class="save-bar" id="profile-save-bar">
       {% if selected %}
       <button type="button" class="btn-delete" onclick="deleteProfile()">削除</button>
       {% endif %}
@@ -955,5 +955,10 @@ async function togglePPWeekday(btn) {
 async function saveVisitDayProfile(){
   // 後方互換用（旧API呼び出しが残っている場合のフォールバック）
 }
+  // save-barをbody直下に移動してpage-wrapperのoverflowの影響を回避
+  (function() {
+    var bar = document.getElementById('profile-save-bar');
+    if (bar) document.body.appendChild(bar);
+  })();
 </script>
 {% endblock %}
