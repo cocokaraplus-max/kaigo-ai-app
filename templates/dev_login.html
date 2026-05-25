@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}開発者ログイン - TASUKARU{% endblock %}
+{% block content %}
+<div style="max-width:360px;margin:4rem auto;padding:0 1.2rem;">
+    <div style="text-align:center;margin-bottom:2rem;">
+        <span class="material-symbols-outlined" style="font-size:48px;color:#9c27b0;">code</span>
+        <div style="font-size:1.2rem;font-weight:800;color:#202124;margin-top:8px;">開発者MENU</div>
+        <div style="font-size:0.82rem;color:#5f6368;margin-top:4px;">開発者専用エリアです</div>
+    </div>
+    {% if error %}
+    <div style="background:#fce8e6;border:1px solid #ea4335;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.85rem;color:#c62828;display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:18px;">error</span>{{ error }}
+    </div>
+    {% endif %}
+    <form method="POST" action="/dev_login">
+        <label style="font-size:0.82rem;font-weight:700;color:#5f6368;display:block;margin-bottom:6px;">
+            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">lock</span>
+            開発者パスワード
+        </label>
+        <div style="position:relative;margin-bottom:16px;">
+            <input type="password" name="dev_pw" id="dev-pw-input"
+                style="width:100%;padding:12px 44px 12px 14px;border:1.5px solid #e0e0e0;border-radius:12px;font-size:1rem;box-sizing:border-box;"
+                placeholder="パスワードを入力" autofocus>
+            <span onclick="var i=document.getElementById('dev-pw-input');i.type=i.type==='password'?'text':'password';"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:#80868b;">
+                <span class="material-symbols-outlined" style="font-size:20px;">visibility</span>
+            </span>
+        </div>
+        <button type="submit"
+            style="width:100%;padding:14px;background:#9c27b0;color:#fff;border:none;border-radius:12px;font-size:0.95rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span class="material-symbols-outlined">login</span>
+            開発者MENUへ
+        </button>
+    </form>
+</div>
+{% endblock %}

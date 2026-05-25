@@ -4731,7 +4731,7 @@ def admin_auth():
                 board_editors=[], admin_managers=[])
 
         session["admin_authenticated"] = True
-        return redirect(url_for("admin"))
+        return redirect(url_for("dev_login"))
     except Exception as e:
         return render_template("admin.html",
             authenticated=False, dev_mode=False,
@@ -5933,11 +5933,25 @@ def api_admin_logout():
     session["dev_authenticated"] = False
     return jsonify({"status": "success"})
 
+@app.route('/dev_login', methods=['GET', 'POST'])
+@login_required
+def dev_login():
+    error = None
+    if request.method == 'POST':
+        pw = request.form.get('dev_pw', '')
+        dev_pw = get_secret('DEV_PASSWORD') or 'tasukaru-dev-2024'
+        if pw == dev_pw:
+            session['dev_authenticated'] = True
+            return redirect(url_for('dev_menu'))
+        else:
+            error = '開発者パスワードが違います。'
+    return render_template('dev_login.html', error=error)
+
 @app.route('/dev')
 @login_required
 def dev_menu():
     if not session.get("dev_authenticated"):
-        return redirect(url_for("admin"))
+        return redirect(url_for("dev_login"))
     supabase = get_supabase()
     f_code = session["f_code"]
 
@@ -6466,7 +6480,7 @@ def api_issue_claude_session_form():
         session["claude_url"] = f"/claude_view?token={token}"
         return redirect(url_for("admin") + "#settings")
     except Exception as e:
-        return redirect(url_for("admin"))
+        return redirect(url_for("dev_login"))
 
 @app.route('/api/issue_claude_session', methods=['POST'])
 @login_required
@@ -7685,7 +7699,7 @@ def admin_ai_categorize():
     """管理者向け: 「その他」カテゴリの記録一覧を表示"""
     f_code = session["f_code"]
     if not session.get("admin_authenticated", False):
-        return redirect(url_for("admin"))
+        return redirect(url_for("dev_login"))
 
     supabase = get_supabase()
     records = []
