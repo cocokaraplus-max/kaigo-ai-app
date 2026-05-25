@@ -7092,7 +7092,7 @@ def api_board_unread_count():
         # 未読コメント(自分以外作のみカウント)
         comment_unread = 0
         try:
-            ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).execute()
+            ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).in_("post_id", all_ids).execute()
             other_ids = [c["id"] for c in (ccs.data or []) if c["staff_name"] != my_name]
             if other_ids:
                 read_c = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
