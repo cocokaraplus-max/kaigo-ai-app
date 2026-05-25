@@ -1511,7 +1511,7 @@ function loadNavOrder() {
     // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
     // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
     var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual'];
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/fitness', '/calendar', '/case_records', '/monitoring', '/assessment', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/dev'];
     // 各 movable item の現在の参照を取得
     var byHref = {};
     items.forEach(function(el) {
