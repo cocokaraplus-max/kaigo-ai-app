@@ -5936,7 +5936,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at").execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at").execute()
         facilities = res.data or []
     except: pass
 
@@ -5963,6 +5963,10 @@ def dev_menu():
                 "staffs": staff_count,
                 "patients": patient_count,
                 "ledger_enabled": fc == LEDGER_ALLOWED_FACILITY or _check_ledger_enabled(supabase, fc),
+                "plan": fac.get("plan", "free"),
+                "is_monitor": fac.get("is_monitor", False),
+                "contract_term": fac.get("contract_term", 0),
+                "trial_ends_at": fac.get("trial_ends_at", "")[:10] if fac.get("trial_ends_at") else "",
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -6008,6 +6012,36 @@ def api_dev_update_facility_expiry():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+@app.route('/api/dev/update_facility_plan', methods=['POST'])
+@login_required
+def api_dev_update_facility_plan():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    try:
+        data = request.json
+        facility_code = data.get("facility_code")
+        plan = data.get("plan", "free")
+        supabase = get_supabase()
+        supabase.table("facilities").update({"plan": plan}).eq("facility_code", facility_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/dev/toggle_monitor', methods=['POST'])
+@login_required
+def api_dev_toggle_monitor():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    try:
+        data = request.json
+        facility_code = data.get("facility_code")
+        is_monitor = data.get("is_monitor", False)
+        supabase = get_supabase()
+        supabase.table("facilities").update({"is_monitor": is_monitor}).eq("facility_code", facility_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/dev/toggle_facility_ledger', methods=['POST'])
 def api_dev_toggle_facility_ledger():
     if not session.get('dev_authenticated'):

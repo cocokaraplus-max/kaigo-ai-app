@@ -159,6 +159,9 @@
                     <th>施設名</th>
                     <th>施設コード</th>
                     <th>状態</th>
+                    <th>プラン</th>
+                    <th>契約</th>
+                    <th>モニター</th>
                     <th>有効期限</th>
                     <th>利用者</th>
                     <th>スタッフ</th>
@@ -177,6 +180,29 @@
                         {% else %}
                         <span class="badge-inactive">停止</span>
                         {% endif %}
+                    </td>
+                    <td>
+                        <select onchange="updateFacilityPlan('{{ s.facility_code }}', this.value)"
+                            style="font-size:0.75rem;padding:2px 4px;border-radius:6px;border:1px solid #e0e0e0;">
+                            <option value="free" {% if s.plan == 'free' %}selected{% endif %}>無料</option>
+                            <option value="monitor" {% if s.plan == 'monitor' %}selected{% endif %}>モニター</option>
+                            <option value="starter" {% if s.plan == 'starter' %}selected{% endif %}>スターター</option>
+                            <option value="standard" {% if s.plan == 'standard' %}selected{% endif %}>スタンダード</option>
+                            <option value="pro" {% if s.plan == 'pro' %}selected{% endif %}>プロ</option>
+                        </select>
+                    </td>
+                    <td style="text-align:center;font-size:0.75rem;">
+                        {% if s.contract_term == 0 %}月払い
+                        {% elif s.contract_term == 12 %}1年
+                        {% elif s.contract_term == 24 %}2年
+                        {% elif s.contract_term == 36 %}3年
+                        {% else %}{{ s.contract_term }}ヶ月{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleMonitor('{{ s.facility_code }}', this.checked)"
+                                {% if s.is_monitor %}checked{% endif %}>
+                        </label>
                     </td>
                     <td>
                         <span style="cursor:pointer;text-decoration:underline;color:#1a73e8;" 
@@ -384,6 +410,32 @@ async function toggleFacilityLedger(facilityCode, enabled) {
     event.target.checked = !enabled;
   }
 }
+async function updateFacilityPlan(facilityCode, plan) {
+    try {
+        const res = await fetch('/api/dev/update_facility_plan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({facility_code: facilityCode, plan: plan})
+        });
+        const data = await res.json();
+        if (data.status !== 'success') alert('更新失敗: ' + (data.message || ''));
+    } catch(e) { alert('エラー: ' + e); }
+}
+
+async function toggleMonitor(facilityCode, isMonitor) {
+    try {
+        const res = await fetch('/api/dev/toggle_monitor', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({facility_code: facilityCode, is_monitor: isMonitor})
+        });
+        const data = await res.json();
+        if (data.status !== 'success') alert('更新失敗: ' + (data.message || ''));
+    } catch(e) { alert('エラー: ' + e); }
+}
+
 async function editExpiry(facilityCode, currentExpiry) {
   const newExpiry = prompt('有効期限を入力してください（例: 2099-12-31）\n施設: ' + facilityCode, currentExpiry || '2099-12-31');
   if (!newExpiry) return;
