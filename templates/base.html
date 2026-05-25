@@ -645,6 +645,32 @@ body.nav-editing {
                     <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
                 </button>
             </div>
+            <!-- ナビカラー -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">palette</span>ナビカラー
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">通常時の色</div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="color" id="nav-color-normal" value="#5f6368" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
+                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-normal-label">#5f6368</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">選択時の色</div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="color" id="nav-color-active" value="#1a73e8" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
+                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-active-label">#1a73e8</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px;">
+                    <button onclick="applyNavColors()" style="flex:1;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">適用</button>
+                    <button onclick="resetNavColors()" style="flex:1;padding:10px;background:#f1f3f4;color:#5f6368;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">リセット</button>
+                </div>
+            </div>
         </div>
     </div>
     <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
@@ -1917,6 +1943,45 @@ function onNavPointerUp(e) {
 }
 
 // ===== 設定モーダル関連 =====
+// ========== ナビカラーカスタマイズ ==========
+function applyNavColors() {
+    var normal = document.getElementById('nav-color-normal').value;
+    var active = document.getElementById('nav-color-active').value;
+    localStorage.setItem('tasukaru_nav_color_normal', normal);
+    localStorage.setItem('tasukaru_nav_color_active', active);
+    updateNavColorStyle(normal, active);
+    document.getElementById('nav-color-normal-label').textContent = normal;
+    document.getElementById('nav-color-active-label').textContent = active;
+}
+function resetNavColors() {
+    var normal = '#5f6368';
+    var active = '#1a73e8';
+    localStorage.removeItem('tasukaru_nav_color_normal');
+    localStorage.removeItem('tasukaru_nav_color_active');
+    updateNavColorStyle(normal, active);
+    var normalEl = document.getElementById('nav-color-normal');
+    var activeEl = document.getElementById('nav-color-active');
+    if (normalEl) normalEl.value = normal;
+    if (activeEl) activeEl.value = active;
+    document.getElementById('nav-color-normal-label').textContent = normal;
+    document.getElementById('nav-color-active-label').textContent = active;
+}
+function updateNavColorStyle(normal, active) {
+    var styleId = 'tasukaru-nav-color-style';
+    var el = document.getElementById(styleId);
+    if (!el) { el = document.createElement('style'); el.id = styleId; document.head.appendChild(el); }
+    el.textContent = '.bottom-nav-item { color: ' + normal + ' !important; }'
+        + ' .bottom-nav-item .material-symbols-outlined { color: ' + normal + ' !important; }'
+        + ' .bottom-nav-item.active { color: ' + active + ' !important; }'
+        + ' .bottom-nav-item.active .material-symbols-outlined { color: ' + active + ' !important; }';
+}
+// 起動時にlocalStorageから復元
+(function() {
+    var normal = localStorage.getItem('tasukaru_nav_color_normal') || '#5f6368';
+    var active = localStorage.getItem('tasukaru_nav_color_active') || '#1a73e8';
+    updateNavColorStyle(normal, active);
+})();
+
 window.openSettings = function() {
     var m = document.getElementById('user-settings-modal');
     if (!m) return;
@@ -1935,6 +2000,13 @@ window.openSettings = function() {
     document.querySelectorAll('.sound-opt').forEach(function(o) {
         o.classList.toggle('active', o.dataset.sound === savedSound);
     });
+    // ナビカラー
+    var savedNormal = localStorage.getItem('tasukaru_nav_color_normal') || '#5f6368';
+    var savedActive = localStorage.getItem('tasukaru_nav_color_active') || '#1a73e8';
+    var normalEl = document.getElementById('nav-color-normal');
+    var activeEl = document.getElementById('nav-color-active');
+    if (normalEl) { normalEl.value = savedNormal; document.getElementById('nav-color-normal-label').textContent = savedNormal; }
+    if (activeEl) { activeEl.value = savedActive; document.getElementById('nav-color-active-label').textContent = savedActive; }
     // パスコードトグル
     var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === '1';
     var toggle = document.getElementById('passcode-toggle');
