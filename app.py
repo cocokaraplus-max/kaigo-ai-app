@@ -4764,7 +4764,7 @@ def admin_auth():
                 board_editors=[], admin_managers=[])
 
         session["admin_authenticated"] = True
-        return redirect(url_for("dev_login"))
+        return redirect(url_for("admin"))
     except Exception as e:
         return render_template("admin.html",
             authenticated=False, dev_mode=False,
