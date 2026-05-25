@@ -3777,7 +3777,7 @@ def inject_can_ledger():
 def inject_is_dev_user():
     try:
         my_name = session.get('my_name')
-        return {'is_dev_user': my_name == '岐本洋幸'}
+        return {'is_dev_user': my_name in ['岸本洋幸', 'デモ職員A']}
     except:
         return {'is_dev_user': False}
 
