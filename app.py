@@ -8782,37 +8782,33 @@ def line_notify_admin(message):
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
 def stripe_create_checkout():
-    """Stripeサブスク決済セッションを作成してURLを返す"""
-    f_code = session.get("facility_code")
+    f_code = session.get("f_code")
     if not f_code:
         return jsonify({"error": "not logged in"}), 401
-
     stripe.api_key = get_secret("STRIPE_SECRET_KEY")
     data = request.get_json()
-    plan = data.get("plan", "basic")  # basic / pro
+    plan = data.get("plan", "starter")
+    term = data.get("term", "monthly")
     base_url = request.host_url.rstrip("/")
-
-    # プランごとの価格ID（Stripeダッシュボードで作成後に設定）
-    price_ids = {
-        "basic": get_secret("STRIPE_PRICE_BASIC"),
-        "pro":   get_secret("STRIPE_PRICE_PRO"),
-    }
-    price_id = price_ids.get(plan)
+    if term == "monthly":
+        env_key = "STRIPE_PRICE_" + plan.upper() + "_M"
+    else:
+        env_key = "STRIPE_PRICE_" + plan.upper() + "_" + term.upper()
+    price_id = get_secret(env_key)
     if not price_id:
-        return jsonify({"error": f"price not configured for plan: {plan}"}), 400
-
+        return jsonify({"error": "price not configured: " + env_key}), 400
     try:
         checkout = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
-            success_url=f"{base_url}/admin?stripe=success",
-            cancel_url=f"{base_url}/admin?stripe=cancel",
-            metadata={"facility_code": f_code, "plan": plan},
+            success_url=base_url + "/pricing?stripe=success",
+            cancel_url=base_url + "/pricing?stripe=cancel",
+            metadata={"facility_code": f_code, "plan": plan, "term": term},
             locale="ja",
         )
         return jsonify({"url": checkout.url})
     except Exception as e:
-        print(f"[Stripe] checkout error: {e}", flush=True)
+        print("[Stripe] checkout error: " + str(e), flush=True)
         return jsonify({"error": str(e)}), 500
 
 # --- Stripe Webhook ---

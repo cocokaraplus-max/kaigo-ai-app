@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}プラン選択 - TASUKARU{% endblock %}
+{% block nav_admin %}active{% endblock %}
+
+{% block content %}
+<style>
+.pricing-wrap { padding: 0 0 2rem; }
+.pricing-header { text-align:center; padding: 1.5rem 1rem 1rem; }
+.pricing-header h1 { font-size:1.3rem; font-weight:800; color:#202124; margin:0 0 6px; }
+.pricing-header p { font-size:0.82rem; color:#5f6368; margin:0; }
+
+/* 現在のプランバナー */
+.current-plan-banner { background:#e8f0fe; border:1.5px solid #1a73e8; border-radius:12px; padding:10px 16px; margin:0 0 1.2rem; display:flex; align-items:center; gap:8px; }
+.current-plan-banner .material-symbols-outlined { color:#1a73e8; font-size:20px; }
+.current-plan-banner span { font-size:0.85rem; font-weight:700; color:#1a73e8; }
+
+/* 契約期間タブ */
+.term-tabs { display:flex; gap:6px; margin-bottom:1rem; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
+.term-tabs::-webkit-scrollbar { display:none; }
+.term-tab { flex:0 0 auto; padding:7px 14px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.78rem; font-weight:700; color:#5f6368; cursor:pointer; white-space:nowrap; transition:all 0.15s; }
+.term-tab.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+.term-tab .discount { font-size:0.65rem; background:#e8f5e9; color:#2e7d32; border-radius:8px; padding:1px 5px; margin-left:4px; }
+.term-tab.active .discount { background:rgba(255,255,255,0.25); color:#fff; }
+
+/* プランカード */
+.plan-cards { display:flex; flex-direction:column; gap:12px; }
+.plan-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:16px; overflow:hidden; transition:all 0.2s; }
+.plan-card.popular { border-color:#1a73e8; box-shadow:0 2px 12px rgba(26,115,232,0.15); }
+.plan-card.current { border-color:#34a853; }
+.plan-card-badge { display:none; background:#1a73e8; color:#fff; text-align:center; font-size:0.72rem; font-weight:800; padding:5px; letter-spacing:0.05em; }
+.plan-card.popular .plan-card-badge { display:block; }
+.plan-card-body { padding:16px; }
+.plan-name { font-size:1rem; font-weight:800; color:#202124; margin-bottom:4px; }
+.plan-desc { font-size:0.78rem; color:#5f6368; margin-bottom:12px; }
+.plan-price { margin-bottom:12px; }
+.plan-price .amount { font-size:1.6rem; font-weight:800; color:#202124; }
+.plan-price .unit { font-size:0.78rem; color:#5f6368; }
+.plan-price .original { font-size:0.78rem; color:#ea4335; text-decoration:line-through; margin-right:4px; }
+.plan-price .lump { font-size:0.78rem; color:#5f6368; margin-top:2px; }
+.plan-features { list-style:none; padding:0; margin:0 0 14px; display:flex; flex-direction:column; gap:5px; }
+.plan-features li { font-size:0.78rem; color:#3c4043; display:flex; align-items:center; gap:6px; }
+.plan-features li .material-symbols-outlined { font-size:16px; color:#34a853; flex-shrink:0; }
+.plan-features li.no .material-symbols-outlined { color:#bdc1c6; }
+.plan-features li.no { color:#9aa0a6; }
+.plan-btn { width:100%; padding:12px; border-radius:12px; border:none; font-size:0.9rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.15s; }
+.plan-btn-primary { background:#1a73e8; color:#fff; }
+.plan-btn-primary:hover { background:#1557b0; }
+.plan-btn-current { background:#f1f3f4; color:#5f6368; cursor:default; }
+.plan-btn-outline { background:#fff; color:#1a73e8; border:1.5px solid #1a73e8; }
+.plan-btn-outline:hover { background:#e8f0fe; }
+
+/* 違約金注記 */
+.cancellation-note { background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:10px 14px; margin-top:1rem; font-size:0.75rem; color:#5f4b00; }
+.cancellation-note strong { display:block; margin-bottom:4px; }
+
+/* 成功・キャンセルバナー */
+.stripe-banner { border-radius:12px; padding:12px 16px; margin-bottom:1rem; font-size:0.85rem; font-weight:700; display:flex; align-items:center; gap:8px; }
+.stripe-banner.success { background:#e8f5e9; color:#2e7d32; border:1.5px solid #4caf50; }
+.stripe-banner.cancel { background:#fff8e1; color:#5f4b00; border:1.5px solid #fdd835; }
+</style>
+
+<div class="pricing-wrap">
+    <div class="pricing-header">
+        <h1>プランを選択</h1>
+        <p>1ヶ月間は無料でお試しいただけます</p>
+    </div>
+
+    {% if request.args.get('stripe') == 'success' %}
+    <div class="stripe-banner success">
+        <span class="material-symbols-outlined">check_circle</span>
+        お申し込みありがとうございます！決済が完了しました。
+    </div>
+    {% elif request.args.get('stripe') == 'cancel' %}
+    <div class="stripe-banner cancel">
+        <span class="material-symbols-outlined">info</span>
+        決済をキャンセルしました。いつでもお申し込みいただけます。
+    </div>
+    {% endif %}
+
+    {% if current_plan and current_plan != 'free' %}
+    <div class="current-plan-banner">
+        <span class="material-symbols-outlined">verified</span>
+        <span>現在のプラン：
+            {% if current_plan == 'starter' %}スターター
+            {% elif current_plan == 'standard' %}スタンダード
+            {% elif current_plan == 'pro' %}プロ
+            {% elif current_plan == 'monitor' %}モニター
+            {% else %}{{ current_plan }}{% endif %}
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- 契約期間タブ -->
+    <div class="term-tabs" id="term-tabs">
+        <div class="term-tab active" data-term="monthly" onclick="selectTerm('monthly')">月払い</div>
+        <div class="term-tab" data-term="1y_m" onclick="selectTerm('1y_m')">1年・月払い <span class="discount">20%OFF</span></div>
+        <div class="term-tab" data-term="1y_l" onclick="selectTerm('1y_l')">1年・一括 <span class="discount">20%OFF</span></div>
+        <div class="term-tab" data-term="2y_m" onclick="selectTerm('2y_m')">2年・月払い <span class="discount">35%OFF</span></div>
+        <div class="term-tab" data-term="2y_l" onclick="selectTerm('2y_l')">2年・一括 <span class="discount">35%OFF</span></div>
+        <div class="term-tab" data-term="3y_m" onclick="selectTerm('3y_m')">3年・月払い <span class="discount">50%OFF</span></div>
+        <div class="term-tab" data-term="3y_l" onclick="selectTerm('3y_l')">3年・一括 <span class="discount">50%OFF</span></div>
+    </div>
+
+    <!-- プランカード -->
+    <div class="plan-cards" id="plan-cards">
+        <!-- スターター -->
+        <div class="plan-card {% if current_plan == 'starter' %}current{% endif %}" id="card-starter">
+            <div class="plan-card-body">
+                <div class="plan-name">🌱 スターター</div>
+                <div class="plan-desc">小規模施設向け。まずはここから。</div>
+                <div class="plan-price" id="price-starter">
+                    <span class="amount">¥5,980</span><span class="unit">/月</span>
+                </div>
+                <ul class="plan-features">
+                    <li><span class="material-symbols-outlined">check</span>スタッフ最大5名</li>
+                    <li><span class="material-symbols-outlined">check</span>AI記録 月100件</li>
+                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>CSV取込・OCR</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>LINE通知</li>
+                </ul>
+                <button class="plan-btn {% if current_plan == 'starter' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
+                    onclick="startCheckout('starter')" id="btn-starter"
+                    {% if current_plan == 'starter' %}disabled{% endif %}>
+                    {% if current_plan == 'starter' %}
+                    <span class="material-symbols-outlined">check_circle</span>現在のプラン
+                    {% else %}
+                    このプランで始める
+                    {% endif %}
+                </button>
+            </div>
+        </div>
+
+        <!-- スタンダード -->
+        <div class="plan-card popular {% if current_plan == 'standard' %}current{% endif %}" id="card-standard">
+            <div class="plan-card-badge">⭐ 人気No.1</div>
+            <div class="plan-card-body">
+                <div class="plan-name">🚀 スタンダード</div>
+                <div class="plan-desc">中規模施設に最適。充実の機能セット。</div>
+                <div class="plan-price" id="price-standard">
+                    <span class="amount">¥12,800</span><span class="unit">/月</span>
+                </div>
+                <ul class="plan-features">
+                    <li><span class="material-symbols-outlined">check</span>スタッフ最大15名</li>
+                    <li><span class="material-symbols-outlined">check</span>AI記録 月500件</li>
+                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
+                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
+                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>事業間資金移動</li>
+                </ul>
+                <button class="plan-btn {% if current_plan == 'standard' %}plan-btn-current{% else %}plan-btn-primary{% endif %}"
+                    onclick="startCheckout('standard')" id="btn-standard"
+                    {% if current_plan == 'standard' %}disabled{% endif %}>
+                    {% if current_plan == 'standard' %}
+                    <span class="material-symbols-outlined">check_circle</span>現在のプラン
+                    {% else %}
+                    <span class="material-symbols-outlined">rocket_launch</span>このプランで始める
+                    {% endif %}
+                </button>
+            </div>
+        </div>
+
+        <!-- プロ -->
+        <div class="plan-card {% if current_plan == 'pro' %}current{% endif %}" id="card-pro">
+            <div class="plan-card-body">
+                <div class="plan-name">👑 プロ</div>
+                <div class="plan-desc">大規模・多事業所向け。制限なしのフル機能。</div>
+                <div class="plan-price" id="price-pro">
+                    <span class="amount">¥24,800</span><span class="unit">/月</span>
+                </div>
+                <ul class="plan-features">
+                    <li><span class="material-symbols-outlined">check</span>スタッフ無制限</li>
+                    <li><span class="material-symbols-outlined">check</span>AI記録 無制限</li>
+                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
+                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
+                    <li><span class="material-symbols-outlined">check</span>事業間資金移動</li>
+                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                </ul>
+                <button class="plan-btn {% if current_plan == 'pro' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
+                    onclick="startCheckout('pro')" id="btn-pro"
+                    {% if current_plan == 'pro' %}disabled{% endif %}>
+                    {% if current_plan == 'pro' %}
+                    <span class="material-symbols-outlined">check_circle</span>現在のプラン
+                    {% else %}
+                    このプランで始める
+                    {% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cancellation-note" id="cancellation-note" style="display:none;">
+        <strong>⚠️ 中途解約について</strong>
+        <span id="cancellation-text"></span>
+    </div>
+</div>
+
+<script>
+// 料金表
+const PRICES = {
+    starter:  { monthly:5980,  '1y_m':4780,  '1y_l':57400,  '2y_m':3880,  '2y_l':93300,  '3y_m':2990,  '3y_l':107600 },
+    standard: { monthly:12800, '1y_m':10240, '1y_l':122800, '2y_m':8320,  '2y_l':199700, '3y_m':6400,  '3y_l':230400 },
+    pro:      { monthly:24800, '1y_m':19840, '1y_l':238100, '2y_m':16120, '2y_l':387100, '3y_m':12400, '3y_l':446400 },
+};
+const MONTHLY_PRICES = { starter:5980, standard:12800, pro:24800 };
+const CANCEL_NOTES = {
+    monthly: null,
+    '1y_m': '1年契約の途中解約は残期間の30%が違約金となります。',
+    '1y_l': '1年契約の途中解約は残期間の30%が違約金となります。',
+    '2y_m': '2年契約の途中解約は残期間の40%が違約金となります。',
+    '2y_l': '2年契約の途中解約は残期間の40%が違約金となります。',
+    '3y_m': '3年契約の途中解約は残期間の50%が違約金となります。',
+    '3y_l': '3年契約の途中解約は残期間の50%が違約金となります。',
+};
+
+var currentTerm = 'monthly';
+
+function selectTerm(term) {
+    currentTerm = term;
+    document.querySelectorAll('.term-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.term === term);
+    });
+    updatePrices();
+    // 違約金注記
+    var note = document.getElementById('cancellation-note');
+    var text = document.getElementById('cancellation-text');
+    if (CANCEL_NOTES[term]) {
+        note.style.display = 'block';
+        text.textContent = CANCEL_NOTES[term];
+    } else {
+        note.style.display = 'none';
+    }
+}
+
+function updatePrices() {
+    ['starter', 'standard', 'pro'].forEach(function(plan) {
+        var price = PRICES[plan][currentTerm];
+        var monthly = MONTHLY_PRICES[plan];
+        var el = document.getElementById('price-' + plan);
+        var isLump = currentTerm.endsWith('_l');
+        var html = '';
+        if (currentTerm !== 'monthly') {
+            html += '<span class="original">¥' + monthly.toLocaleString() + '</span>';
+        }
+        html += '<span class="amount">¥' + price.toLocaleString() + '</span>';
+        html += '<span class="unit">' + (isLump ? '（一括）' : '/月') + '</span>';
+        el.innerHTML = html;
+    });
+}
+
+async function startCheckout(plan) {
+    var btn = document.getElementById('btn-' + plan);
+    if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+    try {
+        var res = await fetch('/api/stripe/create_checkout', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({plan: plan, term: currentTerm})
+        });
+        var data = await res.json();
+        if (data.url) {
+            window.location.href = data.url;
+        } else {
+            alert('エラー: ' + (data.error || '決済URLの取得に失敗しました'));
+            if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
+        }
+    } catch(e) {
+        alert('エラーが発生しました: ' + e);
+        if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
+    }
+}
+</script>
+{% endblock %}
