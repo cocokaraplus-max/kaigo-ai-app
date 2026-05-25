@@ -4,6 +4,7 @@
 
 {% block extra_style %}
 <style>
+.page-wrapper { padding-bottom: 120px; }
 /* ========================================
    利用者基本情報ページ - patient_profile.html
    Session 43
@@ -166,15 +167,17 @@
 
 /* 保存ボタン */
 .save-bar {
-  position: sticky;
-  bottom: 0;
+  position: fixed;
+  bottom: 56px;
+  left: 0;
+  right: 0;
   background: #fff;
   border-top: 1.5px solid #e0e0e0;
-  padding: 12px 16px;
+  padding: 10px 16px;
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  z-index: 1000;
+  z-index: 2000;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
   box-sizing: border-box;
 }
@@ -948,6 +951,11 @@ async function saveVisitDayProfile(){
   (function() {
     var bar = document.getElementById('profile-save-bar');
     if (bar) document.body.appendChild(bar);
+  })();
+  // save-barをbody直下に移動
+  (function() {
+    var bar = document.getElementById('profile-save-bar');
+    if (bar && bar.parentNode !== document.body) document.body.appendChild(bar);
   })();
 </script>
 {% endblock %}
