@@ -8779,6 +8779,28 @@ def line_notify_admin(message):
         return False
     return line_send_message(admin_line_id, [{"type": "text", "text": message}])
 
+@app.route('/pricing')
+@login_required
+def pricing():
+    if not session.get('f_code'):
+        return redirect(url_for('login'))
+    f_code = session.get('f_code', '')
+    current_plan = 'free'
+    trial_ends_at = None
+    try:
+        supabase = get_supabase()
+        res = supabase.table('facilities').select('plan,trial_ends_at,expires_at').eq('facility_code', f_code).execute()
+        if res.data:
+            current_plan = res.data[0].get('plan', 'free')
+            trial_ends_at = res.data[0].get('trial_ends_at')
+    except: pass
+    return render_template('pricing.html',
+        current_plan=current_plan,
+        trial_ends_at=trial_ends_at,
+        f_code=f_code,
+        my_name=session.get('my_name', ''),
+    )
+
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
 def stripe_create_checkout():
