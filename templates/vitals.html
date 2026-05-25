@@ -1270,9 +1270,8 @@ async function refreshVisitDaysFromServer() {
             VISIT_DAYS[pid] = data.data[pid].weekdays || '';
         });
         document.querySelectorAll('.weekday-btn[data-day]').forEach(function(btn) {
-            const card = btn.closest('[id^="vbody-"]');
-            if (!card) return;
-            const pid = card.id.replace('vbody-','');
+            const pid = btn.dataset.pid || (btn.closest('[data-pid]') && btn.closest('[data-pid]').dataset.pid);
+            if (!pid) return;
             const day = btn.dataset.day;
             const apd = AMPM_PER_DAY[pid] || {};
             const state = apd[day] || 'NONE';
