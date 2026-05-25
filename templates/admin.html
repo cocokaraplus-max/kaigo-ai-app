@@ -396,18 +396,6 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 .auth-submit-dev { background: #9c27b0 !important; }
 </style>
 <div class="form-group">
-  <div class="auth-type-select">
-    <div class="auth-type-btn active-admin" id="btn-admin" onclick="selectAuthType('admin')">
-      <span class="material-symbols-outlined">manage_accounts</span>
-      <div class="auth-btn-label">管理者MENU</div>
-      <div class="auth-btn-sub">施設の管理者向け</div>
-    </div>
-    <div class="auth-type-btn" id="btn-dev" onclick="selectAuthType('dev')" style="display:none;">
-      <span class="material-symbols-outlined">code</span>
-      <div class="auth-btn-label">開発者MENU</div>
-      <div class="auth-btn-sub">開発者専用</div>
-    </div>
-  </div>
   <form method="POST" action="/admin_auth" id="auth-form">
     <input type="hidden" name="mode" id="auth-mode" value="admin">
     <label class="form-label">
