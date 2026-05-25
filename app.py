@@ -2253,6 +2253,20 @@ def api_vitals_history():
     except Exception as e:
         return jsonify({"vitals": [], "error": str(e)})
 
+@app.route('/api/get_all_visit_days', methods=['GET'])
+@login_required
+def api_get_all_visit_days():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day').eq('facility_code', f_code).execute()
+        result = {}
+        for r in (res.data or []):
+            result[str(r['patient_id'])] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {}}
+        return jsonify({'status': 'success', 'data': result})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/save_visit_day', methods=['POST'])
 @login_required
 def api_save_visit_day():

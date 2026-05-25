@@ -1260,12 +1260,37 @@ window.resetCamZoom = function() {
 };
 
 // ========== タブ切り替え ==========
+async function refreshVisitDaysFromServer() {
+    try {
+        const res = await fetch('/api/get_all_visit_days', {credentials:'include'});
+        const data = await res.json();
+        if (data.status !== 'success') return;
+        Object.keys(data.data).forEach(function(pid) {
+            AMPM_PER_DAY[pid] = data.data[pid].ampm_per_day || {};
+            VISIT_DAYS[pid] = data.data[pid].weekdays || '';
+        });
+        document.querySelectorAll('.weekday-btn[data-day]').forEach(function(btn) {
+            const card = btn.closest('[id^="vbody-"]');
+            if (!card) return;
+            const pid = card.id.replace('vbody-','');
+            const day = btn.dataset.day;
+            const apd = AMPM_PER_DAY[pid] || {};
+            const state = apd[day] || 'NONE';
+            btn.dataset.state = state;
+            const lbl = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
+            btn.textContent = lbl[state] || '×';
+            btn.className = 'weekday-btn weekday-btn-' + state.toLowerCase();
+        });
+    } catch(e) {}
+}
+
 window.switchMainTab = function(name, el) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('#main-tab-bar .tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-'+name).classList.add('active');
     el.classList.add('active');
     if (name === 'daily') loadDailyOverview();
+    if (name === 'settings') refreshVisitDaysFromServer();
     // FAB(本日の利用者を追加)は記録タブのみ表示
     const fab = document.getElementById('add-today-fab');
     if (fab) fab.style.display = (name === 'record') ? 'flex' : 'none';
