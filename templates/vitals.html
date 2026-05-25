@@ -704,6 +704,13 @@
                 </button>
             </div>
         </div>
+        <!-- リアルタイム認識表示 -->
+        <div id="bulk-realtime-display" style="margin-top:8px;display:none;">
+            <div style="font-size:0.72rem;color:#e65100;font-weight:700;margin-bottom:4px;">&#127908; 認識中（参考）</div>
+            <div id="bulk-realtime-list" style="display:flex;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;"></div>
+            <div id="bulk-realtime-interim" style="font-size:0.75rem;color:#9aa0a6;font-style:italic;margin-top:4px;min-height:18px;"></div>
+        </div>
+
         <!-- 解析結果 -->
         <div id="bulk-temp-result" style="margin-top:8px;display:none;"></div>
     </div>
@@ -3774,6 +3781,48 @@ window.sendMemoVoice = async function sendMemoVoice(blob, ext) {
 }
 
 // ===== 体温一括入力 =====
+let _bulkSpeech = null;
+function startBulkRealtimeSpeech() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var disp = document.getElementById("bulk-realtime-display");
+    var lst = document.getElementById("bulk-realtime-list");
+    var itm = document.getElementById("bulk-realtime-interim");
+    if (!SR || !disp) return;
+    disp.style.display = "block";
+    lst.innerHTML = "";
+    if (itm) itm.textContent = "";
+    _bulkSpeech = new SR();
+    _bulkSpeech.lang = "ja-JP";
+    _bulkSpeech.continuous = true;
+    _bulkSpeech.interimResults = true;
+    var n = 0;
+    _bulkSpeech.onresult = function(ev) {
+        var fin = "", tmp = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+            if (ev.results[i].isFinal) fin += ev.results[i][0].transcript;
+            else tmp += ev.results[i][0].transcript;
+        }
+        if (fin.trim()) {
+            n++;
+            var d = document.createElement("div");
+            d.style.cssText = "font-size:0.78rem;padding:3px 8px;background:#fff8f0;border-radius:6px;border-left:3px solid #ff6f00;color:#3c4043;";
+            d.textContent = n + ". " + fin.trim();
+            lst.appendChild(d);
+            lst.scrollTop = lst.scrollHeight;
+        }
+        if (itm) itm.textContent = tmp ? "..."+tmp : "";
+    };
+    _bulkSpeech.onerror = function(e) {
+        if (itm && e.error !== "no-speech" && e.error !== "aborted")
+            itm.textContent = "(err:"+e.error+")";
+    };
+    try { _bulkSpeech.start(); } catch(e) {}
+}
+function stopBulkRealtimeSpeech() {
+    if (_bulkSpeech) { try { _bulkSpeech.stop(); } catch(e) {} _bulkSpeech = null; }
+    var d = document.getElementById("bulk-realtime-display");
+    if (d) d.style.display = "none";
+}
 let bulkTempRecorder = null;
 let bulkTempStream = null;
 let bulkTempChunks = [];
@@ -3819,6 +3868,7 @@ window.toggleBulkTempVoice = async function() {
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
+    startBulkRealtimeSpeech();
     // 録音ボタンを隠して録音中バーを表示
     const btn = document.getElementById('bulk-temp-btn');
     if (btn) { btn.classList.add('recording'); btn.style.display = 'none'; }
@@ -3858,6 +3908,7 @@ window.pauseBulkTempVoice = function() {
 
 window.stopBulkTempVoice = function stopBulkTempVoice() {
     try { if (bulkTempRecorder && bulkTempRecorder.state !== 'inactive') bulkTempRecorder.stop(); } catch(e) {}
+    stopBulkRealtimeSpeech();
 }
 window.cleanupBulkTempStream = function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
