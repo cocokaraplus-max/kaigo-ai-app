@@ -2418,6 +2418,16 @@ window.openComments = async function(postId) {
     document.querySelectorAll('[data-post-id="' + postId + '"] .post-action-btn:last-child .badge').forEach(function(b) { b.remove(); });
     // 未読タブのカウンタも即時再計算(リロード待ちのイラっと感を解消)
     if (typeof window.updateUnreadCount === 'function') window.updateUnreadCount();
+
+    // コメントを開いた時にその投稿のコメントを自動既読化
+    fetch('/api/board/mark_comments_read', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify({post_id: postId})
+    }).then(function() {
+        if (typeof checkUnreadMessages === 'function') setTimeout(checkUnreadMessages, 500);
+    }).catch(function() {});
 };
 
 function closeComments() {
@@ -2754,15 +2764,6 @@ function startRealtime() {
     } catch(e) {}
 }
 startRealtime();
-// 掲示板を開いたら全コメントを自動既読化（投稿の確認ボタンは個別に押す仕様を維持）
-(async function() {
-    try {
-        await fetch('/api/board/mark_all_read', { method: 'POST', credentials: 'include' });
-        if (typeof checkUnreadMessages === 'function') {
-            setTimeout(checkUnreadMessages, 500);
-        }
-    } catch(e) {}
-})();
 
 function showToast(msg) {
     var toast = document.createElement('div');

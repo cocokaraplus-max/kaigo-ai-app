@@ -7191,6 +7191,29 @@ def api_board_unread_count():
         return jsonify({"count": 0})
 
 
+@app.route("/api/board/mark_comments_read", methods=["POST"])
+@login_required
+def api_board_mark_comments_read():
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        data = request.json
+        post_id = data.get("post_id")
+        if not post_id:
+            return jsonify({"status": "error", "message": "post_id required"}), 400
+        supabase = get_supabase()
+        ccs = supabase.table("board_comments").select("id,staff_name").eq("facility_code", f_code).eq("post_id", post_id).execute()
+        other_ids = [r["id"] for r in (ccs.data or []) if r["staff_name"] != my_name]
+        if other_ids:
+            existing = supabase.table("board_comment_reads").select("comment_id").eq("facility_code", f_code).eq("staff_name", my_name).in_("comment_id", other_ids).execute()
+            read_ids = set(r["comment_id"] for r in (existing.data or []))
+            to_insert = [{"comment_id": cid, "facility_code": f_code, "staff_name": my_name} for cid in other_ids if cid not in read_ids]
+            if to_insert:
+                supabase.table("board_comment_reads").insert(to_insert).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/board/mark_all_read", methods=["POST"])
 @login_required
 def api_board_mark_all_read():
