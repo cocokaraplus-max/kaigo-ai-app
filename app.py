@@ -1453,6 +1453,11 @@ def birthday():
 
     try:
         res = supabase.table("patients").select("user_name, user_kana, chart_number, birth_date").eq("facility_code", f_code).execute()
+        pp_res = supabase.table("patient_profiles").select("user_name, birth_date").eq("facility_code", f_code).execute()
+        pp_birth = {r["user_name"]: r["birth_date"] for r in (pp_res.data or []) if r.get("birth_date")}
+        for r in (res.data or []):
+            if not r.get("birth_date") and r["user_name"] in pp_birth:
+                r["birth_date"] = pp_birth[r["user_name"]]
     except:
         res = type('obj', (object,), {'data': []})()
 
