@@ -559,27 +559,28 @@
     <div class="profile-section">
       <div class="profile-section-header">📅 利用日登録</div>
       <div class="profile-section-body">
-        <div class="form-grid full">
-          <div class="form-group" style="grid-column:1/-1;">
-            <label>利用曜日・時間帯</label>
-            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">
-              {% for key, label in [('mon','月'),('tue','火'),('wed','水'),('thu','木'),('fri','金'),('sat','土'),('sun','日')] %}
-              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-                <div style="font-weight:700;font-size:0.85rem;">{{ label }}</div>
-                <select id="vd-{{ key }}" style="font-size:0.8rem;padding:4px;border-radius:6px;border:1.5px solid #e0e0e0;">
-                  <option value="">なし</option>
-                  <option value="am">午前</option>
-                  <option value="pm">午後</option>
-                  <option value="all">終日</option>
-                </select>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          <div class="form-group" style="grid-column:1/-1;">
-            <button type="button" onclick="saveVisitDayProfile()" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-weight:700;cursor:pointer;">💾 利用日を保存</button>
-          </div>
+        <style>
+        .pp-wd-btn { font-size:0.78rem; font-weight:700; padding:8px 0; border-radius:10px; border:1.5px solid #e0e0e0; background:#fff; color:#9aa0a6; cursor:pointer; text-align:center; transition:all 0.15s; flex:1; }
+        .pp-wd-btn[data-state="NONE"] { color:#9aa0a6; border-color:#dadce0; background:#fff; }
+        .pp-wd-btn[data-state="AM"]   { color:#185FA5; border-color:#185FA5; background:#E6F1FB; }
+        .pp-wd-btn[data-state="PM"]   { color:#BA7517; border-color:#BA7517; background:#FAEEDA; }
+        .pp-wd-btn[data-state="ALL"]  { color:#3B6D11; border-color:#3B6D11; background:#EAF3DE; }
+        </style>
+        <div style="margin-bottom:8px;font-size:0.75rem;color:#5f6368;">
+          <span style="background:#E6F1FB;color:#185FA5;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">AM</span>午前のみ　
+          <span style="background:#FAEEDA;color:#BA7517;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">PM</span>午後のみ　
+          <span style="background:#EAF3DE;color:#3B6D11;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">ALL</span>終日　
+          <span style="background:#fff;color:#9aa0a6;padding:2px 7px;border-radius:6px;border:1px solid #dadce0;margin-right:4px;font-weight:700;">×</span>利用なし
         </div>
+        <div style="display:flex;gap:6px;">
+          {% for day_num, label in [('1','月'),('2','火'),('3','水'),('4','木'),('5','金'),('6','土'),('0','日')] %}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+            <div style="font-weight:700;font-size:0.82rem;color:#3c4043;">{{ label }}</div>
+            <button type="button" class="pp-wd-btn" data-day="{{ day_num }}" data-state="NONE" onclick="togglePPWeekday(this)">×</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div id="pp-weekday-save-status" style="margin-top:8px;font-size:0.75rem;color:#34a853;display:none;">✓ 保存しました</div>
       </div>
     </div>
     {% endif %}
@@ -909,31 +910,44 @@ function showToast(msg) {
 // 利用日登録
 const PATIENT_ID = {{ patient_id | tojson }};
 const VISIT_DAY_DATA = {{ visit_day_data | tojson }};
-const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+const DAY_KEYS = ['1','2','3','4','5','6','0'];
+const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
 (function initVisitDays(){
   const apd = (VISIT_DAY_DATA && VISIT_DAY_DATA.ampm_per_day) || {};
   DAY_KEYS.forEach(function(k){
-    const el = document.getElementById('vd-' + k);
-    if(el && apd[k]) el.value = apd[k];
+    const btn = document.querySelector('.pp-wd-btn[data-day="' + k + '"]');
+    if (!btn) return;
+    const state = apd[k] || 'NONE';
+    btn.dataset.state = state;
+    btn.textContent = STATE_LABELS[state] || '×';
   });
 })();
-async function saveVisitDayProfile(){
-  if(!PATIENT_ID){ alert('利用者を選択してください'); return; }
-  const ampm_per_day = {};
-  const weekdays_arr = [];
-  DAY_KEYS.forEach(function(k){
-    const el = document.getElementById('vd-' + k);
-    if(el && el.value){ ampm_per_day[k] = el.value; weekdays_arr.push(k); }
-  });
-  const weekdays = weekdays_arr.join('');
+async function togglePPWeekday(btn) {
+  const states = ['NONE','AM','PM','ALL'];
+  const labels = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
+  const cur = btn.dataset.state || 'NONE';
+  const next = states[(states.indexOf(cur) + 1) % states.length];
+  btn.dataset.state = next;
+  btn.textContent = labels[next];
+  if (!PATIENT_ID) return;
+  const day = btn.dataset.day;
   const user_name = document.getElementById('user_name')?.value || '';
-  const res = await fetch('/api/save_visit_day', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekdays: weekdays, ampm_per_day: ampm_per_day})
-  });
-  if(res.ok){ showToast('✅ 利用日を保存しました'); }
-  else{ showToast('❌ 保存に失敗しました'); }
+  try {
+    const res = await fetch('/api/save_weekday_ampm', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: day, state: next})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      const st = document.getElementById('pp-weekday-save-status');
+      if (st) { st.style.display = 'block'; setTimeout(() => { st.style.display = 'none'; }, 2000); }
+    }
+  } catch(e) {}
+}
+
+async function saveVisitDayProfile(){
+  // 後方互換用（旧API呼び出しが残っている場合のフォールバック）
 }
 </script>
 {% endblock %}
