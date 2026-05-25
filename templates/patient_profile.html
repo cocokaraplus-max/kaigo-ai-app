@@ -166,12 +166,8 @@
 
 /* 保存ボタン */
 .save-bar {
-  position: fixed;
-  bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: var(--page-max-width, 480px);
+  position: sticky;
+  bottom: 0;
   background: #fff;
   border-top: 1.5px solid #e0e0e0;
   padding: 12px 16px;
@@ -179,8 +175,8 @@
   gap: 10px;
   justify-content: flex-end;
   z-index: 1000;
-  box-sizing: border-box;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+  box-sizing: border-box;
 }
 .btn-save {
   background: #1a73e8;
