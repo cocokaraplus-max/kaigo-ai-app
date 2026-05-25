@@ -2259,10 +2259,14 @@ def api_get_all_visit_days():
     try:
         f_code = session['f_code']
         supabase = get_supabase()
-        res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day').eq('facility_code', f_code).execute()
+        vd_res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day').eq('facility_code', f_code).execute()
+        pt_res = supabase.table('patients').select('id').eq('facility_code', f_code).execute()
+        int_ids = {str(p['id']) for p in (pt_res.data or [])}
         result = {}
-        for r in (res.data or []):
-            result[str(r['patient_id'])] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {}}
+        for r in (vd_res.data or []):
+            pid = str(r['patient_id'])
+            if pid in int_ids:
+                result[pid] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {}}
         return jsonify({'status': 'success', 'data': result})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
