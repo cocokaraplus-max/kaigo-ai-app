@@ -237,6 +237,14 @@
             <div class="toc-ic" style="background:#c2185b;"><span class="material-symbols-outlined" style="color:#fff;">assignment</span></div>
             <span class="toc-lbl">評価</span>
         </a>
+        <a class="toc-a" style="background:#e8f5e9;" href="#s-monitoring-copyuse">
+            <div class="toc-ic" style="background:#2d7a4f;"><span class="material-symbols-outlined" style="color:#fff;">content_copy</span></div>
+            <span class="toc-lbl">文章コピペ活用</span>
+        </a>
+        <a class="toc-a" style="background:#e3f2fd;" href="#s-print-output">
+            <div class="toc-ic" style="background:#1a73e8;"><span class="material-symbols-outlined" style="color:#fff;">print</span></div>
+            <span class="toc-lbl">書類出力</span>
+        </a>
         <a class="toc-a" style="background:#f3e5f5;" href="#s-customize">
             <div class="toc-ic" style="background:#9c27b0;"><span class="material-symbols-outlined" style="color:#fff;">tune</span></div>
             <span class="toc-lbl">カスタマイズ</span>
@@ -851,8 +859,8 @@
             <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">tab</span>4つのタブ</div>
             <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
                 バイタル機能には4つのタブがあります:<br>
-                ・<b>測定</b> — 新しいバイタルを記録する<br>
-                ・<b>本日の記録</b> — 今日の全員分を一覧で確認<br>
+                ・<b>測定</b> — 新しいバイタルを記録（全員/午前AM/午後PM切り替え対応）<br>
+                ・<b>本日の記録</b> — 当日入力済みのバイタルを一覧確認<br>
                 ・<b>履歴</b> — 過去のバイタル推移をグラフで確認<br>
                 ・<b>設定</b> — 利用者・通知時刻などの設定
             </div>
@@ -940,8 +948,21 @@
                 <div class="step-d">ページ上部の「体温一括入力」バーで「1回目」「2回目」を選びます。血圧を保存済みの場合は「2回目」を選んでください。</div>
             </div>
         </div>
-        <img src="/static/img/guide/bulk-temp-order.png" alt="体温一括入力バー—何回目セレクト" class="gd-shot" style="border-radius:10px;width:100%;max-width:360px;display:block;margin:0 auto 4px;">
-        <div class="gd-shot-cap">体温一括入力バー—何回目セレクト</div>
+        <!-- モックアップ: 体温一括入力バー -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;border-radius:10px;overflow:hidden;border:1.5px solid #ffe0b2;background:#fff8f0;">
+            <div style="background:#fff3e0;padding:6px 12px;font-size:0.72rem;color:#e65100;font-weight:700;border-bottom:1px solid #ffe0b2;">🌡 体温一括入力</div>
+            <div style="padding:10px 12px;display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;font-size:0.8rem;color:#444;">測定回数を選択</div>
+                <select style="font-size:0.8rem;padding:5px 10px;border-radius:8px;border:1.5px solid #ffcc80;background:#fff;color:#e65100;font-weight:700;">
+                    <option>1回目</option>
+                    <option>2回目</option>
+                </select>
+            </div>
+            <div style="margin:0 10px 10px;background:#f57c00;color:#fff;border-radius:10px;padding:11px;text-align:center;font-size:0.82rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
+                <span style="font-size:1rem;">🎤</span> 1回目 体温一括入力
+            </div>
+        </div>
+        <div class="gd-shot-cap">体温一括入力バー — 「1回目」「2回目」で測定回数を選択</div>
         <div class="step">
             <div class="step-n" style="background:#f57c00;">2</div>
             <div style="flex:1;">
@@ -949,8 +970,22 @@
                 <div class="step-d">「全員の体温をまとめて入力」ボタンを押すと録音開始。最大30秒で全員分を伝えましょう。話し終わったらボタンをもう一度押すと早く解析が始まります。</div>
             </div>
         </div>
-        <img src="/static/img/guide/bulk-temp-btn.png" alt="録音中のボタン" class="gd-shot" style="border-radius:10px;width:100%;max-width:360px;display:block;margin:0 auto 4px;">
-        <div class="gd-shot-cap">録音中のボタン（カウントダウン表示）</div>
+        <!-- モックアップ: 録音中ボタン -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;border-radius:10px;overflow:hidden;border:1.5px solid #ffe0b2;background:#fff8f0;">
+            <div style="background:#fff3e0;padding:6px 12px;font-size:0.72rem;color:#e65100;font-weight:700;border-bottom:1px solid #ffe0b2;">🌡 体温一括入力</div>
+            <div style="padding:10px 12px 4px;display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;font-size:0.8rem;color:#444;">測定回数を選択</div>
+                <select style="font-size:0.8rem;padding:5px 10px;border-radius:8px;border:1.5px solid #ffcc80;background:#fff;color:#e65100;font-weight:700;">
+                    <option>1回目</option>
+                </select>
+            </div>
+            <div style="margin:6px 10px 10px;background:#d32f2f;color:#fff;border-radius:10px;padding:11px;text-align:center;font-size:0.82rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span style="display:inline-block;width:10px;height:10px;background:#ff5252;border-radius:50;animation:none;box-shadow:0 0 0 3px rgba(255,82,82,0.4);">●</span>
+                録音中… 残り <b>24秒</b>（もう一度押すと終了）
+            </div>
+            <div style="padding:4px 12px 10px;font-size:0.75rem;color:#888;text-align:center;">「田中さん36.5、山田さん37.0…」と話してください</div>
+        </div>
+        <div class="gd-shot-cap">録音中の状態 — カウントダウンが表示される。話し終わったら再度タップで早期終了</div>
         <div class="step">
             <div class="step-n" style="background:#f57c00;">3</div>
             <div style="flex:1;">
@@ -958,8 +993,36 @@
                 <div class="step-d">AIが名前を認識して各利用者の体温欄に自動でセット。結果が色バッジで表示されます。</div>
             </div>
         </div>
-        <img src="/static/img/guide/bulk-temp-result.png" alt="AI振り分け結果" class="gd-shot" style="border-radius:10px;width:100%;max-width:360px;display:block;margin:0 auto 4px;">
-        <div class="gd-shot-cap">AI振り分け結果—緑バッジで成功表示</div>
+        <!-- モックアップ: AI振り分け結果 -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;border-radius:10px;overflow:hidden;border:1.5px solid #c8e6c9;background:#f9fdf9;">
+            <div style="background:#e8f5e9;padding:6px 12px;font-size:0.72rem;color:#2e7d32;font-weight:700;border-bottom:1px solid #c8e6c9;">✅ AI振り分け完了 — 5名 / 5名 認識</div>
+            <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:8px;padding:6px 10px;border:1px solid #e0e0e0;">
+                    <span style="font-size:0.8rem;font-weight:700;">田中 花子</span>
+                    <span style="background:#34a853;color:#fff;border-radius:6px;padding:2px 10px;font-size:0.78rem;font-weight:700;">36.5℃ ✓</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:8px;padding:6px 10px;border:1px solid #e0e0e0;">
+                    <span style="font-size:0.8rem;font-weight:700;">山田 太郎</span>
+                    <span style="background:#f57c00;color:#fff;border-radius:6px;padding:2px 10px;font-size:0.78rem;font-weight:700;">37.0℃ ⚠</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:8px;padding:6px 10px;border:1px solid #e0e0e0;">
+                    <span style="font-size:0.8rem;font-weight:700;">佐藤 義男</span>
+                    <span style="background:#34a853;color:#fff;border-radius:6px;padding:2px 10px;font-size:0.78rem;font-weight:700;">36.8℃ ✓</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:8px;padding:6px 10px;border:1px solid #e0e0e0;">
+                    <span style="font-size:0.8rem;font-weight:700;">鈴木 静子</span>
+                    <span style="background:#34a853;color:#fff;border-radius:6px;padding:2px 10px;font-size:0.78rem;font-weight:700;">36.2℃ ✓</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:8px;padding:6px 10px;border:1px solid #e0e0e0;">
+                    <span style="font-size:0.8rem;font-weight:700;">伊藤 幸雄</span>
+                    <span style="background:#34a853;color:#fff;border-radius:6px;padding:2px 10px;font-size:0.78rem;font-weight:700;">36.6℃ ✓</span>
+                </div>
+            </div>
+            <div style="padding:0 10px 10px;">
+                <div style="background:#1a73e8;color:#fff;border-radius:8px;padding:9px;text-align:center;font-size:0.82rem;font-weight:700;">💾 一括保存する</div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">AI振り分け結果 — 緑バッジ=認識成功・オレンジ=発熱アラート。一括保存で完了</div>
         <div class="hint" style="background:#fff3e0;color:#e65100;">
             <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
             <span>姓だけでもOK。「田中３６点５」など略称でもAIが認識します。認識できなかった利用者は「未検出」と表示されるので、その分だけ個別入力してください。</span>
@@ -1403,6 +1466,57 @@
     </div>
 </div>
 
+
+<!-- ===== モニタリング文章のコピペ活用 ===== -->
+<div class="sc" id="s-monitoring-copyuse">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f5e9;"><span class="material-symbols-outlined" style="font-size:26px;color:#2d7a4f;">content_copy</span></div>
+        <div><div class="sc-ttl">モニタリング文章を他の書式にコピペ</div><div class="sc-sub">生成した文章はTASUKARU以外でも使える</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">TASUKARUが生成したモニタリング文章は、施設の既存書式や他のシステムにそのままコピペして使えるよ📋<br>会社指定のExcelやWordに貼り付けるだけで大幅に時短！</div>
+        </div>
+        <div class="steps">
+            <div class="step">
+                <div class="step-n" style="background:#2d7a4f;">1</div>
+                <div>
+                    <div class="step-t">モニタリングページでAI生成を実行</div>
+                    <div class="step-d">利用者を選択してモニタリング記録を入力・保存後、「AI文章生成」ボタンを押して文章を生成します。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#2d7a4f;">2</div>
+                <div>
+                    <div class="step-t">生成されたテキストを長押し（またはコピーボタン）でコピー</div>
+                    <div class="step-d">各カテゴリの文章をタップ→長押しで選択してコピー、または📋コピーボタンを使うとワンタップでコピーできます。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#2d7a4f;">3</div>
+                <div>
+                    <div class="step-t">他の書式・システムに貼り付け</div>
+                    <div class="step-d">施設指定のExcel・Word・介護ソフト（ケアコネクト・ワイズマンなど）の記録欄に貼り付けるだけ。文体はそのまま使えます。</div>
+                </div>
+            </div>
+        </div>
+        <div style="background:#e8f5e9;border-radius:12px;padding:12px 14px;margin:10px 0;border-left:4px solid #2d7a4f;">
+            <div style="font-size:0.82rem;font-weight:700;color:#2d7a4f;margin-bottom:6px;">💡 こんな場面で活躍</div>
+            <div style="font-size:0.8rem;color:#37474f;line-height:1.8;">
+                ・施設指定の<b>Excelモニタリング表</b>への転記<br>
+                ・ケアプランソフトの<b>経過記録欄</b>へのコピー<br>
+                ・ケアマネへの<b>FAX・メール報告文</b>として活用<br>
+                ・<b>Word書式</b>の報告書作成の下書きとして使用
+            </div>
+        </div>
+        <div class="hint" style="background:#e3f2fd;color:#1565c0;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">info</span>
+            <span>文章の長さは「100/200/300/400/500文字」から選べます。提出先の書式の文字数に合わせて調整してください。</span>
+        </div>
+    </div>
+</div>
+
 <!-- ===== 評価 ===== -->
 <div class="sc" id="s-assess">
     <div class="sc-hd">
@@ -1427,6 +1541,106 @@
                 <div class="step-n" style="background:#c2185b;">3</div>
                 <div><div class="step-t">音声メモを保存</div><div class="step-d">重要事項を音声で録音・再生することができます</div></div>
             </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== 書類出力 ===== -->
+<div class="sc" id="s-print-output">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e3f2fd;"><span class="material-symbols-outlined" style="font-size:26px;color:#1a73e8;">print</span></div>
+        <div><div class="sc-ttl">書類出力</div><div class="sc-sub">テンプレートとグラフを選んでA4印刷・PDF保存</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">モニタリング報告書をA4レイアウトで出力できるよ！<br>デザインテンプレート10種・グラフスタイル5種から選んで、施設のスタイルに合わせて印刷しよう🖨️</div>
+        </div>
+
+        <!-- 基本手順 -->
+        <div class="steps">
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">1</div>
+                <div>
+                    <div class="step-t">対象年月を選択</div>
+                    <div class="step-d">印刷したい年月を選択します。データ充足チェック表で各利用者のデータ入力状況が一覧で確認できます。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">2</div>
+                <div>
+                    <div class="step-t">テンプレートを選ぶ</div>
+                    <div class="step-d">10種類のデザインテンプレートからサムネイルをタップして選択。選んだテンプレートはprints設定として記憶されます。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">3</div>
+                <div>
+                    <div class="step-t">グラフスタイルを選ぶ</div>
+                    <div class="step-d">体力測定グラフの表示形式を5種類から選択。折れ線・棒グラフ・エリア・数値カード・横棒から選べます。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">4</div>
+                <div>
+                    <div class="step-t">印刷項目を絞る（任意）</div>
+                    <div class="step-d">必要な項目だけON/OFFで切り替え。モニタリングカテゴリ別・訓練記録・体力測定などを細かく制御できます。</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-n" style="background:#1a73e8;">5</div>
+                <div>
+                    <div class="step-t">プレビューで確認して印刷</div>
+                    <div class="step-d">「プレビューで確認」ボタンでA4レイアウトを確認。「印刷/PDF保存」ボタンでブラウザの印刷ダイアログが開きます。PDFとして保存することもできます。</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- テンプレート紹介 -->
+        <div style="font-size:0.85rem;font-weight:800;color:#1a73e8;margin:14px 0 8px;display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">palette</span>
+            テンプレート10種
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;font-size:0.75rem;">
+            <div style="background:#f0f7ff;border:1.5px solid #1a73e8;border-radius:8px;padding:6px 8px;"><b style="color:#1a73e8;">①スタンダード</b><br><span style="color:#5f6368;">青・白・テーブル形式</span></div>
+            <div style="background:#f0faf4;border:1.5px solid #2d7a4f;border-radius:8px;padding:6px 8px;"><b style="color:#2d7a4f;">②ナチュラル</b><br><span style="color:#5f6368;">緑系・角丸・やわらかい</span></div>
+            <div style="background:#f5f5f5;border:1.5px solid #1a1a1a;border-radius:8px;padding:6px 8px;"><b style="color:#1a1a1a;">③フォーマル</b><br><span style="color:#5f6368;">明朝体・公文書スタイル</span></div>
+            <div style="background:#faf6ff;border:1.5px solid #6e3fa3;border-radius:8px;padding:6px 8px;"><b style="color:#6e3fa3;">④サイドバー</b><br><span style="color:#5f6368;">紫系・左サイドバー強調</span></div>
+            <div style="background:#fff8f0;border:1.5px solid #d4520a;border-radius:8px;padding:6px 8px;"><b style="color:#d4520a;">⑤ウォーム</b><br><span style="color:#5f6368;">オレンジ・温かみ</span></div>
+            <div style="background:#eceff1;border:1.5px solid #37474f;border-radius:8px;padding:6px 8px;"><b style="color:#37474f;">⑥チャコール</b><br><span style="color:#5f6368;">ダークグレー・重厚感</span></div>
+            <div style="background:#fafafa;border:1.5px solid #555;border-radius:8px;padding:6px 8px;"><b style="color:#222;">⑦ミニマル</b><br><span style="color:#5f6368;">白黒・余白重視</span></div>
+            <div style="background:#e1f5fe;border:1.5px solid #0277bd;border-radius:8px;padding:6px 8px;"><b style="color:#0277bd;">⑧カードブロック</b><br><span style="color:#5f6368;">青系・グラデーション</span></div>
+            <div style="background:#fff3e0;border:1.5px solid #e65100;border-radius:8px;padding:6px 8px;"><b style="color:#e65100;">⑨ゼブラ</b><br><span style="color:#5f6368;">オレンジ・交互ストライプ</span></div>
+            <div style="background:#f3e5f5;border:1.5px solid #7b1fa2;border-radius:8px;padding:6px 8px;"><b style="color:#7b1fa2;">⑩パープル</b><br><span style="color:#5f6368;">紫系・グラデーション</span></div>
+        </div>
+
+        <!-- グラフスタイル紹介 -->
+        <div style="font-size:0.85rem;font-weight:800;color:#1a73e8;margin:14px 0 8px;display:flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">bar_chart</span>
+            グラフスタイル5種
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:0.78rem;">
+            <div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;border-radius:8px;padding:7px 10px;">
+                <span style="font-size:1.1rem;">📈</span><div><b>①折れ線グラフ</b>（デフォルト）— 月別推移が一目でわかる</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;border-radius:8px;padding:7px 10px;">
+                <span style="font-size:1.1rem;">📊</span><div><b>②棒グラフ</b> — 増減を色で表示（緑=増加・赤=減少）</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;border-radius:8px;padding:7px 10px;">
+                <span style="font-size:1.1rem;">🏔️</span><div><b>③エリアチャート</b> — 塗りつぶしで量感を表現</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;border-radius:8px;padding:7px 10px;">
+                <span style="font-size:1.1rem;">🔢</span><div><b>④数値カード</b> — グラフなし・最新値+前回差をシンプル表示</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;border-radius:8px;padding:7px 10px;">
+                <span style="font-size:1.1rem;">↔️</span><div><b>⑤横棒グラフ</b> — 初回→最新を横並びで・伸び率が一目瞭然</div>
+            </div>
+        </div>
+
+        <div class="hint" style="background:#fff3e0;color:#e65100;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>テンプレートとグラフスタイルの選択は自動で保存されます。次回から同じ設定で素早く印刷できます。</span>
         </div>
     </div>
 </div>
