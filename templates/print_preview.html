@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>書類出力プレビュー - TASUKARU</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.screen-bar { background: #1a73e8; color: #fff; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
+.screen-bar-title { font-size: 0.95rem; font-weight: 700; }
+.screen-bar-btns { display: flex; gap: 8px; }
+.btn-print-now { background: #fff; color: #1a73e8; border: none; border-radius: 8px; padding: 7px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+
+/* A4ページ */
+.report-page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; }
+.page-number { position: absolute; bottom: 6mm; right: 12mm; font-size: 7pt; color: #888; }
+
+/* ヘッダー */
+.rep-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4mm; border-bottom: 2px solid #1a73e8; padding-bottom: 3mm; }
+.rep-header-title { font-size: 14pt; font-weight: 900; color: #1a73e8; letter-spacing: 0.05em; }
+.rep-header-date { font-size: 8pt; color: #444; text-align: right; }
+
+/* ケアマネ・施設ブロック */
+.rep-info-row { display: flex; gap: 4mm; margin-bottom: 3mm; }
+.rep-caremanager-box { flex: 1; border: 1.5px solid #1a73e8; border-radius: 4px; padding: 3mm; }
+.rep-facility-box { flex: 1.2; border: 1px solid #bbb; border-radius: 4px; padding: 3mm; font-size: 7.5pt; }
+.rep-cm-office { font-size: 9pt; font-weight: 700; color: #1a73e8; margin-bottom: 1mm; }
+.rep-cm-name { font-size: 11pt; font-weight: 700; }
+.rep-fac-name { font-size: 9pt; font-weight: 700; margin-bottom: 1mm; }
+
+/* 利用者情報 */
+.rep-patient-row { display: flex; align-items: center; gap: 4mm; background: #f0f7ff; border-radius: 6px; padding: 3mm 4mm; margin-bottom: 3mm; border: 1px solid #c5dcf8; }
+.rep-patient-kana { font-size: 7.5pt; color: #5f6368; }
+.rep-patient-name { font-size: 14pt; font-weight: 900; }
+.rep-patient-birth { font-size: 8pt; color: #444; margin-left: 2mm; }
+.rep-care-badge { background: #1a73e8; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 8pt; font-weight: 700; margin-left: 2mm; }
+.rep-author { margin-left: auto; font-size: 7.5pt; color: #444; text-align: right; }
+
+/* 目標テーブル */
+.rep-goals-row { display: flex; gap: 4mm; margin-bottom: 3mm; }
+.rep-goal-box { flex: 1; }
+.rep-goal-title { background: #1a73e8; color: #fff; font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 3px 3px 0 0; }
+.rep-goal-table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; }
+.rep-goal-table th { background: #f0f7ff; font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; text-align: center; font-weight: 700; }
+.rep-goal-table td { font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; }
+.rep-goal-table td.ach { text-align: center; font-weight: 700; }
+.ach-cont { color: #1a73e8; }
+.ach-done { color: #34a853; }
+.ach-fail { color: #ea4335; }
+
+/* 訓練変化・課題 2カラム */
+.rep-twocol { display: flex; gap: 4mm; margin-bottom: 3mm; }
+.rep-twocol-box { flex: 1; border: 1px solid #bbb; border-radius: 4px; overflow: hidden; }
+.rep-twocol-title { background: #1a73e8; color: #fff; font-size: 8pt; font-weight: 700; padding: 3px 6px; }
+.rep-twocol-body { padding: 3mm; font-size: 8pt; line-height: 1.7; min-height: 20mm; }
+
+/* モニタリング表 */
+.rep-monitoring-title { background: #444; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 3px 6px; border-radius: 3px 3px 0 0; margin-bottom: 0; }
+.rep-monitoring-table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; margin-bottom: 3mm; }
+.rep-monitoring-table td { font-size: 7.5pt; padding: 3px 5px; border: 1px solid #bbb; vertical-align: top; }
+.rep-monitoring-table td:first-child { font-weight: 700; background: #f8f9fa; width: 18mm; white-space: nowrap; }
+
+/* 体力グラフエリア */
+.rep-fitness-title { font-size: 8.5pt; font-weight: 700; border-left: 3px solid #1a73e8; padding-left: 4px; margin-bottom: 2mm; }
+.rep-fitness-sub { font-size: 7pt; color: #888; float: right; }
+.rep-fitness-charts { display: flex; gap: 3mm; margin-bottom: 3mm; }
+.rep-fitness-chart-box { flex: 1; border: 1px solid #e0e0e0; border-radius: 4px; padding: 2mm; text-align: center; }
+.rep-fitness-chart-label { font-size: 7pt; color: #444; margin-bottom: 1mm; }
+.rep-fitness-chart-value { font-size: 9pt; font-weight: 700; color: #1a73e8; }
+.rep-fitness-chart-change { font-size: 7pt; color: #34a853; }
+canvas.mini-chart { width: 100% !important; height: 40px !important; }
+
+/* 特記・満足度 */
+.rep-special-row { margin-bottom: 2mm; }
+.rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid #444; padding-left: 4px; margin-bottom: 1mm; }
+.rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: 3px; padding: 2mm 3mm; min-height: 8mm; }
+.rep-satisfaction-row { display: flex; gap: 4mm; margin-bottom: 2mm; }
+.rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: 3px; padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
+.rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
+.rep-check-circle.checked { background: #444; }
+.rep-new-requests-row { margin-bottom: 2mm; }
+
+/* モノクロスタイル */
+body.mono .rep-header-title { color: #000; }
+body.mono .rep-patient-row { background: #f0f0f0; border-color: #999; }
+body.mono .rep-care-badge { background: #333; }
+body.mono .rep-goal-title { background: #333; }
+body.mono .rep-twocol-title { background: #333; }
+body.mono .rep-monitoring-title { background: #333; }
+body.mono .rep-header { border-bottom-color: #333; }
+body.mono .rep-caremanager-box { border-color: #999; }
+body.mono .rep-cm-office { color: #000; }
+body.mono .rep-fitness-chart-value { color: #000; }
+body.mono .ach-cont { color: #000; font-weight: 900; }
+body.mono .ach-done { color: #000; }
+body.mono .ach-fail { color: #000; font-style: italic; }
+
+@media print {
+    body { background: #fff; }
+    .screen-bar { display: none !important; }
+    .pages-wrap { padding: 0; gap: 0; }
+    .report-page { box-shadow: none; page-break-after: always; margin: 0; }
+    .report-page:last-child { page-break-after: avoid; }
+}
+@media screen and (max-width: 230mm) {
+    .report-page { width: 100%; padding: 4mm; }
+}
+</style>
+</head>
+<body class="{{ 'mono' if style == 'mono' else 'color' }}">
+
+<div class="screen-bar">
+    <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
+    <div class="screen-bar-btns">
+        <button class="btn-print-now" onclick="window.print()">印刷 / PDF保存</button>
+        <button class="btn-close" onclick="window.close()">閉じる</button>
+    </div>
+</div>
+
+<div class="pages-wrap">
+{% for rd in report_data_list %}
+{% set p = rd.patient %}
+{% set cm = rd.caremanager %}
+{% set ev = rd.evaluation %}
+{% set mon = rd.monitoring %}
+{% set fitness = rd.fitness %}
+{% set weights = rd.weights %}
+
+<div class="report-page" id="page-{{ loop.index }}">
+    <!-- ヘッダー -->
+    <div class="rep-header">
+        <div class="rep-header-title">モニタリング報告書／評価表</div>
+        <div class="rep-header-date">作成日　{{ year_month | replace('-', '年') }}月</div>
+    </div>
+
+    <!-- ケアマネ・施設情報 -->
+    <div class="rep-info-row">
+        <div class="rep-caremanager-box">
+            <div class="rep-cm-office">{{ cm.support_office or '（ケアプランセンター未設定）' }}</div>
+            <div class="rep-cm-name">{{ cm.care_manager_name or '' }}　様</div>
+        </div>
+        <div class="rep-facility-box">
+            <div class="rep-fac-name">{{ facility.facility_name or '' }}</div>
+            <div>〒{{ facility.facility_postal_code or '' }}　{{ facility.facility_address or '' }}</div>
+            <div>TEL {{ facility.facility_tel or '' }}　FAX {{ facility.facility_fax or '' }}</div>
+        </div>
+    </div>
+
+    <!-- 利用者情報 -->
+    <div class="rep-patient-row">
+        <div>
+            <div class="rep-patient-kana">{{ cm.user_name_kana or '' }}</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+                <span class="rep-patient-name">{{ p.user_name or '' }}</span>
+                {% if cm.birth_date %}<span class="rep-patient-birth">生年月日 {{ cm.birth_date }}</span>{% endif %}
+                {% if cm.care_level %}<span class="rep-care-badge">{{ cm.care_level }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="rep-author">作成担当者<br>{{ my_name }}</div>
+    </div>
+
+    <!-- 目標達成状況 -->
+    {% if items.get('goals', true) %}
+    <div class="rep-goals-row">
+        <div class="rep-goal-box">
+            <div class="rep-goal-title">【短期目標】</div>
+            <table class="rep-goal-table">
+                <tr><th>機能</th><th>内容</th><th>評価</th></tr>
+                <tr>
+                    <td>機能</td>
+                    <td>{{ ev.get('short_goal_function', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('short_ach_function') == '達成' %}ach-done{% elif ev and ev.get('short_ach_function') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('short_ach_function', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td>活動</td>
+                    <td>{{ ev.get('short_goal_activity', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('short_ach_activity') == '達成' %}ach-done{% elif ev and ev.get('short_ach_activity') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('short_ach_activity', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td>参加</td>
+                    <td>{{ ev.get('short_goal_participation', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('short_ach_participation') == '達成' %}ach-done{% elif ev and ev.get('short_ach_participation') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('short_ach_participation', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div class="rep-goal-box">
+            <div class="rep-goal-title">【長期目標】</div>
+            <table class="rep-goal-table">
+                <tr><th>機能</th><th>内容</th><th>評価</th></tr>
+                <tr>
+                    <td>機能</td>
+                    <td>{{ ev.get('long_goal_function', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('long_ach_function') == '達成' %}ach-done{% elif ev and ev.get('long_ach_function') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('long_ach_function', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td>活動</td>
+                    <td>{{ ev.get('long_goal_activity', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('long_ach_activity') == '達成' %}ach-done{% elif ev and ev.get('long_ach_activity') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('long_ach_activity', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td>参加</td>
+                    <td>{{ ev.get('long_goal_participation', '') if ev else '' }}</td>
+                    <td class="ach {% if ev and ev.get('long_ach_participation') == '達成' %}ach-done{% elif ev and ev.get('long_ach_participation') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
+                        {{ (ev.get('long_ach_participation', '継続') if ev else '継続') }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 訓練による変化・課題 -->
+    {% if items.get('evaluation', true) %}
+    <div class="rep-twocol">
+        <div class="rep-twocol-box">
+            <div class="rep-twocol-title">個別機能訓練実施による変化</div>
+            <div class="rep-twocol-body">{{ ev.get('changes_by_training', '（未入力）') if ev else '（未入力）' }}</div>
+        </div>
+        <div class="rep-twocol-box">
+            <div class="rep-twocol-title">課題とその要因</div>
+            <div class="rep-twocol-body">{{ ev.get('issues_and_causes', '（未入力）') if ev else '（未入力）' }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- モニタリング -->
+    {% if items.get('monitoring', true) and mon %}
+    <div class="rep-monitoring-title">モニタリング</div>
+    <table class="rep-monitoring-table">
+        {% if mon.get('categories') %}
+        {% for cat_name, cat_text in mon.categories.items() %}
+        <tr>
+            <td>{{ cat_name }}</td>
+            <td>{{ cat_text }}</td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr><td colspan="2">（モニタリングデータなし）</td></tr>
+        {% endif %}
+    </table>
+    {% endif %}
+
+    <!-- 体力測定グラフ -->
+    {% if items.get('fitness', true) and (fitness or weights) %}
+    <div class="rep-fitness-title">
+        体力測定の推移
+        <span class="rep-fitness-sub">直近6ヶ月・入力のある指標のみ</span>
+    </div>
+    <div class="rep-fitness-charts">
+        {% if weights %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">体重(kg)</div>
+            <canvas class="mini-chart" id="chart-weight-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">
+                {% if weights|length >= 2 %}
+                {{ weights[0].weight_kg }}→{{ weights[-1].weight_kg }}
+                {% elif weights %}{{ weights[0].weight_kg }}{% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% if fitness %}
+        {% set last_fit = fitness[-1] %}
+        {% set first_fit = fitness[0] %}
+        {% if last_fit.get('grip_right') %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">握力右(kg)</div>
+            <canvas class="mini-chart" id="chart-grip-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit.grip_right }}→{{ last_fit.grip_right }}</div>
+        </div>
+        {% endif %}
+        {% if last_fit.get('tug_sec') %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">TUG(秒)</div>
+            <canvas class="mini-chart" id="chart-tug-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit.tug_sec }}→{{ last_fit.tug_sec }}</div>
+        </div>
+        {% endif %}
+        {% if last_fit.get('sit_stand_30sec') %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">CS-30(回)</div>
+            <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit.sit_stand_30sec }}→{{ last_fit.sit_stand_30sec }}</div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- 特記事項 -->
+    {% if items.get('special', true) %}
+    <div class="rep-special-row">
+        <div class="rep-special-label">特記事項</div>
+        <div class="rep-special-body">{{ ev.get('special_notes', '') if ev else '' }}</div>
+    </div>
+    {% endif %}
+
+    <!-- 新しい希望・要望 -->
+    {% if items.get('satisfaction', true) %}
+    <div class="rep-new-requests-row">
+        <table style="width:100%;border-collapse:collapse;border:1px solid #bbb;font-size:7.5pt;">
+            <tr>
+                <td style="padding:3px 6px;border:1px solid #bbb;width:60%;">新しい希望や要望はあるか</td>
+                <td style="padding:3px 6px;border:1px solid #bbb;text-align:center;">
+                    <span class="rep-check-circle {% if ev and ev.get('new_requests_exist') %}checked{% endif %}"></span> あり
+                    &nbsp;&nbsp;
+                    <span class="rep-check-circle {% if not ev or not ev.get('new_requests_exist') %}checked{% endif %}"></span> なし
+                </td>
+            </tr>
+            {% if ev and ev.get('new_requests_detail') %}
+            <tr>
+                <td colspan="2" style="padding:3px 6px;border:1px solid #bbb;">{{ ev.new_requests_detail }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    <div class="rep-satisfaction-row">
+        <div class="rep-satisfaction-box">
+            利用者・家族の満足度
+            <span class="rep-check-circle {% if ev and ev.get('satisfaction') == '○' %}checked{% endif %}"></span>
+            {{ ev.get('satisfaction', '') if ev else '' }}
+        </div>
+        <div class="rep-satisfaction-box">
+            サービス提供内容が適切か
+            <span class="rep-check-circle {% if ev and ev.get('service_appropriateness') == '○' %}checked{% endif %}"></span>
+            {{ ev.get('service_appropriateness', '') if ev else '' }}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="page-number">{{ loop.index }} / {{ report_data_list | length }}</div>
+</div>
+{% endfor %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script>
+// ミニグラフ描画
+var chartData = {{ report_data_list | tojson }};
+var isColor = document.body.classList.contains('color');
+var lineColor = isColor ? '#1a73e8' : '#333';
+
+chartData.forEach(function(rd, idx) {
+    var n = idx + 1;
+    // 体重グラフ
+    if (rd.weights && rd.weights.length > 1) {
+        var wEl = document.getElementById('chart-weight-' + n);
+        if (wEl) {
+            new Chart(wEl, { type: 'line', data: {
+                labels: rd.weights.map(function(w) { return w.measured_date ? w.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.weights.map(function(w) { return w.weight_kg; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
+        }
+    }
+    // 握力グラフ
+    if (rd.fitness && rd.fitness.length > 1) {
+        var gEl = document.getElementById('chart-grip-' + n);
+        if (gEl) {
+            new Chart(gEl, { type: 'line', data: {
+                labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.fitness.map(function(f) { return f.grip_right; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
+        }
+    }
+    // TUGグラフ
+    var tEl = document.getElementById('chart-tug-' + n);
+    if (tEl && rd.fitness && rd.fitness.length > 1) {
+        new Chart(tEl, { type: 'line', data: {
+            labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
+            datasets: [{ data: rd.fitness.map(function(f) { return f.tug_sec; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+        }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
+    }
+    // CS-30グラフ
+    var cEl = document.getElementById('chart-cs30-' + n);
+    if (cEl && rd.fitness && rd.fitness.length > 1) {
+        new Chart(cEl, { type: 'line', data: {
+            labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
+            datasets: [{ data: rd.fitness.map(function(f) { return f.sit_stand_30sec; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+        }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
+    }
+});
+</script>
+</body>
+</html>

@@ -9084,3 +9084,115 @@ def print_output():
         my_name=my_name,
         is_admin=is_admin,
     )
+
+
+# ============================================================
+# 印刷プレビューページ
+# ============================================================
+@app.route('/print_preview')
+@login_required
+def print_preview():
+    """印刷プレビュー：一括または1人分の報告書をA4レイアウトで表示"""
+    import json as _json
+    f_code = session.get("f_code", "")
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+
+    year_month = request.args.get("year_month", "")
+    user_name_single = request.args.get("user_name", "")
+    style = request.args.get("style", "color")
+    sort_order = request.args.get("sort", "name")
+    items_json = request.args.get("items", "{}")
+    try:
+        items = _json.loads(items_json)
+    except Exception:
+        items = {}
+
+    # 利用者一覧取得
+    patients_all = []
+    try:
+        res = supabase.table("patient_profiles").select(
+            "user_name, user_name_kana, support_office, care_manager_name, care_level"
+        ).eq("facility_code", f_code).order("user_name_kana").execute()
+        if res.data:
+            patients_all = res.data
+    except Exception:
+        pass
+
+    # 1人印刷の場合はその人のみ
+    if user_name_single:
+        patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
+
+    # ソート
+    if sort_order == "caremanager":
+        patients_all.sort(key=lambda p: (p.get("support_office") or ""))
+
+    # 各利用者のデータ取得
+    report_data_list = []
+    for p in patients_all:
+        uname = p.get("user_name", "")
+        try:
+            import urllib.request as _req
+            url = f"http://localhost:8080/api/monitoring_report_data?user_name={uname}&year_month={year_month}"
+        except Exception:
+            pass
+        # 直接Supabaseから取得
+        data = {"patient": p}
+        try:
+            ev = supabase.table("patient_evaluations").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname).eq(
+                "year_month", year_month).execute()
+            data["evaluation"] = ev.data[0] if ev.data else {}
+        except Exception:
+            data["evaluation"] = {}
+        try:
+            mr = supabase.table("monitoring_reports").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname).eq(
+                "target_month", year_month).order("id", desc=True).limit(1).execute()
+            data["monitoring"] = mr.data[0] if mr.data else {}
+        except Exception:
+            data["monitoring"] = {}
+        try:
+            ft = supabase.table("fitness_tests").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname).order(
+                "measured_date", desc=True).limit(6).execute()
+            data["fitness"] = list(reversed(ft.data)) if ft.data else []
+        except Exception:
+            data["fitness"] = []
+        try:
+            bw = supabase.table("body_weights").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname).order(
+                "measured_date", desc=True).limit(6).execute()
+            data["weights"] = list(reversed(bw.data)) if bw.data else []
+        except Exception:
+            data["weights"] = []
+        try:
+            cm = supabase.table("patient_profiles").select(
+                "support_office, care_manager_name, care_level, birth_date, "
+                "user_name_kana, short_goal, long_goal"
+            ).eq("facility_code", f_code).eq("user_name", uname).execute()
+            data["caremanager"] = cm.data[0] if cm.data else {}
+        except Exception:
+            data["caremanager"] = {}
+        report_data_list.append(data)
+
+    # 施設情報
+    facility = {}
+    try:
+        fac = supabase.table("facilities").select(
+            "facility_name, facility_postal_code, facility_address, "
+            "facility_tel, facility_fax, facility_logo_url"
+        ).eq("facility_code", f_code).execute()
+        if fac.data:
+            facility = fac.data[0]
+    except Exception:
+        pass
+
+    return render("print_preview.html",
+        report_data_list=report_data_list,
+        facility=facility,
+        year_month=year_month,
+        style=style,
+        items=items,
+        my_name=my_name,
+    )
