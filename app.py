@@ -9104,6 +9104,8 @@ def print_preview():
     sort_order = request.args.get("sort", "name")
     items_json = request.args.get("items", "{}")
     cats_json = request.args.get("cats", "{}")
+    template = request.args.get("template", 1, type=int)
+    chart_style = request.args.get("chart_style", 1, type=int)
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9201,4 +9203,6 @@ def print_preview():
         items=items,
         cats=cats,
         my_name=my_name,
+        template=template,
+        chart_style=chart_style,
     )

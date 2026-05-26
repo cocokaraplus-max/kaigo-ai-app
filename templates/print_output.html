@@ -28,6 +28,21 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 .po-style-btn.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 .loading-row { text-align: center; color: #9aa0a6; font-size: 0.8rem; padding: 16px; }
 .po-check-row-ok { background: #f0fff4; }
+
+/* テンプレート選択 */
+.po-tmpl-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.po-tmpl-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 6px 4px; cursor: pointer; text-align: center; transition: all 0.15s; background: #fff; }
+.po-tmpl-card.on { border-color: #1a73e8; background: #e8f4ff; }
+.po-tmpl-card .tmpl-thumb { width: 100%; height: 36px; border-radius: 4px; margin-bottom: 3px; display: flex; flex-direction: column; gap: 2px; padding: 3px; overflow: hidden; }
+.po-tmpl-card .tmpl-name { font-size: 0.62rem; font-weight: 700; color: #5f6368; line-height: 1.2; }
+.po-tmpl-card.on .tmpl-name { color: #1a73e8; }
+/* グラフスタイル選択 */
+.po-graph-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.po-graph-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 5px 4px; cursor: pointer; text-align: center; transition: all 0.15s; background: #fff; }
+.po-graph-card.on { border-color: #1a73e8; background: #e8f4ff; }
+.po-graph-card svg { display: block; margin: 0 auto 2px; }
+.po-graph-card .graph-name { font-size: 0.62rem; font-weight: 700; color: #5f6368; line-height: 1.3; }
+.po-graph-card.on .graph-name { color: #1a73e8; }
 </style>
 
 <div class="po-wrap">
@@ -67,6 +82,124 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 <option value="name">利用者名順（あいうえお）</option>
                 <option value="caremanager">ケアマネ事業所順</option>
             </select>
+        </div>
+        <!-- テンプレート選択 -->
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">palette</span>
+                テンプレート
+            </div>
+            <div class="po-tmpl-grid" id="tmpl-grid">
+                <div class="po-tmpl-card on" data-tmpl="1" onclick="poSetTemplate(1)">
+                    <div class="tmpl-thumb" style="background:#f0f7ff;border:1px solid #1a73e8;">
+                        <div style="height:6px;background:#1a73e8;border-radius:1px;"></div>
+                        <div style="height:3px;background:#c5dcf8;border-radius:1px;"></div>
+                        <div style="height:3px;background:#c5dcf8;border-radius:1px;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">スタンダード</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="2" onclick="poSetTemplate(2)">
+                    <div class="tmpl-thumb" style="background:#f0faf4;border:1px solid #2d7a4f;">
+                        <div style="height:6px;background:#2d7a4f;border-radius:3px;"></div>
+                        <div style="height:3px;background:#b2dfcc;border-radius:2px;"></div>
+                        <div style="height:3px;background:#b2dfcc;border-radius:2px;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">ナチュラル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="3" onclick="poSetTemplate(3)">
+                    <div class="tmpl-thumb" style="background:#f5f5f5;border:2px solid #1a1a1a;">
+                        <div style="height:5px;background:#1a1a1a;"></div>
+                        <div style="height:2px;background:#999;margin-top:1px;"></div>
+                        <div style="height:2px;background:#bbb;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">フォーマル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="4" onclick="poSetTemplate(4)">
+                    <div class="tmpl-thumb" style="background:#faf6ff;border:1px solid #6e3fa3;">
+                        <div style="height:6px;background:#6e3fa3;border-radius:2px;"></div>
+                        <div style="height:3px;background:#c9b8e8;border-radius:1px;"></div>
+                        <div style="height:3px;background:#c9b8e8;border-radius:1px;width:60%;"></div>
+                    </div>
+                    <div class="tmpl-name">サイドバー</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="5" onclick="poSetTemplate(5)">
+                    <div class="tmpl-thumb" style="background:#fff8f0;border:1px solid #d4520a;">
+                        <div style="height:6px;background:#d4520a;border-radius:2px;"></div>
+                        <div style="height:3px;background:#f5c9a0;border-radius:1px;"></div>
+                        <div style="height:3px;background:#f5c9a0;border-radius:1px;width:75%;"></div>
+                    </div>
+                    <div class="tmpl-name">ウォーム</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="6" onclick="poSetTemplate(6)">
+                    <div class="tmpl-thumb" style="background:#eceff1;border:1px solid #37474f;">
+                        <div style="height:6px;background:#37474f;border-radius:1px;"></div>
+                        <div style="height:3px;background:#b0bec5;border-radius:1px;"></div>
+                        <div style="height:3px;background:#b0bec5;border-radius:1px;width:65%;"></div>
+                    </div>
+                    <div class="tmpl-name">チャコール</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="7" onclick="poSetTemplate(7)">
+                    <div class="tmpl-thumb" style="background:#fafafa;border:1px solid #000;">
+                        <div style="height:4px;background:#000;"></div>
+                        <div style="height:2px;background:#ccc;margin-top:2px;"></div>
+                        <div style="height:2px;background:#eee;width:80%;"></div>
+                    </div>
+                    <div class="tmpl-name">ミニマル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="8" onclick="poSetTemplate(8)">
+                    <div class="tmpl-thumb" style="background:#e3f2fd;border:1px solid #0277bd;border-radius:6px;">
+                        <div style="height:6px;background:linear-gradient(135deg,#0277bd,#0288d1);border-radius:4px;"></div>
+                        <div style="height:3px;background:#81d4fa;border-radius:3px;"></div>
+                        <div style="height:3px;background:#b3e5fc;border-radius:3px;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">カードブロック</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="9" onclick="poSetTemplate(9)">
+                    <div class="tmpl-thumb" style="background:#fff3e0;border:1px solid #e65100;">
+                        <div style="height:5px;background:#e65100;border-radius:1px;"></div>
+                        <div style="height:3px;background:#ffcc80;border-radius:1px;"></div>
+                        <div style="height:3px;background:#ffe0b2;border-radius:1px;width:80%;"></div>
+                    </div>
+                    <div class="tmpl-name">ゼブラ</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="10" onclick="poSetTemplate(10)">
+                    <div class="tmpl-thumb" style="background:#f3e5f5;border:1px solid #7b1fa2;">
+                        <div style="height:6px;background:linear-gradient(90deg,#7b1fa2,#9c27b0);border-radius:2px;"></div>
+                        <div style="height:3px;background:#ce93d8;border-radius:1px;"></div>
+                        <div style="height:3px;background:#e1bee7;border-radius:1px;width:65%;"></div>
+                    </div>
+                    <div class="tmpl-name">パープル</div>
+                </div>
+            </div>
+        </div>
+        <!-- グラフスタイル選択 -->
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">bar_chart</span>
+                グラフスタイル
+            </div>
+            <div class="po-graph-grid" id="graph-grid">
+                <div class="po-graph-card on" data-graph="1" onclick="poSetChartStyle(1)">
+                    <svg width="36" height="24" viewBox="0 0 36 24"><polyline points="2,20 10,12 18,15 26,6 34,9" fill="none" stroke="#1a73e8" stroke-width="2"/><circle cx="2" cy="20" r="2" fill="#1a73e8"/><circle cx="34" cy="9" r="2" fill="#1a73e8"/></svg>
+                    <div class="graph-name">折れ線</div>
+                </div>
+                <div class="po-graph-card" data-graph="2" onclick="poSetChartStyle(2)">
+                    <svg width="36" height="24" viewBox="0 0 36 24"><rect x="2" y="14" width="6" height="9" fill="#34a853" rx="1"/><rect x="10" y="8" width="6" height="15" fill="#34a853" rx="1"/><rect x="18" y="10" width="6" height="13" fill="#ea4335" rx="1"/><rect x="26" y="5" width="6" height="18" fill="#34a853" rx="1"/></svg>
+                    <div class="graph-name">棒グラフ</div>
+                </div>
+                <div class="po-graph-card" data-graph="3" onclick="poSetChartStyle(3)">
+                    <svg width="36" height="24" viewBox="0 0 36 24"><polyline points="2,20 10,12 18,15 26,6 34,9" fill="rgba(26,115,232,0.15)" stroke="#1a73e8" stroke-width="2"/><polygon points="2,20 10,12 18,15 26,6 34,9 34,24 2,24" fill="rgba(26,115,232,0.12)"/></svg>
+                    <div class="graph-name">エリア</div>
+                </div>
+                <div class="po-graph-card" data-graph="4" onclick="poSetChartStyle(4)">
+                    <svg width="36" height="24" viewBox="0 0 36 24"><text x="18" y="14" text-anchor="middle" font-size="11" font-weight="900" fill="#1a73e8">28.5</text><text x="18" y="22" text-anchor="middle" font-size="7" fill="#34a853">+1.2</text></svg>
+                    <div class="graph-name">数値カード</div>
+                </div>
+                <div class="po-graph-card" data-graph="5" onclick="poSetChartStyle(5)">
+                    <svg width="36" height="24" viewBox="0 0 36 24"><rect x="2" y="4" width="16" height="5" fill="rgba(52,168,83,0.5)" rx="1"/><rect x="2" y="12" width="26" height="5" fill="#1a73e8" rx="1"/><text x="2" y="9" font-size="4" fill="#666">初回</text><text x="2" y="20" font-size="4" fill="#666">最新</text></svg>
+                    <div class="graph-name">横棒</div>
+                </div>
+            </div>
         </div>
         <div style="margin-top:10px;">
             <div class="po-section-title" style="margin-bottom:6px;">
@@ -135,12 +268,15 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 
 <script>
 var poPrintStyle = 'color';
+var poTemplate = parseInt(localStorage.getItem('po_template') || '1');
+var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {
     try {
         var saved = localStorage.getItem('po_items');
+        // テンプレート・グラフスタイルの復元はinitUI()で行う
         if (saved) { var obj = JSON.parse(saved); Object.keys(obj).forEach(function(k){ poItems[k] = obj[k]; }); }
         var savedCats = localStorage.getItem('po_cats');
         if (savedCats) { var obj2 = JSON.parse(savedCats); Object.keys(obj2).forEach(function(k){ poCats[k] = obj2[k]; }); }
@@ -173,12 +309,33 @@ var poPatients = {{ patients | tojson }};
         if (el) el.classList.toggle('on', poCats[k]);
     });
     poLoadCheck();
+    // テンプレート・グラフスタイルのUI復元
+    document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
+        el.classList.toggle('on', parseInt(el.dataset.tmpl) === poTemplate);
+    });
+    document.querySelectorAll('.po-graph-card').forEach(function(el) {
+        el.classList.toggle('on', parseInt(el.dataset.graph) === poChartStyle);
+    });
 })();
 
 function poSetStyle(s) {
     poPrintStyle = s;
     document.getElementById('style-color').classList.toggle('on', s === 'color');
     document.getElementById('style-mono').classList.toggle('on', s === 'mono');
+}
+function poSetTemplate(t) {
+    poTemplate = t;
+    try { localStorage.setItem('po_template', t); } catch(e) {}
+    document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
+        el.classList.toggle('on', parseInt(el.dataset.tmpl) === t);
+    });
+}
+function poSetChartStyle(s) {
+    poChartStyle = s;
+    try { localStorage.setItem('po_chart_style', s); } catch(e) {}
+    document.querySelectorAll('.po-graph-card').forEach(function(el) {
+        el.classList.toggle('on', parseInt(el.dataset.graph) === s);
+    });
 }
 
 function poToggleItem(key) {
@@ -263,7 +420,8 @@ function poPrintAll() {
     var sort = document.getElementById('po-sort-order').value;
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
-        items: JSON.stringify(poItems), cats: JSON.stringify(poCats)
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
+        template: poTemplate, chart_style: poChartStyle
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }
@@ -271,7 +429,8 @@ function poPrintAll() {
 function poPrintOne(userName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
-        user_name: userName, year_month: ym, style: poPrintStyle, items: JSON.stringify(poItems)
+        user_name: userName, year_month: ym, style: poPrintStyle,
+        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }

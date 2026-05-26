@@ -14,89 +14,292 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
 
-/* A4ページ */
+/* ===== A4ページ基本 ===== */
 .report-page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; }
 .page-number { position: absolute; bottom: 6mm; right: 12mm; font-size: 7pt; color: #888; }
 
+/* ===== テンプレート共通ベース ===== */
 /* ヘッダー */
-.rep-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4mm; border-bottom: 2px solid #1a73e8; padding-bottom: 3mm; }
-.rep-header-title { font-size: 14pt; font-weight: 900; color: #1a73e8; letter-spacing: 0.05em; }
+.rep-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4mm; border-bottom: 2px solid var(--accent); padding-bottom: 3mm; }
+.rep-header-title { font-size: 14pt; font-weight: 900; color: var(--accent); letter-spacing: 0.05em; }
 .rep-header-date { font-size: 8pt; color: #444; text-align: right; }
-
-/* ケアマネ・施設ブロック */
+/* ケアマネ・施設 */
 .rep-info-row { display: flex; gap: 4mm; margin-bottom: 3mm; }
-.rep-caremanager-box { flex: 1; border: 1.5px solid #1a73e8; border-radius: 4px; padding: 3mm; }
-.rep-facility-box { flex: 1.2; border: 1px solid #bbb; border-radius: 4px; padding: 3mm; font-size: 7.5pt; }
-.rep-cm-office { font-size: 9pt; font-weight: 700; color: #1a73e8; margin-bottom: 1mm; }
+.rep-caremanager-box { flex: 1; border: 1.5px solid var(--accent); border-radius: var(--radius); padding: 3mm; }
+.rep-facility-box { flex: 1.2; border: 1px solid #bbb; border-radius: var(--radius); padding: 3mm; font-size: 7.5pt; }
+.rep-cm-office { font-size: 9pt; font-weight: 700; color: var(--accent); margin-bottom: 1mm; }
 .rep-cm-name { font-size: 11pt; font-weight: 700; }
 .rep-fac-name { font-size: 9pt; font-weight: 700; margin-bottom: 1mm; }
-
 /* 利用者情報 */
-.rep-patient-row { display: flex; align-items: center; gap: 4mm; background: #f0f7ff; border-radius: 6px; padding: 3mm 4mm; margin-bottom: 3mm; border: 1px solid #c5dcf8; }
+.rep-patient-row { display: flex; align-items: center; gap: 4mm; background: var(--patient-bg); border-radius: var(--radius); padding: 3mm 4mm; margin-bottom: 3mm; border: 1px solid var(--patient-border); }
 .rep-patient-kana { font-size: 7.5pt; color: #5f6368; }
 .rep-patient-name { font-size: 14pt; font-weight: 900; }
 .rep-patient-birth { font-size: 8pt; color: #444; margin-left: 2mm; }
-.rep-care-badge { background: #1a73e8; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 8pt; font-weight: 700; margin-left: 2mm; }
+.rep-care-badge { background: var(--accent); color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 8pt; font-weight: 700; margin-left: 2mm; }
 .rep-author { margin-left: auto; font-size: 7.5pt; color: #444; text-align: right; }
-
 /* 目標テーブル */
 .rep-goals-row { display: flex; gap: 4mm; margin-bottom: 3mm; }
 .rep-goal-box { flex: 1; }
-.rep-goal-title { background: #1a73e8; color: #fff; font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 3px 3px 0 0; }
+.rep-goal-title { background: var(--accent); color: #fff; font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
 .rep-goal-table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; }
-.rep-goal-table th { background: #f0f7ff; font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; text-align: center; font-weight: 700; }
+.rep-goal-table th { background: var(--th-bg); font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; text-align: center; font-weight: 700; }
 .rep-goal-table td { font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; }
 .rep-goal-table td.ach { text-align: center; font-weight: 700; }
-.ach-cont { color: #1a73e8; }
+.ach-cont { color: var(--accent); }
 .ach-done { color: #34a853; }
 .ach-fail { color: #ea4335; }
-
-/* 訓練変化・課題 2カラム */
+/* 訓練変化・課題 */
 .rep-twocol { display: flex; gap: 4mm; margin-bottom: 3mm; }
-.rep-twocol-box { flex: 1; border: 1px solid #bbb; border-radius: 4px; overflow: hidden; }
-.rep-twocol-title { background: #1a73e8; color: #fff; font-size: 8pt; font-weight: 700; padding: 3px 6px; }
+.rep-twocol-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius); overflow: hidden; }
+.rep-twocol-title { background: var(--accent); color: #fff; font-size: 8pt; font-weight: 700; padding: 3px 6px; }
 .rep-twocol-body { padding: 3mm; font-size: 8pt; line-height: 1.7; min-height: 20mm; }
-
 /* モニタリング表 */
-.rep-monitoring-title { background: #444; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 3px 6px; border-radius: 3px 3px 0 0; margin-bottom: 0; }
+.rep-monitoring-title { background: var(--mon-header-bg); color: #fff; font-size: 8.5pt; font-weight: 700; padding: 3px 6px; border-radius: var(--radius-sm) var(--radius-sm) 0 0; margin-bottom: 0; }
 .rep-monitoring-table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; margin-bottom: 3mm; }
 .rep-monitoring-table td { font-size: 7.5pt; padding: 3px 5px; border: 1px solid #bbb; vertical-align: top; }
 .rep-monitoring-table td:first-child { font-weight: 700; background: #f8f9fa; width: 18mm; white-space: nowrap; }
-
-/* 体力グラフエリア */
-.rep-fitness-title { font-size: 8.5pt; font-weight: 700; border-left: 3px solid #1a73e8; padding-left: 4px; margin-bottom: 2mm; }
+/* 体力グラフ */
+.rep-fitness-title { font-size: 8.5pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 2mm; }
 .rep-fitness-sub { font-size: 7pt; color: #888; float: right; }
 .rep-fitness-charts { display: flex; gap: 3mm; margin-bottom: 3mm; }
-.rep-fitness-chart-box { flex: 1; border: 1px solid #e0e0e0; border-radius: 4px; padding: 2mm; text-align: center; }
+.rep-fitness-chart-box { flex: 1; border: 1px solid #e0e0e0; border-radius: var(--radius); padding: 2mm; text-align: center; }
 .rep-fitness-chart-label { font-size: 7pt; color: #444; margin-bottom: 1mm; }
-.rep-fitness-chart-value { font-size: 9pt; font-weight: 700; color: #1a73e8; }
+.rep-fitness-chart-value { font-size: 9pt; font-weight: 700; color: var(--accent); }
 .rep-fitness-chart-change { font-size: 7pt; color: #34a853; }
 canvas.mini-chart { width: 100% !important; height: 40px !important; }
-
 /* 特記・満足度 */
 .rep-special-row { margin-bottom: 2mm; }
-.rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid #444; padding-left: 4px; margin-bottom: 1mm; }
-.rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: 3px; padding: 2mm 3mm; min-height: 8mm; }
+.rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 1mm; }
+.rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; min-height: 8mm; }
 .rep-satisfaction-row { display: flex; gap: 4mm; margin-bottom: 2mm; }
-.rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: 3px; padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
+.rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
 .rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
 .rep-check-circle.checked { background: #444; }
 .rep-new-requests-row { margin-bottom: 2mm; }
 
-/* モノクロスタイル */
-body.mono .rep-header-title { color: #000; }
-body.mono .rep-patient-row { background: #f0f0f0; border-color: #999; }
-body.mono .rep-care-badge { background: #333; }
-body.mono .rep-goal-title { background: #333; }
-body.mono .rep-twocol-title { background: #333; }
-body.mono .rep-monitoring-title { background: #333; }
-body.mono .rep-header { border-bottom-color: #333; }
-body.mono .rep-caremanager-box { border-color: #999; }
-body.mono .rep-cm-office { color: #000; }
-body.mono .rep-fitness-chart-value { color: #000; }
-body.mono .ach-cont { color: #000; font-weight: 900; }
-body.mono .ach-done { color: #000; }
-body.mono .ach-fail { color: #000; font-style: italic; }
+/* ===================================================================
+   テンプレート変数デフォルト (テンプレート1: スタンダード)
+   =================================================================== */
+body {
+  --accent: #1a73e8;
+  --patient-bg: #f0f7ff;
+  --patient-border: #c5dcf8;
+  --th-bg: #f0f7ff;
+  --mon-header-bg: #444;
+  --radius: 4px;
+  --radius-sm: 3px;
+  --header-font: inherit;
+}
+
+/* ===================================================================
+   テンプレート2: ナチュラル (緑系・角丸・やわらかい)
+   =================================================================== */
+body.tmpl-2 {
+  --accent: #2d7a4f;
+  --patient-bg: #f0faf4;
+  --patient-border: #b2dfcc;
+  --th-bg: #f0faf4;
+  --mon-header-bg: #3a6b50;
+  --radius: 8px;
+  --radius-sm: 6px;
+}
+body.tmpl-2 .rep-header { border-bottom-color: #2d7a4f; border-bottom-width: 3px; border-bottom-style: dashed; }
+body.tmpl-2 .rep-header-title { color: #2d7a4f; }
+body.tmpl-2 .rep-goal-table th { background: #e6f4ec; }
+body.tmpl-2 .rep-twocol-box { border-radius: 8px; border-color: #c8e6d4; }
+body.tmpl-2 .rep-monitoring-table td:first-child { background: #f0faf4; }
+
+/* ===================================================================
+   テンプレート3: フォーマル (黒・セリフ体・公文書スタイル)
+   =================================================================== */
+body.tmpl-3 {
+  --accent: #1a1a1a;
+  --patient-bg: #f5f5f5;
+  --patient-border: #999;
+  --th-bg: #eeeeee;
+  --mon-header-bg: #1a1a1a;
+  --radius: 0px;
+  --radius-sm: 0px;
+  font-family: 'MS Mincho', 'Yu Mincho', '游明朝', serif;
+}
+body.tmpl-3 .rep-header { border-bottom: 3px double #1a1a1a; }
+body.tmpl-3 .rep-header-title { font-size: 15pt; letter-spacing: 0.2em; }
+body.tmpl-3 .rep-caremanager-box { border: 2px solid #1a1a1a; }
+body.tmpl-3 .rep-care-badge { background: #1a1a1a; border-radius: 0; }
+body.tmpl-3 .rep-goal-title { border-radius: 0; }
+body.tmpl-3 .rep-twocol-title { border-radius: 0; }
+body.tmpl-3 .rep-monitoring-title { border-radius: 0; }
+
+/* ===================================================================
+   テンプレート4: サイドバー型 (紫系・左サイドバーに要点集約)
+   =================================================================== */
+body.tmpl-4 {
+  --accent: #6e3fa3;
+  --patient-bg: #f5f0fc;
+  --patient-border: #c9b8e8;
+  --th-bg: #f5f0fc;
+  --mon-header-bg: #5a2d8a;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+body.tmpl-4 .rep-header { border-bottom: none; padding-bottom: 0; margin-bottom: 3mm; }
+body.tmpl-4 .rep-header-title { background: #6e3fa3; color: #fff; padding: 3mm 5mm; border-radius: 6px; font-size: 13pt; }
+body.tmpl-4 .rep-caremanager-box { border-left: 5px solid #6e3fa3; border-top: none; border-right: none; border-bottom: none; background: #faf6ff; border-radius: 0 6px 6px 0; }
+body.tmpl-4 .rep-twocol-title { background: #5a2d8a; }
+body.tmpl-4 .rep-goal-title { background: #5a2d8a; }
+body.tmpl-4 .ach-cont { color: #6e3fa3; }
+
+/* ===================================================================
+   テンプレート5: ウォーム (オレンジ・赤系・温かみ)
+   =================================================================== */
+body.tmpl-5 {
+  --accent: #d4520a;
+  --patient-bg: #fff8f0;
+  --patient-border: #f5c9a0;
+  --th-bg: #fff3e6;
+  --mon-header-bg: #b84300;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+body.tmpl-5 .rep-header { border-bottom: 3px solid #d4520a; background: linear-gradient(to right, #fff8f0, #fff); }
+body.tmpl-5 .rep-header-title { color: #d4520a; }
+body.tmpl-5 .rep-goal-table th { background: #fff3e6; }
+body.tmpl-5 .rep-fitness-title { border-left-color: #d4520a; }
+body.tmpl-5 .rep-special-label { border-left-color: #d4520a; }
+body.tmpl-5 .ach-cont { color: #d4520a; }
+body.tmpl-5 .rep-fitness-chart-value { color: #d4520a; }
+
+/* ===================================================================
+   テンプレート6: チャコール (ダークグレー・重厚感)
+   =================================================================== */
+body.tmpl-6 {
+  --accent: #37474f;
+  --patient-bg: #eceff1;
+  --patient-border: #b0bec5;
+  --th-bg: #eceff1;
+  --mon-header-bg: #263238;
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+body.tmpl-6 .rep-header { border-bottom: 4px solid #37474f; }
+body.tmpl-6 .rep-header-title { color: #263238; font-size: 13pt; letter-spacing: 0.08em; }
+body.tmpl-6 .rep-caremanager-box { border: 2px solid #37474f; }
+body.tmpl-6 .rep-cm-office { color: #263238; }
+body.tmpl-6 .rep-goal-table th { background: #eceff1; color: #263238; }
+body.tmpl-6 .rep-fitness-chart-value { color: #37474f; }
+body.tmpl-6 .ach-cont { color: #37474f; }
+
+/* ===================================================================
+   テンプレート7: ミニマル (白黒・線のみ・余白重視)
+   =================================================================== */
+body.tmpl-7 {
+  --accent: #000000;
+  --patient-bg: #fafafa;
+  --patient-border: #ccc;
+  --th-bg: #f5f5f5;
+  --mon-header-bg: #555;
+  --radius: 0px;
+  --radius-sm: 0px;
+}
+body.tmpl-7 .report-page { font-size: 8pt; }
+body.tmpl-7 .rep-header { border-bottom: 1px solid #000; }
+body.tmpl-7 .rep-header-title { color: #000; font-weight: 900; font-size: 13pt; letter-spacing: 0.1em; }
+body.tmpl-7 .rep-caremanager-box { border: 1px solid #999; }
+body.tmpl-7 .rep-care-badge { background: #555; border-radius: 0; }
+body.tmpl-7 .rep-goal-title { background: #555; border-radius: 0; }
+body.tmpl-7 .rep-twocol-title { background: #555; border-radius: 0; }
+body.tmpl-7 .rep-fitness-chart-value { color: #000; }
+body.tmpl-7 .ach-cont { color: #000; }
+body.tmpl-7 .rep-fitness-title { border-left: 2px solid #000; }
+body.tmpl-7 .rep-special-label { border-left: 2px solid #000; }
+
+/* ===================================================================
+   テンプレート8: カードブロック (青系・カード型・丸み)
+   =================================================================== */
+body.tmpl-8 {
+  --accent: #0277bd;
+  --patient-bg: #e1f5fe;
+  --patient-border: #81d4fa;
+  --th-bg: #e1f5fe;
+  --mon-header-bg: #01579b;
+  --radius: 10px;
+  --radius-sm: 8px;
+}
+body.tmpl-8 .report-page { background: #fafeff; }
+body.tmpl-8 .rep-header { background: linear-gradient(135deg, #0277bd, #0288d1); padding: 4mm; border-radius: 8px; border-bottom: none; margin-bottom: 4mm; }
+body.tmpl-8 .rep-header-title { color: #fff; font-size: 13pt; }
+body.tmpl-8 .rep-header-date { color: rgba(255,255,255,0.9); }
+body.tmpl-8 .rep-caremanager-box { border: none; background: #e1f5fe; border-radius: 10px; }
+body.tmpl-8 .rep-facility-box { border: none; background: #f5f5f5; border-radius: 10px; }
+body.tmpl-8 .rep-twocol-box { border: none; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-radius: 10px; }
+body.tmpl-8 .rep-monitoring-table td:first-child { background: #e3f2fd; }
+body.tmpl-8 .ach-cont { color: #0277bd; }
+body.tmpl-8 .rep-fitness-chart-value { color: #0277bd; }
+
+/* ===================================================================
+   テンプレート9: ゼブラ (オレンジ・交互ストライプ)
+   =================================================================== */
+body.tmpl-9 {
+  --accent: #e65100;
+  --patient-bg: #fff3e0;
+  --patient-border: #ffcc80;
+  --th-bg: #fff3e0;
+  --mon-header-bg: #bf360c;
+  --radius: 4px;
+  --radius-sm: 3px;
+}
+body.tmpl-9 .rep-header { border-bottom: 4px solid #e65100; }
+body.tmpl-9 .rep-header-title { color: #e65100; }
+body.tmpl-9 .rep-monitoring-table tr:nth-child(even) td { background: #fff8f0; }
+body.tmpl-9 .rep-monitoring-table tr:nth-child(odd) td:not(:first-child) { background: #fff; }
+body.tmpl-9 .rep-goal-table tr:nth-child(even) td { background: #fff8f0; }
+body.tmpl-9 .rep-goal-title { background: #e65100; }
+body.tmpl-9 .rep-twocol-title { background: #bf360c; }
+body.tmpl-9 .ach-cont { color: #e65100; }
+body.tmpl-9 .rep-fitness-chart-value { color: #e65100; }
+body.tmpl-9 .rep-fitness-title { border-left-color: #e65100; }
+body.tmpl-9 .rep-special-label { border-left-color: #e65100; }
+
+/* ===================================================================
+   テンプレート10: パープル (紫系・グラデーションヘッダー)
+   =================================================================== */
+body.tmpl-10 {
+  --accent: #7b1fa2;
+  --patient-bg: #f3e5f5;
+  --patient-border: #ce93d8;
+  --th-bg: #f3e5f5;
+  --mon-header-bg: #4a148c;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+body.tmpl-10 .rep-header { border-bottom: none; margin-bottom: 4mm; }
+body.tmpl-10 .rep-header-title { background: linear-gradient(135deg, #7b1fa2, #9c27b0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 15pt; }
+body.tmpl-10 .rep-caremanager-box { border-color: #ce93d8; border-width: 2px; }
+body.tmpl-10 .rep-cm-office { color: #7b1fa2; }
+body.tmpl-10 .rep-goal-title { background: linear-gradient(90deg, #7b1fa2, #9c27b0); }
+body.tmpl-10 .rep-twocol-title { background: linear-gradient(90deg, #6a1b9a, #7b1fa2); }
+body.tmpl-10 .ach-cont { color: #7b1fa2; }
+body.tmpl-10 .rep-fitness-chart-value { color: #7b1fa2; }
+body.tmpl-10 .rep-fitness-title { border-left-color: #7b1fa2; }
+body.tmpl-10 .rep-special-label { border-left-color: #7b1fa2; }
+body.tmpl-10 .rep-monitoring-table td:first-child { background: #f3e5f5; }
+
+/* ===================================================================
+   モノクロ上書き (全テンプレート共通)
+   =================================================================== */
+body.mono { --accent: #222; --patient-bg: #f0f0f0; --patient-border: #999; --th-bg: #e8e8e8; --mon-header-bg: #333; }
+body.mono .rep-header { border-bottom-color: #333 !important; }
+body.mono .rep-header-title { color: #000 !important; background: none !important; -webkit-text-fill-color: #000 !important; }
+body.mono .rep-care-badge { background: #333 !important; }
+body.mono .rep-goal-title { background: #333 !important; }
+body.mono .rep-twocol-title { background: #333 !important; }
+body.mono .rep-monitoring-title { background: #333 !important; }
+body.mono .rep-caremanager-box { border-color: #999 !important; }
+body.mono .rep-cm-office { color: #000 !important; }
+body.mono .rep-fitness-chart-value { color: #000 !important; }
+body.mono .ach-cont { color: #000 !important; font-weight: 900; }
+body.mono .ach-done { color: #000 !important; }
+body.mono .ach-fail { color: #000 !important; font-style: italic; }
 
 @media print {
     body { background: #fff; }
@@ -110,7 +313,7 @@ body.mono .ach-fail { color: #000; font-style: italic; }
 }
 </style>
 </head>
-<body class="{{ 'mono' if style == 'mono' else 'color' }}">
+<body class="{% set tmpl_class = 'tmpl-' ~ (template|string) if template and template != '1' else '' %}{{ 'mono' if style == 'mono' else 'color' }} {{ tmpl_class }}">
 
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
@@ -366,49 +569,154 @@ body.mono .ach-fail { color: #000; font-style: italic; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
-// ミニグラフ描画
+// ===== グラフスタイル設定 =====
+// chart_style: 1=折れ線, 2=棒グラフ, 3=レーダー, 4=数値カード, 5=横棒グラフ
 var chartData = {{ report_data_list | tojson }};
+var chartStyle = {{ chart_style | default(1) | int }};
 var isColor = document.body.classList.contains('color');
-var lineColor = isColor ? '#1a73e8' : '#333';
+
+// テンプレートのアクセントカラーを取得
+function getAccentColor() {
+    if (!isColor) return '#333';
+    var computed = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+    return computed || '#1a73e8';
+}
+
+// グラフスタイル別オプション生成
+function makeChartConfig(type, labels, data, accent) {
+    var isMono = !isColor;
+    var baseColor = isMono ? '#333' : accent;
+
+    // スタイル1: 折れ線グラフ (デフォルト)
+    if (chartStyle === 1) {
+        return {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, borderColor: baseColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false }
+        };
+    }
+
+    // スタイル2: 棒グラフ (各回の値を比較・増減が色でわかる)
+    if (chartStyle === 2) {
+        var bgColors = data.map(function(v, i) {
+            if (i === 0) return isMono ? 'rgba(100,100,100,0.5)' : 'rgba(100,180,100,0.6)';
+            return v >= data[i-1]
+                ? (isMono ? 'rgba(80,80,80,0.7)' : 'rgba(52,168,83,0.75)')
+                : (isMono ? 'rgba(180,180,180,0.5)' : 'rgba(234,67,53,0.65)');
+        });
+        return {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, backgroundColor: bgColors, borderWidth: 0 }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false }
+        };
+    }
+
+    // スタイル3: レーダーチャート → 折れ線で代替（mini表示ではレーダーは小さすぎるため）
+    // 代わりにエリアチャート（fill付き折れ線）を使用
+    if (chartStyle === 3) {
+        return {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    borderColor: baseColor,
+                    backgroundColor: isMono ? 'rgba(100,100,100,0.15)' : (baseColor + '22'),
+                    borderWidth: 1.5, pointRadius: 2, tension: 0.4, fill: true
+                }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false }
+        };
+    }
+
+    // スタイル4: 数値カード → canvasは非表示、値はHTMLで表示（JS側でcanvas hide）
+    if (chartStyle === 4) {
+        return null; // canvas非表示、HTMLラベルで表示
+    }
+
+    // スタイル5: 横棒グラフ (初回->最新を横棒で・伸び率が一目瞭然)
+    if (chartStyle === 5) {
+        var first = data[0], last = data[data.length - 1];
+        return {
+            type: 'bar',
+            data: {
+                labels: ['初回', '最新'],
+                datasets: [{
+                    data: [first, last],
+                    backgroundColor: isMono
+                        ? ['rgba(150,150,150,0.5)', 'rgba(60,60,60,0.7)']
+                        : ['rgba(100,180,100,0.5)', baseColor + 'cc'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { display: true, ticks: { font: { size: 6 }, color: '#888' }, grid: { display: false } }
+                },
+                animation: false
+            }
+        };
+    }
+
+    return null;
+}
+
+// 数値カードスタイル用: canvas非表示・値表示HTML挿入
+function renderValueCard(el, firstVal, lastVal, accent) {
+    if (!el) return;
+    el.style.display = 'none';
+    var isMono = !isColor;
+    var diff = lastVal - firstVal;
+    var diffStr = diff > 0 ? ('+' + diff.toFixed(1)) : diff.toFixed(1);
+    var diffColor = isMono ? '#555' : (diff > 0 ? '#34a853' : (diff < 0 ? '#ea4335' : '#888'));
+    var card = document.createElement('div');
+    card.style.cssText = 'text-align:center;padding:2px 0;';
+    card.innerHTML =
+        '<div style="font-size:14px;font-weight:900;color:' + (isMono ? '#000' : accent) + ';">' + lastVal + '</div>' +
+        '<div style="font-size:8px;color:' + diffColor + ';font-weight:700;">' + diffStr + '</div>';
+    el.parentNode.insertBefore(card, el.nextSibling);
+}
+
+// ===== グラフ描画 =====
+var accent = getAccentColor();
 
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
-    // 体重グラフ
-    if (rd.weights && rd.weights.length > 1) {
-        var wEl = document.getElementById('chart-weight-' + n);
-        if (wEl) {
-            new Chart(wEl, { type: 'line', data: {
-                labels: rd.weights.map(function(w) { return w.measured_date ? w.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.weights.map(function(w) { return w.weight_kg; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
+    var metrics = [
+        { id: 'chart-weight-' + n, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
+          getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
+        { id: 'chart-grip-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.grip_right; }) : null; },
+          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
+        { id: 'chart-tug-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
+          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
+        { id: 'chart-cs30-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
+          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
+    ];
+
+    metrics.forEach(function(m) {
+        var el = document.getElementById(m.id);
+        if (!el) return;
+        var data = m.getData();
+        if (!data) return;
+        var labels = m.getLabels();
+
+        if (chartStyle === 4) {
+            // 数値カード: first/last表示
+            renderValueCard(el, data[0], data[data.length - 1], accent);
+        } else {
+            var cfg = makeChartConfig(m.id, labels, data, accent);
+            if (cfg) new Chart(el, cfg);
         }
-    }
-    // 握力グラフ
-    if (rd.fitness && rd.fitness.length > 1) {
-        var gEl = document.getElementById('chart-grip-' + n);
-        if (gEl) {
-            new Chart(gEl, { type: 'line', data: {
-                labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.fitness.map(function(f) { return f.grip_right; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
-        }
-    }
-    // TUGグラフ
-    var tEl = document.getElementById('chart-tug-' + n);
-    if (tEl && rd.fitness && rd.fitness.length > 1) {
-        new Chart(tEl, { type: 'line', data: {
-            labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
-            datasets: [{ data: rd.fitness.map(function(f) { return f.tug_sec; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-        }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
-    }
-    // CS-30グラフ
-    var cEl = document.getElementById('chart-cs30-' + n);
-    if (cEl && rd.fitness && rd.fitness.length > 1) {
-        new Chart(cEl, { type: 'line', data: {
-            labels: rd.fitness.map(function(f) { return f.measured_date ? f.measured_date.slice(5) : ''; }),
-            datasets: [{ data: rd.fitness.map(function(f) { return f.sit_stand_30sec; }), borderColor: lineColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-        }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false } });
-    }
+    });
 });
 </script>
 </body>
