@@ -1000,21 +1000,27 @@ def daily_view():
 
     # 当月の記録がある日付リストを取得（カレンダーのドット表示用）
     record_dates = []
+    photo_dates = []
     try:
         month_start = tokyo_tz.localize(datetime(selected_date.year, selected_date.month, 1))
         if selected_date.month == 12:
             next_month = tokyo_tz.localize(datetime(selected_date.year + 1, 1, 1))
         else:
             next_month = tokyo_tz.localize(datetime(selected_date.year, selected_date.month + 1, 1))
-        month_res = supabase.table("records").select("created_at").eq("facility_code", f_code).gte(
+        month_res = supabase.table("records").select("created_at, image_urls").eq("facility_code", f_code).gte(
             "created_at", month_start.isoformat()
         ).lt("created_at", next_month.isoformat()).execute()
         if month_res.data:
             dates_set = set()
+            photo_dates_set = set()
             for r in month_res.data:
                 d = parse_jst_date(r["created_at"])
-                dates_set.add(d.strftime("%Y-%m-%d"))
+                ds = d.strftime("%Y-%m-%d")
+                dates_set.add(ds)
+                if r.get("image_urls"):
+                    photo_dates_set.add(ds)
             record_dates = list(dates_set)
+            photo_dates = list(photo_dates_set)
     except Exception as e:
         pass
     # Session 19: 利用者を user_kana ベースのあいうえお順にソート
@@ -1048,6 +1054,7 @@ def daily_view():
         records=records,
         is_admin=is_admin,
         record_dates=record_dates,
+        photo_dates=photo_dates,
         patients=patients_list
     )
 

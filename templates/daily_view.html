@@ -1254,6 +1254,13 @@
         <div class="user-accordion-title">
             <span class="material-symbols-outlined">person</span>
             {{ user }} 様
+            {% set ns = namespace(has_photo=false) %}
+            {% for r in records[user] %}
+                {% if r.image_urls %}{% set ns.has_photo = true %}{% endif %}
+            {% endfor %}
+            {% if ns.has_photo %}
+            <span class="material-symbols-outlined" style="font-size:16px;color:#1a73e8;margin-left:4px;" title="写真あり">photo_camera</span>
+            {% endif %}
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
     </div>
@@ -1851,6 +1858,7 @@ window.selectPatient = function(id, user_name, user_kana) {
 const selectedDate = "{{ selected_date }}";
 const targetUser = "{{ target_user }}";
 const recordDates = new Set({{ record_dates | tojson }});
+const photoDates = new Set({{ photo_dates | tojson }});
 let currentYear, currentMonth;
 
 function initCalendar() {
@@ -1898,7 +1906,8 @@ function renderCalendar() {
         if (dateStr === todayStr) cls += ' today';
         if (dateStr === selectedDate) cls += ' selected';
         if (dvMode === 'user') { if (userRecordDates.has(dateStr)) cls += ' has-user-record'; } else { if (recordDates.has(dateStr)) cls += ' has-record'; }
-        html += `<div class="${cls}" onclick="selectDate('${dateStr}')">${d}</div>`;
+        const photoIcon = photoDates.has(dateStr) ? '<span class="material-symbols-outlined" style="font-size:9px;color:#1a73e8;position:absolute;bottom:2px;right:2px;line-height:1;">photo_camera</span>' : '';
+        html += `<div class="${cls}" onclick="selectDate('${dateStr}')" style="position:relative;">${d}${photoIcon}</div>`;
     }
     daysEl.innerHTML = html;
 }
