@@ -1198,6 +1198,10 @@
             <div class="cal-dow sat">土</div>
         </div>
         <div class="calendar-days" id="cal-days"></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 4px 2px;font-size:11px;color:#80868b;">
+          <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#1a73e8;border-radius:50%;display:inline-block;"></span>記録あり</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:9px;height:9px;background:#f57c00;border-radius:50%;display:inline-block;"></span>写真あり</span>
+        </div>
     </div>
 </div>
 <div id="dv-records-wrapper" data-date="{{ selected_date }}" data-users='{{ records.keys() | list | tojson }}'>
@@ -1259,7 +1263,7 @@
                 {% if r.image_urls %}{% set ns.has_photo = true %}{% endif %}
             {% endfor %}
             {% if ns.has_photo %}
-            <span style="font-size:11px;background:#1a73e8;color:white;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:700;line-height:18px;">📷 写真あり</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#f57c00;margin-left:6px;font-weight:700;"><span style="width:7px;height:7px;background:#f57c00;border-radius:50%;display:inline-block;flex-shrink:0;"></span>写真あり</span>
             {% endif %}
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
@@ -1906,10 +1910,13 @@ function renderCalendar() {
         if (dateStr === todayStr) cls += ' today';
         if (dateStr === selectedDate) cls += ' selected';
         if (dvMode === 'user') { if (userRecordDates.has(dateStr)) cls += ' has-user-record'; } else { if (recordDates.has(dateStr)) cls += ' has-record'; }
-        const photoIcon = photoDates.has(dateStr)
-          ? '<span style="display:block;font-size:9px;background:#1a73e8;color:white;border-radius:3px;padding:0 3px;line-height:14px;margin-top:1px;font-family:sans-serif;">&#128247;</span>'
-          : '<span style="display:block;height:14px;"></span>';
-        html += `<div class="${cls}" onclick="selectDate('${dateStr}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px 0;">${d}${photoIcon}</div>`;
+        const hasPhoto = photoDates.has(dateStr);
+        const isSelected = cls.includes('selected');
+        const dotColor = hasPhoto ? (isSelected ? '#ffcc80' : '#f57c00') : (isSelected ? 'white' : '#1a73e8');
+        const dotHtml = (hasPhoto || recordDates.has(dateStr))
+          ? `<span style="display:block;width:${hasPhoto ? 9 : 7}px;height:${hasPhoto ? 9 : 7}px;background:${dotColor};border-radius:50%;margin-top:2px;"></span>`
+          : '<span style="display:block;height:9px;margin-top:2px;"></span>';
+        html += `<div class="${cls}" onclick="selectDate('${dateStr}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px 0;">${d}${dotHtml}</div>`;
     }
     daysEl.innerHTML = html;
 }
