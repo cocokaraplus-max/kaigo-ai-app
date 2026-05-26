@@ -136,6 +136,15 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 var poPrintStyle = 'color';
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
+// localStorageから設定を復元
+(function() {
+    try {
+        var saved = localStorage.getItem('po_items');
+        if (saved) { var obj = JSON.parse(saved); Object.keys(obj).forEach(function(k){ poItems[k] = obj[k]; }); }
+        var savedCats = localStorage.getItem('po_cats');
+        if (savedCats) { var obj2 = JSON.parse(savedCats); Object.keys(obj2).forEach(function(k){ poCats[k] = obj2[k]; }); }
+    } catch(e) {}
+})();
 var poCheckData = [];
 var poPatients = {{ patients | tojson }};
 
@@ -148,9 +157,20 @@ var poPatients = {{ patients | tojson }};
         var lbl = d.getFullYear() + '年' + (d.getMonth()+1) + '月';
         var opt = document.createElement('option');
         opt.value = val; opt.textContent = lbl;
-        if (i === 1) opt.selected = true;
+        var savedYm = localStorage.getItem('po_year_month');
+    if (savedYm && val === savedYm) opt.selected = true;
+    else if (!savedYm && i === 1) opt.selected = true;
         sel.appendChild(opt);
     }
+    // UI状態を復元
+    Object.keys(poItems).forEach(function(k) {
+        var el = document.getElementById('tog-' + k);
+        if (el) el.classList.toggle('on', poItems[k]);
+    });
+    Object.keys(poCats).forEach(function(k) {
+        var el = document.getElementById('tog-cat-' + k);
+        if (el) el.classList.toggle('on', poCats[k]);
+    });
     poLoadCheck();
 })();
 
@@ -163,16 +183,19 @@ function poSetStyle(s) {
 function poToggleItem(key) {
     poItems[key] = !poItems[key];
     document.getElementById('tog-' + key).classList.toggle('on', poItems[key]);
+    try { localStorage.setItem('po_items', JSON.stringify(poItems)); } catch(e) {}
 }
 function poToggleCat(cat) {
     poCats[cat] = !poCats[cat];
     var id = 'tog-cat-' + cat;
     var el = document.getElementById(id);
     if (el) el.classList.toggle('on', poCats[cat]);
+    try { localStorage.setItem('po_cats', JSON.stringify(poCats)); } catch(e) {}
 }
 
 async function poLoadCheck() {
     var ym = document.getElementById('po-year-month').value;
+    try { localStorage.setItem('po_year_month', ym); } catch(e) {}
     var wrap = document.getElementById('po-check-table-wrap');
     wrap.innerHTML = '<div class="loading-row">データ確認中...</div>';
     try {
