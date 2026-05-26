@@ -192,7 +192,8 @@ function renderCheckTable(results) {
         html += '<td>' + (hasEval ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
         html += '<td>' + (hasFit ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
         html += '<td>' + (allOk ? '<span class="status-ok" style="font-weight:900;">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
-        html += '<td><button onclick="poPrintOne('' + p.user_name.replace(/'/g,"\\'") + '')" style="font-size:0.7rem;padding:3px 8px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">印刷</button></td>';
+        var safeName = encodeURIComponent(p.user_name);
+        html += '<td><button onclick="poPrintOne(decodeURIComponent(\"' + safeName + '\"))" style="font-size:0.7rem;padding:3px 8px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">印刷</button></td>';
         html += '</tr>';
     });
     html += '</tbody></table>';
