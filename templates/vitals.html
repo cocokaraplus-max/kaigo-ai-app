@@ -4034,7 +4034,12 @@ window.registerBulkTemp = async function(order) {
     }
     window.bulkTempResultList = [];
     window.bulkTempEditData = {};
-    setTimeout(() => { if (typeof loadVitals === "function") loadVitals(); }, 800);
+    setTimeout(() => {
+        const dateEl = document.getElementById('vital-date');
+        if (dateEl && typeof reloadVitalsForDate === 'function') {
+            reloadVitalsForDate(dateEl.value);
+        }
+    }, 800);
 };
 
 // ========== メモパッド ==========
