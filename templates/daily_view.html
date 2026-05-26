@@ -3319,6 +3319,26 @@ async function loadDailySummary(userName, idx, dateStr) {
         var data = await res.json();
         if (data.summary) {
             ac.textContent = data.summary;
+            // show photos
+            (function() {
+                if (!data.image_urls || !data.image_urls.length) return;
+                var _card = ac.closest(".ai-record-card");
+                if (!_card) return;
+                var _eg = _card.querySelector(".photo-grid");
+                if (_eg) _eg.remove();
+                var _grid = document.createElement("div");
+                _grid.className = "photo-grid";
+                _grid.style.marginBottom = "8px";
+                data.image_urls.forEach(function(_u) {
+                    var _img = document.createElement("img");
+                    _img.src = _u;
+                    _img.alt = "添付写真";
+                    _img.style.cursor = "zoom-in";
+                    _img.onclick = (function(url) { return function() { openImageViewer(url); }; })(_u);
+                    _grid.appendChild(_img);
+                });
+                _card.insertBefore(_grid, ac);
+            })();
             // 全員分生成済みかチェックしてボタンを更新
             (function() {
                 var cards = document.querySelectorAll('[id^="ai-content-"]');
