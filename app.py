@@ -8768,7 +8768,6 @@ JSON形式のみで返してください（説明文・コードブロック・�
     ...
   ]
 }}"""
-}}"""
         model = get_generative_model()
         resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
         import re as _re
@@ -8779,36 +8778,32 @@ JSON形式のみで返してください（説明文・コードブロック・�
         # patient_idと照合
         ai_results = result.get('results', [])
         matched = []
+        # ai_resultsを名前をキーにした辞書に変換（高速検索用）
+        ai_map = {}
+        for r in ai_results:
+            rname = (r.get('user_name') or '').strip()
+            if rname:
+                ai_map[rname] = r.get('temperature')
+
         for p in patients:
             pname = p.get('user_name', '')
             temp = None
-            match_count = 0
-            for r in ai_results:
-                rname = r.get('user_name', '')
-                if not rname:
-                    continue
-                # 完全一致を最優先
-                if rname == pname:
-                    temp = r.get('temperature')
-                    match_count = 1
-                    break
-                # 姓（最初の1文字以上）または名での一致（2文字以上必須）
-                pname_parts = pname.split()
-                rname_clean = rname.replace('　', ' ').strip()
-                is_match = False
-                if len(rname_clean) >= 2:
-                    # 登録名にrname_cleanが含まれる（部分一致）
-                    if rname_clean in pname:
-                        is_match = True
-                    # rname_cleanに登録名の姓か名が含まれる
-                    elif len(pname) >= 2 and pname[:2] in rname_clean:
-                        is_match = True
-                if is_match:
-                    match_count += 1
-                    temp = r.get('temperature')
-            # 複数の利用者にマッチした可能性がある場合はnullにする（安全側に倒す）
-            if match_count != 1:
-                temp = None
+
+            # 1. 完全一致（AIが登録名をそのまま返した場合）
+            if pname in ai_map:
+                temp = ai_map[pname]
+            else:
+                # 2. 部分一致（姓のみ・名のみで呼んだ場合）
+                # 何人の利用者にマッチするか数える（あいまいな場合はnull）
+                candidates = []
+                for rname, rtemp in ai_map.items():
+                    if len(rname) >= 2 and (rname in pname or pname[:2] in rname):
+                        candidates.append((rname, rtemp))
+                # この利用者にマッチする候補が1つだけならセット
+                if len(candidates) == 1:
+                    temp = candidates[0][1]
+                # 2つ以上マッチ → あいまいなのでnull（安全側）
+
             matched.append({
                 'patient_id': p.get('patient_id') or p.get('id'),
                 'user_name': pname,
