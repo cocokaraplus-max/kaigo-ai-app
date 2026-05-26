@@ -3977,13 +3977,7 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
                 const arrow = document.getElementById('varrow-' + r.patient_id);
                 if (arrow) arrow.style.transform = 'rotate(180deg)';
             }
-            // 少し待ってから値をセット（DOM展開待ち）
-            setTimeout(() => {
-                const el = document.getElementById('v-temperature-' + r.patient_id);
-                if (el) { el.value = r.temperature; onVitalInput(String(r.patient_id), 'temperature', r.temperature); }
-                const orderEl = document.getElementById('v-order-' + r.patient_id);
-                if (orderEl) orderEl.value = order;
-            }, 50);
+            // 体温一括測定は測定欄への自動入力なし（DB保存のみ）
             resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
             resultHtml += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
             resultHtml += `<input type="number" step="0.1" min="34" max="42"`;
