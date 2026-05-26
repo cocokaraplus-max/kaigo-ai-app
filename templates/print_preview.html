@@ -711,55 +711,63 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-goal-box">
             <div class="rep-goal-title">【短期目標】</div>
             <table class="rep-goal-table">
-                <tr><th>機能</th><th>内容</th><th>評価</th></tr>
+                {% for label, goal_key, status_key, cont_key, new_key in [
+                    ('機能', 'short_goal_function', 'short_goal_function_status', 'short_goal_function_cont', 'short_goal_function_new'),
+                    ('活動', 'short_goal_activity', 'short_goal_activity_status', 'short_goal_activity_cont', 'short_goal_activity_new'),
+                    ('参加', 'short_goal_participation', 'short_goal_participation_status', 'short_goal_participation_cont', 'short_goal_participation_new')
+                ] %}
+                {% set status = ev.get(status_key, '') if ev else '' %}
+                {% set cont = ev.get(cont_key, '') if ev else '' %}
+                {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
-                    <td>機能</td>
-                    <td>{{ ev.get('short_goal_function', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('short_ach_function') == '達成' %}ach-done{% elif ev and ev.get('short_ach_function') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('short_ach_function', '継続') if ev else '継続') }}
+                    <td style="width:8mm;font-weight:700;">{{ label }}</td>
+                    <td>{{ ev.get(goal_key, '') if ev else '' }}</td>
+                    <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
+                        {{ status if status else '―' }}
+                    </td>
+                    <td class="ach {% if cont == '変更' %}ach-fail{% else %}ach-cont{% endif %}" style="width:10mm;white-space:nowrap;">
+                        {{ cont if cont else '継続' }}
                     </td>
                 </tr>
+                {% if cont == '変更' and new_goal %}
                 <tr>
-                    <td>活動</td>
-                    <td>{{ ev.get('short_goal_activity', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('short_ach_activity') == '達成' %}ach-done{% elif ev and ev.get('short_ach_activity') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('short_ach_activity', '継続') if ev else '継続') }}
+                    <td colspan="4" style="font-size:7pt;color:#555;padding-left:8mm;border-top:none;">
+                        └ 新目標：{{ new_goal }}
                     </td>
                 </tr>
-                <tr>
-                    <td>参加</td>
-                    <td>{{ ev.get('short_goal_participation', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('short_ach_participation') == '達成' %}ach-done{% elif ev and ev.get('short_ach_participation') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('short_ach_participation', '継続') if ev else '継続') }}
-                    </td>
-                </tr>
+                {% endif %}
+                {% endfor %}
             </table>
         </div>
         <div class="rep-goal-box">
             <div class="rep-goal-title">【長期目標】</div>
             <table class="rep-goal-table">
-                <tr><th>機能</th><th>内容</th><th>評価</th></tr>
+                {% for label, goal_key, status_key, cont_key, new_key in [
+                    ('機能', 'long_goal_function', 'long_goal_function_status', 'long_goal_function_cont', 'long_goal_function_new'),
+                    ('活動', 'long_goal_activity', 'long_goal_activity_status', 'long_goal_activity_cont', 'long_goal_activity_new'),
+                    ('参加', 'long_goal_participation', 'long_goal_participation_status', 'long_goal_participation_cont', 'long_goal_participation_new')
+                ] %}
+                {% set status = ev.get(status_key, '') if ev else '' %}
+                {% set cont = ev.get(cont_key, '') if ev else '' %}
+                {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
-                    <td>機能</td>
-                    <td>{{ ev.get('long_goal_function', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('long_ach_function') == '達成' %}ach-done{% elif ev and ev.get('long_ach_function') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('long_ach_function', '継続') if ev else '継続') }}
+                    <td style="width:8mm;font-weight:700;">{{ label }}</td>
+                    <td>{{ ev.get(goal_key, '') if ev else '' }}</td>
+                    <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
+                        {{ status if status else '―' }}
+                    </td>
+                    <td class="ach {% if cont == '変更' %}ach-fail{% else %}ach-cont{% endif %}" style="width:10mm;white-space:nowrap;">
+                        {{ cont if cont else '継続' }}
                     </td>
                 </tr>
+                {% if cont == '変更' and new_goal %}
                 <tr>
-                    <td>活動</td>
-                    <td>{{ ev.get('long_goal_activity', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('long_ach_activity') == '達成' %}ach-done{% elif ev and ev.get('long_ach_activity') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('long_ach_activity', '継続') if ev else '継続') }}
+                    <td colspan="4" style="font-size:7pt;color:#555;padding-left:8mm;border-top:none;">
+                        └ 新目標：{{ new_goal }}
                     </td>
                 </tr>
-                <tr>
-                    <td>参加</td>
-                    <td>{{ ev.get('long_goal_participation', '') if ev else '' }}</td>
-                    <td class="ach {% if ev and ev.get('long_ach_participation') == '達成' %}ach-done{% elif ev and ev.get('long_ach_participation') == '未達成' %}ach-fail{% else %}ach-cont{% endif %}">
-                        {{ (ev.get('long_ach_participation', '継続') if ev else '継続') }}
-                    </td>
-                </tr>
+                {% endif %}
+                {% endfor %}
             </table>
         </div>
     </div>
