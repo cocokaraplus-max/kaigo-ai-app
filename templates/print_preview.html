@@ -250,10 +250,13 @@ body.mono .ach-fail { color: #000; font-style: italic; }
     <div class="rep-monitoring-title">モニタリング</div>
     <table class="rep-monitoring-table">
         {% for cat_name, cat_text in filtered_cats %}
+        {% set is_empty = not cat_text or cat_text == "" or "今月このカテゴリの報告はありませんでした" in cat_text %}
+        {% if not is_empty or items.get("no_record", false) %}
         <tr>
             <td>{{ cat_name }}</td>
-            <td>{{ cat_text }}</td>
+            <td>{% if is_empty %}<span style="color:#9aa0a6;font-style:italic;">今月の報告はありませんでした</span>{% else %}{{ cat_text }}{% endif %}</td>
         </tr>
+        {% endif %}
         {% endfor %}
     </table>
     {% endif %}
@@ -322,16 +325,19 @@ body.mono .ach-fail { color: #000; font-style: italic; }
     <div class="rep-new-requests-row">
         <table style="width:100%;border-collapse:collapse;border:1px solid #bbb;font-size:7.5pt;">
             <tr>
-                <td style="padding:3px 6px;border:1px solid #bbb;width:60%;">新しい希望や要望はあるか</td>
+                <td style="padding:3px 6px;border:1px solid #bbb;width:50%;">新しい希望や要望はあるか</td>
                 <td style="padding:3px 6px;border:1px solid #bbb;text-align:center;">
-                    <span class="rep-check-circle {% if ev and ev.get('new_requests_exist') %}checked{% endif %}"></span> あり
-                    &nbsp;&nbsp;
-                    <span class="rep-check-circle {% if not ev or not ev.get('new_requests_exist') %}checked{% endif %}"></span> なし
+                    <span style="display:inline-flex;align-items:center;gap:3px;margin-right:12px;">
+                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;">{% if ev and ev.get('new_requests_exist') %}&#10003;{% endif %}</span>
+                        あり</span>
+                    <span style="display:inline-flex;align-items:center;gap:3px;">
+                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;">{% if not ev or not ev.get('new_requests_exist') %}&#10003;{% endif %}</span>
+                        なし</span>
                 </td>
             </tr>
             {% if ev and ev.get('new_requests_detail') %}
             <tr>
-                <td colspan="2" style="padding:3px 6px;border:1px solid #bbb;">{{ ev.new_requests_detail }}</td>
+                <td colspan="2" style="padding:3px 6px;border:1px solid #bbb;">「あり」の場合の内容: {{ ev.new_requests_detail }}</td>
             </tr>
             {% endif %}
         </table>
@@ -339,14 +345,17 @@ body.mono .ach-fail { color: #000; font-style: italic; }
     <div class="rep-satisfaction-row">
         <div class="rep-satisfaction-box">
             利用者・家族の満足度
-            <span class="rep-check-circle {% if ev and ev.get('satisfaction') == '○' %}checked{% endif %}"></span>
-            {{ ev.get('satisfaction', '') if ev else '' }}
+            <span style="margin-left:6px;font-weight:700;">{{ ev.get('satisfaction', '未記入') if ev else '未記入' }}</span>
         </div>
         <div class="rep-satisfaction-box">
             サービス提供内容が適切か
-            <span class="rep-check-circle {% if ev and ev.get('service_appropriateness') == '○' %}checked{% endif %}"></span>
-            {{ ev.get('service_appropriateness', '') if ev else '' }}
+            <span style="margin-left:6px;font-weight:700;">{{ ev.get('service_appropriateness', '未記入') if ev else '未記入' }}</span>
         </div>
+    </div>
+    <!-- 評価基準の凡例 -->
+    <div style="margin-top:3mm;padding:2mm 3mm;border:1px solid #e0e0e0;border-radius:3px;font-size:7pt;color:#666;">
+        <span style="font-weight:700;">【評価基準】</span>
+        ○：利用者・家族が満足している　△：おおむね満足している　×：不満あり・要改善
     </div>
     {% endif %}
 

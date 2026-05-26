@@ -105,6 +105,7 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">その他</div>
             <div class="po-toggle-grid">
                 <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
+                <button class="po-toggle-btn" id="tog-no-record" onclick="poToggleItem('no_record')">報告なし項目も印刷</button>
             </div>
         </div>
     </div>
@@ -134,7 +135,7 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 
 <script>
 var poPrintStyle = 'color';
-var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true };
+var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {
