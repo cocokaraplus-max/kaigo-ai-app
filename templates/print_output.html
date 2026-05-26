@@ -390,17 +390,26 @@ async function poLoadCheck() {
     var wrap = document.getElementById('po-check-table-wrap');
     wrap.innerHTML = '<div class="loading-row">データ確認中...</div>';
     try {
-        var results = await Promise.all(poPatients.map(async function(p) {
-            try {
-                var res = await fetch('/api/monitoring_report_data?user_name=' + encodeURIComponent(p.user_name) + '&year_month=' + ym);
-                var data = await res.json();
-                return { patient: p, data: data };
-            } catch(e) { return { patient: p, data: {} }; }
-        }));
+        var res = await fetch('/api/check_data_bulk?year_month=' + ym);
+        var bulk = await res.json();
+        if (bulk.status !== 'success') throw new Error(bulk.message);
+        var bulkMap = {};
+        (bulk.data || []).forEach(function(d) { bulkMap[d.user_name] = d; });
+        var results = poPatients.map(function(p) {
+            var d = bulkMap[p.user_name] || {};
+            return {
+                patient: p,
+                data: {
+                    monitoring: d.has_monitoring ? {id:1} : {},
+                    evaluation: d.has_evaluation ? {id:1} : {},
+                    fitness: d.has_fitness ? [{id:1}] : []
+                }
+            };
+        });
         poCheckData = results;
         renderCheckTable(results);
     } catch(e) {
-        wrap.innerHTML = '<div class="loading-row">エラーが発生しました</div>';
+        wrap.innerHTML = '<div class="loading-row">エラーが発生しました: ' + e.message + '</div>';
     }
 }
 
