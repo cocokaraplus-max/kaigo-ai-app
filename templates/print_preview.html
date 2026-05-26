@@ -161,130 +161,130 @@ body.tmpl-3 .rep-fitness-chart-value { color: #1a1a1a; }
 body.tmpl-3 .ach-cont { color: #1a1a1a; font-weight: 900; }
 
 /* ===================================================================
-   テンプレート4: サイドバー型
-   左25mmの紫サイドバーに要点、右にメイン本文の2カラム
+   テンプレート4: 分割レイアウト
+   上部フル幅（ヘッダー・ケアマネ・利用者・目標）
+   下部2カラム（左:グラフ  右:モニタリング・訓練変化）
    =================================================================== */
 body.tmpl-4 {
-  --accent: #5e35b1;
-  --accent2: #4527a0;
-  --patient-bg: #ede7f6;
-  --patient-border: #b39ddb;
-  --th-bg: #ede7f6;
-  --mon-header-bg: #4527a0;
-  --radius: 4px;
-  --radius-sm: 3px;
+  --accent: #1a237e;
+  --accent2: #283593;
+  --patient-bg: #e8eaf6;
+  --patient-border: #c5cae9;
+  --th-bg: #e8eaf6;
+  --mon-header-bg: #37474f;
+  --radius: 3px;
+  --radius-sm: 2px;
 }
-/* サイドバーレイアウト: report-pageを2カラムに */
 body.tmpl-4 .report-page {
-  padding: 0;
-  display: flex;
-  flex-direction: row;
-  overflow: hidden;
-}
-body.tmpl-4 .tmpl4-sidebar {
-  width: 42mm;
-  background: linear-gradient(180deg, #5e35b1, #4527a0);
-  color: #fff;
-  flex-shrink: 0;
+  padding: 10mm 10mm 8mm;
   display: flex;
   flex-direction: column;
-  padding: 6mm 3mm 6mm 4mm;
-  gap: 3mm;
 }
-body.tmpl-4 .tmpl4-main {
-  flex: 1;
-  padding: 7mm 7mm 7mm 5mm;
-  overflow: hidden;
-  min-width: 0;
-}
-body.tmpl-4 .tmpl4-sb-title {
-  font-size: 10pt;
-  font-weight: 900;
-  color: #fff;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  margin: 0 auto 4mm;
-  letter-spacing: 0.2em;
-  border-bottom: 1px solid rgba(255,255,255,0.3);
+/* 上部フル幅エリア */
+body.tmpl-4 .tmpl4-top {
+  width: 100%;
+  border-bottom: 2px solid #1a237e;
   padding-bottom: 3mm;
+  margin-bottom: 3mm;
 }
-body.tmpl-4 .tmpl4-sb-item {
-  background: rgba(255,255,255,0.15);
-  border-radius: 5px;
-  padding: 2mm 2mm;
-  text-align: center;
-  font-size: 6pt;
-  line-height: 1.4;
-  margin-bottom: 1.5mm;
+/* 下部2カラムエリア */
+body.tmpl-4 .tmpl4-bottom {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  min-height: 0;
 }
-body.tmpl-4 .tmpl4-sb-item-label {
-  font-size: 5pt;
-  color: rgba(255,255,255,0.7);
-  margin-bottom: 0.5mm;
+/* 左グラフ列 */
+body.tmpl-4 .tmpl4-graph-col {
+  width: 38mm;
+  flex-shrink: 0;
+  border-right: 1.5px solid #1a237e;
+  padding: 3mm 3mm 3mm 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  background: #f8f9ff;
 }
-body.tmpl-4 .tmpl4-sb-item-value {
+body.tmpl-4 .tmpl4-graph-col-title {
   font-size: 7pt;
   font-weight: 700;
-  color: #fff;
+  color: #1a237e;
+  text-align: center;
+  letter-spacing: 0.08em;
+  padding-bottom: 2mm;
+  border-bottom: 1px solid #c5cae9;
 }
-/* 目標達成テーブル in サイドバー */
-body.tmpl-4 .tmpl4-goal-section {
-  margin-top: 2mm;
-  flex: 1;
+body.tmpl-4 .tmpl4-graph-item {
   display: flex;
   flex-direction: column;
-  gap: 2mm;
+  gap: 1mm;
 }
-body.tmpl-4 .tmpl4-goal-label {
-  font-size: 5.5pt;
+body.tmpl-4 .tmpl4-graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+body.tmpl-4 .tmpl4-graph-label {
+  font-size: 6.5pt;
+  color: #5f6368;
+}
+body.tmpl-4 .tmpl4-graph-value {
+  font-size: 8pt;
   font-weight: 700;
-  color: rgba(255,255,255,0.85);
-  background: rgba(255,255,255,0.2);
-  padding: 1.5mm 2mm;
-  border-radius: 4px;
-  letter-spacing: 0.05em;
+  color: #1a237e;
 }
-body.tmpl-4 .tmpl4-goal-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 5.5pt;
-}
-body.tmpl-4 .tmpl4-goal-table td {
-  padding: 1.5mm 1.5mm;
-  border-bottom: 1px solid rgba(255,255,255,0.15);
-  color: #fff;
-  vertical-align: middle;
-}
-body.tmpl-4 .tmpl4-goal-table td:first-child {
-  color: rgba(255,255,255,0.7);
-  width: 7mm;
-}
-body.tmpl-4 .tmpl4-goal-table td:last-child {
-  text-align: center;
-  width: 9mm;
-  font-weight: 700;
+body.tmpl-4 .tmpl4-graph-change {
   font-size: 6pt;
+  color: #34a853;
 }
-body.tmpl-4 .tmpl4-ach-done { color: #69f0ae !important; }
-body.tmpl-4 .tmpl4-ach-fail { color: #ff8a80 !important; }
-body.tmpl-4 .tmpl4-ach-cont { color: #e3d0ff !important; }
-body.tmpl-4 .rep-header { border-bottom: 2px solid #5e35b1; margin-bottom: 3mm; padding-bottom: 2mm; }
-body.tmpl-4 .rep-header-title { color: #5e35b1; font-size: 12pt; }
-body.tmpl-4 .rep-care-badge { background: #5e35b1; }
-body.tmpl-4 .rep-goal-title { background: #5e35b1; }
-body.tmpl-4 .rep-twocol-title { background: #4527a0; }
-body.tmpl-4 .rep-monitoring-title { background: #4527a0; }
-body.tmpl-4 .rep-fitness-title { border-left-color: #5e35b1; }
-body.tmpl-4 .rep-special-label { border-left-color: #5e35b1; }
-body.tmpl-4 .ach-cont { color: #5e35b1; }
-body.tmpl-4 .rep-fitness-chart-value { color: #5e35b1; }
-body.tmpl-4 .rep-info-row { display: none; } /* サイドバーに移動するため非表示 */
-body.tmpl-4 .rep-goals-row { display: none; } /* サイドバーに移動したため非表示 */
-body.tmpl-4 .rep-patient-row { background: #ede7f6; border-color: #b39ddb; }
+body.tmpl-4 .tmpl4-graph-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 6pt;
+  color: #aaa;
+}
+body.tmpl-4 canvas.mini-chart {
+  width: 100% !important;
+  height: 30px !important;
+}
+/* 右テキスト列 */
+body.tmpl-4 .tmpl4-text-col {
+  flex: 1;
+  padding: 3mm 0 3mm 4mm;
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 上部エリアの各パーツ */
+body.tmpl-4 .rep-header { border-bottom: none; margin-bottom: 3mm; padding-bottom: 0; }
+body.tmpl-4 .rep-header-title { color: #1a237e; font-size: 13pt; font-weight: 900; }
+body.tmpl-4 .rep-info-row { margin-bottom: 2mm; }
+body.tmpl-4 .rep-caremanager-box { border: 1px solid #1a237e; border-radius: 3px; }
+body.tmpl-4 .rep-cm-office { color: #1a237e; }
+body.tmpl-4 .rep-patient-row { background: #e8eaf6; border-color: #c5cae9; border-radius: 3px; margin-bottom: 2mm; }
+body.tmpl-4 .rep-care-badge { background: #1a237e; border-radius: 2px; }
+body.tmpl-4 .rep-goals-row { margin-bottom: 0; }
+body.tmpl-4 .rep-goal-title { background: #1a237e; border-radius: 2px 2px 0 0; }
+body.tmpl-4 .rep-goal-table th { background: #e8eaf6; }
+/* 下部右カラム用 */
+body.tmpl-4 .rep-twocol { margin-bottom: 2mm; }
+body.tmpl-4 .rep-twocol-title { background: #283593; }
+body.tmpl-4 .rep-twocol-body { min-height: 12mm; }
+body.tmpl-4 .rep-monitoring-title { background: #37474f; border-radius: 2px 2px 0 0; }
+body.tmpl-4 .rep-monitoring-table { margin-bottom: 2mm; }
+body.tmpl-4 .rep-monitoring-table td:first-child { background: #e8eaf6; }
+body.tmpl-4 .rep-fitness-title { display: none; } /* グラフ列で代替 */
+body.tmpl-4 .rep-fitness-charts { display: none; } /* グラフ列で代替 */
+body.tmpl-4 .rep-special-label { border-left-color: #1a237e; }
+body.tmpl-4 .ach-cont { color: #1a237e; }
+body.tmpl-4 .rep-fitness-chart-value { color: #1a237e; }
 body.tmpl-4 .page-number { right: 4mm; bottom: 4mm; }
 
 /* ===================================================================
    テンプレート5: ウォーム
+
    深いテラコッタ・左アクセントライン・手書き風セクション区切り
    =================================================================== */
 body.tmpl-5 {
@@ -557,74 +557,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 
 <div class="report-page" id="page-{{ loop.index }}">
     {% if tmpl == 4 %}
-    <!-- テンプレート4: サイドバー（目標達成付き） -->
-    <div class="tmpl4-sidebar">
-        <div class="tmpl4-sb-title">報　告　書</div>
-        <!-- 基本情報 -->
-        <div class="tmpl4-sb-item">
-            <div class="tmpl4-sb-item-label">利用者</div>
-            <div class="tmpl4-sb-item-value">{{ p.user_name or '' }}</div>
-        </div>
-        <div class="tmpl4-sb-item">
-            <div class="tmpl4-sb-item-label">介護度　担当CM</div>
-            <div class="tmpl4-sb-item-value">{{ cm.care_level or '未設定' }}　{{ cm.care_manager_name or '未設定' }}</div>
-        </div>
-        <div class="tmpl4-sb-item">
-            <div class="tmpl4-sb-item-label">{{ year_month | replace('-', '.') }}　{{ my_name }}</div>
-        </div>
-        <!-- 目標達成状況 -->
-        <div class="tmpl4-goal-section">
-            <div class="tmpl4-goal-label">📋 短期目標 達成状況</div>
-            <table class="tmpl4-goal-table">
-                <tr>
-                    <td>機能</td>
-                    <td>{{ ev.get('short_goal_function', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('short_ach_function') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('short_ach_function') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('short_ach_function', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-                <tr>
-                    <td>活動</td>
-                    <td>{{ ev.get('short_goal_activity', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('short_ach_activity') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('short_ach_activity') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('short_ach_activity', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-                <tr>
-                    <td>参加</td>
-                    <td>{{ ev.get('short_goal_participation', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('short_ach_participation') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('short_ach_participation') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('short_ach_participation', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-            </table>
-            <div class="tmpl4-goal-label" style="margin-top:2mm;">📋 長期目標 達成状況</div>
-            <table class="tmpl4-goal-table">
-                <tr>
-                    <td>機能</td>
-                    <td>{{ ev.get('long_goal_function', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('long_ach_function') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('long_ach_function') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('long_ach_function', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-                <tr>
-                    <td>活動</td>
-                    <td>{{ ev.get('long_goal_activity', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('long_ach_activity') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('long_ach_activity') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('long_ach_activity', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-                <tr>
-                    <td>参加</td>
-                    <td>{{ ev.get('long_goal_participation', '') if ev else '' }}</td>
-                    <td class="{% if ev and ev.get('long_ach_participation') == '達成' %}tmpl4-ach-done{% elif ev and ev.get('long_ach_participation') == '未達成' %}tmpl4-ach-fail{% else %}tmpl4-ach-cont{% endif %}">
-                        {{ ev.get('long_ach_participation', '継続') if ev else '継続' }}
-                    </td>
-                </tr>
-            </table>
-        </div>
-    </div>
-    <div class="tmpl4-main">
+    <!-- テンプレート4: 分割レイアウト 上部フル幅 / 下部グラフ左＋テキスト右 -->
+    <div class="tmpl4-top">
     {% endif %}
     <!-- ヘッダー -->
     <div class="rep-header">
@@ -716,6 +650,78 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             </table>
         </div>
     </div>
+    {% endif %}
+
+    {% if tmpl == 4 %}
+    </div><!-- /tmpl4-top -->
+    <div class="tmpl4-bottom">
+      <!-- 左: グラフ列 -->
+      <div class="tmpl4-graph-col">
+        <div class="tmpl4-graph-col-title">体力測定の推移</div>
+        {% set show_weight = items.get('weight', true) %}
+        {% set show_grip = items.get('grip', true) %}
+        {% set show_tug = items.get('tug', true) %}
+        {% set show_cs30 = items.get('cs30', true) %}
+        {% if weights and show_weight %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">体重(kg)</span>
+            <span class="tmpl4-graph-value">{% if weights %}{{ weights[-1].weight_kg }}{% endif %}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-weight-{{ loop.index }}"></canvas>
+          <div class="tmpl4-graph-range">
+            <span>{% if weights|length >= 2 %}{{ weights[0].weight_kg }}{% endif %}</span>
+            <span>→</span>
+            <span>{% if weights %}{{ weights[-1].weight_kg }}{% endif %}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if fitness %}
+        {% set last_fit = fitness[-1] %}
+        {% set first_fit = fitness[0] %}
+        {% if last_fit.get('grip_right') and show_grip %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">握力右(kg)</span>
+            <span class="tmpl4-graph-value">{{ last_fit.grip_right }}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-grip-{{ loop.index }}"></canvas>
+          <div class="tmpl4-graph-range">
+            <span>{{ first_fit.grip_right }}</span><span>→</span><span>{{ last_fit.grip_right }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if last_fit.get('tug_sec') and show_tug %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">TUG(秒)</span>
+            <span class="tmpl4-graph-value">{{ last_fit.tug_sec }}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-tug-{{ loop.index }}"></canvas>
+          <div class="tmpl4-graph-range">
+            <span>{{ first_fit.tug_sec }}</span><span>↓良</span><span>{{ last_fit.tug_sec }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if last_fit.get('sit_stand_30sec') and show_cs30 %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">CS-30(回)</span>
+            <span class="tmpl4-graph-value">{{ last_fit.sit_stand_30sec }}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-cs30-{{ loop.index }}"></canvas>
+          <div class="tmpl4-graph-range">
+            <span>{{ first_fit.sit_stand_30sec }}</span><span>→</span><span>{{ last_fit.sit_stand_30sec }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% if not weights and not fitness %}
+        <div style="font-size:6pt;color:#aaa;text-align:center;padding:4mm 0;">データなし</div>
+        {% endif %}
+      </div><!-- /tmpl4-graph-col -->
+      <!-- 右: テキスト列 -->
+      <div class="tmpl4-text-col">
     {% endif %}
 
     <!-- 訓練による変化・課題 -->
@@ -856,7 +862,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% endif %}
 
     <div class="page-number">{{ loop.index }} / {{ report_data_list | length }}</div>
-    {% if tmpl == 4 %}</div>{% endif %}
+    {% if tmpl == 4 %}</div></div>{% endif %}
 </div>
 {% endfor %}
 </div>
@@ -1012,6 +1018,39 @@ chartData.forEach(function(rd, idx) {
         }
     });
 });
+
+// ===== テンプレート4: グラフ列のミニグラフ描画 =====
+if (document.body.classList.contains('tmpl-4')) {
+    chartData.forEach(function(rd, idx) {
+        var n = idx + 1;
+        var accentColor = '#1a237e';
+        var chartOpts = { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false };
+        if (rd.weights && rd.weights.length > 1) {
+            var el = document.getElementById('tmpl4-chart-weight-' + n);
+            if (el) new Chart(el, { type: 'line', data: {
+                labels: rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.weights.map(function(w){ return w.weight_kg; }), borderColor: accentColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: chartOpts });
+        }
+        if (rd.fitness && rd.fitness.length > 1) {
+            var gEl = document.getElementById('tmpl4-chart-grip-' + n);
+            if (gEl) new Chart(gEl, { type: 'line', data: {
+                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.fitness.map(function(f){ return f.grip_right; }), borderColor: '#2e7d32', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: chartOpts });
+            var tEl = document.getElementById('tmpl4-chart-tug-' + n);
+            if (tEl) new Chart(tEl, { type: 'line', data: {
+                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.fitness.map(function(f){ return f.tug_sec; }), borderColor: '#1565c0', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: chartOpts });
+            var cEl = document.getElementById('tmpl4-chart-cs30-' + n);
+            if (cEl) new Chart(cEl, { type: 'line', data: {
+                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
+                datasets: [{ data: rd.fitness.map(function(f){ return f.sit_stand_30sec; }), borderColor: '#e65100', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
+            }, options: chartOpts });
+        }
+    });
+}
 </script>
 </body>
 </html>
