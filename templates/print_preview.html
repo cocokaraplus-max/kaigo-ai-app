@@ -661,6 +661,29 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
 </div>
 
+
+<div id="pp-loading" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#f8f9fa;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.5s;">
+    <img src="/static/tasukaru_hashiru.png" style="width:120px;margin-bottom:20px;animation:ppRun 0.6s steps(1) infinite;" alt="loading">
+    <div style="font-size:1rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">書類を準備しています...</div>
+    <div style="font-size:0.85rem;color:#5f6368;" id="pp-loading-msg">モニタリングデータを生成中です。少々お待ちください。</div>
+</div>
+<style>
+@keyframes ppRun {
+    0% { transform: translateX(0); }
+    25% { transform: translateX(8px); }
+    50% { transform: translateX(0); }
+    75% { transform: translateX(-8px); }
+}
+</style>
+<script>
+window.addEventListener('load', function() {
+    var loader = document.getElementById('pp-loading');
+    if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(function() { loader.style.display = 'none'; }, 500);
+    }
+});
+</script>
 <div class="pages-wrap">
 {% for rd in report_data_list %}
 {% set p = rd.patient %}
