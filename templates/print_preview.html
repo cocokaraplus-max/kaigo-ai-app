@@ -542,7 +542,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
     <div class="screen-bar-btns">
         <button class="btn-print-now" onclick="window.print()">印刷 / PDF保存</button>
-        <button class="btn-close" onclick="window.close()">閉じる</button>
+        <button class="btn-close" onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}">閉じる</button>
     </div>
 </div>
 
