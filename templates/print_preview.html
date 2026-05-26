@@ -313,7 +313,7 @@ body.mono .ach-fail { color: #000 !important; font-style: italic; }
 }
 </style>
 </head>
-<body class="{% set tmpl_class = 'tmpl-' ~ (template|string) if template and template != '1' else '' %}{{ 'mono' if style == 'mono' else 'color' }} {{ tmpl_class }}">
+<body class="{% set tmpl_class = 'tmpl-' ~ (tmpl|string) if tmpl and tmpl != 1 else '' %}{{ 'mono' if style == 'mono' else 'color' }} {{ tmpl_class }}">
 
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
