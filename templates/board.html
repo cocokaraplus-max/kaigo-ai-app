@@ -557,6 +557,24 @@ body.modal-open .bottom-nav {
 .post-detail-images img {
     width: 100%; border-radius: 10px;
     aspect-ratio: 1; object-fit: cover; cursor: pointer;
+    display: block;
+}
+/* 拡大バッジラッパー */
+.pd-img-wrap {
+    position: relative; display: block; cursor: pointer;
+}
+.pd-img-zoom-badge {
+    position: absolute; right: 8px; bottom: 8px;
+    background: rgba(0,0,0,0.58); color: #fff;
+    border-radius: 16px; padding: 4px 10px 4px 7px;
+    font-size: 0.73rem; font-weight: 700;
+    display: flex; align-items: center; gap: 3px;
+    pointer-events: none;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+.pd-img-zoom-badge .material-symbols-outlined {
+    font-size: 15px; line-height: 1;
 }
 .post-detail-audio {
     margin: 0 16px 14px;
@@ -2834,7 +2852,13 @@ window.showPostDetail = function(postId) {
         var cls = n === 1 ? 'count-1' : (n === 2 ? 'count-2' : 'count-many');
         var imgsHtml = '<div class="post-detail-images ' + cls + '">';
         post.image_urls.forEach(function(u) {
-            imgsHtml += '<img src="' + u + '" loading="lazy" onclick="event.stopPropagation();openImageViewer(\'' + u.replace(/'/g, "\\'") + '\')">';
+            var safeU = u.replace(/'/g, "\'");
+            imgsHtml += '<div class="pd-img-wrap" onclick="event.stopPropagation();openImageViewer(\'' + safeU + '\')">'
+                + '<img src="' + u + '" loading="lazy">'
+                + '<span class="pd-img-zoom-badge">'
+                + '<span class="material-symbols-outlined">zoom_in</span>全体を確認'
+                + '</span>'
+                + '</div>';
         });
         imgsHtml += '</div>';
         imgContainer.innerHTML = imgsHtml;
