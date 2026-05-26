@@ -1259,7 +1259,7 @@
             <span class="material-symbols-outlined">person</span>
             {{ user }} 様
             {% set ns = namespace(has_photo=false) %}
-            {% for r in records[user] %}
+            {% for r in records[user].normal_records %}
                 {% if r.image_urls %}{% set ns.has_photo = true %}{% endif %}
             {% endfor %}
             {% if ns.has_photo %}
