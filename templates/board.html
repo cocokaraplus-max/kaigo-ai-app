@@ -459,6 +459,20 @@
     font-size: 0.8rem; font-weight: 800;
     pointer-events: none;
 }
+/* サムネイル左下の「全体を確認」バッジ */
+.post-thumb-zoom-badge {
+    position: absolute; left: 20px; bottom: 16px;
+    background: rgba(0,0,0,0.58); color: #fff;
+    border-radius: 16px; padding: 4px 10px 4px 7px;
+    font-size: 0.73rem; font-weight: 700;
+    display: flex; align-items: center; gap: 3px;
+    pointer-events: none;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+.post-thumb-zoom-badge .material-symbols-outlined {
+    font-size: 15px; line-height: 1;
+}
 
 /* 音声 */
 .post-audio {
@@ -998,6 +1012,9 @@ body.modal-open .bottom-nav {
         {% if post.image_urls|length > 1 %}
         <div class="post-thumb-overlay">+{{ post.image_urls|length - 1 }}</div>
         {% endif %}
+        <span class="post-thumb-zoom-badge">
+            <span class="material-symbols-outlined">zoom_in</span>全体を確認
+        </span>
     </div>
     {% endif %}
 
