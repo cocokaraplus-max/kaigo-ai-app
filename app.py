@@ -9083,6 +9083,7 @@ def print_output():
         patients=patients_list,
         my_name=my_name,
         is_admin=is_admin,
+        f_code=f_code,
     )
 
 

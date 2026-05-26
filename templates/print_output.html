@@ -171,6 +171,30 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                     </div>
                     <div class="tmpl-name">パープル</div>
                 </div>
+                <div class="po-tmpl-card" data-tmpl="11" onclick="poSetTemplate(11)">
+                    <div class="tmpl-thumb" style="background:#e1f5ee;border:1.5px solid #0f6e56;">
+                        <div style="height:6px;background:#0f6e56;border-radius:1px;"></div>
+                        <div style="height:3px;background:#9fe1cb;border-radius:1px;margin-top:2px;"></div>
+                        <div style="height:3px;background:#d4edda;width:70%;border-radius:1px;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">ティール</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="12" onclick="poSetTemplate(12)">
+                    <div class="tmpl-thumb" style="background:#faeeda;border:2px solid #854f0b;">
+                        <div style="height:4px;border-bottom:2px solid #854f0b;margin-bottom:2px;"></div>
+                        <div style="height:3px;background:#fac775;border-radius:1px;"></div>
+                        <div style="height:3px;background:#faeeda;width:70%;border-radius:1px;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">アンバー</div>
+                </div>
+                <div class="po-tmpl-card po-tmpl-coco" data-tmpl="cocokaraplus" onclick="poSetTemplate('cocokaraplus')" style="display:none;">
+                    <div class="tmpl-thumb" style="background:#f0f7ff;border:1.5px solid #1a73e8;">
+                        <div style="height:3px;border-bottom:2px solid #1a73e8;margin-bottom:3px;"></div>
+                        <div style="height:3px;background:#dbeafe;border-radius:1px;"></div>
+                        <div style="height:3px;background:#f0f7ff;width:70%;border-radius:1px;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">cocokaraplus</div>
+                </div>
             </div>
         </div>
         <!-- グラフスタイル選択 -->
@@ -269,7 +293,9 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 
 <script>
 var poPrintStyle = 'color';
-var poTemplate = parseInt(localStorage.getItem('po_template') || '1');
+var poTemplate = localStorage.getItem('po_template') || '1';
+if (!isNaN(poTemplate)) poTemplate = parseInt(poTemplate);
+var fCode = '{{ f_code }}';
 var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
@@ -309,8 +335,14 @@ var poPatients = {{ patients | tojson }};
         if (el) el.classList.toggle('on', poCats[k]);
     });
     poLoadCheck();
+    if (fCode === 'cocokaraplus-5526') {
+        var cocoCard = document.querySelector('.po-tmpl-coco');
+        if (cocoCard) cocoCard.style.display = '';
+    }
     document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.tmpl) === poTemplate);
+        var val = el.dataset.tmpl;
+        var isNum = !isNaN(val);
+        el.classList.toggle('on', isNum ? parseInt(val) === poTemplate : val === poTemplate);
     });
     document.querySelectorAll('.po-graph-card').forEach(function(el) {
         el.classList.toggle('on', parseInt(el.dataset.graph) === poChartStyle);

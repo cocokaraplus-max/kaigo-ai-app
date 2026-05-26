@@ -81,15 +81,36 @@ canvas.mini-chart { width: 100% !important; height: 40px !important; }
    CSS変数デフォルト (テンプレート1: スタンダード / 青・テーブル形式)
    =================================================================== */
 body {
-  --accent: #1a73e8;
-  --accent2: #1557b0;
-  --patient-bg: #f0f7ff;
-  --patient-border: #c5dcf8;
-  --th-bg: #dbeafe;
-  --mon-header-bg: #1a73e8;
-  --radius: 4px;
-  --radius-sm: 3px;
+  --accent: #444441;
+  --accent2: #2c2c2a;
+  --patient-bg: #f5f5f5;
+  --patient-border: #d3d1c7;
+  --th-bg: #e8e8e6;
+  --mon-header-bg: #444441;
+  --radius: 2px;
+  --radius-sm: 2px;
 }
+/* テンプレート1: グレー・コンパクト2段 */
+body.color .rep-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+body.color .rep-header-title { color: #fff; background: #444441; padding: 4mm 6mm; display: block; font-size: 12pt; letter-spacing: 0.1em; margin: -12mm -12mm 3mm -12mm; }
+body.color .rep-header-date { color: #888; font-size: 7.5pt; }
+body.color .rep-info-row { background: #f5f5f5; padding: 2mm 0; margin-bottom: 2mm; border-bottom: 1px solid #ddd; }
+body.color .rep-caremanager-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
+body.color .rep-facility-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
+body.color .rep-cm-office { color: #444441; font-weight: 700; }
+body.color .rep-patient-row { background: #f5f5f5; border-left: 4px solid #444441; border-top: none; border-right: none; border-bottom: none; border-radius: 0; }
+body.color .rep-care-badge { background: #444441; border-radius: 2px; }
+body.color .rep-goal-title { background: #444441; border-radius: 0; }
+body.color .rep-goal-table th { background: #e8e8e6; color: #2c2c2a; }
+body.color .rep-goal-table tr:nth-child(even) td { background: #f5f5f5; }
+body.color .rep-twocol-box { border: 1px solid #ccc; border-radius: 0; }
+body.color .rep-twocol-title { background: #444441; border-radius: 0; }
+body.color .rep-monitoring-title { background: #444441; border-radius: 0; }
+body.color .rep-monitoring-table td:first-child { background: #f5f5f5; font-weight: 700; }
+body.color .rep-fitness-title { border-left: 3px solid #444441; }
+body.color .rep-special-label { border-left: 3px solid #444441; }
+body.color .rep-fitness-chart-value { color: #444441; font-weight: 700; }
+body.color .ach-cont { color: #444441; font-weight: 700; }
 
 /* ===================================================================
    テンプレート2: ナチュラル
@@ -501,6 +522,98 @@ body.tmpl-10 .rep-fitness-chart-box { border: 1px solid #ce93d8; background: #fc
 body.tmpl-10 .rep-fitness-chart-value { color: #6a1b9a; font-weight: 900; }
 body.tmpl-10 .ach-cont { color: #6a1b9a; }
 
+
+/* ===================================================================
+   テンプレート11: ティール
+   緑系・左ボーダーライン・ヘッダー帯
+   =================================================================== */
+body.tmpl-11 {
+  --accent: #0f6e56;
+  --accent2: #085041;
+  --patient-bg: #e1f5ee;
+  --patient-border: #9fe1cb;
+  --th-bg: #d4edda;
+  --mon-header-bg: #0f6e56;
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+body.tmpl-11 .rep-header { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+body.tmpl-11 .rep-header-title { background: #0f6e56; color: #fff; padding: 4mm 6mm; display: block; font-size: 12pt; margin: -12mm -12mm 3mm -12mm; }
+body.tmpl-11 .rep-header-date { color: #555; }
+body.tmpl-11 .rep-caremanager-box { border: none; border-left: 3px solid #0f6e56; border-radius: 0; background: #f0faf6; padding-left: 4mm; }
+body.tmpl-11 .rep-facility-box { border: 1px solid #9fe1cb; border-radius: 3px; background: #fff; }
+body.tmpl-11 .rep-cm-office { color: #0f6e56; font-weight: 700; }
+body.tmpl-11 .rep-patient-row { background: #e1f5ee; border: 1px solid #9fe1cb; border-radius: 3px; }
+body.tmpl-11 .rep-care-badge { background: #0f6e56; border-radius: 2px; }
+body.tmpl-11 .rep-goal-title { background: #0f6e56; }
+body.tmpl-11 .rep-goal-table th { background: #d4edda; color: #085041; }
+body.tmpl-11 .rep-goal-table tr:nth-child(even) td { background: #f0faf6; }
+body.tmpl-11 .rep-twocol-box { border: 1px solid #9fe1cb; }
+body.tmpl-11 .rep-twocol-title { background: #0f6e56; }
+body.tmpl-11 .rep-monitoring-title { background: #085041; }
+body.tmpl-11 .rep-monitoring-table td:first-child { background: #e1f5ee; color: #085041; }
+body.tmpl-11 .rep-fitness-title { border-left: 3px solid #0f6e56; }
+body.tmpl-11 .rep-special-label { border-left: 3px solid #0f6e56; }
+body.tmpl-11 .rep-fitness-chart-value { color: #0f6e56; }
+body.tmpl-11 .ach-cont { color: #0f6e56; }
+
+/* ===================================================================
+   テンプレート12: アンバー
+   茶系・英字サブタイトル・コンパクト目標
+   =================================================================== */
+body.tmpl-12 {
+  --accent: #854f0b;
+  --accent2: #633806;
+  --patient-bg: #faeeda;
+  --patient-border: #fac775;
+  --th-bg: #faeeda;
+  --mon-header-bg: #854f0b;
+  --radius: 2px;
+  --radius-sm: 2px;
+}
+body.tmpl-12 .report-page { border: 2px solid #854f0b; }
+body.tmpl-12 .rep-header { border-bottom: 2px solid #854f0b; padding-bottom: 3mm; margin-bottom: 3mm; }
+body.tmpl-12 .rep-header-title { color: #412402; font-size: 13pt; }
+body.tmpl-12 .rep-header-date { color: #888; }
+body.tmpl-12 .rep-caremanager-box { border: none; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 2mm 0; background: none; }
+body.tmpl-12 .rep-facility-box { border: none; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 2mm 0; padding-left: 4mm; border-left: 1px solid #ddd; background: none; }
+body.tmpl-12 .rep-cm-office { color: #854f0b; font-weight: 700; }
+body.tmpl-12 .rep-patient-row { background: #faeeda; border: none; border-left: 4px solid #854f0b; border-radius: 0; padding: 3mm 4mm; }
+body.tmpl-12 .rep-care-badge { background: #854f0b; border-radius: 2px; }
+body.tmpl-12 .rep-goal-title { background: #854f0b; border-radius: 2px 2px 0 0; }
+body.tmpl-12 .rep-goal-table th { background: #faeeda; color: #633806; }
+body.tmpl-12 .rep-twocol-box { border: 1px solid #fac775; border-top: 2px solid #854f0b; border-radius: 0; }
+body.tmpl-12 .rep-twocol-title { background: #854f0b; }
+body.tmpl-12 .rep-monitoring-title { background: #633806; }
+body.tmpl-12 .rep-monitoring-table td:first-child { background: #faeeda; color: #633806; font-weight: 700; }
+body.tmpl-12 .rep-fitness-title { border-left: 3px solid #854f0b; }
+body.tmpl-12 .rep-special-label { border-left: 3px solid #854f0b; }
+body.tmpl-12 .rep-fitness-chart-value { color: #854f0b; }
+body.tmpl-12 .ach-cont { color: #854f0b; }
+
+/* ===================================================================
+   テンプレート cocokaraplus: 旧スタンダード（青）弊社専用
+   =================================================================== */
+body.tmpl-cocokaraplus {
+  --accent: #1a73e8;
+  --accent2: #1557b0;
+  --patient-bg: #f0f7ff;
+  --patient-border: #c5dcf8;
+  --th-bg: #dbeafe;
+  --mon-header-bg: #1a73e8;
+  --radius: 4px;
+  --radius-sm: 3px;
+}
+body.tmpl-cocokaraplus .rep-header { border-bottom: 2px solid #1a73e8; margin-bottom: 4mm; padding-bottom: 3mm; }
+body.tmpl-cocokaraplus .rep-header-title { color: #1a73e8; font-size: 14pt; font-weight: 900; }
+body.tmpl-cocokaraplus .rep-caremanager-box { border: 1.5px solid #1a73e8; border-radius: 4px; }
+body.tmpl-cocokaraplus .rep-cm-office { color: #1a73e8; }
+body.tmpl-cocokaraplus .rep-goal-title { background: #1a73e8; }
+body.tmpl-cocokaraplus .rep-twocol-title { background: #1557b0; }
+body.tmpl-cocokaraplus .rep-fitness-title { border-left-color: #1a73e8; }
+body.tmpl-cocokaraplus .rep-special-label { border-left-color: #1a73e8; }
+body.tmpl-cocokaraplus .ach-cont { color: #1a73e8; }
+body.tmpl-cocokaraplus .rep-fitness-chart-value { color: #1a73e8; }
 /* ===================================================================
    モノクロ上書き (全テンプレート共通)
    =================================================================== */
@@ -536,7 +649,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 }
 </style>
 </head>
-<body class="{% set tmpl_class = 'tmpl-' ~ (tmpl|string) if tmpl and tmpl != 1 else '' %}{{ 'mono' if style == 'mono' else 'color' }} {{ tmpl_class }}">
+<body class="{% if tmpl and tmpl != 1 %}{% if tmpl == 'cocokaraplus' %}tmpl-cocokaraplus{% else %}tmpl-{{ tmpl }}{% endif %}{% endif %} {{ 'mono' if style == 'mono' else 'color' }}">
 
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
