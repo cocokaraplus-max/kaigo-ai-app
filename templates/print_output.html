@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}書類出力 - TASUKARU{% endblock %}
+{% block nav_print_output %}active{% endblock %}
+{% block content %}
+<style>
+.po-wrap { max-width: 800px; margin: 0 auto; padding: 16px 12px 120px; }
+.po-page-title { font-size: 1.1rem; font-weight: 800; color: #202124; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.po-card { background: #fff; border-radius: 14px; border: 1px solid #e0e0e0; padding: 16px; margin-bottom: 14px; }
+.po-section-title { font-size: 0.85rem; font-weight: 700; color: #1a73e8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.po-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.po-label { font-size: 0.8rem; color: #5f6368; min-width: 80px; }
+select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; border: 1px solid #e0e0e0; background: #f8f9fa; }
+.po-toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.po-toggle-btn { padding: 8px 10px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: #f8f9fa; font-size: 0.78rem; font-weight: 700; color: #5f6368; cursor: pointer; text-align: center; transition: all 0.15s; }
+.po-toggle-btn.on { background: #e8f4ff; border-color: #1a73e8; color: #1a73e8; }
+.po-check-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.po-check-table th { background: #f8f9fa; padding: 8px 6px; text-align: center; font-weight: 700; color: #5f6368; border-bottom: 2px solid #e0e0e0; }
+.po-check-table td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #f1f3f4; }
+.po-check-table td:first-child { text-align: left; font-weight: 500; }
+.po-check-table tr:hover { background: #f8f9fa; }
+.status-ok { color: #34a853; font-size: 1rem; font-weight: 700; }
+.status-ng { color: #ea4335; font-size: 1rem; }
+.status-warn { color: #f57c00; font-size: 1rem; }
+.po-btn-primary { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 12px; font-size: 0.95rem; font-weight: 700; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.po-btn-secondary { width: 100%; padding: 12px; background: #f8f9fa; color: #3c4043; border: 1.5px solid #e0e0e0; border-radius: 12px; font-size: 0.88rem; font-weight: 700; cursor: pointer; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.po-style-toggle { display: flex; gap: 8px; flex: 1; }
+.po-style-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: #f8f9fa; font-size: 0.82rem; font-weight: 700; color: #5f6368; cursor: pointer; text-align: center; }
+.po-style-btn.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+.loading-row { text-align: center; color: #9aa0a6; font-size: 0.8rem; padding: 16px; }
+.po-check-row-ok { background: #f0fff4; }
+</style>
+
+<div class="po-wrap">
+    <div class="po-page-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">print</span>
+        書類出力
+    </div>
+
+    <!-- 期間選択 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">calendar_month</span>
+            対象期間
+        </div>
+        <div class="po-row">
+            <span class="po-label">対象年月</span>
+            <select class="po-select" id="po-year-month" onchange="poLoadCheck()"></select>
+        </div>
+    </div>
+
+    <!-- 印刷設定 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">tune</span>
+            印刷設定
+        </div>
+        <div class="po-row">
+            <span class="po-label">スタイル</span>
+            <div class="po-style-toggle">
+                <button class="po-style-btn on" id="style-color" onclick="poSetStyle('color')">カラー</button>
+                <button class="po-style-btn" id="style-mono" onclick="poSetStyle('mono')">モノクロ</button>
+            </div>
+        </div>
+        <div class="po-row">
+            <span class="po-label">印刷順序</span>
+            <select class="po-select" id="po-sort-order">
+                <option value="name">利用者名順（あいうえお）</option>
+                <option value="caremanager">ケアマネ事業所順</option>
+            </select>
+        </div>
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
+                印刷項目
+            </div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-monitoring" onclick="poToggleItem('monitoring')">モニタリング</button>
+                <button class="po-toggle-btn on" id="tog-evaluation" onclick="poToggleItem('evaluation')">訓練による変化・課題</button>
+                <button class="po-toggle-btn on" id="tog-goals" onclick="poToggleItem('goals')">目標達成状況</button>
+                <button class="po-toggle-btn on" id="tog-fitness" onclick="poToggleItem('fitness')">体力測定の推移</button>
+                <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
+                <button class="po-toggle-btn on" id="tog-satisfaction" onclick="poToggleItem('satisfaction')">満足度</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- データ充足チェック表 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">fact_check</span>
+            データ充足チェック
+            <span id="po-check-summary" style="margin-left:auto;font-size:0.75rem;color:#5f6368;font-weight:400;"></span>
+        </div>
+        <div id="po-check-table-wrap">
+            <div class="loading-row">年月を選択してください</div>
+        </div>
+    </div>
+
+    <!-- 印刷ボタン -->
+    <button class="po-btn-primary" onclick="poPrintAll()">
+        <span class="material-symbols-outlined" style="font-size:20px;">print</span>
+        全員一括印刷 / PDF保存
+    </button>
+    <button class="po-btn-secondary" onclick="poPreviewAll()">
+        <span class="material-symbols-outlined" style="font-size:18px;">preview</span>
+        プレビューで確認
+    </button>
+</div>
+
+<script>
+var poPrintStyle = 'color';
+var poItems = { monitoring: true, evaluation: true, goals: true, fitness: true, special: true, satisfaction: true };
+var poCheckData = [];
+var poPatients = {{ patients | tojson }};
+
+(function() {
+    var sel = document.getElementById('po-year-month');
+    var now = new Date();
+    for (var i = 0; i < 12; i++) {
+        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+        var lbl = d.getFullYear() + '年' + (d.getMonth()+1) + '月';
+        var opt = document.createElement('option');
+        opt.value = val; opt.textContent = lbl;
+        if (i === 1) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    poLoadCheck();
+})();
+
+function poSetStyle(s) {
+    poPrintStyle = s;
+    document.getElementById('style-color').classList.toggle('on', s === 'color');
+    document.getElementById('style-mono').classList.toggle('on', s === 'mono');
+}
+
+function poToggleItem(key) {
+    poItems[key] = !poItems[key];
+    document.getElementById('tog-' + key).classList.toggle('on', poItems[key]);
+}
+
+async function poLoadCheck() {
+    var ym = document.getElementById('po-year-month').value;
+    var wrap = document.getElementById('po-check-table-wrap');
+    wrap.innerHTML = '<div class="loading-row">データ確認中...</div>';
+    try {
+        var results = await Promise.all(poPatients.map(async function(p) {
+            try {
+                var res = await fetch('/api/monitoring_report_data?user_name=' + encodeURIComponent(p.user_name) + '&year_month=' + ym);
+                var data = await res.json();
+                return { patient: p, data: data };
+            } catch(e) { return { patient: p, data: {} }; }
+        }));
+        poCheckData = results;
+        renderCheckTable(results);
+    } catch(e) {
+        wrap.innerHTML = '<div class="loading-row">エラーが発生しました</div>';
+    }
+}
+
+function renderCheckTable(results) {
+    var okCount = 0;
+    var sort = document.getElementById('po-sort-order').value;
+    var sorted = results.slice();
+    if (sort === 'caremanager') {
+        sorted.sort(function(a, b) {
+            var ao = (a.patient.support_office || '');
+            var bo = (b.patient.support_office || '');
+            return ao.localeCompare(bo, 'ja');
+        });
+    }
+    var html = '<table class="po-check-table"><thead><tr>';
+    html += '<th style="text-align:left;">利用者名</th>';
+    html += '<th style="font-size:0.7rem;">ケアマネ事業所</th>';
+    html += '<th>モニタリング</th>';
+    html += '<th>訓練記録</th>';
+    html += '<th>体力測定</th>';
+    html += '<th>全OK</th>';
+    html += '</tr></thead><tbody>';
+    sorted.forEach(function(r) {
+        var p = r.patient;
+        var d = r.data;
+        var hasMon = !!(d.monitoring && d.monitoring.categories);
+        var hasEval = !!(d.evaluation && (d.evaluation.changes_by_training || d.evaluation.issues_and_causes));
+        var hasFit = !!(d.fitness && d.fitness.length > 0);
+        var allOk = hasMon && hasEval && hasFit;
+        if (allOk) okCount++;
+        html += '<tr class="' + (allOk ? 'po-check-row-ok' : '') + '">';
+        html += '<td>' + (p.user_name || '') + '</td>';
+        html += '<td style="font-size:0.7rem;color:#5f6368;">' + (p.support_office || '-') + '</td>';
+        html += '<td>' + (hasMon ? '<span class="status-ok">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
+        html += '<td>' + (hasEval ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
+        html += '<td>' + (hasFit ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
+        html += '<td>' + (allOk ? '<span class="status-ok" style="font-weight:900;">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
+        html += '<td><button onclick="poPrintOne('' + p.user_name.replace(/'/g,"\\'") + '')" style="font-size:0.7rem;padding:3px 8px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">印刷</button></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('po-check-table-wrap').innerHTML = html;
+    document.getElementById('po-check-summary').textContent =
+        okCount + ' / ' + sorted.length + '名 データ準備OK';
+}
+
+function poPrintAll() {
+    var ym = document.getElementById('po-year-month').value;
+    var sort = document.getElementById('po-sort-order').value;
+    var params = new URLSearchParams({
+        year_month: ym, style: poPrintStyle, sort: sort, items: JSON.stringify(poItems)
+    });
+    window.open('/print_preview?' + params.toString(), '_blank');
+}
+
+function poPrintOne(userName) {
+    var ym = document.getElementById('po-year-month').value;
+    var params = new URLSearchParams({
+        user_name: userName, year_month: ym, style: poPrintStyle, items: JSON.stringify(poItems)
+    });
+    window.open('/print_preview?' + params.toString(), '_blank');
+}
+
+function poPreviewAll() { poPrintAll(); }
+</script>
+{% endblock %}

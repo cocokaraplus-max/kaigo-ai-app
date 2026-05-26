@@ -9058,3 +9058,29 @@ def stripe_webhook():
 
     return jsonify({"status": "ok"}), 200
 
+
+
+# ============================================================
+# 書類出力ページ
+# ============================================================
+@app.route('/print_output')
+@login_required
+def print_output():
+    f_code = session.get("f_code", "")
+    my_name = session.get("my_name", "")
+    is_admin = session.get("is_admin", False)
+    supabase = get_supabase()
+    patients_list = []
+    try:
+        res = supabase.table("patient_profiles").select(
+            "user_name, user_name_kana, care_manager_name, support_office, care_level"
+        ).eq("facility_code", f_code).order("user_name_kana").execute()
+        if res.data:
+            patients_list = res.data
+    except Exception:
+        pass
+    return render("print_output.html",
+        patients=patients_list,
+        my_name=my_name,
+        is_admin=is_admin,
+    )
