@@ -8754,9 +8754,10 @@ def api_vital_bulk_temp():
 音声から各利用者の体温を抽出してください。
 
 【厳守ルール】
-- 音声で明確に名前が呼ばれた利用者のみ体温を記録する
-- 名前が呼ばれていない利用者は必ずtemperature=nullにする（絶対に推測しない）
-- 聴き取れなかった・不明確な名前はnullにする（似ている名前に当てはめない）
+- 「登録利用者名一覧」にない名前は絶対に使わない（周囲の音やテレビの声は無視する）
+- 登録利用者名一覧の中に明確に名前が呼ばれた人のみ体温を記録する
+- 名前が呼ばれていない利用者は必ずtemperature=null（絶対に推測しない）
+- 聴き取れない・不明確な名前はnull（似ている名前に当てはめない）
 - 体温は小数点1桁（例:36.5）
 - 数字の読み（「さんじゅうろくてんご」=36.5など）を正しく変換する
 - resultsには登録利用者名一覧の全員を含める（言及なし=null）
@@ -8779,11 +8780,12 @@ JSON形式のみで返してください（説明文・コードブロック・�
         # patient_idと照合
         ai_results = result.get('results', [])
         matched = []
-        # ai_resultsを名前をキーにした辞書に変換（高速検索用）
+        # ai_resultsを名前をキーにした辞書に変換（登録名のみ受け付け）
         ai_map = {}
         for r in ai_results:
             rname = (r.get('user_name') or '').strip()
-            if rname:
+            # 登録利用者名一覧に含まれる名前のみ受け付ける（登録外の名前は無視）
+            if rname and rname in patient_names:
                 ai_map[rname] = r.get('temperature')
 
         for p in patients:
