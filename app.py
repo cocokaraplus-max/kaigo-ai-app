@@ -8747,24 +8747,27 @@ def api_vital_bulk_temp():
         patients_json = request.form.get('patients', '[]')
         patients = _json.loads(patients_json)
         patient_names = [p['user_name'] for p in patients if p.get('user_name')]
-        names_str = '、'.join(patient_names)
-        prompt = f"""これは介護施設のスタッフが利用者全員の体温をまとめて報告している音声です。
+        prompt = f"""これは介護施設のスタッフが利用者の体温をまとめて報告している音声です。
 登録利用者名一覧: {names_str}
 
-音声から各利用者の体温を抱出してください。
-ルール:
-- 利用者名は登録名とできる限り一致させる（下の名、呼び捨て、姓のみでも可）
-- 体温は小数点1桁（例:36.5）
-- 言及のない利用者はtemperatureをnullにする
-- 数字の言い間違い（例:「サンジュ〄6分」=36.6など）も正しく整数化
+音声から各利用者の体温を抽出してください。
 
-JSON形式のみで返してください（説明文・コードブロック禁止）:
+【厳守ルール】
+- 音声で明確に名前が呼ばれた利用者のみ体温を記録する
+- 名前が呼ばれていない利用者は必ずtemperature=nullにする（絶対に推測しない）
+- 聴き取れなかった・不明確な名前はnullにする（似ている名前に当てはめない）
+- 体温は小数点1桁（例:36.5）
+- 数字の読み（「さんじゅうろくてんご」=36.5など）を正しく変換する
+- resultsには登録利用者名一覧の全員を含める（言及なし=null）
+
+JSON形式のみで返してください（説明文・コードブロック・マークダウン禁止）:
 {{
   "transcript": "発話の全文書き起こし",
   "results": [
-    {{"user_name": "利用者名", "temperature": 小数 or null}},
+    {{"user_name": "登録利用者名をそのまま使用", "temperature": 小数 or null}},
     ...
   ]
+}}"""
 }}"""
         model = get_generative_model()
         resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
@@ -8779,13 +8782,33 @@ JSON形式のみで返してください（説明文・コードブロック禁�
         for p in patients:
             pname = p.get('user_name', '')
             temp = None
+            match_count = 0
             for r in ai_results:
                 rname = r.get('user_name', '')
-                # 完全一致 or 姓のみ or 名のみで一致
-                if rname and (rname in pname or pname in rname or
-                    (len(rname) >= 2 and rname in pname)):
+                if not rname:
+                    continue
+                # 完全一致を最優先
+                if rname == pname:
                     temp = r.get('temperature')
+                    match_count = 1
                     break
+                # 姓（最初の1文字以上）または名での一致（2文字以上必須）
+                pname_parts = pname.split()
+                rname_clean = rname.replace('　', ' ').strip()
+                is_match = False
+                if len(rname_clean) >= 2:
+                    # 登録名にrname_cleanが含まれる（部分一致）
+                    if rname_clean in pname:
+                        is_match = True
+                    # rname_cleanに登録名の姓か名が含まれる
+                    elif len(pname) >= 2 and pname[:2] in rname_clean:
+                        is_match = True
+                if is_match:
+                    match_count += 1
+                    temp = r.get('temperature')
+            # 複数の利用者にマッチした可能性がある場合はnullにする（安全側に倒す）
+            if match_count != 1:
+                temp = None
             matched.append({
                 'patient_id': p.get('patient_id') or p.get('id'),
                 'user_name': pname,
