@@ -9063,6 +9063,47 @@ def stripe_webhook():
 # ============================================================
 # 書類出力ページ
 # ============================================================
+@app.route('/api/check_data_bulk')
+def api_check_data_bulk():
+    """書類出力: 全利用者のデータ充足チェック(モニタリング/評価/体力測定)を一括取得"""
+    import re as _re
+    supabase, my_name, f_code, is_admin = get_supabase_client()
+    if not supabase:
+        return jsonify({"status": "error", "message": "auth required"}), 401
+    year_month = request.args.get("year_month", "")
+    if not _re.match(r"^\d{4}-\d{2}$", year_month):
+        return jsonify({"status": "error", "message": "year_monthパラメータ不正 (YYYY-MM)"}), 400
+    try:
+        # モニタリング: year_monthの月に作成済みか
+        mr = supabase.table("monitoring_reports").select("user_name").eq("facility_code", f_code).eq("year_month", year_month).execute()
+        mon_set = set(r["user_name"] for r in (mr.data or []))
+        # 評価: year_monthの月に作成済みか
+        ev = supabase.table("patient_evaluations").select("user_name").eq("facility_code", f_code).eq("year_month", year_month).execute()
+        eval_set = set(r["user_name"] for r in (ev.data or []))
+        # 体力測定: year_monthの月内に記録ありか
+        ym_start = year_month + "-01"
+        import calendar as _cal
+        y, m = int(year_month[:4]), int(year_month[5:7])
+        last_day = _cal.monthrange(y, m)[1]
+        ym_end = f"{year_month}-{last_day:02d}"
+        ft = supabase.table("fitness_tests").select("user_name").eq("facility_code", f_code).gte("test_date", ym_start).lte("test_date", ym_end).execute()
+        fit_set = set(r["user_name"] for r in (ft.data or []))
+        # 全利用者分をまとめる
+        all_names_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("is_active", True).execute()
+        all_names = [r["user_name"] for r in (all_names_res.data or [])]
+        data = []
+        for name in all_names:
+            data.append({
+                "user_name": name,
+                "has_monitoring": name in mon_set,
+                "has_evaluation": name in eval_set,
+                "has_fitness": name in fit_set,
+            })
+        return jsonify({"status": "success", "data": data})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/print_output')
 @login_required
 def print_output():
