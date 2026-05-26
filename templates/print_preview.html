@@ -91,26 +91,26 @@ body {
   --radius-sm: 2px;
 }
 /* テンプレート1: グレー・コンパクト2段 */
-body.color .rep-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
-body.color .rep-header-title { color: #fff; background: #444441; padding: 4mm 6mm; display: block; font-size: 12pt; letter-spacing: 0.1em; margin: -12mm -12mm 3mm -12mm; }
+body.color:not([class*="tmpl-"]) .rep-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+body.color:not([class*="tmpl-"]) .rep-header-title { color: #fff; background: #444441; padding: 4mm 6mm; display: block; font-size: 12pt; letter-spacing: 0.1em; margin: -12mm -12mm 3mm -12mm; }
 body.color .rep-header-date { color: #888; font-size: 7.5pt; }
-body.color .rep-info-row { background: #f5f5f5; padding: 2mm 0; margin-bottom: 2mm; border-bottom: 1px solid #ddd; }
-body.color .rep-caremanager-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
-body.color .rep-facility-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
-body.color .rep-cm-office { color: #444441; font-weight: 700; }
-body.color .rep-patient-row { background: #f5f5f5; border-left: 4px solid #444441; border-top: none; border-right: none; border-bottom: none; border-radius: 0; }
-body.color .rep-care-badge { background: #444441; border-radius: 2px; }
-body.color .rep-goal-title { background: #444441; border-radius: 0; }
-body.color .rep-goal-table th { background: #e8e8e6; color: #2c2c2a; }
-body.color .rep-goal-table tr:nth-child(even) td { background: #f5f5f5; }
-body.color .rep-twocol-box { border: 1px solid #ccc; border-radius: 0; }
-body.color .rep-twocol-title { background: #444441; border-radius: 0; }
-body.color .rep-monitoring-title { background: #444441; border-radius: 0; }
-body.color .rep-monitoring-table td:first-child { background: #f5f5f5; font-weight: 700; }
-body.color .rep-fitness-title { border-left: 3px solid #444441; }
-body.color .rep-special-label { border-left: 3px solid #444441; }
-body.color .rep-fitness-chart-value { color: #444441; font-weight: 700; }
-body.color .ach-cont { color: #444441; font-weight: 700; }
+body.color:not([class*="tmpl-"]) .rep-info-row { background: #f5f5f5; padding: 2mm 0; margin-bottom: 2mm; border-bottom: 1px solid #ddd; }
+body.color:not([class*="tmpl-"]) .rep-caremanager-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
+body.color:not([class*="tmpl-"]) .rep-facility-box { border: none; border-radius: 0; padding: 1mm 0; background: none; }
+body.color:not([class*="tmpl-"]) .rep-cm-office { color: #444441; font-weight: 700; }
+body.color:not([class*="tmpl-"]) .rep-patient-row { background: #f5f5f5; border-left: 4px solid #444441; border-top: none; border-right: none; border-bottom: none; border-radius: 0; }
+body.color:not([class*="tmpl-"]) .rep-care-badge { background: #444441; border-radius: 2px; }
+body.color:not([class*="tmpl-"]) .rep-goal-title { background: #444441; border-radius: 0; }
+body.color:not([class*="tmpl-"]) .rep-goal-table th { background: #e8e8e6; color: #2c2c2a; }
+body.color:not([class*="tmpl-"]) .rep-goal-table tr:nth-child(even) td { background: #f5f5f5; }
+body.color:not([class*="tmpl-"]) .rep-twocol-box { border: 1px solid #ccc; border-radius: 0; }
+body.color:not([class*="tmpl-"]) .rep-twocol-title { background: #444441; border-radius: 0; }
+body.color:not([class*="tmpl-"]) .rep-monitoring-title { background: #444441; border-radius: 0; }
+body.color:not([class*="tmpl-"]) .rep-monitoring-table td:first-child { background: #f5f5f5; font-weight: 700; }
+body.color:not([class*="tmpl-"]) .rep-fitness-title { border-left: 3px solid #444441; }
+body.color:not([class*="tmpl-"]) .rep-special-label { border-left: 3px solid #444441; }
+body.color:not([class*="tmpl-"]) .rep-fitness-chart-value { color: #444441; font-weight: 700; }
+body.color:not([class*="tmpl-"]) .ach-cont { color: #444441; font-weight: 700; }
 
 /* ===================================================================
    テンプレート2: ナチュラル
@@ -573,7 +573,7 @@ body.tmpl-12 {
 }
 body.tmpl-12 .report-page { border: 2px solid #854f0b; }
 body.tmpl-12 .rep-header { border-bottom: 2px solid #854f0b; padding-bottom: 3mm; margin-bottom: 3mm; }
-body.tmpl-12 .rep-header-title { color: #412402; font-size: 13pt; }
+body.tmpl-12 .rep-header-title { color: #fff; font-size: 13pt; }
 body.tmpl-12 .rep-header-date { color: #888; }
 body.tmpl-12 .rep-caremanager-box { border: none; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 2mm 0; background: none; }
 body.tmpl-12 .rep-facility-box { border: none; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 2mm 0; padding-left: 4mm; border-left: 1px solid #ddd; background: none; }
