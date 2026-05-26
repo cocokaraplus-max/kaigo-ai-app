@@ -9090,6 +9090,92 @@ def print_output():
 # ============================================================
 # 印刷プレビューページ
 # ============================================================
+
+def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
+    """print_preview用: monitoring_reportsが未生成の場合に自動生成してDBに保存"""
+    import threading
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from utils import get_generative_model
+        import pytz as _pytz
+        tokyo_tz2 = _pytz.timezone("Asia/Tokyo")
+        y, m = map(int, year_month.split("-"))
+        s_date = tokyo_tz2.localize(_dt(y, m, 1))
+        e_date = (s_date + _td(days=32)).replace(day=1)
+
+        res = supabase.table("records").select(
+            "content, category, staff_name, created_at"
+        ).eq("facility_code", f_code).eq("user_name", u_name).gte(
+            "created_at", s_date.isoformat()
+        ).lt("created_at", e_date.isoformat()).execute()
+        records = [r for r in (res.data or [])
+                   if r.get("staff_name") not in ("AI統合記録",)
+                   and r.get("category") != "休み連絡"]
+
+        if not records:
+            return {}
+
+        CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        cat_records = {}
+        for r in records:
+            cat = r.get("category") or "その他"
+            cat_records.setdefault(cat, []).append(r["content"])
+
+        model = get_generative_model()
+        BASE_PROMPT = (
+            "あなたは介護施設のベテランケアマネジャーの補佐をしています。"
+            "以下の介護記録を読み、ケアマネジャーへのモニタリング報告書として使える文章を生成してください。\n"
+            "【ルール】\n"
+            "・事実として記録されていること以外は絶対に書かない\n"
+            "・記録がない場合は「今月このカテゴリの報告はありませんでした」とだけ返す\n"
+            "・職員名・利用者名・主語は不要\n"
+            "・箇条書きは使わず、ひとつながりの文章で書く\n"
+            "・口調はケアマネへの報告文書として適切な丁寧語\n"
+        )
+        NO_RECORD_MSG = "今月このカテゴリの報告はありませんでした"
+        results = {}
+        counts = {}
+        for cat in CATEGORIES:
+            recs_in_cat = cat_records.get(cat, [])
+            counts[cat] = len(recs_in_cat)
+            if not recs_in_cat:
+                results[cat] = NO_RECORD_MSG
+                continue
+            cat_text = "\n".join(recs_in_cat)
+            prompt = (
+                BASE_PROMPT +
+                f"・カテゴリ「{cat}」に関する記録だけをまとめて200文字程度で生成\n\n"
+                f"【{cat}の記録】\n{cat_text}"
+            )
+            try:
+                results[cat] = model.generate_content([prompt]).text.strip()
+            except Exception:
+                results[cat] = NO_RECORD_MSG
+
+        # DBに保存
+        existing = supabase.table("monitoring_reports").select("id").eq(
+            "facility_code", f_code).eq("user_name", u_name).eq(
+            "target_month", year_month).execute()
+        payload = {
+            "facility_code": f_code,
+            "user_name": u_name,
+            "target_month": year_month,
+            "mode": "category",
+            "char_limit": 200,
+            "categories": results,
+            "record_counts": counts,
+            "updated_at": "now()",
+        }
+        if existing.data:
+            supabase.table("monitoring_reports").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.table("monitoring_reports").insert(payload).execute()
+        return results
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {}
+
 @app.route('/print_preview')
 @login_required
 def print_preview():
@@ -9161,7 +9247,18 @@ def print_preview():
             mr = supabase.table("monitoring_reports").select("*").eq(
                 "facility_code", f_code).eq("user_name", uname).eq(
                 "target_month", year_month).order("id", desc=True).limit(1).execute()
-            data["monitoring"] = mr.data[0] if mr.data else {}
+            if mr.data:
+                data["monitoring"] = mr.data[0]
+            else:
+                # 未生成の場合は自動生成してDBに保存
+                auto_cats = _auto_generate_monitoring(supabase, f_code, uname, year_month, my_name)
+                if auto_cats:
+                    mr2 = supabase.table("monitoring_reports").select("*").eq(
+                        "facility_code", f_code).eq("user_name", uname).eq(
+                        "target_month", year_month).order("id", desc=True).limit(1).execute()
+                    data["monitoring"] = mr2.data[0] if mr2.data else {}
+                else:
+                    data["monitoring"] = {}
         except Exception:
             data["monitoring"] = {}
         try:

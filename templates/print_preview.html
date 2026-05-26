@@ -640,9 +640,11 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 @media print {
     body { background: #fff; }
     .screen-bar { display: none !important; }
+    .no-print { display: none !important; }
     .pages-wrap { padding: 0; gap: 0; }
     .report-page { box-shadow: none; page-break-after: always; margin: 0; }
     .report-page:last-child { page-break-after: avoid; }
+    [contenteditable] { outline: none !important; background: transparent !important; }
 }
 @media screen and (max-width: 230mm) {
     .report-page { width: 100%; padding: 4mm; }
@@ -888,14 +890,26 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, cat_text)) %}{% endif %}
     {% endfor %}
     {% if filtered_cats %}
-    <div class="rep-monitoring-title">モニタリング</div>
-    <table class="rep-monitoring-table">
+    <div class="rep-monitoring-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>モニタリング</span>
+        <span class="no-print" style="font-size:7.5pt;color:#666;font-weight:400;">テキストをクリックして編集 →
+            <button onclick="saveMonitoring('{{ data.patient.user_name }}','{{ year_month }}')"
+                style="font-size:7pt;padding:2px 8px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">保存</button>
+        </span>
+    </div>
+    <table class="rep-monitoring-table" id="mon-table-{{ loop.index if loop is defined else 0 }}">
         {% for cat_name, cat_text in filtered_cats %}
         {% set is_empty = not cat_text or cat_text == "" or "今月このカテゴリの報告はありませんでした" in cat_text %}
         {% if not is_empty or items.get("no_record", false) %}
         <tr>
             <td>{{ cat_name }}</td>
-            <td>{% if is_empty %}<span style="color:#9aa0a6;font-style:italic;">今月の報告はありませんでした</span>{% else %}{{ cat_text }}{% endif %}</td>
+            <td class="no-print-border" contenteditable="true"
+                data-cat="{{ cat_name }}" data-user="{{ data.patient.user_name }}"
+                style="outline:none;cursor:text;"
+                onfocus="this.style.background='#fffde7';this.style.outline='1px solid #1a73e8';"
+                onblur="this.style.background='';this.style.outline='none';">
+                {% if is_empty %}<span style="color:#9aa0a6;font-style:italic;">今月の報告はありませんでした</span>{% else %}{{ cat_text }}{% endif %}
+            </td>
         </tr>
         {% endif %}
         {% endfor %}
@@ -1189,6 +1203,28 @@ if (document.body.classList.contains('tmpl-4')) {
             }, options: chartOpts });
         }
     });
+}
+
+function saveMonitoring(userName, yearMonth) {
+    var rows = document.querySelectorAll('[data-user="' + userName + '"][data-cat]');
+    var cats = {};
+    rows.forEach(function(td) {
+        var cat = td.getAttribute('data-cat');
+        var txt = td.innerText.trim();
+        if (txt !== '今月の報告はありませんでした') cats[cat] = txt;
+    });
+    fetch('/api/save_monitoring', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user_name: userName, month: yearMonth, mode: 'category', categories: cats, confirm: false})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            var btn = document.activeElement;
+            var orig = btn.textContent;
+            btn.textContent = '保存済！'; btn.style.background = '#34a853';
+            setTimeout(function() { btn.textContent = orig; btn.style.background = '#1a73e8'; }, 2000);
+        } else { alert('保存失敗: ' + (d.error || '不明')); }
+    }).catch(function(e) { alert('通信エラー: ' + e); });
 }
 </script>
 </body>
