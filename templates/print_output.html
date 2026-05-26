@@ -353,7 +353,9 @@ function poSetTemplate(t) {
     poTemplate = t;
     try { localStorage.setItem('po_template', t); } catch(e) {}
     document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.tmpl) === t);
+        var val = el.dataset.tmpl;
+        var match = isNaN(t) ? val === t : parseInt(val) === parseInt(t);
+        el.classList.toggle('on', match);
     });
 }
 function poSetChartStyle(s) {
