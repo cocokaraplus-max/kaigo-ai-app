@@ -5930,7 +5930,7 @@ def api_generate_daily_summary():
         day_end   = day_start + timedelta(days=1)
 
         res = supabase.table('records').select(
-            'content, staff_name, created_at'
+            'content, staff_name, created_at, image_urls'
         ).eq('facility_code', f_code).eq(
             'user_name', user_name
         ).gte('created_at', day_start.isoformat()).lt(
@@ -5950,7 +5950,9 @@ def api_generate_daily_summary():
                 'user_name', user_name
             ).eq('summary_date', date_str).execute()
             if not force and cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
-                return jsonify({'summary': cached.data[0]['summary'], 'cached': True})
+                c_res = supabase.table('records').select('image_urls').eq('facility_code', f_code).eq('user_name', user_name).gte('created_at', day_start.isoformat()).lt('created_at', day_end.isoformat()).execute()
+                c_urls = [u for r in (c_res.data or []) for u in (r.get('image_urls') or [])]
+                return jsonify({'summary': cached.data[0]['summary'], 'cached': True, 'image_urls': c_urls})
         except:
             pass
 
@@ -5978,7 +5980,11 @@ def api_generate_daily_summary():
         except:
             pass
 
-        return jsonify({'summary': summary, 'cached': False})
+        all_image_urls = []
+        for r in records:
+            urls = r.get('image_urls') or []
+            all_image_urls.extend(urls)
+        return jsonify({'summary': summary, 'cached': False, 'image_urls': all_image_urls})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

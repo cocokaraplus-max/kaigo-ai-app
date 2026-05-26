@@ -1980,6 +1980,13 @@ function renderUserMonthRecords() {
         if (data.ai_record) {
             html += '<div class="ai-record-card" style="margin-bottom:10px;">';
             html += '<div class="ai-record-label"><span class="material-symbols-outlined">description</span>ケース記録</div>';
+            if (data.ai_record.image_urls && data.ai_record.image_urls.length > 0) {
+                html += '<div class="photo-grid" style="margin-bottom:8px;">';
+                data.ai_record.image_urls.forEach(function(u) {
+                    html += '<img src="' + escapeAttr(u) + '" onclick="openImageViewer(\'' + escapeAttr(u) + '\')" alt="添付写真" style="cursor:zoom-in">';
+                });
+                html += '</div>';
+            }
             html += '<div class="ai-record-content">' + escapeHtml(data.ai_record.content || '') + '</div>';
             html += '</div>';
         }
@@ -3605,6 +3612,10 @@ window.speakSummary = function(idx, btn) {
     var text = el.textContent.trim();
     if (!text || text.indexOf('タップして開くと') === 0 || text.indexOf('生成中') >= 0) {
         alert('AI要約を先に生成してください'); return;
+    }
+    var photoGrid = el.parentElement ? el.parentElement.querySelector('.photo-grid') : null;
+    if (photoGrid && photoGrid.querySelectorAll('img').length > 0) {
+        text = '写真があります。' + text;
     }
     _tts_speaking = true;
     _tts_currentBtn = btn;
