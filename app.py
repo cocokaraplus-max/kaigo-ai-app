@@ -8747,6 +8747,7 @@ def api_vital_bulk_temp():
         patients_json = request.form.get('patients', '[]')
         patients = _json.loads(patients_json)
         patient_names = [p['user_name'] for p in patients if p.get('user_name')]
+        names_str = '、'.join(patient_names)
         prompt = f"""これは介護施設のスタッフが利用者の体温をまとめて報告している音声です。
 登録利用者名一覧: {names_str}
 
