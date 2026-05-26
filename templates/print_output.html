@@ -73,13 +73,38 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
                 印刷項目
             </div>
+            <!-- モニタリング（ケース記録カテゴリ） -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">モニタリング（ケース記録）</div>
             <div class="po-toggle-grid">
-                <button class="po-toggle-btn on" id="tog-monitoring" onclick="poToggleItem('monitoring')">モニタリング</button>
-                <button class="po-toggle-btn on" id="tog-evaluation" onclick="poToggleItem('evaluation')">訓練による変化・課題</button>
+                <button class="po-toggle-btn on" id="tog-cat-心身状況" onclick="poToggleCat('心身状況')">心身状況</button>
+                <button class="po-toggle-btn on" id="tog-cat-食事" onclick="poToggleCat('食事')">食事</button>
+                <button class="po-toggle-btn on" id="tog-cat-入浴" onclick="poToggleCat('入浴')">入浴</button>
+                <button class="po-toggle-btn on" id="tog-cat-排泏" onclick="poToggleCat('排泏')">排泏</button>
+                <button class="po-toggle-btn on" id="tog-cat-コミュニケーション" onclick="poToggleCat('コミュニケーション')">コミュニケーション</button>
+                <button class="po-toggle-btn on" id="tog-cat-訓練状況" onclick="poToggleCat('訓練状況')">訓練状況</button>
+                <button class="po-toggle-btn on" id="tog-cat-ヒヤリハット" onclick="poToggleCat('ヒヤリハット')">ヒヤリハット</button>
+                <button class="po-toggle-btn on" id="tog-cat-その他" onclick="poToggleCat('その他')">その他</button>
+            </div>
+            <!-- 訓練記録（評価） -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">訓練記録（評価）</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-changes" onclick="poToggleItem('changes')">訓練による変化</button>
+                <button class="po-toggle-btn on" id="tog-issues" onclick="poToggleItem('issues')">課題とその要因</button>
                 <button class="po-toggle-btn on" id="tog-goals" onclick="poToggleItem('goals')">目標達成状況</button>
-                <button class="po-toggle-btn on" id="tog-fitness" onclick="poToggleItem('fitness')">体力測定の推移</button>
+                <button class="po-toggle-btn on" id="tog-hope" onclick="poToggleItem('hope')">希望・満足度・内容評価</button>
+            </div>
+            <!-- 体力測定 -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">体力測定</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-weight" onclick="poToggleItem('weight')">体重</button>
+                <button class="po-toggle-btn on" id="tog-grip" onclick="poToggleItem('grip')">握力</button>
+                <button class="po-toggle-btn on" id="tog-tug" onclick="poToggleItem('tug')">TUG</button>
+                <button class="po-toggle-btn on" id="tog-cs30" onclick="poToggleItem('cs30')">CS-30</button>
+            </div>
+            <!-- その他 -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">その他</div>
+            <div class="po-toggle-grid">
                 <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
-                <button class="po-toggle-btn on" id="tog-satisfaction" onclick="poToggleItem('satisfaction')">満足度</button>
             </div>
         </div>
     </div>
@@ -109,7 +134,8 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 
 <script>
 var poPrintStyle = 'color';
-var poItems = { monitoring: true, evaluation: true, goals: true, fitness: true, special: true, satisfaction: true };
+var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true };
+var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 var poCheckData = [];
 var poPatients = {{ patients | tojson }};
 
@@ -137,6 +163,12 @@ function poSetStyle(s) {
 function poToggleItem(key) {
     poItems[key] = !poItems[key];
     document.getElementById('tog-' + key).classList.toggle('on', poItems[key]);
+}
+function poToggleCat(cat) {
+    poCats[cat] = !poCats[cat];
+    var id = 'tog-cat-' + cat;
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('on', poCats[cat]);
 }
 
 async function poLoadCheck() {
@@ -206,7 +238,8 @@ function poPrintAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
     var params = new URLSearchParams({
-        year_month: ym, style: poPrintStyle, sort: sort, items: JSON.stringify(poItems)
+        year_month: ym, style: poPrintStyle, sort: sort,
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats)
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }

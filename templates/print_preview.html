@@ -223,44 +223,54 @@ body.mono .ach-fail { color: #000; font-style: italic; }
     {% endif %}
 
     <!-- 訓練による変化・課題 -->
-    {% if items.get('evaluation', true) %}
+    {% if items.get('changes', true) or items.get('issues', true) %}
     <div class="rep-twocol">
+        {% if items.get('changes', true) %}
         <div class="rep-twocol-box">
             <div class="rep-twocol-title">個別機能訓練実施による変化</div>
             <div class="rep-twocol-body">{{ ev.get('changes_by_training', '（未入力）') if ev else '（未入力）' }}</div>
         </div>
+        {% endif %}
+        {% if items.get('issues', true) %}
         <div class="rep-twocol-box">
             <div class="rep-twocol-title">課題とその要因</div>
             <div class="rep-twocol-body">{{ ev.get('issues_and_causes', '（未入力）') if ev else '（未入力）' }}</div>
         </div>
+        {% endif %}
     </div>
     {% endif %}
 
     <!-- モニタリング -->
-    {% if items.get('monitoring', true) and mon %}
+    {% if mon and mon.get('categories') %}
+    {% set filtered_cats = [] %}
+    {% for cat_name, cat_text in mon.categories.items() %}
+        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, cat_text)) %}{% endif %}
+    {% endfor %}
+    {% if filtered_cats %}
     <div class="rep-monitoring-title">モニタリング</div>
     <table class="rep-monitoring-table">
-        {% if mon.get('categories') %}
-        {% for cat_name, cat_text in mon.categories.items() %}
+        {% for cat_name, cat_text in filtered_cats %}
         <tr>
             <td>{{ cat_name }}</td>
             <td>{{ cat_text }}</td>
         </tr>
         {% endfor %}
-        {% else %}
-        <tr><td colspan="2">（モニタリングデータなし）</td></tr>
-        {% endif %}
     </table>
+    {% endif %}
     {% endif %}
 
     <!-- 体力測定グラフ -->
-    {% if items.get('fitness', true) and (fitness or weights) %}
+    {% set show_weight = items.get('weight', true) %}
+    {% set show_grip = items.get('grip', true) %}
+    {% set show_tug = items.get('tug', true) %}
+    {% set show_cs30 = items.get('cs30', true) %}
+    {% if (show_weight and weights) or (fitness and (show_grip or show_tug or show_cs30)) %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・入力のある指標のみ</span>
     </div>
     <div class="rep-fitness-charts">
-        {% if weights %}
+        {% if weights and show_weight %}
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">体重(kg)</div>
             <canvas class="mini-chart" id="chart-weight-{{ loop.index }}"></canvas>
@@ -274,21 +284,21 @@ body.mono .ach-fail { color: #000; font-style: italic; }
         {% if fitness %}
         {% set last_fit = fitness[-1] %}
         {% set first_fit = fitness[0] %}
-        {% if last_fit.get('grip_right') %}
+        {% if last_fit.get('grip_right') and show_grip %}
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">握力右(kg)</div>
             <canvas class="mini-chart" id="chart-grip-{{ loop.index }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit.grip_right }}→{{ last_fit.grip_right }}</div>
         </div>
         {% endif %}
-        {% if last_fit.get('tug_sec') %}
+        {% if last_fit.get('tug_sec') and show_tug %}
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">TUG(秒)</div>
             <canvas class="mini-chart" id="chart-tug-{{ loop.index }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit.tug_sec }}→{{ last_fit.tug_sec }}</div>
         </div>
         {% endif %}
-        {% if last_fit.get('sit_stand_30sec') %}
+        {% if last_fit.get('sit_stand_30sec') and show_cs30 %}
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">CS-30(回)</div>
             <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
@@ -308,7 +318,7 @@ body.mono .ach-fail { color: #000; font-style: italic; }
     {% endif %}
 
     <!-- 新しい希望・要望 -->
-    {% if items.get('satisfaction', true) %}
+    {% if items.get('hope', true) %}
     <div class="rep-new-requests-row">
         <table style="width:100%;border-collapse:collapse;border:1px solid #bbb;font-size:7.5pt;">
             <tr>

@@ -9103,10 +9103,15 @@ def print_preview():
     style = request.args.get("style", "color")
     sort_order = request.args.get("sort", "name")
     items_json = request.args.get("items", "{}")
+    cats_json = request.args.get("cats", "{}")
     try:
         items = _json.loads(items_json)
     except Exception:
         items = {}
+    try:
+        cats = _json.loads(cats_json)
+    except Exception:
+        cats = {}
 
     # 利用者一覧取得
     patients_all = []
@@ -9194,5 +9199,6 @@ def print_preview():
         year_month=year_month,
         style=style,
         items=items,
+        cats=cats,
         my_name=my_name,
     )
