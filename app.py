@@ -9068,9 +9068,10 @@ def stripe_webhook():
 def api_check_data_bulk():
     """書類出力: 全利用者のデータ充足チェック(モニタリング/評価/体力測定)を一括取得"""
     import re as _re
-    supabase, my_name, f_code, is_admin = get_supabase_client()
-    if not supabase:
+    f_code = session.get("f_code", "")
+    if not f_code:
         return jsonify({"status": "error", "message": "auth required"}), 401
+    supabase = get_supabase()
     year_month = request.args.get("year_month", "")
     if not _re.match(r"^\d{4}-\d{2}$", year_month):
         return jsonify({"status": "error", "message": "year_monthパラメータ不正 (YYYY-MM)"}), 400
