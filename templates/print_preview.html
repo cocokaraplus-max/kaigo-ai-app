@@ -15,7 +15,7 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
 
 /* ===== A4ページ基本 ===== */
-.report-page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; }
+.report-page { width: 210mm; min-height: 297mm; height: 297mm; overflow: hidden; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; box-sizing: border-box; }
 .page-number { position: absolute; bottom: 6mm; right: 12mm; font-size: 7pt; color: #888; }
 
 /* ===== テンプレート共通ベース ===== */
