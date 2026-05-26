@@ -1941,7 +1941,7 @@ function renderCalendar() {
         if (dvMode === 'user') { if (userRecordDates.has(dateStr)) cls += ' has-user-record'; } else { if (recordDates.has(dateStr)) cls += ' has-record'; }
         const hasPhoto = photoDates.has(dateStr);
         const isSelected = cls.includes('selected');
-        const dotColor = hasPhoto ? (isSelected ? '#ffcc80' : '#f57c00') : (isSelected ? 'white' : '#1a73e8');
+        const dotColor = hasPhoto ? '#f57c00' : (isSelected ? 'white' : '#1a73e8');
         const dotHtml = (hasPhoto || recordDates.has(dateStr))
           ? `<span style="display:block;width:${hasPhoto ? 9 : 7}px;height:${hasPhoto ? 9 : 7}px;background:${dotColor};border-radius:50%;margin-top:2px;"></span>`
           : '<span style="display:block;height:9px;margin-top:2px;"></span>';
