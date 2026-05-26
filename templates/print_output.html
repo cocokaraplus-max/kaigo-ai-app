@@ -28,21 +28,6 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 .po-style-btn.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 .loading-row { text-align: center; color: #9aa0a6; font-size: 0.8rem; padding: 16px; }
 .po-check-row-ok { background: #f0fff4; }
-
-/* テンプレート選択 */
-.po-tmpl-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
-.po-tmpl-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 6px 4px; cursor: pointer; text-align: center; transition: all 0.15s; background: #fff; }
-.po-tmpl-card.on { border-color: #1a73e8; background: #e8f4ff; }
-.po-tmpl-card .tmpl-thumb { width: 100%; height: 36px; border-radius: 4px; margin-bottom: 3px; display: flex; flex-direction: column; gap: 2px; padding: 3px; overflow: hidden; }
-.po-tmpl-card .tmpl-name { font-size: 0.62rem; font-weight: 700; color: #5f6368; line-height: 1.2; }
-.po-tmpl-card.on .tmpl-name { color: #1a73e8; }
-/* グラフスタイル選択 */
-.po-graph-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
-.po-graph-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 5px 4px; cursor: pointer; text-align: center; transition: all 0.15s; background: #fff; }
-.po-graph-card.on { border-color: #1a73e8; background: #e8f4ff; }
-.po-graph-card svg { display: block; margin: 0 auto 2px; }
-.po-graph-card .graph-name { font-size: 0.62rem; font-weight: 700; color: #5f6368; line-height: 1.3; }
-.po-graph-card.on .graph-name { color: #1a73e8; }
 </style>
 
 <div class="po-wrap">
@@ -82,124 +67,6 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 <option value="name">利用者名順（あいうえお）</option>
                 <option value="caremanager">ケアマネ事業所順</option>
             </select>
-        </div>
-        <!-- テンプレート選択 -->
-        <div style="margin-top:10px;">
-            <div class="po-section-title" style="margin-bottom:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px;">palette</span>
-                テンプレート
-            </div>
-            <div class="po-tmpl-grid" id="tmpl-grid">
-                <div class="po-tmpl-card on" data-tmpl="1" onclick="poSetTemplate(1)">
-                    <div class="tmpl-thumb" style="background:#f0f7ff;border:1px solid #1a73e8;">
-                        <div style="height:6px;background:#1a73e8;border-radius:1px;"></div>
-                        <div style="height:3px;background:#c5dcf8;border-radius:1px;"></div>
-                        <div style="height:3px;background:#c5dcf8;border-radius:1px;width:70%;"></div>
-                    </div>
-                    <div class="tmpl-name">スタンダード</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="2" onclick="poSetTemplate(2)">
-                    <div class="tmpl-thumb" style="background:#f0faf4;border:1px solid #2d7a4f;">
-                        <div style="height:6px;background:#2d7a4f;border-radius:3px;"></div>
-                        <div style="height:3px;background:#b2dfcc;border-radius:2px;"></div>
-                        <div style="height:3px;background:#b2dfcc;border-radius:2px;width:70%;"></div>
-                    </div>
-                    <div class="tmpl-name">ナチュラル</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="3" onclick="poSetTemplate(3)">
-                    <div class="tmpl-thumb" style="background:#f5f5f5;border:2px solid #1a1a1a;">
-                        <div style="height:5px;background:#1a1a1a;"></div>
-                        <div style="height:2px;background:#999;margin-top:1px;"></div>
-                        <div style="height:2px;background:#bbb;width:70%;"></div>
-                    </div>
-                    <div class="tmpl-name">フォーマル</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="4" onclick="poSetTemplate(4)">
-                    <div class="tmpl-thumb" style="background:#faf6ff;border:1px solid #6e3fa3;">
-                        <div style="height:6px;background:#6e3fa3;border-radius:2px;"></div>
-                        <div style="height:3px;background:#c9b8e8;border-radius:1px;"></div>
-                        <div style="height:3px;background:#c9b8e8;border-radius:1px;width:60%;"></div>
-                    </div>
-                    <div class="tmpl-name">サイドバー</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="5" onclick="poSetTemplate(5)">
-                    <div class="tmpl-thumb" style="background:#fff8f0;border:1px solid #d4520a;">
-                        <div style="height:6px;background:#d4520a;border-radius:2px;"></div>
-                        <div style="height:3px;background:#f5c9a0;border-radius:1px;"></div>
-                        <div style="height:3px;background:#f5c9a0;border-radius:1px;width:75%;"></div>
-                    </div>
-                    <div class="tmpl-name">ウォーム</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="6" onclick="poSetTemplate(6)">
-                    <div class="tmpl-thumb" style="background:#eceff1;border:1px solid #37474f;">
-                        <div style="height:6px;background:#37474f;border-radius:1px;"></div>
-                        <div style="height:3px;background:#b0bec5;border-radius:1px;"></div>
-                        <div style="height:3px;background:#b0bec5;border-radius:1px;width:65%;"></div>
-                    </div>
-                    <div class="tmpl-name">チャコール</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="7" onclick="poSetTemplate(7)">
-                    <div class="tmpl-thumb" style="background:#fafafa;border:1px solid #000;">
-                        <div style="height:4px;background:#000;"></div>
-                        <div style="height:2px;background:#ccc;margin-top:2px;"></div>
-                        <div style="height:2px;background:#eee;width:80%;"></div>
-                    </div>
-                    <div class="tmpl-name">ミニマル</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="8" onclick="poSetTemplate(8)">
-                    <div class="tmpl-thumb" style="background:#e3f2fd;border:1px solid #0277bd;border-radius:6px;">
-                        <div style="height:6px;background:linear-gradient(135deg,#0277bd,#0288d1);border-radius:4px;"></div>
-                        <div style="height:3px;background:#81d4fa;border-radius:3px;"></div>
-                        <div style="height:3px;background:#b3e5fc;border-radius:3px;width:70%;"></div>
-                    </div>
-                    <div class="tmpl-name">カードブロック</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="9" onclick="poSetTemplate(9)">
-                    <div class="tmpl-thumb" style="background:#fff3e0;border:1px solid #e65100;">
-                        <div style="height:5px;background:#e65100;border-radius:1px;"></div>
-                        <div style="height:3px;background:#ffcc80;border-radius:1px;"></div>
-                        <div style="height:3px;background:#ffe0b2;border-radius:1px;width:80%;"></div>
-                    </div>
-                    <div class="tmpl-name">ゼブラ</div>
-                </div>
-                <div class="po-tmpl-card" data-tmpl="10" onclick="poSetTemplate(10)">
-                    <div class="tmpl-thumb" style="background:#f3e5f5;border:1px solid #7b1fa2;">
-                        <div style="height:6px;background:linear-gradient(90deg,#7b1fa2,#9c27b0);border-radius:2px;"></div>
-                        <div style="height:3px;background:#ce93d8;border-radius:1px;"></div>
-                        <div style="height:3px;background:#e1bee7;border-radius:1px;width:65%;"></div>
-                    </div>
-                    <div class="tmpl-name">パープル</div>
-                </div>
-            </div>
-        </div>
-        <!-- グラフスタイル選択 -->
-        <div style="margin-top:10px;">
-            <div class="po-section-title" style="margin-bottom:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px;">bar_chart</span>
-                グラフスタイル
-            </div>
-            <div class="po-graph-grid" id="graph-grid">
-                <div class="po-graph-card on" data-graph="1" onclick="poSetChartStyle(1)">
-                    <svg width="36" height="24" viewBox="0 0 36 24"><polyline points="2,20 10,12 18,15 26,6 34,9" fill="none" stroke="#1a73e8" stroke-width="2"/><circle cx="2" cy="20" r="2" fill="#1a73e8"/><circle cx="34" cy="9" r="2" fill="#1a73e8"/></svg>
-                    <div class="graph-name">折れ線</div>
-                </div>
-                <div class="po-graph-card" data-graph="2" onclick="poSetChartStyle(2)">
-                    <svg width="36" height="24" viewBox="0 0 36 24"><rect x="2" y="14" width="6" height="9" fill="#34a853" rx="1"/><rect x="10" y="8" width="6" height="15" fill="#34a853" rx="1"/><rect x="18" y="10" width="6" height="13" fill="#ea4335" rx="1"/><rect x="26" y="5" width="6" height="18" fill="#34a853" rx="1"/></svg>
-                    <div class="graph-name">棒グラフ</div>
-                </div>
-                <div class="po-graph-card" data-graph="3" onclick="poSetChartStyle(3)">
-                    <svg width="36" height="24" viewBox="0 0 36 24"><polyline points="2,20 10,12 18,15 26,6 34,9" fill="rgba(26,115,232,0.15)" stroke="#1a73e8" stroke-width="2"/><polygon points="2,20 10,12 18,15 26,6 34,9 34,24 2,24" fill="rgba(26,115,232,0.12)"/></svg>
-                    <div class="graph-name">エリア</div>
-                </div>
-                <div class="po-graph-card" data-graph="4" onclick="poSetChartStyle(4)">
-                    <svg width="36" height="24" viewBox="0 0 36 24"><text x="18" y="14" text-anchor="middle" font-size="11" font-weight="900" fill="#1a73e8">28.5</text><text x="18" y="22" text-anchor="middle" font-size="7" fill="#34a853">+1.2</text></svg>
-                    <div class="graph-name">数値カード</div>
-                </div>
-                <div class="po-graph-card" data-graph="5" onclick="poSetChartStyle(5)">
-                    <svg width="36" height="24" viewBox="0 0 36 24"><rect x="2" y="4" width="16" height="5" fill="rgba(52,168,83,0.5)" rx="1"/><rect x="2" y="12" width="26" height="5" fill="#1a73e8" rx="1"/><text x="2" y="9" font-size="4" fill="#666">初回</text><text x="2" y="20" font-size="4" fill="#666">最新</text></svg>
-                    <div class="graph-name">横棒</div>
-                </div>
-            </div>
         </div>
         <div style="margin-top:10px;">
             <div class="po-section-title" style="margin-bottom:6px;">
@@ -268,15 +135,12 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 
 <script>
 var poPrintStyle = 'color';
-var poTemplate = parseInt(localStorage.getItem('po_template') || '1');
-var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {
     try {
         var saved = localStorage.getItem('po_items');
-        // テンプレート・グラフスタイルの復元はinitUI()で行う
         if (saved) { var obj = JSON.parse(saved); Object.keys(obj).forEach(function(k){ poItems[k] = obj[k]; }); }
         var savedCats = localStorage.getItem('po_cats');
         if (savedCats) { var obj2 = JSON.parse(savedCats); Object.keys(obj2).forEach(function(k){ poCats[k] = obj2[k]; }); }
@@ -309,33 +173,12 @@ var poPatients = {{ patients | tojson }};
         if (el) el.classList.toggle('on', poCats[k]);
     });
     poLoadCheck();
-    // テンプレート・グラフスタイルのUI復元
-    document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.tmpl) === poTemplate);
-    });
-    document.querySelectorAll('.po-graph-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.graph) === poChartStyle);
-    });
 })();
 
 function poSetStyle(s) {
     poPrintStyle = s;
     document.getElementById('style-color').classList.toggle('on', s === 'color');
     document.getElementById('style-mono').classList.toggle('on', s === 'mono');
-}
-function poSetTemplate(t) {
-    poTemplate = t;
-    try { localStorage.setItem('po_template', t); } catch(e) {}
-    document.querySelectorAll('.po-tmpl-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.tmpl) === t);
-    });
-}
-function poSetChartStyle(s) {
-    poChartStyle = s;
-    try { localStorage.setItem('po_chart_style', s); } catch(e) {}
-    document.querySelectorAll('.po-graph-card').forEach(function(el) {
-        el.classList.toggle('on', parseInt(el.dataset.graph) === s);
-    });
 }
 
 function poToggleItem(key) {
@@ -420,8 +263,7 @@ function poPrintAll() {
     var sort = document.getElementById('po-sort-order').value;
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
-        items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
-        template: poTemplate, chart_style: poChartStyle
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats)
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }
@@ -429,8 +271,372 @@ function poPrintAll() {
 function poPrintOne(userName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
-        user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
+        user_name: userName, year_month: ym, style: poPrintStyle, items: JSON.stringify(poItems)
+    });
+    window.open('/print_preview?' + params.toString(), '_blank');
+}
+
+function poPreviewAll() { poPrintAll(); }
+</script>
+{% endblock %}            <div class="po-tmpl-grid" id="tmpl-grid">
+                <div class="po-tmpl-card on" data-tmpl="1" onclick="poSetTemplate(1)">
+                    <div class="tmpl-thumb" style="background:#f0f7ff;border:1.5px solid #1a73e8;">
+                        <div style="height:6px;background:#1a73e8;border-radius:1px;"></div>
+                        <div style="height:3px;background:#dbeafe;border-radius:1px;margin-top:2px;"></div>
+                        <div style="height:3px;background:#dbeafe;border-radius:1px;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">スタンダード</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="2" onclick="poSetTemplate(2)">
+                    <div class="tmpl-thumb" style="background:#f0faf4;border:1.5px solid #2d7a4f;border-radius:6px;">
+                        <div style="height:6px;background:linear-gradient(135deg,#2d7a4f,#52b37a);border-radius:4px;"></div>
+                        <div style="height:3px;background:#d4edda;border-radius:4px;margin-top:2px;"></div>
+                        <div style="height:3px;background:#d4edda;border-radius:4px;width:70%;"></div>
+                    </div>
+                    <div class="tmpl-name">ナチュラル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="3" onclick="poSetTemplate(3)">
+                    <div class="tmpl-thumb" style="background:#f8f8f8;border:2px solid #1a1a1a;">
+                        <div style="height:5px;background:#2a2a2a;border-top:1px solid #000;border-bottom:1px solid #000;"></div>
+                        <div style="height:2px;background:#ccc;margin-top:2px;"></div>
+                        <div style="height:2px;background:#e0e0e0;width:75%;"></div>
+                    </div>
+                    <div class="tmpl-name">フォーマル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="4" onclick="poSetTemplate(4)">
+                    <div class="tmpl-thumb" style="background:#f5f0fc;border:1.5px solid #5e35b1;display:flex;flex-direction:row;padding:0;overflow:hidden;">
+                        <div style="width:10px;background:linear-gradient(180deg,#5e35b1,#4527a0);flex-shrink:0;"></div>
+                        <div style="flex:1;padding:3px;">
+                            <div style="height:4px;background:#5e35b1;border-radius:1px;margin-bottom:2px;"></div>
+                            <div style="height:2px;background:#c9b8e8;border-radius:1px;"></div>
+                            <div style="height:2px;background:#e8e0f7;border-radius:1px;width:80%;margin-top:1px;"></div>
+                        </div>
+                    </div>
+                    <div class="tmpl-name">サイドバー</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="5" onclick="poSetTemplate(5)">
+                    <div class="tmpl-thumb" style="background:#fdf3f2;border:1.5px solid #c0392b;">
+                        <div style="height:4px;background:#c0392b;border-bottom:2px solid #c0392b;"></div>
+                        <div style="height:3px;background:#fde8e6;margin-top:2px;border-left:3px solid #c0392b;padding-left:2px;"></div>
+                        <div style="height:3px;background:#fde8e6;border-left:3px solid #c0392b;padding-left:2px;width:80%;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">ウォーム</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="6" onclick="poSetTemplate(6)">
+                    <div class="tmpl-thumb" style="background:#eceff1;border:1.5px solid #455a64;padding:0;overflow:hidden;">
+                        <div style="height:8px;background:#263238;display:flex;align-items:center;padding:0 3px;"><span style="color:#90a4ae;font-size:4px;letter-spacing:0.5px;">REPORT</span></div>
+                        <div style="padding:2px 3px;"><div style="height:2px;background:#90a4ae;margin-bottom:1px;"></div><div style="height:2px;background:#cfd8dc;width:70%;"></div></div>
+                    </div>
+                    <div class="tmpl-name">チャコール</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="7" onclick="poSetTemplate(7)">
+                    <div class="tmpl-thumb" style="background:#fff;border:1px solid #ddd;">
+                        <div style="height:3px;border-bottom:1px solid #333;margin-bottom:3px;"></div>
+                        <div style="height:2px;background:#eee;margin-bottom:1px;"></div>
+                        <div style="height:2px;background:#f5f5f5;width:75%;"></div>
+                        <div style="height:2px;background:#f5f5f5;width:60%;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">ミニマル</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="8" onclick="poSetTemplate(8)">
+                    <div class="tmpl-thumb" style="background:#f0f8ff;border:1.5px solid #0277bd;border-radius:6px;">
+                        <div style="height:7px;background:linear-gradient(135deg,#0277bd,#039be5);border-radius:4px;"></div>
+                        <div style="height:3px;background:#b3e5fc;border-radius:4px;margin-top:2px;"></div>
+                        <div style="height:3px;background:#e1f5fe;border-radius:4px;width:70%;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">カードブロック</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="9" onclick="poSetTemplate(9)">
+                    <div class="tmpl-thumb" style="background:#e0f2f1;border:1.5px solid #00796b;">
+                        <div style="height:4px;background:#00796b;border-radius:1px;margin-bottom:2px;"></div>
+                        <div style="height:3px;background:#e0f2f1;border-radius:1px;"></div>
+                        <div style="height:3px;background:#fff;border-radius:1px;"></div>
+                        <div style="height:3px;background:#e0f2f1;border-radius:1px;width:85%;"></div>
+                    </div>
+                    <div class="tmpl-name">ゼブラ</div>
+                </div>
+                <div class="po-tmpl-card" data-tmpl="10" onclick="poSetTemplate(10)">
+                    <div class="tmpl-thumb" style="background:#f3e5f5;border:1.5px solid #6a1b9a;border-right:4px solid #6a1b9a;">
+                        <div style="height:6px;background:linear-gradient(90deg,#4a148c,#7b1fa2,#9c27b0);border-radius:1px;"></div>
+                        <div style="height:3px;background:#e1bee7;margin-top:2px;border-radius:1px;"></div>
+                        <div style="height:3px;background:#f3e5f5;width:70%;border-radius:1px;margin-top:1px;"></div>
+                    </div>
+                    <div class="tmpl-name">パープル</div>
+                </div>
+            </div>
+        <!-- グラフスタイル選択 -->類出力 - TASUKARU{% endblock %}
+{% block nav_print_output %}active{% endblock %}
+{% block content %}
+<style>
+.po-wrap { max-width: 800px; margin: 0 auto; padding: 16px 12px 120px; }
+.po-page-title { font-size: 1.1rem; font-weight: 800; color: #202124; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.po-card { background: #fff; border-radius: 14px; border: 1px solid #e0e0e0; padding: 16px; margin-bottom: 14px; }
+.po-section-title { font-size: 0.85rem; font-weight: 700; color: #1a73e8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.po-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.po-label { font-size: 0.8rem; color: #5f6368; min-width: 80px; }
+select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; border: 1px solid #e0e0e0; background: #f8f9fa; }
+.po-toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.po-toggle-btn { padding: 8px 10px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: #f8f9fa; font-size: 0.78rem; font-weight: 700; color: #5f6368; cursor: pointer; text-align: center; transition: all 0.15s; }
+.po-toggle-btn.on { background: #e8f4ff; border-color: #1a73e8; color: #1a73e8; }
+.po-check-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.po-check-table th { background: #f8f9fa; padding: 8px 6px; text-align: center; font-weight: 700; color: #5f6368; border-bottom: 2px solid #e0e0e0; }
+.po-check-table td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #f1f3f4; }
+.po-check-table td:first-child { text-align: left; font-weight: 500; }
+.po-check-table tr:hover { background: #f8f9fa; }
+.status-ok { color: #34a853; font-size: 1rem; font-weight: 700; }
+.status-ng { color: #ea4335; font-size: 1rem; }
+.status-warn { color: #f57c00; font-size: 1rem; }
+.po-btn-primary { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 12px; font-size: 0.95rem; font-weight: 700; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.po-btn-secondary { width: 100%; padding: 12px; background: #f8f9fa; color: #3c4043; border: 1.5px solid #e0e0e0; border-radius: 12px; font-size: 0.88rem; font-weight: 700; cursor: pointer; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.po-style-toggle { display: flex; gap: 8px; flex: 1; }
+.po-style-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: #f8f9fa; font-size: 0.82rem; font-weight: 700; color: #5f6368; cursor: pointer; text-align: center; }
+.po-style-btn.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+.loading-row { text-align: center; color: #9aa0a6; font-size: 0.8rem; padding: 16px; }
+.po-check-row-ok { background: #f0fff4; }
+</style>
+
+<div class="po-wrap">
+    <div class="po-page-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;font-size:22px;">print</span>
+        書類出力
+    </div>
+
+    <!-- 期間選択 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">calendar_month</span>
+            対象期間
+        </div>
+        <div class="po-row">
+            <span class="po-label">対象年月</span>
+            <select class="po-select" id="po-year-month" onchange="poLoadCheck()"></select>
+        </div>
+    </div>
+
+    <!-- 印刷設定 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">tune</span>
+            印刷設定
+        </div>
+        <div class="po-row">
+            <span class="po-label">スタイル</span>
+            <div class="po-style-toggle">
+                <button class="po-style-btn on" id="style-color" onclick="poSetStyle('color')">カラー</button>
+                <button class="po-style-btn" id="style-mono" onclick="poSetStyle('mono')">モノクロ</button>
+            </div>
+        </div>
+        <div class="po-row">
+            <span class="po-label">印刷順序</span>
+            <select class="po-select" id="po-sort-order">
+                <option value="name">利用者名順（あいうえお）</option>
+                <option value="caremanager">ケアマネ事業所順</option>
+            </select>
+        </div>
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
+                印刷項目
+            </div>
+            <!-- モニタリング（ケース記録カテゴリ） -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">モニタリング（ケース記録）</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-cat-心身状況" onclick="poToggleCat('心身状況')">心身状況</button>
+                <button class="po-toggle-btn on" id="tog-cat-食事" onclick="poToggleCat('食事')">食事</button>
+                <button class="po-toggle-btn on" id="tog-cat-入浴" onclick="poToggleCat('入浴')">入浴</button>
+                <button class="po-toggle-btn on" id="tog-cat-排泏" onclick="poToggleCat('排泏')">排泏</button>
+                <button class="po-toggle-btn on" id="tog-cat-コミュニケーション" onclick="poToggleCat('コミュニケーション')">コミュニケーション</button>
+                <button class="po-toggle-btn on" id="tog-cat-訓練状況" onclick="poToggleCat('訓練状況')">訓練状況</button>
+                <button class="po-toggle-btn on" id="tog-cat-ヒヤリハット" onclick="poToggleCat('ヒヤリハット')">ヒヤリハット</button>
+                <button class="po-toggle-btn on" id="tog-cat-その他" onclick="poToggleCat('その他')">その他</button>
+            </div>
+            <!-- 訓練記録（評価） -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">訓練記録（評価）</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-changes" onclick="poToggleItem('changes')">訓練による変化</button>
+                <button class="po-toggle-btn on" id="tog-issues" onclick="poToggleItem('issues')">課題とその要因</button>
+                <button class="po-toggle-btn on" id="tog-goals" onclick="poToggleItem('goals')">目標達成状況</button>
+                <button class="po-toggle-btn on" id="tog-hope" onclick="poToggleItem('hope')">希望・満足度・内容評価</button>
+            </div>
+            <!-- 体力測定 -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">体力測定</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-weight" onclick="poToggleItem('weight')">体重</button>
+                <button class="po-toggle-btn on" id="tog-grip" onclick="poToggleItem('grip')">握力</button>
+                <button class="po-toggle-btn on" id="tog-tug" onclick="poToggleItem('tug')">TUG</button>
+                <button class="po-toggle-btn on" id="tog-cs30" onclick="poToggleItem('cs30')">CS-30</button>
+            </div>
+            <!-- その他 -->
+            <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">その他</div>
+            <div class="po-toggle-grid">
+                <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
+                <button class="po-toggle-btn" id="tog-no-record" onclick="poToggleItem('no_record')">報告なし項目も印刷</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- データ充足チェック表 -->
+    <div class="po-card">
+        <div class="po-section-title">
+            <span class="material-symbols-outlined" style="font-size:18px;">fact_check</span>
+            データ充足チェック
+            <span id="po-check-summary" style="margin-left:auto;font-size:0.75rem;color:#5f6368;font-weight:400;"></span>
+        </div>
+        <div id="po-check-table-wrap">
+            <div class="loading-row">年月を選択してください</div>
+        </div>
+    </div>
+
+    <!-- 印刷ボタン -->
+    <button class="po-btn-primary" onclick="poPrintAll()">
+        <span class="material-symbols-outlined" style="font-size:20px;">print</span>
+        全員一括印刷 / PDF保存
+    </button>
+    <button class="po-btn-secondary" onclick="poPreviewAll()">
+        <span class="material-symbols-outlined" style="font-size:18px;">preview</span>
+        プレビューで確認
+    </button>
+</div>
+
+<script>
+var poPrintStyle = 'color';
+var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
+var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
+// localStorageから設定を復元
+(function() {
+    try {
+        var saved = localStorage.getItem('po_items');
+        if (saved) { var obj = JSON.parse(saved); Object.keys(obj).forEach(function(k){ poItems[k] = obj[k]; }); }
+        var savedCats = localStorage.getItem('po_cats');
+        if (savedCats) { var obj2 = JSON.parse(savedCats); Object.keys(obj2).forEach(function(k){ poCats[k] = obj2[k]; }); }
+    } catch(e) {}
+})();
+var poCheckData = [];
+var poPatients = {{ patients | tojson }};
+
+(function() {
+    var sel = document.getElementById('po-year-month');
+    var now = new Date();
+    for (var i = 0; i < 12; i++) {
+        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+        var lbl = d.getFullYear() + '年' + (d.getMonth()+1) + '月';
+        var opt = document.createElement('option');
+        opt.value = val; opt.textContent = lbl;
+        var savedYm = localStorage.getItem('po_year_month');
+    if (savedYm && val === savedYm) opt.selected = true;
+    else if (!savedYm && i === 1) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    // UI状態を復元
+    Object.keys(poItems).forEach(function(k) {
+        var el = document.getElementById('tog-' + k);
+        if (el) el.classList.toggle('on', poItems[k]);
+    });
+    Object.keys(poCats).forEach(function(k) {
+        var el = document.getElementById('tog-cat-' + k);
+        if (el) el.classList.toggle('on', poCats[k]);
+    });
+    poLoadCheck();
+})();
+
+function poSetStyle(s) {
+    poPrintStyle = s;
+    document.getElementById('style-color').classList.toggle('on', s === 'color');
+    document.getElementById('style-mono').classList.toggle('on', s === 'mono');
+}
+
+function poToggleItem(key) {
+    poItems[key] = !poItems[key];
+    document.getElementById('tog-' + key).classList.toggle('on', poItems[key]);
+    try { localStorage.setItem('po_items', JSON.stringify(poItems)); } catch(e) {}
+}
+function poToggleCat(cat) {
+    poCats[cat] = !poCats[cat];
+    var id = 'tog-cat-' + cat;
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('on', poCats[cat]);
+    try { localStorage.setItem('po_cats', JSON.stringify(poCats)); } catch(e) {}
+}
+
+async function poLoadCheck() {
+    var ym = document.getElementById('po-year-month').value;
+    try { localStorage.setItem('po_year_month', ym); } catch(e) {}
+    var wrap = document.getElementById('po-check-table-wrap');
+    wrap.innerHTML = '<div class="loading-row">データ確認中...</div>';
+    try {
+        var results = await Promise.all(poPatients.map(async function(p) {
+            try {
+                var res = await fetch('/api/monitoring_report_data?user_name=' + encodeURIComponent(p.user_name) + '&year_month=' + ym);
+                var data = await res.json();
+                return { patient: p, data: data };
+            } catch(e) { return { patient: p, data: {} }; }
+        }));
+        poCheckData = results;
+        renderCheckTable(results);
+    } catch(e) {
+        wrap.innerHTML = '<div class="loading-row">エラーが発生しました</div>';
+    }
+}
+
+function renderCheckTable(results) {
+    var okCount = 0;
+    var sort = document.getElementById('po-sort-order').value;
+    var sorted = results.slice();
+    if (sort === 'caremanager') {
+        sorted.sort(function(a, b) {
+            var ao = (a.patient.support_office || '');
+            var bo = (b.patient.support_office || '');
+            return ao.localeCompare(bo, 'ja');
+        });
+    }
+    var html = '<table class="po-check-table"><thead><tr>';
+    html += '<th style="text-align:left;">利用者名</th>';
+    html += '<th style="font-size:0.7rem;">ケアマネ事業所</th>';
+    html += '<th>モニタリング</th>';
+    html += '<th>訓練記録</th>';
+    html += '<th>体力測定</th>';
+    html += '<th>全OK</th>';
+    html += '</tr></thead><tbody>';
+    sorted.forEach(function(r) {
+        var p = r.patient;
+        var d = r.data;
+        var hasMon = !!(d.monitoring && d.monitoring.categories);
+        var hasEval = !!(d.evaluation && (d.evaluation.changes_by_training || d.evaluation.issues_and_causes));
+        var hasFit = !!(d.fitness && d.fitness.length > 0);
+        var allOk = hasMon && hasEval && hasFit;
+        if (allOk) okCount++;
+        html += '<tr class="' + (allOk ? 'po-check-row-ok' : '') + '">';
+        html += '<td>' + (p.user_name || '') + '</td>';
+        html += '<td style="font-size:0.7rem;color:#5f6368;">' + (p.support_office || '-') + '</td>';
+        html += '<td>' + (hasMon ? '<span class="status-ok">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
+        html += '<td>' + (hasEval ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
+        html += '<td>' + (hasFit ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
+        html += '<td>' + (allOk ? '<span class="status-ok" style="font-weight:900;">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
+        var safeName = encodeURIComponent(p.user_name);
+        html += '<td><button onclick="poPrintOne(decodeURIComponent(\"' + safeName + '\"))" style="font-size:0.7rem;padding:3px 8px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">印刷</button></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('po-check-table-wrap').innerHTML = html;
+    document.getElementById('po-check-summary').textContent =
+        okCount + ' / ' + sorted.length + '名 データ準備OK';
+}
+
+function poPrintAll() {
+    var ym = document.getElementById('po-year-month').value;
+    var sort = document.getElementById('po-sort-order').value;
+    var params = new URLSearchParams({
+        year_month: ym, style: poPrintStyle, sort: sort,
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats)
+    });
+    window.open('/print_preview?' + params.toString(), '_blank');
+}
+
+function poPrintOne(userName) {
+    var ym = document.getElementById('po-year-month').value;
+    var params = new URLSearchParams({
+        user_name: userName, year_month: ym, style: poPrintStyle, items: JSON.stringify(poItems)
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }
