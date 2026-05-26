@@ -8606,74 +8606,6 @@ def api_admin_save_facility_info():
 # 利用者・年月を指定し、報告書1枚に必要な全データをまとめて返す。
 # 既存APIのロジックを踏襲。既存ルートは一切変更しない。
 # ============================================================
-
-@app.route('/api/check_data_bulk')
-@login_required
-def api_check_data_bulk():
-    """書類出力用: 全利用者のデータ充足状況を一括取得"""
-    try:
-        f_code = session["f_code"]
-        year_month = (request.args.get("year_month") or "").strip()
-        if not year_month:
-            return jsonify({"status": "error", "message": "year_month required"}), 400
-        supabase = get_supabase()
-
-        # 並列取得
-        mon_res = supabase.table("monitoring_reports").select(
-            "user_name,id"
-        ).eq("facility_code", f_code).eq("target_month", year_month).execute()
-        mon_set = {r["user_name"] for r in (mon_res.data or [])}
-
-        # ケース記録があるかどうかも確認（monitoring_reportsがなくても記録があれば自動生成可能）
-        from datetime import datetime as _dt2
-        try:
-            y2, m2 = map(int, year_month.split("-"))
-            s2 = f"{year_month}-01"
-            import calendar
-            last_day = calendar.monthrange(y2, m2)[1]
-            e2 = f"{year_month}-{last_day:02d}T23:59:59"
-            rec_res = supabase.table("records").select("user_name").eq(
-                "facility_code", f_code
-            ).gte("created_at", s2).lte("created_at", e2).execute()
-            rec_set = {r["user_name"] for r in (rec_res.data or [])}
-        except Exception:
-            rec_set = set()
-
-        ev_res = supabase.table("patient_evaluations").select(
-            "user_name,id"
-        ).eq("facility_code", f_code).eq("year_month", year_month).execute()
-        ev_set = {r["user_name"] for r in (ev_res.data or [])}
-
-        ft_res = supabase.table("fitness_tests").select(
-            "user_name,measured_date"
-        ).eq("facility_code", f_code).gte(
-            "measured_date", year_month + "-01"
-        ).execute()
-        ft_set = {r["user_name"] for r in (ft_res.data or [])}
-
-        prof_res = supabase.table("patient_profiles").select(
-            "user_name,support_office,care_manager_name,care_level"
-        ).eq("facility_code", f_code).execute()
-        prof_map = {r["user_name"]: r for r in (prof_res.data or [])}
-
-        patients = get_patients(supabase, f_code)
-        result = []
-        for p in patients:
-            uname = p.get("user_name") or p.get("value") or ""
-            prof = prof_map.get(uname, {})
-            result.append({
-                "user_name": uname,
-                "support_office": prof.get("support_office") or p.get("support_office") or "",
-                "care_level": prof.get("care_level") or "",
-                "has_monitoring": uname in mon_set or uname in rec_set,
-                "has_evaluation": uname in ev_set,
-                "has_fitness": uname in ft_set,
-            })
-
-        return jsonify({"status": "success", "data": result, "year_month": year_month})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
 @app.route('/api/monitoring_report_data')
 @login_required
 def api_monitoring_report_data():
@@ -9318,15 +9250,16 @@ def print_preview():
             if mr.data:
                 data["monitoring"] = mr.data[0]
             else:
-                # 未生成の場合は自動生成してDBに保存
-                auto_cats = _auto_generate_monitoring(supabase, f_code, uname, year_month, my_name)
-                if auto_cats:
-                    mr2 = supabase.table("monitoring_reports").select("*").eq(
-                        "facility_code", f_code).eq("user_name", uname).eq(
-                        "target_month", year_month).order("id", desc=True).limit(1).execute()
-                    data["monitoring"] = mr2.data[0] if mr2.data else {}
-                else:
-                    data["monitoring"] = {}
+                # 未生成の場合はバックグラウンドで生成開始し、今回は空で返す
+                import threading
+                t = threading.Thread(
+                    target=_auto_generate_monitoring,
+                    args=(supabase, f_code, uname, year_month, my_name),
+                    daemon=True
+                )
+                t.start()
+                data["monitoring"] = {}
+                data["monitoring_generating"] = True
         except Exception:
             data["monitoring"] = {}
         try:
