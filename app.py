@@ -9089,7 +9089,7 @@ def api_check_data_bulk():
         ft = supabase.table("fitness_tests").select("user_name").eq("facility_code", f_code).gte("test_date", ym_start).lte("test_date", ym_end).execute()
         fit_set = set(r["user_name"] for r in (ft.data or []))
         # 全利用者分をまとめる
-        all_names_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).eq("is_active", True).execute()
+        all_names_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).order("user_kana").execute()
         all_names = [r["user_name"] for r in (all_names_res.data or [])]
         data = []
         for name in all_names:
