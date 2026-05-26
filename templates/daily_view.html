@@ -130,7 +130,7 @@
     color: #fff !important;
     font-weight: 700;
 }
-.cal-day.has-record::after {
+.cal-day.has-record::after { display:none !important; /* JS dotHtmlで代替 */
     content: '';
     position: absolute;
     bottom: 4px;
@@ -141,7 +141,7 @@
     border-radius: 50%;
     background: #1a73e8;
 }
-.cal-day.has-user-record::after {
+.cal-day.has-user-record::after { display:none !important; /* JS dotHtmlで代替 */
     content: '';
     position: absolute;
     bottom: 4px;
@@ -1263,7 +1263,7 @@
                 {% if r.image_urls %}{% set ns.has_photo = true %}{% endif %}
             {% endfor %}
             {% if ns.has_photo %}
-            <span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#f57c00;margin-left:6px;font-weight:700;"><span style="width:7px;height:7px;background:#f57c00;border-radius:50%;display:inline-block;flex-shrink:0;"></span>写真あり</span>
+            <span style="width:9px;height:9px;background:#f57c00;border-radius:50%;display:inline-block;flex-shrink:0;margin-left:6px;" title="写真あり"></span>
             {% endif %}
         </div>
         <span class="material-symbols-outlined user-accordion-arrow {% if user == target_user %}open{% endif %}" id="arrow-{{ loop.index }}">expand_more</span>
@@ -1942,7 +1942,8 @@ function renderCalendar() {
         const hasPhoto = photoDates.has(dateStr);
         const isSelected = cls.includes('selected');
         const dotColor = hasPhoto ? '#f57c00' : (isSelected ? 'white' : '#1a73e8');
-        const dotHtml = (hasPhoto || recordDates.has(dateStr))
+        const hasRecord = dvMode === 'user' ? userRecordDates.has(dateStr) : recordDates.has(dateStr);
+        const dotHtml = (hasPhoto || hasRecord)
           ? `<span style="display:block;width:${hasPhoto ? 9 : 7}px;height:${hasPhoto ? 9 : 7}px;background:${dotColor};border-radius:50%;margin-top:2px;"></span>`
           : '<span style="display:block;height:9px;margin-top:2px;"></span>';
         html += `<div class="${cls}" onclick="selectDate('${dateStr}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px 0;">${d}${dotHtml}</div>`;
