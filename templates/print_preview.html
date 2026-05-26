@@ -721,7 +721,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
                     <td style="width:8mm;font-weight:700;">{{ label }}</td>
-                    <td>{{ ev.get(goal_key, '') if ev else '' }}</td>
+                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (ev.get(goal_key, '') if ev else '')))))) }}</td>
                     <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
                         {{ status if status else '―' }}
                     </td>
@@ -752,7 +752,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
                     <td style="width:8mm;font-weight:700;">{{ label }}</td>
-                    <td>{{ ev.get(goal_key, '') if ev else '' }}</td>
+                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (ev.get(goal_key, '') if ev else '')))))) }}</td>
                     <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
                         {{ status if status else '―' }}
                     </td>

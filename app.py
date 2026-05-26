@@ -9181,7 +9181,9 @@ def print_preview():
         try:
             cm = supabase.table("patient_profiles").select(
                 "support_office, care_manager_name, care_level, birth_date, "
-                "user_name_kana, short_goal, long_goal"
+                "user_name_kana, short_goal, long_goal, "
+                "short_goal_function, short_goal_activity, short_goal_participation, "
+                "long_goal_function, long_goal_activity, long_goal_participation"
             ).eq("facility_code", f_code).eq("user_name", uname).execute()
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
