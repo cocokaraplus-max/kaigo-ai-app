@@ -994,6 +994,12 @@ def daily_view():
                     r["is_read_by_me"] = (r["id"] in my_read_ids)
                     # Session 36: VAS データを付与(なければ空配列)
                     r["vas_records"] = vas_by_record.get(r["id"], [])
+                    # image_urlsをリスト型に正規化（None・空配列・JSON文字列対応）
+                    raw_urls = r.get("image_urls")
+                    if isinstance(raw_urls, list) and len(raw_urls) > 0:
+                        r["image_urls"] = raw_urls
+                    else:
+                        r["image_urls"] = []
                     records[user]["normal_records"].append(r)
     except Exception as e:
         pass
