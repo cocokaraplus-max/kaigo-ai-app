@@ -716,12 +716,14 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                     ('活動', 'short_goal_activity', 'short_goal_activity_status', 'short_goal_activity_cont', 'short_goal_activity_new'),
                     ('参加', 'short_goal_participation', 'short_goal_participation_status', 'short_goal_participation_cont', 'short_goal_participation_new')
                 ] %}
+                {% set goal_val = (cm.get(goal_key) or '') if cm else '' %}
+                {% if not goal_val and loop.index == 1 %}{% set goal_val = cm.short_goal if cm and cm.short_goal else '' %}{% endif %}
                 {% set status = ev.get(status_key, '') if ev else '' %}
                 {% set cont = ev.get(cont_key, '') if ev else '' %}
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
                     <td style="width:8mm;font-weight:700;">{{ label }}</td>
-                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (ev.get(goal_key, '') if ev else '')))))) }}</td>
+                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (goal_val)))))) }}</td>
                     <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
                         {{ status if status else '―' }}
                     </td>
@@ -747,12 +749,14 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                     ('活動', 'long_goal_activity', 'long_goal_activity_status', 'long_goal_activity_cont', 'long_goal_activity_new'),
                     ('参加', 'long_goal_participation', 'long_goal_participation_status', 'long_goal_participation_cont', 'long_goal_participation_new')
                 ] %}
+                {% set goal_val = (cm.get(goal_key) or '') if cm else '' %}
+                {% if not goal_val and loop.index == 1 %}{% set goal_val = cm.long_goal if cm and cm.long_goal else '' %}{% endif %}
                 {% set status = ev.get(status_key, '') if ev else '' %}
                 {% set cont = ev.get(cont_key, '') if ev else '' %}
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
                 <tr>
                     <td style="width:8mm;font-weight:700;">{{ label }}</td>
-                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (ev.get(goal_key, '') if ev else '')))))) }}</td>
+                    <td>{{ (cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or ((cm.get(goal_key, '') if cm else '') or (goal_val)))))) }}</td>
                     <td class="ach {% if status == '達成' %}ach-done{% elif status == '未達成' %}ach-fail{% elif status == '一部達成' %}ach-cont{% else %}ach-cont{% endif %}" style="width:14mm;white-space:nowrap;">
                         {{ status if status else '―' }}
                     </td>
