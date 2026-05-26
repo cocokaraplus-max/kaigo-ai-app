@@ -563,3 +563,118 @@ gcloud run services describe tasukaru-dev --region asia-northeast1 --format='val
 
 このドキュメントは Session 56 完了時点での記録です。
 Session 57 以降で新しい情報が判明した場合は、このREADMEを更新してください。
+
+---
+
+## Session 60-61 での主な作業（書類出力テンプレート全面刷新）
+
+### テンプレート全面刷新
+- **テンプレート1（スタンダード）**: グレー・コンパクト2段に刷新（旧青デザインはcocokaraplusへ）
+- **テンプレート11（ティール）**: 緑帯ヘッダー・左ボーダーライン
+- **テンプレート12（アンバー）**: 茶色・2重罫線枠
+- **テンプレートcocokaraplus**: 旧スタンダード（青）弊社専用、f_code=cocokaraplus-5526のみ表示
+- bodyクラス制御: `{% if tmpl == 'cocokaraplus' %}tmpl-cocokaraplus{% else %}tmpl-{{ tmpl }}{% endif %}`
+- CSS分離: `body.color:not([class*="tmpl-"])` でtmpl-1専用スタイルを他テンプレートに影響させない
+
+### print_output.html 主な改善
+- テンプレート選択グリッド（5×3）とグラフスタイル選択グリッドを正しく表示
+- データ充足チェックを51人分個別API→一括API（`/api/check_data_bulk`）に変更（速度大幅改善）
+- 各利用者に「確認」「印刷」ボタン追加（poPrintOne/poPreviewOne）
+- `poTemplate`/`poChartStyle`変数宣言、`poSetTemplate`文字列対応（cocokaraplus）
+- f_codeをprint_outputルートに渡し、JSでcocokaraplusカードの表示制御
+
+### 目標テーブル構造変更
+旧: `機能|内容|評価`のヘッダー行あり3列
+新: ヘッダーなし4列 → `区分 | 目標内容 | 達成/一部達成/未達成 | 継続/変更`
+- 変更かつ新目標あり → `└ 新目標：（内容）`行を追加
+- care_level分岐: 要介護=機能/活動/参加の6行、事業対象者/要支援=短期/長期のみ
+- フィールド: `short_goal_function_status/cont/new`（patient_evaluations）
+- 目標内容: patient_profilesの`short_goal_function/activity/participation`から取得
+- フォールバック: nullの場合は`short_goal`（旧フィールド）を使用
+
+### モニタリング自動生成
+- print_preview表示時にmonitoring_reportsが未生成の場合、バックグラウンドスレッドでAI自動生成→DBに保存
+- 生成中は「モニタリングをAI生成中です。1〜2分後に再読み込みボタン」を表示
+- プレビュー画面でモニタリング各カテゴリをインライン編集可能
+- 編集後「保存」ボタンで`/api/save_monitoring`に反映
+
+### タスカル君ローディング画面
+- print_preview読み込み中にtasukaru_hashiru.pngのアニメーション表示
+- `window.load`完了でフェードアウト
+- `@media print { .no-print { display:none } }` で印刷時は非表示
+
+### 主要バグ修正
+- print_output.htmlのgitマージによる2重連結問題（複数回対応）
+- poSetTemplate文字列対応（parseInt→isNaN分岐）
+- app.pyのtmpl type=int→try/except文字列対応（cocokaraplus対応）
+- Jinja変数`data`→`rd`/`p`の修正（print_preview.html）
+
+---
+
+## Session 61 次のチャットへの引き継ぎ文
+
+以下の文章を次のチャットの冒頭にコピーしてください：
+
+```
+# TASUKARU 開発引き継ぎ
+
+## プロジェクト基本情報
+- リポジトリ: cocokaraplus-max/kaigo-ai-app
+- ローカル: /Users/ZIMAX 1/dev/kaigo-ai-app/
+- dev URL: https://tasukaru-dev-191764727533.asia-northeast1.run.app
+- prod URL: https://tasukaru-191764727533.asia-northeast1.run.app
+- 開発ブランチ: tasukaru-dev → 本番: tasukaru
+- 技術スタック: Python/Flask, Supabase, Cloud Run, Jinja2, Gemini API
+
+## 重要ルール（必ず守ること）
+1. 日本語を含むヒアドキュメント(<< 'EOF')はSyntaxErrorになる
+   → Pythonスクリプトファイルをcreate_toolで/mnt/user-data/outputs/に出力してダウンロード方式を使う
+2. dev でテスト → 本番マージの順序を守る
+3. APIキー・秘密情報は絶対にコードに記載しない（Cloud Run Secret Manager経由）
+   → ログやコードに出力する場合は必ず [REDACTED_***] でスクランブル
+4. `window.close()` 修正: `onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}"`
+5. gitマージ後は print_output.html / print_preview.html の破損を必ず確認
+6. 変更ファイルが多い場合: まずdevにプッシュ→動作確認→本番マージの順を守る
+
+## 効率的な作業方法
+- Pythonスクリプトファイル方式: create_toolで/home/claude/fix_xxx.pyを作成→/mnt/user-data/outputs/にコピー→ダウンロードして実行
+- Chrome連携でdevサイトを直接確認しながら開発
+- JSエラー確認: javascript_toolで直接コンソール実行
+- 複数ファイル変更: 全部まとめてgit add/commit/pushで1回のデプロイで完結
+- 問題が複雑な場合: ログ確認→原因特定→最小限の変更→デプロイ確認の順
+
+## 現在の状態（Session 61終了時点）
+- git最新: `8af58d3` (tasukaru-dev, tasukaru両方)
+- dev/PRODともに同期済み・動作確認済み
+
+## 主要ファイル構成
+- app.py: ~9300行（_auto_generate_monitoring関数、/api/check_data_bulk追加済み）
+- templates/print_preview.html: ~1200行（care_level分岐目標テーブル、インライン編集、タスカル君ローダー）
+- templates/print_output.html: ~480行（テンプレート13枚、一括API、確認/印刷ボタン）
+- evaluation_helper.py: short_goal_function_status等のフィールド定義
+- static/tasukaru_hashiru.png: ローディングアニメーション用
+
+## テンプレート構成
+| ID | 名前 | 特徴 | 対象 |
+|---|---|---|---|
+| 1 | スタンダード | グレー・コンパクト2段 | 全施設 |
+| 2 | ナチュラル | 緑系 | 全施設 |
+| 3 | フォーマル | 黒・太枠 | 全施設 |
+| 4 | サイドバー | 紫・左帯 | 全施設 |
+| 5 | ウォーム | 赤系 | 全施設 |
+| 6 | チャコール | 黒背景ヘッダー | 全施設 |
+| 7 | ミニマル | 細線・シンプル | 全施設 |
+| 8 | カードブロック | 水色帯 | 全施設 |
+| 9 | ゼブラ | 緑縞 | 全施設 |
+| 10 | パープル | 紫系 | 全施設 |
+| 11 | ティール | 緑帯ヘッダー・左ボーダー | 全施設 |
+| 12 | アンバー | 茶色・2重枠 | 全施設 |
+| cocokaraplus | 旧スタンダード（青） | 旧デザイン | cocokaraplus-5526のみ |
+
+## PENDING（未完了・要継続）
+1. 目標テーブルの表示確認（要介護利用者でのテスト未完了）
+2. モニタリング自動生成の動作確認（バックグラウンドスレッド方式）
+3. データ充足チェックのモニタリング列 - ケース記録ありで△表示の確認
+4. print_output.htmlのpoPrintOne/poPreviewOneのwindow.open動作確認
+5. テンプレート11/12のデザイン微調整（必要に応じて）
+```
