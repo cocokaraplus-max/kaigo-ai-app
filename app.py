@@ -9105,7 +9105,11 @@ def print_preview():
     sort_order = request.args.get("sort", "name")
     items_json = request.args.get("items", "{}")
     cats_json = request.args.get("cats", "{}")
-    tmpl = request.args.get("template", 1, type=int)
+    tmpl_raw = request.args.get("template", "1")
+    try:
+        tmpl = int(tmpl_raw)
+    except (ValueError, TypeError):
+        tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
     try:
         items = _json.loads(items_json)
