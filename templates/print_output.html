@@ -40,7 +40,72 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
 .po-graph-card svg { display: block; margin: 0 auto 2px; }
 .po-graph-card .graph-name { font-size: 0.62rem; font-weight: 700; color: #5f6368; line-height: 1.3; }
 .po-graph-card.on .graph-name { color: #1a73e8; }
+
+/* === タスカル君ローディングオーバーレイ === */
+.po-loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    z-index: 9999;
+    overflow: hidden;
+}
+.po-loading-overlay.is-active {
+    display: flex;
+}
+.po-tasukaru-lane {
+    position: relative;
+    width: 100%;
+    height: 160px;
+}
+.po-tasukaru-walker {
+    position: absolute;
+    top: 50%;
+    margin-top: -70px;
+    width: 140px;
+    height: 140px;
+    animation: poTasukaruWalk 3s linear infinite;
+}
+.po-tasukaru-walker img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: brightness(0) opacity(0.5);
+    animation: poTasukaruBob 0.4s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+.po-loading-label {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #202124;
+}
+.po-loading-sub {
+    font-size: 0.78rem;
+    color: #5f6368;
+}
+@keyframes poTasukaruWalk {
+    0%   { left: -120px; }
+    100% { left: calc(100% + 120px); }
+}
+@keyframes poTasukaruBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
 </style>
+
+<div class="po-loading-overlay" id="po-loading-overlay">
+    <div class="po-tasukaru-lane">
+        <div class="po-tasukaru-walker">
+            <img src="{{ url_for('static', filename='tasukaruカラー.png') }}" alt="">
+        </div>
+    </div>
+    <div class="po-loading-label" id="po-loading-label">準備中…</div>
+    <div class="po-loading-sub">タスカルくんが届けています</div>
+</div>
 
 <div class="po-wrap">
     <div class="po-page-title">
@@ -476,15 +541,25 @@ function renderCheckTable(results) {
         okCount + ' / ' + sorted.length + '名 データ準備OK';
 }
 
+function poShowLoading(label) {
+    document.getElementById('po-loading-label').textContent = label || '準備中…';
+    document.getElementById('po-loading-overlay').classList.add('is-active');
+}
+function poHideLoading() {
+    document.getElementById('po-loading-overlay').classList.remove('is-active');
+}
+
 function poPrintAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
-        template: poTemplate, chart_style: poChartStyle
+        template: poTemplate, chart_style: poChartStyle,
+        auto_print: '1'
     });
-    window.open('/print_pdf?' + params.toString(), '_blank');
+    poShowLoading('印刷データを準備中…');
+    window.location.href = '/print_preview?' + params.toString();
 }
 
 function poPrintOne(encodedName) {
@@ -495,6 +570,7 @@ function poPrintOne(encodedName) {
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
         auto_print: '1'
     });
+    poShowLoading('印刷データを準備中…');
     window.location.href = '/print_preview?' + params.toString();
 }
 function poPreviewOne(encodedName) {
@@ -504,6 +580,7 @@ function poPreviewOne(encodedName) {
         user_name: userName, year_month: ym, style: poPrintStyle,
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
     });
+    poShowLoading('プレビューを準備中…');
     window.location.href = '/print_preview?' + params.toString();
 }
 
