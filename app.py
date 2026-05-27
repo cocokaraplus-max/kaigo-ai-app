@@ -9397,7 +9397,7 @@ def print_pdf():
         fname_encoded = quote(fname)
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f"attachment; filename="{fname_ascii}"; filename*=UTF-8''{fname_encoded}"
+        response.headers['Content-Disposition'] = "attachment; filename=\"" + fname_ascii + "\"; filename*=UTF-8''" + fname_encoded
         return response
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
