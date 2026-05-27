@@ -1004,6 +1004,17 @@ async function navigateTo(url, pushState = true) {
 
         updateNavActive(url);
         window.__SPA_NAVIGATED__ = true;
+        if (url === "/manual") {
+            if (!document.querySelector("script[src*=slideshow]")) {
+                var s = document.createElement("script");
+                s.src = "/static/js/slideshow.js?v=" + Date.now();
+                document.body.appendChild(s);
+            } else if (typeof openSlideshow !== "function") {
+                var s2 = document.createElement("script");
+                s2.src = "/static/js/slideshow.js?v=" + Date.now();
+                document.body.appendChild(s2);
+            }
+        }
         console.log('[SPA] navigation complete:', url);
 
         // 掲示板に遷移したらバッジをクリア
