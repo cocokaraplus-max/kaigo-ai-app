@@ -429,7 +429,6 @@ function renderCheckTable(results) {
     html += '<th>訓練記録</th>';
     html += '<th style="font-size:0.65rem;">体力測定<br><span style="color:#888;font-weight:400;">3ヶ月以内</span></th>';
     html += '<th style="font-size:0.65rem;">体重<br><span style="color:#888;font-weight:400;">当月</span></th>';
-    html += '<th>全OK</th>';
     html += '</tr></thead><tbody>';
     sorted.forEach(function(r) {
         var p = r.patient;
@@ -446,7 +445,7 @@ function renderCheckTable(results) {
         html += '<td>' + (hasEval ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
         html += '<td>' + (hasFit ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
         html += '<td>' + (hasWeight ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
-        html += '<td>' + (allOk ? '<span class="status-ok" style="font-weight:900;">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
+
         var safeName = encodeURIComponent(p.user_name);
         html += '<td style="white-space:nowrap;">';
         html += '<button onclick="poPreviewOne(decodeURIComponent(\"' + safeName + '\"))" style="font-size:0.7rem;padding:3px 6px;border:1px solid #34a853;background:#fff;color:#34a853;border-radius:6px;cursor:pointer;margin-right:3px;">確認</button>';
