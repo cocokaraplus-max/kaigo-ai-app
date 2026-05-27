@@ -9387,7 +9387,9 @@ def print_pdf():
             'margin-bottom': '0',
             'margin-left': '0',
         }
-        config = pdfkit.configuration(wkhtmltopdf='/usr/bin/wkhtmltopdf')
+        import shutil
+        wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
         pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
         fname = f"report_{year_month}_{user_name_single or 'all'}.pdf"
         response = make_response(pdf_bytes)
