@@ -584,6 +584,16 @@ function poPreviewOne(encodedName) {
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
 
-function poPreviewAll() { poPrintAll(); }
+function poPreviewAll() {
+    var ym = document.getElementById('po-year-month').value;
+    var sort = document.getElementById('po-sort-order').value;
+    var params = new URLSearchParams({
+        year_month: ym, style: poPrintStyle, sort: sort,
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
+        template: poTemplate, chart_style: poChartStyle
+    });
+    poShowLoading('プレビューを準備中…');
+    setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
+}
 </script>
 {% endblock %}
