@@ -9066,8 +9066,16 @@ def stripe_webhook():
 @app.route('/api/check_data_bulk')
 @login_required
 def api_check_data_bulk():
-    """書類出力: 全利用者のデータ充足チェック(モニタリング/評価/体力測定)を一括取得"""
+    """書類出力: 全利用者のデータ充足チェック(モニタリング/訓練記録/体力測定/体重)を一括取得
+    判定基準:
+      モニタリング : monitoring_reports に当月レコードがある(生成済み)
+      訓練記録    : patient_evaluations の changes_by_training と issues_and_causes が両方入力済み
+      体力測定    : fitness_tests に3ヶ月以内の記録がある
+      体重        : body_weights に当月の記録がある
+      全OK        : 上記4項目すべてOK
+    """
     import re as _re
+    import calendar as _cal
     f_code = session.get("f_code", "")
     if not f_code:
         return jsonify({"status": "error", "message": "auth required"}), 401
@@ -9076,30 +9084,58 @@ def api_check_data_bulk():
     if not _re.match(r"^\d{4}-\d{2}$", year_month):
         return jsonify({"status": "error", "message": "year_monthパラメータ不正 (YYYY-MM)"}), 400
     try:
-        # モニタリング: target_monthの月に作成済みか (monitoring_reportsは target_month カラム)
-        mr = supabase.table("monitoring_reports").select("user_name").eq("facility_code", f_code).eq("target_month", year_month).execute()
-        mon_set = set(r["user_name"] for r in (mr.data or []))
-        # 評価: year_monthの月に作成済みか
-        ev = supabase.table("patient_evaluations").select("user_name").eq("facility_code", f_code).eq("year_month", year_month).execute()
-        eval_set = set(r["user_name"] for r in (ev.data or []))
-        # 体力測定: year_monthの月内に記録ありか
-        ym_start = year_month + "-01"
-        import calendar as _cal
         y, m = int(year_month[:4]), int(year_month[5:7])
         last_day = _cal.monthrange(y, m)[1]
+        ym_start = f"{year_month}-01"
         ym_end = f"{year_month}-{last_day:02d}"
-        ft = supabase.table("fitness_tests").select("user_name").eq("facility_code", f_code).gte("measured_date", ym_start).lte("measured_date", ym_end).execute()
+
+        # --- モニタリング: 当月に monitoring_reports レコードがあるか ---
+        mr = supabase.table("monitoring_reports").select("user_name").eq("facility_code", f_code).eq("target_month", year_month).execute()
+        mon_set = set(r["user_name"] for r in (mr.data or []))
+
+        # --- 訓練記録: changes_by_training と issues_and_causes が両方入力済み ---
+        ev = supabase.table("patient_evaluations").select(
+            "user_name, changes_by_training, issues_and_causes"
+        ).eq("facility_code", f_code).eq("year_month", year_month).execute()
+        eval_set = set(
+            r["user_name"] for r in (ev.data or [])
+            if (r.get("changes_by_training") or "").strip() and (r.get("issues_and_causes") or "").strip()
+        )
+
+        # --- 体力測定: 3ヶ月以内に記録あり ---
+        # 3ヶ月前の先頭日を計算
+        m3 = m - 3
+        y3 = y
+        if m3 <= 0:
+            m3 += 12
+            y3 -= 1
+        fit_start = f"{y3}-{m3:02d}-01"
+        ft = supabase.table("fitness_tests").select("user_name").eq("facility_code", f_code).gte("measured_date", fit_start).lte("measured_date", ym_end).execute()
         fit_set = set(r["user_name"] for r in (ft.data or []))
-        # 全利用者分をまとめる
-        all_names_res = supabase.table("patients").select("user_name").eq("facility_code", f_code).execute()
-        all_names = [r["user_name"] for r in (all_names_res.data or [])]
+
+        # --- 体重: 当月に記録あり (patient_id経由で取得) ---
+        # patientsテーブルから patient_id と user_name の対応を取得
+        pts = supabase.table("patients").select("id, user_name").eq("facility_code", f_code).execute()
+        pid_to_name = {r["id"]: r["user_name"] for r in (pts.data or [])}
+        all_names = [r["user_name"] for r in (pts.data or [])]
+        # 当月の体重記録を取得
+        bw = supabase.table("body_weights").select("patient_id").eq("facility_code", f_code).gte("measured_date", ym_start).lte("measured_date", ym_end).execute()
+        weight_set = set(pid_to_name[r["patient_id"]] for r in (bw.data or []) if r["patient_id"] in pid_to_name)
+
+        # --- 全利用者分をまとめる ---
         data = []
         for name in all_names:
+            has_mon = name in mon_set
+            has_eval = name in eval_set
+            has_fit = name in fit_set
+            has_weight = name in weight_set
             data.append({
                 "user_name": name,
-                "has_monitoring": name in mon_set,
-                "has_evaluation": name in eval_set,
-                "has_fitness": name in fit_set,
+                "has_monitoring": has_mon,
+                "has_evaluation": has_eval,
+                "has_fitness": has_fit,
+                "has_weight": has_weight,
+                "all_ok": has_mon and has_eval and has_fit and has_weight,
             })
         return jsonify({"status": "success", "data": data})
     except Exception as e:
