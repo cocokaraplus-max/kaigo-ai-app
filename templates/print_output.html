@@ -473,7 +473,8 @@ function poPrintOne(userName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
+        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
+        auto_print: '1'
     });
     window.open('/print_preview?' + params.toString(), '_blank');
 }

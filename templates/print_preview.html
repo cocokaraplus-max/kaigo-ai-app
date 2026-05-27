@@ -1235,6 +1235,16 @@ function saveMonitoring(userName, yearMonth) {
         } else { alert('保存失敗: ' + (d.error || '不明')); }
     }).catch(function(e) { alert('通信エラー: ' + e); });
 }
+
+// ===== auto_print: URLパラメータに auto_print=1 があれば自動印刷 =====
+(function() {
+    var params = new URLSearchParams(location.search);
+    if (params.get('auto_print') === '1') {
+        window.addEventListener('load', function() {
+            setTimeout(function() { window.print(); }, 1200);
+        });
+    }
+})();
 </script>
 </body>
 </html>
