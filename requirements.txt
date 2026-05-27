@@ -11,4 +11,4 @@ pdfminer.six
 anthropic
 stripe
 line-bot-sdk
-weasyprint
+pdfkit

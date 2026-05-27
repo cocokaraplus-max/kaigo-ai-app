@@ -1,16 +1,10 @@
 FROM python:3.11-slim
 WORKDIR /app
-# WeasyPrintの依存パッケージ
+# wkhtmltopdf + 日本語フォント
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libcairo2 \
-    libgdk-pixbuf-xlib-2.0-0 \
-    libffi-dev \
-    libxml2 \
-    libxslt1.1 \
-    shared-mime-info \
+    wkhtmltopdf \
     fonts-noto-cjk \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -9260,9 +9260,7 @@ def print_pdf():
     import json as _json
     from flask import make_response
     try:
-        from weasyprint import HTML, CSS
-        from weasyprint.text.fonts import FontConfiguration
-    except ImportError:
+                    except ImportError:
         return jsonify({"status": "error", "message": "WeasyPrintがインストールされていません"}), 500
 
     f_code = session.get("f_code", "")
@@ -9380,12 +9378,21 @@ def print_pdf():
     if not isinstance(html_str, str):
         html_str = html_str.get_data(as_text=True)
 
-    # WeasyPrintでPDF化
+    # pdfkitでPDF化（wkhtmltopdf使用）
     try:
-        font_config = FontConfiguration()
-        pdf_bytes = HTML(string=html_str, base_url=request.host_url).write_pdf(
-            font_config=font_config
-        )
+        import pdfkit
+        options = {
+            'encoding': 'UTF-8',
+            'no-outline': None,
+            'quiet': '',
+            'disable-smart-shrinking': '',
+            'margin-top': '0',
+            'margin-right': '0',
+            'margin-bottom': '0',
+            'margin-left': '0',
+        }
+        config = pdfkit.configuration(wkhtmltopdf='/usr/bin/wkhtmltopdf')
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
         fname = f"report_{year_month}_{user_name_single or 'all'}.pdf"
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
