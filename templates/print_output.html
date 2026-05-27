@@ -466,7 +466,7 @@ function poPrintAll() {
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle
     });
-    window.open('/print_preview?' + params.toString(), '_blank');
+    window.open('/print_pdf?' + params.toString(), '_blank');
 }
 
 function poPrintOne(userName) {
