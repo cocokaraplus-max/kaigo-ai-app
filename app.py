@@ -9259,10 +9259,6 @@ def print_pdf():
     """PDF出力: WeasyPrintでprint_preview.htmlをPDF化してダウンロード"""
     import json as _json
     from flask import make_response
-    try:
-                    except ImportError:
-        return jsonify({"status": "error", "message": "WeasyPrintがインストールされていません"}), 500
-
     f_code = session.get("f_code", "")
     my_name = session.get("my_name", "")
     supabase = get_supabase()
