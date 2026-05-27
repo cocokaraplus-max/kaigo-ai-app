@@ -1260,18 +1260,18 @@ function saveMonitoring(userName, yearMonth) {
     function calcScale() {
         var vw = window.innerWidth;
         var pageW = 794; // 210mm at 96dpi
-        var padding = 32; // 左右余白合計
+        var padding = 16; // 左右余白合計(両側8px)
         var available = vw - padding;
         if (available < pageW) {
             var scale = available / pageW;
             document.documentElement.style.setProperty('--page-scale', scale.toFixed(4));
-            // margin-bottomでgapが縮まないよう補正
+            // transform:scale はレイアウトサイズを変えないので
+            // 縮んだ分(pageH * (1-scale))をmarginBottomで相殺
             var pages = document.querySelectorAll('.report-page');
             var pageH = 1122; // 297mm at 96dpi
-            var scaledH = pageH * scale;
-            var diff = pageH - scaledH;
+            var shrink = pageH * (1 - scale);
             pages.forEach(function(p) {
-                p.style.marginBottom = (-diff + 48) + 'px';
+                p.style.marginBottom = (-shrink + 48) + 'px';
             });
         } else {
             document.documentElement.style.setProperty('--page-scale', '1');
