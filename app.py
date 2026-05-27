@@ -9391,10 +9391,13 @@ def print_pdf():
         wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
         pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        from urllib.parse import quote
         fname = f"report_{year_month}_{user_name_single or 'all'}.pdf"
+        fname_ascii = f"report_{year_month}.pdf"
+        fname_encoded = quote(fname)
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'attachment; filename="{fname}"'
+        response.headers['Content-Disposition'] = f"attachment; filename="{fname_ascii}"; filename*=UTF-8''{fname_encoded}"
         return response
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
