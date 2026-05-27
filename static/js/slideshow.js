@@ -166,7 +166,7 @@ function renderMock(type, slide) {
 var _ssIdx = 0;
 function openSlideshow() {
   var modal = document.getElementById('ss-modal');
-  modal.style.display = 'flex';
+  modal.style.display = 'flex'; modal.classList.add('is-active');
   document.body.style.overflow = 'hidden';
   _ssIdx = 0;
   renderSlide(0);
