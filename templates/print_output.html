@@ -397,11 +397,11 @@ async function poLoadCheck() {
             var d = bulkMap[p.user_name] || {};
             return {
                 patient: p,
-                data: {
-                    monitoring: d.has_monitoring ? {id:1} : {},
-                    evaluation: d.has_evaluation ? {id:1} : {},
-                    fitness: d.has_fitness ? [{id:1}] : []
-                }
+                has_monitoring: !!d.has_monitoring,
+                has_evaluation: !!d.has_evaluation,
+                has_fitness: !!d.has_fitness,
+                has_weight: !!d.has_weight,
+                all_ok: !!(d.has_monitoring && d.has_evaluation && d.has_fitness && d.has_weight)
             };
         });
         poCheckData = results;
