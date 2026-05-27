@@ -275,6 +275,11 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
         </div>
         <div id="po-check-table-wrap">
             <div class="loading-row">年月を選択してください</div>
+        <div id="po-check-legend" style="display:none;font-size:0.73rem;color:#5f6368;margin-top:6px;padding:5px 8px;background:#f8f9fa;border-radius:6px;">
+          <span style="margin-right:10px;"><span style="color:#34a853;font-weight:700;">&#10003;</span> 入力・生成済み</span>
+          <span style="margin-right:10px;"><span style="color:#f57c00;font-weight:700;">&#9651;</span> 未入力（要対応）</span>
+          <span><span style="color:#d93025;font-weight:700;">&#10007;</span> 未生成（要対応）</span>
+        </div>
         </div>
     </div>
 
@@ -455,6 +460,7 @@ function renderCheckTable(results) {
     });
     html += '</tbody></table>';
     document.getElementById('po-check-table-wrap').innerHTML = html;
+        document.getElementById('po-check-legend').style.display = 'block';
     document.getElementById('po-check-summary').textContent =
         okCount + ' / ' + sorted.length + '名 データ準備OK';
 }
