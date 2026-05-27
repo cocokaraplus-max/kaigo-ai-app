@@ -737,8 +737,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% endfor %}
                 {% else %}
                 {% set goal_val = (cm.short_goal or '') if cm else '' %}
-                {% set status = ev.get('short_goal_function_status', '') if ev else '' %}
-                {% set cont = ev.get('short_goal_function_cont', '') if ev else '' %}
+                {% set status = ev.get('short_goal_status', ev.get('short_goal_function_status', '')) if ev else '' %}
+                {% set cont = ev.get('short_goal_cont', ev.get('short_goal_function_cont', '')) if ev else '' %}
                 {% set new_goal = ev.get('short_goal_new', ev.get('short_goal_function_new', '')) if ev else '' %}
                 <tr>
                     <td colspan="2">{{ goal_val }}</td>
@@ -776,8 +776,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% endfor %}
                 {% else %}
                 {% set goal_val = (cm.long_goal or '') if cm else '' %}
-                {% set status = ev.get('long_goal_function_status', '') if ev else '' %}
-                {% set cont = ev.get('long_goal_function_cont', '') if ev else '' %}
+                {% set status = ev.get('long_goal_status', ev.get('long_goal_function_status', '')) if ev else '' %}
+                {% set cont = ev.get('long_goal_cont', ev.get('long_goal_function_cont', '')) if ev else '' %}
                 {% set new_goal = ev.get('long_goal_new', ev.get('long_goal_function_new', '')) if ev else '' %}
                 <tr>
                     <td colspan="2">{{ goal_val }}</td>
