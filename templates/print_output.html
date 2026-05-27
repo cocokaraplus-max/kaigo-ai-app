@@ -448,8 +448,8 @@ function renderCheckTable(results) {
 
         var safeName = encodeURIComponent(p.user_name);
         html += '<td style="white-space:nowrap;">';
-        html += '<button onclick="poPreviewOne(decodeURIComponent(\"' + safeName + '\"))" style="font-size:0.7rem;padding:3px 6px;border:1px solid #34a853;background:#fff;color:#34a853;border-radius:6px;cursor:pointer;margin-right:3px;">確認</button>';
-        html += '<button onclick="poPrintOne(decodeURIComponent(\"' + safeName + '\"))" style="font-size:0.7rem;padding:3px 6px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;border-radius:6px;cursor:pointer;">印刷</button>';
+        html += '<button onclick="poPreviewOne(\'' + safeName + '\')" style="font-size:0.7rem;padding:3px 6px;border:1px solid #34a853;background:#fff;color:#34a853;border-radius:6px;cursor:pointer;margin-right:3px;">確認</button>';
+        html += '<button onclick="poPrintOne(\'' + safeName + '\')" style="font-size:0.7rem;padding:3px 6px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;border-radius:6px;cursor:pointer;">印刷</button>';
         html += '</td>';
         html += '</tr>';
     });
@@ -470,7 +470,8 @@ function poPrintAll() {
     window.open('/print_pdf?' + params.toString(), '_blank');
 }
 
-function poPrintOne(userName) {
+function poPrintOne(encodedName) {
+    var userName = decodeURIComponent(encodedName);
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
@@ -479,7 +480,8 @@ function poPrintOne(userName) {
     });
     window.location.href = '/print_preview?' + params.toString();
 }
-function poPreviewOne(userName) {
+function poPreviewOne(encodedName) {
+    var userName = decodeURIComponent(encodedName);
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
