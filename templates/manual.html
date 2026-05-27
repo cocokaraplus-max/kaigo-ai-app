@@ -2299,6 +2299,14 @@ function ssPrev() {
   renderSlide(_ssIdx-1);
 }
 
+// キーボード左右矢印キー対応
+document.addEventListener('keydown', function(e){
+  if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+  if (e.key === 'ArrowRight') ssNext();
+  if (e.key === 'ArrowLeft') ssPrev();
+  if (e.key === 'Escape') closeSlideshow();
+});
+
 // タッチスワイプ
 (function(){
   var startX = 0, startY = 0;
