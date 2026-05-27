@@ -559,7 +559,7 @@ function poPrintAll() {
         auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
-    window.location.href = '/print_preview?' + params.toString();
+    setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
 
 function poPrintOne(encodedName) {
@@ -571,7 +571,7 @@ function poPrintOne(encodedName) {
         auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
-    window.location.href = '/print_preview?' + params.toString();
+    setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
 function poPreviewOne(encodedName) {
     var userName = decodeURIComponent(encodedName);
@@ -581,7 +581,7 @@ function poPreviewOne(encodedName) {
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
     });
     poShowLoading('プレビューを準備中…');
-    window.location.href = '/print_preview?' + params.toString();
+    setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
 
 function poPreviewAll() { poPrintAll(); }
