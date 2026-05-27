@@ -9113,14 +9113,12 @@ def api_check_data_bulk():
         ft = supabase.table("fitness_tests").select("user_name").eq("facility_code", f_code).gte("measured_date", fit_start).lte("measured_date", ym_end).execute()
         fit_set = set(r["user_name"] for r in (ft.data or []))
 
-        # --- 体重: 当月に記録あり (patient_id経由で取得) ---
-        # patientsテーブルから patient_id と user_name の対応を取得
-        pts = supabase.table("patients").select("id, user_name").eq("facility_code", f_code).execute()
-        pid_to_name = {r["id"]: r["user_name"] for r in (pts.data or [])}
+        # --- 体重: 当月に記録あり (user_nameで直接検索) ---
+        pts = supabase.table("patients").select("user_name").eq("facility_code", f_code).execute()
         all_names = [r["user_name"] for r in (pts.data or [])]
-        # 当月の体重記録を取得
-        bw = supabase.table("body_weights").select("patient_id").eq("facility_code", f_code).gte("measured_date", ym_start).lte("measured_date", ym_end).execute()
-        weight_set = set(pid_to_name[r["patient_id"]] for r in (bw.data or []) if r["patient_id"] in pid_to_name)
+        # 当月の体重記録を user_name で取得
+        bw = supabase.table("body_weights").select("user_name").eq("facility_code", f_code).gte("measured_date", ym_start).lte("measured_date", ym_end).execute()
+        weight_set = set(r["user_name"] for r in (bw.data or []) if r.get("user_name"))
 
         # --- 全利用者分をまとめる ---
         data = []
