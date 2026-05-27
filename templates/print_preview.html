@@ -12,7 +12,16 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .screen-bar-btns { display: flex; gap: 8px; }
 .btn-print-now { background: #fff; color: #1a73e8; border: none; border-radius: 8px; padding: 7px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
-.pages-wrap { padding: 60px 16px 60px; display: flex; flex-direction: column; align-items: center; gap: 48px; }
+.pages-wrap { padding: 60px 16px 60px; display: flex; flex-direction: column; align-items: center; gap: 48px; overflow-x: hidden; }
+/* モバイル: A4ページを画面幅に合わせてスケーリング */
+@media screen and (max-width: 860px) {
+  .pages-wrap { padding: 16px 0 40px; gap: 16px; }
+  .report-page {
+    transform-origin: top center;
+    transform: scale(var(--page-scale, 1));
+    margin-bottom: calc((297mm * var(--page-scale, 1)) - 297mm);
+  }
+}
 
 /* ===== A4ページ基本 ===== */
 .report-page { width: 210mm; min-height: 297mm; height: 297mm; overflow: hidden; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; box-sizing: border-box; }
@@ -1244,6 +1253,39 @@ function saveMonitoring(userName, yearMonth) {
             setTimeout(function() { window.print(); }, 1200);
         });
     }
+})();
+
+// ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
+(function applyPageScale() {
+    function calcScale() {
+        var vw = window.innerWidth;
+        var pageW = 794; // 210mm at 96dpi
+        var padding = 32; // 左右余白合計
+        var available = vw - padding;
+        if (available < pageW) {
+            var scale = available / pageW;
+            document.documentElement.style.setProperty('--page-scale', scale.toFixed(4));
+            // margin-bottomでgapが縮まないよう補正
+            var pages = document.querySelectorAll('.report-page');
+            var pageH = 1122; // 297mm at 96dpi
+            var scaledH = pageH * scale;
+            var diff = pageH - scaledH;
+            pages.forEach(function(p) {
+                p.style.marginBottom = (-diff + 48) + 'px';
+            });
+        } else {
+            document.documentElement.style.setProperty('--page-scale', '1');
+            document.querySelectorAll('.report-page').forEach(function(p) {
+                p.style.marginBottom = '';
+            });
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', calcScale);
+    } else {
+        calcScale();
+    }
+    window.addEventListener('resize', calcScale);
 })();
 </script>
 </body>
