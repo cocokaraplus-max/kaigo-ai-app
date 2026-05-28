@@ -242,7 +242,7 @@
 
 
 <!-- ===== 月の流れスライドショー ===== -->
-<button class="ss-open-btn" onclick="if(typeof openSlideshow==='function'){openSlideshow()}else{alert('JS未読込: '+typeof openSlideshow)}">
+<a class="ss-open-btn" href="#" ontouchend="event.preventDefault();if(typeof openSlideshow==='function'){openSlideshow()}" onclick="event.preventDefault();if(typeof openSlideshow==='function'){openSlideshow()}" onclick="if(typeof openSlideshow==='function'){openSlideshow()}else{alert('JS未読込: '+typeof openSlideshow)}">
     <div class="ss-open-ic">
         <span class="material-symbols-outlined" style="font-size:24px">play_circle</span>
     </div>
@@ -251,7 +251,7 @@
         <div class="ss-open-sub">利用開始〜書類出力まで10ステップで解説</div>
     </div>
     <span class="material-symbols-outlined" style="margin-left:auto;opacity:0.7">chevron_right</span>
-</button>
+</a>
 
 <div id="ss-modal" onclick="if(event.target===this)closeSlideshow()">
     <div class="ss-sheet">
