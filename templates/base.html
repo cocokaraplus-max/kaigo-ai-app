@@ -2836,14 +2836,17 @@ function renderMock(type, slide) {
 var _ssIdx = 0;
 function openSlideshow() {
   var modal = document.getElementById('ss-modal');
-  modal.style.display = 'flex'; modal.classList.add('is-active');
+  if (!modal) return;
+  modal.classList.add('is-active');
   document.body.style.overflow = 'hidden';
   _ssIdx = 0;
   renderSlide(0);
   renderDots();
 }
 function closeSlideshow() {
-  document.getElementById('ss-modal').style.display = 'none';
+  var modal = document.getElementById('ss-modal');
+  if (!modal) return;
+  modal.classList.remove('is-active');
   document.body.style.overflow = '';
 }
 function renderDots() {
