@@ -352,7 +352,7 @@ async function loadHistory() {
         '<th>測定日</th><th>握右</th><th>握左</th><th>片足右/左</th>' +
         '<th>TUG</th><th>5m</th><th>立座</th></tr>';
       j.fitness.forEach(f => {
-        html += `<tr><td class="dt">${f.measured_date}</td>` +
+        html += `<tr class="hist-row" onclick="fitLoadForEdit(${JSON.stringify(f)})"><td class="dt" style="color:#1a73e8;text-decoration:underline;cursor:pointer">${f.measured_date}</td>` +
           `<td>${fmtNum(f.grip_right)}</td>` +
           `<td>${fmtNum(f.grip_left)}</td>` +
           `<td>${fmtNum(f.standing_balance_right)}/${fmtNum(f.standing_balance_left)}</td>` +
@@ -377,6 +377,22 @@ document.addEventListener('click', function (e) {
   }
 });
 
+function fitLoadForEdit(f) {
+  // 体力測定フォームにデータを読み込む
+  const dateEl = document.getElementById('f-date');
+  if (dateEl) dateEl.value = f.measured_date;
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val != null ? val : ''; };
+  setVal('f-grip-r', f.grip_right);
+  setVal('f-grip-l', f.grip_left);
+  setVal('f-balance-r', f.standing_balance_right);
+  setVal('f-balance-l', f.standing_balance_left);
+  setVal('f-tug', f.tug_sec);
+  setVal('f-walk5m', f.walk_5m_sec);
+  setVal('f-sitstand', f.sit_stand_30sec);
+  setVal('f-note', f.note);
+  // フォームまでスクロール
+  document.getElementById('f-date').scrollIntoView({behavior:'smooth', block:'center'});
+}
 fitLoadPatients();
 </script>
 {% endblock %}
