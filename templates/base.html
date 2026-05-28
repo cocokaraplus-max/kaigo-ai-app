@@ -2667,26 +2667,18 @@ document.addEventListener('click', function(e) {
 
 <script id="slideshow-global">
 // ページロード時にモーダルを必ず閉じる
-(function(){ var m=document.getElementById("ss-modal"); if(m){ m.style.display="none"; m.classList.remove("is-active"); } })();
+(function(){ var m=document.getElementById("ss-modal"); if(m){ m.classList.remove("is-active"); } })();
 (function(){
     document.querySelectorAll('a[href^="#"]').forEach(function(a){
         a.addEventListener('click',function(e){
+            var href=this.getAttribute('href');
+            if(!href||href==='#') return;
             e.preventDefault();
-            var t=document.querySelector(this.getAttribute('href'));
+            var t=document.querySelector(href);
             if(t) t.scrollIntoView({behavior:'smooth',block:'start'});
         });
     });
 })();
-(function(){
-    document.querySelectorAll('a[href^="#"]').forEach(function(a){
-        a.addEventListener('click',function(e){
-            e.preventDefault();
-            var t=document.querySelector(this.getAttribute('href'));
-            if(t) t.scrollIntoView({behavior:'smooth',block:'start'});
-        });
-    });
-})();
-
 // ===== スライドショーデータ =====
 var SLIDES = [
   {
@@ -2836,14 +2828,36 @@ function renderMock(type, slide) {
 var _ssIdx = 0;
 function openSlideshow() {
   var modal = document.getElementById('ss-modal');
-  modal.style.display = 'flex'; modal.classList.add('is-active');
+  if (!modal) return;
+  // iOSのためにbodyの直接の子に移動
+  if (modal.parentNode !== document.body) {
+    document.body.appendChild(modal);
+  }
+  modal.classList.add('is-active');
+  document.body.classList.add('ss-open');
   document.body.style.overflow = 'hidden';
   _ssIdx = 0;
   renderSlide(0);
   renderDots();
+  setTimeout(function(){
+    var sheet = document.querySelector('.ss-sheet');
+    var header = document.querySelector('.ss-header');
+    var nav = document.querySelector('.ss-nav');
+    var content = document.getElementById('ss-content');
+    if (sheet && header && nav && content) {
+      var h = sheet.clientHeight - header.clientHeight - nav.clientHeight;
+      if (h > 0) {
+        content.style.height = h + 'px';
+        content.style.maxHeight = h + 'px';
+      }
+    }
+  }, 50);
 }
 function closeSlideshow() {
-  document.getElementById('ss-modal').style.display = 'none';
+  var modal = document.getElementById('ss-modal');
+  if (!modal) return;
+  modal.classList.remove('is-active');
+  document.body.classList.remove('ss-open');
   document.body.style.overflow = '';
 }
 function renderDots() {
@@ -2898,7 +2912,7 @@ function ssPrev() {
 
 // キーボード左右矢印キー対応
 document.addEventListener('keydown', function(e){
-  if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+  if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
   if (e.key === 'ArrowRight') ssNext();
   if (e.key === 'ArrowLeft') ssPrev();
   if (e.key === 'Escape') closeSlideshow();
@@ -2908,12 +2922,12 @@ document.addEventListener('keydown', function(e){
 (function(){
   var startX = 0, startY = 0;
   document.addEventListener('touchstart', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
   }, {passive:true});
   document.addEventListener('touchend', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
     var dx = e.changedTouches[0].clientX - startX;
     var dy = e.changedTouches[0].clientY - startY;
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
@@ -2927,11 +2941,11 @@ document.addEventListener('keydown', function(e){
   var scale = 1, lastScale = 1, startDist = 0;
   function getDist(t){ var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
   document.addEventListener('touchstart', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
+    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').classList.contains('is-active')) return;
     if (e.touches.length===2){ startDist=getDist(e.touches); lastScale=scale; }
   }, {passive:true});
   document.addEventListener('touchmove', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
+    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').classList.contains('is-active')) return;
     if (e.touches.length===2){
       scale = Math.min(3, Math.max(1, lastScale*(getDist(e.touches)/startDist)));
       var el = document.querySelector('.gd');
