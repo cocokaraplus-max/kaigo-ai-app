@@ -2835,6 +2835,19 @@ function openSlideshow() {
   _ssIdx = 0;
   renderSlide(0);
   renderDots();
+  setTimeout(function(){
+    var sheet = document.querySelector('.ss-sheet');
+    var header = document.querySelector('.ss-header');
+    var nav = document.querySelector('.ss-nav');
+    var content = document.getElementById('ss-content');
+    if (sheet && header && nav && content) {
+      var h = sheet.clientHeight - header.clientHeight - nav.clientHeight;
+      if (h > 0) {
+        content.style.height = h + 'px';
+        content.style.maxHeight = h + 'px';
+      }
+    }
+  }, 50);
 }
 function closeSlideshow() {
   var modal = document.getElementById('ss-modal');
