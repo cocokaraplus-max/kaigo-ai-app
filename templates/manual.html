@@ -241,7 +241,7 @@
 
 
 <!-- ===== 月の流れスライドショー ===== -->
-<button class="ss-open-btn" onclick="openSlideshow()">
+<button class="ss-open-btn" onclick="if(typeof openSlideshow==='function'){openSlideshow()}else{alert('JS未読込: '+typeof openSlideshow)}">
     <div class="ss-open-ic">
         <span class="material-symbols-outlined" style="font-size:24px">play_circle</span>
     </div>
