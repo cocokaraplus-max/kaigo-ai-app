@@ -352,7 +352,10 @@ async function loadHistory() {
         '<th>測定日</th><th>握右</th><th>握左</th><th>片足右/左</th>' +
         '<th>TUG</th><th>5m</th><th>立座</th></tr>';
       j.fitness.forEach(f => {
-        html += `<tr class="hist-row" onclick="fitLoadForEdit(${JSON.stringify(f)})"><td class="dt" style="color:#1a73e8;text-decoration:underline;cursor:pointer">${f.measured_date}</td>` +
+        const fKey = 'fit_' + f.id;
+        window._fitData = window._fitData || {};
+        window._fitData[fKey] = f;
+        html += `<tr class="hist-row" data-fkey="${fKey}"><td class="dt" style="color:#1a73e8;text-decoration:underline;cursor:pointer">${f.measured_date}</td>` +
           `<td>${fmtNum(f.grip_right)}</td>` +
           `<td>${fmtNum(f.grip_left)}</td>` +
           `<td>${fmtNum(f.standing_balance_right)}/${fmtNum(f.standing_balance_left)}</td>` +
@@ -377,6 +380,19 @@ document.addEventListener('click', function (e) {
   }
 });
 
+document.addEventListener('click', function(e) {
+  const row = e.target.closest('.hist-row[data-fkey]');
+  if (row && window._fitData && window._fitData[row.dataset.fkey]) {
+    fitLoadForEdit(window._fitData[row.dataset.fkey]);
+  }
+});
+document.addEventListener('touchend', function(e) {
+  const row = e.target.closest('.hist-row[data-fkey]');
+  if (row && window._fitData && window._fitData[row.dataset.fkey]) {
+    e.preventDefault();
+    fitLoadForEdit(window._fitData[row.dataset.fkey]);
+  }
+});
 function fitLoadForEdit(f) {
   // 体力測定フォームにデータを読み込む
   const dateEl = document.getElementById('f-date');
