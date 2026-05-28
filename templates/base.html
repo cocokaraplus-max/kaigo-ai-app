@@ -2667,7 +2667,7 @@ document.addEventListener('click', function(e) {
 
 <script id="slideshow-global">
 // ページロード時にモーダルを必ず閉じる
-(function(){ var m=document.getElementById("ss-modal"); if(m){ m.style.display="none"; m.classList.remove("is-active"); } })();
+(function(){ var m=document.getElementById("ss-modal"); if(m){ m.classList.remove("is-active"); } })();
 (function(){
     document.querySelectorAll('a[href^="#"]').forEach(function(a){
         a.addEventListener('click',function(e){
@@ -2901,7 +2901,7 @@ function ssPrev() {
 
 // キーボード左右矢印キー対応
 document.addEventListener('keydown', function(e){
-  if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+  if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
   if (e.key === 'ArrowRight') ssNext();
   if (e.key === 'ArrowLeft') ssPrev();
   if (e.key === 'Escape') closeSlideshow();
@@ -2911,12 +2911,12 @@ document.addEventListener('keydown', function(e){
 (function(){
   var startX = 0, startY = 0;
   document.addEventListener('touchstart', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
   }, {passive:true});
   document.addEventListener('touchend', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    if (!document.getElementById('ss-modal') || !document.getElementById('ss-modal').classList.contains('is-active')) return;
     var dx = e.changedTouches[0].clientX - startX;
     var dy = e.changedTouches[0].clientY - startY;
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
@@ -2930,11 +2930,11 @@ document.addEventListener('keydown', function(e){
   var scale = 1, lastScale = 1, startDist = 0;
   function getDist(t){ var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
   document.addEventListener('touchstart', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
+    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').classList.contains('is-active')) return;
     if (e.touches.length===2){ startDist=getDist(e.touches); lastScale=scale; }
   }, {passive:true});
   document.addEventListener('touchmove', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
+    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').classList.contains('is-active')) return;
     if (e.touches.length===2){
       scale = Math.min(3, Math.max(1, lastScale*(getDist(e.touches)/startDist)));
       var el = document.querySelector('.gd');
