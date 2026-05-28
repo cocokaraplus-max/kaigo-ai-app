@@ -8458,7 +8458,8 @@ def api_save_fitness_test():
         metrics = {
             "grip_right": num_or_none(data.get("grip_right")),
             "grip_left": num_or_none(data.get("grip_left")),
-            "standing_balance_sec": num_or_none(data.get("standing_balance_sec")),
+            "standing_balance_right": num_or_none(data.get("standing_balance_right")),
+            "standing_balance_left": num_or_none(data.get("standing_balance_left")),
             "tug_sec": num_or_none(data.get("tug_sec")),
             "walk_5m_sec": num_or_none(data.get("walk_5m_sec")),
             "sit_stand_30sec": num_or_none(data.get("sit_stand_30sec")),
@@ -8516,7 +8517,7 @@ def api_fitness_history():
             "measured_date", desc=True).execute()
 
         ft = supabase.table("fitness_tests").select(
-            "id, measured_date, grip_right, grip_left, standing_balance_sec, "
+            "id, measured_date, grip_right, grip_left, standing_balance_right, standing_balance_left, "
             "tug_sec, walk_5m_sec, sit_stand_30sec, note, staff_name"
         ).eq("facility_code", f_code).eq(
             "patient_id", patient_id).order(
