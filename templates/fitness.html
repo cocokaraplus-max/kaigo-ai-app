@@ -337,7 +337,10 @@ async function loadHistory() {
     if ((j.weights || []).length) {
       html += '<table class="hist-table"><tr><th>測定日</th><th>体重(kg)</th><th>備考</th></tr>';
       j.weights.forEach(w => {
-        html += `<tr><td class="dt">${w.measured_date}</td>` +
+        const wKey = 'wt_' + w.id;
+        window._fitData = window._fitData || {};
+        window._fitData[wKey] = w;
+        html += `<tr class="hist-row" data-wkey="${wKey}"><td class="dt" style="color:#1a73e8;text-decoration:underline;cursor:pointer">${w.measured_date}</td>` +
                 `<td>${fmtNum(w.weight_kg)}</td>` +
                 `<td>${w.note || ''}</td></tr>`;
       });
@@ -385,6 +388,10 @@ document.addEventListener('click', function(e) {
   if (row && window._fitData && window._fitData[row.dataset.fkey]) {
     fitLoadForEdit(window._fitData[row.dataset.fkey]);
   }
+  const wrow = e.target.closest('.hist-row[data-wkey]');
+  if (wrow && window._fitData && window._fitData[wrow.dataset.wkey]) {
+    weightLoadForEdit(window._fitData[wrow.dataset.wkey]);
+  }
 });
 document.addEventListener('touchend', function(e) {
   const row = e.target.closest('.hist-row[data-fkey]');
@@ -392,7 +399,21 @@ document.addEventListener('touchend', function(e) {
     e.preventDefault();
     fitLoadForEdit(window._fitData[row.dataset.fkey]);
   }
+  const wrow = e.target.closest('.hist-row[data-wkey]');
+  if (wrow && window._fitData && window._fitData[wrow.dataset.wkey]) {
+    e.preventDefault();
+    weightLoadForEdit(window._fitData[wrow.dataset.wkey]);
+  }
 });
+function weightLoadForEdit(w) {
+  const dateEl = document.getElementById('w-date');
+  if (dateEl) dateEl.value = w.measured_date;
+  const kgEl = document.getElementById('w-kg');
+  if (kgEl) kgEl.value = w.weight_kg != null ? w.weight_kg : '';
+  const noteEl = document.getElementById('w-note');
+  if (noteEl) noteEl.value = w.note || '';
+  document.getElementById('w-date').scrollIntoView({behavior:'smooth', block:'center'});
+}
 function fitLoadForEdit(f) {
   // 体力測定フォームにデータを読み込む
   const dateEl = document.getElementById('f-date');
