@@ -413,7 +413,7 @@ async function deleteRecord(type, id, date) {
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
   const j = await r.json();
   if (j.status === 'success') {
-    loadFitHistory();
+    loadHistory();
   } else {
     alert('削除に失敗しました: ' + j.message);
   }
