@@ -129,8 +129,9 @@
     -webkit-tap-highlight-color:transparent;font-family:inherit;
 }
 .ss-open-btn:active{opacity:0.85;transform:scale(0.98)}
+.ss-open-btn *{pointer-events:none}
 .ss-open-ic{width:44px;height:44px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.ss-open-title{font-size:1rem;font-weight:900;letter-spacing:0.5px}
+.ss-open-title{font-size:1rem;font-weight:900;letter-spacing:0.5px;pointer-events:none}
 .ss-open-sub{font-size:0.72rem;opacity:0.85;margin-top:2px}
 #ss-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.7);-webkit-align-items:flex-end;align-items:flex-end;-webkit-justify-content:center;justify-content:center}
 #ss-modal.is-active{display:-webkit-flex;display:flex}
