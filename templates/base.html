@@ -2829,6 +2829,10 @@ var _ssIdx = 0;
 function openSlideshow() {
   var modal = document.getElementById('ss-modal');
   if (!modal) return;
+  // iOSのためにbodyの直接の子に移動
+  if (modal.parentNode !== document.body) {
+    document.body.appendChild(modal);
+  }
   modal.classList.add('is-active');
   document.body.classList.add('ss-open');
   document.body.style.overflow = 'hidden';
