@@ -111,16 +111,17 @@
     </div>
 
     <div class="metric-row">
-      <div class="m-label">握力 <small>右</small></div>
-      <input type="text" id="f-grip-r" inputmode="decimal" onblur="fitNormalizeField(this)">
+      <div class="m-label">握力</div>
+      <small style="color:#9aa0a6;font-size:0.72rem;margin-right:2px;">右</small><input type="text" id="f-grip-r" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">kg</span>
-      <div class="m-label" style="flex:0 0 auto;"><small>左</small></div>
-      <input type="text" id="f-grip-l" inputmode="decimal" onblur="fitNormalizeField(this)">
+      <small style="color:#9aa0a6;font-size:0.72rem;margin-left:6px;margin-right:2px;">左</small><input type="text" id="f-grip-l" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">kg</span>
     </div>
     <div class="metric-row">
       <div class="m-label">片足立ち <small>（開眼）</small></div>
-      <input type="text" id="f-balance" inputmode="decimal" onblur="fitNormalizeField(this)">
+      <small style="color:#9aa0a6;font-size:0.72rem;margin-right:2px;">右</small><input type="text" id="f-balance-r" inputmode="decimal" onblur="fitNormalizeField(this)">
+      <span class="m-unit">秒</span>
+      <small style="color:#9aa0a6;font-size:0.72rem;margin-left:6px;margin-right:2px;">左</small><input type="text" id="f-balance-l" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
@@ -282,13 +283,14 @@ async function saveFitness() {
     measured_date: date,
     grip_right: fitToHalf(document.getElementById('f-grip-r').value),
     grip_left: fitToHalf(document.getElementById('f-grip-l').value),
-    standing_balance_sec: fitToHalf(document.getElementById('f-balance').value),
+    standing_balance_right: fitToHalf(document.getElementById('f-balance-r').value),
+    standing_balance_left: fitToHalf(document.getElementById('f-balance-l').value),
     tug_sec: fitToHalf(document.getElementById('f-tug').value),
     walk_5m_sec: fitToHalf(document.getElementById('f-walk5m').value),
     sit_stand_30sec: fitToHalf(document.getElementById('f-sitstand').value),
     note: document.getElementById('f-note').value,
   };
-  const hasAny = ['grip_right','grip_left','standing_balance_sec',
+  const hasAny = ['grip_right','grip_left','standing_balance_right','standing_balance_left',
     'tug_sec','walk_5m_sec','sit_stand_30sec'].some(k => payload[k] !== '');
   if (!hasAny) { setMsg('f-msg', '測定値を1つ以上入力してください', false); return; }
   const btn = document.getElementById('f-save');
@@ -301,7 +303,7 @@ async function saveFitness() {
     const j = await r.json();
     if (j.status === 'success') {
       setMsg('f-msg', '体力測定を保存しました', true);
-      ['f-grip-r','f-grip-l','f-balance','f-tug','f-walk5m','f-sitstand','f-note']
+      ['f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-sitstand','f-note']
         .forEach(id => document.getElementById(id).value = '');
       loadHistory();
     } else {
@@ -347,13 +349,13 @@ async function loadHistory() {
     html += '<div class="hist-block-label">体力測定</div>';
     if ((j.fitness || []).length) {
       html += '<table class="hist-table"><tr>' +
-        '<th>測定日</th><th>握右</th><th>握左</th><th>片足</th>' +
+        '<th>測定日</th><th>握右</th><th>握左</th><th>片足右/左</th>' +
         '<th>TUG</th><th>5m</th><th>立座</th></tr>';
       j.fitness.forEach(f => {
         html += `<tr><td class="dt">${f.measured_date}</td>` +
           `<td>${fmtNum(f.grip_right)}</td>` +
           `<td>${fmtNum(f.grip_left)}</td>` +
-          `<td>${fmtNum(f.standing_balance_sec)}</td>` +
+          `<td>${fmtNum(f.standing_balance_right)}/${fmtNum(f.standing_balance_left)}</td>` +
           `<td>${fmtNum(f.tug_sec)}</td>` +
           `<td>${fmtNum(f.walk_5m_sec)}</td>` +
           `<td>${fmtNum(f.sit_stand_30sec)}</td></tr>`;
