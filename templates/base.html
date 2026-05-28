@@ -2666,6 +2666,8 @@ document.addEventListener('click', function(e) {
 
 
 <script id="slideshow-global">
+// ページロード時にモーダルを必ず閉じる
+(function(){ var m=document.getElementById("ss-modal"); if(m){ m.style.display="none"; m.classList.remove("is-active"); } })();
 (function(){
     document.querySelectorAll('a[href^="#"]').forEach(function(a){
         a.addEventListener('click',function(e){
