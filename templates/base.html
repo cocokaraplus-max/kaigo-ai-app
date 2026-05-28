@@ -2829,7 +2829,6 @@ var _ssIdx = 0;
 function openSlideshow() {
   var modal = document.getElementById('ss-modal');
   if (!modal) return;
-  document.documentElement.style.setProperty('--ss-scroll-top', '-' + window.scrollY + 'px');
   modal.classList.add('is-active');
   document.body.classList.add('ss-open');
   document.body.style.overflow = 'hidden';
@@ -2842,11 +2841,7 @@ function closeSlideshow() {
   if (!modal) return;
   modal.classList.remove('is-active');
   document.body.classList.remove('ss-open');
-  var scrollY = parseInt(document.documentElement.style.getPropertyValue('--ss-scroll-top') || '0') * -1;
   document.body.style.overflow = '';
-  document.body.style.position = '';
-  document.body.style.top = '';
-  window.scrollTo(0, scrollY);
 }
 function renderDots() {
   var d = document.getElementById('ss-dots');
