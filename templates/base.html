@@ -2671,19 +2671,17 @@ document.addEventListener('click', function(e) {
 (function(){
     document.querySelectorAll('a[href^="#"]').forEach(function(a){
         a.addEventListener('click',function(e){
+            var href=this.getAttribute('href');
+            if(!href||href==='#') return;
             e.preventDefault();
-            var t=document.querySelector(this.getAttribute('href'));
+            var t=document.querySelector(href);
             if(t) t.scrollIntoView({behavior:'smooth',block:'start'});
         });
     });
 })();
-(function(){
-    document.querySelectorAll('a[href^="#"]').forEach(function(a){
-        a.addEventListener('click',function(e){
-            e.preventDefault();
-            var t=document.querySelector(this.getAttribute('href'));
-            if(t) t.scrollIntoView({behavior:'smooth',block:'start'});
-        });
+    });
+})();
+
     });
 })();
 
