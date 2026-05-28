@@ -342,7 +342,8 @@ async function loadHistory() {
         window._fitData[wKey] = w;
         html += `<tr class="hist-row" data-wkey="${wKey}"><td class="dt" style="color:#1a73e8;text-decoration:underline;cursor:pointer">${w.measured_date}</td>` +
                 `<td>${fmtNum(w.weight_kg)}</td>` +
-                `<td>${w.note || ''}</td></tr>`;
+                `<td>${w.note || ''}</td>` +
+                `<td><button onclick="event.stopPropagation();deleteRecord('weight','${w.id}','${w.measured_date}')" style="background:none;border:none;color:#ea4335;font-size:1rem;cursor:pointer;padding:2px 6px;">🗑</button></td></tr>`;
       });
       html += '</table>';
     } else {
@@ -364,7 +365,8 @@ async function loadHistory() {
           `<td>${fmtNum(f.standing_balance_right)}/${fmtNum(f.standing_balance_left)}</td>` +
           `<td>${fmtNum(f.tug_sec)}</td>` +
           `<td>${fmtNum(f.walk_5m_sec)}</td>` +
-          `<td>${fmtNum(f.sit_stand_30sec)}</td></tr>`;
+          `<td>${fmtNum(f.sit_stand_30sec)}</td>` +
+          `<td><button onclick="event.stopPropagation();deleteRecord('fitness','${f.id}','${f.measured_date}')" style="background:none;border:none;color:#ea4335;font-size:1rem;cursor:pointer;padding:2px 6px;">🗑</button></td></tr>`;
       });
       html += '</table>';
     } else {
@@ -405,6 +407,17 @@ document.addEventListener('touchend', function(e) {
     weightLoadForEdit(window._fitData[wrow.dataset.wkey]);
   }
 });
+async function deleteRecord(type, id, date) {
+  if (!confirm(date + 'のデータを削除しますか？')) return;
+  const url = type === 'fitness' ? '/api/delete_fitness_test' : '/api/delete_body_weight';
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+  const j = await r.json();
+  if (j.status === 'success') {
+    loadFitHistory();
+  } else {
+    alert('削除に失敗しました: ' + j.message);
+  }
+}
 function weightLoadForEdit(w) {
   const dateEl = document.getElementById('w-date');
   if (dateEl) dateEl.value = w.measured_date;

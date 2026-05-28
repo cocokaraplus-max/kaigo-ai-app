@@ -8498,6 +8498,36 @@ def api_save_fitness_test():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/delete_fitness_test', methods=['POST'])
+@login_required
+def api_delete_fitness_test():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.get_json()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        supabase.table("fitness_tests").delete().eq("id", rid).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delete_body_weight', methods=['POST'])
+@login_required
+def api_delete_body_weight():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.get_json()
+        rid = data.get("id")
+        if not rid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        supabase.table("body_weights").delete().eq("id", rid).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/fitness_history')
 @login_required
 def api_fitness_history():
