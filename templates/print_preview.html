@@ -870,16 +870,34 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <div class="rep-twocol">
         {% if items.get('changes', true) %}
         <div class="rep-twocol-box">
-            <div class="rep-twocol-title">個別機能訓練実施による変化</div>
-            <div class="rep-twocol-body">{{ ev.get('changes_by_training', '（未入力）') if ev else '（未入力）' }}</div>
+            <div class="rep-twocol-title" style="display:flex;align-items:center;justify-content:space-between;">
+                <span>個別機能訓練実施による変化</span>
+                <span class="no-print" style="font-size:7pt;color:#888;">クリックで編集</span>
+            </div>
+            <div class="rep-twocol-body no-print-border" contenteditable="true"
+                data-field="changes_by_training" data-user="{{ p.user_name }}" data-ym="{{ year_month }}"
+                style="outline:none;cursor:text;min-height:1em;"
+                onfocus="this.style.background='#fffde7';this.style.outline='1px solid #1a73e8';"
+                onblur="this.style.background='';this.style.outline='none';">{{ ev.get('changes_by_training', '（未入力）') if ev else '（未入力）' }}</div>
         </div>
         {% endif %}
         {% if items.get('issues', true) %}
         <div class="rep-twocol-box">
-            <div class="rep-twocol-title">課題とその要因</div>
-            <div class="rep-twocol-body">{{ ev.get('issues_and_causes', '（未入力）') if ev else '（未入力）' }}</div>
+            <div class="rep-twocol-title" style="display:flex;align-items:center;justify-content:space-between;">
+                <span>課題とその要因</span>
+                <span class="no-print" style="font-size:7pt;color:#888;">クリックで編集</span>
+            </div>
+            <div class="rep-twocol-body no-print-border" contenteditable="true"
+                data-field="issues_and_causes" data-user="{{ p.user_name }}" data-ym="{{ year_month }}"
+                style="outline:none;cursor:text;min-height:1em;"
+                onfocus="this.style.background='#fffde7';this.style.outline='1px solid #1a73e8';"
+                onblur="this.style.background='';this.style.outline='none';">{{ ev.get('issues_and_causes', '（未入力）') if ev else '（未入力）' }}</div>
         </div>
         {% endif %}
+    </div>
+    <div class="no-print" style="text-align:right;margin-top:-2mm;margin-bottom:2mm;">
+        <button onclick="saveEvalFields('{{ p.user_name }}','{{ year_month }}')"
+            style="font-size:7pt;padding:2px 10px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;">保存</button>
     </div>
     {% endif %}
 
@@ -979,8 +997,19 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <!-- 特記事項 -->
     {% if items.get('special', true) %}
     <div class="rep-special-row">
-        <div class="rep-special-label">特記事項</div>
-        <div class="rep-special-body">{{ ev.get('special_notes', '') if ev else '' }}</div>
+        <div class="rep-special-label">
+            特記事項
+            <span class="no-print" style="font-size:7pt;color:#888;font-weight:400;margin-left:6px;">クリックで編集</span>
+        </div>
+        <div class="rep-special-body no-print-border" contenteditable="true"
+            data-field="special_notes" data-user="{{ p.user_name }}" data-ym="{{ year_month }}"
+            style="outline:none;cursor:text;min-height:1em;"
+            onfocus="this.style.background='#fffde7';this.style.outline='1px solid #1a73e8';"
+            onblur="this.style.background='';this.style.outline='none';">{{ ev.get('special_notes', '') if ev else '' }}</div>
+    </div>
+    <div class="no-print" style="text-align:right;margin-top:-2mm;margin-bottom:2mm;">
+        <button onclick="saveEvalFields('{{ p.user_name }}','{{ year_month }}')"
+            style="font-size:7pt;padding:2px 10px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;">保存</button>
     </div>
     {% endif %}
 
@@ -1212,6 +1241,30 @@ if (document.body.classList.contains('tmpl-4')) {
             }, options: chartOpts });
         }
     });
+}
+
+function saveEvalFields(userName, yearMonth) {
+    var fields = document.querySelectorAll('[data-user="' + userName + '"][data-field]');
+    var payload = { user_name: userName, year_month: yearMonth };
+    fields.forEach(function(el) {
+        var field = el.getAttribute('data-field');
+        var txt = el.innerText.trim();
+        if (txt === '（未入力）') txt = '';
+        payload[field] = txt;
+    });
+    fetch('/api/save_patient_evaluation', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        var btn = document.activeElement;
+        if (d.status === 'success') {
+            btn.textContent = '保存済！'; btn.style.background = '#34a853';
+            setTimeout(function() { btn.textContent = '保存'; btn.style.background = '#1a73e8'; }, 2000);
+        } else {
+            alert('保存失敗: ' + (d.message || '不明'));
+        }
+    }).catch(function(e) { alert('通信エラー: ' + e); });
 }
 
 function saveMonitoring(userName, yearMonth) {
