@@ -708,31 +708,32 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 #crop-modal-overlay.show { display: flex; }
 #crop-modal {
     background: #fff; border-radius: 14px;
-    padding: 16px; max-width: 92vw; max-height: 90vh;
-    display: flex; flex-direction: column; gap: 10px;
+    padding: 16px;
+    display: inline-flex; flex-direction: column; gap: 10px;
+    max-width: 92vw; box-sizing: border-box;
 }
-#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; }
+#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; white-space: nowrap; }
 #crop-canvas-wrap {
     position: relative;
     border: 1px solid #e0e0e0; border-radius: 8px;
-    cursor: crosshair; user-select: none; flex-shrink: 0;
-    line-height: 0;
+    cursor: crosshair; user-select: none;
+    display: block; line-height: 0;
+    overflow: hidden;
 }
 #crop-source-img {
     display: block;
     max-width: 60vw;
-    max-height: 50vh;
+    max-height: 52vh;
     width: auto;
     height: auto;
     pointer-events: none;
-    object-fit: contain;
 }
 #crop-selection {
     position: absolute; border: 2px dashed #1a73e8;
     background: rgba(26,115,232,0.1);
     pointer-events: none; display: none;
 }
-.crop-actions { display: flex; gap: 8px; }
+.crop-actions { display: flex; gap: 8px; width: 100%; box-sizing: border-box; }
 .crop-btn-apply {
     flex: 1; padding: 8px; background: #1a73e8; color: #fff;
     border: none; border-radius: 8px; font-size: 0.82rem;
