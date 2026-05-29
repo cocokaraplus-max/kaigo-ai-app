@@ -1852,60 +1852,28 @@ function saveMonitoring(userName, yearMonth) {
 
 // ===== 2ページ超過検知・自動縮小 =====
 function autoCompactPages() {
+    var a4HeightPx = 297 * 3.7795; // A4高さをpxに換算
     var pages = document.querySelectorAll('.report-page');
     pages.forEach(function(page) {
         // 画像ページ（2ページ目）はスキップ
         if (page.classList.contains('rep-image-page')) return;
-        // compactクラスをリセット
+        // リセット
         page.classList.remove('compact');
         page.style.fontSize = '';
         page.style.lineHeight = '';
         page.style.padding = '';
 
-        // A4の内側高さ（297mm - 上下パディング22mm = 275mm）をpxに換算
-        // 1mm = 3.7795px (96dpi)
-        var paddingTop = parseFloat(getComputedStyle(page).paddingTop);
-        var paddingBottom = parseFloat(getComputedStyle(page).paddingBottom);
-        var a4HeightPx = 297 * 3.7795;
-        var innerHeightPx = a4HeightPx - paddingTop - paddingBottom;
-
-        // 最後の要素のbottomから先頭要素のtopを引いて実際のコンテンツ高さを計算
-        var children = page.children;
-        var firstTop = 0, lastBottom = 0;
-        for (var i = 0; i < children.length; i++) {
-            var child = children[i];
-            // no-printは除外
-            if (child.classList.contains('no-print')) continue;
-            var r = child.getBoundingClientRect();
-            var pageRect = page.getBoundingClientRect();
-            var relTop = r.top - pageRect.top;
-            var relBottom = r.bottom - pageRect.top;
-            if (i === 0 || relTop < firstTop) firstTop = relTop;
-            if (relBottom > lastBottom) lastBottom = relBottom;
-        }
-        var contentHeight = lastBottom - firstTop;
-
-        if (contentHeight > innerHeightPx * 1.05) {
+        // offsetHeightでA4を超えているか判定（min-height: 297mmを超えたら溢れている）
+        var h = page.offsetHeight;
+        if (h > a4HeightPx * 1.02) {
             page.classList.add('compact');
             // compact後も溢れる場合はさらに縮小
             setTimeout(function() {
-                var paddingTop2 = parseFloat(getComputedStyle(page).paddingTop);
-                var paddingBottom2 = parseFloat(getComputedStyle(page).paddingBottom);
-                var innerH2 = a4HeightPx - paddingTop2 - paddingBottom2;
-                // 再計算
-                var lastB2 = 0;
-                for (var j = 0; j < page.children.length; j++) {
-                    var ch = page.children[j];
-                    if (ch.classList.contains('no-print')) continue;
-                    var rb = ch.getBoundingClientRect().bottom - page.getBoundingClientRect().top;
-                    if (rb > lastB2) lastB2 = rb;
-                }
-                if (lastB2 - firstTop > innerH2 * 1.05) {
+                if (page.offsetHeight > a4HeightPx * 1.02) {
                     page.style.fontSize = '7pt';
                     page.style.lineHeight = '1.35';
                     page.style.padding = '8mm 10mm 6mm';
-                    var tds = page.querySelectorAll('.rep-monitoring-table td');
-                    tds.forEach(function(td) {
+                    page.querySelectorAll('.rep-monitoring-table td').forEach(function(td) {
                         td.style.fontSize = '6pt';
                         td.style.padding = '1px 3px';
                     });
