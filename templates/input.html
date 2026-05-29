@@ -607,7 +607,22 @@
                 <span style="color:#80868b;font-size:0.8rem;">〜</span>
                 <input type="date" class="form-control" id="leave-date-end" name="leave_date_end">
             </div>
-            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">カレンダーに自動登録されます</div>
+            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">連続したお休みはこちら。飛び飛びの日は下で追加してください。</div>
+        </div>
+
+        <!-- 飛び日（複数日）追加 -->
+        <div style="margin-top:16px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">date_range</span>
+                飛び飛びのお休み日を追加（任意）
+            </label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="date" class="form-control" id="leave-multi-input" style="flex:1;">
+                <button type="button" class="btn" onclick="addLeaveMultiDate()" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:10px 16px;white-space:nowrap;cursor:pointer;">追加</button>
+            </div>
+            <div id="leave-multi-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+            <input type="hidden" id="leave-dates" name="leave_dates" value="">
+            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">追加した日それぞれにカレンダー「お休み」が作成され、ケース記録1件にまとめて記載されます。</div>
         </div>
 
         <!-- 休みの理由 -->
@@ -745,6 +760,8 @@ window.saveRecord = async function() {
         const leaveEnd = document.getElementById('leave-date-end')?.value || '';
         formData.append('leave_date_start', leaveStart);
         formData.append('leave_date_end', leaveEnd || leaveStart);
+        // 飛び日（複数日）リスト。あればサーバー側で優先される
+        formData.append('leave_dates', document.getElementById('leave-dates')?.value || '');
         const leaveOther = document.getElementById('leave-other-detail')?.value || '';
         formData.append('leave_other_detail', leaveOther);
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
@@ -810,6 +827,7 @@ window.saveRecord = async function() {
             // Session 33: 休み連絡フォームもリセット
             document.getElementById('leave-date-start') && (document.getElementById('leave-date-start').value = '');
             document.getElementById('leave-date-end') && (document.getElementById('leave-date-end').value = '');
+            if (typeof resetLeaveMultiDates === 'function') resetLeaveMultiDates();
             document.getElementById('leave-other-detail') && (document.getElementById('leave-other-detail').value = '');
             document.getElementById('leave-reason') && (document.getElementById('leave-reason').value = '');
             document.getElementById('leave-other-block') && (document.getElementById('leave-other-block').style.display = 'none');
@@ -1279,7 +1297,43 @@ window.updateLeaveFormVisibility = function() {
         if (lvRel) lvRel.value = '';
         if (lvRelBlock) lvRelBlock.style.display = 'none';
         document.querySelectorAll('.leave-btn.selected').forEach(function(b){ b.classList.remove('selected'); });
+        if (typeof resetLeaveMultiDates === 'function') resetLeaveMultiDates();
     }
+};
+
+// ===== 飛び日（複数日）お休み: 追加/削除/タグ表示 =====
+window._leaveMultiDates = window._leaveMultiDates || [];
+window.addLeaveMultiDate = function() {
+    var inp = document.getElementById('leave-multi-input');
+    if (!inp) return;
+    var v = inp.value;
+    if (!v) return;
+    if (window._leaveMultiDates.indexOf(v) === -1) {
+        window._leaveMultiDates.push(v);
+        window._leaveMultiDates.sort();
+        renderLeaveMultiTags();
+    }
+    inp.value = '';
+};
+window.removeLeaveMultiDate = function(v) {
+    window._leaveMultiDates = window._leaveMultiDates.filter(function(d){ return d !== v; });
+    renderLeaveMultiTags();
+};
+function renderLeaveMultiTags() {
+    var box = document.getElementById('leave-multi-tags');
+    var hidden = document.getElementById('leave-dates');
+    if (hidden) hidden.value = window._leaveMultiDates.join(',');
+    if (!box) return;
+    box.innerHTML = window._leaveMultiDates.map(function(d){
+        return '<span style="display:inline-flex;align-items:center;gap:4px;background:#fde8e8;color:#e53935;border-radius:14px;padding:4px 12px;font-size:0.85rem;">'
+            + d + '<span style="cursor:pointer;font-weight:700;font-size:1rem;" onclick="removeLeaveMultiDate(\''+d+'\')">×</span></span>';
+    }).join('');
+}
+window.resetLeaveMultiDates = function() {
+    window._leaveMultiDates = [];
+    var hidden = document.getElementById('leave-dates');
+    if (hidden) hidden.value = '';
+    renderLeaveMultiTags();
 };
 
 // Session 36: VAS ウィジェットの表示切替・初期化
