@@ -1852,7 +1852,6 @@ function saveMonitoring(userName, yearMonth) {
 
 // ===== 2ページ超過検知・自動縮小 =====
 function autoCompactPages() {
-    var a4HeightPx = 297 * 3.7795;
     var pages = document.querySelectorAll('.report-page');
     pages.forEach(function(page) {
         if (page.classList.contains('rep-image-page')) return;
@@ -1862,19 +1861,23 @@ function autoCompactPages() {
         page.style.lineHeight = '';
         page.style.padding = '';
 
-        // min-heightを一時的に外してscrollHeightで実コンテンツ高さを取得
+        // A4高さの基準：min-heightが効いている状態のoffsetH（スケーリング込み）
+        var a4H = page.offsetHeight;
+
+        // min-heightを外してscrollHeightで実コンテンツ高さを取得
         var origMinH = page.style.minHeight;
         page.style.minHeight = '0';
         var contentH = page.scrollHeight;
         page.style.minHeight = origMinH;
 
-        if (contentH > a4HeightPx * 1.02) {
+        // コンテンツがA4を超えたら縮小（5%の余裕）
+        if (contentH > a4H * 1.05) {
             page.classList.add('compact');
             setTimeout(function() {
                 page.style.minHeight = '0';
                 var contentH2 = page.scrollHeight;
                 page.style.minHeight = origMinH;
-                if (contentH2 > a4HeightPx * 1.02) {
+                if (contentH2 > a4H * 1.05) {
                     page.style.fontSize = '7pt';
                     page.style.lineHeight = '1.35';
                     page.style.padding = '8mm 10mm 6mm';
