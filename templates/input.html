@@ -621,9 +621,11 @@
                 <span class="material-symbols-outlined">date_range</span>
                 飛び飛びのお休み日を追加（任意）
             </label>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <input type="date" class="form-control" id="leave-multi-input" style="flex:1;">
-                <button type="button" class="btn" onclick="addLeaveMultiDate()" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:10px 16px;white-space:nowrap;cursor:pointer;">追加</button>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <input type="date" class="form-control" id="leave-multi-input" style="width:100%;">
+                <button type="button" class="btn" onclick="addLeaveMultiDate()" style="width:100%;background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:12px 16px;cursor:pointer;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">add</span>この日を追加
+                </button>
             </div>
             <div id="leave-multi-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
             <input type="hidden" id="leave-dates" name="leave_dates" value="">
