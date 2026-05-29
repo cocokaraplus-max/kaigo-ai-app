@@ -508,6 +508,31 @@
 }
 @keyframes eval-spin { to { transform: rotate(360deg); } }
 
+/* ── 評価メモ音声入力 ── */
+.eval-memo-voice {
+    display: flex; align-items: center; gap: 10px;
+    background: #f8f9fa; border: 1px solid #e0e0e0;
+    border-radius: 10px; padding: 8px 12px;
+}
+.memo-voice-idle { display: flex; align-items: center; gap: 8px; }
+.memo-voice-recording { display: flex; align-items: center; gap: 8px; }
+.memo-btn-mic {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: #1a73e8; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.memo-btn-mic .material-symbols-outlined { font-size: 22px; color: #fff; }
+.memo-voice-hint { font-size: 0.8rem; color: #80868b; }
+.memo-rec-timer { font-size: 0.85rem; font-weight: 700; color: #ea4335; min-width: 40px; }
+.memo-btn-stop {
+    display: flex; align-items: center; gap: 4px;
+    background: #ea4335; color: #fff; border: none;
+    border-radius: 8px; padding: 5px 12px; font-size: 0.8rem;
+    font-weight: 700; cursor: pointer;
+}
+.memo-btn-stop .material-symbols-outlined { font-size: 16px; }
+.memo-voice-spinner { display: flex; align-items: center; gap: 6px; }
+
 /* ── 新音声録音カード ── */
 .ev-voice-card {
     background: #fff;
@@ -1092,13 +1117,13 @@
             </div>
         </div>
 
-        <!-- ========== セクション 4: 記録と課題 (初期: 閉) ========== -->
+        <!-- ========== セクション 4: 訓練による変化と課題 (初期: 閉) ========== -->
         <div class="eval-section collapsed" id="eval-section-notes">
             <button type="button" class="eval-section-header"
                     onclick="evalToggleSection('eval-section-notes')">
                 <div class="eval-section-title">
                     <span class="material-symbols-outlined">edit_note</span>
-                    <span style="display:flex;flex-direction:column;line-height:1.3;"><span>記録と課題</span><span style="font-size:0.8em;color:#5f6368;">訓練による変化と課題</span></span>
+                    <span style="display:flex;flex-direction:column;line-height:1.3;"><span>訓練による変化と課題</span></span>
                     <span class="eval-section-badge" id="eval-badge-notes">0/3</span>
                 </div>
                 <span class="material-symbols-outlined eval-chevron">expand_more</span>
@@ -1343,6 +1368,50 @@
                               placeholder="例:本人のモチベーション良好。家族の協力も得られている。"
                               oninput="evalUpdateStatus()"></textarea>
                 </div>
+
+                <!-- ===== 評価メモ欄 ===== -->
+                <div class="eval-field" id="eval-memo-field">
+                    <label class="eval-field-label">
+                        <span class="material-symbols-outlined">edit_note</span>
+                        評価メモ
+                        <span style="font-size:0.72rem;font-weight:400;color:#9aa0a6;margin-left:6px;">印刷されません</span>
+                    </label>
+                    <!-- 音声入力ミニカード -->
+                    <div class="eval-memo-voice" id="memo-voice-card">
+                        <div class="memo-voice-idle" id="memo-state-idle">
+                            <button type="button" class="memo-btn-mic" onclick="memoStartRecording()"
+                                    title="タップして録音開始">
+                                <span class="material-symbols-outlined">mic</span>
+                            </button>
+                            <span class="memo-voice-hint">タップして音声入力</span>
+                        </div>
+                        <div class="memo-voice-recording" id="memo-state-recording" style="display:none;">
+                            <div class="ev-waveform" style="justify-content:center;">
+                                <div class="ev-wbar" style="--evd:.6s;--evh:16px"></div>
+                                <div class="ev-wbar" style="--evd:.4s;--evh:9px"></div>
+                                <div class="ev-wbar" style="--evd:.8s;--evh:20px"></div>
+                                <div class="ev-wbar" style="--evd:.5s;--evh:12px"></div>
+                                <div class="ev-wbar" style="--evd:.7s;--evh:18px"></div>
+                                <div class="ev-wbar" style="--evd:.45s;--evh:7px"></div>
+                                <div class="ev-wbar" style="--evd:.65s;--evh:14px"></div>
+                            </div>
+                            <span class="memo-rec-timer" id="memo-timer">00:00</span>
+                            <button type="button" class="memo-btn-stop" onclick="memoStopRecording()">
+                                <span class="material-symbols-outlined">stop</span>
+                                完了
+                            </button>
+                        </div>
+                        <div class="memo-voice-spinner" id="memo-spinner" style="display:none;">
+                            <span class="material-symbols-outlined" style="animation:eval-spin 1s linear infinite;font-size:18px;color:#1a73e8;">sync</span>
+                            <span style="font-size:0.8rem;color:#5f6368;">文字起こし中...</span>
+                        </div>
+                    </div>
+                    <textarea class="eval-textarea" id="eval-memo" rows="3"
+                              placeholder="評価時のメモ欄です。印刷はされませんが保存されます。音声入力も使えます。"
+                              style="margin-top:8px;background:#fffde7;border-color:#fdd835;"></textarea>
+                </div>
+                <!-- ===== 評価メモ欄ここまで ===== -->
+
             </div>
         </div>
 
@@ -1985,6 +2054,7 @@ function evalCollectFormData() {
         changes_by_training: document.getElementById('eval-changes').value.trim(),
         issues_and_causes: document.getElementById('eval-issues').value.trim(),
         special_notes: document.getElementById('eval-special-notes').value.trim(),
+        eval_memo: document.getElementById('eval-memo').value.trim(),
         new_requests_exist: document.getElementById('eval-new-requests-exist').value || null,
         new_requests_detail: document.getElementById('eval-new-requests-detail').value.trim(),
         satisfaction: document.getElementById('eval-satisfaction').value || null,
@@ -2035,6 +2105,7 @@ function evalFillForm(ev) {
     document.getElementById('eval-changes').value = ev.changes_by_training || '';
     document.getElementById('eval-issues').value = ev.issues_and_causes || '';
     document.getElementById('eval-special-notes').value = ev.special_notes || '';
+    document.getElementById('eval-memo').value = ev.eval_memo || '';
     document.getElementById('eval-new-requests-detail').value = ev.new_requests_detail || '';
 
     if (ev.care_classification) evalSelectCareClass(ev.care_classification);
@@ -2209,7 +2280,7 @@ function evalUpdateSectionBadges(data) {
         statusBadge.textContent = '必須';
     }
 
-    // 記録と課題 (n/3)
+    // 訓練による変化と課題 (n/3)
     const notesBadge = document.getElementById('eval-badge-notes');
     const notesCount = [data.changes_by_training, data.issues_and_causes, data.special_notes]
         .filter(v => v && v.trim && v.trim()).length;
@@ -2401,7 +2472,7 @@ function evalRenderDetail(ev) {
     }
 
     html += '<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
-    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">📝 記録と課題</div>`;
+    html += `<div style="font-size:0.8rem;font-weight:700;color:#1a73e8;margin-bottom:8px;">📝 訓練による変化と課題</div>`;
     html += detailRow('訓練による変化', ev.changes_by_training);
     html += detailRow('課題とその要因', ev.issues_and_causes);
     html += detailRow('特記事項', ev.special_notes);
@@ -2580,6 +2651,80 @@ function evalShowSpinner(visible) {
 }
 
 // ============================================================
+// ===== 評価メモ 音声入力 =====
+let memoMediaRecorder = null;
+let memoAudioChunks   = [];
+let memoElapsed       = 0;
+let memoTimerInterval = null;
+let memoMimeType      = 'audio/webm';
+
+function memoFormatTime(sec) {
+    return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0');
+}
+
+window.memoStartRecording = async function() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        memoMimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                     : MediaRecorder.isTypeSupported('audio/mp4')  ? 'audio/mp4' : 'audio/ogg';
+        memoMediaRecorder = new MediaRecorder(stream, { mimeType: memoMimeType });
+        memoAudioChunks = []; memoElapsed = 0;
+        memoMediaRecorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) memoAudioChunks.push(e.data);
+        };
+        memoMediaRecorder.onstop = function() {
+            stream.getTracks().forEach(t => t.stop());
+            memoSendToGemini();
+        };
+        memoMediaRecorder.start(1000);
+        document.getElementById('memo-state-idle').style.display      = 'none';
+        document.getElementById('memo-state-recording').style.display = 'flex';
+        memoTimerInterval = setInterval(function() {
+            memoElapsed++;
+            const el = document.getElementById('memo-timer');
+            if (el) el.textContent = memoFormatTime(memoElapsed);
+        }, 1000);
+    } catch(err) {
+        alert('マイクへのアクセスが許可されていません。\nブラウザの設定からマイクを許可してください。');
+    }
+};
+
+window.memoStopRecording = function() {
+    clearInterval(memoTimerInterval);
+    if (memoMediaRecorder && memoMediaRecorder.state !== 'inactive') memoMediaRecorder.stop();
+    document.getElementById('memo-state-recording').style.display = 'none';
+    document.getElementById('memo-spinner').style.display          = 'flex';
+};
+
+async function memoSendToGemini() {
+    const blob = new Blob(memoAudioChunks, { type: memoMimeType });
+    const ext  = memoMimeType.includes('mp4') ? 'm4a' : memoMimeType.includes('ogg') ? 'ogg' : 'webm';
+    const formData = new FormData();
+    formData.append('file', blob, 'memo_recording.' + ext);
+    formData.append('audio_mode', 'solo');
+    try {
+        const res  = await fetch('/api/evaluation/ingest_file', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('memo-spinner').style.display = 'none';
+        document.getElementById('memo-state-idle').style.display = 'flex';
+        if (data.status === 'success' && data.text) {
+            const ta = document.getElementById('eval-memo');
+            ta.value = ta.value ? ta.value + '\n' + data.text : data.text;
+        } else {
+            alert('文字起こしに失敗しました。もう一度お試しください。');
+        }
+    } catch(err) {
+        document.getElementById('memo-spinner').style.display = 'none';
+        document.getElementById('memo-state-idle').style.display = 'flex';
+        alert('通信エラー: ' + err);
+    }
+    // タイマーリセット
+    memoAudioChunks = []; memoElapsed = 0;
+    const el = document.getElementById('memo-timer');
+    if (el) el.textContent = '00:00';
+}
+// ===== 評価メモここまで =====
+
 // 音声録音（Session 44: MediaRecorder + Gemini）
 // ============================================================
 let evMediaRecorder  = null;
