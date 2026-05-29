@@ -716,14 +716,16 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     position: relative;
     border: 1px solid #e0e0e0; border-radius: 8px;
     cursor: crosshair; user-select: none; flex-shrink: 0;
-    display: inline-block;
+    line-height: 0;
 }
 #crop-source-img {
     display: block;
-    max-width: min(70vw, 500px);
-    max-height: min(55vh, 400px);
-    width: auto; height: auto;
+    max-width: 60vw;
+    max-height: 50vh;
+    width: auto;
+    height: auto;
     pointer-events: none;
+    object-fit: contain;
 }
 #crop-selection {
     position: absolute; border: 2px dashed #1a73e8;
