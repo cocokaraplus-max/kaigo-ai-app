@@ -136,16 +136,16 @@ var SLIDES = [
 
 function renderMock(type, slide) {
   var imgMap = {
-    'patient_reg': '/static/img/slideshow/slide_01.png',
-    'daily_record': '/static/img/slideshow/slide_02.png',
-    'daily_record2': '/static/img/slideshow/slide_03.png',
-    'fitness': '/static/img/slideshow/slide_04.png',
-    'monitoring_gen': '/static/img/slideshow/slide_05.png',
-    'evaluation': '/static/img/slideshow/slide_06.png',
-    'data_check': '/static/img/slideshow/slide_07.png',
-    'print_settings': '/static/img/slideshow/slide_07.png',
-    'preview': '/static/img/slideshow/slide_08.png',
-    'print_out': '/static/img/slideshow/slide_07.png',
+    'patient_reg':    '/static/img/slideshow/slide_02.png',
+    'daily_record':   '/static/img/slideshow/slide_03.png',
+    'daily_record2':  '/static/img/slideshow/slide_05.png',
+    'fitness':        '/static/img/slideshow/slide_01.png',
+    'monitoring_gen': '/static/img/slideshow/slide_09.png',
+    'evaluation':     '/static/img/slideshow/slide_04.png',
+    'data_check':     '/static/img/slideshow/slide_07.png',
+    'print_settings': '/static/img/slideshow/slide_06.png',
+    'preview':        '/static/img/slideshow/slide_08.png',
+    'print_out':      '/static/img/slideshow/slide_08.png',
     'complete': null
   };
   var src = imgMap[type];
@@ -153,7 +153,11 @@ function renderMock(type, slide) {
     // 完了スライドは絵文字
     return '<div style="text-align:center;padding:8px 0"><div style="font-size:56px;margin-bottom:8px">🎉</div><div style="font-size:1.05rem;font-weight:900;color:#1a73e8;margin-bottom:10px">月次業務完了！</div><div style="display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px"><span style="background:#e8f0fe;color:#1a73e8;border-radius:20px;padding:4px 12px;font-size:0.72rem;font-weight:800">毎日記録</span><span style="color:#b0b8c1">→</span><span style="background:#f3e8fd;color:#a142f4;border-radius:20px;padding:4px 12px;font-size:0.72rem;font-weight:800">月末評価</span><span style="color:#b0b8c1">→</span><span style="background:#e8f5e9;color:#34a853;border-radius:20px;padding:4px 12px;font-size:0.72rem;font-weight:800">書類出力</span></div><div style="background:#f6f8ff;border-radius:14px;padding:12px;font-size:0.78rem;color:#202124;line-height:1.9;text-align:left">このサイクルを繰り返すことで<br><b style="color:#1a73e8">記録が積み重なり</b>、<br><b style="color:#34a853">ケアの質が上がり</b>、<br><b style="color:#a142f4">書類作業が楽になる！</b></div></div>';
   }
-  return '<img src="' + src + '" style="width:100%;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,0.12);display:block;" alt="">';
+  return '<div style="position:relative;margin-bottom:4px;">' +
+    '<img src="' + src + '" style="width:100%;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,0.12);display:block;pointer-events:none;" alt="">' +
+    '<div style="position:absolute;inset:0;border-radius:16px;border:3px solid #e0e0e0;pointer-events:none;"></div>' +
+    '<div style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,0.45);color:white;font-size:10px;padding:2px 8px;border-radius:20px;pointer-events:none;">📸 画面イメージ</div>' +
+    '</div>';
 }
 
 var _ssIdx = 0;
@@ -227,45 +231,130 @@ document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') closeSlideshow();
 });
 
-// タッチスワイプ
+// タッチスワイプ（ss-navにバインドしてスクロールと競合しないようにする）
 (function(){
-  var startX = 0, startY = 0;
+  var startX = 0, startY = 0, swiping = false;
+
+  function getSheet() { return document.querySelector('#ss-modal .ss-sheet'); }
+
   document.addEventListener('touchstart', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    var modal = document.getElementById('ss-modal');
+    if (!modal || !modal.classList.contains('is-active')) return;
+    // ss-content（縦スクロールエリア）上のタッチは無視
+    var content = document.getElementById('ss-content');
+    if (content && content.contains(e.target)) { swiping = false; return; }
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
+    swiping = true;
   }, {passive:true});
+
   document.addEventListener('touchend', function(e){
-    if (!document.getElementById('ss-modal') || document.getElementById('ss-modal').style.display==='none') return;
+    var modal = document.getElementById('ss-modal');
+    if (!modal || !modal.classList.contains('is-active') || !swiping) return;
+    swiping = false;
     var dx = e.changedTouches[0].clientX - startX;
     var dy = e.changedTouches[0].clientY - startY;
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
       dx < 0 ? ssNext() : ssPrev();
     }
   }, {passive:true});
 })();
 
-// 既存ガイドのピンチ拡大
+// ===== ピンチ拡大縮小 =====
+// スライドショー内の画像ピンチ拡大
 (function(){
-  var scale = 1, lastScale = 1, startDist = 0;
+  var scale=1, lastScale=1, startDist=0, imgEl=null;
   function getDist(t){ var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+
   document.addEventListener('touchstart', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
-    if (e.touches.length===2){ startDist=getDist(e.touches); lastScale=scale; }
+    var modal = document.getElementById('ss-modal');
+    if (!modal || !modal.classList.contains('is-active')) return;
+    if (e.touches.length===2){
+      imgEl = document.querySelector('#ss-content img');
+      if (!imgEl) return;
+      startDist=getDist(e.touches); lastScale=scale;
+    }
   }, {passive:true});
   document.addEventListener('touchmove', function(e){
-    if (document.getElementById('ss-modal') && document.getElementById('ss-modal').style.display!=='none') return;
-    if (e.touches.length===2){
-      scale = Math.min(3, Math.max(1, lastScale*(getDist(e.touches)/startDist)));
-      var el = document.querySelector('.gd');
-      if(el){ el.style.transformOrigin='top center'; el.style.transform='scale('+scale+')'; el.style.transition='none'; }
+    var modal = document.getElementById('ss-modal');
+    if (!modal || !modal.classList.contains('is-active')) return;
+    if (e.touches.length===2 && imgEl){
+      scale = Math.min(4, Math.max(1, lastScale*(getDist(e.touches)/startDist)));
+      imgEl.style.transformOrigin='center center';
+      imgEl.style.transform='scale('+scale+')';
+      imgEl.style.transition='none';
+      imgEl.style.zIndex='10';
     }
   }, {passive:true});
   document.addEventListener('touchend', function(e){
-    if (e.touches.length<2 && scale<1.05){
+    var modal = document.getElementById('ss-modal');
+    if (!modal || !modal.classList.contains('is-active')) return;
+    if (imgEl && e.touches.length<2 && scale<1.1){
       scale=1;
-      var el=document.querySelector('.gd');
+      imgEl.style.transform='scale(1)';
+      imgEl.style.transition='transform 0.25s';
+    }
+  }, {passive:true});
+})();
+
+// ガイドページ全体のピンチ拡大縮小
+(function(){
+  var scale=1, lastScale=1, startDist=0;
+  var originX=0.5, originY=0;
+  function getDist(t){ var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+  function getMidpoint(t){ return {x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2}; }
+
+  document.addEventListener('touchstart', function(e){
+    var modal = document.getElementById('ss-modal');
+    if (modal && modal.classList.contains('is-active')) return;
+    if (e.touches.length===2){
+      startDist=getDist(e.touches);
+      lastScale=scale;
+      var mid=getMidpoint(e.touches);
+      var el=document.querySelector('.gpad, .gd');
+      if(el){
+        var rect=el.getBoundingClientRect();
+        originX=((mid.x-rect.left)/rect.width*100).toFixed(1)+'%';
+        originY=((mid.y-rect.top)/rect.height*100).toFixed(1)+'%';
+      }
+    }
+  }, {passive:true});
+
+  document.addEventListener('touchmove', function(e){
+    var modal = document.getElementById('ss-modal');
+    if (modal && modal.classList.contains('is-active')) return;
+    if (e.touches.length===2){
+      scale = Math.min(3.5, Math.max(1, lastScale*(getDist(e.touches)/startDist)));
+      var el=document.querySelector('.gpad, .gd');
+      if(el){
+        el.style.transformOrigin=originX+' '+originY;
+        el.style.transform='scale('+scale+')';
+        el.style.transition='none';
+      }
+    }
+  }, {passive:true});
+
+  document.addEventListener('touchend', function(e){
+    var modal = document.getElementById('ss-modal');
+    if (modal && modal.classList.contains('is-active')) return;
+    if (e.touches.length<2 && scale<1.08){
+      scale=1;
+      var el=document.querySelector('.gpad, .gd');
+      if(el){ el.style.transform='scale(1)'; el.style.transition='transform 0.3s'; }
+    }
+  }, {passive:true});
+
+  // ダブルタップでリセット
+  var lastTap=0;
+  document.addEventListener('touchend', function(e){
+    var modal = document.getElementById('ss-modal');
+    if (modal && modal.classList.contains('is-active')) return;
+    var now=Date.now();
+    if(now-lastTap<300 && e.touches.length===0){
+      scale=1;
+      var el=document.querySelector('.gpad, .gd');
       if(el){ el.style.transform='scale(1)'; el.style.transition='transform 0.25s'; }
     }
+    lastTap=now;
   }, {passive:true});
 })();

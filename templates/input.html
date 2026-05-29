@@ -421,13 +421,13 @@
     <div class="form-group">
         <label class="form-label">
             <span class="material-symbols-outlined">photo_camera</span>
-            写真（最大5枚）
+            写真・動画（最大5件）
         </label>
         <label class="upload-area" for="photo-input">
             <span class="material-symbols-outlined">add_photo_alternate</span>
-            タップして写真を選択
+            タップして写真・動画を選択
         </label>
-        <input type="file" id="photo-input" name="photos" accept="image/*" multiple style="display:none" onchange="previewPhotos(this)">
+        <input type="file" id="photo-input" name="photos" accept="image/*,video/*" multiple style="display:none" onchange="previewPhotos(this)">
         <div class="photo-preview" id="photo-preview"></div>
     </div>
 
@@ -742,14 +742,20 @@ window.saveRecord = async function() {
         // Session 36: VAS 入力データ
         formData.append('vas_records', document.getElementById('vas-records-json')?.value || '[]');
 
-        // 写真を圧縮してから追加
+        // 写真は圧縮、動画はそのまま追加
         const photoInput = document.querySelector('input[name="photos"]');
         if (photoInput && photoInput.files.length > 0) {
             const files = Array.from(photoInput.files).slice(0, 5);
-            const compressed = await Promise.all(files.map(f => compressImage(f)));
-            compressed.forEach((blob, i) => {
-                formData.append('photos', blob, `photo_${i+1}.jpg`);
-            });
+            for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                if (f.type.startsWith('video/')) {
+                    const ext = f.name.split('.').pop() || 'mp4';
+                    formData.append('photos', f, `video_${i+1}.${ext}`);
+                } else {
+                    const blob = await compressImage(f);
+                    formData.append('photos', blob, `photo_${i+1}.jpg`);
+                }
+            }
         }
         // 音声データがあれば追加
         const audioData = document.getElementById('audio-data')?.value;
@@ -934,15 +940,27 @@ window.previewPhotos = function(input) {
     preview.innerHTML = '';
     Array.from(input.files).slice(0, 5).forEach(file => {
         const reader = new FileReader();
-        reader.onload = e => {
-            const img = document.createElement('img');
-            img.src = e.target.result;
-            // 元サイズと圧縮後の表示
-            const size = (file.size / 1024 / 1024).toFixed(1);
-            img.title = `${file.name} (${size}MB → 圧縮済み)`;
-            preview.appendChild(img);
-        };
-        reader.readAsDataURL(file);
+        const size = (file.size / 1024 / 1024).toFixed(1);
+        if (file.type.startsWith('video/')) {
+            reader.onload = e => {
+                const video = document.createElement('video');
+                video.src = e.target.result;
+                video.controls = true;
+                video.style.cssText = 'max-width:100%;max-height:160px;border-radius:8px;display:block;';
+                video.title = `${file.name} (${size}MB)`;
+                preview.appendChild(video);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            reader.onload = e => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+                img.title = `${file.name} (${sizeMB}MB → 圧縮済み)`;
+                preview.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
     });
 }
 

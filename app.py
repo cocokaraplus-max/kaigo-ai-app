@@ -9306,6 +9306,7 @@ def print_pdf():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
+    chart_size  = request.args.get("chart_size",  2, type=int)
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9400,6 +9401,7 @@ def print_pdf():
         my_name=my_name,
         tmpl=tmpl,
         chart_style=chart_style,
+        chart_size=chart_size,
         pdf_mode=True,
     )
     if not isinstance(html_str, str):
@@ -9455,6 +9457,7 @@ def print_preview():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
+    chart_size  = request.args.get("chart_size",  2, type=int)
     try:
         items = _json.loads(items_json)
     except Exception:

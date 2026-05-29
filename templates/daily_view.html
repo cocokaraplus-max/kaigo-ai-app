@@ -229,6 +229,18 @@
 
 /* 編集エリア */
 .edit-area { margin-top: 8px; }
+/* 編集画像差し替え */
+.edit-photos-block { margin-bottom: 8px; }
+.edit-photos-current { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.edit-photo-item { position: relative; display: inline-block; }
+.edit-photo-del-btn {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #ea4335; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+}
+.edit-photo-del-btn .material-symbols-outlined { font-size: 12px; color: #fff; }
 .edit-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1461,6 +1473,38 @@
                     <input type="hidden" id="edit-vas-records-{{ r.id }}" value="[]">
                 </div>
                 <textarea class="form-control" id="edit-text-{{ r.id }}" style="min-height:120px;"></textarea>
+                <!-- 画像差し替えUI -->
+                {% if r.image_urls %}
+                <div class="edit-photos-block" id="edit-photos-block-{{ r.id }}">
+                    <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin-bottom:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">photo_library</span>
+                        添付写真・動画
+                    </div>
+                    <div class="edit-photos-current" id="edit-photos-current-{{ r.id }}">
+                        {% for url in r.image_urls %}
+                        <div class="edit-photo-item" id="edit-photo-item-{{ r.id }}-{{ loop.index0 }}">
+                            {% if '.mp4' in url or '.mov' in url or '.webm' in url or '.avi' in url %}
+                            <video src="{{ url }}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;"></video>
+                            {% else %}
+                            <img src="{{ url }}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;">
+                            {% endif %}
+                            <button type="button" class="edit-photo-del-btn" onclick="removeEditPhoto('{{ r.id }}', {{ loop.index0 }})" title="削除">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <input type="hidden" id="edit-image-urls-{{ r.id }}" value="{{ r.image_urls | tojson | e }}">
+                </div>
+                {% endif %}
+                <div style="margin-bottom:8px;">
+                    <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;color:#1a73e8;cursor:pointer;background:#e8f0fe;border-radius:8px;padding:5px 10px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">add_photo_alternate</span>
+                        写真・動画を追加/差し替え
+                        <input type="file" id="edit-photo-input-{{ r.id }}" accept="image/*,video/*" multiple style="display:none" onchange="previewEditPhotos(this, '{{ r.id }}')">
+                    </label>
+                    <div class="photo-preview" id="edit-photo-preview-{{ r.id }}" style="margin-top:6px;"></div>
+                </div>
                 <div class="edit-actions">
                     <button class="btn btn-primary btn-sm" onclick="saveEdit('{{ r.id }}')">
                         <span class="material-symbols-outlined" style="color:white;">save</span>
@@ -2456,6 +2500,54 @@ window.cancelEdit = function(id) {
         if (container) container.style.display = 'none';
     }
 };
+// 編集画像の削除（既存URLリストから除去）
+window.removeEditPhoto = function(recordId, idx) {
+    const el = document.getElementById('edit-image-urls-' + recordId);
+    if (!el) return;
+    let urls = [];
+    try { urls = JSON.parse(el.value || '[]'); } catch(e) {}
+    urls.splice(idx, 1);
+    el.value = JSON.stringify(urls);
+    const item = document.getElementById('edit-photo-item-' + recordId + '-' + idx);
+    if (item) item.remove();
+    // インデックス付け直し
+    const container = document.getElementById('edit-photos-current-' + recordId);
+    if (container) {
+        container.querySelectorAll('.edit-photo-item').forEach((el, i) => {
+            el.id = 'edit-photo-item-' + recordId + '-' + i;
+            const btn = el.querySelector('.edit-photo-del-btn');
+            if (btn) btn.setAttribute('onclick', "removeEditPhoto('" + recordId + "', " + i + ")");
+        });
+    }
+};
+
+// 編集時の新規ファイルプレビュー
+window.previewEditPhotos = function(input, recordId) {
+    const preview = document.getElementById('edit-photo-preview-' + recordId);
+    if (!preview) return;
+    preview.innerHTML = '';
+    Array.from(input.files).slice(0, 5).forEach(file => {
+        const reader = new FileReader();
+        if (file.type.startsWith('video/')) {
+            reader.onload = e => {
+                const video = document.createElement('video');
+                video.src = e.target.result;
+                video.controls = true;
+                video.style.cssText = 'max-width:100px;max-height:80px;border-radius:6px;';
+                preview.appendChild(video);
+            };
+        } else {
+            reader.onload = e => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.style.cssText = 'width:70px;height:70px;object-fit:cover;border-radius:6px;';
+                preview.appendChild(img);
+            };
+        }
+        reader.readAsDataURL(file);
+    });
+};
+
 window.saveEdit = async function(id) {
     const content = document.getElementById('edit-text-'+id).value;
     // Session 33: 休み連絡カテゴリの編集なら type/relation も送る
@@ -2498,7 +2590,29 @@ window.saveEdit = async function(id) {
     } catch(e) {
         console.warn('[vas] saveEdit vas_records collect failed:', e);
     }
-    const res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    // 新規追加写真があればFormDataで送信、なければJSONで送信
+    const newPhotoInput = document.getElementById('edit-photo-input-' + id);
+    const hasNewPhotos = newPhotoInput && newPhotoInput.files && newPhotoInput.files.length > 0;
+
+    // 削除後の既存URLリスト
+    const existingUrlsEl = document.getElementById('edit-image-urls-' + id);
+    if (existingUrlsEl) {
+        try { payload.keep_image_urls = JSON.parse(existingUrlsEl.value || '[]'); } catch(e) { payload.keep_image_urls = null; }
+    }
+
+    let res;
+    if (hasNewPhotos) {
+        const fd = new FormData();
+        fd.append('payload', JSON.stringify(payload));
+        const files = Array.from(newPhotoInput.files).slice(0, 5);
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            fd.append('photos', f, f.name);
+        }
+        res = await fetch('/api/update_record_with_photos', {method:'POST', body: fd});
+    } else {
+        res = await fetch('/api/update_record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    }
     const result = await res.json();
     if (result.status === 'success') {
         // records-hidden を元に戻してからリロード
