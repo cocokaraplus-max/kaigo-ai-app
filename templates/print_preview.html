@@ -1411,6 +1411,27 @@ function openCropModal(imgEl) {
     srcImg.src = src;
     document.getElementById('crop-selection').style.display = 'none';
     document.getElementById('crop-modal-overlay').classList.add('show');
+    // ドラッグイベントを毎回wrapに再登録
+    var wrap = document.getElementById('crop-canvas-wrap');
+    var newWrap = wrap.cloneNode(true);
+    wrap.parentNode.replaceChild(newWrap, wrap);
+    // crop-source-imgをnewWrapの中に再挿入
+    var newImg = document.createElement('img');
+    newImg.id = 'crop-source-img';
+    newImg.src = src;
+    newImg.style.cssText = srcImg.style.cssText;
+    newWrap.innerHTML = '';
+    newWrap.appendChild(newImg);
+    var newSel = document.createElement('div');
+    newSel.id = 'crop-selection';
+    newSel.style.display = 'none';
+    newWrap.appendChild(newSel);
+    newWrap.addEventListener('mousedown',  _cropStartDrag);
+    newWrap.addEventListener('mousemove',  _cropMoveDrag);
+    newWrap.addEventListener('mouseup',    _cropEndDrag);
+    newWrap.addEventListener('touchstart', _cropStartDrag, {passive: false});
+    newWrap.addEventListener('touchmove',  _cropMoveDrag,  {passive: false});
+    newWrap.addEventListener('touchend',   _cropEndDrag,   {passive: true});
 }
 
 function cropCancel() {
@@ -1483,48 +1504,38 @@ function cropApply() {
     tmpImg.src = srcImg.src;
 }
 
-// 選択範囲のドラッグ
-(function(){
+// 選択範囲のドラッグ（openCropModal内で初期化）
+function _cropGetPos(e, el) {
+    var r = el.getBoundingClientRect();
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: cx - r.left, y: cy - r.top };
+}
+function _cropStartDrag(e) {
     var wrap = document.getElementById('crop-canvas-wrap');
-    var sel  = document.getElementById('crop-selection');
-
-    function getPos(e, el) {
-        var r = el.getBoundingClientRect();
-        var cx = e.touches ? e.touches[0].clientX : e.clientX;
-        var cy = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: cx - r.left, y: cy - r.top };
-    }
-
-    function startDrag(e) {
-        if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
-        e.preventDefault();
-        var p = getPos(e, wrap);
-        _cropSel.startX = p.x; _cropSel.startY = p.y;
-        _cropSel.dragging = true;
-        sel.style.left = p.x + 'px'; sel.style.top = p.y + 'px';
-        sel.style.width = '0'; sel.style.height = '0';
-        sel.style.display = 'block';
-    }
-    function moveDrag(e) {
-        if (!_cropSel.dragging) return;
-        e.preventDefault();
-        var p = getPos(e, wrap);
-        var x = Math.min(p.x, _cropSel.startX);
-        var y = Math.min(p.y, _cropSel.startY);
-        var w = Math.abs(p.x - _cropSel.startX);
-        var h = Math.abs(p.y - _cropSel.startY);
-        sel.style.left = x + 'px'; sel.style.top = y + 'px';
-        sel.style.width = w + 'px'; sel.style.height = h + 'px';
-    }
-    function endDrag() { _cropSel.dragging = false; }
-
-    wrap.addEventListener('mousedown',  startDrag);
-    wrap.addEventListener('mousemove',  moveDrag);
-    wrap.addEventListener('mouseup',    endDrag);
-    wrap.addEventListener('touchstart', startDrag, { passive: false });
-    wrap.addEventListener('touchmove',  moveDrag,  { passive: false });
-    wrap.addEventListener('touchend',   endDrag,   { passive: true  });
-})();
+    var sel = document.getElementById('crop-selection');
+    e.preventDefault();
+    var p = _cropGetPos(e, wrap);
+    _cropSel.startX = p.x; _cropSel.startY = p.y;
+    _cropSel.dragging = true;
+    sel.style.left = p.x + 'px'; sel.style.top = p.y + 'px';
+    sel.style.width = '0'; sel.style.height = '0';
+    sel.style.display = 'block';
+}
+function _cropMoveDrag(e) {
+    if (!_cropSel.dragging) return;
+    e.preventDefault();
+    var wrap = document.getElementById('crop-canvas-wrap');
+    var sel = document.getElementById('crop-selection');
+    var p = _cropGetPos(e, wrap);
+    var x = Math.min(p.x, _cropSel.startX);
+    var y = Math.min(p.y, _cropSel.startY);
+    var w = Math.abs(p.x - _cropSel.startX);
+    var h = Math.abs(p.y - _cropSel.startY);
+    sel.style.left = x + 'px'; sel.style.top = y + 'px';
+    sel.style.width = w + 'px'; sel.style.height = h + 'px';
+}
+function _cropEndDrag() { _cropSel.dragging = false; }
 
 // ===== 画像選択・レイアウト管理 =====
 var _imgState = {}; // {idx: {selected: [{url, comment}], layout: 'A'}}
