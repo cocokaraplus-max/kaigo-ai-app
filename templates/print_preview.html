@@ -1389,49 +1389,32 @@ function openCropModal(imgEl) {
     _cropTarget = imgEl;
     var src = imgEl.tagName === 'CANVAS' ? imgEl.toDataURL() : (imgEl.dataset.originalSrc || imgEl.src);
     var srcImg = document.getElementById('crop-source-img');
-    srcImg.onload = function() {
-        // 画像の自然サイズに基づいてモーダル内の表示サイズを計算
-        var maxW = Math.min(window.innerWidth * 0.75, 560);
-        var maxH = Math.min(window.innerHeight * 0.60, 480);
+    var wrap = document.getElementById('crop-canvas-wrap');
+
+    // サイズ計算してセット（onloadとcomplete両方対応）
+    function _setSizes() {
+        var maxW = Math.min(window.innerWidth * 0.72, 540);
+        var maxH = Math.min(window.innerHeight * 0.58, 460);
         var ratio = srcImg.naturalWidth / srcImg.naturalHeight;
         var w, h;
-        if (ratio > maxW / maxH) {
-            w = maxW; h = maxW / ratio;
-        } else {
-            h = maxH; w = maxH * ratio;
-        }
-        srcImg.style.width  = Math.round(w) + 'px';
-        srcImg.style.height = Math.round(h) + 'px';
-        var wrap = document.getElementById('crop-canvas-wrap');
-        wrap.style.width  = Math.round(w) + 'px';
-        wrap.style.height = Math.round(h) + 'px';
-        var sel = document.getElementById('crop-selection');
-        sel.style.display = 'none';
-    };
+        if (ratio > maxW / maxH) { w = maxW; h = maxW / ratio; }
+        else { h = maxH; w = maxH * ratio; }
+        w = Math.round(w); h = Math.round(h);
+        srcImg.style.width  = w + 'px';
+        srcImg.style.height = h + 'px';
+        wrap.style.width    = w + 'px';
+        wrap.style.height   = h + 'px';
+        document.getElementById('crop-selection').style.display = 'none';
+    }
+
+    if (srcImg.src === src && srcImg.complete && srcImg.naturalWidth > 0) {
+        _setSizes();
+    } else {
+        srcImg.onload = _setSizes;
+    }
     srcImg.src = src;
     document.getElementById('crop-selection').style.display = 'none';
     document.getElementById('crop-modal-overlay').classList.add('show');
-    // ドラッグイベントを毎回wrapに再登録
-    var wrap = document.getElementById('crop-canvas-wrap');
-    var newWrap = wrap.cloneNode(true);
-    wrap.parentNode.replaceChild(newWrap, wrap);
-    // crop-source-imgをnewWrapの中に再挿入
-    var newImg = document.createElement('img');
-    newImg.id = 'crop-source-img';
-    newImg.src = src;
-    newImg.style.cssText = srcImg.style.cssText;
-    newWrap.innerHTML = '';
-    newWrap.appendChild(newImg);
-    var newSel = document.createElement('div');
-    newSel.id = 'crop-selection';
-    newSel.style.display = 'none';
-    newWrap.appendChild(newSel);
-    newWrap.addEventListener('mousedown',  _cropStartDrag);
-    newWrap.addEventListener('mousemove',  _cropMoveDrag);
-    newWrap.addEventListener('mouseup',    _cropEndDrag);
-    newWrap.addEventListener('touchstart', _cropStartDrag, {passive: false});
-    newWrap.addEventListener('touchmove',  _cropMoveDrag,  {passive: false});
-    newWrap.addEventListener('touchend',   _cropEndDrag,   {passive: true});
 }
 
 function cropCancel() {
@@ -1504,38 +1487,76 @@ function cropApply() {
     tmpImg.src = srcImg.src;
 }
 
-// 選択範囲のドラッグ（openCropModal内で初期化）
-function _cropGetPos(e, el) {
-    var r = el.getBoundingClientRect();
-    var cx = e.touches ? e.touches[0].clientX : e.clientX;
-    var cy = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: cx - r.left, y: cy - r.top };
-}
-function _cropStartDrag(e) {
+// 選択範囲のドラッグ（document全体で管理）
+document.addEventListener('mousedown', function(e) {
     var wrap = document.getElementById('crop-canvas-wrap');
-    var sel = document.getElementById('crop-selection');
+    if (!wrap || !wrap.contains(e.target)) return;
+    if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
     e.preventDefault();
-    var p = _cropGetPos(e, wrap);
-    _cropSel.startX = p.x; _cropSel.startY = p.y;
+    var r = wrap.getBoundingClientRect();
+    _cropSel.startX = e.clientX - r.left;
+    _cropSel.startY = e.clientY - r.top;
     _cropSel.dragging = true;
-    sel.style.left = p.x + 'px'; sel.style.top = p.y + 'px';
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = _cropSel.startX + 'px';
+    sel.style.top  = _cropSel.startY + 'px';
     sel.style.width = '0'; sel.style.height = '0';
     sel.style.display = 'block';
-}
-function _cropMoveDrag(e) {
+}, true);
+
+document.addEventListener('mousemove', function(e) {
     if (!_cropSel.dragging) return;
-    e.preventDefault();
     var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    var cx = e.clientX - r.left;
+    var cy = e.clientY - r.top;
+    var x = Math.min(cx, _cropSel.startX);
+    var y = Math.min(cy, _cropSel.startY);
+    var w = Math.abs(cx - _cropSel.startX);
+    var h = Math.abs(cy - _cropSel.startY);
     var sel = document.getElementById('crop-selection');
-    var p = _cropGetPos(e, wrap);
-    var x = Math.min(p.x, _cropSel.startX);
-    var y = Math.min(p.y, _cropSel.startY);
-    var w = Math.abs(p.x - _cropSel.startX);
-    var h = Math.abs(p.y - _cropSel.startY);
     sel.style.left = x + 'px'; sel.style.top = y + 'px';
     sel.style.width = w + 'px'; sel.style.height = h + 'px';
-}
-function _cropEndDrag() { _cropSel.dragging = false; }
+}, true);
+
+document.addEventListener('mouseup', function() { _cropSel.dragging = false; });
+
+document.addEventListener('touchstart', function(e) {
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap || !wrap.contains(e.target)) return;
+    if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    _cropSel.startX = e.touches[0].clientX - r.left;
+    _cropSel.startY = e.touches[0].clientY - r.top;
+    _cropSel.dragging = true;
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = _cropSel.startX + 'px';
+    sel.style.top  = _cropSel.startY + 'px';
+    sel.style.width = '0'; sel.style.height = '0';
+    sel.style.display = 'block';
+}, { passive: false, capture: true });
+
+document.addEventListener('touchmove', function(e) {
+    if (!_cropSel.dragging) return;
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    var cx = e.touches[0].clientX - r.left;
+    var cy = e.touches[0].clientY - r.top;
+    var x = Math.min(cx, _cropSel.startX);
+    var y = Math.min(cy, _cropSel.startY);
+    var w = Math.abs(cx - _cropSel.startX);
+    var h = Math.abs(cy - _cropSel.startY);
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = x + 'px'; sel.style.top = y + 'px';
+    sel.style.width = w + 'px'; sel.style.height = h + 'px';
+}, { passive: false });
+
+document.addEventListener('touchend', function() { _cropSel.dragging = false; });
 
 // ===== 画像選択・レイアウト管理 =====
 var _imgState = {}; // {idx: {selected: [{url, comment}], layout: 'A'}}
