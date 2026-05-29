@@ -289,6 +289,27 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 </div>
             </div>
         </div>
+        <!-- グラフサイズ選択 -->
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">height</span>
+                グラフサイズ
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;" id="chart-size-grid">
+                <div class="po-graph-card" id="chart-size-s" onclick="poSetChartSize(1)" style="padding:6px 4px;">
+                    <svg width="36" height="16" viewBox="0 0 36 16"><polyline points="2,13 10,8 18,10 26,4 34,6" fill="none" stroke="#1a73e8" stroke-width="1.5"/></svg>
+                    <div class="graph-name">小</div>
+                </div>
+                <div class="po-graph-card on" id="chart-size-m" onclick="poSetChartSize(2)" style="padding:6px 4px;">
+                    <svg width="36" height="22" viewBox="0 0 36 22"><polyline points="2,18 10,11 18,14 26,6 34,9" fill="none" stroke="#1a73e8" stroke-width="2"/></svg>
+                    <div class="graph-name">中（標準）</div>
+                </div>
+                <div class="po-graph-card" id="chart-size-l" onclick="poSetChartSize(3)" style="padding:6px 4px;">
+                    <svg width="36" height="32" viewBox="0 0 36 32"><polyline points="2,26 10,16 18,20 26,8 34,12" fill="none" stroke="#1a73e8" stroke-width="2.5"/></svg>
+                    <div class="graph-name">大</div>
+                </div>
+            </div>
+        </div>
         <div style="margin-top:10px;">
             <div class="po-section-title" style="margin-bottom:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
@@ -365,6 +386,7 @@ var poTemplate = localStorage.getItem('po_template') || '1';
 if (!isNaN(poTemplate)) poTemplate = parseInt(poTemplate);
 var fCode = '{{ f_code }}';
 var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
+var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
@@ -414,6 +436,11 @@ var poPatients = {{ patients | tojson }};
     });
     document.querySelectorAll('.po-graph-card').forEach(function(el) {
         el.classList.toggle('on', parseInt(el.dataset.graph) === poChartStyle);
+    // グラフサイズ初期化
+    [1,2,3].forEach(function(s) {
+        var btn = document.getElementById('chart-size-' + ['s','m','l'][s-1]);
+        if (btn) btn.classList.toggle('on', s === poChartSize);
+    });
     });
 })();
 
@@ -424,6 +451,14 @@ function poSetTemplate(t) {
         var val = el.dataset.tmpl;
         var match = isNaN(t) ? val === t : parseInt(val) === parseInt(t);
         el.classList.toggle('on', match);
+    });
+}
+function poSetChartSize(s) {
+    poChartSize = s;
+    try { localStorage.setItem('po_chart_size', s); } catch(e) {}
+    [1,2,3].forEach(function(i) {
+        var btn = document.getElementById('chart-size-' + ['s','m','l'][i-1]);
+        if (btn) btn.classList.toggle('on', i === s);
     });
 }
 function poSetChartStyle(s) {
@@ -555,7 +590,7 @@ function poPrintAll() {
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
-        template: poTemplate, chart_style: poChartStyle,
+        template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
@@ -567,7 +602,7 @@ function poPrintOne(encodedName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
+        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
@@ -578,7 +613,8 @@ function poPreviewOne(encodedName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle
+        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
+        chart_size: poChartSize
     });
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
@@ -590,7 +626,7 @@ function poPreviewAll() {
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
-        template: poTemplate, chart_style: poChartStyle
+        template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize
     });
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);

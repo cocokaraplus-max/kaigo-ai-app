@@ -5384,57 +5384,8 @@ def api_update_record():
             except Exception as _vas_upd_err:
                 print(f"[vas_records] update failed for record {data['id']}: {_vas_upd_err}", flush=True)
 
-        # 画像URLの更新（削除分を反映）
-        if "keep_image_urls" in data:
-            keep_urls = data.get("keep_image_urls")
-            if keep_urls is None:
-                keep_urls = []
-            supabase.table("records").update({"image_urls": keep_urls if keep_urls else None}).eq("id", data["id"]).execute()
-
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/update_record_with_photos', methods=['POST'])
-@login_required
-def api_update_record_with_photos():
-    """画像追加・差し替えを伴う記録更新"""
-    try:
-        import json as _json
-        payload_str = request.form.get('payload', '{}')
-        data = _json.loads(payload_str)
-        record_id = data.get('id')
-        if not record_id:
-            return jsonify({"status": "error", "message": "id は必須です"}), 400
-
-        f_code = session["f_code"]
-        supabase = get_supabase()
-
-        # テキスト更新
-        update_payload = {"content": data.get("content", "")}
-
-        # 既存URLの保持リスト（削除済みを除いたもの）
-        keep_urls = data.get("keep_image_urls")
-        if keep_urls is None:
-            # keep_image_urlsが未指定なら既存URLを維持
-            existing = supabase.table("records").select("image_urls").eq("id", record_id).execute()
-            keep_urls = (existing.data[0].get("image_urls") or []) if existing.data else []
-
-        # 新規ファイルをアップロード
-        new_urls = []
-        photos = request.files.getlist("photos")
-        if photos and photos[0].filename:
-            from utils import upload_images_to_supabase
-            new_urls = upload_images_to_supabase(supabase, photos, f_code)
-
-        # URLをマージ（既存保持分 + 新規）
-        merged_urls = (keep_urls or []) + new_urls
-        update_payload["image_urls"] = merged_urls if merged_urls else None
-
-        supabase.table("records").update(update_payload).eq("id", record_id).execute()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        print(f"[update_record_with_photos error] {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/delete_record', methods=['POST'])
@@ -9355,6 +9306,7 @@ def print_pdf():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
+    chart_size  = request.args.get("chart_size",  2, type=int)
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9449,6 +9401,7 @@ def print_pdf():
         my_name=my_name,
         tmpl=tmpl,
         chart_style=chart_style,
+        chart_size=chart_size,
         pdf_mode=True,
     )
     if not isinstance(html_str, str):
@@ -9504,6 +9457,7 @@ def print_preview():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
+    chart_size  = request.args.get("chart_size",  2, type=int)
     try:
         items = _json.loads(items_json)
     except Exception:
