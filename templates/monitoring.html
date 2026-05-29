@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}モニタリング報告書 - TASUKARU{% endblock %}
+{% block title %}モニタリング文章生成 - TASUKARU{% endblock %}
 {% block nav_monitoring %}active{% endblock %}
 {% block extra_style %}
 <style>
@@ -65,6 +65,26 @@
   .result-card { border:1px solid #ccc; margin-bottom:8px; break-inside:avoid; }
   .result-text { font-size:10pt; line-height:1.6; }
 }
+
+.result-text.editing {
+  border: 2px solid #1a73e8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+  background: #f8fbff;
+  cursor: text;
+  white-space: pre-wrap;
+}
+.btn-edit {
+  font-size: 0.75rem;
+  color: #5f6368;
+  background: #f1f3f4;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.btn-edit:active { background: #e8f0fe; color: #1a73e8; }
 
 /* ===== Session 49: モニタリング報告書 印刷レイアウト ===== */
 /* 通常時は report-sheet を非表示。プレビュー時/印刷時のみ表示 */
@@ -181,7 +201,7 @@ body.report-preview-open nav { display:none !important; }
 <div class="mon-wrap">
   <h2 style="font-size:1.1rem;font-weight:700;color:#202124;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
     <span class="material-symbols-outlined" style="color:#1a73e8;">monitoring</span>
-    モニタリング報告書生成
+    モニタリング文章生成
   </h2>
   <p style="font-size:0.82rem;color:#5f6368;background:#e8f0fe;border-radius:10px;padding:10px 14px;margin-bottom:16px;">
     蓄積された介護記録から、AIがケアマネ向けの報告文を自動生成します。<br>
@@ -197,10 +217,11 @@ body.report-preview-open nav { display:none !important; }
     </div>
     <div id="patient-selected" style="display:none;background:#e8f0fe;border-radius:10px;padding:10px 13px;display:flex;align-items:center;gap:8px;">
       <span class="material-symbols-outlined" style="color:#1a73e8;font-size:20px;">person</span>
-      <div>
+      <div style="flex:1;">
         <div id="patient-name-display" style="font-weight:700;font-size:0.88rem;color:#1a73e8;"></div>
         <div id="patient-sub-display" style="font-size:0.75rem;color:#5f6368;"></div>
       </div>
+      <button onclick="changePatient()" style="font-size:0.75rem;color:#1a73e8;background:#fff;border:1.5px solid #1a73e8;border-radius:20px;padding:4px 12px;cursor:pointer;white-space:nowrap;flex-shrink:0;">変更</button>
     </div>
   </div>
 
@@ -248,7 +269,7 @@ body.report-preview-open nav { display:none !important; }
 
   <!-- 生成ボタン -->
   <button class="btn-primary" id="gen-btn" onclick="generateReport()" disabled>
-    ✨ AIでモニタリング報告書を生成
+    ✨ AIでモニタリング文章を生成
   </button>
 
   <!-- 結果エリア -->
@@ -269,7 +290,7 @@ body.report-preview-open nav { display:none !important; }
   <div class="history-section" id="history-section">
     <div class="history-header">
       <span class="material-symbols-outlined" style="font-size:18px;">history</span>
-      過去のモニタリング報告書
+      過去のモニタリング文章
     </div>
     <div id="history-body">
       <div style="font-size:0.82rem;color:#80868b;padding:10px 0;">利用者を選ぶと履歴が表示されます</div>
@@ -496,6 +517,7 @@ function makeResultCard(cat, text, count, catName) {
     <div class="result-card-header">
       ${cat ? `<span class="cat-badge" style="background:${cat.bg};color:${cat.color};">● ${cat.name}</span>` : '<span class="cat-badge" style="background:#e8f0fe;color:#1a73e8;">📄 全体</span>'}
       <div class="result-actions">
+        <button class="btn-edit" onclick="toggleEdit(this)">✏️ 編集</button>
         <button class="btn-copy" onclick="copyText(this)">コピー</button>
       </div>
     </div>
@@ -503,6 +525,59 @@ function makeResultCard(cat, text, count, catName) {
     <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : `${text.length}文字`}</div>
   `;
   return card;
+}
+
+function toggleEdit(btn) {
+  const card = btn.closest(".result-card");
+  const textEl = card.querySelector(".result-text");
+  const isEditing = textEl.contentEditable === "true";
+  if (isEditing) {
+    // 編集終了：テキストを確定してdata-rawも更新
+    textEl.contentEditable = "false";
+    textEl.classList.remove("editing");
+    const newText = textEl.innerText;
+    textEl.dataset.raw = encodeURIComponent(newText);
+    // result-meta の文字数も更新
+    const metaEl = card.querySelector(".result-meta");
+    const countMatch = metaEl.textContent.match(/参照記録: (\d+)件/);
+    const countPart = countMatch ? `参照記録: ${countMatch[1]}件 ／ ` : "";
+    metaEl.textContent = countPart + `${newText.length}文字（編集済）`;
+    // currentResultも更新
+    if (currentResult) {
+      const badge = card.querySelector(".cat-badge");
+      const catName = badge ? badge.textContent.replace(/^● /, "").trim() : null;
+      if (currentResult.mode === "full") {
+        currentResult.full_text = newText;
+      } else if (catName && currentResult.categories) {
+        currentResult.categories[catName] = newText;
+      }
+    }
+    btn.textContent = "✏️ 編集";
+  } else {
+    // 編集開始
+    textEl.contentEditable = "true";
+    textEl.classList.add("editing");
+    textEl.focus();
+    // カーソルを末尾に
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    btn.textContent = "✔ 完了";
+  }
+}
+
+function changePatient() {
+  // 利用者選択をリセットして検索欄に戻す
+  selectedPatient = null;
+  document.getElementById("patient-selected").style.display = "none";
+  const searchInput = document.getElementById("patient-search");
+  searchInput.style.display = "";
+  searchInput.value = "";
+  searchInput.focus();
+  checkGenBtn();
 }
 
 function copyText(btn) {
