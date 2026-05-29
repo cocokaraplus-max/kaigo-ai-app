@@ -647,6 +647,121 @@ body.mono .ach-fail { color: #000 !important; font-style: italic; }
 body.mono .rep-monitoring-table td:first-child { background: #e8e8e8 !important; color: #000 !important; }
 body.mono .tmpl4-sidebar { background: #333 !important; }
 
+/* ===== 画像セクション ===== */
+.rep-images-panel {
+    border: 2px dashed #1a73e8; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 4mm; background: #f8fbff;
+}
+.rep-images-panel-title { font-size: 8pt; font-weight: 700; color: #1a73e8; margin-bottom: 6px; }
+.rep-img-select-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.rep-img-select-item { position: relative; cursor: pointer; }
+.rep-img-select-item input[type=checkbox] { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; cursor: pointer; z-index: 2; }
+.rep-img-select-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 2px solid #e0e0e0; display: block; }
+.rep-img-select-item.selected img { border-color: #1a73e8; }
+.rep-img-comment { font-size: 7pt; width: 80px; margin-top: 3px; padding: 2px 4px; border: 1px solid #e0e0e0; border-radius: 4px; resize: none; }
+.rep-layout-btns { display: flex; gap: 6px; margin: 8px 0 6px; }
+.rep-layout-btn { flex: 1; padding: 5px 4px; border: 2px solid #e0e0e0; border-radius: 6px; background: #fff; cursor: pointer; text-align: center; font-size: 0.7rem; color: #5f6368; }
+.rep-layout-btn.active { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; font-weight: 700; }
+.rep-layout-btn svg { display: block; margin: 0 auto 3px; }
+.rep-images-apply-btn { width: 100%; padding: 6px; background: #1a73e8; color: #fff; border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-top: 6px; }
+/* 配置A: 左写真大・右グラフ */
+.rep-img-layout-A { display: flex; gap: 3mm; margin-bottom: 3mm; align-items: flex-start; }
+.rep-img-layout-A .img-col { flex: none; }
+.rep-img-layout-A .graph-col { flex: 1; }
+/* 配置B: 左右均等 */
+.rep-img-layout-B { display: flex; gap: 3mm; margin-bottom: 3mm; align-items: flex-start; }
+.rep-img-layout-B .img-col { flex: none; }
+.rep-img-layout-B .graph-col { flex: 1; }
+/* 配置C: 上下 */
+.rep-img-layout-C { margin-bottom: 3mm; }
+.rep-img-layout-C .graph-col { margin-bottom: 2mm; }
+/* 画像本体 */
+.rep-img-item { margin-bottom: 2mm; }
+.rep-img-item img { width: 100%; border-radius: 4px; display: block; }
+.rep-img-item-comment { font-size: 7pt; color: #333; margin-top: 1mm; line-height: 1.4; }
+/* リサイズ可能コンテナ（画像・グラフ） */
+.rep-resizable {
+    position: relative;
+    display: inline-block;
+    min-width: 20mm;
+    min-height: 15mm;
+    box-sizing: border-box;
+}
+.rep-resizable-handle {
+    position: absolute;
+    right: 0; bottom: 0;
+    width: 14px; height: 14px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #1a73e8 50%);
+    border-radius: 0 0 4px 0;
+    opacity: 0.7;
+    z-index: 10;
+}
+.rep-resizable-handle:hover { opacity: 1; }
+.rep-resizable img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block; }
+/* ===== トリミングモーダル ===== */
+#crop-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+#crop-modal-overlay.show { display: flex; }
+#crop-modal {
+    background: #fff; border-radius: 14px;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+    box-sizing: border-box;
+}
+#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; }
+#crop-canvas-wrap {
+    position: relative;
+    border: 1px solid #e0e0e0; border-radius: 8px;
+    cursor: crosshair; user-select: none;
+    line-height: 0;
+    flex-shrink: 0;
+    /* 幅・高さは画像に合わせてJSで設定 */
+}
+#crop-source-img {
+    display: block;
+    pointer-events: none;
+    border-radius: 6px;
+}
+#crop-selection {
+    position: absolute; border: 2px dashed #1a73e8;
+    background: rgba(26,115,232,0.1);
+    pointer-events: none; display: none;
+}
+.crop-actions { display: flex; gap: 8px; width: 100%; box-sizing: border-box; }
+.crop-btn-apply {
+    flex: 1; padding: 8px; background: #1a73e8; color: #fff;
+    border: none; border-radius: 8px; font-size: 0.82rem;
+    font-weight: 700; cursor: pointer;
+}
+.crop-btn-reset {
+    padding: 8px 14px; background: #f1f3f4; color: #5f6368;
+    border: none; border-radius: 8px; font-size: 0.82rem; cursor: pointer;
+}
+.crop-btn-cancel {
+    padding: 8px 14px; background: #fff; color: #ea4335;
+    border: 1px solid #ea4335; border-radius: 8px;
+    font-size: 0.82rem; cursor: pointer;
+}
+.rep-resizable img { cursor: pointer; }
+.crop-hint { font-size: 6.5pt; color: #1a73e8; text-align: center; margin-top: 1px; }
+
+/* 印刷時はハンドル非表示 */
+@media print {
+    .rep-resizable-handle { display: none !important; }
+    .no-print { display: none !important; }
+    #crop-modal-overlay { display: none !important; }
+}
+/* 2ページ目 */
+.rep-image-page { page-break-before: always; }
+.rep-image-page-title { font-size: 9pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 4mm; }
+.rep-image-grid { display: flex; flex-wrap: wrap; gap: 4mm; }
+.rep-image-grid-item { flex: 0 0 calc(50% - 2mm); }
+.rep-image-grid-item img { width: 100%; border-radius: 4px; border: 1px solid #e0e0e0; display: block; }
+.rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
 @media print {
     body { background: #fff; }
@@ -680,6 +795,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set mon = rd.monitoring %}
 {% set fitness = rd.fitness %}
 {% set weights = rd.weights %}
+{% set avail_imgs = rd.available_images | default([]) %}
+{% set sel_imgs_raw = rd.selected_images | default([]) %}
+{% set img_layout = rd.img_layout | default('A') %}
 
 <div class="report-page" id="page-{{ loop.index }}">
     {% if tmpl == 4 %}
@@ -956,6 +1074,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
+    <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
         {% if show_weight_final %}
         <div class="rep-fitness-chart-box">
@@ -996,7 +1115,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         </div>
         {% endif %}
         {% endif %}
-    </div>
+    </div><!-- /rep-fitness-charts -->
+    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+    </div><!-- /rep-resizable fitness -->
     {# 直近の備考を収集して表示 #}
     {% set all_notes = [] %}
     {% if weights %}{% for w in weights | reverse %}{% if w.note %}{% set _ = all_notes.append(w.measured_date[:7] + ' ' + w.note) %}{% endif %}{% endfor %}{% endif %}
@@ -1055,11 +1176,442 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% endif %}
 
+    {# ===== 画像セクション（1〜2枚：1ページ目にレイアウト対応で配置） ===== #}
+    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
+    {% set sel_imgs = sel_imgs_raw %}
+    {% if img_layout == 'A' %}
+    {# パターンA: 左写真大・右グラフ（グラフをコンテナ内に再配置） #}
+    <div class="rep-img-layout-A">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+        </div>
+    </div>
+    {% elif img_layout == 'B' %}
+    {# パターンB: 左右均等 #}
+    <div class="rep-img-layout-B">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+        </div>
+    </div>
+    {% else %}
+    {# パターンC: 上下分割（写真を下に） #}
+    <div class="rep-img-layout-C">
+        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+        <div style="display:flex;gap:3mm;">
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ===== 画像選択パネル（印刷時非表示） ===== #}
+    {% if items.get('images', false) %}
+    <div class="rep-images-panel no-print" id="img-panel-{{ loop.index }}" data-user="{{ p.user_name }}" data-idx="{{ loop.index }}">
+        <div class="rep-images-panel-title">
+            📷 添付画像の選択・コメント入力
+            <span style="font-size:6.5pt;font-weight:400;color:#80868b;margin-left:6px;">印刷後は「適用」で反映されます</span>
+        </div>
+        {% if avail_imgs %}
+        <div class="rep-img-select-grid" id="img-grid-{{ loop.index }}">
+            {% for url in avail_imgs %}
+            {% set is_video = '.mp4' in url or '.mov' in url or '.webm' in url %}
+            {% if not is_video %}
+            <div class="rep-img-select-item" id="img-item-{{ loop.index }}-{{ loop.index0 }}"
+                 onclick="toggleImgSelect({{ loop.index }}, {{ loop.index0 }})">
+                <input type="checkbox" id="img-chk-{{ loop.index }}-{{ loop.index0 }}"
+                       onclick="event.stopPropagation();"
+                       onchange="toggleImgSelect({{ loop.index }}, {{ loop.index0 }})">
+                <img src="{{ url }}" data-url="{{ url }}">
+                <textarea class="rep-img-comment" id="img-comment-{{ loop.index }}-{{ loop.index0 }}"
+                          placeholder="コメント（任意）" rows="2"
+                          onclick="event.stopPropagation();"></textarea>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <div style="font-size:7.5pt;color:#5f6368;margin:8px 0 4px;">レイアウト（1〜2枚選択時）</div>
+        <div class="rep-layout-btns" id="layout-btns-{{ loop.index }}">
+            <button class="rep-layout-btn active" data-layout="A" onclick="setLayout({{ loop.index }}, 'A')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="26" height="30" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="31" y="1" width="16" height="14" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                    <rect x="31" y="17" width="16" height="14" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                </svg>
+                写真大・グラフ右
+            </button>
+            <button class="rep-layout-btn" data-layout="B" onclick="setLayout({{ loop.index }}, 'B')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="21" height="30" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="26" y="1" width="21" height="30" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                </svg>
+                左右均等
+            </button>
+            <button class="rep-layout-btn" data-layout="C" onclick="setLayout({{ loop.index }}, 'C')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="46" height="13" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                    <rect x="1" y="18" width="22" height="13" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="25" y="18" width="22" height="13" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                </svg>
+                上下分割
+            </button>
+        </div>
+        <button class="rep-images-apply-btn" onclick="applyImages({{ loop.index }}, '{{ p.user_name | e }}')">
+            ✅ この設定を適用して再表示
+        </button>
+        {% else %}
+        <div style="font-size:0.78rem;color:#9aa0a6;padding:8px 0;">この月のケース記録に添付画像がありません</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ===== 3枚以上：2ページ目 ===== #}
+    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length >= 3 %}
+    <div class="rep-image-page report-page" style="padding: var(--page-pad);">
+        <div class="rep-image-page-title">添付画像　{{ p.user_name }} 様 ／ {{ year_month | replace('-', '年') }}月</div>
+        <div class="rep-image-grid">
+            {% for img_data in sel_imgs_raw %}
+            <div class="rep-image-grid-item">
+                <img src="{{ img_data.url }}" alt="添付画像">
+                {% if img_data.comment %}<div class="rep-image-grid-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="page-number">{{ loop.index }} / {{ report_data_list | length }}</div>
     {% if tmpl == 4 %}</div></div>{% endif %}
 </div>
 {% endfor %}
 </div>
+
+<script>
+// ===== リサイズ機能 =====
+(function() {
+    var dragging = null;
+    var startX, startY, startW, startH;
+
+    document.addEventListener('mousedown', function(e) {
+        if (!e.target.classList.contains('rep-resizable-handle')) return;
+        e.preventDefault();
+        dragging = e.target.closest('.rep-resizable');
+        if (!dragging) return;
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = dragging.offsetWidth;
+        startH = dragging.offsetHeight;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var newW = Math.max(50, startW + dx);
+        var newH = Math.max(40, startH + dy);
+        dragging.style.width = newW + 'px';
+        dragging.style.height = newH + 'px';
+    });
+
+    document.addEventListener('mouseup', function() { dragging = null; });
+
+    // タッチ対応
+    document.addEventListener('touchstart', function(e) {
+        if (!e.target.classList.contains('rep-resizable-handle')) return;
+        e.preventDefault();
+        dragging = e.target.closest('.rep-resizable');
+        if (!dragging) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startW = dragging.offsetWidth;
+        startH = dragging.offsetHeight;
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+        if (!dragging) return;
+        e.preventDefault();
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        var newW = Math.max(50, startW + dx);
+        var newH = Math.max(40, startH + dy);
+        dragging.style.width = newW + 'px';
+        dragging.style.height = newH + 'px';
+    }, { passive: false });
+
+    document.addEventListener('touchend', function() { dragging = null; }, { passive: true });
+})();
+
+// ===== トリミング機能 =====
+var _cropTarget = null;  // トリミング対象の <img> or <canvas>
+var _cropSel = { startX:0, startY:0, endX:0, endY:0, dragging:false };
+
+// 印刷エリア内の画像クリックでトリミング起動
+document.addEventListener('click', function(e) {
+    var img = e.target;
+    if (img.tagName !== 'IMG' && img.tagName !== 'CANVAS') return;
+    if (!img.closest('.rep-resizable')) return;
+    if (img.closest('.no-print')) return;
+    e.preventDefault();
+    openCropModal(img);
+});
+
+function openCropModal(imgEl) {
+    _cropTarget = imgEl;
+    var src = imgEl.tagName === 'CANVAS' ? imgEl.toDataURL() : (imgEl.dataset.originalSrc || imgEl.src);
+    var srcImg = document.getElementById('crop-source-img');
+    var wrap = document.getElementById('crop-canvas-wrap');
+
+    // サイズ計算してセット（onloadとcomplete両方対応）
+    function _setSizes() {
+        var maxW = Math.min(window.innerWidth * 0.72, 540);
+        var maxH = Math.min(window.innerHeight * 0.58, 460);
+        var ratio = srcImg.naturalWidth / srcImg.naturalHeight;
+        var w, h;
+        if (ratio > maxW / maxH) { w = maxW; h = maxW / ratio; }
+        else { h = maxH; w = maxH * ratio; }
+        w = Math.round(w); h = Math.round(h);
+        srcImg.style.width  = w + 'px';
+        srcImg.style.height = h + 'px';
+        wrap.style.width    = w + 'px';
+        wrap.style.height   = h + 'px';
+        document.getElementById('crop-selection').style.display = 'none';
+    }
+
+    // キャッシュ済みでもonloadが発火するよう、src変更前にonloadを設定
+    srcImg.onload = _setSizes;
+    // 同じsrcの場合はonloadが発火しないため、強制的にサイズ計算
+    if (srcImg.src === src && srcImg.complete && srcImg.naturalWidth > 0) {
+        _setSizes();
+    } else {
+        // srcをいったん空にしてから再設定（キャッシュバスター）
+        srcImg.src = '';
+    }
+    srcImg.src = src;
+    document.getElementById('crop-selection').style.display = 'none';
+    document.getElementById('crop-modal-overlay').classList.add('show');
+}
+
+function cropCancel() {
+    document.getElementById('crop-modal-overlay').classList.remove('show');
+    _cropTarget = null;
+}
+
+function cropReset() {
+    if (!_cropTarget) return;
+    // 元のsrcに戻す（data-original-srcがあればそちらを使用）
+    var original = _cropTarget.dataset.originalSrc || _cropTarget.src;
+    _cropTarget.dataset.originalSrc = original;
+    var srcImg = document.getElementById('crop-source-img');
+    srcImg.src = original;
+    document.getElementById('crop-selection').style.display = 'none';
+}
+
+function cropApply() {
+    var sel = document.getElementById('crop-selection');
+    if (sel.style.display === 'none' || !_cropTarget) {
+        cropCancel();
+        return;
+    }
+    var srcImg = document.getElementById('crop-source-img');
+    var wrap = document.getElementById('crop-canvas-wrap');
+    var wrapRect = wrap.getBoundingClientRect();
+    var imgRect = srcImg.getBoundingClientRect();
+
+    // 実際の画像サイズとの比率（wrap基準でpos指定しているので直接使用）
+    var scaleX = srcImg.naturalWidth / srcImg.offsetWidth;
+    var scaleY = srcImg.naturalHeight / srcImg.offsetHeight;
+
+    // 選択範囲はwrap基準で設定済み、imgの表示オフセットを考慮
+    var imgOffX = srcImg.offsetLeft || 0;
+    var imgOffY = srcImg.offsetTop  || 0;
+    var selInImg = {
+        x: Math.max(0, (parseFloat(sel.style.left) - imgOffX) * scaleX),
+        y: Math.max(0, (parseFloat(sel.style.top)  - imgOffY) * scaleY),
+        w: parseFloat(sel.style.width)  * scaleX,
+        h: parseFloat(sel.style.height) * scaleY,
+    };
+
+    if (selInImg.w < 5 || selInImg.h < 5) { cropCancel(); return; }
+
+    // Canvasにトリミング結果を描画
+    var canvas = document.createElement('canvas');
+    canvas.width  = Math.round(selInImg.w);
+    canvas.height = Math.round(selInImg.h);
+    var ctx = canvas.getContext('2d');
+    var tmpImg = new Image();
+    tmpImg.crossOrigin = 'anonymous';
+    tmpImg.onload = function() {
+        ctx.drawImage(tmpImg, selInImg.x, selInImg.y, selInImg.w, selInImg.h, 0, 0, canvas.width, canvas.height);
+        var croppedData = canvas.toDataURL('image/jpeg', 0.92);
+        // 元のimgをcanvasに差し替え（サイズ維持）
+        var parent = _cropTarget.parentNode;
+        var newImg = document.createElement('img');
+        newImg.src = croppedData;
+        newImg.dataset.originalSrc = _cropTarget.dataset.originalSrc || _cropTarget.src;
+        newImg.style.cssText = _cropTarget.style.cssText;
+        newImg.style.width = '100%';
+        newImg.style.height = '100%';
+        newImg.style.objectFit = 'contain';
+        newImg.style.borderRadius = '4px';
+        newImg.style.display = 'block';
+        parent.replaceChild(newImg, _cropTarget);
+        _cropTarget = null;
+        document.getElementById('crop-modal-overlay').classList.remove('show');
+    };
+    tmpImg.src = srcImg.src;
+}
+
+// 選択範囲のドラッグ（document全体で管理）
+document.addEventListener('mousedown', function(e) {
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap || !wrap.contains(e.target)) return;
+    if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    _cropSel.startX = e.clientX - r.left;
+    _cropSel.startY = e.clientY - r.top;
+    _cropSel.dragging = true;
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = _cropSel.startX + 'px';
+    sel.style.top  = _cropSel.startY + 'px';
+    sel.style.width = '0'; sel.style.height = '0';
+    sel.style.display = 'block';
+}, true);
+
+document.addEventListener('mousemove', function(e) {
+    if (!_cropSel.dragging) return;
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    var cx = e.clientX - r.left;
+    var cy = e.clientY - r.top;
+    var x = Math.min(cx, _cropSel.startX);
+    var y = Math.min(cy, _cropSel.startY);
+    var w = Math.abs(cx - _cropSel.startX);
+    var h = Math.abs(cy - _cropSel.startY);
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = x + 'px'; sel.style.top = y + 'px';
+    sel.style.width = w + 'px'; sel.style.height = h + 'px';
+}, true);
+
+document.addEventListener('mouseup', function() { _cropSel.dragging = false; });
+
+document.addEventListener('touchstart', function(e) {
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap || !wrap.contains(e.target)) return;
+    if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    _cropSel.startX = e.touches[0].clientX - r.left;
+    _cropSel.startY = e.touches[0].clientY - r.top;
+    _cropSel.dragging = true;
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = _cropSel.startX + 'px';
+    sel.style.top  = _cropSel.startY + 'px';
+    sel.style.width = '0'; sel.style.height = '0';
+    sel.style.display = 'block';
+}, { passive: false, capture: true });
+
+document.addEventListener('touchmove', function(e) {
+    if (!_cropSel.dragging) return;
+    var wrap = document.getElementById('crop-canvas-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    var r = wrap.getBoundingClientRect();
+    var cx = e.touches[0].clientX - r.left;
+    var cy = e.touches[0].clientY - r.top;
+    var x = Math.min(cx, _cropSel.startX);
+    var y = Math.min(cy, _cropSel.startY);
+    var w = Math.abs(cx - _cropSel.startX);
+    var h = Math.abs(cy - _cropSel.startY);
+    var sel = document.getElementById('crop-selection');
+    sel.style.left = x + 'px'; sel.style.top = y + 'px';
+    sel.style.width = w + 'px'; sel.style.height = h + 'px';
+}, { passive: false });
+
+document.addEventListener('touchend', function() { _cropSel.dragging = false; });
+
+// ===== 画像選択・レイアウト管理 =====
+var _imgState = {}; // {idx: {selected: [{url, comment}], layout: 'A'}}
+
+function toggleImgSelect(idx, imgIdx) {
+    var chk = document.getElementById('img-chk-' + idx + '-' + imgIdx);
+    if (!chk) return;
+    var item = document.getElementById('img-item-' + idx + '-' + imgIdx);
+    if (item) item.classList.toggle('selected', chk.checked);
+}
+
+function setLayout(idx, layout) {
+    document.querySelectorAll('#layout-btns-' + idx + ' .rep-layout-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.layout === layout);
+    });
+    if (!_imgState[idx]) _imgState[idx] = { selected: [], layout: 'A' };
+    _imgState[idx].layout = layout;
+}
+
+function applyImages(idx, userName) {
+    // 選択済み画像とコメントを収集
+    var grid = document.getElementById('img-grid-' + idx);
+    if (!grid) return;
+    var items = grid.querySelectorAll('.rep-img-select-item');
+    var selected = [];
+    items.forEach(function(item) {
+        var chk = item.querySelector('input[type=checkbox]');
+        var img = item.querySelector('img');
+        var comment = item.querySelector('textarea');
+        if (chk && chk.checked && img) {
+            selected.push({ url: img.dataset.url, comment: comment ? comment.value.trim() : '' });
+        }
+    });
+    // レイアウト取得
+    var layout = 'A';
+    var activeBtn = document.querySelector('#layout-btns-' + idx + ' .rep-layout-btn.active');
+    if (activeBtn) layout = activeBtn.dataset.layout;
+
+    // URLパラメータ更新
+    var params = new URLSearchParams(window.location.search);
+    var selImgs = {};
+    try { selImgs = JSON.parse(decodeURIComponent(params.get('selected_images') || '{}')); } catch(e) {}
+    selImgs[userName] = selected;
+    var imgLayouts = {};
+    try { imgLayouts = JSON.parse(decodeURIComponent(params.get('img_layouts') || '{}')); } catch(e) {}
+    imgLayouts[userName] = layout;
+    params.set('selected_images', JSON.stringify(selImgs));
+    params.set('img_layouts', JSON.stringify(imgLayouts));
+    window.location.search = params.toString();
+}
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
@@ -1317,5 +1869,20 @@ function saveMonitoring(userName, yearMonth) {
     window.addEventListener('resize', calcScale);
 })();
 </script>
+<div id="crop-modal-overlay">
+    <div id="crop-modal">
+        <div id="crop-title">📷 トリミング <span style="font-size:0.72rem;font-weight:400;color:#80868b;">ドラッグで範囲を選択</span></div>
+        <div id="crop-canvas-wrap">
+            <img id="crop-source-img" src="" alt="">
+            <div id="crop-selection"></div>
+        </div>
+        <div class="crop-actions">
+            <button class="crop-btn-apply" onclick="cropApply()">✅ この範囲で切り取る</button>
+            <button class="crop-btn-reset" onclick="cropReset()">リセット</button>
+            <button class="crop-btn-cancel" onclick="cropCancel()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
