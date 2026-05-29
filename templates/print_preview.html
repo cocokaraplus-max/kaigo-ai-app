@@ -1861,23 +1861,31 @@ function autoCompactPages() {
         page.style.lineHeight = '';
         page.style.padding = '';
 
-        // A4高さの基準：min-heightが効いている状態のoffsetH（スケーリング込み）
-        var a4H = page.offsetHeight;
+        // スケールを考慮したA4高さを取得
+        // transform scaleが適用されている場合、offsetH / scale = 本来のCSS高さ
+        var matrix = window.getComputedStyle(page).transform;
+        var scale = 1;
+        if (matrix && matrix !== 'none') {
+            var m = matrix.match(/matrix\(([^)]+)\)/);
+            if (m) scale = parseFloat(m[1].split(',')[0]);
+        }
+        // offsetHをscaleで割って本来のCSS高さ（297mm相当）を取得
+        var a4CssH = page.offsetHeight / scale;
 
-        // min-heightを外してscrollHeightで実コンテンツ高さを取得
+        // min-heightを外してscrollHeightで実コンテンツを計測（CSS px単位）
         var origMinH = page.style.minHeight;
         page.style.minHeight = '0';
         var contentH = page.scrollHeight;
         page.style.minHeight = origMinH;
 
-        // コンテンツがA4を超えたら縮小（5%の余裕）
-        if (contentH > a4H * 1.05) {
+        // コンテンツがA4を超えたら縮小（3%余裕）
+        if (contentH > a4CssH * 1.03) {
             page.classList.add('compact');
             setTimeout(function() {
                 page.style.minHeight = '0';
                 var contentH2 = page.scrollHeight;
                 page.style.minHeight = origMinH;
-                if (contentH2 > a4H * 1.05) {
+                if (contentH2 > a4CssH * 1.03) {
                     page.style.fontSize = '7pt';
                     page.style.lineHeight = '1.35';
                     page.style.padding = '8mm 10mm 6mm';
