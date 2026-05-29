@@ -2992,6 +2992,22 @@ def api_save_calendar_event():
             "notify_before": data.get("notify_before", 0),
             "created_by":    my_name,
         }
+
+        # ===== 複数日（飛び日）一括登録 =====
+        _dates = data.get("dates")
+        if isinstance(_dates, list) and len(_dates) > 0:
+            _ids = []
+            for _d in _dates:
+                if not _d:
+                    continue
+                _p = dict(payload)
+                _p["event_date"] = _d
+                _p["end_date"] = _d
+                _r = supabase.table("calendar_events").insert(_p).execute()
+                if _r.data:
+                    _ids.append(_r.data[0]["id"])
+            return jsonify({"status": "success", "ids": _ids})
+
         event_id = data.get("id")
         if event_id:
             supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
