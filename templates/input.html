@@ -629,14 +629,14 @@
         <div style="margin-top:16px;">
             <label class="form-label">
                 <span class="material-symbols-outlined">comment</span>
-                お休みの理由（任意）
+                お休みの理由
             </label>
-            <input type="text" class="form-control" id="leave-reason" name="leave_reason"
-                   placeholder="例：発熱のため、通院のため、家族の都合のため">
+            <textarea class="form-control" id="leave-reason" name="leave_reason" rows="3"
+                   placeholder="例：発熱のため、通院のため、家族の都合のため" style="resize:vertical;min-height:80px;"></textarea>
         </div>
     </div>
 
-    <div class="form-group">
+    <div class="form-group" id="content-section">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
             内容
@@ -1288,6 +1288,9 @@ window.updateLeaveFormVisibility = function() {
     if (!sel || !block) return;
     var isLeave = (sel.value === '休み連絡');
     block.style.display = isLeave ? 'block' : 'none';
+    // 休み連絡のときは「内容」欄を隠す（他カテゴリでは表示に戻す）
+    var contentSection = document.getElementById('content-section');
+    if (contentSection) contentSection.style.display = isLeave ? 'none' : '';
     if (!isLeave) {
         // 休み連絡以外に切り替わったら入力値・選択状態をクリア
         var lvType = document.getElementById('leave-reporter-type');
