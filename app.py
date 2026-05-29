@@ -9596,6 +9596,42 @@ def print_preview():
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
             data["caremanager"] = {}
+        # 対象月のケース記録から画像URLを収集
+        try:
+            if items.get("images", False):
+                ym_parts = year_month.split("-")
+                if len(ym_parts) == 2:
+                    y_str, m_str = ym_parts
+                    ym_start = f"{y_str}-{m_str}-01"
+                    import calendar as _cal_pv
+                    last_day = _cal_pv.monthrange(int(y_str), int(m_str))[1]
+                    ym_end = f"{y_str}-{m_str}-{last_day:02d}"
+                    rec_imgs = supabase.table("records").select("image_urls").eq(
+                        "facility_code", f_code).eq("user_name", uname).gte(
+                        "created_at", ym_start).lte(
+                        "created_at", ym_end + "T23:59:59").neq(
+                        "staff_name", "AI統合記録").execute()
+                    all_urls = []
+                    for _r in (rec_imgs.data or []):
+                        for u in (_r.get("image_urls") or []):
+                            if u not in all_urls and not u.lower().split("?")[0].endswith(('.mp4','.mov','.webm','.avi','.m4v')):
+                                all_urls.append(u)
+                    data["available_images"] = all_urls
+                    data["selected_images"] = selected_images.get(uname, [])
+                    data["img_layout"] = img_layouts.get(uname, "A")
+                else:
+                    data["available_images"] = []
+                    data["selected_images"] = []
+                    data["img_layout"] = "A"
+            else:
+                data["available_images"] = []
+                data["selected_images"] = []
+                data["img_layout"] = "A"
+        except Exception as _e_pv:
+            print(f"[pv image collect error] {_e_pv}", flush=True)
+            data["available_images"] = []
+            data["selected_images"] = []
+            data["img_layout"] = "A"
         report_data_list.append(data)
 
     # 施設情報
