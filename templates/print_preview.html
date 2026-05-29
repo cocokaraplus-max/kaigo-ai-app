@@ -709,24 +709,22 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 #crop-modal {
     background: #fff; border-radius: 14px;
     padding: 16px;
-    display: inline-flex; flex-direction: column; gap: 10px;
-    max-width: 92vw; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 10px;
+    box-sizing: border-box;
 }
-#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; white-space: nowrap; }
+#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; }
 #crop-canvas-wrap {
     position: relative;
     border: 1px solid #e0e0e0; border-radius: 8px;
     cursor: crosshair; user-select: none;
-    display: block; line-height: 0;
-    overflow: hidden;
+    line-height: 0;
+    flex-shrink: 0;
+    /* 幅・高さは画像に合わせてJSで設定 */
 }
 #crop-source-img {
     display: block;
-    max-width: 60vw;
-    max-height: 52vh;
-    width: auto;
-    height: auto;
     pointer-events: none;
+    border-radius: 6px;
 }
 #crop-selection {
     position: absolute; border: 2px dashed #1a73e8;
@@ -1389,10 +1387,24 @@ document.addEventListener('click', function(e) {
 
 function openCropModal(imgEl) {
     _cropTarget = imgEl;
-    var src = imgEl.tagName === 'CANVAS' ? imgEl.toDataURL() : imgEl.src;
+    var src = imgEl.tagName === 'CANVAS' ? imgEl.toDataURL() : (imgEl.dataset.originalSrc || imgEl.src);
     var srcImg = document.getElementById('crop-source-img');
     srcImg.onload = function() {
-        // 選択範囲リセット
+        // 画像の自然サイズに基づいてモーダル内の表示サイズを計算
+        var maxW = Math.min(window.innerWidth * 0.75, 560);
+        var maxH = Math.min(window.innerHeight * 0.60, 480);
+        var ratio = srcImg.naturalWidth / srcImg.naturalHeight;
+        var w, h;
+        if (ratio > maxW / maxH) {
+            w = maxW; h = maxW / ratio;
+        } else {
+            h = maxH; w = maxH * ratio;
+        }
+        srcImg.style.width  = Math.round(w) + 'px';
+        srcImg.style.height = Math.round(h) + 'px';
+        var wrap = document.getElementById('crop-canvas-wrap');
+        wrap.style.width  = Math.round(w) + 'px';
+        wrap.style.height = Math.round(h) + 'px';
         var sel = document.getElementById('crop-selection');
         sel.style.display = 'none';
     };
