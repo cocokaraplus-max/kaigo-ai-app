@@ -1885,7 +1885,7 @@ function autoCompactPages() {
         }
         var contentHeight = lastBottom - firstTop;
 
-        if (contentHeight > innerHeightPx * 1.01) {
+        if (contentHeight > innerHeightPx * 1.05) {
             page.classList.add('compact');
             // compact後も溢れる場合はさらに縮小
             setTimeout(function() {
@@ -1900,7 +1900,7 @@ function autoCompactPages() {
                     var rb = ch.getBoundingClientRect().bottom - page.getBoundingClientRect().top;
                     if (rb > lastB2) lastB2 = rb;
                 }
-                if (lastB2 - firstTop > innerH2 * 1.01) {
+                if (lastB2 - firstTop > innerH2 * 1.05) {
                     page.style.fontSize = '7pt';
                     page.style.lineHeight = '1.35';
                     page.style.padding = '8mm 10mm 6mm';
