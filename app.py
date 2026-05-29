@@ -5312,6 +5312,11 @@ def mapping():
 def help_page():
     return app.send_static_file('help.html')
 
+@app.route('/faq')
+@login_required
+def faq_page():
+    return app.send_static_file('faq.html')
+
 # API エンドポイント
 # ==========================================
 
