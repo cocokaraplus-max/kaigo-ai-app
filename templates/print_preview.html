@@ -1855,37 +1855,33 @@ function autoCompactPages() {
     var pages = document.querySelectorAll('.report-page');
     pages.forEach(function(page) {
         if (page.classList.contains('rep-image-page')) return;
-        // リセット
         page.classList.remove('compact');
         page.style.fontSize = '';
         page.style.lineHeight = '';
         page.style.padding = '';
 
-        // スケールを考慮したA4高さを取得
-        // transform scaleが適用されている場合、offsetH / scale = 本来のCSS高さ
-        var matrix = window.getComputedStyle(page).transform;
-        var scale = 1;
-        if (matrix && matrix !== 'none') {
-            var m = matrix.match(/matrix\(([^)]+)\)/);
-            if (m) scale = parseFloat(m[1].split(',')[0]);
+        // 最後の可視子要素のbottomとページ内側高さを比較
+        function getContentBottom(pg) {
+            var children = Array.prototype.slice.call(pg.children).filter(function(c) {
+                return !c.classList.contains('no-print');
+            });
+            if (!children.length) return 0;
+            var last = children[children.length - 1];
+            return last.offsetTop + last.offsetHeight;
         }
-        // offsetHをscaleで割って本来のCSS高さ（297mm相当）を取得
-        var a4CssH = page.offsetHeight / scale;
 
-        // min-heightを外してscrollHeightで実コンテンツを計測（CSS px単位）
-        var origMinH = page.style.minHeight;
-        page.style.minHeight = '0';
-        var contentH = page.scrollHeight;
-        page.style.minHeight = origMinH;
+        var pb = parseFloat(getComputedStyle(page).paddingBottom);
+        var pageInnerH = page.clientHeight - pb;
+        var contentBottom = getContentBottom(page);
 
-        // コンテンツがA4を超えたら縮小（3%余裕）
-        if (contentH > a4CssH * 1.03) {
+        // 5%以上超えていたらcompact発動
+        if (contentBottom > pageInnerH * 1.05) {
             page.classList.add('compact');
             setTimeout(function() {
-                page.style.minHeight = '0';
-                var contentH2 = page.scrollHeight;
-                page.style.minHeight = origMinH;
-                if (contentH2 > a4CssH * 1.03) {
+                var pb2 = parseFloat(getComputedStyle(page).paddingBottom);
+                var innerH2 = page.clientHeight - pb2;
+                var cb2 = getContentBottom(page);
+                if (cb2 > innerH2 * 1.05) {
                     page.style.fontSize = '7pt';
                     page.style.lineHeight = '1.35';
                     page.style.padding = '8mm 10mm 6mm';
