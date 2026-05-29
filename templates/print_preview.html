@@ -699,6 +699,20 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 }
 .rep-resizable-handle:hover { opacity: 1; }
 .rep-resizable img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block; }
+/* ===== 2ページ超過時の自動縮小 ===== */
+.report-page.compact .rep-monitoring-table { margin-bottom: 2mm; }
+.report-page.compact .rep-monitoring-table td { font-size: 6.5pt; padding: 2px 3px; line-height: 1.35; }
+.report-page.compact .rep-monitoring-table td:first-child { font-size: 6.5pt; }
+.report-page.compact { font-size: 7.5pt; line-height: 1.4; padding: 9mm 11mm 7mm; }
+.report-page.compact .rep-section-title,
+.report-page.compact .rep-fitness-title { font-size: 7.5pt; }
+.report-page.compact .rep-fitness-chart-box { padding: 2mm; }
+.report-page.compact .rep-header-title { font-size: 10.5pt; }
+.report-page.compact .rep-cm-name { font-size: 12pt; }
+.report-page.compact .rep-patient-row { padding: 3mm 0; }
+.report-page.compact .rep-goals-table td { font-size: 6.5pt; padding: 2px 3px; }
+.report-page.compact .rep-eval-row td { font-size: 6.5pt; padding: 2px 3px; }
+
 /* ===== トリミングモーダル ===== */
 #crop-modal-overlay {
     display: none; position: fixed; inset: 0;
@@ -1835,6 +1849,56 @@ function saveMonitoring(userName, yearMonth) {
         });
     }
 })();
+
+// ===== 2ページ超過検知・自動縮小 =====
+function autoCompactPages() {
+    var pages = document.querySelectorAll('.report-page');
+    pages.forEach(function(page) {
+        if (page.classList.contains('rep-image-page')) return;
+        page.classList.remove('compact');
+        page.style.fontSize = '';
+        page.style.lineHeight = '';
+        page.style.padding = '';
+
+        // 最後の可視子要素のbottomとページ内側高さを比較
+        function getContentBottom(pg) {
+            var children = Array.prototype.slice.call(pg.children).filter(function(c) {
+                return !c.classList.contains('no-print');
+            });
+            if (!children.length) return 0;
+            var last = children[children.length - 1];
+            return last.offsetTop + last.offsetHeight;
+        }
+
+        var pb = parseFloat(getComputedStyle(page).paddingBottom);
+        var pageInnerH = page.clientHeight - pb;
+        var contentBottom = getContentBottom(page);
+
+        // 5%以上超えていたらcompact発動
+        if (contentBottom > pageInnerH * 1.05) {
+            page.classList.add('compact');
+            setTimeout(function() {
+                var pb2 = parseFloat(getComputedStyle(page).paddingBottom);
+                var innerH2 = page.clientHeight - pb2;
+                var cb2 = getContentBottom(page);
+                if (cb2 > innerH2 * 1.05) {
+                    page.style.fontSize = '7pt';
+                    page.style.lineHeight = '1.35';
+                    page.style.padding = '8mm 10mm 6mm';
+                    page.querySelectorAll('.rep-monitoring-table td').forEach(function(td) {
+                        td.style.fontSize = '6pt';
+                        td.style.padding = '1px 3px';
+                    });
+                }
+            }, 100);
+        }
+    });
+}
+
+// ページロード完了後・グラフ描画後に実行
+window.addEventListener('load', function() {
+    setTimeout(autoCompactPages, 800);
+});
 
 // ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
 (function applyPageScale() {

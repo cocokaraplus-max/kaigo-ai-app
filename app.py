@@ -256,6 +256,47 @@ def _build_leave_content(period, reporter_type, other_detail, leave_reason):
         base += f"理由：{leave_reason}"
     return base
 
+
+def _format_leave_period(dates):
+    """日付文字列(YYYY-MM-DD)のリストから '6月2日・6月5日・6月10日' のような表記を作る。
+    連続範囲は '6月2日〜6月5日' のようにまとめる。"""
+    from datetime import datetime as _dt, timedelta as _td
+    ds = sorted(set([d for d in dates if d]))
+    if not ds:
+        return ""
+    parsed = []
+    for d in ds:
+        try:
+            parsed.append(_dt.strptime(d, "%Y-%m-%d").date())
+        except Exception:
+            pass
+    if not parsed:
+        return ""
+    parsed = sorted(set(parsed))
+    # 連続する日をグループ化
+    groups = []
+    start = prev = parsed[0]
+    for cur in parsed[1:]:
+        if cur == prev + _td(days=1):
+            prev = cur
+            continue
+        groups.append((start, prev))
+        start = prev = cur
+    groups.append((start, prev))
+    parts = []
+    for s, e in groups:
+        if s == e:
+            parts.append(f"{s.month}月{s.day}日")
+        else:
+            parts.append(f"{s.month}月{s.day}日〜{e.month}月{e.day}日")
+    return "・".join(parts)
+
+
+def _build_leave_content_multi(dates, reporter_type, other_detail, leave_reason):
+    """複数日(飛び日含む)の休み連絡content文字列を生成する。"""
+    period = _format_leave_period(dates)
+    return _build_leave_content(period, reporter_type, other_detail, leave_reason)
+
 # ==========================================
 # 管理者権限ヘルパー
 # ==========================================
@@ -794,7 +835,23 @@ def input_view():
                     leave_date_start_val = (request.form.get("leave_date_start", "") or "").strip()
                     leave_date_end_val = (request.form.get("leave_date_end", "") or "").strip()
                     leave_reason_val = (request.form.get("leave_reason", "") or "").strip() if category == "休み連絡" else ""
-                    if category == "休み連絡" and leave_date_start_val:
+                    # 複数日(飛び日)対応: leave_dates(カンマ区切り)があれば優先
+                    leave_dates_raw = (request.form.get("leave_dates", "") or "").strip()
+                    leave_dates_list = []
+                    if leave_dates_raw:
+                        leave_dates_list = [d.strip() for d in leave_dates_raw.split(",") if d.strip()]
+                    if category == "休み連絡" and leave_dates_list:
+                        # 複数日モード: 最小日/最大日をstart/endに、contentは全日列挙
+                        try:
+                            from datetime import datetime as _dtm0
+                            _sorted = sorted(leave_dates_list, key=lambda x: _dtm0.strptime(x, "%Y-%m-%d"))
+                            leave_date_start_val = _sorted[0]
+                            leave_date_end_val = _sorted[-1]
+                            _other_detail = (request.form.get("leave_other_detail", "") or "").strip()
+                            content = _build_leave_content_multi(leave_dates_list, leave_reporter_type, _other_detail, leave_reason_val)
+                        except Exception as _cem:
+                            print(f"[休み連絡content生成エラー(複数日)] {_cem}", flush=True)
+                    elif category == "休み連絡" and leave_date_start_val:
                         try:
                             from datetime import datetime as _dt
                             _ls = _dt.strptime(leave_date_start_val, "%Y-%m-%d")
@@ -842,37 +899,53 @@ def input_view():
                     # 休み連絡カテゴリ: カレンダーに自動登録
                     if category == "休み連絡" and new_id:
                         try:
-                            leave_date_start = (request.form.get("leave_date_start", "") or "").strip()
-                            leave_date_end = (request.form.get("leave_date_end", "") or "").strip()
                             user_name_for_cal = m.group(2)
-                            if leave_date_start:
+                            # 登録する日付リストを決定（複数日優先、なければ単日/期間の開始日1件）
+                            if leave_dates_list:
+                                _cal_dates = sorted(set(leave_dates_list))
+                            else:
+                                _ls0 = (request.form.get("leave_date_start", "") or "").strip()
+                                _le0 = (request.form.get("leave_date_end", "") or "").strip()
+                                _cal_dates = [_ls0] if _ls0 else []
+                                _single_end = _le0 or _ls0
+                            if _cal_dates:
                                 cal_id = _get_or_create_system_calendar(supabase, f_code, my_name)
                                 if cal_id:
-                                    cal_payload = {
-                                        "facility_code": f_code,
-                                        "calendar_id": cal_id,
-                                        "title": f"{user_name_for_cal}様 お休み",
-                                        "event_date": leave_date_start,
-                                        "end_date": leave_date_end or leave_date_start,
-                                        "all_day": True,
-                                        "color": "#e53935",
-                                        "memo": content,
-                                        "created_by": my_name,
-                                    }
-                                    cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
-                                    cal_event_id = None
-                                    if cal_res.data:
-                                        cal_event_id = cal_res.data[0]["id"]
-                                    else:
-                                        # dataが空の場合はSELECTで取得
-                                        fetch_res = supabase.table("calendar_events").select("id").eq("facility_code", f_code).eq("calendar_id", cal_id).eq("event_date", leave_date_start).eq("created_by", my_name).order("id", desc=True).limit(1).execute()
-                                        if fetch_res.data:
-                                            cal_event_id = fetch_res.data[0]["id"]
-                                    if cal_event_id:
+                                    first_event_id = None
+                                    for _idx, _cd in enumerate(_cal_dates):
+                                        # 単日/期間モードのときだけ end_date を期間終端にする。複数日モードは各日単独。
+                                        if leave_dates_list:
+                                            _ev_end = _cd
+                                        else:
+                                            _ev_end = _single_end or _cd
+                                        cal_payload = {
+                                            "facility_code": f_code,
+                                            "calendar_id": cal_id,
+                                            "title": f"{user_name_for_cal}様 お休み",
+                                            "event_date": _cd,
+                                            "end_date": _ev_end,
+                                            "all_day": True,
+                                            "color": "#e53935",
+                                            "memo": content,
+                                            "created_by": my_name,
+                                            "record_id": new_id,
+                                        }
+                                        cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
+                                        _eid = None
+                                        if cal_res.data:
+                                            _eid = cal_res.data[0]["id"]
+                                        else:
+                                            fetch_res = supabase.table("calendar_events").select("id").eq("facility_code", f_code).eq("calendar_id", cal_id).eq("event_date", _cd).eq("created_by", my_name).order("id", desc=True).limit(1).execute()
+                                            if fetch_res.data:
+                                                _eid = fetch_res.data[0]["id"]
+                                        if _eid and first_event_id is None:
+                                            first_event_id = _eid
+                                    # 後方互換: 記録のcalendar_event_idには先頭イベントをセット
+                                    if first_event_id:
                                         supabase.table("records").update(
-                                            {"calendar_event_id": cal_event_id}
+                                            {"calendar_event_id": first_event_id}
                                         ).eq("id", new_id).execute()
-                                        print(f"[calendar sync] linked record {new_id} to event {cal_event_id}", flush=True)
+                                        print(f"[calendar sync] linked record {new_id} to {len(_cal_dates)} event(s), first={first_event_id}", flush=True)
                         except Exception as _cal_err:
                             print(f"[calendar sync] failed: {_cal_err}", flush=True)
 
@@ -2992,12 +3065,56 @@ def api_save_calendar_event():
             "notify_before": data.get("notify_before", 0),
             "created_by":    my_name,
         }
+
+        # ===== 複数日（飛び日）一括登録 =====
+        _dates = data.get("dates")
+        if isinstance(_dates, list) and len(_dates) > 0:
+            _ids = []
+            for _d in _dates:
+                if not _d:
+                    continue
+                _p = dict(payload)
+                _p["event_date"] = _d
+                _p["end_date"] = _d
+                _r = supabase.table("calendar_events").insert(_p).execute()
+                if _r.data:
+                    _ids.append(_r.data[0]["id"])
+            return jsonify({"status": "success", "ids": _ids})
+
         event_id = data.get("id")
         if event_id:
+            # 編集前にrecord_id（複数日リンク）を取得
+            _pre = supabase.table("calendar_events").select("record_id").eq("id", event_id).eq("facility_code", f_code).execute()
+            _linked_record_id = _pre.data[0].get("record_id") if _pre.data else None
+
             supabase.table("calendar_events").update(payload).eq("id", event_id).eq("facility_code", f_code).execute()
-            # 連動ケース記録の内容を更新（カレンダー→ケース記録）
             new_event_date = payload.get("event_date")
             new_memo = payload.get("memo")
+
+            # ===== 複数日リンク(record_id)方式: 紐づく全イベントの日付から記録を作り直す =====
+            if _linked_record_id:
+                try:
+                    rec_q = supabase.table("records").select("id,leave_reporter_type,leave_reason,category").eq("id", _linked_record_id).execute()
+                    if rec_q.data and rec_q.data[0].get("category") == "休み連絡":
+                        rec0 = rec_q.data[0]
+                        all_ev = supabase.table("calendar_events").select("id,event_date").eq("facility_code", f_code).eq("record_id", _linked_record_id).execute()
+                        _dates_all = sorted([r["event_date"] for r in (all_ev.data or []) if r.get("event_date")])
+                        if _dates_all:
+                            _new_content = _build_leave_content_multi(_dates_all, rec0.get("leave_reporter_type") or "", "", rec0.get("leave_reason") or "")
+                            supabase.table("records").update({
+                                "content": _new_content,
+                                "leave_date_start": _dates_all[0],
+                                "leave_date_end": _dates_all[-1],
+                            }).eq("id", _linked_record_id).execute()
+                            # 紐づく全イベントのmemoも揃える
+                            for r in (all_ev.data or []):
+                                supabase.table("calendar_events").update({"memo": _new_content}).eq("id", r["id"]).execute()
+                            print(f"[カレンダー同期(複数日)] record {_linked_record_id} を {len(_dates_all)} 日で再生成", flush=True)
+                except Exception as _ml_err:
+                    print(f"[calendar sync multi update] failed: {_ml_err}", flush=True)
+                return jsonify({"status": "success", "id": event_id, "memo": payload.get("memo", "")})
+
+            # 連動ケース記録の内容を更新（カレンダー→ケース記録）：従来の単日/期間方式
             if new_event_date or new_memo is not None:
                 try:
                     rec_res = supabase.table("records").select("id,created_at,leave_reporter_type,leave_reason,category").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
@@ -3094,11 +3211,45 @@ def api_delete_calendar_event():
         event_id = data.get("id")
         f_code = session["f_code"]
         supabase = get_supabase()
-        # 連動しているケース記録があれば削除
-        rec_res = supabase.table("records").select("id").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
-        for rec in (rec_res.data or []):
-            supabase.table("records").delete().eq("id", rec["id"]).execute()
+        # 削除対象イベントの情報を取得（record_id / 連動記録の特定のため）
+        ev_info = supabase.table("calendar_events").select("id,record_id").eq("id", event_id).eq("facility_code", f_code).execute()
+        target_record_id = None
+        if ev_info.data:
+            target_record_id = ev_info.data[0].get("record_id")
+
+        # まずイベント自体を削除
         supabase.table("calendar_events").delete().eq("id", event_id).eq("facility_code", f_code).execute()
+
+        if target_record_id:
+            # 複数日リンク方式: 同じ記録に紐づく残りの「お休み」イベントを確認
+            remain = supabase.table("calendar_events").select("id,event_date").eq("facility_code", f_code).eq("record_id", target_record_id).execute()
+            remain_rows = remain.data or []
+            if remain_rows:
+                # 残りの日付からケース記録を作り直す（削除した日が文から消える）
+                rec_q = supabase.table("records").select("id,leave_reporter_type,leave_reason,category").eq("id", target_record_id).execute()
+                if rec_q.data:
+                    rec0 = rec_q.data[0]
+                    if rec0.get("category") == "休み連絡":
+                        _dates = sorted([r["event_date"] for r in remain_rows if r.get("event_date")])
+                        if _dates:
+                            new_content = _build_leave_content_multi(_dates, rec0.get("leave_reporter_type") or "", "", rec0.get("leave_reason") or "")
+                            supabase.table("records").update({
+                                "content": new_content,
+                                "leave_date_start": _dates[0],
+                                "leave_date_end": _dates[-1],
+                                "calendar_event_id": remain_rows[0]["id"],
+                            }).eq("id", target_record_id).execute()
+                            # 残りイベントのmemoも更新
+                            for r in remain_rows:
+                                supabase.table("calendar_events").update({"memo": new_content}).eq("id", r["id"]).execute()
+            else:
+                # 残りなし → ケース記録も削除
+                supabase.table("records").delete().eq("id", target_record_id).execute()
+        else:
+            # 従来方式(record_id無し): calendar_event_idで逆引きして記録削除
+            rec_res = supabase.table("records").select("id").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
+            for rec in (rec_res.data or []):
+                supabase.table("records").delete().eq("id", rec["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -5160,6 +5311,11 @@ def mapping():
 @login_required
 def help_page():
     return app.send_static_file('help.html')
+
+@app.route('/faq')
+@login_required
+def faq_page():
+    return app.send_static_file('faq.html')
 
 # API エンドポイント
 # ==========================================

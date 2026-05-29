@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>よくある質問（Q&A） - TASUKARU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --card:#ffffff;
+    --ink:#1f2933;
+    --ink-soft:#5a6b7b;
+    --line:#e3e9f0;
+    --brand:#1a73e8;
+    --brand-soft:#e8f0fe;
+    --leave:#e53935;
+    --leave-soft:#fde8e8;
+    --ok:#1aa260;
+    --ok-soft:#e6f5ed;
+    --warn:#f4b400;
+    --warn-soft:#fef6e0;
+    --radius:16px;
+    --shadow:0 2px 10px rgba(31,41,51,.06);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Noto Sans JP",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.8;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:0 18px 80px;}
+
+  /* ヘッダー */
+  header.page{
+    background:linear-gradient(135deg,#1a73e8,#4f9bff);
+    color:#fff;
+    padding:38px 18px 30px;
+    text-align:center;
+    border-radius:0 0 28px 28px;
+    margin-bottom:26px;
+  }
+  header.page .logo{
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-weight:700;
+    font-size:1.05rem;
+    letter-spacing:.08em;
+    opacity:.9;
+    margin-bottom:6px;
+  }
+  header.page h1{
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:1.7rem;
+    margin:0 0 6px;
+    font-weight:700;
+  }
+  header.page p{margin:0;opacity:.92;font-size:.95rem;}
+
+  /* 検索っぽい説明バー */
+  .lead{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px 20px;
+    box-shadow:var(--shadow);
+    margin-bottom:26px;
+    font-size:.95rem;
+    color:var(--ink-soft);
+  }
+  .lead b{color:var(--ink);}
+
+  /* もくじ */
+  .toc{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:20px 22px;
+    box-shadow:var(--shadow);
+    margin-bottom:30px;
+  }
+  .toc h2{
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:1.05rem;margin:0 0 14px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .toc h2 .dot{width:10px;height:20px;background:var(--brand);border-radius:3px;display:inline-block;}
+  .toc ol{margin:0;padding-left:0;list-style:none;counter-reset:toc;}
+  .toc li{counter-increment:toc;margin:0;}
+  .toc a{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:9px 8px;border-radius:10px;
+    color:var(--ink);text-decoration:none;font-size:.92rem;
+    transition:background .15s;
+  }
+  .toc a:hover{background:var(--brand-soft);}
+  .toc a::before{
+    content:counter(toc);
+    flex:0 0 24px;height:24px;line-height:24px;text-align:center;
+    background:var(--brand-soft);color:var(--brand);
+    border-radius:7px;font-weight:700;font-size:.8rem;
+  }
+
+  /* カテゴリ見出し */
+  .cat{
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:.85rem;font-weight:700;letter-spacing:.06em;
+    color:var(--brand);
+    margin:34px 0 12px;padding-left:4px;
+    text-transform:uppercase;
+  }
+
+  /* Q&Aカード */
+  .qa{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    margin-bottom:14px;
+    overflow:hidden;
+  }
+  .qa > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:18px 20px;
+    display:flex;align-items:flex-start;gap:12px;
+    font-weight:700;font-size:1rem;
+    user-select:none;
+  }
+  .qa > summary::-webkit-details-marker{display:none;}
+  .qa > summary .q{
+    flex:0 0 28px;height:28px;line-height:28px;text-align:center;
+    background:var(--brand);color:#fff;border-radius:8px;
+    font-family:"Zen Maru Gothic",sans-serif;font-size:.95rem;
+  }
+  .qa > summary .qtext{flex:1;padding-top:1px;}
+  .qa > summary .chev{
+    flex:0 0 auto;color:var(--ink-soft);transition:transform .2s;font-size:1.1rem;margin-top:2px;
+  }
+  .qa[open] > summary .chev{transform:rotate(180deg);}
+  .qa[open] > summary{border-bottom:1px solid var(--line);}
+  .answer{padding:18px 20px 22px;font-size:.94rem;color:#2c3a47;}
+  .answer p{margin:0 0 12px;}
+  .answer p:last-child{margin-bottom:0;}
+  .answer .a-label{
+    display:inline-block;background:var(--ok-soft);color:var(--ok);
+    font-weight:700;font-size:.78rem;padding:2px 10px;border-radius:6px;margin-bottom:10px;
+  }
+  .answer ol,.answer ul{margin:8px 0 14px;padding-left:0;list-style:none;}
+  .answer ol li,.answer ul li{
+    position:relative;padding:7px 0 7px 34px;border-bottom:1px dashed var(--line);
+  }
+  .answer ol li:last-child,.answer ul li:last-child{border-bottom:none;}
+  .answer ol{counter-reset:step;}
+  .answer ol li{counter-increment:step;}
+  .answer ol li::before{
+    content:counter(step);
+    position:absolute;left:0;top:7px;
+    width:24px;height:24px;line-height:24px;text-align:center;
+    background:var(--brand);color:#fff;border-radius:50%;font-size:.78rem;font-weight:700;
+  }
+  .answer ul li::before{
+    content:"";position:absolute;left:8px;top:16px;
+    width:8px;height:8px;border-radius:50%;background:var(--brand);
+  }
+  .tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:.85em;font-weight:700;}
+  .tag.leave{background:var(--leave-soft);color:var(--leave);}
+  .tag.brand{background:var(--brand-soft);color:var(--brand);}
+  .note{
+    background:var(--warn-soft);border-left:4px solid var(--warn);
+    border-radius:0 10px 10px 0;padding:12px 14px;margin:14px 0;font-size:.9rem;
+  }
+  .note b{color:#9a7400;}
+  .tip{
+    background:var(--ok-soft);border-left:4px solid var(--ok);
+    border-radius:0 10px 10px 0;padding:12px 14px;margin:14px 0;font-size:.9rem;
+  }
+
+  /* 図のキャプション */
+  .figure{margin:18px 0;}
+  .figure svg{width:100%;height:auto;display:block;
+    background:#fbfcfe;border:1px solid var(--line);border-radius:14px;}
+  .figcap{text-align:center;font-size:.82rem;color:var(--ink-soft);margin-top:8px;}
+
+  footer.page{
+    text-align:center;color:var(--ink-soft);font-size:.82rem;
+    margin-top:40px;padding-top:24px;border-top:1px solid var(--line);
+  }
+  /* トップへ戻る */
+  .totop{
+    position:fixed;right:16px;bottom:16px;
+    background:var(--brand);color:#fff;border:none;
+    width:46px;height:46px;border-radius:50%;font-size:1.2rem;cursor:pointer;
+    box-shadow:0 4px 14px rgba(26,115,232,.4);opacity:0;pointer-events:none;transition:opacity .25s;
+  }
+  .totop.show{opacity:1;pointer-events:auto;}
+</style>
+</head>
+<body>
+
+<header class="page">
+  <div class="logo">TASUKARU</div>
+  <h1>よくある質問</h1>
+  <p>はじめての方も、これを読めば大丈夫。困ったときの早見表です。</p>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    使い方で迷ったときは、ここを見てください。<b>下のもくじから知りたい質問をタップ</b>すると、その答えにジャンプします。質問をタップすると答えが開きます。
+  </div>
+
+  <!-- もくじ -->
+  <nav class="toc">
+    <h2><span class="dot"></span>もくじ</h2>
+    <ol>
+      <li><a href="#q1">休みの連絡を、ケース記録にもカレンダーにも残したい。どうすればいい？</a></li>
+      <li><a href="#q2">飛び飛びの日（例：2日・5日・10日）をまとめてお休みにできる？</a></li>
+      <li><a href="#q3">カレンダーのお休みを消したら、ケース記録はどうなる？</a></li>
+      <li><a href="#q4">お休みの日を変更したいときは？</a></li>
+      <li><a href="#q5">「TASUKARUケース記録連動」って何？</a></li>
+      <li><a href="#q6">記録を書く日と、お休みの日がちがってもいい？</a></li>
+      <li><a href="#q7">音声で記録を入力できる？</a></li>
+      <li><a href="#q8">写真や動画は記録に付けられる？</a></li>
+      <li><a href="#q9">みんなに必ず読んでほしい記録があるときは？</a></li>
+      <li><a href="#q10">利用者さんが見つからない／検索のコツは？</a></li>
+      <li><a href="#q11">記録をまちがえた。あとから直せる？</a></li>
+      <li><a href="#q12">AI要約って何？正しいの？</a></li>
+      <li><a href="#q13">スマホでも使える？アプリは必要？</a></li>
+    </ol>
+  </nav>
+
+  <!-- ===================== カテゴリ：休み連絡とカレンダー ===================== -->
+  <div class="cat">休みの連絡とカレンダー</div>
+
+  <!-- Q1 -->
+  <details class="qa" id="q1" open>
+    <summary><span class="q">Q</span><span class="qtext">休みの連絡を、ケース記録にもカレンダーにも残したい。どうすればいい？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">かんたんに言うと</span>
+      <p><b>記録入力の画面から「休み連絡」を選んで保存するだけ</b>です。そうすると、ケース記録とカレンダーの両方に、TASUKARUが自動で同時に残してくれます。カレンダーに別で入力する必要はありません。</p>
+
+      <p>手順はこうです。</p>
+      <ol>
+        <li>下のメニューから「<b>記録入力</b>」を開きます。</li>
+        <li>お休みする<b>利用者さんを選びます</b>（名前・ふりがな・番号で検索できます）。</li>
+        <li>カテゴリで「<span class="tag leave">休み連絡</span>」を選びます。</li>
+        <li>「誰から」連絡があったか（本人・家族など）を選びます。</li>
+        <li><b>お休みの日</b>を入れます。連続したお休みは「休み期間」、飛び飛びの日は「飛び飛びのお休み日を追加」で1日ずつ足します。</li>
+        <li>必要なら「お休みの理由」を書いて、「<b>保存</b>」を押します。</li>
+      </ol>
+
+      <p>保存すると、TASUKARUが自動でこの2つを作ります。</p>
+
+      <div class="figure">
+        <!-- 連携の全体図 -->
+        <svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="記録入力から、ケース記録とカレンダーの両方に自動で残る仕組みの図">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L7,3 L0,6 Z" fill="#1a73e8"/>
+            </marker>
+          </defs>
+          <!-- 起点 -->
+          <rect x="250" y="20" width="200" height="62" rx="12" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+          <text x="350" y="46" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-weight="700" font-size="15" fill="#1a73e8">記録入力で「休み連絡」</text>
+          <text x="350" y="68" text-anchor="middle" font-family="Noto Sans JP, sans-serif" font-size="12" fill="#5a6b7b">利用者・お休みの日を入れて保存</text>
+
+          <!-- 分岐線 -->
+          <path d="M350,82 L350,110" stroke="#1a73e8" stroke-width="2" fill="none"/>
+          <path d="M350,110 L170,110 L170,140" stroke="#1a73e8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+          <path d="M350,110 L530,110 L530,140" stroke="#1a73e8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+          <text x="350" y="104" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#5a6b7b">自動で同時に作成</text>
+
+          <!-- 左：ケース記録 -->
+          <rect x="40" y="145" width="260" height="120" rx="12" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.5"/>
+          <text x="60" y="172" font-family="Zen Maru Gothic" font-weight="700" font-size="14" fill="#1f2933">📋 ケース記録（1件）</text>
+          <line x1="60" y1="184" x2="280" y2="184" stroke="#eef2f7"/>
+          <text x="60" y="208" font-family="Noto Sans JP" font-size="12" fill="#2c3a47">「6月2日・6月5日・6月10日は</text>
+          <text x="60" y="228" font-family="Noto Sans JP" font-size="12" fill="#2c3a47">お休みと家族から連絡が</text>
+          <text x="60" y="248" font-family="Noto Sans JP" font-size="12" fill="#2c3a47">ありました。」</text>
+
+          <!-- 右：カレンダー -->
+          <rect x="400" y="145" width="260" height="120" rx="12" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.5"/>
+          <text x="420" y="172" font-family="Zen Maru Gothic" font-weight="700" font-size="14" fill="#1f2933">📅 カレンダー（お休み3個）</text>
+          <line x1="420" y1="184" x2="640" y2="184" stroke="#eef2f7"/>
+          <rect x="420" y="198" width="64" height="26" rx="6" fill="#fde8e8"/>
+          <text x="452" y="216" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/2 休み</text>
+          <rect x="492" y="198" width="64" height="26" rx="6" fill="#fde8e8"/>
+          <text x="524" y="216" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/5 休み</text>
+          <rect x="564" y="198" width="64" height="26" rx="6" fill="#fde8e8"/>
+          <text x="596" y="216" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/10 休み</text>
+          <text x="420" y="250" font-family="Noto Sans JP" font-size="11" fill="#5a6b7b">お休みの日それぞれに印が付きます</text>
+        </svg>
+        <div class="figcap">記録入力で1回保存すると、ケース記録とカレンダーの両方に自動で残ります。</div>
+      </div>
+
+      <div class="tip">
+        <b>ポイント：</b>入力は<b>かならず「記録入力」から</b>行ってください。カレンダーから直接お休みを作っても、ケース記録には残りません。
+      </div>
+    </div>
+  </details>
+
+  <!-- Q2 -->
+  <details class="qa" id="q2">
+    <summary><span class="q">Q</span><span class="qtext">飛び飛びの日（例：2日・5日・10日）をまとめてお休みにできる？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">できます</span>
+      <p>記録入力の「休み連絡」を選ぶと、「<b>飛び飛びのお休み日を追加</b>」という欄が出ます。日付を選んで「追加」を押すと、お休みの日がタグとして並びます。続けて何日でも足せます。</p>
+      <ul>
+        <li><b>連続したお休み</b>（例：6月2日〜6月5日）→ 上の「休み期間」で開始日と終了日を選びます。</li>
+        <li><b>飛び飛びのお休み</b>（例：6月2日・6月5日・6月10日）→ 「飛び飛びのお休み日を追加」で1日ずつ足します。</li>
+      </ul>
+      <p>保存すると、ケース記録は<b>1件にまとめて</b>「6月2日・6月5日・6月10日はお休み…」と書かれ、カレンダーにはその<b>3日それぞれ</b>に「お休み」が付きます。</p>
+    </div>
+  </details>
+
+  <!-- Q3 -->
+  <details class="qa" id="q3">
+    <summary><span class="q">Q</span><span class="qtext">カレンダーのお休みを消したら、ケース記録はどうなる？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">記録も自動で直ります</span>
+      <p>カレンダーとケース記録は<b>つながっています</b>。カレンダーのお休みを消すと、ケース記録の方も自動で書きかわります。</p>
+
+      <div class="figure">
+        <svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="カレンダーのお休みを1つ消すと、ケース記録の日付も1つ消える図">
+          <!-- 上：1個だけ消す -->
+          <text x="20" y="28" font-family="Zen Maru Gothic" font-weight="700" font-size="13" fill="#1f2933">● カレンダーから「6/5」のお休みを1つ消すと…</text>
+
+          <!-- カレンダー側 before -->
+          <rect x="20" y="42" width="58" height="26" rx="6" fill="#fde8e8"/>
+          <text x="49" y="60" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/2</text>
+          <rect x="86" y="42" width="58" height="26" rx="6" fill="#fde8e8" stroke="#e53935" stroke-dasharray="4 3"/>
+          <text x="115" y="60" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/5 ✕</text>
+          <rect x="152" y="42" width="58" height="26" rx="6" fill="#fde8e8"/>
+          <text x="181" y="60" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#e53935">6/10</text>
+
+          <!-- 矢印 -->
+          <path d="M250,55 L320,55" stroke="#1a73e8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+          <text x="285" y="46" text-anchor="middle" font-family="Noto Sans JP" font-size="10" fill="#5a6b7b">自動</text>
+
+          <!-- ケース記録 after -->
+          <rect x="360" y="34" width="320" height="44" rx="10" fill="#ffffff" stroke="#e3e9f0"/>
+          <text x="376" y="52" font-family="Noto Sans JP" font-size="12" fill="#2c3a47">ケース記録：「6月2日・6月10日は</text>
+          <text x="376" y="70" font-family="Noto Sans JP" font-size="12" fill="#2c3a47">お休み…」（6/5が消えました）</text>
+
+          <line x1="20" y1="100" x2="680" y2="100" stroke="#eef2f7"/>
+
+          <!-- 下：全部消す -->
+          <text x="20" y="130" font-family="Zen Maru Gothic" font-weight="700" font-size="13" fill="#1f2933">● カレンダーのお休みを全部消すと…</text>
+
+          <rect x="20" y="144" width="58" height="26" rx="6" fill="#f1f3f5" stroke="#d0d7de" stroke-dasharray="4 3"/>
+          <text x="49" y="162" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#9aa0a6">6/2 ✕</text>
+          <rect x="86" y="144" width="58" height="26" rx="6" fill="#f1f3f5" stroke="#d0d7de" stroke-dasharray="4 3"/>
+          <text x="115" y="162" text-anchor="middle" font-family="Noto Sans JP" font-size="11" fill="#9aa0a6">6/10 ✕</text>
+
+          <path d="M250,157 L320,157" stroke="#1a73e8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+          <text x="285" y="148" text-anchor="middle" font-family="Noto Sans JP" font-size="10" fill="#5a6b7b">自動</text>
+
+          <rect x="360" y="138" width="320" height="40" rx="10" fill="#f8f9fb" stroke="#e3e9f0" stroke-dasharray="4 3"/>
+          <text x="520" y="163" text-anchor="middle" font-family="Noto Sans JP" font-size="12" fill="#9aa0a6">ケース記録も自動で消えます</text>
+
+          <!-- 補足 -->
+          <rect x="20" y="206" width="660" height="50" rx="10" fill="#fef6e0"/>
+          <text x="40" y="230" font-family="Noto Sans JP" font-size="12" fill="#9a7400" font-weight="700">記録を書いた日（投稿日）は変わりません。</text>
+          <text x="40" y="248" font-family="Noto Sans JP" font-size="12" fill="#9a7400">変わるのは「お休みの日」と記録の文章だけです。</text>
+        </svg>
+        <div class="figcap">カレンダーを直すと、ケース記録の文章も自動でついてきます。</div>
+      </div>
+
+      <div class="note">
+        <b>注意：</b>カレンダーのお休みを<b>全部</b>消すと、つながっているケース記録も<b>まるごと消えます</b>。消すときは気をつけてください。
+      </div>
+    </div>
+  </details>
+
+  <!-- Q4 -->
+  <details class="qa" id="q4">
+    <summary><span class="q">Q</span><span class="qtext">お休みの日を変更したいときは？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">カレンダーから直せます</span>
+      <p>カレンダーでそのお休みをタップして開き、日付を直して「保存」を押してください。ケース記録の文章も自動で新しい日に書きかわります。記録を書いた日（投稿日）はそのままです。</p>
+      <p>たくさんの日をまとめて入れ直したいときは、いったんカレンダーのお休みを消して、記録入力からもう一度入れ直すのが分かりやすいです。</p>
+    </div>
+  </details>
+
+  <!-- Q5 -->
+  <details class="qa" id="q5">
+    <summary><span class="q">Q</span><span class="qtext">「TASUKARUケース記録連動」って何？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">記録とつながったカレンダー</span>
+      <p>カレンダーの上にある「<span class="tag brand">TASUKARUケース記録連動</span>」は、<b>ケース記録とつながったお休みだけ</b>を集めたカレンダーです。記録入力の「休み連絡」から作ったお休みは、ここに入ります。</p>
+      <p>会議や行事など、ふつうの予定とは色分け・分類されているので、ひと目で「これは記録とつながったお休みだな」と分かります。上のボタンで表示を切りかえれば、お休みだけ／勤務だけ、のように見ることもできます。</p>
+    </div>
+  </details>
+
+  <!-- Q6 -->
+  <details class="qa" id="q6">
+    <summary><span class="q">Q</span><span class="qtext">記録を書く日と、お休みの日がちがってもいい？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">だいじょうぶです</span>
+      <p>むしろ、それがふつうの使い方です。たとえば「5月29日に、6月のお休みの連絡を受けた」ときは、記録を書いた日は<b>5月29日</b>のまま、カレンダーには<b>6月のお休み</b>が入ります。</p>
+      <p>記録を書いた日（投稿日）は、あとから変わることはありません。お休みの日を変えても、記録した日はそのまま残ります。</p>
+    </div>
+  </details>
+
+  <!-- ===================== カテゴリ：記録入力 ===================== -->
+  <div class="cat">記録の入力</div>
+
+  <!-- Q7 -->
+  <details class="qa" id="q7">
+    <summary><span class="q">Q</span><span class="qtext">音声で記録を入力できる？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">できます</span>
+      <p>記録入力の画面に「<b>タップして録音開始</b>」というマイクのボタンがあります。タップして話すと、止めたあとにAIが自動で文字に起こします。手で打つのが大変なときに便利です。</p>
+      <p>文字になったあとは、自由に直せます。話した内容がうまく聞き取れなかったときは、その部分だけ手で直してください。</p>
+    </div>
+  </details>
+
+  <!-- Q8 -->
+  <details class="qa" id="q8">
+    <summary><span class="q">Q</span><span class="qtext">写真や動画は記録に付けられる？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">付けられます（最大5件）</span>
+      <p>記録入力の「写真・動画」の枠をタップして選ぶと、1つの記録に最大5件まで付けられます。様子の写真や、傷の経過などを残すのに使えます。</p>
+    </div>
+  </details>
+
+  <!-- Q9 -->
+  <details class="qa" id="q9">
+    <summary><span class="q">Q</span><span class="qtext">みんなに必ず読んでほしい記録があるときは？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">「閲覧必須」が使えます</span>
+      <p>記録入力の「<b>閲覧必須にする</b>」を押してから保存すると、その記録に印が付きます。大事な申し送りや、全員に知っておいてほしいことがあるときに使ってください。</p>
+      <p>まだ読んでいない人がいる記録は、ケース記録の「未読」から探せます。</p>
+    </div>
+  </details>
+
+  <!-- ===================== カテゴリ：その他 ===================== -->
+  <div class="cat">利用者・記録の管理</div>
+
+  <!-- Q10 -->
+  <details class="qa" id="q10">
+    <summary><span class="q">Q</span><span class="qtext">利用者さんが見つからない／検索のコツは？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">3つの方法で探せます</span>
+      <p>利用者を選ぶ欄では、次のどれでも検索できます。</p>
+      <ul>
+        <li><b>ひらがな</b>（例：やまだ）</li>
+        <li><b>漢字</b>（例：山田）</li>
+        <li><b>カルテ番号</b>（例：001）</li>
+      </ul>
+      <p>見つからないときは、苗字だけ・名前だけなど、短く入れてみてください。それでも出てこない場合は、その利用者さんがまだ登録されていない可能性があります。管理者の方に確認してください。</p>
+    </div>
+  </details>
+
+  <!-- Q11 -->
+  <details class="qa" id="q11">
+    <summary><span class="q">Q</span><span class="qtext">記録をまちがえた。あとから直せる？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">直せます</span>
+      <p>ケース記録の一覧でその記録を開くと、「<b>編集</b>」と「<b>削除</b>」のボタンがあります。書きまちがいは編集で直し、まちがって作った記録は削除してください。</p>
+      <div class="note">
+        <b>注意：</b>休み連絡の記録は、カレンダーのお休みとつながっています。記録を削除すると、つながったカレンダーのお休みも消えます。逆に、カレンダーから消しても記録が直ります（くわしくは上の「カレンダーのお休みを消したら…」を見てください）。
+      </div>
+    </div>
+  </details>
+
+  <!-- Q12 -->
+  <details class="qa" id="q12">
+    <summary><span class="q">Q</span><span class="qtext">AI要約って何？正しいの？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">記録のまとめを自動で作る機能</span>
+      <p>ケース記録を開くと、その日の記録をAIが短くまとめた「AI要約」が出ます。たくさんの記録にざっと目を通したいときに便利です。</p>
+      <p>ただし、AIのまとめは<b>あくまで参考</b>です。大事な判断をするときは、かならず元の記録そのものを確認してください。気になるときは「個別記録を見る」から、実際に入力された記録を読めます。</p>
+    </div>
+  </details>
+
+  <!-- Q13 -->
+  <details class="qa" id="q13">
+    <summary><span class="q">Q</span><span class="qtext">スマホでも使える？アプリは必要？</span><span class="chev">⌄</span></summary>
+    <div class="answer">
+      <span class="a-label">使えます。専用アプリは不要</span>
+      <p>TASUKARUは、スマホ・タブレット・パソコンのどれでも、インターネットの画面（ブラウザ）から使えます。専用アプリをインストールする必要はありません。</p>
+      <p>スマホのホーム画面に追加しておくと、アプリのように1タップで開けて便利です。やり方が分からないときは管理者の方に聞いてください。</p>
+    </div>
+  </details>
+
+  <footer class="page">
+    解決しないときは、施設の管理者の方にお問い合わせください。<br>
+    TASUKARU ｜ 介護記録をかんたんに。
+  </footer>
+
+</div>
+
+<button class="totop" id="totop" aria-label="上に戻る">↑</button>
+
+<script>
+  // もくじクリックで対象を開く
+  document.querySelectorAll('.toc a').forEach(function(a){
+    a.addEventListener('click', function(){
+      var id = a.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if(el && el.tagName.toLowerCase()==='details'){ el.open = true; }
+    });
+  });
+  // トップへ戻る
+  var totop = document.getElementById('totop');
+  window.addEventListener('scroll', function(){
+    if(window.scrollY > 400){ totop.classList.add('show'); }
+    else{ totop.classList.remove('show'); }
+  });
+  totop.addEventListener('click', function(){ window.scrollTo({top:0,behavior:'smooth'}); });
+</script>
+
+</body>
+</html>
