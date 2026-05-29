@@ -9322,6 +9322,18 @@ def print_pdf():
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
     chart_size  = request.args.get("chart_size",  2, type=int)
+    # 選択済み画像（プレビュー画面から返ってくる場合）
+    import json as _json2
+    selected_images_json = request.args.get("selected_images", "{}")
+    img_layouts_json = request.args.get("img_layouts", "{}")
+    try:
+        selected_images = _json2.loads(selected_images_json)  # {user_name: [{url, comment},...]}
+    except Exception:
+        selected_images = {}
+    try:
+        img_layouts = _json2.loads(img_layouts_json)  # {user_name: 'A'|'B'|'C'}
+    except Exception:
+        img_layouts = {}
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9391,6 +9403,45 @@ def print_pdf():
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
             data["caremanager"] = {}
+        # 対象月のケース記録から画像URLを収集
+        try:
+            if items.get("images", False):
+                import datetime as _dt
+                ym_parts = year_month.split("-")
+                if len(ym_parts) == 2:
+                    y_str, m_str = ym_parts
+                    ym_start = f"{y_str}-{m_str}-01"
+                    import calendar as _cal
+                    last_day = _cal.monthrange(int(y_str), int(m_str))[1]
+                    ym_end = f"{y_str}-{m_str}-{last_day:02d}"
+                    rec_imgs = supabase.table("records").select("image_urls, created_at").eq(
+                        "facility_code", f_code).eq("user_name", uname).gte(
+                        "created_at", ym_start).lte("created_at", ym_end + "T23:59:59").neq(
+                        "staff_name", "AI統合記録").execute()
+                    all_urls = []
+                    for r in (rec_imgs.data or []):
+                        urls = r.get("image_urls") or []
+                        for u in urls:
+                            if u not in all_urls:
+                                all_urls.append(u)
+                    data["available_images"] = all_urls
+                    # 選択済み画像（URLパラメータから）
+                    data["selected_images"] = selected_images.get(uname, [])
+                else:
+                    data["available_images"] = []
+                    data["selected_images"] = []
+            else:
+                data["available_images"] = []
+                data["selected_images"] = []
+                data["img_layout"] = "A"
+        except Exception as _e:
+            print(f"[image collect error] {_e}", flush=True)
+            data["available_images"] = []
+            data["selected_images"] = []
+            data["img_layout"] = "A"
+        # レイアウト情報も付与
+        if "img_layout" not in data:
+            data["img_layout"] = img_layouts.get(uname, "A")
         report_data_list.append(data)
 
     # 施設情報
@@ -9473,6 +9524,18 @@ def print_preview():
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
     chart_size  = request.args.get("chart_size",  2, type=int)
+    # 選択済み画像（プレビュー画面から返ってくる場合）
+    import json as _json2
+    selected_images_json = request.args.get("selected_images", "{}")
+    img_layouts_json = request.args.get("img_layouts", "{}")
+    try:
+        selected_images = _json2.loads(selected_images_json)  # {user_name: [{url, comment},...]}
+    except Exception:
+        selected_images = {}
+    try:
+        img_layouts = _json2.loads(img_layouts_json)  # {user_name: 'A'|'B'|'C'}
+    except Exception:
+        img_layouts = {}
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9586,4 +9649,7 @@ def print_preview():
         my_name=my_name,
         tmpl=tmpl,
         chart_style=chart_style,
+        chart_size=chart_size,
+        selected_images_json=selected_images_json,
+        img_layouts_json=img_layouts_json,
     )

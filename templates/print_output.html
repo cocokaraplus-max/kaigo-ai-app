@@ -348,6 +348,11 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             <div class="po-toggle-grid">
                 <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
                 <button class="po-toggle-btn" id="tog-no-record" onclick="poToggleItem('no_record')">報告なし項目も印刷</button>
+                <button class="po-toggle-btn" id="tog-images" onclick="poToggleItem('images')">添付画像</button>
+            </div>
+            <div id="po-images-hint" style="display:none;font-size:0.72rem;color:#1a73e8;margin-top:4px;padding:6px 10px;background:#e8f0fe;border-radius:8px;">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">info</span>
+                プレビュー画面で利用者ごとに使用する画像を選択してください
             </div>
         </div>
     </div>
@@ -387,7 +392,7 @@ if (!isNaN(poTemplate)) poTemplate = parseInt(poTemplate);
 var fCode = '{{ f_code }}';
 var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
-var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false };
+var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, special: true, no_record: false, images: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {
@@ -476,7 +481,13 @@ function poSetStyle(s) {
 
 function poToggleItem(key) {
     poItems[key] = !poItems[key];
-    document.getElementById('tog-' + key).classList.toggle('on', poItems[key]);
+    var btn = document.getElementById('tog-' + key);
+    if (btn) btn.classList.toggle('on', poItems[key]);
+    // 添付画像トグルのヒント表示
+    if (key === 'images') {
+        var hint = document.getElementById('po-images-hint');
+        if (hint) hint.style.display = poItems.images ? 'block' : 'none';
+    }
     try { localStorage.setItem('po_items', JSON.stringify(poItems)); } catch(e) {}
 }
 function poToggleCat(cat) {

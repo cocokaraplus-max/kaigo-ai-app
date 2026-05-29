@@ -647,6 +647,45 @@ body.mono .ach-fail { color: #000 !important; font-style: italic; }
 body.mono .rep-monitoring-table td:first-child { background: #e8e8e8 !important; color: #000 !important; }
 body.mono .tmpl4-sidebar { background: #333 !important; }
 
+/* ===== 画像セクション ===== */
+.rep-images-panel {
+    border: 2px dashed #1a73e8; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 4mm; background: #f8fbff;
+}
+.rep-images-panel-title { font-size: 8pt; font-weight: 700; color: #1a73e8; margin-bottom: 6px; }
+.rep-img-select-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.rep-img-select-item { position: relative; cursor: pointer; }
+.rep-img-select-item input[type=checkbox] { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; cursor: pointer; z-index: 2; }
+.rep-img-select-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 2px solid #e0e0e0; display: block; }
+.rep-img-select-item.selected img { border-color: #1a73e8; }
+.rep-img-comment { font-size: 7pt; width: 80px; margin-top: 3px; padding: 2px 4px; border: 1px solid #e0e0e0; border-radius: 4px; resize: none; }
+.rep-layout-btns { display: flex; gap: 6px; margin: 8px 0 6px; }
+.rep-layout-btn { flex: 1; padding: 5px 4px; border: 2px solid #e0e0e0; border-radius: 6px; background: #fff; cursor: pointer; text-align: center; font-size: 0.7rem; color: #5f6368; }
+.rep-layout-btn.active { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; font-weight: 700; }
+.rep-layout-btn svg { display: block; margin: 0 auto 3px; }
+.rep-images-apply-btn { width: 100%; padding: 6px; background: #1a73e8; color: #fff; border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-top: 6px; }
+/* 配置A: 左写真大・右グラフ */
+.rep-img-layout-A { display: flex; gap: 3mm; margin-bottom: 3mm; }
+.rep-img-layout-A .img-col { flex: 1.2; }
+.rep-img-layout-A .graph-col { flex: 0.8; }
+/* 配置B: 左右均等 */
+.rep-img-layout-B { display: flex; gap: 3mm; margin-bottom: 3mm; }
+.rep-img-layout-B .img-col { flex: 1; }
+.rep-img-layout-B .graph-col { flex: 1; }
+/* 配置C: 上下 */
+.rep-img-layout-C { margin-bottom: 3mm; }
+.rep-img-layout-C .graph-col { margin-bottom: 2mm; }
+/* 画像本体 */
+.rep-img-item { margin-bottom: 2mm; }
+.rep-img-item img { width: 100%; border-radius: 4px; display: block; }
+.rep-img-item-comment { font-size: 7pt; color: #333; margin-top: 1mm; line-height: 1.4; }
+/* 2ページ目 */
+.rep-image-page { page-break-before: always; }
+.rep-image-page-title { font-size: 9pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 4mm; }
+.rep-image-grid { display: flex; flex-wrap: wrap; gap: 4mm; }
+.rep-image-grid-item { flex: 0 0 calc(50% - 2mm); }
+.rep-image-grid-item img { width: 100%; border-radius: 4px; border: 1px solid #e0e0e0; display: block; }
+.rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
 @media print {
     body { background: #fff; }
@@ -680,6 +719,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set mon = rd.monitoring %}
 {% set fitness = rd.fitness %}
 {% set weights = rd.weights %}
+{% set avail_imgs = rd.available_images | default([]) %}
+{% set sel_imgs_raw = rd.selected_images | default([]) %}
+{% set img_layout = rd.img_layout | default('A') %}
 
 <div class="report-page" id="page-{{ loop.index }}">
     {% if tmpl == 4 %}
@@ -1055,11 +1097,190 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% endif %}
 
+    {# ===== 画像セクション（1〜2枚：1ページ目にレイアウト対応で配置） ===== #}
+    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
+    {% set sel_imgs = sel_imgs_raw %}
+    {% if img_layout == 'A' %}
+    {# パターンA: 左写真大・右グラフ（グラフをコンテナ内に再配置） #}
+    <div class="rep-img-layout-A">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">体力測定</div>
+            <div style="font-size:7pt;color:#888;margin-bottom:2mm;">グラフは上記の体力測定エリアを参照</div>
+        </div>
+    </div>
+    {% elif img_layout == 'B' %}
+    {# パターンB: 左右均等 #}
+    <div class="rep-img-layout-B">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            <div style="font-size:7pt;color:#888;padding-top:16px;">グラフは上記の体力測定エリアを参照</div>
+        </div>
+    </div>
+    {% else %}
+    {# パターンC: 上下分割（写真を下に） #}
+    <div class="rep-img-layout-C">
+        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+        <div style="display:flex;gap:3mm;">
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item" style="flex:1;">
+                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ===== 画像選択パネル（印刷時非表示） ===== #}
+    {% if items.get('images', false) %}
+    <div class="rep-images-panel no-print" id="img-panel-{{ loop.index }}" data-user="{{ p.user_name }}" data-idx="{{ loop.index }}">
+        <div class="rep-images-panel-title">
+            📷 添付画像の選択・コメント入力
+            <span style="font-size:6.5pt;font-weight:400;color:#80868b;margin-left:6px;">印刷後は「適用」で反映されます</span>
+        </div>
+        {% if avail_imgs %}
+        <div class="rep-img-select-grid" id="img-grid-{{ loop.index }}">
+            {% for url in avail_imgs %}
+            {% set is_video = '.mp4' in url or '.mov' in url or '.webm' in url %}
+            {% if not is_video %}
+            <div class="rep-img-select-item" id="img-item-{{ loop.index }}-{{ loop.index0 }}"
+                 onclick="toggleImgSelect({{ loop.index }}, {{ loop.index0 }})">
+                <input type="checkbox" id="img-chk-{{ loop.index }}-{{ loop.index0 }}"
+                       onclick="event.stopPropagation();"
+                       onchange="toggleImgSelect({{ loop.index }}, {{ loop.index0 }})">
+                <img src="{{ url }}" data-url="{{ url }}">
+                <textarea class="rep-img-comment" id="img-comment-{{ loop.index }}-{{ loop.index0 }}"
+                          placeholder="コメント（任意）" rows="2"
+                          onclick="event.stopPropagation();"></textarea>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <div style="font-size:7.5pt;color:#5f6368;margin:8px 0 4px;">レイアウト（1〜2枚選択時）</div>
+        <div class="rep-layout-btns" id="layout-btns-{{ loop.index }}">
+            <button class="rep-layout-btn active" data-layout="A" onclick="setLayout({{ loop.index }}, 'A')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="26" height="30" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="31" y="1" width="16" height="14" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                    <rect x="31" y="17" width="16" height="14" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                </svg>
+                写真大・グラフ右
+            </button>
+            <button class="rep-layout-btn" data-layout="B" onclick="setLayout({{ loop.index }}, 'B')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="21" height="30" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="26" y="1" width="21" height="30" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                </svg>
+                左右均等
+            </button>
+            <button class="rep-layout-btn" data-layout="C" onclick="setLayout({{ loop.index }}, 'C')">
+                <svg width="48" height="32" viewBox="0 0 48 32">
+                    <rect x="1" y="1" width="46" height="13" rx="2" fill="#f0f0f0" stroke="#aaa" stroke-width="1"/>
+                    <rect x="1" y="18" width="22" height="13" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                    <rect x="25" y="18" width="22" height="13" rx="2" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1.5"/>
+                </svg>
+                上下分割
+            </button>
+        </div>
+        <button class="rep-images-apply-btn" onclick="applyImages({{ loop.index }}, '{{ p.user_name | e }}')">
+            ✅ この設定を適用して再表示
+        </button>
+        {% else %}
+        <div style="font-size:0.78rem;color:#9aa0a6;padding:8px 0;">この月のケース記録に添付画像がありません</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ===== 3枚以上：2ページ目 ===== #}
+    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length >= 3 %}
+    <div class="rep-image-page report-page" style="padding: var(--page-pad);">
+        <div class="rep-image-page-title">添付画像　{{ p.user_name }} 様 ／ {{ year_month | replace('-', '年') }}月</div>
+        <div class="rep-image-grid">
+            {% for img_data in sel_imgs_raw %}
+            <div class="rep-image-grid-item">
+                <img src="{{ img_data.url }}" alt="添付画像">
+                {% if img_data.comment %}<div class="rep-image-grid-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="page-number">{{ loop.index }} / {{ report_data_list | length }}</div>
     {% if tmpl == 4 %}</div></div>{% endif %}
 </div>
 {% endfor %}
 </div>
+
+<script>
+// ===== 画像選択・レイアウト管理 =====
+var _imgState = {}; // {idx: {selected: [{url, comment}], layout: 'A'}}
+
+function toggleImgSelect(idx, imgIdx) {
+    var chk = document.getElementById('img-chk-' + idx + '-' + imgIdx);
+    if (!chk) return;
+    var item = document.getElementById('img-item-' + idx + '-' + imgIdx);
+    if (item) item.classList.toggle('selected', chk.checked);
+}
+
+function setLayout(idx, layout) {
+    document.querySelectorAll('#layout-btns-' + idx + ' .rep-layout-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.layout === layout);
+    });
+    if (!_imgState[idx]) _imgState[idx] = { selected: [], layout: 'A' };
+    _imgState[idx].layout = layout;
+}
+
+function applyImages(idx, userName) {
+    // 選択済み画像とコメントを収集
+    var grid = document.getElementById('img-grid-' + idx);
+    if (!grid) return;
+    var items = grid.querySelectorAll('.rep-img-select-item');
+    var selected = [];
+    items.forEach(function(item) {
+        var chk = item.querySelector('input[type=checkbox]');
+        var img = item.querySelector('img');
+        var comment = item.querySelector('textarea');
+        if (chk && chk.checked && img) {
+            selected.push({ url: img.dataset.url, comment: comment ? comment.value.trim() : '' });
+        }
+    });
+    // レイアウト取得
+    var layout = 'A';
+    var activeBtn = document.querySelector('#layout-btns-' + idx + ' .rep-layout-btn.active');
+    if (activeBtn) layout = activeBtn.dataset.layout;
+
+    // URLパラメータ更新
+    var params = new URLSearchParams(window.location.search);
+    var selImgs = {};
+    try { selImgs = JSON.parse(decodeURIComponent(params.get('selected_images') || '{}')); } catch(e) {}
+    selImgs[userName] = selected;
+    var imgLayouts = {};
+    try { imgLayouts = JSON.parse(decodeURIComponent(params.get('img_layouts') || '{}')); } catch(e) {}
+    imgLayouts[userName] = layout;
+    params.set('selected_images', JSON.stringify(selImgs));
+    params.set('img_layouts', JSON.stringify(imgLayouts));
+    window.location.search = params.toString();
+}
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
