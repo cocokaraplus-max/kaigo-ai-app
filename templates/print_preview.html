@@ -1407,10 +1407,14 @@ function openCropModal(imgEl) {
         document.getElementById('crop-selection').style.display = 'none';
     }
 
+    // キャッシュ済みでもonloadが発火するよう、src変更前にonloadを設定
+    srcImg.onload = _setSizes;
+    // 同じsrcの場合はonloadが発火しないため、強制的にサイズ計算
     if (srcImg.src === src && srcImg.complete && srcImg.naturalWidth > 0) {
         _setSizes();
     } else {
-        srcImg.onload = _setSizes;
+        // srcをいったん空にしてから再設定（キャッシュバスター）
+        srcImg.src = '';
     }
     srcImg.src = src;
     document.getElementById('crop-selection').style.display = 'none';
