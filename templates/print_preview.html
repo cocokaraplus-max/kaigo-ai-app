@@ -665,12 +665,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-layout-btn svg { display: block; margin: 0 auto 3px; }
 .rep-images-apply-btn { width: 100%; padding: 6px; background: #1a73e8; color: #fff; border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-top: 6px; }
 /* 配置A: 左写真大・右グラフ */
-.rep-img-layout-A { display: flex; gap: 3mm; margin-bottom: 3mm; }
-.rep-img-layout-A .img-col { flex: 1.2; }
-.rep-img-layout-A .graph-col { flex: 0.8; }
+.rep-img-layout-A { display: flex; gap: 3mm; margin-bottom: 3mm; align-items: flex-start; }
+.rep-img-layout-A .img-col { flex: none; }
+.rep-img-layout-A .graph-col { flex: 1; }
 /* 配置B: 左右均等 */
-.rep-img-layout-B { display: flex; gap: 3mm; margin-bottom: 3mm; }
-.rep-img-layout-B .img-col { flex: 1; }
+.rep-img-layout-B { display: flex; gap: 3mm; margin-bottom: 3mm; align-items: flex-start; }
+.rep-img-layout-B .img-col { flex: none; }
 .rep-img-layout-B .graph-col { flex: 1; }
 /* 配置C: 上下 */
 .rep-img-layout-C { margin-bottom: 3mm; }
@@ -679,6 +679,31 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-img-item { margin-bottom: 2mm; }
 .rep-img-item img { width: 100%; border-radius: 4px; display: block; }
 .rep-img-item-comment { font-size: 7pt; color: #333; margin-top: 1mm; line-height: 1.4; }
+/* リサイズ可能コンテナ（画像・グラフ） */
+.rep-resizable {
+    position: relative;
+    display: inline-block;
+    min-width: 20mm;
+    min-height: 15mm;
+    box-sizing: border-box;
+}
+.rep-resizable-handle {
+    position: absolute;
+    right: 0; bottom: 0;
+    width: 14px; height: 14px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #1a73e8 50%);
+    border-radius: 0 0 4px 0;
+    opacity: 0.7;
+    z-index: 10;
+}
+.rep-resizable-handle:hover { opacity: 1; }
+.rep-resizable img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block; }
+/* 印刷時はハンドル非表示 */
+@media print {
+    .rep-resizable-handle { display: none !important; }
+    .no-print { display: none !important; }
+}
 /* 2ページ目 */
 .rep-image-page { page-break-before: always; }
 .rep-image-page-title { font-size: 9pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 4mm; }
@@ -998,6 +1023,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
+    <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
         {% if show_weight_final %}
         <div class="rep-fitness-chart-box">
@@ -1038,7 +1064,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         </div>
         {% endif %}
         {% endif %}
-    </div>
+    </div><!-- /rep-fitness-charts -->
+    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+    </div><!-- /rep-resizable fitness -->
     {# 直近の備考を収集して表示 #}
     {% set all_notes = [] %}
     {% if weights %}{% for w in weights | reverse %}{% if w.note %}{% set _ = all_notes.append(w.measured_date[:7] + ' ' + w.note) %}{% endif %}{% endfor %}{% endif %}
@@ -1107,14 +1135,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
             {% for img_data in sel_imgs %}
             <div class="rep-img-item">
-                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
                 {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
             </div>
             {% endfor %}
         </div>
         <div class="graph-col">
-            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">体力測定</div>
-            <div style="font-size:7pt;color:#888;margin-bottom:2mm;">グラフは上記の体力測定エリアを参照</div>
         </div>
     </div>
     {% elif img_layout == 'B' %}
@@ -1124,13 +1153,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
             {% for img_data in sel_imgs %}
             <div class="rep-img-item">
-                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
                 {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
             </div>
             {% endfor %}
         </div>
         <div class="graph-col">
-            <div style="font-size:7pt;color:#888;padding-top:16px;">グラフは上記の体力測定エリアを参照</div>
         </div>
     </div>
     {% else %}
@@ -1139,8 +1170,11 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
         <div style="display:flex;gap:3mm;">
             {% for img_data in sel_imgs %}
-            <div class="rep-img-item" style="flex:1;">
-                <img src="{{ img_data.url }}" alt="添付画像" style="width:100%;border-radius:4px;">
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
                 {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
             </div>
             {% endfor %}
@@ -1231,6 +1265,60 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 </div>
 
 <script>
+// ===== リサイズ機能 =====
+(function() {
+    var dragging = null;
+    var startX, startY, startW, startH;
+
+    document.addEventListener('mousedown', function(e) {
+        if (!e.target.classList.contains('rep-resizable-handle')) return;
+        e.preventDefault();
+        dragging = e.target.closest('.rep-resizable');
+        if (!dragging) return;
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = dragging.offsetWidth;
+        startH = dragging.offsetHeight;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var newW = Math.max(50, startW + dx);
+        var newH = Math.max(40, startH + dy);
+        dragging.style.width = newW + 'px';
+        dragging.style.height = newH + 'px';
+    });
+
+    document.addEventListener('mouseup', function() { dragging = null; });
+
+    // タッチ対応
+    document.addEventListener('touchstart', function(e) {
+        if (!e.target.classList.contains('rep-resizable-handle')) return;
+        e.preventDefault();
+        dragging = e.target.closest('.rep-resizable');
+        if (!dragging) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startW = dragging.offsetWidth;
+        startH = dragging.offsetHeight;
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+        if (!dragging) return;
+        e.preventDefault();
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        var newW = Math.max(50, startW + dx);
+        var newH = Math.max(40, startH + dy);
+        dragging.style.width = newW + 'px';
+        dragging.style.height = newH + 'px';
+    }, { passive: false });
+
+    document.addEventListener('touchend', function() { dragging = null; }, { passive: true });
+})();
+
 // ===== 画像選択・レイアウト管理 =====
 var _imgState = {}; // {idx: {selected: [{url, comment}], layout: 'A'}}
 
