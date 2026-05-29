@@ -699,6 +699,20 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 }
 .rep-resizable-handle:hover { opacity: 1; }
 .rep-resizable img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block; }
+/* ===== 2ページ超過時の自動縮小 ===== */
+.report-page.compact .rep-monitoring-table { margin-bottom: 2mm; }
+.report-page.compact .rep-monitoring-table td { font-size: 6.5pt; padding: 2px 3px; line-height: 1.35; }
+.report-page.compact .rep-monitoring-table td:first-child { font-size: 6.5pt; }
+.report-page.compact { font-size: 7.5pt; line-height: 1.4; padding: 9mm 11mm 7mm; }
+.report-page.compact .rep-section-title,
+.report-page.compact .rep-fitness-title { font-size: 7.5pt; }
+.report-page.compact .rep-fitness-chart-box { padding: 2mm; }
+.report-page.compact .rep-header-title { font-size: 10.5pt; }
+.report-page.compact .rep-cm-name { font-size: 12pt; }
+.report-page.compact .rep-patient-row { padding: 3mm 0; }
+.report-page.compact .rep-goals-table td { font-size: 6.5pt; padding: 2px 3px; }
+.report-page.compact .rep-eval-row td { font-size: 6.5pt; padding: 2px 3px; }
+
 /* ===== トリミングモーダル ===== */
 #crop-modal-overlay {
     display: none; position: fixed; inset: 0;
@@ -1835,6 +1849,41 @@ function saveMonitoring(userName, yearMonth) {
         });
     }
 })();
+
+// ===== 2ページ超過検知・自動縮小 =====
+function autoCompactPages() {
+    var pages = document.querySelectorAll('.report-page');
+    pages.forEach(function(page) {
+        // 画像ページ（2ページ目）はスキップ
+        if (page.classList.contains('rep-image-page')) return;
+        // compactクラスをリセット
+        page.classList.remove('compact');
+        // ページの実際の高さがA4(297mm≒1122px at 96dpi)を超えるか確認
+        var pageHeightPx = 297 * 3.7795; // 297mm to px (1px = 0.2646mm)
+        var contentHeight = page.scrollHeight;
+        if (contentHeight > pageHeightPx * 1.02) {
+            page.classList.add('compact');
+            // compact後も溢れる場合はさらに縮小
+            setTimeout(function() {
+                if (page.scrollHeight > pageHeightPx * 1.02) {
+                    page.style.fontSize = '7pt';
+                    page.style.lineHeight = '1.35';
+                    page.style.padding = '8mm 10mm 6mm';
+                    var tds = page.querySelectorAll('.rep-monitoring-table td');
+                    tds.forEach(function(td) {
+                        td.style.fontSize = '6pt';
+                        td.style.padding = '1px 3px';
+                    });
+                }
+            }, 50);
+        }
+    });
+}
+
+// ページロード完了後・グラフ描画後に実行
+window.addEventListener('load', function() {
+    setTimeout(autoCompactPages, 800);
+});
 
 // ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
 (function applyPageScale() {
