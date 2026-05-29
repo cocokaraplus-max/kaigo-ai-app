@@ -2697,36 +2697,31 @@ window.memoStopRecording = function() {
 };
 
 async function memoSendToGemini() {
-    const blob   = new Blob(memoAudioChunks, { type: memoMimeType });
-    const reader = new FileReader();
-    reader.onload = async function() {
-        const base64 = reader.result.split(',')[1];
-        try {
-            const res  = await fetch('/api/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audio_data: base64, audio_mime: memoMimeType })
-            });
-            const data = await res.json();
-            document.getElementById('memo-spinner').style.display = 'none';
-            document.getElementById('memo-state-idle').style.display = 'flex';
-            if (data.text) {
-                const ta = document.getElementById('eval-memo');
-                ta.value = ta.value ? ta.value + '\n' + data.text : data.text;
-            } else {
-                alert('文字起こしに失敗しました。もう一度お試しください。');
-            }
-        } catch(err) {
-            document.getElementById('memo-spinner').style.display = 'none';
-            document.getElementById('memo-state-idle').style.display = 'flex';
-            alert('通信エラー: ' + err);
+    const blob = new Blob(memoAudioChunks, { type: memoMimeType });
+    const ext  = memoMimeType.includes('mp4') ? 'm4a' : memoMimeType.includes('ogg') ? 'ogg' : 'webm';
+    const formData = new FormData();
+    formData.append('file', blob, 'memo_recording.' + ext);
+    formData.append('audio_mode', 'solo');
+    try {
+        const res  = await fetch('/api/evaluation/ingest_file', { method: 'POST', body: formData });
+        const data = await res.json();
+        document.getElementById('memo-spinner').style.display = 'none';
+        document.getElementById('memo-state-idle').style.display = 'flex';
+        if (data.status === 'success' && data.text) {
+            const ta = document.getElementById('eval-memo');
+            ta.value = ta.value ? ta.value + '\n' + data.text : data.text;
+        } else {
+            alert('文字起こしに失敗しました。もう一度お試しください。');
         }
-        // タイマーリセット
-        memoAudioChunks = []; memoElapsed = 0;
-        const el = document.getElementById('memo-timer');
-        if (el) el.textContent = '00:00';
-    };
-    reader.readAsDataURL(blob);
+    } catch(err) {
+        document.getElementById('memo-spinner').style.display = 'none';
+        document.getElementById('memo-state-idle').style.display = 'flex';
+        alert('通信エラー: ' + err);
+    }
+    // タイマーリセット
+    memoAudioChunks = []; memoElapsed = 0;
+    const el = document.getElementById('memo-timer');
+    if (el) el.textContent = '00:00';
 }
 // ===== 評価メモここまで =====
 
