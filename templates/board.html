@@ -496,6 +496,50 @@
 }
 .post-audio-chip .material-symbols-outlined { font-size: 16px; color: #1a73e8; }
 
+/* ===== PDF ビューワー ===== */
+.pdf-viewer-wrap {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #f5f5f5;
+    touch-action: none;
+}
+.pdf-viewer-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+    transform-origin: 0 0;
+    transition: none;
+}
+.pdf-page-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+}
+.pdf-page-btn {
+    width: 32px; height: 32px;
+    border-radius: 50%; border: 1px solid #e0e0e0;
+    background: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.pdf-page-btn:disabled { opacity: 0.3; cursor: default; }
+.pdf-page-info { font-size: 0.78rem; color: #5f6368; }
+.pdf-loading {
+    text-align: center; padding: 20px;
+    font-size: 0.82rem; color: #80868b;
+}
+.pdf-zoom-hint {
+    text-align: center; font-size: 0.7rem; color: #9aa0a6;
+    padding: 4px 0 2px;
+    pointer-events: none;
+}
+
 /* ========== 投稿詳細モーダル ========== */
 .post-detail-overlay {
     display: none; position: fixed; inset: 0;
@@ -2258,6 +2302,98 @@ document.getElementById('audio-input').addEventListener('change', function() {
         document.getElementById('audio-preview').style.display = 'block';
     }
 });
+// ===== PDF.js ビューワー =====
+(function() {
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = function() {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    };
+    document.head.appendChild(script);
+})();
+
+window.renderPdfViewer = async function(url, containerId) {
+    var wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="pdf-loading"><span class="material-symbols-outlined" style="font-size:24px;display:block;margin:0 auto 8px;animation:eval-spin 1s linear infinite;color:#1a73e8;">sync</span>PDF読み込み中...</div>';
+    var waited = 0;
+    while (!window.pdfjsLib && waited < 5000) {
+        await new Promise(function(r){ setTimeout(r, 100); });
+        waited += 100;
+    }
+    if (!window.pdfjsLib) {
+        wrap.innerHTML = '<div style="padding:12px;text-align:center;font-size:0.82rem;color:#e53935;">PDFの読み込みに失敗しました。<br><a href="' + url + '" target="_blank" style="color:#1a73e8;">別タブで開く</a></div>';
+        return;
+    }
+    try {
+        var pdf = await window.pdfjsLib.getDocument(url).promise;
+        var totalPages = pdf.numPages;
+        wrap.innerHTML =
+            '<div class="pdf-zoom-hint">ピンチで拡大縮小 / ダブルタップでリセット</div>' +
+            '<div class="pdf-canvas-wrap" id="' + containerId + '-cw" style="overflow:hidden;position:relative;background:#fff;">' +
+            '<canvas id="' + containerId + '-cv"></canvas>' +
+            '</div>' +
+            (totalPages > 1 ?
+            '<div class="pdf-page-nav">' +
+            '<button class="pdf-page-btn" id="' + containerId + '-prev" onclick="pdfPrevPage(\'' + containerId + '\')" disabled>' +
+            '<span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span></button>' +
+            '<span class="pdf-page-info" id="' + containerId + '-info">1 / ' + totalPages + '</span>' +
+            '<button class="pdf-page-btn" id="' + containerId + '-next" onclick="pdfNextPage(\'' + containerId + '\')">' +
+            '<span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span></button>' +
+            '</div>' : '');
+        window._pdfState = window._pdfState || {};
+        window._pdfState[containerId] = { pdf: pdf, page: 1, scale: 1, total: totalPages };
+        await _renderPdfPage(containerId, 1);
+        // ピンチズーム
+        var cw = document.getElementById(containerId + '-cw');
+        var ps = { dist: 0, lastScale: 1 };
+        function gd(t){ var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+        cw.addEventListener('touchstart', function(e){
+            if(e.touches.length===2){ e.preventDefault(); ps.dist=gd(e.touches); ps.lastScale=window._pdfState[containerId].scale; }
+        },{passive:false});
+        cw.addEventListener('touchmove', function(e){
+            if(e.touches.length===2){ e.preventDefault();
+                var ns=Math.min(4,Math.max(0.5,ps.lastScale*(gd(e.touches)/ps.dist)));
+                window._pdfState[containerId].scale=ns;
+                var cv=document.getElementById(containerId+'-cv');
+                if(cv){ cv.style.transform='scale('+ns+')'; cv.style.transformOrigin='0 0'; cw.style.height=(cv.offsetHeight*ns)+'px'; }
+            }
+        },{passive:false});
+        // ダブルタップリセット
+        var lt=0;
+        cw.addEventListener('touchend',function(e){
+            var now=Date.now();
+            if(now-lt<300){ window._pdfState[containerId].scale=1;
+                var cv=document.getElementById(containerId+'-cv');
+                if(cv){ cv.style.transition='transform 0.2s'; cv.style.transform='scale(1)'; cw.style.height=''; setTimeout(function(){cv.style.transition='';},200); }
+            } lt=now;
+        },{passive:true});
+    } catch(e) {
+        wrap.innerHTML='<div style="padding:12px;text-align:center;font-size:0.82rem;color:#e53935;">PDFの表示に失敗しました。<br><a href="'+url+'" target="_blank" style="color:#1a73e8;">別タブで開く</a></div>';
+    }
+};
+window._renderPdfPage = async function(id, pageNum) {
+    var st=window._pdfState&&window._pdfState[id]; if(!st)return;
+    var page=await st.pdf.getPage(pageNum);
+    var cv=document.getElementById(id+'-cv'); if(!cv)return;
+    var cw=document.getElementById(id+'-cw')||cv.parentElement;
+    var w=cw.clientWidth||300;
+    var vp=page.getViewport({scale:1});
+    var sc=w/vp.width;
+    var svp=page.getViewport({scale:sc});
+    cv.width=svp.width; cv.height=svp.height;
+    cv.style.transform='scale('+(st.scale||1)+')'; cv.style.transformOrigin='0 0';
+    cw.style.height=(svp.height*(st.scale||1))+'px';
+    await page.render({canvasContext:cv.getContext('2d'),viewport:svp}).promise;
+    st.page=pageNum;
+    var info=document.getElementById(id+'-info'); if(info)info.textContent=pageNum+' / '+st.total;
+    var prev=document.getElementById(id+'-prev'); if(prev)prev.disabled=pageNum<=1;
+    var next=document.getElementById(id+'-next'); if(next)next.disabled=pageNum>=st.total;
+};
+window.pdfPrevPage=async function(id){ var st=window._pdfState&&window._pdfState[id]; if(st&&st.page>1)await _renderPdfPage(id,st.page-1); };
+window.pdfNextPage=async function(id){ var st=window._pdfState&&window._pdfState[id]; if(st&&st.page<st.total)await _renderPdfPage(id,st.page+1); };
+
 // PDF添付
 var selectedPdf = null;
 document.getElementById('pdf-attach-btn').addEventListener('click', function() {
@@ -2894,14 +3030,20 @@ window.showPostDetail = function(postId) {
     if (fileContainer) {
         fileContainer.innerHTML = '';
         if (post.file_urls && post.file_urls.length > 0) {
-            post.file_urls.forEach(function(url) {
+            post.file_urls.forEach(function(url, fi) {
+                var viewerId = 'pdf-viewer-' + postId + '-' + fi;
                 fileContainer.innerHTML += '<div style="margin-top:10px;">'
-                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
+                    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                    + '<div style="display:flex;align-items:center;gap:6px;">'
                     + '<span class="material-symbols-outlined" style="color:#e53935;">picture_as_pdf</span>'
                     + '<span style="font-size:0.85rem;color:#e53935;font-weight:700;">PDF添付ファイル</span>'
                     + '</div>'
-                    + '<iframe src="' + url + '" style="width:100%;height:500px;border:1px solid #e0e0e0;border-radius:8px;" loading="lazy"></iframe>'
+                    + '<a href="' + url + '" target="_blank" style="font-size:0.75rem;color:#1a73e8;text-decoration:none;display:flex;align-items:center;gap:3px;">'
+                    + '<span class="material-symbols-outlined" style="font-size:14px;">open_in_new</span>別タブで開く</a>'
+                    + '</div>'
+                    + '<div id="' + viewerId + '" class="pdf-viewer-wrap"></div>'
                     + '</div>';
+                renderPdfViewer(url, viewerId);
             });
         }
     }
