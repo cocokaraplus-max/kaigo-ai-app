@@ -517,6 +517,7 @@ function makeResultCard(cat, text, count, catName) {
     <div class="result-card-header">
       ${cat ? `<span class="cat-badge" style="background:${cat.bg};color:${cat.color};">● ${cat.name}</span>` : '<span class="cat-badge" style="background:#e8f0fe;color:#1a73e8;">📄 全体</span>'}
       <div class="result-actions">
+        <button class="btn-edit" onclick="toggleEdit(this)">✏️ 編集</button>
         <button class="btn-copy" onclick="copyText(this)">コピー</button>
       </div>
     </div>
