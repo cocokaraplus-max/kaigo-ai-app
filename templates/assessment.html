@@ -2683,8 +2683,7 @@ window.memoStartRecording = async function() {
             if (el) el.textContent = memoFormatTime(memoElapsed);
         }, 1000);
     } catch(err) {
-        alert('マイクへのアクセスが許可されていません。
-ブラウザの設定からマイクを許可してください。');
+        alert('マイクへのアクセスが許可されていません。\nブラウザの設定からマイクを許可してください。');
     }
 };
 
@@ -2711,8 +2710,7 @@ async function memoSendToGemini() {
             document.getElementById('memo-state-idle').style.display = 'flex';
             if (data.text) {
                 const ta = document.getElementById('eval-memo');
-                ta.value = ta.value ? ta.value + '
-' + data.text : data.text;
+                ta.value = ta.value ? ta.value + '\n' + data.text : data.text;
             } else {
                 alert('文字起こしに失敗しました。もう一度お試しください。');
             }
