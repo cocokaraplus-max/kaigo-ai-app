@@ -699,10 +699,56 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 }
 .rep-resizable-handle:hover { opacity: 1; }
 .rep-resizable img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; display: block; }
+/* ===== トリミングモーダル ===== */
+#crop-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+#crop-modal-overlay.show { display: flex; }
+#crop-modal {
+    background: #fff; border-radius: 14px;
+    padding: 16px; max-width: 92vw; max-height: 90vh;
+    display: flex; flex-direction: column; gap: 10px;
+}
+#crop-title { font-size: 0.9rem; font-weight: 700; color: #202124; }
+#crop-canvas-wrap {
+    position: relative; overflow: hidden;
+    border: 1px solid #e0e0e0; border-radius: 8px;
+    cursor: crosshair; user-select: none; flex-shrink: 0;
+}
+#crop-canvas-wrap img {
+    display: block; max-width: 70vw; max-height: 55vh;
+    width: auto; height: auto; pointer-events: none;
+}
+#crop-selection {
+    position: absolute; border: 2px dashed #1a73e8;
+    background: rgba(26,115,232,0.1);
+    pointer-events: none; display: none;
+}
+.crop-actions { display: flex; gap: 8px; }
+.crop-btn-apply {
+    flex: 1; padding: 8px; background: #1a73e8; color: #fff;
+    border: none; border-radius: 8px; font-size: 0.82rem;
+    font-weight: 700; cursor: pointer;
+}
+.crop-btn-reset {
+    padding: 8px 14px; background: #f1f3f4; color: #5f6368;
+    border: none; border-radius: 8px; font-size: 0.82rem; cursor: pointer;
+}
+.crop-btn-cancel {
+    padding: 8px 14px; background: #fff; color: #ea4335;
+    border: 1px solid #ea4335; border-radius: 8px;
+    font-size: 0.82rem; cursor: pointer;
+}
+.rep-resizable img { cursor: pointer; }
+.crop-hint { font-size: 6.5pt; color: #1a73e8; text-align: center; margin-top: 1px; }
+
 /* 印刷時はハンドル非表示 */
 @media print {
     .rep-resizable-handle { display: none !important; }
     .no-print { display: none !important; }
+    #crop-modal-overlay { display: none !important; }
 }
 /* 2ページ目 */
 .rep-image-page { page-break-before: always; }
@@ -1139,6 +1185,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                     <img src="{{ img_data.url }}" alt="添付画像">
                     <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
                 </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
                 {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
             </div>
             {% endfor %}
@@ -1317,6 +1364,148 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     }, { passive: false });
 
     document.addEventListener('touchend', function() { dragging = null; }, { passive: true });
+})();
+
+// ===== トリミング機能 =====
+var _cropTarget = null;  // トリミング対象の <img> or <canvas>
+var _cropSel = { startX:0, startY:0, endX:0, endY:0, dragging:false };
+
+// 印刷エリア内の画像クリックでトリミング起動
+document.addEventListener('click', function(e) {
+    var img = e.target;
+    if (img.tagName !== 'IMG' && img.tagName !== 'CANVAS') return;
+    if (!img.closest('.rep-resizable')) return;
+    if (img.closest('.no-print')) return;
+    e.preventDefault();
+    openCropModal(img);
+});
+
+function openCropModal(imgEl) {
+    _cropTarget = imgEl;
+    var src = imgEl.tagName === 'CANVAS' ? imgEl.toDataURL() : imgEl.src;
+    var srcImg = document.getElementById('crop-source-img');
+    srcImg.onload = function() {
+        // 選択範囲リセット
+        var sel = document.getElementById('crop-selection');
+        sel.style.display = 'none';
+    };
+    srcImg.src = src;
+    document.getElementById('crop-selection').style.display = 'none';
+    document.getElementById('crop-modal-overlay').classList.add('show');
+}
+
+function cropCancel() {
+    document.getElementById('crop-modal-overlay').classList.remove('show');
+    _cropTarget = null;
+}
+
+function cropReset() {
+    if (!_cropTarget) return;
+    // 元のsrcに戻す（data-original-srcがあればそちらを使用）
+    var original = _cropTarget.dataset.originalSrc || _cropTarget.src;
+    _cropTarget.dataset.originalSrc = original;
+    var srcImg = document.getElementById('crop-source-img');
+    srcImg.src = original;
+    document.getElementById('crop-selection').style.display = 'none';
+}
+
+function cropApply() {
+    var sel = document.getElementById('crop-selection');
+    if (sel.style.display === 'none' || !_cropTarget) {
+        cropCancel();
+        return;
+    }
+    var srcImg = document.getElementById('crop-source-img');
+    var wrap = document.getElementById('crop-canvas-wrap');
+    var wrapRect = wrap.getBoundingClientRect();
+    var imgRect = srcImg.getBoundingClientRect();
+
+    // 実際の画像サイズとの比率
+    var scaleX = srcImg.naturalWidth / srcImg.offsetWidth;
+    var scaleY = srcImg.naturalHeight / srcImg.offsetHeight;
+
+    // 選択範囲をimg要素基準に変換
+    var selRect = sel.getBoundingClientRect();
+    var imgOffX = imgRect.left - wrapRect.left;
+    var imgOffY = imgRect.top  - wrapRect.top;
+    var selInImg = {
+        x: (parseFloat(sel.style.left) - imgOffX) * scaleX,
+        y: (parseFloat(sel.style.top)  - imgOffY) * scaleY,
+        w: parseFloat(sel.style.width)  * scaleX,
+        h: parseFloat(sel.style.height) * scaleY,
+    };
+
+    if (selInImg.w < 5 || selInImg.h < 5) { cropCancel(); return; }
+
+    // Canvasにトリミング結果を描画
+    var canvas = document.createElement('canvas');
+    canvas.width  = Math.round(selInImg.w);
+    canvas.height = Math.round(selInImg.h);
+    var ctx = canvas.getContext('2d');
+    var tmpImg = new Image();
+    tmpImg.crossOrigin = 'anonymous';
+    tmpImg.onload = function() {
+        ctx.drawImage(tmpImg, selInImg.x, selInImg.y, selInImg.w, selInImg.h, 0, 0, canvas.width, canvas.height);
+        var croppedData = canvas.toDataURL('image/jpeg', 0.92);
+        // 元のimgをcanvasに差し替え（サイズ維持）
+        var parent = _cropTarget.parentNode;
+        var newImg = document.createElement('img');
+        newImg.src = croppedData;
+        newImg.dataset.originalSrc = _cropTarget.dataset.originalSrc || _cropTarget.src;
+        newImg.style.cssText = _cropTarget.style.cssText;
+        newImg.style.width = '100%';
+        newImg.style.height = '100%';
+        newImg.style.objectFit = 'contain';
+        newImg.style.borderRadius = '4px';
+        newImg.style.display = 'block';
+        parent.replaceChild(newImg, _cropTarget);
+        _cropTarget = null;
+        document.getElementById('crop-modal-overlay').classList.remove('show');
+    };
+    tmpImg.src = srcImg.src;
+}
+
+// 選択範囲のドラッグ
+(function(){
+    var wrap = document.getElementById('crop-canvas-wrap');
+    var sel  = document.getElementById('crop-selection');
+
+    function getPos(e, el) {
+        var r = el.getBoundingClientRect();
+        var cx = e.touches ? e.touches[0].clientX : e.clientX;
+        var cy = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: cx - r.left, y: cy - r.top };
+    }
+
+    function startDrag(e) {
+        if (!document.getElementById('crop-modal-overlay').classList.contains('show')) return;
+        e.preventDefault();
+        var p = getPos(e, wrap);
+        _cropSel.startX = p.x; _cropSel.startY = p.y;
+        _cropSel.dragging = true;
+        sel.style.left = p.x + 'px'; sel.style.top = p.y + 'px';
+        sel.style.width = '0'; sel.style.height = '0';
+        sel.style.display = 'block';
+    }
+    function moveDrag(e) {
+        if (!_cropSel.dragging) return;
+        e.preventDefault();
+        var p = getPos(e, wrap);
+        var x = Math.min(p.x, _cropSel.startX);
+        var y = Math.min(p.y, _cropSel.startY);
+        var w = Math.abs(p.x - _cropSel.startX);
+        var h = Math.abs(p.y - _cropSel.startY);
+        sel.style.left = x + 'px'; sel.style.top = y + 'px';
+        sel.style.width = w + 'px'; sel.style.height = h + 'px';
+    }
+    function endDrag() { _cropSel.dragging = false; }
+
+    wrap.addEventListener('mousedown',  startDrag);
+    wrap.addEventListener('mousemove',  moveDrag);
+    wrap.addEventListener('mouseup',    endDrag);
+    wrap.addEventListener('touchstart', startDrag, { passive: false });
+    wrap.addEventListener('touchmove',  moveDrag,  { passive: false });
+    wrap.addEventListener('touchend',   endDrag,   { passive: true  });
 })();
 
 // ===== 画像選択・レイアウト管理 =====
@@ -1626,5 +1815,20 @@ function saveMonitoring(userName, yearMonth) {
     window.addEventListener('resize', calcScale);
 })();
 </script>
+<div id="crop-modal-overlay">
+    <div id="crop-modal">
+        <div id="crop-title">📷 トリミング <span style="font-size:0.72rem;font-weight:400;color:#80868b;">ドラッグで範囲を選択</span></div>
+        <div id="crop-canvas-wrap">
+            <img id="crop-source-img" src="" alt="">
+            <div id="crop-selection"></div>
+        </div>
+        <div class="crop-actions">
+            <button class="crop-btn-apply" onclick="cropApply()">✅ この範囲で切り取る</button>
+            <button class="crop-btn-reset" onclick="cropReset()">リセット</button>
+            <button class="crop-btn-cancel" onclick="cropCancel()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
