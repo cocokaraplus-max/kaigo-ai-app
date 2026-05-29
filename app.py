@@ -227,13 +227,6 @@ def get_birthday_users(supabase, f_code):
 DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日のケース記録です。
 これらを介護職員間の申し送りとして、一つの文章にまとめてください。
 
-【絶対厳守：ハルシネーション防止】
-・記録に書かれていないことを絶対に書かない
-・記録の内容を補完・推測・創作しない
-・「テスト」「test」「確認」など意味のないテスト入力の場合は、そのまま「『{records}』とのみ記録されています。」と返す
-・記録が極端に短い・断片的な場合も、そのまま忠実に要約するのみ
-・バイタル・食事・入浴・レク・面会など、記録に明示されていない事項を付け加えない
-
 【ルール】
 ・箇条書きや「・」は絶対に使わない。必ず一つながりの文章で書く
 ・利用者名などの主語は不要
@@ -241,11 +234,27 @@ DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日�
 ・「支援内容」として記録されている事柄は必ず要約して含める
 ・変化・気になる点・注意事項を優先して記載
 ・です・ます調で書く
-・記録が1件のみで短い場合は無理に膨らませず、記録の内容をそのまま短く伝える
 
 【記録】
 {records}
 """
+
+# ==========================================
+# 休み連絡content生成ヘルパー
+# ==========================================
+def _build_leave_content(period, reporter_type, other_detail, leave_reason):
+    """休み連絡のcontent文字列を生成する共通関数"""
+    _reporter_map = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+    _reporter = _reporter_map.get(reporter_type or "", "")
+    if reporter_type == "other" and other_detail:
+        _reporter = other_detail
+    if _reporter:
+        base = f"{period}はお休みと{_reporter}から連絡がありました。"
+    else:
+        base = f"{period}はお休みと連絡がありました。"
+    if leave_reason:
+        base += f"理由：{leave_reason}"
+    return base
 
 # ==========================================
 # 管理者権限ヘルパー
@@ -784,28 +793,19 @@ def input_view():
                     # 休み連絡の場合はcontentを自動生成
                     leave_date_start_val = (request.form.get("leave_date_start", "") or "").strip()
                     leave_date_end_val = (request.form.get("leave_date_end", "") or "").strip()
+                    leave_reason_val = (request.form.get("leave_reason", "") or "").strip() if category == "休み連絡" else ""
                     if category == "休み連絡" and leave_date_start_val:
                         try:
                             from datetime import datetime as _dt
                             _ls = _dt.strptime(leave_date_start_val, "%Y-%m-%d")
                             _ls_str = f"{_ls.month}月{_ls.day}日"
-                            # 誰からの記述を作成
-                            _reporter_map = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
-                            _reporter = _reporter_map.get(leave_reporter_type or "", "")
                             _other_detail = (request.form.get("leave_other_detail", "") or "").strip()
-                            if leave_reporter_type == "other" and _other_detail:
-                                _reporter = _other_detail
-                            # 休み期間が複数日の場合
                             if leave_date_end_val and leave_date_end_val != leave_date_start_val:
                                 _le = _dt.strptime(leave_date_end_val, "%Y-%m-%d")
-                                _le_str = f"{_le.month}月{_le.day}日"
-                                _period = f"{_ls_str}〜{_le_str}"
+                                _period = f"{_ls_str}〜{_le.month}月{_le.day}日"
                             else:
                                 _period = _ls_str
-                            if _reporter:
-                                content = f"{_period}はお休みと{_reporter}から連絡がありました。"
-                            else:
-                                content = f"{_period}はお休みと連絡がありました。"
+                            content = _build_leave_content(_period, leave_reporter_type, _other_detail, leave_reason_val)
                         except Exception as _ce:
                             print(f"[休み連絡content生成エラー] {_ce}", flush=True)
                     insert_res = supabase.table("records").insert({
@@ -822,6 +822,7 @@ def input_view():
                         "leave_reporter_relation": leave_reporter_relation,
                         "leave_date_start": leave_date_start_val if category == "休み連絡" else None,
                         "leave_date_end": (leave_date_end_val or leave_date_start_val) if category == "休み連絡" else None,
+                        "leave_reason": leave_reason_val if category == "休み連絡" else None,
                     }).execute()
 
                     # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
@@ -2999,7 +3000,7 @@ def api_save_calendar_event():
             new_memo = payload.get("memo")
             if new_event_date or new_memo is not None:
                 try:
-                    rec_res = supabase.table("records").select("id,created_at,leave_reporter_type,category").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
+                    rec_res = supabase.table("records").select("id,created_at,leave_reporter_type,leave_reason,category").eq("facility_code", f_code).eq("calendar_event_id", event_id).execute()
                     for rec in (rec_res.data or []):
                         update_payload = {}
                         # 日付変更時: created_atは入力日のまま保持。leave_date_start/endを更新しcontentを再生成
@@ -3017,13 +3018,9 @@ def api_save_calendar_event():
                                     _period4 = f"{_ls4_str}〜{_le4.month}月{_le4.day}日"
                                 else:
                                     _period4 = _ls4_str
-                                _reporter_map4 = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
                                 _type4 = rec.get("leave_reporter_type") or ""
-                                _reporter4 = _reporter_map4.get(_type4, "")
-                                if _reporter4:
-                                    update_payload["content"] = f"{_period4}はお休みと{_reporter4}から連絡がありました。"
-                                else:
-                                    update_payload["content"] = f"{_period4}はお休みと連絡がありました。"
+                                _reason4 = rec.get("leave_reason") or ""
+                                update_payload["content"] = _build_leave_content(_period4, _type4, "", _reason4)
                             except Exception as _ce4:
                                 print(f"[カレンダー同期 content再生成エラー] {_ce4}", flush=True)
                         # メモ（内容）更新（休み連絡以外の記録のみ）
@@ -3041,11 +3038,10 @@ def api_save_calendar_event():
                     title = ev_check.data[0].get("title", "")
                     if "お休み" in title and new_event_date:
                         # 対応するrecordのleave_reporter_typeを取得
-                        rec_for_memo = supabase.table("records").select("leave_reporter_type").eq("facility_code", f_code).eq("calendar_event_id", event_id).limit(1).execute()
+                        rec_for_memo = supabase.table("records").select("leave_reporter_type, leave_reason").eq("facility_code", f_code).eq("calendar_event_id", event_id).limit(1).execute()
                         if rec_for_memo.data:
                             _type_m = rec_for_memo.data[0].get("leave_reporter_type") or ""
-                            _reporter_map_m = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
-                            _reporter_m = _reporter_map_m.get(_type_m, "")
+                            _reason_m = rec_for_memo.data[0].get("leave_reason") or ""
                             from datetime import datetime as _dtm
                             _ls_m = _dtm.strptime(new_event_date, "%Y-%m-%d")
                             _ls_m_str = f"{_ls_m.month}月{_ls_m.day}日"
@@ -3055,10 +3051,7 @@ def api_save_calendar_event():
                                 _period_m = f"{_ls_m_str}〜{_le_m.month}月{_le_m.day}日"
                             else:
                                 _period_m = _ls_m_str
-                            if _reporter_m:
-                                new_memo = f"{_period_m}はお休みと{_reporter_m}から連絡がありました。"
-                            else:
-                                new_memo = f"{_period_m}はお休みと連絡がありました。"
+                            new_memo = _build_leave_content(_period_m, _type_m, "", _reason_m)
                             supabase.table("calendar_events").update({"memo": new_memo}).eq("id", event_id).execute()
                             print(f"[カレンダー同期] event {event_id} のmemoを更新: {new_memo}", flush=True)
             except Exception as _memo_err:
@@ -3705,14 +3698,13 @@ def api_evaluation_ingest_file():
 ・フィラー（「あー」「えー」等）はそのまま記載する"""
             else:
                 prompt = """これは介護施設の機能訓練指導員が月次評価について口頭で述べた音声です。
-発話内容を忠実に文字起こししてください。
+発話内容をそのまま文字起こししてください。
 
 【厳守ルール】
 ・文字起こしに徹する。要約・整理・補完・推測・創作を一切しない
 ・1人の発話として素直に文字起こしする
 ・聞き取れない箇所は[聞き取り不明瞭]と記載する（補完・推測は禁止）
-・「あー」「えー」「えっと」「うーん」等のフィラーは省略する
-・話した内容は言い回しを変えずに忠実に文章化する"""
+・フィラー（「あー」「えー」等）はそのまま記載する"""
 
             resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
             return jsonify({"status": "success", "text": resp.text.strip()})
@@ -3805,29 +3797,23 @@ def api_evaluation_ai_fill():
         model = get_generative_model()
 
         prompt = (
-            "あなたは介護施設に勤務する機能訓練指導員（理学療法士・作業療法士・柔道整復師等）です。\n"
-            "リハビリテーション・運動療法・疾患管理の専門的知識を持ち、利用者の身体機能・ADL・生活課題を医療的視点でアセスメントする立場から文章を作成します。\n"
-            "以下の元データをもとに、ケアマネージャーへの月次報告文として「訓練による変化」と「課題とその要因」の2項目を作成してください。\n\n"
-            "【絶対厳守：ハルシネーション防止】\n"
-            "・元データに明記されている事実のみを使用する\n"
-            "・元データにない訓練内容・数値・症状・改善度を絶対に書かない\n"
-            "・「〜と考えられます」等の推測表現も、元データに根拠がない場合は使わない\n"
-            "・記録にない内容の補完・推測・創作は一切禁止\n\n"
-            "【文章作成ルール】\n"
+            "あなたは介護施設で働く機能訓練指導員（理学療法士・作業療法士・柔道整復師等）です。\n"
+            "以下の元データをもとに、ケアマネージャーへの報告文として「訓練による変化」と「課題とその要因」の2項目を必ず両方作成してください。\n\n"
+            "【厳守ルール】\n"
             "・必ず両方の項目に文章を生成する（片方だけにしない）\n"
             f"・各項目はそれぞれ約{char_count}文字で書く\n"
-            "・機能訓練指導員として専門的かつ現場感のある丁寧な口調（です・ます調）\n"
+            "・機能訓練指導員（理学療法士・作業療法士・柔道整復師）の専門的視点でケアマネージャーへ伝える\n"
+            "・堂すぎず碕けず、現場感のある丁寧な口調（です・ます調）\n"
             "・箇条書きは使わず、ひとつながりの文章で書く\n"
-            "・職員名・利用者名・主語（「本人は」等）は不要\n"
-            "・医療・リハビリ専門用語を適切に使用し、ケアマネが理解できる平易な説明を付ける\n\n"
-            "【訓練による変化】に記載すべき内容（元データにある範囲で）\n"
-            "・実施した訓練の種類・頻度・負荷量\n"
-            "・筋力・バランス・歩行・ADL等の身体機能の変化（数値があれば記載）\n"
-            "・改善・維持・低下の状況と機能訓練指導員としての評価\n\n"
-            "【課題とその要因】に記載すべき内容（元データにある範囲で）\n"
-            "・残存する身体機能上の問題点とその医学的・生活的要因\n"
-            "・継続すべきリハビリ内容とその根拠\n"
-            "・今後のリスク・注意点（転倒リスク・廃用進行等）\n\n"
+            "・職員名・利用者名・主語は不要\n"
+            "・元データに明示されていない事実は絶対に書かない（ハルシネーション厳禁）\n"
+            "・記録にない内容を補完・推測・創作しない\n\n"
+            "【訓練による変化】\n"
+            "・実施した訓練内容・頻度・身体機能の変化・改善点を記載\n"
+            "・元データから読み取れる訓練関連の内容を必ず記載する\n\n"
+            "【課題とその要因】\n"
+            "・残存する問題点・その原因・今後対応が必要な点を記載\n"
+            "・元データから読み取れる課題・継続すべき点を必ず記載する\n\n"
             "【出力形式】JSONのみ。前後の説明・マークダウン・コードブロック不要。\n"
             '{"changes_by_training": "訓練による変化の文章", "issues_and_causes": "課題とその要因の文章"}\n\n'
             "【元データ】\n"
@@ -5315,6 +5301,8 @@ def api_update_record():
             _r = (data.get("leave_reporter_relation") or "").strip() or None
             update_payload["leave_reporter_type"] = _t
             update_payload["leave_reporter_relation"] = _r
+        if "leave_reason" in data:
+            update_payload["leave_reason"] = (data.get("leave_reason") or "").strip() or None
         # 休み日付変更
         new_leave_start = (data.get("leave_date_start") or "").strip() or None
         new_leave_end = (data.get("leave_date_end") or "").strip() or None
@@ -5326,19 +5314,14 @@ def api_update_record():
                 from datetime import datetime as _dt3
                 _ls3 = _dt3.strptime(new_leave_start, "%Y-%m-%d")
                 _ls3_str = f"{_ls3.month}月{_ls3.day}日"
-                _reporter_map3 = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
                 _type3 = (data.get("leave_reporter_type") or "").strip()
-                _reporter3 = _reporter_map3.get(_type3, "")
+                _reason3 = (data.get("leave_reason") or "").strip()
                 if new_leave_end and new_leave_end != new_leave_start:
                     _le3 = _dt3.strptime(new_leave_end, "%Y-%m-%d")
-                    _le3_str = f"{_le3.month}月{_le3.day}日"
-                    _period3 = f"{_ls3_str}〜{_le3_str}"
+                    _period3 = f"{_ls3_str}〜{_le3.month}月{_le3.day}日"
                 else:
                     _period3 = _ls3_str
-                if _reporter3:
-                    update_payload["content"] = f"{_period3}はお休みと{_reporter3}から連絡がありました。"
-                else:
-                    update_payload["content"] = f"{_period3}はお休みと連絡がありました。"
+                update_payload["content"] = _build_leave_content(_period3, _type3, "", _reason3)
             except Exception as _ce3:
                 print(f"[休み編集content再生成エラー] {_ce3}", flush=True)
         supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
@@ -5493,7 +5476,7 @@ def api_generate_monitoring():
 
         # 休み連絡レコードから実際の休日情報を取得
         leave_res = supabase.table("records").select(
-            "leave_date_start, leave_date_end, leave_reporter_type"
+            "leave_date_start, leave_date_end, leave_reporter_type, leave_reason"
         ).eq("facility_code", f_code).eq("user_name", u_name).eq(
             "category", "休み連絡"
         ).gte("created_at", s_date.isoformat()).lt("created_at", e_date.isoformat()).execute()
@@ -5510,12 +5493,17 @@ def api_generate_monitoring():
                 from datetime import datetime as _dt2
                 _ls_d = _dt2.strptime(_ls[:10], "%Y-%m-%d")
                 _ls_str = f"{_ls_d.month}月{_ls_d.day}日"
+                _lr_reason = (lr.get("leave_reason") or "").strip()
+                _lr_type = lr.get("leave_reporter_type") or ""
+                _reporter_map_n = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                _reporter_n = _reporter_map_n.get(_lr_type, "")
                 if _le and _le[:10] != _ls[:10]:
                     _le_d = _dt2.strptime(_le[:10], "%Y-%m-%d")
-                    _le_str = f"{_le_d.month}月{_le_d.day}日"
-                    leave_notes.append(f"{_ls_str}〜{_le_str}はお休みされました。")
+                    _period_n = f"{_ls_str}〜{_le_d.month}月{_le_d.day}日"
                 else:
-                    leave_notes.append(f"{_ls_str}はお休みされました。")
+                    _period_n = _ls_str
+                _note_text = _build_leave_content(_period_n, _lr_type, "", _lr_reason)
+                leave_notes.append(_note_text)
             except Exception:
                 pass
 
@@ -9321,19 +9309,6 @@ def print_pdf():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
-    chart_size  = request.args.get("chart_size",  2, type=int)
-    # 選択済み画像（プレビュー画面から返ってくる場合）
-    import json as _json2
-    selected_images_json = request.args.get("selected_images", "{}")
-    img_layouts_json = request.args.get("img_layouts", "{}")
-    try:
-        selected_images = _json2.loads(selected_images_json)  # {user_name: [{url, comment},...]}
-    except Exception:
-        selected_images = {}
-    try:
-        img_layouts = _json2.loads(img_layouts_json)  # {user_name: 'A'|'B'|'C'}
-    except Exception:
-        img_layouts = {}
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9403,45 +9378,6 @@ def print_pdf():
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
             data["caremanager"] = {}
-        # 対象月のケース記録から画像URLを収集
-        try:
-            if items.get("images", False):
-                import datetime as _dt
-                ym_parts = year_month.split("-")
-                if len(ym_parts) == 2:
-                    y_str, m_str = ym_parts
-                    ym_start = f"{y_str}-{m_str}-01"
-                    import calendar as _cal
-                    last_day = _cal.monthrange(int(y_str), int(m_str))[1]
-                    ym_end = f"{y_str}-{m_str}-{last_day:02d}"
-                    rec_imgs = supabase.table("records").select("image_urls, created_at").eq(
-                        "facility_code", f_code).eq("user_name", uname).gte(
-                        "created_at", ym_start).lte("created_at", ym_end + "T23:59:59").neq(
-                        "staff_name", "AI統合記録").execute()
-                    all_urls = []
-                    for r in (rec_imgs.data or []):
-                        urls = r.get("image_urls") or []
-                        for u in urls:
-                            if u not in all_urls:
-                                all_urls.append(u)
-                    data["available_images"] = all_urls
-                    # 選択済み画像（URLパラメータから）
-                    data["selected_images"] = selected_images.get(uname, [])
-                else:
-                    data["available_images"] = []
-                    data["selected_images"] = []
-            else:
-                data["available_images"] = []
-                data["selected_images"] = []
-                data["img_layout"] = "A"
-        except Exception as _e:
-            print(f"[image collect error] {_e}", flush=True)
-            data["available_images"] = []
-            data["selected_images"] = []
-            data["img_layout"] = "A"
-        # レイアウト情報も付与
-        if "img_layout" not in data:
-            data["img_layout"] = img_layouts.get(uname, "A")
         report_data_list.append(data)
 
     # 施設情報
@@ -9467,7 +9403,6 @@ def print_pdf():
         my_name=my_name,
         tmpl=tmpl,
         chart_style=chart_style,
-        chart_size=chart_size,
         pdf_mode=True,
     )
     if not isinstance(html_str, str):
@@ -9523,19 +9458,6 @@ def print_preview():
     except (ValueError, TypeError):
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
-    chart_size  = request.args.get("chart_size",  2, type=int)
-    # 選択済み画像（プレビュー画面から返ってくる場合）
-    import json as _json2
-    selected_images_json = request.args.get("selected_images", "{}")
-    img_layouts_json = request.args.get("img_layouts", "{}")
-    try:
-        selected_images = _json2.loads(selected_images_json)  # {user_name: [{url, comment},...]}
-    except Exception:
-        selected_images = {}
-    try:
-        img_layouts = _json2.loads(img_layouts_json)  # {user_name: 'A'|'B'|'C'}
-    except Exception:
-        img_layouts = {}
     try:
         items = _json.loads(items_json)
     except Exception:
@@ -9649,7 +9571,4 @@ def print_preview():
         my_name=my_name,
         tmpl=tmpl,
         chart_style=chart_style,
-        chart_size=chart_size,
-        selected_images_json=selected_images_json,
-        img_layouts_json=img_layouts_json,
     )

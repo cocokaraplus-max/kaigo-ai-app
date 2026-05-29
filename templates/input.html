@@ -609,6 +609,16 @@
             </div>
             <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">カレンダーに自動登録されます</div>
         </div>
+
+        <!-- 休みの理由 -->
+        <div style="margin-top:16px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">comment</span>
+                お休みの理由（任意）
+            </label>
+            <input type="text" class="form-control" id="leave-reason" name="leave_reason"
+                   placeholder="例：発熱のため、通院のため、家族の都合のため">
+        </div>
     </div>
 
     <div class="form-group">
@@ -739,6 +749,7 @@ window.saveRecord = async function() {
         formData.append('leave_other_detail', leaveOther);
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
         formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
+        formData.append('leave_reason', document.getElementById('leave-reason')?.value || '');
         // Session 36: VAS 入力データ
         formData.append('vas_records', document.getElementById('vas-records-json')?.value || '[]');
 
@@ -800,6 +811,7 @@ window.saveRecord = async function() {
             document.getElementById('leave-date-start') && (document.getElementById('leave-date-start').value = '');
             document.getElementById('leave-date-end') && (document.getElementById('leave-date-end').value = '');
             document.getElementById('leave-other-detail') && (document.getElementById('leave-other-detail').value = '');
+            document.getElementById('leave-reason') && (document.getElementById('leave-reason').value = '');
             document.getElementById('leave-other-block') && (document.getElementById('leave-other-block').style.display = 'none');
             var lvBlock = document.getElementById('leave-form-block');
             var lvType = document.getElementById('leave-reporter-type');

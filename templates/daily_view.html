@@ -1310,6 +1310,7 @@
              data-content-raw="{{ r.content | e | replace('"', '&quot;') }}"
              data-leave-type="{{ r.leave_reporter_type or '' }}"
              data-leave-relation="{{ r.leave_reporter_relation or '' }}"
+             data-leave-reason="{{ r.leave_reason or '' }}"
              data-leave-date-start="{{ r.leave_date_start or '' }}"
              data-leave-date-end="{{ r.leave_date_end or '' }}">
             <div class="record-meta-row" onclick="openRecordModal('{{ r.id }}')" style="cursor:pointer;">
@@ -1369,11 +1370,7 @@
             {% if r.image_urls %}
             <div class="photo-grid">
                 {% for url in r.image_urls %}
-                {% if '.mp4' in url or '.mov' in url or '.webm' in url or '.avi' in url or '.m4v' in url %}
-                <video src="{{ url }}" controls playsinline style="width:100%;max-height:200px;border-radius:8px;display:block;"></video>
-                {% else %}
                 <img src="{{ url }}" alt="添付写真" style="cursor:zoom-in" onclick="openImageViewer('{{ url }}')">
-                {% endif %}
                 {% endfor %}
             </div>
             {% endif %}
@@ -1445,6 +1442,16 @@
                             <button type="button" class="leave-edit-rel-btn" data-leave-rel="夫" data-record-id="{{ r.id }}">夫</button>
                         </div>
                         <input type="text" id="leave-edit-rel-{{ r.id }}" class="form-control" placeholder="例: 義理の姉" style="margin-top:6px;">
+                    </div>
+                    <!-- 休みの理由 -->
+                    <div style="margin-top:10px;">
+                        <label style="font-size:0.78rem;font-weight:700;color:#5f6368;display:block;margin-bottom:4px;">
+                            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">comment</span>
+                            お休みの理由（任意）
+                        </label>
+                        <input type="text" id="leave-edit-reason-{{ r.id }}" class="form-control"
+                               placeholder="例：発熱のため、通院のため"
+                               value="{{ r.leave_reason or '' }}" style="font-size:0.85rem;">
                     </div>
                 </div>
                 {# Session 36: VAS 編集ブロック(編集モード時のみ表示)#}
@@ -1716,12 +1723,7 @@ async function loadUnreadRecords() {
                 if (r.image_urls && r.image_urls.length > 0) {
                     html += '<div class="dv-unread-record-photos">';
                     r.image_urls.forEach(function(u) {
-                        var eu = escapeAttr(u);
-                        if (u.match(/\.(mp4|mov|webm|avi|m4v)$/i)) {
-                            html += '<video src="' + eu + '" controls playsinline style="width:100%;max-height:160px;border-radius:6px;display:block;margin-bottom:4px;"></video>';
-                        } else {
-                            html += '<img src="' + eu + '" onclick="openImageViewer(\''+eu+'\')" alt="写真">';
-                        }
+                        html += '<img src="' + escapeAttr(u) + '" onclick="openImageViewer(\''+escapeAttr(u)+'\')" alt="写真">';
                     });
                     html += '</div>';
                 }
@@ -2040,12 +2042,7 @@ function renderUserMonthRecords() {
             if (data.ai_record.image_urls && data.ai_record.image_urls.length > 0) {
                 html += '<div class="photo-grid" style="margin-bottom:8px;">';
                 data.ai_record.image_urls.forEach(function(u) {
-                    var eu = escapeAttr(u);
-                    if (u.match(/\.(mp4|mov|webm|avi|m4v)$/i)) {
-                        html += '<video src="' + eu + '" controls playsinline style="width:100%;max-height:160px;border-radius:6px;display:block;"></video>';
-                    } else {
-                        html += '<img src="' + eu + '" onclick="openImageViewer(\'' + eu + '\')" alt="添付写真" style="cursor:zoom-in">';
-                    }
+                    html += '<img src="' + escapeAttr(u) + '" onclick="openImageViewer(\'' + escapeAttr(u) + '\')" alt="添付写真" style="cursor:zoom-in">';
                 });
                 html += '</div>';
             }
@@ -2460,6 +2457,10 @@ window.startEdit = function(id, content) {
     });
     // 関係性ブロックの表示は type=family のときだけ
     if (relBlock) relBlock.style.display = (curType === 'family') ? 'block' : 'none';
+    // 理由欄の初期値
+    var curReason = recordEl.getAttribute('data-leave-reason') || '';
+    var reasonInput = document.getElementById('leave-edit-reason-' + id);
+    if (reasonInput) reasonInput.value = curReason;
 };
 window.cancelEdit = function(id) {
     document.getElementById('edit-area-'+id).style.display = 'none';
@@ -2479,6 +2480,7 @@ window.saveEdit = async function(id) {
     if (category === '休み連絡') {
         const typeInput = document.getElementById('leave-edit-type-' + id);
         const relInput = document.getElementById('leave-edit-rel-' + id);
+        const reasonInput = document.getElementById('leave-edit-reason-' + id);
         const _type = typeInput ? typeInput.value : '';
         if (!_type) {
             alert('「誰から」を選択してください(本人 / 家族)');
@@ -2486,6 +2488,7 @@ window.saveEdit = async function(id) {
         }
         payload.leave_reporter_type = _type;
         payload.leave_reporter_relation = relInput ? relInput.value : '';
+        payload.leave_reason = reasonInput ? reasonInput.value.trim() : '';
         // 休み日付をペイロードに追加
         const startInput = document.getElementById('leave-edit-start-' + id);
         const endInput = document.getElementById('leave-edit-end-' + id);
@@ -3392,21 +3395,12 @@ async function loadDailySummary(userName, idx, dateStr) {
                 _grid.className = "photo-grid";
                 _grid.style.marginBottom = "8px";
                 data.image_urls.forEach(function(_u) {
-                    if (_u.match(/\.(mp4|mov|webm|avi|m4v)$/i)) {
-                        var _vid = document.createElement("video");
-                        _vid.src = _u;
-                        _vid.controls = true;
-                        _vid.setAttribute("playsinline", "");
-                        _vid.style.cssText = "width:100%;max-height:160px;border-radius:6px;display:block;";
-                        _grid.appendChild(_vid);
-                    } else {
-                        var _img = document.createElement("img");
-                        _img.src = _u;
-                        _img.alt = "添付写真";
-                        _img.style.cursor = "zoom-in";
-                        _img.onclick = (function(url) { return function() { openImageViewer(url); }; })(_u);
-                        _grid.appendChild(_img);
-                    }
+                    var _img = document.createElement("img");
+                    _img.src = _u;
+                    _img.alt = "添付写真";
+                    _img.style.cursor = "zoom-in";
+                    _img.onclick = (function(url) { return function() { openImageViewer(url); }; })(_u);
+                    _grid.appendChild(_img);
                 });
                 _card.insertBefore(_grid, ac);
             })();
@@ -3705,12 +3699,8 @@ window.speakSummary = function(idx, btn) {
         alert('AI要約を先に生成してください'); return;
     }
     var photoGrid = el.parentElement ? el.parentElement.querySelector('.photo-grid') : null;
-    if (photoGrid) {
-        var hasVideo = photoGrid.querySelectorAll('video').length > 0;
-        var hasPhoto = photoGrid.querySelectorAll('img').length > 0;
-        if (hasVideo && hasPhoto) text = '写真と動画があります。' + text;
-        else if (hasVideo) text = '動画があります。' + text;
-        else if (hasPhoto) text = '写真があります。' + text;
+    if (photoGrid && photoGrid.querySelectorAll('img').length > 0) {
+        text = '写真があります。' + text;
     }
     _tts_speaking = true;
     _tts_currentBtn = btn;
@@ -3749,18 +3739,6 @@ function _ttsAllPlayCurrent() {
     if (progress) {
         progress.textContent = item.name + '「' + (_ttsAllIndex + 1) + ' / ' + _ttsAllItems.length + '」';
     }
-    // 動画・写真の検出
-    (function() {
-        var el2 = document.getElementById('ai-content-' + item.idx);
-        var grid = el2 && el2.parentElement ? el2.parentElement.querySelector('.photo-grid') : null;
-        if (grid) {
-            var hasVid = grid.querySelectorAll('video').length > 0;
-            var hasPic = grid.querySelectorAll('img').length > 0;
-            if (hasVid && hasPic) item.text = '写真と動画があります。' + item.text;
-            else if (hasVid) item.text = '動画があります。' + item.text;
-            else if (hasPic) item.text = '写真があります。' + item.text;
-        }
-    })();
     var name = item.name.replace(/様$/, '').trim();
     var fullText = (name ? name + '様。' : '') + item.text;
     _ttsPlayText(fullText, function() {
