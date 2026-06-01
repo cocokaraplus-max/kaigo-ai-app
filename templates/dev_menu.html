@@ -471,6 +471,8 @@ async function updateDiscount(facilityCode) {
         }
     } catch(e) { alert('エラー: ' + e); }
 }
+
+async function editExpiry(facilityCode, currentExpiry) {
   const newExpiry = prompt('有効期限を入力してください（例: 2099-12-31）\n施設: ' + facilityCode, currentExpiry || '2099-12-31');
   if (!newExpiry) return;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(newExpiry)) {
