@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}開発者MENU マニュアル - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+.man-header {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border-radius: 14px; padding: 16px 20px;
+    margin-bottom: 1.2rem; color: #fff;
+    display: flex; align-items: center; gap: 12px;
+}
+.man-header .material-symbols-outlined { font-size: 28px; color: #9c27b0; }
+.man-header-title { font-size: 1rem; font-weight: 800; }
+.man-header-sub { font-size: 0.75rem; color: #b0b8c1; margin-top: 2px; }
+
+.man-intro {
+    font-size: 0.85rem; color: #3c4043; line-height: 1.7;
+    margin-bottom: 1rem;
+}
+.man-access {
+    background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 1.2rem; font-size: 0.8rem; color: #3c4043;
+}
+.man-access b { color: #202124; }
+.man-access .url { font-family: monospace; font-size: 0.76rem; color: #1a73e8; word-break: break-all; }
+
+.man-section {
+    background: #fff; border: 1.5px solid #e0e0e0;
+    border-radius: 14px; overflow: hidden; margin-bottom: 1rem;
+}
+.man-section-title {
+    background: #f8f9fa; padding: 12px 16px;
+    font-size: 0.85rem; font-weight: 700; color: #1a1a2e;
+    border-bottom: 1px solid #e0e0e0;
+}
+.man-section-body { padding: 14px 16px; font-size: 0.82rem; color: #3c4043; line-height: 1.7; }
+.man-section-body p { margin: 0 0 8px; }
+.man-label { font-weight: 700; color: #202124; }
+.man-section-body ul { margin: 6px 0 8px; padding-left: 1.2rem; }
+.man-section-body li { margin-bottom: 4px; }
+.man-section-body li b { color: #202124; }
+
+.man-note {
+    background: #fff8e1; border: 1px solid #ffe082; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 1rem;
+}
+.man-note-title { font-weight: 700; color: #8a6d00; font-size: 0.85rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.man-note ul { margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #5f4b00; line-height: 1.7; }
+.man-note li { margin-bottom: 4px; }
+
+.man-back-btn {
+    width: 100%; padding: 12px; border-radius: 10px;
+    border: 1.5px solid #9c27b0; background: #fff;
+    color: #9c27b0; font-size: 0.85rem; font-weight: 700;
+    cursor: pointer; margin-top: 0.5rem;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="man-header">
+    <span class="material-symbols-outlined">menu_book</span>
+    <div>
+        <div class="man-header-title">開発者MENU 操作マニュアル</div>
+        <div class="man-header-sub">TASUKARU 管理コンソール</div>
+    </div>
+</div>
+
+<div class="man-intro">
+    このマニュアルは、運営者向け管理コンソール「開発者MENU」の操作手順をまとめたものです。施設の契約状態・プラン・割引・有効期限など、課金や利用可否に直結する操作を扱います。
+</div>
+
+<div class="man-access">
+    <b>アクセス方法</b> — ブラウザで対象環境の URL の末尾に <span class="url">/dev</span> を付けて開きます（開発者ログインが必要）。<br>
+    ・開発・検証環境：<span class="url">https://tasukaru-dev-(略).run.app/dev</span><br>
+    ・本番環境：<span class="url">https://tasukaru-(略).run.app/dev</span><br>
+    画面は上から順に8つのセクションで構成されています。
+</div>
+
+<!-- 1 -->
+<div class="man-section">
+    <div class="man-section-title">セクション1｜ランタイム情報</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> 現在の稼働状態を確認する（表示専用、操作なし）。</p>
+        <p class="man-label">表示内容：</p>
+        <ul>
+            <li><b>Python</b> … アプリ実行環境のバージョン</li>
+            <li><b>現在のログイン施設</b> … いまログイン中の施設コード</li>
+            <li><b>登録施設数</b> … 登録されている施設の総数</li>
+            <li><b>現在時刻（JST）</b> … 日本時間の時計（1秒ごとに更新）</li>
+        </ul>
+    </div>
+</div>
+
+<!-- 2 -->
+<div class="man-section">
+    <div class="man-section-title">セクション2｜環境変数ステータス</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> アプリ動作に必要な設定値が登録されているかを確認する。</p>
+        <p><span class="man-label">見方：</span> 設定名ごとに ✅（設定済み）／❌（未設定）が並びます。決済など特定機能が動かないときは、まずここで関連する設定が ❌ になっていないか確認します。</p>
+        <p><span class="man-label">注意：</span> この画面は確認専用で、値の変更はできません。修正はサーバー（Cloud Run）側の環境変数設定で行います。</p>
+    </div>
+</div>
+
+<!-- 3 -->
+<div class="man-section">
+    <div class="man-section-title">セクション3｜施設一覧</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> 施設ごとのプラン・契約・割引・有効期限などを操作する（最も使用頻度が高いセクション）。</p>
+        <p><span class="man-label">操作前の確認：</span> 項目が多く表は横に長いため、横スクロールで右側の列を表示します。操作前に施設名・施設コードで対象施設を必ず確認してください。</p>
+        <p class="man-label">各列の操作：</p>
+        <ul>
+            <li><b>施設名／施設コード</b> … 対象施設の識別情報（表示）</li>
+            <li><b>状態</b> … 稼働中／停止のバッジ（表示）</li>
+            <li><b>プラン</b> … プルダウンで選択。選んだ時点で即時反映</li>
+            <li><b>契約</b> … 月払い／1年／2年／3年などの契約期間（表示）</li>
+            <li><b>モニター</b> … チェックボックス。チェックした時点で即時反映</li>
+            <li><b>割引</b> … 割引率（なし/20/30/50%）→ 期限（空欄で無期限）→「保存」ボタンの順。保存ボタンを押すまで反映されない</li>
+            <li><b>有効期限</b> … 日付をクリックして YYYY-MM-DD 形式で入力。形式違いはエラー</li>
+            <li><b>利用者／スタッフ／記録数</b> … 各件数（表示）</li>
+            <li><b>出納帳</b> … チェックボックスで施設ごとにON/OFF（確認ダイアログあり）</li>
+        </ul>
+        <p><span class="man-label">注意：</span> 割引のみ保存ボタンが必要です。プラン・モニター・出納帳は選択／チェックした時点で反映されます。</p>
+    </div>
+</div>
+
+<!-- 4 -->
+<div class="man-section">
+    <div class="man-section-title">セクション4｜直近の記録アクティビティ</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> 最新20件の記録ログ（時刻・施設コード・利用者名・スタッフ名）を確認する（表示専用）。記録が正しく保存されているかの確認に使います。</p>
+    </div>
+</div>
+
+<!-- 5 -->
+<div class="man-section">
+    <div class="man-section-title">セクション5｜Claude閲覧許可</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> Claude に一時的にアプリ画面を見せ、不具合確認や改善提案を受ける。</p>
+        <p><span class="man-label">操作：</span> 「閲覧URLを発行する」を押すと、30分間有効な閲覧URLが生成され、クリップボードにコピーされます。</p>
+        <p><span class="man-label">注意：</span> URL は30分で自動失効します。第三者に渡らないよう取り扱いに注意してください。</p>
+    </div>
+</div>
+
+<!-- 6 -->
+<div class="man-section">
+    <div class="man-section-title">セクション6｜開発ツール</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> 運用補助の各操作。</p>
+        <ul>
+            <li><b>全セッションクリア</b> … 全スタッフのログインを一斉解除（確認ダイアログあり）</li>
+            <li><b>管理者MENUへ</b> … 管理者画面に移動</li>
+            <li><b>データ再読み込み</b> … 画面を最新状態に更新</li>
+            <li><b>施設コードをコピー</b> … ログイン中の施設コードをコピー</li>
+        </ul>
+    </div>
+</div>
+
+<!-- 7 -->
+<div class="man-section">
+    <div class="man-section-title">セクション7｜AI要約 読み上げ機能（ON/OFF）</div>
+    <div class="man-section-body">
+        <p><span class="man-label">目的：</span> AI要約の音声読み上げを施設別にON/OFFする。声の種類・速度は管理者MENUの設定タブで変更します。</p>
+    </div>
+</div>
+
+<!-- 8 -->
+<div class="man-section">
+    <div class="man-section-title">セクション8｜ログアウト</div>
+    <div class="man-section-body">
+        <p>「開発者MENUからログアウト」で開発者MENUを終了し、管理者画面に戻ります。</p>
+    </div>
+</div>
+
+<!-- 注意 -->
+<div class="man-note">
+    <div class="man-note-title"><span class="material-symbols-outlined" style="font-size:18px;">warning</span>運用上の注意</div>
+    <ul>
+        <li>本番環境では課金・利用可否に直結します。操作前に施設コードを必ず確認してください。</li>
+        <li>割引は「保存」ボタンを押すまで反映されません（他の項目は即時反映）。</li>
+        <li>環境変数の ❌ はこの画面では修正できません（サーバー側設定が必要）。</li>
+        <li>DEMO001 はテスト用のダミー施設です。本番運用開始前に、テストで設定した契約データ・割引を整理してください。</li>
+    </ul>
+</div>
+
+<button class="man-back-btn" onclick="location.href='/dev'">
+    <span class="material-symbols-outlined">arrow_back</span>
+    開発者MENUに戻る
+</button>
+{% endblock %}

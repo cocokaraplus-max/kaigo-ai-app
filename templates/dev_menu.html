@@ -27,7 +27,8 @@
 .dev-section-body { padding: 14px 16px; }
 
 /* 施設テーブル */
-.dev-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.dev-table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 0.78rem; white-space: nowrap; }
+.dev-table .fac-name { font-weight: 700; white-space: nowrap; }
 .dev-table th {
     background: #f0f0f0; padding: 8px 10px;
     text-align: left; font-weight: 700; color: #5f6368;
@@ -162,6 +163,7 @@
                     <th>プラン</th>
                     <th>契約</th>
                     <th>モニター</th>
+                    <th>割引</th>
                     <th>有効期限</th>
                     <th>利用者</th>
                     <th>スタッフ</th>
@@ -172,7 +174,7 @@
             <tbody>
                 {% for s in stats %}
                 <tr>
-                    <td><b>{{ s.facility_name }}</b></td>
+                    <td class="fac-name">{{ s.facility_name }}</td>
                     <td style="font-family:monospace;font-size:0.72rem;">{{ s.facility_code }}</td>
                     <td>
                         {% if s.is_active %}
@@ -203,6 +205,21 @@
                             <input type="checkbox" onchange="toggleMonitor('{{ s.facility_code }}', this.checked)"
                                 {% if s.is_monitor %}checked{% endif %}>
                         </label>
+                    </td>
+                    <td style="text-align:center;white-space:nowrap;">
+                        <select id="disc-rate-{{ s.facility_code }}"
+                            style="font-size:0.75rem;padding:2px 4px;border-radius:6px;border:1px solid #e0e0e0;">
+                            <option value="0" {% if not s.discount_rate %}selected{% endif %}>なし</option>
+                            <option value="0.2" {% if s.discount_rate == 0.2 %}selected{% endif %}>20%</option>
+                            <option value="0.3" {% if s.discount_rate == 0.3 %}selected{% endif %}>30%</option>
+                            <option value="0.5" {% if s.discount_rate == 0.5 %}selected{% endif %}>50%</option>
+                        </select>
+                        <input type="date" id="disc-until-{{ s.facility_code }}"
+                            value="{{ s.discount_until }}"
+                            title="割引の期限（空欄で無期限）"
+                            style="font-size:0.7rem;padding:2px;border-radius:6px;border:1px solid #e0e0e0;width:120px;">
+                        <button onclick="updateDiscount('{{ s.facility_code }}')"
+                            style="font-size:0.7rem;padding:2px 8px;border-radius:6px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;cursor:pointer;">保存</button>
                     </td>
                     <td>
                         <span style="cursor:pointer;text-decoration:underline;color:#1a73e8;" 
@@ -273,6 +290,10 @@
             <div class="dev-action-btn" onclick="copyFacilityCode()">
                 <span class="material-symbols-outlined">content_copy</span>
                 施設コードをコピー
+            </div>
+            <div class="dev-action-btn" onclick="location.href='/dev/manual'">
+                <span class="material-symbols-outlined">menu_book</span>
+                マニュアルを開く
             </div>
         </div>
     </div>
@@ -433,6 +454,26 @@ async function toggleMonitor(facilityCode, isMonitor) {
         });
         const data = await res.json();
         if (data.status !== 'success') alert('更新失敗: ' + (data.message || ''));
+    } catch(e) { alert('エラー: ' + e); }
+}
+
+async function updateDiscount(facilityCode) {
+    const rate = document.getElementById('disc-rate-' + facilityCode).value;
+    const until = document.getElementById('disc-until-' + facilityCode).value;
+    try {
+        const res = await fetch('/api/dev/update_discount', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({facility_code: facilityCode, discount_rate: rate, discount_until: until})
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const label = rate === '0' ? '割引なし' : (parseFloat(rate) * 100) + '%割引';
+            alert('✅ ' + facilityCode + ' を「' + label + '」' + (until ? '（' + until + 'まで）' : '（無期限）') + 'に更新しました');
+        } else {
+            alert('更新失敗: ' + (data.message || ''));
+        }
     } catch(e) { alert('エラー: ' + e); }
 }
 

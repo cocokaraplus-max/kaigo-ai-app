@@ -6216,6 +6216,12 @@ def dev_login():
             error = '開発者パスワードが違います。'
     return render_template('dev_login.html', error=error)
 
+@app.route('/dev/manual')
+@login_required
+def dev_manual():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("dev_login"))
+    return render_template('dev_manual.html')
 @app.route('/dev')
 @login_required
 def dev_menu():
@@ -6227,7 +6233,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at").execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until").execute()
         facilities = res.data or []
     except: pass
 
@@ -6258,6 +6264,8 @@ def dev_menu():
                 "is_monitor": fac.get("is_monitor", False),
                 "contract_term": fac.get("contract_term", 0),
                 "trial_ends_at": fac.get("trial_ends_at", "")[:10] if fac.get("trial_ends_at") else "",
+                "discount_rate": fac.get("discount_rate", 0) or 0,
+                "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -6329,6 +6337,32 @@ def api_dev_toggle_monitor():
         is_monitor = data.get("is_monitor", False)
         supabase = get_supabase()
         supabase.table("facilities").update({"is_monitor": is_monitor}).eq("facility_code", facility_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/dev/update_discount', methods=['POST'])
+@login_required
+def api_dev_update_discount():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    try:
+        data = request.json
+        facility_code = data.get("facility_code")
+        if not facility_code:
+            return jsonify({"status": "error", "message": "facility_code required"}), 400
+        # discount_rate は 0 / 0.2 / 0.3 / 0.5 のみ許可（誤割引防止）
+        try:
+            rate = round(float(data.get("discount_rate", 0) or 0), 2)
+        except (ValueError, TypeError):
+            rate = 0
+        if rate not in (0, 0.2, 0.3, 0.5):
+            return jsonify({"status": "error", "message": "discount_rate must be 0/0.2/0.3/0.5"}), 400
+        # discount_until は空なら無期限(None)、あれば日付文字列
+        until = (data.get("discount_until") or "").strip()
+        update_data = {"discount_rate": rate, "discount_until": until if until else None}
+        supabase = get_supabase()
+        supabase.table("facilities").update(update_data).eq("facility_code", facility_code).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -9175,25 +9209,86 @@ def stripe_create_checkout():
         return jsonify({"error": "not logged in"}), 401
     stripe.api_key = get_secret("STRIPE_SECRET_KEY")
     data = request.get_json()
-    plan = data.get("plan", "starter")
-    term = data.get("term", "monthly")
+    plan = (data.get("plan") or "starter").lower()
+    term = (data.get("term") or "monthly").lower()
     base_url = request.host_url.rstrip("/")
-    if term == "monthly":
-        env_key = "STRIPE_PRICE_" + plan.upper() + "_M"
-    else:
-        env_key = "STRIPE_PRICE_" + plan.upper() + "_" + term.upper()
+
+    # --- プラン妥当性チェック ---
+    if plan not in ("starter", "standard", "pro"):
+        return jsonify({"error": "invalid plan: " + plan}), 400
+
+    # --- term → (環境変数サフィックス, 決済モード) の明示マッピング ---
+    # _M系=毎月課金(subscription) / _L系=一括(payment)
+    TERM_MAP = {
+        "monthly": ("M",    "subscription"),
+        "1y_m":    ("1Y_M", "subscription"),
+        "1y_l":    ("1Y_L", "payment"),
+        "2y_m":    ("2Y_M", "subscription"),
+        "2y_l":    ("2Y_L", "payment"),
+        "3y_m":    ("3Y_M", "subscription"),
+        "3y_l":    ("3Y_L", "payment"),
+    }
+    if term not in TERM_MAP:
+        return jsonify({"error": "invalid term: " + term}), 400
+    suffix, checkout_mode = TERM_MAP[term]
+
+    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
     price_id = get_secret(env_key)
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
+
+    # --- 任意割引クーポンの自動適用判定 ---
+    # facilities.discount_rate（0.5/0.3/0.2）と discount_until（期限・空なら無期限）を見る
+    discounts = None
+    applied_discount_rate = 0
     try:
-        checkout = stripe.checkout.Session.create(
-            mode="subscription",
+        supabase = get_supabase()
+        fres = supabase.table("facilities").select(
+            "discount_rate,discount_until"
+        ).eq("facility_code", f_code).execute()
+        if fres.data:
+            d_rate = fres.data[0].get("discount_rate") or 0
+            d_until = fres.data[0].get("discount_until")
+            in_period = True
+            if d_until not in (None, "", "None"):
+                try:
+                    du = datetime.fromisoformat(str(d_until).replace("Z", "+00:00"))
+                    in_period = du >= datetime.now(timezone.utc)
+                except (ValueError, TypeError):
+                    in_period = True  # 日付が壊れていても割引は活かす（安全側はユーザー利益）
+            if d_rate and in_period:
+                coupon_map = {0.5: "STRIPE_COUPON_50", 0.3: "STRIPE_COUPON_30", 0.2: "STRIPE_COUPON_20"}
+                coupon_env = coupon_map.get(round(float(d_rate), 2))
+                if coupon_env:
+                    coupon_id = get_secret(coupon_env)
+                    if coupon_id:
+                        discounts = [{"coupon": coupon_id}]
+                        applied_discount_rate = d_rate
+                    else:
+                        print("[Stripe] coupon env not set: " + coupon_env, flush=True)
+                else:
+                    # 想定外の割引率は誤割引防止のため適用しない
+                    print("[Stripe] unsupported discount_rate (skipped): " + str(d_rate), flush=True)
+    except Exception as e:
+        print("[Stripe] discount lookup error: " + str(e), flush=True)
+
+    try:
+        params = dict(
+            mode=checkout_mode,
             line_items=[{"price": price_id, "quantity": 1}],
             success_url=base_url + "/pricing?stripe=success",
             cancel_url=base_url + "/pricing?stripe=cancel",
-            metadata={"facility_code": f_code, "plan": plan, "term": term},
+            metadata={
+                "facility_code": f_code,
+                "plan": plan,
+                "term": term,
+                "discount_rate": str(applied_discount_rate),
+            },
             locale="ja",
         )
+        if discounts:
+            params["discounts"] = discounts
+        checkout = stripe.checkout.Session.create(**params)
         return jsonify({"url": checkout.url})
     except Exception as e:
         print("[Stripe] checkout error: " + str(e), flush=True)
@@ -9216,25 +9311,67 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session_obj = event["data"]["object"]
-        f_code = session_obj.get("metadata", {}).get("facility_code")
-        plan = session_obj.get("metadata", {}).get("plan", "basic")
+        # Stripeオブジェクトはdict()変換でKeyErrorになることがあるため、
+        # to_dict()→JSON経由で確実にプレーンな辞書へ変換する
+        def _to_plain_dict(obj):
+            try:
+                return json.loads(json.dumps(obj.to_dict()))
+            except Exception:
+                pass
+            try:
+                return json.loads(json.dumps(dict(obj)))
+            except Exception:
+                pass
+            return {}
+        session_data = _to_plain_dict(session_obj)
+        meta = session_data.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        f_code = meta.get("facility_code")
+        plan = meta.get("plan", "starter")
+        term = meta.get("term", "monthly")
+        try:
+            discount_rate = float(meta.get("discount_rate", 0) or 0)
+        except (ValueError, TypeError):
+            discount_rate = 0
         if f_code:
             try:
                 supabase = get_supabase()
-                from datetime import datetime, timedelta
-                expires = (datetime.now() + timedelta(days=30)).isoformat()
-                supabase.table("facilities").update({
+                from datetime import datetime, timedelta, timezone
+                # 契約期間から有効期限を算出（月払い単月=30日、年契約=年数ぶん）
+                TERM_DAYS = {
+                    "monthly": 30,
+                    "1y_m": 365, "1y_l": 365,
+                    "2y_m": 730, "2y_l": 730,
+                    "3y_m": 1095, "3y_l": 1095,
+                }
+                days = TERM_DAYS.get(term, 30)
+                now = datetime.now(timezone.utc)
+                contract_end = now + timedelta(days=days)
+                # 契約年数（違約金計算等で参照）
+                TERM_YEARS = {"1y_m": 1, "1y_l": 1, "2y_m": 2, "2y_l": 2, "3y_m": 3, "3y_l": 3}
+                contract_term_years = TERM_YEARS.get(term, 0)
+                payment_type = "lump" if term.endswith("_l") else "monthly"
+
+                update_data = {
                     "is_active": True,
                     "plan": plan,
-                    "expires_at": expires,
-                    "stripe_subscription_id": session_obj.get("subscription")
-                }).eq("facility_code", f_code).execute()
-                print(f"[Stripe] facility {f_code} activated (plan={plan})", flush=True)
+                    "expires_at": contract_end.isoformat(),
+                    "contract_start": now.date().isoformat(),
+                    "contract_end": contract_end.date().isoformat(),
+                    "contract_term": contract_term_years,
+                    "payment_type": payment_type,
+                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_customer_id": session_data.get("customer"),
+                }
+                supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
+                print(f"[Stripe] facility {f_code} activated (plan={plan}, term={term})", flush=True)
                 line_notify_admin(
                     "\n".join([
                         "【TASUKARU】新規契約",
                         "施設コード: " + f_code,
                         "プラン: " + plan,
+                        "契約: " + term + ("（割引" + str(int(discount_rate*100)) + "%）" if discount_rate else ""),
                         "",
                         "Stripeダッシュボードで確認してください。",
                     ])
