@@ -852,7 +852,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 
     <!-- 目標達成状況 -->
     {% if items.get('goals', true) %}
-    {% set care = cm.care_level if cm else '' %}
+    {% set care = (cm.care_level if cm else '') or '' %}
     {% set is_kaigo = care.startswith('要介護') %}
     <div class="rep-goals-row">
         <div class="rep-goal-box">
