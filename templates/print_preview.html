@@ -946,6 +946,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set show_grip = items.get('grip', true) %}
         {% set show_tug = items.get('tug', true) %}
         {% set show_cs30 = items.get('cs30', true) %}
+        {% set show_balance = items.get('balance', true) %}
         {% if weights and show_weight %}
         <div class="tmpl4-graph-item">
           <div class="tmpl4-graph-header">
@@ -998,6 +999,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <span>{{ first_fit.sit_stand_30sec }}</span><span>→</span><span>{{ last_fit.sit_stand_30sec }}</span>
           </div>
         </div>
+        {% endif %}
+        {% if (last_fit.get('standing_balance_right') or last_fit.get('standing_balance_left')) and show_balance %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">片脚立位(秒)</span>
+            <span class="tmpl4-graph-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span>
+          </div>
         {% endif %}
         {% endif %}
         {% if not weights and not fitness %}
@@ -1074,16 +1082,19 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_grip = items.get('grip', true) %}
     {% set show_tug = items.get('tug', true) %}
     {% set show_cs30 = items.get('cs30', true) %}
+    {% set show_balance = items.get('balance', true) %}
     {# 6ヶ月で一度も値がない項目は非表示判定 #}
     {% set has_any_weight = weights | selectattr('weight_kg') | list | length > 0 %}
     {% set has_any_grip   = fitness | selectattr('grip_right') | list | length > 0 if fitness else false %}
     {% set has_any_tug    = fitness | selectattr('tug_sec') | list | length > 0 if fitness else false %}
     {% set has_any_cs30   = fitness | selectattr('sit_stand_30sec') | list | length > 0 if fitness else false %}
+    {% set has_any_balance = fitness | selectattr('standing_balance_right') | list | length > 0 if fitness else false %}
     {% set show_weight_final = show_weight and has_any_weight %}
     {% set show_grip_final   = show_grip and has_any_grip %}
     {% set show_tug_final    = show_tug and has_any_tug %}
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
-    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final %}
+    {% set show_balance_final = show_balance and has_any_balance %}
+    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_balance_final %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
@@ -1126,6 +1137,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div class="rep-fitness-chart-label">CS-30(回)</div>
             <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_balance_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
+            <div class="rep-fitness-chart-value" style="margin-top:auto;">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
         {% endif %}
