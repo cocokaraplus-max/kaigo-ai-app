@@ -20,7 +20,9 @@ import base64
 import json
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "tasuk***********************************")
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError("SECRET_KEY が設定されていません。環境変数を確認してください。")
 
 # ===== Session persistence for PWA/mobile =====
 # Keep users logged in across browser restarts (up to 30 days)
@@ -618,10 +620,16 @@ def login():
                     if not fac_data.get("is_active", True):
                         error = "この施設コードは無効です。"
                     else:
-                        expires = datetime.fromisoformat(
-                            str(fac_data.get("expires_at", "")).replace("Z", "+00:00")
-                        )
-                        if expires < datetime.now(timezone.utc):
+                        expires_raw = fac_data.get("expires_at")
+                        expires = None
+                        if expires_raw not in (None, "", "None"):
+                            try:
+                                expires = datetime.fromisoformat(
+                                    str(expires_raw).replace("Z", "+00:00")
+                                )
+                            except (ValueError, TypeError):
+                                expires = None
+                        if expires is not None and expires < datetime.now(timezone.utc):
                             error = "この施設コードの有効期限が切れています。"
                         else:
                             import hashlib
