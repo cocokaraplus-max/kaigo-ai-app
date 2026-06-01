@@ -6227,7 +6227,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at").execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until").execute()
         facilities = res.data or []
     except: pass
 
@@ -6258,6 +6258,8 @@ def dev_menu():
                 "is_monitor": fac.get("is_monitor", False),
                 "contract_term": fac.get("contract_term", 0),
                 "trial_ends_at": fac.get("trial_ends_at", "")[:10] if fac.get("trial_ends_at") else "",
+                "discount_rate": fac.get("discount_rate", 0) or 0,
+                "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -6329,6 +6331,32 @@ def api_dev_toggle_monitor():
         is_monitor = data.get("is_monitor", False)
         supabase = get_supabase()
         supabase.table("facilities").update({"is_monitor": is_monitor}).eq("facility_code", facility_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/dev/update_discount', methods=['POST'])
+@login_required
+def api_dev_update_discount():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    try:
+        data = request.json
+        facility_code = data.get("facility_code")
+        if not facility_code:
+            return jsonify({"status": "error", "message": "facility_code required"}), 400
+        # discount_rate は 0 / 0.2 / 0.3 / 0.5 のみ許可（誤割引防止）
+        try:
+            rate = round(float(data.get("discount_rate", 0) or 0), 2)
+        except (ValueError, TypeError):
+            rate = 0
+        if rate not in (0, 0.2, 0.3, 0.5):
+            return jsonify({"status": "error", "message": "discount_rate must be 0/0.2/0.3/0.5"}), 400
+        # discount_until は空なら無期限(None)、あれば日付文字列
+        until = (data.get("discount_until") or "").strip()
+        update_data = {"discount_rate": rate, "discount_until": until if until else None}
+        supabase = get_supabase()
+        supabase.table("facilities").update(update_data).eq("facility_code", facility_code).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
