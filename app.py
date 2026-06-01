@@ -6216,6 +6216,12 @@ def dev_login():
             error = '開発者パスワードが違います。'
     return render_template('dev_login.html', error=error)
 
+@app.route('/dev/manual')
+@login_required
+def dev_manual():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("dev_login"))
+    return render_template('dev_manual.html')
 @app.route('/dev')
 @login_required
 def dev_menu():

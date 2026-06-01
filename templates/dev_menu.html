@@ -27,7 +27,8 @@
 .dev-section-body { padding: 14px 16px; }
 
 /* 施設テーブル */
-.dev-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.dev-table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 0.78rem; white-space: nowrap; }
+.dev-table .fac-name { font-weight: 700; white-space: nowrap; }
 .dev-table th {
     background: #f0f0f0; padding: 8px 10px;
     text-align: left; font-weight: 700; color: #5f6368;
@@ -173,7 +174,7 @@
             <tbody>
                 {% for s in stats %}
                 <tr>
-                    <td><b>{{ s.facility_name }}</b></td>
+                    <td class="fac-name">{{ s.facility_name }}</td>
                     <td style="font-family:monospace;font-size:0.72rem;">{{ s.facility_code }}</td>
                     <td>
                         {% if s.is_active %}
@@ -289,6 +290,10 @@
             <div class="dev-action-btn" onclick="copyFacilityCode()">
                 <span class="material-symbols-outlined">content_copy</span>
                 施設コードをコピー
+            </div>
+            <div class="dev-action-btn" onclick="location.href='/dev/manual'">
+                <span class="material-symbols-outlined">menu_book</span>
+                マニュアルを開く
             </div>
         </div>
     </div>
