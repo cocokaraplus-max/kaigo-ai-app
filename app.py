@@ -9277,7 +9277,12 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session_obj = event["data"]["object"]
-        meta = session_obj.get("metadata", {}) or {}
+        # Stripeオブジェクトはdictではないため、辞書化してから扱う
+        try:
+            session_data = dict(session_obj)
+        except (TypeError, ValueError):
+            session_data = session_obj
+        meta = dict(session_data.get("metadata") or {})
         f_code = meta.get("facility_code")
         plan = meta.get("plan", "starter")
         term = meta.get("term", "monthly")
@@ -9312,8 +9317,8 @@ def stripe_webhook():
                     "contract_end": contract_end.date().isoformat(),
                     "contract_term": contract_term_years,
                     "payment_type": payment_type,
-                    "stripe_subscription_id": session_obj.get("subscription"),
-                    "stripe_customer_id": session_obj.get("customer"),
+                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_customer_id": session_data.get("customer"),
                 }
                 supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
                 print(f"[Stripe] facility {f_code} activated (plan={plan}, term={term})", flush=True)
