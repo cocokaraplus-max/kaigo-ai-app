@@ -9277,12 +9277,22 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session_obj = event["data"]["object"]
-        # Stripeオブジェクトはdictではないため、辞書化してから扱う
-        try:
-            session_data = dict(session_obj)
-        except (TypeError, ValueError):
-            session_data = session_obj
-        meta = dict(session_data.get("metadata") or {})
+        # Stripeオブジェクトはdict()変換でKeyErrorになることがあるため、
+        # to_dict()→JSON経由で確実にプレーンな辞書へ変換する
+        def _to_plain_dict(obj):
+            try:
+                return json.loads(json.dumps(obj.to_dict()))
+            except Exception:
+                pass
+            try:
+                return json.loads(json.dumps(dict(obj)))
+            except Exception:
+                pass
+            return {}
+        session_data = _to_plain_dict(session_obj)
+        meta = session_data.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
         f_code = meta.get("facility_code")
         plan = meta.get("plan", "starter")
         term = meta.get("term", "monthly")
