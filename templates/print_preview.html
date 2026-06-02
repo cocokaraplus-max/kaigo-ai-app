@@ -122,6 +122,19 @@ body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
 /* 体力測定レーダーチャート */
 .rep-radar-wrap { width: 100%; max-width: 95mm; margin: 0 auto 2mm; }
 .rep-radar-canvas { width: 100% !important; height: 75mm !important; }
+.rep-radar-wrap { display: flex; gap: 4mm; align-items: stretch; }
+.rep-radar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rep-weight-bar { flex: 0 0 16mm; display: flex; flex-direction: column; }
+.rep-weight-bar-title { font-size: 6.5pt; color: #888; margin-bottom: 1mm; }
+.rep-weight-bar-plot { flex: 1; display: flex; align-items: flex-end; justify-content: space-around; gap: 1mm; border-left: 0.5px solid #bbb; border-bottom: 0.5px solid #bbb; padding: 0 1mm; min-height: 40mm; }
+.rep-weight-bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.rep-weight-bar-val { font-size: 6pt; color: #555; margin-bottom: 0.5mm; }
+.rep-weight-bar-fill { width: 4mm; background: #378ADD; border-radius: 1px 1px 0 0; }
+body.mono .rep-weight-bar-fill { background: #555; }
+.rep-weight-bar-month { font-size: 5.5pt; color: #999; margin-top: 0.5mm; }
+.rep-radar-values { font-size: 7pt; color: #333; line-height: 1.6; margin-top: 2mm; display: flex; flex-wrap: wrap; gap: 2mm 8px; }
+.rep-radar-value-item { white-space: nowrap; }
+.rep-radar-value-item .rrv-label { font-weight: 700; color: #555; }
 .rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1mm; padding-top: 1mm; border-top: 1px solid #eee; }
 .graph-col .rep-radar-wrap { max-width: 100%; }
 .graph-col .rep-radar-canvas { height: 62mm !important; }
@@ -1259,8 +1272,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% if is_radar %}
     <div class="rep-radar-wrap">
-        <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+        <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
     </div>
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
@@ -1310,8 +1323,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
             </div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
@@ -1344,8 +1357,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
             </div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
@@ -1914,17 +1927,17 @@ function valueToLevel(value, norm) {
 // レーダー軸の定義: キー・ラベル・基準・トグル名
 function radarAxisDefs(norms) {
     return [
-        { key:'grip_right', label:'握力(右)', norm:norms.grip, toggle:'grip' },
-        { key:'grip_left',  label:'握力(左)', norm:norms.grip, toggle:'grip' },
-        { key:'standing_balance_right', label:'片脚立位(右)', norm:norms.balance, toggle:'balance' },
-        { key:'standing_balance_left',  label:'片脚立位(左)', norm:norms.balance, toggle:'balance' },
-        { key:'tug_sec', label:'TUG', norm:norms.tug, toggle:'tug' },
-        { key:'walk_5m_sec', label:'5m歩行(通常)', norm:norms.walk_normal, toggle:'walk' },
-        { key:'walk_5m_max_sec', label:'5m歩行(最大)', norm:norms.walk_max, toggle:'walk_max' }
+        { key:'grip_right', label:'握力(右)', norm:norms.grip, toggle:'grip', unit:'kg' },
+        { key:'grip_left',  label:'握力(左)', norm:norms.grip, toggle:'grip', unit:'kg' },
+        { key:'standing_balance_right', label:'片脚立位(右)', norm:norms.balance, toggle:'balance', unit:'秒' },
+        { key:'standing_balance_left',  label:'片脚立位(左)', norm:norms.balance, toggle:'balance', unit:'秒' },
+        { key:'tug_sec', label:'TUG', norm:norms.tug, toggle:'tug', unit:'秒' },
+        { key:'walk_5m_sec', label:'5m歩行(通常)', norm:norms.walk_normal, toggle:'walk', unit:'秒' },
+        { key:'walk_5m_max_sec', label:'5m歩行(最大)', norm:norms.walk_max, toggle:'walk_max', unit:'秒' }
     ];
 }
 // レーダー描画(elId, fitness配列, gender)
-function drawFitnessRadar(elId, fitness, gender) {
+function drawFitnessRadar(elId, fitness, gender, weights) {
     var el = document.getElementById(elId);
     if (!el || !window.Chart || !fitness || fitness.length === 0) return;
     var norms = normsForGender(gender);
@@ -1939,8 +1952,20 @@ function drawFitnessRadar(elId, fitness, gender) {
     });
     if (defs.length < 3) return; // 軸が2以下ではレーダーにならない
     var axes  = defs.map(function(d){ return d.label; });
-    var first = defs.map(function(d){ return valueToLevel(fitness[0][d.key], d.norm); });
-    var last  = defs.map(function(d){ return valueToLevel(fitness[fitness.length-1][d.key], d.norm); });
+    // 前回 vs 今回（今回=最新、前回=最新の1つ前）
+    var prevIdx = fitness.length >= 2 ? fitness.length - 2 : 0;
+    var currIdx = fitness.length - 1;
+    var first = defs.map(function(d){ return valueToLevel(fitness[prevIdx][d.key], d.norm); });
+    var last  = defs.map(function(d){ return valueToLevel(fitness[currIdx][d.key], d.norm); });
+    // 測定月ラベル（YYYY-MM-DD → ○月）
+    function radarMonthLabel(idx) {
+        var md = fitness[idx] && fitness[idx].measured_date ? fitness[idx].measured_date : '';
+        var m = md.slice(5, 7);
+        if (!m) return '';
+        return (m.charAt(0) === '0' ? m.charAt(1) : m) + '月';
+    }
+    var prevLabel = radarMonthLabel(prevIdx);
+    var currLabel = radarMonthLabel(currIdx);
     var shadow = defs.map(function(){ return 3; });
     var isMono = !isColor;
     var lastColor = isMono ? '#000' : '#1d9e75';
@@ -1951,14 +1976,14 @@ function drawFitnessRadar(elId, fitness, gender) {
     var datasets = [
         { label:'標準域', data:shadow, borderColor:shadowLine, borderWidth:1,
           backgroundColor:shadowFill, pointRadius:0, fill:true },
-        { label:'初回', data:first, borderColor:firstColor, borderDash:[4,3], borderWidth:1.3,
+        { label:(prevLabel || '前回'), data:first, borderColor:firstColor, borderDash:[4,3], borderWidth:1.3,
           backgroundColor:'rgba(136,136,136,0.05)', pointRadius:2, pointBackgroundColor:firstColor, fill:false }
     ];
     if (fitness.length > 1) {
-        datasets.push({ label:'最新', data:last, borderColor:lastColor, borderWidth:2,
+        datasets.push({ label:(currLabel || '今回'), data:last, borderColor:lastColor, borderWidth:2,
           backgroundColor:lastFill, pointRadius:2.5, pointBackgroundColor:lastColor, fill:true });
     } else {
-        datasets[1].label = '測定値';
+        datasets[1].label = (currLabel || '測定値');
     }
     new Chart(el, {
         type: 'radar',
@@ -1973,6 +1998,76 @@ function drawFitnessRadar(elId, fitness, gender) {
             animation: false
         }
     });
+
+    // 表示中の軸の実測値リスト（前回値○単位(○月)→今回値○単位(○月)）をレーダー下に表示
+    try {
+        var wrap = el.closest('.rep-radar-wrap');
+        if (wrap) {
+            var oldList = wrap.querySelector('.rep-radar-values');
+            if (oldList) oldList.remove();
+            function fmtVal(v, unit) {
+                if (v === null || v === undefined || v === '' || isNaN(v)) return null;
+                return v + unit;
+            }
+            var rows = [];
+            defs.forEach(function(d) {
+                var cur = fmtVal(fitness[currIdx][d.key], d.unit || '');
+                if (!cur) return; // 今回値が無い軸は出さない
+                var prev = (fitness.length > 1) ? fmtVal(fitness[prevIdx][d.key], d.unit || '') : null;
+                var valText = prev
+                    ? (prev + '(' + prevLabel + ')→' + cur + '(' + currLabel + ')')
+                    : (cur + '(' + currLabel + ')');
+                rows.push('<span class="rep-radar-value-item"><span class="rrv-label">' + d.label + '</span> ' + valText + '</span>');
+            });
+            if (rows.length) {
+                var listEl = document.createElement('div');
+                listEl.className = 'rep-radar-values';
+                listEl.innerHTML = rows.join('');
+                var srcEl = wrap.querySelector('.rep-radar-source');
+                var mainEl = wrap.querySelector('.rep-radar-main');
+                if (mainEl && srcEl) mainEl.insertBefore(listEl, srcEl);
+                else if (srcEl) wrap.insertBefore(listEl, srcEl);
+                else wrap.appendChild(listEl);
+            }
+        }
+    } catch(e) {}
+
+    // 体重棒グラフ（直近3ヶ月）をレーダー左横に描画
+    try {
+        var idNum = elId.replace('fitness-radar-', '');
+        var barWrap = document.getElementById('radar-weightbar-' + idNum);
+        if (barWrap && weights && weights.length) {
+            var wvals = weights.filter(function(w){
+                return w.weight_kg !== null && w.weight_kg !== undefined && w.weight_kg !== '' && !isNaN(w.weight_kg);
+            });
+            // 直近3ヶ月（古い→新しいの順を保ちつつ末尾3件）
+            var recent = wvals.slice(-3);
+            if (recent.length) {
+                var maxW = Math.max.apply(null, recent.map(function(w){ return Number(w.weight_kg); }));
+                var minW = Math.min.apply(null, recent.map(function(w){ return Number(w.weight_kg); }));
+                // バー高さは最小値を基準に少し余白を取る（差が見えるように）
+                var base = Math.max(0, minW - (maxW - minW) * 0.6 - 1);
+                var range = (maxW - base) || 1;
+                var cols = recent.map(function(w){
+                    var v = Number(w.weight_kg);
+                    var hPct = Math.round(((v - base) / range) * 88) + 8; // 8〜96%
+                    var md = w.measured_date ? w.measured_date.slice(5,7) : '';
+                    var mlabel = md ? ((md.charAt(0)==='0'?md.charAt(1):md) + '月') : '';
+                    return '<div class="rep-weight-bar-col">'
+                        + '<span class="rep-weight-bar-val">' + v + '</span>'
+                        + '<div class="rep-weight-bar-fill" style="height:' + hPct + '%;"></div>'
+                        + '<span class="rep-weight-bar-month">' + mlabel + '</span>'
+                        + '</div>';
+                }).join('');
+                barWrap.innerHTML = '<div class="rep-weight-bar-title">体重(kg)</div>'
+                    + '<div class="rep-weight-bar-plot">' + cols + '</div>';
+            } else {
+                barWrap.style.display = 'none';
+            }
+        } else if (barWrap) {
+            barWrap.style.display = 'none';
+        }
+    } catch(e) {}
 }
 
 // グラフスタイル別オプション生成
@@ -2211,7 +2306,7 @@ chartData.forEach(function(rd, idx) {
     // --- レーダー(style=6時のみ。canvasが無ければ内部でスキップ) ---
     if (chartStyle === 6) {
         var gender = (rd.patient && rd.patient.gender) ? rd.patient.gender : '男性';
-        drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender);
+        drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender, rd.weights);
         // 参考: 同年齢層の握力平均をレーダー出典欄に併記
         try {
             var _bd = (rd.patient && rd.patient.birth_date) ? rd.patient.birth_date : '';
