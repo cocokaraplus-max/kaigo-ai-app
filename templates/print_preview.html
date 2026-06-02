@@ -683,13 +683,14 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 /* 配置C: 上下 */
 .rep-img-layout-C { margin-bottom: 3mm; }
 .rep-img-layout-C .graph-col { margin-bottom: 2mm; }
-/* graph-col内に移動した体力測定グラフ: 2列で折り返し、余白を活用 */
-.rep-fitness-charts.charts-in-graphcol {
-    display: flex; flex-wrap: wrap; gap: 2mm; margin-bottom: 0;
+/* graph-col内の体力測定グラフ：2列グリッドで枠に収める */
+.graph-col .rep-fitness-charts.charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm;
 }
-.rep-fitness-charts.charts-in-graphcol .rep-fitness-chart-box {
-    flex: 0 0 calc(50% - 1mm); box-sizing: border-box;
-}
+.graph-col .rep-fitness-charts.charts-grid .rep-fitness-chart-box { flex: none; }
+.graph-col .rep-fitness-title { margin-bottom: 1.5mm; }
 /* 画像本体 */
 .rep-img-item { margin-bottom: 2mm; }
 .rep-img-item img { width: 100%; border-radius: 4px; display: block; }
@@ -817,6 +818,63 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
 </div>
 
+{# ===== 体力測定チャートボックス群マクロ（通常配置・graph-col両用） ===== #}
+{% macro render_fitness_chart_boxes(idx, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) %}
+        {% if show_weight_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">体重(kg)</div>
+            <canvas class="mini-chart" id="chart-weight-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">
+                {% set w_vals = weights | selectattr('weight_kg') | list %}
+                {% if w_vals | length >= 2 %}
+                {{ w_vals[0].weight_kg }}→{% if weights[-1].weight_kg %}{{ weights[-1].weight_kg }}{% else %}未実施{% endif %}
+                {% elif w_vals %}{{ w_vals[0].weight_kg }}{% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% if fitness %}
+        {% set last_fit = fitness[-1] %}
+        {% set first_fit_tug   = fitness | selectattr('tug_sec')        | list | first | default(none) %}
+        {% set first_fit_cs30  = fitness | selectattr('sit_stand_30sec')| list | first | default(none) %}
+        {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
+        {% if show_grip_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">握力(kg)</div>
+            <canvas class="mini-chart" id="chart-grip-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_tug_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">TUG(秒)</div>
+            <canvas class="mini-chart" id="chart-tug-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_tug.tug_sec if first_fit_tug else '' }}→{% if last_fit.tug_sec %}{{ last_fit.tug_sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_cs30_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">CS-30(回)</div>
+            <canvas class="mini-chart" id="chart-cs30-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_walk_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">5m歩行(秒)</div>
+            <canvas class="mini-chart" id="chart-walk-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_walk.walk_5m_sec if first_fit_walk else '' }}→{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_balance_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
+            <canvas class="mini-chart" id="chart-balance-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
+        </div>
+        {% endif %}
+        {% endif %}
+{% endmacro %}
+
 <div class="pages-wrap">
 {% for rd in report_data_list %}
 {% set p = rd.patient %}
@@ -828,6 +886,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set avail_imgs = rd.available_images | default([]) %}
 {% set sel_imgs_raw = rd.selected_images | default([]) %}
 {% set img_layout = rd.img_layout | default('A') %}
+{# 写真があり、かつA/Bレイアウトのとき＝体力測定グラフを写真の横(graph-col)へ配置 #}
+{% set has_photos = items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
+{% set fitness_in_graphcol = has_photos and img_layout in ['A', 'B'] %}
 
 <div class="report-page" id="page-{{ loop.index }}">
     {% if tmpl == 4 %}
@@ -1136,67 +1197,14 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
     {% set show_walk_final   = show_walk and has_any_walk %}
     {% set show_balance_final = show_balance and has_any_balance %}
-    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final %}
+    {% if (show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final) and not fitness_in_graphcol %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
-        {% if show_weight_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">体重(kg)</div>
-            <canvas class="mini-chart" id="chart-weight-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">
-                {% set w_vals = weights | selectattr('weight_kg') | list %}
-                {% if w_vals | length >= 2 %}
-                {{ w_vals[0].weight_kg }}→{% if weights[-1].weight_kg %}{{ weights[-1].weight_kg }}{% else %}未実施{% endif %}
-                {% elif w_vals %}{{ w_vals[0].weight_kg }}{% endif %}
-            </div>
-        </div>
-        {% endif %}
-        {% if fitness %}
-        {% set last_fit = fitness[-1] %}
-        {% set first_fit_grip  = fitness | selectattr('grip_right')     | list | first | default(none) %}
-        {% set first_fit_tug   = fitness | selectattr('tug_sec')        | list | first | default(none) %}
-        {% set first_fit_cs30  = fitness | selectattr('sit_stand_30sec')| list | first | default(none) %}
-        {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
-        {% if show_grip_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">握力(kg)</div>
-            <canvas class="mini-chart" id="chart-grip-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_tug_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">TUG(秒)</div>
-            <canvas class="mini-chart" id="chart-tug-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_tug.tug_sec if first_fit_tug else '' }}→{% if last_fit.tug_sec %}{{ last_fit.tug_sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_cs30_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">CS-30(回)</div>
-            <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_walk_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">5m歩行(秒)</div>
-            <canvas class="mini-chart" id="chart-walk-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_walk.walk_5m_sec if first_fit_walk else '' }}→{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_balance_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
-            <canvas class="mini-chart" id="chart-balance-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
-        </div>
-        {% endif %}
-        {% endif %}
+        {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
     </div><!-- /rep-fitness-charts -->
     <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
     </div><!-- /rep-resizable fitness -->
@@ -1207,6 +1215,86 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if all_notes %}
     <div class="rep-fitness-note">
         <span class="rep-fitness-note-label">備考：</span>{{ all_notes | join(' ／ ') }}
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ===== 画像セクション（モニタリング直下：写真＋体力測定グラフ） ===== #}
+    {% if has_photos %}
+    {% set sel_imgs = sel_imgs_raw %}
+    {% set fit_visible = show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final %}
+    {# 備考を収集（graph-col内表示用） #}
+    {% set gc_notes = [] %}
+    {% if weights %}{% for w in weights | reverse %}{% if w.note %}{% set _ = gc_notes.append(w.measured_date[:7] + ' ' + w.note) %}{% endif %}{% endfor %}{% endif %}
+    {% if fitness %}{% for f in fitness | reverse %}{% if f.note %}{% set _ = gc_notes.append(f.measured_date[:7] + ' ' + f.note) %}{% endif %}{% endfor %}{% endif %}
+    {% if img_layout == 'A' %}
+    {# パターンA: 左写真大・右グラフ #}
+    <div class="rep-img-layout-A">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            {% if fit_visible %}
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
+            <div class="rep-fitness-charts charts-grid">
+                {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
+            </div>
+            {% if gc_notes %}<div class="rep-fitness-note"><span class="rep-fitness-note-label">備考：</span>{{ gc_notes | join(' ／ ') }}</div>{% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% elif img_layout == 'B' %}
+    {# パターンB: 左右均等 #}
+    <div class="rep-img-layout-B">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            {% if fit_visible %}
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
+            <div class="rep-fitness-charts charts-grid">
+                {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
+            </div>
+            {% if gc_notes %}<div class="rep-fitness-note"><span class="rep-fitness-note-label">備考：</span>{{ gc_notes | join(' ／ ') }}</div>{% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    {# パターンC: 上下分割（グラフは上に通常表示済み、写真を下に） #}
+    <div class="rep-img-layout-C">
+        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+        <div style="display:flex;gap:3mm;">
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
     {% endif %}
@@ -1258,64 +1346,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% endif %}
 
-    {# ===== 画像セクション（1〜2枚：1ページ目にレイアウト対応で配置） ===== #}
-    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
-    {% set sel_imgs = sel_imgs_raw %}
-    {% if img_layout == 'A' %}
-    {# パターンA: 左写真大・右グラフ（グラフをコンテナ内に再配置） #}
-    <div class="rep-img-layout-A">
-        <div class="img-col">
-            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                <div class="crop-hint no-print">タップでトリミング</div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="graph-col" id="graph-col-{{ loop.index }}">
-        </div>
-    </div>
-    {% elif img_layout == 'B' %}
-    {# パターンB: 左右均等 #}
-    <div class="rep-img-layout-B">
-        <div class="img-col">
-            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="graph-col" id="graph-col-{{ loop.index }}">
-        </div>
-    </div>
-    {% else %}
-    {# パターンC: 上下分割（写真を下に） #}
-    <div class="rep-img-layout-C">
-        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-        <div style="display:flex;gap:3mm;">
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-    {% endif %}
+    {# ===== 画像セクションはモニタリング直下に移動済み ===== #}
 
     {# ===== 画像選択パネル（印刷時非表示） ===== #}
     {% if items.get('images', false) %}
@@ -1567,6 +1598,14 @@ function cropApply() {
         newImg.style.borderRadius = '4px';
         newImg.style.display = 'block';
         parent.replaceChild(newImg, _cropTarget);
+        // 枠の高さを切り取った画像の比率に追従させ、余白(空枠)を解消
+        var aspect = canvas.height / canvas.width;
+        if (aspect > 0 && isFinite(aspect)) {
+            var frameW = parent.clientWidth || parent.offsetWidth;
+            if (frameW > 0) {
+                parent.style.height = Math.round(frameW * aspect) + 'px';
+            }
+        }
         _cropTarget = null;
         document.getElementById('crop-modal-overlay').classList.remove('show');
     };
@@ -1823,12 +1862,14 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
     var fillArea = (chartStyle === 3);
     var datasets = [];
     if (hasRight) datasets.push({
-        label: '右(実線)', data: rightData, borderColor: rightColor,
+        label: '右(実線)',
+        data: rightData, borderColor: rightColor,
         backgroundColor: fillArea ? (isMono ? 'rgba(0,0,0,0.10)' : 'rgba(21,101,192,0.13)') : undefined,
         borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
     });
     if (hasLeft) datasets.push({
-        label: '左(破線)', data: leftData, borderColor: leftColor, borderDash: [4, 2],
+        label: '左(破線)',
+        data: leftData, borderColor: leftColor, borderDash: [4, 2],
         backgroundColor: fillArea ? (isMono ? 'rgba(120,120,120,0.10)' : 'rgba(198,40,40,0.13)') : undefined,
         borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
     });
@@ -1837,11 +1878,10 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
         data: { labels: labels, datasets: datasets },
         options: {
             plugins: { legend: {
-                display: true, position: 'top', align: 'end',
-                labels: { boxWidth: 14, boxHeight: 0, font: { size: 7 }, color: '#000', padding: 4, usePointStyle: false }
+                display: true, position: 'bottom',
+                labels: { boxWidth: 18, boxHeight: 0, font: { size: 8 }, padding: 4, color: isMono ? '#333' : '#555' }
             } },
-            scales: { x: { display: false }, y: { display: false } },
-            animation: false
+            scales: { x: { display: false }, y: { display: false } }, animation: false
         }
     });
 }
@@ -1867,29 +1907,6 @@ var accent = getAccentColor();
 
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
-
-    // ===== レイアウトA/B: 体力測定グラフを写真の横(graph-col)へ移動 =====
-    // 描画前に移動することでChart.jsのcanvasサイズ崩れを防ぐ
-    (function() {
-        var layout = rd.img_layout || 'A';
-        if (layout !== 'A' && layout !== 'B') return;
-        var hasImgs = rd.selected_images && rd.selected_images.length > 0 && rd.selected_images.length <= 2;
-        if (!hasImgs) return;
-        var graphCol = document.getElementById('graph-col-' + n);
-        var fitnessResize = document.getElementById('fitness-resize-' + n);
-        if (!graphCol || !fitnessResize) return;
-        var charts = fitnessResize.querySelector('.rep-fitness-charts');
-        if (!charts) return;
-        // グラフ群を写真の横へ移動
-        graphCol.appendChild(charts);
-        // 縦積みにするためのクラスを付与
-        charts.classList.add('charts-in-graphcol');
-        // 元の体力測定タイトル・空になったリサイズ枠を隠す
-        var title = fitnessResize.previousElementSibling;
-        if (title && title.classList.contains('rep-fitness-title')) title.style.display = 'none';
-        fitnessResize.style.display = 'none';
-    })();
-
     var metrics = [
         { id: 'chart-weight-' + n, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
