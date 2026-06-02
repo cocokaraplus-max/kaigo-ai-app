@@ -9617,6 +9617,7 @@ def print_pdf():
     sort_order = request.args.get("sort", "name")
     items_json = request.args.get("items", "{}")
     cats_json = request.args.get("cats", "{}")
+    cat_order = request.args.get("cat_order", "")
     tmpl_raw = request.args.get("template", "1")
     try:
         tmpl = int(tmpl_raw)
@@ -9760,6 +9761,7 @@ def print_pdf():
         style=style,
         items=items,
         cats=cats,
+        cat_order=cat_order,
         my_name=my_name,
         author=request.args.get("author", ""),
         tmpl=tmpl,
@@ -9813,6 +9815,7 @@ def print_preview():
     sort_order = request.args.get("sort", "name")
     items_json = request.args.get("items", "{}")
     cats_json = request.args.get("cats", "{}")
+    cat_order = request.args.get("cat_order", "")
     tmpl_raw = request.args.get("template", "1")
     try:
         tmpl = int(tmpl_raw)
@@ -9987,6 +9990,7 @@ def print_preview():
         style=style,
         items=items,
         cats=cats,
+        cat_order=cat_order,
         my_name=my_name,
         author=author,
         tmpl=tmpl,

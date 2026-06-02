@@ -1066,9 +1066,20 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <button onclick="location.reload()" style="font-size:7.5pt;padding:2px 8px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">再読み込み</button>
         してください。
     {% elif mon and mon.get('categories') %}
+    {# カテゴリ表示順: cat_order(カンマ区切り)優先、無ければ標準順。"その他"は常に最後 #}
+    {% set default_order = ['心身状況','食事','入浴','排泄','コミュニケーション','訓練状況','ヒヤリハット','その他'] %}
+    {% set order_list = (cat_order.split(',') if cat_order else default_order) %}
+    {% set ordered_names = [] %}
+    {% for nm in order_list %}
+        {% if nm in mon.categories and nm not in ordered_names %}{% set _ = ordered_names.append(nm) %}{% endif %}
+    {% endfor %}
+    {% for nm in mon.categories.keys() %}
+        {% if nm not in ordered_names and nm != 'その他' %}{% set _ = ordered_names.append(nm) %}{% endif %}
+    {% endfor %}
+    {% if 'その他' in mon.categories and 'その他' not in ordered_names %}{% set _ = ordered_names.append('その他') %}{% endif %}
     {% set filtered_cats = [] %}
-    {% for cat_name, cat_text in mon.categories.items() %}
-        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, cat_text)) %}{% endif %}
+    {% for cat_name in ordered_names %}
+        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, mon.categories[cat_name])) %}{% endif %}
     {% endfor %}
     {% if filtered_cats %}
     <div class="rep-monitoring-title" style="display:flex;align-items:center;justify-content:space-between;">
