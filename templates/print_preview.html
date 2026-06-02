@@ -786,11 +786,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
 @media print {
+    @page { size: A4; margin: 0; }
     body { background: #fff; }
     .screen-bar { display: none !important; }
     .no-print { display: none !important; }
     .pages-wrap { padding: 0; gap: 0; }
-    .report-page { box-shadow: none; page-break-after: always; margin: 0; }
+    .report-page { box-shadow: none; margin: 0; width: 210mm; height: 297mm; min-height: 297mm; overflow: hidden; page-break-after: always; }
     .report-page:last-child { page-break-after: avoid; }
     [contenteditable] { outline: none !important; background: transparent !important; }
 }
