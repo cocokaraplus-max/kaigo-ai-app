@@ -1048,7 +1048,7 @@
             削除確認
         </div>
         <div style="font-size:0.88rem; color:#5f6368; text-align:center; margin-bottom:18px;" id="delete-confirm-name">
-            「__」さんをどう削除しますか?
+            「__」さんを今日だけ削除しますか?
         </div>
 
         <!-- 今日だけ削除 -->
@@ -1061,7 +1061,7 @@
         </button>
 
         <!-- 今後ずっと削除 -->
-        <button id="delete-permanent-btn" style="width:100%; margin-bottom:10px; padding:14px; border-radius:12px; border:1.5px solid #ea4335; background:#fce8e6; color:#a52714; font-size:0.92rem; font-weight:700; cursor:pointer; text-align:left; display:flex; align-items:center; gap:10px;">
+        <button id="delete-permanent-btn" style="display:none; width:100%; margin-bottom:10px; padding:14px; border-radius:12px; border:1.5px solid #ea4335; background:#fce8e6; color:#a52714; font-size:0.92rem; font-weight:700; cursor:pointer; text-align:left; align-items:center; gap:10px;">
             <span class="material-symbols-outlined" style="color:#ea4335; font-size:24px;">person_remove</span>
             <div style="flex:1;">
                 <div>今後ずっと削除</div>
@@ -3648,7 +3648,7 @@ window.closeDuplicateNameModal = function() {
 
 // ========== 削除確認モーダル(2択) ==========
 window.openDeleteConfirmModal = function(patientId, patientName, onCancel) {
-    document.getElementById('delete-confirm-name').textContent = `「${patientName}」様をどう削除しますか?`;
+    document.getElementById('delete-confirm-name').textContent = `「${patientName}」様を今日だけ削除しますか?`;
     const todayBtn = document.getElementById('delete-today-only-btn');
     const permBtn = document.getElementById('delete-permanent-btn');
     todayBtn.onclick = async () => {

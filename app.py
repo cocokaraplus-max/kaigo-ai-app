@@ -2136,6 +2136,8 @@ def vitals():
     today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
 
     patients = get_patients(supabase, f_code)
+    # 利用中止者はバイタル対象候補から除外(検索・過去データには残る)
+    patients = [p for p in patients if not p.get("is_discontinued")]
 
     # 各患者のweekdays・ampm・ampm_per_day取得
     # ★型不一致対策: patient_id は str() で統一(BIGINT vs string でマッチしない問題対応)
@@ -9486,10 +9488,11 @@ def print_output():
     patients_list = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, care_manager_name, support_office, care_level"
+            "user_name, user_name_kana, care_manager_name, support_office, care_level, is_discontinued"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
-            patients_list = res.data
+            # 利用中止者は印刷対象候補から除外(検索・過去データには残る)
+            patients_list = [p for p in res.data if not p.get("is_discontinued")]
     except Exception:
         pass
     staff_list = []
