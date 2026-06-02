@@ -9636,7 +9636,7 @@ def print_pdf():
     patients_all = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, support_office, care_manager_name, care_level"
+            "user_name, user_name_kana, support_office, care_manager_name, care_level, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
             patients_all = res.data
@@ -9645,6 +9645,15 @@ def print_pdf():
 
     if user_name_single:
         patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
+
+    # 利用終了月より後の対象月は除外(終了月までは生成可。一括・個別とも適用)
+    if year_month:
+        def _active_in_month(p):
+            dd = p.get("discontinued_date")
+            if not dd:
+                return True
+            return str(dd)[:7] >= year_month  # 終了月以降(=終了月含む)は対象
+        patients_all = [p for p in patients_all if _active_in_month(p)]
 
     if sort_order == "caremanager":
         patients_all.sort(key=lambda p: (p.get("support_office") or ""))
@@ -9836,7 +9845,7 @@ def print_preview():
     patients_all = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, support_office, care_manager_name, care_level"
+            "user_name, user_name_kana, support_office, care_manager_name, care_level, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
             patients_all = res.data
@@ -9846,6 +9855,15 @@ def print_preview():
     # 1人印刷の場合はその人のみ
     if user_name_single:
         patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
+
+    # 利用終了月より後の対象月は除外(終了月までは生成可。一括・個別とも適用)
+    if year_month:
+        def _active_in_month(p):
+            dd = p.get("discontinued_date")
+            if not dd:
+                return True
+            return str(dd)[:7] >= year_month  # 終了月以降(=終了月含む)は対象
+        patients_all = [p for p in patients_all if _active_in_month(p)]
 
     # ソート
     if sort_order == "caremanager":
