@@ -14,6 +14,46 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
 
+/* ===== あふれ検知バッジ（第1段階・画面のみ／印刷には出さない） ===== */
+.rep-overflow-badge {
+    position: absolute; top: 6mm; left: 50%; transform: translateX(-50%);
+    background: #d93025; color: #fff; font-size: 8pt; font-weight: 700;
+    padding: 3px 12px; border-radius: 12px; z-index: 50;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25); white-space: nowrap;
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+}
+@media print { .rep-overflow-badge { display: none !important; } }
+
+/* ===== あふれ対応モーダル（第2段階・画面のみ） ===== */
+.ov-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: none; align-items: center; justify-content: center; }
+.ov-modal-overlay.show { display: flex; }
+.ov-modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 440px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3); font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.ov-modal-title { font-size: 1.05rem; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+.ov-modal-desc { font-size: 0.85rem; color: #555; line-height: 1.6; margin-bottom: 18px; }
+.ov-modal-btns { display: flex; flex-direction: column; gap: 10px; }
+.ov-btn { border: none; border-radius: 8px; padding: 12px 16px; font-size: 0.9rem; font-weight: 700; cursor: pointer; text-align: left; line-height: 1.4; }
+.ov-btn-primary { background: #1a73e8; color: #fff; }
+.ov-btn-secondary { background: #f1f3f4; color: #1a1a1a; }
+.ov-btn-sub { font-size: 0.72rem; font-weight: 400; opacity: 0.85; display: block; margin-top: 2px; }
+.ov-btn-ghost { background: transparent; color: #5f6368; text-align: center; padding: 8px; }
+/* 確認バー（分割プレビュー時に画面上部固定） */
+.ov-confirm-bar { position: fixed; top: 0; left: 0; right: 0; background: #202124; color: #fff; z-index: 900; padding: 10px 16px; display: none; align-items: center; justify-content: space-between; gap: 12px; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.ov-confirm-bar.show { display: flex; }
+.ov-confirm-msg { font-size: 0.85rem; font-weight: 700; }
+.ov-confirm-btns { display: flex; gap: 8px; }
+.ov-confirm-btns button { border: none; border-radius: 8px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+.ov-confirm-print { background: #34a853; color: #fff; }
+.ov-confirm-back { background: rgba(255,255,255,0.2); color: #fff; }
+/* 圧縮解除（2枚に分けるときは縮小しない＝通常サイズで綺麗に2枚） */
+.report-page.ov-uncompact { font-size: 8.5pt !important; line-height: 1.5 !important; }
+.report-page.ov-uncompact .rep-monitoring-table td { font-size: 7.5pt !important; padding: 3px 5px !important; }
+/* tmpl4のテキスト続きページは素直な縦並び（横並び構造を引き継がない） */
+.report-page.ov-tmpl4-cont { display: block; padding: 12mm 12mm 10mm; }
+.report-page.ov-tmpl4-cont .rep-monitoring-table td { font-size: 7.5pt; padding: 3px 5px; }
+/* 分割で生成した2枚目 */
+.report-page.ov-split-page { }
+@media print { .ov-modal-overlay, .ov-confirm-bar { display: none !important; } }
+
 /* ===== A4ページ基本 ===== */
 .report-page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.18); padding: 12mm 12mm 10mm; font-size: 8.5pt; line-height: 1.5; position: relative; margin: 0 auto; flex-shrink: 0; }
 .page-number { position: absolute; bottom: 6mm; right: 12mm; font-size: 7pt; color: #888; }
@@ -821,7 +861,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
     <div class="screen-bar-btns">
-        <button class="btn-print-now" onclick="window.print()">印刷 / PDF保存</button>
+        <button class="btn-print-now" onclick="handlePrintClick()">印刷 / PDF保存</button>
         <button class="btn-close" onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}">閉じる</button>
     </div>
 </div>
@@ -2254,7 +2294,12 @@ function saveMonitoring(userName, yearMonth) {
     var params = new URLSearchParams(location.search);
     if (params.get('auto_print') === '1') {
         window.addEventListener('load', function() {
-            setTimeout(function() { window.print(); }, 1200);
+            setTimeout(function() {
+                // あふれがあればモーダルを出し自動印刷は保留（順次処理は第4段階）
+                var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
+                if (ov && ov.length > 0) { handlePrintClick(); }
+                else { window.print(); }
+            }, 1300);
         });
     }
 })();
@@ -2307,7 +2352,259 @@ function autoCompactPages() {
 // ページロード完了後・グラフ描画後に実行
 window.addEventListener('load', function() {
     setTimeout(autoCompactPages, 800);
+    // 第1段階: 自動縮小の後、なお収まらないページを検知してバッジ表示
+    setTimeout(detectOverflowPages, 1100);
 });
+
+// ===== あふれ検知（縮小適用後に、なおA4 1枚に収まらないページを判定） =====
+// 戻り値: あふれている report-page 要素の配列
+function detectOverflowPages() {
+    var overflowing = [];
+    var pages = document.querySelectorAll('.report-page');
+    pages.forEach(function(page) {
+        if (page.classList.contains('rep-image-page')) return; // 2枚目画像ページは対象外
+        // 既存バッジを一旦除去（再判定のため）
+        var old = page.querySelector('.rep-overflow-badge');
+        if (old) old.remove();
+
+        var children = Array.prototype.slice.call(page.children).filter(function(c) {
+            return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
+        });
+        if (!children.length) return;
+        var last = children[children.length - 1];
+        var contentBottom = last.offsetTop + last.offsetHeight;
+        var pb = parseFloat(getComputedStyle(page).paddingBottom);
+        var pageInnerH = page.clientHeight - pb;
+
+        // 縮小後でも1%以上あふれていれば「収まらない」と判定
+        if (contentBottom > pageInnerH * 1.01) {
+            var badge = document.createElement('div');
+            badge.className = 'rep-overflow-badge no-print';
+            badge.textContent = '⚠ 1枚に収まりません';
+            page.appendChild(badge);
+            overflowing.push(page);
+        }
+    });
+    // 第2段階以降が参照できるようグローバルに保持
+    window.__overflowPages = overflowing;
+    return overflowing;
+}
+
+// ===== 第2段階: あふれ対応モーダル＆2枚分割 =====
+// 分割で2枚目に移した要素を記憶し、戻すときに復元する
+var __ovSplitState = null; // { page, splitPage, movedNodes:[], wasCompact:bool }
+
+// グラフ系（体力測定の推移・レーダー・グラフ本体・備考）の子要素か判定
+function ovIsGraphChild(el) {
+    if (!el || !el.classList) return false;
+    return el.classList.contains('rep-fitness-title')
+        || el.classList.contains('rep-radar-wrap')
+        || el.classList.contains('rep-resizable')
+        || el.classList.contains('rep-fitness-charts')
+        || el.classList.contains('rep-fitness-note')
+        // 第3段階: 写真ありレイアウト（画像セクションをコンテナごと2枚目へ）
+        || el.classList.contains('rep-img-layout-A')
+        || el.classList.contains('rep-img-layout-B')
+        || el.classList.contains('rep-img-layout-C');
+}
+
+// 印刷ボタンの入口
+function handlePrintClick() {
+    var ov = detectOverflowPages();
+    if (!ov || ov.length === 0) { window.print(); return; }
+    // 第2段階は単票想定: 最初のあふれページを対象にする
+    window.__ovTargetPage = ov[0];
+    ovShowModal(1);
+}
+
+function ovShowModal(n) {
+    document.getElementById('ov-modal-1').classList.toggle('show', n === 1);
+    document.getElementById('ov-modal-2').classList.toggle('show', n === 2);
+}
+function ovCloseModals() {
+    ovShowModal(0);
+}
+function ovBackToModal1() {
+    ovShowModal(1);
+}
+// 「このまま1枚で印刷」
+function ovPrintAsIs() {
+    ovCloseModals();
+    window.print();
+}
+// 「2枚に分ける」→ tmpl4は専用分割、それ以外はモーダル②へ
+function ovChooseSplit() {
+    if (ovIsTmpl4()) {
+        ovShowModal(0);
+        ovDoSplitTmpl4();
+        return;
+    }
+    ovShowModal(2);
+}
+// body に tmpl-4 クラスがあるか
+function ovIsTmpl4() {
+    return document.body.classList.contains('tmpl-4');
+}
+// tmpl4専用: text-col 内を高さで分割し、あふれ分を2枚目へ
+function ovDoSplitTmpl4() {
+    var page = window.__ovTargetPage;
+    if (!page) { window.print(); return; }
+    var textCol = page.querySelector('.tmpl4-text-col');
+    if (!textCol) {
+        // text-col が無い構成では従来の汎用分割にフォールバック
+        ovShowModal(2);
+        return;
+    }
+
+    // 圧縮解除（2枚にするので通常サイズで）
+    var wasCompact = page.classList.contains('compact');
+    page.classList.remove('compact');
+    page.style.fontSize = '';
+    page.style.lineHeight = '';
+    page.style.padding = '';
+    page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+        td.style.fontSize = ''; td.style.padding = '';
+    });
+    page.classList.add('ov-uncompact');
+
+    // 2枚目（tmpl4のテキスト続き専用・素直な縦並びページ）
+    var splitPage = document.createElement('div');
+    splitPage.className = 'report-page ov-split-page ov-uncompact ov-tmpl4-cont';
+
+    // text-col 直下の子要素のうち、ページ内側高さを超える位置から下を移動
+    var pb = parseFloat(getComputedStyle(page).paddingBottom);
+    var limit = page.clientHeight - pb;
+    var kids = Array.prototype.slice.call(textCol.children).filter(function(c){
+        return !c.classList.contains('no-print');
+    });
+    var moved = [];
+    var cutIdx = -1;
+    for (var i = 0; i < kids.length; i++) {
+        var rectBottom = kids[i].offsetTop + kids[i].offsetHeight; // text-col内座標
+        // page基準の絶対bottomで判定（text-colのoffsetTopを加算）
+        var absBottom = ovAbsBottom(kids[i], page);
+        if (absBottom > limit) { cutIdx = i; break; }
+    }
+    if (cutIdx < 0) {
+        // 高さでは切れ目が見つからない場合は後半を送る保険
+        cutIdx = Math.ceil(kids.length / 2);
+    }
+    if (cutIdx <= 0) cutIdx = 1; // 最低1つは1枚目に残す
+    for (var j = cutIdx; j < kids.length; j++) {
+        splitPage.appendChild(kids[j]);
+        moved.push(kids[j]);
+    }
+
+    page.parentNode.insertBefore(splitPage, page.nextSibling);
+    __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved,
+                       wasCompact: wasCompact, mode: 'tmpl4', textCol: textCol };
+
+    var badge = page.querySelector('.rep-overflow-badge');
+    if (badge) badge.remove();
+    document.getElementById('ov-confirm-bar').classList.add('show');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// 要素の、指定祖先(page)を基準にした下端座標を返す
+function ovAbsBottom(el, ancestor) {
+    var top = 0, node = el;
+    while (node && node !== ancestor) { top += node.offsetTop; node = node.offsetParent; }
+    return top + el.offsetHeight;
+}
+
+// 実際の分割実行
+function ovDoSplit(mode) {
+    var page = window.__ovTargetPage;
+    if (!page) { ovCloseModals(); window.print(); return; }
+    ovShowModal(0);
+
+    // 圧縮を解除（2枚にするので通常サイズで綺麗に）
+    var wasCompact = page.classList.contains('compact');
+    page.classList.remove('compact');
+    page.style.fontSize = '';
+    page.style.lineHeight = '';
+    page.style.padding = '';
+    page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+        td.style.fontSize = ''; td.style.padding = '';
+    });
+    page.classList.add('ov-uncompact');
+
+    // 2枚目ページを作成（同じクラスを引き継ぐ）
+    var splitPage = document.createElement('div');
+    splitPage.className = page.className.replace('ov-uncompact','').trim() + ' ov-split-page';
+    splitPage.classList.add('ov-uncompact');
+
+    var moved = [];
+    var children = Array.prototype.slice.call(page.children).filter(function(c){
+        return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge')
+            && !c.classList.contains('page-number');
+    });
+
+    if (mode === 'graph') {
+        // グラフ系・画像セクションの要素「だけ」を順序を保って2枚目へ。
+        // 特記事項・希望要望・満足度などテキストは1枚目に残す。
+        for (var i = 0; i < children.length; i++) {
+            if (ovIsGraphChild(children[i])) {
+                splitPage.appendChild(children[i]);
+                moved.push(children[i]);
+            }
+        }
+    } else {
+        // flow: ページ内側高さを超える最初の要素以降を2枚目へ
+        var pb = parseFloat(getComputedStyle(page).paddingBottom);
+        var limit = page.clientHeight - pb;
+        var cutIdx = -1;
+        for (var k = 0; k < children.length; k++) {
+            var b = children[k].offsetTop + children[k].offsetHeight;
+            if (b > limit) { cutIdx = k; break; }
+        }
+        if (cutIdx <= 0) cutIdx = Math.ceil(children.length / 2); // 保険
+        for (var m = cutIdx; m < children.length; m++) {
+            splitPage.appendChild(children[m]);
+            moved.push(children[m]);
+        }
+    }
+
+    // 2枚目を元ページの直後に挿入
+    page.parentNode.insertBefore(splitPage, page.nextSibling);
+
+    __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved, wasCompact: wasCompact, mode: mode };
+
+    // バッジを消して確認バーを表示
+    var badge = page.querySelector('.rep-overflow-badge');
+    if (badge) badge.remove();
+    document.getElementById('ov-confirm-bar').classList.add('show');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 分割を元に戻す
+function ovRevertSplit() {
+    if (!__ovSplitState) return;
+    var st = __ovSplitState;
+    // tmpl4はtext-colへ、それ以外は元ページへ戻す
+    var dest = (st.mode === 'tmpl4' && st.textCol) ? st.textCol : st.page;
+    st.movedNodes.forEach(function(node){ dest.appendChild(node); });
+    if (st.splitPage && st.splitPage.parentNode) st.splitPage.parentNode.removeChild(st.splitPage);
+    st.page.classList.remove('ov-uncompact');
+    if (st.wasCompact) st.page.classList.add('compact');
+    __ovSplitState = null;
+}
+
+// 確認バー「戻る」
+function ovBackFromConfirm() {
+    document.getElementById('ov-confirm-bar').classList.remove('show');
+    ovRevertSplit();
+    // 再検知してから①へ
+    detectOverflowPages();
+    var ov = window.__overflowPages || [];
+    window.__ovTargetPage = ov[0] || null;
+    if (window.__ovTargetPage) ovShowModal(1);
+}
+
+// 確認バー「この内容で印刷」
+function ovConfirmPrint() {
+    document.getElementById('ov-confirm-bar').classList.remove('show');
+    window.print();
+}
 
 // ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
 (function applyPageScale() {
@@ -2357,5 +2654,35 @@ window.addEventListener('load', function() {
     </div>
 </div>
 
+<!-- ===== あふれ対応モーダル（第2段階） ===== -->
+<div class="ov-modal-overlay no-print" id="ov-modal-1">
+    <div class="ov-modal">
+        <div class="ov-modal-title">1枚に収まりません</div>
+        <div class="ov-modal-desc">この利用者の内容はA4・1枚に収まりきりません。印刷方法を選んでください。</div>
+        <div class="ov-modal-btns">
+            <button class="ov-btn ov-btn-primary" onclick="ovChooseSplit()">2枚に分けて印刷する<span class="ov-btn-sub">内容を切らずに2ページに分けます</span></button>
+            <button class="ov-btn ov-btn-secondary" onclick="ovPrintAsIs()">このまま1枚で印刷する<span class="ov-btn-sub">はみ出した部分は印刷されません</span></button>
+            <button class="ov-btn ov-btn-ghost" onclick="ovCloseModals()">キャンセル</button>
+        </div>
+    </div>
+</div>
+<div class="ov-modal-overlay no-print" id="ov-modal-2">
+    <div class="ov-modal">
+        <div class="ov-modal-title">分け方を選んでください</div>
+        <div class="ov-modal-desc">2ページへの分け方を選びます。</div>
+        <div class="ov-modal-btns">
+            <button class="ov-btn ov-btn-primary" onclick="ovDoSplit('graph')">写真・グラフを2枚目にする<span class="ov-btn-sub">文字の記録（目標・モニタリング）を1枚目に、体力測定グラフを2枚目に</span></button>
+            <button class="ov-btn ov-btn-secondary" onclick="ovDoSplit('flow')">そのままの順で2枚に分ける<span class="ov-btn-sub">切れない位置で前半・後半に分けます</span></button>
+            <button class="ov-btn ov-btn-ghost" onclick="ovBackToModal1()">戻る</button>
+        </div>
+    </div>
+</div>
+<div class="ov-confirm-bar no-print" id="ov-confirm-bar">
+    <span class="ov-confirm-msg">2枚に分けたプレビューです。この内容で印刷しますか？</span>
+    <div class="ov-confirm-btns">
+        <button class="ov-confirm-back" onclick="ovBackFromConfirm()">戻る</button>
+        <button class="ov-confirm-print" onclick="ovConfirmPrint()">この内容で印刷</button>
+    </div>
+</div>
 </body>
 </html>
