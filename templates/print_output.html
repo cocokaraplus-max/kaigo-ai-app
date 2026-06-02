@@ -346,6 +346,7 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 <button class="po-toggle-btn on" id="tog-grip" onclick="poToggleItem('grip')">握力</button>
                 <button class="po-toggle-btn on" id="tog-tug" onclick="poToggleItem('tug')">TUG</button>
                 <button class="po-toggle-btn on" id="tog-cs30" onclick="poToggleItem('cs30')">CS-30</button>
+                <button class="po-toggle-btn on" id="tog-walk" onclick="poToggleItem('walk')">5m歩行</button>
                 <button class="po-toggle-btn on" id="tog-balance" onclick="poToggleItem('balance')">片脚立位</button>
             </div>
             <!-- その他 -->
@@ -397,7 +398,7 @@ if (!isNaN(poTemplate)) poTemplate = parseInt(poTemplate);
 var fCode = '{{ f_code }}';
 var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
-var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, balance: true, special: true, no_record: false, images: false };
+var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, walk: true, balance: true, special: true, no_record: false, images: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {

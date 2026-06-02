@@ -955,6 +955,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set show_grip = items.get('grip', true) %}
         {% set show_tug = items.get('tug', true) %}
         {% set show_cs30 = items.get('cs30', true) %}
+        {% set show_walk = items.get('walk', true) %}
         {% set show_balance = items.get('balance', true) %}
         {% if weights and show_weight %}
         <div class="tmpl4-graph-item">
@@ -1006,6 +1007,18 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
           <canvas class="mini-chart" id="tmpl4-chart-cs30-{{ loop.index }}"></canvas>
           <div class="tmpl4-graph-range">
             <span>{{ first_fit.sit_stand_30sec }}</span><span>→</span><span>{{ last_fit.sit_stand_30sec }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if last_fit.get('walk_5m_sec') and show_walk %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">5m歩行(秒)</span>
+            <span class="tmpl4-graph-value">{{ last_fit.walk_5m_sec }}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-walk-{{ loop.index }}"></canvas>
+          <div class="tmpl4-graph-range">
+            <span>{{ first_fit.walk_5m_sec }}</span><span>↓良</span><span>{{ last_fit.walk_5m_sec }}</span>
           </div>
         </div>
         {% endif %}
@@ -1093,19 +1106,22 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_grip = items.get('grip', true) %}
     {% set show_tug = items.get('tug', true) %}
     {% set show_cs30 = items.get('cs30', true) %}
+    {% set show_walk = items.get('walk', true) %}
     {% set show_balance = items.get('balance', true) %}
     {# 6ヶ月で一度も値がない項目は非表示判定 #}
     {% set has_any_weight = weights | selectattr('weight_kg') | list | length > 0 %}
     {% set has_any_grip   = fitness | selectattr('grip_right') | list | length > 0 if fitness else false %}
     {% set has_any_tug    = fitness | selectattr('tug_sec') | list | length > 0 if fitness else false %}
     {% set has_any_cs30   = fitness | selectattr('sit_stand_30sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk   = fitness | selectattr('walk_5m_sec') | list | length > 0 if fitness else false %}
     {% set has_any_balance = fitness | selectattr('standing_balance_right') | list | length > 0 if fitness else false %}
     {% set show_weight_final = show_weight and has_any_weight %}
     {% set show_grip_final   = show_grip and has_any_grip %}
     {% set show_tug_final    = show_tug and has_any_tug %}
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
+    {% set show_walk_final   = show_walk and has_any_walk %}
     {% set show_balance_final = show_balance and has_any_balance %}
-    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_balance_final %}
+    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
@@ -1129,6 +1145,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set first_fit_grip  = fitness | selectattr('grip_right')     | list | first | default(none) %}
         {% set first_fit_tug   = fitness | selectattr('tug_sec')        | list | first | default(none) %}
         {% set first_fit_cs30  = fitness | selectattr('sit_stand_30sec')| list | first | default(none) %}
+        {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
         {% if show_grip_final %}
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">握力右(kg)</div>
@@ -1148,6 +1165,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div class="rep-fitness-chart-label">CS-30(回)</div>
             <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_walk_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">5m歩行(秒)</div>
+            <canvas class="mini-chart" id="chart-walk-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_walk.walk_5m_sec if first_fit_walk else '' }}→{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}未実施{% endif %}</div>
         </div>
         {% endif %}
         {% if show_balance_final %}
@@ -1827,6 +1851,8 @@ chartData.forEach(function(rd, idx) {
         { id: 'chart-tug-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
         { id: 'chart-cs30-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
+          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
+        { id: 'chart-walk-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.walk_5m_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
     ];
 
@@ -1876,7 +1902,8 @@ if (document.body.classList.contains('tmpl-4')) {
             var tmpl4Metrics = [
                 { el: 'tmpl4-chart-grip-' + n, get: function(f){ return f.grip_right; } },
                 { el: 'tmpl4-chart-tug-' + n,  get: function(f){ return f.tug_sec; } },
-                { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } }
+                { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } },
+                { el: 'tmpl4-chart-walk-' + n, get: function(f){ return f.walk_5m_sec; } }
             ];
             tmpl4Metrics.forEach(function(mm) {
                 var mEl = document.getElementById(mm.el);
