@@ -250,6 +250,14 @@ body.tmpl-4 .tmpl4-graph-item {
   display: flex;
   flex-direction: column;
   gap: 1mm;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  padding: 2mm;
+  background: #fff;
+}
+body.mono.tmpl-4 .tmpl4-graph-item {
+  border-color: #ccc;
+  background: #fafafa;
 }
 body.tmpl-4 .tmpl4-graph-header {
   display: flex;
@@ -852,7 +860,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 
     <!-- 目標達成状況 -->
     {% if items.get('goals', true) %}
-    {% set care = cm.care_level if cm else '' %}
+    {% set care = (cm.care_level if cm else '') or '' %}
     {% set is_kaigo = care.startswith('要介護') %}
     <div class="rep-goals-row">
         <div class="rep-goal-box">
@@ -946,6 +954,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set show_grip = items.get('grip', true) %}
         {% set show_tug = items.get('tug', true) %}
         {% set show_cs30 = items.get('cs30', true) %}
+        {% set show_balance = items.get('balance', true) %}
         {% if weights and show_weight %}
         <div class="tmpl4-graph-item">
           <div class="tmpl4-graph-header">
@@ -997,6 +1006,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
           <div class="tmpl4-graph-range">
             <span>{{ first_fit.sit_stand_30sec }}</span><span>→</span><span>{{ last_fit.sit_stand_30sec }}</span>
           </div>
+        </div>
+        {% endif %}
+        {% if (last_fit.get('standing_balance_right') or last_fit.get('standing_balance_left')) and show_balance %}
+        <div class="tmpl4-graph-item">
+          <div class="tmpl4-graph-header">
+            <span class="tmpl4-graph-label">片脚立位(秒)</span>
+            <span class="tmpl4-graph-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span>
+          </div>
+          <canvas class="mini-chart" id="tmpl4-chart-balance-{{ loop.index }}"></canvas>
         </div>
         {% endif %}
         {% endif %}
@@ -1074,16 +1092,19 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_grip = items.get('grip', true) %}
     {% set show_tug = items.get('tug', true) %}
     {% set show_cs30 = items.get('cs30', true) %}
+    {% set show_balance = items.get('balance', true) %}
     {# 6ヶ月で一度も値がない項目は非表示判定 #}
     {% set has_any_weight = weights | selectattr('weight_kg') | list | length > 0 %}
     {% set has_any_grip   = fitness | selectattr('grip_right') | list | length > 0 if fitness else false %}
     {% set has_any_tug    = fitness | selectattr('tug_sec') | list | length > 0 if fitness else false %}
     {% set has_any_cs30   = fitness | selectattr('sit_stand_30sec') | list | length > 0 if fitness else false %}
+    {% set has_any_balance = fitness | selectattr('standing_balance_right') | list | length > 0 if fitness else false %}
     {% set show_weight_final = show_weight and has_any_weight %}
     {% set show_grip_final   = show_grip and has_any_grip %}
     {% set show_tug_final    = show_tug and has_any_tug %}
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
-    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final %}
+    {% set show_balance_final = show_balance and has_any_balance %}
+    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_balance_final %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
@@ -1126,6 +1147,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div class="rep-fitness-chart-label">CS-30(回)</div>
             <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_balance_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
+            <canvas class="mini-chart" id="chart-balance-{{ loop.index }}"></canvas>
+            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
         {% endif %}
@@ -1736,6 +1764,39 @@ function makeChartConfig(type, labels, data, accent) {
     return null;
 }
 
+// 片脚立位: 左右2系列グラフ描画(右=青実線 / 左=赤破線)
+// 折れ線(1)・エリア(3)は2系列で描画。棒(2)・横棒(5)・数値カード(4)は折れ線にフォールバック。
+function drawBalanceChart(elId, fitness, labels) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    if (!fitness || fitness.length <= 1) return;
+    var rightData = fitness.map(function(f){ return f.standing_balance_right; });
+    var leftData  = fitness.map(function(f){ return f.standing_balance_left; });
+    var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
+    var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
+    if (!hasRight && !hasLeft) return;
+    var isMono = !isColor;
+    var rightColor = isMono ? '#000' : '#1565c0';
+    var leftColor  = isMono ? '#888' : '#c62828';
+    var fillArea = (chartStyle === 3);
+    var datasets = [];
+    if (hasRight) datasets.push({
+        data: rightData, borderColor: rightColor,
+        backgroundColor: fillArea ? (isMono ? 'rgba(0,0,0,0.10)' : 'rgba(21,101,192,0.13)') : undefined,
+        borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
+    });
+    if (hasLeft) datasets.push({
+        data: leftData, borderColor: leftColor, borderDash: [4, 2],
+        backgroundColor: fillArea ? (isMono ? 'rgba(120,120,120,0.10)' : 'rgba(198,40,40,0.13)') : undefined,
+        borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
+    });
+    new Chart(el, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false }
+    });
+}
+
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
 function renderValueCard(el, firstVal, lastVal, accent) {
     if (!el) return;
@@ -1783,6 +1844,10 @@ chartData.forEach(function(rd, idx) {
             if (cfg) new Chart(el, cfg);
         }
     });
+
+    // --- 片脚立位(左右2系列) rep版 ---
+    var balLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
+    drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
 });
 
 // ===== テンプレート4: グラフ列のミニグラフ描画 =====
@@ -1793,27 +1858,38 @@ if (document.body.classList.contains('tmpl-4')) {
         var chartOpts = { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false };
         if (rd.weights && rd.weights.length > 1) {
             var el = document.getElementById('tmpl4-chart-weight-' + n);
-            if (el) new Chart(el, { type: 'line', data: {
-                labels: rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.weights.map(function(w){ return w.weight_kg; }), borderColor: accentColor, borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: chartOpts });
+            if (el) {
+                if (chartStyle === 4) {
+                    var wd = rd.weights.map(function(w){ return w.weight_kg; });
+                    renderValueCard(el, wd[0], wd[wd.length-1], accentColor);
+                } else {
+                    var cfg = makeChartConfig(el.id,
+                        rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }),
+                        rd.weights.map(function(w){ return w.weight_kg; }), accentColor);
+                    if (cfg) new Chart(el, cfg);
+                }
+            }
         }
         if (rd.fitness && rd.fitness.length > 1) {
-            var gEl = document.getElementById('tmpl4-chart-grip-' + n);
-            if (gEl) new Chart(gEl, { type: 'line', data: {
-                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.fitness.map(function(f){ return f.grip_right; }), borderColor: '#2e7d32', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: chartOpts });
-            var tEl = document.getElementById('tmpl4-chart-tug-' + n);
-            if (tEl) new Chart(tEl, { type: 'line', data: {
-                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.fitness.map(function(f){ return f.tug_sec; }), borderColor: '#1565c0', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: chartOpts });
-            var cEl = document.getElementById('tmpl4-chart-cs30-' + n);
-            if (cEl) new Chart(cEl, { type: 'line', data: {
-                labels: rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }),
-                datasets: [{ data: rd.fitness.map(function(f){ return f.sit_stand_30sec; }), borderColor: '#e65100', borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: false }]
-            }, options: chartOpts });
+            var fitLabels = rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; });
+            var tmpl4Metrics = [
+                { el: 'tmpl4-chart-grip-' + n, get: function(f){ return f.grip_right; } },
+                { el: 'tmpl4-chart-tug-' + n,  get: function(f){ return f.tug_sec; } },
+                { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } }
+            ];
+            tmpl4Metrics.forEach(function(mm) {
+                var mEl = document.getElementById(mm.el);
+                if (!mEl) return;
+                var mData = rd.fitness.map(mm.get);
+                if (chartStyle === 4) {
+                    renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor);
+                } else {
+                    var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor);
+                    if (mcfg) new Chart(mEl, mcfg);
+                }
+            });
+            // --- 片脚立位(左右2系列) tmpl4版 ---
+            drawBalanceChart('tmpl4-chart-balance-' + n, rd.fitness, fitLabels);
         }
     });
 }
