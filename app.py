@@ -190,6 +190,7 @@ def get_patients(supabase, f_code):
                 "care_level": r.get("care_level") or "",
                 "long_goal": r.get("long_goal") or "",
                 "short_goal": r.get("short_goal") or "",
+                "is_discontinued": bool(r.get("is_discontinued")),
             })
         return patients
     except:
@@ -5209,7 +5210,7 @@ def admin():
 
     patient_profiles = []
     try:
-        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level').eq('facility_code', f_code).order('user_name_kana').execute()
+        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level, is_discontinued').eq('facility_code', f_code).order('user_name_kana').execute()
         patient_profiles = pp_res.data or []
     except: pass
 
