@@ -528,7 +528,13 @@ async function poLoadCheck() {
         if (bulk.status !== 'success') throw new Error(bulk.message);
         var bulkMap = {};
         (bulk.data || []).forEach(function(d) { bulkMap[d.user_name] = d; });
-        var results = poPatients.map(function(p) {
+        // 利用終了月より後の対象年月では、その利用者を候補から除外
+        // (終了月までは表示=その月の書類は作成可能)
+        var poVisible = poPatients.filter(function(p) {
+            if (!p.discontinued_date) return true;
+            return String(p.discontinued_date).slice(0,7) >= ym;
+        });
+        var results = poVisible.map(function(p) {
             var d = bulkMap[p.user_name] || {};
             return {
                 patient: p,

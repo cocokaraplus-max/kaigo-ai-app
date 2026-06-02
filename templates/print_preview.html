@@ -977,13 +977,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% if last_fit.get('grip_right') and show_grip %}
         <div class="tmpl4-graph-item">
           <div class="tmpl4-graph-header">
-            <span class="tmpl4-graph-label">握力右(kg)</span>
-            <span class="tmpl4-graph-value">{{ last_fit.grip_right }}</span>
+            <span class="tmpl4-graph-label">握力(kg)</span>
+            <span class="tmpl4-graph-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</span>
           </div>
           <canvas class="mini-chart" id="tmpl4-chart-grip-{{ loop.index }}"></canvas>
-          <div class="tmpl4-graph-range">
-            <span>{{ first_fit.grip_right }}</span><span>→</span><span>{{ last_fit.grip_right }}</span>
-          </div>
         </div>
         {% endif %}
         {% if last_fit.get('tug_sec') and show_tug %}
@@ -1069,9 +1066,20 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <button onclick="location.reload()" style="font-size:7.5pt;padding:2px 8px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">再読み込み</button>
         してください。
     {% elif mon and mon.get('categories') %}
+    {# カテゴリ表示順: cat_order(カンマ区切り)優先、無ければ標準順。"その他"は常に最後 #}
+    {% set default_order = ['心身状況','食事','入浴','排泄','コミュニケーション','訓練状況','ヒヤリハット','その他'] %}
+    {% set order_list = (cat_order.split(',') if cat_order else default_order) %}
+    {% set ordered_names = [] %}
+    {% for nm in order_list %}
+        {% if nm in mon.categories and nm not in ordered_names %}{% set _ = ordered_names.append(nm) %}{% endif %}
+    {% endfor %}
+    {% for nm in mon.categories.keys() %}
+        {% if nm not in ordered_names and nm != 'その他' %}{% set _ = ordered_names.append(nm) %}{% endif %}
+    {% endfor %}
+    {% if 'その他' in mon.categories and 'その他' not in ordered_names %}{% set _ = ordered_names.append('その他') %}{% endif %}
     {% set filtered_cats = [] %}
-    {% for cat_name, cat_text in mon.categories.items() %}
-        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, cat_text)) %}{% endif %}
+    {% for cat_name in ordered_names %}
+        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, mon.categories[cat_name])) %}{% endif %}
     {% endfor %}
     {% if filtered_cats %}
     <div class="rep-monitoring-title" style="display:flex;align-items:center;justify-content:space-between;">
@@ -1148,9 +1156,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
         {% if show_grip_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">握力右(kg)</div>
+            <div class="rep-fitness-chart-label">握力(kg)</div>
             <canvas class="mini-chart" id="chart-grip-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_grip.grip_right if first_fit_grip else '' }}→{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}未実施{% endif %}</div>
+            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
         {% if show_tug_final %}
@@ -1791,12 +1799,14 @@ function makeChartConfig(type, labels, data, accent) {
 
 // 片脚立位: 左右2系列グラフ描画(右=青実線 / 左=赤破線)
 // 折れ線(1)・エリア(3)は2系列で描画。棒(2)・横棒(5)・数値カード(4)は折れ線にフォールバック。
-function drawBalanceChart(elId, fitness, labels) {
+function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
+    rightKey = rightKey || 'standing_balance_right';
+    leftKey  = leftKey  || 'standing_balance_left';
     var el = document.getElementById(elId);
     if (!el) return;
     if (!fitness || fitness.length <= 1) return;
-    var rightData = fitness.map(function(f){ return f.standing_balance_right; });
-    var leftData  = fitness.map(function(f){ return f.standing_balance_left; });
+    var rightData = fitness.map(function(f){ return f[rightKey]; });
+    var leftData  = fitness.map(function(f){ return f[leftKey]; });
     var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     if (!hasRight && !hasLeft) return;
@@ -1846,8 +1856,6 @@ chartData.forEach(function(rd, idx) {
     var metrics = [
         { id: 'chart-weight-' + n, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-grip-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.grip_right; }) : null; },
-          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
         { id: 'chart-tug-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
         { id: 'chart-cs30-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
@@ -1872,6 +1880,9 @@ chartData.forEach(function(rd, idx) {
         }
     });
 
+    // --- 握力(左右2系列) rep版 ---
+    var gripLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
+    drawBalanceChart('chart-grip-' + n, rd.fitness, gripLabels, 'grip_right', 'grip_left');
     // --- 片脚立位(左右2系列) rep版 ---
     var balLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
     drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
@@ -1900,7 +1911,6 @@ if (document.body.classList.contains('tmpl-4')) {
         if (rd.fitness && rd.fitness.length > 1) {
             var fitLabels = rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; });
             var tmpl4Metrics = [
-                { el: 'tmpl4-chart-grip-' + n, get: function(f){ return f.grip_right; } },
                 { el: 'tmpl4-chart-tug-' + n,  get: function(f){ return f.tug_sec; } },
                 { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } },
                 { el: 'tmpl4-chart-walk-' + n, get: function(f){ return f.walk_5m_sec; } }
@@ -1916,6 +1926,8 @@ if (document.body.classList.contains('tmpl-4')) {
                     if (mcfg) new Chart(mEl, mcfg);
                 }
             });
+            // --- 握力(左右2系列) tmpl4版 ---
+            drawBalanceChart('tmpl4-chart-grip-' + n, rd.fitness, fitLabels, 'grip_right', 'grip_left');
             // --- 片脚立位(左右2系列) tmpl4版 ---
             drawBalanceChart('tmpl4-chart-balance-' + n, rd.fitness, fitLabels);
         }
