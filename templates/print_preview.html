@@ -1192,19 +1192,25 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_tug = items.get('tug', true) %}
     {% set show_cs30 = items.get('cs30', true) %}
     {% set show_walk = items.get('walk', true) %}
+    {% set show_walk_max = items.get('walk_max', true) %}
     {% set show_balance = items.get('balance', true) %}
     {# 6ヶ月で一度も値がない項目は非表示判定 #}
     {% set has_any_weight = weights | selectattr('weight_kg') | list | length > 0 %}
     {% set has_any_grip   = fitness | selectattr('grip_right') | list | length > 0 if fitness else false %}
     {% set has_any_tug    = fitness | selectattr('tug_sec') | list | length > 0 if fitness else false %}
     {% set has_any_cs30   = fitness | selectattr('sit_stand_30sec') | list | length > 0 if fitness else false %}
-    {% set has_any_walk   = fitness | selectattr('walk_5m_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk_normal = fitness | selectattr('walk_5m_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk_max    = fitness | selectattr('walk_5m_max_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk   = has_any_walk_normal or has_any_walk_max %}
     {% set has_any_balance = fitness | selectattr('standing_balance_right') | list | length > 0 if fitness else false %}
     {% set show_weight_final = show_weight and has_any_weight %}
     {% set show_grip_final   = show_grip and has_any_grip %}
     {% set show_tug_final    = show_tug and has_any_tug %}
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
-    {% set show_walk_final   = show_walk and has_any_walk %}
+    {# 通常/最大それぞれの最終表示判定。5m歩行ボックスはどちらかが出るとき表示 #}
+    {% set show_walk_normal_final = show_walk and has_any_walk_normal %}
+    {% set show_walk_max_final    = show_walk_max and has_any_walk_max %}
+    {% set show_walk_final   = show_walk_normal_final or show_walk_max_final %}
     {% set show_balance_final = show_balance and has_any_balance %}
     {% if (show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final) and not fitness_in_graphcol %}
     <div class="rep-fitness-title">
@@ -1772,6 +1778,9 @@ function applyImages(idx, userName) {
 // chart_style: 1=折れ線, 2=棒グラフ, 3=レーダー, 4=数値カード, 5=横棒グラフ
 var chartData = {{ report_data_list | tojson }};
 var chartStyle = {{ chart_style | default(1) | int }};
+// 5m歩行トグル: 通常/最大それぞれの表示可否(items由来・全利用者共通)
+var walkShowNormal = {{ 'true' if items.get('walk', true) else 'false' }};
+var walkShowMax = {{ 'true' if items.get('walk_max', true) else 'false' }};
 // グラフサイズをbodyクラスで適用
 (function() {
     var sizeMap = {1: 's', 2: 'm', 3: 'l'};
@@ -1963,15 +1972,16 @@ function makeChartConfig(type, labels, data, accent, lowerIsBetter) {
 // 握力・片脚立位は右/左、5m歩行は通常/最大に流用。
 // 折れ線(1)・エリア(3)は2系列で描画。棒(2)・横棒(5)・数値カード(4)は折れ線にフォールバック。
 function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, leftLabel) {
-    rightKey = rightKey || 'standing_balance_right';
-    leftKey  = leftKey  || 'standing_balance_left';
+    // 引数未指定(undefined)のみデフォルト適用。null明示は「その系列を描かない」意図として尊重
+    if (rightKey === undefined) rightKey = 'standing_balance_right';
+    if (leftKey === undefined)  leftKey  = 'standing_balance_left';
     rightLabel = rightLabel || '右(実線)';
     leftLabel  = leftLabel  || '左(破線)';
     var el = document.getElementById(elId);
     if (!el) return;
     if (!fitness || fitness.length <= 1) return;
-    var rightData = fitness.map(function(f){ return f[rightKey]; });
-    var leftData  = fitness.map(function(f){ return f[leftKey]; });
+    var rightData = rightKey ? fitness.map(function(f){ return f[rightKey]; }) : [];
+    var leftData  = leftKey  ? fitness.map(function(f){ return f[leftKey]; }) : [];
     var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     if (!hasRight && !hasLeft) return;
@@ -2093,11 +2103,14 @@ chartData.forEach(function(rd, idx) {
     drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
     // 片脚立位トレンド(右側で判定・大きいほど良い)
     drawTrendBadge('trend-balance-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.standing_balance_right; }) : [], false);
-    // --- 5m歩行(通常/最大の2系列) rep版 ---
+    // --- 5m歩行(通常/最大の2系列。トグルOFFの系列は描かない) rep版 ---
     var walkLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
-    drawBalanceChart('chart-walk-' + n, rd.fitness, walkLabels, 'walk_5m_sec', 'walk_5m_max_sec', '通常(実線)', '最大(破線)');
-    // 5m歩行トレンド(通常で判定・短いほど良い)
-    drawTrendBadge('trend-walk-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.walk_5m_sec; }) : [], true);
+    var walkNormalKey = walkShowNormal ? 'walk_5m_sec' : null;
+    var walkMaxKey = walkShowMax ? 'walk_5m_max_sec' : null;
+    drawBalanceChart('chart-walk-' + n, rd.fitness, walkLabels, walkNormalKey, walkMaxKey, '通常(実線)', '最大(破線)');
+    // 5m歩行トレンド(通常優先・なければ最大で判定・短いほど良い)
+    var walkTrendKey = walkShowNormal ? 'walk_5m_sec' : 'walk_5m_max_sec';
+    drawTrendBadge('trend-walk-' + n, rd.fitness ? rd.fitness.map(function(f){ return f[walkTrendKey]; }) : [], true);
     // --- レーダー(style=6時のみ。canvasが無ければ内部でスキップ) ---
     if (chartStyle === 6) {
         var gender = (rd.patient && rd.patient.gender) ? rd.patient.gender : '男性';
