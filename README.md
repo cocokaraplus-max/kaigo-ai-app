@@ -678,3 +678,16 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 4. print_output.htmlのpoPrintOne/poPreviewOneのwindow.open動作確認
 5. テンプレート11/12のデザイン微調整（必要に応じて）
 ```
+
+
+## デプロイ方式（2026-06-01 検証・確定）
+
+- **GitHub自動デプロイは有効**。Cloud Buildトリガー2つが稼働中（いずれもDISABLED無し）。
+  - `tasukaru-dev-auto-deploy`: `tasukaru-dev` ブランチへのpushで **dev** を自動ビルド&デプロイ
+  - `rmgpgab-...-adex`: `tasukaru` ブランチへのpushで **本番** を自動ビルド&デプロイ
+- **通常運用：pushするだけでよい。**
+  - dev: `git push origin tasukaru-dev`
+  - 本番: `git checkout tasukaru && git merge tasukaru-dev && git push origin tasukaru`
+- 過去HANDOFFの「自動デプロイ無し・手動デプロイ」は誤り。前セッションで手動デプロイが割り込まれたため、自動が止まっているように見えていただけ。
+- 検証証拠（2026-06-01）：SHORT_SHA `b3d14f4` `6b2eae8` `961b2de` `356e457` `bad7505` がいずれもGitHubソースでSUCCESS。
+- `gcloud run deploy ... --source .` は緊急フォールバック時のみ使用。
