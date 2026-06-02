@@ -1187,11 +1187,11 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <tr>
                 <td style="padding:3px 6px;border:1px solid #bbb;width:50%;">新しい希望や要望はあるか</td>
                 <td style="padding:3px 6px;border:1px solid #bbb;text-align:center;">
-                    <span style="display:inline-flex;align-items:center;gap:3px;margin-right:12px;">
-                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;">{% if ev and ev.get('new_requests_exist') in [true, 'あり', 'true'] %}&#10003;{% endif %}</span>
+                    <span style="display:inline-flex;align-items:center;gap:3px;margin-right:12px;vertical-align:middle;">
+                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;line-height:1;">{% if ev and ev.get('new_requests_exist') in [true, 'あり', 'true'] %}&#10003;{% endif %}</span>
                         あり</span>
-                    <span style="display:inline-flex;align-items:center;gap:3px;">
-                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;">{% if not ev or ev.get('new_requests_exist') not in [true, 'あり', 'true'] %}&#10003;{% endif %}</span>
+                    <span style="display:inline-flex;align-items:center;gap:3px;vertical-align:middle;">
+                        <span style="width:12px;height:12px;border:1.5px solid #333;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;line-height:1;">{% if not ev or ev.get('new_requests_exist') not in [true, 'あり', 'true'] %}&#10003;{% endif %}</span>
                         なし</span>
                 </td>
             </tr>
