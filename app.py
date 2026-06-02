@@ -13,6 +13,8 @@ from evaluation_helper import (
 )
 from datetime import datetime, timedelta, time as dt_time, timezone
 import os
+import threading
+_monitoring_gen_lock = threading.Lock()
 import uuid
 import pytz
 import re
@@ -9520,6 +9522,8 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
     """print_preview用: monitoring_reportsが未生成の場合に自動生成してDBに保存"""
     import threading
     from datetime import datetime as _dt, timedelta as _td
+    supabase = get_supabase()
+    _monitoring_gen_lock.acquire()
     try:
         from utils import get_generative_model
         import pytz as _pytz
@@ -9600,6 +9604,8 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
         import traceback
         traceback.print_exc()
         return {}
+    finally:
+        _monitoring_gen_lock.release()
 
 @app.route('/print_pdf')
 @login_required
