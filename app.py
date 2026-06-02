@@ -9492,17 +9492,8 @@ def print_output():
             "user_name, user_name_kana, care_manager_name, support_office, care_level, is_discontinued, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
-            # 利用終了日の「月」までは候補に残す。終了日の月 < 対象年月 の人だけ除外。
-            # year_month は "YYYY-MM"、discontinued_date は "YYYY-MM-DD"。
-            def _keep(p):
-                dd = p.get("discontinued_date")
-                if not dd:
-                    return True
-                dmonth = str(dd)[:7]  # "YYYY-MM"
-                if not year_month:
-                    return True
-                return dmonth >= year_month  # 終了月以降(=終了月含む)は残す
-            patients_list = [p for p in res.data if _keep(p)]
+            # 利用者選択リストは全員表示(月別の対象外判定は print_preview 側で行う)
+            patients_list = res.data
     except Exception:
         pass
     staff_list = []
