@@ -64,6 +64,8 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .rep-fitness-charts { display: flex; gap: 3mm; margin-bottom: 3mm; }
 .rep-fitness-chart-box { flex: 1; border: 1px solid #e0e0e0; border-radius: var(--radius); padding: 2mm; text-align: center; }
 .rep-fitness-chart-label { font-size: 7pt; color: #444; margin-bottom: 1mm; }
+.rep-fitness-trend { display: inline-flex; vertical-align: middle; margin-left: 3px; }
+.rep-fitness-trend svg { display: block; }
 .rep-fitness-chart-value { font-size: 9pt; font-weight: 700; color: var(--accent); }
 .rep-fitness-chart-change { font-size: 7pt; color: #34a853; }
 canvas.mini-chart { width: 100% !important; height: 40px !important; }
@@ -839,35 +841,35 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
         {% if show_grip_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">握力(kg)</div>
+            <div class="rep-fitness-chart-label">握力(kg)<span class="rep-fitness-trend" id="trend-grip-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-grip-{{ idx }}"></canvas>
             <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
         {% if show_tug_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">TUG(秒)</div>
+            <div class="rep-fitness-chart-label">TUG(秒)<span class="rep-fitness-trend" id="trend-tug-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-tug-{{ idx }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_tug.tug_sec if first_fit_tug else '' }}→{% if last_fit.tug_sec %}{{ last_fit.tug_sec }}{% else %}未実施{% endif %}</div>
         </div>
         {% endif %}
         {% if show_cs30_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">CS-30(回)</div>
+            <div class="rep-fitness-chart-label">CS-30(回)<span class="rep-fitness-trend" id="trend-cs30-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-cs30-{{ idx }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
         </div>
         {% endif %}
         {% if show_walk_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">5m歩行(秒)</div>
+            <div class="rep-fitness-chart-label">5m歩行(秒)<span class="rep-fitness-trend" id="trend-walk-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-walk-{{ idx }}"></canvas>
             <div class="rep-fitness-chart-value">{{ first_fit_walk.walk_5m_sec if first_fit_walk else '' }}→{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}未実施{% endif %}</div>
         </div>
         {% endif %}
         {% if show_balance_final %}
         <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
+            <div class="rep-fitness-chart-label">片脚立位(秒)<span class="rep-fitness-trend" id="trend-balance-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-balance-{{ idx }}"></canvas>
             <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
         </div>
@@ -1756,7 +1758,7 @@ function getAccentColor() {
 }
 
 // グラフスタイル別オプション生成
-function makeChartConfig(type, labels, data, accent) {
+function makeChartConfig(type, labels, data, accent, lowerIsBetter) {
     var isMono = !isColor;
     var baseColor = isMono ? '#333' : accent;
 
@@ -1776,7 +1778,9 @@ function makeChartConfig(type, labels, data, accent) {
     if (chartStyle === 2) {
         var bgColors = data.map(function(v, i) {
             if (i === 0) return isMono ? 'rgba(100,100,100,0.5)' : 'rgba(100,180,100,0.6)';
-            return v >= data[i-1]
+            // 改善=緑/悪化=赤。lowerIsBetterなら「減少=改善」
+            var improved = lowerIsBetter ? (v <= data[i-1]) : (v >= data[i-1]);
+            return improved
                 ? (isMono ? 'rgba(80,80,80,0.7)' : 'rgba(52,168,83,0.75)')
                 : (isMono ? 'rgba(180,180,180,0.5)' : 'rgba(234,67,53,0.65)');
         });
@@ -1887,13 +1891,16 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
-function renderValueCard(el, firstVal, lastVal, accent) {
+function renderValueCard(el, firstVal, lastVal, accent, lowerIsBetter) {
     if (!el) return;
     el.style.display = 'none';
     var isMono = !isColor;
     var diff = lastVal - firstVal;
     var diffStr = diff > 0 ? ('+' + diff.toFixed(1)) : diff.toFixed(1);
-    var diffColor = isMono ? '#555' : (diff > 0 ? '#34a853' : (diff < 0 ? '#ea4335' : '#888'));
+    // 改善方向で色付け。lowerIsBetterなら「減少=改善(緑)」
+    var improved = lowerIsBetter ? (diff < 0) : (diff > 0);
+    var worsened = lowerIsBetter ? (diff > 0) : (diff < 0);
+    var diffColor = isMono ? '#555' : (improved ? '#34a853' : (worsened ? '#ea4335' : '#888'));
     var card = document.createElement('div');
     card.style.cssText = 'text-align:center;padding:2px 0;';
     card.innerHTML =
@@ -1902,19 +1909,46 @@ function renderValueCard(el, firstVal, lastVal, accent) {
     el.parentNode.insertBefore(card, el.nextSibling);
 }
 
+// トレンドバッジ描画: 初回→最新の変化を円バッジ＋矢印で表示
+// lowerIsBetter=true なら「減少=改善」。同値なら何も表示しない。
+function drawTrendBadge(badgeId, values, lowerIsBetter) {
+    var badge = document.getElementById(badgeId);
+    if (!badge) return;
+    // null/空を除いた有効値のみ
+    var vals = (values || []).filter(function(v){ return v !== null && v !== undefined && v !== '' && !isNaN(v); }).map(Number);
+    if (vals.length < 2) return;
+    var first = vals[0], last = vals[vals.length - 1];
+    if (first === last) return; // 同値は表記なし
+    var increased = last > first;
+    var improved = lowerIsBetter ? !increased : increased;
+    var isMono = !isColor;
+    // 改善=グリーン系 / 低下=コーラル系。モノクロ時は黒/グレー
+    var circleFill = isMono ? (improved ? '#e0e0e0' : '#f5f5f5') : (improved ? '#E1F5EE' : '#FAECE7');
+    var arrowColor = isMono ? (improved ? '#000' : '#888') : (improved ? '#0F6E56' : '#993C1D');
+    // 改善は上向き矢印(↗)、低下は下向き矢印(↘)
+    var arrowPath = improved
+        ? 'M5.5 10 L10.5 6 M10.5 6 L10.5 9 M10.5 6 L7.5 6'
+        : 'M5.5 6 L10.5 10 M10.5 10 L10.5 7 M10.5 10 L7.5 10';
+    badge.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 16 16" role="img" aria-label="' + (improved ? '向上' : '低下') + '">' +
+        '<circle cx="8" cy="8" r="7" fill="' + circleFill + '"/>' +
+        '<path d="' + arrowPath + '" fill="none" stroke="' + arrowColor + '" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>';
+}
+
 // ===== グラフ描画 =====
 var accent = getAccentColor();
 
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
     var metrics = [
-        { id: 'chart-weight-' + n, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
+        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-tug-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
+        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-cs30-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
+        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-walk-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.walk_5m_sec; }) : null; },
+        { id: 'chart-walk-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.walk_5m_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
     ];
 
@@ -1927,19 +1961,25 @@ chartData.forEach(function(rd, idx) {
 
         if (chartStyle === 4) {
             // 数値カード: first/last表示
-            renderValueCard(el, data[0], data[data.length - 1], accent);
+            renderValueCard(el, data[0], data[data.length - 1], accent, m.lowerIsBetter);
         } else {
-            var cfg = makeChartConfig(m.id, labels, data, accent);
+            var cfg = makeChartConfig(m.id, labels, data, accent, m.lowerIsBetter);
             if (cfg) new Chart(el, cfg);
         }
+        // トレンドバッジ（chart-xxx-N → trend-xxx-N）
+        drawTrendBadge(m.id.replace('chart-', 'trend-'), data, m.lowerIsBetter);
     });
 
     // --- 握力(左右2系列) rep版 ---
     var gripLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
     drawBalanceChart('chart-grip-' + n, rd.fitness, gripLabels, 'grip_right', 'grip_left');
+    // 握力トレンド(右側で判定・大きいほど良い)
+    drawTrendBadge('trend-grip-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.grip_right; }) : [], false);
     // --- 片脚立位(左右2系列) rep版 ---
     var balLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
     drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
+    // 片脚立位トレンド(右側で判定・大きいほど良い)
+    drawTrendBadge('trend-balance-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.standing_balance_right; }) : [], false);
 });
 
 // ===== テンプレート4: グラフ列のミニグラフ描画 =====
@@ -1965,18 +2005,18 @@ if (document.body.classList.contains('tmpl-4')) {
         if (rd.fitness && rd.fitness.length > 1) {
             var fitLabels = rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; });
             var tmpl4Metrics = [
-                { el: 'tmpl4-chart-tug-' + n,  get: function(f){ return f.tug_sec; } },
-                { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } },
-                { el: 'tmpl4-chart-walk-' + n, get: function(f){ return f.walk_5m_sec; } }
+                { el: 'tmpl4-chart-tug-' + n,  low: true,  get: function(f){ return f.tug_sec; } },
+                { el: 'tmpl4-chart-cs30-' + n, low: false, get: function(f){ return f.sit_stand_30sec; } },
+                { el: 'tmpl4-chart-walk-' + n, low: true,  get: function(f){ return f.walk_5m_sec; } }
             ];
             tmpl4Metrics.forEach(function(mm) {
                 var mEl = document.getElementById(mm.el);
                 if (!mEl) return;
                 var mData = rd.fitness.map(mm.get);
                 if (chartStyle === 4) {
-                    renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor);
+                    renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor, mm.low);
                 } else {
-                    var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor);
+                    var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor, mm.low);
                     if (mcfg) new Chart(mEl, mcfg);
                 }
             });
