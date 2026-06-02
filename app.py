@@ -190,6 +190,8 @@ def get_patients(supabase, f_code):
                 "care_level": r.get("care_level") or "",
                 "long_goal": r.get("long_goal") or "",
                 "short_goal": r.get("short_goal") or "",
+                "is_discontinued": bool(r.get("is_discontinued")),
+                "discontinued_date": r.get("discontinued_date") or "",
             })
         return patients
     except:
@@ -2135,6 +2137,8 @@ def vitals():
     today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
 
     patients = get_patients(supabase, f_code)
+    # 利用終了日が今日以前の人はバイタル対象候補から除外(終了日当日までは表示)
+    patients = [p for p in patients if not (p.get("discontinued_date") and str(p["discontinued_date"]) < today)]
 
     # 各患者のweekdays・ampm・ampm_per_day取得
     # ★型不一致対策: patient_id は str() で統一(BIGINT vs string でマッチしない問題対応)
@@ -5209,7 +5213,7 @@ def admin():
 
     patient_profiles = []
     try:
-        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level').eq('facility_code', f_code).order('user_name_kana').execute()
+        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level, is_discontinued').eq('facility_code', f_code).order('user_name_kana').execute()
         patient_profiles = pp_res.data or []
     except: pass
 
@@ -9485,9 +9489,10 @@ def print_output():
     patients_list = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, care_manager_name, support_office, care_level"
+            "user_name, user_name_kana, care_manager_name, support_office, care_level, is_discontinued, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
+            # 利用者選択リストは全員表示(月別の対象外判定は print_preview 側で行う)
             patients_list = res.data
     except Exception:
         pass
@@ -9631,7 +9636,7 @@ def print_pdf():
     patients_all = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, support_office, care_manager_name, care_level"
+            "user_name, user_name_kana, support_office, care_manager_name, care_level, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
             patients_all = res.data
@@ -9640,6 +9645,15 @@ def print_pdf():
 
     if user_name_single:
         patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
+
+    # 利用終了月より後の対象月は除外(終了月までは生成可。一括・個別とも適用)
+    if year_month:
+        def _active_in_month(p):
+            dd = p.get("discontinued_date")
+            if not dd:
+                return True
+            return str(dd)[:7] >= year_month  # 終了月以降(=終了月含む)は対象
+        patients_all = [p for p in patients_all if _active_in_month(p)]
 
     if sort_order == "caremanager":
         patients_all.sort(key=lambda p: (p.get("support_office") or ""))
@@ -9831,7 +9845,7 @@ def print_preview():
     patients_all = []
     try:
         res = supabase.table("patient_profiles").select(
-            "user_name, user_name_kana, support_office, care_manager_name, care_level"
+            "user_name, user_name_kana, support_office, care_manager_name, care_level, discontinued_date"
         ).eq("facility_code", f_code).order("user_name_kana").execute()
         if res.data:
             patients_all = res.data
@@ -9841,6 +9855,15 @@ def print_preview():
     # 1人印刷の場合はその人のみ
     if user_name_single:
         patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
+
+    # 利用終了月より後の対象月は除外(終了月までは生成可。一括・個別とも適用)
+    if year_month:
+        def _active_in_month(p):
+            dd = p.get("discontinued_date")
+            if not dd:
+                return True
+            return str(dd)[:7] >= year_month  # 終了月以降(=終了月含む)は対象
+        patients_all = [p for p in patients_all if _active_in_month(p)]
 
     # ソート
     if sort_order == "caremanager":

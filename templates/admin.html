@@ -455,6 +455,14 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
   </button>
 </div>
 
+<style>
+.discontinue-btn { background:#fff; color:#c62828; border:1.5px solid #c62828; display:inline-flex; align-items:center; gap:3px; }
+.discontinue-btn .material-symbols-outlined { color:#c62828; }
+.discontinue-btn.is-on { background:#c62828; color:#fff; border-color:#c62828; }
+.discontinue-btn.is-on .material-symbols-outlined { color:#fff; }
+.discontinued-badge { background:#c62828; color:#fff; font-size:0.65rem; font-weight:700; border-radius:4px; padding:1px 6px; margin-left:6px; }
+.patient-card-discontinued { opacity:0.6; background:#fbeaea; }
+</style>
 {# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
 
@@ -606,11 +614,12 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
       
       {% if patient_profiles %}
         {% for p in patient_profiles %}
-        <div class="patient-card" id="pc-{{ p.id }}">
+        <div class="patient-card{% if p.discontinued_date %} patient-card-discontinued{% endif %}" id="pc-{{ p.id }}">
           <div class="patient-card-info">
             <div class="patient-card-name">
               <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
               {{ p.user_name }}
+              {% if p.discontinued_date %}<span class="discontinued-badge">利用中止 {{ p.discontinued_date }}</span>{% endif %}
             </div>
             <div class="patient-card-sub">
               {{ p.user_name_kana or '' }}
@@ -1205,6 +1214,8 @@ async function executeDelete() {
     if (typeof _legacyExecuteDelete === 'function') _legacyExecuteDelete();
   }
 }
+
+// 利用中止は利用者情報ページの「利用終了日」で管理する(一覧トグルは廃止)
 
 // ---- CSVインポート（まもる君クラウド対応） ----
 let _csvRecords = [];
