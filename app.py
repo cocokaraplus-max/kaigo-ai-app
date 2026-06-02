@@ -190,6 +190,7 @@ def get_patients(supabase, f_code):
                 "birth_date": r.get("birth_date") or "",
                 "birth_text": birth_to_wareki_text(r.get("birth_date")),
                 "care_level": r.get("care_level") or "",
+                "gender": r.get("gender") or "",
                 "long_goal": r.get("long_goal") or "",
                 "short_goal": r.get("short_goal") or "",
                 "is_discontinued": bool(r.get("is_discontinued")),
