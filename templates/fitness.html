@@ -130,8 +130,13 @@
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
-      <div class="m-label">5m歩行</div>
+      <div class="m-label">5m歩行<small>（通常）</small></div>
       <input type="text" id="f-walk5m" inputmode="decimal" onblur="fitNormalizeField(this)">
+      <span class="m-unit">秒</span>
+    </div>
+    <div class="metric-row">
+      <div class="m-label">5m歩行<small>（最大）</small></div>
+      <input type="text" id="f-walk5m-max" inputmode="decimal" onblur="fitNormalizeField(this)">
       <span class="m-unit">秒</span>
     </div>
     <div class="metric-row">
@@ -287,11 +292,12 @@ async function saveFitness() {
     standing_balance_left: fitToHalf(document.getElementById('f-balance-l').value),
     tug_sec: fitToHalf(document.getElementById('f-tug').value),
     walk_5m_sec: fitToHalf(document.getElementById('f-walk5m').value),
+    walk_5m_max_sec: fitToHalf(document.getElementById('f-walk5m-max').value),
     sit_stand_30sec: fitToHalf(document.getElementById('f-sitstand').value),
     note: document.getElementById('f-note').value,
   };
   const hasAny = ['grip_right','grip_left','standing_balance_right','standing_balance_left',
-    'tug_sec','walk_5m_sec','sit_stand_30sec'].some(k => payload[k] !== '');
+    'tug_sec','walk_5m_sec','walk_5m_max_sec','sit_stand_30sec'].some(k => payload[k] !== '');
   if (!hasAny) { setMsg('f-msg', '測定値を1つ以上入力してください', false); return; }
   const btn = document.getElementById('f-save');
   btn.disabled = true;
@@ -303,7 +309,7 @@ async function saveFitness() {
     const j = await r.json();
     if (j.status === 'success') {
       setMsg('f-msg', '体力測定を保存しました', true);
-      ['f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-sitstand','f-note']
+      ['f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-walk5m-max','f-sitstand','f-note']
         .forEach(id => document.getElementById(id).value = '');
       loadHistory();
     } else {
@@ -354,7 +360,7 @@ async function loadHistory() {
     if ((j.fitness || []).length) {
       html += '<table class="hist-table"><tr>' +
         '<th>測定日</th><th>握右</th><th>握左</th><th>片足右/左</th>' +
-        '<th>TUG</th><th>5m</th><th>立座</th></tr>';
+        '<th>TUG</th><th>5m通</th><th>5m最</th><th>立座</th></tr>';
       j.fitness.forEach(f => {
         const fKey = 'fit_' + f.id;
         window._fitData = window._fitData || {};
@@ -365,6 +371,7 @@ async function loadHistory() {
           `<td>${fmtNum(f.standing_balance_right)}/${fmtNum(f.standing_balance_left)}</td>` +
           `<td>${fmtNum(f.tug_sec)}</td>` +
           `<td>${fmtNum(f.walk_5m_sec)}</td>` +
+          `<td>${fmtNum(f.walk_5m_max_sec)}</td>` +
           `<td>${fmtNum(f.sit_stand_30sec)}</td>` +
           `<td><button onclick="event.stopPropagation();deleteRecord('fitness','${f.id}','${f.measured_date}',this)" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation();deleteRecord('fitness','${f.id}','${f.measured_date}',this)" style="background:none;border:none;color:#ea4335;font-size:1rem;cursor:pointer;padding:2px 6px;" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation()">🗑</button></td></tr>`;
       });
@@ -443,6 +450,7 @@ function fitLoadForEdit(f) {
   setVal('f-balance-l', f.standing_balance_left);
   setVal('f-tug', f.tug_sec);
   setVal('f-walk5m', f.walk_5m_sec);
+  setVal('f-walk5m-max', f.walk_5m_max_sec);
   setVal('f-sitstand', f.sit_stand_30sec);
   setVal('f-note', f.note);
   // フォームまでスクロール

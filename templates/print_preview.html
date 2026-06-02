@@ -64,6 +64,8 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .rep-fitness-charts { display: flex; gap: 3mm; margin-bottom: 3mm; }
 .rep-fitness-chart-box { flex: 1; border: 1px solid #e0e0e0; border-radius: var(--radius); padding: 2mm; text-align: center; }
 .rep-fitness-chart-label { font-size: 7pt; color: #444; margin-bottom: 1mm; }
+.rep-fitness-trend { display: inline-flex; vertical-align: middle; margin-left: 3px; }
+.rep-fitness-trend svg { display: block; }
 .rep-fitness-chart-value { font-size: 9pt; font-weight: 700; color: var(--accent); }
 .rep-fitness-chart-change { font-size: 7pt; color: #34a853; }
 canvas.mini-chart { width: 100% !important; height: 40px !important; }
@@ -77,6 +79,12 @@ body.chart-size-s .rep-fitness-chart-value { font-size: 8pt; }
 body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
 /* 備考欄 */
 .rep-fitness-note { font-size: 7pt; color: #5f6368; border: 1px solid #e0e0e0; border-radius: 4px; padding: 2px 6px; margin-top: 2mm; background: #fafafa; }
+/* 体力測定レーダーチャート */
+.rep-radar-wrap { width: 100%; max-width: 95mm; margin: 0 auto 2mm; }
+.rep-radar-canvas { width: 100% !important; height: 75mm !important; }
+.rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1mm; padding-top: 1mm; border-top: 1px solid #eee; }
+.graph-col .rep-radar-wrap { max-width: 100%; }
+.graph-col .rep-radar-canvas { height: 62mm !important; }
 .rep-fitness-note-label { font-weight: 700; color: #888; margin-right: 4px; }
 /* 特記・満足度 */
 .rep-special-row { margin-bottom: 2mm; }
@@ -683,6 +691,14 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 /* 配置C: 上下 */
 .rep-img-layout-C { margin-bottom: 3mm; }
 .rep-img-layout-C .graph-col { margin-bottom: 2mm; }
+/* graph-col内の体力測定グラフ：2列グリッドで枠に収める */
+.graph-col .rep-fitness-charts.charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm;
+}
+.graph-col .rep-fitness-charts.charts-grid .rep-fitness-chart-box { flex: none; }
+.graph-col .rep-fitness-title { margin-bottom: 1.5mm; }
 /* 画像本体 */
 .rep-img-item { margin-bottom: 2mm; }
 .rep-img-item img { width: 100%; border-radius: 4px; display: block; }
@@ -810,6 +826,63 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
 </div>
 
+{# ===== 体力測定チャートボックス群マクロ（通常配置・graph-col両用） ===== #}
+{% macro render_fitness_chart_boxes(idx, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) %}
+        {% if show_weight_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">体重(kg)</div>
+            <canvas class="mini-chart" id="chart-weight-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">
+                {% set w_vals = weights | selectattr('weight_kg') | list %}
+                {% if w_vals | length >= 2 %}
+                {{ w_vals[0].weight_kg }}→{% if weights[-1].weight_kg %}{{ weights[-1].weight_kg }}{% else %}未実施{% endif %}
+                {% elif w_vals %}{{ w_vals[0].weight_kg }}{% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% if fitness %}
+        {% set last_fit = fitness[-1] %}
+        {% set first_fit_tug   = fitness | selectattr('tug_sec')        | list | first | default(none) %}
+        {% set first_fit_cs30  = fitness | selectattr('sit_stand_30sec')| list | first | default(none) %}
+        {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
+        {% if show_grip_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">握力(kg)<span class="rep-fitness-trend" id="trend-grip-{{ idx }}"></span></div>
+            <canvas class="mini-chart" id="chart-grip-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_tug_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">TUG(秒)<span class="rep-fitness-trend" id="trend-tug-{{ idx }}"></span></div>
+            <canvas class="mini-chart" id="chart-tug-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_tug.tug_sec if first_fit_tug else '' }}→{% if last_fit.tug_sec %}{{ last_fit.tug_sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_cs30_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">CS-30(回)<span class="rep-fitness-trend" id="trend-cs30-{{ idx }}"></span></div>
+            <canvas class="mini-chart" id="chart-cs30-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_walk_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">5m歩行(秒)<span class="rep-fitness-trend" id="trend-walk-{{ idx }}"></span></div>
+            <canvas class="mini-chart" id="chart-walk-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">通常{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}-{% endif %}{% if last_fit.walk_5m_max_sec %} / 最大{{ last_fit.walk_5m_max_sec }}{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if show_balance_final %}
+        <div class="rep-fitness-chart-box">
+            <div class="rep-fitness-chart-label">片脚立位(秒)<span class="rep-fitness-trend" id="trend-balance-{{ idx }}"></span></div>
+            <canvas class="mini-chart" id="chart-balance-{{ idx }}"></canvas>
+            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
+        </div>
+        {% endif %}
+        {% endif %}
+{% endmacro %}
+
 <div class="pages-wrap">
 {% for rd in report_data_list %}
 {% set p = rd.patient %}
@@ -821,6 +894,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set avail_imgs = rd.available_images | default([]) %}
 {% set sel_imgs_raw = rd.selected_images | default([]) %}
 {% set img_layout = rd.img_layout | default('A') %}
+{# 写真があり、かつA/Bレイアウトのとき＝体力測定グラフを写真の横(graph-col)へ配置 #}
+{% set has_photos = items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
+{% set fitness_in_graphcol = has_photos and img_layout in ['A', 'B'] %}
+{% set is_radar = (chart_style | default(1) | int) == 6 %}
 
 <div class="report-page" id="page-{{ loop.index }}">
     {% if tmpl == 4 %}
@@ -1115,84 +1192,44 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_tug = items.get('tug', true) %}
     {% set show_cs30 = items.get('cs30', true) %}
     {% set show_walk = items.get('walk', true) %}
+    {% set show_walk_max = items.get('walk_max', true) %}
     {% set show_balance = items.get('balance', true) %}
     {# 6ヶ月で一度も値がない項目は非表示判定 #}
     {% set has_any_weight = weights | selectattr('weight_kg') | list | length > 0 %}
     {% set has_any_grip   = fitness | selectattr('grip_right') | list | length > 0 if fitness else false %}
     {% set has_any_tug    = fitness | selectattr('tug_sec') | list | length > 0 if fitness else false %}
     {% set has_any_cs30   = fitness | selectattr('sit_stand_30sec') | list | length > 0 if fitness else false %}
-    {% set has_any_walk   = fitness | selectattr('walk_5m_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk_normal = fitness | selectattr('walk_5m_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk_max    = fitness | selectattr('walk_5m_max_sec') | list | length > 0 if fitness else false %}
+    {% set has_any_walk   = has_any_walk_normal or has_any_walk_max %}
     {% set has_any_balance = fitness | selectattr('standing_balance_right') | list | length > 0 if fitness else false %}
     {% set show_weight_final = show_weight and has_any_weight %}
     {% set show_grip_final   = show_grip and has_any_grip %}
     {% set show_tug_final    = show_tug and has_any_tug %}
     {% set show_cs30_final   = show_cs30 and has_any_cs30 %}
-    {% set show_walk_final   = show_walk and has_any_walk %}
+    {# 通常/最大それぞれの最終表示判定。5m歩行ボックスはどちらかが出るとき表示 #}
+    {% set show_walk_normal_final = show_walk and has_any_walk_normal %}
+    {% set show_walk_max_final    = show_walk_max and has_any_walk_max %}
+    {% set show_walk_final   = show_walk_normal_final or show_walk_max_final %}
     {% set show_balance_final = show_balance and has_any_balance %}
-    {% if show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final %}
+    {% if (show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final) and not fitness_in_graphcol %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
+    {% if is_radar %}
+    <div class="rep-radar-wrap">
+        <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の年齢階級別評価基準。握力・片脚立位は左右、5m歩行は通常/最大を各軸で表示。</div>
+    </div>
+    {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
-        {% if show_weight_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">体重(kg)</div>
-            <canvas class="mini-chart" id="chart-weight-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">
-                {% set w_vals = weights | selectattr('weight_kg') | list %}
-                {% if w_vals | length >= 2 %}
-                {{ w_vals[0].weight_kg }}→{% if weights[-1].weight_kg %}{{ weights[-1].weight_kg }}{% else %}未実施{% endif %}
-                {% elif w_vals %}{{ w_vals[0].weight_kg }}{% endif %}
-            </div>
-        </div>
-        {% endif %}
-        {% if fitness %}
-        {% set last_fit = fitness[-1] %}
-        {% set first_fit_grip  = fitness | selectattr('grip_right')     | list | first | default(none) %}
-        {% set first_fit_tug   = fitness | selectattr('tug_sec')        | list | first | default(none) %}
-        {% set first_fit_cs30  = fitness | selectattr('sit_stand_30sec')| list | first | default(none) %}
-        {% set first_fit_walk  = fitness | selectattr('walk_5m_sec')    | list | first | default(none) %}
-        {% if show_grip_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">握力(kg)</div>
-            <canvas class="mini-chart" id="chart-grip-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_tug_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">TUG(秒)</div>
-            <canvas class="mini-chart" id="chart-tug-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_tug.tug_sec if first_fit_tug else '' }}→{% if last_fit.tug_sec %}{{ last_fit.tug_sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_cs30_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">CS-30(回)</div>
-            <canvas class="mini-chart" id="chart-cs30-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_cs30.sit_stand_30sec if first_fit_cs30 else '' }}→{% if last_fit.sit_stand_30sec %}{{ last_fit.sit_stand_30sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_walk_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">5m歩行(秒)</div>
-            <canvas class="mini-chart" id="chart-walk-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">{{ first_fit_walk.walk_5m_sec if first_fit_walk else '' }}→{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}未実施{% endif %}</div>
-        </div>
-        {% endif %}
-        {% if show_balance_final %}
-        <div class="rep-fitness-chart-box">
-            <div class="rep-fitness-chart-label">片脚立位(秒)</div>
-            <canvas class="mini-chart" id="chart-balance-{{ loop.index }}"></canvas>
-            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
-        </div>
-        {% endif %}
-        {% endif %}
+        {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
     </div><!-- /rep-fitness-charts -->
     <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
     </div><!-- /rep-resizable fitness -->
+    {% endif %}
     {# 直近の備考を収集して表示 #}
     {% set all_notes = [] %}
     {% if weights %}{% for w in weights | reverse %}{% if w.note %}{% set _ = all_notes.append(w.measured_date[:7] + ' ' + w.note) %}{% endif %}{% endfor %}{% endif %}
@@ -1200,6 +1237,102 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if all_notes %}
     <div class="rep-fitness-note">
         <span class="rep-fitness-note-label">備考：</span>{{ all_notes | join(' ／ ') }}
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ===== 画像セクション（モニタリング直下：写真＋体力測定グラフ） ===== #}
+    {% if has_photos %}
+    {% set sel_imgs = sel_imgs_raw %}
+    {% set fit_visible = show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final %}
+    {# 備考を収集（graph-col内表示用） #}
+    {% set gc_notes = [] %}
+    {% if weights %}{% for w in weights | reverse %}{% if w.note %}{% set _ = gc_notes.append(w.measured_date[:7] + ' ' + w.note) %}{% endif %}{% endfor %}{% endif %}
+    {% if fitness %}{% for f in fitness | reverse %}{% if f.note %}{% set _ = gc_notes.append(f.measured_date[:7] + ' ' + f.note) %}{% endif %}{% endfor %}{% endif %}
+    {% if img_layout == 'A' %}
+    {# パターンA: 左写真大・右グラフ #}
+    <div class="rep-img-layout-A">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            {% if fit_visible %}
+            {% if is_radar %}
+            <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
+            <div class="rep-radar-wrap">
+                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」</div>
+            </div>
+            {% else %}
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
+            <div class="rep-fitness-charts charts-grid">
+                {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
+            </div>
+            {% if gc_notes %}<div class="rep-fitness-note"><span class="rep-fitness-note-label">備考：</span>{{ gc_notes | join(' ／ ') }}</div>{% endif %}
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% elif img_layout == 'B' %}
+    {# パターンB: 左右均等 #}
+    <div class="rep-img-layout-B">
+        <div class="img-col">
+            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="graph-col">
+            {% if fit_visible %}
+            {% if is_radar %}
+            <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
+            <div class="rep-radar-wrap">
+                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」</div>
+            </div>
+            {% else %}
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
+            <div class="rep-fitness-charts charts-grid">
+                {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
+            </div>
+            {% if gc_notes %}<div class="rep-fitness-note"><span class="rep-fitness-note-label">備考：</span>{{ gc_notes | join(' ／ ') }}</div>{% endif %}
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    {# パターンC: 上下分割（グラフは上に通常表示済み、写真を下に） #}
+    <div class="rep-img-layout-C">
+        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
+        <div style="display:flex;gap:3mm;">
+            {% for img_data in sel_imgs %}
+            <div class="rep-img-item">
+                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
+                    <img src="{{ img_data.url }}" alt="添付画像">
+                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
+                </div>
+                <div class="crop-hint no-print">タップでトリミング</div>
+                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
     {% endif %}
@@ -1251,64 +1384,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% endif %}
 
-    {# ===== 画像セクション（1〜2枚：1ページ目にレイアウト対応で配置） ===== #}
-    {% if items.get('images', false) and sel_imgs_raw and sel_imgs_raw | length <= 2 %}
-    {% set sel_imgs = sel_imgs_raw %}
-    {% if img_layout == 'A' %}
-    {# パターンA: 左写真大・右グラフ（グラフをコンテナ内に再配置） #}
-    <div class="rep-img-layout-A">
-        <div class="img-col">
-            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-A-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                <div class="crop-hint no-print">タップでトリミング</div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="graph-col">
-        </div>
-    </div>
-    {% elif img_layout == 'B' %}
-    {# パターンB: 左右均等 #}
-    <div class="rep-img-layout-B">
-        <div class="img-col">
-            <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-B-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="graph-col">
-        </div>
-    </div>
-    {% else %}
-    {# パターンC: 上下分割（写真を下に） #}
-    <div class="rep-img-layout-C">
-        <div style="font-size:8pt;font-weight:700;border-left:3px solid var(--accent);padding-left:4px;margin-bottom:2mm;">添付画像</div>
-        <div style="display:flex;gap:3mm;">
-            {% for img_data in sel_imgs %}
-            <div class="rep-img-item">
-                <div class="rep-resizable" style="width:25%; min-width:20mm;" id="img-resize-C-{{ loop.index0 }}-{{ loop.index }}">
-                    <img src="{{ img_data.url }}" alt="添付画像">
-                    <div class="rep-resizable-handle" title="ドラッグでサイズ調整"></div>
-                </div>
-                {% if img_data.comment %}<div class="rep-img-item-comment">{{ img_data.comment }}</div>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-    {% endif %}
+    {# ===== 画像セクションはモニタリング直下に移動済み ===== #}
 
     {# ===== 画像選択パネル（印刷時非表示） ===== #}
     {% if items.get('images', false) %}
@@ -1560,6 +1636,14 @@ function cropApply() {
         newImg.style.borderRadius = '4px';
         newImg.style.display = 'block';
         parent.replaceChild(newImg, _cropTarget);
+        // 枠の高さを切り取った画像の比率に追従させ、余白(空枠)を解消
+        var aspect = canvas.height / canvas.width;
+        if (aspect > 0 && isFinite(aspect)) {
+            var frameW = parent.clientWidth || parent.offsetWidth;
+            if (frameW > 0) {
+                parent.style.height = Math.round(frameW * aspect) + 'px';
+            }
+        }
         _cropTarget = null;
         document.getElementById('crop-modal-overlay').classList.remove('show');
     };
@@ -1694,6 +1778,17 @@ function applyImages(idx, userName) {
 // chart_style: 1=折れ線, 2=棒グラフ, 3=レーダー, 4=数値カード, 5=横棒グラフ
 var chartData = {{ report_data_list | tojson }};
 var chartStyle = {{ chart_style | default(1) | int }};
+// 5m歩行トグル: 通常/最大それぞれの表示可否(items由来・全利用者共通)
+var walkShowNormal = {{ 'true' if items.get('walk', true) else 'false' }};
+var walkShowMax = {{ 'true' if items.get('walk_max', true) else 'false' }};
+// レーダー軸の表示可否(各指標トグル)
+var radarShow = {
+    grip: {{ 'true' if items.get('grip', true) else 'false' }},
+    balance: {{ 'true' if items.get('balance', true) else 'false' }},
+    tug: {{ 'true' if items.get('tug', true) else 'false' }},
+    walk: walkShowNormal,
+    walk_max: walkShowMax
+};
 // グラフサイズをbodyクラスで適用
 (function() {
     var sizeMap = {1: 's', 2: 'm', 3: 'l'};
@@ -1709,8 +1804,99 @@ function getAccentColor() {
     return computed || '#1a73e8';
 }
 
+// ===== 体力測定レーダー: 厚労省介護予防マニュアル改訂版 資料3-5 の5段階評価基準 =====
+var FITNESS_NORMS = {
+    '男性': {
+        grip:    { dir:'high', bounds:[20.9, 25.3, 29.2, 33.0] },
+        balance: { dir:'high', bounds:[2.6, 4.7, 9.5, 23.7] },
+        tug:     { dir:'low',  bounds:[7.4, 9.0, 10.9, 12.9] },
+        walk_normal: { dir:'low', bounds:[4.1, 4.7, 5.6, 7.1] },
+        walk_max:    { dir:'low', bounds:[3.0, 3.6, 4.3, 5.3] }
+    },
+    '女性': {
+        grip:    { dir:'high', bounds:[14.9, 17.6, 19.9, 22.4] },
+        balance: { dir:'high', bounds:[3.0, 5.5, 10.0, 24.9] },
+        tug:     { dir:'low',  bounds:[7.5, 8.9, 10.1, 12.7] },
+        walk_normal: { dir:'low', bounds:[4.0, 4.7, 5.3, 6.8] },
+        walk_max:    { dir:'low', bounds:[3.1, 3.7, 4.3, 5.4] }
+    }
+};
+function normsForGender(g) { return FITNESS_NORMS[g] || FITNESS_NORMS['男性']; }
+function valueToLevel(value, norm) {
+    if (value === null || value === undefined || value === '' || isNaN(value)) return null;
+    var v = Number(value), b = norm.bounds;
+    if (norm.dir === 'high') {
+        if (v <= b[0]) return 1; if (v <= b[1]) return 2; if (v <= b[2]) return 3; if (v <= b[3]) return 4; return 5;
+    } else {
+        if (v <= b[0]) return 5; if (v <= b[1]) return 4; if (v <= b[2]) return 3; if (v <= b[3]) return 2; return 1;
+    }
+}
+// レーダー軸の定義: キー・ラベル・基準・トグル名
+function radarAxisDefs(norms) {
+    return [
+        { key:'grip_right', label:'握力(右)', norm:norms.grip, toggle:'grip' },
+        { key:'grip_left',  label:'握力(左)', norm:norms.grip, toggle:'grip' },
+        { key:'standing_balance_right', label:'片脚立位(右)', norm:norms.balance, toggle:'balance' },
+        { key:'standing_balance_left',  label:'片脚立位(左)', norm:norms.balance, toggle:'balance' },
+        { key:'tug_sec', label:'TUG', norm:norms.tug, toggle:'tug' },
+        { key:'walk_5m_sec', label:'5m歩行(通常)', norm:norms.walk_normal, toggle:'walk' },
+        { key:'walk_5m_max_sec', label:'5m歩行(最大)', norm:norms.walk_max, toggle:'walk_max' }
+    ];
+}
+// レーダー描画(elId, fitness配列, gender)
+function drawFitnessRadar(elId, fitness, gender) {
+    var el = document.getElementById(elId);
+    if (!el || !window.Chart || !fitness || fitness.length === 0) return;
+    var norms = normsForGender(gender);
+    var allDefs = radarAxisDefs(norms);
+    // 軸を絞り込み: トグルON かつ 全期間で1つでもデータがある軸のみ
+    var defs = allDefs.filter(function(d) {
+        if (typeof radarShow !== 'undefined' && radarShow[d.toggle] === false) return false;
+        return fitness.some(function(f){
+            var v = f[d.key];
+            return v !== null && v !== undefined && v !== '' && !isNaN(v);
+        });
+    });
+    if (defs.length < 3) return; // 軸が2以下ではレーダーにならない
+    var axes  = defs.map(function(d){ return d.label; });
+    var first = defs.map(function(d){ return valueToLevel(fitness[0][d.key], d.norm); });
+    var last  = defs.map(function(d){ return valueToLevel(fitness[fitness.length-1][d.key], d.norm); });
+    var shadow = defs.map(function(){ return 3; });
+    var isMono = !isColor;
+    var lastColor = isMono ? '#000' : '#1d9e75';
+    var lastFill  = isMono ? 'rgba(0,0,0,0.10)' : 'rgba(29,158,117,0.15)';
+    var firstColor = isMono ? '#999' : '#888';
+    var shadowLine = isMono ? 'rgba(150,150,150,0.5)' : 'rgba(120,144,156,0.4)';
+    var shadowFill = isMono ? 'rgba(150,150,150,0.18)' : 'rgba(120,144,156,0.18)';
+    var datasets = [
+        { label:'標準域', data:shadow, borderColor:shadowLine, borderWidth:1,
+          backgroundColor:shadowFill, pointRadius:0, fill:true },
+        { label:'初回', data:first, borderColor:firstColor, borderDash:[4,3], borderWidth:1.3,
+          backgroundColor:'rgba(136,136,136,0.05)', pointRadius:2, pointBackgroundColor:firstColor, fill:false }
+    ];
+    if (fitness.length > 1) {
+        datasets.push({ label:'最新', data:last, borderColor:lastColor, borderWidth:2,
+          backgroundColor:lastFill, pointRadius:2.5, pointBackgroundColor:lastColor, fill:true });
+    } else {
+        datasets[1].label = '測定値';
+    }
+    new Chart(el, {
+        type: 'radar',
+        data: { labels: axes, datasets: datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'bottom',
+                labels: { boxWidth: 16, font: { size: 9 }, padding: 6, color: isMono ? '#333' : '#555' } } },
+            scales: { r: { min:0, max:5, ticks:{ display:false, stepSize:1 },
+                grid:{ color:'rgba(0,0,0,0.08)' }, angleLines:{ color:'rgba(0,0,0,0.08)' },
+                pointLabels:{ font:{ size:9 }, color: isMono ? '#333' : '#444' } } },
+            animation: false
+        }
+    });
+}
+
 // グラフスタイル別オプション生成
-function makeChartConfig(type, labels, data, accent) {
+function makeChartConfig(type, labels, data, accent, lowerIsBetter) {
     var isMono = !isColor;
     var baseColor = isMono ? '#333' : accent;
 
@@ -1730,7 +1916,9 @@ function makeChartConfig(type, labels, data, accent) {
     if (chartStyle === 2) {
         var bgColors = data.map(function(v, i) {
             if (i === 0) return isMono ? 'rgba(100,100,100,0.5)' : 'rgba(100,180,100,0.6)';
-            return v >= data[i-1]
+            // 改善=緑/悪化=赤。lowerIsBetterなら「減少=改善」
+            var improved = lowerIsBetter ? (v <= data[i-1]) : (v >= data[i-1]);
+            return improved
                 ? (isMono ? 'rgba(80,80,80,0.7)' : 'rgba(52,168,83,0.75)')
                 : (isMono ? 'rgba(180,180,180,0.5)' : 'rgba(234,67,53,0.65)');
         });
@@ -1797,16 +1985,20 @@ function makeChartConfig(type, labels, data, accent) {
     return null;
 }
 
-// 片脚立位: 左右2系列グラフ描画(右=青実線 / 左=赤破線)
+// 2系列グラフ描画(系列1=実線 / 系列2=破線)
+// 握力・片脚立位は右/左、5m歩行は通常/最大に流用。
 // 折れ線(1)・エリア(3)は2系列で描画。棒(2)・横棒(5)・数値カード(4)は折れ線にフォールバック。
-function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
-    rightKey = rightKey || 'standing_balance_right';
-    leftKey  = leftKey  || 'standing_balance_left';
+function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, leftLabel) {
+    // 引数未指定(undefined)のみデフォルト適用。null明示は「その系列を描かない」意図として尊重
+    if (rightKey === undefined) rightKey = 'standing_balance_right';
+    if (leftKey === undefined)  leftKey  = 'standing_balance_left';
+    rightLabel = rightLabel || '右(実線)';
+    leftLabel  = leftLabel  || '左(破線)';
     var el = document.getElementById(elId);
     if (!el) return;
     if (!fitness || fitness.length <= 1) return;
-    var rightData = fitness.map(function(f){ return f[rightKey]; });
-    var leftData  = fitness.map(function(f){ return f[leftKey]; });
+    var rightData = rightKey ? fitness.map(function(f){ return f[rightKey]; }) : [];
+    var leftData  = leftKey  ? fitness.map(function(f){ return f[leftKey]; }) : [];
     var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     if (!hasRight && !hasLeft) return;
@@ -1816,11 +2008,13 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
     var fillArea = (chartStyle === 3);
     var datasets = [];
     if (hasRight) datasets.push({
+        label: rightLabel,
         data: rightData, borderColor: rightColor,
         backgroundColor: fillArea ? (isMono ? 'rgba(0,0,0,0.10)' : 'rgba(21,101,192,0.13)') : undefined,
         borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
     });
     if (hasLeft) datasets.push({
+        label: leftLabel,
         data: leftData, borderColor: leftColor, borderDash: [4, 2],
         backgroundColor: fillArea ? (isMono ? 'rgba(120,120,120,0.10)' : 'rgba(198,40,40,0.13)') : undefined,
         borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
@@ -1828,18 +2022,27 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey) {
     new Chart(el, {
         type: 'line',
         data: { labels: labels, datasets: datasets },
-        options: { plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false }
+        options: {
+            plugins: { legend: {
+                display: true, position: 'bottom',
+                labels: { boxWidth: 18, boxHeight: 0, font: { size: 8 }, padding: 4, color: isMono ? '#333' : '#555' }
+            } },
+            scales: { x: { display: false }, y: { display: false } }, animation: false
+        }
     });
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
-function renderValueCard(el, firstVal, lastVal, accent) {
+function renderValueCard(el, firstVal, lastVal, accent, lowerIsBetter) {
     if (!el) return;
     el.style.display = 'none';
     var isMono = !isColor;
     var diff = lastVal - firstVal;
     var diffStr = diff > 0 ? ('+' + diff.toFixed(1)) : diff.toFixed(1);
-    var diffColor = isMono ? '#555' : (diff > 0 ? '#34a853' : (diff < 0 ? '#ea4335' : '#888'));
+    // 改善方向で色付け。lowerIsBetterなら「減少=改善(緑)」
+    var improved = lowerIsBetter ? (diff < 0) : (diff > 0);
+    var worsened = lowerIsBetter ? (diff > 0) : (diff < 0);
+    var diffColor = isMono ? '#555' : (improved ? '#34a853' : (worsened ? '#ea4335' : '#888'));
     var card = document.createElement('div');
     card.style.cssText = 'text-align:center;padding:2px 0;';
     card.innerHTML =
@@ -1848,19 +2051,44 @@ function renderValueCard(el, firstVal, lastVal, accent) {
     el.parentNode.insertBefore(card, el.nextSibling);
 }
 
+// トレンドバッジ描画: 初回→最新の変化を円バッジ＋矢印で表示
+// lowerIsBetter=true なら「減少=改善」。同値なら何も表示しない。
+function drawTrendBadge(badgeId, values, lowerIsBetter) {
+    var badge = document.getElementById(badgeId);
+    if (!badge) return;
+    // null/空を除いた有効値のみ
+    var vals = (values || []).filter(function(v){ return v !== null && v !== undefined && v !== '' && !isNaN(v); }).map(Number);
+    if (vals.length < 2) return;
+    var first = vals[0], last = vals[vals.length - 1];
+    if (first === last) return; // 同値は表記なし
+    var increased = last > first;
+    var improved = lowerIsBetter ? !increased : increased;
+    var isMono = !isColor;
+    // 改善=グリーン系 / 低下=コーラル系。モノクロ時は黒/グレー
+    var circleFill = isMono ? (improved ? '#e0e0e0' : '#f5f5f5') : (improved ? '#E1F5EE' : '#FAECE7');
+    var arrowColor = isMono ? (improved ? '#000' : '#888') : (improved ? '#0F6E56' : '#993C1D');
+    // 改善は上向き矢印(↗)、低下は下向き矢印(↘)
+    var arrowPath = improved
+        ? 'M5.5 10 L10.5 6 M10.5 6 L10.5 9 M10.5 6 L7.5 6'
+        : 'M5.5 6 L10.5 10 M10.5 10 L10.5 7 M10.5 10 L7.5 10';
+    badge.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 16 16" role="img" aria-label="' + (improved ? '向上' : '低下') + '">' +
+        '<circle cx="8" cy="8" r="7" fill="' + circleFill + '"/>' +
+        '<path d="' + arrowPath + '" fill="none" stroke="' + arrowColor + '" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>';
+}
+
 // ===== グラフ描画 =====
 var accent = getAccentColor();
 
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
     var metrics = [
-        { id: 'chart-weight-' + n, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
+        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-tug-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
+        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-cs30-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
-          getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-walk-' + n, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.walk_5m_sec; }) : null; },
+        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
     ];
 
@@ -1873,19 +2101,38 @@ chartData.forEach(function(rd, idx) {
 
         if (chartStyle === 4) {
             // 数値カード: first/last表示
-            renderValueCard(el, data[0], data[data.length - 1], accent);
+            renderValueCard(el, data[0], data[data.length - 1], accent, m.lowerIsBetter);
         } else {
-            var cfg = makeChartConfig(m.id, labels, data, accent);
+            var cfg = makeChartConfig(m.id, labels, data, accent, m.lowerIsBetter);
             if (cfg) new Chart(el, cfg);
         }
+        // トレンドバッジ（chart-xxx-N → trend-xxx-N）
+        drawTrendBadge(m.id.replace('chart-', 'trend-'), data, m.lowerIsBetter);
     });
 
     // --- 握力(左右2系列) rep版 ---
     var gripLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
     drawBalanceChart('chart-grip-' + n, rd.fitness, gripLabels, 'grip_right', 'grip_left');
+    // 握力トレンド(右側で判定・大きいほど良い)
+    drawTrendBadge('trend-grip-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.grip_right; }) : [], false);
     // --- 片脚立位(左右2系列) rep版 ---
     var balLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
     drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
+    // 片脚立位トレンド(右側で判定・大きいほど良い)
+    drawTrendBadge('trend-balance-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.standing_balance_right; }) : [], false);
+    // --- 5m歩行(通常/最大の2系列。トグルOFFの系列は描かない) rep版 ---
+    var walkLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
+    var walkNormalKey = walkShowNormal ? 'walk_5m_sec' : null;
+    var walkMaxKey = walkShowMax ? 'walk_5m_max_sec' : null;
+    drawBalanceChart('chart-walk-' + n, rd.fitness, walkLabels, walkNormalKey, walkMaxKey, '通常(実線)', '最大(破線)');
+    // 5m歩行トレンド(通常優先・なければ最大で判定・短いほど良い)
+    var walkTrendKey = walkShowNormal ? 'walk_5m_sec' : 'walk_5m_max_sec';
+    drawTrendBadge('trend-walk-' + n, rd.fitness ? rd.fitness.map(function(f){ return f[walkTrendKey]; }) : [], true);
+    // --- レーダー(style=6時のみ。canvasが無ければ内部でスキップ) ---
+    if (chartStyle === 6) {
+        var gender = (rd.patient && rd.patient.gender) ? rd.patient.gender : '男性';
+        drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender);
+    }
 });
 
 // ===== テンプレート4: グラフ列のミニグラフ描画 =====
@@ -1911,18 +2158,18 @@ if (document.body.classList.contains('tmpl-4')) {
         if (rd.fitness && rd.fitness.length > 1) {
             var fitLabels = rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; });
             var tmpl4Metrics = [
-                { el: 'tmpl4-chart-tug-' + n,  get: function(f){ return f.tug_sec; } },
-                { el: 'tmpl4-chart-cs30-' + n, get: function(f){ return f.sit_stand_30sec; } },
-                { el: 'tmpl4-chart-walk-' + n, get: function(f){ return f.walk_5m_sec; } }
+                { el: 'tmpl4-chart-tug-' + n,  low: true,  get: function(f){ return f.tug_sec; } },
+                { el: 'tmpl4-chart-cs30-' + n, low: false, get: function(f){ return f.sit_stand_30sec; } },
+                { el: 'tmpl4-chart-walk-' + n, low: true,  get: function(f){ return f.walk_5m_sec; } }
             ];
             tmpl4Metrics.forEach(function(mm) {
                 var mEl = document.getElementById(mm.el);
                 if (!mEl) return;
                 var mData = rd.fitness.map(mm.get);
                 if (chartStyle === 4) {
-                    renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor);
+                    renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor, mm.low);
                 } else {
-                    var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor);
+                    var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor, mm.low);
                     if (mcfg) new Chart(mEl, mcfg);
                 }
             });
