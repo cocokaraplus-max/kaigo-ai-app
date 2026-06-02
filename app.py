@@ -9491,8 +9491,16 @@ def print_output():
             patients_list = res.data
     except Exception:
         pass
+    staff_list = []
+    try:
+        st_res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).order("staff_name").execute()
+        if st_res.data:
+            staff_list = [s["staff_name"] for s in st_res.data if s.get("staff_name")]
+    except Exception:
+        pass
     return render("print_output.html",
         patients=patients_list,
+        staff_list=staff_list,
         my_name=my_name,
         is_admin=is_admin,
         f_code=f_code,
@@ -9739,6 +9747,7 @@ def print_pdf():
         items=items,
         cats=cats,
         my_name=my_name,
+        author=request.args.get("author", ""),
         tmpl=tmpl,
         chart_style=chart_style,
         pdf_mode=True,
@@ -9797,6 +9806,7 @@ def print_preview():
         tmpl = tmpl_raw
     chart_style = request.args.get("chart_style", 1, type=int)
     chart_size  = request.args.get("chart_size",  2, type=int)
+    author = request.args.get("author", "")
     import json as _json2
     selected_images_json = request.args.get("selected_images", "{}")
     img_layouts_json = request.args.get("img_layouts", "{}")
@@ -9955,6 +9965,7 @@ def print_preview():
         items=items,
         cats=cats,
         my_name=my_name,
+        author=author,
         tmpl=tmpl,
         chart_style=chart_style,
         chart_size=chart_size,

@@ -855,7 +855,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% if cm.care_level %}<span class="rep-care-badge">{{ cm.care_level }}</span>{% endif %}
             </div>
         </div>
-        <div class="rep-author">作成担当者<br>{{ my_name }}</div>
+        <div class="rep-author">作成担当者<br>{{ author or my_name }}</div>
     </div>
 
     <!-- 目標達成状況 -->

@@ -132,6 +132,10 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             印刷設定
         </div>
         <div class="po-row">
+            <span class="po-label">作成担当者</span>
+            <select class="po-select" id="po-author" onchange="poSetAuthor(this.value)"></select>
+        </div>
+        <div class="po-row">
             <span class="po-label">スタイル</span>
             <div class="po-style-toggle">
                 <button class="po-style-btn on" id="style-color" onclick="poSetStyle('color')">カラー</button>
@@ -406,6 +410,19 @@ var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': t
 })();
 var poCheckData = [];
 var poPatients = {{ patients | tojson }};
+var poStaffList = {{ staff_list | tojson }};
+var poAuthor = {{ my_name | tojson }};
+function poSetAuthor(v) { poAuthor = v; }
+(function poInitAuthor() {
+    var sel = document.getElementById('po-author');
+    if (!sel) return;
+    var names = poStaffList && poStaffList.length ? poStaffList.slice() : [];
+    if (poAuthor && names.indexOf(poAuthor) === -1) names.unshift(poAuthor);
+    sel.innerHTML = names.map(function(n) {
+        var s = (n === poAuthor) ? ' selected' : '';
+        return '<option value="' + n + '"' + s + '>' + n + '</option>';
+    }).join('');
+})();
 
 (function() {
     var sel = document.getElementById('po-year-month');
@@ -603,7 +620,7 @@ function poPrintAll() {
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
-        auto_print: '1'
+        author: poAuthor, auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
@@ -615,7 +632,7 @@ function poPrintOne(encodedName) {
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
-        auto_print: '1'
+        author: poAuthor, auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
@@ -626,7 +643,7 @@ function poPreviewOne(encodedName) {
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
-        chart_size: poChartSize
+        chart_size: poChartSize, author: poAuthor
     });
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
@@ -638,7 +655,8 @@ function poPreviewAll() {
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
-        template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize
+        template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
+        author: poAuthor
     });
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
