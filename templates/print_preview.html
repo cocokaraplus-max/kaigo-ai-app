@@ -1220,7 +1220,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if is_radar %}
     <div class="rep-radar-wrap">
         <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の年齢階級別評価基準。握力・片脚立位は左右、5m歩行は通常/最大を各軸で表示。</div>
+        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
     </div>
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
@@ -1271,7 +1271,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
                 <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」</div>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             </div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
@@ -1305,7 +1305,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
                 <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」</div>
+                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             </div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
@@ -1804,6 +1804,46 @@ function getAccentColor() {
     return computed || '#1a73e8';
 }
 
+// ===== 参考: 同年齢層の握力平均（スポーツ庁「体力・運動能力調査」令和6年度） =====
+// 65-79歳の3階級のみ。80歳以上は調査範囲外のため参考値なし。
+var GRIP_AGE_AVG = {
+    '男性': { '65': 39.3, '70': 37.7, '75': 35.1 },
+    '女性': { '65': 25.2, '70': 23.9, '75': 22.7 }
+};
+// 生年月日(YYYY-MM-DD)と基準日(Date)から満年齢を算出
+function calcAge(birthStr, refDate) {
+    if (!birthStr) return null;
+    var m = String(birthStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    var by = parseInt(m[1],10), bm = parseInt(m[2],10), bd = parseInt(m[3],10);
+    var age = refDate.getFullYear() - by;
+    var mo = refDate.getMonth() + 1, da = refDate.getDate();
+    if (mo < bm || (mo === bm && da < bd)) age -= 1;
+    if (age < 0 || age > 130) return null;
+    return age;
+}
+// 年齢→5歳階級キー('65'/'70'/'75')。範囲外はnull
+function gripAgeClass(age) {
+    if (age === null || age === undefined) return null;
+    if (age >= 65 && age <= 69) return '65';
+    if (age >= 70 && age <= 74) return '70';
+    if (age >= 75 && age <= 79) return '75';
+    return null; // 64以下 / 80以上は参考値なし
+}
+// 患者の性別・生年月日から握力参考値の表示文を返す（無ければ空文字）
+function gripAgeAvgText(gender, birthStr) {
+    var age = calcAge(birthStr, new Date());
+    var cls = gripAgeClass(age);
+    if (!cls) return '';
+    var g = (gender === '女性') ? '女性' : (gender === '男性' ? '男性' : null);
+    if (!g) return '';
+    var v = GRIP_AGE_AVG[g][cls];
+    if (v === undefined) return '';
+    var clsLabel = (cls === '65') ? '65〜69歳' : (cls === '70') ? '70〜74歳' : '75〜79歳';
+    return ' ／ 参考：同年代（' + g + clsLabel + '）の握力平均 ' + v +
+           'kg（出典：スポーツ庁「体力・運動能力調査」令和6年度）';
+}
+
 // ===== 体力測定レーダー: 厚労省介護予防マニュアル改訂版 資料3-5 の5段階評価基準 =====
 var FITNESS_NORMS = {
     '男性': {
@@ -2132,6 +2172,12 @@ chartData.forEach(function(rd, idx) {
     if (chartStyle === 6) {
         var gender = (rd.patient && rd.patient.gender) ? rd.patient.gender : '男性';
         drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender);
+        // 参考: 同年齢層の握力平均をレーダー出典欄に併記
+        try {
+            var _bd = (rd.patient && rd.patient.birth_date) ? rd.patient.birth_date : '';
+            var _avgEl = document.getElementById('radar-ageavg-' + n);
+            if (_avgEl) { _avgEl.textContent = gripAgeAvgText(gender, _bd); }
+        } catch(e) {}
     }
 });
 
