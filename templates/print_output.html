@@ -322,6 +322,27 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 </div>
             </div>
         </div>
+        <!-- po-special-layout: 特記事項配置選択 -->
+        <div style="margin-top:10px;">
+            <div class="po-section-title" style="margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">dashboard_customize</span>
+                特記事項配置
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+                <div class="po-graph-card" id="special-layout-below" onclick="poSetSpecialLayout('below')" style="padding:6px 4px;">
+                    <svg width="36" height="32" viewBox="0 0 36 32"><rect x="2" y="2" width="32" height="8" fill="none" stroke="#1a73e8" stroke-width="1.5"/><rect x="2" y="12" width="32" height="8" fill="none" stroke="#1a73e8" stroke-width="1.5"/><rect x="2" y="22" width="32" height="8" fill="none" stroke="#1a73e8" stroke-width="1.5"/></svg>
+                    <div class="graph-name">下配置</div>
+                </div>
+                <div class="po-graph-card on" id="special-layout-side" onclick="poSetSpecialLayout('side')" style="padding:6px 4px;">
+                    <svg width="36" height="32" viewBox="0 0 36 32"><rect x="2" y="2" width="14" height="28" fill="none" stroke="#1a73e8" stroke-width="1.5"/><rect x="20" y="2" width="14" height="28" fill="none" stroke="#1a73e8" stroke-width="1.5"/></svg>
+                    <div class="graph-name">横配置</div>
+                </div>
+                <div class="po-graph-card" id="special-layout-inline" onclick="poSetSpecialLayout('inline')" style="padding:6px 4px;">
+                    <svg width="36" height="32" viewBox="0 0 36 32"><line x1="2" y1="6" x2="34" y2="6" stroke="#1a73e8" stroke-width="1"/><line x1="2" y1="12" x2="34" y2="12" stroke="#1a73e8" stroke-width="1"/><line x1="2" y1="18" x2="34" y2="18" stroke="#1a73e8" stroke-width="1"/><line x1="2" y1="24" x2="34" y2="24" stroke="#1a73e8" stroke-width="1"/></svg>
+                    <div class="graph-name">1行</div>
+                </div>
+            </div>
+        </div>
         <div style="margin-top:10px;">
             <div class="po-section-title" style="margin-bottom:6px;">
                 <span class="material-symbols-outlined" style="font-size:16px;">checklist</span>
@@ -414,6 +435,12 @@ if (!isNaN(poTemplate)) poTemplate = parseInt(poTemplate);
 var fCode = '{{ f_code }}';
 var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
+// po-special-layout: 特記事項配置選択 ('below'|'side'|'inline')
+var poSpecialLayout = (function(){
+  try { return localStorage.getItem('po_special_layout') || 'below'; }
+  catch(e){ return 'below'; }
+})();
+
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, walk: true, walk_max: true, balance: true, special: true, no_record: false, images: false };
 var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
@@ -513,6 +540,11 @@ function poSetAuthor(v) { poAuthor = v; }
         var btn = document.getElementById('chart-size-' + ({1:'s',2:'m',3:'l',4:'ss'})[s]);
         if (btn) btn.classList.toggle('on', s === poChartSize);
     });
+    // special_layout UI初期化
+    ['below', 'side', 'inline'].forEach(function(l) {
+        var btn = document.getElementById('special-layout-' + l);
+        if (btn) btn.classList.toggle('on', l === poSpecialLayout);
+    });
     });
 })();
 
@@ -525,6 +557,16 @@ function poSetTemplate(t) {
         el.classList.toggle('on', match);
     });
 }
+function poSetSpecialLayout(layout) {
+    poSpecialLayout = layout;
+    try { localStorage.setItem('po_special_layout', layout); } catch(e) {}
+    document.querySelectorAll('#special-layout-below, #special-layout-side, #special-layout-inline').forEach(function(el) {
+        el.classList.remove('on');
+    });
+    var btn = document.getElementById('special-layout-' + layout);
+    if (btn) btn.classList.add('on');
+}
+
 function poSetChartSize(s) {
     poChartSize = s;
     try { localStorage.setItem('po_chart_size', s); } catch(e) {}
@@ -690,7 +732,7 @@ function poPrintOne(encodedName) {
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
-        author: poAuthor, auto_print: '1'
+        author: poAuthor, special_layout: poSpecialLayout, auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
@@ -701,7 +743,7 @@ function poPreviewOne(encodedName) {
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
         items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
-        chart_size: poChartSize, author: poAuthor
+        chart_size: poChartSize, author: poAuthor, special_layout: poSpecialLayout
     });
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
