@@ -135,14 +135,20 @@ body.chart-size-s .rep-fitness-chart-box { padding: 1.5mm; }
 body.chart-size-l .rep-fitness-chart-box { padding: 3mm; }
 body.chart-size-s .rep-fitness-chart-value { font-size: 8pt; }
 body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
-/* サイズトグルでレーダーと体重バーも連動（s=60 / m=75 / l=90 mm） */
-body.chart-size-s .rep-radar-canvas { height: 60mm !important; }
-body.chart-size-m .rep-radar-canvas { height: 75mm !important; }
-body.chart-size-l .rep-radar-canvas { height: 90mm !important; }
-body.chart-size-s .rep-weight-bar-plot { min-height: 52mm; }
-body.chart-size-m .rep-weight-bar-plot { min-height: 67mm; }
-body.chart-size-l .rep-weight-bar-plot { min-height: 82mm; }
-/* graph-col内（写真あり）はやや小さめに連動 */
+/* サイズトグル: レーダー全体を比率保持で拡大縮小（wrap幅+canvas高さをセット連動） */
+body.chart-size-s  .rep-radar-wrap { max-width: 85mm; }
+body.chart-size-m  .rep-radar-wrap { max-width: 100mm; }
+body.chart-size-l  .rep-radar-wrap { max-width: 120mm; }
+body.chart-size-s  .rep-radar-canvas { height: 52mm !important; }
+body.chart-size-m  .rep-radar-canvas { height: 64mm !important; }
+body.chart-size-l  .rep-radar-canvas { height: 78mm !important; }
+body.chart-size-s  .rep-weight-bar { flex-basis: 16mm; }
+body.chart-size-m  .rep-weight-bar { flex-basis: 18mm; }
+body.chart-size-l  .rep-weight-bar { flex-basis: 20mm; }
+body.chart-size-s  .rep-weight-bar-plot { min-height: 44mm; }
+body.chart-size-m  .rep-weight-bar-plot { min-height: 56mm; }
+body.chart-size-l  .rep-weight-bar-plot { min-height: 70mm; }
+/* graph-col内（写真あり）は幅制限なし・高さのみ比率連動 */
 body.chart-size-s .graph-col .rep-radar-canvas { height: 50mm !important; }
 body.chart-size-m .graph-col .rep-radar-canvas { height: 62mm !important; }
 body.chart-size-l .graph-col .rep-radar-canvas { height: 74mm !important; }
@@ -150,8 +156,10 @@ body.chart-size-l .graph-col .rep-radar-canvas { height: 74mm !important; }
 body.chart-size-ss canvas.mini-chart { height: 20px !important; }
 body.chart-size-ss .rep-fitness-chart-box { padding: 1mm; }
 body.chart-size-ss .rep-fitness-chart-value { font-size: 7pt; }
-body.chart-size-ss .rep-radar-canvas { height: 45mm !important; }
-body.chart-size-ss .rep-weight-bar-plot { min-height: 38mm; }
+body.chart-size-ss .rep-radar-wrap { max-width: 70mm; }
+body.chart-size-ss .rep-radar-canvas { height: 42mm !important; }
+body.chart-size-ss .rep-weight-bar { flex-basis: 14mm; }
+body.chart-size-ss .rep-weight-bar-plot { min-height: 36mm; }
 body.chart-size-ss .graph-col .rep-radar-canvas { height: 40mm !important; }
 /* 備考欄 */
 .rep-fitness-note { font-size: 7pt; color: #5f6368; border: 1px solid #e0e0e0; border-radius: 4px; padding: 2px 6px; margin-top: 2mm; background: #fafafa; }
