@@ -2564,43 +2564,33 @@ function mobileChoose(mode) {
     if (mode === 'compact') {
         mobileCompactToFit();
     } else if (mode === 'split') {
-        // 1枚目に収まらない位置から下を全部2枚目へ（高さ分割・確実に2枚に）
+        // 内容が1ページに収まっているなら分割不要 → 収まっている旨を伝える
         var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
-        var target = (ov && ov.length) ? ov[0] : document.querySelector('.report-page');
-        // ===== デバッグ出力 =====
-        var dbg = [];
-        dbg.push('あふれ検知ページ数: ' + (ov ? ov.length : 'null'));
-        if (target) {
-            var pb0 = parseFloat(getComputedStyle(target).paddingBottom);
-            var innerH0 = target.clientHeight - pb0;
-            var kids0 = Array.prototype.slice.call(target.children).filter(function(c){
-                return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
-            });
-            var lastK = kids0[kids0.length-1];
-            var cb0 = lastK ? (lastK.offsetTop + lastK.offsetHeight) : 0;
-            dbg.push('対象ページ clientHeight: ' + target.clientHeight);
-            dbg.push('ページ内側高さ(innerH): ' + Math.round(innerH0));
-            dbg.push('子要素数: ' + kids0.length);
-            dbg.push('内容の下端(contentBottom): ' + Math.round(cb0));
-            dbg.push('あふれ判定(cb>innerH?): ' + (cb0 > innerH0));
-            window.__ovTargetPage = target;
-            if (typeof ovDoSplit === 'function') ovDoSplit('flow');
-            // 分割後の状態
-            if (__ovSplitState && __ovSplitState.splitPage) {
-                var sp = __ovSplitState.splitPage;
-                dbg.push('2枚目に移した要素数: ' + (__ovSplitState.movedNodes ? __ovSplitState.movedNodes.length : '?'));
-                dbg.push('2枚目の子要素数: ' + sp.children.length);
-                dbg.push('2枚目 offsetHeight: ' + sp.offsetHeight);
-                dbg.push('2枚目 marginBottom: ' + sp.style.marginBottom);
-            } else {
-                dbg.push('★ __ovSplitState が作られていない');
-            }
-            var bar = document.getElementById('ov-confirm-bar');
-            if (bar) bar.classList.remove('show');
-        } else {
-            dbg.push('★ targetが無い');
+        if (!ov || ov.length === 0) {
+            mobileShowFitNotice();
+            __mobileEditMode = 'compact';
+            var bc2 = document.getElementById('mobile-btn-compact');
+            var bs2 = document.getElementById('mobile-btn-split');
+            if (bc2 && bs2) { bc2.classList.add('mobile-opt-active'); bs2.classList.remove('mobile-opt-active'); }
+            return;
         }
-        alert(dbg.join('\n'));
+        // あふれている場合のみ分割
+        window.__ovTargetPage = ov[0];
+        if (typeof ovDoSplit === 'function') ovDoSplit('flow');
+        var bar = document.getElementById('ov-confirm-bar');
+        if (bar) bar.classList.remove('show');
+    }
+}
+// 収まっている旨のミニ通知（編集画面内）
+function mobileShowFitNotice() {
+    var hint = document.querySelector('.mobile-editor-hint');
+    if (hint) {
+        hint.textContent = 'この内容は1ページに収まっています。分割せずに印刷できます。';
+        hint.style.color = '#1a73e8';
+        setTimeout(function(){
+            hint.textContent = '下の書類プレビューで仕上がりを確認できます。';
+            hint.style.color = '';
+        }, 3500);
     }
 }
 // 「この内容で印刷する」: タップ起点で印刷（iOSブロック回避）
