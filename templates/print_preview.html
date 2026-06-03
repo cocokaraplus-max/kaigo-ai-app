@@ -2562,7 +2562,7 @@ function mobileChoose(mode) {
         bs.classList.toggle('mobile-opt-active', mode === 'split');
     }
     if (mode === 'compact') {
-        if (typeof autoCompactPages === 'function') autoCompactPages();
+        mobileCompactToFit();
     } else if (mode === 'split') {
         // あふれているページを対象にグラフ・写真を2枚目へ
         var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
@@ -2582,6 +2582,66 @@ function mobileEditorPrint() {
     var bar = document.getElementById('ov-confirm-bar');
     if (bar) bar.classList.remove('show');
     window.print();
+}
+
+// スマホ「1枚に収める」: 収まるまで段階的に縮小（内容を切らない）
+function mobileCompactToFit() {
+    var pages = document.querySelectorAll('.report-page');
+    pages.forEach(function(page) {
+        if (page.classList.contains('rep-image-page')) return;
+        // リセット
+        page.classList.remove('compact');
+        page.style.fontSize = '';
+        page.style.lineHeight = '';
+        page.style.padding = '';
+        page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+            td.style.fontSize = ''; td.style.padding = '';
+        });
+
+        function contentBottom() {
+            var kids = Array.prototype.slice.call(page.children).filter(function(c){
+                return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
+            });
+            if (!kids.length) return 0;
+            var last = kids[kids.length - 1];
+            return last.offsetTop + last.offsetHeight;
+        }
+        function innerH() {
+            var pb = parseFloat(getComputedStyle(page).paddingBottom);
+            return page.clientHeight - pb;
+        }
+        function fits() { return contentBottom() <= innerH() * 1.0; }
+
+        if (fits()) return; // もともと収まっている
+
+        // まず compact クラスで基本縮小
+        page.classList.add('compact');
+
+        // 段階的に縮小: フォント・行間・余白を少しずつ下げる
+        // 下限: フォント 5pt / 行間 1.15 / パディング 5mm まで
+        var fontPt = 7.4;   // compact相当からさらに下げる起点
+        var lineH = 1.4;
+        var padTop = 9;     // mm
+        var padSide = 11;   // mm
+        var FONT_MIN = 5.0, LINE_MIN = 1.15, PAD_MIN = 5;
+        var guard = 0;
+        while (!fits() && guard < 40) {
+            guard++;
+            if (fontPt > FONT_MIN) fontPt = Math.max(FONT_MIN, fontPt - 0.2);
+            if (lineH > LINE_MIN) lineH = Math.max(LINE_MIN, lineH - 0.03);
+            if (padTop > PAD_MIN) padTop = Math.max(PAD_MIN, padTop - 0.5);
+            if (padSide > PAD_MIN) padSide = Math.max(PAD_MIN, padSide - 0.5);
+            page.style.fontSize = fontPt.toFixed(1) + 'pt';
+            page.style.lineHeight = lineH.toFixed(2);
+            page.style.padding = padTop + 'mm ' + padSide + 'mm ' + Math.max(PAD_MIN, padTop - 2) + 'mm';
+            page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+                td.style.fontSize = Math.max(FONT_MIN, fontPt - 1).toFixed(1) + 'pt';
+                td.style.padding = '1px 3px';
+            });
+            // 下限に達したら、これ以上縮小できないので打ち切り
+            if (fontPt <= FONT_MIN && lineH <= LINE_MIN && padSide <= PAD_MIN) break;
+        }
+    });
 }
 // 確認モーダルの「確認する」: この時点でレイアウト確定済みなので検知が効く
 function ovConfirmCheck() {
