@@ -2490,12 +2490,32 @@ function ovIsGraphChild(el) {
 }
 
 // 印刷ボタンの入口
+// モバイル幅判定（A4幅794px未満＝画面に収まらない＝モバイル扱い）
+function ovIsMobile() {
+    return window.innerWidth < 794;
+}
 function handlePrintClick() {
+    // モバイルは検知タイミングが不安定なため、まず確認モーダルを挟む
+    if (ovIsMobile()) {
+        document.getElementById('ov-modal-check').classList.add('show');
+        return;
+    }
+    // PCは従来どおり: 即検知してあふれていればモーダル
     var ov = detectOverflowPages();
     if (!ov || ov.length === 0) { window.print(); return; }
-    // 第2段階は単票想定: 最初のあふれページを対象にする
     window.__ovTargetPage = ov[0];
     ovShowModal(1);
+}
+// 確認モーダルの「確認する」: この時点でレイアウト確定済みなので検知が効く
+function ovConfirmCheck() {
+    document.getElementById('ov-modal-check').classList.remove('show');
+    var ov = detectOverflowPages();
+    if (!ov || ov.length === 0) { window.print(); return; }
+    window.__ovTargetPage = ov[0];
+    ovShowModal(1);
+}
+function ovCancelCheck() {
+    document.getElementById('ov-modal-check').classList.remove('show');
 }
 
 function ovShowModal(n) {
@@ -2736,6 +2756,16 @@ function ovConfirmPrint() {
 </div>
 
 <!-- ===== あふれ対応モーダル（第2段階） ===== -->
+<div class="ov-modal-overlay no-print" id="ov-modal-check">
+    <div class="ov-modal">
+        <div class="ov-modal-title">印刷前の確認</div>
+        <div class="ov-modal-desc">この内容が1ページ（A4）に収まるか確認します。よろしければ「確認する」を押してください。</div>
+        <div class="ov-modal-btns">
+            <button class="ov-btn ov-btn-primary" onclick="ovConfirmCheck()">確認する</button>
+            <button class="ov-btn ov-btn-ghost" onclick="ovCancelCheck()">キャンセル</button>
+        </div>
+    </div>
+</div>
 <div class="ov-modal-overlay no-print" id="ov-modal-1">
     <div class="ov-modal">
         <div class="ov-modal-title">1枚に収まりません</div>
