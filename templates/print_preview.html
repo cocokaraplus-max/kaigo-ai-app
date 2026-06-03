@@ -221,6 +221,28 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
   min-width: 45mm;
 }
 
+/* rep-graph-special-wrapper: グラフと特記事項の左右配置 */
+.rep-graph-special-wrapper {
+  display: flex;
+  gap: 4mm;
+  margin-bottom: 2mm;
+}
+.rep-graph-special-wrapper.has-images {
+  display: block;  /* 画像ありの場合は縦配置 */
+}
+.rep-graph-col {
+  flex: 0 0 65%;
+}
+.rep-graph-col .rep-radar-wrap { max-width: 100%; }
+.rep-special-col {
+  flex: 0 0 35%;
+}
+.rep-graph-special-wrapper.has-images .rep-graph-col,
+.rep-graph-special-wrapper.has-images .rep-special-col {
+  flex: none;
+  margin-bottom: 2mm;
+}
+
 .rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
 .rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
 .rep-check-circle.checked { background: #444; }
@@ -1348,10 +1370,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
     {% if is_radar %}
+    <!-- rep-graph-special-wrapper: グラフ + 特記事項を65:35で並べる親コンテナ -->
+    <div class="rep-graph-special-wrapper" {% if has_photos %}class="has-images"{% endif %}>
+    <div class="rep-graph-col">
     <div class="rep-radar-wrap">
         <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
     </div>
     <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+    </div><!-- /rep-graph-col (グラフ側終了) -->
+    <div class="rep-special-col">
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
@@ -1516,6 +1543,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% endif %}
     </div><!-- /rep-special-container -->
+    </div><!-- /rep-special-col (特記事項側終了) -->
+    </div><!-- /rep-graph-special-wrapper -->
 
     {# ===== 画像セクションはモニタリング直下に移動済み ===== #}
 
