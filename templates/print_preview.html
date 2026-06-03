@@ -279,12 +279,14 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 }
 /* 幅比 55:45 (グラフ側にゆとり・特記事項も広く) */
 .rep-graph-special-wrapper:not(.has-images) .rep-graph-col {
-  flex: 0 0 55%;
+  flex: 1 1 0;           /* 残り幅を埋める(gap分のはみ出しを防ぐ) */
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 .rep-graph-special-wrapper:not(.has-images) .rep-special-col {
   flex: 0 0 45%;
+  min-width: 0;
 }
 /* レーダー本体を外枠(カラム)の幅いっぱいに広げる(参考文献の右端と揃う) */
 .rep-graph-special-wrapper:not(.has-images) .rep-graph-col .rep-radar-wrap {
