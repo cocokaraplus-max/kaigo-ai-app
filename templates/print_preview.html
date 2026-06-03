@@ -236,6 +236,36 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 .rep-graph-col .rep-radar-wrap { max-width: 100%; }
 .rep-special-col {
   flex: 0 0 35%;
+  /* rep-special-grid: 縦に積み重ねるレイアウト */
+  display: flex;
+  flex-direction: column;
+  gap: 2mm;
+}
+.rep-special-row {
+  /* 特記事項：大きめ（自動で十分な高さ） */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 40mm;  /* 最小高さで2x2的な大きさを表現 */
+}
+.rep-new-requests-row {
+  /* 新希望：中くらい */
+  flex: 0 0 auto;
+}
+.rep-satisfaction-row {
+  /* 満足度＆評価：横に並ぶ */
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2mm;
+}
+.rep-satisfaction-row .rep-satisfaction-box {
+  flex: 1;  /* 左右均等に幅配分 */
+}
+.rep-special-col > div:last-child {
+  /* 評価基準の凡例 */
+  flex: 0 0 auto;
+  font-size: 6.5pt;
+  margin-top: auto;  /* 下に寄せる */
 }
 .rep-graph-special-wrapper.has-images .rep-graph-col,
 .rep-graph-special-wrapper.has-images .rep-special-col {
