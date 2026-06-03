@@ -1951,7 +1951,6 @@ function drawFitnessRadar(elId, fitness, gender, weights) {
         });
     });
     if (defs.length < 3) return; // 軸が2以下ではレーダーにならない
-    var axes  = defs.map(function(d){ return d.label; });
     // 前回 vs 今回（今回=最新、前回=最新の1つ前）
     var prevIdx = fitness.length >= 2 ? fitness.length - 2 : 0;
     var currIdx = fitness.length - 1;
@@ -1966,6 +1965,24 @@ function drawFitnessRadar(elId, fitness, gender, weights) {
     }
     var prevLabel = radarMonthLabel(prevIdx);
     var currLabel = radarMonthLabel(currIdx);
+    // 軸ラベルを [項目名, 月付き数値] の複数行にする（数値が無ければ項目名のみ）
+    function radarValStr(d) {
+        function fv(idx) {
+            var v = fitness[idx] ? fitness[idx][d.key] : null;
+            if (v === null || v === undefined || v === '' || isNaN(v)) return null;
+            return v + (d.unit || '');
+        }
+        var cur = fv(currIdx);
+        if (!cur) return '';
+        var prev = (fitness.length > 1) ? fv(prevIdx) : null;
+        return prev
+            ? (prev + '(' + prevLabel + ')→' + cur + '(' + currLabel + ')')
+            : (cur + '(' + currLabel + ')');
+    }
+    var axes = defs.map(function(d) {
+        var vs = radarValStr(d);
+        return vs ? [d.label, vs] : d.label;
+    });
     var shadow = defs.map(function(){ return 3; });
     var isMono = !isColor;
     var lastColor = isMono ? '#000' : '#1d9e75';
@@ -1994,43 +2011,12 @@ function drawFitnessRadar(elId, fitness, gender, weights) {
                 labels: { boxWidth: 16, font: { size: 9 }, padding: 6, color: isMono ? '#333' : '#555' } } },
             scales: { r: { min:0, max:5, ticks:{ display:false, stepSize:1 },
                 grid:{ color:'rgba(0,0,0,0.08)' }, angleLines:{ color:'rgba(0,0,0,0.08)' },
-                pointLabels:{ font:{ size:9 }, color: isMono ? '#333' : '#444' } } },
+                pointLabels:{ font:{ size:8 }, color: isMono ? '#333' : '#444' } } },
             animation: false
         }
     });
 
-    // 表示中の軸の実測値リスト（前回値○単位(○月)→今回値○単位(○月)）をレーダー下に表示
-    try {
-        var wrap = el.closest('.rep-radar-wrap');
-        if (wrap) {
-            var oldList = wrap.querySelector('.rep-radar-values');
-            if (oldList) oldList.remove();
-            function fmtVal(v, unit) {
-                if (v === null || v === undefined || v === '' || isNaN(v)) return null;
-                return v + unit;
-            }
-            var rows = [];
-            defs.forEach(function(d) {
-                var cur = fmtVal(fitness[currIdx][d.key], d.unit || '');
-                if (!cur) return; // 今回値が無い軸は出さない
-                var prev = (fitness.length > 1) ? fmtVal(fitness[prevIdx][d.key], d.unit || '') : null;
-                var valText = prev
-                    ? (prev + '(' + prevLabel + ')→' + cur + '(' + currLabel + ')')
-                    : (cur + '(' + currLabel + ')');
-                rows.push('<span class="rep-radar-value-item"><span class="rrv-label">' + d.label + '</span> ' + valText + '</span>');
-            });
-            if (rows.length) {
-                var listEl = document.createElement('div');
-                listEl.className = 'rep-radar-values';
-                listEl.innerHTML = rows.join('');
-                var srcEl = wrap.querySelector('.rep-radar-source');
-                var mainEl = wrap.querySelector('.rep-radar-main');
-                if (mainEl && srcEl) mainEl.insertBefore(listEl, srcEl);
-                else if (srcEl) wrap.insertBefore(listEl, srcEl);
-                else wrap.appendChild(listEl);
-            }
-        }
-    } catch(e) {}
+    // 数値は軸ラベル下に表示するため、レーダー下の数値リストは廃止（ステップ4）
 
     // 体重棒グラフ（直近3ヶ月）をレーダー左横に描画
     try {
