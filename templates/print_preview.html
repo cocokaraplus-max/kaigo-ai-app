@@ -239,7 +239,7 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
   /* rep-special-grid: 縦に積み重ねるレイアウト */
   display: flex;
   flex-direction: column;
-  gap: 1mm;  /* compact-gap-adjust: 隙間を詰める */
+  gap: 0mm;  /* zero-gap-final: 隙間なし */
 }
 .rep-special-row {
   /* 特記事項：大きめ（自動で十分な高さ） */
@@ -256,7 +256,7 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
   /* 満足度＆評価：横に並ぶ */
   flex: 0 0 auto;
   display: flex;
-  gap: 1mm;  /* compact-gap-adjust: 隙間を詰める */
+  gap: 0mm;  /* zero-gap-final: 隙間なし */
 }
 .rep-satisfaction-row .rep-satisfaction-box {
   flex: 1;  /* 左右均等に幅配分 */
