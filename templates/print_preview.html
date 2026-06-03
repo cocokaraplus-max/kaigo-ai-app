@@ -1062,6 +1062,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-edit-hint { font-size: 7.5pt; color: #1a73e8; }
 .rep-edit-save-btn { font-size: 7.5pt; padding: 4px 12px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 700; white-space: nowrap; }
 .rep-edit-save-btn:hover { background: #1557b0; }
+.rep-font-ctrl { display: inline-flex; align-items: center; gap: 4px; font-size: 7.5pt; color: #1a73e8; white-space: nowrap; }
+.rep-font-btn { font-size: 8pt; min-width: 26px; padding: 3px 6px; background: #fff; color: #1a73e8; border: 1px solid #1a73e8; border-radius: 4px; cursor: pointer; font-weight: 700; }
+.rep-font-btn:hover { background: #e8f0fe; }
+.rep-font-reset { font-size: 9pt; }
+.rep-font-val { min-width: 38px; text-align: center; font-weight: 700; }
+/* フォント倍率: 中身を包むラッパー(transform:scale で拡縮) */
+.rep-scale-wrap { transform-origin: top left; }
 .rep-editable { cursor: text; transition: background 0.15s; min-height: 1.5em; }
 .rep-editable:hover { background: #f1f6ff; }
 .rep-editable:focus { background: #fffbe6; outline: 1px solid #1a73e8; }
@@ -1164,7 +1171,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set fitness_in_graphcol = has_photos and img_layout in ['A', 'B'] %}
 {% set is_radar = (chart_style | default(1) | int) == 6 %}
 
-<div class="report-page" id="page-{{ loop.index }}">
+<div class="report-page" id="page-{{ loop.index }}"
+     data-user="{{ p.user_name }}"
+     data-font-scale="{{ ev.get('font_scale', 1.0) if ev and ev.get('font_scale') else 1.0 }}">
     {% if tmpl == 4 %}
     <!-- テンプレート4: 分割レイアウト 上部フル幅 / 下部グラフ左＋テキスト右 -->
     <div class="tmpl4-top">
@@ -1383,6 +1392,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if items.get('changes', true) or items.get('issues', true) %}
     <div class="rep-edit-bar no-print">
         <span class="rep-edit-hint">変化・課題・特記事項はクリックして編集できます →</span>
+        <span class="rep-font-ctrl">
+            文字
+            <button class="rep-font-btn" onclick="repFontStep('{{ p.user_name }}', -1, '{{ year_month }}')" title="小さく">A−</button>
+            <span class="rep-font-val" id="font-val-{{ loop.index }}">100%</span>
+            <button class="rep-font-btn" onclick="repFontStep('{{ p.user_name }}', 1, '{{ year_month }}')" title="大きく">A＋</button>
+            <button class="rep-font-btn rep-font-reset" onclick="repFontReset('{{ p.user_name }}', '{{ year_month }}')" title="リセット">↺</button>
+        </span>
         <button class="rep-edit-save-btn" onclick="repSaveEvalText('{{ p.user_name }}','{{ year_month }}')">この利用者の編集を保存</button>
     </div>
     <div class="rep-twocol">
@@ -2647,6 +2663,124 @@ function repSaveEvalText(userName, yearMonth) {
     }).catch(function(e) { alert('通信エラー: ' + e); });
 }
 
+// ===== フォント倍率(ページ全体・利用者ごと・transform:scale方式) =====
+var REP_FONT_MIN = 0.5, REP_FONT_MAX = 1.5, REP_FONT_STEP = 0.01;
+
+// 各 report-page の中身を .rep-scale-wrap で包む(no-print/page-number は包まず外に残す)
+function repEnsureScaleWrap(page) {
+    var existing = page.querySelector(':scope > .rep-scale-wrap');
+    if (existing) return existing;
+    var wrap = document.createElement('div');
+    wrap.className = 'rep-scale-wrap';
+    // page-number と overflow-badge は包まない(紙の絶対位置を保つ)
+    var keepOutside = [];
+    var nodes = Array.prototype.slice.call(page.childNodes);
+    nodes.forEach(function(n) {
+        if (n.nodeType === 1 && (n.classList.contains('page-number') || n.classList.contains('rep-overflow-badge'))) {
+            keepOutside.push(n); return;
+        }
+        wrap.appendChild(n);
+    });
+    page.insertBefore(wrap, page.firstChild);
+    // keepOutside はそのまま page 直下に残る(DOM順は wrap の後ろ)
+    return wrap;
+}
+
+function repGetPage(userName) {
+    var pages = document.querySelectorAll('.report-page[data-user="' + userName + '"]');
+    return pages.length ? pages[0] : null;
+}
+
+// rectベースのあふれ判定(scale に追従する)
+function repRectOverflow(page) {
+    var cs = getComputedStyle(page);
+    var pt = parseFloat(cs.paddingTop), pb = parseFloat(cs.paddingBottom);
+    var rpr = page.getBoundingClientRect();
+    var innerTop = rpr.top + pt, innerBottom = rpr.bottom - pb;
+    var wrap = page.querySelector(':scope > .rep-scale-wrap');
+    var scope = wrap || page;
+    var kids = Array.prototype.slice.call(scope.children).filter(function(c) {
+        return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge') && !c.classList.contains('page-number');
+    });
+    if (!kids.length) return false;
+    var maxB = 0;
+    kids.forEach(function(k) { var b = k.getBoundingClientRect().bottom; if (b > maxB) maxB = b; });
+    return (maxB - innerTop) > (innerBottom - innerTop) * 1.01;
+}
+
+function repUpdateOverflowBadge(page) {
+    var over = repRectOverflow(page);
+    var badge = page.querySelector(':scope > .rep-overflow-badge');
+    if (over && !badge) {
+        badge = document.createElement('div');
+        badge.className = 'rep-overflow-badge no-print';
+        badge.textContent = '⚠ 1枚に収まりません';
+        page.appendChild(badge);
+    } else if (!over && badge) {
+        badge.remove();
+    }
+}
+
+function repApplyFont(userName, scale) {
+    var page = repGetPage(userName);
+    if (!page) return;
+    scale = Math.max(REP_FONT_MIN, Math.min(REP_FONT_MAX, scale));
+    scale = Math.round(scale * 100) / 100;
+    var wrap = repEnsureScaleWrap(page);
+    if (scale === 1) {
+        wrap.style.transform = '';
+        wrap.style.width = '';
+    } else {
+        wrap.style.transform = 'scale(' + scale + ')';
+        wrap.style.width = (100 / scale) + '%';
+    }
+    page.setAttribute('data-font-scale', scale);
+    var id = page.id.replace('page-', 'font-val-');
+    var valEl = document.getElementById(id);
+    if (valEl) valEl.textContent = Math.round(scale * 100) + '%';
+    repUpdateOverflowBadge(page);
+}
+
+function repFontStep(userName, dir, yearMonth) {
+    var page = repGetPage(userName);
+    if (!page) return;
+    var cur = parseFloat(page.getAttribute('data-font-scale')) || 1.0;
+    var next = Math.round((cur + dir * REP_FONT_STEP) * 100) / 100;
+    repApplyFont(userName, next);
+    repSaveFontScale(userName, next, yearMonth);
+}
+
+function repFontReset(userName, yearMonth) {
+    repApplyFont(userName, 1.0);
+    repSaveFontScale(userName, 1.0, yearMonth);
+}
+
+var _repFontSaveTimers = {};
+function repSaveFontScale(userName, scale, yearMonth) {
+    if (_repFontSaveTimers[userName]) clearTimeout(_repFontSaveTimers[userName]);
+    _repFontSaveTimers[userName] = setTimeout(function() {
+        var ym = yearMonth || (new URLSearchParams(location.search)).get('year_month') || '';
+        fetch('/api/save_patient_evaluation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ user_name: userName, year_month: ym, font_scale: scale })
+        }).catch(function(){});
+    }, 600);
+}
+
+// 読込時、保存済み倍率を各ページに適用
+(function() {
+    function initFonts() {
+        document.querySelectorAll('.report-page[data-user]').forEach(function(page) {
+            var sc = parseFloat(page.getAttribute('data-font-scale'));
+            var u = page.getAttribute('data-user');
+            if (sc && sc !== 1.0) { repApplyFont(u, sc); }
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initFonts);
+    else initFonts();
+})();
+
 // ===== auto_print: URLパラメータに auto_print=1 があれば自動印刷 =====
 (function() {
     var params = new URLSearchParams(location.search);
@@ -2730,6 +2864,33 @@ function detectOverflowPages() {
                 && !c.classList.contains('page-number');
         });
         if (!children.length) return;
+
+        // フォント倍率のラッパー(rep-scale-wrap)がある場合は、scale を考慮して
+        // rectベースで判定する(offsetTop/Height は transform を反映しないため)
+        var scaleWrap = (children.length === 1 && children[0].classList.contains('rep-scale-wrap'))
+            ? children[0] : null;
+        if (scaleWrap) {
+            var cs = getComputedStyle(page);
+            var pt = parseFloat(cs.paddingTop), pb2 = parseFloat(cs.paddingBottom);
+            var rpr = page.getBoundingClientRect();
+            var innerTop = rpr.top + pt, innerBottom = rpr.bottom - pb2;
+            var inner = Array.prototype.slice.call(scaleWrap.children).filter(function(c) {
+                return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge')
+                    && !c.classList.contains('page-number');
+            });
+            if (!inner.length) return;
+            var maxB = 0;
+            inner.forEach(function(k) { var b = k.getBoundingClientRect().bottom; if (b > maxB) maxB = b; });
+            if ((maxB - innerTop) > (innerBottom - innerTop) * 1.01) {
+                var badgeS = document.createElement('div');
+                badgeS.className = 'rep-overflow-badge no-print';
+                badgeS.textContent = '⚠ 1枚に収まりません';
+                page.appendChild(badgeS);
+                overflowing.push(page);
+            }
+            return;
+        }
+
         var last = children[children.length - 1];
         var contentBottom = last.offsetTop + last.offsetHeight;
         var pb = parseFloat(getComputedStyle(page).paddingBottom);
