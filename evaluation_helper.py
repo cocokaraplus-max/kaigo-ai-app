@@ -462,6 +462,7 @@ ALLOWED_UPSERT_KEYS = (
     "changes_by_training", "issues_and_causes", "special_notes",
     "new_requests_exist", "new_requests_detail",
     "satisfaction", "service_appropriateness",
+    "font_scale",
     "eval_memo",
 )
 
