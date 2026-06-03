@@ -9642,6 +9642,10 @@ def print_pdf():
         cats = _json.loads(cats_json)
     except Exception:
         cats = {}
+    # cats-default-init: cats が空の場合、全カテゴリをデフォルト true で初期化
+    if not cats:
+        CATEGORIES_PRINT = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        cats = {cat: True for cat in CATEGORIES_PRINT}
 
     # 利用者一覧取得
     patients_all = []
@@ -9853,6 +9857,10 @@ def print_preview():
         cats = _json.loads(cats_json)
     except Exception:
         cats = {}
+    # cats-default-init: cats が空の場合、全カテゴリをデフォルト true で初期化
+    if not cats:
+        CATEGORIES_PRINT = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        cats = {cat: True for cat in CATEGORIES_PRINT}
 
     # 利用者一覧取得
     patients_all = []
