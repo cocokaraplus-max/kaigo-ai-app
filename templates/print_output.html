@@ -379,6 +379,13 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             データ充足チェック
             <span id="po-check-summary" style="margin-left:auto;font-size:0.75rem;color:#5f6368;font-weight:400;"></span>
         </div>
+        <!-- po-care-filter: 介護度トグル -->
+        <div class="po-care-filter" style="display:flex;gap:6px;margin:2px 0 10px;flex-wrap:wrap;">
+            <button class="po-care-btn on" data-care="all"   onclick="poSetCareFilter('all')"   style="flex:1;min-width:64px;font-size:0.74rem;padding:5px 4px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;border-radius:6px;cursor:pointer;">全て</button>
+            <button class="po-care-btn"    data-care="jigyo" onclick="poSetCareFilter('jigyo')" style="flex:1;min-width:64px;font-size:0.74rem;padding:5px 4px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">事業対象者</button>
+            <button class="po-care-btn"    data-care="shien" onclick="poSetCareFilter('shien')" style="flex:1;min-width:64px;font-size:0.74rem;padding:5px 4px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">要支援</button>
+            <button class="po-care-btn"    data-care="kaigo" onclick="poSetCareFilter('kaigo')" style="flex:1;min-width:64px;font-size:0.74rem;padding:5px 4px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer;">要介護</button>
+        </div>
         <div id="po-check-table-wrap">
             <div class="loading-row">年月を選択してください</div>
         </div>
@@ -419,6 +426,38 @@ var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': t
     } catch(e) {}
 })();
 var poCheckData = [];
+// po-care-filter: 介護度フィルタ状態 ('all'|'jigyo'|'shien'|'kaigo')
+var poCareFilter = (function(){ try { return localStorage.getItem('po_care_filter') || 'all'; } catch(e){ return 'all'; } })();
+function poCareMatch(careLevel){
+    var c = careLevel || '';
+    if (poCareFilter === 'all')   return true;
+    if (poCareFilter === 'jigyo') return c === '事業対象者';
+    if (poCareFilter === 'shien') return c.indexOf('要支援') === 0;
+    if (poCareFilter === 'kaigo') return c.indexOf('要介護') === 0;
+    return true;
+}
+function poFilteredCheckData(){
+    return poCheckData.filter(function(r){ return poCareMatch(r.patient && r.patient.care_level); });
+}
+function poSetCareFilter(v){
+    poCareFilter = v;
+    try { localStorage.setItem('po_care_filter', v); } catch(e){}
+    document.querySelectorAll('.po-care-btn').forEach(function(b){
+        var on = (b.dataset.care === v);
+        b.classList.toggle('on', on);
+        b.style.background = on ? '#1a73e8' : '#fff';
+        b.style.color      = on ? '#fff'    : '#1a73e8';
+    });
+    renderCheckTable(poFilteredCheckData());
+}
+function poInitCareFilterUI(){
+    document.querySelectorAll('.po-care-btn').forEach(function(b){
+        var on = (b.dataset.care === poCareFilter);
+        b.classList.toggle('on', on);
+        b.style.background = on ? '#1a73e8' : '#fff';
+        b.style.color      = on ? '#fff'    : '#1a73e8';
+    });
+}
 var poPatients = {{ patients | tojson }};
 var poStaffList = {{ staff_list | tojson }};
 var poAuthor = {{ my_name | tojson }};
@@ -555,7 +594,8 @@ async function poLoadCheck() {
             };
         });
         poCheckData = results;
-        renderCheckTable(results);
+        poInitCareFilterUI();
+        renderCheckTable(poFilteredCheckData());
     } catch(e) {
         wrap.innerHTML = '<div class="loading-row">エラーが発生しました: ' + e.message + '</div>';
     }
@@ -632,12 +672,14 @@ function poHideLoading() {
 function poPrintAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
+    var _names = poFilteredCheckData().map(function(r){ return r.patient.user_name; });
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor, auto_print: '1'
     });
+    if (poCareFilter !== 'all') { params.set('user_names', _names.join(',')); }
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
@@ -668,12 +710,14 @@ function poPreviewOne(encodedName) {
 function poPreviewAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
+    var _names = poFilteredCheckData().map(function(r){ return r.patient.user_name; });
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor
     });
+    if (poCareFilter !== 'all') { params.set('user_names', _names.join(',')); }
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }

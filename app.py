@@ -9869,6 +9869,14 @@ def print_preview():
     if user_name_single:
         patients_all = [p for p in patients_all if p.get("user_name") == user_name_single]
 
+    # user_names_filter: 介護度トグルで絞った複数名のみを対象にする(一括印刷)
+    user_names_raw = request.args.get("user_names", "")
+    if user_names_raw:
+        _target_names = [n for n in user_names_raw.split(",") if n]
+        if _target_names:
+            _name_set = set(_target_names)
+            patients_all = [p for p in patients_all if p.get("user_name") in _name_set]
+
     # 利用終了月より後の対象月は除外(終了月までは生成可。一括・個別とも適用)
     if year_month:
         def _active_in_month(p):
