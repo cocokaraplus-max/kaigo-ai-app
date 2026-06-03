@@ -24,6 +24,24 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 }
 @media print { .rep-overflow-badge { display: none !important; } }
 
+/* ===== スマホ印刷レイアウト編集画面 ===== */
+.mobile-editor-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1100; display: none; align-items: flex-end; }
+.mobile-editor-overlay.show { display: flex; }
+.mobile-editor-sheet { background: #fff; width: 100%; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 20px rgba(0,0,0,0.2); font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.mobile-editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.mobile-editor-title { font-size: 1rem; font-weight: 700; color: #1a1a1a; }
+.mobile-editor-close { background: none; border: none; font-size: 1.5rem; color: #888; line-height: 1; padding: 0 4px; cursor: pointer; }
+.mobile-editor-desc { font-size: 0.8rem; color: #666; line-height: 1.5; margin-bottom: 14px; }
+.mobile-editor-opts { display: flex; gap: 10px; margin-bottom: 12px; }
+.mobile-opt { flex: 1; text-align: center; padding: 12px 8px; border: 2px solid #e0e0e0; border-radius: 10px; background: #fff; cursor: pointer; }
+.mobile-opt-active { border-color: #1a73e8; background: #e8f0fe; }
+.mobile-opt-title { display: block; font-size: 0.9rem; font-weight: 700; color: #1a1a1a; margin-bottom: 2px; }
+.mobile-opt-active .mobile-opt-title { color: #1a73e8; }
+.mobile-opt-sub { display: block; font-size: 0.68rem; color: #777; line-height: 1.3; }
+.mobile-editor-hint { font-size: 0.72rem; color: #999; text-align: center; margin-bottom: 12px; }
+.mobile-editor-print { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+@media print { .mobile-editor-overlay { display: none !important; } }
+
 /* ===== あふれ対応モーダル（第2段階・画面のみ） ===== */
 .ov-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: none; align-items: center; justify-content: center; }
 .ov-modal-overlay.show { display: flex; }
@@ -2495,9 +2513,9 @@ function ovIsMobile() {
     return window.innerWidth < 794;
 }
 function handlePrintClick() {
-    // モバイルは検知タイミングが不安定なため、まず確認モーダルを挟む
+    // モバイルは印刷ブロック回避のため編集画面（オーバーレイ）を開く
     if (ovIsMobile()) {
-        document.getElementById('ov-modal-check').classList.add('show');
+        openMobileEditor();
         return;
     }
     // PCは従来どおり: 即検知してあふれていればモーダル
@@ -2505,6 +2523,65 @@ function handlePrintClick() {
     if (!ov || ov.length === 0) { window.print(); return; }
     window.__ovTargetPage = ov[0];
     ovShowModal(1);
+}
+
+// ===== スマホ用 印刷レイアウト編集画面 =====
+var __mobileEditMode = null; // 'compact' | 'split' | null
+
+function openMobileEditor() {
+    // まず一旦リセット（縮小・分割を解除した素の状態に）
+    mobileResetLayout();
+    document.getElementById('mobile-editor').classList.add('show');
+    // 既定は「1枚に縮小」を適用した状態で開く
+    mobileChoose('compact');
+}
+function closeMobileEditor() {
+    document.getElementById('mobile-editor').classList.remove('show');
+}
+// 縮小・分割を解除して素の状態へ
+function mobileResetLayout() {
+    if (typeof ovRevertSplit === 'function' && __ovSplitState) ovRevertSplit();
+    document.querySelectorAll('.report-page').forEach(function(p){
+        p.classList.remove('compact');
+        p.style.fontSize = ''; p.style.lineHeight = ''; p.style.padding = '';
+        p.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+            td.style.fontSize = ''; td.style.padding = '';
+        });
+    });
+    __mobileEditMode = null;
+}
+// 選択: 'compact'（縮小して1枚） / 'split'（グラフ・写真を2枚目）
+function mobileChoose(mode) {
+    mobileResetLayout();
+    __mobileEditMode = mode;
+    // ボタンのアクティブ表示切替
+    var bc = document.getElementById('mobile-btn-compact');
+    var bs = document.getElementById('mobile-btn-split');
+    if (bc && bs) {
+        bc.classList.toggle('mobile-opt-active', mode === 'compact');
+        bs.classList.toggle('mobile-opt-active', mode === 'split');
+    }
+    if (mode === 'compact') {
+        if (typeof autoCompactPages === 'function') autoCompactPages();
+    } else if (mode === 'split') {
+        // あふれているページを対象にグラフ・写真を2枚目へ
+        var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
+        var target = (ov && ov.length) ? ov[0] : document.querySelector('.report-page');
+        if (target) {
+            window.__ovTargetPage = target;
+            if (typeof ovDoSplit === 'function') ovDoSplit('graph');
+            // ovDoSplit は確認バーを出すので、モバイルでは隠す
+            var bar = document.getElementById('ov-confirm-bar');
+            if (bar) bar.classList.remove('show');
+        }
+    }
+}
+// 「この内容で印刷する」: タップ起点で印刷（iOSブロック回避）
+function mobileEditorPrint() {
+    closeMobileEditor();
+    var bar = document.getElementById('ov-confirm-bar');
+    if (bar) bar.classList.remove('show');
+    window.print();
 }
 // 確認モーダルの「確認する」: この時点でレイアウト確定済みなので検知が効く
 function ovConfirmCheck() {
@@ -2756,6 +2833,27 @@ function ovConfirmPrint() {
 </div>
 
 <!-- ===== あふれ対応モーダル（第2段階） ===== -->
+<div class="mobile-editor-overlay no-print" id="mobile-editor">
+    <div class="mobile-editor-sheet">
+        <div class="mobile-editor-head">
+            <span class="mobile-editor-title">印刷レイアウトの調整</span>
+            <button class="mobile-editor-close" onclick="closeMobileEditor()" aria-label="閉じる">×</button>
+        </div>
+        <div class="mobile-editor-desc">A4でどう印刷するかを選んでください。選ぶと下のプレビューに反映されます。</div>
+        <div class="mobile-editor-opts">
+            <button class="mobile-opt" id="mobile-btn-compact" onclick="mobileChoose('compact')">
+                <span class="mobile-opt-title">1枚に収める</span>
+                <span class="mobile-opt-sub">縮小して1ページに収めます</span>
+            </button>
+            <button class="mobile-opt" id="mobile-btn-split" onclick="mobileChoose('split')">
+                <span class="mobile-opt-title">2枚に分ける</span>
+                <span class="mobile-opt-sub">グラフと写真を2枚目に送ります</span>
+            </button>
+        </div>
+        <div class="mobile-editor-hint">下の書類プレビューで仕上がりを確認できます。</div>
+        <button class="mobile-editor-print" onclick="mobileEditorPrint()">この内容で印刷する</button>
+    </div>
+</div>
 <div class="ov-modal-overlay no-print" id="ov-modal-check">
     <div class="ov-modal">
         <div class="ov-modal-title">印刷前の確認</div>
