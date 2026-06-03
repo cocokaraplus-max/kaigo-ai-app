@@ -24,6 +24,24 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 }
 @media print { .rep-overflow-badge { display: none !important; } }
 
+/* ===== スマホ印刷レイアウト編集画面 ===== */
+.mobile-editor-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1100; display: none; align-items: flex-end; }
+.mobile-editor-overlay.show { display: flex; }
+.mobile-editor-sheet { background: #fff; width: 100%; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 20px rgba(0,0,0,0.2); font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.mobile-editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.mobile-editor-title { font-size: 1rem; font-weight: 700; color: #1a1a1a; }
+.mobile-editor-close { background: none; border: none; font-size: 1.5rem; color: #888; line-height: 1; padding: 0 4px; cursor: pointer; }
+.mobile-editor-desc { font-size: 0.8rem; color: #666; line-height: 1.5; margin-bottom: 14px; }
+.mobile-editor-opts { display: flex; gap: 10px; margin-bottom: 12px; }
+.mobile-opt { flex: 1; text-align: center; padding: 12px 8px; border: 2px solid #e0e0e0; border-radius: 10px; background: #fff; cursor: pointer; }
+.mobile-opt-active { border-color: #1a73e8; background: #e8f0fe; }
+.mobile-opt-title { display: block; font-size: 0.9rem; font-weight: 700; color: #1a1a1a; margin-bottom: 2px; }
+.mobile-opt-active .mobile-opt-title { color: #1a73e8; }
+.mobile-opt-sub { display: block; font-size: 0.68rem; color: #777; line-height: 1.3; }
+.mobile-editor-hint { font-size: 0.72rem; color: #999; text-align: center; margin-bottom: 12px; }
+.mobile-editor-print { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+@media print { .mobile-editor-overlay { display: none !important; } }
+
 /* ===== あふれ対応モーダル（第2段階・画面のみ） ===== */
 .ov-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: none; align-items: center; justify-content: center; }
 .ov-modal-overlay.show { display: flex; }
@@ -122,7 +140,20 @@ body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
 /* 体力測定レーダーチャート */
 .rep-radar-wrap { width: 100%; max-width: 95mm; margin: 0 auto 2mm; }
 .rep-radar-canvas { width: 100% !important; height: 75mm !important; }
-.rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1mm; padding-top: 1mm; border-top: 1px solid #eee; }
+.rep-radar-wrap { display: flex; gap: 4mm; align-items: stretch; }
+.rep-radar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 1.5mm; }
+.rep-weight-bar { flex: 0 0 18mm; display: flex; flex-direction: column; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 1.5mm; }
+.rep-weight-bar-title { font-size: 6.5pt; color: #888; margin-bottom: 1mm; }
+.rep-weight-bar-plot { flex: 1; display: flex; align-items: flex-end; justify-content: space-around; gap: 1mm; border-left: 0.5px solid #bbb; border-bottom: 0.5px solid #bbb; padding: 0 1mm; min-height: 40mm; }
+.rep-weight-bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.rep-weight-bar-val { font-size: 6pt; color: #555; margin-bottom: 0.5mm; }
+.rep-weight-bar-fill { width: 4mm; background: #378ADD; border-radius: 1px 1px 0 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rep-weight-bar-month { font-size: 5.5pt; color: #999; margin-top: 0.5mm; }
+.rep-radar-values { font-size: 7pt; color: #333; line-height: 1.6; margin-top: 2mm; display: flex; flex-wrap: wrap; gap: 2mm 8px; }
+.rep-radar-value-item { white-space: nowrap; }
+.rep-radar-value-item .rrv-label { font-weight: 700; color: #555; }
+.rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1.5mm; padding-top: 1mm; border-top: 1px solid #eee; clear: both; }
 .graph-col .rep-radar-wrap { max-width: 100%; }
 .graph-col .rep-radar-canvas { height: 62mm !important; }
 .rep-fitness-note-label { font-weight: 700; color: #888; margin-right: 4px; }
@@ -1259,9 +1290,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% if is_radar %}
     <div class="rep-radar-wrap">
-        <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+        <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
     </div>
+    <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
@@ -1310,9 +1341,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
             </div>
+            <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
             <div class="rep-fitness-charts charts-grid">
@@ -1344,9 +1375,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
             </div>
+            <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
             <div class="rep-fitness-charts charts-grid">
@@ -1914,17 +1945,17 @@ function valueToLevel(value, norm) {
 // レーダー軸の定義: キー・ラベル・基準・トグル名
 function radarAxisDefs(norms) {
     return [
-        { key:'grip_right', label:'握力(右)', norm:norms.grip, toggle:'grip' },
-        { key:'grip_left',  label:'握力(左)', norm:norms.grip, toggle:'grip' },
-        { key:'standing_balance_right', label:'片脚立位(右)', norm:norms.balance, toggle:'balance' },
-        { key:'standing_balance_left',  label:'片脚立位(左)', norm:norms.balance, toggle:'balance' },
-        { key:'tug_sec', label:'TUG', norm:norms.tug, toggle:'tug' },
-        { key:'walk_5m_sec', label:'5m歩行(通常)', norm:norms.walk_normal, toggle:'walk' },
-        { key:'walk_5m_max_sec', label:'5m歩行(最大)', norm:norms.walk_max, toggle:'walk_max' }
+        { key:'grip_right', label:'握力(右)', norm:norms.grip, toggle:'grip', unit:'kg' },
+        { key:'grip_left',  label:'握力(左)', norm:norms.grip, toggle:'grip', unit:'kg' },
+        { key:'standing_balance_right', label:'片脚立位(右)', norm:norms.balance, toggle:'balance', unit:'秒' },
+        { key:'standing_balance_left',  label:'片脚立位(左)', norm:norms.balance, toggle:'balance', unit:'秒' },
+        { key:'tug_sec', label:'TUG', norm:norms.tug, toggle:'tug', unit:'秒' },
+        { key:'walk_5m_sec', label:'5m歩行(通常)', norm:norms.walk_normal, toggle:'walk', unit:'秒' },
+        { key:'walk_5m_max_sec', label:'5m歩行(最大)', norm:norms.walk_max, toggle:'walk_max', unit:'秒' }
     ];
 }
 // レーダー描画(elId, fitness配列, gender)
-function drawFitnessRadar(elId, fitness, gender) {
+function drawFitnessRadar(elId, fitness, gender, weights) {
     var el = document.getElementById(elId);
     if (!el || !window.Chart || !fitness || fitness.length === 0) return;
     var norms = normsForGender(gender);
@@ -1938,9 +1969,38 @@ function drawFitnessRadar(elId, fitness, gender) {
         });
     });
     if (defs.length < 3) return; // 軸が2以下ではレーダーにならない
-    var axes  = defs.map(function(d){ return d.label; });
-    var first = defs.map(function(d){ return valueToLevel(fitness[0][d.key], d.norm); });
-    var last  = defs.map(function(d){ return valueToLevel(fitness[fitness.length-1][d.key], d.norm); });
+    // 前回 vs 今回（今回=最新、前回=最新の1つ前）
+    var prevIdx = fitness.length >= 2 ? fitness.length - 2 : 0;
+    var currIdx = fitness.length - 1;
+    var first = defs.map(function(d){ return valueToLevel(fitness[prevIdx][d.key], d.norm); });
+    var last  = defs.map(function(d){ return valueToLevel(fitness[currIdx][d.key], d.norm); });
+    // 測定月ラベル（YYYY-MM-DD → ○月）
+    function radarMonthLabel(idx) {
+        var md = fitness[idx] && fitness[idx].measured_date ? fitness[idx].measured_date : '';
+        var m = md.slice(5, 7);
+        if (!m) return '';
+        return (m.charAt(0) === '0' ? m.charAt(1) : m) + '月';
+    }
+    var prevLabel = radarMonthLabel(prevIdx);
+    var currLabel = radarMonthLabel(currIdx);
+    // 軸ラベルを [項目名, 月付き数値] の複数行にする（数値が無ければ項目名のみ）
+    function radarValStr(d) {
+        function fv(idx) {
+            var v = fitness[idx] ? fitness[idx][d.key] : null;
+            if (v === null || v === undefined || v === '' || isNaN(v)) return null;
+            return v + (d.unit || '');
+        }
+        var cur = fv(currIdx);
+        if (!cur) return '';
+        var prev = (fitness.length > 1) ? fv(prevIdx) : null;
+        return prev
+            ? (prev + '(' + prevLabel + ')→' + cur + '(' + currLabel + ')')
+            : (cur + '(' + currLabel + ')');
+    }
+    var axes = defs.map(function(d) {
+        var vs = radarValStr(d);
+        return vs ? [d.label, vs] : d.label;
+    });
     var shadow = defs.map(function(){ return 3; });
     var isMono = !isColor;
     var lastColor = isMono ? '#000' : '#1d9e75';
@@ -1951,14 +2011,14 @@ function drawFitnessRadar(elId, fitness, gender) {
     var datasets = [
         { label:'標準域', data:shadow, borderColor:shadowLine, borderWidth:1,
           backgroundColor:shadowFill, pointRadius:0, fill:true },
-        { label:'初回', data:first, borderColor:firstColor, borderDash:[4,3], borderWidth:1.3,
+        { label:(prevLabel || '前回'), data:first, borderColor:firstColor, borderDash:[4,3], borderWidth:1.3,
           backgroundColor:'rgba(136,136,136,0.05)', pointRadius:2, pointBackgroundColor:firstColor, fill:false }
     ];
     if (fitness.length > 1) {
-        datasets.push({ label:'最新', data:last, borderColor:lastColor, borderWidth:2,
+        datasets.push({ label:(currLabel || '今回'), data:last, borderColor:lastColor, borderWidth:2,
           backgroundColor:lastFill, pointRadius:2.5, pointBackgroundColor:lastColor, fill:true });
     } else {
-        datasets[1].label = '測定値';
+        datasets[1].label = (currLabel || '測定値');
     }
     new Chart(el, {
         type: 'radar',
@@ -1969,10 +2029,49 @@ function drawFitnessRadar(elId, fitness, gender) {
                 labels: { boxWidth: 16, font: { size: 9 }, padding: 6, color: isMono ? '#333' : '#555' } } },
             scales: { r: { min:0, max:5, ticks:{ display:false, stepSize:1 },
                 grid:{ color:'rgba(0,0,0,0.08)' }, angleLines:{ color:'rgba(0,0,0,0.08)' },
-                pointLabels:{ font:{ size:9 }, color: isMono ? '#333' : '#444' } } },
+                pointLabels:{ font:{ size:8 }, color: isMono ? '#333' : '#444' } } },
             animation: false
         }
     });
+
+    // 数値は軸ラベル下に表示するため、レーダー下の数値リストは廃止（ステップ4）
+
+    // 体重棒グラフ（直近3ヶ月）をレーダー左横に描画
+    try {
+        var idNum = elId.replace('fitness-radar-', '');
+        var barWrap = document.getElementById('radar-weightbar-' + idNum);
+        if (barWrap && weights && weights.length) {
+            var wvals = weights.filter(function(w){
+                return w.weight_kg !== null && w.weight_kg !== undefined && w.weight_kg !== '' && !isNaN(w.weight_kg);
+            });
+            // 直近3ヶ月（古い→新しいの順を保ちつつ末尾3件）
+            var recent = wvals.slice(-3);
+            if (recent.length) {
+                var maxW = Math.max.apply(null, recent.map(function(w){ return Number(w.weight_kg); }));
+                var minW = Math.min.apply(null, recent.map(function(w){ return Number(w.weight_kg); }));
+                // バー高さは最小値を基準に少し余白を取る（差が見えるように）
+                var base = Math.max(0, minW - (maxW - minW) * 0.6 - 1);
+                var range = (maxW - base) || 1;
+                var cols = recent.map(function(w){
+                    var v = Number(w.weight_kg);
+                    var hPct = Math.round(((v - base) / range) * 88) + 8; // 8〜96%
+                    var md = w.measured_date ? w.measured_date.slice(5,7) : '';
+                    var mlabel = md ? ((md.charAt(0)==='0'?md.charAt(1):md) + '月') : '';
+                    return '<div class="rep-weight-bar-col">'
+                        + '<span class="rep-weight-bar-val">' + v + '</span>'
+                        + '<div class="rep-weight-bar-fill" style="height:' + hPct + '%;"></div>'
+                        + '<span class="rep-weight-bar-month">' + mlabel + '</span>'
+                        + '</div>';
+                }).join('');
+                barWrap.innerHTML = '<div class="rep-weight-bar-title">体重(kg)</div>'
+                    + '<div class="rep-weight-bar-plot">' + cols + '</div>';
+            } else {
+                barWrap.style.display = 'none';
+            }
+        } else if (barWrap) {
+            barWrap.style.display = 'none';
+        }
+    } catch(e) {}
 }
 
 // グラフスタイル別オプション生成
@@ -2211,7 +2310,7 @@ chartData.forEach(function(rd, idx) {
     // --- レーダー(style=6時のみ。canvasが無ければ内部でスキップ) ---
     if (chartStyle === 6) {
         var gender = (rd.patient && rd.patient.gender) ? rd.patient.gender : '男性';
-        drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender);
+        drawFitnessRadar('fitness-radar-' + n, rd.fitness, gender, rd.weights);
         // 参考: 同年齢層の握力平均をレーダー出典欄に併記
         try {
             var _bd = (rd.patient && rd.patient.birth_date) ? rd.patient.birth_date : '';
@@ -2409,12 +2508,168 @@ function ovIsGraphChild(el) {
 }
 
 // 印刷ボタンの入口
+// モバイル幅判定（A4幅794px未満＝画面に収まらない＝モバイル扱い）
+function ovIsMobile() {
+    return window.innerWidth < 794;
+}
 function handlePrintClick() {
+    // モバイルは印刷ブロック回避のため編集画面（オーバーレイ）を開く
+    if (ovIsMobile()) {
+        openMobileEditor();
+        return;
+    }
+    // PCは従来どおり: 即検知してあふれていればモーダル
     var ov = detectOverflowPages();
     if (!ov || ov.length === 0) { window.print(); return; }
-    // 第2段階は単票想定: 最初のあふれページを対象にする
     window.__ovTargetPage = ov[0];
     ovShowModal(1);
+}
+
+// ===== スマホ用 印刷レイアウト編集画面 =====
+var __mobileEditMode = null; // 'compact' | 'split' | null
+
+function openMobileEditor() {
+    // まず一旦リセット（縮小・分割を解除した素の状態に）
+    mobileResetLayout();
+    document.getElementById('mobile-editor').classList.add('show');
+    // 既定は「1枚に縮小」を適用した状態で開く
+    mobileChoose('compact');
+}
+function closeMobileEditor() {
+    document.getElementById('mobile-editor').classList.remove('show');
+}
+// 縮小・分割を解除して素の状態へ
+function mobileResetLayout() {
+    if (typeof ovRevertSplit === 'function' && __ovSplitState) ovRevertSplit();
+    document.querySelectorAll('.report-page').forEach(function(p){
+        p.classList.remove('compact');
+        p.style.fontSize = ''; p.style.lineHeight = ''; p.style.padding = '';
+        p.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+            td.style.fontSize = ''; td.style.padding = '';
+        });
+    });
+    __mobileEditMode = null;
+}
+// 選択: 'compact'（縮小して1枚） / 'split'（グラフ・写真を2枚目）
+function mobileChoose(mode) {
+    mobileResetLayout();
+    __mobileEditMode = mode;
+    // ボタンのアクティブ表示切替
+    var bc = document.getElementById('mobile-btn-compact');
+    var bs = document.getElementById('mobile-btn-split');
+    if (bc && bs) {
+        bc.classList.toggle('mobile-opt-active', mode === 'compact');
+        bs.classList.toggle('mobile-opt-active', mode === 'split');
+    }
+    if (mode === 'compact') {
+        mobileCompactToFit();
+    } else if (mode === 'split') {
+        // 内容が1ページに収まっているなら分割不要 → 収まっている旨を伝える
+        var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
+        if (!ov || ov.length === 0) {
+            mobileShowFitNotice();
+            __mobileEditMode = 'compact';
+            var bc2 = document.getElementById('mobile-btn-compact');
+            var bs2 = document.getElementById('mobile-btn-split');
+            if (bc2 && bs2) { bc2.classList.add('mobile-opt-active'); bs2.classList.remove('mobile-opt-active'); }
+            return;
+        }
+        // あふれている場合のみ分割
+        window.__ovTargetPage = ov[0];
+        if (typeof ovDoSplit === 'function') ovDoSplit('flow');
+        var bar = document.getElementById('ov-confirm-bar');
+        if (bar) bar.classList.remove('show');
+    }
+}
+// 収まっている旨のミニ通知（編集画面内）
+function mobileShowFitNotice() {
+    var hint = document.querySelector('.mobile-editor-hint');
+    if (hint) {
+        hint.textContent = 'この内容は1ページに収まっています。分割せずに印刷できます。';
+        hint.style.color = '#1a73e8';
+        setTimeout(function(){
+            hint.textContent = '下の書類プレビューで仕上がりを確認できます。';
+            hint.style.color = '';
+        }, 3500);
+    }
+}
+// 「この内容で印刷する」: タップ起点で印刷（iOSブロック回避）
+function mobileEditorPrint() {
+    closeMobileEditor();
+    var bar = document.getElementById('ov-confirm-bar');
+    if (bar) bar.classList.remove('show');
+    window.print();
+}
+
+// スマホ「1枚に収める」: 収まるまで段階的に縮小（内容を切らない）
+function mobileCompactToFit() {
+    var pages = document.querySelectorAll('.report-page');
+    pages.forEach(function(page) {
+        if (page.classList.contains('rep-image-page')) return;
+        // リセット
+        page.classList.remove('compact');
+        page.style.fontSize = '';
+        page.style.lineHeight = '';
+        page.style.padding = '';
+        page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+            td.style.fontSize = ''; td.style.padding = '';
+        });
+
+        function contentBottom() {
+            var kids = Array.prototype.slice.call(page.children).filter(function(c){
+                return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
+            });
+            if (!kids.length) return 0;
+            var last = kids[kids.length - 1];
+            return last.offsetTop + last.offsetHeight;
+        }
+        function innerH() {
+            var pb = parseFloat(getComputedStyle(page).paddingBottom);
+            return page.clientHeight - pb;
+        }
+        function fits() { return contentBottom() <= innerH() * 1.0; }
+
+        if (fits()) return; // もともと収まっている
+
+        // まず compact クラスで基本縮小
+        page.classList.add('compact');
+
+        // 段階的に縮小: フォント・行間・余白を少しずつ下げる
+        // 下限: フォント 5pt / 行間 1.15 / パディング 5mm まで
+        var fontPt = 7.4;   // compact相当からさらに下げる起点
+        var lineH = 1.4;
+        var padTop = 9;     // mm
+        var padSide = 11;   // mm
+        var FONT_MIN = 5.0, LINE_MIN = 1.15, PAD_MIN = 5;
+        var guard = 0;
+        while (!fits() && guard < 40) {
+            guard++;
+            if (fontPt > FONT_MIN) fontPt = Math.max(FONT_MIN, fontPt - 0.2);
+            if (lineH > LINE_MIN) lineH = Math.max(LINE_MIN, lineH - 0.03);
+            if (padTop > PAD_MIN) padTop = Math.max(PAD_MIN, padTop - 0.5);
+            if (padSide > PAD_MIN) padSide = Math.max(PAD_MIN, padSide - 0.5);
+            page.style.fontSize = fontPt.toFixed(1) + 'pt';
+            page.style.lineHeight = lineH.toFixed(2);
+            page.style.padding = padTop + 'mm ' + padSide + 'mm ' + Math.max(PAD_MIN, padTop - 2) + 'mm';
+            page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){
+                td.style.fontSize = Math.max(FONT_MIN, fontPt - 1).toFixed(1) + 'pt';
+                td.style.padding = '1px 3px';
+            });
+            // 下限に達したら、これ以上縮小できないので打ち切り
+            if (fontPt <= FONT_MIN && lineH <= LINE_MIN && padSide <= PAD_MIN) break;
+        }
+    });
+}
+// 確認モーダルの「確認する」: この時点でレイアウト確定済みなので検知が効く
+function ovConfirmCheck() {
+    document.getElementById('ov-modal-check').classList.remove('show');
+    var ov = detectOverflowPages();
+    if (!ov || ov.length === 0) { window.print(); return; }
+    window.__ovTargetPage = ov[0];
+    ovShowModal(1);
+}
+function ovCancelCheck() {
+    document.getElementById('ov-modal-check').classList.remove('show');
 }
 
 function ovShowModal(n) {
@@ -2496,6 +2751,7 @@ function ovDoSplitTmpl4() {
     }
 
     page.parentNode.insertBefore(splitPage, page.nextSibling);
+    if (typeof window.__calcScale === 'function') window.__calcScale();
     __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved,
                        wasCompact: wasCompact, mode: 'tmpl4', textCol: textCol };
 
@@ -2566,6 +2822,8 @@ function ovDoSplit(mode) {
 
     // 2枚目を元ページの直後に挿入
     page.parentNode.insertBefore(splitPage, page.nextSibling);
+    // モバイル縮小の相殺を新しい2枚目にも適用（白紙化防止）
+    if (typeof window.__calcScale === 'function') window.__calcScale();
 
     __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved, wasCompact: wasCompact, mode: mode };
 
@@ -2587,6 +2845,7 @@ function ovRevertSplit() {
     st.page.classList.remove('ov-uncompact');
     if (st.wasCompact) st.page.classList.add('compact');
     __ovSplitState = null;
+    if (typeof window.__calcScale === 'function') window.__calcScale();
 }
 
 // 確認バー「戻る」
@@ -2637,6 +2896,8 @@ function ovConfirmPrint() {
         calcScale();
     }
     window.addEventListener('resize', calcScale);
+    // 分割で後から作るページにも再適用できるよう公開
+    window.__calcScale = calcScale;
 })();
 </script>
 <div id="crop-modal-overlay">
@@ -2655,6 +2916,37 @@ function ovConfirmPrint() {
 </div>
 
 <!-- ===== あふれ対応モーダル（第2段階） ===== -->
+<div class="mobile-editor-overlay no-print" id="mobile-editor">
+    <div class="mobile-editor-sheet">
+        <div class="mobile-editor-head">
+            <span class="mobile-editor-title">印刷レイアウトの調整</span>
+            <button class="mobile-editor-close" onclick="closeMobileEditor()" aria-label="閉じる">×</button>
+        </div>
+        <div class="mobile-editor-desc">A4でどう印刷するかを選んでください。選ぶと下のプレビューに反映されます。</div>
+        <div class="mobile-editor-opts">
+            <button class="mobile-opt" id="mobile-btn-compact" onclick="mobileChoose('compact')">
+                <span class="mobile-opt-title">1枚に収める</span>
+                <span class="mobile-opt-sub">縮小して1ページに収めます</span>
+            </button>
+            <button class="mobile-opt" id="mobile-btn-split" onclick="mobileChoose('split')">
+                <span class="mobile-opt-title">2枚に分ける</span>
+                <span class="mobile-opt-sub">グラフと写真を2枚目に送ります</span>
+            </button>
+        </div>
+        <div class="mobile-editor-hint">下の書類プレビューで仕上がりを確認できます。</div>
+        <button class="mobile-editor-print" onclick="mobileEditorPrint()">この内容で印刷する</button>
+    </div>
+</div>
+<div class="ov-modal-overlay no-print" id="ov-modal-check">
+    <div class="ov-modal">
+        <div class="ov-modal-title">印刷前の確認</div>
+        <div class="ov-modal-desc">この内容が1ページ（A4）に収まるか確認します。よろしければ「確認する」を押してください。</div>
+        <div class="ov-modal-btns">
+            <button class="ov-btn ov-btn-primary" onclick="ovConfirmCheck()">確認する</button>
+            <button class="ov-btn ov-btn-ghost" onclick="ovCancelCheck()">キャンセル</button>
+        </div>
+    </div>
+</div>
 <div class="ov-modal-overlay no-print" id="ov-modal-1">
     <div class="ov-modal">
         <div class="ov-modal-title">1枚に収まりません</div>
