@@ -135,6 +135,24 @@ body.chart-size-s .rep-fitness-chart-box { padding: 1.5mm; }
 body.chart-size-l .rep-fitness-chart-box { padding: 3mm; }
 body.chart-size-s .rep-fitness-chart-value { font-size: 8pt; }
 body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
+/* サイズトグルでレーダーと体重バーも連動（s=60 / m=75 / l=90 mm） */
+body.chart-size-s .rep-radar-canvas { height: 60mm !important; }
+body.chart-size-m .rep-radar-canvas { height: 75mm !important; }
+body.chart-size-l .rep-radar-canvas { height: 90mm !important; }
+body.chart-size-s .rep-weight-bar-plot { min-height: 52mm; }
+body.chart-size-m .rep-weight-bar-plot { min-height: 67mm; }
+body.chart-size-l .rep-weight-bar-plot { min-height: 82mm; }
+/* graph-col内（写真あり）はやや小さめに連動 */
+body.chart-size-s .graph-col .rep-radar-canvas { height: 50mm !important; }
+body.chart-size-m .graph-col .rep-radar-canvas { height: 62mm !important; }
+body.chart-size-l .graph-col .rep-radar-canvas { height: 74mm !important; }
+/* SS（極小）サイズ */
+body.chart-size-ss canvas.mini-chart { height: 20px !important; }
+body.chart-size-ss .rep-fitness-chart-box { padding: 1mm; }
+body.chart-size-ss .rep-fitness-chart-value { font-size: 7pt; }
+body.chart-size-ss .rep-radar-canvas { height: 45mm !important; }
+body.chart-size-ss .rep-weight-bar-plot { min-height: 38mm; }
+body.chart-size-ss .graph-col .rep-radar-canvas { height: 40mm !important; }
 /* 備考欄 */
 .rep-fitness-note { font-size: 7pt; color: #5f6368; border: 1px solid #e0e0e0; border-radius: 4px; padding: 2px 6px; margin-top: 2mm; background: #fafafa; }
 /* 体力測定レーダーチャート */
@@ -2685,6 +2703,8 @@ function ovBackToModal1() {
 // 「このまま1枚で印刷」
 function ovPrintAsIs() {
     ovCloseModals();
+    // あふれ分を切り捨てず、収まるまで縮小してから印刷
+    if (typeof mobileCompactToFit === 'function') mobileCompactToFit();
     window.print();
 }
 // 「2枚に分ける」→ tmpl4は専用分割、それ以外はモーダル②へ
@@ -2953,7 +2973,7 @@ function ovConfirmPrint() {
         <div class="ov-modal-desc">この利用者の内容はA4・1枚に収まりきりません。印刷方法を選んでください。</div>
         <div class="ov-modal-btns">
             <button class="ov-btn ov-btn-primary" onclick="ovChooseSplit()">2枚に分けて印刷する<span class="ov-btn-sub">内容を切らずに2ページに分けます</span></button>
-            <button class="ov-btn ov-btn-secondary" onclick="ovPrintAsIs()">このまま1枚で印刷する<span class="ov-btn-sub">はみ出した部分は印刷されません</span></button>
+            <button class="ov-btn ov-btn-secondary" onclick="ovPrintAsIs()">1枚に収めて印刷する<span class="ov-btn-sub">全体を縮小して1ページに収めます</span></button>
             <button class="ov-btn ov-btn-ghost" onclick="ovCloseModals()">キャンセル</button>
         </div>
     </div>
