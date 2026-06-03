@@ -188,6 +188,164 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 .rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 1mm; }
 .rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; min-height: 8mm; }
 .rep-satisfaction-row { display: flex; gap: 4mm; margin-bottom: 2mm; }
+/* rep-special-container: 特記事項以下のコンテナ化・配置制御 */
+.rep-special-container {
+  display: flex;
+  gap: 4mm;
+  margin-bottom: 2mm;
+  --layout-mode: below;  /* below(初期値) | side | inline */
+}
+.rep-special-container[data-layout="side"] {
+  flex-direction: row;
+}
+.rep-special-container[data-layout="below"] {
+  flex-direction: column;
+}
+.rep-special-container[data-layout="inline"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.rep-special-row { margin-bottom: 1mm; }
+.rep-new-requests-row { margin-bottom: 1mm; }
+.rep-satisfaction-row { margin-bottom: 1mm; flex: 1; min-width: 100%; }
+.rep-special-container[data-layout="side"] .rep-special-row,
+.rep-special-container[data-layout="side"] .rep-new-requests-row,
+.rep-special-container[data-layout="side"] .rep-satisfaction-row {
+  min-width: 0;  /* flexアイテムの幅制御 */
+}
+.rep-special-container[data-layout="inline"] .rep-special-row,
+.rep-special-container[data-layout="inline"] .rep-new-requests-row,
+.rep-special-container[data-layout="inline"] .rep-satisfaction-box {
+  font-size: 6.5pt;
+  flex: 1;
+  min-width: 45mm;
+}
+
+/* rep-graph-special-wrapper: グラフと特記事項の左右配置 */
+.rep-graph-special-wrapper {
+  display: flex;
+  gap: 4mm;
+  margin-bottom: 2mm;
+}
+.rep-graph-special-wrapper.has-images {
+  display: block;  /* 画像ありの場合は縦配置 */
+}
+.rep-graph-col {
+  flex: 0 0 65%;
+}
+.rep-graph-col .rep-radar-wrap { max-width: 100%; }
+.rep-special-col {
+  flex: 0 0 35%;
+  /* rep-special-grid: 縦に積み重ねるレイアウト */
+  display: flex;
+  flex-direction: column;
+  gap: 0mm;  /* zero-gap-final: 隙間なし */
+}
+.rep-special-row {
+  /* 特記事項：大きめ（自動で十分な高さ） */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 32mm;  /* compact-gap-adjust: コンパクト化 */
+}
+.rep-new-requests-row {
+  /* 新希望：中くらい */
+  flex: 0 0 auto;
+}
+.rep-satisfaction-row {
+  /* 満足度＆評価：横に並ぶ */
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0mm;  /* zero-gap-final: 隙間なし */
+}
+.rep-satisfaction-row .rep-satisfaction-box {
+  flex: 1;  /* 左右均等に幅配分 */
+}
+.rep-special-col > div:last-child {
+  /* 評価基準の凡例 */
+  flex: 0 0 auto;
+  font-size: 6.5pt;
+  margin-top: auto;  /* 下に寄せる */
+}
+.rep-graph-special-wrapper.has-images .rep-graph-col,
+.rep-graph-special-wrapper.has-images .rep-special-col {
+  flex: none;
+  margin-bottom: 2mm;
+}
+
+/* radar-balance-layout: レーダー横並びの上下端揃え・特記事項伸縮・中央寄せ */
+.rep-graph-special-wrapper:not(.has-images) {
+  align-items: stretch;            /* 左右カラムの高さを揃える */
+}
+/* 幅比 55:45 (グラフ側にゆとり・特記事項も広く) */
+.rep-graph-special-wrapper:not(.has-images) .rep-graph-col {
+  flex: 1 1 0;           /* 残り幅を埋める(gap分のはみ出しを防ぐ) */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col {
+  flex: 0 0 45%;
+  min-width: 0;
+}
+/* レーダー本体を外枠(カラム)の幅いっぱいに広げる(参考文献の右端と揃う) */
+.rep-graph-special-wrapper:not(.has-images) .rep-graph-col .rep-radar-wrap {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+  max-width: 100%;
+}
+/* タイトル行・参考文献は外枠(カラム)の幅いっぱいに */
+.rep-graph-special-wrapper:not(.has-images) .rep-graph-col .rep-radar-title,
+.rep-graph-special-wrapper:not(.has-images) .rep-graph-col .rep-radar-source {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-radar-title {
+  display: flex;
+  justify-content: space-between;   /* タイトル左・サブ右上 */
+  align-items: baseline;
+  gap: 4mm;
+}
+/* 右カラム: 特記事項以下を隙間なく積み、特記事項枠が余りを吸収 */
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col {
+  display: flex;
+  flex-direction: column;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-special-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-special-container > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* 特記事項枠が縦の隙間を吸収して伸縮 */
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-special-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-special-row .rep-special-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 新希望・満足度・評価基準は自然高さで下に固定(評価基準が最下段=参考文献と下端揃え) */
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-new-requests-row,
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-satisfaction-row {
+  flex: 0 0 auto;
+}
+.rep-graph-special-wrapper:not(.has-images) .rep-special-col .rep-special-container > div:last-child {
+  flex: 0 0 auto;
+  margin-top: 0;                    /* 下貼り付け(auto)を解除し隙間ゼロ */
+}
+
+
 .rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
 .rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
 .rep-check-circle.checked { background: #444; }
@@ -898,6 +1056,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-image-grid-item img { width: 100%; border-radius: 4px; border: 1px solid #e0e0e0; display: block; }
 .rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
+/* 編集機能(変化・課題・特記事項) */
+.rep-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2mm; padding: 4px 8px; background: #f1f6ff; border: 1px dashed #1a73e8; border-radius: 6px; }
+.rep-edit-hint { font-size: 7.5pt; color: #1a73e8; }
+.rep-edit-save-btn { font-size: 7.5pt; padding: 4px 12px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 700; white-space: nowrap; }
+.rep-edit-save-btn:hover { background: #1557b0; }
+.rep-editable { cursor: text; transition: background 0.15s; min-height: 1.5em; }
+.rep-editable:hover { background: #f1f6ff; }
+.rep-editable:focus { background: #fffbe6; outline: 1px solid #1a73e8; }
+
 @media print {
     @page { size: A4; margin: 0; }
     body { background: #fff; }
@@ -1213,17 +1380,25 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 
     <!-- 訓練による変化・課題 -->
     {% if items.get('changes', true) or items.get('issues', true) %}
+    <div class="rep-edit-bar no-print">
+        <span class="rep-edit-hint">変化・課題・特記事項はクリックして編集できます →</span>
+        <button class="rep-edit-save-btn" onclick="repSaveEvalText('{{ p.user_name }}','{{ year_month }}')">この利用者の編集を保存</button>
+    </div>
     <div class="rep-twocol">
         {% if items.get('changes', true) %}
         <div class="rep-twocol-box">
             <div class="rep-twocol-title">個別機能訓練実施による変化</div>
-            <div class="rep-twocol-body">{{ ev.get('changes_by_training', '（未入力）') if ev else '（未入力）' }}</div>
+            <div class="rep-twocol-body rep-editable" contenteditable="true"
+                 data-user="{{ p.user_name }}" data-field="changes_by_training"
+                 onfocus="repEditFocus(this)" onblur="repEditBlur(this)">{{ ev.get('changes_by_training', '') if ev else '' }}</div>
         </div>
         {% endif %}
         {% if items.get('issues', true) %}
         <div class="rep-twocol-box">
             <div class="rep-twocol-title">課題とその要因</div>
-            <div class="rep-twocol-body">{{ ev.get('issues_and_causes', '（未入力）') if ev else '（未入力）' }}</div>
+            <div class="rep-twocol-body rep-editable" contenteditable="true"
+                 data-user="{{ p.user_name }}" data-field="issues_and_causes"
+                 onfocus="repEditFocus(this)" onblur="repEditBlur(this)">{{ ev.get('issues_and_causes', '') if ev else '' }}</div>
         </div>
         {% endif %}
     </div>
@@ -1310,15 +1485,27 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% set show_walk_final   = show_walk_normal_final or show_walk_max_final %}
     {% set show_balance_final = show_balance and has_any_balance %}
     {% if (show_weight_final or show_grip_final or show_tug_final or show_cs30_final or show_walk_final or show_balance_final) and not fitness_in_graphcol %}
+    {% if not is_radar %}
     <div class="rep-fitness-title">
         体力測定の推移
         <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
     </div>
+    {% endif %}
     {% if is_radar %}
+    <!-- rep-graph-special-wrapper: グラフ + 特記事項を並べる親コンテナ -->
+    <div class="rep-graph-special-wrapper {% if has_photos %}has-images{% endif %}">
+    <div class="rep-graph-col">
+    <!-- rep-radar-title-inline: レーダー時はタイトルをグラフ側カラム先頭に置き上端を特記事項と揃える -->
+    <div class="rep-fitness-title rep-radar-title">
+        体力測定の推移
+        <span class="rep-fitness-sub">直近6ヶ月・値のある指標のみ</span>
+    </div>
     <div class="rep-radar-wrap">
         <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
     </div>
     <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
+    </div><!-- /rep-graph-col (グラフ側終了) -->
+    <div class="rep-special-col">
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
@@ -1434,11 +1621,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% endif %}
     {% endif %}
 
+    <!-- rep-special-container: 特記事項以下コンテナ -->
+    <div class="rep-special-container" data-layout="below">
     <!-- 特記事項 -->
     {% if items.get('special', true) %}
     <div class="rep-special-row">
         <div class="rep-special-label">特記事項</div>
-        <div class="rep-special-body">{{ ev.get('special_notes', '') if ev else '' }}</div>
+        <div class="rep-special-body rep-editable" contenteditable="true"
+             data-user="{{ p.user_name }}" data-field="special_notes"
+             onfocus="repEditFocus(this)" onblur="repEditBlur(this)">{{ ev.get('special_notes', '') if ev else '' }}</div>
     </div>
     {% endif %}
 
@@ -1480,6 +1671,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         ○：利用者・家族が満足している　△：おおむね満足している　×：不満あり・要改善
     </div>
     {% endif %}
+    </div><!-- /rep-special-container -->
+    </div><!-- /rep-special-col (特記事項側終了) -->
+    </div><!-- /rep-graph-special-wrapper -->
 
     {# ===== 画像セクションはモニタリング直下に移動済み ===== #}
 
@@ -2414,6 +2608,44 @@ function saveMonitoring(userName, yearMonth) {
     }).catch(function(e) { alert('通信エラー: ' + e); });
 }
 
+// ===== 変化・課題・特記事項の編集保存 =====
+function repEditFocus(el) {
+    // プレースホルダ的な「（未入力）」が残っていたら消す
+    if (el.innerText.trim() === '（未入力）') { el.innerText = ''; }
+}
+function repEditBlur(el) {
+    // 何もしない(保存はボタンで明示的に行う)。空欄時の見た目維持のみ。
+}
+function repSaveEvalText(userName, yearMonth) {
+    var btn = document.activeElement && document.activeElement.classList.contains('rep-edit-save-btn')
+        ? document.activeElement : null;
+    // この利用者の編集可能フィールドを集める
+    var fields = document.querySelectorAll('.rep-editable[data-user="' + userName + '"]');
+    if (!fields.length) { alert('保存対象が見つかりません'); return; }
+    var payload = { user_name: userName, year_month: yearMonth };
+    fields.forEach(function(el) {
+        var f = el.getAttribute('data-field');
+        var txt = el.innerText.replace(/\u00a0/g, ' ').trim();
+        if (txt === '（未入力）') txt = '';
+        payload[f] = txt;
+    });
+    fetch('/api/save_patient_evaluation', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === 'success') {
+            if (btn) {
+                var orig = btn.textContent;
+                btn.textContent = '保存しました！'; btn.style.background = '#34a853';
+                setTimeout(function() { btn.textContent = orig; btn.style.background = '#1a73e8'; }, 2000);
+            }
+        } else {
+            alert('保存に失敗しました: ' + (d.message || (d.conflict ? (d.editing_by + ' が編集中です') : '不明')));
+        }
+    }).catch(function(e) { alert('通信エラー: ' + e); });
+}
+
 // ===== auto_print: URLパラメータに auto_print=1 があれば自動印刷 =====
 (function() {
     var params = new URLSearchParams(location.search);
@@ -2493,7 +2725,8 @@ function detectOverflowPages() {
         if (old) old.remove();
 
         var children = Array.prototype.slice.call(page.children).filter(function(c) {
-            return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
+            return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge')
+                && !c.classList.contains('page-number');
         });
         if (!children.length) return;
         var last = children[children.length - 1];
@@ -2926,6 +3159,29 @@ function ovConfirmPrint() {
     window.addEventListener('resize', calcScale);
     // 分割で後から作るページにも再適用できるよう公開
     window.__calcScale = calcScale;
+// special_layout_param: URLパラメータ special_layout を受け取り、コンテナに反映
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var layout = params.get('special_layout') || 'below';
+  var container = document.querySelector('.rep-special-container');
+  if (container && ['below', 'side', 'inline'].indexOf(layout) !== -1) {
+    container.setAttribute('data-layout', layout);
+  }
+})();
+
+// rep-special-container: 配置モード切り替え関数
+function setSpecialContainerLayout(mode) {
+  var container = document.querySelector('.rep-special-container');
+  if (!container) return;
+  container.setAttribute('data-layout', mode);  // 'below' | 'side' | 'inline'
+  try { localStorage.setItem('rep_special_layout', mode); } catch(e){}
+}
+function initSpecialContainerLayout() {
+  var saved = 'below';
+  try { saved = localStorage.getItem('rep_special_layout') || 'below'; } catch(e){}
+  setSpecialContainerLayout(saved);
+}
+
 })();
 </script>
 <div id="crop-modal-overlay">
