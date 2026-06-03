@@ -123,8 +123,8 @@ body.chart-size-l .rep-fitness-chart-value { font-size: 11pt; }
 .rep-radar-wrap { width: 100%; max-width: 95mm; margin: 0 auto 2mm; }
 .rep-radar-canvas { width: 100% !important; height: 75mm !important; }
 .rep-radar-wrap { display: flex; gap: 4mm; align-items: stretch; }
-.rep-radar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.rep-weight-bar { flex: 0 0 16mm; display: flex; flex-direction: column; }
+.rep-radar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 1.5mm; }
+.rep-weight-bar { flex: 0 0 18mm; display: flex; flex-direction: column; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 1.5mm; }
 .rep-weight-bar-title { font-size: 6.5pt; color: #888; margin-bottom: 1mm; }
 .rep-weight-bar-plot { flex: 1; display: flex; align-items: flex-end; justify-content: space-around; gap: 1mm; border-left: 0.5px solid #bbb; border-bottom: 0.5px solid #bbb; padding: 0 1mm; min-height: 40mm; }
 .rep-weight-bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
@@ -135,7 +135,7 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 .rep-radar-values { font-size: 7pt; color: #333; line-height: 1.6; margin-top: 2mm; display: flex; flex-wrap: wrap; gap: 2mm 8px; }
 .rep-radar-value-item { white-space: nowrap; }
 .rep-radar-value-item .rrv-label { font-weight: 700; color: #555; }
-.rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1mm; padding-top: 1mm; border-top: 1px solid #eee; }
+.rep-radar-source { font-size: 6pt; color: #888; line-height: 1.45; margin-top: 1.5mm; padding-top: 1mm; border-top: 1px solid #eee; clear: both; }
 .graph-col .rep-radar-wrap { max-width: 100%; }
 .graph-col .rep-radar-canvas { height: 62mm !important; }
 .rep-fitness-note-label { font-weight: 700; color: #888; margin-right: 4px; }
@@ -1272,9 +1272,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     </div>
     {% if is_radar %}
     <div class="rep-radar-wrap">
-        <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-        <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
+        <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
     </div>
+    <div class="rep-radar-source">外側ほど良い状態（5段階評価）。標準域＝レベル3。出典：厚生労働省介護予防改訂委員会「介護予防マニュアル改訂版．資料3-5 体力測定マニュアル」の評価基準（全年齢・男女別）。<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
     {% else %}
     <div class="rep-resizable" style="width:100%;min-width:40mm;" id="fitness-resize-{{ loop.index }}">
     <div class="rep-fitness-charts">
@@ -1323,9 +1323,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
             </div>
+            <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
             <div class="rep-fitness-charts charts-grid">
@@ -1357,9 +1357,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             {% if is_radar %}
             <div class="rep-fitness-title">体力測定バランス<span class="rep-fitness-sub">5段階評価</span></div>
             <div class="rep-radar-wrap">
-                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas>
-                <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div></div>
+                <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
             </div>
+            <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
             <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6ヶ月</span></div>
             <div class="rep-fitness-charts charts-grid">
