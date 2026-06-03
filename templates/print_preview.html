@@ -188,6 +188,39 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 .rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 1mm; }
 .rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; min-height: 8mm; }
 .rep-satisfaction-row { display: flex; gap: 4mm; margin-bottom: 2mm; }
+/* rep-special-container: 特記事項以下のコンテナ化・配置制御 */
+.rep-special-container {
+  display: flex;
+  gap: 4mm;
+  margin-bottom: 2mm;
+  --layout-mode: below;  /* below(初期値) | side | inline */
+}
+.rep-special-container[data-layout="side"] {
+  flex-direction: row;
+}
+.rep-special-container[data-layout="below"] {
+  flex-direction: column;
+}
+.rep-special-container[data-layout="inline"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.rep-special-row { margin-bottom: 1mm; }
+.rep-new-requests-row { margin-bottom: 1mm; }
+.rep-satisfaction-row { margin-bottom: 1mm; flex: 1; min-width: 100%; }
+.rep-special-container[data-layout="side"] .rep-special-row,
+.rep-special-container[data-layout="side"] .rep-new-requests-row,
+.rep-special-container[data-layout="side"] .rep-satisfaction-row {
+  min-width: 0;  /* flexアイテムの幅制御 */
+}
+.rep-special-container[data-layout="inline"] .rep-special-row,
+.rep-special-container[data-layout="inline"] .rep-new-requests-row,
+.rep-special-container[data-layout="inline"] .rep-satisfaction-box {
+  font-size: 6.5pt;
+  flex: 1;
+  min-width: 45mm;
+}
+
 .rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
 .rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
 .rep-check-circle.checked { background: #444; }
@@ -1434,6 +1467,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% endif %}
     {% endif %}
 
+    <!-- rep-special-container: 特記事項以下コンテナ -->
+    <div class="rep-special-container" data-layout="below">
     <!-- 特記事項 -->
     {% if items.get('special', true) %}
     <div class="rep-special-row">
@@ -1480,6 +1515,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         ○：利用者・家族が満足している　△：おおむね満足している　×：不満あり・要改善
     </div>
     {% endif %}
+    </div><!-- /rep-special-container -->
 
     {# ===== 画像セクションはモニタリング直下に移動済み ===== #}
 
@@ -2926,6 +2962,19 @@ function ovConfirmPrint() {
     window.addEventListener('resize', calcScale);
     // 分割で後から作るページにも再適用できるよう公開
     window.__calcScale = calcScale;
+// rep-special-container: 配置モード切り替え関数
+function setSpecialContainerLayout(mode) {
+  var container = document.querySelector('.rep-special-container');
+  if (!container) return;
+  container.setAttribute('data-layout', mode);  // 'below' | 'side' | 'inline'
+  try { localStorage.setItem('rep_special_layout', mode); } catch(e){}
+}
+function initSpecialContainerLayout() {
+  var saved = 'below';
+  try { saved = localStorage.getItem('rep_special_layout') || 'below'; } catch(e){}
+  setSpecialContainerLayout(saved);
+}
+
 })();
 </script>
 <div id="crop-modal-overlay">
