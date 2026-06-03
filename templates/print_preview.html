@@ -2588,7 +2588,8 @@ function detectOverflowPages() {
         if (old) old.remove();
 
         var children = Array.prototype.slice.call(page.children).filter(function(c) {
-            return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge');
+            return !c.classList.contains('no-print') && !c.classList.contains('rep-overflow-badge')
+                && !c.classList.contains('page-number');
         });
         if (!children.length) return;
         var last = children[children.length - 1];
