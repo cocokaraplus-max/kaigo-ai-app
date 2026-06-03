@@ -2564,12 +2564,12 @@ function mobileChoose(mode) {
     if (mode === 'compact') {
         mobileCompactToFit();
     } else if (mode === 'split') {
-        // あふれているページを対象にグラフ・写真を2枚目へ
+        // 1枚目に収まらない位置から下を全部2枚目へ（高さ分割・確実に2枚に）
         var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
         var target = (ov && ov.length) ? ov[0] : document.querySelector('.report-page');
         if (target) {
             window.__ovTargetPage = target;
-            if (typeof ovDoSplit === 'function') ovDoSplit('graph');
+            if (typeof ovDoSplit === 'function') ovDoSplit('flow');
             // ovDoSplit は確認バーを出すので、モバイルでは隠す
             var bar = document.getElementById('ov-confirm-bar');
             if (bar) bar.classList.remove('show');
