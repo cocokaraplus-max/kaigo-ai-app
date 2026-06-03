@@ -2962,6 +2962,16 @@ function ovConfirmPrint() {
     window.addEventListener('resize', calcScale);
     // 分割で後から作るページにも再適用できるよう公開
     window.__calcScale = calcScale;
+// special_layout_param: URLパラメータ special_layout を受け取り、コンテナに反映
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var layout = params.get('special_layout') || 'below';
+  var container = document.querySelector('.rep-special-container');
+  if (container && ['below', 'side', 'inline'].indexOf(layout) !== -1) {
+    container.setAttribute('data-layout', layout);
+  }
+})();
+
 // rep-special-container: 配置モード切り替え関数
 function setSpecialContainerLayout(mode) {
   var container = document.querySelector('.rep-special-container');
