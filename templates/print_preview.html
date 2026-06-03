@@ -1888,7 +1888,7 @@ var radarShow = {
 };
 // グラフサイズをbodyクラスで適用
 (function() {
-    var sizeMap = {1: 's', 2: 'm', 3: 'l'};
+    var sizeMap = {1: 's', 2: 'm', 3: 'l', 4: 'ss'};
     var sz = sizeMap[{{ chart_size | default(2) | int }}] || 'm';
     document.body.classList.add('chart-size-' + sz);
 })();
