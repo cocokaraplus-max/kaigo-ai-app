@@ -188,38 +188,16 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 .rep-special-label { font-size: 8pt; font-weight: 700; border-left: 3px solid var(--accent); padding-left: 4px; margin-bottom: 1mm; }
 .rep-special-body { font-size: 8pt; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; min-height: 8mm; }
 .rep-satisfaction-row { display: flex; gap: 4mm; margin-bottom: 2mm; }
-/* rep-special-container: 特記事項以下のコンテナ化・配置制御 */
+/* rep-special-container: 特記事項以下のコンテナ（縦並び固定） */
 .rep-special-container {
   display: flex;
+  flex-direction: column;
   gap: 4mm;
   margin-bottom: 2mm;
-  --layout-mode: below;  /* below(初期値) | side | inline */
-}
-.rep-special-container[data-layout="side"] {
-  flex-direction: row;
-}
-.rep-special-container[data-layout="below"] {
-  flex-direction: column;
-}
-.rep-special-container[data-layout="inline"] {
-  flex-direction: row;
-  flex-wrap: wrap;
 }
 .rep-special-row { margin-bottom: 1mm; }
 .rep-new-requests-row { margin-bottom: 1mm; }
 .rep-satisfaction-row { margin-bottom: 1mm; flex: 1; min-width: 100%; }
-.rep-special-container[data-layout="side"] .rep-special-row,
-.rep-special-container[data-layout="side"] .rep-new-requests-row,
-.rep-special-container[data-layout="side"] .rep-satisfaction-row {
-  min-width: 0;  /* flexアイテムの幅制御 */
-}
-.rep-special-container[data-layout="inline"] .rep-special-row,
-.rep-special-container[data-layout="inline"] .rep-new-requests-row,
-.rep-special-container[data-layout="inline"] .rep-satisfaction-box {
-  font-size: 6.5pt;
-  flex: 1;
-  min-width: 45mm;
-}
 
 /* rep-graph-special-wrapper: グラフと特記事項の左右配置 */
 .rep-graph-special-wrapper {
@@ -3321,29 +3299,6 @@ function ovConfirmPrint() {
     window.addEventListener('resize', calcScale);
     // 分割で後から作るページにも再適用できるよう公開
     window.__calcScale = calcScale;
-// special_layout_param: URLパラメータ special_layout を受け取り、コンテナに反映
-(function() {
-  var params = new URLSearchParams(window.location.search);
-  var layout = params.get('special_layout') || 'below';
-  var container = document.querySelector('.rep-special-container');
-  if (container && ['below', 'side', 'inline'].indexOf(layout) !== -1) {
-    container.setAttribute('data-layout', layout);
-  }
-})();
-
-// rep-special-container: 配置モード切り替え関数
-function setSpecialContainerLayout(mode) {
-  var container = document.querySelector('.rep-special-container');
-  if (!container) return;
-  container.setAttribute('data-layout', mode);  // 'below' | 'side' | 'inline'
-  try { localStorage.setItem('rep_special_layout', mode); } catch(e){}
-}
-function initSpecialContainerLayout() {
-  var saved = 'below';
-  try { saved = localStorage.getItem('rep_special_layout') || 'below'; } catch(e){}
-  setSpecialContainerLayout(saved);
-}
-
 })();
 </script>
 <div id="crop-modal-overlay">
