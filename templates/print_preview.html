@@ -2734,6 +2734,7 @@ function ovDoSplitTmpl4() {
     }
 
     page.parentNode.insertBefore(splitPage, page.nextSibling);
+    if (typeof window.__calcScale === 'function') window.__calcScale();
     __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved,
                        wasCompact: wasCompact, mode: 'tmpl4', textCol: textCol };
 
@@ -2804,6 +2805,8 @@ function ovDoSplit(mode) {
 
     // 2枚目を元ページの直後に挿入
     page.parentNode.insertBefore(splitPage, page.nextSibling);
+    // モバイル縮小の相殺を新しい2枚目にも適用（白紙化防止）
+    if (typeof window.__calcScale === 'function') window.__calcScale();
 
     __ovSplitState = { page: page, splitPage: splitPage, movedNodes: moved, wasCompact: wasCompact, mode: mode };
 
@@ -2825,6 +2828,7 @@ function ovRevertSplit() {
     st.page.classList.remove('ov-uncompact');
     if (st.wasCompact) st.page.classList.add('compact');
     __ovSplitState = null;
+    if (typeof window.__calcScale === 'function') window.__calcScale();
 }
 
 // 確認バー「戻る」
@@ -2875,6 +2879,8 @@ function ovConfirmPrint() {
         calcScale();
     }
     window.addEventListener('resize', calcScale);
+    // 分割で後から作るページにも再適用できるよう公開
+    window.__calcScale = calcScale;
 })();
 </script>
 <div id="crop-modal-overlay">
