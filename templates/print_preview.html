@@ -1253,7 +1253,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if 'その他' in mon.categories and 'その他' not in ordered_names %}{% set _ = ordered_names.append('その他') %}{% endif %}
     {% set filtered_cats = [] %}
     {% for cat_name in ordered_names %}
-        {% if cats.get(cat_name) or cats[cat_name] %}{% set _ = filtered_cats.append((cat_name, mon.categories[cat_name])) %}{% endif %}  {# jinja-cats-filter-fix #%}
+        {% if cats.get(cat_name, true) %}{% set _ = filtered_cats.append((cat_name, mon.categories[cat_name])) %}{% endif %}
     {% endfor %}
     {% if filtered_cats %}
     <div class="rep-monitoring-title" style="display:flex;align-items:center;justify-content:space-between;">
