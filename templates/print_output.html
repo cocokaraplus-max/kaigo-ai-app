@@ -647,7 +647,7 @@ function poPrintOne(encodedName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats), template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor, auto_print: '1'
     });
     poShowLoading('印刷データを準備中…');
@@ -658,7 +658,7 @@ function poPreviewOne(encodedName) {
     var ym = document.getElementById('po-year-month').value;
     var params = new URLSearchParams({
         user_name: userName, year_month: ym, style: poPrintStyle,
-        items: JSON.stringify(poItems), template: poTemplate, chart_style: poChartStyle,
+        items: JSON.stringify(poItems), cats: JSON.stringify(poCats), template: poTemplate, chart_style: poChartStyle,
         chart_size: poChartSize, author: poAuthor
     });
     poShowLoading('プレビューを準備中…');
