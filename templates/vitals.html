@@ -69,6 +69,9 @@
 /* measure-v2 swipe-fix */
 .patient-vital-card { border-radius: 12px; }
 .swipe-delete-bg { border-radius: 12px; }
+/* measure-v2 swipe-hide */
+.swipe-delete-bg { opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+.patient-vital-card.swiping .swipe-delete-bg { opacity: 1; }
 /* measure-v2 dropdown css */
 .measure-search-results {
     margin-top: 8px;
@@ -1723,6 +1726,10 @@ window.onVitalInput = function onVitalInput(pid, key, val) {
 function initSwipeDelete(cardId, patientId, patientName) {
     const inner = document.getElementById('vcard-inner-' + cardId);
     if (!inner) return;
+    // measure-v2 swipe-hide js
+    const _card = inner.parentElement; // .patient-vital-card
+    function _showBg() { if (_card) _card.classList.add('swiping'); }
+    function _hideBg() { if (_card) _card.classList.remove('swiping'); }
     let startX = 0, currentX = 0, isDragging = false;
     const THRESHOLD = 80;
 
@@ -1732,6 +1739,7 @@ function initSwipeDelete(cardId, patientId, patientName) {
     function onMove(x) {
         if (!isDragging) return;
         currentX = Math.min(0, x - startX);
+        if (currentX < 0) _showBg();
         inner.style.transform = `translateX(${currentX}px)`;
     }
     function onEnd() {
@@ -1743,10 +1751,12 @@ function initSwipeDelete(cardId, patientId, patientName) {
             setTimeout(() => {
                 openDeleteConfirmModal(patientId, patientName, () => {
                     inner.style.transform = '';
+                    _hideBg();
                 });
             }, 100);
         } else {
             inner.style.transform = '';
+            _hideBg();
         }
     }
 
