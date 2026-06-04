@@ -327,6 +327,8 @@
 }
 
 /* ===== カメラモーダル ===== */
+.daily-note-icon { font-size:15px !important; color:#1a73e8; vertical-align:middle; margin-left:3px; cursor:pointer; }
+.daily-note-icon:active { opacity:0.6; }
 .val-has-history { position:relative; cursor:pointer; }
 .val-hist-badge { font-size:0.5rem; color:#1a73e8; vertical-align:super; margin-left:1px; }
 .val-has-history:active { opacity:0.6; }
@@ -980,6 +982,17 @@
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
 <!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
+<div id="vital-note-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)window.closeVitalNoteModal()">
+    <div style="background:#fff; border-radius:16px; max-width:340px; width:100%; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-size:0.95rem; font-weight:700; color:#202124;"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-3px;color:#1a73e8;">edit_note</span> メモ</div>
+            <button onclick="window.closeVitalNoteModal()" style="background:none; border:none; cursor:pointer; padding:4px; color:#80868b;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div id="vnote-body" style="font-size:0.9rem; color:#3c4043; line-height:1.6; white-space:pre-wrap; word-break:break-word;"></div>
+    </div>
+</div>
 <div id="vital-window-history-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)window.closeVitalHistoryModal()">
     <div style="background:#fff; border-radius:16px; max-width:340px; width:100%; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
@@ -1605,17 +1618,17 @@ function buildVitalForm(p, v, dateStr) {
             ${field('pulse','脈拍','bpm', v.pulse)}
             ${field('temperature','体温','℃', v.temperature)}
         </div>
-        <div class="vital-grid" style="grid-template-columns:1fr 1fr;">
-            <div class="vital-field">
-                <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
-                <div style="position:relative;">
-                    <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項" style="padding-right:36px;width:100%;box-sizing:border-box;">
-                    <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#34a853;color:#fff;border:none;border-radius:8px;width:28px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
-                        <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:14px;">mic</span>
-                    </button>
-                </div>
-            </div>
+        <div class="vital-grid" style="grid-template-columns:1fr;">
             ${field('spo2','SpO2','%', v.spo2)}
+        </div>
+        <div class="vital-field" style="margin-bottom:10px;">
+            <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
+            <div style="display:flex;align-items:stretch;gap:6px;">
+                <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項" style="flex:1;min-width:0;box-sizing:border-box;">
+                <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="flex-shrink:0;background:#34a853;color:#fff;border:none;border-radius:8px;width:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
+                    <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:18px;">mic</span>
+                </button>
+            </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <input type="checkbox" id="v-recheck-${p.id}" ${v.recheck?'checked':''} style="accent-color:#ff6f00;width:16px;height:16px;">
@@ -2991,7 +3004,7 @@ window.loadDailyOverview = async function() {
                 return `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>`;
             };
             return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
-                <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
+                <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}${(v.note && v.note.trim()) ? (function(){ window._vitalNoteCache = window._vitalNoteCache || {}; const _nk = `${p.pid}:${pageIdx}`; window._vitalNoteCache[_nk] = v.note; return `<span class="daily-note-icon material-symbols-outlined" onclick="event.stopPropagation();window.openVitalNoteModal('${_nk}')" title="メモあり">edit_note</span>`; })() : ''}</td>
                 ${cell('bp_high', v.bp_high)}
                 ${cell('bp_low', v.bp_low)}
                 ${cell('pulse', v.pulse)}
@@ -3125,6 +3138,18 @@ window.groupVitalWindows = function(items) {
     });
 };
 // 印クリック → その項目の枠内全測定値を時刻つきで表示
+window.openVitalNoteModal = function(noteKey) {
+    const modal = document.getElementById('vital-note-modal');
+    const bodyEl = document.getElementById('vnote-body');
+    if (!modal || !bodyEl) return;
+    const noteText = (window._vitalNoteCache && window._vitalNoteCache[noteKey]) || '(メモなし)';
+    bodyEl.textContent = noteText;
+    modal.style.display = 'flex';
+};
+window.closeVitalNoteModal = function() {
+    const modal = document.getElementById('vital-note-modal');
+    if (modal) modal.style.display = 'none';
+};
 window.openVitalHistoryModal = function(pid, key) {
     const cache = (window._dailyEditorState && window._dailyEditorState.cachedData) ? window._dailyEditorState.cachedData[pid] : null;
     const modal = document.getElementById('vital-window-history-modal');
