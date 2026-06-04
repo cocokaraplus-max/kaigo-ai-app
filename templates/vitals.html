@@ -63,9 +63,37 @@
     position: relative;
     z-index: 1;
     background: #fff;
-    border-radius: 14px;
+    border-radius: 12px;
     transition: transform 0.2s ease;
 }
+/* measure-v2 swipe-fix */
+.patient-vital-card { border-radius: 12px; }
+.swipe-delete-bg { border-radius: 12px; }
+/* measure-v2 swipe-hide */
+.swipe-delete-bg { opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+.patient-vital-card.swiping .swipe-delete-bg { opacity: 1; }
+/* measure-v2 dropdown css */
+.measure-search-results {
+    margin-top: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    display: none;
+}
+.measure-search-result-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.measure-search-result-item:last-child { border-bottom: none; }
+.measure-search-result-item:active { background: #eff6ff; }
+.measure-search-result-item .kana { color: #80868b; font-size: 0.78rem; margin-left: 6px; }
+.measure-search-result-item .chart { color: #1a73e8; font-size: 0.78rem; margin-left: 6px; }
+.measure-search-empty { padding: 12px; color: #80868b; font-size: 0.85rem; text-align: center; }
+
 
 /* ===== 利用者カード ===== */
 .patient-vital-card {
@@ -647,6 +675,19 @@
             🌇 午後（PM）
         </button>
     </div>
+    <!-- 測定UI第2段: 利用者検索窓 -->
+    <div style="position:relative;margin-bottom:10px;">
+        <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:20px;color:#9aa0a6;pointer-events:none;">search</span>
+        <input id="measure-search-input" type="text" inputmode="search" autocomplete="off"
+            placeholder="名前・ふりがな・カルテ番号で検索"
+            oninput="searchMeasurePatients(this.value)" onfocus="searchMeasurePatients(this.value)"
+            style="width:100%;box-sizing:border-box;padding:9px 36px 9px 36px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#202124;font-size:0.9rem;outline:none;">
+        <button type="button" onclick="clearMeasureSearch()" title="クリア"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;border-radius:50%;background:#f1f3f4;color:#5f6368;cursor:pointer;padding:0;">
+            <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+        </button>
+    </div>
+    <div id="measure-search-results" class="measure-search-results"></div>
     <!-- Session 19: 再検者を上部に配置 トグル -->
     <div style="display:flex;margin-bottom:10px;">
         <button id="toggle-prioritize-vitals" onclick="togglePrioritizeAlerts()" type="button"
@@ -1448,6 +1489,51 @@ window.backToMeasureList = function() {
 };
 
 // ========== 利用者リスト描画 ==========
+// 測定UI第2段: 候補ドロップダウン検索（名前・ふりがな・カルテ番号の部分一致）
+window.searchMeasurePatients = function(q) {
+    var resultsEl = document.getElementById("measure-search-results");
+    if (!resultsEl) return;
+    if (!q || !q.trim()) {
+        resultsEl.style.display = "none";
+        resultsEl.innerHTML = "";
+        return;
+    }
+    var query = q.trim().toLowerCase();
+    var hits = PATIENTS.filter(function(p) {
+        var name = (p.user_name || "").toLowerCase();
+        var kana = (p.user_kana || "").toLowerCase();
+        var chart = ((p.chart_number || "") + "").toLowerCase();
+        var raw = q.trim();
+        return name.includes(query) || kana.includes(query) || chart.includes(query) ||
+               (p.user_name || "").includes(raw) || (p.user_kana || "").includes(raw) || ((p.chart_number || "")+"").includes(raw);
+    }).slice(0, 20);
+    if (!hits.length) {
+        resultsEl.innerHTML = '<div class="measure-search-empty">該当する利用者がいません</div>';
+        resultsEl.style.display = "block";
+        return;
+    }
+    resultsEl.innerHTML = hits.map(function(p) {
+        return '<div class="measure-search-result-item" onclick="selectMeasurePatient(\'' + String(p.id) + '\')">'
+            + '<strong>' + (p.user_name || "") + '</strong>'
+            + (p.user_kana ? '<span class="kana">' + p.user_kana + '</span>' : "")
+            + (p.chart_number ? '<span class="chart">No.' + p.chart_number + '</span>' : "")
+            + '</div>';
+    }).join("");
+    resultsEl.style.display = "block";
+};
+window.selectMeasurePatient = function(id) {
+    var inp = document.getElementById("measure-search-input");
+    if (inp) inp.value = "";
+    var resultsEl = document.getElementById("measure-search-results");
+    if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
+    if (typeof openMeasure === "function") openMeasure(String(id));
+};
+window.clearMeasureSearch = function() {
+    var el = document.getElementById("measure-search-input");
+    if (el) el.value = "";
+    var resultsEl = document.getElementById("measure-search-results");
+    if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
+};
 function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
     const list = document.getElementById('patient-vitals-list');
@@ -1463,6 +1549,7 @@ function renderPatientList() {
         if (currentAmpm === 'ALL') return true;
         return todayAmpm === currentAmpm || todayAmpm === 'ALL';
     });
+
 
     // Session 19: あいうえお順 + アラート優先トグル
     targets.sort((a, b) => {
@@ -1639,6 +1726,10 @@ window.onVitalInput = function onVitalInput(pid, key, val) {
 function initSwipeDelete(cardId, patientId, patientName) {
     const inner = document.getElementById('vcard-inner-' + cardId);
     if (!inner) return;
+    // measure-v2 swipe-hide js
+    const _card = inner.parentElement; // .patient-vital-card
+    function _showBg() { if (_card) _card.classList.add('swiping'); }
+    function _hideBg() { if (_card) _card.classList.remove('swiping'); }
     let startX = 0, currentX = 0, isDragging = false;
     const THRESHOLD = 80;
 
@@ -1648,6 +1739,7 @@ function initSwipeDelete(cardId, patientId, patientName) {
     function onMove(x) {
         if (!isDragging) return;
         currentX = Math.min(0, x - startX);
+        if (currentX < 0) _showBg();
         inner.style.transform = `translateX(${currentX}px)`;
     }
     function onEnd() {
@@ -1659,10 +1751,12 @@ function initSwipeDelete(cardId, patientId, patientName) {
             setTimeout(() => {
                 openDeleteConfirmModal(patientId, patientName, () => {
                     inner.style.transform = '';
+                    _hideBg();
                 });
             }, 100);
         } else {
             inner.style.transform = '';
+            _hideBg();
         }
     }
 
