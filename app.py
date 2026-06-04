@@ -3575,6 +3575,83 @@ def _kata_to_hira(s):
     )
 
 
+
+def _voice_norm(s):
+    """音声照合用の正規化。
+    既存 _normalize_search_text(空白除去・小文字化) に加えて、
+    カナ→ひら統一・長音/促音の揺れを吸収する。"""
+    s = _normalize_search_text(s)
+    s = _kata_to_hira(s)
+    return s.replace("\u30fc", "").replace("\u3063", "")
+
+def _voice_match_temp(ai_name, patients):
+    """AIが返した氏名候補テキスト ai_name を、利用者リストに照合する。
+    各 patient は dict: {patient_id/id, user_name, user_kana}
+    返り値: (patient_dict or None, confidence) confidence in {"high","mid","none"}
+    照合は漢字氏名・user_kana 両方の _voice_norm 値に対して行う。
+    """
+    import difflib
+    q = _voice_norm(ai_name)
+    if not q:
+        return (None, "none")
+
+    def keys_of(p):
+        # 照合キー: 漢字氏名・読み仮名(フル) + 空白分割した姓/名
+        ks = []
+        nm = _voice_norm(p.get("user_name"))
+        kn_raw = (p.get("user_kana") or "")
+        kn = _voice_norm(kn_raw)
+        if nm:
+            ks.append(nm)
+        if kn:
+            ks.append(kn)
+        # 姓名分離(空白あり)に対応: 元の user_kana を空白で割って各片も鍵に
+        parts = re.split(r"[\s\u3000]+", str(kn_raw).strip())
+        for part in parts:
+            pv = _voice_norm(part)
+            if pv and pv not in ks:
+                ks.append(pv)
+        return ks
+
+    # --- 完全一致(漢字 or 読みフル or 姓/名) ---
+    exact = []
+    for p in patients:
+        if q in keys_of(p):
+            exact.append(p)
+    if len(exact) == 1:
+        return (exact[0], "high")
+    if len(exact) >= 2:
+        return (None, "none")  # 同名同読み複数 → あいまいで安全側
+
+    # --- 部分一致(姓のみ・名のみ呼び / 前方後方包含) ---
+    part_hits = []
+    for p in patients:
+        for k in keys_of(p):
+            if len(q) >= 2 and len(k) >= 2 and (q in k or k in q):
+                part_hits.append(p)
+                break
+    if len(part_hits) == 1:
+        return (part_hits[0], "high")
+    if len(part_hits) >= 2:
+        return (None, "none")
+
+    # --- fuzzy(読みの近さ) ---
+    scored = []
+    for p in patients:
+        best = 0.0
+        for k in keys_of(p):
+            r = difflib.SequenceMatcher(None, q, k).ratio()
+            if r > best:
+                best = r
+        scored.append((best, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    if scored and scored[0][0] >= 0.8:
+        # 2位と僅差なら曖昧 → mid 止まり、十分離れていれば mid(要確認)
+        if len(scored) == 1 or scored[0][0] - scored[1][0] >= 0.08:
+            return (scored[0][1], "mid")
+        return (None, "none")
+    return (None, "none")
+
 def _patient_matches_query(patient, raw_query):
     """利用者1人が検索ワードに一致するか判定する。
     漢字氏名・ふりがな・カルテ番号のいずれかへの部分一致。
@@ -8996,9 +9073,13 @@ def api_vital_bulk_temp():
         patients_json = request.form.get('patients', '[]')
         patients = _json.loads(patients_json)
         patient_names = [p['user_name'] for p in patients if p.get('user_name')]
-        names_str = '、'.join(patient_names)
+        # 読み仮名(user_kana)入りの名簿を作る。当て字対策の要。
+        names_str = '、'.join(
+            (f"{p['user_name']}（{p.get('user_kana')}）" if p.get('user_kana') else p['user_name'])
+            for p in patients if p.get('user_name')
+        )
         prompt = f"""これは介護施設のスタッフが利用者の体温をまとめて報告している音声です。
-登録利用者名一覧: {names_str}
+登録利用者名一覧: {names_str}\n（）内は名前の読み仮名です。当て字や難読名でも、必ず読み仮名で本人を判断してください。\n例:「倍子」の読みが「ますこ」の場合、音声「ますこさん」はこの人です。
 
 音声から各利用者の体温を抽出してください。
 
@@ -9026,45 +9107,49 @@ JSON形式のみで返してください（説明文・コードブロック・�
         if not m:
             return jsonify({"status": "error", "message": "音声を認識できませんでした。もう一度お試しください。"})
         result = _json.loads(m.group())
-        # patient_idと照合
+        # AIが返した {氏名候補, 体温} を、読み仮名ベースで本人へ再照合する。
         ai_results = result.get('results', [])
+        # 体温が取れているAIエントリのみ対象(言及なし=null は捨てる)
+        ai_entries = [
+            {'name': (r.get('user_name') or '').strip(), 'temp': r.get('temperature')}
+            for r in ai_results
+            if (r.get('user_name') or '').strip() and r.get('temperature') is not None
+        ]
+        # 各 patient に対し、AIエントリ側から最良の照合を探す。
+        # confidence: high=自動採用可 / mid=要確認(職員選択) / none=対象外
         matched = []
-        # ai_resultsを名前をキーにした辞書に変換（登録名のみ受け付け）
-        ai_map = {}
-        for r in ai_results:
-            rname = (r.get('user_name') or '').strip()
-            # 登録利用者名一覧に含まれる名前のみ受け付ける（登録外の名前は無視）
-            if rname and rname in patient_names:
-                ai_map[rname] = r.get('temperature')
-
+        used_entry_idx = set()
         for p in patients:
             pname = p.get('user_name', '')
-            temp = None
-
-            # 1. 完全一致（AIが登録名をそのまま返した場合）
-            if pname in ai_map:
-                temp = ai_map[pname]
-            else:
-                # 2. 部分一致（姓のみ・名のみで呼んだ場合）
-                # 何人の利用者にマッチするか数える（あいまいな場合はnull）
-                candidates = []
-                for rname, rtemp in ai_map.items():
-                    if len(rname) >= 2 and (rname in pname or pname[:2] in rname):
-                        candidates.append((rname, rtemp))
-                # この利用者にマッチする候補が1つだけならセット
-                if len(candidates) == 1:
-                    temp = candidates[0][1]
-                # 2つ以上マッチ → あいまいなのでnull（安全側）
-
-            matched.append({
-                'patient_id': p.get('patient_id') or p.get('id'),
+            pid = p.get('patient_id') or p.get('id')
+            best = (None, 'none', None)  # (temp, confidence, entry_idx)
+            for ei, e in enumerate(ai_entries):
+                cand, conf = _voice_match_temp(e['name'], [p])
+                if cand is None:
+                    continue
+                # confidence の優先度
+                rank = {'high': 2, 'mid': 1, 'none': 0}
+                if rank[conf] > rank[best[1]]:
+                    best = (e['temp'], conf, ei)
+            entry = {
+                'patient_id': pid,
                 'user_name': pname,
-                'temperature': temp,
-            })
+                'temperature': best[0],
+                'confidence': best[1],
+            }
+            if best[2] is not None:
+                used_entry_idx.add(best[2])
+            matched.append(entry)
+        # どの利用者にも結びつかなかったAIエントリ(=該当なし)を赤として可視化
+        unmatched = []
+        for ei, e in enumerate(ai_entries):
+            if ei not in used_entry_idx:
+                unmatched.append({'spoken_name': e['name'], 'temperature': e['temp']})
         return jsonify({
             "status": "success",
             "transcript": result.get('transcript', ''),
-            "results": matched
+            "results": matched,
+            "unmatched": unmatched
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

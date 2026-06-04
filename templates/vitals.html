@@ -327,6 +327,11 @@
 }
 
 /* ===== カメラモーダル ===== */
+.daily-note-icon { font-size:15px !important; color:#1a73e8; vertical-align:middle; margin-left:3px; cursor:pointer; }
+.daily-note-icon:active { opacity:0.6; }
+.val-has-history { position:relative; cursor:pointer; }
+.val-hist-badge { font-size:0.5rem; color:#1a73e8; vertical-align:super; margin-left:1px; }
+.val-has-history:active { opacity:0.6; }
 .camera-modal {
     display:none; position:fixed;
     top:0; left:0; right:0; bottom:0;
@@ -977,6 +982,28 @@
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
 <!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
+<div id="vital-note-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)window.closeVitalNoteModal()">
+    <div style="background:#fff; border-radius:16px; max-width:340px; width:100%; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-size:0.95rem; font-weight:700; color:#202124;"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:-3px;color:#1a73e8;">edit_note</span> メモ</div>
+            <button onclick="window.closeVitalNoteModal()" style="background:none; border:none; cursor:pointer; padding:4px; color:#80868b;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div id="vnote-body" style="font-size:0.9rem; color:#3c4043; line-height:1.6; white-space:pre-wrap; word-break:break-word;"></div>
+    </div>
+</div>
+<div id="vital-window-history-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)window.closeVitalHistoryModal()">
+    <div style="background:#fff; border-radius:16px; max-width:340px; width:100%; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-size:0.95rem; font-weight:700; color:#202124;">測定履歴</div>
+            <button onclick="window.closeVitalHistoryModal()" style="background:none; border:none; cursor:pointer; padding:4px; color:#80868b;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div id="vwh-body"></div>
+    </div>
+</div>
 <div id="add-patient-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:flex-start; justify-content:center; padding:40px 0 0; overflow-y:auto;">
     <div style="background:#fff; width:100%; max-width:520px; min-height:60vh; border-radius:16px 16px 0 0; padding:20px 18px 24px; margin-bottom:0; display:flex; flex-direction:column;">
         <!-- タイトル部(sticky) -->
@@ -1420,6 +1447,18 @@ function isAlertVal(key, val) {
     return false;
 }
 
+// ========== 測定タブ 新UI: 一覧⇔測定画面の状態切替(案B) ==========
+window._measureView = 'list'; // 'list' または patient_id 文字列
+window.openMeasure = function(pid) {
+    window._measureView = String(pid);
+    renderPatientList();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+window.backToMeasureList = function() {
+    window._measureView = 'list';
+    renderPatientList();
+};
+
 // ========== 利用者リスト描画 ==========
 function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
@@ -1457,49 +1496,67 @@ function renderPatientList() {
         return;
     }
 
-    list.innerHTML = targets.map(p => {
+    // _currentPatients は音声一括などで参照されるため常に最新化
+    window._currentPatients = targets.map(p => ({ id: String(p.id), user_name: p.user_name, user_kana: p.user_kana || '' }));
+
+    // ===== 測定画面(個人) =====
+    if (window._measureView && window._measureView !== 'list') {
+        const pid = String(window._measureView);
+        const p = targets.find(x => String(x.id) === pid) || PATIENTS.find(x => String(x.id) === pid);
+        if (!p) { window._measureView = 'list'; renderPatientList(); return; }
         const v = VITALS_DATA[p.id] || {};
-        const alerts = checkAlert(v);
-        const hasAlert = alerts.length > 0;
-        const isRecheck = v.recheck;
-        const cardClass = isRecheck ? 'recheck' : (hasAlert ? 'alert' : '');
-
-        const summaryParts = [];
-        if (v.bp_high || v.bp_low) summaryParts.push(`血圧 ${v.bp_high||'?'}/${v.bp_low||'?'}`);
-        if (v.pulse) summaryParts.push(`脈拍 ${v.pulse}`);
-        if (v.temperature) summaryParts.push(`体温 ${v.temperature}℃`);
-        if (v.spo2) summaryParts.push(`SpO2 ${v.spo2}%`);
-
-        return `
-        <div class="patient-vital-card ${cardClass}" id="vcard-${p.id}" style="position:relative;overflow:hidden;margin-bottom:10px;border-radius:14px;">
-            <div class="swipe-delete-bg">
-                <span class="material-symbols-outlined">delete</span>
-                <span>削除</span>
-            </div>
-            <div class="patient-vital-card-inner" id="vcard-inner-${p.id}">
-                <div class="patient-vital-header" onclick="toggleVitalCard('${p.id}')">
+        list.innerHTML = `
+        <div style="margin-bottom:12px;">
+            <button onclick="backToMeasureList()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>一覧へ戻る
+            </button>
+        </div>
+        <div class="patient-vital-card ${v.recheck ? 'recheck' : ''}" id="vcard-${p.id}" style="border-radius:14px;">
+            <div class="patient-vital-card-inner">
+                <div class="patient-vital-header" style="cursor:default;">
                     <div>
                         <div class="patient-vital-name">
                             <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
                             ${p.user_name} 様
-                            ${isRecheck ? '<span class="vital-recheck-badge">再検査</span>' : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '')}
                         </div>
-                        <div class="vital-summary">
-                            ${summaryParts.length ? summaryParts.join(' ／ ') : '<span>未記録</span>'}
-                        </div>
+                        <div class="vital-summary" style="font-size:0.72rem;color:#80868b;">${p.user_kana || ''}</div>
                     </div>
-                    <span class="material-symbols-outlined" style="color:#80868b;transition:transform 0.2s;" id="varrow-${p.id}">expand_more</span>
                 </div>
-                <div class="patient-vital-body" id="vbody-${p.id}">
+                <div class="patient-vital-body open" id="vbody-${p.id}">
                     ${buildVitalForm(p, v, dateStr)}
                 </div>
             </div>
         </div>`;
-    }).join('');
+        return;
+    }
 
-    // スワイプ削除の初期化
+    // ===== 一覧(2列コンパクトカード) =====
+    list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px;">` +
+        targets.map(p => {
+            const v = VITALS_DATA[p.id] || {};
+            const alerts = checkAlert(v);
+            const hasAlert = alerts.length > 0;
+            const isRecheck = v.recheck;
+            const badge = isRecheck ? '<span class="vital-recheck-badge">再検査</span>'
+                        : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '');
+            return `
+            <div class="patient-vital-card ${isRecheck ? 'recheck' : (hasAlert ? 'alert' : '')}" id="vcard-${p.id}" style="position:relative;overflow:hidden;border-radius:12px;">
+                <div class="swipe-delete-bg">
+                    <span class="material-symbols-outlined">delete</span><span>削除</span>
+                </div>
+                <div class="patient-vital-card-inner" id="vcard-inner-${p.id}">
+                    <button onclick="openMeasure('${p.id}')" style="width:100%;text-align:left;border:none;background:none;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;">
+                        <span style="font-size:0.9rem;font-weight:700;color:#202124;display:flex;align-items:center;gap:4px;">
+                            ${p.user_name} ${badge}
+                        </span>
+                        <span style="font-size:0.7rem;color:#80868b;">${p.user_kana || ''}</span>
+                    </button>
+                </div>
+            </div>`;
+        }).join('') + `</div>`;
+
+    // スワイプ削除の初期化(一覧カードに対して)
     targets.forEach(p => initSwipeDelete(p.id, p.id, p.user_name));
-    window._currentPatients = targets.map(p => ({ id: String(p.id), user_name: p.user_name }));
 }
 
 function buildVitalForm(p, v, dateStr) {
@@ -1561,17 +1618,17 @@ function buildVitalForm(p, v, dateStr) {
             ${field('pulse','脈拍','bpm', v.pulse)}
             ${field('temperature','体温','℃', v.temperature)}
         </div>
-        <div class="vital-grid" style="grid-template-columns:1fr 1fr;">
-            <div class="vital-field">
-                <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
-                <div style="position:relative;">
-                    <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項" style="padding-right:36px;width:100%;box-sizing:border-box;">
-                    <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#34a853;color:#fff;border:none;border-radius:8px;width:28px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
-                        <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:14px;">mic</span>
-                    </button>
-                </div>
-            </div>
+        <div class="vital-grid" style="grid-template-columns:1fr;">
             ${field('spo2','SpO2','%', v.spo2)}
+        </div>
+        <div class="vital-field" style="margin-bottom:10px;">
+            <label style="font-size:0.78rem;color:#5f6368;display:block;margin-bottom:3px;">メモ</label>
+            <div style="display:flex;align-items:stretch;gap:6px;">
+                <input type="text" id="v-note-${p.id}" value="${v.note||''}" placeholder="特記事項" style="flex:1;min-width:0;box-sizing:border-box;">
+                <button type="button" id="memo-voice-btn-${p.id}" onclick="event.preventDefault();event.stopPropagation();toggleMemoVoice('${p.id}')" style="flex-shrink:0;background:#34a853;color:#fff;border:none;border-radius:8px;width:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
+                    <span class="material-symbols-outlined" id="memo-voice-lbl-${p.id}" style="font-size:18px;">mic</span>
+                </button>
+            </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <input type="checkbox" id="v-recheck-${p.id}" ${v.recheck?'checked':''} style="accent-color:#ff6f00;width:16px;height:16px;">
@@ -1731,6 +1788,10 @@ window.saveVital = async function(pid, name, dateStr) {
         }
         const btn = document.querySelector(`#vbody-${pid} .save-vital-btn`);
         if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2500); }
+        // 測定画面から保存した場合は、少し見せてから一覧へ戻る
+        if (window._measureView && window._measureView !== 'list') {
+            setTimeout(() => { window.backToMeasureList(); }, 900);
+        }
     } else {
         alert('保存に失敗しました: ' + (data.message || ''));
     }
@@ -2869,6 +2930,17 @@ window.loadDailyOverview = async function() {
     });
     Object.values(byPatient).forEach(p => {
         p.items.sort((a, b) => (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+        // 10分枠でまとめる: items を「枠=1ページ」の合成レコード配列に置き換える。
+        // 元の生レコードは _rawItems に退避(データ非破壊)。
+        p._rawItems = p.items;
+        p.items = window.groupVitalWindows(p.items);
+        // 印クリック用に各項目の履歴をキャッシュ
+        window._vitalWindowHistoryCache = window._vitalWindowHistoryCache || {};
+        p.items.forEach(w => {
+            Object.keys(w._history || {}).forEach(key => {
+                window._vitalWindowHistoryCache[String(p.pid != null ? p.pid : w.patient_id) + ':' + key] = w._history[key];
+            });
+        });
     });
     // 異常値判定 + 並び順(Session 19: あいうえお順 + アラート優先トグル)
     let patientList = Object.entries(byPatient).map(([pid, info]) => {
@@ -2922,9 +2994,17 @@ window.loadDailyOverview = async function() {
                 </tr>`;
             }
             const cls = key => isAlertVal(key, v[key]) ? 'val is-alert' : 'val';
-            const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
+            const cell = (key, val) => {
+                if (val == null || val === '') return `<td class="val empty">—</td>`;
+                const hasHist = v._history && v._history[key] && v._history[key].length >= 2;
+                if (hasHist) {
+                    // 同枠で複数回測定 → 最新値+印。クリックで履歴モーダル。
+                    return `<td class="${cls(key)}"><span class="val-pill val-has-history" onclick="window.openVitalHistoryModal('${p.pid}','${key}')" title="この枠で複数回測定。タップで履歴">${val}<span class="val-hist-badge">●</span></span></td>`;
+                }
+                return `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>`;
+            };
             return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
-                <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
+                <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}${(v.note && v.note.trim()) ? (function(){ window._vitalNoteCache = window._vitalNoteCache || {}; const _nk = `${p.pid}:${pageIdx}`; window._vitalNoteCache[_nk] = v.note; return `<span class="daily-note-icon material-symbols-outlined" onclick="event.stopPropagation();window.openVitalNoteModal('${_nk}')" title="メモあり">edit_note</span>`; })() : ''}</td>
                 ${cell('bp_high', v.bp_high)}
                 ${cell('bp_low', v.bp_low)}
                 ${cell('pulse', v.pulse)}
@@ -3010,6 +3090,94 @@ window.changeDailyPage = function(delta) {
     const pages = scroller.querySelectorAll('.daily-page');
     if (newIdx < 0 || newIdx >= pages.length) return;
     scroller.scrollTo({ left: scroller.clientWidth * newIdx, behavior: 'smooth' });
+};
+
+// ===== 10分枠グルーピング(同じ測定機会をまとめる。データ非破壊・表示層のみ) =====
+window.VITAL_WINDOW_MS = 10 * 60 * 1000; // 10分スライド
+window._vitalWindowItemKeys = ['bp_high','bp_low','pulse','temperature','spo2'];
+window.groupVitalWindows = function(items) {
+    const sorted = (items || []).slice().sort((a, b) =>
+        (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+    const windows = [];
+    let cur = null, lastT = null;
+    for (const v of sorted) {
+        const t = new Date(v.measured_at || v.created_at || 0).getTime();
+        if (cur && lastT != null && (t - lastT) <= window.VITAL_WINDOW_MS) {
+            cur.records.push(v);
+        } else {
+            cur = { records: [v] };
+            windows.push(cur);
+        }
+        lastT = t;
+    }
+    return windows.map(w => {
+        const first = w.records[0];
+        const merged = {
+            patient_id: first.patient_id,
+            user_name: first.user_name,
+            measured_at: first.measured_at,
+            _window_start: first.measured_at,
+            _history: {},
+            _ids: w.records.map(r => r.id),
+        };
+        window._vitalWindowItemKeys.forEach(key => {
+            const vals = w.records
+                .filter(r => r[key] != null && r[key] !== '')
+                .map(r => ({ value: r[key], measured_at: r.measured_at || r.created_at, id: r.id }))
+                .sort((a, b) => (a.measured_at || '').localeCompare(b.measured_at || ''));
+            if (vals.length === 0) { merged[key] = null; }
+            else {
+                merged[key] = vals[vals.length - 1].value; // 最新を代表に
+                if (vals.length >= 2) merged._history[key] = vals; // 印＋モーダル用
+            }
+        });
+        const notes = w.records.map(r => r.note).filter(Boolean);
+        merged.note = notes.join(' / ');
+        merged.recheck = w.records.some(r => r.recheck === true);
+        return merged;
+    });
+};
+// 印クリック → その項目の枠内全測定値を時刻つきで表示
+window.openVitalNoteModal = function(noteKey) {
+    const modal = document.getElementById('vital-note-modal');
+    const bodyEl = document.getElementById('vnote-body');
+    if (!modal || !bodyEl) return;
+    const noteText = (window._vitalNoteCache && window._vitalNoteCache[noteKey]) || '(メモなし)';
+    bodyEl.textContent = noteText;
+    modal.style.display = 'flex';
+};
+window.closeVitalNoteModal = function() {
+    const modal = document.getElementById('vital-note-modal');
+    if (modal) modal.style.display = 'none';
+};
+window.openVitalHistoryModal = function(pid, key) {
+    const cache = (window._dailyEditorState && window._dailyEditorState.cachedData) ? window._dailyEditorState.cachedData[pid] : null;
+    const modal = document.getElementById('vital-window-history-modal');
+    const bodyEl = document.getElementById('vwh-body');
+    if (!modal || !bodyEl) return;
+    let hist = (window._vitalWindowHistoryCache && window._vitalWindowHistoryCache[pid + ':' + key]) || [];
+    const labelMap = { bp_high:'血圧上', bp_low:'血圧下', pulse:'脈拍', temperature:'体温', spo2:'SpO2' };
+    const fmtTime = (iso) => {
+        try { const d = new Date(iso); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+        catch(e) { return ''; }
+    };
+    let html = '<div style="font-size:0.82rem;color:#5f6368;margin-bottom:10px;">' + (labelMap[key] || key) + ' の記録（この測定枠内）</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+    hist.forEach((h, i) => {
+        const isLatest = (i === hist.length - 1);
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:' + (isLatest ? '#e6f4ea' : '#f1f3f4') + ';">';
+        html += '<span style="font-size:0.78rem;color:#80868b;width:48px;">' + fmtTime(h.measured_at) + '</span>';
+        html += '<span style="font-size:1rem;font-weight:700;color:' + (isLatest ? '#137333' : '#3c4043') + ';flex:1;">' + h.value + '</span>';
+        if (isLatest) html += '<span style="font-size:0.72rem;color:#137333;">最新（表示中）</span>';
+        html += '</div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    modal.style.display = 'flex';
+};
+window.closeVitalHistoryModal = function() {
+    const modal = document.getElementById('vital-window-history-modal');
+    if (modal) modal.style.display = 'none';
 };
 
 // 任意のバイタル項目が異常値か判定(自動再検査用)
@@ -3937,9 +4105,25 @@ window.stopBulkTempVoice = function stopBulkTempVoice() {
 window.cleanupBulkTempStream = function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
 }
+// 黄(要確認)で職員が氏名を選択したとき、その人を登録対象に加える
+window.confirmYellowTemp = function(sel) {
+    const origPid = sel.getAttribute('data-yellow-pid');
+    const chosenPid = sel.value;
+    const tempInput = document.querySelector(`[data-yellow-temp-pid="${origPid}"]`);
+    const temp = tempInput ? (parseFloat(tempInput.value) || parseFloat(sel.getAttribute('data-temp'))) : parseFloat(sel.getAttribute('data-temp'));
+    window.bulkTempResultList = (window.bulkTempResultList || []).filter(x => String(x._yellowFrom) !== String(origPid));
+    if (!chosenPid) return;
+    const pat = (window._bulkAllPatients || []).find(p => String(p.id) === String(chosenPid));
+    const uname = pat ? pat.user_name : '';
+    window.bulkTempResultList.push({ patient_id: chosenPid, user_name: uname, temperature: temp, confidence: 'mid', _yellowFrom: origPid });
+    window.bulkTempEditData[chosenPid] = temp;
+    const cntBtn = document.querySelector('[onclick^="window.registerBulkTemp"]');
+    if (cntBtn) cntBtn.textContent = `この数値で登録 (${(window.bulkTempResultList||[]).length}名分)`;
+};
+
 window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
     // 現在表示中の利用者リストを収集
-    const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name }));
+    const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name, user_kana: p.user_kana || '' }));
     const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
     const formData = new FormData();
     formData.append('audio', blob, 'bulk_temp.' + ext);
@@ -3961,31 +4145,49 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
         window.bulkTempResultList = [];
         let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;">トランスクリプト: ${data.transcript||''}</div>`;
         resultHtml += `<div style="display:flex;flex-direction:column;gap:6px;">`;
+        // 全利用者リスト(黄の氏名ドロップダウン候補に使う)
+        window._bulkAllPatients = (window._currentPatients || []).map(p => ({ id: String(p.id), user_name: p.user_name }));
         (data.results || []).forEach(r => {
-            if (r.temperature == null) {
-                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f1f3f4;border-radius:8px;">`;
-                resultHtml += `<span style="font-size:0.82rem;color:#80868b;flex:1;">${r.user_name}</span>`;
-                resultHtml += `<span style="font-size:0.78rem;color:#80868b;">未検出</span></div>`;
+            const conf = r.confidence || (r.temperature == null ? 'none' : 'high');
+            // 体温が取れていない・該当なし → 未検出(赤系)表示、登録対象外
+            if (r.temperature == null || conf === 'none') {
+                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fce8e6;border-radius:8px;border:1px solid #f3b7b0;">`;
+                resultHtml += `<span style="font-size:0.82rem;color:#c5221f;flex:1;">${r.user_name}</span>`;
+                resultHtml += `<span style="font-size:0.78rem;color:#c5221f;">${r.temperature == null ? '未検出' : '該当なし'}</span></div>`;
                 return;
             }
-            window.bulkTempResultList.push({ patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature });
-            window.bulkTempEditData[r.patient_id] = r.temperature;
-            // カードが閉じている場合は開く
+            // カードを開く
             const body = document.getElementById('vbody-' + r.patient_id);
             if (body && !body.classList.contains('open')) {
                 body.classList.add('open');
                 const arrow = document.getElementById('varrow-' + r.patient_id);
                 if (arrow) arrow.style.transform = 'rotate(180deg)';
             }
-            // 体温一括測定は測定欄への自動入力なし（DB保存のみ）
-            resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
-            resultHtml += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
-            resultHtml += `<input type="number" step="0.1" min="34" max="42"`;
-            resultHtml += ` value="${r.temperature}"`;
-            resultHtml += ` data-pid="${r.patient_id}"`;
-            resultHtml += ` oninput="window.bulkTempEditData[${r.patient_id}]=parseFloat(this.value)||${r.temperature}"`;
-            resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #34a853;border-radius:6px;font-size:0.9rem;font-weight:700;color:#137333;text-align:center;">`;
-            resultHtml += ` <span style="font-size:0.78rem;color:#137333;">℃</span></div>`;
+            if (conf === 'high') {
+                // 緑: 自動で登録対象
+                window.bulkTempResultList.push({ patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature, confidence: 'high' });
+                window.bulkTempEditData[r.patient_id] = r.temperature;
+                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
+                resultHtml += `<span style="font-size:0.72rem;color:#137333;">✓</span>`;
+                resultHtml += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
+                resultHtml += `<input type="number" step="0.1" min="34" max="42" value="${r.temperature}" data-pid="${r.patient_id}"`;
+                resultHtml += ` oninput="window.bulkTempEditData[${r.patient_id}]=parseFloat(this.value)||${r.temperature}"`;
+                resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #34a853;border-radius:6px;font-size:0.9rem;font-weight:700;color:#137333;text-align:center;">`;
+                resultHtml += ` <span style="font-size:0.78rem;color:#137333;">℃</span></div>`;
+            } else {
+                // 黄(mid): 要確認。職員が氏名を選ぶまで登録対象に入れない。
+                const opts = window._bulkAllPatients.map(pp =>
+                    `<option value="${pp.id}" ${String(pp.id)===String(r.patient_id)?'selected':''}>${pp.user_name}</option>`
+                ).join('');
+                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fef7e0;border-radius:8px;border:1px solid #f6d36b;">`;
+                resultHtml += `<span style="font-size:0.72rem;color:#b06000;">?</span>`;
+                resultHtml += `<select data-yellow-pid="${r.patient_id}" data-temp="${r.temperature}" onchange="window.confirmYellowTemp(this)"`;
+                resultHtml += ` style="flex:1;font-size:0.82rem;padding:3px 6px;border:1.5px solid #f6d36b;border-radius:6px;color:#b06000;">`;
+                resultHtml += `<option value="">― 要確認: 氏名を選択 ―</option>${opts}</select>`;
+                resultHtml += `<input type="number" step="0.1" min="34" max="42" value="${r.temperature}" data-yellow-temp-pid="${r.patient_id}"`;
+                resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #f6d36b;border-radius:6px;font-size:0.9rem;font-weight:700;color:#b06000;text-align:center;">`;
+                resultHtml += ` <span style="font-size:0.78rem;color:#b06000;">℃</span></div>`;
+            }
         });
         resultHtml += `</div>`;
         if (window.bulkTempResultList.length > 0) {
@@ -4016,6 +4218,7 @@ window.registerBulkTemp = async function(order) {
     let success = 0, fail = 0;
     for (const r of list) {
         const val = editData[r.patient_id] || r.temperature;
+        if (val == null || isNaN(val)) { continue; }  // 念押し: 体温が無いものは送らない
         try {
             const res = await fetch('/api/bulk_temp_smart_save', {
                 method: 'POST',
