@@ -63,9 +63,34 @@
     position: relative;
     z-index: 1;
     background: #fff;
-    border-radius: 14px;
+    border-radius: 12px;
     transition: transform 0.2s ease;
 }
+/* measure-v2 swipe-fix */
+.patient-vital-card { border-radius: 12px; }
+.swipe-delete-bg { border-radius: 12px; }
+/* measure-v2 dropdown css */
+.measure-search-results {
+    margin-top: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    display: none;
+}
+.measure-search-result-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.measure-search-result-item:last-child { border-bottom: none; }
+.measure-search-result-item:active { background: #eff6ff; }
+.measure-search-result-item .kana { color: #80868b; font-size: 0.78rem; margin-left: 6px; }
+.measure-search-result-item .chart { color: #1a73e8; font-size: 0.78rem; margin-left: 6px; }
+.measure-search-empty { padding: 12px; color: #80868b; font-size: 0.85rem; text-align: center; }
+
 
 /* ===== 利用者カード ===== */
 .patient-vital-card {
@@ -652,13 +677,14 @@
         <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:20px;color:#9aa0a6;pointer-events:none;">search</span>
         <input id="measure-search-input" type="text" inputmode="search" autocomplete="off"
             placeholder="名前・ふりがな・カルテ番号で検索"
-            oninput="filterMeasureList(this.value)"
+            oninput="searchMeasurePatients(this.value)" onfocus="searchMeasurePatients(this.value)"
             style="width:100%;box-sizing:border-box;padding:9px 36px 9px 36px;border-radius:10px;border:1.5px solid #e0e0e0;background:#fff;color:#202124;font-size:0.9rem;outline:none;">
         <button type="button" onclick="clearMeasureSearch()" title="クリア"
             style="position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;border-radius:50%;background:#f1f3f4;color:#5f6368;cursor:pointer;padding:0;">
             <span class="material-symbols-outlined" style="font-size:16px;">close</span>
         </button>
     </div>
+    <div id="measure-search-results" class="measure-search-results"></div>
     <!-- Session 19: 再検者を上部に配置 トグル -->
     <div style="display:flex;margin-bottom:10px;">
         <button id="toggle-prioritize-vitals" onclick="togglePrioritizeAlerts()" type="button"
@@ -1460,25 +1486,50 @@ window.backToMeasureList = function() {
 };
 
 // ========== 利用者リスト描画 ==========
-// 測定UI第2段: 検索窓（名前・ふりがな・カルテ番号の部分一致）
-window._measureSearchQuery = window._measureSearchQuery || "";
-window.filterMeasureList = function(q) {
-    window._measureSearchQuery = (q || "");
-    renderPatientList();
+// 測定UI第2段: 候補ドロップダウン検索（名前・ふりがな・カルテ番号の部分一致）
+window.searchMeasurePatients = function(q) {
+    var resultsEl = document.getElementById("measure-search-results");
+    if (!resultsEl) return;
+    if (!q || !q.trim()) {
+        resultsEl.style.display = "none";
+        resultsEl.innerHTML = "";
+        return;
+    }
+    var query = q.trim().toLowerCase();
+    var hits = PATIENTS.filter(function(p) {
+        var name = (p.user_name || "").toLowerCase();
+        var kana = (p.user_kana || "").toLowerCase();
+        var chart = ((p.chart_number || "") + "").toLowerCase();
+        var raw = q.trim();
+        return name.includes(query) || kana.includes(query) || chart.includes(query) ||
+               (p.user_name || "").includes(raw) || (p.user_kana || "").includes(raw) || ((p.chart_number || "")+"").includes(raw);
+    }).slice(0, 20);
+    if (!hits.length) {
+        resultsEl.innerHTML = '<div class="measure-search-empty">該当する利用者がいません</div>';
+        resultsEl.style.display = "block";
+        return;
+    }
+    resultsEl.innerHTML = hits.map(function(p) {
+        return '<div class="measure-search-result-item" onclick="selectMeasurePatient(\'' + String(p.id) + '\')">'
+            + '<strong>' + (p.user_name || "") + '</strong>'
+            + (p.user_kana ? '<span class="kana">' + p.user_kana + '</span>' : "")
+            + (p.chart_number ? '<span class="chart">No.' + p.chart_number + '</span>' : "")
+            + '</div>';
+    }).join("");
+    resultsEl.style.display = "block";
+};
+window.selectMeasurePatient = function(id) {
+    var inp = document.getElementById("measure-search-input");
+    if (inp) inp.value = "";
+    var resultsEl = document.getElementById("measure-search-results");
+    if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
+    if (typeof openMeasure === "function") openMeasure(String(id));
 };
 window.clearMeasureSearch = function() {
-    window._measureSearchQuery = "";
     var el = document.getElementById("measure-search-input");
     if (el) el.value = "";
-    renderPatientList();
-};
-window._measureMatch = function(p, ql, qraw) {
-    if (!ql) return true;
-    var name = (p.user_name || "");
-    var kana = (p.user_kana || "");
-    var chart = (p.chart_number || "") + "";
-    return name.includes(qraw) || kana.includes(qraw) || chart.includes(qraw) ||
-           name.toLowerCase().includes(ql) || kana.toLowerCase().includes(ql) || chart.toLowerCase().includes(ql);
+    var resultsEl = document.getElementById("measure-search-results");
+    if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
 };
 function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
@@ -1496,17 +1547,6 @@ function renderPatientList() {
         return todayAmpm === currentAmpm || todayAmpm === 'ALL';
     });
 
-    // 測定UI第2段: 一覧表示時のみ検索フィルタを適用（個人測定画面では無視）
-    {
-        const _msq = (window._measureSearchQuery || '').trim();
-        const _onList = (!window._measureView || window._measureView === 'list');
-        if (_msq && _onList) {
-            const _ql = _msq.toLowerCase();
-            const _filtered = targets.filter(p => window._measureMatch(p, _ql, _msq));
-            targets.length = 0;
-            Array.prototype.push.apply(targets, _filtered);
-        }
-    }
 
     // Session 19: あいうえお順 + アラート優先トグル
     targets.sort((a, b) => {
