@@ -35,3 +35,4 @@ patch_*.py
 remove_*.py
 resolve_*.py
 templates/patch_*.py
+patch.py
