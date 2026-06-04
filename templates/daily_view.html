@@ -3590,6 +3590,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
+// scroll-lock-guard: body.overflow を立てる3モーダルが全て閉じていれば必ず解除する番人
+// （既存の開閉ロジックは変更せず、解除漏れだけを確実に回収するフェイルセーフ）
+(function(){
+    function _anyLockingModalOpen() {
+        var rec = document.getElementById('record-modal');
+        if (rec && rec.style.display === 'block') return true;
+        var crs = document.getElementById('cr-search-modal');
+        if (crs && crs.classList.contains('is-open')) return true;
+        var vas = document.getElementById('vas-edit-modal-overlay');
+        if (vas && !vas.hidden) return true;
+        return false;
+    }
+    function _guard() {
+        if (!_anyLockingModalOpen() && document.body.style.overflow === 'hidden') {
+            document.body.style.overflow = '';
+        }
+    }
+    if (!window._scrollLockGuardTimer) {
+        window._scrollLockGuardTimer = setInterval(_guard, 500);
+    }
+})();
+
 
 // ── 読み上げ機能（Google Neural2 TTS） ──────────────────────────
 var _tts_speaking = false;
