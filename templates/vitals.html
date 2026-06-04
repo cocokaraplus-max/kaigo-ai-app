@@ -1434,6 +1434,18 @@ function isAlertVal(key, val) {
     return false;
 }
 
+// ========== 測定タブ 新UI: 一覧⇔測定画面の状態切替(案B) ==========
+window._measureView = 'list'; // 'list' または patient_id 文字列
+window.openMeasure = function(pid) {
+    window._measureView = String(pid);
+    renderPatientList();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+window.backToMeasureList = function() {
+    window._measureView = 'list';
+    renderPatientList();
+};
+
 // ========== 利用者リスト描画 ==========
 function renderPatientList() {
     const dateStr = document.getElementById('vital-date').value || TODAY;
@@ -1471,49 +1483,67 @@ function renderPatientList() {
         return;
     }
 
-    list.innerHTML = targets.map(p => {
+    // _currentPatients は音声一括などで参照されるため常に最新化
+    window._currentPatients = targets.map(p => ({ id: String(p.id), user_name: p.user_name, user_kana: p.user_kana || '' }));
+
+    // ===== 測定画面(個人) =====
+    if (window._measureView && window._measureView !== 'list') {
+        const pid = String(window._measureView);
+        const p = targets.find(x => String(x.id) === pid) || PATIENTS.find(x => String(x.id) === pid);
+        if (!p) { window._measureView = 'list'; renderPatientList(); return; }
         const v = VITALS_DATA[p.id] || {};
-        const alerts = checkAlert(v);
-        const hasAlert = alerts.length > 0;
-        const isRecheck = v.recheck;
-        const cardClass = isRecheck ? 'recheck' : (hasAlert ? 'alert' : '');
-
-        const summaryParts = [];
-        if (v.bp_high || v.bp_low) summaryParts.push(`血圧 ${v.bp_high||'?'}/${v.bp_low||'?'}`);
-        if (v.pulse) summaryParts.push(`脈拍 ${v.pulse}`);
-        if (v.temperature) summaryParts.push(`体温 ${v.temperature}℃`);
-        if (v.spo2) summaryParts.push(`SpO2 ${v.spo2}%`);
-
-        return `
-        <div class="patient-vital-card ${cardClass}" id="vcard-${p.id}" style="position:relative;overflow:hidden;margin-bottom:10px;border-radius:14px;">
-            <div class="swipe-delete-bg">
-                <span class="material-symbols-outlined">delete</span>
-                <span>削除</span>
-            </div>
-            <div class="patient-vital-card-inner" id="vcard-inner-${p.id}">
-                <div class="patient-vital-header" onclick="toggleVitalCard('${p.id}')">
+        list.innerHTML = `
+        <div style="margin-bottom:12px;">
+            <button onclick="backToMeasureList()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:10px;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">
+                <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>一覧へ戻る
+            </button>
+        </div>
+        <div class="patient-vital-card ${v.recheck ? 'recheck' : ''}" id="vcard-${p.id}" style="border-radius:14px;">
+            <div class="patient-vital-card-inner">
+                <div class="patient-vital-header" style="cursor:default;">
                     <div>
                         <div class="patient-vital-name">
                             <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">person</span>
                             ${p.user_name} 様
-                            ${isRecheck ? '<span class="vital-recheck-badge">再検査</span>' : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '')}
                         </div>
-                        <div class="vital-summary">
-                            ${summaryParts.length ? summaryParts.join(' ／ ') : '<span>未記録</span>'}
-                        </div>
+                        <div class="vital-summary" style="font-size:0.72rem;color:#80868b;">${p.user_kana || ''}</div>
                     </div>
-                    <span class="material-symbols-outlined" style="color:#80868b;transition:transform 0.2s;" id="varrow-${p.id}">expand_more</span>
                 </div>
-                <div class="patient-vital-body" id="vbody-${p.id}">
+                <div class="patient-vital-body open" id="vbody-${p.id}">
                     ${buildVitalForm(p, v, dateStr)}
                 </div>
             </div>
         </div>`;
-    }).join('');
+        return;
+    }
 
-    // スワイプ削除の初期化
+    // ===== 一覧(2列コンパクトカード) =====
+    list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px;">` +
+        targets.map(p => {
+            const v = VITALS_DATA[p.id] || {};
+            const alerts = checkAlert(v);
+            const hasAlert = alerts.length > 0;
+            const isRecheck = v.recheck;
+            const badge = isRecheck ? '<span class="vital-recheck-badge">再検査</span>'
+                        : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '');
+            return `
+            <div class="patient-vital-card ${isRecheck ? 'recheck' : (hasAlert ? 'alert' : '')}" id="vcard-${p.id}" style="position:relative;overflow:hidden;border-radius:12px;">
+                <div class="swipe-delete-bg">
+                    <span class="material-symbols-outlined">delete</span><span>削除</span>
+                </div>
+                <div class="patient-vital-card-inner" id="vcard-inner-${p.id}">
+                    <button onclick="openMeasure('${p.id}')" style="width:100%;text-align:left;border:none;background:none;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;">
+                        <span style="font-size:0.9rem;font-weight:700;color:#202124;display:flex;align-items:center;gap:4px;">
+                            ${p.user_name} ${badge}
+                        </span>
+                        <span style="font-size:0.7rem;color:#80868b;">${p.user_kana || ''}</span>
+                    </button>
+                </div>
+            </div>`;
+        }).join('') + `</div>`;
+
+    // スワイプ削除の初期化(一覧カードに対して)
     targets.forEach(p => initSwipeDelete(p.id, p.id, p.user_name));
-    window._currentPatients = targets.map(p => ({ id: String(p.id), user_name: p.user_name, user_kana: p.user_kana || '' }));
 }
 
 function buildVitalForm(p, v, dateStr) {
@@ -1745,6 +1775,10 @@ window.saveVital = async function(pid, name, dateStr) {
         }
         const btn = document.querySelector(`#vbody-${pid} .save-vital-btn`);
         if (btn) { btn.after(savedMsg); setTimeout(()=>savedMsg.remove(), 2500); }
+        // 測定画面から保存した場合は、少し見せてから一覧へ戻る
+        if (window._measureView && window._measureView !== 'list') {
+            setTimeout(() => { window.backToMeasureList(); }, 900);
+        }
     } else {
         alert('保存に失敗しました: ' + (data.message || ''));
     }
