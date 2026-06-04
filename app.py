@@ -2322,6 +2322,9 @@ def api_vital_voice_parse():
         audio_bytes = audio.read()
         if not audio_bytes:
             return jsonify({"status": "error", "message": "音声データが空です"})
+        # 極端に短い録音(無音とみなせる)は AI に送らず弾く。誤検出(捏造)防止。
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "音声が短すぎます。もう一度お話しください。"})
 
         # MIMEタイプ判定（parse_assessment_file と同じパターン + iOS Safari の audio/mp4 対応）
         ext_mime = {
@@ -9091,6 +9094,7 @@ def api_vital_bulk_temp():
 - 体温は小数点1桁（例:36.5）
 - 数字の読み（「さんじゅうろくてんご」=36.5など）を正しく変換する
 - resultsには登録利用者名一覧の全員を含める（言及なし=null）
+- 【最重要】音声が無音・雑音のみ・聞き取れない場合は、絶対に内容を推測・創作しないこと。その場合は transcript を空文字 "" にし、results は全員 temperature=null にすること。聞こえないのにもっともらしい会話や数値を作ってはいけない。
 
 JSON形式のみで返してください（説明文・コードブロック・マークダウン禁止）:
 {{
@@ -9115,6 +9119,14 @@ JSON形式のみで返してください（説明文・コードブロック・�
             for r in ai_results
             if (r.get('user_name') or '').strip() and r.get('temperature') is not None
         ]
+        # 無音・捏造の検出: 文字起こしが実質空で、有効な体温エントリも無い場合は
+        # 「聞き取れなかった」とみなし、何も登録せず明示メッセージを返す。
+        _transcript = (result.get('transcript') or '').strip()
+        if not _transcript and len(ai_entries) == 0:
+            return jsonify({
+                "status": "error",
+                "message": "音声を検出できませんでした。もう一度、利用者名と体温をはっきりお話しください。"
+            })
         # 各 patient に対し、AIエントリ側から最良の照合を探す。
         # confidence: high=自動採用可 / mid=要確認(職員選択) / none=対象外
         matched = []

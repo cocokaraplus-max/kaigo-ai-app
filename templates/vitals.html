@@ -662,24 +662,12 @@
                 <span class="material-symbols-outlined" style="color:#f57c00;font-size:18px;pointer-events:none;">thermometer</span>
                 <span style="font-size:0.82rem;font-weight:700;color:#e65100;">体温一括入力</span>
             </div>
-            <select id="bulk-temp-order" onchange="updateBulkTempLabel()" style="font-size:0.78rem;padding:3px 8px;border-radius:8px;border:1.5px solid #ffca28;background:#fff;color:#5f6368;cursor:pointer;">
-                <option value="1">1回目</option>
-                <option value="2">2回目</option>
-                <option value="3">3回目</option>
-                <option value="4">4回目</option>
-                <option value="5">5回目</option>
-                <option value="6">6回目</option>
-                <option value="7">7回目</option>
-                <option value="8">8回目</option>
-                <option value="9">9回目</option>
-                <option value="10">10回目</option>
-            </select>
         </div>
         <!-- 録音ボタン（平常時） -->
         <button type="button" id="bulk-temp-btn" onclick="toggleBulkTempVoice()"
             style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:#ff6f00;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:.01em;">
             <span class="material-symbols-outlined" style="font-size:20px;pointer-events:none;">mic</span>
-            <span id="bulk-temp-lbl">1回目 体温一括入力</span>
+            <span id="bulk-temp-lbl">体温一括入力</span>
         </button>
         <!-- 録音中バー（初期非表示） -->
         <div id="bulk-rec-bar" style="display:none;border:1.5px solid #ff6f00;border-radius:10px;padding:8px 12px;">
@@ -4022,10 +4010,9 @@ let bulkTempCountdown = null;
 let bulkTempTimeout = null;
 
 window.updateBulkTempLabel = function() {
-    const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
     const lbl = document.getElementById('bulk-temp-lbl');
     if (lbl && lbl.textContent.indexOf('録音中') === -1) {
-        lbl.textContent = `${order}回目 体温一括入力`;
+        lbl.textContent = `体温一括入力`;
     }
 };
 
@@ -4033,8 +4020,7 @@ window.toggleBulkTempVoice = async function() {
     if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
         stopBulkTempVoice(); return;
     }
-    const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
-    if (!confirm(`体温を${order}回目のデータとして保存します。よろしいですか？`)) return;
+    if (!confirm(`体温を読み取って一覧に追加します。よろしいですか？`)) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('マイク入力に対応していません。'); return;
     }
@@ -4117,14 +4103,100 @@ window.confirmYellowTemp = function(sel) {
     const uname = pat ? pat.user_name : '';
     window.bulkTempResultList.push({ patient_id: chosenPid, user_name: uname, temperature: temp, confidence: 'mid', _yellowFrom: origPid });
     window.bulkTempEditData[chosenPid] = temp;
-    const cntBtn = document.querySelector('[onclick^="window.registerBulkTemp"]');
-    if (cntBtn) cntBtn.textContent = `この数値で登録 (${(window.bulkTempResultList||[]).length}名分)`;
+    // 確定した黄は要確認リストから除き、登録予定として再描画
+    window._bulkLastPending = (window._bulkLastPending || []).filter(x => String(x.patient_id) !== String(origPid));
+    window.renderBulkTempResults();
+};
+
+// 体温一括: 累積リストと直近解析(黄/赤)から結果表示を組み立てる
+window._bulkLastPending = window._bulkLastPending || []; // 直近解析の黄(要確認)
+window._bulkLastUnknown = window._bulkLastUnknown || []; // 直近解析の赤(未検出/該当なし)
+window.renderBulkTempResults = function() {
+    const resultDiv = document.getElementById('bulk-temp-result');
+    if (!resultDiv) return;
+    const list = window.bulkTempResultList || [];
+    const pending = window._bulkLastPending || [];
+    const unknown = window._bulkLastUnknown || [];
+    window._bulkAllPatients = (window._currentPatients || []).map(p => ({ id: String(p.id), user_name: p.user_name }));
+    let html = '';
+    // --- 登録予定(累積・緑) ---
+    if (list.length > 0) {
+        html += `<div style="font-size:0.72rem;color:#137333;font-weight:700;margin-bottom:4px;">登録予定 ${list.length}名（緑）</div>`;
+        html += `<div style="display:flex;flex-direction:column;gap:6px;">`;
+        list.forEach(r => {
+            const val = (window.bulkTempEditData && window.bulkTempEditData[r.patient_id] != null) ? window.bulkTempEditData[r.patient_id] : r.temperature;
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
+            html += `<span style="font-size:0.72rem;color:#137333;">✓</span>`;
+            html += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
+            html += `<input type="number" step="0.1" min="34" max="42" value="${val}" data-pid="${r.patient_id}"`;
+            html += ` oninput="window.bulkTempEditData[${r.patient_id}]=parseFloat(this.value)||${val}"`;
+            html += ` style="width:72px;padding:4px 6px;border:1.5px solid #34a853;border-radius:6px;font-size:0.9rem;font-weight:700;color:#137333;text-align:center;">`;
+            html += ` <span style="font-size:0.78rem;color:#137333;">℃</span>`;
+            html += ` <button type="button" onclick="window.removeBulkTempItem('${r.patient_id}')" title="この行を削除" style="background:none;border:none;color:#80868b;cursor:pointer;padding:2px;"><span class="material-symbols-outlined" style="font-size:18px;">close</span></button></div>`;
+        });
+        html += `</div>`;
+    }
+    // --- 要確認(直近の黄) ---
+    if (pending.length > 0) {
+        html += `<div style="font-size:0.72rem;color:#b06000;font-weight:700;margin:8px 0 4px;">要確認（氏名を選択すると登録予定に追加）</div>`;
+        html += `<div style="display:flex;flex-direction:column;gap:6px;">`;
+        pending.forEach(r => {
+            const opts = window._bulkAllPatients.map(pp =>
+                `<option value="${pp.id}" ${String(pp.id)===String(r.patient_id)?'selected':''}>${pp.user_name}</option>`
+            ).join('');
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fef7e0;border-radius:8px;border:1px solid #f6d36b;">`;
+            html += `<span style="font-size:0.72rem;color:#b06000;">?</span>`;
+            html += `<select data-yellow-pid="${r.patient_id}" data-temp="${r.temperature}" onchange="window.confirmYellowTemp(this)"`;
+            html += ` style="flex:1;font-size:0.82rem;padding:3px 6px;border:1.5px solid #f6d36b;border-radius:6px;color:#b06000;">`;
+            html += `<option value="">― 要確認: 氏名を選択 ―</option>${opts}</select>`;
+            html += `<input type="number" step="0.1" min="34" max="42" value="${r.temperature}" data-yellow-temp-pid="${r.patient_id}"`;
+            html += ` style="width:72px;padding:4px 6px;border:1.5px solid #f6d36b;border-radius:6px;font-size:0.9rem;font-weight:700;color:#b06000;text-align:center;">`;
+            html += ` <span style="font-size:0.78rem;color:#b06000;">℃</span></div>`;
+        });
+        html += `</div>`;
+    }
+    // --- 未検出(直近の赤・参考表示のみ、登録対象外) ---
+    if (unknown.length > 0) {
+        html += `<div style="font-size:0.72rem;color:#c5221f;font-weight:700;margin:8px 0 4px;">未検出（登録されません）</div>`;
+        html += `<div style="display:flex;flex-direction:column;gap:6px;">`;
+        unknown.forEach(r => {
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fce8e6;border-radius:8px;border:1px solid #f3b7b0;">`;
+            html += `<span style="font-size:0.82rem;color:#c5221f;flex:1;">${r.user_name}</span>`;
+            html += `<span style="font-size:0.78rem;color:#c5221f;">未検出</span></div>`;
+        });
+        html += `</div>`;
+    }
+    // --- 操作ボタン(クリア / 登録) ---
+    if (list.length > 0 || pending.length > 0 || unknown.length > 0) {
+        html += `<div style="display:flex;gap:8px;margin-top:10px;">`;
+        html += `<button type="button" onclick="window.clearBulkTemp()" style="flex:0 0 auto;padding:10px 14px;background:#f1f3f4;color:#5f6368;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;cursor:pointer;">クリア</button>`;
+        if (list.length > 0) {
+            html += `<button type="button" onclick="window.registerBulkTemp()" style="flex:1;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">`;
+            html += `<span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">check_circle</span>この数値で登録 (${list.length}名分)</button>`;
+        }
+        html += `</div>`;
+    }
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = html || '<span style="color:#80868b;font-size:0.8rem;">まだ結果がありません。</span>';
+};
+// 累積リストから1件削除
+window.removeBulkTempItem = function(pid) {
+    window.bulkTempResultList = (window.bulkTempResultList || []).filter(x => String(x.patient_id) !== String(pid));
+    if (window.bulkTempEditData) delete window.bulkTempEditData[pid];
+    window.renderBulkTempResults();
+};
+// 全クリア
+window.clearBulkTemp = function() {
+    window.bulkTempResultList = [];
+    window.bulkTempEditData = {};
+    window._bulkLastPending = [];
+    window._bulkLastUnknown = [];
+    window.renderBulkTempResults();
 };
 
 window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
     // 現在表示中の利用者リストを収集
     const patients = (window._currentPatients || []).map(p => ({ patient_id: p.id, user_name: p.user_name, user_kana: p.user_kana || '' }));
-    const order = parseInt(document.getElementById('bulk-temp-order')?.value || '1');
     const formData = new FormData();
     formData.append('audio', blob, 'bulk_temp.' + ext);
     formData.append('patients', JSON.stringify(patients));
@@ -4139,64 +4211,38 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
             if (resultDiv) resultDiv.innerHTML = `<span style="color:red">失敗: ${data.message||''}</span>`;
             return;
         }
-        // 体温を各利用者のフィールドにセット
-        // 編集可能な結果リストを生成
-        window.bulkTempEditData = {};
-        window.bulkTempResultList = [];
-        let resultHtml = `<div style="font-size:0.78rem;color:#5f6368;margin-bottom:8px;">トランスクリプト: ${data.transcript||''}</div>`;
-        resultHtml += `<div style="display:flex;flex-direction:column;gap:6px;">`;
-        // 全利用者リスト(黄の氏名ドロップダウン候補に使う)
-        window._bulkAllPatients = (window._currentPatients || []).map(p => ({ id: String(p.id), user_name: p.user_name }));
+        // 累積マージ: クリアせず、緑は登録予定に追加(同一pidは上書き)、黄は要確認、赤は未検出。
+        window.bulkTempResultList = window.bulkTempResultList || [];
+        window.bulkTempEditData = window.bulkTempEditData || {};
+        window._bulkLastPending = [];
+        window._bulkLastUnknown = [];
         (data.results || []).forEach(r => {
             const conf = r.confidence || (r.temperature == null ? 'none' : 'high');
-            // 体温が取れていない・該当なし → 未検出(赤系)表示、登録対象外
             if (r.temperature == null || conf === 'none') {
-                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fce8e6;border-radius:8px;border:1px solid #f3b7b0;">`;
-                resultHtml += `<span style="font-size:0.82rem;color:#c5221f;flex:1;">${r.user_name}</span>`;
-                resultHtml += `<span style="font-size:0.78rem;color:#c5221f;">${r.temperature == null ? '未検出' : '該当なし'}</span></div>`;
+                // 赤: 未検出/該当なし → 登録対象外(累積しない)
+                window._bulkLastUnknown.push({ patient_id: r.patient_id, user_name: r.user_name });
                 return;
             }
-            // カードを開く
-            const body = document.getElementById('vbody-' + r.patient_id);
-            if (body && !body.classList.contains('open')) {
-                body.classList.add('open');
-                const arrow = document.getElementById('varrow-' + r.patient_id);
-                if (arrow) arrow.style.transform = 'rotate(180deg)';
-            }
             if (conf === 'high') {
-                // 緑: 自動で登録対象
-                window.bulkTempResultList.push({ patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature, confidence: 'high' });
+                // 緑: 登録予定に上書きマージ
+                const idx = window.bulkTempResultList.findIndex(x => String(x.patient_id) === String(r.patient_id));
+                const item = { patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature, confidence: 'high' };
+                if (idx >= 0) window.bulkTempResultList[idx] = item;
+                else window.bulkTempResultList.push(item);
                 window.bulkTempEditData[r.patient_id] = r.temperature;
-                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e6f4ea;border-radius:8px;border:1px solid #a8d5b5;">`;
-                resultHtml += `<span style="font-size:0.72rem;color:#137333;">✓</span>`;
-                resultHtml += `<span style="font-size:0.82rem;color:#137333;flex:1;font-weight:600;">${r.user_name}</span>`;
-                resultHtml += `<input type="number" step="0.1" min="34" max="42" value="${r.temperature}" data-pid="${r.patient_id}"`;
-                resultHtml += ` oninput="window.bulkTempEditData[${r.patient_id}]=parseFloat(this.value)||${r.temperature}"`;
-                resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #34a853;border-radius:6px;font-size:0.9rem;font-weight:700;color:#137333;text-align:center;">`;
-                resultHtml += ` <span style="font-size:0.78rem;color:#137333;">℃</span></div>`;
+                // カードを開く
+                const body = document.getElementById('vbody-' + r.patient_id);
+                if (body && !body.classList.contains('open')) {
+                    body.classList.add('open');
+                    const arrow = document.getElementById('varrow-' + r.patient_id);
+                    if (arrow) arrow.style.transform = 'rotate(180deg)';
+                }
             } else {
-                // 黄(mid): 要確認。職員が氏名を選ぶまで登録対象に入れない。
-                const opts = window._bulkAllPatients.map(pp =>
-                    `<option value="${pp.id}" ${String(pp.id)===String(r.patient_id)?'selected':''}>${pp.user_name}</option>`
-                ).join('');
-                resultHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fef7e0;border-radius:8px;border:1px solid #f6d36b;">`;
-                resultHtml += `<span style="font-size:0.72rem;color:#b06000;">?</span>`;
-                resultHtml += `<select data-yellow-pid="${r.patient_id}" data-temp="${r.temperature}" onchange="window.confirmYellowTemp(this)"`;
-                resultHtml += ` style="flex:1;font-size:0.82rem;padding:3px 6px;border:1.5px solid #f6d36b;border-radius:6px;color:#b06000;">`;
-                resultHtml += `<option value="">― 要確認: 氏名を選択 ―</option>${opts}</select>`;
-                resultHtml += `<input type="number" step="0.1" min="34" max="42" value="${r.temperature}" data-yellow-temp-pid="${r.patient_id}"`;
-                resultHtml += ` style="width:72px;padding:4px 6px;border:1.5px solid #f6d36b;border-radius:6px;font-size:0.9rem;font-weight:700;color:#b06000;text-align:center;">`;
-                resultHtml += ` <span style="font-size:0.78rem;color:#b06000;">℃</span></div>`;
+                // 黄: 要確認(直近解析ぶんとして表示。確定で登録予定へ)
+                window._bulkLastPending.push({ patient_id: r.patient_id, user_name: r.user_name, temperature: r.temperature });
             }
         });
-        resultHtml += `</div>`;
-        if (window.bulkTempResultList.length > 0) {
-            resultHtml += `<button type="button" onclick="window.registerBulkTemp(${order})"`;
-            resultHtml += ` style="width:100%;margin-top:10px;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">`;
-            resultHtml += `<span class="material-symbols-outlined" style="font-size:18px;pointer-events:none;">check_circle</span>`;
-            resultHtml += `この数値で登録 (${window.bulkTempResultList.length}名分)</button>`;
-        }
-        if (resultDiv) resultDiv.innerHTML = resultHtml;
+        window.renderBulkTempResults();
     } catch(e) {
         document.getElementById('ai-indicator').style.display = 'none';
         if (resultDiv) resultDiv.innerHTML = `<span style="color:red">通信エラー</span>`;
@@ -4208,7 +4254,7 @@ window.sendBulkTempVoice = async function sendBulkTempVoice(blob, ext) {
 
 
 // 一括体温「この数値で登録」ボタンの処理
-window.registerBulkTemp = async function(order) {
+window.registerBulkTemp = async function() {
     const list = window.bulkTempResultList || [];
     const editData = window.bulkTempEditData || {};
     if (list.length === 0) return;
