@@ -953,6 +953,34 @@ body.ss-open .bottom-nav{display:none !important}
         <div class="gd-shot-cap">バイタル4タブの全景</div>
         <div class="gd-shot-cap">↑ 画面下に並ぶ4つのタブ</div>
 
+        <!-- guide-measure-search -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:16px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">search</span>
+            利用者をすばやく探す<span style="background:#1a73e8;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;margin-left:6px;">NEW</span>
+        </div>
+        <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
+            利用者が多いときは、測定タブ上部の検索窓が便利です。<b>名前・ふりがな・カルテ番号</b>のどれでも、入力するそばから候補が一覧で出てきます。
+        </div>
+        <!-- モックアップ: 検索窓+候補ドロップダウン -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;">
+            <div style="position:relative;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:18px;color:#9aa0a6;">search</span>
+                <div style="padding:9px 12px 9px 34px;border-radius:10px;border:1.5px solid #1a73e8;background:#fff;color:#202124;font-size:0.85rem;">あおき</div>
+            </div>
+            <div style="border:1px solid #e0e0e0;border-radius:8px;background:#fff;overflow:hidden;">
+                <div style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:0.85rem;">
+                    <strong>青木 利夫</strong><span style="color:#80868b;font-size:0.78rem;margin-left:6px;">あおき としお</span><span style="color:#1a73e8;font-size:0.78rem;margin-left:6px;">No.102</span>
+                </div>
+                <div style="padding:10px 12px;font-size:0.85rem;">
+                    <strong>青木 倍子</strong><span style="color:#80868b;font-size:0.78rem;margin-left:6px;">あおき ますこ</span><span style="color:#1a73e8;font-size:0.78rem;margin-left:6px;">No.118</span>
+                </div>
+            </div>
+        </div>
+        <div class="gd-shot-cap">検索窓に文字を入れると候補が表示される。タップするとその人の測定画面が直接ひらく</div>
+        <div class="hint" style="background:#e8f0fe;color:#1a56c4;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>「全員／午前／午後」タブと一緒に使えます。1文字目から候補が絞り込まれるので、フルネームを打たなくても大丈夫です。</span>
+        </div>
         <!-- 3つの入力方法 -->
         <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:16px 0 10px;display:flex;align-items:center;gap:8px;">
             <span class="material-symbols-outlined" style="color:#1a73e8;">edit_note</span>
@@ -1000,6 +1028,44 @@ body.ss-open .bottom-nav{display:none !important}
             <span>音声入力は<b>「測定」タブのみ</b>で使えます。録音時間は最大20秒。話し終わったらもう一度ボタンを押すと早く解析が始まります。</span>
         </div>
 
+        <!-- guide-alert-recheck -->
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:16px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#ea4335;">warning</span>
+            「アラート」と「再検査」の見分け方
+        </div>
+        <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
+            利用者カードの名前の横に、赤い<b>アラート</b>や橙色の<b>再検査</b>のしるしが付くことがあります。意味が違うので、見分け方を覚えておきましょう。
+        </div>
+        <!-- モックアップ: バッジ付きカード2種 -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;display:flex;flex-direction:column;gap:8px;">
+            <div style="border:1.5px solid #ea4335;border-radius:12px;background:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:0.9rem;font-weight:700;color:#202124;">石田 ナミ</span>
+                <span style="background:#ea4335;color:#fff;border-radius:10px;padding:2px 8px;font-size:0.68rem;font-weight:700;">アラート</span>
+            </div>
+            <div style="border:1.5px solid #ff6f00;border-radius:12px;background:#fff8e1;padding:10px 12px;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:0.9rem;font-weight:700;color:#202124;">青木 利夫</span>
+                <span style="background:#ff6f00;color:#fff;border-radius:10px;padding:2px 8px;font-size:0.68rem;font-weight:700;">再検査</span>
+            </div>
+        </div>
+        <div class="gd-shot-cap">🔴 アラート＝測定値が基準を外れた人／🟠 再検査＝もう一度測りたい印が付いた人</div>
+        <div class="step">
+            <div class="step-n" style="background:#ea4335;">🔴</div>
+            <div style="flex:1;">
+                <div class="step-t">アラート（赤）＝測定値が基準オーバー</div>
+                <div class="step-d">血圧（上・下）・脈拍・体温が「高すぎる／低すぎる」、またはSpO2が「低すぎる」とき、自動で赤いアラートが付きます。基準の数値は「設定」タブでいつでも変更できます。</div>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-n" style="background:#ff6f00;">🟠</div>
+            <div style="flex:1;">
+                <div class="step-t">再検査（橙）＝もう一度測りたい印</div>
+                <div class="step-d">「あとで測り直したい人」に付ける印です。付き方は2通り。①基準を外れた人に<b>自動</b>で再検査がすすめられる、②数値が範囲内でも職員の判断で「再検査が必要」に<b>手動</b>でチェックを付ける。再検査の人は橙色のカードで目立つように表示されます。</div>
+            </div>
+        </div>
+        <div class="hint" style="background:#fff3e0;color:#e65100;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>かんたんに言うと、<b>アラート＝「今の数値がおかしい」</b>、<b>再検査＝「もう一度測ろう」</b>。アラートが出た人を再検査にマークしておくと、測り直しを忘れずにすみます。</span>
+        </div>
         <!-- メモ欄 -->
         <div class="point-box" style="margin-top:14px;">
             <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">edit_note</span>メモ欄について</div>
@@ -1028,25 +1094,18 @@ body.ss-open .bottom-nav{display:none !important}
         <div class="step">
             <div class="step-n" style="background:#f57c00;">1</div>
             <div style="flex:1;">
-                <div class="step-t">「何回目」を選択</div>
-                <div class="step-d">ページ上部の「体温一括入力」バーで「1回目」「2回目」を選びます。血圧を保存済みの場合は「2回目」を選んでください。</div>
+                <div class="step-t">血圧のあとに、まとめて体温を測る</div>
+                <div class="step-d">回数を選ぶ操作は不要になりました。同じ時間帯（10分以内）の測定は自動でひとつの「回」としてまとめられます。血圧を保存済みでも、そのまま体温一括入力を始めてください。</div>
             </div>
         </div>
         <!-- モックアップ: 体温一括入力バー -->
         <div style="width:100%;max-width:360px;margin:0 auto 4px;border-radius:10px;overflow:hidden;border:1.5px solid #ffe0b2;background:#fff8f0;">
             <div style="background:#fff3e0;padding:6px 12px;font-size:0.72rem;color:#e65100;font-weight:700;border-bottom:1px solid #ffe0b2;">🌡 体温一括入力</div>
-            <div style="padding:10px 12px;display:flex;align-items:center;gap:8px;">
-                <div style="flex:1;font-size:0.8rem;color:#444;">測定回数を選択</div>
-                <select style="font-size:0.8rem;padding:5px 10px;border-radius:8px;border:1.5px solid #ffcc80;background:#fff;color:#e65100;font-weight:700;">
-                    <option>1回目</option>
-                    <option>2回目</option>
-                </select>
-            </div>
-            <div style="margin:0 10px 10px;background:#f57c00;color:#fff;border-radius:10px;padding:11px;text-align:center;font-size:0.82rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
-                <span style="font-size:1rem;">🎤</span> 1回目 体温一括入力
+            <div style="margin:10px;background:#f57c00;color:#fff;border-radius:10px;padding:11px;text-align:center;font-size:0.82rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
+                <span style="font-size:1rem;">🎤</span> 体温一括入力
             </div>
         </div>
-        <div class="gd-shot-cap">体温一括入力バー — 「1回目」「2回目」で測定回数を選択</div>
+        <div class="gd-shot-cap">体温一括入力バー — ボタンを押すだけ。回数選択は不要</div>
         <div class="step">
             <div class="step-n" style="background:#f57c00;">2</div>
             <div style="flex:1;">
@@ -1057,12 +1116,6 @@ body.ss-open .bottom-nav{display:none !important}
         <!-- モックアップ: 録音中ボタン -->
         <div style="width:100%;max-width:360px;margin:0 auto 4px;border-radius:10px;overflow:hidden;border:1.5px solid #ffe0b2;background:#fff8f0;">
             <div style="background:#fff3e0;padding:6px 12px;font-size:0.72rem;color:#e65100;font-weight:700;border-bottom:1px solid #ffe0b2;">🌡 体温一括入力</div>
-            <div style="padding:10px 12px 4px;display:flex;align-items:center;gap:8px;">
-                <div style="flex:1;font-size:0.8rem;color:#444;">測定回数を選択</div>
-                <select style="font-size:0.8rem;padding:5px 10px;border-radius:8px;border:1.5px solid #ffcc80;background:#fff;color:#e65100;font-weight:700;">
-                    <option>1回目</option>
-                </select>
-            </div>
             <div style="margin:6px 10px 10px;background:#d32f2f;color:#fff;border-radius:10px;padding:11px;text-align:center;font-size:0.82rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;">
                 <span style="display:inline-block;width:10px;height:10px;background:#ff5252;border-radius:50;animation:none;box-shadow:0 0 0 3px rgba(255,82,82,0.4);">●</span>
                 録音中… 残り <b>24秒</b>（もう一度押すと終了）
@@ -1116,6 +1169,46 @@ body.ss-open .bottom-nav{display:none !important}
     </div>
 </div>
 
+<!-- guide-10min-window -->
+<div class="sc" id="s-vitals-window">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f0fe;"><span class="material-symbols-outlined" style="font-size:26px;color:#1a73e8;">schedule</span></div>
+        <div><div class="sc-ttl">同じ時間帯の測定をまとめる<span style="background:#1a73e8;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:8px;vertical-align:middle;">NEW</span></div><div class="sc-sub">10分以内の測定は自動でひとつの「回」にまとまる</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">「1回目」「2回目」を選ぶ手間はもういらないよ！⏱️<br>近い時間に測ったぶんは、自動で同じ回にまとめるね</div>
+        </div>
+        <div class="point-box">
+            <div class="point-box-title"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>10分判定のしくみ</div>
+            <div style="font-size:0.82rem;line-height:1.7;color:#202124;">
+                最初の測定から<b>10分以内</b>に測ったぶんは、同じ「回」としてまとめられます。10分を過ぎてから測ると、自動で次の回（2回目）になります。回数を手で選ぶ必要はありません。
+            </div>
+        </div>
+        <div style="font-size:0.95rem;font-weight:800;color:#202124;margin:16px 0 10px;display:flex;align-items:center;gap:8px;">
+            <span class="material-symbols-outlined" style="color:#1a73e8;">history</span>
+            同じ枠で複数回測ったとき
+        </div>
+        <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
+            同じ回の中で複数回測ると、「本日の記録」タブの数値に <b>●</b> の印が付きます。その数値をタップすると、その枠で測ったすべての記録を一覧で確認できます。
+        </div>
+        <!-- モックアップ: 本日の記録の値ピル(●バッジ付き) -->
+        <div style="width:100%;max-width:360px;margin:0 auto 4px;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;background:#fff;">
+            <div style="background:#f1f3f4;padding:6px 12px;font-size:0.72rem;color:#5f6368;font-weight:700;border-bottom:1px solid #e0e0e0;">📋 本日の記録</div>
+            <div style="padding:10px 12px;display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:0.85rem;font-weight:700;color:#202124;">青木 利夫</span>
+                <span style="display:inline-flex;align-items:center;gap:3px;background:#e8f0fe;color:#1a56c4;border-radius:8px;padding:3px 10px;font-size:0.82rem;font-weight:700;">36.5℃<span style="font-size:0.6rem;color:#1a73e8;">●</span></span>
+            </div>
+            <div style="padding:0 12px 10px;font-size:0.72rem;color:#888;">↑「●」付きの数値をタップ → この枠の測定履歴がひらく</div>
+        </div>
+        <div class="gd-shot-cap">本日の記録 — 「●」は同じ枠で複数回測ったしるし。タップで履歴を確認できる</div>
+        <div class="hint" style="background:#e8f0fe;color:#1a56c4;">
+            <span class="material-symbols-outlined" style="font-size:18px;flex-shrink:0;">tips_and_updates</span>
+            <span>たとえば血圧が高くてもう一度測り直したとき、2回分が同じ枠にまとまって記録されます。あとから「どちらも残っているか」をタップひとつで確認できます。</span>
+        </div>
+    </div>
+</div>
 <!-- ===== 再検査アラーム ===== -->
 <div class="sc" id="s-vitals-recheck">
     <div class="sc-hd">
