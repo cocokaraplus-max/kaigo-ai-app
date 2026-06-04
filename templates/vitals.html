@@ -4016,6 +4016,49 @@ window.updateBulkTempLabel = function() {
     }
 };
 
+// ===== 体温一括: 録音中の音量監視(無音なら送信しない) =====
+window._bulkVoiceDetected = false;
+window._bulkAudioCtx = null;
+window._bulkAudioRAF = null;
+// しきい値(0〜1のRMS)。環境ノイズで誤検出しないよう少し高め。DEV実測で微調整可。
+window.BULK_VOICE_RMS_THRESHOLD = 0.02;
+// 「発話あり」と判定するために必要な、しきい値超えサンプルの累計回数(約 当たり16ms間隔)
+window.BULK_VOICE_MIN_HITS = 8;
+window.startBulkVoiceMonitor = function(stream) {
+    try {
+        window._bulkVoiceDetected = false;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) { window._bulkVoiceDetected = true; return; } // 監視不可なら従来通り送る(安全側で送信許可)
+        const ctx = new Ctx();
+        window._bulkAudioCtx = ctx;
+        const srcNode = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        srcNode.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        let hits = 0;
+        const tick = function() {
+            analyser.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) { sum += buf[i] * buf[i]; }
+            const rms = Math.sqrt(sum / buf.length);
+            if (rms >= window.BULK_VOICE_RMS_THRESHOLD) {
+                hits++;
+                if (hits >= window.BULK_VOICE_MIN_HITS) { window._bulkVoiceDetected = true; }
+            }
+            window._bulkAudioRAF = requestAnimationFrame(tick);
+        };
+        window._bulkAudioRAF = requestAnimationFrame(tick);
+    } catch (e) {
+        // 監視セットアップ失敗時は従来通り送信を許可(安全側)
+        window._bulkVoiceDetected = true;
+    }
+};
+window.stopBulkVoiceMonitor = function() {
+    if (window._bulkAudioRAF) { try { cancelAnimationFrame(window._bulkAudioRAF); } catch(e){} window._bulkAudioRAF = null; }
+    if (window._bulkAudioCtx) { try { window._bulkAudioCtx.close(); } catch(e){} window._bulkAudioCtx = null; }
+};
+
 window.toggleBulkTempVoice = async function() {
     if (bulkTempRecorder && bulkTempRecorder.state === 'recording') {
         stopBulkTempVoice(); return;
@@ -4043,9 +4086,21 @@ window.toggleBulkTempVoice = async function() {
         const usedMime = bulkTempRecorder.mimeType || mime || 'audio/webm';
         const blob = new Blob(bulkTempChunks, { type: usedMime });
         if (blob.size === 0) { alert('録音が空でした。'); return; }
+        // 無音判定: 録音中に有効な発話音量が検出されなければ送信しない(AI捏造の防止)
+        const voiceWasDetected = window._bulkVoiceDetected;
+        window.stopBulkVoiceMonitor();
+        if (!voiceWasDetected) {
+            const rd = document.getElementById('bulk-temp-result');
+            if (rd) {
+                rd.style.display = 'block';
+                rd.innerHTML = '<div style="padding:8px 12px;background:#fce8e6;color:#c5221f;border-radius:8px;font-size:0.85rem;font-weight:700;">音声が検出されませんでした。もう一度、利用者名と体温をはっきりお話しください。</div>';
+            }
+            return;
+        }
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
+    window.startBulkVoiceMonitor(bulkTempStream);
     startBulkRealtimeSpeech();
     // 録音ボタンを隠して録音中バーを表示
     const btn = document.getElementById('bulk-temp-btn');
@@ -4090,6 +4145,7 @@ window.stopBulkTempVoice = function stopBulkTempVoice() {
 }
 window.cleanupBulkTempStream = function cleanupBulkTempStream() {
     if (bulkTempStream) { try { bulkTempStream.getTracks().forEach(t => t.stop()); } catch(e) {} bulkTempStream = null; }
+    if (window.stopBulkVoiceMonitor) window.stopBulkVoiceMonitor();
 }
 // 黄(要確認)で職員が氏名を選択したとき、その人を登録対象に加える
 window.confirmYellowTemp = function(sel) {
