@@ -4027,6 +4027,10 @@ window.BULK_VOICE_MIN_HITS = 8;
 window.startBulkVoiceMonitor = function(stream) {
     try {
         window._bulkVoiceDetected = false;
+        window._bulkRmsMax = 0;
+        // デバッグ表示要素を結果エリアに用意
+        const _rd = document.getElementById('bulk-temp-result');
+        if (_rd) { _rd.style.display = 'block'; _rd.innerHTML = '<div id="bulk-rms-debug" style="padding:6px 10px;background:#e8f0fe;color:#1a73e8;border-radius:8px;font-size:0.8rem;font-weight:700;font-family:monospace;">RMS計測中...</div>'; }
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) { window._bulkVoiceDetected = true; return; } // 監視不可なら従来通り送る(安全側で送信許可)
         const ctx = new Ctx();
@@ -4042,6 +4046,11 @@ window.startBulkVoiceMonitor = function(stream) {
             let sum = 0;
             for (let i = 0; i < buf.length; i++) { sum += buf[i] * buf[i]; }
             const rms = Math.sqrt(sum / buf.length);
+            // --- デバッグ: RMS実測表示 ---
+            if (rms > (window._bulkRmsMax || 0)) window._bulkRmsMax = rms;
+            const dbg = document.getElementById('bulk-rms-debug');
+            if (dbg) dbg.textContent = `RMS現在:${rms.toFixed(4)} / 最大:${(window._bulkRmsMax||0).toFixed(4)} / しきい値:${window.BULK_VOICE_RMS_THRESHOLD}`;
+            // --- デバッグここまで ---
             if (rms >= window.BULK_VOICE_RMS_THRESHOLD) {
                 hits++;
                 if (hits >= window.BULK_VOICE_MIN_HITS) { window._bulkVoiceDetected = true; }
@@ -4093,10 +4102,11 @@ window.toggleBulkTempVoice = async function() {
             const rd = document.getElementById('bulk-temp-result');
             if (rd) {
                 rd.style.display = 'block';
-                rd.innerHTML = '<div style="padding:8px 12px;background:#fce8e6;color:#c5221f;border-radius:8px;font-size:0.85rem;font-weight:700;">音声が検出されませんでした。もう一度、利用者名と体温をはっきりお話しください。</div>';
+                rd.innerHTML = '<div style="padding:8px 12px;background:#fce8e6;color:#c5221f;border-radius:8px;font-size:0.85rem;font-weight:700;">音声が検出されませんでした。（デバッグ: 最大RMS=' + (window._bulkRmsMax||0).toFixed(4) + ' / しきい値=' + window.BULK_VOICE_RMS_THRESHOLD + '）</div>';
             }
             return;
         }
+        console.log('[体温一括 RMS実測] 今回の最大RMS =', (window._bulkRmsMax||0).toFixed(4), '/ しきい値 =', window.BULK_VOICE_RMS_THRESHOLD);
         await sendBulkTempVoice(blob, mimeToExt(usedMime));
     };
     bulkTempRecorder.start();
