@@ -4029,12 +4029,27 @@ window.startBulkVoiceMonitor = function(stream) {
         window._bulkVoiceDetected = false;
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) { window._bulkVoiceDetected = true; return; } // 監視不可なら従来通り送る(安全側で送信許可)
-        const ctx = new Ctx();
-        window._bulkAudioCtx = ctx;
+        // AudioContext は使い回す(close しない)。iOS Safari で close 後に
+        // 再生成すると suspended のまま動かなくなるため。
+        if (!window._bulkAudioCtx) {
+            window._bulkAudioCtx = new Ctx();
+        }
+        const ctx = window._bulkAudioCtx;
+        // ユーザー操作直後なので resume しておく(suspended からの復帰)
+        if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch(e){} }
+        // 前回の source が残っていれば切断
+        if (window._bulkAudioSrc) { try { window._bulkAudioSrc.disconnect(); } catch(e){} window._bulkAudioSrc = null; }
+        // analyser は使い回し、無ければ作る
+        if (!window._bulkAnalyser) {
+            const an = ctx.createAnalyser();
+            an.fftSize = 2048;
+            window._bulkAnalyser = an;
+        }
+        const analyser = window._bulkAnalyser;
+        // 今回のマイク stream を繋ぎ直す
         const srcNode = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048;
         srcNode.connect(analyser);
+        window._bulkAudioSrc = srcNode;
         const buf = new Float32Array(analyser.fftSize);
         let hits = 0;
         const tick = function() {
@@ -4056,7 +4071,11 @@ window.startBulkVoiceMonitor = function(stream) {
 };
 window.stopBulkVoiceMonitor = function() {
     if (window._bulkAudioRAF) { try { cancelAnimationFrame(window._bulkAudioRAF); } catch(e){} window._bulkAudioRAF = null; }
-    if (window._bulkAudioCtx) { try { window._bulkAudioCtx.close(); } catch(e){} window._bulkAudioCtx = null; }
+    // source は切断するが、AudioContext は close せず保持(次回再利用)。
+    if (window._bulkAudioSrc) { try { window._bulkAudioSrc.disconnect(); } catch(e){} window._bulkAudioSrc = null; }
+    if (window._bulkAudioCtx && window._bulkAudioCtx.state === 'running' && window._bulkAudioCtx.suspend) {
+        try { window._bulkAudioCtx.suspend(); } catch(e){}
+    }
 };
 
 window.toggleBulkTempVoice = async function() {
