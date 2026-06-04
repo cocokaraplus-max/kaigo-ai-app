@@ -31,3 +31,7 @@ Thumbs.db
 *.bak*
 HANDOFF.md
 fix_*.py
+patch_*.py
+remove_*.py
+resolve_*.py
+templates/patch_*.py

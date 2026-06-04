@@ -327,6 +327,9 @@
 }
 
 /* ===== カメラモーダル ===== */
+.val-has-history { position:relative; cursor:pointer; }
+.val-hist-badge { font-size:0.5rem; color:#1a73e8; vertical-align:super; margin-left:1px; }
+.val-has-history:active { opacity:0.6; }
 .camera-modal {
     display:none; position:fixed;
     top:0; left:0; right:0; bottom:0;
@@ -977,6 +980,17 @@
 
 <!-- ========== モーダル:本日の利用者を追加 ========== -->
 <!-- align-items:flex-startでiOSキーボード出現時もモーダルが見える位置に -->
+<div id="vital-window-history-modal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)window.closeVitalHistoryModal()">
+    <div style="background:#fff; border-radius:16px; max-width:340px; width:100%; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-size:0.95rem; font-weight:700; color:#202124;">測定履歴</div>
+            <button onclick="window.closeVitalHistoryModal()" style="background:none; border:none; cursor:pointer; padding:4px; color:#80868b;">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div id="vwh-body"></div>
+    </div>
+</div>
 <div id="add-patient-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:flex-start; justify-content:center; padding:40px 0 0; overflow-y:auto;">
     <div style="background:#fff; width:100%; max-width:520px; min-height:60vh; border-radius:16px 16px 0 0; padding:20px 18px 24px; margin-bottom:0; display:flex; flex-direction:column;">
         <!-- タイトル部(sticky) -->
@@ -2869,6 +2883,17 @@ window.loadDailyOverview = async function() {
     });
     Object.values(byPatient).forEach(p => {
         p.items.sort((a, b) => (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+        // 10分枠でまとめる: items を「枠=1ページ」の合成レコード配列に置き換える。
+        // 元の生レコードは _rawItems に退避(データ非破壊)。
+        p._rawItems = p.items;
+        p.items = window.groupVitalWindows(p.items);
+        // 印クリック用に各項目の履歴をキャッシュ
+        window._vitalWindowHistoryCache = window._vitalWindowHistoryCache || {};
+        p.items.forEach(w => {
+            Object.keys(w._history || {}).forEach(key => {
+                window._vitalWindowHistoryCache[String(p.pid != null ? p.pid : w.patient_id) + ':' + key] = w._history[key];
+            });
+        });
     });
     // 異常値判定 + 並び順(Session 19: あいうえお順 + アラート優先トグル)
     let patientList = Object.entries(byPatient).map(([pid, info]) => {
@@ -2922,7 +2947,15 @@ window.loadDailyOverview = async function() {
                 </tr>`;
             }
             const cls = key => isAlertVal(key, v[key]) ? 'val is-alert' : 'val';
-            const cell = (key, val) => val != null && val !== '' ? `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>` : `<td class="val empty">—</td>`;
+            const cell = (key, val) => {
+                if (val == null || val === '') return `<td class="val empty">—</td>`;
+                const hasHist = v._history && v._history[key] && v._history[key].length >= 2;
+                if (hasHist) {
+                    // 同枠で複数回測定 → 最新値+印。クリックで履歴モーダル。
+                    return `<td class="${cls(key)}"><span class="val-pill val-has-history" onclick="window.openVitalHistoryModal('${p.pid}','${key}')" title="この枠で複数回測定。タップで履歴">${val}<span class="val-hist-badge">●</span></span></td>`;
+                }
+                return `<td class="${cls(key)}"><span class="val-pill">${val}</span></td>`;
+            };
             return `<tr class="${p.hasAlert ? 'has-alert' : ''}" data-pid="${p.pid}">
                 <td class="name">${p.name}${p.hasAlert ? '<span class="daily-recheck-mini">⚠</span>' : ''}</td>
                 ${cell('bp_high', v.bp_high)}
@@ -3010,6 +3043,82 @@ window.changeDailyPage = function(delta) {
     const pages = scroller.querySelectorAll('.daily-page');
     if (newIdx < 0 || newIdx >= pages.length) return;
     scroller.scrollTo({ left: scroller.clientWidth * newIdx, behavior: 'smooth' });
+};
+
+// ===== 10分枠グルーピング(同じ測定機会をまとめる。データ非破壊・表示層のみ) =====
+window.VITAL_WINDOW_MS = 10 * 60 * 1000; // 10分スライド
+window._vitalWindowItemKeys = ['bp_high','bp_low','pulse','temperature','spo2'];
+window.groupVitalWindows = function(items) {
+    const sorted = (items || []).slice().sort((a, b) =>
+        (a.measured_at || a.created_at || '').localeCompare(b.measured_at || b.created_at || ''));
+    const windows = [];
+    let cur = null, lastT = null;
+    for (const v of sorted) {
+        const t = new Date(v.measured_at || v.created_at || 0).getTime();
+        if (cur && lastT != null && (t - lastT) <= window.VITAL_WINDOW_MS) {
+            cur.records.push(v);
+        } else {
+            cur = { records: [v] };
+            windows.push(cur);
+        }
+        lastT = t;
+    }
+    return windows.map(w => {
+        const first = w.records[0];
+        const merged = {
+            patient_id: first.patient_id,
+            user_name: first.user_name,
+            measured_at: first.measured_at,
+            _window_start: first.measured_at,
+            _history: {},
+            _ids: w.records.map(r => r.id),
+        };
+        window._vitalWindowItemKeys.forEach(key => {
+            const vals = w.records
+                .filter(r => r[key] != null && r[key] !== '')
+                .map(r => ({ value: r[key], measured_at: r.measured_at || r.created_at, id: r.id }))
+                .sort((a, b) => (a.measured_at || '').localeCompare(b.measured_at || ''));
+            if (vals.length === 0) { merged[key] = null; }
+            else {
+                merged[key] = vals[vals.length - 1].value; // 最新を代表に
+                if (vals.length >= 2) merged._history[key] = vals; // 印＋モーダル用
+            }
+        });
+        const notes = w.records.map(r => r.note).filter(Boolean);
+        merged.note = notes.join(' / ');
+        merged.recheck = w.records.some(r => r.recheck === true);
+        return merged;
+    });
+};
+// 印クリック → その項目の枠内全測定値を時刻つきで表示
+window.openVitalHistoryModal = function(pid, key) {
+    const cache = (window._dailyEditorState && window._dailyEditorState.cachedData) ? window._dailyEditorState.cachedData[pid] : null;
+    const modal = document.getElementById('vital-window-history-modal');
+    const bodyEl = document.getElementById('vwh-body');
+    if (!modal || !bodyEl) return;
+    let hist = (window._vitalWindowHistoryCache && window._vitalWindowHistoryCache[pid + ':' + key]) || [];
+    const labelMap = { bp_high:'血圧上', bp_low:'血圧下', pulse:'脈拍', temperature:'体温', spo2:'SpO2' };
+    const fmtTime = (iso) => {
+        try { const d = new Date(iso); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+        catch(e) { return ''; }
+    };
+    let html = '<div style="font-size:0.82rem;color:#5f6368;margin-bottom:10px;">' + (labelMap[key] || key) + ' の記録（この測定枠内）</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+    hist.forEach((h, i) => {
+        const isLatest = (i === hist.length - 1);
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:' + (isLatest ? '#e6f4ea' : '#f1f3f4') + ';">';
+        html += '<span style="font-size:0.78rem;color:#80868b;width:48px;">' + fmtTime(h.measured_at) + '</span>';
+        html += '<span style="font-size:1rem;font-weight:700;color:' + (isLatest ? '#137333' : '#3c4043') + ';flex:1;">' + h.value + '</span>';
+        if (isLatest) html += '<span style="font-size:0.72rem;color:#137333;">最新（表示中）</span>';
+        html += '</div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    modal.style.display = 'flex';
+};
+window.closeVitalHistoryModal = function() {
+    const modal = document.getElementById('vital-window-history-modal');
+    if (modal) modal.style.display = 'none';
 };
 
 // 任意のバイタル項目が異常値か判定(自動再検査用)
