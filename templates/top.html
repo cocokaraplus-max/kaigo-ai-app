@@ -257,7 +257,7 @@
     </div>
     <div id="task-body" style="display:none;">
     {% for t in my_tasks %}
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f3f4;">
+    <div class="task-row-clickable" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f3f4;cursor:pointer;" onclick="location.href='/tasks?focus={{ t.id }}'">
         <div style="font-size:0.85rem;color:#3c4043;flex:1;">{{ t.title }}</div>
         {% if t.due_date %}<div style="font-size:0.75rem;color:#9aa0a6;">{{ t.due_date }}</div>{% endif %}
     </div>
