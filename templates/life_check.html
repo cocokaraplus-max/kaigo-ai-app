@@ -125,8 +125,15 @@
       <div class="lc-row"><label>性別</label>
         <select id="lc-gender"><option value="">選択</option><option value="male">男</option><option value="female">女</option></select>
       </div>
-      <div class="lc-row"><label>評価者</label><input type="text" id="lc-evaluator" placeholder="氏名"></div>
-      <div class="lc-row"><label>職種</label><input type="text" id="lc-evaluator_job" placeholder="理学療法士 等"></div>
+      <div class="lc-row"><label>評価者</label><input type="text" id="lc-evaluator" placeholder="氏名" value="{{ my_name }}"></div>  {# lc-evaljob-v1 #}
+      <div class="lc-row"><label>職種</label>  {# lc-evaljob-v1 #}
+        <select id="lc-evaluator_job_sel" onchange="lcJobChange()">
+          <option value="">選択</option>
+          <option>管理者</option><option>生活相談員</option><option>機能訓練指導員</option>
+          <option>看護職員</option><option>介護職員</option><option value="__other__">その他</option>
+        </select>
+        <input type="text" id="lc-evaluator_job" placeholder="その他の職種を入力" style="display:none;margin-top:6px;">
+      </div>
       <div class="lc-row"><label>要介護度</label>
         <select id="lc-care_level"><option value="">選択</option>
           <option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option>
@@ -432,6 +439,7 @@ function lcPrefill(prev) {
     var el = document.getElementById('lc-'+f);
     if (el && prev[f] != null && prev[f] !== '') el.value = prev[f];
   });
+  if (prev.evaluator_job != null) lcJobRestore(prev.evaluator_job);  // lc-evaljob-v1
   LC_ADL.forEach(function(it){
     var v = prev[it.key];
     if (v != null && v !== '') {
@@ -562,6 +570,23 @@ function lcAdjustTotalBar() {  // lc-ui-fix-v1
   var totalH = total ? Math.round(total.getBoundingClientRect().height) : 56;
   var wrap = document.querySelector('.lc-wrap');
   if (wrap) wrap.style.paddingBottom = (navH + totalH + 24) + 'px';
+}
+function lcJobChange() {  // lc-evaljob-v1
+  var sel = document.getElementById('lc-evaluator_job_sel');
+  var inp = document.getElementById('lc-evaluator_job');
+  if (!sel || !inp) return;
+  if (sel.value === '__other__') { inp.style.display = 'block'; inp.value = ''; inp.focus(); }
+  else if (sel.value === '') { inp.style.display = 'none'; inp.value = ''; }
+  else { inp.style.display = 'none'; inp.value = sel.value; }
+}
+function lcJobRestore(val) {  // lc-evaljob-v1: 保存値からselect/自由入力を復元
+  var sel = document.getElementById('lc-evaluator_job_sel');
+  var inp = document.getElementById('lc-evaluator_job');
+  if (!sel || !inp) return;
+  if (!val) { sel.value = ''; inp.style.display='none'; inp.value=''; return; }
+  var known = ['管理者','生活相談員','機能訓練指導員','看護職員','介護職員'];
+  if (known.indexOf(val) >= 0) { sel.value = val; inp.style.display='none'; inp.value = val; }
+  else { sel.value = '__other__'; inp.style.display='block'; inp.value = val; }
 }
 </script>
 {% endblock %}

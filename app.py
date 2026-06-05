@@ -8713,6 +8713,7 @@ def life_check_page():
         "life_check.html",
         patients=patients,
         today=today,
+        my_name=session.get("my_name", ""),  # life-evaluator-myname
     )
 
 
