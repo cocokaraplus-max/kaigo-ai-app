@@ -456,9 +456,23 @@ async function lcLoadHistory() {
     body.innerHTML = '<div class="hist-empty">履歴の取得に失敗しました</div>';
   }
 }
-function lcStartEdit(id) {  // lc-edit-delete-v1
+function lcStartEdit(id) {  // lc-edit-delete-v1 / lc-edit-restore-patient-v1
   var rec = (window._lcHistMap || {})[id];
   if (!rec) return;
+  // 利用者名・選択中表示・LIFE_SELECTED を復元（名前を消していても戻す）
+  var pname = rec.user_name || (LIFE_SELECTED ? LIFE_SELECTED.user_name : '');
+  if (!LIFE_SELECTED && rec.patient_id) {
+    var found = (LIFE_PATIENTS || []).find(function(x){ return String(x.id) === String(rec.patient_id); });
+    if (found) LIFE_SELECTED = found;
+  }
+  if (pname) {
+    var ps = document.getElementById('lc-patient-search');
+    if (ps) ps.value = pname;
+    var selEl = document.getElementById('lc-selected');
+    if (selEl) selEl.textContent = '選択中: ' + pname + ' 様' + ((LIFE_SELECTED && LIFE_SELECTED.care_level) ? '（' + LIFE_SELECTED.care_level + '）' : '');
+    var saveBtn = document.getElementById('lc-save-btn');
+    if (saveBtn) saveBtn.disabled = false;
+  }
   window._lcEditMode = true;
   var cd = document.getElementById('lc-check-date');
   if (rec.check_date) cd.value = rec.check_date;
@@ -467,7 +481,7 @@ function lcStartEdit(id) {  // lc-edit-delete-v1
   lcShowEditBanner(rec.check_date || '');  // lc-assist-accordion-v1
   var note = document.getElementById('lc-prefill-note');
   if (note) { note.textContent = '編集中: ' + (rec.check_date||'') + ' の記録を読み込みました。保存すると上書きされます。'; note.className = 'lc-editing-note'; }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  requestAnimationFrame(function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
 function lcShowEditBanner(dateLabel) {  // lc-assist-accordion-v1
   var wrap = document.querySelector('.lc-wrap');
