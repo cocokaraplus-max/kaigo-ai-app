@@ -242,6 +242,31 @@ function setMsg(id, text, ok) {
   el.textContent = text;
   el.className = 'fit-msg ' + (ok ? 'ok' : 'ng');
 }
+// 保存後アクション: 別の利用者 / 同じ利用者で続ける
+window.resetFitPatient = function() {
+  FIT_SELECTED = null;
+  var ids = ['fit-patient-id','fit-patient-name','fit-patient-input'];
+  ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  var hint = document.getElementById('fit-selected-hint');
+  if (hint) { hint.style.display='none'; hint.textContent=''; }
+  var ws=document.getElementById('w-save'); if(ws) ws.disabled=true;
+  var fs=document.getElementById('f-save'); if(fs) fs.disabled=true;
+  var hn=document.getElementById('hist-name'); if(hn) hn.textContent='測定履歴';
+  var hb=document.getElementById('hist-body'); if(hb) hb.innerHTML='<div class="hist-empty">利用者を選ぶと履歴が表示されます</div>';
+  var inp=document.getElementById('fit-patient-input'); if(inp) inp.focus();
+};
+window.showSaveNextActions = function(msgId) {
+  var el = document.getElementById(msgId);
+  if (!el) return;
+  el.className = 'fit-msg ok';
+  el.innerHTML = '<div style="margin-bottom:6px;">\u2705 \u4fdd\u5b58\u3057\u307e\u3057\u305f</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    + '<button type="button" onclick="resetFitPatient(); this.closest(\'.fit-msg\').textContent=\'\';" '
+    + 'style="padding:7px 12px;border:1.5px solid #1a73e8;border-radius:8px;background:#1a73e8;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">\u5225\u306e\u5229\u7528\u8005\u3092\u5165\u529b</button>'
+    + '<button type="button" onclick="this.closest(\'.fit-msg\').textContent=\'\';" '
+    + 'style="padding:7px 12px;border:1.5px solid #e0e0e0;border-radius:8px;background:#fff;color:#5f6368;font-size:0.82rem;font-weight:700;cursor:pointer;">\u540c\u3058\u5229\u7528\u8005\u3067\u7d9a\u3051\u308b</button>'
+    + '</div>';
+};
 
 async function saveWeight() {
   if (!FIT_SELECTED) { setMsg('w-msg', '利用者を選択してください', false); return; }
@@ -265,6 +290,7 @@ async function saveWeight() {
     const j = await r.json();
     if (j.status === 'success') {
       setMsg('w-msg', '体重を保存しました', true);
+      showSaveNextActions('w-msg');
       document.getElementById('w-kg').value = '';
       document.getElementById('w-note').value = '';
       loadHistory();
@@ -309,6 +335,7 @@ async function saveFitness() {
     const j = await r.json();
     if (j.status === 'success') {
       setMsg('f-msg', '体力測定を保存しました', true);
+      showSaveNextActions('f-msg');
       ['f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-walk5m-max','f-sitstand','f-note']
         .forEach(id => document.getElementById(id).value = '');
       loadHistory();
