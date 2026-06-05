@@ -7820,7 +7820,7 @@ def api_tasks_update():
         t = task.data[0]
         assigned = t.get("assigned_to") or []
         is_creator = (t["created_by"] == my_name)
-        is_assignee = (my_name in assigned)
+        is_assignee = (my_name in assigned) or (not assigned)  # task-perm-empty-allowall: 空配列＝全員向けは全員操作可
         is_admin = is_admin_user(supabase, f_code, my_name)
         if not (is_creator or is_assignee or is_admin):
             return jsonify({"status": "error", "message": "権限がありません"}), 403
@@ -8878,6 +8878,113 @@ def api_fitness_history():
         })
     except Exception as e:
         return jsonify({"weights": [], "fitness": [], "error": str(e)}), 500
+
+
+# ============================================================
+# life-check-api-block : seikatsu kinou check (yoshiki 3-2) save/get API
+# ADL scores are tap-selected integers from frontend; no zenkaku normalize.
+# patient key = patient_id; upsert on (facility_code, patient_id, check_date).
+# ============================================================
+
+_LIFE_ADL_FIELDS = [
+    "adl_eating", "adl_transfer", "adl_grooming", "adl_toilet", "adl_bathing",
+    "adl_walking", "adl_wheelchair", "adl_stairs", "adl_dressing",
+    "adl_bowel", "adl_bladder",
+]
+_LIFE_STAGE_FIELDS = [
+    "iadl_cooking", "iadl_laundry", "iadl_cleaning",
+    "basic_rollover", "basic_situp", "basic_sitting",
+    "basic_standup", "basic_standing",
+]
+_LIFE_NOTE_FIELDS = [f + "_note" for f in _LIFE_ADL_FIELDS] + [
+    "iadl_cooking_note", "iadl_laundry_note", "iadl_cleaning_note",
+    "basic_rollover_note", "basic_situp_note", "basic_sitting_note",
+    "basic_standup_note", "basic_standing_note",
+]
+_LIFE_META_FIELDS = [
+    "visit_type", "birth_date", "gender", "evaluator", "evaluator_job",
+    "care_level", "adl_independence", "dementia_independence", "note",
+]
+
+
+def _life_int_or_none(v):
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return None
+
+
+@app.route('/api/save_life_check', methods=['POST'])
+@login_required
+def api_save_life_check():
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        patient_id = str(data.get("patient_id", "")).strip()
+        check_date = str(data.get("check_date", "")).strip()
+        if not patient_id or not check_date:
+            return jsonify({"status": "error",
+                            "message": "riyousha to hyoukabi ha hissu desu"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": str(data.get("user_name", "")).strip(),
+            "check_date": check_date,
+            "staff_name": my_name,
+        }
+
+        for f in _LIFE_ADL_FIELDS + _LIFE_STAGE_FIELDS:
+            payload[f] = _life_int_or_none(data.get(f))
+
+        for f in _LIFE_NOTE_FIELDS + _LIFE_META_FIELDS:
+            if f in data and data.get(f) is not None:
+                payload[f] = data.get(f)
+
+        existing = supabase.table("life_function_checks").select("id").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).eq(
+            "check_date", check_date).execute()
+
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("life_function_checks").update(payload).eq(
+                "id", rid).execute()
+        else:
+            res = supabase.table("life_function_checks").insert(payload).execute()
+            rid = res.data[0]["id"] if res.data else None
+
+        return jsonify({"status": "success", "id": rid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/life_check_history')
+@login_required
+def api_life_check_history():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        patient_id = str(request.args.get("patient_id", "")).strip()
+        if not patient_id:
+            return jsonify({"checks": []})
+
+        res = supabase.table("life_function_checks").select("*").eq(
+            "facility_code", f_code).eq(
+            "patient_id", patient_id).order(
+            "check_date", desc=True).execute()
+
+        return jsonify({"checks": res.data or []})
+    except Exception as e:
+        return jsonify({"checks": [], "error": str(e)}), 500
 
 
 
