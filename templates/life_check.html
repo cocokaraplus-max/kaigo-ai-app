@@ -99,6 +99,16 @@
 .lc-assist-cand:hover { background:#e8f0fe; }
 .lc-assist-apply-note { border:1px solid #0F6E56; background:#e6f4ef; color:#0F6E56; border-radius:7px; padding:4px 9px; font-size:0.74rem; cursor:pointer; margin-top:4px; }
 .lc-assist-note-disclaimer { font-size:0.72rem; color:#9aa0a6; margin-top:6px; }
+.lc-assist-head { display:flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid #B5D4F4; background:#f3f8ff; color:#0C447C; border-radius:9px; padding:7px 10px; font-size:0.8rem; font-weight:700; }  /* lc-assist-accordion-v1 */
+.lc-assist-head .material-symbols-outlined { font-size:17px; }
+.lc-assist-head.has-result { border-color:#0F6E56; background:#e6f4ef; color:#0F6E56; }
+.lc-assist-head-label { flex:1; }
+.lc-assist-caret { font-size:0.9rem; }
+.lc-assist-body { margin-top:8px; }
+.lc-edit-banner { display:flex; align-items:center; gap:10px; justify-content:space-between; background:#fff4e5; border:1.5px solid #f0a829; color:#8a5a00; border-radius:10px; padding:9px 12px; font-size:0.82rem; font-weight:700; margin-bottom:12px; }
+.lc-edit-banner button { border:1px solid #8a5a00; background:#fff; color:#8a5a00; border-radius:7px; padding:5px 10px; font-size:0.76rem; cursor:pointer; white-space:nowrap; }
+@keyframes lcEditFlash { 0% { background:#ffe0a3; } 100% { background:#fff4e5; } }
+.lc-edit-banner.flash { animation: lcEditFlash 0.6s ease; }
 </style>
 {% endblock %}
 {% block content %}
@@ -454,10 +464,31 @@ function lcStartEdit(id) {  // lc-edit-delete-v1
   if (rec.check_date) cd.value = rec.check_date;
   lcPrefill(rec);
   window._lcEditMode = false;
+  lcShowEditBanner(rec.check_date || '');  // lc-assist-accordion-v1
   var note = document.getElementById('lc-prefill-note');
   if (note) { note.textContent = '編集中: ' + (rec.check_date||'') + ' の記録を読み込みました。保存すると上書きされます。'; note.className = 'lc-editing-note'; }
-  var top = document.querySelector('.lc-wrap');
-  if (top) window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function lcShowEditBanner(dateLabel) {  // lc-assist-accordion-v1
+  var wrap = document.querySelector('.lc-wrap');
+  if (!wrap) return;
+  var banner = document.getElementById('lc-edit-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'lc-edit-banner';
+    banner.className = 'lc-edit-banner';
+    wrap.insertBefore(banner, wrap.firstChild);
+  }
+  banner.innerHTML = '<span>✏️ ' + lcEsc(dateLabel) + ' の記録を編集中です。保存すると上書きされます。</span>' +
+    '<button type="button" id="lc-edit-cancel">新規入力に戻る</button>';
+  banner.style.display = 'flex';
+  banner.classList.remove('flash'); void banner.offsetWidth; banner.classList.add('flash');
+}
+function lcClearEditBanner() {  // lc-assist-accordion-v1
+  var banner = document.getElementById('lc-edit-banner');
+  if (banner) banner.style.display = 'none';
+  var note = document.getElementById('lc-prefill-note');
+  if (note) { note.textContent = ''; note.className = 'lc-prefill-note'; }
 }
 async function lcDeleteCheck(id) {  // lc-edit-delete-v1
   var rec = (window._lcHistMap || {})[id];
@@ -570,6 +601,15 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('resize', lcAdjustTotalBar);
   lcBuildInputs();
   lcBindEvents();
+  document.addEventListener('click', function(e){  // lc-assist-accordion-v1
+    var head = e.target.closest('.lc-assist-head');
+    if (head) { lcToggleAssist(head.dataset.assistHead); return; }
+    if (e.target && e.target.id === 'lc-edit-cancel') {
+      lcClearEditBanner();
+      window._lcEditMode = false;
+      return;
+    }
+  });
   var histBody = document.getElementById('lc-hist-body');  // lc-edit-delete-v1
   if (histBody) {
     histBody.addEventListener('click', function(e){
@@ -628,21 +668,43 @@ function lcJobRestore(val) {  // lc-evaljob-v1: 保存値からselect/自由入�
   if (known.indexOf(val) >= 0) { sel.value = val; inp.style.display='none'; inp.value = val; }
   else { sel.value = '__other__'; inp.style.display='block'; inp.value = val; }
 }
-function lcOpenAssist(key) {  // lc-assist-ui-v1
+function lcOpenAssist(key) {  // lc-assist-accordion-v1
   var box = document.getElementById('assist-' + key);
   if (!box) return;
-  if (box.dataset.open === '1') { box.innerHTML = ''; box.dataset.open = '0'; return; }
-  var noteEl = document.querySelector('[data-note="' + key + '"]');
-  var seed = noteEl ? (noteEl.value || '') : '';
-  box.innerHTML = '<div class="lc-assist-panel">' +
-    '<textarea id="assist-ta-' + key + '" placeholder="観察した状況を入力（状況メモがあれば引き継いでいます）"></textarea>' +
-    '<button type="button" class="lc-assist-run" data-run="' + key + '">AIに相談する</button>' +
-    '<div class="lc-assist-result" id="assist-res-' + key + '"></div>' +
-    '<div class="lc-assist-note-disclaimer">AIの候補は参考情報です。最終的な評価は職員が判断してください。</div>' +
-    '</div>';
-  box.dataset.open = '1';
-  var ta = document.getElementById('assist-ta-' + key);
-  if (ta) ta.value = seed;
+  // 初回構築: 見出し(head) + 本体(body) を作る。以降は表示切替のみ（内容保持）。
+  if (!box.dataset.built) {
+    var noteEl = document.querySelector('[data-note="' + key + '"]');
+    var seed = noteEl ? (noteEl.value || '') : '';
+    box.innerHTML = '<div class="lc-assist-head" data-assist-head="' + key + '"><span class="material-symbols-outlined">smart_toy</span><span class="lc-assist-head-label">AI相談</span><span class="lc-assist-caret">▾</span></div>' +
+      '<div class="lc-assist-body" id="assist-body-' + key + '">' +
+      '<div class="lc-assist-panel">' +
+      '<textarea id="assist-ta-' + key + '" placeholder="観察した状況を入力（状況メモがあれば引き継いでいます）"></textarea>' +
+      '<button type="button" class="lc-assist-run" data-run="' + key + '">AIに相談する</button>' +
+      '<div class="lc-assist-result" id="assist-res-' + key + '"></div>' +
+      '<div class="lc-assist-note-disclaimer">AIの候補は参考情報です。最終的な評価は職員が判断してください。</div>' +
+      '</div></div>';
+    box.dataset.built = '1';
+    box.dataset.open = '1';
+    var ta = document.getElementById('assist-ta-' + key);
+    if (ta) ta.value = seed;
+    return;
+  }
+  // 構築済み: 開閉トグル
+  lcToggleAssist(key);
+}
+function lcToggleAssist(key, forceOpen) {  // lc-assist-accordion-v1
+  var body = document.getElementById('assist-body-' + key);
+  var box = document.getElementById('assist-' + key);
+  if (!body || !box) return;
+  var willOpen = (forceOpen === true) ? true : (forceOpen === false ? false : (box.dataset.open !== '1'));
+  body.style.display = willOpen ? 'block' : 'none';
+  box.dataset.open = willOpen ? '1' : '0';
+  var head = box.querySelector('.lc-assist-head');
+  if (head) head.classList.toggle('has-result', box.dataset.hasResult === '1');
+  var label = box.querySelector('.lc-assist-head-label');
+  if (label) label.textContent = (box.dataset.hasResult === '1') ? (willOpen ? 'AI相談の結果' : 'AI相談の結果（タップで表示）') : 'AI相談';
+  var caret = box.querySelector('.lc-assist-caret');
+  if (caret) caret.textContent = willOpen ? '▾' : '▸';
 }
 async function lcRunAssist(key) {  // lc-assist-ui-v1
   var ta = document.getElementById('assist-ta-' + key);
@@ -691,6 +753,8 @@ function lcRenderAssist(key, result) {  // lc-assist-ui-v1
     res.dataset.draft = result.record_draft;
   }
   res.innerHTML = html;
+  var box = document.getElementById('assist-' + key);  // lc-assist-accordion-v1
+  if (box) { box.dataset.hasResult = '1'; lcToggleAssist(key, false); }
 }
 </script>
 {% endblock %}
