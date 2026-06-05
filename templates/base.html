@@ -398,7 +398,15 @@ body.nav-editing {
 .toggle-switch input:checked + .toggle-slider { background: #1a73e8; }
 .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
 .flash-messages { margin-bottom: 1rem; }
-    </style>
+    /* goal-bounce-css */
+@keyframes goalBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  15% { transform: translateY(-9px); }
+  30% { transform: translateY(0); }
+  40% { transform: translateY(-5px); }
+}
+#goal-check-btn.goal-bounce { animation: goalBounce 1.6s ease-in-out infinite; }
+</style>
     {% block extra_style %}{% endblock %}
 </head>
 <body>
@@ -2017,6 +2025,9 @@ window.openSettings = function() {
 function openSettings() { window.openSettings(); }
 async function openGoalCheckModal() {
     var m = document.getElementById('goal-check-modal');
+    /* goal-bounce-stop */
+    var _gb = document.getElementById('goal-check-btn');
+    if (_gb) _gb.classList.remove('goal-bounce');
     m.style.display = 'flex';
     var content = document.getElementById('goal-check-content');
     content.innerHTML = '<div style="color:#80868b;padding:20px;">読み込み中...</div>';
@@ -2096,10 +2107,6 @@ async function openGoalCheckModal() {
         content.innerHTML = '<div style="color:#e53935;padding:20px;">読み込みに失敗しました</div>';
     }
 }
-function closeGoalCheckModal() {
-    document.getElementById('goal-check-modal').style.display = 'none';
-}
-
 function closeGoalCheckModal() {
     document.getElementById('goal-check-modal').style.display = 'none';
 }
@@ -2227,9 +2234,23 @@ document.addEventListener('input', function(e) {
         if (goalBtn) {
             goalBtn.style.display = isTop ? '' : 'none';
             if (isTop) {
+                /* goal-bounce-js */
                 fetch('/api/goal_check').then(r => r.json()).then(data => {
-                    if (data.status === 'success' && data.patients.some(p => p.status === '期限切れ')) {
-                        goalBtn.querySelector('.material-symbols-outlined').style.color = '#e53935';
+                    if (data.status !== 'success') return;
+                    var icon = goalBtn.querySelector('.material-symbols-outlined');
+                    var pts = data.patients || [];
+                    var hasExpired = pts.some(function(p){ return p.status === '期限切れ'; });
+                    var hasNear = pts.some(function(p){ return p.status === '期限間近'; });
+                    var hasChange = (data.goal_changes || []).length > 0;
+                    var color = null;
+                    if (hasExpired) color = '#e53935';
+                    else if (hasNear) color = '#f57c00';
+                    else if (hasChange) color = '#34a853';
+                    if (color) {
+                        if (icon) icon.style.color = color;
+                        goalBtn.classList.add('goal-bounce');
+                    } else {
+                        goalBtn.classList.remove('goal-bounce');
                     }
                 }).catch(() => {});
             }
