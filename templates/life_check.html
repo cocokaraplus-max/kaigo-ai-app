@@ -2,7 +2,7 @@
 {% block title %}生活機能チェック - TASUKARU{% endblock %}
 {% block extra_style %}
 <style>
-.lc-wrap { max-width:680px; margin:0 auto; padding-bottom:40px; }
+.lc-wrap { max-width:720px; margin:0 auto; padding-bottom:60px; }
 .lc-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:16px; margin-bottom:14px; }
 .lc-card-title { font-size:0.92rem; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:7px; padding-bottom:10px; border-bottom:2px solid #B5D4F4; color:#0C447C; }
 .lc-card-title .material-symbols-outlined { font-size:20px; }
@@ -14,8 +14,9 @@
 }
 .lc-row input:focus, .lc-row select:focus { outline:none; border-color:#1a73e8; }
 .lc-row input[type="date"] { -webkit-appearance:none; appearance:none; text-align:left; display:block; line-height:1.2; }
+.lc-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }
+.lc-grid2 .lc-row { margin-bottom:0; }
 .patient-pick { position:relative; }
-.patient-pick input { width:100%; }
 .pick-list {
   position:absolute; top:100%; left:0; right:0; z-index:20; background:#fff;
   border:1.5px solid #e0e0e0; border-radius:10px; margin-top:4px; max-height:240px;
@@ -25,10 +26,52 @@
 .pick-list .pick-item:hover { background:#f1f7ff; }
 .pick-list .pick-item:last-child { border-bottom:none; }
 .lc-selected { font-size:0.85rem; color:#0C447C; font-weight:700; margin-top:6px; min-height:18px; }
-.lc-msg { font-size:0.8rem; margin-top:8px; text-align:center; min-height:18px; }
+.lc-msg { font-size:0.82rem; margin-top:10px; text-align:center; min-height:18px; }
 .lc-msg.ok { color:#0F6E56; }
 .lc-msg.ng { color:#c5221f; }
-.lc-placeholder { font-size:0.82rem; color:#9aa0a6; padding:18px 0; text-align:center; }
+
+.lc-group-label { font-size:0.8rem; font-weight:700; color:#0C447C; margin:16px 0 8px; padding-left:4px; border-left:4px solid #B5D4F4; }
+.lc-item { border:1px solid #eee; border-radius:11px; padding:11px 12px; margin-bottom:10px; }
+.lc-item-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.lc-item-name { font-size:0.88rem; font-weight:700; color:#202124; }
+.lc-item-score { font-size:0.78rem; color:#0C447C; font-weight:700; }
+.lc-opts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.lc-opt {
+  border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 10px;
+  font-size:0.8rem; cursor:pointer; text-align:left; line-height:1.35; color:#3c4043;
+  flex:1 1 auto; min-width:0;
+}
+.lc-opt .opt-pt { font-weight:700; color:#0C447C; margin-right:5px; }
+.lc-opt.selected { border-color:#1a73e8; background:#e8f0fe; color:#174ea6; }
+.lc-opt-level { flex:1 1 0; text-align:center; }
+.lc-sub { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+.lc-issue { display:flex; gap:6px; align-items:center; }
+.lc-issue button {
+  border:1.5px solid #e0e0e0; background:#fff; border-radius:8px; padding:5px 12px;
+  font-size:0.78rem; cursor:pointer; color:#5f6368;
+}
+.lc-issue button.issue-on { border-color:#c5221f; background:#fde8e6; color:#c5221f; font-weight:700; }
+.lc-issue button.issue-off { border-color:#0F6E56; background:#e6f4ef; color:#0F6E56; font-weight:700; }
+.lc-issue-label { font-size:0.74rem; color:#80868b; }
+.lc-textfields { margin-top:8px; }
+.lc-textfields input { width:100%; padding:7px 10px; border:1.5px solid #ececec; border-radius:8px; font-size:0.8rem; box-sizing:border-box; margin-top:5px; }
+.lc-ai-btn {
+  border:1px solid #B5D4F4; background:#f3f8ff; color:#0C447C; border-radius:8px;
+  padding:5px 10px; font-size:0.74rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+}
+.lc-ai-btn .material-symbols-outlined { font-size:15px; }
+.lc-total {
+  position:sticky; bottom:0; background:#0C447C; color:#fff; border-radius:11px;
+  padding:11px 16px; font-size:0.92rem; font-weight:700; display:flex; justify-content:space-between;
+  align-items:center; margin-top:8px; box-shadow:0 -2px 10px rgba(0,0,0,0.08);
+}
+.lc-total small { font-weight:400; font-size:0.74rem; opacity:0.85; }
+.btn-save-lc {
+  width:100%; padding:14px; border:none; border-radius:12px; background:#0C447C;
+  font-size:0.95rem; font-weight:700; cursor:pointer; color:#fff; margin-top:12px;
+}
+.btn-save-lc:disabled { background:#bbb; cursor:not-allowed; }
+
 .hist-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:16px; }
 .hist-title { font-size:0.85rem; font-weight:700; color:#5f6368; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
 .hist-empty { font-size:0.8rem; color:#9aa0a6; padding:10px 0; text-align:center; }
@@ -36,6 +79,7 @@
 .hist-table th, .hist-table td { border:1px solid #e8eaed; padding:6px 7px; text-align:center; }
 .hist-table th { background:#f8f9fb; color:#5f6368; font-weight:700; }
 .hist-table td.dt { text-align:left; white-space:nowrap; }
+.lc-prefill-note { font-size:0.74rem; color:#9aa0a6; margin-bottom:8px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -45,27 +89,80 @@
     <div class="lc-card-title">
       <span class="material-symbols-outlined">assignment</span>生活機能チェックシート（様式3-2）
     </div>
-
     <div class="lc-row patient-pick">
       <label>利用者</label>
       <input type="text" id="lc-patient-search" placeholder="名前・ふりがなで検索..." autocomplete="off">
       <div class="pick-list" id="lc-pick-list"></div>
       <div class="lc-selected" id="lc-selected"></div>
     </div>
-
-    <div class="lc-row">
-      <label>評価日</label>
-      <input type="date" id="lc-check-date" value="{{ today }}">
+    <div class="lc-grid2">
+      <div class="lc-row">
+        <label>評価日</label>
+        <input type="date" id="lc-check-date" value="{{ today }}">
+      </div>
+      <div class="lc-row">
+        <label>訪問種別</label>
+        <select id="lc-visit_type">
+          <option value="">選択</option>
+          <option value="initial">初回（計画作成前）</option>
+          <option value="periodic">定期（3か月ごと）</option>
+        </select>
+      </div>
     </div>
-
-    <div class="lc-placeholder" id="lc-input-placeholder">
-      （評価項目の入力欄は次の段階で追加されます）
-    </div>
-
-    <div class="lc-msg" id="lc-msg"></div>
   </div>
 
-  <div class="hist-card">
+  <div class="lc-card">
+    <div class="lc-card-title"><span class="material-symbols-outlined">badge</span>基本情報</div>
+    <div class="lc-grid2">
+      <div class="lc-row"><label>生年月日</label><input type="date" id="lc-birth_date"></div>
+      <div class="lc-row"><label>性別</label>
+        <select id="lc-gender"><option value="">選択</option><option value="male">男</option><option value="female">女</option></select>
+      </div>
+      <div class="lc-row"><label>評価者</label><input type="text" id="lc-evaluator" placeholder="氏名"></div>
+      <div class="lc-row"><label>職種</label><input type="text" id="lc-evaluator_job" placeholder="理学療法士 等"></div>
+      <div class="lc-row"><label>要介護度</label>
+        <select id="lc-care_level"><option value="">選択</option>
+          <option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option>
+          <option>要介護3</option><option>要介護4</option><option>要介護5</option></select>
+      </div>
+      <div class="lc-row"><label>障害高齢者の日常生活自立度</label>
+        <select id="lc-adl_independence"><option value="">選択</option>
+          <option>自立</option><option>J1</option><option>J2</option><option>A1</option><option>A2</option>
+          <option>B1</option><option>B2</option><option>C1</option><option>C2</option></select>
+      </div>
+      <div class="lc-row"><label>認知症高齢者の日常生活自立度</label>
+        <select id="lc-dementia_independence"><option value="">選択</option>
+          <option>自立</option><option>I</option><option>IIa</option><option>IIb</option>
+          <option>IIIa</option><option>IIIb</option><option>IV</option><option>M</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="lc-card">
+    <div class="lc-card-title"><span class="material-symbols-outlined">checklist</span>ADL（Barthel Index）</div>
+    <div class="lc-prefill-note" id="lc-prefill-note"></div>
+    <div id="lc-adl-area"></div>
+  </div>
+
+  <div class="lc-card">
+    <div class="lc-card-title"><span class="material-symbols-outlined">accessibility_new</span>車椅子・IADL・基本動作（4段階）</div>
+    <div id="lc-level-area"></div>
+  </div>
+
+  <div class="lc-row">
+    <label>総合所見・特記事項</label>
+    <input type="text" id="lc-note" placeholder="全体的な所見・特記事項" style="width:100%;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;box-sizing:border-box;">
+  </div>
+
+  <div class="lc-total">
+    <span>ADL合計（Barthel）</span>
+    <span><span id="lc-total-score">0</span> <small>/ 100点</small></span>
+  </div>
+
+  <button class="btn-save-lc" id="lc-save-btn" disabled>保存する</button>
+  <div class="lc-msg" id="lc-msg"></div>
+
+  <div class="hist-card" style="margin-top:18px;">
     <div class="hist-title">
       <span class="material-symbols-outlined">history</span>
       <span id="lc-hist-title">評価履歴</span>
@@ -79,52 +176,168 @@
 {% endblock %}
 {% block extra_script %}
 <script>
-let LIFE_SELECTED = null;
-let LIFE_PATIENTS = [];
+var LC_ADL = [
+  {key:"adl_eating",   label:"食事",   opts:[[10,"自立、自助具などの装着可、標準的時間内に食べ終える"],[5,"部分介助（おかずを切って細かくしてもらう等）"],[0,"全介助"]]},
+  {key:"adl_transfer", label:"椅子とベッド間の移乗", opts:[[15,"自立（車椅子のブレーキ・フットレスト操作も含む）"],[10,"軽度の部分介助または監視を要する"],[5,"座ることは可能であるがほぼ全介助"],[0,"全介助または不可能"]]},
+  {key:"adl_grooming", label:"整容",   opts:[[5,"自立（洗面、整髪、歯磨き、ひげ剃り）"],[0,"部分介助または不可能"]]},
+  {key:"adl_toilet",   label:"トイレ動作", opts:[[10,"自立（衣服の操作、後始末を含む）"],[5,"部分介助、体を支える、衣服・後始末に介助を要する"],[0,"全介助または不可能"]]},
+  {key:"adl_bathing",  label:"入浴",   opts:[[5,"自立"],[0,"部分介助または不可能"]]},
+  {key:"adl_walking",  label:"移動",   opts:[[15,"45m以上の歩行、補助具の使用は問わず"],[10,"45m以上の介助歩行、歩行器の使用含む"],[5,"歩行不能だが車椅子で45m以上の操作可能"],[0,"上記以外"]]},
+  {key:"adl_stairs",   label:"階段昇降", opts:[[10,"自立、手すり等の使用は問わない"],[5,"介助または監視を要する"],[0,"不能"]]},
+  {key:"adl_dressing", label:"更衣",   opts:[[10,"自立、靴・ファスナー・装具の着脱を含む"],[5,"部分介助、標準的な時間で半分以上は自分で行える"],[0,"上記以外"]]},
+  {key:"adl_bowel",    label:"排便コントロール", opts:[[10,"失禁なし、浣腸・坐薬の取り扱い可能"],[5,"ときに失禁あり、浣腸・坐薬の取り扱いに介助を要する"],[0,"上記以外"]]},
+  {key:"adl_bladder",  label:"排尿コントロール", opts:[[10,"失禁なし、収尿器の取り扱いも可能"],[5,"ときに失禁あり、収尿器の取り扱いに介助を要する"],[0,"上記以外"]]}
+];
+var LC_LEVEL = [
+  {key:"adl_wheelchair", label:"車椅子操作", group:"ADL"},
+  {key:"iadl_cooking",   label:"調理", group:"IADL"},
+  {key:"iadl_laundry",   label:"洗濯", group:"IADL"},
+  {key:"iadl_cleaning",  label:"掃除", group:"IADL"},
+  {key:"basic_rollover", label:"寝返り", group:"基本動作"},
+  {key:"basic_situp",    label:"起き上がり", group:"基本動作"},
+  {key:"basic_sitting",  label:"座位", group:"基本動作"},
+  {key:"basic_standup",  label:"立ち上がり", group:"基本動作"},
+  {key:"basic_standing", label:"立位", group:"基本動作"}
+];
+var LC_LEVELS = [["independent","自立"],["watch","見守り"],["partial","一部介助"],["full","全介助"]];
+
+var LIFE_SELECTED = null;
+var LIFE_PATIENTS = [];
+var lcState = {};
+
+function lcEsc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 async function lcLoadPatients() {
   try {
-    const r = await fetch('/api/patients_cache');
-    const j = await r.json();
+    var r = await fetch('/api/patients_cache');
+    var j = await r.json();
     LIFE_PATIENTS = j.patients || j || [];
-  } catch (e) {
-    LIFE_PATIENTS = [];
-  }
+  } catch (e) { LIFE_PATIENTS = []; }
 }
-
-function lcNorm(s) { return (s || '').replace(/\s/g, '').toLowerCase(); }
-
+function lcNorm(s){ return (s||'').replace(/\s/g,'').toLowerCase(); }
 function lcFilterPatients() {
-  const q = lcNorm(document.getElementById('lc-patient-search').value);
-  const list = document.getElementById('lc-pick-list');
-  if (!q) { list.style.display = 'none'; return; }
-  const hits = LIFE_PATIENTS.filter(function (p) {
-    const name = lcNorm(p.user_name);
-    const kana = lcNorm(p.user_name_kana || p.kana || '');
-    const num = lcNorm(p.patient_number || '');
-    return name.indexOf(q) >= 0 || kana.indexOf(q) >= 0 || num.indexOf(q) >= 0;
-  }).slice(0, 30);
-  if (!hits.length) { list.style.display = 'none'; return; }
-  list.innerHTML = hits.map(function (p) {
-    return '<div class="pick-item" data-id="' + p.id + '">' + p.user_name +
-      (p.care_level ? ' <small style="color:#9aa0a6;">（' + p.care_level + '）</small>' : '') + '</div>';
+  var q = lcNorm(document.getElementById('lc-patient-search').value);
+  var list = document.getElementById('lc-pick-list');
+  if (!q) { list.style.display='none'; return; }
+  var hits = LIFE_PATIENTS.filter(function(p){
+    return lcNorm(p.user_name).indexOf(q)>=0 ||
+           lcNorm(p.user_name_kana||p.kana||'').indexOf(q)>=0 ||
+           lcNorm(p.patient_number||'').indexOf(q)>=0;
+  }).slice(0,30);
+  if (!hits.length) { list.style.display='none'; return; }
+  list.innerHTML = hits.map(function(p){
+    return '<div class="pick-item" data-id="'+p.id+'">'+lcEsc(p.user_name)+
+      (p.care_level?' <small style="color:#9aa0a6;">（'+lcEsc(p.care_level)+'）</small>':'')+'</div>';
   }).join('');
-  list.style.display = 'block';
+  list.style.display='block';
 }
-
 function lcPickPatient(id) {
-  const p = LIFE_PATIENTS.find(function (x) { return String(x.id) === String(id); });
+  var p = LIFE_PATIENTS.find(function(x){ return String(x.id)===String(id); });
   if (!p) return;
   LIFE_SELECTED = p;
   document.getElementById('lc-patient-search').value = p.user_name;
-  document.getElementById('lc-pick-list').style.display = 'none';
-  document.getElementById('lc-selected').textContent = '選択中: ' + p.user_name + ' 様' +
-    (p.care_level ? '（' + p.care_level + '）' : '');
+  document.getElementById('lc-pick-list').style.display='none';
+  document.getElementById('lc-selected').textContent = '選択中: '+p.user_name+' 様'+(p.care_level?'（'+p.care_level+'）':'');
+  document.getElementById('lc-save-btn').disabled = false;
   lcLoadHistory();
 }
 
+function lcBuildInputs() {
+  var adlHtml = LC_ADL.map(function(it){
+    var opts = it.opts.map(function(o){
+      return '<button type="button" class="lc-opt" data-key="'+it.key+'" data-score="'+o[0]+'">'+
+             '<span class="opt-pt">'+o[0]+'</span>'+lcEsc(o[1])+'</button>';
+    }).join('');
+    return lcItemBlock(it.key, it.label, opts, true);
+  }).join('');
+  document.getElementById('lc-adl-area').innerHTML = adlHtml;
+
+  var levelHtml = '';
+  var lastGroup = '';
+  LC_LEVEL.forEach(function(it){
+    if (it.group !== lastGroup) { levelHtml += '<div class="lc-group-label">'+it.group+'</div>'; lastGroup = it.group; }
+    var opts = LC_LEVELS.map(function(l){
+      return '<button type="button" class="lc-opt lc-opt-level" data-key="'+it.key+'" data-level="'+l[0]+'">'+l[1]+'</button>';
+    }).join('');
+    levelHtml += lcItemBlock(it.key, it.label, opts, false);
+  });
+  document.getElementById('lc-level-area').innerHTML = levelHtml;
+}
+function lcItemBlock(key, label, optsHtml, isAdl) {
+  return '<div class="lc-item" data-item="'+key+'">'+
+    '<div class="lc-item-head"><span class="lc-item-name">'+lcEsc(label)+'</span>'+
+      (isAdl?'<span class="lc-item-score" id="sc-'+key+'"></span>':'')+'</div>'+
+    '<div class="lc-opts">'+optsHtml+'</div>'+
+    '<div class="lc-sub">'+
+      '<span class="lc-issue-label">課題</span>'+
+      '<div class="lc-issue">'+
+        '<button type="button" data-key="'+key+'" data-issue="true">有</button>'+
+        '<button type="button" data-key="'+key+'" data-issue="false">無</button>'+
+      '</div>'+
+      '<button type="button" class="lc-ai-btn" data-ai="'+key+'"><span class="material-symbols-outlined">smart_toy</span>AI相談</button>'+
+    '</div>'+
+    '<div class="lc-textfields">'+
+      '<input type="text" data-env="'+key+'" placeholder="環境（実施場所・補助具など）">'+
+      '<input type="text" data-note="'+key+'" placeholder="状況・生活課題">'+
+    '</div>'+
+  '</div>';
+}
+
+function lcRecalcTotal() {
+  var total = 0;
+  LC_ADL.forEach(function(it){
+    var st = lcState[it.key];
+    if (st && typeof st.score === 'number') total += st.score;
+  });
+  document.getElementById('lc-total-score').textContent = total;
+}
+
+function lcBindEvents() {
+  var root = document.querySelector('.lc-wrap');
+  root.addEventListener('click', function(e){
+    var opt = e.target.closest('.lc-opt');
+    if (opt) {
+      var key = opt.dataset.key;
+      lcState[key] = lcState[key] || {};
+      root.querySelectorAll('.lc-opt[data-key="'+key+'"]').forEach(function(b){ b.classList.remove('selected'); });
+      opt.classList.add('selected');
+      if (opt.dataset.score !== undefined) {
+        lcState[key].score = parseInt(opt.dataset.score, 10);
+        var sc = document.getElementById('sc-'+key);
+        if (sc) sc.textContent = lcState[key].score + '点';
+        lcRecalcTotal();
+      } else if (opt.dataset.level !== undefined) {
+        lcState[key].level = opt.dataset.level;
+      }
+      return;
+    }
+    var ib = e.target.closest('.lc-issue button');
+    if (ib) {
+      var k = ib.dataset.key;
+      lcState[k] = lcState[k] || {};
+      var val = (ib.dataset.issue === 'true');
+      lcState[k].issue = val;
+      var wrap = ib.parentElement;
+      wrap.querySelectorAll('button').forEach(function(b){ b.classList.remove('issue-on','issue-off'); });
+      ib.classList.add(val ? 'issue-on' : 'issue-off');
+      return;
+    }
+    var ai = e.target.closest('.lc-ai-btn');
+    if (ai) {
+      setLcMsg('AI相談機能は近日対応予定です', false);
+      return;
+    }
+  });
+  root.addEventListener('input', function(e){
+    var env = e.target.dataset && e.target.dataset.env;
+    var note = e.target.dataset && e.target.dataset.note;
+    if (env) { lcState[env] = lcState[env] || {}; lcState[env].env = e.target.value; }
+    if (note) { lcState[note] = lcState[note] || {}; lcState[note].note = e.target.value; }
+  });
+}
+
 function setLcMsg(text, ok) {
-  const el = document.getElementById('lc-msg');
+  var el = document.getElementById('lc-msg');
   el.textContent = text || '';
   el.className = 'lc-msg ' + (ok ? 'ok' : 'ng');
 }
@@ -132,45 +345,142 @@ function setLcMsg(text, ok) {
 async function lcLoadHistory() {
   if (!LIFE_SELECTED) return;
   document.getElementById('lc-hist-title').textContent = LIFE_SELECTED.user_name + ' 様 の評価履歴';
-  const body = document.getElementById('lc-hist-body');
+  var body = document.getElementById('lc-hist-body');
   body.innerHTML = '<div class="hist-empty">読み込み中...</div>';
   try {
-    const r = await fetch('/api/life_check_history?patient_id=' + encodeURIComponent(LIFE_SELECTED.id));
-    const j = await r.json();
-    const checks = j.checks || [];
+    var r = await fetch('/api/life_check_history?patient_id=' + encodeURIComponent(LIFE_SELECTED.id));
+    var j = await r.json();
+    var checks = j.checks || [];
     if (!checks.length) {
       body.innerHTML = '<div class="hist-empty">まだ評価記録がありません</div>';
+      document.getElementById('lc-prefill-note').textContent = '';
       return;
     }
-    let html = '<table class="hist-table"><thead><tr><th>評価日</th><th>評価者</th><th>要介護度</th></tr></thead><tbody>';
-    checks.forEach(function (c) {
-      html += '<tr><td class="dt">' + (c.check_date || '') + '</td><td>' +
-        (c.evaluator || c.staff_name || '') + '</td><td>' + (c.care_level || '') + '</td></tr>';
+    var html = '<table class="hist-table"><thead><tr><th>評価日</th><th>評価者</th><th>要介護度</th></tr></thead><tbody>';
+    checks.forEach(function(c){
+      html += '<tr><td class="dt">'+lcEsc(c.check_date||'')+'</td><td>'+lcEsc(c.evaluator||c.staff_name||'')+'</td><td>'+lcEsc(c.care_level||'')+'</td></tr>';
     });
     html += '</tbody></table>';
     body.innerHTML = html;
+    lcPrefill(checks[0]);
   } catch (e) {
     body.innerHTML = '<div class="hist-empty">履歴の取得に失敗しました</div>';
   }
 }
+function lcPrefill(prev) {
+  if (!prev) return;
+  document.getElementById('lc-prefill-note').textContent = '前回（'+(prev.check_date||'')+'）の値を初期表示しています。必要に応じて変更してください。';
+  ['birth_date','gender','evaluator','evaluator_job','care_level','adl_independence','dementia_independence','visit_type','note'].forEach(function(f){
+    var el = document.getElementById('lc-'+f);
+    if (el && prev[f] != null && prev[f] !== '') el.value = prev[f];
+  });
+  LC_ADL.forEach(function(it){
+    var v = prev[it.key];
+    if (v != null && v !== '') {
+      lcState[it.key] = lcState[it.key] || {};
+      lcState[it.key].score = v;
+      var btn = document.querySelector('.lc-opt[data-key="'+it.key+'"][data-score="'+v+'"]');
+      if (btn) btn.classList.add('selected');
+      var sc = document.getElementById('sc-'+it.key);
+      if (sc) sc.textContent = v + '点';
+    }
+    lcPrefillSub(it.key, prev);
+  });
+  LC_LEVEL.forEach(function(it){
+    var lv = prev[it.key+'_level'];
+    if (lv) {
+      lcState[it.key] = lcState[it.key] || {};
+      lcState[it.key].level = lv;
+      var btn = document.querySelector('.lc-opt[data-key="'+it.key+'"][data-level="'+lv+'"]');
+      if (btn) btn.classList.add('selected');
+    }
+    lcPrefillSub(it.key, prev);
+  });
+  lcRecalcTotal();
+}
+function lcPrefillSub(key, prev) {
+  var iss = prev[key+'_issue'];
+  if (iss === true || iss === false) {
+    lcState[key] = lcState[key] || {}; lcState[key].issue = iss;
+    var b = document.querySelector('.lc-issue button[data-key="'+key+'"][data-issue="'+iss+'"]');
+    if (b) b.classList.add(iss ? 'issue-on' : 'issue-off');
+  }
+  var env = prev[key+'_env'];
+  if (env) { lcState[key]=lcState[key]||{}; lcState[key].env=env; var ee=document.querySelector('[data-env="'+key+'"]'); if(ee) ee.value=env; }
+  var note = prev[key+'_note'];
+  if (note) { lcState[key]=lcState[key]||{}; lcState[key].note=note; var ne=document.querySelector('[data-note="'+key+'"]'); if(ne) ne.value=note; }
+}
+
+async function lcSave() {
+  if (!LIFE_SELECTED) { setLcMsg('利用者を選択してください', false); return; }
+  var checkDate = document.getElementById('lc-check-date').value;
+  if (!checkDate) { setLcMsg('評価日を入力してください', false); return; }
+  var btn = document.getElementById('lc-save-btn');
+  btn.disabled = true; setLcMsg('保存中...', true);
+  var payload = {
+    patient_id: LIFE_SELECTED.id,
+    user_name: LIFE_SELECTED.user_name,
+    check_date: checkDate
+  };
+  ['visit_type','birth_date','gender','evaluator','evaluator_job','care_level','adl_independence','dementia_independence','note'].forEach(function(f){
+    var el = document.getElementById('lc-'+f);
+    if (el && el.value !== '') payload[f] = el.value;
+  });
+  LC_ADL.forEach(function(it){
+    var st = lcState[it.key] || {};
+    if (typeof st.score === 'number') payload[it.key] = st.score;
+    lcCollectSub(it.key, st, payload);
+  });
+  LC_LEVEL.forEach(function(it){
+    var st = lcState[it.key] || {};
+    if (st.level) payload[it.key+'_level'] = st.level;
+    lcCollectSub(it.key, st, payload);
+  });
+  try {
+    var r = await fetch('/api/save_life_check', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    var j = await r.json();
+    if (j.status === 'success') {
+      setLcMsg('保存しました', true);
+      lcLoadHistory();
+    } else {
+      setLcMsg('保存に失敗: ' + (j.message || ''), false);
+    }
+  } catch (e) {
+    setLcMsg('通信エラー: ' + e, false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+function lcCollectSub(key, st, payload) {
+  if (st.issue === true || st.issue === false) payload[key+'_issue'] = st.issue;
+  if (st.env) payload[key+'_env'] = st.env;
+  if (st.note) payload[key+'_note'] = st.note;
+}
 
 document.addEventListener('DOMContentLoaded', function () {
+  lcBuildInputs();
+  lcBindEvents();
   lcLoadPatients();
-  const search = document.getElementById('lc-patient-search');
+  var search = document.getElementById('lc-patient-search');
   if (search) {
     search.addEventListener('input', lcFilterPatients);
     search.addEventListener('focus', lcFilterPatients);
   }
-  const list = document.getElementById('lc-pick-list');
+  var list = document.getElementById('lc-pick-list');
   if (list) {
     list.addEventListener('click', function (e) {
-      const item = e.target.closest('.pick-item');
+      var item = e.target.closest('.pick-item');
       if (item) lcPickPatient(item.dataset.id);
     });
   }
+  var saveBtn = document.getElementById('lc-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', lcSave);
   document.addEventListener('click', function (e) {
     if (!e.target.closest('.patient-pick')) {
-      document.getElementById('lc-pick-list').style.display = 'none';
+      var pl = document.getElementById('lc-pick-list');
+      if (pl) pl.style.display = 'none';
     }
   });
 });
