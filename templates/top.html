@@ -63,6 +63,18 @@
 }
 .icon-setting-row:active { background: #e8f0fe; }
 .icon-setting-arrow { margin-left: auto; color: #80868b; }
+/* top-task-css */
+.top-task-card { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 10px; border-bottom:1px solid #f1f3f4; cursor:pointer; transition:background 0.15s; }
+.top-task-card:active { background:#f0f6ff; }
+.top-task-left { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+.top-task-title { font-size:0.88rem; color:#202124; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.top-task-prio { flex-shrink:0; font-size:0.7rem; font-weight:700; color:#fff; border-radius:8px; padding:2px 8px; }
+.top-task-prio.prio-high { background:#ea4335; }
+.top-task-prio.prio-medium { background:#f9a825; }
+.top-task-prio.prio-low { background:#34a853; }
+.top-task-due { flex-shrink:0; font-size:0.75rem; color:#9aa0a6; font-weight:600; }
+.top-task-due.due-urgent { color:#f57c00; }
+.top-task-due.due-overdue { color:#ea4335; font-weight:700; }
 </style>
 {% endblock %}
 
@@ -257,9 +269,17 @@
     </div>
     <div id="task-body" style="display:none;">
     {% for t in my_tasks %}
-    <div class="task-row-clickable" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f3f4;cursor:pointer;" onclick="location.href='/tasks?focus={{ t.id }}'">
-        <div style="font-size:0.85rem;color:#3c4043;flex:1;">{{ t.title }}</div>
-        {% if t.due_date %}<div style="font-size:0.75rem;color:#9aa0a6;">{{ t.due_date }}</div>{% endif %}
+    <div class="top-task-card task-row-clickable" onclick="location.href='/tasks?focus={{ t.id }}'">
+        <div class="top-task-left">
+            <span class="top-task-prio prio-{{ t.priority or 'medium' }}">{{ t.priority_label or '中' }}</span>
+            <span class="top-task-title">{{ t.title }}</span>
+        </div>
+        {% if t.due_date %}
+        <div class="top-task-due{% if t.overdue %} due-overdue{% elif t.due_urgent %} due-urgent{% endif %}">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">schedule</span>
+            {{ t.due_date }}{% if t.overdue %} (期限切れ){% elif t.due_urgent %} (まもなく){% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
     </div>
