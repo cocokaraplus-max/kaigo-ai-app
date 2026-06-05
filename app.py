@@ -9051,6 +9051,31 @@ def api_life_check_history():
         return jsonify({"checks": res.data or []})
     except Exception as e:
         return jsonify({"checks": [], "error": str(e)}), 500
+@app.route('/api/delete_life_check', methods=['POST'])  # life-check-delete-api
+@login_required
+def api_delete_life_check():
+    """生活機能チェックを削除（本人または管理者のみ）"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        rid = str(data.get("id", "")).strip()
+        if not rid:
+            return jsonify({"status": "error", "message": "id ga hitsuyou desu"}), 400
+        rec = supabase.table("life_function_checks").select("id,staff_name").eq(
+            "id", rid).eq("facility_code", f_code).execute()
+        if not rec.data:
+            return jsonify({"status": "error", "message": "kiroku ga mitsukarimasen"}), 404
+        is_owner = (rec.data[0].get("staff_name") == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
+            return jsonify({"status": "error", "message": "削除権限がありません"}), 403
+        supabase.table("life_function_checks").delete().eq("id", rid).eq(
+            "facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 

@@ -83,6 +83,10 @@
 .hist-table th { background:#f8f9fb; color:#5f6368; font-weight:700; }
 .hist-table td.dt { text-align:left; white-space:nowrap; }
 .lc-prefill-note { font-size:0.74rem; color:#9aa0a6; margin-bottom:8px; }
+.lc-hist-edit, .lc-hist-del { border:1px solid #e0e0e0; background:#fff; border-radius:7px; padding:3px 9px; font-size:0.74rem; cursor:pointer; }  /* lc-edit-delete-v1 */
+.lc-hist-edit { color:#0C447C; border-color:#B5D4F4; }
+.lc-hist-del { color:#c5221f; border-color:#f3c2bd; margin-left:4px; }
+.lc-editing-note { font-size:0.78rem; color:#0C447C; font-weight:700; margin:6px 0; }
 </style>
 {% endblock %}
 {% block content %}
@@ -380,9 +384,13 @@ async function lcLoadHistory() {
       document.getElementById('lc-prefill-note').textContent = '';
       return;
     }
-    var html = '<table class="hist-table"><thead><tr><th>評価日</th><th>評価者</th><th>要介護度</th></tr></thead><tbody>';
+    window._lcHistMap = {};  // lc-edit-delete-v1
+    var html = '<table class="hist-table"><thead><tr><th>評価日</th><th>評価者</th><th>要介護度</th><th>操作</th></tr></thead><tbody>';
     checks.forEach(function(c){
-      html += '<tr><td class="dt">'+lcEsc(c.check_date||'')+'</td><td>'+lcEsc(c.evaluator||c.staff_name||'')+'</td><td>'+lcEsc(c.care_level||'')+'</td></tr>';
+      window._lcHistMap[c.id] = c;
+      html += '<tr><td class="dt">'+lcEsc(c.check_date||'')+'</td><td>'+lcEsc(c.evaluator||c.staff_name||'')+'</td><td>'+lcEsc(c.care_level||'')+'</td>'+
+        '<td><button type="button" class="lc-hist-edit" data-id="'+c.id+'">編集</button> '+
+        '<button type="button" class="lc-hist-del" data-id="'+c.id+'">削除</button></td></tr>';
     });
     html += '</tbody></table>';
     body.innerHTML = html;
@@ -391,10 +399,34 @@ async function lcLoadHistory() {
     body.innerHTML = '<div class="hist-empty">履歴の取得に失敗しました</div>';
   }
 }
+function lcStartEdit(id) {  // lc-edit-delete-v1
+  var rec = (window._lcHistMap || {})[id];
+  if (!rec) return;
+  window._lcEditMode = true;
+  var cd = document.getElementById('lc-check-date');
+  if (rec.check_date) cd.value = rec.check_date;
+  lcPrefill(rec);
+  window._lcEditMode = false;
+  var note = document.getElementById('lc-prefill-note');
+  if (note) { note.textContent = '編集中: ' + (rec.check_date||'') + ' の記録を読み込みました。保存すると上書きされます。'; note.className = 'lc-editing-note'; }
+  var top = document.querySelector('.lc-wrap');
+  if (top) window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+async function lcDeleteCheck(id) {  // lc-edit-delete-v1
+  var rec = (window._lcHistMap || {})[id];
+  var label = rec ? (rec.check_date || '') : '';
+  if (!confirm(label + ' の評価を削除しますか？この操作は元に戻せません。')) return;
+  try {
+    var r = await fetch('/api/delete_life_check', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id }) });
+    var j = await r.json();
+    if (j.status === 'success') { setLcMsg('削除しました', true); lcLoadHistory(); }
+    else { setLcMsg('削除に失敗: ' + (j.message||''), false); }
+  } catch (e) { setLcMsg('通信エラー: ' + e, false); }
+}
 function lcPrefill(prev) {
   if (!prev) return;
   document.getElementById('lc-prefill-note').textContent = '前回（'+(prev.check_date||'')+'）の値を初期表示しています。必要に応じて変更してください。';
-  var masterFilled = window._lcMasterFilled || {};  // lc-master-prefill-v1
+  var masterFilled = window._lcEditMode ? {} : (window._lcMasterFilled || {});  // lc-edit-delete-v1: 編集時はマスタガード無効
   ['birth_date','gender','evaluator','evaluator_job','care_level','adl_independence','dementia_independence','visit_type','note'].forEach(function(f){
     if (masterFilled[f]) return;  // マスタ優先: 既にマスタ値で埋めた項目は上書きしない
     var el = document.getElementById('lc-'+f);
@@ -490,6 +522,15 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('resize', lcAdjustTotalBar);
   lcBuildInputs();
   lcBindEvents();
+  var histBody = document.getElementById('lc-hist-body');  // lc-edit-delete-v1
+  if (histBody) {
+    histBody.addEventListener('click', function(e){
+      var ed = e.target.closest('.lc-hist-edit');
+      if (ed) { lcStartEdit(ed.dataset.id); return; }
+      var dl = e.target.closest('.lc-hist-del');
+      if (dl) { lcDeleteCheck(dl.dataset.id); return; }
+    });
+  }
   lcLoadPatients();
   var search = document.getElementById('lc-patient-search');
   if (search) {
