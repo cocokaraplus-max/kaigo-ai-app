@@ -1758,6 +1758,15 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 (function() {
     var dragging = null;
     var startX, startY, startW, startH;
+    /* chart-resize-notify */
+    function _resizeChartsIn(container) {
+        if (!container || typeof Chart === 'undefined' || !Chart.getChart) return;
+        var canvases = container.querySelectorAll('canvas');
+        for (var i = 0; i < canvases.length; i++) {
+            var ch = Chart.getChart(canvases[i]);
+            if (ch) { try { ch.resize(); } catch (e) {} }
+        }
+    }
 
     document.addEventListener('mousedown', function(e) {
         if (!e.target.classList.contains('rep-resizable-handle')) return;
@@ -1778,9 +1787,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         var newH = Math.max(40, startH + dy);
         dragging.style.width = newW + 'px';
         dragging.style.height = newH + 'px';
+        _resizeChartsIn(dragging);
     });
 
-    document.addEventListener('mouseup', function() { dragging = null; });
+    document.addEventListener('mouseup', function() { if (dragging) _resizeChartsIn(dragging); dragging = null; });
 
     // タッチ対応
     document.addEventListener('touchstart', function(e) {
@@ -1803,9 +1813,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         var newH = Math.max(40, startH + dy);
         dragging.style.width = newW + 'px';
         dragging.style.height = newH + 'px';
+        _resizeChartsIn(dragging);
     }, { passive: false });
 
-    document.addEventListener('touchend', function() { dragging = null; }, { passive: true });
+    document.addEventListener('touchend', function() { if (dragging) _resizeChartsIn(dragging); dragging = null; }, { passive: true });
 })();
 
 // ===== トリミング機能 =====
@@ -2417,6 +2428,8 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
         type: 'line',
         data: { labels: labels, datasets: datasets },
         options: {
+            /* balance-chart-responsive */
+            responsive: true, maintainAspectRatio: false,
             plugins: { legend: {
                 display: true, position: 'bottom',
                 labels: { boxWidth: 18, boxHeight: 0, font: { size: 8 }, padding: 4, color: isMono ? '#333' : '#555' }
