@@ -242,7 +242,28 @@ function lcPickPatient(id) {
   document.getElementById('lc-pick-list').style.display='none';
   document.getElementById('lc-selected').textContent = '選択中: '+p.user_name+' 様'+(p.care_level?'（'+p.care_level+'）':'');
   document.getElementById('lc-save-btn').disabled = false;
+  lcApplyMaster(p);  // lc-master-prefill-v1
   lcLoadHistory();
+}
+function lcApplyMaster(p) {  // lc-master-prefill-v1: 患者マスタ優先で基本情報をセット
+  function setIfHas(id, val) {
+    if (val == null || val === '') return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (el.tagName === 'SELECT') {
+      var ok = Array.prototype.some.call(el.options, function(o){ return o.value === String(val); });
+      if (ok) el.value = val;
+    } else {
+      el.value = val;
+    }
+  }
+  setIfHas('lc-care_level', p.care_level);
+  setIfHas('lc-birth_date', p.birth_date);
+  setIfHas('lc-gender', p.gender);
+  window._lcMasterFilled = {};
+  if (p.care_level) window._lcMasterFilled.care_level = true;
+  if (p.birth_date) window._lcMasterFilled.birth_date = true;
+  if (p.gender) window._lcMasterFilled.gender = true;
 }
 
 function lcBuildInputs() {
@@ -373,7 +394,9 @@ async function lcLoadHistory() {
 function lcPrefill(prev) {
   if (!prev) return;
   document.getElementById('lc-prefill-note').textContent = '前回（'+(prev.check_date||'')+'）の値を初期表示しています。必要に応じて変更してください。';
+  var masterFilled = window._lcMasterFilled || {};  // lc-master-prefill-v1
   ['birth_date','gender','evaluator','evaluator_job','care_level','adl_independence','dementia_independence','visit_type','note'].forEach(function(f){
+    if (masterFilled[f]) return;  // マスタ優先: 既にマスタ値で埋めた項目は上書きしない
     var el = document.getElementById('lc-'+f);
     if (el && prev[f] != null && prev[f] !== '') el.value = prev[f];
   });
