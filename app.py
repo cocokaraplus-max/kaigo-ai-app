@@ -8701,6 +8701,19 @@ def fitness_page():
         patients=patients,
         today=today,
     )
+@app.route('/life_check')  # life-check-page-route
+@login_required
+def life_check_page():
+    """生活機能チェックシート (様式3-2) 入力ページ"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render(
+        "life_check.html",
+        patients=patients,
+        today=today,
+    )
 
 
 @app.route('/api/save_body_weight', methods=['POST'])
@@ -8909,6 +8922,40 @@ _LIFE_META_FIELDS = [
 ]
 
 
+# life-save-expand-v1: Barthel official scores (mhlw) + 4-level fields
+_LIFE_BARTHEL_ALLOWED = {
+    "adl_eating":   {10, 5, 0},
+    "adl_transfer": {15, 10, 5, 0},
+    "adl_grooming": {5, 0},
+    "adl_toilet":   {10, 5, 0},
+    "adl_bathing":  {5, 0},
+    "adl_walking":  {15, 10, 5, 0},
+    "adl_stairs":   {10, 5, 0},
+    "adl_dressing": {10, 5, 0},
+    "adl_bowel":    {10, 5, 0},
+    "adl_bladder":  {10, 5, 0},
+}
+_LIFE_LEVEL_FIELDS = [
+    "adl_wheelchair",
+    "iadl_cooking", "iadl_laundry", "iadl_cleaning",
+    "basic_rollover", "basic_situp", "basic_sitting",
+    "basic_standup", "basic_standing",
+]
+_LIFE_LEVEL_ALLOWED = {"independent", "watch", "partial", "full"}
+_LIFE_ALL_ITEMS = _LIFE_ADL_FIELDS + _LIFE_STAGE_FIELDS
+def _life_level_or_none(v):
+    if v is None or v == "":
+        return None
+    s = str(v).strip()
+    return s if s in _LIFE_LEVEL_ALLOWED else None
+def _life_bool_or_none(v):
+    if isinstance(v, bool):
+        return v
+    if v in (1, "1", "true", "True", "yes"):
+        return True
+    if v in (0, "0", "false", "False", "no"):
+        return False
+    return None
 def _life_int_or_none(v):
     if v is None or v == "":
         return None
@@ -8919,6 +8966,14 @@ def _life_int_or_none(v):
             return int(float(v))
         except (TypeError, ValueError):
             return None
+def _life_score_validated(field, v):  # life-save-expand-v1
+    iv = _life_int_or_none(v)
+    if iv is None:
+        return None
+    allowed = _LIFE_BARTHEL_ALLOWED.get(field)
+    if allowed is None:
+        return None
+    return iv if iv in allowed else None
 
 
 @app.route('/api/save_life_check', methods=['POST'])
@@ -8944,9 +8999,18 @@ def api_save_life_check():
             "staff_name": my_name,
         }
 
-        for f in _LIFE_ADL_FIELDS + _LIFE_STAGE_FIELDS:
-            payload[f] = _life_int_or_none(data.get(f))
-
+        # life-save-expand-v1: ADL10=Barthel score (validated), others=4-level
+        for f in _LIFE_BARTHEL_ALLOWED:
+            payload[f] = _life_score_validated(f, data.get(f))
+        for f in _LIFE_LEVEL_FIELDS:
+            payload[f + "_level"] = _life_level_or_none(data.get(f + "_level"))
+        # per-item issue(boolean) and env(text) for all items
+        for f in _LIFE_ALL_ITEMS:
+            if (f + "_issue") in data:
+                payload[f + "_issue"] = _life_bool_or_none(data.get(f + "_issue"))
+            if (f + "_env") in data:
+                payload[f + "_env"] = data.get(f + "_env")
+        # notes and meta (unchanged)
         for f in _LIFE_NOTE_FIELDS + _LIFE_META_FIELDS:
             if f in data and data.get(f) is not None:
                 payload[f] = data.get(f)
