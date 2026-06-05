@@ -7277,6 +7277,8 @@ def api_board_create_post():
             except (TypeError, ValueError):
                 category_id = None
         is_private = request.form.get("is_private", "0") == "1"
+        if mentions:  # board-mention-force-private: メンションありは限定公開
+            is_private = True
         insert_payload = {
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
@@ -7821,8 +7823,7 @@ def api_tasks_update():
         assigned = t.get("assigned_to") or []
         is_creator = (t["created_by"] == my_name)
         is_assignee = (my_name in assigned) or (not assigned)  # task-perm-empty-allowall: 空配列＝全員向けは全員操作可
-        is_admin = is_admin_user(supabase, f_code, my_name)
-        if not (is_creator or is_assignee or is_admin):
+        if not (is_creator or is_assignee):  # task-update-no-admin: 管理者も除外(担当/作成者のみ)
             return jsonify({"status": "error", "message": "権限がありません"}), 403
 
         update_data = {"updated_at": datetime.now(tokyo_tz).isoformat()}
@@ -7846,13 +7847,14 @@ def api_tasks_delete():
         data = request.json
         task_id = data.get("id")
 
-        task = supabase.table("tasks").select("created_by").eq("id", task_id).eq("facility_code", f_code).execute()
+        task = supabase.table("tasks").select("created_by,assigned_to").eq("id", task_id).eq("facility_code", f_code).execute()  # task-del-select-assigned
         if not task.data:
             return jsonify({"status": "error"}), 404
+        _assigned_del = task.data[0].get("assigned_to") or []  # task-del-no-admin
         is_creator = (task.data[0]["created_by"] == my_name)
-        is_admin = is_admin_user(supabase, f_code, my_name)
-        if not (is_creator or is_admin):
-            return jsonify({"status": "error", "message": "作成者または管理者のみ削除できます"}), 403
+        is_assignee = (my_name in _assigned_del) or (not _assigned_del)
+        if not (is_creator or is_assignee):
+            return jsonify({"status": "error", "message": "作成者または担当者のみ削除できます"}), 403
 
         supabase.table("tasks").delete().eq("id", task_id).execute()
         return jsonify({"status": "success"})
