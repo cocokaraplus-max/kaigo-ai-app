@@ -8701,6 +8701,20 @@ def fitness_page():
         patients=patients,
         today=today,
     )
+@app.route('/life_check')  # life-check-page-route
+@login_required
+def life_check_page():
+    """生活機能チェックシート (様式3-2) 入力ページ"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render(
+        "life_check.html",
+        patients=patients,
+        today=today,
+        my_name=session.get("my_name", ""),  # life-evaluator-myname
+    )
 
 
 @app.route('/api/save_body_weight', methods=['POST'])
@@ -8909,6 +8923,40 @@ _LIFE_META_FIELDS = [
 ]
 
 
+# life-save-expand-v1: Barthel official scores (mhlw) + 4-level fields
+_LIFE_BARTHEL_ALLOWED = {
+    "adl_eating":   {10, 5, 0},
+    "adl_transfer": {15, 10, 5, 0},
+    "adl_grooming": {5, 0},
+    "adl_toilet":   {10, 5, 0},
+    "adl_bathing":  {5, 0},
+    "adl_walking":  {15, 10, 5, 0},
+    "adl_stairs":   {10, 5, 0},
+    "adl_dressing": {10, 5, 0},
+    "adl_bowel":    {10, 5, 0},
+    "adl_bladder":  {10, 5, 0},
+}
+_LIFE_LEVEL_FIELDS = [
+    "adl_wheelchair",
+    "iadl_cooking", "iadl_laundry", "iadl_cleaning",
+    "basic_rollover", "basic_situp", "basic_sitting",
+    "basic_standup", "basic_standing",
+]
+_LIFE_LEVEL_ALLOWED = {"independent", "watch", "partial", "full"}
+_LIFE_ALL_ITEMS = _LIFE_ADL_FIELDS + _LIFE_STAGE_FIELDS
+def _life_level_or_none(v):
+    if v is None or v == "":
+        return None
+    s = str(v).strip()
+    return s if s in _LIFE_LEVEL_ALLOWED else None
+def _life_bool_or_none(v):
+    if isinstance(v, bool):
+        return v
+    if v in (1, "1", "true", "True", "yes"):
+        return True
+    if v in (0, "0", "false", "False", "no"):
+        return False
+    return None
 def _life_int_or_none(v):
     if v is None or v == "":
         return None
@@ -8919,6 +8967,14 @@ def _life_int_or_none(v):
             return int(float(v))
         except (TypeError, ValueError):
             return None
+def _life_score_validated(field, v):  # life-save-expand-v1
+    iv = _life_int_or_none(v)
+    if iv is None:
+        return None
+    allowed = _LIFE_BARTHEL_ALLOWED.get(field)
+    if allowed is None:
+        return None
+    return iv if iv in allowed else None
 
 
 @app.route('/api/save_life_check', methods=['POST'])
@@ -8944,9 +9000,18 @@ def api_save_life_check():
             "staff_name": my_name,
         }
 
-        for f in _LIFE_ADL_FIELDS + _LIFE_STAGE_FIELDS:
-            payload[f] = _life_int_or_none(data.get(f))
-
+        # life-save-expand-v1: ADL10=Barthel score (validated), others=4-level
+        for f in _LIFE_BARTHEL_ALLOWED:
+            payload[f] = _life_score_validated(f, data.get(f))
+        for f in _LIFE_LEVEL_FIELDS:
+            payload[f + "_level"] = _life_level_or_none(data.get(f + "_level"))
+        # per-item issue(boolean) and env(text) for all items
+        for f in _LIFE_ALL_ITEMS:
+            if (f + "_issue") in data:
+                payload[f + "_issue"] = _life_bool_or_none(data.get(f + "_issue"))
+            if (f + "_env") in data:
+                payload[f + "_env"] = data.get(f + "_env")
+        # notes and meta (unchanged)
         for f in _LIFE_NOTE_FIELDS + _LIFE_META_FIELDS:
             if f in data and data.get(f) is not None:
                 payload[f] = data.get(f)
@@ -8987,6 +9052,114 @@ def api_life_check_history():
         return jsonify({"checks": res.data or []})
     except Exception as e:
         return jsonify({"checks": [], "error": str(e)}), 500
+@app.route('/api/delete_life_check', methods=['POST'])  # life-check-delete-api
+@login_required
+def api_delete_life_check():
+    """生活機能チェックを削除（本人または管理者のみ）"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        rid = str(data.get("id", "")).strip()
+        if not rid:
+            return jsonify({"status": "error", "message": "id ga hitsuyou desu"}), 400
+        rec = supabase.table("life_function_checks").select("id,staff_name").eq(
+            "id", rid).eq("facility_code", f_code).execute()
+        if not rec.data:
+            return jsonify({"status": "error", "message": "kiroku ga mitsukarimasen"}), 404
+        is_owner = (rec.data[0].get("staff_name") == my_name)
+        is_admin = is_admin_user(supabase, f_code, my_name)
+        if not (is_owner or is_admin):
+            return jsonify({"status": "error", "message": "削除権限がありません"}), 403
+        supabase.table("life_function_checks").delete().eq("id", rid).eq(
+            "facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# life-assist-api: 生活機能チェック AI相談（補助型）
+_LIFE_ASSIST_ADL = {
+    "adl_eating":   ("食事",   [(10, "自立"), (5, "部分介助"), (0, "全介助")]),
+    "adl_transfer": ("椅子とベッド間の移乗", [(15, "自立"), (10, "軽度の部分介助・監視"), (5, "座位可・ほぼ全介助"), (0, "全介助・不可")]),
+    "adl_grooming": ("整容",   [(5, "自立"), (0, "部分介助・不可")]),
+    "adl_toilet":   ("トイレ動作", [(10, "自立"), (5, "部分介助"), (0, "全介助・不可")]),
+    "adl_bathing":  ("入浴",   [(5, "自立"), (0, "部分介助・不可")]),
+    "adl_walking":  ("移動",   [(15, "45m以上歩行"), (10, "45m以上介助歩行"), (5, "車椅子で45m以上"), (0, "上記以外")]),
+    "adl_stairs":   ("階段昃降", [(10, "自立"), (5, "介助・監視"), (0, "不能")]),
+    "adl_dressing": ("更衣",   [(10, "自立"), (5, "部分介助"), (0, "上記以外")]),
+    "adl_bowel":    ("排便コントロール", [(10, "失禁なし"), (5, "ときに失禁"), (0, "上記以外")]),
+    "adl_bladder":  ("排尿コントロール", [(10, "失禁なし"), (5, "ときに失禁"), (0, "上記以外")]),
+}
+_LIFE_ASSIST_LEVEL_ITEMS = {
+    "adl_wheelchair": "車椅子操作", "iadl_cooking": "調理", "iadl_laundry": "洗濯",
+    "iadl_cleaning": "掃除", "basic_rollover": "寝返り", "basic_situp": "起き上がり",
+    "basic_sitting": "座位", "basic_standup": "立ち上がり", "basic_standing": "立位",
+}
+_LIFE_ASSIST_4LEVEL = [("independent", "自立"), ("watch", "見守り"), ("partial", "一部介助"), ("full", "全介助")]
+
+@app.route('/api/life_assist', methods=['POST'])  # life-assist-api
+@login_required
+def api_life_assist():
+    """生活機能チェックの項目判定をAIが補助（最終判定は職員）"""
+    try:
+        import anthropic as _anthropic, json as _json, re as _re
+        data = request.json or {}
+        item_key = str(data.get("item_key", "")).strip()
+        situation = str(data.get("situation", "")).strip()
+        user_name = str(data.get("user_name", "")).strip()
+        if not item_key:
+            return jsonify({"status": "error", "message": "item_key ga hitsuyou desu"}), 400
+        if not situation:
+            return jsonify({"status": "error", "message": "状況を入力してください"}), 400
+
+        if item_key in _LIFE_ASSIST_ADL:
+            label, opts = _LIFE_ASSIST_ADL[item_key]
+            cand_lines = "\n".join(["  - %d点: %s" % (s, t) for s, t in opts])
+            cand_kind = "Barthel区分（点数）"
+            cand_json_hint = '"candidate_levels": [{"score": 10, "label": "自立", "reason": "..."}]'
+        elif item_key in _LIFE_ASSIST_LEVEL_ITEMS:
+            label = _LIFE_ASSIST_LEVEL_ITEMS[item_key]
+            cand_lines = "\n".join(["  - %s: %s" % (lv, t) for lv, t in _LIFE_ASSIST_4LEVEL])
+            cand_kind = "4段階"
+            cand_json_hint = '"candidate_levels": [{"level": "partial", "label": "一部介助", "reason": "..."}]'
+        else:
+            return jsonify({"status": "error", "message": "unknown item_key"}), 400
+
+        prompt = """あなたは介護現場のベテラン職員で、生活機能チェックシート（様式3-2）の評価を補助します。
+あなたの役割は、職員が最終判定をするための論点整理・根拠・候補提示・記載案作成です。**最終的な評価の決定は職員が行います。あなたは断定せず、候補と根拠を示してください。**
+
+【評価項目】%s（%s）
+【選択肢】
+%s
+
+【職員が観察した状況】
+%s
+
+【出力形式】JSONのみ。マークダウン不要。以下のキーを含める：
+{
+  "basis": "選択肢の基準に照らした、観察事実の整理（事実のみ、推測は避ける）",
+  "interpretation": "論点整理・解釈（どこが判断の分かれ目か）",
+  %s,
+  "check_points": ["追加で確認すべきポイントを文字列で複数"],
+  "record_draft": "状況・生活課題欄にそのまま記載できる案（丁寧語・1～2文）"
+}
+candidate_levels は複数可。可能性の高い順に並べ、それぞれ reason に根拠を簡潔に。""" % (
+            label, cand_kind, cand_lines, situation, cand_json_hint)
+
+        client = _anthropic.Anthropic()
+        message = client.messages.create(
+            model='claude-sonnet-4-5',
+            max_tokens=1500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        raw = message.content[0].text.strip()
+        raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
+        raw = _re.sub(r'```$', '', raw).strip()
+        result = _json.loads(raw)
+        return jsonify({"status": "success", "result": result})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 
