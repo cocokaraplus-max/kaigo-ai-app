@@ -456,6 +456,11 @@ async function lcLoadHistory() {
     body.innerHTML = '<div class="hist-empty">履歴の取得に失敗しました</div>';
   }
 }
+function lcScrollTop() {  // lc-scroll-pagewrapper-v1
+  var pw = document.querySelector('.page-wrapper');
+  if (pw && pw.scrollHeight > pw.clientHeight + 5) { pw.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 function lcStartEdit(id) {  // lc-edit-delete-v1 / lc-edit-restore-patient-v1
   var rec = (window._lcHistMap || {})[id];
   if (!rec) return;
@@ -481,7 +486,7 @@ function lcStartEdit(id) {  // lc-edit-delete-v1 / lc-edit-restore-patient-v1
   lcShowEditBanner(rec.check_date || '');  // lc-assist-accordion-v1
   var note = document.getElementById('lc-prefill-note');
   if (note) { note.textContent = '編集中: ' + (rec.check_date||'') + ' の記録を読み込みました。保存すると上書きされます。'; note.className = 'lc-editing-note'; }
-  requestAnimationFrame(function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  requestAnimationFrame(function(){ lcScrollTop(); });  // lc-scroll-pagewrapper-v1
 }
 function lcShowEditBanner(dateLabel) {  // lc-assist-accordion-v1
   var wrap = document.querySelector('.lc-wrap');
