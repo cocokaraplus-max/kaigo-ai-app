@@ -87,6 +87,18 @@
 .lc-hist-edit { color:#0C447C; border-color:#B5D4F4; }
 .lc-hist-del { color:#c5221f; border-color:#f3c2bd; margin-left:4px; }
 .lc-editing-note { font-size:0.78rem; color:#0C447C; font-weight:700; margin:6px 0; }
+.lc-assist { margin-top:8px; }  /* lc-assist-ui-v1 */
+.lc-assist-panel { border:1.5px solid #B5D4F4; background:#f7fbff; border-radius:10px; padding:10px; }
+.lc-assist-panel textarea { width:100%; box-sizing:border-box; min-height:60px; border:1.5px solid #d6e4f5; border-radius:8px; padding:8px; font-size:0.82rem; font-family:inherit; }
+.lc-assist-run { margin-top:8px; border:none; background:#0C447C; color:#fff; border-radius:8px; padding:8px 14px; font-size:0.8rem; font-weight:700; cursor:pointer; }
+.lc-assist-run:disabled { background:#bbb; cursor:not-allowed; }
+.lc-assist-result { margin-top:10px; font-size:0.8rem; }
+.lc-assist-sec { margin-bottom:8px; }
+.lc-assist-sec h5 { margin:0 0 3px; font-size:0.76rem; color:#0C447C; }
+.lc-assist-cand { display:inline-block; margin:3px 4px 0 0; border:1.5px solid #B5D4F4; background:#fff; color:#0C447C; border-radius:8px; padding:5px 9px; font-size:0.78rem; cursor:pointer; }
+.lc-assist-cand:hover { background:#e8f0fe; }
+.lc-assist-apply-note { border:1px solid #0F6E56; background:#e6f4ef; color:#0F6E56; border-radius:7px; padding:4px 9px; font-size:0.74rem; cursor:pointer; margin-top:4px; }
+.lc-assist-note-disclaimer { font-size:0.72rem; color:#9aa0a6; margin-top:6px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -316,6 +328,7 @@ function lcItemBlock(key, label, optsHtml, isAdl) {
       '<input type="text" data-env="'+key+'" placeholder="環境（実施場所・補助具など）">'+
       '<input type="text" data-note="'+key+'" placeholder="状況・生活課題">'+
     '</div>'+
+    '<div class="lc-assist" id="assist-'+key+'"></div>'+  // lc-assist-ui-v1
   '</div>';
 }
 
@@ -358,9 +371,35 @@ function lcBindEvents() {
       ib.classList.add(val ? 'issue-on' : 'issue-off');
       return;
     }
-    var ai = e.target.closest('.lc-ai-btn');
+    var ai = e.target.closest('.lc-ai-btn');  // lc-assist-ui-v1
     if (ai) {
-      setLcMsg('AI相談機能は近日対応予定です', false);
+      lcOpenAssist(ai.dataset.ai);
+      return;
+    }
+    var runBtn = e.target.closest('.lc-assist-run');  // lc-assist-ui-v1
+    if (runBtn) { lcRunAssist(runBtn.dataset.run); return; }
+    var cand = e.target.closest('.lc-assist-cand');
+    if (cand) {
+      var ck = cand.dataset.candKey;
+      if (cand.dataset.candScore !== undefined) {
+        var b = root.querySelector('.lc-opt[data-key="' + ck + '"][data-score="' + cand.dataset.candScore + '"]');
+        if (b) b.click();
+      } else if (cand.dataset.candLevel) {
+        var bl = root.querySelector('.lc-opt[data-key="' + ck + '"][data-level="' + cand.dataset.candLevel + '"]');
+        if (bl) bl.click();
+      }
+      return;
+    }
+    var applyNote = e.target.closest('.lc-assist-apply-note');
+    if (applyNote) {
+      var ak = applyNote.dataset.applyNote;
+      var resEl = document.getElementById('assist-res-' + ak);
+      var draft = resEl ? (resEl.dataset.draft || '') : '';
+      var noteInput = root.querySelector('[data-note="' + ak + '"]');
+      if (noteInput && draft) {
+        noteInput.value = draft;
+        lcState[ak] = lcState[ak] || {}; lcState[ak].note = draft;
+      }
       return;
     }
   });
@@ -588,6 +627,70 @@ function lcJobRestore(val) {  // lc-evaljob-v1: 保存値からselect/自由入�
   var known = ['管理者','生活相談員','機能訓練指導員','看護職員','介護職員'];
   if (known.indexOf(val) >= 0) { sel.value = val; inp.style.display='none'; inp.value = val; }
   else { sel.value = '__other__'; inp.style.display='block'; inp.value = val; }
+}
+function lcOpenAssist(key) {  // lc-assist-ui-v1
+  var box = document.getElementById('assist-' + key);
+  if (!box) return;
+  if (box.dataset.open === '1') { box.innerHTML = ''; box.dataset.open = '0'; return; }
+  var noteEl = document.querySelector('[data-note="' + key + '"]');
+  var seed = noteEl ? (noteEl.value || '') : '';
+  box.innerHTML = '<div class="lc-assist-panel">' +
+    '<textarea id="assist-ta-' + key + '" placeholder="観察した状況を入力（状況メモがあれば引き継いでいます）"></textarea>' +
+    '<button type="button" class="lc-assist-run" data-run="' + key + '">AIに相談する</button>' +
+    '<div class="lc-assist-result" id="assist-res-' + key + '"></div>' +
+    '<div class="lc-assist-note-disclaimer">AIの候補は参考情報です。最終的な評価は職員が判断してください。</div>' +
+    '</div>';
+  box.dataset.open = '1';
+  var ta = document.getElementById('assist-ta-' + key);
+  if (ta) ta.value = seed;
+}
+async function lcRunAssist(key) {  // lc-assist-ui-v1
+  var ta = document.getElementById('assist-ta-' + key);
+  var res = document.getElementById('assist-res-' + key);
+  var btn = document.querySelector('.lc-assist-run[data-run="' + key + '"]');
+  var situation = ta ? ta.value.trim() : '';
+  if (!situation) { if (res) res.innerHTML = '<div style="color:#c5221f;">状況を入力してください</div>'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = '相談中...'; }
+  try {
+    var r = await fetch('/api/life_assist', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ item_key: key, situation: situation, user_name: (LIFE_SELECTED ? LIFE_SELECTED.user_name : '') }) });
+    var j = await r.json();
+    if (j.status === 'success') { lcRenderAssist(key, j.result); }
+    else { if (res) res.innerHTML = '<div style="color:#c5221f;">相談に失敗: ' + lcEsc(j.message||'') + '</div>'; }
+  } catch (e) {
+    if (res) res.innerHTML = '<div style="color:#c5221f;">通信エラー: ' + lcEsc(String(e)) + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'AIに相談する'; }
+  }
+}
+function lcRenderAssist(key, result) {  // lc-assist-ui-v1
+  var res = document.getElementById('assist-res-' + key);
+  if (!res || !result) return;
+  var html = '';
+  if (result.basis) html += '<div class="lc-assist-sec"><h5>根拠</h5>' + lcEsc(result.basis) + '</div>';
+  if (result.interpretation) html += '<div class="lc-assist-sec"><h5>論点整理</h5>' + lcEsc(result.interpretation) + '</div>';
+  var cands = result.candidate_levels || [];
+  if (cands.length) {
+    html += '<div class="lc-assist-sec"><h5>候補（タップで反映）</h5>';
+    cands.forEach(function(c, i) {
+      var lab = lcEsc(c.label || '');
+      var reason = c.reason ? ('：' + lcEsc(c.reason)) : '';
+      var dataAttr = (c.score !== undefined && c.score !== null) ? ('data-cand-score="' + c.score + '"') : ('data-cand-level="' + lcEsc(c.level || '') + '"');
+      html += '<div><span class="lc-assist-cand" data-cand-key="' + key + '" ' + dataAttr + '>' + lab + '</span><span style="font-size:0.74rem;color:#5f6368;">' + reason + '</span></div>';
+    });
+    html += '</div>';
+  }
+  var cps = result.check_points || [];
+  if (cps.length) {
+    html += '<div class="lc-assist-sec"><h5>確認ポイント</h5><ul style="margin:0;padding-left:18px;">';
+    cps.forEach(function(p){ html += '<li>' + lcEsc(p) + '</li>'; });
+    html += '</ul></div>';
+  }
+  if (result.record_draft) {
+    html += '<div class="lc-assist-sec"><h5>記載案</h5>' + lcEsc(result.record_draft) +
+      '<div><button type="button" class="lc-assist-apply-note" data-apply-note="' + key + '">この記載案を状況メモに反映</button></div></div>';
+    res.dataset.draft = result.record_draft;
+  }
+  res.innerHTML = html;
 }
 </script>
 {% endblock %}
