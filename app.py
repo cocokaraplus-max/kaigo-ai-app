@@ -5554,9 +5554,21 @@ def api_update_record():
             update_payload["leave_reporter_relation"] = _r
         if "leave_reason" in data:
             update_payload["leave_reason"] = (data.get("leave_reason") or "").strip() or None
-        # 休み日付変更
+        # leave-edit-reason-sync: 休み連絡の編集なら、日付未送信でも既存日付を補完して
+        # content再生成・カレンダー同期を行えるようにする(理由だけ変更しても反映される)
         new_leave_start = (data.get("leave_date_start") or "").strip() or None
         new_leave_end = (data.get("leave_date_end") or "").strip() or None
+        _is_leave_edit = ("leave_reason" in data) or ("leave_reporter_type" in data)
+        if _is_leave_edit and not new_leave_start:
+            try:
+                _exist = supabase.table("records").select("leave_date_start,leave_date_end,category").eq("id", data["id"]).execute()
+                if _exist.data:
+                    _row0 = _exist.data[0]
+                    if _row0.get("category") == "休み連絡":
+                        new_leave_start = (_row0.get("leave_date_start") or "").strip() or None
+                        new_leave_end = (_row0.get("leave_date_end") or "").strip() or None
+            except Exception as _ex0:
+                print(f"[休み編集 既存日付取得エラー] {_ex0}", flush=True)
         if new_leave_start:
             update_payload["leave_date_start"] = new_leave_start
             update_payload["leave_date_end"] = new_leave_end or new_leave_start
