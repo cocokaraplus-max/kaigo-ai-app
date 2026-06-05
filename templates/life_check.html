@@ -35,15 +35,16 @@
 .lc-item-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
 .lc-item-name { font-size:0.88rem; font-weight:700; color:#202124; }
 .lc-item-score { font-size:0.78rem; color:#0C447C; font-weight:700; }
-.lc-opts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
-.lc-opt {
-  border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 10px;
-  font-size:0.8rem; cursor:pointer; text-align:left; line-height:1.35; color:#3c4043;
-  flex:1 1 auto; min-width:0;
+.lc-opts { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }  /* lc-ui-fix-v1 */
+.lc-opt {  /* lc-ui-fix-v1: full-width stacked, uniform */
+  border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:10px 12px;
+  font-size:0.82rem; cursor:pointer; text-align:left; line-height:1.4; color:#3c4043;
+  flex:0 0 100%; width:100%; min-width:0; box-sizing:border-box;
 }
 .lc-opt .opt-pt { font-weight:700; color:#0C447C; margin-right:5px; }
 .lc-opt.selected { border-color:#1a73e8; background:#e8f0fe; color:#174ea6; }
-.lc-opt-level { flex:1 1 0; text-align:center; }
+.lc-opt-level { flex:1 1 0; width:auto; text-align:center; }  /* lc-ui-fix-v1: keep 4-level horizontal */
+.lc-opts.lc-opts-level { flex-direction:row; flex-wrap:wrap; }
 .lc-sub { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
 .lc-issue { display:flex; gap:6px; align-items:center; }
 .lc-issue button {
@@ -60,10 +61,12 @@
   padding:5px 10px; font-size:0.74rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
 }
 .lc-ai-btn .material-symbols-outlined { font-size:15px; }
-.lc-total {
-  position:sticky; bottom:0; background:#0C447C; color:#fff; border-radius:11px;
+.lc-total {  /* lc-ui-fix-v1: fixed just above bottom-nav */
+  position:fixed; bottom:var(--lc-nav-h, 90px); left:50%; transform:translateX(-50%);
+  width:100%; max-width:720px; box-sizing:border-box;
+  background:#0C447C; color:#fff; border-radius:11px;
   padding:11px 16px; font-size:0.92rem; font-weight:700; display:flex; justify-content:space-between;
-  align-items:center; margin-top:8px; box-shadow:0 -2px 10px rgba(0,0,0,0.08);
+  align-items:center; box-shadow:0 -2px 10px rgba(0,0,0,0.18); z-index:900;
 }
 .lc-total small { font-weight:400; font-size:0.74rem; opacity:0.85; }
 .btn-save-lc {
@@ -267,7 +270,7 @@ function lcItemBlock(key, label, optsHtml, isAdl) {
   return '<div class="lc-item" data-item="'+key+'">'+
     '<div class="lc-item-head"><span class="lc-item-name">'+lcEsc(label)+'</span>'+
       (isAdl?'<span class="lc-item-score" id="sc-'+key+'"></span>':'')+'</div>'+
-    '<div class="lc-opts">'+optsHtml+'</div>'+
+    '<div class="lc-opts'+(isAdl?'':' lc-opts-level')+'">'+optsHtml+'</div>'+  // lc-ui-fix-v1
     '<div class="lc-sub">'+
       '<span class="lc-issue-label">課題</span>'+
       '<div class="lc-issue">'+
@@ -460,6 +463,8 @@ function lcCollectSub(key, st, payload) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+  lcAdjustTotalBar();  // lc-ui-fix-v1
+  window.addEventListener('resize', lcAdjustTotalBar);
   lcBuildInputs();
   lcBindEvents();
   lcLoadPatients();
@@ -484,5 +489,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
+function lcAdjustTotalBar() {  // lc-ui-fix-v1
+  var nav = document.querySelector('.bottom-nav');
+  var navH = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+  if (!navH) navH = 90;
+  document.documentElement.style.setProperty('--lc-nav-h', navH + 'px');
+  var total = document.querySelector('.lc-total');
+  var totalH = total ? Math.round(total.getBoundingClientRect().height) : 56;
+  var wrap = document.querySelector('.lc-wrap');
+  if (wrap) wrap.style.paddingBottom = (navH + totalH + 24) + 'px';
+}
 </script>
 {% endblock %}
