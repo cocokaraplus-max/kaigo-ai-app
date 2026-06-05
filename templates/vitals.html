@@ -3048,7 +3048,7 @@ window.loadDailyOverview = async function() {
     // エディタ用にキャッシュ(全員分)
     _dailyEditorState.cachedData = {};
     patientList.forEach(p => {
-        _dailyEditorState.cachedData[p.pid] = { name: p.name, items: p.items };
+        _dailyEditorState.cachedData[p.pid] = { name: p.name, items: (p._rawItems || p.items) };
     });
     // 患者名簿にいるが今日の測定がない人もキャッシュ(編集行から「追加」できるようにするため将来用)
     if (typeof PATIENTS !== 'undefined') {
