@@ -325,6 +325,12 @@ body.mono .rep-weight-bar-fill { background: #555; -webkit-print-color-adjust: e
 
 
 .rep-satisfaction-box { flex: 1; border: 1px solid #bbb; border-radius: var(--radius-sm); padding: 2mm 3mm; font-size: 8pt; display: flex; align-items: center; gap: 3mm; }
+/* below-gap-fix: 特記事項下配置レイアウトの枠間の余分な隙間を詰める */
+.rep-special-container[data-layout="below"] { gap: 2mm; margin-bottom: 2mm; }
+.rep-special-container[data-layout="below"] .rep-special-row { min-height: 0; margin-bottom: 0; }
+.rep-special-container[data-layout="below"] .rep-special-body { min-height: 12mm; }
+.rep-special-container[data-layout="below"] .rep-new-requests-row { margin-bottom: 0; }
+.rep-special-container[data-layout="below"] .rep-satisfaction-row { margin-bottom: 0; }
 .rep-check-circle { width: 12px; height: 12px; border: 1.5px solid #444; border-radius: 50%; display: inline-block; }
 .rep-check-circle.checked { background: #444; }
 .rep-new-requests-row { margin-bottom: 2mm; }
