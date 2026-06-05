@@ -777,8 +777,25 @@ def top():
     my_tasks = []
     try:
         task_res = supabase.table("tasks").select("id,title,due_date,priority,status,assigned_to,created_by").eq("facility_code", f_code).neq("status", "done").order("due_date").execute()
+        # top-task-meta: 期限の緊急/超過フラグと優先度ラベルを付与
+        from datetime import datetime as _dttsk, date as _dtsk
+        _today_tsk = _dtsk.today()
+        _prio_lbl = {"high": "高", "medium": "中", "low": "低"}
         for t in (task_res.data or []):
             if t.get("created_by") == my_name or my_name in (t.get("assigned_to") or []) or not t.get("assigned_to"):
+                t["priority_label"] = _prio_lbl.get(t.get("priority") or "medium", "中")
+                t["due_urgent"] = False
+                t["overdue"] = False
+                if t.get("due_date"):
+                    try:
+                        _dd = _dttsk.strptime(str(t["due_date"]), "%Y-%m-%d").date()
+                        _diff = (_dd - _today_tsk).days
+                        if _diff < 0:
+                            t["overdue"] = True
+                        elif _diff <= 7:
+                            t["due_urgent"] = True
+                    except Exception:
+                        pass
                 my_tasks.append(t)
     except:
         pass
