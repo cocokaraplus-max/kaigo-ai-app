@@ -6615,11 +6615,12 @@ def api_goal_check():
                     "user_name, year_month, training_goal, short_goal_new, long_goal_new"
                 ).eq("facility_code", f_code).eq("year_month", ym).execute()
                 for ev in (ev_res.data or []):
-                    tg = ev.get("training_goal") or ""
-                    sg = ev.get("short_goal_new") or ""
-                    lg = ev.get("long_goal_new") or ""
+                    # goal-minlen-fix: 前後空白を除いて評価。1文字や空白のみのゴミ入力は除外
+                    tg = (ev.get("training_goal") or "").strip()
+                    sg = (ev.get("short_goal_new") or "").strip()
+                    lg = (ev.get("long_goal_new") or "").strip()
                     new_goal = tg or sg or lg
-                    if new_goal:
+                    if new_goal and len(new_goal) >= 2:
                         # 重複チェック
                         if not any(g["user_name"] == ev["user_name"] for g in goal_changes):
                             goal_changes.append({
