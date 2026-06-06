@@ -87,13 +87,21 @@
 .lc-indep-btn .material-symbols-outlined { font-size:20px; color:#5f6368; }
 .lc-indep-val { color:#9aa0a6; }
 .lc-indep-val.has-val { color:#0C447C; font-weight:700; }
-.lc-indep-panel { display:none; margin-top:6px; }
-.lc-indep-panel.open { display:block; }
-.lc-indep-opt { display:flex; gap:8px; padding:9px 10px; border:1.5px solid #e6eaf0; border-radius:9px; margin-bottom:5px; font-size:0.78rem; cursor:pointer; background:#fff; align-items:flex-start; }
+/* lc-indep-modal-v1 */
+.lc-indep-cell .lc-indep-label { min-height:2.4em; display:flex; align-items:flex-end; }
+.lc-modal-back { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:flex-end; justify-content:center; z-index:2000; }
+.lc-modal-back.open { display:flex; }
+.lc-modal { background:#fff; width:100%; max-width:480px; max-height:82vh; border-radius:16px 16px 0 0; display:flex; flex-direction:column; animation:lcSlideUp 0.2s ease; }
+@keyframes lcSlideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+.lc-modal-head { padding:14px 16px; border-bottom:1px solid #eef1f5; display:flex; align-items:center; justify-content:space-between; }
+.lc-modal-title { font-size:0.9rem; font-weight:700; color:#0C447C; }
+.lc-modal-close { border:none; background:#f1f3f4; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:1.0rem; color:#5f6368; }
+.lc-modal-body { overflow-y:auto; padding:12px 16px 20px; -webkit-overflow-scrolling:touch; }
+.lc-indep-opt { display:flex; gap:10px; padding:12px; border:1.5px solid #e6eaf0; border-radius:10px; margin-bottom:8px; cursor:pointer; background:#fff; align-items:flex-start; }
 .lc-indep-opt:hover { background:#f7fbff; }
 .lc-indep-opt.selected { border-color:#1a73e8; background:#e8f0fe; }
-.lc-indep-rank { flex:0 0 46px; font-weight:700; color:#0C447C; }
-.lc-indep-def { flex:1; color:#3c4043; line-height:1.4; }
+.lc-indep-rank { flex:0 0 50px; font-weight:700; color:#0C447C; font-size:0.92rem; }
+.lc-indep-def { flex:1; color:#3c4043; line-height:1.45; font-size:0.8rem; }
 .lc-hist-edit, .lc-hist-del { border:1px solid #e0e0e0; background:#fff; border-radius:7px; padding:3px 9px; font-size:0.74rem; cursor:pointer; }  /* lc-edit-delete-v1 */
 .lc-hist-edit { color:#0C447C; border-color:#B5D4F4; }
 .lc-hist-del { color:#c5221f; border-color:#f3c2bd; margin-left:4px; }
@@ -173,17 +181,15 @@
           <option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option>
           <option>要介護3</option><option>要介護4</option><option>要介護5</option></select>
       </div>
-      <div class="lc-row">  {# lc-indep-picker-v1 #}
-        <label>障害高齢者の日常生活自立度（寝たきり度）</label>
+      <div class="lc-row lc-indep-cell">  {# lc-indep-modal-v1 #}
+        <label class="lc-indep-label">障害高齢者の日常生活自立度（寝たきり度）</label>
         <input type="hidden" id="lc-adl_independence">
-        <button type="button" class="lc-indep-btn" data-indep="adl"><span class="lc-indep-val" id="lc-indep-val-adl">タップして選択</span><span class="material-symbols-outlined">expand_more</span></button>
-        <div class="lc-indep-panel" id="lc-indep-panel-adl"></div>
+        <button type="button" class="lc-indep-btn" data-indep="adl"><span class="lc-indep-val" id="lc-indep-val-adl">タップして選択</span><span class="material-symbols-outlined">unfold_more</span></button>
       </div>
-      <div class="lc-row">  {# lc-indep-picker-v1 #}
-        <label>認知症高齢者の日常生活自立度</label>
+      <div class="lc-row lc-indep-cell">  {# lc-indep-modal-v1 #}
+        <label class="lc-indep-label">認知症高齢者の日常生活自立度</label>
         <input type="hidden" id="lc-dementia_independence">
-        <button type="button" class="lc-indep-btn" data-indep="dem"><span class="lc-indep-val" id="lc-indep-val-dem">タップして選択</span><span class="material-symbols-outlined">expand_more</span></button>
-        <div class="lc-indep-panel" id="lc-indep-panel-dem"></div>
+        <button type="button" class="lc-indep-btn" data-indep="dem"><span class="lc-indep-val" id="lc-indep-val-dem">タップして選択</span><span class="material-symbols-outlined">unfold_more</span></button>
       </div>
     </div>
   </div>
@@ -222,6 +228,12 @@
     </div>
   </div>
 
+</div>
+<div class="lc-modal-back" id="lc-indep-modal">  <!-- lc-indep-modal-v1 -->
+  <div class="lc-modal">
+    <div class="lc-modal-head"><span class="lc-modal-title" id="lc-modal-title"></span><button type="button" class="lc-modal-close" id="lc-modal-close">✕</button></div>
+    <div class="lc-modal-body" id="lc-modal-body"></div>
+  </div>
 </div>
 {% endblock %}
 {% block extra_script %}
@@ -336,33 +348,31 @@ var LC_INDEP_GUIDE = {  // lc-indep-picker-v1
     ['M','著しい精神症状・周辺症状や重篤な身体疾患が見られ専門医療を必要とする（せん姄、姄想、興奮、自傷・他害等）。']
   ]
 };
-function lcBuildIndep() {  // lc-indep-picker-v1
-  ['adl','dem'].forEach(function(kind){
-    var panel = document.getElementById('lc-indep-panel-' + kind);
-    if (!panel) return;
-    panel.innerHTML = LC_INDEP_GUIDE[kind].map(function(it){
-      return '<div class="lc-indep-opt" data-indep-kind="' + kind + '" data-indep-rank="' + lcEsc(it[0]) + '"><div class="lc-indep-rank">' + lcEsc(it[0]) + '</div><div class="lc-indep-def">' + lcEsc(it[1]) + '</div></div>';
-    }).join('');
-  });
+var LC_INDEP_TITLE = { adl: '障害高齢者の日常生活自立度（寝たきり度）', dem: '認知症高齢者の日常生活自立度' };  // lc-indep-modal-v1
+var lcModalKind = null;
+function lcIndepOpenModal(kind) {  // lc-indep-modal-v1
+  lcModalKind = kind;
+  var hid = document.getElementById(kind === 'adl' ? 'lc-adl_independence' : 'lc-dementia_independence');
+  var cur = hid ? hid.value : '';
+  document.getElementById('lc-modal-title').textContent = LC_INDEP_TITLE[kind] || '';
+  document.getElementById('lc-modal-body').innerHTML = (LC_INDEP_GUIDE[kind] || []).map(function(it){
+    var sel = (cur === it[0]) ? ' selected' : '';
+    return '<div class="lc-indep-opt' + sel + '" data-indep-kind="' + kind + '" data-indep-rank="' + lcEsc(it[0]) + '"><div class="lc-indep-rank">' + lcEsc(it[0]) + '</div><div class="lc-indep-def">' + lcEsc(it[1]) + '</div></div>';
+  }).join('');
+  document.getElementById('lc-indep-modal').classList.add('open');
 }
-function lcIndepToggle(kind) {  // lc-indep-picker-v1
-  var panel = document.getElementById('lc-indep-panel-' + kind);
-  if (panel) panel.classList.toggle('open');
-}
+function lcIndepCloseModal() { var m = document.getElementById('lc-indep-modal'); if (m) m.classList.remove('open'); }  // lc-indep-modal-v1
 function lcIndepSelect(kind, rank) {  // lc-indep-picker-v1
   var hid = document.getElementById(kind === 'adl' ? 'lc-adl_independence' : 'lc-dementia_independence');
   if (hid) hid.value = rank;
   lcIndepRefresh(kind);
-  var panel = document.getElementById('lc-indep-panel-' + kind);
-  if (panel) panel.classList.remove('open');
+  lcIndepCloseModal();  // lc-indep-modal-v1
 }
 function lcIndepRefresh(kind) {  // lc-indep-picker-v1: hidden値から表示と選択ハイライトを復元
   var hid = document.getElementById(kind === 'adl' ? 'lc-adl_independence' : 'lc-dementia_independence');
   var val = hid ? hid.value : '';
   var valEl = document.getElementById('lc-indep-val-' + kind);
   if (valEl) { valEl.textContent = val || 'タップして選択'; valEl.classList.toggle('has-val', !!val); }
-  var panel = document.getElementById('lc-indep-panel-' + kind);
-  if (panel) panel.querySelectorAll('.lc-indep-opt').forEach(function(o){ o.classList.toggle('selected', o.dataset.indepRank === val); });
 }
 function lcBuildInputs() {
   var adlHtml = LC_ADL.map(function(it){
@@ -685,12 +695,12 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('resize', lcAdjustTotalBar);
   lcBuildInputs();
   lcBindEvents();
-  lcBuildIndep();  // lc-indep-picker-v1
-  document.addEventListener('click', function(e){  // lc-indep-picker-v1
+  document.addEventListener('click', function(e){  // lc-indep-modal-v1
     var btn = e.target.closest('.lc-indep-btn');
-    if (btn) { lcIndepToggle(btn.dataset.indep); return; }
+    if (btn) { lcIndepOpenModal(btn.dataset.indep); return; }
     var opt = e.target.closest('.lc-indep-opt');
     if (opt) { lcIndepSelect(opt.dataset.indepKind, opt.dataset.indepRank); return; }
+    if (e.target && (e.target.id === 'lc-modal-close' || e.target.id === 'lc-indep-modal')) { lcIndepCloseModal(); return; }
   });
   document.addEventListener('click', function(e){  // lc-assist-accordion-v1
     var head = e.target.closest('.lc-assist-head');
