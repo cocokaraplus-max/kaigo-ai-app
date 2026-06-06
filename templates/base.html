@@ -2293,6 +2293,7 @@ document.addEventListener('click', function(e) {
         var nav = document.querySelector('.bottom-nav');
         if (nav) nav.style.display = 'none';
         modal.style.display = 'flex';
+        if (typeof auRenderTop === 'function') auRenderTop();  // base-updates-render-v1
         return;
     }
     // 歯車ボタン
@@ -2971,6 +2972,31 @@ document.addEventListener('keydown', function(e){
   }, {passive:true});
 })();
 
+</script>
+<script>
+// base-updates-render-v1: アップデート情報をTOPモーダルに描画
+function auEscTop(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+async function auRenderTop(){
+  var box=document.getElementById("au-top-list");
+  if(!box) return;
+  try{
+    var r=await fetch("/api/app_updates");
+    var j=await r.json();
+    var ups=j.updates||[];
+    if(!ups.length){box.innerHTML='<div style="color:#9aa0a6;">アップデート情報はまだありません。</div>';return;}
+    box.innerHTML=ups.map(function(u,i){
+      var head=auEscTop(u.version)+(u.release_date?("　（"+auEscTop(u.release_date)+"）"):"");
+      var items=(u.body||"").split("\n").filter(function(x){return x.trim();}).map(function(line){
+        return '<div>・'+auEscTop(line.trim())+'</div>';
+      }).join("");
+      var bg=(i===0)?"#e8f4ff":"#f8f9fa";
+      var bar=(i===0)?"border-left:3px solid #1a73e8;":"";
+      return '<div style="margin-bottom:14px;padding:12px;background:'+bg+';border-radius:12px;'+bar+'">'+
+        '<div style="font-weight:800;color:#1a73e8;margin-bottom:6px;">🦝'+head+'</div>'+
+        '<div style="font-size:0.85rem;color:#334155;line-height:1.9;">'+items+'</div></div>';
+    }).join("");
+  }catch(e){box.innerHTML='<div style="color:#c5221f;">読み込みに失敗しました</div>';}
+}
 </script>
 </body>
 </html>

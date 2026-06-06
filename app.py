@@ -2759,6 +2759,69 @@ def api_recheck_schedule_delete(rid):
         print(f"recheck_schedule_delete error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ===== app-updates-api-v1: アップデート情報 =====
+@app.route('/api/app_updates', methods=['GET'])
+@login_required
+def api_app_updates_get():
+    """アップデート情報一覧（公開分のみ、新しい順）。全ユーザー閲覧可。"""
+    try:
+        supabase = get_supabase()
+        include_unpub = request.args.get("all", "false").lower() == "true" and session.get("dev_authenticated")
+        q = supabase.table("app_updates").select("*")
+        if not include_unpub:
+            q = q.eq("is_published", True)
+        res = q.order("sort_order", desc=True).order("created_at", desc=True).execute()
+        return jsonify({"updates": res.data or []})
+    except Exception as e:
+        print(f"app_updates_get error: {e}", flush=True)
+        return jsonify({"updates": [], "error": str(e)})
+
+@app.route('/api/app_updates', methods=['POST'])
+@login_required
+def api_app_updates_post():
+    """アップデート情報の新規/更新（開発者のみ）。idがあれば更新、なければ新規。"""
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "開発者認証が必要です"}), 403
+    try:
+        data = request.json or {}
+        version = (data.get("version") or "").strip()
+        body = (data.get("body") or "").strip()
+        if not version or not body:
+            return jsonify({"status": "error", "message": "versionとbodyは必須です"}), 400
+        supabase = get_supabase()
+        payload = {
+            "version": version,
+            "release_date": (data.get("release_date") or "").strip(),
+            "body": body,
+            "sort_order": int(data.get("sort_order") or 0),
+            "is_published": bool(data.get("is_published", True)),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        uid = data.get("id")
+        if uid:
+            supabase.table("app_updates").update(payload).eq("id", uid).execute()
+            return jsonify({"status": "success", "id": uid})
+        res = supabase.table("app_updates").insert(payload).execute()
+        nid = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": nid})
+    except Exception as e:
+        print(f"app_updates_post error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/app_updates/<uid>', methods=['DELETE'])
+@login_required
+def api_app_updates_delete(uid):
+    """アップデート情報の削除（開発者のみ）。"""
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "開発者認証が必要です"}), 403
+    try:
+        supabase = get_supabase()
+        supabase.table("app_updates").delete().eq("id", uid).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"app_updates_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/save_vital_settings', methods=['POST'])
 @login_required
 def api_save_vital_settings():
