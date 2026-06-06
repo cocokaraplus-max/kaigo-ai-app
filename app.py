@@ -9264,6 +9264,47 @@ def api_life_check_alerts():
         else:
             existing_map = {}
 
+        # lifecheck-alert-orphan-v3: scheduled行のカレンダーイベント実在確認。
+        # 予定が削除されていたら unassigned に戻して再度登録を促す。
+        sched_eids = []
+        eid_to_pid = {}
+        for pid, row in existing_map.items():
+            if row.get("status") == "scheduled" and row.get("calendar_event_id"):
+                eid = row.get("calendar_event_id")
+                sched_eids.append(eid)
+                eid_to_pid[str(eid)] = pid
+        if sched_eids:
+            alive = set()
+            try:
+                ev = supabase.table("calendar_events").select("id").eq(
+                    "facility_code", f_code).in_("id", sched_eids).execute()
+                for r in (ev.data or []):
+                    alive.add(str(r.get("id")))
+            except Exception as _ev_err:
+                print("[life_alert] event check failed: %s" % _ev_err, flush=True)
+                alive = None  # 確認失敗時は現状維持（誤って戻さない）
+            if alive is not None:
+                for eid_str, pid in eid_to_pid.items():
+                    if eid_str not in alive:
+                        # 予定が消えている -> unassigned に戻す
+                        try:
+                            supabase.table("life_check_appointments").update({
+                                "status": "unassigned",
+                                "assignee_name": None,
+                                "scheduled_date": None,
+                                "calendar_event_id": None,
+                                "updated_at": datetime.now(tokyo_tz).isoformat(),
+                            }).eq("facility_code", f_code).eq(
+                                "patient_id", pid).eq("target_ym", cur_ym).execute()
+                        except Exception as _rb_err:
+                            print("[life_alert] rollback failed: %s" % _rb_err, flush=True)
+                        # メモリ上の existing_map も更新
+                        if pid in existing_map:
+                            existing_map[pid]["status"] = "unassigned"
+                            existing_map[pid]["assignee_name"] = None
+                            existing_map[pid]["scheduled_date"] = None
+                            existing_map[pid]["calendar_event_id"] = None
+
         alerts = []
         pending = 0
         for pid, info in targets.items():
