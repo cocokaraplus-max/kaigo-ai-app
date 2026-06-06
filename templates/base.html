@@ -283,19 +283,22 @@ body.nav-editing {
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
-        .bottom-nav-item {
+        .bottom-nav-item {  /* nav-2line-v1 */
             display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 3px;
+            align-items: center; justify-content: center; gap: 2px;
             text-decoration: none; color: #80868b;
             font-size: 0.6rem; font-weight: 600;
-            padding: 0.45rem 0.4rem 0.4rem;
+            padding: 0.4rem 0.3rem 0.35rem;
             transition: color 0.15s, background 0.15s;
             cursor: pointer; background: none; border: none;
             border-right: 0.5px solid #e0e0e0;
             -webkit-tap-highlight-color: transparent;
-            white-space: nowrap; flex-shrink: 0; min-width: 3.4rem;
-            flex: 1;
+            /* 2段表示: 長いラベルは折り返し、最大2行・中央揃え */
+            white-space: normal; text-align: center; line-height: 1.15;
+            word-break: keep-all; overflow-wrap: anywhere;
+            flex-shrink: 0; min-width: 3.4rem; flex: 1;
         }
+        .bottom-nav-item > .material-symbols-outlined { white-space: nowrap; }  /* nav-2line-v1: アイコンは折り返さない */
         .bottom-nav-item:last-child { border-right: none; }
         .bottom-nav-item .material-symbols-outlined { font-size: 1.4rem; }
         .bottom-nav-item.active {
