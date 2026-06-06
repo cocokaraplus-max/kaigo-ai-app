@@ -83,6 +83,17 @@
 .hist-table th { background:#f8f9fb; color:#5f6368; font-weight:700; }
 .hist-table td.dt { text-align:left; white-space:nowrap; }
 .lc-prefill-note { font-size:0.74rem; color:#9aa0a6; margin-bottom:8px; }
+.lc-indep-btn { width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff; font-size:0.92rem; cursor:pointer; box-sizing:border-box; color:#202124; }  /* lc-indep-picker-v1 */
+.lc-indep-btn .material-symbols-outlined { font-size:20px; color:#5f6368; }
+.lc-indep-val { color:#9aa0a6; }
+.lc-indep-val.has-val { color:#0C447C; font-weight:700; }
+.lc-indep-panel { display:none; margin-top:6px; }
+.lc-indep-panel.open { display:block; }
+.lc-indep-opt { display:flex; gap:8px; padding:9px 10px; border:1.5px solid #e6eaf0; border-radius:9px; margin-bottom:5px; font-size:0.78rem; cursor:pointer; background:#fff; align-items:flex-start; }
+.lc-indep-opt:hover { background:#f7fbff; }
+.lc-indep-opt.selected { border-color:#1a73e8; background:#e8f0fe; }
+.lc-indep-rank { flex:0 0 46px; font-weight:700; color:#0C447C; }
+.lc-indep-def { flex:1; color:#3c4043; line-height:1.4; }
 .lc-hist-edit, .lc-hist-del { border:1px solid #e0e0e0; background:#fff; border-radius:7px; padding:3px 9px; font-size:0.74rem; cursor:pointer; }  /* lc-edit-delete-v1 */
 .lc-hist-edit { color:#0C447C; border-color:#B5D4F4; }
 .lc-hist-del { color:#c5221f; border-color:#f3c2bd; margin-left:4px; }
@@ -162,15 +173,17 @@
           <option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option>
           <option>要介護3</option><option>要介護4</option><option>要介護5</option></select>
       </div>
-      <div class="lc-row"><label>障害高齢者の日常生活自立度</label>
-        <select id="lc-adl_independence"><option value="">選択</option>
-          <option>自立</option><option>J1</option><option>J2</option><option>A1</option><option>A2</option>
-          <option>B1</option><option>B2</option><option>C1</option><option>C2</option></select>
+      <div class="lc-row">  {# lc-indep-picker-v1 #}
+        <label>障害高齢者の日常生活自立度（寝たきり度）</label>
+        <input type="hidden" id="lc-adl_independence">
+        <button type="button" class="lc-indep-btn" data-indep="adl"><span class="lc-indep-val" id="lc-indep-val-adl">タップして選択</span><span class="material-symbols-outlined">expand_more</span></button>
+        <div class="lc-indep-panel" id="lc-indep-panel-adl"></div>
       </div>
-      <div class="lc-row"><label>認知症高齢者の日常生活自立度</label>
-        <select id="lc-dementia_independence"><option value="">選択</option>
-          <option>自立</option><option>I</option><option>IIa</option><option>IIb</option>
-          <option>IIIa</option><option>IIIb</option><option>IV</option><option>M</option></select>
+      <div class="lc-row">  {# lc-indep-picker-v1 #}
+        <label>認知症高齢者の日常生活自立度</label>
+        <input type="hidden" id="lc-dementia_independence">
+        <button type="button" class="lc-indep-btn" data-indep="dem"><span class="lc-indep-val" id="lc-indep-val-dem">タップして選択</span><span class="material-symbols-outlined">expand_more</span></button>
+        <div class="lc-indep-panel" id="lc-indep-panel-dem"></div>
       </div>
     </div>
   </div>
@@ -300,6 +313,57 @@ function lcApplyMaster(p) {  // lc-master-prefill-v1: 患者マスタ優先で�
   if (p.gender) window._lcMasterFilled.gender = true;
 }
 
+var LC_INDEP_GUIDE = {  // lc-indep-picker-v1
+  adl: [
+    ['自立','障害等を有さない。'],
+    ['J1','生活自立。障害等はあるが日常生活はほぼ自立し独力で外出。交通機関等を利用して外出する。'],
+    ['J2','生活自立。日常生活ほぼ自立し外出するが、隔近所など限られた範囲（町内の買い物・老人会参加程度）。'],
+    ['A1','準寝たきり。屋内は概ね自立だが介助なしに外出しない。介助があれば比較的多く外出。日中はほとんど離床。'],
+    ['A2','準寝たきり。屋内は概ね自立だが介助なしに外出しない。外出頻度が少なく日中も寝たり起きたり。'],
+    ['B1','寝たきり。屋内も介助を要し日中もベッド上が主体だが座位を保つ。自力で車椅子に移乗し食事・排泄は離床して行う。'],
+    ['B2','寝たきり。屋内も介助、日中もベッド上主体だが座位保持。介助で車椅子に移乗（食事・排泄も介助）。'],
+    ['C1','寝たきり。終日ベッド上で過ごし食事・排泄・着替に全介助。自力で寝返りができる。'],
+    ['C2','寝たきり。終日ベッド上、全面的に介助。自力で寝返りもできない。']
+  ],
+  dem: [
+    ['自立','認知症を有しない。'],
+    ['I','何らかの認知症はあるが、日常生活は家庭内・社会的にほぼ自立。'],
+    ['IIa','支障のある症状・行動や意思疎通の困難が多少あるが誰かが注意すれば自立。家庭外で症状（道に迷う、買い物や金銭管理のミス等）。'],
+    ['IIb','同様の症状が家庭内でも見られる（服薬管理ができない、電話対応や留守番ができない等）。'],
+    ['IIIa','介護を必要とする症状・行動や意思疎通の困難が見られる。日中を中心に（着替・食事・排泄が上手くできない、徘徊、失禁、火の不始末等）。'],
+    ['IIIb','同様の症状が夜間を中心に見られる。'],
+    ['IV','支障のある症状・行動や意思疎通の困難が頻繁に見られ、常に介護を必要とする。'],
+    ['M','著しい精神症状・周辺症状や重篤な身体疾患が見られ専門医療を必要とする（せん姄、姄想、興奮、自傷・他害等）。']
+  ]
+};
+function lcBuildIndep() {  // lc-indep-picker-v1
+  ['adl','dem'].forEach(function(kind){
+    var panel = document.getElementById('lc-indep-panel-' + kind);
+    if (!panel) return;
+    panel.innerHTML = LC_INDEP_GUIDE[kind].map(function(it){
+      return '<div class="lc-indep-opt" data-indep-kind="' + kind + '" data-indep-rank="' + lcEsc(it[0]) + '"><div class="lc-indep-rank">' + lcEsc(it[0]) + '</div><div class="lc-indep-def">' + lcEsc(it[1]) + '</div></div>';
+    }).join('');
+  });
+}
+function lcIndepToggle(kind) {  // lc-indep-picker-v1
+  var panel = document.getElementById('lc-indep-panel-' + kind);
+  if (panel) panel.classList.toggle('open');
+}
+function lcIndepSelect(kind, rank) {  // lc-indep-picker-v1
+  var hid = document.getElementById(kind === 'adl' ? 'lc-adl_independence' : 'lc-dementia_independence');
+  if (hid) hid.value = rank;
+  lcIndepRefresh(kind);
+  var panel = document.getElementById('lc-indep-panel-' + kind);
+  if (panel) panel.classList.remove('open');
+}
+function lcIndepRefresh(kind) {  // lc-indep-picker-v1: hidden値から表示と選択ハイライトを復元
+  var hid = document.getElementById(kind === 'adl' ? 'lc-adl_independence' : 'lc-dementia_independence');
+  var val = hid ? hid.value : '';
+  var valEl = document.getElementById('lc-indep-val-' + kind);
+  if (valEl) { valEl.textContent = val || 'タップして選択'; valEl.classList.toggle('has-val', !!val); }
+  var panel = document.getElementById('lc-indep-panel-' + kind);
+  if (panel) panel.querySelectorAll('.lc-indep-opt').forEach(function(o){ o.classList.toggle('selected', o.dataset.indepRank === val); });
+}
 function lcBuildInputs() {
   var adlHtml = LC_ADL.map(function(it){
     var opts = it.opts.map(function(o){
@@ -530,6 +594,7 @@ function lcPrefill(prev) {
     if (el && prev[f] != null && prev[f] !== '') el.value = prev[f];
   });
   if (prev.evaluator_job != null) lcJobRestore(prev.evaluator_job);  // lc-evaljob-v1
+  lcIndepRefresh('adl'); lcIndepRefresh('dem');  // lc-indep-picker-v1
   LC_ADL.forEach(function(it){
     var v = prev[it.key];
     if (v != null && v !== '') {
@@ -620,6 +685,13 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('resize', lcAdjustTotalBar);
   lcBuildInputs();
   lcBindEvents();
+  lcBuildIndep();  // lc-indep-picker-v1
+  document.addEventListener('click', function(e){  // lc-indep-picker-v1
+    var btn = e.target.closest('.lc-indep-btn');
+    if (btn) { lcIndepToggle(btn.dataset.indep); return; }
+    var opt = e.target.closest('.lc-indep-opt');
+    if (opt) { lcIndepSelect(opt.dataset.indepKind, opt.dataset.indepRank); return; }
+  });
   document.addEventListener('click', function(e){  // lc-assist-accordion-v1
     var head = e.target.closest('.lc-assist-head');
     if (head) { lcToggleAssist(head.dataset.assistHead); return; }
