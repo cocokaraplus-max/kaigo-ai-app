@@ -283,19 +283,21 @@ body.nav-editing {
         }
         .bottom-nav::-webkit-scrollbar { display: none; }
 
-        .bottom-nav-item {
+        .bottom-nav-item {  /* nav-2line-v1 */
             display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 3px;
+            align-items: center; justify-content: center; gap: 2px;
             text-decoration: none; color: #80868b;
             font-size: 0.6rem; font-weight: 600;
-            padding: 0.45rem 0.4rem 0.4rem;
+            padding: 0.4rem 0.3rem 0.35rem;
             transition: color 0.15s, background 0.15s;
             cursor: pointer; background: none; border: none;
             border-right: 0.5px solid #e0e0e0;
             -webkit-tap-highlight-color: transparent;
-            white-space: nowrap; flex-shrink: 0; min-width: 3.4rem;
-            flex: 1;
+            /* nav-2line-sel-v1: 基本1行。brを入れた項目だけ例外的に2段 */
+            white-space: nowrap; text-align: center; line-height: 1.2;
+            flex-shrink: 0; min-width: 3.4rem; flex: 1;
         }
+        .bottom-nav-item > .material-symbols-outlined { white-space: nowrap; }  /* nav-2line-v1: アイコンは折り返さない */
         .bottom-nav-item:last-child { border-right: none; }
         .bottom-nav-item .material-symbols-outlined { font-size: 1.4rem; }
         .bottom-nav-item.active {
@@ -719,7 +721,7 @@ body.nav-editing {
         </a>
         <a href="/life_check" class="bottom-nav-item {% block nav_life_check %}{% endblock %}" onclick="spaNav(event,'/life_check')">
             <span class="material-symbols-outlined">checklist</span>
-            生活機能CHECK
+            生活機能<br>CHECK
         </a>
         <!-- nav-life-check-v1 -->
         <a href="/calendar" class="bottom-nav-item {% block nav_calendar %}{% endblock %}" onclick="spaNav(event,'/calendar')">
@@ -762,7 +764,7 @@ body.nav-editing {
         </a>
         <a href="/admin" class="bottom-nav-item {% block nav_admin %}{% endblock %}" onclick="spaNav(event,'/admin')">
             <span class="material-symbols-outlined">admin_panel_settings</span>
-            管理者MENU
+            管理者<br>MENU
         </a>
         {% if is_dev_user %}
         <a href="/dev" class="bottom-nav-item">

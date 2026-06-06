@@ -365,6 +365,10 @@ body.ss-open .bottom-nav{display:none !important}
             <div class="toc-ic" style="background:#9c27b0;"><span class="material-symbols-outlined" style="color:#fff;">help_outline</span></div>
             <span class="toc-lbl">設定・困った時</span>
         </a>
+        <a class="toc-a" style="background:#e0f2f1;" href="#s-life-check">  <!-- manual-lifecheck-v1 -->
+            <div class="toc-ic" style="background:#0F6E56;"><span class="material-symbols-outlined" style="color:#fff;">checklist</span></div>
+            <span class="toc-lbl">生活機能CHECK</span>
+        </a>
         <a class="toc-a" style="background:#fff3e0;" href="#s-updates">
             <div class="toc-ic" style="background:#ff9800;"><span class="material-symbols-outlined" style="color:#fff;">notifications</span></div>
             <span class="toc-lbl">更新ログ</span>
@@ -2061,6 +2065,75 @@ body.ss-open .bottom-nav{display:none !important}
 </div>
 
 <!-- ===== 更新ログ ===== -->
+<!-- ===== 生活機能チェック manual-lifecheck-v1 ===== -->
+<div class="sc" id="s-life-check">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e0f2f1;"><span class="material-symbols-outlined" style="font-size:26px;color:#0F6E56;">checklist</span></div>
+        <div><div class="sc-ttl">生活機能CHECK</div><div class="sc-sub">生活機能チェックシート（様式3-2）の作成</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_normal.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">利用者様の<b>生活機能（ADL・IADL・基本動作）</b>を評価して、<b>様式3-2の生活機能チェックシート</b>を作れるよ！<br>判定に迷う自立度は<b>判定基準を見ながら選べる</b>し、<b>AI相談</b>で記載のヒントももらえるよ📋</div>
+        </div>
+
+        <!-- 画面イメージ: 利用者選択 + 評価 -->
+        <div class="phone-mock">
+            <div class="phone-mock-bar"><div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">checklist</span>生活機能CHECK</div></div>
+            <div class="phone-mock-body">
+                <div style="border:1.5px solid #e0e0e0;border-radius:9px;padding:8px;margin-bottom:8px;font-size:0.72rem;color:#5f6368;">🔍 利用者を検索して選択</div>
+                <div style="background:#e8f0fe;border-radius:9px;padding:7px 9px;margin-bottom:10px;font-size:0.72rem;color:#0C447C;font-weight:700;">選択中: 山田 太郎 様（要介護3）</div>
+                <div style="font-size:0.74rem;font-weight:700;margin-bottom:5px;">食事</div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="background:#0C447C;color:#fff;border-radius:7px;padding:5px 8px;font-size:0.66rem;font-weight:700;">自立 (10点)</span>
+                    <span style="border:1.5px solid #B5D4F4;color:#0C447C;border-radius:7px;padding:5px 8px;font-size:0.66rem;">部分介助 (5点)</span>
+                    <span style="border:1.5px solid #B5D4F4;color:#0C447C;border-radius:7px;padding:5px 8px;font-size:0.66rem;">全介助 (0点)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 自立度モーダルの説明 -->
+        <div class="mb" style="border-left-color:#0F6E56;">
+            <div class="mb-text">🛏️ <b>障害高齢者・認知症高齢者の日常生活自立度</b>は、ボタンをタップすると<b>判定基準（J1・A2・IIb など）の説明つき一覧</b>が出るよ。説明を読んでその場でタップして選べるから、表を探さなくてOK！</div>
+        </div>
+        <div class="phone-mock">
+            <div class="phone-mock-bar"><div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">unfold_more</span>自立度の判定基準</div></div>
+            <div class="phone-mock-body">
+                <div style="border:1.5px solid #1a73e8;background:#e8f0fe;border-radius:9px;padding:8px;margin-bottom:6px;"><b style="color:#0C447C;font-size:0.72rem;">A2</b><div style="font-size:0.66rem;color:#3c4043;line-height:1.4;">準寝たきり。屋内は概ね自立だが介助なしに外出しない。外出頻度が少なく日中も寝たり起きたり。</div></div>
+                <div style="border:1.5px solid #e6eaf0;border-radius:9px;padding:8px;"><b style="color:#0C447C;font-size:0.72rem;">B1</b><div style="font-size:0.66rem;color:#3c4043;line-height:1.4;">寝たきり。屋内も介助を要し日中もベッド上が主体だが座位を保つ…</div></div>
+            </div>
+        </div>
+
+        <!-- AI相談の説明 -->
+        <div class="mb" style="border-left-color:#7b1fa2;">
+            <div class="mb-text">🤖 各項目の<b>AI相談</b>では、観察した状況を入力すると、<b>判定の根拠・候補レベル・記載案</b>を出してくれるよ。候補をタップすれば評価に反映、記載案はメモに反映できる。<br><b>最終的な判断は職員が行ってね</b>（AIはあくまで参考）。</div>
+        </div>
+        <div class="phone-mock">
+            <div class="phone-mock-bar"><div class="phone-mock-title"><span class="material-symbols-outlined" style="font-size:16px;">smart_toy</span>AI相談</div></div>
+            <div class="phone-mock-body">
+                <div style="border:1.5px solid #e0e0e0;border-radius:9px;padding:7px;margin-bottom:6px;font-size:0.68rem;color:#5f6368;">観察: スプーンは持てるが、おかずを刻む介助が必要</div>
+                <div style="background:#0F6E56;color:#fff;text-align:center;border-radius:8px;padding:6px;font-size:0.7rem;font-weight:700;margin-bottom:8px;">AIに相談する</div>
+                <div style="font-size:0.66rem;color:#5f6368;margin-bottom:3px;">候補（タップで反映）</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;"><span style="background:#e8f0fe;color:#0C447C;border-radius:12px;padding:3px 10px;font-size:0.66rem;font-weight:700;">部分介助 (5点)</span></div>
+            </div>
+        </div>
+
+        <div class="steps">
+            <div class="step"><div class="step-n" style="background:#0F6E56;">1</div><div><div class="step-t">🔍 利用者を選ぶ</div><div class="step-d">検索して対象の利用者様を選びます。介護度・生年月日・性別はマスタから自動入力されます</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">2</div><div><div class="step-t">🧑‍⚕️ 基本情報を確認</div><div class="step-d">評価日・評価者・職種を入力。介護度や自立度（判定基準を見ながら選択）を確認します</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">3</div><div><div class="step-t">📊 各項目を評価</div><div class="step-d">食事・移乗などのADLは点数（Barthel区分）で、IADLや基本動作は4段階で選びます。課題の有無・環境・状況メモも記録できます</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">4</div><div><div class="step-t">🤖 迷ったらAI相談</div><div class="step-d">観察した状況を入力すると、候補レベルや記載案を提案。回答後はたたまれ、見出しをタップで再表示できます（最終判断は職員）</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">5</div><div><div class="step-t">🧮 合計点を確認</div><div class="step-d">ADLの合計点（Barthel Index、満点100）が自動計算され、画面下に表示されます</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">6</div><div><div class="step-t">💾 保存</div><div class="step-d">「保存」で記録が登録されます。同じ利用者・同じ評価日の記録は上書きされます</div></div></div>
+            <div class="step"><div class="step-n" style="background:#0F6E56;">7</div><div><div class="step-t">📝 履歴から編集・削除</div><div class="step-d">過去の評価は履歴一覧から「編集」で呼び出して修正、「削除」で消せます。編集中はオレンジの帯で表示されます</div></div></div>
+        </div>
+
+        <div class="mb" style="border-left-color:#f0a829;margin-top:12px;">
+            <div class="mb-text">💡 <b>ヒント</b>：自立度の判定基準は厚生労働省の基準をもとにしています。AI相談の候補や記載案は<b>参考情報</b>です。利用者様の実際の様子をよく観察して、最終的な評価は職員が判断してください。</div>
+        </div>
+    </div>
+</div>
+
 <div class="sc" id="s-updates">
     <div class="sc-hd">
         <div class="sc-ic" style="background:#fff3e0;"><span class="material-symbols-outlined" style="font-size:26px;color:#ff9800;">notifications</span></div>
