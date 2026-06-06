@@ -9274,7 +9274,7 @@ def api_life_check_alerts():
             is_done = bool(last and last[:7] >= cur_ym)
             if is_done:
                 status = "done"
-            if status != "done":
+            if status not in ("done", "scheduled"):  # lifecheck-alert-fix-v2
                 pending += 1
             alerts.append({
                 "patient_id": pid,
@@ -9326,12 +9326,15 @@ def api_life_check_assign():
         except Exception:
             pass
 
-        # appointments 行を確保（無ければ作る）
-        existing = supabase.table("life_check_appointments").select("id").eq(
+        # appointments 行を確保（無ければ作る） lifecheck-alert-fix-v2
+        existing = supabase.table("life_check_appointments").select(
+            "id,calendar_event_id").eq(
             "facility_code", f_code).eq("patient_id", patient_id).eq(
             "target_ym", target_ym).execute()
+        prev_event_id = None
         if existing.data:
             appt_id = existing.data[0]["id"]
+            prev_event_id = existing.data[0].get("calendar_event_id")
         else:
             ins = supabase.table("life_check_appointments").insert({
                 "facility_code": f_code,
@@ -9359,16 +9362,27 @@ def api_life_check_assign():
                     "memo": memo,
                     "created_by": my_name,
                 }
-                cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
-                if cal_res.data:
-                    eid = cal_res.data[0]["id"]
+                if prev_event_id:  # lifecheck-alert-fix-v2: 既存イベントを更新（孤児防止）
+                    upd_payload = {
+                        "title": title.strip(),
+                        "event_date": sched,
+                        "end_date": sched,
+                        "memo": memo,
+                    }
+                    supabase.table("calendar_events").update(upd_payload).eq(
+                        "id", prev_event_id).eq("facility_code", f_code).execute()
+                    eid = prev_event_id
                 else:
-                    fr = supabase.table("calendar_events").select("id").eq(
-                        "facility_code", f_code).eq("calendar_id", cal_id).eq(
-                        "event_date", sched).eq("created_by", my_name).order(
-                        "id", desc=True).limit(1).execute()
-                    if fr.data:
-                        eid = fr.data[0]["id"]
+                    cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
+                    if cal_res.data:
+                        eid = cal_res.data[0]["id"]
+                    else:
+                        fr = supabase.table("calendar_events").select("id").eq(
+                            "facility_code", f_code).eq("calendar_id", cal_id).eq(
+                            "event_date", sched).eq("created_by", my_name).order(
+                            "created_at", desc=True).limit(1).execute()
+                        if fr.data:
+                            eid = fr.data[0]["id"]
         except Exception as _cal_err:
             print("[life_assign] calendar sync failed: %s" % _cal_err, flush=True)
 
