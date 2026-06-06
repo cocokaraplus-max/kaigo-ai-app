@@ -55,6 +55,59 @@
 }
 .birthday-age { font-size: 0.82rem; font-weight: 700; color: #c2185b; }
 
+/* top-lifecheck-alert-v1 */
+.lcalert-section {
+    background: linear-gradient(135deg, #e0f2f1 0%, #e8f5e9 100%);
+    border: 1.5px solid #80cbc4; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 1rem;
+}
+.lcalert-header {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 700; color: #00897b; cursor: pointer;
+}
+.lcalert-header .material-symbols-outlined { font-size: 18px; }
+.lcalert-badge {
+    background: #00897b; color: #fff; font-size: 0.7rem; font-weight: 700;
+    border-radius: 10px; padding: 1px 7px; margin-left: 4px;
+}
+.lcalert-body { margin-top: 10px; }
+.lcalert-group-title {
+    font-size: 0.78rem; font-weight: 700; margin: 8px 0 4px;
+    display: flex; align-items: center; gap: 5px;
+}
+.lcalert-group-overdue { color: #e65100; }
+.lcalert-group-new { color: #607d8b; }
+.lcalert-item {
+    border-bottom: 1px solid #b2dfdb; padding: 8px 0;
+}
+.lcalert-item:last-child { border-bottom: none; }
+.lcalert-row1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.lcalert-name { font-size: 0.9rem; font-weight: 600; color: #202124; }
+.lcalert-tag {
+    font-size: 0.72rem; font-weight: 700; border-radius: 10px; padding: 1px 8px;
+}
+.lcalert-tag-overdue { background: #ffe0b2; color: #e65100; }
+.lcalert-tag-new { background: #eceff1; color: #607d8b; }
+.lcalert-tag-scheduled { background: #c8e6c9; color: #2e7d32; }
+.lcalert-row2 { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.lcalert-row2 input {
+    font-size: 0.8rem; padding: 4px 6px; border: 1px solid #b0bec5;
+    border-radius: 6px; min-width: 0;
+}
+.lcalert-row2 input.lcalert-assignee { flex: 1 1 90px; }
+.lcalert-row2 input.lcalert-date { flex: 0 0 130px; }
+.lcalert-assign-btn {
+    background: #00897b; color: #fff; border: none; border-radius: 6px;
+    font-size: 0.78rem; font-weight: 700; padding: 5px 10px; cursor: pointer;
+    flex: 0 0 auto;
+}
+.lcalert-assign-btn:disabled { opacity: 0.5; cursor: default; }
+.lcalert-empty { font-size: 0.82rem; color: #607d8b; padding: 4px 0; }
+.lcalert-sched-info { font-size: 0.78rem; color: #2e7d32; margin-top: 4px; }
+.lcalert-more {
+    font-size: 0.78rem; color: #00897b; cursor: pointer; font-weight: 700;
+    margin-top: 6px; display: inline-block;
+}
 /* アイコン設定ボタン */
 .icon-setting-row {
     display: flex; align-items: center; gap: 12px;
@@ -219,6 +272,191 @@
         </button>
     </div>
 </div>
+
+<!-- top-lifecheck-alert-v1 : 生活機能チェック 実施忘れお知らせ -->
+<div class="lcalert-section" id="lcalert-accordion" style="display:none;">
+    <div class="lcalert-header" onclick="lcAlertToggle()">
+        <div style="display:flex;align-items:center;gap:6px;flex:1;">
+            <span class="material-symbols-outlined">assignment_late</span>
+            <span>生活機能チェック お知らせ</span>
+            <span class="lcalert-badge" id="lcalert-badge">0</span>
+        </div>
+        <span class="material-symbols-outlined" id="lcalert-chevron" style="font-size:18px;color:#9aa0a6;transition:transform 0.2s;">expand_more</span>
+    </div>
+    <div class="lcalert-body" id="lcalert-body" style="display:none;">
+        <div id="lcalert-content"><div class="lcalert-empty">読み込み中...</div></div>
+    </div>
+</div>
+<script>
+// top-lifecheck-alert-v1
+var LCALERT_NEW_LIMIT = 5;       // 未着手は最初これだけ表示
+var LCALERT_state = { expandedNew: false, data: null };
+
+function lcAlertToggle() {
+    var body = document.getElementById("lcalert-body");
+    var chev = document.getElementById("lcalert-chevron");
+    if (!body) return;
+    if (body.style.display === "none") {
+        body.style.display = "block";
+        if (chev) chev.style.transform = "rotate(180deg)";
+    } else {
+        body.style.display = "none";
+        if (chev) chev.style.transform = "rotate(0deg)";
+    }
+}
+
+function lcAlertEsc(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function lcAlertTodayStr() {
+    var d = new Date();
+    var m = ("0"+(d.getMonth()+1)).slice(-2);
+    var day = ("0"+d.getDate()).slice(-2);
+    return d.getFullYear()+"-"+m+"-"+day;
+}
+
+function lcAlertItemHtml(a, kind) {
+    var tagClass = (kind === "overdue") ? "lcalert-tag-overdue" : "lcalert-tag-new";
+    var tagText  = (kind === "overdue") ? "更新期限切れ" : "未着手";
+    var sub = "";
+    if (kind === "overdue" && a.last_check_date) {
+        sub = '<span class="lcalert-tag '+tagClass+'">'+tagText+'</span>'
+            + '<span style="font-size:0.72rem;color:#607d8b;margin-left:6px;">前回 '+lcAlertEsc(a.last_check_date)+'</span>';
+    } else {
+        sub = '<span class="lcalert-tag '+tagClass+'">'+tagText+'</span>';
+    }
+    var pid = lcAlertEsc(a.patient_id);
+    if (a.status === "scheduled") {
+        return '<div class="lcalert-item" data-pid="'+pid+'">'
+            + '<div class="lcalert-row1"><span class="lcalert-name">'+lcAlertEsc(a.user_name)+'</span>'
+            + '<span class="lcalert-tag lcalert-tag-scheduled">予定済み</span></div>'
+            + '<div class="lcalert-sched-info">'+lcAlertEsc(a.scheduled_date)+' / 担当 '+lcAlertEsc(a.assignee_name)+'</div>'
+            + '</div>';
+    }
+    return '<div class="lcalert-item" data-pid="'+pid+'" data-ym="'+lcAlertEsc(a.target_ym)+'" data-name="'+lcAlertEsc(a.user_name)+'">'
+        + '<div class="lcalert-row1"><span class="lcalert-name">'+lcAlertEsc(a.user_name)+'</span>'
+        + '<span>'+sub+'</span></div>'
+        + '<div class="lcalert-row2">'
+        + '<input type="text" class="lcalert-assignee" placeholder="担当者名">'
+        + '<input type="date" class="lcalert-date" value="'+lcAlertTodayStr()+'">'
+        + '<button type="button" class="lcalert-assign-btn" onclick="lcAlertAssign(this)">予定登録</button>'
+        + '</div></div>';
+}
+
+function lcAlertRender() {
+    var data = LCALERT_state.data || {alerts:[]};
+    var alerts = data.alerts || [];
+    var overdue = alerts.filter(function(a){ return !a.never_checked && a.status !== "done"; });
+    var fresh   = alerts.filter(function(a){ return a.never_checked && a.status !== "done"; });
+    var html = "";
+
+    // 更新期限切れ（主役）
+    html += '<div class="lcalert-group-title lcalert-group-overdue">'
+         +  '<span class="material-symbols-outlined" style="font-size:16px;">history</span>'
+         +  '更新期限切れ '+overdue.length+'名</div>';
+    if (overdue.length === 0) {
+        html += '<div class="lcalert-empty">該当なし</div>';
+    } else {
+        overdue.forEach(function(a){ html += lcAlertItemHtml(a, "overdue"); });
+    }
+
+    // 未着手（控えめ・折りたたみ）
+    html += '<div class="lcalert-group-title lcalert-group-new" style="margin-top:12px;">'
+         +  '<span class="material-symbols-outlined" style="font-size:16px;">fiber_new</span>'
+         +  '未着手（まだ一度も評価なし） '+fresh.length+'名</div>';
+    if (fresh.length === 0) {
+        html += '<div class="lcalert-empty">該当なし</div>';
+    } else {
+        var shown = LCALERT_state.expandedNew ? fresh : fresh.slice(0, LCALERT_NEW_LIMIT);
+        shown.forEach(function(a){ html += lcAlertItemHtml(a, "new"); });
+        if (!LCALERT_state.expandedNew && fresh.length > LCALERT_NEW_LIMIT) {
+            html += '<span class="lcalert-more" onclick="lcAlertExpandNew()">他 '+(fresh.length-LCALERT_NEW_LIMIT)+'名を表示</span>';
+        }
+    }
+    document.getElementById("lcalert-content").innerHTML = html;
+}
+
+function lcAlertExpandNew() {
+    LCALERT_state.expandedNew = true;
+    lcAlertRender();
+}
+
+async function lcAlertAssign(btn) {
+    var item = btn.closest(".lcalert-item");
+    if (!item) return;
+    var pid = item.getAttribute("data-pid");
+    var ym  = item.getAttribute("data-ym");
+    var name = item.getAttribute("data-name");
+    var assignee = (item.querySelector(".lcalert-assignee") || {}).value || "";
+    var sched = (item.querySelector(".lcalert-date") || {}).value || "";
+    assignee = assignee.trim();
+    if (!assignee) { alert("担当者名を入力してください"); return; }
+    if (!sched) { alert("予定日を入力してください"); return; }
+    btn.disabled = true;
+    btn.textContent = "登録中...";
+    try {
+        var r = await fetch("/api/life_check_assign", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({patient_id:pid, target_ym:ym, assignee_name:assignee, scheduled_date:sched})
+        });
+        var j = await r.json();
+        if (j && j.status === "success") {
+            // 該当alertをscheduledに更新して再描画
+            (LCALERT_state.data.alerts || []).forEach(function(a){
+                if (a.patient_id === pid) {
+                    a.status = "scheduled";
+                    a.assignee_name = assignee;
+                    a.scheduled_date = sched;
+                }
+            });
+            lcAlertRender();
+            lcAlertUpdateBadge();
+        } else {
+            alert("登録に失敗しました: " + (j && j.message ? j.message : "unknown"));
+            btn.disabled = false;
+            btn.textContent = "予定登録";
+        }
+    } catch(e) {
+        alert("通信エラー: " + e);
+        btn.disabled = false;
+        btn.textContent = "予定登録";
+    }
+}
+
+function lcAlertUpdateBadge() {
+    var data = LCALERT_state.data || {alerts:[]};
+    var pending = (data.alerts || []).filter(function(a){ return a.status !== "done" && a.status !== "scheduled"; }).length;
+    var badge = document.getElementById("lcalert-badge");
+    if (badge) badge.textContent = pending;
+    var sec = document.getElementById("lcalert-accordion");
+    // 予定済み含め何か対象が残っていれば表示。完全に0なら隠す。
+    var anyVisible = (data.alerts || []).filter(function(a){ return a.status !== "done"; }).length;
+    if (sec) sec.style.display = anyVisible > 0 ? "block" : "none";
+}
+
+async function lcAlertInit() {
+    try {
+        var r = await fetch("/api/life_check_alerts", {headers:{"Accept":"application/json"}});
+        var data = await r.json();
+        LCALERT_state.data = data || {alerts:[]};
+        var anyVisible = (LCALERT_state.data.alerts || []).filter(function(a){ return a.status !== "done"; }).length;
+        if (anyVisible > 0) {
+            document.getElementById("lcalert-accordion").style.display = "block";
+            lcAlertUpdateBadge();
+            lcAlertRender();
+        }
+    } catch(e) {
+        // 失敗時はカードを出さない（控えめ要件）
+        console.log("lcAlertInit failed", e);
+    }
+}
+document.addEventListener("DOMContentLoaded", lcAlertInit);
+</script>
+<!-- /top-lifecheck-alert-v1 -->
 
 {% if my_tasks %}
 <div class="birthday-section" id="task-accordion" style="border-color:#1a73e8;">

@@ -9141,6 +9141,315 @@ def api_delete_life_check():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# lifecheck-alert-api-v1: 生活機能チェック 実施忘れアラート + 担当者アサイン
+def _life_add_months(ym_date, months):
+    """date に months か月を加算した date を返す（日は1固定で月計算）"""
+    from datetime import date as _date
+    y = ym_date.year + (ym_date.month - 1 + months) // 12
+    m = (ym_date.month - 1 + months) % 12 + 1
+    return _date(y, m, 1)
+
+
+def _life_check_target_ym(latest_date_str, today_date):
+    """
+    最新check_date(文字列 'YYYY-MM-DD' or None) と当日 today_date(date) から
+    対象月 'YYYY-MM' を返す。対象外なら None。
+      - 未評価(None/空) -> 当月（即対象）
+      - 評価済み -> 最新+3か月の月初が当月の月初以前なら、その月を対象月として返す
+    """
+    from datetime import date as _date
+    cur_first = _date(today_date.year, today_date.month, 1)
+    if not latest_date_str:
+        return "%04d-%02d" % (cur_first.year, cur_first.month)
+    try:
+        parts = str(latest_date_str)[:10].split("-")
+        ld = _date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except Exception:
+        return "%04d-%02d" % (cur_first.year, cur_first.month)
+    due_first = _life_add_months(ld, 3)
+    due_first = _date(due_first.year, due_first.month, 1)
+    if due_first <= cur_first:
+        return "%04d-%02d" % (cur_first.year, cur_first.month)
+    return None
+
+
+@app.route('/api/life_check_alerts')  # lifecheck-alert-api-v1
+@login_required
+def api_life_check_alerts():
+    """在籍利用者の生活機能チェック実施忘れ対象者を算出して返す（動的補充あり）。"""
+    try:
+        from datetime import date as _date
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        today_s = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        try:
+            tp = today_s.split("-")
+            today_d = _date(int(tp[0]), int(tp[1]), int(tp[2]))
+        except Exception:
+            today_d = datetime.now(tokyo_tz).date()
+        cur_ym = "%04d-%02d" % (today_d.year, today_d.month)
+
+        patients = get_patients(supabase, f_code)
+        # 在籍フィルタ: 中止でない、かつ discontinued_date が無い or 今日以降
+        active = []
+        for p in patients:
+            if p.get("is_discontinued"):
+                continue
+            dd = (p.get("discontinued_date") or "").strip()
+            if dd and dd < today_s:
+                continue
+            if p.get("id"):
+                active.append(p)
+
+        pid_list = [str(p["id"]) for p in active]
+        latest_map = {}  # patient_id -> 最新 check_date 'YYYY-MM-DD'
+        if pid_list:
+            lc = supabase.table("life_function_checks").select(
+                "patient_id,check_date").eq("facility_code", f_code).in_(
+                "patient_id", pid_list).execute()
+            for r in (lc.data or []):
+                pid = str(r.get("patient_id") or "")
+                cd = str(r.get("check_date") or "")[:10]
+                if not pid or not cd:
+                    continue
+                if pid not in latest_map or cd > latest_map[pid]:
+                    latest_map[pid] = cd
+
+        # 対象者算出 + 動的補充（当月対象のみ）
+        targets = {}  # pid -> {target_ym, last_check_date, never}
+        for p in active:
+            pid = str(p["id"])
+            latest = latest_map.get(pid)
+            tym = _life_check_target_ym(latest, today_d)
+            if tym is None:
+                continue
+            # 当月分のみアラート対象として扱う（過去未実施は当月に集約）
+            targets[pid] = {
+                "target_ym": cur_ym,
+                "last_check_date": latest or "",
+                "never": latest is None,
+                "user_name": p.get("user_name") or "",
+            }
+
+        # 動的補充: 当月 target_ym の行が無ければ unassigned で insert
+        if targets:
+            existing = supabase.table("life_check_appointments").select(
+                "patient_id,target_ym,status,assignee_name,scheduled_date,"
+                "calendar_event_id").eq("facility_code", f_code).eq(
+                "target_ym", cur_ym).execute()
+            existing_map = {}
+            for r in (existing.data or []):
+                existing_map[str(r.get("patient_id"))] = r
+            for pid, info in targets.items():
+                if pid in existing_map:
+                    continue
+                try:
+                    supabase.table("life_check_appointments").insert({
+                        "facility_code": f_code,
+                        "patient_id": pid,
+                        "target_ym": cur_ym,
+                        "status": "unassigned",
+                    }).execute()
+                except Exception as _ins_err:
+                    # UNIQUE 競合などは無視（既に補充済み）
+                    print("[life_alert] insert skip: %s" % _ins_err, flush=True)
+            # 補充後に再取得（calendar_event_id 等の最新状態を得る）
+            existing = supabase.table("life_check_appointments").select(
+                "patient_id,target_ym,status,assignee_name,scheduled_date,"
+                "calendar_event_id").eq("facility_code", f_code).eq(
+                "target_ym", cur_ym).execute()
+            existing_map = {}
+            for r in (existing.data or []):
+                existing_map[str(r.get("patient_id"))] = r
+        else:
+            existing_map = {}
+
+        # lifecheck-alert-orphan-v3: scheduled行のカレンダーイベント実在確認。
+        # 予定が削除されていたら unassigned に戻して再度登録を促す。
+        sched_eids = []
+        eid_to_pid = {}
+        for pid, row in existing_map.items():
+            if row.get("status") == "scheduled" and row.get("calendar_event_id"):
+                eid = row.get("calendar_event_id")
+                sched_eids.append(eid)
+                eid_to_pid[str(eid)] = pid
+        if sched_eids:
+            alive = set()
+            try:
+                ev = supabase.table("calendar_events").select("id").eq(
+                    "facility_code", f_code).in_("id", sched_eids).execute()
+                for r in (ev.data or []):
+                    alive.add(str(r.get("id")))
+            except Exception as _ev_err:
+                print("[life_alert] event check failed: %s" % _ev_err, flush=True)
+                alive = None  # 確認失敗時は現状維持（誤って戻さない）
+            if alive is not None:
+                for eid_str, pid in eid_to_pid.items():
+                    if eid_str not in alive:
+                        # 予定が消えている -> unassigned に戻す
+                        try:
+                            supabase.table("life_check_appointments").update({
+                                "status": "unassigned",
+                                "assignee_name": None,
+                                "scheduled_date": None,
+                                "calendar_event_id": None,
+                                "updated_at": datetime.now(tokyo_tz).isoformat(),
+                            }).eq("facility_code", f_code).eq(
+                                "patient_id", pid).eq("target_ym", cur_ym).execute()
+                        except Exception as _rb_err:
+                            print("[life_alert] rollback failed: %s" % _rb_err, flush=True)
+                        # メモリ上の existing_map も更新
+                        if pid in existing_map:
+                            existing_map[pid]["status"] = "unassigned"
+                            existing_map[pid]["assignee_name"] = None
+                            existing_map[pid]["scheduled_date"] = None
+                            existing_map[pid]["calendar_event_id"] = None
+
+        alerts = []
+        pending = 0
+        for pid, info in targets.items():
+            row = existing_map.get(pid, {})
+            status = row.get("status") or "unassigned"
+            # done判定: 最新check_dateの月が当月以降なら実施済み扱い
+            last = info["last_check_date"]
+            is_done = bool(last and last[:7] >= cur_ym)
+            if is_done:
+                status = "done"
+            if status not in ("done", "scheduled"):  # lifecheck-alert-fix-v2
+                pending += 1
+            alerts.append({
+                "patient_id": pid,
+                "user_name": info["user_name"],
+                "target_ym": cur_ym,
+                "status": status,
+                "assignee_name": row.get("assignee_name") or "",
+                "scheduled_date": row.get("scheduled_date") or "",
+                "calendar_event_id": row.get("calendar_event_id"),
+                "never_checked": info["never"],
+                "last_check_date": last,
+            })
+        # 名前順
+        alerts.sort(key=lambda a: a.get("user_name") or "")
+        return jsonify({
+            "alerts": alerts,
+            "target_ym": cur_ym,
+            "count": pending,
+        })
+    except Exception as e:
+        print("[life_alert] error: %s" % e, flush=True)
+        return jsonify({"alerts": [], "count": 0, "error": str(e)}), 200
+
+
+@app.route('/api/life_check_assign', methods=['POST'])  # lifecheck-alert-api-v1
+@login_required
+def api_life_check_assign():
+    """担当者+予定日を登録し scheduled に更新、カレンダーへ相乗りイベントを作成する。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        patient_id = str(data.get("patient_id", "")).strip()
+        target_ym = str(data.get("target_ym", "")).strip()
+        assignee = str(data.get("assignee_name", "")).strip()
+        sched = str(data.get("scheduled_date", "")).strip()
+        if not patient_id or not target_ym or not assignee or not sched:
+            return jsonify({"status": "error",
+                            "message": "patient_id, target_ym, assignee_name, scheduled_date ha hissu desu"}), 400
+
+        # 利用者名の解決（カレンダーtitle用）
+        user_name = ""
+        try:
+            pp = supabase.table("patient_profiles").select("user_name").eq(
+                "facility_code", f_code).eq("id", patient_id).execute()
+            if pp.data:
+                user_name = pp.data[0].get("user_name") or ""
+        except Exception:
+            pass
+
+        # appointments 行を確保（無ければ作る） lifecheck-alert-fix-v2
+        existing = supabase.table("life_check_appointments").select(
+            "id,calendar_event_id").eq(
+            "facility_code", f_code).eq("patient_id", patient_id).eq(
+            "target_ym", target_ym).execute()
+        prev_event_id = None
+        if existing.data:
+            appt_id = existing.data[0]["id"]
+            prev_event_id = existing.data[0].get("calendar_event_id")
+        else:
+            ins = supabase.table("life_check_appointments").insert({
+                "facility_code": f_code,
+                "patient_id": patient_id,
+                "target_ym": target_ym,
+                "status": "unassigned",
+            }).execute()
+            appt_id = ins.data[0]["id"] if ins.data else None
+
+        # カレンダーへ相乗りイベント作成（休み連絡と同じ作法）
+        eid = None
+        try:
+            cal_id = _get_or_create_system_calendar(supabase, f_code, my_name)
+            if cal_id:
+                title = "在宅アセスメント " + (user_name + "様" if user_name else "")
+                memo = "生活機能チェック 担当:" + assignee
+                cal_payload = {
+                    "facility_code": f_code,
+                    "calendar_id": cal_id,
+                    "title": title.strip(),
+                    "event_date": sched,
+                    "end_date": sched,
+                    "all_day": True,
+                    "color": "#1976d2",
+                    "memo": memo,
+                    "created_by": my_name,
+                }
+                if prev_event_id:  # lifecheck-alert-fix-v2: 既存イベントを更新（孤児防止）
+                    upd_payload = {
+                        "title": title.strip(),
+                        "event_date": sched,
+                        "end_date": sched,
+                        "memo": memo,
+                    }
+                    supabase.table("calendar_events").update(upd_payload).eq(
+                        "id", prev_event_id).eq("facility_code", f_code).execute()
+                    eid = prev_event_id
+                else:
+                    cal_res = supabase.table("calendar_events").insert(cal_payload).execute()
+                    if cal_res.data:
+                        eid = cal_res.data[0]["id"]
+                    else:
+                        fr = supabase.table("calendar_events").select("id").eq(
+                            "facility_code", f_code).eq("calendar_id", cal_id).eq(
+                            "event_date", sched).eq("created_by", my_name).order(
+                            "created_at", desc=True).limit(1).execute()
+                        if fr.data:
+                            eid = fr.data[0]["id"]
+        except Exception as _cal_err:
+            print("[life_assign] calendar sync failed: %s" % _cal_err, flush=True)
+
+        # appointments を scheduled に更新
+        upd = {
+            "status": "scheduled",
+            "assignee_name": assignee,
+            "scheduled_date": sched,
+            "updated_at": datetime.now(tokyo_tz).isoformat(),
+        }
+        if eid is not None:
+            upd["calendar_event_id"] = eid
+        if appt_id is not None:
+            supabase.table("life_check_appointments").update(upd).eq(
+                "id", appt_id).execute()
+        else:
+            supabase.table("life_check_appointments").update(upd).eq(
+                "facility_code", f_code).eq("patient_id", patient_id).eq(
+                "target_ym", target_ym).execute()
+
+        return jsonify({"status": "success", "calendar_event_id": eid})
+    except Exception as e:
+        print("[life_assign] error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # life-assist-api: 生活機能チェック AI相談（補助型）
 _LIFE_ASSIST_ADL = {
     "adl_eating":   ("食事",   [(10, "自立"), (5, "部分介助"), (0, "全介助")]),
