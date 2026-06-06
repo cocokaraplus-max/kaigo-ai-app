@@ -88,10 +88,12 @@
 .lc-indep-val { color:#9aa0a6; }
 .lc-indep-val.has-val { color:#0C447C; font-weight:700; }
 /* lc-indep-modal-v1 */
+.lc-indep-cell { display:flex; flex-direction:column; height:100%; }  /* lc-modal-gap-v1: 2枠の高さ揃え */
 .lc-indep-cell .lc-indep-label { min-height:2.4em; display:flex; align-items:flex-end; }
-.lc-modal-back { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:2000; padding:16px; box-sizing:border-box; }  /* lc-layout-center-v1: 中央表示 */
+.lc-indep-cell .lc-indep-btn { margin-top:auto; }
+.lc-modal-back { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:2000; padding:16px 16px 150px; box-sizing:border-box; }  /* lc-layout-center-v1 / lc-modal-gap-v1: ナビを避ける下余白 */
 .lc-modal-back.open { display:flex; }
-.lc-modal { background:#fff; width:100%; max-width:440px; max-height:80vh; border-radius:16px; display:flex; flex-direction:column; animation:lcFadeIn 0.18s ease; overflow:hidden; }
+.lc-modal { background:#fff; width:100%; max-width:440px; max-height:70vh; border-radius:16px; display:flex; flex-direction:column; animation:lcFadeIn 0.18s ease; overflow:hidden; }  /* lc-modal-gap-v1 */
 @keyframes lcFadeIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
 .lc-modal-head { padding:14px 16px; border-bottom:1px solid #eef1f5; display:flex; align-items:center; justify-content:space-between; }
 .lc-modal-title { font-size:0.9rem; font-weight:700; color:#0C447C; }
