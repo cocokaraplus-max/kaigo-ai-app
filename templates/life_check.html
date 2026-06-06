@@ -89,10 +89,10 @@
 .lc-indep-val.has-val { color:#0C447C; font-weight:700; }
 /* lc-indep-modal-v1 */
 .lc-indep-cell .lc-indep-label { min-height:2.4em; display:flex; align-items:flex-end; }
-.lc-modal-back { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:flex-end; justify-content:center; z-index:2000; }
+.lc-modal-back { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:2000; padding:16px; box-sizing:border-box; }  /* lc-layout-center-v1: 中央表示 */
 .lc-modal-back.open { display:flex; }
-.lc-modal { background:#fff; width:100%; max-width:480px; max-height:82vh; border-radius:16px 16px 0 0; display:flex; flex-direction:column; animation:lcSlideUp 0.2s ease; }
-@keyframes lcSlideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+.lc-modal { background:#fff; width:100%; max-width:440px; max-height:80vh; border-radius:16px; display:flex; flex-direction:column; animation:lcFadeIn 0.18s ease; overflow:hidden; }
+@keyframes lcFadeIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
 .lc-modal-head { padding:14px 16px; border-bottom:1px solid #eef1f5; display:flex; align-items:center; justify-content:space-between; }
 .lc-modal-title { font-size:0.9rem; font-weight:700; color:#0C447C; }
 .lc-modal-close { border:none; background:#f1f3f4; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:1.0rem; color:#5f6368; }
@@ -175,14 +175,15 @@
         </select>
         <input type="text" id="lc-evaluator_job" placeholder="その他の職種を入力" style="display:none;margin-top:6px;">
       </div>
-      <div class="lc-row"><label>要介護度</label>
-        <select id="lc-care_level"><option value="">選択</option>  {# lc-gender-care-v1 #}
+      <div class="lc-row"><label>介護度</label>  {# lc-layout-center-v1 #}
+        <select id="lc-care_level"><option value="">選択</option>
           <option>事業対象者</option>
           <option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option>
           <option>要介護3</option><option>要介護4</option><option>要介護5</option></select>
       </div>
+      <div class="lc-row"></div>  {# lc-layout-center-v1: 介護度の右を空ける #}
       <div class="lc-row lc-indep-cell">  {# lc-indep-modal-v1 #}
-        <label class="lc-indep-label">障害高齢者の日常生活自立度（寝たきり度）</label>
+        <label class="lc-indep-label">障害高齢者の日常生活自立度<br>（寝たきり度）</label>  {# lc-layout-center-v1 #}
         <input type="hidden" id="lc-adl_independence">
         <button type="button" class="lc-indep-btn" data-indep="adl"><span class="lc-indep-val" id="lc-indep-val-adl">タップして選択</span><span class="material-symbols-outlined">unfold_more</span></button>
       </div>
