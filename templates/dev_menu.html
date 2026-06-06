@@ -130,6 +130,33 @@
     </div>
 </div>
 
+<!-- アップデート情報の管理 dev-app-updates-ui-v1 -->
+<div class="dev-section" id="au-section">
+    <div class="dev-section-title">
+        <span class="material-symbols-outlined">campaign</span>
+        アップデート情報の管理
+    </div>
+    <div class="dev-section-body">
+        <div style="font-size:0.78rem;color:#5f6368;margin-bottom:10px;">TOPページの「アップデート情報」に表示される内容を編集できます。本文は1行＝1項目（改行で区切り）。並び順は数値が大きいほど上に表示。</div>
+        <button type="button" id="au-new-btn" style="background:#9c27b0;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;margin-bottom:12px;">＋ 新規追加</button>
+        <div id="au-form" style="display:none;border:1.5px solid #e0c3ec;border-radius:10px;padding:12px;margin-bottom:14px;background:#faf5fc;">
+            <input type="hidden" id="au-id">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div style="flex:1;"><label style="font-size:0.72rem;color:#5f6368;font-weight:700;">バージョン</label><input id="au-version" placeholder="Ver.4.4" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:7px;font-size:0.82rem;box-sizing:border-box;"></div>
+                <div style="flex:1;"><label style="font-size:0.72rem;color:#5f6368;font-weight:700;">日付</label><input id="au-date" placeholder="2026年6月" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:7px;font-size:0.82rem;box-sizing:border-box;"></div>
+                <div style="width:80px;"><label style="font-size:0.72rem;color:#5f6368;font-weight:700;">並び順</label><input id="au-sort" type="number" placeholder="60" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:7px;font-size:0.82rem;box-sizing:border-box;"></div>
+            </div>
+            <label style="font-size:0.72rem;color:#5f6368;font-weight:700;">内容（1行＝1項目）</label>
+            <textarea id="au-body" rows="5" placeholder="新機能を追加しました&#10;〇〇を改善しました" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:7px;font-size:0.82rem;box-sizing:border-box;margin-bottom:8px;"></textarea>
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;margin-bottom:10px;"><input type="checkbox" id="au-published" checked> 公開する（オフ＝下書き）</label>
+            <div style="display:flex;gap:8px;">
+                <button type="button" id="au-save-btn" style="background:#9c27b0;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:0.82rem;font-weight:700;cursor:pointer;">保存</button>
+                <button type="button" id="au-cancel-btn" style="background:#eee;color:#333;border:none;border-radius:8px;padding:8px 16px;font-size:0.82rem;cursor:pointer;">キャンセル</button>
+            </div>
+        </div>
+        <div id="au-list" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
+    </div>
+</div>
 <!-- 環境変数チェック -->
 <div class="dev-section">
     <div class="dev-section-title">
@@ -497,6 +524,48 @@ async function editExpiry(facilityCode, currentExpiry) {
     alert('失敗: ' + (data.message || ''));
   }
 }
+
+// ===== dev-app-updates-ui-v1: アップデート情報管理 =====
+function auEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+async function auLoad(){
+  var list=document.getElementById("au-list");
+  try{
+    var r=await fetch("/api/app_updates?all=true");
+    var j=await r.json();
+    var ups=j.updates||[];
+    if(!ups.length){list.innerHTML="まだ登録がありません。";return;}
+    list.innerHTML=ups.map(function(u){
+      var preview=auEsc((u.body||"").split("\n")[0]||"").slice(0,40);
+      var pub=u.is_published?"":" <span style=\"color:#ea4335;font-weight:700;\">[下書き]</span>";
+      return '<div style="border:1px solid #eee;border-radius:9px;padding:10px;margin-bottom:8px;background:#fff;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'+
+        '<div><b style="color:#9c27b0;">'+auEsc(u.version)+'</b> <span style="color:#80868b;font-size:0.74rem;">'+auEsc(u.release_date||"")+'</span>'+pub+'<span style="color:#aaa;font-size:0.7rem;"> (順:'+(u.sort_order||0)+')</span></div>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0;"><button onclick="auEdit(\''+u.id+'\')" style="background:#e8f0fe;color:#1a73e8;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;">編集</button>'+
+        '<button onclick="auDelete(\''+u.id+'\',\''+auEsc(u.version)+'\')" style="background:#fce8e6;color:#ea4335;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;">削除</button></div></div>'+
+        '<div style="font-size:0.74rem;color:#5f6368;margin-top:5px;">'+preview+'…</div></div>';
+    }).join("");
+    window._auMap={}; ups.forEach(function(u){window._auMap[u.id]=u;});
+  }catch(e){list.innerHTML="読み込み失敗: "+auEsc(String(e));}
+}
+function auOpenForm(){document.getElementById("au-form").style.display="block";}
+function auCloseForm(){document.getElementById("au-form").style.display="none";}
+function auClear(){document.getElementById("au-id").value="";document.getElementById("au-version").value="";document.getElementById("au-date").value="";document.getElementById("au-sort").value="";document.getElementById("au-body").value="";document.getElementById("au-published").checked=true;}
+function auEdit(id){var u=(window._auMap||{})[id];if(!u)return;document.getElementById("au-id").value=u.id;document.getElementById("au-version").value=u.version||"";document.getElementById("au-date").value=u.release_date||"";document.getElementById("au-sort").value=u.sort_order||0;document.getElementById("au-body").value=u.body||"";document.getElementById("au-published").checked=!!u.is_published;auOpenForm();document.getElementById("au-form").scrollIntoView({behavior:"smooth",block:"center"});}
+async function auSave(){
+  var payload={id:document.getElementById("au-id").value||null,version:document.getElementById("au-version").value,release_date:document.getElementById("au-date").value,sort_order:parseInt(document.getElementById("au-sort").value||"0",10),body:document.getElementById("au-body").value,is_published:document.getElementById("au-published").checked};
+  if(!payload.version.trim()||!payload.body.trim()){alert("バージョンと内容は必須です");return;}
+  try{var r=await fetch("/api/app_updates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});var j=await r.json();if(j.status==="success"){auClear();auCloseForm();auLoad();}else{alert("保存失敗: "+(j.message||""));}}catch(e){alert("通信エラー: "+e);}
+}
+async function auDelete(id,ver){
+  if(!confirm(ver+" を削除しますか？この操作は元に戻せません。"))return;
+  try{var r=await fetch("/api/app_updates/"+id,{method:"DELETE"});var j=await r.json();if(j.status==="success"){auLoad();}else{alert("削除失敗: "+(j.message||""));}}catch(e){alert("通信エラー: "+e);}
+}
+document.addEventListener("DOMContentLoaded",function(){
+  var nb=document.getElementById("au-new-btn");if(nb)nb.addEventListener("click",function(){auClear();auOpenForm();});
+  var sb=document.getElementById("au-save-btn");if(sb)sb.addEventListener("click",auSave);
+  var cb=document.getElementById("au-cancel-btn");if(cb)cb.addEventListener("click",function(){auClear();auCloseForm();});
+  if(document.getElementById("au-list"))auLoad();
+});
 </script>
 
 {% endblock %}
