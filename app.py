@@ -4968,6 +4968,18 @@ JSON配列のみ。マークダウン不要。
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
+    """\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u306e\u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u5224\u5b9a\u3002facilities.sekkotsu_mode_allowed \u304b\u3064 ledger_settings.sekkotsu_mode_enabled \u304c\u4e21\u65b9True\u306a\u3089True\u3002"""
+    try:
+        fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+        if not (fa.data and fa.data[0].get('sekkotsu_mode_allowed')):
+            return False
+        ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
+        return bool(ls.data and ls.data[0].get('sekkotsu_mode_enabled'))
+    except Exception:
+        return False
+
+
 @app.route('/api/ledger/import_nikkei', methods=['POST'])  # nikkei-import-api-v1
 @login_required
 def api_ledger_import_nikkei():
@@ -4979,6 +4991,8 @@ def api_ledger_import_nikkei():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         import csv as _csv, io as _io, hashlib as _hashlib
         f = request.files.get('file')
