@@ -145,6 +145,7 @@
             <option value="smaregi">スマレジ</option>
             <option value="bank">銀行明細</option>
             <option value="card">カード利用履歴</option>
+            <option value="nikkei">接骨院 日計表</option>  <!-- nikkei-ui-v1 -->
         </select>
     </div>
     <div class="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
@@ -794,7 +795,9 @@ async function importCSV(input) {
     formData.append('csv_type', document.getElementById('csv-type').value);
     const btn = document.querySelector('#pane-import .csv-drop-zone');
     btn.textContent = 'AI解析中...';
-    const res = await fetch('/api/ledger/import_csv', { method: 'POST', body: formData });
+    const _csvType = document.getElementById('csv-type').value;  // nikkei-ui-v1
+    const _csvUrl = (_csvType === 'nikkei') ? '/api/ledger/import_nikkei' : '/api/ledger/import_csv';
+    const res = await fetch(_csvUrl, { method: 'POST', body: formData });
     const data = await res.json();
     btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
     if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
