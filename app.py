@@ -4776,6 +4776,10 @@ def api_ledger_entry_save():
             'created_by': my_name,
             'division_id': int(_rdiv) if _rdiv else None,
         }
+        # entry-new3cols-v1: \u63a5\u9aa8\u9662\u53d6\u8fbc\u7b49\u3067\u9001\u3089\u308c\u305f\u5834\u5408\u306e\u307f\u4fdd\u5b58\uff08\u5f8c\u65b9\u4e92\u63db\uff09
+        for _k in ('insurance_type', 'settlement_status', 'import_batch_id'):
+            if data.get(_k) is not None:
+                payload[_k] = data.get(_k)
         entry_id = data.get('id')
         if entry_id:
             # 編集時: 旧日付も取得して両日を再計算
