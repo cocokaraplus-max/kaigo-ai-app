@@ -6554,7 +6554,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until").execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed").execute()  # dev-sekkotsu-allow-v1
         facilities = res.data or []
     except: pass
 
@@ -6587,6 +6587,7 @@ def dev_menu():
                 "trial_ends_at": fac.get("trial_ends_at", "")[:10] if fac.get("trial_ends_at") else "",
                 "discount_rate": fac.get("discount_rate", 0) or 0,
                 "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
+                "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -6687,6 +6688,23 @@ def api_dev_update_discount():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/dev/toggle_sekkotsu_allowed', methods=['POST'])  # dev-sekkotsu-allow-v1
+def api_dev_toggle_sekkotsu_allowed():
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    allowed = bool(data.get('allowed', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'sekkotsu_mode_allowed': allowed}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 @app.route('/api/dev/toggle_facility_ledger', methods=['POST'])
 def api_dev_toggle_facility_ledger():
