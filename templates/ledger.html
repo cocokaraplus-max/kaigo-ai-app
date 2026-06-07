@@ -160,7 +160,7 @@
     <div id="csv-count" style="font-size:0.78rem;color:#5f6368;"></div>
 </div>
         <div id="csv-preview-list"></div>
-        <button class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>
+        <button id="csv-import-btn" class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>  <!-- csv-double-import-guard-v1 -->
     </div>
 </div>
 
@@ -848,27 +848,56 @@ async function importCSV(input) {
     input.value = '';
 }
 
+var _csvImporting = false;  // csv-double-import-guard-v1
 async function confirmCSVImport() {
+    if (_csvImporting) { return; }  // csv-double-import-guard-v1: 連打防止
     if (!csvEntries || csvEntries.length === 0) {
         alert('取込める仕訳がありません');
         return;
     }
+    // csv-double-import-guard-v1: 同一月の重複取込チェック（日計表のみ）
+    try {
+        var _isNikkei = csvEntries.some(function(e){ return e && e.source === 'nikkei_csv'; });
+        if (_isNikkei) {
+            var _months = {};
+            csvEntries.forEach(function(e){ if (e && e.entry_date) { _months[String(e.entry_date).slice(0,7)] = true; } });
+            for (var _ym in _months) {
+                var _chk = await fetch('/api/ledger/entries?month=' + _ym).then(function(r){ return r.json(); }).catch(function(){ return {}; });
+                var _rows = (_chk.entries || _chk.data || []);
+                var _exists = _rows.some(function(x){ return x && x.source === 'nikkei_csv'; });
+                if (_exists) {
+                    alert('この月（' + _ym + '）はすでに日計表を取込済みです。重複取込を防ぐため中止しました。やり直す場合は既存の取込分を削除してください。');
+                    return;
+                }
+            }
+        }
+    } catch (_err) { /* チェック失敗時は一応続行（サーバー側未実装のため） */ }
+
+    _csvImporting = true;
+    var _btn = document.getElementById('csv-import-btn');  // csv-double-import-guard-v1
+    var _label = _btn ? _btn.textContent : '';
+    if (_btn) { _btn.disabled = true; _btn.style.opacity = '0.6'; _btn.textContent = '取込中…'; }
     var ok = 0, fail = 0;
-    for (var e of csvEntries) {
-        var res = await fetch('/api/ledger/entry', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(e)
-        });
-        var d = await res.json();
-        if (d.status === 'success') ok++; else fail++;
+    try {
+        for (var e of csvEntries) {
+            var res = await fetch('/api/ledger/entry', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(e)
+            });
+            var d = await res.json();
+            if (d.status === 'success') ok++; else fail++;
+        }
+        alert(ok + '件の仕訳を取込みました！' + (fail ? '（' + fail + '件失敗）' : ''));
+        document.getElementById('csv-preview').style.display = 'none';
+        csvSuggestions = [];
+        csvEntries = [];
+        switchTab('journal');
+        loadEntries();
+    } finally {
+        _csvImporting = false;  // csv-double-import-guard-v1
+        if (_btn) { _btn.disabled = false; _btn.style.opacity = ''; _btn.textContent = _label; }
     }
-    alert(ok + '件の仕訳を取込みました！' + (fail ? '（' + fail + '件失敗）' : ''));
-    document.getElementById('csv-preview').style.display = 'none';
-    csvSuggestions = [];
-    csvEntries = [];
-    switchTab('journal');
-    loadEntries();
 }
 
 async function ocrReceipts(input) {
