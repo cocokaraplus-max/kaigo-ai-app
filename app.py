@@ -4968,6 +4968,113 @@ JSON配列のみ。マークダウン不要。
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/ledger/import_nikkei', methods=['POST'])  # nikkei-import-api-v1
+@login_required
+def api_ledger_import_nikkei():
+    """\u65e5\u8a08\u8868CSV\u3092\u30eb\u30fc\u30eb\u30d9\u30fc\u30b9\u3067\u73fe\u91d1\u5206\u4ed5\u8a33\u306b\u5909\u63db\u3057\u3066\u8fd4\u3059\uff08\u4fdd\u5b58\u306f\u30d5\u30ed\u30f3\u30c8\u78ba\u8a8d\u5f8c\uff09\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        import csv as _csv, io as _io, hashlib as _hashlib
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'status': 'error', 'message': '\u30d5\u30a1\u30a4\u30eb\u304c\u3042\u308a\u307e\u305b\u3093'}), 400
+        raw = f.read()
+        content = None
+        for enc in ('utf-8-sig', 'cp932', 'utf-8'):
+            try:
+                content = raw.decode(enc)
+                break
+            except Exception:
+                content = None
+        if content is None:
+            content = raw.decode('cp932', 'replace')
+
+        # \u79d1\u76ee\u30b3\u30fc\u30c9 -> id
+        acc_res = supabase.table('accounts').select('id,code').eq('facility_code', f_code).eq('is_active', True).execute()
+        code_to_id = {a['code']: a['id'] for a in (acc_res.data or [])}
+        # \u5fc5\u8981\u79d1\u76ee\u306e\u5b58\u5728\u78ba\u8a8d
+        missing = [c for c in ('101', '404', '405') if c not in code_to_id]
+        if missing:
+            return jsonify({'status': 'error', 'message': '\u79d1\u76ee\u672a\u4f5c\u6210: ' + ','.join(missing)}), 400
+
+        # \u63a5\u9aa8\u9662 division_id\uff08\u540d\u79f0\u306b\u63a5\u9aa8\u3092\u542b\u3080\u3082\u306e\uff09\u3092\u63a2\u3059\uff08\u7121\u3051\u308c\u3070 None\uff09
+        div_id = None
+        try:
+            d_res = supabase.table('ledger_divisions').select('id,name').eq('facility_code', f_code).eq('is_active', True).execute()
+            for d in (d_res.data or []):
+                if '\u63a5\u9aa8' in (d.get('name') or ''):
+                    div_id = d['id']
+                    break
+        except Exception:
+            div_id = None
+
+        HOKEN_MAP = {'\u56fd\u672c': '\u56fd\u4fdd', '\u56fd\u4fdd': '\u56fd\u4fdd',
+                     '\u7d44\u672c': '\u7d44\u5408', '\u7d44\u5408': '\u7d44\u5408',
+                     '\u5f8c\u671f': '\u5f8c\u671f'}
+
+        def _to_int(x):
+            x = (x or '').strip()
+            return int(x) if x.replace('-', '').isdigit() else 0
+
+        rows = list(_csv.reader(_io.StringIO(content)))
+        if rows and rows[0] and rows[0][0].strip() == '\u65e5\u4ed8':
+            rows = rows[1:]
+        batch = 'nikkei_' + _hashlib.md5(content.encode('utf-8', 'replace')).hexdigest()[:10]
+
+        suggestions = []
+        entries = []
+
+        def _push(date, credit_code, amount, ins, desc, review=False):
+            debit_id = code_to_id.get('101')
+            credit_id = code_to_id.get(credit_code)
+            if not (debit_id and credit_id and amount > 0):
+                return
+            suggestions.append({'entry_date': date, 'debit_code': '101', 'credit_code': credit_code,
+                                 'amount': amount, 'description': desc, 'insurance_type': ins,
+                                 'needs_review': review})
+            entries.append({'facility_code': f_code, 'entry_date': date,
+                            'debit_account_id': debit_id, 'credit_account_id': credit_id,
+                            'amount': amount, 'tax_amount': 0, 'description': desc,
+                            'source': 'nikkei_csv', 'created_by': my_name,
+                            'division_id': div_id, 'insurance_type': ins,
+                            'settlement_status': None, 'import_batch_id': batch})
+
+        for r in rows:
+            if not any((c or '').strip() for c in r):
+                continue
+            if len(r) < 11:
+                continue
+            date = r[0].strip().replace('/', '-')
+            hoken = r[3].strip()
+            nyukin = _to_int(r[10])
+            if nyukin <= 0:
+                continue
+            if hoken == '\u81ea\u8cbb':
+                _push(date, '404', nyukin, '\u81ea\u8cbb', '\u63a5\u9aa8\u9662 \u81ea\u8cbb\u58f2\u4e0a')
+            elif hoken in HOKEN_MAP:
+                ins = HOKEN_MAP[hoken]
+                hbun = _to_int(r[7])
+                hgai = _to_int(r[8])
+                if hbun > 0:
+                    _push(date, '405', hbun, ins, '\u63a5\u9aa8\u9662 \u5065\u5eb7\u4fdd\u967a\u58f2\u4e0a(\u7a93\u53e3\u8ca0\u62c5)')
+                if hgai > 0:
+                    _push(date, '404', hgai, '\u81ea\u8cbb', '\u63a5\u9aa8\u9662 \u81ea\u8cbb\u58f2\u4e0a(\u4fdd\u967a\u5916)')
+            else:
+                _push(date, '404', nyukin, hoken or '\u4e0d\u660e',
+                      '\u63a5\u9aa8\u9662 \u58f2\u4e0a(\u533a\u5206\u8981\u78ba\u8a8d)', review=True)
+
+        return jsonify({'status': 'success', 'imported': 0, 'batch_id': batch,
+                        'suggestions': suggestions, 'entries': entries})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required
 def api_ledger_ocr_receipt():
