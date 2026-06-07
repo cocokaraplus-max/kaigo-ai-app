@@ -4300,6 +4300,13 @@ def api_ledger_settings_get():
         # 事業部取得
         d_res = supabase.table('ledger_divisions').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
         divisions = d_res.data or []
+        # sekkotsu-settings-v1: \u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u3092 settings \u306b\u4ed8\u52a0
+        try:
+            _fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+            settings['sekkotsu_mode_allowed'] = bool(_fa.data and _fa.data[0].get('sekkotsu_mode_allowed'))
+        except Exception:
+            settings['sekkotsu_mode_allowed'] = False
+        settings['sekkotsu_mode_enabled'] = bool(settings.get('sekkotsu_mode_enabled'))
         return jsonify({'status': 'success', 'settings': settings, 'divisions': divisions})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -4323,6 +4330,16 @@ def api_ledger_settings_save():
             'divisions_enabled': data.get('divisions_enabled', False),
             'cash_fill_division_id': int(_raw_div) if _raw_div else None,
         }
+        # sekkotsu-settings-v1: \u8a31\u53ef\u6e08\u307f\u65bd\u8a2d\u306e\u307f\u6709\u52b9\u5316\u3092\u8a31\u53ef\uff08\u7b2c\u4e00\u6bb5\u968e\u3092\u5c0a\u91cd\uff09
+        if 'sekkotsu_mode_enabled' in data:
+            _want = bool(data.get('sekkotsu_mode_enabled'))
+            _allowed = False
+            try:
+                _fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+                _allowed = bool(_fa.data and _fa.data[0].get('sekkotsu_mode_allowed'))
+            except Exception:
+                _allowed = False
+            payload['sekkotsu_mode_enabled'] = (_want and _allowed)
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
@@ -4776,6 +4793,10 @@ def api_ledger_entry_save():
             'created_by': my_name,
             'division_id': int(_rdiv) if _rdiv else None,
         }
+        # entry-new3cols-v1: \u63a5\u9aa8\u9662\u53d6\u8fbc\u7b49\u3067\u9001\u3089\u308c\u305f\u5834\u5408\u306e\u307f\u4fdd\u5b58\uff08\u5f8c\u65b9\u4e92\u63db\uff09
+        for _k in ('insurance_type', 'settlement_status', 'import_batch_id'):
+            if data.get(_k) is not None:
+                payload[_k] = data.get(_k)
         entry_id = data.get('id')
         if entry_id:
             # 編集時: 旧日付も取得して両日を再計算
@@ -4967,6 +4988,256 @@ JSON配列のみ。マークダウン不要。
         return jsonify({'status': 'success', 'imported': 0, 'suggestions': suggestions, 'entries': entries})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
+    """\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u306e\u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u5224\u5b9a\u3002facilities.sekkotsu_mode_allowed \u304b\u3064 ledger_settings.sekkotsu_mode_enabled \u304c\u4e21\u65b9True\u306a\u3089True\u3002"""
+    try:
+        fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+        if not (fa.data and fa.data[0].get('sekkotsu_mode_allowed')):
+            return False
+        ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
+        return bool(ls.data and ls.data[0].get('sekkotsu_mode_enabled'))
+    except Exception:
+        return False
+
+
+@app.route('/api/ledger/reconcile', methods=['POST'])  # ledger-reconcile-v1
+@login_required
+def api_ledger_reconcile():
+    """\u65e5\u8a08\u8868\u3068\u30b9\u30de\u30ec\u30b8\u3092\u7a81\u5408\u3057\u3001\u5dee\u984d\u306f\u30b3\u30fc\u30c9\u304c\u7b97\u51fa\u3001\u539f\u56e0\u8aac\u660e\u306e\u307f AI\u3002\u4fdd\u5b58\u306a\u3057\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):  # ledger-reconcile-v1
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        import csv as _csv, io as _io
+        from collections import Counter as _Counter
+
+        def _to_int(x):
+            x = (x or '').strip()
+            return int(x) if x.replace('-', '').isdigit() else 0
+
+        def _read(file_storage):
+            raw = file_storage.read()
+            for enc in ('utf-8-sig', 'cp932', 'utf-8'):
+                try:
+                    return raw.decode(enc)
+                except Exception:
+                    pass
+            return raw.decode('cp932', 'replace')
+
+        f_nik = request.files.get('nikkei')
+        f_sm = request.files.get('smaregi')
+        if not f_nik or not f_sm:
+            return jsonify({'status': 'error', 'message': '\u65e5\u8a08\u8868\u3068\u30b9\u30de\u30ec\u30b8\u306eCSV\u304c\u5fc5\u8981\u3067\u3059'}), 400
+        nik_text = _read(f_nik)
+        sm_text = _read(f_sm)
+
+        # \u65e5\u8a08\u8868: \u5165\u91d1\u984d\u5408\u8a08\uff08\u5165\u91d10\u9664\u304f\uff09
+        nik_rows = list(_csv.reader(_io.StringIO(nik_text)))
+        if nik_rows and nik_rows[0] and nik_rows[0][0].strip() == '\u65e5\u4ed8':
+            nik_rows = nik_rows[1:]
+        nik_total = 0
+        nik_amounts = _Counter()
+        for r in nik_rows:
+            if not any((c or '').strip() for c in r):
+                continue
+            if len(r) < 11:
+                continue
+            ny = _to_int(r[10])
+            if ny <= 0:
+                continue
+            nik_total += ny
+            nik_amounts[ny] += 1
+
+        # \u30b9\u30de\u30ec\u30b8: \u53d6\u6d88\u533a\u5206=1\u9664\u5916\uff0b\u540c\u4e00\u65e5\u6642\u540c\u984d\u96c6\u7d04\u3001\u73fe\u91d1\u5217\u5408\u8a08
+        sm_rows = list(_csv.reader(_io.StringIO(sm_text)))
+        sm_header = sm_rows[0] if sm_rows else []
+        has_cancel = any('\u53d6\u6d88' in (h or '') for h in sm_header)
+        seen = set()
+        sm_cash = 0
+        sm_amounts = _Counter()
+        for r in sm_rows[1:]:
+            if not r or not r[0].strip():
+                continue
+            if has_cancel:
+                if len(r) < 5:
+                    continue
+                if r[1].strip() == '1':
+                    continue
+                key = (r[0].strip(), _to_int(r[2]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sm_cash += _to_int(r[4])
+                sm_amounts[_to_int(r[2])] += 1
+            else:
+                if len(r) < 4:
+                    continue
+                key = (r[0].strip(), _to_int(r[1]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sm_cash += _to_int(r[3])
+                sm_amounts[_to_int(r[1])] += 1
+
+        diff = nik_total - sm_cash
+        by_amount = []
+        for a in sorted(set(list(nik_amounts) + list(sm_amounts)), reverse=True):
+            dc = nik_amounts[a] - sm_amounts[a]
+            if dc != 0:
+                by_amount.append({'amount': a, 'nikkei': nik_amounts[a], 'smaregi': sm_amounts[a], 'diff_count': dc})
+
+        summary = {
+            'nikkei_total': nik_total,
+            'smaregi_cash': sm_cash,
+            'diff': diff,
+            'by_amount_diff': by_amount,
+        }
+
+        # AI \u306f\u8aac\u660e\u306e\u307f\uff08\u6570\u5024\u306f\u30b3\u30fc\u30c9\u304c\u78ba\u5b9a\u3055\u305b\u305f\u3082\u306e\u3092\u6e21\u3059\uff09
+        ai_text = ''
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            _facts = (
+                "\u65e5\u8a08\u8868\u7a93\u53e3\u5165\u91d1\u5408\u8a08=" + str(nik_total) + "\u5186 / "
+                "\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\u5408\u8a08\uff08\u53d6\u6d88\u9664\u5916\u30fb\u91cd\u8907\u96c6\u7d04\u5f8c\uff09=" + str(sm_cash) + "\u5186 / "
+                "\u5dee\u984d\uff08\u65e5\u8a08\u8868\u2212\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\uff09=" + str(diff) + "\u5186\u3002"
+            )
+            _detail = ''
+            if by_amount:
+                _detail = " \u91d1\u984d\u5225\u306e\u4ef6\u6570\u5dee: " + ', '.join(
+                    [str(b['amount']) + "\u5186(\u65e5\u8a08\u8868" + str(b['nikkei']) + "/\u30b9\u30de\u30ec\u30b8" + str(b['smaregi']) + ")" for b in by_amount[:8]]
+                )
+            prompt = (
+                "\u3042\u306a\u305f\u306f\u63a5\u9aa8\u9662\u306e\u4f1a\u8a08\u88dc\u52a9AI\u3067\u3059\u3002\u4ee5\u4e0b\u306f\u30b3\u30fc\u30c9\u304c\u53b3\u5bc6\u306b\u8a08\u7b97\u3057\u305f\u78ba\u5b9a\u5024\u3067\u3059\u3002"
+                "\u6570\u5024\u306f\u7d76\u5bfe\u306b\u5909\u66f4\u305b\u305a\u3001\u3053\u306e\u5dee\u984d\u306e\u8003\u3048\u3089\u308c\u308b\u539f\u56e0\u3068\u63a8\u5968\u30a2\u30af\u30b7\u30e7\u30f3\u3092\u3001\u73fe\u5834\u306e\u4eba\u304c\u8aad\u3093\u3067\u5206\u304b\u308b\u8a00\u8449\u3067\u7c21\u6f54\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+                "\u8003\u3048\u3089\u308c\u308b\u539f\u56e0\u4f8b: \u30ad\u30e3\u30c3\u30b7\u30e5\u30ec\u30b9\u6c7a\u6e08\uff08PayPay/\u697d\u5929/\u30ab\u30fc\u30c9\uff09\u306f\u65e5\u8a08\u8868\u306b\u306f\u8f09\u308b\u304c\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\u306b\u306f\u542b\u307e\u308c\u306a\u3044\u3001\u5165\u529b\u5fd8\u308c\u3001\u30ad\u30e3\u30f3\u30bb\u30eb\u6b8b\u5b58\u3001\u6708\u307e\u305f\u304e\u8a08\u4e0a\u306a\u3069\u3002\n\n"
+                + _facts + _detail
+            )
+            ai_text = model.generate_content([prompt]).text.strip()
+        except Exception as _e:
+            ai_text = ''
+
+        return jsonify({'status': 'success', 'summary': summary, 'ai_explanation': ai_text})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/import_nikkei', methods=['POST'])  # nikkei-import-api-v1
+@login_required
+def api_ledger_import_nikkei():
+    """\u65e5\u8a08\u8868CSV\u3092\u30eb\u30fc\u30eb\u30d9\u30fc\u30b9\u3067\u73fe\u91d1\u5206\u4ed5\u8a33\u306b\u5909\u63db\u3057\u3066\u8fd4\u3059\uff08\u4fdd\u5b58\u306f\u30d5\u30ed\u30f3\u30c8\u78ba\u8a8d\u5f8c\uff09\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        import csv as _csv, io as _io, hashlib as _hashlib
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'status': 'error', 'message': '\u30d5\u30a1\u30a4\u30eb\u304c\u3042\u308a\u307e\u305b\u3093'}), 400
+        raw = f.read()
+        content = None
+        for enc in ('utf-8-sig', 'cp932', 'utf-8'):
+            try:
+                content = raw.decode(enc)
+                break
+            except Exception:
+                content = None
+        if content is None:
+            content = raw.decode('cp932', 'replace')
+
+        # \u79d1\u76ee\u30b3\u30fc\u30c9 -> id
+        acc_res = supabase.table('accounts').select('id,code').eq('facility_code', f_code).eq('is_active', True).execute()
+        code_to_id = {a['code']: a['id'] for a in (acc_res.data or [])}
+        # \u5fc5\u8981\u79d1\u76ee\u306e\u5b58\u5728\u78ba\u8a8d
+        missing = [c for c in ('101', '404', '405') if c not in code_to_id]
+        if missing:
+            return jsonify({'status': 'error', 'message': '\u79d1\u76ee\u672a\u4f5c\u6210: ' + ','.join(missing)}), 400
+
+        # \u63a5\u9aa8\u9662 division_id\uff08\u540d\u79f0\u306b\u63a5\u9aa8\u3092\u542b\u3080\u3082\u306e\uff09\u3092\u63a2\u3059\uff08\u7121\u3051\u308c\u3070 None\uff09
+        div_id = None
+        try:
+            d_res = supabase.table('ledger_divisions').select('id,name').eq('facility_code', f_code).eq('is_active', True).execute()
+            for d in (d_res.data or []):
+                if '\u63a5\u9aa8' in (d.get('name') or ''):
+                    div_id = d['id']
+                    break
+        except Exception:
+            div_id = None
+
+        HOKEN_MAP = {'\u56fd\u672c': '\u56fd\u4fdd', '\u56fd\u4fdd': '\u56fd\u4fdd',
+                     '\u7d44\u672c': '\u7d44\u5408', '\u7d44\u5408': '\u7d44\u5408',
+                     '\u5f8c\u671f': '\u5f8c\u671f'}
+
+        def _to_int(x):
+            x = (x or '').strip()
+            return int(x) if x.replace('-', '').isdigit() else 0
+
+        rows = list(_csv.reader(_io.StringIO(content)))
+        if rows and rows[0] and rows[0][0].strip() == '\u65e5\u4ed8':
+            rows = rows[1:]
+        batch = 'nikkei_' + _hashlib.md5(content.encode('utf-8', 'replace')).hexdigest()[:10]
+
+        suggestions = []
+        entries = []
+
+        def _push(date, credit_code, amount, ins, desc, review=False):
+            debit_id = code_to_id.get('101')
+            credit_id = code_to_id.get(credit_code)
+            if not (debit_id and credit_id and amount > 0):
+                return
+            suggestions.append({'entry_date': date, 'debit_code': '101', 'credit_code': credit_code,
+                                 'amount': amount, 'description': desc, 'insurance_type': ins,
+                                 'needs_review': review})
+            entries.append({'facility_code': f_code, 'entry_date': date,
+                            'debit_account_id': debit_id, 'credit_account_id': credit_id,
+                            'amount': amount, 'tax_amount': 0, 'description': desc,
+                            'source': 'nikkei_csv', 'created_by': my_name,
+                            'division_id': div_id, 'insurance_type': ins,
+                            'settlement_status': None, 'import_batch_id': batch})
+
+        for r in rows:
+            if not any((c or '').strip() for c in r):
+                continue
+            if len(r) < 11:
+                continue
+            date = r[0].strip().replace('/', '-')
+            hoken = r[3].strip()
+            nyukin = _to_int(r[10])
+            if nyukin <= 0:
+                continue
+            if hoken == '\u81ea\u8cbb':
+                _push(date, '404', nyukin, '\u81ea\u8cbb', '\u63a5\u9aa8\u9662 \u81ea\u8cbb\u58f2\u4e0a')
+            elif hoken in HOKEN_MAP:
+                ins = HOKEN_MAP[hoken]
+                hbun = _to_int(r[7])
+                hgai = _to_int(r[8])
+                if hbun > 0:
+                    _push(date, '405', hbun, ins, '\u63a5\u9aa8\u9662 \u5065\u5eb7\u4fdd\u967a\u58f2\u4e0a(\u7a93\u53e3\u8ca0\u62c5)')
+                if hgai > 0:
+                    _push(date, '404', hgai, '\u81ea\u8cbb', '\u63a5\u9aa8\u9662 \u81ea\u8cbb\u58f2\u4e0a(\u4fdd\u967a\u5916)')
+            else:
+                _push(date, '404', nyukin, hoken or '\u4e0d\u660e',
+                      '\u63a5\u9aa8\u9662 \u58f2\u4e0a(\u533a\u5206\u8981\u78ba\u8a8d)', review=True)
+
+        return jsonify({'status': 'success', 'imported': 0, 'batch_id': batch,
+                        'suggestions': suggestions, 'entries': entries})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required
@@ -6412,7 +6683,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until").execute()
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed").execute()  # dev-sekkotsu-allow-v1
         facilities = res.data or []
     except: pass
 
@@ -6445,6 +6716,7 @@ def dev_menu():
                 "trial_ends_at": fac.get("trial_ends_at", "")[:10] if fac.get("trial_ends_at") else "",
                 "discount_rate": fac.get("discount_rate", 0) or 0,
                 "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
+                "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -6545,6 +6817,23 @@ def api_dev_update_discount():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/dev/toggle_sekkotsu_allowed', methods=['POST'])  # dev-sekkotsu-allow-v1
+def api_dev_toggle_sekkotsu_allowed():
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    allowed = bool(data.get('allowed', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'sekkotsu_mode_allowed': allowed}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 @app.route('/api/dev/toggle_facility_ledger', methods=['POST'])
 def api_dev_toggle_facility_ledger():

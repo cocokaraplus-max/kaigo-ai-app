@@ -196,6 +196,7 @@
                     <th>スタッフ</th>
                     <th>記録数</th>
                     <th>出納帳</th>
+                    <th>接骨院</th>  <!-- dev-sekkotsu-toggle-v1 -->
                 </tr>
             </thead>
             <tbody>
@@ -261,6 +262,12 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="toggleFacilityLedger('{{ s.facility_code }}', this.checked)"
                                 {% if s.ledger_enabled %}checked{% endif %}>
+                        </label>
+                    </td>
+                    <td style="text-align:center;">  <!-- dev-sekkotsu-toggle-v1 -->
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleSekkotsuAllowed('{{ s.facility_code }}', this.checked)"
+                                {% if s.sekkotsu_mode_allowed %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
@@ -440,6 +447,17 @@ window.onTTSToggle = function(enabled) {
     .then(function(data) { if (data.error) alert(data.error); })
     .catch(function(){});
 };
+async function toggleSekkotsuAllowed(facilityCode, allowed) {  // dev-sekkotsu-toggle-v1
+  try {
+    const res = await fetch('/api/dev/toggle_sekkotsu_allowed', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({facility_code: facilityCode, allowed: allowed})
+    });
+    const d = await res.json();
+    if (!d.success) alert('接骨院モード許可の更新に失敗: ' + (d.message || ''));
+  } catch (e) { alert('通信エラー: ' + e); }
+}
 async function toggleFacilityLedger(facilityCode, enabled) {
   if (!confirm(facilityCode + ' の出納帳を' + (enabled ? '有効' : '無効') + 'にしますか？')) {
     event.target.checked = !enabled;

@@ -145,6 +145,7 @@
             <option value="smaregi">スマレジ</option>
             <option value="bank">銀行明細</option>
             <option value="card">カード利用履歴</option>
+            <option value="nikkei">接骨院 日計表</option>  <!-- nikkei-ui-v1 -->
         </select>
     </div>
     <div class="csv-drop-zone" onclick="document.getElementById('csv-file-input').click()">
@@ -216,6 +217,20 @@
         </div>
     </div>
 
+    <!-- sekkotsu-toggle-v1: 接骨院モード（許可施設のみ表示） -->
+    <div class="entry-card" id="sekkotsu-mode-card" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="font-size:0.88rem;font-weight:800;color:#202124;">接骨院モード</div>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">日計表CSVの取込・売上突合を有効にします</div>
+            </div>
+            <label style="position:relative;display:inline-block;width:44px;height:24px;">
+                <input type="checkbox" id="toggle-sekkotsu" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
+                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggle-sek-bg"></span>
+                <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;" id="toggle-sek-knob"></span>
+            </label>
+        </div>
+    </div>
     <!-- 事業部管理 -->
     <div class="entry-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -794,7 +809,9 @@ async function importCSV(input) {
     formData.append('csv_type', document.getElementById('csv-type').value);
     const btn = document.querySelector('#pane-import .csv-drop-zone');
     btn.textContent = 'AI解析中...';
-    const res = await fetch('/api/ledger/import_csv', { method: 'POST', body: formData });
+    const _csvType = document.getElementById('csv-type').value;  // nikkei-ui-v1
+    const _csvUrl = (_csvType === 'nikkei') ? '/api/ledger/import_nikkei' : '/api/ledger/import_csv';
+    const res = await fetch(_csvUrl, { method: 'POST', body: formData });
     const data = await res.json();
     btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
     if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
@@ -1020,6 +1037,14 @@ async function loadSettings() {
         divToggle.checked = currentSettings.divisions_enabled || false;
         updateToggleUI('div', divToggle.checked);
     }
+    // sekkotsu-toggle-v1: 許可施設のみ表示し、enabled を反映
+    var sekCard = document.getElementById('sekkotsu-mode-card');
+    var sekToggle = document.getElementById('toggle-sekkotsu');
+    if (sekCard) sekCard.style.display = currentSettings.sekkotsu_mode_allowed ? '' : 'none';
+    if (sekToggle) {
+        sekToggle.checked = currentSettings.sekkotsu_mode_enabled || false;
+        updateToggleUI('sek', sekToggle.checked);
+    }
     renderDivisions();
     updateDivisionSelects();
     if (currentSettings.auto_cash_fill) calcTodayExpense();
@@ -1042,11 +1067,13 @@ function updateToggleUI(type, on) {
 
 async function saveSettings() {
     const _fillDivEl = document.getElementById('fill-division-select');
+    var _sekEl = document.getElementById('toggle-sekkotsu');  // sekkotsu-toggle-v1
     const payload = {
         auto_cash_fill: document.getElementById('toggle-auto-fill').checked,
         divisions_enabled: document.getElementById('toggle-divisions').checked,
         cash_fill_division_id: (_fillDivEl && _fillDivEl.value) ? parseInt(_fillDivEl.value) : null,
     };
+    if (_sekEl) payload.sekkotsu_mode_enabled = _sekEl.checked;  // sekkotsu-toggle-v1
     updateToggleUI('fill', payload.auto_cash_fill);
     updateToggleUI('div', payload.divisions_enabled);
     await fetch('/api/ledger/settings', {
