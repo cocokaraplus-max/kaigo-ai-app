@@ -4300,6 +4300,13 @@ def api_ledger_settings_get():
         # 事業部取得
         d_res = supabase.table('ledger_divisions').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
         divisions = d_res.data or []
+        # sekkotsu-settings-v1: \u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u3092 settings \u306b\u4ed8\u52a0
+        try:
+            _fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+            settings['sekkotsu_mode_allowed'] = bool(_fa.data and _fa.data[0].get('sekkotsu_mode_allowed'))
+        except Exception:
+            settings['sekkotsu_mode_allowed'] = False
+        settings['sekkotsu_mode_enabled'] = bool(settings.get('sekkotsu_mode_enabled'))
         return jsonify({'status': 'success', 'settings': settings, 'divisions': divisions})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -4323,6 +4330,16 @@ def api_ledger_settings_save():
             'divisions_enabled': data.get('divisions_enabled', False),
             'cash_fill_division_id': int(_raw_div) if _raw_div else None,
         }
+        # sekkotsu-settings-v1: \u8a31\u53ef\u6e08\u307f\u65bd\u8a2d\u306e\u307f\u6709\u52b9\u5316\u3092\u8a31\u53ef\uff08\u7b2c\u4e00\u6bb5\u968e\u3092\u5c0a\u91cd\uff09
+        if 'sekkotsu_mode_enabled' in data:
+            _want = bool(data.get('sekkotsu_mode_enabled'))
+            _allowed = False
+            try:
+                _fa = supabase.table('facilities').select('sekkotsu_mode_allowed').eq('facility_code', f_code).execute()
+                _allowed = bool(_fa.data and _fa.data[0].get('sekkotsu_mode_allowed'))
+            except Exception:
+                _allowed = False
+            payload['sekkotsu_mode_enabled'] = (_want and _allowed)
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
