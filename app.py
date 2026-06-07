@@ -5001,6 +5001,135 @@ def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
         return False
 
 
+@app.route('/api/ledger/reconcile', methods=['POST'])  # ledger-reconcile-v1
+@login_required
+def api_ledger_reconcile():
+    """\u65e5\u8a08\u8868\u3068\u30b9\u30de\u30ec\u30b8\u3092\u7a81\u5408\u3057\u3001\u5dee\u984d\u306f\u30b3\u30fc\u30c9\u304c\u7b97\u51fa\u3001\u539f\u56e0\u8aac\u660e\u306e\u307f AI\u3002\u4fdd\u5b58\u306a\u3057\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):  # ledger-reconcile-v1
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        import csv as _csv, io as _io
+        from collections import Counter as _Counter
+
+        def _to_int(x):
+            x = (x or '').strip()
+            return int(x) if x.replace('-', '').isdigit() else 0
+
+        def _read(file_storage):
+            raw = file_storage.read()
+            for enc in ('utf-8-sig', 'cp932', 'utf-8'):
+                try:
+                    return raw.decode(enc)
+                except Exception:
+                    pass
+            return raw.decode('cp932', 'replace')
+
+        f_nik = request.files.get('nikkei')
+        f_sm = request.files.get('smaregi')
+        if not f_nik or not f_sm:
+            return jsonify({'status': 'error', 'message': '\u65e5\u8a08\u8868\u3068\u30b9\u30de\u30ec\u30b8\u306eCSV\u304c\u5fc5\u8981\u3067\u3059'}), 400
+        nik_text = _read(f_nik)
+        sm_text = _read(f_sm)
+
+        # \u65e5\u8a08\u8868: \u5165\u91d1\u984d\u5408\u8a08\uff08\u5165\u91d10\u9664\u304f\uff09
+        nik_rows = list(_csv.reader(_io.StringIO(nik_text)))
+        if nik_rows and nik_rows[0] and nik_rows[0][0].strip() == '\u65e5\u4ed8':
+            nik_rows = nik_rows[1:]
+        nik_total = 0
+        nik_amounts = _Counter()
+        for r in nik_rows:
+            if not any((c or '').strip() for c in r):
+                continue
+            if len(r) < 11:
+                continue
+            ny = _to_int(r[10])
+            if ny <= 0:
+                continue
+            nik_total += ny
+            nik_amounts[ny] += 1
+
+        # \u30b9\u30de\u30ec\u30b8: \u53d6\u6d88\u533a\u5206=1\u9664\u5916\uff0b\u540c\u4e00\u65e5\u6642\u540c\u984d\u96c6\u7d04\u3001\u73fe\u91d1\u5217\u5408\u8a08
+        sm_rows = list(_csv.reader(_io.StringIO(sm_text)))
+        sm_header = sm_rows[0] if sm_rows else []
+        has_cancel = any('\u53d6\u6d88' in (h or '') for h in sm_header)
+        seen = set()
+        sm_cash = 0
+        sm_amounts = _Counter()
+        for r in sm_rows[1:]:
+            if not r or not r[0].strip():
+                continue
+            if has_cancel:
+                if len(r) < 5:
+                    continue
+                if r[1].strip() == '1':
+                    continue
+                key = (r[0].strip(), _to_int(r[2]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sm_cash += _to_int(r[4])
+                sm_amounts[_to_int(r[2])] += 1
+            else:
+                if len(r) < 4:
+                    continue
+                key = (r[0].strip(), _to_int(r[1]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sm_cash += _to_int(r[3])
+                sm_amounts[_to_int(r[1])] += 1
+
+        diff = nik_total - sm_cash
+        by_amount = []
+        for a in sorted(set(list(nik_amounts) + list(sm_amounts)), reverse=True):
+            dc = nik_amounts[a] - sm_amounts[a]
+            if dc != 0:
+                by_amount.append({'amount': a, 'nikkei': nik_amounts[a], 'smaregi': sm_amounts[a], 'diff_count': dc})
+
+        summary = {
+            'nikkei_total': nik_total,
+            'smaregi_cash': sm_cash,
+            'diff': diff,
+            'by_amount_diff': by_amount,
+        }
+
+        # AI \u306f\u8aac\u660e\u306e\u307f\uff08\u6570\u5024\u306f\u30b3\u30fc\u30c9\u304c\u78ba\u5b9a\u3055\u305b\u305f\u3082\u306e\u3092\u6e21\u3059\uff09
+        ai_text = ''
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            _facts = (
+                "\u65e5\u8a08\u8868\u7a93\u53e3\u5165\u91d1\u5408\u8a08=" + str(nik_total) + "\u5186 / "
+                "\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\u5408\u8a08\uff08\u53d6\u6d88\u9664\u5916\u30fb\u91cd\u8907\u96c6\u7d04\u5f8c\uff09=" + str(sm_cash) + "\u5186 / "
+                "\u5dee\u984d\uff08\u65e5\u8a08\u8868\u2212\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\uff09=" + str(diff) + "\u5186\u3002"
+            )
+            _detail = ''
+            if by_amount:
+                _detail = " \u91d1\u984d\u5225\u306e\u4ef6\u6570\u5dee: " + ', '.join(
+                    [str(b['amount']) + "\u5186(\u65e5\u8a08\u8868" + str(b['nikkei']) + "/\u30b9\u30de\u30ec\u30b8" + str(b['smaregi']) + ")" for b in by_amount[:8]]
+                )
+            prompt = (
+                "\u3042\u306a\u305f\u306f\u63a5\u9aa8\u9662\u306e\u4f1a\u8a08\u88dc\u52a9AI\u3067\u3059\u3002\u4ee5\u4e0b\u306f\u30b3\u30fc\u30c9\u304c\u53b3\u5bc6\u306b\u8a08\u7b97\u3057\u305f\u78ba\u5b9a\u5024\u3067\u3059\u3002"
+                "\u6570\u5024\u306f\u7d76\u5bfe\u306b\u5909\u66f4\u305b\u305a\u3001\u3053\u306e\u5dee\u984d\u306e\u8003\u3048\u3089\u308c\u308b\u539f\u56e0\u3068\u63a8\u5968\u30a2\u30af\u30b7\u30e7\u30f3\u3092\u3001\u73fe\u5834\u306e\u4eba\u304c\u8aad\u3093\u3067\u5206\u304b\u308b\u8a00\u8449\u3067\u7c21\u6f54\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+                "\u8003\u3048\u3089\u308c\u308b\u539f\u56e0\u4f8b: \u30ad\u30e3\u30c3\u30b7\u30e5\u30ec\u30b9\u6c7a\u6e08\uff08PayPay/\u697d\u5929/\u30ab\u30fc\u30c9\uff09\u306f\u65e5\u8a08\u8868\u306b\u306f\u8f09\u308b\u304c\u30b9\u30de\u30ec\u30b8\u73fe\u91d1\u306b\u306f\u542b\u307e\u308c\u306a\u3044\u3001\u5165\u529b\u5fd8\u308c\u3001\u30ad\u30e3\u30f3\u30bb\u30eb\u6b8b\u5b58\u3001\u6708\u307e\u305f\u304e\u8a08\u4e0a\u306a\u3069\u3002\n\n"
+                + _facts + _detail
+            )
+            ai_text = model.generate_content([prompt]).text.strip()
+        except Exception as _e:
+            ai_text = ''
+
+        return jsonify({'status': 'success', 'summary': summary, 'ai_explanation': ai_text})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/import_nikkei', methods=['POST'])  # nikkei-import-api-v1
 @login_required
 def api_ledger_import_nikkei():
