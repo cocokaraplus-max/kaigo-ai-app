@@ -162,6 +162,33 @@
         <div id="csv-preview-list"></div>
         <button id="csv-import-btn" class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>  <!-- csv-double-import-guard-v1 -->
     </div>
+
+    <!-- ledger-cashless-ui-v1 : キャッシュレス振替 -->
+    <div style="margin-top:20px;border-top:1px solid #e0e0e0;padding-top:8px;">
+        <button type="button" id="cashless-acc-btn" onclick="toggleCashlessAcc()"
+            style="width:100%;display:flex;align-items:center;justify-content:space-between;background:#e0f2f1;border:none;border-radius:12px;padding:14px;cursor:pointer;">
+            <span style="font-size:0.9rem;font-weight:800;color:#00695c;"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">sync_alt</span> キャッシュレス振替</span>
+            <span class="material-symbols-outlined" id="cashless-acc-chevron" style="color:#00695c;">expand_more</span>
+        </button>
+        <div id="cashless-acc-body" style="display:none;padding-top:14px;">
+            <div style="background:#e0f2f1;border-radius:12px;padding:12px;margin-bottom:14px;font-size:0.8rem;color:#00695c;line-height:1.5;">
+                現金で計上済みの売上のうち、PayPay・楽天の実際の入金分を未収金（104）に振り替えます。現在表示中の月が対象です。
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="font-size:0.78rem;font-weight:700;color:#5f6368;display:block;margin-bottom:4px;">PayPay / 楽天 CSV（複数選択可）</label>
+                <div class="csv-drop-zone" onclick="document.getElementById('cashless-file-input').click()" style="border-color:#80cbc4;">
+                    <span class="material-symbols-outlined" style="font-size:32px;display:block;margin-bottom:6px;color:#80cbc4;">upload_file</span>
+                    CSVをタップして選択<br>
+                    <span style="font-size:0.72rem;">PayPay・楽天 両方まとめて可</span>
+                </div>
+                <input type="file" id="cashless-file-input" accept=".csv" multiple style="display:none;" onchange="onCashlessFiles(this)">
+                <div id="cashless-file-names" style="font-size:0.74rem;color:#5f6368;margin-top:6px;"></div>
+            </div>
+            <button type="button" id="cashless-match-btn" class="ledger-btn primary" style="width:100%;background:#00897b;" onclick="cashlessMatch()">照合する</button>
+            <div id="cashless-result" style="display:none;margin-top:16px;"></div>
+        </div>
+    </div>
+    <!-- /ledger-cashless-ui-v1 -->
 </div>
 
 <!-- ===== 領収書OCRタブ ===== -->
@@ -1413,6 +1440,195 @@ async function exportSubLedgerExcel(type) {
   XLSX.utils.book_append_sheet(wb, ws, cfg.label);
   XLSX.writeFile(wb, `${cfg.label}_${currentMonth}.xlsx`);
 }
+
+
+// ===== ledger-cashless-ui-v1 : キャッシュレス振替 =====
+var _cashlessFiles = [];        // ledger-cashless-ui-v1
+var _cashlessResult = null;     // ledger-cashless-ui-v1 : {auto:[],review:[],none:[]}
+var _cashlessApplying = false;  // ledger-cashless-ui-v1 : 連打防止
+
+function toggleCashlessAcc() {  // ledger-cashless-ui-v1
+    var body = document.getElementById('cashless-acc-body');
+    var chev = document.getElementById('cashless-acc-chevron');
+    if (!body) return;
+    var open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    if (chev) chev.textContent = open ? 'expand_less' : 'expand_more';
+}
+
+function onCashlessFiles(input) {  // ledger-cashless-ui-v1
+    _cashlessFiles = input.files ? Array.prototype.slice.call(input.files) : [];
+    var el = document.getElementById('cashless-file-names');
+    if (el) el.textContent = _cashlessFiles.length
+        ? _cashlessFiles.map(function(f){ return f.name; }).join(' / ')
+        : '';
+}
+
+function _cashlessYen(n) {  // ledger-cashless-ui-v1
+    return '\u00a5' + (Number(n)||0).toLocaleString();
+}
+
+async function cashlessMatch() {  // ledger-cashless-ui-v1
+    if (!_cashlessFiles.length) { alert('PayPay\u30fb\u697d\u5929\u306eCSV\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044'); return; }
+    if (!currentMonth) { alert('\u5bfe\u8c61\u6708\u304c\u4e0d\u660e\u3067\u3059'); return; }
+    var btn = document.getElementById('cashless-match-btn');
+    var lbl = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '\u7167\u5408\u4e2d\u2026'; }
+    try {
+        var fd = new FormData();
+        fd.append('month', currentMonth);
+        _cashlessFiles.forEach(function(f){ fd.append('files', f); });
+        var res = await fetch('/api/ledger/cashless_match', { method: 'POST', body: fd });
+        var data = await res.json();
+        if (data.status && data.status !== 'success') { alert('\u30a8\u30e9\u30fc: ' + (data.message||'')); return; }
+        _cashlessResult = {
+            auto:   data.auto   || [],
+            review: data.review || [],
+            none:   data.none   || []
+        };
+        renderCashlessResult();
+    } catch (e) {
+        alert('\u7167\u5408\u306b\u5931\u6557\u3057\u307e\u3057\u305f: ' + e);
+    } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = lbl; }
+    }
+}
+
+function _cashlessTypeBadge(t) {  // ledger-cashless-ui-v1
+    var map = { paypay: ['PayPay', '#ff0033'], rakuten: ['\u697d\u5929', '#bf0000'] };
+    var m = map[t] || [t || '', '#5f6368'];
+    return '<span style="background:' + m[1] + '1a;color:' + m[1] + ';padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:700;">' + m[0] + '</span>';
+}
+
+function renderCashlessResult() {  // ledger-cashless-ui-v1
+    var box = document.getElementById('cashless-result');
+    if (!box || !_cashlessResult) return;
+    var R = _cashlessResult;
+    var html = '';
+
+    // auto group with master toggle (default ON)
+    html += '<div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">';
+    html += '<span style="font-size:0.82rem;font-weight:800;color:#202124;">\u81ea\u52d5\u7167\u5408 ' + R.auto.length + '\u4ef6</span>';
+    html += '<label style="font-size:0.74rem;color:#5f6368;display:flex;align-items:center;gap:6px;cursor:pointer;">'
+         +  '\u4e00\u62ec\u9078\u629e<input type="checkbox" id="cashless-auto-all" checked onchange="toggleCashlessAutoAll(this.checked)" style="width:18px;height:18px;"></label>';
+    html += '</div>';
+    if (!R.auto.length) {
+        html += '<div style="font-size:0.78rem;color:#9aa0a6;margin-bottom:12px;">\u81ea\u52d5\u7167\u5408\u3055\u308c\u305f\u9805\u76ee\u306f\u3042\u308a\u307e\u305b\u3093</div>';
+    }
+    R.auto.forEach(function(item, i) {
+        var c = item.candidate || item;
+        html += '<div class="entry-card" data-applied="0" id="cashless-auto-card-' + i + '" style="border-left:3px solid #00897b;">'
+             +  '<div class="entry-card-header"><span class="entry-date">' + (c.entry_date||'') + '</span>'
+             +  '<span class="entry-amount">' + _cashlessYen(c.amount) + ' ' + _cashlessTypeBadge(item.cashless_type) + '</span></div>'
+             +  '<div class="entry-desc" style="font-size:0.78rem;color:#5f6368;margin-top:4px;">' + (c.description||'') + '</div>'
+             +  '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.76rem;color:#00695c;cursor:pointer;">'
+             +  '<input type="checkbox" class="cashless-auto-chk" checked data-entry-id="' + (c.entry_id!=null?c.entry_id:'') + '" data-cashless-type="' + (item.cashless_type||'') + '" style="width:18px;height:18px;"> \u632f\u66ff\u5bfe\u8c61\u306b\u3059\u308b</label>'
+             +  '</div>';
+    });
+
+    // review group : pick a candidate
+    html += '<div style="margin:14px 0 6px;font-size:0.82rem;font-weight:800;color:#202124;">\u8981\u78ba\u8a8d ' + R.review.length + '\u4ef6</div>';
+    if (!R.review.length) {
+        html += '<div style="font-size:0.78rem;color:#9aa0a6;margin-bottom:12px;">\u8981\u78ba\u8a8d\u9805\u76ee\u306f\u3042\u308a\u307e\u305b\u3093</div>';
+    }
+    R.review.forEach(function(item, i) {
+        var cands = item.candidates || [];
+        html += '<div class="entry-card" data-applied="0" id="cashless-review-card-' + i + '" style="border-left:3px solid #f9ab00;">'
+             +  '<div class="entry-card-header"><span class="entry-date">' + (item.tx_date||item.entry_date||'') + '</span>'
+             +  '<span class="entry-amount">' + _cashlessYen(item.amount) + ' ' + _cashlessTypeBadge(item.cashless_type) + '</span></div>'
+             +  '<div style="font-size:0.76rem;color:#5f6368;margin:8px 0 4px;">\u632f\u66ff\u5148\u306e\u4ed5\u8a33\u3092\u9078\u629e</div>'
+             +  '<select class="ledger-form-control cashless-review-sel" data-cashless-type="' + (item.cashless_type||'') + '">'
+             +  '<option value="">\u632f\u66ff\u3057\u306a\u3044</option>';
+        cands.forEach(function(c){
+            html += '<option value="' + (c.entry_id!=null?c.entry_id:'') + '">' + (c.entry_date||'') + ' / ' + _cashlessYen(c.amount) + ' / ' + (c.description||'') + '</option>';
+        });
+        html += '</select></div>';
+    });
+
+    // none group : info only
+    if (R.none && R.none.length) {
+        html += '<div style="margin:14px 0 6px;font-size:0.82rem;font-weight:800;color:#202124;">\u8a72\u5f53\u306a\u3057 ' + R.none.length + '\u4ef6</div>';
+        R.none.forEach(function(item){
+            html += '<div class="entry-card" style="border-left:3px solid #dadce0;opacity:0.7;">'
+                 +  '<div class="entry-card-header"><span class="entry-date">' + (item.tx_date||item.entry_date||'') + '</span>'
+                 +  '<span class="entry-amount">' + _cashlessYen(item.amount) + ' ' + _cashlessTypeBadge(item.cashless_type) + '</span></div>'
+                 +  '<div class="entry-desc" style="font-size:0.76rem;color:#9aa0a6;margin-top:4px;">\u5bfe\u5fdc\u3059\u308b\u73fe\u91d1\u4ed5\u8a33\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f</div>'
+                 +  '</div>';
+        });
+    }
+
+    html += '<button type="button" id="cashless-apply-btn" class="ledger-btn primary" style="width:100%;margin-top:16px;background:#00897b;" onclick="cashlessApply()">\u632f\u66ff\u3092\u78ba\u5b9a</button>';
+
+    box.innerHTML = html;
+    box.style.display = '';
+}
+
+function toggleCashlessAutoAll(on) {  // ledger-cashless-ui-v1
+    document.querySelectorAll('.cashless-auto-chk').forEach(function(c){
+        if (!c.disabled) c.checked = on;
+    });
+}
+
+function _collectCashlessItems() {  // ledger-cashless-ui-v1
+    var items = [];
+    document.querySelectorAll('.cashless-auto-chk').forEach(function(c){
+        if (c.checked && !c.disabled && c.dataset.entryId) {
+            items.push({ entry_id: c.dataset.entryId, cashless_type: c.dataset.cashlessType || '' });
+        }
+    });
+    document.querySelectorAll('.cashless-review-sel').forEach(function(s){
+        if (!s.disabled && s.value) {
+            items.push({ entry_id: s.value, cashless_type: s.dataset.cashlessType || '' });
+        }
+    });
+    return items;
+}
+
+async function cashlessApply() {  // ledger-cashless-ui-v1
+    if (_cashlessApplying) { return; }  // 連打防止
+    var items = _collectCashlessItems();
+    if (!items.length) { alert('\u632f\u66ff\u5bfe\u8c61\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044'); return; }
+    if (!confirm(items.length + '\u4ef6\u3092\u632f\u66ff\u3057\u307e\u3059\u3002\u3088\u308d\u3057\u3044\u3067\u3059\u304b\uff1f')) { return; }
+    _cashlessApplying = true;
+    var btn = document.getElementById('cashless-apply-btn');
+    var lbl = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '\u632f\u66ff\u4e2d\u2026'; }
+    try {
+        var res = await fetch('/api/ledger/cashless_apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ items: items })
+        });
+        var data = await res.json();
+        if (data.status && data.status !== 'success') { alert('\u30a8\u30e9\u30fc: ' + (data.message||'')); return; }
+        var applied = (data.applied != null) ? data.applied : items.length;
+        alert(applied + '\u4ef6\u3092\u632f\u66ff\u3057\u307e\u3057\u305f\uff01');
+        // CSV取込タブに留まる: 適用済みを緑表示にして無効化、バックグラウンドで loadEntries()
+        var appliedIds = {};
+        items.forEach(function(it){ appliedIds[String(it.entry_id)] = true; });
+        document.querySelectorAll('.cashless-auto-chk').forEach(function(c){
+            if (appliedIds[String(c.dataset.entryId)]) {
+                c.checked = true; c.disabled = true;
+                var card = c.closest('.entry-card');
+                if (card) { card.style.borderLeftColor = '#34a853'; card.style.background = '#e6f4ea'; card.setAttribute('data-applied','1'); }
+            }
+        });
+        document.querySelectorAll('.cashless-review-sel').forEach(function(s){
+            if (s.value && appliedIds[String(s.value)]) {
+                s.disabled = true;
+                var card = s.closest('.entry-card');
+                if (card) { card.style.borderLeftColor = '#34a853'; card.style.background = '#e6f4ea'; card.setAttribute('data-applied','1'); }
+            }
+        });
+        if (typeof loadEntries === 'function') { try { loadEntries(); } catch(e){} }
+    } catch (e) {
+        alert('\u632f\u66ff\u306b\u5931\u6557\u3057\u307e\u3057\u305f: ' + e);
+    } finally {
+        _cashlessApplying = false;
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = lbl; }
+    }
+}
+// ===== /ledger-cashless-ui-v1 =====
 
 </script>
 {% endblock %}
