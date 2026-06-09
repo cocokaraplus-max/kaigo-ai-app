@@ -4900,6 +4900,72 @@ def api_ledger_trial_balance():
 
 @app.route('/api/ledger/import_csv', methods=['POST'])
 @login_required
+def _detect_csv_format(header):  # ledger-csv-autodetect-v1
+    """ヘッダ行(list[str]) -> 'nikkei' または None。
+    「外さない」優先。確信できる日計表の指紋のみ nikkei。曖昧/未知は None。"""
+    cells = [(c or '').strip() for c in (header or [])]
+    has_karte = any('カルテ' in c for c in cells)
+    has_set = ('日付' in cells) and ('保険' in cells) and ('保険外' in cells) and ('入金額' in cells)
+    if has_karte or has_set:
+        return 'nikkei'
+    return None
+
+
+def _build_nikkei_entries(content, f_code, my_name, code_to_id, div_id):  # ledger-csv-autodetect-v1
+    """日計表CSV本文 -> (suggestions, entries, batch)。保存はしない。
+    既存 api_ledger_import_nikkei と同一ロジック（サンドボックスで出力一致検証済）。"""
+    import csv as _csv, io as _io, hashlib as _hashlib
+    HOKEN_MAP = {'国本': '国保', '国保': '国保',
+                 '組本': '組合', '組合': '組合', '後期': '後期'}
+    def _to_int(x):
+        x = (x or '').strip()
+        return int(x) if x.replace('-', '').isdigit() else 0
+    rows = list(_csv.reader(_io.StringIO(content)))
+    if rows and rows[0] and rows[0][0].strip() == '日付':
+        rows = rows[1:]
+    batch = 'nikkei_' + _hashlib.md5(content.encode('utf-8', 'replace')).hexdigest()[:10]
+    suggestions = []
+    entries = []
+    def _push(date, credit_code, amount, ins, desc, review=False):
+        debit_id = code_to_id.get('101')
+        credit_id = code_to_id.get(credit_code)
+        if not (debit_id and credit_id and amount > 0):
+            return
+        suggestions.append({'entry_date': date, 'debit_code': '101', 'credit_code': credit_code,
+                             'amount': amount, 'description': desc, 'insurance_type': ins,
+                             'needs_review': review})
+        entries.append({'facility_code': f_code, 'entry_date': date,
+                        'debit_account_id': debit_id, 'credit_account_id': credit_id,
+                        'amount': amount, 'tax_amount': 0, 'description': desc,
+                        'source': 'nikkei_csv', 'created_by': my_name,
+                        'division_id': div_id, 'insurance_type': ins,
+                        'settlement_status': None, 'import_batch_id': batch})
+    for r in rows:
+        if not any((c or '').strip() for c in r):
+            continue
+        if len(r) < 11:
+            continue
+        date = r[0].strip().replace('/', '-')
+        hoken = r[3].strip()
+        nyukin = _to_int(r[10])
+        if nyukin <= 0:
+            continue
+        if hoken == '自費':
+            _push(date, '404', nyukin, '自費', '接骨院 自費売上')
+        elif hoken in HOKEN_MAP:
+            ins = HOKEN_MAP[hoken]
+            hbun = _to_int(r[7])
+            hgai = _to_int(r[8])
+            if hbun > 0:
+                _push(date, '405', hbun, ins, '接骨院 健康保険売上(窓口負担)')
+            if hgai > 0:
+                _push(date, '404', hgai, '自費', '接骨院 自費売上(保険外)')
+        else:
+            _push(date, '404', nyukin, hoken or '不明',
+                  '接骨院 売上(区分要確認)', review=True)
+    return suggestions, entries, batch
+
+
 def api_ledger_import_csv():
     """CSVインポート（売上・銀行明細）- Claude APIでAI自動科目推定"""
     f_code = session.get('f_code')
@@ -4916,6 +4982,42 @@ def api_ledger_import_csv():
         if not f:
             return jsonify({'status': 'error', 'message': 'ファイルがありません'}), 400
         content = f.read().decode('utf-8-sig', errors='replace')
+        # --- ledger-csv-autodetect-v1: 自動判定で日計表を検出したら専用処理へ ---
+        if csv_type == 'auto' and is_sekkotsu_enabled(supabase, f_code):
+            try:
+                f.seek(0)
+                _raw = f.read()
+            except Exception:
+                _raw = b''
+            _nik_content = None
+            for _enc in ('utf-8-sig', 'cp932', 'utf-8'):
+                try:
+                    _nik_content = _raw.decode(_enc); break
+                except Exception:
+                    _nik_content = None
+            if _nik_content is None and _raw:
+                _nik_content = _raw.decode('cp932', 'replace')
+            if _nik_content:
+                import csv as _csv_d, io as _io_d
+                _hdr_rows = list(_csv_d.reader(_io_d.StringIO(_nik_content)))
+                _hdr = _hdr_rows[0] if _hdr_rows else []
+                if _detect_csv_format(_hdr) == 'nikkei':
+                    _acc = supabase.table('accounts').select('id,code').eq('facility_code', f_code).eq('is_active', True).execute()
+                    _c2i = {a['code']: a['id'] for a in (_acc.data or [])}
+                    _missing = [c for c in ('101', '404', '405') if c not in _c2i]
+                    if not _missing:
+                        _div = None
+                        try:
+                            _d = supabase.table('ledger_divisions').select('id,name').eq('facility_code', f_code).eq('is_active', True).execute()
+                            for _row in (_d.data or []):
+                                if '接骨' in (_row.get('name') or ''):
+                                    _div = _row['id']; break
+                        except Exception:
+                            _div = None
+                        _sg, _en, _bt = _build_nikkei_entries(_nik_content, f_code, my_name, _c2i, _div)
+                        return jsonify({'status': 'success', 'imported': 0, 'batch_id': _bt,
+                                        'suggestions': _sg, 'entries': _en})
+        # --- /ledger-csv-autodetect-v1 ---
         # 勘定科目一覧を取得
         acc_res = supabase.table('accounts').select('id,code,name,category').eq('facility_code', f_code).execute()
         accounts = acc_res.data or []
