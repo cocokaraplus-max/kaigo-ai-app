@@ -5130,8 +5130,10 @@ def api_ledger_reconcile():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-def _cashless_parse(file_storage):  # ledger-cashless-v1
-    """PayPay / \u697d\u5929 \u306eCSV\u3092\u8aad\u307f\u3001(date 'YYYY-MM-DD', amount int, kind str) \u306e\u30ea\u30b9\u30c8\u3092\u8fd4\u3059\u3002"""
+def _cashless_parse(file_storage):  # ledger-cashless-v1  # ledger-cashless-rakuten-fix-v3
+    """PayPay / 楽天 のCSVを読み、(date 'YYYY-MM-DD', amount int, kind str) のリストを返す。
+    楽天はアプリ/カード決済（合計金額(円)・利用カード）と
+    電子マネー決済（電子マネー支払(円)・QUICPay等）の両形式に対応。"""
     import csv as _csv, io as _io
     raw = file_storage.read()
     text = None
@@ -5147,39 +5149,53 @@ def _cashless_parse(file_storage):  # ledger-cashless-v1
         return []
     header = rows[0]
     def _to_int(x):
-        x = (x or '').strip()
+        x = (x or '').strip().replace(',', '').replace('，', '')
         return int(x) if x.replace('-', '').isdigit() else 0
     out = []
-    # PayPay: \u53d6\u5f15\u65e5\u6642 / \u53d6\u5f15\u91d1\u984d / \u652f\u6255\u3044\u65b9\u6cd5 / \u53d6\u5f15\u30b9\u30c6\u30fc\u30bf\u30b9
-    is_paypay = any('\u652f\u6255\u3044\u65b9\u6cd5' in (h or '') for h in header) and any('\u53d6\u5f15\u65e5\u6642' in (h or '') for h in header)
-    # \u697d\u5929: \u53d6\u5f15\u65e5 / \u5408\u8a08\u91d1\u984d(\u5186) / \u5229\u7528\u30ab\u30fc\u30c9 / \u30b9\u30c6\u30fc\u30bf\u30b9
-    is_rakuten = any('\u5229\u7528\u30ab\u30fc\u30c9' in (h or '') for h in header)
+    # PayPay: 取引日時 / 取引金額 / 支払い方法 / 取引ステータス
+    is_paypay = any('支払い方法' in (h or '') for h in header) and any('取引日時' in (h or '') for h in header)
+    # 楽天: 利用カード または 電子マネー支払 または 合計金額 を含む（PayPayを除く）
+    is_rakuten = (not is_paypay) and any(
+        ('利用カード' in (h or '')) or
+        ('電子マネー支払' in (h or '')) or
+        ('合計金額' in (h or ''))
+        for h in header
+    )
     if is_paypay:
-        idx_dt = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u65e5\u6642' in (h or '')), 4)
-        idx_amt = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u91d1\u984d' in (h or '')), 5)
-        idx_st = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u30b9\u30c6\u30fc\u30bf\u30b9' in (h or '')), 3)
-        idx_pm = next((i for i, h in enumerate(header) if '\u652f\u6255\u3044\u65b9\u6cd5' in (h or '')), 6)
+        idx_dt = next((i for i, h in enumerate(header) if '取引日時' in (h or '')), 4)
+        idx_amt = next((i for i, h in enumerate(header) if '取引金額' in (h or '')), 5)
+        idx_st = next((i for i, h in enumerate(header) if '取引ステータス' in (h or '')), 3)
+        idx_pm = next((i for i, h in enumerate(header) if '支払い方法' in (h or '')), 6)
         for r in rows[1:]:
             if len(r) <= max(idx_dt, idx_amt, idx_st, idx_pm):
                 continue
-            if r[idx_st].strip() != '\u53d6\u5f15\u5b8c\u4e86':
+            if r[idx_st].strip() != '取引完了':
                 continue
             d = r[idx_dt].strip()[:10].replace('/', '-')
             out.append({'date': d, 'amount': _to_int(r[idx_amt]), 'kind': 'PayPay:' + r[idx_pm].strip()})
     elif is_rakuten:
-        idx_d = next((i for i, h in enumerate(header) if (h or '').strip() == '\u53d6\u5f15\u65e5'), 0)
-        idx_amt = next((i for i, h in enumerate(header) if '\u5408\u8a08\u91d1\u984d' in (h or '')), 3)
-        idx_st = next((i for i, h in enumerate(header) if (h or '').strip() == '\u30b9\u30c6\u30fc\u30bf\u30b9'), -1)
+        idx_d = next((i for i, h in enumerate(header) if (h or '').strip() == '取引日'), 0)
+        # 金額列: 合計金額 を優先、なければ 電子マネー支払
+        idx_amt = next((i for i, h in enumerate(header) if '合計金額' in (h or '')), -1)
+        if idx_amt < 0:
+            idx_amt = next((i for i, h in enumerate(header) if '電子マネー支払' in (h or '')), 3)
+        # ステータス列: 'ステータス' または '処理内容'
+        idx_st = next((i for i, h in enumerate(header) if (h or '').strip() in ('ステータス', '処理内容')), -1)
+        # 決済方法列（au PAY / QUICPay 等）を kind に付与
+        idx_pm = next((i for i, h in enumerate(header) if (h or '').strip() == '決済方法'), -1)
         for r in rows[1:]:
             if len(r) <= max(idx_d, idx_amt):
                 continue
             if not r[idx_d].strip():
                 continue
-            if idx_st >= 0 and len(r) > idx_st and r[idx_st].strip() and '\u58f2\u4e0a' not in r[idx_st]:
+            if idx_st >= 0 and len(r) > idx_st and r[idx_st].strip() and '売上' not in r[idx_st]:
                 continue
-            out.append({'date': r[idx_d].strip().replace('/', '-'), 'amount': _to_int(r[idx_amt]), 'kind': '\u697d\u5929'})
+            pm = ''
+            if idx_pm >= 0 and len(r) > idx_pm:
+                pm = r[idx_pm].strip().strip('"')
+            kind = ('楽天:' + pm) if pm else '楽天'
+            out.append({'date': r[idx_d].strip()[:10].replace('/', '-'), 'amount': _to_int(r[idx_amt]), 'kind': kind})
     return out
-
 
 @app.route('/api/ledger/cashless_match', methods=['POST'])  # ledger-cashless-v1
 @login_required
