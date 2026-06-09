@@ -846,13 +846,22 @@ async function importCSV(input) {
     csvEntries = data.entries || [];
     const preview = document.getElementById('csv-preview');
     const list = document.getElementById('csv-preview-list');
-    // 科目コード→科目名のマッピングを作成
+    // 科目マスタが未ロードなら取得（未ロードだと科目名が出ず売上判定も外れる） // ledger-preview-sign-fix-v1
+    if (!window.allAccounts || window.allAccounts.length === 0) {
+        try {
+            const _ar = await fetch('/api/ledger/accounts');
+            const _ad = await _ar.json();
+            if (_ad.status === 'success') window.allAccounts = _ad.accounts || [];
+        } catch (e) {}
+    }
+    // 科目コード→名称/カテゴリ（キーは文字列正規化）
     const codeToName = {};
-    (window.allAccounts||[]).forEach(a => { codeToName[a.code] = a.name; });
+    const codeToCat = {};
+    (window.allAccounts||[]).forEach(a => { codeToName[String(a.code)] = a.name; codeToCat[String(a.code)] = a.category; });
     list.innerHTML = csvSuggestions.map((s,i) => {
         const debitName = codeToName[String(s.debit_code)] || s.debit_code || '';
         const creditName = codeToName[String(s.credit_code)] || s.credit_code || '';
-        const isIncome = creditName.includes('売上') || creditName.includes('収益');
+        const isIncome = codeToCat[String(s.credit_code)] === '収益';  // ledger-preview-sign-fix-v1
         const amtClass = isIncome ? 'income' : 'expense';
         const amtSign = isIncome ? '+' : '-';
         return `
