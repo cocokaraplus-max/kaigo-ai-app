@@ -4898,9 +4898,7 @@ def api_ledger_trial_balance():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/api/ledger/import_csv', methods=['POST'])
-@login_required
-def _detect_csv_format(header):  # ledger-csv-autodetect-v1
+def _detect_csv_format(header):  # ledger-csv-autodetect-v1  # ledger-csv-autodetect-decofix-v1
     """ヘッダ行(list[str]) -> 'nikkei' または None。
     「外さない」優先。確信できる日計表の指紋のみ nikkei。曖昧/未知は None。"""
     cells = [(c or '').strip() for c in (header or [])]
@@ -4966,6 +4964,8 @@ def _build_nikkei_entries(content, f_code, my_name, code_to_id, div_id):  # ledg
     return suggestions, entries, batch
 
 
+@app.route('/api/ledger/import_csv', methods=['POST'])
+@login_required
 def api_ledger_import_csv():
     """CSVインポート（売上・銀行明細）- Claude APIでAI自動科目推定"""
     f_code = session.get('f_code')
