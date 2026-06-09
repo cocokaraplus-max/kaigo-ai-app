@@ -158,8 +158,9 @@
     <div id="csv-preview" style="display:none;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
     <div style="font-size:0.85rem;font-weight:700;color:#202124;">AI仕訳プレビュー</div>
-    <div id="csv-count" style="font-size:0.78rem;color:#5f6368;"></div>
 </div>
+        <!-- ledger-csv-count-banner-v1 -->
+        <div id="csv-count" style="display:none;background:#e8f0fe;border:1px solid #aecbfa;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:0.82rem;color:#1a73e8;font-weight:600;line-height:1.5;"></div>
         <div id="csv-preview-list"></div>
         <button id="csv-import-btn" class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="confirmCSVImport()">この内容で取込む</button>  <!-- csv-double-import-guard-v1 -->
     </div>
@@ -879,8 +880,11 @@ async function importCSV(input) {
             <div class="entry-desc" style="font-size:0.8rem;color:#5f6368;margin-top:4px;">${s.description||''}</div>
         </div>`;
     }).join('');
-    const countEl = document.getElementById('csv-count');
-    if (countEl) countEl.textContent = `${csvSuggestions.length}件の仕訳を検出`;
+    const countEl = document.getElementById('csv-count');  // ledger-csv-count-banner-v1
+    if (countEl) {
+        countEl.textContent = `✓ ${csvSuggestions.length}件を読み込みました。内容を確認して、下の「この内容で取込む」を押すと保存されます`;
+        countEl.style.display = '';
+    }
     preview.style.display = '';
     input.value = '';
 }
