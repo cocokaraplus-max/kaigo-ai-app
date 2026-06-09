@@ -79,6 +79,7 @@
     <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
     <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
+    <button class="ledger-tab" onclick="switchTab('guide')" id="tab-guide" style="display:none;">作業手順マニュアル</button><!-- guide-tab-v1 -->
     <button class="ledger-tab" onclick="switchTab('settings')" id="tab-settings">設定</button>
 </div>
 
@@ -217,6 +218,60 @@
         </button>
     </div>
     <div id="accounts-list"></div>
+</div>
+
+<!-- pane-guide: guide-tab-v1 -->
+<div id="pane-guide" style="display:none;">
+    <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;">作業手順マニュアル</div>
+    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;line-height:1.6;">会計業務を上から順に進めるための手順です。各ステップの「場所」「操作」「できること」を確認してください。</div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">1</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">日計表売上取込</span></div>
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>CSV取込タブ</div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>日計表のCSVをアップロードして取込します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>各日の売上が仕訳帳に自動で計上されます。二重取込は自動で防止されます。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">2</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">キャッシュレス振替（PayPay・楽天など）</span></div>
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>CSV取込タブ内のキャッシュレス振替</div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>PayPay・楽天などの入金CSVを取込し、売上と突合します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>自動・要確認・該当なしに分類され、振替仕訳を適用できます。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">3</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">銀行明細CSV取込</span></div>
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>CSV取込タブ</div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>銀行の入出金明細CSVを取込します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>預金出納帳に反映され、残高を確認できます。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">4</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">経費・領収書（領収書OCR）</span></div>
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>領収書OCRタブ</div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>領収書を撮影・アップロードするとOCRで読み取ります。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>金額や日付を自動抽出し、経費として仕訳に計上できます。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">5</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">介護の消し込み</span></div>
+      <div style="font-size:0.82rem;color:#5f6368;background:#f8f9fa;border-radius:8px;padding:8px 10px;">機能実装までしばらくお待ちください</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">6</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">接骨院の消し込み</span></div>
+      <div style="font-size:0.82rem;color:#5f6368;background:#f8f9fa;border-radius:8px;padding:8px 10px;">機能実装までしばらくお待ちください</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">7</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">カード明細を税理士に伝える</span><span style="margin-left:auto;flex:none;font-size:0.68rem;font-weight:700;color:#ea4335;border:1px solid #ea4335;border-radius:4px;padding:1px 6px;">システム外</span></div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>クレジットカードの明細を税理士に共有します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>明細の内訳・勘定科目振分は税理士側で処理します。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">8</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">スマレジ管理</span><span style="margin-left:auto;flex:none;font-size:0.68rem;font-weight:700;color:#ea4335;border:1px solid #ea4335;border-radius:4px;padding:1px 6px;">システム外</span></div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>スマレジ側でレジ・売上を管理します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>スマレジの売上データが日計表（ステップ1）の元データになります。</div>
+    </div>
+    <div class="entry-card" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">9</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">試算表でPDF/Excel出力</span></div>
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>試算表タブ</div>
+      <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>期間を選んでPDFまたはExcelで出力します。</div>
+      <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>キャッシュレス・カード込みの試算表を出す施設と、生CSVを渡す施設で出力内容が異なります。</div>
+    </div>
 </div>
 
 <!-- 設定ペイン -->
@@ -538,7 +593,7 @@ function changeMonth(delta) {
 
 function switchTab(tab) {
     ['仕訳帳','trial','cash','bank','card','sales','import','receipt','accounts','settings'].map(t => t==='仕訳帳' ? 'journal' : t).concat(['journal']).filter((v,i,a)=>a.indexOf(v)===i);
-    ['journal','trial','cash','bank','card','sales','import','receipt','accounts','settings'].forEach(t => {
+    ['journal','trial','cash','bank','card','sales','import','receipt','accounts','guide','settings'].forEach(t => {  // guide-tab-v1
         const pane = document.getElementById('pane-'+t);
         const tabEl = document.getElementById('tab-'+t);
         if (pane) pane.style.display = t===tab ? '' : 'none';
@@ -1111,6 +1166,9 @@ async function loadSettings() {
     var sekCard = document.getElementById('sekkotsu-mode-card');
     var sekToggle = document.getElementById('toggle-sekkotsu');
     if (sekCard) sekCard.style.display = currentSettings.sekkotsu_mode_allowed ? '' : 'none';
+    // guide-tab-v1: 接骨院モード有効時のみマニュアルタブを表示
+    var guideTabEl = document.getElementById('tab-guide');
+    if (guideTabEl) guideTabEl.style.display = currentSettings.sekkotsu_mode_enabled ? '' : 'none';
     if (sekToggle) {
         sekToggle.checked = currentSettings.sekkotsu_mode_enabled || false;
         updateToggleUI('sek', sekToggle.checked);
