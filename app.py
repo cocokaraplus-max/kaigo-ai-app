@@ -5130,6 +5130,184 @@ def api_ledger_reconcile():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+def _cashless_parse(file_storage):  # ledger-cashless-v1
+    """PayPay / \u697d\u5929 \u306eCSV\u3092\u8aad\u307f\u3001(date 'YYYY-MM-DD', amount int, kind str) \u306e\u30ea\u30b9\u30c8\u3092\u8fd4\u3059\u3002"""
+    import csv as _csv, io as _io
+    raw = file_storage.read()
+    text = None
+    for enc in ('utf-8-sig', 'cp932', 'utf-8'):
+        try:
+            text = raw.decode(enc); break
+        except Exception:
+            pass
+    if text is None:
+        text = raw.decode('cp932', 'replace')
+    rows = list(_csv.reader(_io.StringIO(text)))
+    if not rows:
+        return []
+    header = rows[0]
+    def _to_int(x):
+        x = (x or '').strip()
+        return int(x) if x.replace('-', '').isdigit() else 0
+    out = []
+    # PayPay: \u53d6\u5f15\u65e5\u6642 / \u53d6\u5f15\u91d1\u984d / \u652f\u6255\u3044\u65b9\u6cd5 / \u53d6\u5f15\u30b9\u30c6\u30fc\u30bf\u30b9
+    is_paypay = any('\u652f\u6255\u3044\u65b9\u6cd5' in (h or '') for h in header) and any('\u53d6\u5f15\u65e5\u6642' in (h or '') for h in header)
+    # \u697d\u5929: \u53d6\u5f15\u65e5 / \u5408\u8a08\u91d1\u984d(\u5186) / \u5229\u7528\u30ab\u30fc\u30c9 / \u30b9\u30c6\u30fc\u30bf\u30b9
+    is_rakuten = any('\u5229\u7528\u30ab\u30fc\u30c9' in (h or '') for h in header)
+    if is_paypay:
+        idx_dt = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u65e5\u6642' in (h or '')), 4)
+        idx_amt = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u91d1\u984d' in (h or '')), 5)
+        idx_st = next((i for i, h in enumerate(header) if '\u53d6\u5f15\u30b9\u30c6\u30fc\u30bf\u30b9' in (h or '')), 3)
+        idx_pm = next((i for i, h in enumerate(header) if '\u652f\u6255\u3044\u65b9\u6cd5' in (h or '')), 6)
+        for r in rows[1:]:
+            if len(r) <= max(idx_dt, idx_amt, idx_st, idx_pm):
+                continue
+            if r[idx_st].strip() != '\u53d6\u5f15\u5b8c\u4e86':
+                continue
+            d = r[idx_dt].strip()[:10].replace('/', '-')
+            out.append({'date': d, 'amount': _to_int(r[idx_amt]), 'kind': 'PayPay:' + r[idx_pm].strip()})
+    elif is_rakuten:
+        idx_d = next((i for i, h in enumerate(header) if (h or '').strip() == '\u53d6\u5f15\u65e5'), 0)
+        idx_amt = next((i for i, h in enumerate(header) if '\u5408\u8a08\u91d1\u984d' in (h or '')), 3)
+        idx_st = next((i for i, h in enumerate(header) if (h or '').strip() == '\u30b9\u30c6\u30fc\u30bf\u30b9'), -1)
+        for r in rows[1:]:
+            if len(r) <= max(idx_d, idx_amt):
+                continue
+            if not r[idx_d].strip():
+                continue
+            if idx_st >= 0 and len(r) > idx_st and r[idx_st].strip() and '\u58f2\u4e0a' not in r[idx_st]:
+                continue
+            out.append({'date': r[idx_d].strip().replace('/', '-'), 'amount': _to_int(r[idx_amt]), 'kind': '\u697d\u5929'})
+    return out
+
+
+@app.route('/api/ledger/cashless_match', methods=['POST'])  # ledger-cashless-v1
+@login_required
+def api_ledger_cashless_match():
+    """\u30ad\u30e3\u30c3\u30b7\u30e5\u30ec\u30b9CSV\u3092\u4fdd\u5b58\u6e08\u65e5\u8a08\u8868\u4ed5\u8a33\u3068\u65e5\u4ed8\uff0b\u91d1\u984d\u3067\u7167\u5408\u3057\u3001\u632f\u66ff\u30d7\u30ec\u30d3\u30e5\u30fc\u3092\u8fd4\u3059\u3002\u4fdd\u5b58\u306a\u3057\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        month = (request.form.get('month') or '').strip()  # 'YYYY-MM'
+        if len(month) != 7:
+            return jsonify({'status': 'error', 'message': '\u6708\uff08YYYY-MM\uff09\u3092\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044'}), 400
+
+        # \u30ad\u30e3\u30c3\u30b7\u30e5\u30ec\u30b9\u53d6\u5f15\u3092\u96c6\u7d04
+        cashless = []
+        for fs in request.files.getlist('files'):
+            cashless.extend(_cashless_parse(fs))
+
+        # \u73fe\u91d1(101) account_id \u3092\u30b3\u30fc\u30c9\u304b\u3089\u52d5\u7684\u53d6\u5f97
+        acc = supabase.table('accounts').select('id,code').eq('facility_code', f_code).in_('code', ['101']).execute()
+        cash_id = None
+        for a in (acc.data or []):
+            if a['code'] == '101':
+                cash_id = a['id']
+
+        # \u305d\u306e\u6708\u306e\u4fdd\u5b58\u6e08\u65e5\u8a08\u8868\u4ed5\u8a33\uff08\u501f\u65b9=\u73fe\u91d1\u3001source=nikkei_csv\uff09
+        start = month + '-01'
+        # \u6708\u672b\u306f\u7ffb\u6708\u5224\u5b9a\u3067\u6b21\u6708\u521d\u65e5\u672a\u6e80
+        y, m = int(month[:4]), int(month[5:7])
+        ny, nm = (y + 1, 1) if m == 12 else (y, m + 1)
+        nxt = '%04d-%02d-01' % (ny, nm)
+        q = supabase.table('journal_entries').select(
+            'id,entry_date,amount,debit_account_id,insurance_type,settlement_status,credit_account_id'
+        ).eq('facility_code', f_code).eq('source', 'nikkei_csv').gte('entry_date', start).lt('entry_date', nxt).execute()
+        entries = q.data or []
+
+        # \u65e5\u4ed8\uff0b\u91d1\u984d -> [\u73fe\u91d1\u501f\u65b9\u306e\u4ed5\u8a33id]
+        from collections import defaultdict as _dd
+        idx = _dd(list)
+        for e in entries:
+            if cash_id is not None and e.get('debit_account_id') != cash_id:
+                continue
+            if e.get('settlement_status') == 'unpaid_cashless':
+                continue  # \u65e2\u306b\u632f\u66ff\u6e08\u307f\u306f\u9664\u5916
+            idx[(e['entry_date'], e['amount'])].append(e['id'])
+
+        results = []
+        auto = review = none = 0
+        for c in sorted(cashless, key=lambda x: (x['date'], x['amount'])):
+            cands = idx.get((c['date'], c['amount']), [])
+            if len(cands) == 1:
+                st = 'auto'; auto += 1
+            elif len(cands) >= 2:
+                st = 'review'; review += 1
+            else:
+                st = 'none'; none += 1
+            results.append({'date': c['date'], 'amount': c['amount'], 'kind': c['kind'], 'status': st, 'candidates': cands})
+
+        return jsonify({'status': 'success', 'summary': {'auto': auto, 'review': review, 'none': none, 'total': len(cashless)}, 'results': results})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/cashless_apply', methods=['POST'])  # ledger-cashless-v1
+@login_required
+def api_ledger_cashless_apply():
+    """\u78ba\u5b9a\u3057\u305f\u4ed5\u8a33\u306e\u501f\u65b9\u3092 \u73fe\u91d1(101)\u2192\u672a\u53ce\u5165\u91d1(104) \u306b\u66f8\u63db\u3057\u3001settlement_status\u3092\u7acb\u3066\u308b\u3002"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_sekkotsu_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        data = request.json or {}
+        items = data.get('items') or []  # [{entry_id, cashless_type}]
+        if not items:
+            return jsonify({'status': 'error', 'message': '\u632f\u66ff\u5bfe\u8c61\u304c\u3042\u308a\u307e\u305b\u3093'}), 400
+
+        # 104 account_id \u3092\u30b3\u30fc\u30c9\u304b\u3089\u52d5\u7684\u53d6\u5f97
+        acc = supabase.table('accounts').select('id,code').eq('facility_code', f_code).in_('code', ['101', '104']).execute()
+        cash_id = uncollected_id = None
+        for a in (acc.data or []):
+            if a['code'] == '101':
+                cash_id = a['id']
+            if a['code'] == '104':
+                uncollected_id = a['id']
+        if uncollected_id is None:
+            return jsonify({'status': 'error', 'message': '\u672a\u53ce\u5165\u91d1(104)\u304c\u672a\u767b\u9332\u3067\u3059'}), 400
+
+        applied = 0
+        for it in items:
+            eid = it.get('entry_id')
+            ctype = (it.get('cashless_type') or '').strip()
+            if eid is None:
+                continue
+            # \u5b89\u5168\u306e\u305f\u3081\u3001\u5bfe\u8c61\u304c\u305d\u306e\u65bd\u8a2d\u30fbnikkei_csv\u30fb\u501f\u65b9\u73fe\u91d1\u3067\u3042\u308b\u3053\u3068\u3092\u78ba\u8a8d
+            row = supabase.table('journal_entries').select('id,debit_account_id,source,facility_code').eq('id', eid).eq('facility_code', f_code).execute()
+            if not row.data:
+                continue
+            r0 = row.data[0]
+            if r0.get('source') != 'nikkei_csv':
+                continue
+            if cash_id is not None and r0.get('debit_account_id') != cash_id:
+                continue
+            upd = {'debit_account_id': uncollected_id, 'settlement_status': 'unpaid_cashless'}
+            if ctype:
+                upd['settlement_note'] = ctype  # \u4efb\u610f: \u7a2e\u5225\u30e1\u30e2\uff08\u5217\u304c\u7121\u3051\u308c\u3070\u7121\u8996\u3055\u308c\u308b\u53ef\u80fd\u6027\u3042\u308a\u2192except\u3067\u518d\u8a66\u884c\uff09
+            try:
+                supabase.table('journal_entries').update(upd).eq('id', eid).eq('facility_code', f_code).execute()
+            except Exception:
+                supabase.table('journal_entries').update({'debit_account_id': uncollected_id, 'settlement_status': 'unpaid_cashless'}).eq('id', eid).eq('facility_code', f_code).execute()
+            applied += 1
+
+        return jsonify({'status': 'success', 'applied': applied})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/import_nikkei', methods=['POST'])  # nikkei-import-api-v1
 @login_required
 def api_ledger_import_nikkei():
