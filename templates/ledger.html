@@ -126,6 +126,7 @@
 <div id="pane-trial" style="display:none;">
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
         <button onclick="printTrialBalance()" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:0.8rem;cursor:pointer;display:flex;align-items:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:15px;">print</span>PDF出力</button>
+        <button onclick="exportTrialExcel()" style="background:#0f9d58;color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:0.8rem;cursor:pointer;display:flex;align-items:center;gap:4px;margin-left:8px;"><!-- ledger-trial-excel-v1 --><span class="material-symbols-outlined" style="font-size:15px;">table_view</span>Excel出力</button>
     </div>
     <div id="trial-balance-content">
         <div style="text-align:center;padding:40px;color:#9aa0a6;">月を選択して試算表を表示</div>
@@ -1410,6 +1411,41 @@ function printSubLedger(type) {
     <script>window.onload=()=>window.print();<\/script>
   </body></html>`);
   w.document.close();
+}
+
+async function exportTrialExcel() {  // ledger-trial-excel-v1
+  const res = await fetch('/api/ledger/trial_balance?month=' + currentMonth);
+  const data = await res.json();
+  if (data.status !== 'success') { alert('試算表データを取得できませんでした'); return; }
+  const tb = data.trial_balance || {};
+  // SheetJS を動的読み込み
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const [y, m] = currentMonth.split('-');
+  const aoa = [];
+  aoa.push([y + '年' + parseInt(m) + '月 試算表', '', '', '']);
+  aoa.push(['科目', '借方', '貸方', '残高']);
+  const catOrder = ['収益', '費用', '資産', '負債'];
+  catOrder.forEach(cat => {
+    const rows = tb[cat] || [];
+    if (!rows.length) return;
+    const total = rows.reduce((sm, r) => sm + Math.abs(r.balance || 0), 0);
+    aoa.push(['【' + cat + '】 合計: ' + total, '', '', '']);
+    rows.forEach(r => {
+      aoa.push([(r.code || '') + ' ' + (r.name || ''), r.debit || 0, r.credit || 0, Math.abs(r.balance || 0)]);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:28},{wch:14},{wch:14},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '試算表');
+  XLSX.writeFile(wb, '試算表_' + currentMonth + '.xlsx');
 }
 
 async function exportSubLedgerExcel(type) {
