@@ -4307,6 +4307,8 @@ def api_ledger_settings_get():
         except Exception:
             settings['sekkotsu_mode_allowed'] = False
         settings['sekkotsu_mode_enabled'] = bool(settings.get('sekkotsu_mode_enabled'))
+        # ledger-credit-mode-v1: クレカ明細モードフラグ
+        settings['credit_mode_enabled'] = bool(settings.get('credit_mode_enabled'))
         return jsonify({'status': 'success', 'settings': settings, 'divisions': divisions})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -4340,6 +4342,17 @@ def api_ledger_settings_save():
             except Exception:
                 _allowed = False
             payload['sekkotsu_mode_enabled'] = (_want and _allowed)
+        # ledger-credit-mode-v1: 接骨院モードON時のみクレカ明細をON可
+        if 'credit_mode_enabled' in data:
+            _c_want = bool(data.get('credit_mode_enabled'))
+            _sek_now = bool(payload.get('sekkotsu_mode_enabled', data.get('sekkotsu_mode_enabled')))
+            if 'sekkotsu_mode_enabled' not in data:
+                try:
+                    _ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
+                    _sek_now = bool(_ls.data and _ls.data[0].get('sekkotsu_mode_enabled'))
+                except Exception:
+                    _sek_now = False
+            payload['credit_mode_enabled'] = (_c_want and _sek_now)
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
@@ -5125,6 +5138,9 @@ def api_ledger_import_csv():
                         if _ln.startswith('ご契約番号') or ('利用明細' in _ln):
                             _orico_fmt = 'orico'; break
                 if _orico_fmt == 'orico':
+                    # ledger-credit-guard-v1
+                    if not is_credit_enabled(supabase, f_code):
+                        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403
                     _o_rows, _o_meta = build_orico_rows(_nik_content)
                     _o_last4 = _o_meta.get('card_last4') or ''
                     _o_pay = _o_meta.get('payment_date')
@@ -5257,6 +5273,8 @@ def api_ledger_orico_list():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         res = supabase.table('ledger_orico_statements').select(
             'id,payment_date,used_date,used_for,amount,match_status,amazon_detail'
@@ -5281,6 +5299,101 @@ def api_ledger_orico_list():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ============ ledger-orico-card-v1: 会社カード管理(下4桁の束ね) ============
+def _orico_clean_last4_list(raw):
+    """入力(list/str)から下4桁の配列を正規化。数字のみ・重複排除・順序維持。"""
+    import re as _re
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = _re.split(r'[,\s]+', raw)
+    else:
+        items = list(raw)
+    out = []
+    for it in items:
+        d = _re.sub(r'\D', '', str(it))
+        if not d:
+            continue
+        d = d[-4:]  # 末尾4桁
+        if d not in out:
+            out.append(d)
+    return out
+
+
+@app.route('/api/ledger/orico_cards', methods=['GET'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_cards_get():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        res = supabase.table('ledger_orico_cards').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
+        return jsonify({'status': 'success', 'cards': res.data or []})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/orico_card', methods=['POST'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_card_save():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        data = request.json or {}
+        last4_list = _orico_clean_last4_list(data.get('last4_list'))
+        card_name = (data.get('card_name') or '').strip() or None
+        card_id = data.get('id')
+        if card_id:
+            supabase.table('ledger_orico_cards').update({
+                'card_name': card_name,
+                'last4_list': last4_list,
+            }).eq('id', card_id).eq('facility_code', f_code).execute()
+            return jsonify({'status': 'success', 'id': card_id, 'last4_list': last4_list})
+        else:
+            res = supabase.table('ledger_orico_cards').insert({
+                'facility_code': f_code,
+                'card_name': card_name,
+                'last4_list': last4_list,
+                'is_active': True,
+            }).execute()
+            new_id = res.data[0]['id'] if res.data else None
+            return jsonify({'status': 'success', 'id': new_id, 'last4_list': last4_list})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/orico_card/<int:card_id>', methods=['DELETE'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_card_delete(card_id):
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        supabase.table('ledger_orico_cards').update({'is_active': False}).eq('id', card_id).eq('facility_code', f_code).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
     """\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u306e\u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u5224\u5b9a\u3002facilities.sekkotsu_mode_allowed \u304b\u3064 ledger_settings.sekkotsu_mode_enabled \u304c\u4e21\u65b9True\u306a\u3089True\u3002"""
     try:
@@ -5289,6 +5402,17 @@ def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
             return False
         ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
         return bool(ls.data and ls.data[0].get('sekkotsu_mode_enabled'))
+    except Exception:
+        return False
+
+
+def is_credit_enabled(supabase, f_code):  # ledger-credit-mode-v1
+    """クレカ明細モード: 接骨院モードON かつ credit_mode_enabled True で True。"""
+    try:
+        if not is_sekkotsu_enabled(supabase, f_code):
+            return False
+        ls = supabase.table('ledger_settings').select('credit_mode_enabled').eq('facility_code', f_code).execute()
+        return bool(ls.data and ls.data[0].get('credit_mode_enabled'))
     except Exception:
         return False
 

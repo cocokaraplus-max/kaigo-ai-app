@@ -80,6 +80,7 @@
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
     <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
     <button class="ledger-tab" onclick="switchTab('guide')" id="tab-guide" style="display:none;">作業手順マニュアル</button><!-- guide-tab-v1 -->
+    <button class="ledger-tab" onclick="switchTab('orico')" id="tab-orico" style="display:none;">クレカ明細</button><!-- credit-front-v1 -->
     <button class="ledger-tab" onclick="switchTab('settings')" id="tab-settings">設定</button>
 </div>
 
@@ -281,6 +282,13 @@
 </div>
 
 <!-- 設定ペイン -->
+<!-- credit-front-v1: クレカ明細ペイン(骨格) -->
+<div id="pane-orico" style="display:none;">
+    <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;">クレカ明細</div>
+    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;line-height:1.6;">取り込んだカード明細を月ごとに表示します。CSVは「CSV取込」タブからアップロードしてください。</div>
+    <div id="orico-list-area" style="font-size:0.85rem;color:#5f6368;">読込中…</div>
+</div>
+
 <div id="pane-settings" style="display:none;">
 
     <!-- 現金自動補填機能トグル -->
@@ -318,6 +326,20 @@
                 <input type="checkbox" id="toggle-sekkotsu" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
                 <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggle-sek-bg"></span>
                 <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;" id="toggle-sek-knob"></span>
+            </label>
+        </div>
+    </div>
+    <!-- credit-front-v1: クレカ明細モード（接骨院モードON時のみ表示） -->
+    <div class="entry-card" id="credit-mode-card" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="font-size:0.88rem;font-weight:800;color:#202124;">クレカ明細</div>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">クレジットカード明細の取込・商品内訳の補完を有効にします</div>
+            </div>
+            <label style="position:relative;display:inline-block;width:44px;height:24px;">
+                <input type="checkbox" id="toggle-credit" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
+                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggle-credit-bg"></span>
+                <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;" id="toggle-credit-knob"></span>
             </label>
         </div>
     </div>
@@ -599,7 +621,7 @@ function changeMonth(delta) {
 
 function switchTab(tab) {
     ['仕訳帳','trial','cash','bank','card','sales','import','receipt','accounts','settings'].map(t => t==='仕訳帳' ? 'journal' : t).concat(['journal']).filter((v,i,a)=>a.indexOf(v)===i);
-    ['journal','trial','cash','bank','card','sales','import','receipt','accounts','guide','settings'].forEach(t => {  // guide-tab-v1
+    ['journal','trial','cash','bank','card','sales','import','receipt','accounts','guide','orico','settings'].forEach(t => {  // credit-front-v1
         const pane = document.getElementById('pane-'+t);
         const tabEl = document.getElementById('tab-'+t);
         if (pane) pane.style.display = t===tab ? '' : 'none';
@@ -1175,6 +1197,17 @@ async function loadSettings() {
     // guide-tab-v1: 接骨院モード有効時のみマニュアルタブを表示
     var guideTabEl = document.getElementById('tab-guide');
     if (guideTabEl) guideTabEl.style.display = currentSettings.sekkotsu_mode_enabled ? '' : 'none';
+    // credit-front-v1: クレカ明細タブは credit_mode_enabled 時のみ
+    var oricoTabEl = document.getElementById('tab-orico');
+    if (oricoTabEl) oricoTabEl.style.display = currentSettings.credit_mode_enabled ? '' : 'none';
+    // credit-front-v1: クレカ明細トグルは接骨院モードON時のみ表示し反映
+    var crCard = document.getElementById('credit-mode-card');
+    var crToggle = document.getElementById('toggle-credit');
+    if (crCard) crCard.style.display = currentSettings.sekkotsu_mode_enabled ? '' : 'none';
+    if (crToggle) {
+        crToggle.checked = currentSettings.credit_mode_enabled || false;
+        updateToggleUI('credit', crToggle.checked);
+    }
     if (sekToggle) {
         sekToggle.checked = currentSettings.sekkotsu_mode_enabled || false;
         updateToggleUI('sek', sekToggle.checked);
@@ -1208,6 +1241,8 @@ async function saveSettings() {
         cash_fill_division_id: (_fillDivEl && _fillDivEl.value) ? parseInt(_fillDivEl.value) : null,
     };
     if (_sekEl) payload.sekkotsu_mode_enabled = _sekEl.checked;  // sekkotsu-toggle-v1
+    var _crEl = document.getElementById('toggle-credit');  // credit-front-v1
+    if (_crEl) payload.credit_mode_enabled = _crEl.checked;  // credit-front-v1
     updateToggleUI('fill', payload.auto_cash_fill);
     updateToggleUI('div', payload.divisions_enabled);
     await fetch('/api/ledger/settings', {
