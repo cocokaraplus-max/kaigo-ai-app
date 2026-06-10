@@ -469,7 +469,7 @@
         </div>
         <div class="ledger-form-group">
             <label class="ledger-form-label">カテゴリ</label>
-            <select class="ledger-form-control" id="account-category">
+            <select class="ledger-form-control" id="account-category" onchange="onAccountCategoryChange()"><!-- ledger-acct-autocode-v1 -->
                 <option value="資産">資産</option>
                 <option value="負債">負債</option>
                 <option value="収益">収益</option>
@@ -1503,6 +1503,37 @@ function openAccountModal(account) {
     document.getElementById('account-tax').value = account ? account.tax_type : 'taxable';
     document.getElementById('account-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
+    // ledger-acct-autocode-v1: 新規追加なら初期カテゴリのコードを自動採番
+    if (!account) { onAccountCategoryChange(); }
+}
+
+// ledger-acct-autocode-v1: カテゴリの次コードを取得
+async function fetchNextAccountCode(category) {
+    try {
+        var r = await fetch('/api/ledger/account_next_code?category=' + encodeURIComponent(category));
+        var j = await r.json();
+        if (j.status === 'success') return j.code;
+    } catch (e) {}
+    return '';
+}
+
+// ledger-acct-autocode-v1: カテゴリ変更時、新規かつコード空ならコードを自動セット
+async function onAccountCategoryChange() {
+    var idEl = document.getElementById('account-id');
+    if (idEl && idEl.value) return;  // 編集中は触らない
+    var codeEl = document.getElementById('account-code');
+    var catEl = document.getElementById('account-category');
+    if (!codeEl || !catEl) return;
+    // 既にユーザーが手入力していたら尊重(空のときだけ自動)
+    if (codeEl.value && codeEl.value.trim()) {
+        // 直前の自動値だった場合は更新したいので、data属性で自動値を覚えておく
+        if (codeEl.getAttribute('data-auto') !== codeEl.value.trim()) return;
+    }
+    var code = await fetchNextAccountCode(catEl.value);
+    if (code) {
+        codeEl.value = code;
+        codeEl.setAttribute('data-auto', code);  // 自動採番値であることを記録
+    }
 }
 
 function closeAccountModal() {
@@ -1967,10 +1998,12 @@ function renderSubLedger(type, entries, cfg, el) {
       <td style="text-align:right;color:#1a73e8;">${inAmt ? fmt(inAmt) : ''}</td>
       <td style="text-align:right;color:#e53935;">${outAmt ? fmt(outAmt) : ''}</td>
       <td style="text-align:right;font-weight:700;">${fmt(balance)}</td>
-    </tr>`;
+      ${type==='card' ? `<td style="text-align:center;"><button onclick="deleteCardEntry(${e.id})" style="font-size:0.66rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 7px;cursor:pointer;">削除</button></td>` : ''}
+    </tr>`;  /* ledger-cardledger-del-v1 */
   });
 
   el.innerHTML = `
+    ${type==='card' ? `<div style="text-align:right;margin-bottom:6px;"><button onclick="deleteCardMonth()" style="font-size:0.74rem;color:#ea4335;background:#fce8e6;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">この月をまとめて削除</button></div>` : ''}
     <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
       <thead>
@@ -1982,6 +2015,7 @@ function renderSubLedger(type, entries, cfg, el) {
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'売上顕':'入金'}</th>
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'':'出金'}</th>
           <th style="padding:6px 8px;text-align:right;">${cfg.balanceLabel}</th>
+          ${type==='card' ? '<th style="padding:6px 8px;text-align:center;">操作</th>' : ''}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1991,11 +2025,40 @@ function renderSubLedger(type, entries, cfg, el) {
           <td style="padding:6px 8px;text-align:right;color:#1a73e8;">${fmt(totalIn)}</td>
           <td style="padding:6px 8px;text-align:right;color:#e53935;">${type==='sales'?'':fmt(totalOut)}</td>
           <td style="padding:6px 8px;text-align:right;">${fmt(balance)}</td>
+          ${type==='card' ? '<td></td>' : ''}
         </tr>
       </tfoot>
     </table>
     </div>
-  `;
+  `;  /* ledger-cardledger-del-v1 */
+}
+
+// ledger-cardledger-del-v1: 経費クレカ帳 1件削除
+async function deleteCardEntry(id) {
+    if (!confirm('この経費クレカ帳の仕訳を削除しますか？\n元に戻せません。')) return;
+    try {
+        var r = await fetch('/api/ledger/entry/' + id, { method: 'DELETE' });
+        var j = await r.json();
+        if (j.status === 'success') { loadSubLedger('card'); }
+        else { alert('削除に失敗しました: ' + (j.message||'')); }
+    } catch (e) { alert('エラー: ' + e.message); }
+}
+
+// ledger-cardledger-del-v1: 経費クレカ帳 表示中の月をまとめて削除
+async function deleteCardMonth() {
+    var entries = _subLedgerCache['card'] || [];
+    if (!entries.length) { alert('この月に削除する仕訳はありません'); return; }
+    if (!confirm(currentMonth + ' の経費クレカ帳 ' + entries.length + '件を削除します。\n元に戻せません。よろしいですか？')) return;
+    var ok = 0, ng = 0;
+    for (var i = 0; i < entries.length; i++) {
+        try {
+            var r = await fetch('/api/ledger/entry/' + entries[i].id, { method: 'DELETE' });
+            var j = await r.json();
+            if (j.status === 'success') ok++; else ng++;
+        } catch (e) { ng++; }
+    }
+    alert(ok + '件を削除しました' + (ng ? ('（' + ng + '件失敗）') : ''));
+    loadSubLedger('card');
 }
 
 function printSubLedger(type) {

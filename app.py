@@ -4632,6 +4632,46 @@ def api_ledger_accounts():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+@app.route('/api/ledger/account_next_code', methods=['GET'])  # ledger-acct-autocode-v1
+@login_required
+def api_ledger_account_next_code():
+    """カテゴリの番号帯で空いている次のコードを返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        category = (request.args.get('category') or '').strip()
+        # \u30ab\u30c6\u30b4\u30ea -> \u756a\u53f7\u5e2f\u306e\u5148\u982d\u6570\u5b57
+        band = {
+            '\u8cc7\u7523': 1, '\u8ca0\u50b5': 2, '\u7d14\u8cc7\u7523': 3,
+            '\u53ce\u76ca': 4, '\u8cbb\u7528': 5,
+        }.get(category)
+        if band is None:
+            return jsonify({'status': 'error', 'message': 'bad_category'}), 400
+        lo = band * 100
+        hi = band * 100 + 99
+        res = supabase.table('accounts').select('code')\
+            .eq('facility_code', f_code).execute()
+        max_in_band = None
+        for r in (res.data or []):
+            c = str(r.get('code') or '').strip()
+            if not c.isdigit():
+                continue
+            n = int(c)
+            if lo <= n <= hi:
+                if max_in_band is None or n > max_in_band:
+                    max_in_band = n
+        nxt = (max_in_band + 1) if max_in_band is not None else (lo + 1)
+        return jsonify({'status': 'success', 'code': str(nxt)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/account', methods=['POST'])
 @login_required
 def api_ledger_account_save():
