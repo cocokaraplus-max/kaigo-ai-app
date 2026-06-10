@@ -344,6 +344,17 @@
                     <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;pointer-events:none;" id="toggle-credit-knob"></span>
                 </label>
             </div>
+            <!-- orico-card-ui-v1: 会社カード管理(クレカ明細ON時のみ表示) -->
+            <div id="orico-card-section" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed #e8eaed;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <div>
+                        <div style="font-size:0.82rem;font-weight:700;color:#202124;">会社カードの管理</div>
+                        <div style="font-size:0.7rem;color:#5f6368;margin-top:2px;line-height:1.5;">明細の下4桁とカード名を登録します。再発行で番号が変わった場合は、同じカードに複数の下4桁を束ねられます。</div>
+                    </div>
+                </div>
+                <div id="orico-card-list" style="margin-bottom:8px;"></div>
+                <button class="ledger-btn primary" style="width:100%;font-size:0.82rem;" onclick="openOricoCardModal()">+ カードを追加</button>
+            </div>
         </div>
     </div>
     <!-- 事業部管理 -->
@@ -362,6 +373,27 @@
         <div id="divisions-section" style="display:none;">
             <div id="divisions-list" style="margin-bottom:10px;"></div>
             <button class="ledger-btn primary" style="width:100%;" onclick="openDivisionModal()">+ 事業部を追加</button>
+        </div>
+    </div>
+</div>
+
+<!-- orico-card-ui-v1: 会社カード入力モーダル -->
+<div class="ledger-modal" id="orico-card-modal">
+    <div class="ledger-modal-content">
+        <div class="ledger-modal-title" id="orico-card-modal-title">カードを追加</div>
+        <input type="hidden" id="orico-card-id">
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">カード名（任意）</label>
+            <input type="text" class="ledger-form-control" id="orico-card-name" placeholder="例: オリコ法人カード">
+        </div>
+        <div class="ledger-form-group">
+            <label class="ledger-form-label">下4桁</label>
+            <input type="text" class="ledger-form-control" id="orico-card-last4" placeholder="例: 0407, 1234" inputmode="numeric">
+            <div style="font-size:0.7rem;color:#5f6368;margin-top:4px;line-height:1.5;">複数ある場合はカンマか空白で区切ってください。再発行で番号が変わったカードは、ここに古い番号と新しい番号を両方入れると1枚として扱えます。</div>
+        </div>
+        <div class="ledger-btn-row">
+            <button class="ledger-btn cancel" onclick="closeOricoCardModal()">キャンセル</button>
+            <button class="ledger-btn primary" onclick="saveOricoCard()">保存</button>
         </div>
     </div>
 </div>
@@ -1289,6 +1321,13 @@ async function loadSettings() {
         crToggle.checked = currentSettings.credit_mode_enabled || false;
         updateToggleUI('credit', crToggle.checked);
     }
+    // orico-card-ui-v1: クレカ明細ON時は会社カードセクションを表示し読込む
+    var _ocSec = document.getElementById('orico-card-section');
+    if (_ocSec) {
+        var _ocOn = !!currentSettings.credit_mode_enabled;
+        _ocSec.style.display = _ocOn ? '' : 'none';
+        if (_ocOn) loadOricoCards();
+    }
     if (sekToggle) {
         sekToggle.checked = currentSettings.sekkotsu_mode_enabled || false;
         updateToggleUI('sek', sekToggle.checked);
@@ -1310,6 +1349,11 @@ function updateToggleUI(type, on) {
     if (type === 'div') {
         const sec = document.getElementById('divisions-section');
         if (sec) sec.style.display = on ? '' : 'none';
+    }
+    if (type === 'credit') {  // orico-card-ui-v1
+        const sec = document.getElementById('orico-card-section');
+        if (sec) sec.style.display = on ? '' : 'none';
+        if (on) loadOricoCards();
     }
 }
 
@@ -1478,6 +1522,107 @@ async function saveDivision() {
         loadSettings();
     } else {
         alert('保存失敗: ' + (data.message||''));
+    }
+}
+
+// ===== orico-card-ui-v1: 会社カード管理 =====
+window.currentOricoCards = [];
+
+async function loadOricoCards() {
+    var list = document.getElementById('orico-card-list');
+    if (!list) return;
+    try {
+        var res = await fetch('/api/ledger/orico_cards');
+        var data = await res.json();
+        if (data.status !== 'success') { window.currentOricoCards = []; renderOricoCards(); return; }
+        window.currentOricoCards = data.cards || [];
+    } catch (e) {
+        window.currentOricoCards = [];
+    }
+    renderOricoCards();
+}
+
+function renderOricoCards() {
+    var list = document.getElementById('orico-card-list');
+    if (!list) return;
+    var cards = window.currentOricoCards || [];
+    if (!cards.length) {
+        list.innerHTML = '<div style="text-align:center;padding:12px;color:#9aa0a6;font-size:0.78rem;">カードが登録されていません</div>';
+        return;
+    }
+    list.innerHTML = cards.map(function(c) {
+        var l4 = (c.last4_list || []).map(function(x){ return '****' + x; }).join('  ');
+        var nm = c.card_name ? c.card_name : '(名称なし)';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f3f4;">' +
+            '<div style="min-width:0;">' +
+                '<div style="font-size:0.82rem;font-weight:700;color:#202124;">' + escHtml(nm) + '</div>' +
+                '<div style="font-size:0.72rem;color:#5f6368;margin-top:2px;font-variant-numeric:tabular-nums;">' + (l4 || '下4桁未登録') + '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px;flex:none;">' +
+                '<button class="entry-btn" onclick="editOricoCard(' + c.id + ')"><span class="material-symbols-outlined" style="font-size:14px;">edit</span></button>' +
+                '<button class="entry-btn danger" onclick="deleteOricoCard(' + c.id + ')"><span class="material-symbols-outlined" style="font-size:14px;">delete</span></button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function openOricoCardModal(card) {
+    document.getElementById('orico-card-modal-title').textContent = card ? 'カードを編集' : 'カードを追加';
+    document.getElementById('orico-card-id').value = card ? card.id : '';
+    document.getElementById('orico-card-name').value = card && card.card_name ? card.card_name : '';
+    document.getElementById('orico-card-last4').value = card && card.last4_list ? card.last4_list.join(', ') : '';
+    document.getElementById('orico-card-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeOricoCardModal() {
+    document.getElementById('orico-card-modal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function editOricoCard(id) {
+    var c = (window.currentOricoCards || []).find(function(x){ return x.id === id; });
+    if (c) openOricoCardModal(c);
+}
+
+async function deleteOricoCard(id) {
+    if (!confirm('このカードを削除しますか？')) return;
+    try {
+        var res = await fetch('/api/ledger/orico_card/' + id, {method:'DELETE'});
+        var data = await res.json();
+        if (data.status === 'success') loadOricoCards();
+        else alert('削除失敗: ' + (data.message||''));
+    } catch (e) {
+        alert('削除失敗: ' + e);
+    }
+}
+
+async function saveOricoCard() {
+    var id = document.getElementById('orico-card-id').value;
+    var cardName = document.getElementById('orico-card-name').value.trim();
+    var last4Raw = document.getElementById('orico-card-last4').value.trim();
+    if (!last4Raw) { alert('下4桁を入力してください'); return; }
+    var payload = { card_name: cardName, last4_list: last4Raw };
+    if (id) payload.id = parseInt(id);
+    try {
+        var res = await fetch('/api/ledger/orico_card', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            closeOricoCardModal();
+            loadOricoCards();
+        } else {
+            alert('保存失敗: ' + (data.message||''));
+        }
+    } catch (e) {
+        alert('保存失敗: ' + e);
     }
 }
 
