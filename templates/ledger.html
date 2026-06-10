@@ -320,7 +320,9 @@
             </div>
             <div style="border-top:1px dashed #dadce0;margin-top:10px;padding-top:10px;">
                 <button onclick="previewBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#1a73e8;background:#e8f0fe;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">全明細に仮割当</button>
-                <span style="font-size:0.72rem;color:#9aa0a6;margin-left:8px;">未割当の明細だけを推定します</span>
+                <label style="font-size:0.72rem;color:#5f6368;margin-left:10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><!-- ledger-credit-3bpp-v1 -->
+                    <input type="checkbox" id="kwrule-overwrite" style="cursor:pointer;">割当済みも見直す(上書き)
+                </label>
             </div>
             <div id="kwrule-preview" style="margin-top:10px;"></div>
         </div>
@@ -2552,35 +2554,53 @@ async function deleteKwrule(kwEnc) {
 }
 
 // \u5168\u660e\u7d30\u306b\u4eee\u5272\u5f53(\u672a\u5272\u5f53\u306e\u307f) -> \u30ec\u30d3\u30e5\u30fc\u4e00\u89a7\u3092\u8868\u793a
-async function previewBulkAssign() {
+async function previewBulkAssign() {  // ledger-credit-3bpp-v1
     var area = document.getElementById('kwrule-preview');
     if (!area) return;
+    var owEl = document.getElementById('kwrule-overwrite');
+    var overwrite = !!(owEl && owEl.checked);  // true=\u5168\u4ef6\u30e2\u30fc\u30c9
     area.innerHTML = '<div style="font-size:0.78rem;color:#5f6368;">\u4eee\u5272\u5f53\u4e2d\u2026</div>';
     try {
         var r = await fetch('/api/ledger/credit_preview', {
-            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({only_unassigned: true})
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({only_unassigned: !overwrite})
         });
         var j = await r.json();
         if (j.status !== 'success') { area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + (j.message||'') + '</div>'; return; }
         var prev = j.previews || [];
-        if (!prev.length) { area.innerHTML = '<div style="font-size:0.78rem;color:#9aa0a6;">\u4eee\u5272\u5f53\u3067\u304d\u308b\u672a\u5272\u5f53\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u8ffd\u52a0\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002</div>'; window._kwruleBulk = null; return; }
-        // pairs\u3092\u4fdd\u6301(\u79d1\u76ee\u3042\u308a\u306e\u3082\u306e\u306e\u307f\u4fdd\u5b58\u5bfe\u8c61)
+        if (!prev.length) {
+            var emptyMsg = overwrite
+                ? '\u5909\u66f4\u306b\u306a\u308b\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u898b\u76f4\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002'
+                : '\u4eee\u5272\u5f53\u3067\u304d\u308b\u672a\u5272\u5f53\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u8ffd\u52a0\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002';
+            area.innerHTML = '<div style="font-size:0.78rem;color:#9aa0a6;">' + emptyMsg + '</div>';
+            window._kwruleBulk = null; return;
+        }
         var pairs = [];
-        var h = '<div style="font-size:0.8rem;font-weight:700;color:#202124;margin-bottom:6px;">\u4eee\u5272\u5f53\u30d7\u30ec\u30d3\u30e5\u30fc (' + prev.length + '\u4ef6)</div>';
+        var overwriteCount = 0;
+        var title = overwrite ? '\u898b\u76f4\u3057\u30d7\u30ec\u30d3\u30e5\u30fc' : '\u4eee\u5272\u5f53\u30d7\u30ec\u30d3\u30e5\u30fc';
+        var h = '<div style="font-size:0.8rem;font-weight:700;color:#202124;margin-bottom:6px;">' + title + ' (' + prev.length + '\u4ef6)</div>';
         h += '<div style="max-height:300px;overflow-y:auto;border:1px solid #e8eaed;border-radius:8px;">';
         prev.forEach(function(p){
             var amt = (p.amount != null) ? ('\uffe5' + Number(p.amount).toLocaleString()) : '';
             var accTxt = p.suggested_account ? escAmz((p.suggested_account.code||'') + ' ' + (p.suggested_account.name||'')) : '<span style="color:#9aa0a6;">\u79d1\u76ee\u306a\u3057</span>';
             var dvTxt = p.suggested_division ? (' / ' + escAmz(p.suggested_division.name)) : '';
             var byJp = (p.matched_by === 'store_partial') ? '\u90e8\u5206\u4e00\u81f4' : (p.matched_by === 'store_exact' || p.matched_by === 'item_exact') ? '\u5b8c\u5168\u4e00\u81f4' : '';
-            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.76rem;padding:5px 8px;border-bottom:1px solid #f4f4f4;">';
+            var isChange = !!p.is_change;  // \u65e2\u5b58\u3092\u4e0a\u66f8\u304d
+            if (isChange) overwriteCount++;
+            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.76rem;padding:5px 8px;border-bottom:1px solid #f4f4f4;' + (isChange ? 'background:#fef7e0;' : '') + '">';
             h += '<span style="color:#5f6368;min-width:70px;">' + (p.used_date||'') + '</span>';
             h += '<span style="flex:1;min-width:0;color:#3c4043;word-break:break-all;">' + escAmz(p.used_for||'') + '</span>';
             h += '<span style="color:#202124;white-space:nowrap;">' + amt + '</span>';
+            // \u5909\u66f4\u884c\u306f\u300c\u73fe\u5728 -> \u65b0\u300d\u3092\u8868\u793a
+            if (isChange && p.current_account) {
+                var curTxt = escAmz((p.current_account.code||'') + ' ' + (p.current_account.name||''));
+                var curDv = p.current_division ? (' / ' + escAmz(p.current_division.name)) : '';
+                h += '<span style="color:#9aa0a6;white-space:nowrap;text-decoration:line-through;">' + curTxt + curDv + '</span>';
+                h += '<span style="color:#9aa0a6;">\u2192</span>';
+            }
             h += '<span style="color:#1a73e8;white-space:nowrap;">' + accTxt + dvTxt + '</span>';
+            if (isChange) h += '<span style="font-size:0.64rem;font-weight:700;color:#b06000;background:#fef0c7;border-radius:4px;padding:1px 5px;white-space:nowrap;">\u5909\u66f4</span>';
             if (byJp) h += '<span style="font-size:0.66rem;color:#9aa0a6;white-space:nowrap;">' + byJp + '</span>';
             h += '</div>';
-            // \u4fdd\u5b58 pair: \u79d1\u76ee\u304c\u3042\u308b\u3082\u306e\u3060\u3051(account_id\u5fc5\u9808)
             if (p.suggested_account) {
                 var pr = { id: p.id, account_id: p.suggested_account.id, learn: false };
                 if (p.suggested_division) pr.division_id = p.suggested_division.id;
@@ -2588,12 +2608,15 @@ async function previewBulkAssign() {
             }
         });
         h += '</div>';
-        h += '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;">';
+        var note = overwrite && overwriteCount ? ('<span style="font-size:0.72rem;color:#b06000;margin-left:8px;">\u3046\u3061' + overwriteCount + '\u4ef6\u306f\u4e0a\u66f8\u304d</span>') : '';
+        h += '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
         h += '<button onclick="commitBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#fff;background:#34a853;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;">\u3053\u306e\u5185\u5bb9\u3067\u307e\u3068\u3081\u3066\u4fdd\u5b58 (' + pairs.length + '\u4ef6)</button>';
+        h += note;
         h += '<span id="kwrule-commit-msg" style="font-size:0.74rem;color:#5f6368;"></span>';
         h += '</div>';
         area.innerHTML = h;
         window._kwruleBulk = pairs;
+        window._kwruleBulkOverwrite = overwriteCount;
     } catch (e) {
         area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + e.message + '</div>';
     }

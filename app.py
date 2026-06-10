@@ -6209,7 +6209,7 @@ def api_ledger_credit_preview():
             .select('id,payment_date,used_date,used_for,amount,amazon_detail,account_id,division_id')\
             .eq('facility_code', f_code).order('payment_date', desc=True).order('used_date').execute()
         out = []
-        for r in (res.data or []):
+        for r in (res.data or []):  # ledger-credit-3bpp-v1
             cur_a = r.get('account_id')
             cur_d = r.get('division_id')
             # 未割当のみモード: 科目が既にある明細はスキップ
@@ -6220,6 +6220,12 @@ def api_ledger_credit_preview():
             # 推定が何もない明細は返さない(仕分け対象外)
             if aid is None and did is None:
                 continue
+            # ledger-credit-3bpp-v1: 全件モードでは「推定が現在の割当と同じ」明細はスキップ
+            if not only_unassigned:
+                same_a = (cur_a == aid) or (aid is None)
+                same_d = (cur_d == did) or (did is None)
+                if cur_a is not None and same_a and same_d:
+                    continue
             acct = None
             if aid is not None and aid in acc_map:
                 a = acc_map[aid]
@@ -6228,6 +6234,15 @@ def api_ledger_credit_preview():
             if did is not None and did in div_map:
                 d = div_map[did]
                 dvv = {'id': d['id'], 'name': d['name']}
+            # ledger-credit-3bpp-v1: 現在の割当(全件モードの差分表示用)
+            cur_acct = None
+            if cur_a is not None and cur_a in acc_map:
+                _ca = acc_map[cur_a]
+                cur_acct = {'id': _ca['id'], 'code': _ca['code'], 'name': _ca['name']}
+            cur_dvv = None
+            if cur_d is not None and cur_d in div_map:
+                _cd = div_map[cur_d]
+                cur_dvv = {'id': _cd['id'], 'name': _cd['name']}
             out.append({
                 'id': r['id'],
                 'payment_date': r.get('payment_date'),
@@ -6238,6 +6253,9 @@ def api_ledger_credit_preview():
                 'matched_by': by,
                 'suggested_division': dvv,
                 'division_matched_by': dby,
+                'current_account': cur_acct,  # ledger-credit-3bpp-v1
+                'current_division': cur_dvv,  # ledger-credit-3bpp-v1
+                'is_change': (cur_a is not None),  # ledger-credit-3bpp-v1 True=既存を上書き
             })
         return jsonify({'status': 'success', 'previews': out})
     except Exception as e:
