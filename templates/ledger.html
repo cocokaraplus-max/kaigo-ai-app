@@ -2586,20 +2586,26 @@ async function previewBulkAssign() {  // ledger-credit-3bpp-v1
             var byJp = (p.matched_by === 'store_partial') ? '\u90e8\u5206\u4e00\u81f4' : (p.matched_by === 'store_exact' || p.matched_by === 'item_exact') ? '\u5b8c\u5168\u4e00\u81f4' : '';
             var isChange = !!p.is_change;  // \u65e2\u5b58\u3092\u4e0a\u66f8\u304d
             if (isChange) overwriteCount++;
-            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.76rem;padding:5px 8px;border-bottom:1px solid #f4f4f4;' + (isChange ? 'background:#fef7e0;' : '') + '">';
-            h += '<span style="color:#5f6368;min-width:70px;">' + (p.used_date||'') + '</span>';
-            h += '<span style="flex:1;min-width:0;color:#3c4043;word-break:break-all;">' + escAmz(p.used_for||'') + '</span>';
-            h += '<span style="color:#202124;white-space:nowrap;">' + amt + '</span>';
-            // \u5909\u66f4\u884c\u306f\u300c\u73fe\u5728 -> \u65b0\u300d\u3092\u8868\u793a
+            // ledger-credit-3bpp-layout-v1: 2\u6bb5\u7d44\u307f\u30ec\u30a4\u30a2\u30a6\u30c8(\u4e0a:\u65e5\u4ed8\u30fb\u5e97\u540d\u30fb\u91d1\u984d / \u4e0b:\u79d1\u76ee\u4e8b\u696d\u5dee\u5206)
+            h += '<div style="display:flex;flex-direction:column;gap:3px;font-size:0.76rem;padding:6px 8px;border-bottom:1px solid #f4f4f4;' + (isChange ? 'background:#fef7e0;' : '') + '">';
+            // \u4e0a\u6bb5: \u65e5\u4ed8 + \u5e97\u540d + \u91d1\u984d
+            h += '<div style="display:flex;align-items:baseline;gap:8px;">';
+            h += '<span style="color:#5f6368;white-space:nowrap;min-width:70px;">' + (p.used_date||'') + '</span>';
+            h += '<span style="flex:1;min-width:0;color:#3c4043;word-break:break-word;overflow-wrap:anywhere;">' + escAmz(p.used_for||'') + '</span>';
+            h += '<span style="color:#202124;white-space:nowrap;font-weight:700;">' + amt + '</span>';
+            h += '</div>';
+            // \u4e0b\u6bb5: [\u73fe\u5728(\u53d6\u6d88\u7dda) \u2192 ] \u65b0\u306e\u79d1\u76ee/\u4e8b\u696d + \u30de\u30fc\u30af
+            h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:78px;">';
             if (isChange && p.current_account) {
                 var curTxt = escAmz((p.current_account.code||'') + ' ' + (p.current_account.name||''));
                 var curDv = p.current_division ? (' / ' + escAmz(p.current_division.name)) : '';
-                h += '<span style="color:#9aa0a6;white-space:nowrap;text-decoration:line-through;">' + curTxt + curDv + '</span>';
+                h += '<span style="color:#9aa0a6;text-decoration:line-through;">' + curTxt + curDv + '</span>';
                 h += '<span style="color:#9aa0a6;">\u2192</span>';
             }
-            h += '<span style="color:#1a73e8;white-space:nowrap;">' + accTxt + dvTxt + '</span>';
+            h += '<span style="color:#1a73e8;font-weight:700;">' + accTxt + dvTxt + '</span>';
             if (isChange) h += '<span style="font-size:0.64rem;font-weight:700;color:#b06000;background:#fef0c7;border-radius:4px;padding:1px 5px;white-space:nowrap;">\u5909\u66f4</span>';
             if (byJp) h += '<span style="font-size:0.66rem;color:#9aa0a6;white-space:nowrap;">' + byJp + '</span>';
+            h += '</div>';
             h += '</div>';
             if (p.suggested_account) {
                 var pr = { id: p.id, account_id: p.suggested_account.id, learn: false };
