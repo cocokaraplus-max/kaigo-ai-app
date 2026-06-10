@@ -6262,6 +6262,140 @@ def api_ledger_credit_preview():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+def _rcpt_suggest(supabase, f_code, vendor, description, rules, drules):
+    """領収書用の推定。vendor=店名, description=内容。
+    商品名完全 -> 店名完全 -> 店名部分 の順。 (account_id, by) / (division_id, dby)。"""  # ledger-receipt-learn-v1
+    exact_item, exact_store, partial = rules
+    d_item, d_store, d_partial = drules
+    item = _cr_norm(description)
+    store = _cr_norm(vendor)
+
+    def _pick(ei, es, pa):
+        if item and item in ei:
+            return ei[item], 'item_exact'
+        if store and store in es:
+            return es[store], 'store_exact'
+        for kw, v in pa:
+            if kw and kw in store:
+                return v, 'store_partial'
+        return None, 'none'
+
+    aid, by = _pick(exact_item, exact_store, partial)
+    did, dby = _pick(d_item, d_store, d_partial)
+    return aid, by, did, dby
+
+
+@app.route('/api/ledger/receipt_suggest', methods=['POST'])  # ledger-receipt-learn-v1
+@login_required
+def api_ledger_receipt_suggest():
+    """領収書OCRの vendor/description から借方科目・事業を推定して返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        vendor = data.get('vendor') or ''
+        description = data.get('description') or ''
+        rules = _cr_load_rules(supabase, f_code)
+        drules = _dr_load_rules(supabase, f_code)
+        aid, by, did, dby = _rcpt_suggest(supabase, f_code, vendor, description, rules, drules)
+        acct = None
+        if aid is not None:
+            _a = supabase.table('accounts').select('id,code,name')\
+                .eq('id', aid).eq('facility_code', f_code).eq('is_active', True).execute()
+            if _a.data:
+                a = _a.data[0]
+                acct = {'id': a['id'], 'code': a['code'], 'name': a['name']}
+        dvv = None
+        if did is not None:
+            _d = supabase.table('ledger_divisions').select('id,name')\
+                .eq('id', did).eq('facility_code', f_code).eq('is_active', True).execute()
+            if _d.data:
+                d = _d.data[0]
+                dvv = {'id': d['id'], 'name': d['name']}
+        return jsonify({'status': 'success',
+                        'suggested_account': acct, 'matched_by': by,
+                        'suggested_division': dvv, 'division_matched_by': dby})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/receipt_learn', methods=['POST'])  # ledger-receipt-learn-v1
+@login_required
+def api_ledger_receipt_learn():
+    """領収書仕訳保存後に vendor/description -> 科目/事業 を学習辞書にupsert。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        import datetime as _dt
+        data = request.json or {}
+        vendor = data.get('vendor') or ''
+        description = data.get('description') or ''
+        aid = data.get('account_id')
+        did = data.get('division_id')
+        if aid is None:
+            return jsonify({'status': 'success', 'learned': 0})  # 何もしない
+        # 学習キー: 内容があれば item、無ければ 店名 store
+        item = _cr_norm(description)
+        if item:
+            key_type, key_text = 'item', item
+        else:
+            key_type, key_text = 'store', _cr_norm(vendor)
+        if not key_text:
+            return jsonify({'status': 'success', 'learned': 0})
+        now = _dt.datetime.utcnow().isoformat()
+        learned = 0
+        # 科目は費用科目のときのみ学習(安全弁)
+        _a = supabase.table('accounts').select('id,category')\
+            .eq('id', aid).eq('facility_code', f_code).eq('is_active', True).execute()
+        if _a.data and _a.data[0].get('category') == '\u8cbb\u7528':
+            _e = supabase.table('ledger_credit_rules').select('id')\
+                .eq('facility_code', f_code).eq('key_type', key_type)\
+                .eq('key_text', key_text).execute()
+            if _e.data:
+                supabase.table('ledger_credit_rules').update({
+                    'account_id': aid, 'updated_at': now,
+                }).eq('id', _e.data[0]['id']).execute()
+            else:
+                supabase.table('ledger_credit_rules').insert({
+                    'facility_code': f_code, 'key_type': key_type,
+                    'key_text': key_text, 'match_type': 'exact',
+                    'account_id': aid, 'source': 'receipt',
+                }).execute()
+            learned += 1
+        # 事業(division_idが渡されたときのみ)
+        if did is not None:
+            _dchk = supabase.table('ledger_divisions').select('id').eq('id', did)\
+                .eq('facility_code', f_code).eq('is_active', True).execute()
+            if _dchk.data:
+                _de = supabase.table('ledger_division_rules').select('id')\
+                    .eq('facility_code', f_code).eq('key_type', key_type)\
+                    .eq('key_text', key_text).execute()
+                if _de.data:
+                    supabase.table('ledger_division_rules').update({
+                        'division_id': did, 'updated_at': now,
+                    }).eq('id', _de.data[0]['id']).execute()
+                else:
+                    supabase.table('ledger_division_rules').insert({
+                        'facility_code': f_code, 'key_type': key_type,
+                        'key_text': key_text, 'match_type': 'exact',
+                        'division_id': did, 'source': 'receipt',
+                    }).execute()
+                learned += 1
+        return jsonify({'status': 'success', 'learned': learned})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ============ /ledger-credit-rules-v1 ============
 
 

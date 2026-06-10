@@ -1139,6 +1139,8 @@ function onDivisionFilterChange() {
 
 async function openEntryModal(entry) {
 try {
+    // ledger-receipt-learn-v1: OCR由来でないモーダル起動は学習コンテキストをクリア
+    if (!entry || !entry._fromOCR) { window._ocrLearnContext = null; }
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (!window.allAccounts || window.allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
@@ -1176,6 +1178,7 @@ function closeEntryModal() {
 }
 
 function editEntry(id) {
+    window._ocrLearnContext = null;  // ledger-receipt-learn-v1: 編集は学習対象外
     const e = currentEntries.find(x => x.id === id);
     if (e) openEntryModal(e);
 }
@@ -1215,6 +1218,21 @@ async function saveEntry() {
     });
     const data = await res.json();
     if (data.status === 'success') {
+        // ledger-receipt-learn-v1: OCR由来の保存なら学習辞書に記録
+        try {
+            var _lc = window._ocrLearnContext;
+            if (_lc && payload.debit_account_id) {
+                await fetch('/api/ledger/receipt_learn', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        vendor: _lc.vendor || '', description: _lc.description || '',
+                        account_id: payload.debit_account_id,
+                        division_id: payload.division_id || null,
+                    })
+                });
+            }
+        } catch (e) {}
+        window._ocrLearnContext = null;
         closeEntryModal();
         loadEntries();
     } else {
@@ -1389,14 +1407,32 @@ async function ocrReceipts(input) {
     input.value = '';
 }
 
-function createEntryFromOCR(ocr) {
+async function createEntryFromOCR(ocr) {  // ledger-receipt-learn-v1
+    // 学習辞書で借方科目・事業を推定
+    var debitId = '';
+    var divId = '';
+    try {
+        var sr = await fetch('/api/ledger/receipt_suggest', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({vendor: ocr.vendor||'', description: ocr.description||''})
+        });
+        var sj = await sr.json();
+        if (sj.status === 'success') {
+            if (sj.suggested_account) debitId = sj.suggested_account.id;
+            if (sj.suggested_division) divId = sj.suggested_division.id;
+        }
+    } catch (e) {}
+    // 保存後の学習用コンテキスト(OCR由来のときだけセット)
+    window._ocrLearnContext = { vendor: ocr.vendor||'', description: ocr.description||'' };
     openEntryModal({
         entry_date: ocr.date || new Date().toISOString().slice(0,10),
-        debit_account_id: '',
+        debit_account_id: debitId,
         credit_account_id: '',
         amount: ocr.amount || 0,
         tax_amount: ocr.tax_amount || 0,
         description: ocr.vendor ? ocr.vendor + ' ' + (ocr.description||'') : (ocr.description||''),
+        division_id: divId,
+        _fromOCR: true,
     });
 }
 // ===== 勘定科目管理 =====
