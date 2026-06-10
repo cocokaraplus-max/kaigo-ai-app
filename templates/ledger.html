@@ -56,6 +56,9 @@
 
 .csv-drop-zone { border:2px dashed #c9c7bd; border-radius:12px; padding:24px; text-align:center; color:#5f6368; font-size:0.85rem; cursor:pointer; margin-bottom:12px; }
 .csv-drop-zone:hover { border-color:#1a73e8; background:#f8f9ff; }
+/* ldgr-spinner-v1 */
+@keyframes ldgrspin { to { transform: rotate(360deg); } }
+.ldgr-spin { display:inline-block; width:14px; height:14px; border:2px solid #c9c7bd; border-top-color:#1a73e8; border-radius:50%; animation: ldgrspin 0.7s linear infinite; vertical-align:middle; margin-right:7px; }
 .receipt-preview { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
 .receipt-thumb { border-radius:8px; overflow:hidden; aspect-ratio:1; background:#f1f3f4; }
 .receipt-thumb img { width:100%; height:100%; object-fit:cover; }
@@ -967,7 +970,7 @@ async function importCSV(input) {
     formData.append('file', file);
     formData.append('csv_type', document.getElementById('csv-type').value);
     const btn = document.querySelector('#pane-import .csv-drop-zone');
-    btn.textContent = 'AI解析中...';
+    btn.innerHTML = '<span class="ldgr-spin"></span>AI解析中…';  /* ldgr-spinner-v1 */
     const _csvType = document.getElementById('csv-type').value;  // nikkei-ui-v1
     const _csvUrl = (_csvType === 'nikkei') ? '/api/ledger/import_nikkei' : '/api/ledger/import_csv';
     const res = await fetch(_csvUrl, { method: 'POST', body: formData });
@@ -982,7 +985,7 @@ async function importCSV(input) {
                 fd2.append('file', file);
                 fd2.append('csv_type', document.getElementById('csv-type').value);
                 fd2.append('orico_replace', '1');
-                btn.textContent = '置き換え中…';
+                btn.innerHTML = '<span class="ldgr-spin"></span>置き換え中…';  /* ldgr-spinner-v1 */
                 var res2 = await fetch(_csvUrl, { method: 'POST', body: fd2 });
                 var data2 = await res2.json();
                 btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
@@ -1075,7 +1078,7 @@ async function confirmCSVImport() {
     _csvImporting = true;
     var _btn = document.getElementById('csv-import-btn');  // csv-double-import-guard-v1
     var _label = _btn ? _btn.textContent : '';
-    if (_btn) { _btn.disabled = true; _btn.style.opacity = '0.6'; _btn.textContent = '取込中…'; }
+    if (_btn) { _btn.disabled = true; _btn.style.opacity = '0.6'; _btn.innerHTML = '<span class="ldgr-spin"></span>取込中…'; }  /* ldgr-spinner-v1 */
     var ok = 0, fail = 0;
     try {
         for (var e of csvEntries) {
@@ -1726,7 +1729,7 @@ async function cashlessMatch() {  // ledger-cashless-ui-v1  // ledger-cashless-f
     if (!currentMonth) { alert('\u5bfe\u8c61\u6708\u304c\u4e0d\u660e\u3067\u3059'); return; }
     var btn = document.getElementById('cashless-match-btn');
     var lbl = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '\u7167\u5408\u4e2d\u2026'; }
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<span class=\"ldgr-spin\"></span>\u7167\u5408\u4e2d\u2026'; }  /* ldgr-spinner-v1 */
     try {
         var fd = new FormData();
         fd.append('month', currentMonth);
@@ -1863,7 +1866,7 @@ async function cashlessApply() {  // ledger-cashless-ui-v1
     _cashlessApplying = true;
     var btn = document.getElementById('cashless-apply-btn');
     var lbl = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '\u632f\u66ff\u4e2d\u2026'; }
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<span class=\"ldgr-spin\"></span>\u632f\u66ff\u4e2d\u2026'; }  /* ldgr-spinner-v1 */
     try {
         var res = await fetch('/api/ledger/cashless_apply', {
             method: 'POST',
