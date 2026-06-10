@@ -5146,21 +5146,24 @@ def api_ledger_import_csv():
                     _o_pay = _o_meta.get('payment_date')
                     if not _o_pay:
                         return jsonify({'status': 'error', 'message': 'お支払日を読み取れませんでした'}), 400
+                    # ledger-orico-replace-v1: 月単位の置き換え方式
+                    _o_replace = bool(request.form.get('orico_replace') == '1')
+                    _o_exist = supabase.table('ledger_orico_statements').select('id')\
+                        .eq('facility_code', f_code).eq('payment_date', _o_pay).execute()
+                    _o_exist_n = len(_o_exist.data or [])
+                    if _o_exist_n > 0 and not _o_replace:
+                        # 既存あり、置換未承諾 → フロントに確認を求める
+                        return jsonify({'status': 'exists', 'payment_date': _o_pay,
+                                        'existing_count': _o_exist_n,
+                                        'incoming_count': len(_o_rows),
+                                        'amazon_count': _o_meta.get('amazon_count', 0),
+                                        'card_last4': _o_last4, 'kind': 'orico'})
+                    if _o_exist_n > 0 and _o_replace:
+                        # その月を全削除してから入れ直す
+                        supabase.table('ledger_orico_statements').delete()\
+                            .eq('facility_code', f_code).eq('payment_date', _o_pay).execute()
                     _o_ins = 0
-                    _o_skip = 0
                     for _r in _o_rows:
-                        # 二重取込ガード: 利用日+先+金額+回数+支払日
-                        _q = supabase.table('ledger_orico_statements').select('id')\
-                            .eq('facility_code', f_code).eq('payment_date', _o_pay)\
-                            .eq('used_for', _r['used_for']).eq('pay_count', _r['pay_count'])
-                        if _r['used_date'] is not None:
-                            _q = _q.eq('used_date', _r['used_date'])
-                        if _r['amount'] is not None:
-                            _q = _q.eq('amount', _r['amount'])
-                        _ex = _q.limit(1).execute()
-                        if _ex.data:
-                            _o_skip += 1
-                            continue
                         _ins_row = dict(_r)
                         _ins_row['facility_code'] = f_code
                         _ins_row['card_last4'] = _o_last4
@@ -5168,7 +5171,8 @@ def api_ledger_import_csv():
                         _ins_row['match_status'] = 'none'
                         supabase.table('ledger_orico_statements').insert(_ins_row).execute()
                         _o_ins += 1
-                    return jsonify({'status': 'success', 'imported': _o_ins, 'skipped': _o_skip,
+                    return jsonify({'status': 'success', 'imported': _o_ins,
+                                    'replaced': (_o_exist_n if _o_replace else 0),
                                     'amazon_count': _o_meta.get('amazon_count', 0),
                                     'payment_date': _o_pay, 'card_last4': _o_last4,
                                     'kind': 'orico'})

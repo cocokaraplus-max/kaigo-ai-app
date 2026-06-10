@@ -973,6 +973,34 @@ async function importCSV(input) {
     const res = await fetch(_csvUrl, { method: 'POST', body: formData });
     const data = await res.json();
     btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
+    // orico-import-front-v1: クレカ明細(オリコ)の専用処理
+    if (data.kind === 'orico') {
+        if (data.status === 'exists') {
+            var _msg = data.payment_date + ' 支払い分はすでに ' + data.existing_count + ' 件取り込まれています。\n今回のCSV(' + data.incoming_count + ' 件)で置き換えますか？\n\n「OK」で置き換え、「キャンセル」で中止します。';
+            if (confirm(_msg)) {
+                var fd2 = new FormData();
+                fd2.append('file', file);
+                fd2.append('csv_type', document.getElementById('csv-type').value);
+                fd2.append('orico_replace', '1');
+                btn.textContent = '置き換え中…';
+                var res2 = await fetch(_csvUrl, { method: 'POST', body: fd2 });
+                var data2 = await res2.json();
+                btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:36px;display:block;margin-bottom:8px;color:#9aa0a6;">upload_file</span>CSVファイルをタップして選択';
+                if (data2.status === 'success') {
+                    alert(data2.payment_date + ' 支払い分を ' + data2.imported + ' 件で置き換えました。(Amazon ' + (data2.amazon_count||0) + ' 件)\n「クレカ明細」タブで確認できます。');
+                } else {
+                    alert('エラー: ' + (data2.message || '置き換えに失敗しました'));
+                }
+            }
+            input.value = '';
+            return;
+        }
+        if (data.status === 'success') {
+            alert(data.payment_date + ' 支払い分を ' + data.imported + ' 件取り込みました。(Amazon ' + (data.amazon_count||0) + ' 件)\n「クレカ明細」タブで確認できます。');
+            input.value = '';
+            return;
+        }
+    }
     if (data.status !== 'success') { alert('エラー: ' + data.message); return; }
     csvSuggestions = data.suggestions || [];
     csvEntries = data.entries || [];
