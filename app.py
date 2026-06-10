@@ -4307,6 +4307,8 @@ def api_ledger_settings_get():
         except Exception:
             settings['sekkotsu_mode_allowed'] = False
         settings['sekkotsu_mode_enabled'] = bool(settings.get('sekkotsu_mode_enabled'))
+        # ledger-credit-mode-v1: クレカ明細モードフラグ
+        settings['credit_mode_enabled'] = bool(settings.get('credit_mode_enabled'))
         return jsonify({'status': 'success', 'settings': settings, 'divisions': divisions})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -4340,6 +4342,17 @@ def api_ledger_settings_save():
             except Exception:
                 _allowed = False
             payload['sekkotsu_mode_enabled'] = (_want and _allowed)
+        # ledger-credit-mode-v1: 接骨院モードON時のみクレカ明細をON可
+        if 'credit_mode_enabled' in data:
+            _c_want = bool(data.get('credit_mode_enabled'))
+            _sek_now = bool(payload.get('sekkotsu_mode_enabled', data.get('sekkotsu_mode_enabled')))
+            if 'sekkotsu_mode_enabled' not in data:
+                try:
+                    _ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
+                    _sek_now = bool(_ls.data and _ls.data[0].get('sekkotsu_mode_enabled'))
+                except Exception:
+                    _sek_now = False
+            payload['credit_mode_enabled'] = (_c_want and _sek_now)
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
@@ -4898,10 +4911,126 @@ def api_ledger_trial_balance():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# ============ ledger-orico-v1: オリコ明細パーサ群(保存はしない純粋関数) ============
+def _orico_is_amazon(used_for):
+    """利用先がAmazonか(全角・半角・デジタル課金を吸収)。"""
+    import unicodedata as _ud
+    if not used_for:
+        return False
+    return 'AMAZON' in _ud.normalize('NFKC', str(used_for)).upper()
+
+
+def _orico_norm_amount(x):
+    r"""'\5,880' '"\5,880"' '="0407"' 等から数値を正規化。\ , " = 空白除去 -> int。空/非数は None。"""
+    if x is None:
+        return None
+    s = str(x).strip().strip('"')
+    s = s.replace('\\', '').replace(',', '').replace('=', '').replace('"', '').strip()
+    if s == '' or s == '-':
+        return None
+    neg = s.startswith('-')
+    s2 = s[1:] if neg else s
+    if not s2.isdigit():
+        return None
+    v = int(s2)
+    return -v if neg else v
+
+
+def _orico_norm_text(x):
+    """文字セル: 前後の " と = を剥がす。"""
+    if x is None:
+        return ''
+    return str(x).strip().strip('"').lstrip('=').strip('"').strip()
+
+
+def _orico_parse_date(x):
+    """'2026年1月6日' -> '2026-01-06'。失敗時 None。"""
+    import re as _re
+    if not x:
+        return None
+    s = _orico_norm_text(x)
+    m = _re.match(r'(\d{4})\s*\u5e74\s*(\d{1,2})\s*\u6708\s*(\d{1,2})\s*\u65e5', s)
+    if m:
+        y, mo, d = m.groups()
+        return "%04d-%02d-%02d" % (int(y), int(mo), int(d))
+    m2 = _re.match(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', s)
+    if m2:
+        y, mo, d = m2.groups()
+        return "%04d-%02d-%02d" % (int(y), int(mo), int(d))
+    return None
+
+
+def _orico_extract_last4(s):
+    """契約番号セルから下4桁。'****-****-****-0407' や '="0407"' に対応。"""
+    import re as _re
+    s = _orico_norm_text(s)
+    digits = _re.findall(r'\d{4}', s)
+    if digits:
+        return digits[-1]
+    m = _re.search(r'(\d{3,4})\s*$', s)
+    return m.group(1) if m else ''
+
+
+def build_orico_rows(content):  # ledger-orico-v1
+    """オリコCSV本文(デコード済み) -> (rows, meta)。保存はしない。"""
+    import csv as _csv, io as _io
+    reader_all = list(_csv.reader(_io.StringIO(content)))
+    card_last4 = ''
+    payment_date = None
+    detail_start = None
+    for i, cells in enumerate(reader_all):
+        if not cells:
+            continue
+        head = (cells[0] or '').strip()
+        if head.startswith('\u3054\u5951\u7d04\u756a\u53f7') and len(cells) > 1:  # ご契約番号
+            card_last4 = _orico_extract_last4(cells[1])
+        elif head.startswith('\u304a\u652f\u6255\u65e5') and len(cells) > 1:  # お支払日
+            payment_date = _orico_parse_date(cells[1])
+        elif '\u5229\u7528\u660e\u7d30' in head:  # 利用明細
+            detail_start = i
+    rows = []
+    amazon_count = 0
+    if detail_start is not None:
+        for cells in reader_all[detail_start + 2:]:
+            if not cells or not any((c or '').strip() for c in cells):
+                continue
+            padded = (cells + [''] * 14)[:14]
+            used_date = _orico_parse_date(padded[0])
+            used_for = _orico_norm_text(padded[1])
+            if used_date is None and not used_for:
+                continue
+            row = {
+                'used_date': used_date,
+                'used_for': used_for,
+                'new_old': _orico_norm_text(padded[2]),
+                'user_name': _orico_norm_text(padded[3]),
+                'pay_start_ym': _orico_norm_text(padded[4]),
+                'pay_type': _orico_norm_text(padded[5]),
+                'pay_count': _orico_norm_text(padded[6]),
+                'pay_nth': _orico_norm_text(padded[7]),
+                'amount': _orico_norm_amount(padded[8]),
+                'fee_interest': _orico_norm_amount(padded[9]),
+                'annual_rate': _orico_norm_text(padded[10]),
+                'other': _orico_norm_text(padded[11]),
+                'billed_amount': _orico_norm_amount(padded[12]),
+                'carryover': _orico_norm_amount(padded[13]),
+                'raw_line': ','.join(cells),
+            }
+            if _orico_is_amazon(used_for):
+                amazon_count += 1
+            rows.append(row)
+    meta = {'card_last4': card_last4, 'payment_date': payment_date,
+            'total_rows': len(rows), 'amazon_count': amazon_count}
+    return rows, meta
+
+
 def _detect_csv_format(header):  # ledger-csv-autodetect-v1  # ledger-csv-autodetect-decofix-v1
     """ヘッダ行(list[str]) -> 'nikkei' または None。
     「外さない」優先。確信できる日計表の指紋のみ nikkei。曖昧/未知は None。"""
     cells = [(c or '').strip() for c in (header or [])]
+    # ledger-orico-v1: オリコ明細の指紋を先に判定
+    if any(c.startswith('ご契約番号') for c in cells) or any('利用明細' in c for c in cells):
+        return 'orico'
     has_karte = any('カルテ' in c for c in cells)
     has_set = ('日付' in cells) and ('保険' in cells) and ('保険外' in cells) and ('入金額' in cells)
     if has_karte or has_set:
@@ -5001,6 +5130,52 @@ def api_ledger_import_csv():
                 import csv as _csv_d, io as _io_d
                 _hdr_rows = list(_csv_d.reader(_io_d.StringIO(_nik_content)))
                 _hdr = _hdr_rows[0] if _hdr_rows else []
+                # ledger-orico-v1: オリコ明細なら保存のみ(仕訳化はしない)
+                _orico_fmt = _detect_csv_format(_hdr)
+                # ヘッダー以外に指紋がある場合も拾う(先頭行が契約情報のため)
+                if _orico_fmt != 'orico':
+                    for _ln in (_nik_content.splitlines()[:12]):
+                        if _ln.startswith('ご契約番号') or ('利用明細' in _ln):
+                            _orico_fmt = 'orico'; break
+                if _orico_fmt == 'orico':
+                    # ledger-credit-guard-v1
+                    if not is_credit_enabled(supabase, f_code):
+                        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403
+                    _o_rows, _o_meta = build_orico_rows(_nik_content)
+                    _o_last4 = _o_meta.get('card_last4') or ''
+                    _o_pay = _o_meta.get('payment_date')
+                    if not _o_pay:
+                        return jsonify({'status': 'error', 'message': 'お支払日を読み取れませんでした'}), 400
+                    # ledger-orico-replace-v1: 月単位の置き換え方式
+                    _o_replace = bool(request.form.get('orico_replace') == '1')
+                    _o_exist = supabase.table('ledger_orico_statements').select('id')\
+                        .eq('facility_code', f_code).eq('payment_date', _o_pay).execute()
+                    _o_exist_n = len(_o_exist.data or [])
+                    if _o_exist_n > 0 and not _o_replace:
+                        # 既存あり、置換未承諾 → フロントに確認を求める
+                        return jsonify({'status': 'exists', 'payment_date': _o_pay,
+                                        'existing_count': _o_exist_n,
+                                        'incoming_count': len(_o_rows),
+                                        'amazon_count': _o_meta.get('amazon_count', 0),
+                                        'card_last4': _o_last4, 'kind': 'orico'})
+                    if _o_exist_n > 0 and _o_replace:
+                        # その月を全削除してから入れ直す
+                        supabase.table('ledger_orico_statements').delete()\
+                            .eq('facility_code', f_code).eq('payment_date', _o_pay).execute()
+                    _o_ins = 0
+                    for _r in _o_rows:
+                        _ins_row = dict(_r)
+                        _ins_row['facility_code'] = f_code
+                        _ins_row['card_last4'] = _o_last4
+                        _ins_row['payment_date'] = _o_pay
+                        _ins_row['match_status'] = 'none'
+                        supabase.table('ledger_orico_statements').insert(_ins_row).execute()
+                        _o_ins += 1
+                    return jsonify({'status': 'success', 'imported': _o_ins,
+                                    'replaced': (_o_exist_n if _o_replace else 0),
+                                    'amazon_count': _o_meta.get('amazon_count', 0),
+                                    'payment_date': _o_pay, 'card_last4': _o_last4,
+                                    'kind': 'orico'})
                 if _detect_csv_format(_hdr) == 'nikkei':
                     _acc = supabase.table('accounts').select('id,code').eq('facility_code', f_code).eq('is_active', True).execute()
                     _c2i = {a['code']: a['id'] for a in (_acc.data or [])}
@@ -5091,6 +5266,498 @@ JSON配列のみ。マークダウン不要。
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/ledger/orico_list', methods=['GET'])  # ledger-orico-v1
+@login_required
+def api_ledger_orico_list():
+    """オリコ明細を支払日(月)ごとにまとめて返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        res = supabase.table('ledger_orico_statements').select(
+            'id,payment_date,used_date,used_for,amount,match_status,amazon_detail'
+        ).eq('facility_code', f_code).order('payment_date', desc=True).order('used_date').execute()
+        groups = {}
+        for r in (res.data or []):
+            key = r.get('payment_date') or '\u4e0d\u660e'
+            groups.setdefault(key, []).append({
+                'id': r['id'],
+                'used_date': r.get('used_date'),
+                'used_for': r.get('used_for') or '',
+                'amount': r.get('amount'),
+                'is_amazon': _orico_is_amazon(r.get('used_for') or ''),
+                'match_status': r.get('match_status') or 'none',
+                'amazon_detail': r.get('amazon_detail') or '',
+            })
+        out = [{'payment_date': k, 'items': v,
+                'total': sum((it['amount'] or 0) for it in v)}
+               for k, v in sorted(groups.items(), reverse=True)]
+        return jsonify({'status': 'success', 'groups': out})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============ ledger-orico-card-v1: 会社カード管理(下4桁の束ね) ============
+def _orico_clean_last4_list(raw):
+    """入力(list/str)から下4桁の配列を正規化。数字のみ・重複排除・順序維持。"""
+    import re as _re
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = _re.split(r'[,\s]+', raw)
+    else:
+        items = list(raw)
+    out = []
+    for it in items:
+        d = _re.sub(r'\D', '', str(it))
+        if not d:
+            continue
+        d = d[-4:]  # 末尾4桁
+        if d not in out:
+            out.append(d)
+    return out
+
+
+@app.route('/api/ledger/orico_cards', methods=['GET'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_cards_get():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        res = supabase.table('ledger_orico_cards').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
+        return jsonify({'status': 'success', 'cards': res.data or []})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/orico_card', methods=['POST'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_card_save():
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        data = request.json or {}
+        last4_list = _orico_clean_last4_list(data.get('last4_list'))
+        card_name = (data.get('card_name') or '').strip() or None
+        card_id = data.get('id')
+        if card_id:
+            supabase.table('ledger_orico_cards').update({
+                'card_name': card_name,
+                'last4_list': last4_list,
+            }).eq('id', card_id).eq('facility_code', f_code).execute()
+            return jsonify({'status': 'success', 'id': card_id, 'last4_list': last4_list})
+        else:
+            res = supabase.table('ledger_orico_cards').insert({
+                'facility_code': f_code,
+                'card_name': card_name,
+                'last4_list': last4_list,
+                'is_active': True,
+            }).execute()
+            new_id = res.data[0]['id'] if res.data else None
+            return jsonify({'status': 'success', 'id': new_id, 'last4_list': last4_list})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/orico_card/<int:card_id>', methods=['DELETE'])  # ledger-orico-card-v1
+@login_required
+def api_ledger_orico_card_delete(card_id):
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
+    try:
+        supabase.table('ledger_orico_cards').update({'is_active': False}).eq('id', card_id).eq('facility_code', f_code).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============ ledger-amazon-v1: Amazon突合(発送単位・ホワイトリスト・出荷日基準) ============
+# 内部名は amazon。画面表示名は「クレカ明細」(他社カード施設も使うため)。
+# Amazon Business 全項目レポートCSV(UTF-8 BOM)を発送単位で集約し、
+# オリコのAmazon未マッチ行と金額完全一致+登録カード下4桁+日付近接で突合する。
+# DBには保存しない(ステートレス)。確定はサーバで再検証してから amazon_detail に書く。
+
+AMAZON_MATCH_SHIP_WINDOW = 3   # ledger-amazon-v1: 出荷日ありのとき ±3日
+AMAZON_MATCH_ORDER_WINDOW = 7  # ledger-amazon-v1: 出荷日なし(注文日フォールバック) ±7日
+
+# ヘッダ名 -> 候補。最初に見つかったものを採用(列順/列数の変化に強い)。
+_AMZ_COLS = {
+    'order_no':    ['\u6ce8\u6587\u756a\u53f7'],
+    'order_date':  ['\u6ce8\u6587\u65e5'],
+    'order_total': ['\u6ce8\u6587\u306e\u5408\u8a08\uff08\u7a0e\u8fbc\uff09'],
+    'ship_date':   ['\u51fa\u8377\u65e5'],
+    'ship_total':  ['\u767a\u9001\u5546\u54c1\u306e\u5408\u8a08\uff08\u7a0e\u8fbc\uff09'],
+    'last4':       ['\u30af\u30ec\u30b8\u30c3\u30c8\u30ab\u30fc\u30c9\u756a\u53f7\uff08\u4e0b4\u6841\uff09'],
+    'item_name':   ['\u5546\u54c1\u540d'],
+}
+
+
+def _amz_build_colmap(header):
+    norm = [(c or '').strip() for c in (header or [])]
+    colmap = {}
+    for key, names in _AMZ_COLS.items():
+        idx = None
+        for nm in names:
+            if nm in norm:
+                idx = norm.index(nm); break
+        colmap[key] = idx
+    return colmap
+
+
+def _amazon_norm_amount(x):
+    if x is None:
+        return None
+    s = str(x).strip().strip('"')
+    s = s.replace(',', '').replace('\\', '').replace('=', '').replace('"', '').strip()
+    if s == '' or s == '-':
+        return None
+    neg = s.startswith('-')
+    s2 = s[1:] if neg else s
+    if not s2.isdigit():
+        return None
+    v = int(s2)
+    return -v if neg else v
+
+
+def _amazon_norm_date(x):
+    import re as _re
+    if not x:
+        return None
+    s = str(x).strip().strip('"').lstrip('=').strip('"').strip()
+    m = _re.match(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', s)
+    if m:
+        y, mo, d = m.groups()
+        return "%04d-%02d-%02d" % (int(y), int(mo), int(d))
+    return None
+
+
+def _amazon_extract_last4(s):
+    import re as _re
+    if s is None:
+        return ''
+    t = str(s).strip().strip('"').lstrip('=').strip('"').strip()
+    digits = _re.findall(r'\d{4}', t)
+    if digits:
+        return digits[-1]
+    m = _re.search(r'(\d{3,4})\s*$', t)
+    return m.group(1) if m else ''
+
+
+def _amazon_cell(row, colmap, key):
+    idx = colmap.get(key)
+    if idx is None or idx >= len(row):
+        return ''
+    return row[idx]
+
+
+def _amazon_dedup_items(raw_items):
+    out, seen = [], set()
+    for nm in (raw_items or []):
+        if not nm or nm in seen:
+            continue
+        seen.add(nm); out.append(nm)
+    return out
+
+
+def _amazon_summary(items):
+    items = [i for i in (items or []) if i]
+    if not items:
+        return ''
+    head = items[0]
+    if len(head) > 40:
+        head = head[:40] + '\u2026'
+    n = len(items)
+    if n == 1:
+        return head
+    return "%s \u307b\u304b%d\u70b9" % (head, n - 1)
+
+
+def build_amazon_rows(content):  # ledger-amazon-v1
+    """Amazon全項目レポートCSV本文 -> (shipments, meta)。発送単位集約。保存しない。"""
+    import csv as _csv, io as _io
+    reader_all = list(_csv.reader(_io.StringIO(content)))
+    if not reader_all:
+        return [], {'shipment_count': 0, 'order_count': 0, 'item_count': 0, 'cols_missing': list(_AMZ_COLS.keys())}
+    header = reader_all[0]
+    colmap = _amz_build_colmap(header)
+    missing = [k for k, v in colmap.items() if v is None]
+    by_ship = {}
+    ship_seq = []
+    order_ship_keys = {}
+    item_count = 0
+    for row in reader_all[1:]:
+        if not row or not any((c or '').strip() for c in row):
+            continue
+        order_no = str(_amazon_cell(row, colmap, 'order_no')).strip().strip('"').lstrip('=').strip('"').strip()
+        if not order_no:
+            continue
+        order_date = _amazon_norm_date(_amazon_cell(row, colmap, 'order_date'))
+        ship_date = _amazon_norm_date(_amazon_cell(row, colmap, 'ship_date'))
+        ship_total = _amazon_norm_amount(_amazon_cell(row, colmap, 'ship_total'))
+        order_total = _amazon_norm_amount(_amazon_cell(row, colmap, 'order_total'))
+        last4 = _amazon_extract_last4(_amazon_cell(row, colmap, 'last4'))
+        item_name = str(_amazon_cell(row, colmap, 'item_name')).strip().strip('"').strip()
+        amount = ship_total if ship_total is not None else order_total
+        key = (order_no, ship_date, amount)
+        if key not in by_ship:
+            by_ship[key] = {'order_no': order_no, 'order_date': order_date,
+                            'ship_date': ship_date, 'amount': amount, 'last4': last4, 'items': []}
+            ship_seq.append(key)
+            order_ship_keys.setdefault(order_no, set()).add(key)
+        rec = by_ship[key]
+        if rec['order_date'] is None and order_date is not None:
+            rec['order_date'] = order_date
+        if not rec['last4'] and last4:
+            rec['last4'] = last4
+        if item_name:
+            rec['items'].append(item_name); item_count += 1
+    shipments = []
+    for key in ship_seq:
+        rec = by_ship[key]
+        rec['items_dedup'] = _amazon_dedup_items(rec['items'])
+        rec['summary'] = _amazon_summary(rec['items_dedup'])
+        rec['split'] = len(order_ship_keys.get(rec['order_no'], set())) > 1
+        shipments.append(rec)
+    meta = {'shipment_count': len(shipments), 'order_count': len(order_ship_keys),
+            'item_count': item_count, 'cols_missing': missing}
+    return shipments, meta
+
+
+def _amazon_get_card_whitelist(supabase, f_code):  # ledger-amazon-v1
+    """登録済み会社カードの下4桁を全カード束ねて集合で返す。"""
+    wl = set()
+    try:
+        res = supabase.table('ledger_orico_cards').select('last4_list')\
+            .eq('facility_code', f_code).eq('is_active', True).execute()
+        for c in (res.data or []):
+            for x in (c.get('last4_list') or []):
+                d = str(x).strip()
+                if d:
+                    wl.add(d[-4:])
+    except Exception:
+        pass
+    return wl
+
+
+def _amazon_match_against_orico(orico_rows, amazon_ships, card_whitelist):  # ledger-amazon-v1
+    """オリコAmazon未マッチ行 × Amazon発送 を突合。3分類で返す。"""
+    import datetime as _dt
+    def _d(s):
+        if not s:
+            return None
+        try:
+            return _dt.date.fromisoformat(s)
+        except Exception:
+            return None
+    if card_whitelist:
+        amz = [s for s in amazon_ships if s.get('last4') in card_whitelist]
+    else:
+        amz = list(amazon_ships)
+    results = []
+    used_ship_keys = set()
+    for o in orico_rows:
+        o_amt = o.get('amount')
+        o_last4 = o.get('card_last4') or ''
+        o_date = _d(o.get('used_date'))
+        if card_whitelist and o_last4 and o_last4 not in card_whitelist:
+            results.append({'orico': o, 'classification': 'skip_card', 'candidates': []})
+            continue
+        cands = []
+        for s in amz:
+            key = (s['order_no'], s['ship_date'], s['amount'])
+            if key in used_ship_keys:
+                continue
+            if o_amt is None or s['amount'] is None or o_amt != s['amount']:
+                continue
+            last4_ok = True
+            last4_uncertain = False
+            if o_last4 and s.get('last4'):
+                last4_ok = (o_last4 == s['last4'])
+            else:
+                last4_uncertain = True
+            if not last4_ok:
+                continue
+            ref = _d(s['ship_date']) or _d(s['order_date'])
+            win = AMAZON_MATCH_SHIP_WINDOW if s['ship_date'] else AMAZON_MATCH_ORDER_WINDOW
+            within = False
+            daydiff = None
+            if o_date and ref:
+                daydiff = abs((o_date - ref).days)
+                within = daydiff <= win
+            cands.append({'ship': s, 'daydiff': daydiff, 'within': within, 'last4_uncertain': last4_uncertain})
+        in_win = [c for c in cands if c['within']]
+        if len(in_win) == 1 and not in_win[0]['last4_uncertain']:
+            chosen = in_win[0]
+            used_ship_keys.add((chosen['ship']['order_no'], chosen['ship']['ship_date'], chosen['ship']['amount']))
+            results.append({'orico': o, 'classification': 'auto', 'candidates': [chosen]})
+        elif len(in_win) >= 1:
+            results.append({'orico': o, 'classification': 'review', 'candidates': in_win})
+        elif len(cands) >= 1:
+            results.append({'orico': o, 'classification': 'review', 'candidates': cands})
+        else:
+            results.append({'orico': o, 'classification': 'none', 'candidates': []})
+    return results
+
+
+@app.route('/api/ledger/amazon_match', methods=['POST'])  # ledger-amazon-v1
+@login_required
+def api_ledger_amazon_match():
+    """Amazon全項目CSVを受領 -> 発送単位集約 -> オリコAmazon未マッチ行と突合候補を返す。DB保存なし。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'status': 'error', 'message': '\u30d5\u30a1\u30a4\u30eb\u304c\u3042\u308a\u307e\u305b\u3093'}), 400
+        _raw = f.read()
+        content = None
+        for _enc in ('utf-8-sig', 'utf-8', 'cp932'):
+            try:
+                content = _raw.decode(_enc); break
+            except Exception:
+                content = None
+        if content is None:
+            content = _raw.decode('utf-8', 'replace')
+        ships, meta = build_amazon_rows(content)
+        if meta.get('cols_missing'):
+            return jsonify({'status': 'error',
+                            'message': 'Amazon\u660e\u7d30\u306e\u5217\u304c\u4e0d\u8db3\u3057\u3066\u3044\u307e\u3059: ' + ','.join(meta['cols_missing'])}), 400
+        # オリコのAmazon未マッチ行を取得
+        wl = _amazon_get_card_whitelist(supabase, f_code)
+        _res = supabase.table('ledger_orico_statements')\
+            .select('id,used_date,used_for,amount,card_last4,match_status')\
+            .eq('facility_code', f_code).eq('match_status', 'none').execute()
+        orico_amazon = []
+        import unicodedata as _ud
+        for r in (_res.data or []):
+            uf = r.get('used_for') or ''
+            if 'AMAZON' in _ud.normalize('NFKC', str(uf)).upper():
+                orico_amazon.append(r)
+        matches = _amazon_match_against_orico(orico_amazon, ships, wl)
+        # フロント返却用に整形(ship内のitemsはdedup後を渡す)
+        out = []
+        for m in matches:
+            o = m['orico']
+            cands = []
+            for c in m['candidates']:
+                s = c['ship']
+                cands.append({
+                    'order_no': s['order_no'], 'order_date': s['order_date'],
+                    'ship_date': s['ship_date'], 'amount': s['amount'],
+                    'last4': s['last4'], 'items': s['items_dedup'],
+                    'summary': s['summary'], 'split': s['split'],
+                    'daydiff': c['daydiff'], 'within': c['within'],
+                    'last4_uncertain': c['last4_uncertain'],
+                })
+            out.append({
+                'orico_id': o['id'], 'used_date': o.get('used_date'),
+                'used_for': o.get('used_for'), 'amount': o.get('amount'),
+                'card_last4': o.get('card_last4'),
+                'classification': m['classification'], 'candidates': cands,
+            })
+        summary = {'auto': 0, 'review': 0, 'none': 0, 'skip_card': 0}
+        for m in matches:
+            summary[m['classification']] = summary.get(m['classification'], 0) + 1
+        return jsonify({'status': 'success', 'matches': out, 'summary': summary,
+                        'amazon_meta': meta, 'whitelist': sorted(wl)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/amazon_apply', methods=['POST'])  # ledger-amazon-v1
+@login_required
+def api_ledger_amazon_apply():
+    """承認された突合ペアを確定。サーバ側で金額一致を再検証してから amazon_detail(JSON)を書く。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        import json as _json, datetime as _dt
+        data = request.json or {}
+        pairs = data.get('pairs') or []
+        applied = 0
+        skipped = []
+        for p in pairs:
+            oid = p.get('orico_id')
+            amt = p.get('amount')
+            if oid is None:
+                continue
+            # 対象オリコ行を引き直して再検証
+            _r = supabase.table('ledger_orico_statements')\
+                .select('id,amount,used_for,match_status')\
+                .eq('id', oid).eq('facility_code', f_code).execute()
+            row = (_r.data or [None])[0]
+            if not row:
+                skipped.append({'orico_id': oid, 'reason': 'not_found'}); continue
+            # 金額一致の再検証
+            if amt is None or row.get('amount') != amt:
+                skipped.append({'orico_id': oid, 'reason': 'amount_mismatch'}); continue
+            # 既にマッチ済みは上書きしない(none のみ確定可)
+            if (row.get('match_status') or 'none') != 'none':
+                skipped.append({'orico_id': oid, 'reason': 'already_matched'}); continue
+            detail = {
+                'order_no': p.get('order_no'),
+                'order_date': p.get('order_date'),
+                'ship_date': p.get('ship_date'),
+                'amount': amt,
+                'items': p.get('items') or [],
+                'summary': p.get('summary') or '',
+                'split': bool(p.get('split')),
+            }
+            supabase.table('ledger_orico_statements').update({
+                'amazon_detail': _json.dumps(detail, ensure_ascii=False),
+                'match_status': 'matched',
+                'matched_at': _dt.datetime.utcnow().isoformat(),
+            }).eq('id', oid).eq('facility_code', f_code).execute()
+            applied += 1
+        return jsonify({'status': 'success', 'applied': applied, 'skipped': skipped})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============ /ledger-amazon-v1 ============
+
+
 def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
     """\u63a5\u9aa8\u9662\u30e2\u30fc\u30c9\u306e\u4e8c\u6bb5\u968e\u30d5\u30e9\u30b0\u5224\u5b9a\u3002facilities.sekkotsu_mode_allowed \u304b\u3064 ledger_settings.sekkotsu_mode_enabled \u304c\u4e21\u65b9True\u306a\u3089True\u3002"""
     try:
@@ -5099,6 +5766,17 @@ def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1
             return False
         ls = supabase.table('ledger_settings').select('sekkotsu_mode_enabled').eq('facility_code', f_code).execute()
         return bool(ls.data and ls.data[0].get('sekkotsu_mode_enabled'))
+    except Exception:
+        return False
+
+
+def is_credit_enabled(supabase, f_code):  # ledger-credit-mode-v1
+    """クレカ明細モード: 接骨院モードON かつ credit_mode_enabled True で True。"""
+    try:
+        if not is_sekkotsu_enabled(supabase, f_code):
+            return False
+        ls = supabase.table('ledger_settings').select('credit_mode_enabled').eq('facility_code', f_code).execute()
+        return bool(ls.data and ls.data[0].get('credit_mode_enabled'))
     except Exception:
         return False
 
