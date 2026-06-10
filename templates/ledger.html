@@ -288,7 +288,7 @@
 <!-- credit-front-v1: クレカ明細ペイン(骨格) -->
 <div id="pane-orico" style="display:none;">
     <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;">クレカ明細</div>
-    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;line-height:1.6;">取り込んだカード明細を月ごとに表示します。CSVは「CSV取込」タブからアップロードしてください。</div>
+    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;line-height:1.6;"><!-- tab-desc-v2 -->クレカ明細ではクレジットカードで買ったものを細かく整理します。CSVは「CSV取込」タブからアップロードしてください。</div>
     <div id="orico-list-area" style="font-size:0.85rem;color:#5f6368;">読込中…</div>
 </div>
 
@@ -570,7 +570,10 @@
 <!-- ===== 経費クレカ帳 ===== -->
 <div id="pane-card" style="display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-    <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">経費クレカ帳（未払金）</div>
+    <div>
+      <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">経費クレカ帳（未払金）</div>
+      <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;"><!-- tab-desc-v2 -->領収書のクレジットカード利用を記録します。</div>
+    </div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('card')">◎ Excel</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('card')">◎ PDF印刷</button>
