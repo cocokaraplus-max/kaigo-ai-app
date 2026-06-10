@@ -6317,9 +6317,20 @@ def api_ledger_receipt_suggest():
             if _d.data:
                 d = _d.data[0]
                 dvv = {'id': d['id'], 'name': d['name']}
+        # ledger-receipt-pay-v1: 支払方法に応じた貫方候補(credit->未払金202 / それ以外->現金101)
+        pay = (data.get('payment_method') or '').strip().lower()
+        _cred_code = '202' if pay == 'credit' else '101'
+        _cacc = supabase.table('accounts').select('id,code,name')\
+            .eq('facility_code', f_code).eq('code', _cred_code)\
+            .eq('is_active', True).execute()
+        credit_acct = None
+        if _cacc.data:
+            _c = _cacc.data[0]
+            credit_acct = {'id': _c['id'], 'code': _c['code'], 'name': _c['name']}
         return jsonify({'status': 'success',
                         'suggested_account': acct, 'matched_by': by,
-                        'suggested_division': dvv, 'division_matched_by': dby})
+                        'suggested_division': dvv, 'division_matched_by': dby,
+                        'credit_account': credit_acct, 'payment_method': pay})  # ledger-receipt-pay-v1
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
@@ -6880,8 +6891,10 @@ def api_ledger_ocr_receipt():
             if f.filename.lower().endswith('.png'):
                 mime = 'image/png'
             prompt = (
-                "この領収書・レシートから以下の情報をJSONで抽出してください。\n"
-                '{"date":"YYYY-MM-DD","amount":0,"tax_amount":0,"vendor":"店名","description":"内容","tax_rate":10}\n'
+                "この領収書・レシートから以下の情報をJSONで抽出してください。\n"  # ledger-receipt-pay-v1
+                '{"date":"YYYY-MM-DD","amount":0,"tax_amount":0,"vendor":"店名","description":"内容","tax_rate":10,"payment_method":"cash"}\n'
+                "payment_methodは支払方法で、クレジットカード(VISA/JCB/Master/AMEX/クレジット/カード表記)ならcredit、"
+                "電子マネー(PayPay/楽天ペイ/Suica/iD/QUICPay等)ならemoney、現金ならcash、不明ならunknownを入れてください。\n"
                 "判読できない場合はnullを入れてください。JSONのみ返してください。"
             )
             resp = model.generate_content([{"mime_type": mime, "data": img_bytes}, prompt])

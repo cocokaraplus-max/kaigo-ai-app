@@ -1399,6 +1399,7 @@ async function ocrReceipts(input) {
                 <div>📅 ${ocr.date||'不明'}</div>
                 <div>💴 ¥${(ocr.amount||0).toLocaleString()}（税 ¥${(ocr.tax_amount||0).toLocaleString()}）</div>
                 <div>🏪 ${ocr.vendor||'不明'}</div>
+                <div>${ocrPayBadge(ocr.payment_method)}</div><!-- ledger-receipt-pay-v1 -->
                 <div>📝 ${ocr.description||''}</div>
             </div>
             <button class="ledger-btn primary" style="margin-top:8px;width:100%;" onclick="createEntryFromOCR(${JSON.stringify(ocr).replace(/"/g,'&quot;')})">この内容で仕訳を作成</button>
@@ -1407,19 +1408,28 @@ async function ocrReceipts(input) {
     input.value = '';
 }
 
+function ocrPayBadge(pm){  // ledger-receipt-pay-v1
+    pm=(pm||'').toString().toLowerCase();
+    if(pm==='credit') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#1a73e8;border-radius:4px;padding:1px 6px;">クレジット</span>';
+    if(pm==='emoney') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#9334e6;border-radius:4px;padding:1px 6px;">電子マネー</span>';
+    if(pm==='cash') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#34a853;border-radius:4px;padding:1px 6px;">現金</span>';
+    return '<span style="font-size:0.68rem;color:#9aa0a6;">支払方法不明</span>';
+}
 async function createEntryFromOCR(ocr) {  // ledger-receipt-learn-v1
     // 学習辞書で借方科目・事業を推定
     var debitId = '';
     var divId = '';
+    var creditId = '';  /* ledger-receipt-pay-v1 */
     try {
         var sr = await fetch('/api/ledger/receipt_suggest', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({vendor: ocr.vendor||'', description: ocr.description||''})
+            body: JSON.stringify({vendor: ocr.vendor||'', description: ocr.description||'', payment_method: ocr.payment_method||''})  /* ledger-receipt-pay-v1 */
         });
         var sj = await sr.json();
         if (sj.status === 'success') {
             if (sj.suggested_account) debitId = sj.suggested_account.id;
             if (sj.suggested_division) divId = sj.suggested_division.id;
+            if (sj.credit_account) creditId = sj.credit_account.id;  /* ledger-receipt-pay-v1 */
         }
     } catch (e) {}
     // 保存後の学習用コンテキスト(OCR由来のときだけセット)
@@ -1427,7 +1437,7 @@ async function createEntryFromOCR(ocr) {  // ledger-receipt-learn-v1
     openEntryModal({
         entry_date: ocr.date || new Date().toISOString().slice(0,10),
         debit_account_id: debitId,
-        credit_account_id: '',
+        credit_account_id: creditId,  /* ledger-receipt-pay-v1 */
         amount: ocr.amount || 0,
         tax_amount: ocr.tax_amount || 0,
         description: ocr.vendor ? ocr.vendor + ' ' + (ocr.description||'') : (ocr.description||''),
