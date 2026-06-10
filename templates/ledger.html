@@ -1245,6 +1245,8 @@ async function saveSettings() {
     if (_crEl) payload.credit_mode_enabled = _crEl.checked;  // credit-front-v1
     updateToggleUI('fill', payload.auto_cash_fill);
     updateToggleUI('div', payload.divisions_enabled);
+    if (_sekEl) updateToggleUI('sek', _sekEl.checked);  // toggle-ui-sync-v1
+    if (_crEl) updateToggleUI('credit', _crEl.checked);  // toggle-ui-sync-v1
     await fetch('/api/ledger/settings', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
