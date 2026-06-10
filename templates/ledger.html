@@ -1243,6 +1243,17 @@ async function saveSettings() {
     if (_sekEl) payload.sekkotsu_mode_enabled = _sekEl.checked;  // sekkotsu-toggle-v1
     var _crEl = document.getElementById('toggle-credit');  // credit-front-v1
     if (_crEl) payload.credit_mode_enabled = _crEl.checked;  // credit-front-v1
+    // credit-sync-v1: 接骨院モードOFFならクレカ明細も強制OFFし、セクション/タブ表示をその場で連動
+    var _sekOn = _sekEl ? _sekEl.checked : false;
+    if (!_sekOn && _crEl) {
+        _crEl.checked = false;
+        payload.credit_mode_enabled = false;
+        updateToggleUI('credit', false);
+    }
+    var _crCard = document.getElementById('credit-mode-card');
+    if (_crCard) _crCard.style.display = _sekOn ? '' : 'none';
+    var _oricoTab = document.getElementById('tab-orico');
+    if (_oricoTab) _oricoTab.style.display = payload.credit_mode_enabled ? '' : 'none';
     updateToggleUI('fill', payload.auto_cash_fill);
     updateToggleUI('div', payload.divisions_enabled);
     if (_sekEl) updateToggleUI('sek', _sekEl.checked);  // toggle-ui-sync-v1
