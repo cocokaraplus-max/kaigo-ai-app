@@ -88,7 +88,7 @@
 </div>
 
 <!-- 月ナビ -->
-<div class="ledger-month-nav">
+<div class="ledger-month-nav" id="month-nav"><!-- month-nav-hide-v1 -->
     <button class="ledger-month-btn" onclick="changeMonth(-1)">◀</button>
     <div class="ledger-month-label" id="month-label"></div>
     <button class="ledger-month-btn" onclick="changeMonth(1)">▶</button>
@@ -687,6 +687,12 @@ function switchTab(tab) {
     if (tab === 'card') loadSubLedger('card');
     if (tab === 'sales') loadSubLedger('sales');
     if (tab === 'orico') loadOrico();  // orico-list-ui-v1
+    // month-nav-hide-v1: 月セレクタが意味を持つタブだけ表示
+    var _mn = document.getElementById('month-nav');
+    if (_mn) {
+        var _monthTabs = ['journal','trial','cash','bank','card','sales'];
+        _mn.style.display = (_monthTabs.indexOf(tab) >= 0) ? '' : 'none';
+    }
 }
 
 // ===== amazon-match-ui-v1: Amazon突合フロー =====
