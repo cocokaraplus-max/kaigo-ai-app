@@ -289,6 +289,19 @@
 <div id="pane-orico" style="display:none;">
     <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;">クレカ明細</div>
     <div style="font-size:0.82rem;color:#5f6368;margin-bottom:14px;line-height:1.6;"><!-- tab-desc-v2 -->クレカ明細ではクレジットカードで買ったものを細かく整理します。CSVは「CSV取込」タブからアップロードしてください。</div>
+    <!-- amazon-match-ui-v1: Amazon突合セクション -->
+    <div id="amazon-match-box" style="border:1px solid #e8eaed;border-radius:10px;padding:12px;margin-bottom:16px;background:#fafafa;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div>
+                <div style="font-size:0.86rem;font-weight:800;color:#202124;">Amazon明細と突合</div>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;line-height:1.5;">Amazonの注文履歴CSV(全項目)を取り込むと、クレカ明細のAmazon利用に商品名を補えます。</div>
+            </div>
+            <button class="ledger-btn primary" style="font-size:0.8rem;white-space:nowrap;" onclick="document.getElementById('amazon-csv-input').click()">Amazon CSVを選ぶ</button>
+            <input type="file" id="amazon-csv-input" accept=".csv" style="display:none;" onchange="runAmazonMatch(this)">
+        </div>
+        <div id="amazon-match-status" style="font-size:0.76rem;color:#5f6368;margin-top:8px;display:none;"></div>
+        <div id="amazon-match-result" style="margin-top:10px;"></div>
+    </div>
     <div id="orico-list-area" style="font-size:0.85rem;color:#5f6368;">読込中…</div>
 </div>
 
@@ -676,6 +689,184 @@ function switchTab(tab) {
     if (tab === 'orico') loadOrico();  // orico-list-ui-v1
 }
 
+// ===== amazon-match-ui-v1: Amazon突合フロー =====
+window.amazonMatchData = null;  // amazon_match の結果を保持
+
+function escAmz(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function runAmazonMatch(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var statusEl = document.getElementById('amazon-match-status');
+    var resultEl = document.getElementById('amazon-match-result');
+    statusEl.style.display = '';
+    statusEl.textContent = '\u7a81\u5408\u4e2d\u2026';  // 突合中…
+    resultEl.innerHTML = '';
+    try {
+        var fd = new FormData();
+        fd.append('file', file);
+        var r = await fetch('/api/ledger/amazon_match', {method:'POST', body:fd});
+        var j = await r.json();
+        input.value = '';  // 同じファイル再選択できるようにクリア
+        if (j.status !== 'success') {
+            statusEl.textContent = '\u30a8\u30e9\u30fc: ' + (j.message || '\u7a81\u5408\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+            return;
+        }
+        window.amazonMatchData = j;
+        var s = j.summary || {};
+        statusEl.textContent = '\u81ea\u52d5' + (s.auto||0) + '\u4ef6 / \u8981\u78ba\u8a8d' + (s.review||0) + '\u4ef6 / \u8a72\u5f53\u306a\u3057' + (s.none||0) + '\u4ef6';
+        renderMatchResults(j.matches || []);
+    } catch (e) {
+        statusEl.textContent = '\u30a8\u30e9\u30fc: ' + e.message;
+    }
+}
+
+function renderMatchResults(matches) {
+    var resultEl = document.getElementById('amazon-match-result');
+    var autos = matches.filter(function(m){ return m.classification === 'auto'; });
+    var reviews = matches.filter(function(m){ return m.classification === 'review'; });
+    var nones = matches.filter(function(m){ return m.classification === 'none'; });
+    if (!autos.length && !reviews.length) {
+        resultEl.innerHTML = '<div style="font-size:0.8rem;color:#5f6368;padding:8px 0;">\u7a81\u5408\u3067\u304d\u308bAmazon\u5229\u7528\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f\u3002</div>';
+        return;
+    }
+    var html = '';
+    // --- 自動マッチ ---
+    if (autos.length) {
+        html += '<div style="font-size:0.78rem;font-weight:800;color:#34a853;margin:10px 0 4px;">\u81ea\u52d5\u3067\u30de\u30c3\u30c1\uff08' + autos.length + '\u4ef6\uff09</div>';
+        for (var i=0;i<autos.length;i++){ html += matchRowHtml(autos[i], 'auto', i); }
+    }
+    // --- 要確認 ---
+    if (reviews.length) {
+        html += '<div style="font-size:0.78rem;font-weight:800;color:#f9ab00;margin:14px 0 4px;">\u78ba\u8a8d\u304c\u5fc5\u8981\uff08' + reviews.length + '\u4ef6\uff09</div>';
+        for (var k=0;k<reviews.length;k++){ html += matchRowHtml(reviews[k], 'review', k); }
+    }
+    // --- 該当なし(件数のみ) ---
+    if (nones.length) {
+        html += '<div style="font-size:0.74rem;color:#9aa0a6;margin:12px 0 4px;">\u8a72\u5f53\u3059\u308bAmazon\u6ce8\u6587\u304c\u898b\u3064\u304b\u3089\u306a\u304b\u3063\u305f\u660e\u7d30: ' + nones.length + '\u4ef6</div>';
+    }
+    // --- 確定ボタン ---
+    html += '<button class="ledger-btn primary" style="width:100%;margin-top:12px;" onclick="applyAmazonMatch()">\u9078\u3093\u3060\u5185\u8a33\u3092\u78ba\u5b9a</button>';
+    resultEl.innerHTML = html;
+}
+
+// 1明細の行HTML。cls=auto|review, idx=分類内の連番
+function matchRowHtml(m, cls, idx) {
+    var oDate = m.used_date || '';
+    var oAmt = (m.amount != null) ? ('\uffe5' + Number(m.amount).toLocaleString()) : '';
+    var cands = m.candidates || [];
+    var gid = cls + '-' + idx;  // input name用
+    var h = '<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;" data-oid="' + m.orico_id + '" data-group="' + gid + '">';
+    h += '<div style="font-size:0.76rem;color:#3c4043;margin-bottom:4px;">' + escAmz(oDate) + '\u3000<b>' + oAmt + '</b>\u3000<span style="color:#9aa0a6;">' + escAmz(m.used_for||'') + '</span></div>';
+    if (cls === 'auto') {
+        var c = cands[0] || {};
+        h += '<label style="display:flex;align-items:flex-start;gap:6px;font-size:0.78rem;color:#202124;cursor:pointer;">';
+        h += '<input type="checkbox" class="amz-pick" data-oid="' + m.orico_id + '" data-cand="0" checked style="margin-top:2px;">';
+        h += '<span>' + candText(c) + '</span>';
+        h += '</label>';
+    } else {
+        // review: 候補から選ぶ(ラジオ)+「マッチしない」
+        for (var i=0;i<cands.length;i++){
+            var ci = cands[i];
+            h += '<label style="display:flex;align-items:flex-start;gap:6px;font-size:0.78rem;color:#202124;cursor:pointer;margin-bottom:3px;">';
+            h += '<input type="radio" name="amz-' + gid + '" class="amz-pick-radio" data-oid="' + m.orico_id + '" data-cand="' + i + '" style="margin-top:2px;">';
+            h += '<span>' + candText(ci) + '</span>';
+            h += '</label>';
+        }
+        h += '<label style="display:flex;align-items:center;gap:6px;font-size:0.76rem;color:#9aa0a6;cursor:pointer;">';
+        h += '<input type="radio" name="amz-' + gid + '" class="amz-pick-radio" data-oid="' + m.orico_id + '" data-cand="-1" checked>';
+        h += '<span>\u3069\u308c\u3068\u3082\u30de\u30c3\u30c1\u3057\u306a\u3044</span>';
+        h += '</label>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function candText(c) {
+    var amt = (c.amount != null) ? ('\uffe5' + Number(c.amount).toLocaleString()) : '';
+    var sd = c.ship_date ? ('\u51fa\u8377' + c.ship_date) : (c.order_date ? ('\u6ce8\u6587' + c.order_date) : '');
+    var dd = (c.daydiff != null) ? ('\u00b1' + c.daydiff + '\u65e5') : '';
+    var warn = (c.within === false) ? ' <span style="color:#f9ab00;">(\u65e5\u4ed8\u304c\u96e2\u308c\u3066\u3044\u307e\u3059)</span>' : '';
+    var split = c.split ? ' <span style="color:#1a73e8;">[\u5206\u5272\u51fa\u8377]</span>' : '';
+    var items = c.items || [];
+    var more = (items.length > 1) ? (' <a href="#" onclick="this.nextElementSibling.style.display=\'block\';this.style.display=\'none\';return false;" style="color:#1a73e8;font-size:0.72rem;">\u5168' + items.length + '\u70b9\u3092\u8868\u793a</a><span style="display:none;font-size:0.72rem;color:#5f6368;">' + items.map(escAmz).join('<br>') + '</span>') : '';
+    return '<b>' + amt + '</b> ' + escAmz(sd) + ' ' + dd + warn + split + '<br>' + escAmz(c.summary || '') + more;
+}
+
+async function applyAmazonMatch() {
+    if (!window.amazonMatchData) return;
+    var matches = window.amazonMatchData.matches || [];
+    var byId = {};
+    matches.forEach(function(m){ byId[m.orico_id] = m; });
+    var pairs = [];
+    // auto: チェックされたもの
+    document.querySelectorAll('.amz-pick:checked').forEach(function(el){
+        var oid = parseInt(el.getAttribute('data-oid'));
+        var ci = parseInt(el.getAttribute('data-cand'));
+        var m = byId[oid]; if (!m) return;
+        var c = (m.candidates||[])[ci]; if (!c) return;
+        pairs.push(buildPair(oid, c));
+    });
+    // review: 選ばれたラジオ(cand>=0)
+    document.querySelectorAll('.amz-pick-radio:checked').forEach(function(el){
+        var ci = parseInt(el.getAttribute('data-cand'));
+        if (ci < 0) return;
+        var oid = parseInt(el.getAttribute('data-oid'));
+        var m = byId[oid]; if (!m) return;
+        var c = (m.candidates||[])[ci]; if (!c) return;
+        pairs.push(buildPair(oid, c));
+    });
+    if (!pairs.length) { alert('\u78ba\u5b9a\u3059\u308b\u9805\u76ee\u304c\u3042\u308a\u307e\u305b\u3093'); return; }
+    var statusEl = document.getElementById('amazon-match-status');
+    statusEl.style.display = '';
+    statusEl.textContent = '\u78ba\u5b9a\u4e2d\u2026';
+    try {
+        var r = await fetch('/api/ledger/amazon_apply', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({pairs: pairs})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { statusEl.textContent = '\u30a8\u30e9\u30fc: ' + (j.message||''); return; }
+        var skipped = (j.skipped||[]).length;
+        statusEl.textContent = (j.applied||0) + '\u4ef6\u3092\u78ba\u5b9a\u3057\u307e\u3057\u305f' + (skipped ? ('\uff08' + skipped + '\u4ef6\u306f\u30b9\u30ad\u30c3\u30d7\uff09') : '');
+        document.getElementById('amazon-match-result').innerHTML = '';
+        window.amazonMatchData = null;
+        loadOrico();  // 一覧を再読込して内訳反映
+    } catch (e) {
+        statusEl.textContent = '\u30a8\u30e9\u30fc: ' + e.message;
+    }
+}
+
+function buildPair(oid, c) {
+    return {
+        orico_id: oid,
+        order_no: c.order_no, order_date: c.order_date, ship_date: c.ship_date,
+        amount: c.amount, items: c.items || [], summary: c.summary || '', split: !!c.split,
+    };
+}
+
+
+// amazon-match-ui-v1: 明細一覧の amazon_detail(JSON or 旧文字列) を描画
+function renderOricoDetail(raw) {
+    if (!raw) return '';
+    var d = null;
+    try { d = JSON.parse(raw); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') {
+        // 旧プレーン文字列はそのまま表示(後方互換)
+        return '<div style="font-size:0.72rem;color:#34a853;margin-top:2px;">' + escAmz(raw) + '</div>';
+    }
+    var items = d.items || [];
+    var summary = d.summary || (items.length ? items[0] : '');
+    var split = d.split ? ' <span style="color:#1a73e8;">[分割出荷]</span>' : '';
+    var more = '';
+    if (items.length > 1) {
+        more = ' <a href="#" onclick="this.nextElementSibling.style.display=\'block\';this.style.display=\'none\';return false;" style="color:#1a73e8;font-size:0.7rem;">全' + items.length + '点</a>' +
+               '<span style="display:none;font-size:0.7rem;color:#5f6368;">' + items.map(escAmz).join('<br>') + '</span>';
+    }
+    return '<div style="font-size:0.72rem;color:#34a853;margin-top:2px;">📦 ' + escAmz(summary) + split + more + '</div>';
+}
 // orico-list-ui-v1: クレカ明細を月ごとに描画
 async function loadOrico() {
     var area = document.getElementById('orico-list-area');
@@ -704,7 +895,7 @@ async function loadOrico() {
                 var it = items[ii];
                 var amtStr = (it.amount != null) ? ('\uffe5' + Number(it.amount).toLocaleString()) : '';
                 var badge = it.is_amazon ? '<span style=\"display:inline-block;font-size:0.62rem;font-weight:700;color:#fff;background:#ff9900;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:middle;\">Amazon</span>' : '';
-                var detail = it.amazon_detail ? ('<div style=\"font-size:0.72rem;color:#34a853;margin-top:2px;\">' + it.amazon_detail + '</div>') : '';
+                var detail = renderOricoDetail(it.amazon_detail);  // amazon-match-ui-v1
                 html += '<div style=\"display:flex;justify-content:space-between;align-items:flex-start;padding:7px 2px;border-bottom:1px solid #f0f0f0;\">';
                 html += '<div style=\"flex:1;min-width:0;\">';
                 html += '<div style=\"font-size:0.8rem;color:#202124;\">' + (it.used_date || '') + '</div>';
