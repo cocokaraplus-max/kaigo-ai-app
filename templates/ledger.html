@@ -2252,9 +2252,11 @@ async function cashlessApply() {  // ledger-cashless-ui-v1
 // ===== /ledger-cashless-ui-v1 =====
 
 
-// ===== ledger-credit-3a-v1: \u30af\u30ec\u30ab\u660e\u7d30\u306e\u52d8\u5b9a\u79d1\u76ee\u632f\u308a\u5206\u3051UI =====
+// ===== ledger-credit-3a-v1 / ledger-credit-3b-div-v1: \u30af\u30ec\u30ab\u660e\u7d30\u306e\u52d8\u5b9a\u79d1\u76ee\uff0b\u4e8b\u696d\u632f\u308a\u5206\u3051UI =====
 // \u8cbb\u7528\u79d1\u76ee\u30ad\u30e3\u30c3\u30b7\u30e5(category==='\u8cbb\u7528')
 window._oricoExpenseAccounts = null;
+// \u4e8b\u696d\u533a\u5206\u30ad\u30e3\u30c3\u30b7\u30e5(divisions_enabled \u3068 \u4e8b\u696d\u4e00\u89a7)  // ledger-credit-3b-div-v1
+window._oricoDivInfo = null;
 
 async function _oricoLoadExpenseAccounts() {
     if (window._oricoExpenseAccounts) return window._oricoExpenseAccounts;
@@ -2273,6 +2275,22 @@ async function _oricoLoadExpenseAccounts() {
     }
 }
 
+// ledger-credit-3b-div-v1: \u4e8b\u696d\u533a\u5206\u60c5\u5831(\u6709\u52b9\u30d5\u30e9\u30b0\uff0b\u4e8b\u696d\u4e00\u89a7)\u3092\u53d6\u5f97
+async function _oricoLoadDivInfo() {
+    if (window._oricoDivInfo) return window._oricoDivInfo;
+    var info = { enabled: false, divisions: [] };
+    try {
+        var r = await fetch('/api/ledger/settings');
+        var j = await r.json();
+        if (j.status === 'success') {
+            info.enabled = !!(j.settings && j.settings.divisions_enabled);
+            info.divisions = (j.divisions || []).filter(function(d){ return d.is_active !== false; });
+        }
+    } catch (e) {}
+    window._oricoDivInfo = info;
+    return info;
+}
+
 // \u660e\u7d30id\u914d\u5217\u3092\u96c6\u3081\u3066credit_suggest\u3092\u53d6\u5f97
 async function _oricoFetchSuggest(ids) {
     if (!ids.length) return {};
@@ -2289,9 +2307,9 @@ async function _oricoFetchSuggest(ids) {
     } catch (e) { return {}; }
 }
 
-// \u30bb\u30ec\u30af\u30c8\u306eHTML\u3092\u751f\u6210(selectedId\u306f\u9078\u629e\u6e08\u307f\u79d1\u76eeid)
+// \u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u306eHTML(selectedId\u306f\u9078\u629e\u6e08\u307f\u79d1\u76eeid)
 function _oricoSelectHtml(oid, accounts, selectedId) {
-    var h = '<select class="oacc-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:60%;">';
+    var h = '<select class="oacc-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:55%;">';
     h += '<option value="">\u672a\u5272\u5f53</option>';
     for (var i=0;i<accounts.length;i++){
         var a = accounts[i];
@@ -2302,11 +2320,38 @@ function _oricoSelectHtml(oid, accounts, selectedId) {
     return h;
 }
 
-// \u4e00\u89a7\u63cf\u753b\u5f8c: \u5404\u30b9\u30ed\u30c3\u30c8\u306b\u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u3068\u767b\u9332\u30dc\u30bf\u30f3\u3092\u751f\u6210
+// ledger-credit-3b-div-v1: \u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u306eHTML(selectedId\u306f\u9078\u629e\u6e08\u307f\u4e8b\u696did)
+function _oricoDivSelectHtml(oid, divisions, selectedId) {
+    var h = '<select class="oacc-div-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:45%;">';
+    h += '<option value="">\u4e8b\u696d\u672a\u5b9a</option>';
+    for (var i=0;i<divisions.length;i++){
+        var d = divisions[i];
+        var sel = (selectedId != null && d.id === selectedId) ? ' selected' : '';
+        h += '<option value="' + d.id + '"' + sel + '>' + escAmz(d.name||'') + '</option>';
+    }
+    h += '</select>';
+    return h;
+}
+
+// \u72b6\u614b\u30e9\u30d9\u30eb\u751f\u6210(\u79d1\u76ee\u30fb\u4e8b\u696d\u5171\u7528)  // ledger-credit-3b-div-v1
+function _oricoMatchLabel(by) {
+    if (by === 'assigned') {
+        return '<span style="font-size:0.68rem;color:#34a853;font-weight:700;">\u5272\u5f53\u6e08\u307f</span>';
+    } else if (by === 'item_exact' || by === 'store_exact') {
+        return '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u5b8c\u5168\u4e00\u81f4)</span>';
+    } else if (by === 'store_partial') {
+        return '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u90e8\u5206\u4e00\u81f4)</span>';
+    }
+    return '<span style="font-size:0.68rem;color:#9aa0a6;">\u672a\u5272\u5f53</span>';
+}
+
+// \u4e00\u89a7\u63cf\u753b\u5f8c: \u5404\u30b9\u30ed\u30c3\u30c8\u306b\u79d1\u76ee(\u3068\u4e8b\u696d)\u30bb\u30ec\u30af\u30c8\uff0b\u767b\u9332\u30dc\u30bf\u30f3\u3092\u751f\u6210
 async function _oricoApplyAccounts() {
     var slots = document.querySelectorAll('.oacc-slot');
     if (!slots.length) return;
     var accounts = await _oricoLoadExpenseAccounts();
+    var divInfo = await _oricoLoadDivInfo();  // ledger-credit-3b-div-v1
+    var divEnabled = divInfo.enabled && (divInfo.divisions||[]).length > 0;  // ledger-credit-3b-div-v1
     var ids = [];
     slots.forEach(function(s){
         var oid = parseInt(s.getAttribute('data-oid'));
@@ -2319,26 +2364,23 @@ async function _oricoApplyAccounts() {
         var acct = info.suggested_account || null;
         var by = info.matched_by || 'none';
         var selectedId = acct ? acct.id : null;
-        // \u72b6\u614b\u30e9\u30d9\u30eb
-        var label = '';
-        if (by === 'assigned') {
-            label = '<span style="font-size:0.68rem;color:#34a853;font-weight:700;">\u5272\u5f53\u6e08\u307f</span>';
-        } else if (by === 'item_exact' || by === 'store_exact') {
-            label = '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u5b8c\u5168\u4e00\u81f4)</span>';
-        } else if (by === 'store_partial') {
-            label = '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u90e8\u5206\u4e00\u81f4)</span>';
-        } else {
-            label = '<span style="font-size:0.68rem;color:#9aa0a6;">\u672a\u5272\u5f53</span>';
-        }
-        var h = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        var h = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
         h += _oricoSelectHtml(oid, accounts, selectedId);
+        if (divEnabled) {  // ledger-credit-3b-div-v1
+            var dv = info.suggested_division || null;
+            var dSelId = dv ? dv.id : null;
+            h += _oricoDivSelectHtml(oid, divInfo.divisions, dSelId);
+        }
         h += '<button class="oacc-save" data-oid="' + oid + '" style="font-size:0.74rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">\u767b\u9332</button>';
-        h += label;
+        h += _oricoMatchLabel(by);
+        if (divEnabled) {  // ledger-credit-3b-div-v1: \u4e8b\u696d\u5074\u306e\u30e9\u30d9\u30eb
+            var dby = info.division_matched_by || 'none';
+            h += ' ' + _oricoMatchLabel(dby);
+        }
         h += '<span class="oacc-msg" data-oid="' + oid + '" style="font-size:0.7rem;color:#5f6368;"></span>';
         h += '</div>';
         s.innerHTML = h;
     });
-    // \u767b\u9332\u30dc\u30bf\u30f3\u306e\u30a4\u30d9\u30f3\u30c8
     document.querySelectorAll('.oacc-save').forEach(function(btn){
         btn.addEventListener('click', function(){
             _oricoAssignOne(parseInt(btn.getAttribute('data-oid')));
@@ -2346,9 +2388,10 @@ async function _oricoApplyAccounts() {
     });
 }
 
-// 1\u660e\u7d30\u3092credit_assign\u3067\u4fdd\u5b58+\u5b66\u7fd2
+// 1\u660e\u7d30\u3092credit_assign\u3067\u4fdd\u5b58+\u5b66\u7fd2(\u79d1\u76ee\uff0b\u4e8b\u696d\u3092\u540c\u6642\u9001\u4fe1)
 async function _oricoAssignOne(oid) {
     var sel = document.querySelector('.oacc-select[data-oid="' + oid + '"]');
+    var dsel = document.querySelector('.oacc-div-select[data-oid="' + oid + '"]');  // ledger-credit-3b-div-v1
     var msg = document.querySelector('.oacc-msg[data-oid="' + oid + '"]');
     if (!sel) return;
     var aid = parseInt(sel.value);
@@ -2356,18 +2399,23 @@ async function _oricoAssignOne(oid) {
         if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u79d1\u76ee\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044'; }
         return;
     }
+    var pair = { id: oid, account_id: aid, learn: true };
+    // ledger-credit-3b-div-v1: \u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u304c\u3042\u308a\u9078\u629e\u3055\u308c\u3066\u3044\u308c\u3070 division_id \u3082\u9001\u308b
+    if (dsel && dsel.value) {
+        var did = parseInt(dsel.value);
+        if (!isNaN(did)) pair.division_id = did;
+    }
     if (msg) { msg.style.color = '#5f6368'; msg.textContent = '\u767b\u9332\u4e2d\u2026'; }
     try {
         var r = await fetch('/api/ledger/credit_assign', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({pairs: [{id: oid, account_id: aid, learn: true}]})
+            body: JSON.stringify({pairs: [pair]})
         });
         var j = await r.json();
         if (j.status !== 'success') {
             if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + (j.message||''); }
             return;
         }
-        var skipped = (j.skipped || []).length;
         if ((j.applied||0) > 0) {
             if (msg) { msg.style.color = '#34a853'; msg.textContent = '\u767b\u9332\u3057\u307e\u3057\u305f' + ((j.learned||0) ? '(\u5b66\u7fd2\u6e08)' : ''); }
         } else {
@@ -2377,7 +2425,7 @@ async function _oricoAssignOne(oid) {
         if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + e.message; }
     }
 }
-// ===== /ledger-credit-3a-v1 =====
+// ===== /ledger-credit-3a-v1 / ledger-credit-3b-div-v1 =====
 
 </script>
 {% endblock %}

@@ -5281,7 +5281,7 @@ def api_ledger_orico_list():
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         res = supabase.table('ledger_orico_statements').select(
-            'id,payment_date,used_date,used_for,amount,match_status,amazon_detail,account_id'  # ledger-credit-3a-v1
+            'id,payment_date,used_date,used_for,amount,match_status,amazon_detail,account_id,division_id'  # ledger-credit-3a-v1 / ledger-credit-3b-div-v1
         ).eq('facility_code', f_code).order('payment_date', desc=True).order('used_date').execute()
         groups = {}
         for r in (res.data or []):
@@ -5295,6 +5295,7 @@ def api_ledger_orico_list():
                 'match_status': r.get('match_status') or 'none',
                 'amazon_detail': r.get('amazon_detail') or '',
                 'account_id': r.get('account_id'),  # ledger-credit-3a-v1
+                'division_id': r.get('division_id'),  # ledger-credit-3b-div-v1
             })
         out = [{'payment_date': k, 'items': v,
                 'total': sum((it['amount'] or 0) for it in v)}
@@ -5849,14 +5850,18 @@ def api_ledger_credit_suggest():
         data = request.json or {}
         ids = data.get('ids') or []
         rules = _cr_load_rules(supabase, f_code)
+        drules = _dr_load_rules(supabase, f_code)  # ledger-credit-3b-div-v1
         acc = supabase.table('accounts').select('id,code,name')\
             .eq('facility_code', f_code).eq('is_active', True).execute()
         acc_map = {a['id']: a for a in (acc.data or [])}
+        _dv = supabase.table('ledger_divisions').select('id,name')\
+            .eq('facility_code', f_code).eq('is_active', True).execute()  # ledger-credit-3b-div-v1
+        div_map = {d['id']: d for d in (_dv.data or [])}  # ledger-credit-3b-div-v1
         out = []
         rows = []
         if ids:
             res = supabase.table('ledger_orico_statements')\
-                .select('id,used_for,amazon_detail,account_id')\
+                .select('id,used_for,amazon_detail,account_id,division_id')\
                 .eq('facility_code', f_code).in_('id', ids).execute()
             rows = res.data or []
         for r in rows:
@@ -5867,10 +5872,19 @@ def api_ledger_credit_suggest():
             if use_aid is not None and use_aid in acc_map:
                 a = acc_map[use_aid]
                 acct = {'id': a['id'], 'code': a['code'], 'name': a['name']}
+            did, dby = _dr_suggest_one(r.get('used_for'), r.get('amazon_detail'), drules)  # ledger-credit-3b-div-v1
+            dcur = r.get('division_id')  # ledger-credit-3b-div-v1
+            use_did = dcur if dcur is not None else did  # ledger-credit-3b-div-v1
+            dv = None  # ledger-credit-3b-div-v1
+            if use_did is not None and use_did in div_map:  # ledger-credit-3b-div-v1
+                _d = div_map[use_did]  # ledger-credit-3b-div-v1
+                dv = {'id': _d['id'], 'name': _d['name']}  # ledger-credit-3b-div-v1
             out.append({
                 'id': r['id'],
                 'suggested_account': acct,
                 'matched_by': ('assigned' if cur is not None else by),
+                'suggested_division': dv,  # ledger-credit-3b-div-v1
+                'division_matched_by': ('assigned' if dcur is not None else dby),  # ledger-credit-3b-div-v1
             })
         return jsonify({'status': 'success', 'suggestions': out})
     except Exception as e:
@@ -5918,6 +5932,36 @@ def api_ledger_credit_assign():
                 'account_id': aid,
             }).eq('id', oid).eq('facility_code', f_code).execute()
             applied += 1
+            # ledger-credit-3b-div-v1: 事業の保存+学習(division_idが渡されたときのみ)
+            did = p.get('division_id')
+            if did is not None:
+                _dchk = supabase.table('ledger_divisions').select('id')\
+                    .eq('id', did).eq('facility_code', f_code).eq('is_active', True).execute()
+                if _dchk.data:
+                    supabase.table('ledger_orico_statements').update({
+                        'division_id': did,
+                    }).eq('id', oid).eq('facility_code', f_code).execute()
+                    if p.get('learn', True):
+                        _ditem = _cr_norm(_cr_item_from_detail(row.get('amazon_detail')))
+                        if _ditem:
+                            _dkt, _dkx = 'item', _ditem
+                        else:
+                            _dkt, _dkx = 'store', _cr_norm(row.get('used_for'))
+                        if _dkx:
+                            _dnow = _dt.datetime.utcnow().isoformat()
+                            _de = supabase.table('ledger_division_rules').select('id')\
+                                .eq('facility_code', f_code).eq('key_type', _dkt)\
+                                .eq('key_text', _dkx).execute()
+                            if _de.data:
+                                supabase.table('ledger_division_rules').update({
+                                    'division_id': did, 'updated_at': _dnow,
+                                }).eq('id', _de.data[0]['id']).execute()
+                            else:
+                                supabase.table('ledger_division_rules').insert({
+                                    'facility_code': f_code, 'key_type': _dkt,
+                                    'key_text': _dkx, 'match_type': 'exact',
+                                    'division_id': did, 'source': 'manual',
+                                }).execute()
             # 学習辞書に記録(商品名があれば item、無ければ store)
             if p.get('learn', True):
                 item = _cr_norm(_cr_item_from_detail(row.get('amazon_detail')))
@@ -5946,6 +5990,49 @@ def api_ledger_credit_assign():
                         'learned': learned, 'skipped': skipped})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
+def _dr_load_rules(supabase, f_code):
+    """事業の学習辞書(ledger_division_rules)を読み種別ごとに返す。"""  # ledger-credit-3b-div-v1
+    exact_item = {}
+    exact_store = {}
+    partial = []
+    try:
+        res = supabase.table('ledger_division_rules').select(
+            'key_type,key_text,match_type,division_id'
+        ).eq('facility_code', f_code).execute()
+        for r in (res.data or []):
+            kt = r.get('key_type'); mt = r.get('match_type') or 'exact'
+            key = _cr_norm(r.get('key_text'))
+            did = r.get('division_id')
+            if not key or did is None:
+                continue
+            if mt == 'partial' and kt == 'store':
+                partial.append((key, did))
+            elif kt == 'item':
+                exact_item[key] = did
+            elif kt == 'store':
+                exact_store[key] = did
+    except Exception:
+        pass
+    return exact_item, exact_store, partial
+
+
+def _dr_suggest_one(used_for, amazon_detail, rules):
+    """1明細の事業推定。(division_id, matched_by)。未割当は(None,'none')。"""  # ledger-credit-3b-div-v1
+    exact_item, exact_store, partial = rules
+    item = _cr_norm(_cr_item_from_detail(amazon_detail))
+    store = _cr_norm(used_for)
+    if item and item in exact_item:
+        return exact_item[item], 'item_exact'
+    if store and store in exact_store:
+        return exact_store[store], 'store_exact'
+    for kw, did in partial:
+        if kw and kw in store:
+            return did, 'store_partial'
+    return None, 'none'
 
 
 # ============ /ledger-credit-rules-v1 ============
