@@ -103,6 +103,27 @@
         </select>
         <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;white-space:nowrap;" onclick="openTransferModal()">⇄ 事業間移動</button>
     </div>
+    <!-- ledger-export-journal-v1: 税理士向け出力パネル -->
+    <div style="margin-bottom:10px;border:1px solid #e8eaed;border-radius:10px;overflow:hidden;">
+        <div onclick="toggleExportPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#f8f9fa;cursor:pointer;">
+            <span style="font-size:0.84rem;font-weight:700;color:#202124;">📤 税理士向け出力（期間指定）</span>
+            <span id="exp-caret" style="font-size:0.8rem;color:#5f6368;">▼</span>
+        </div>
+        <div id="exp-body" style="display:none;padding:12px;">
+            <div style="font-size:0.74rem;color:#5f6368;margin-bottom:8px;">仕訳帳全体を期間で書き出します。会計ソフトに取り込める標準的な列（日付・借方・貸方・金額・税額・摘要・事業）です。</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                <label style="font-size:0.78rem;color:#3c4043;">開始</label>
+                <input type="month" id="exp-from" class="ledger-form-control" style="font-size:0.82rem;width:auto;">
+                <label style="font-size:0.78rem;color:#3c4043;">終了</label>
+                <input type="month" id="exp-to" class="ledger-form-control" style="font-size:0.82rem;width:auto;">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button onclick="exportJournalRange('csv')" style="font-size:0.8rem;font-weight:700;color:#fff;background:#0f9d58;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">CSV出力</button>
+                <button onclick="exportJournalRange('xlsx')" style="font-size:0.8rem;font-weight:700;color:#0f9d58;background:#e6f4ea;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">Excel出力</button>
+                <span id="exp-msg" style="font-size:0.74rem;color:#5f6368;"></span>
+            </div>
+        </div>
+    </div>
     <!-- 月次サマリー -->
     <div class="summary-card" id="summary-card" style="display:none;">
         <div class="summary-row">
@@ -302,6 +323,31 @@
         <div id="amazon-match-status" style="font-size:0.76rem;color:#5f6368;margin-top:8px;display:none;"></div>
         <div id="amazon-match-result" style="margin-top:10px;"></div>
     </div>
+    <!-- ledger-credit-3bp-v1: キーワード振り分けルールパネル -->
+    <div id="kwrule-box" style="border:1px solid #e8eaed;border-radius:10px;padding:12px;margin-bottom:16px;background:#fafafa;">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleKwrule()">
+            <div style="font-size:0.86rem;font-weight:800;color:#202124;">キーワード振り分けルール</div>
+            <span id="kwrule-caret" style="font-size:0.8rem;color:#5f6368;">▼</span>
+        </div>
+        <div id="kwrule-body" style="display:none;margin-top:10px;">
+            <div style="font-size:0.76rem;color:#5f6368;line-height:1.6;margin-bottom:8px;">店名に含まれるキーワード(例: ETC)で科目・事業をまとめて振り分けます。</div>
+            <div id="kwrule-list" style="margin-bottom:10px;"></div>
+            <div id="kwrule-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px dashed #dadce0;padding-top:10px;">
+                <input type="text" id="kwrule-keyword" placeholder="キーワード" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;width:110px;">
+                <select id="kwrule-account" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;"></select>
+                <select id="kwrule-division" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;display:none;"></select>
+                <button onclick="saveKwrule()" style="font-size:0.76rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">追加</button>
+                <span id="kwrule-msg" style="font-size:0.72rem;color:#5f6368;"></span>
+            </div>
+            <div style="border-top:1px dashed #dadce0;margin-top:10px;padding-top:10px;">
+                <button onclick="previewBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#1a73e8;background:#e8f0fe;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">全明細に仮割当</button>
+                <label style="font-size:0.72rem;color:#5f6368;margin-left:10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><!-- ledger-credit-3bpp-v1 -->
+                    <input type="checkbox" id="kwrule-overwrite" style="cursor:pointer;">割当済みも見直す(上書き)
+                </label>
+            </div>
+            <div id="kwrule-preview" style="margin-top:10px;"></div>
+        </div>
+    </div>
     <div id="orico-list-area" style="font-size:0.85rem;color:#5f6368;">読込中…</div>
 </div>
 
@@ -444,7 +490,7 @@
         </div>
         <div class="ledger-form-group">
             <label class="ledger-form-label">カテゴリ</label>
-            <select class="ledger-form-control" id="account-category">
+            <select class="ledger-form-control" id="account-category" onchange="onAccountCategoryChange()"><!-- ledger-acct-autocode-v1 -->
                 <option value="資産">資産</option>
                 <option value="負債">負債</option>
                 <option value="収益">収益</option>
@@ -593,7 +639,7 @@
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('cash')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('cash')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('cash')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('cash')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-cash"></div>
@@ -606,7 +652,7 @@
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('bank')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('bank')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('bank')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('bank')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-bank"></div>
@@ -621,7 +667,7 @@
     </div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('card')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('card')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('card')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-card"></div>
@@ -633,7 +679,7 @@
     <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">売上台帳</div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('sales')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('sales')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('sales')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-sales"></div>
@@ -910,10 +956,12 @@ async function loadOrico() {
                 html += '</div>';
                 html += '<div style=\"font-size:0.85rem;font-weight:700;color:#202124;white-space:nowrap;margin-left:10px;\">' + amtStr + '</div>';
                 html += '</div>';
+                html += '<div class=\"oacc-slot\" data-oid=\"' + it.id + '\" style=\"padding:2px 2px 8px;border-bottom:1px solid #f0f0f0;\"></div>';  // ledger-credit-3a-v1
             }
             html += '</div>';
         }
         area.innerHTML = html;
+        _oricoApplyAccounts();  // ledger-credit-3a-v1
     } catch (e) {
         area.innerHTML = '\u30a8\u30e9\u30fc: ' + e.message;
     }
@@ -1112,6 +1160,8 @@ function onDivisionFilterChange() {
 
 async function openEntryModal(entry) {
 try {
+    // ledger-receipt-learn-v1: OCR由来でないモーダル起動は学習コンテキストをクリア
+    if (!entry || !entry._fromOCR) { window._ocrLearnContext = null; }
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (!window.allAccounts || window.allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
@@ -1126,8 +1176,8 @@ if (_d.status === 'success') { window.allAccounts = _d.accounts || []; updateAcc
             window.currentDivisions = _sd.divisions || [];
         }
     }
-    document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
-    document.getElementById('entry-id').value = entry ? entry.id : '';
+    document.getElementById('entry-modal-title').textContent = (entry && entry.id) ? '仕訳を編集' : '仕訳を追加';  // ledger-entry-id-fix-v1
+    document.getElementById('entry-id').value = (entry && entry.id) ? entry.id : '';  // ledger-entry-id-fix-v1
     const today = new Date().toISOString().slice(0,10);
     document.getElementById('entry-date').value = entry ? entry.entry_date : today;
     document.getElementById('entry-debit').value = entry ? entry.debit_account_id : '';
@@ -1149,6 +1199,7 @@ function closeEntryModal() {
 }
 
 function editEntry(id) {
+    window._ocrLearnContext = null;  // ledger-receipt-learn-v1: 編集は学習対象外
     const e = currentEntries.find(x => x.id === id);
     if (e) openEntryModal(e);
 }
@@ -1188,6 +1239,21 @@ async function saveEntry() {
     });
     const data = await res.json();
     if (data.status === 'success') {
+        // ledger-receipt-learn-v1: OCR由来の保存なら学習辞書に記録
+        try {
+            var _lc = window._ocrLearnContext;
+            if (_lc && payload.debit_account_id) {
+                await fetch('/api/ledger/receipt_learn', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        vendor: _lc.vendor || '', description: _lc.description || '',
+                        account_id: payload.debit_account_id,
+                        division_id: payload.division_id || null,
+                    })
+                });
+            }
+        } catch (e) {}
+        window._ocrLearnContext = null;
         closeEntryModal();
         loadEntries();
     } else {
@@ -1354,6 +1420,7 @@ async function ocrReceipts(input) {
                 <div>📅 ${ocr.date||'不明'}</div>
                 <div>💴 ¥${(ocr.amount||0).toLocaleString()}（税 ¥${(ocr.tax_amount||0).toLocaleString()}）</div>
                 <div>🏪 ${ocr.vendor||'不明'}</div>
+                <div>${ocrPayBadge(ocr.payment_method)}</div><!-- ledger-receipt-pay-v1 -->
                 <div>📝 ${ocr.description||''}</div>
             </div>
             <button class="ledger-btn primary" style="margin-top:8px;width:100%;" onclick="createEntryFromOCR(${JSON.stringify(ocr).replace(/"/g,'&quot;')})">この内容で仕訳を作成</button>
@@ -1362,14 +1429,41 @@ async function ocrReceipts(input) {
     input.value = '';
 }
 
-function createEntryFromOCR(ocr) {
+function ocrPayBadge(pm){  // ledger-receipt-pay-v1
+    pm=(pm||'').toString().toLowerCase();
+    if(pm==='credit') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#1a73e8;border-radius:4px;padding:1px 6px;">クレジット</span>';
+    if(pm==='emoney') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#9334e6;border-radius:4px;padding:1px 6px;">電子マネー</span>';
+    if(pm==='cash') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#34a853;border-radius:4px;padding:1px 6px;">現金</span>';
+    return '<span style="font-size:0.68rem;color:#9aa0a6;">支払方法不明</span>';
+}
+async function createEntryFromOCR(ocr) {  // ledger-receipt-learn-v1
+    // 学習辞書で借方科目・事業を推定
+    var debitId = '';
+    var divId = '';
+    var creditId = '';  /* ledger-receipt-pay-v1 */
+    try {
+        var sr = await fetch('/api/ledger/receipt_suggest', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({vendor: ocr.vendor||'', description: ocr.description||'', payment_method: ocr.payment_method||''})  /* ledger-receipt-pay-v1 */
+        });
+        var sj = await sr.json();
+        if (sj.status === 'success') {
+            if (sj.suggested_account) debitId = sj.suggested_account.id;
+            if (sj.suggested_division) divId = sj.suggested_division.id;
+            if (sj.credit_account) creditId = sj.credit_account.id;  /* ledger-receipt-pay-v1 */
+        }
+    } catch (e) {}
+    // 保存後の学習用コンテキスト(OCR由来のときだけセット)
+    window._ocrLearnContext = { vendor: ocr.vendor||'', description: ocr.description||'' };
     openEntryModal({
         entry_date: ocr.date || new Date().toISOString().slice(0,10),
-        debit_account_id: '',
-        credit_account_id: '',
+        debit_account_id: debitId,
+        credit_account_id: creditId,  /* ledger-receipt-pay-v1 */
         amount: ocr.amount || 0,
         tax_amount: ocr.tax_amount || 0,
         description: ocr.vendor ? ocr.vendor + ' ' + (ocr.description||'') : (ocr.description||''),
+        division_id: divId,
+        _fromOCR: true,
     });
 }
 // ===== 勘定科目管理 =====
@@ -1430,6 +1524,37 @@ function openAccountModal(account) {
     document.getElementById('account-tax').value = account ? account.tax_type : 'taxable';
     document.getElementById('account-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
+    // ledger-acct-autocode-v1: 新規追加なら初期カテゴリのコードを自動採番
+    if (!account) { onAccountCategoryChange(); }
+}
+
+// ledger-acct-autocode-v1: カテゴリの次コードを取得
+async function fetchNextAccountCode(category) {
+    try {
+        var r = await fetch('/api/ledger/account_next_code?category=' + encodeURIComponent(category));
+        var j = await r.json();
+        if (j.status === 'success') return j.code;
+    } catch (e) {}
+    return '';
+}
+
+// ledger-acct-autocode-v1: カテゴリ変更時、新規かつコード空ならコードを自動セット
+async function onAccountCategoryChange() {
+    var idEl = document.getElementById('account-id');
+    if (idEl && idEl.value) return;  // 編集中は触らない
+    var codeEl = document.getElementById('account-code');
+    var catEl = document.getElementById('account-category');
+    if (!codeEl || !catEl) return;
+    // 既にユーザーが手入力していたら尊重(空のときだけ自動)
+    if (codeEl.value && codeEl.value.trim()) {
+        // 直前の自動値だった場合は更新したいので、data属性で自動値を覚えておく
+        if (codeEl.getAttribute('data-auto') !== codeEl.value.trim()) return;
+    }
+    var code = await fetchNextAccountCode(catEl.value);
+    if (code) {
+        codeEl.value = code;
+        codeEl.setAttribute('data-auto', code);  // 自動採番値であることを記録
+    }
 }
 
 function closeAccountModal() {
@@ -1894,10 +2019,12 @@ function renderSubLedger(type, entries, cfg, el) {
       <td style="text-align:right;color:#1a73e8;">${inAmt ? fmt(inAmt) : ''}</td>
       <td style="text-align:right;color:#e53935;">${outAmt ? fmt(outAmt) : ''}</td>
       <td style="text-align:right;font-weight:700;">${fmt(balance)}</td>
-    </tr>`;
+      ${type==='card' ? `<td style="text-align:center;"><button onclick="deleteCardEntry(${e.id})" style="font-size:0.66rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 7px;cursor:pointer;">削除</button></td>` : ''}
+    </tr>`;  /* ledger-cardledger-del-v1 */
   });
 
   el.innerHTML = `
+    ${type==='card' ? `<div style="text-align:right;margin-bottom:6px;"><button onclick="deleteCardMonth()" style="font-size:0.74rem;color:#ea4335;background:#fce8e6;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">この月をまとめて削除</button></div>` : ''}
     <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
       <thead>
@@ -1909,6 +2036,7 @@ function renderSubLedger(type, entries, cfg, el) {
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'売上顕':'入金'}</th>
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'':'出金'}</th>
           <th style="padding:6px 8px;text-align:right;">${cfg.balanceLabel}</th>
+          ${type==='card' ? '<th style="padding:6px 8px;text-align:center;">操作</th>' : ''}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1918,11 +2046,55 @@ function renderSubLedger(type, entries, cfg, el) {
           <td style="padding:6px 8px;text-align:right;color:#1a73e8;">${fmt(totalIn)}</td>
           <td style="padding:6px 8px;text-align:right;color:#e53935;">${type==='sales'?'':fmt(totalOut)}</td>
           <td style="padding:6px 8px;text-align:right;">${fmt(balance)}</td>
+          ${type==='card' ? '<td></td>' : ''}
         </tr>
       </tfoot>
     </table>
     </div>
-  `;
+  `;  /* ledger-cardledger-del-v1 */
+}
+
+// ledger-cardledger-del-v1: 経費クレカ帳 1件削除
+async function deleteCardEntry(id) {
+    if (!confirm('この経費クレカ帳の仕訳を削除しますか？\n元に戻せません。')) return;
+    try {
+        var r = await fetch('/api/ledger/entry/' + id, { method: 'DELETE' });
+        var j = await r.json();
+        if (j.status === 'success') { loadSubLedger('card'); }
+        else { alert('削除に失敗しました: ' + (j.message||'')); }
+    } catch (e) { alert('エラー: ' + e.message); }
+}
+
+// ledger-cardledger-del-v1: 経費クレカ帳 表示中の月をまとめて削除
+async function deleteCardMonth() {
+    var entries = _subLedgerCache['card'] || [];
+    if (!entries.length) { alert('この月に削除する仕訳はありません'); return; }
+    if (!confirm(currentMonth + ' の経費クレカ帳 ' + entries.length + '件を削除します。\n元に戻せません。よろしいですか？')) return;
+    var ok = 0, ng = 0;
+    for (var i = 0; i < entries.length; i++) {
+        try {
+            var r = await fetch('/api/ledger/entry/' + entries[i].id, { method: 'DELETE' });
+            var j = await r.json();
+            if (j.status === 'success') ok++; else ng++;
+        } catch (e) { ng++; }
+    }
+    alert(ok + '件を削除しました' + (ng ? ('（' + ng + '件失敗）') : ''));
+    loadSubLedger('card');
+}
+
+// ledger-subledger-pdf-v1: 補助元帳をサーバーでPDF生成してダウンロード(別ウィンドウを開かない)
+function downloadSubLedgerPdf(type) {
+  var divEl = document.getElementById('cash-division-filter');
+  var divParam = (divEl && divEl.value && divEl.value !== 'all') ? ('&division_id=' + encodeURIComponent(divEl.value)) : '';
+  var url = '/api/ledger/subledger_pdf?type=' + encodeURIComponent(type) + '&month=' + encodeURIComponent(currentMonth) + divParam;
+  // aタグでダウンロード(同一タブ、画面遷移なし)
+  var a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function printSubLedger(type) {
@@ -2023,6 +2195,110 @@ async function exportSubLedgerExcel(type) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, cfg.label);
   XLSX.writeFile(wb, `${cfg.label}_${currentMonth}.xlsx`);
+}
+
+// ledger-export-journal-v1: 税理士向け 仕訳全体エクスポート
+function toggleExportPanel() {
+  var b = document.getElementById('exp-body');
+  var c = document.getElementById('exp-caret');
+  if (!b) return;
+  var open = (b.style.display !== 'none');
+  b.style.display = open ? 'none' : 'block';
+  if (c) c.textContent = open ? '▼' : '▲';
+  // 初期値: 開始=終了=現在の表示月
+  if (!open) {
+    var f = document.getElementById('exp-from'), t = document.getElementById('exp-to');
+    if (f && !f.value) f.value = currentMonth;
+    if (t && !t.value) t.value = currentMonth;
+  }
+}
+
+async function _loadXLSXlib() {
+  if (window.XLSX) return;
+  await new Promise((resolve, reject) => {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// 'YYYY-MM' from..to の月リストを返す
+function _ymList(from, to) {
+  var out = [];
+  var fy = parseInt(from.slice(0,4)), fm = parseInt(from.slice(5,7));
+  var ty = parseInt(to.slice(0,4)), tm = parseInt(to.slice(5,7));
+  var y = fy, m = fm;
+  var guard = 0;
+  while ((y < ty || (y === ty && m <= tm)) && guard < 240) {
+    out.push(y + '-' + String(m).padStart(2,'0'));
+    m++; if (m > 12) { m = 1; y++; }
+    guard++;
+  }
+  return out;
+}
+
+async function exportJournalRange(format) {
+  var msg = document.getElementById('exp-msg');
+  var from = (document.getElementById('exp-from')||{}).value;
+  var to = (document.getElementById('exp-to')||{}).value;
+  if (!from || !to) { if(msg){msg.style.color='#ea4335';msg.textContent='開始月と終了月を指定してください';} return; }
+  if (from > to) { if(msg){msg.style.color='#ea4335';msg.textContent='開始月が終了月より後になっています';} return; }
+  if (msg) { msg.style.color='#5f6368'; msg.textContent='集計中…'; }
+  try {
+    // 事業フィルタ(あれば尊重)
+    var divEl = document.getElementById('journal-division-filter');
+    var divParam = (divEl && divEl.value && divEl.value !== 'all') ? ('&division_id=' + divEl.value) : '';
+    var months = _ymList(from, to);
+    var all = [];
+    for (var i = 0; i < months.length; i++) {
+      var r = await fetch('/api/ledger/entries?month=' + months[i] + divParam);
+      var j = await r.json();
+      if (j.status === 'success') all = all.concat(j.entries || []);
+    }
+    if (!all.length) { if(msg){msg.style.color='#9aa0a6';msg.textContent='この期間に仕訳がありません';} return; }
+    // 日付順に整列
+    all.sort(function(a,b){ return (a.entry_date||'').localeCompare(b.entry_date||'') || (a.id-b.id); });
+    // 事業名解決
+    var divs = window.currentDivisions || [];
+    function divName(id){ if(!id) return ''; var d = divs.find(function(x){return x.id===id;}); return d?d.name:''; }
+    var header = ['日付','借方コード','借方科目','貸方コード','貸方科目','金額','税額','摘要','事業区分'];
+    var rows = all.map(function(e){
+      return [
+        e.entry_date || '',
+        (e.debit && e.debit.code) || '',
+        (e.debit && e.debit.name) || '',
+        (e.credit && e.credit.code) || '',
+        (e.credit && e.credit.name) || '',
+        e.amount != null ? e.amount : '',
+        e.tax_amount != null ? e.tax_amount : '',
+        e.description || '',
+        divName(e.division_id)
+      ];
+    });
+    var period = from + '_' + to;
+    if (format === 'csv') {
+      // UTF-8 BOM 付き CSV(Excel文字化け防止)
+      function esc(v){ v = (v==null?'':String(v)); if(/[",\n]/.test(v)){ return '"' + v.replace(/"/g,'""') + '"'; } return v; }
+      var lines = [header].concat(rows).map(function(r){ return r.map(esc).join(','); }).join('\r\n');
+      var blob = new Blob(['\ufeff' + lines], {type:'text/csv;charset=utf-8;'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = '仕訳帳_' + period + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      await _loadXLSXlib();
+      var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
+      ws['!cols'] = [{wch:12},{wch:10},{wch:16},{wch:10},{wch:16},{wch:12},{wch:10},{wch:30},{wch:14}];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '仕訳帳');
+      XLSX.writeFile(wb, '仕訳帳_' + period + '.xlsx');
+    }
+    if (msg) { msg.style.color='#0f9d58'; msg.textContent = all.length + '件を出力しました'; }
+  } catch (e) {
+    if (msg) { msg.style.color='#ea4335'; msg.textContent = 'エラー: ' + e.message; }
+  }
 }
 
 
@@ -2248,6 +2524,382 @@ async function cashlessApply() {  // ledger-cashless-ui-v1
     }
 }
 // ===== /ledger-cashless-ui-v1 =====
+
+
+// ===== ledger-credit-3a-v1 / ledger-credit-3b-div-v1: \u30af\u30ec\u30ab\u660e\u7d30\u306e\u52d8\u5b9a\u79d1\u76ee\uff0b\u4e8b\u696d\u632f\u308a\u5206\u3051UI =====
+// \u8cbb\u7528\u79d1\u76ee\u30ad\u30e3\u30c3\u30b7\u30e5(category==='\u8cbb\u7528')
+window._oricoExpenseAccounts = null;
+// \u4e8b\u696d\u533a\u5206\u30ad\u30e3\u30c3\u30b7\u30e5(divisions_enabled \u3068 \u4e8b\u696d\u4e00\u89a7)  // ledger-credit-3b-div-v1
+window._oricoDivInfo = null;
+
+async function _oricoLoadExpenseAccounts() {
+    if (window._oricoExpenseAccounts) return window._oricoExpenseAccounts;
+    try {
+        var r = await fetch('/api/ledger/accounts');
+        var j = await r.json();
+        if (j.status !== 'success') { window._oricoExpenseAccounts = []; return []; }
+        var list = (j.accounts || []).filter(function(a){
+            return a.category === '\u8cbb\u7528' && a.is_active !== false;
+        });
+        window._oricoExpenseAccounts = list;
+        return list;
+    } catch (e) {
+        window._oricoExpenseAccounts = [];
+        return [];
+    }
+}
+
+// ledger-credit-3b-div-v1: \u4e8b\u696d\u533a\u5206\u60c5\u5831(\u6709\u52b9\u30d5\u30e9\u30b0\uff0b\u4e8b\u696d\u4e00\u89a7)\u3092\u53d6\u5f97
+async function _oricoLoadDivInfo() {
+    if (window._oricoDivInfo) return window._oricoDivInfo;
+    var info = { enabled: false, divisions: [] };
+    try {
+        var r = await fetch('/api/ledger/settings');
+        var j = await r.json();
+        if (j.status === 'success') {
+            info.enabled = !!(j.settings && j.settings.divisions_enabled);
+            info.divisions = (j.divisions || []).filter(function(d){ return d.is_active !== false; });
+        }
+    } catch (e) {}
+    window._oricoDivInfo = info;
+    return info;
+}
+
+// \u660e\u7d30id\u914d\u5217\u3092\u96c6\u3081\u3066credit_suggest\u3092\u53d6\u5f97
+async function _oricoFetchSuggest(ids) {
+    if (!ids.length) return {};
+    try {
+        var r = await fetch('/api/ledger/credit_suggest', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ids: ids})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') return {};
+        var map = {};
+        (j.suggestions || []).forEach(function(s){ map[s.id] = s; });
+        return map;
+    } catch (e) { return {}; }
+}
+
+// \u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u306eHTML(selectedId\u306f\u9078\u629e\u6e08\u307f\u79d1\u76eeid)
+function _oricoSelectHtml(oid, accounts, selectedId) {
+    var h = '<select class="oacc-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:55%;">';
+    h += '<option value="">\u672a\u5272\u5f53</option>';
+    for (var i=0;i<accounts.length;i++){
+        var a = accounts[i];
+        var sel = (selectedId != null && a.id === selectedId) ? ' selected' : '';
+        h += '<option value="' + a.id + '"' + sel + '>' + escAmz((a.code||'') + ' ' + (a.name||'')) + '</option>';
+    }
+    h += '</select>';
+    return h;
+}
+
+// ledger-credit-3b-div-v1: \u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u306eHTML(selectedId\u306f\u9078\u629e\u6e08\u307f\u4e8b\u696did)
+function _oricoDivSelectHtml(oid, divisions, selectedId) {
+    var h = '<select class="oacc-div-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:45%;">';
+    h += '<option value="">\u4e8b\u696d\u672a\u5b9a</option>';
+    for (var i=0;i<divisions.length;i++){
+        var d = divisions[i];
+        var sel = (selectedId != null && d.id === selectedId) ? ' selected' : '';
+        h += '<option value="' + d.id + '"' + sel + '>' + escAmz(d.name||'') + '</option>';
+    }
+    h += '</select>';
+    return h;
+}
+
+// \u72b6\u614b\u30e9\u30d9\u30eb\u751f\u6210(\u79d1\u76ee\u30fb\u4e8b\u696d\u5171\u7528)  // ledger-credit-3b-div-v1
+function _oricoMatchLabel(by) {
+    if (by === 'assigned') {
+        return '<span style="font-size:0.68rem;color:#34a853;font-weight:700;">\u5272\u5f53\u6e08\u307f</span>';
+    } else if (by === 'item_exact' || by === 'store_exact') {
+        return '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u5b8c\u5168\u4e00\u81f4)</span>';
+    } else if (by === 'store_partial') {
+        return '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u90e8\u5206\u4e00\u81f4)</span>';
+    }
+    return '<span style="font-size:0.68rem;color:#9aa0a6;">\u672a\u5272\u5f53</span>';
+}
+
+// \u4e00\u89a7\u63cf\u753b\u5f8c: \u5404\u30b9\u30ed\u30c3\u30c8\u306b\u79d1\u76ee(\u3068\u4e8b\u696d)\u30bb\u30ec\u30af\u30c8\uff0b\u767b\u9332\u30dc\u30bf\u30f3\u3092\u751f\u6210
+async function _oricoApplyAccounts() {
+    var slots = document.querySelectorAll('.oacc-slot');
+    if (!slots.length) return;
+    var accounts = await _oricoLoadExpenseAccounts();
+    var divInfo = await _oricoLoadDivInfo();  // ledger-credit-3b-div-v1
+    var divEnabled = divInfo.enabled && (divInfo.divisions||[]).length > 0;  // ledger-credit-3b-div-v1
+    var ids = [];
+    slots.forEach(function(s){
+        var oid = parseInt(s.getAttribute('data-oid'));
+        if (!isNaN(oid)) ids.push(oid);
+    });
+    var sug = await _oricoFetchSuggest(ids);
+    slots.forEach(function(s){
+        var oid = parseInt(s.getAttribute('data-oid'));
+        var info = sug[oid] || {};
+        var acct = info.suggested_account || null;
+        var by = info.matched_by || 'none';
+        var selectedId = acct ? acct.id : null;
+        var h = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
+        h += _oricoSelectHtml(oid, accounts, selectedId);
+        if (divEnabled) {  // ledger-credit-3b-div-v1
+            var dv = info.suggested_division || null;
+            var dSelId = dv ? dv.id : null;
+            h += _oricoDivSelectHtml(oid, divInfo.divisions, dSelId);
+        }
+        h += '<button class="oacc-save" data-oid="' + oid + '" style="font-size:0.74rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">\u767b\u9332</button>';
+        h += _oricoMatchLabel(by);
+        if (divEnabled) {  // ledger-credit-3b-div-v1: \u4e8b\u696d\u5074\u306e\u30e9\u30d9\u30eb
+            var dby = info.division_matched_by || 'none';
+            h += ' ' + _oricoMatchLabel(dby);
+        }
+        h += '<span class="oacc-msg" data-oid="' + oid + '" style="font-size:0.7rem;color:#5f6368;"></span>';
+        h += '</div>';
+        s.innerHTML = h;
+    });
+    document.querySelectorAll('.oacc-save').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            _oricoAssignOne(parseInt(btn.getAttribute('data-oid')));
+        });
+    });
+}
+
+// 1\u660e\u7d30\u3092credit_assign\u3067\u4fdd\u5b58+\u5b66\u7fd2(\u79d1\u76ee\uff0b\u4e8b\u696d\u3092\u540c\u6642\u9001\u4fe1)
+async function _oricoAssignOne(oid) {
+    var sel = document.querySelector('.oacc-select[data-oid="' + oid + '"]');
+    var dsel = document.querySelector('.oacc-div-select[data-oid="' + oid + '"]');  // ledger-credit-3b-div-v1
+    var msg = document.querySelector('.oacc-msg[data-oid="' + oid + '"]');
+    if (!sel) return;
+    var aid = parseInt(sel.value);
+    if (!sel.value || isNaN(aid)) {
+        if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u79d1\u76ee\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044'; }
+        return;
+    }
+    var pair = { id: oid, account_id: aid, learn: true };
+    // ledger-credit-3b-div-v1: \u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u304c\u3042\u308a\u9078\u629e\u3055\u308c\u3066\u3044\u308c\u3070 division_id \u3082\u9001\u308b
+    if (dsel && dsel.value) {
+        var did = parseInt(dsel.value);
+        if (!isNaN(did)) pair.division_id = did;
+    }
+    if (msg) { msg.style.color = '#5f6368'; msg.textContent = '\u767b\u9332\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/credit_assign', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({pairs: [pair]})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') {
+            if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + (j.message||''); }
+            return;
+        }
+        if ((j.applied||0) > 0) {
+            if (msg) { msg.style.color = '#34a853'; msg.textContent = '\u767b\u9332\u3057\u307e\u3057\u305f' + ((j.learned||0) ? '(\u5b66\u7fd2\u6e08)' : ''); }
+        } else {
+            if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u767b\u9332\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f'; }
+        }
+    } catch (e) {
+        if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+// ===== /ledger-credit-3a-v1 / ledger-credit-3b-div-v1 =====
+
+// ===== ledger-credit-3bp-v1: \u30ad\u30fc\u30ef\u30fc\u30c9\u632f\u308a\u5206\u3051\u30eb\u30fc\u30eb\uff0b\u4e00\u62ec\u4eee\u5272\u5f53 =====
+window._kwruleBulk = null;  // \u4eee\u5272\u5f53\u4e2d\u306e pairs \u3092\u4fdd\u6301
+
+function toggleKwrule() {
+    var b = document.getElementById('kwrule-body');
+    var c = document.getElementById('kwrule-caret');
+    if (!b) return;
+    var open = (b.style.display === 'none' || !b.style.display);
+    b.style.display = open ? 'block' : 'none';
+    if (c) c.textContent = open ? '\u25b2' : '\u25bc';
+    if (open) initKwrule();
+}
+
+async function initKwrule() {
+    // \u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u3068\u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u3092\u57cb\u3081\u308b
+    var accounts = await _oricoLoadExpenseAccounts();
+    var asel = document.getElementById('kwrule-account');
+    if (asel) {
+        var ah = '<option value="">\u79d1\u76ee\u3092\u9078\u629e</option>';
+        accounts.forEach(function(a){ ah += '<option value="' + a.id + '">' + escAmz((a.code||'') + ' ' + (a.name||'')) + '</option>'; });
+        asel.innerHTML = ah;
+    }
+    var divInfo = await _oricoLoadDivInfo();
+    var dsel = document.getElementById('kwrule-division');
+    if (dsel) {
+        if (divInfo.enabled && (divInfo.divisions||[]).length) {
+            var dh = '<option value="">\u4e8b\u696d\u672a\u5b9a</option>';
+            divInfo.divisions.forEach(function(d){ dh += '<option value="' + d.id + '">' + escAmz(d.name||'') + '</option>'; });
+            dsel.innerHTML = dh;
+            dsel.style.display = '';
+        } else {
+            dsel.style.display = 'none';
+        }
+    }
+    loadKwrules();
+}
+
+async function loadKwrules() {
+    var list = document.getElementById('kwrule-list');
+    if (!list) return;
+    try {
+        var r = await fetch('/api/ledger/partial_rules');
+        var j = await r.json();
+        if (j.status !== 'success') { list.innerHTML = '<div style="font-size:0.74rem;color:#ea4335;">\u8aad\u307f\u8fbc\u307f\u5931\u6557</div>'; return; }
+        var rules = j.rules || [];
+        if (!rules.length) { list.innerHTML = '<div style="font-size:0.74rem;color:#9aa0a6;">\u30eb\u30fc\u30eb\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093</div>'; return; }
+        var h = '';
+        rules.forEach(function(ru){
+            var acc = ru.account ? escAmz((ru.account.code||'') + ' ' + (ru.account.name||'')) : '\u2014';
+            var dv = ru.division ? escAmz(ru.division.name) : '';
+            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;padding:4px 0;border-bottom:1px solid #f0f0f0;">';
+            h += '<span style="font-weight:700;color:#202124;min-width:80px;">' + escAmz(ru.keyword) + '</span>';
+            h += '<span style="color:#1a73e8;">' + acc + '</span>';
+            if (dv) h += '<span style="color:#9334e6;">' + dv + '</span>';
+            h += '<button onclick="deleteKwrule(\'' + encodeURIComponent(ru.keyword) + '\')" style="margin-left:auto;font-size:0.7rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 8px;cursor:pointer;">\u524a\u9664</button>';
+            h += '</div>';
+        });
+        list.innerHTML = h;
+    } catch (e) {
+        list.innerHTML = '<div style="font-size:0.74rem;color:#ea4335;">\u30a8\u30e9\u30fc</div>';
+    }
+}
+
+async function saveKwrule() {
+    var kw = document.getElementById('kwrule-keyword');
+    var asel = document.getElementById('kwrule-account');
+    var dsel = document.getElementById('kwrule-division');
+    var msg = document.getElementById('kwrule-msg');
+    var keyword = (kw && kw.value || '').trim();
+    var aid = asel && asel.value ? parseInt(asel.value) : null;
+    if (!keyword) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b'; } return; }
+    if (!aid) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u79d1\u76ee\u3092\u9078\u629e'; } return; }
+    var body = { keyword: keyword, account_id: aid };
+    if (dsel && dsel.style.display !== 'none' && dsel.value) body.division_id = parseInt(dsel.value);
+    if (msg) { msg.style.color='#5f6368'; msg.textContent='\u4fdd\u5b58\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/partial_rule', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + (j.message||''); } return; }
+        if (msg) { msg.style.color='#34a853'; msg.textContent='\u8ffd\u52a0\u3057\u307e\u3057\u305f'; }
+        if (kw) kw.value = '';
+        loadKwrules();
+    } catch (e) {
+        if (msg) { msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+
+async function deleteKwrule(kwEnc) {
+    var keyword = decodeURIComponent(kwEnc);
+    if (!confirm('\u30eb\u30fc\u30eb\u300c' + keyword + '\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f')) return;
+    try {
+        var r = await fetch('/api/ledger/partial_rule', {
+            method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: keyword})
+        });
+        var j = await r.json();
+        if (j.status === 'success') loadKwrules();
+    } catch (e) {}
+}
+
+// \u5168\u660e\u7d30\u306b\u4eee\u5272\u5f53(\u672a\u5272\u5f53\u306e\u307f) -> \u30ec\u30d3\u30e5\u30fc\u4e00\u89a7\u3092\u8868\u793a
+async function previewBulkAssign() {  // ledger-credit-3bpp-v1
+    var area = document.getElementById('kwrule-preview');
+    if (!area) return;
+    var owEl = document.getElementById('kwrule-overwrite');
+    var overwrite = !!(owEl && owEl.checked);  // true=\u5168\u4ef6\u30e2\u30fc\u30c9
+    area.innerHTML = '<div style="font-size:0.78rem;color:#5f6368;">\u4eee\u5272\u5f53\u4e2d\u2026</div>';
+    try {
+        var r = await fetch('/api/ledger/credit_preview', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({only_unassigned: !overwrite})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + (j.message||'') + '</div>'; return; }
+        var prev = j.previews || [];
+        if (!prev.length) {
+            var emptyMsg = overwrite
+                ? '\u5909\u66f4\u306b\u306a\u308b\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u898b\u76f4\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002'
+                : '\u4eee\u5272\u5f53\u3067\u304d\u308b\u672a\u5272\u5f53\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u8ffd\u52a0\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002';
+            area.innerHTML = '<div style="font-size:0.78rem;color:#9aa0a6;">' + emptyMsg + '</div>';
+            window._kwruleBulk = null; return;
+        }
+        var pairs = [];
+        var overwriteCount = 0;
+        var title = overwrite ? '\u898b\u76f4\u3057\u30d7\u30ec\u30d3\u30e5\u30fc' : '\u4eee\u5272\u5f53\u30d7\u30ec\u30d3\u30e5\u30fc';
+        var h = '<div style="font-size:0.8rem;font-weight:700;color:#202124;margin-bottom:6px;">' + title + ' (' + prev.length + '\u4ef6)</div>';
+        h += '<div style="max-height:300px;overflow-y:auto;border:1px solid #e8eaed;border-radius:8px;">';
+        prev.forEach(function(p){
+            var amt = (p.amount != null) ? ('\uffe5' + Number(p.amount).toLocaleString()) : '';
+            var accTxt = p.suggested_account ? escAmz((p.suggested_account.code||'') + ' ' + (p.suggested_account.name||'')) : '<span style="color:#9aa0a6;">\u79d1\u76ee\u306a\u3057</span>';
+            var dvTxt = p.suggested_division ? (' / ' + escAmz(p.suggested_division.name)) : '';
+            var byJp = (p.matched_by === 'store_partial') ? '\u90e8\u5206\u4e00\u81f4' : (p.matched_by === 'store_exact' || p.matched_by === 'item_exact') ? '\u5b8c\u5168\u4e00\u81f4' : '';
+            var isChange = !!p.is_change;  // \u65e2\u5b58\u3092\u4e0a\u66f8\u304d
+            if (isChange) overwriteCount++;
+            // ledger-credit-3bpp-layout-v1: 2\u6bb5\u7d44\u307f\u30ec\u30a4\u30a2\u30a6\u30c8(\u4e0a:\u65e5\u4ed8\u30fb\u5e97\u540d\u30fb\u91d1\u984d / \u4e0b:\u79d1\u76ee\u4e8b\u696d\u5dee\u5206)
+            h += '<div style="display:flex;flex-direction:column;gap:3px;font-size:0.76rem;padding:6px 8px;border-bottom:1px solid #f4f4f4;' + (isChange ? 'background:#fef7e0;' : '') + '">';
+            // \u4e0a\u6bb5: \u65e5\u4ed8 + \u5e97\u540d + \u91d1\u984d
+            h += '<div style="display:flex;align-items:baseline;gap:8px;">';
+            h += '<span style="color:#5f6368;white-space:nowrap;min-width:70px;">' + (p.used_date||'') + '</span>';
+            h += '<span style="flex:1;min-width:0;color:#3c4043;word-break:break-word;overflow-wrap:anywhere;">' + escAmz(p.used_for||'') + '</span>';
+            h += '<span style="color:#202124;white-space:nowrap;font-weight:700;">' + amt + '</span>';
+            h += '</div>';
+            // \u4e0b\u6bb5: [\u73fe\u5728(\u53d6\u6d88\u7dda) \u2192 ] \u65b0\u306e\u79d1\u76ee/\u4e8b\u696d + \u30de\u30fc\u30af
+            h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:78px;">';
+            if (isChange && p.current_account) {
+                var curTxt = escAmz((p.current_account.code||'') + ' ' + (p.current_account.name||''));
+                var curDv = p.current_division ? (' / ' + escAmz(p.current_division.name)) : '';
+                h += '<span style="color:#9aa0a6;text-decoration:line-through;">' + curTxt + curDv + '</span>';
+                h += '<span style="color:#9aa0a6;">\u2192</span>';
+            }
+            h += '<span style="color:#1a73e8;font-weight:700;">' + accTxt + dvTxt + '</span>';
+            if (isChange) h += '<span style="font-size:0.64rem;font-weight:700;color:#b06000;background:#fef0c7;border-radius:4px;padding:1px 5px;white-space:nowrap;">\u5909\u66f4</span>';
+            if (byJp) h += '<span style="font-size:0.66rem;color:#9aa0a6;white-space:nowrap;">' + byJp + '</span>';
+            h += '</div>';
+            h += '</div>';
+            if (p.suggested_account) {
+                var pr = { id: p.id, account_id: p.suggested_account.id, learn: false };
+                if (p.suggested_division) pr.division_id = p.suggested_division.id;
+                pairs.push(pr);
+            }
+        });
+        h += '</div>';
+        var note = overwrite && overwriteCount ? ('<span style="font-size:0.72rem;color:#b06000;margin-left:8px;">\u3046\u3061' + overwriteCount + '\u4ef6\u306f\u4e0a\u66f8\u304d</span>') : '';
+        h += '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+        h += '<button onclick="commitBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#fff;background:#34a853;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;">\u3053\u306e\u5185\u5bb9\u3067\u307e\u3068\u3081\u3066\u4fdd\u5b58 (' + pairs.length + '\u4ef6)</button>';
+        h += note;
+        h += '<span id="kwrule-commit-msg" style="font-size:0.74rem;color:#5f6368;"></span>';
+        h += '</div>';
+        area.innerHTML = h;
+        window._kwruleBulk = pairs;
+        window._kwruleBulkOverwrite = overwriteCount;
+    } catch (e) {
+        area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + e.message + '</div>';
+    }
+}
+
+// \u307e\u3068\u3081\u3066\u4fdd\u5b58: \u4eee\u5272\u5f53 pairs \u3092\u4e00\u62ec credit_assign
+async function commitBulkAssign() {
+    var pairs = window._kwruleBulk || [];
+    var msg = document.getElementById('kwrule-commit-msg');
+    if (!pairs.length) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u4fdd\u5b58\u5bfe\u8c61\u304c\u3042\u308a\u307e\u305b\u3093'; } return; }
+    if (!confirm(pairs.length + '\u4ef6\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f')) return;
+    if (msg) { msg.style.color='#5f6368'; msg.textContent='\u4fdd\u5b58\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/credit_assign', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pairs: pairs})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + (j.message||''); } return; }
+        var skipped = (j.skipped||[]).length;
+        if (msg) { msg.style.color='#34a853'; msg.textContent = (j.applied||0) + '\u4ef6\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f' + (skipped ? ('\uff08' + skipped + '\u4ef6\u30b9\u30ad\u30c3\u30d7\uff09') : ''); }
+        window._kwruleBulk = null;
+        document.getElementById('kwrule-preview').innerHTML = '<div style="font-size:0.78rem;color:#34a853;">\u4fdd\u5b58\u5b8c\u4e86\u3002\u4e00\u89a7\u3092\u66f4\u65b0\u3057\u307e\u3059\u2026</div>';
+        loadOrico();  // \u660e\u7d30\u4e00\u89a7\u3092\u518d\u8aad\u8fbc
+    } catch (e) {
+        if (msg) { msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+// ===== /ledger-credit-3bp-v1 =====
 
 </script>
 {% endblock %}
