@@ -5281,7 +5281,7 @@ def api_ledger_orico_list():
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         res = supabase.table('ledger_orico_statements').select(
-            'id,payment_date,used_date,used_for,amount,match_status,amazon_detail'
+            'id,payment_date,used_date,used_for,amount,match_status,amazon_detail,account_id'  # ledger-credit-3a-v1
         ).eq('facility_code', f_code).order('payment_date', desc=True).order('used_date').execute()
         groups = {}
         for r in (res.data or []):
@@ -5294,6 +5294,7 @@ def api_ledger_orico_list():
                 'is_amazon': _orico_is_amazon(r.get('used_for') or ''),
                 'match_status': r.get('match_status') or 'none',
                 'amazon_detail': r.get('amazon_detail') or '',
+                'account_id': r.get('account_id'),  # ledger-credit-3a-v1
             })
         out = [{'payment_date': k, 'items': v,
                 'total': sum((it['amount'] or 0) for it in v)}
@@ -5756,6 +5757,199 @@ def api_ledger_amazon_apply():
 
 
 # ============ /ledger-amazon-v1 ============
+
+
+# ============ ledger-credit-rules-v1: 勘定科目の学習振り分け ============
+# 学習辞書 ledger_credit_rules を使い、クレカ明細(ledger_orico_statements)に
+# 勘定科目を推定・割当。キー=商品名(あれば)/店名(無ければ)。
+# 推定順: 商品名完全一致 -> 店名完全一致 -> 店名部分一致 -> 未割当。
+
+
+def _cr_norm(s):
+    """キー正規化: NFKC + 前後空白除去 + 連続空白圧縮。"""
+    import unicodedata as _ud
+    if s is None:
+        return ''
+    t = _ud.normalize('NFKC', str(s)).strip()
+    return ' '.join(t.split())
+
+
+def _cr_item_from_detail(amazon_detail):
+    """amazon_detail(JSON文字列)から代表商品名を取り出す。無ければ ''。"""
+    import json as _json
+    if not amazon_detail:
+        return ''
+    try:
+        d = _json.loads(amazon_detail)
+    except Exception:
+        return ''
+    if not isinstance(d, dict):
+        return ''
+    items = d.get('items') or []
+    if items:
+        return items[0]
+    return d.get('summary') or ''
+
+
+def _cr_load_rules(supabase, f_code):
+    """その施設の学習辞書を読み、種別ごとに分けて返す。"""
+    exact_item = {}
+    exact_store = {}
+    partial = []
+    try:
+        res = supabase.table('ledger_credit_rules').select(
+            'key_type,key_text,match_type,account_id'
+        ).eq('facility_code', f_code).execute()
+        for r in (res.data or []):
+            kt = r.get('key_type'); mt = r.get('match_type') or 'exact'
+            key = _cr_norm(r.get('key_text'))
+            aid = r.get('account_id')
+            if not key or aid is None:
+                continue
+            if mt == 'partial' and kt == 'store':
+                partial.append((key, aid))
+            elif kt == 'item':
+                exact_item[key] = aid
+            elif kt == 'store':
+                exact_store[key] = aid
+    except Exception:
+        pass
+    return exact_item, exact_store, partial
+
+
+def _cr_suggest_one(used_for, amazon_detail, rules):
+    """1明細の科目推定。 (account_id, matched_by) を返す。未割当は (None,'none')。"""
+    exact_item, exact_store, partial = rules
+    item = _cr_norm(_cr_item_from_detail(amazon_detail))
+    store = _cr_norm(used_for)
+    if item and item in exact_item:
+        return exact_item[item], 'item_exact'
+    if store and store in exact_store:
+        return exact_store[store], 'store_exact'
+    for kw, aid in partial:
+        if kw and kw in store:
+            return aid, 'store_partial'
+    return None, 'none'
+
+
+@app.route('/api/ledger/credit_suggest', methods=['POST'])  # ledger-credit-rules-v1
+@login_required
+def api_ledger_credit_suggest():
+    """クレカ明細idリストを受け、各明細の勘定科目を推定して返す。保存しない。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        data = request.json or {}
+        ids = data.get('ids') or []
+        rules = _cr_load_rules(supabase, f_code)
+        acc = supabase.table('accounts').select('id,code,name')\
+            .eq('facility_code', f_code).eq('is_active', True).execute()
+        acc_map = {a['id']: a for a in (acc.data or [])}
+        out = []
+        rows = []
+        if ids:
+            res = supabase.table('ledger_orico_statements')\
+                .select('id,used_for,amazon_detail,account_id')\
+                .eq('facility_code', f_code).in_('id', ids).execute()
+            rows = res.data or []
+        for r in rows:
+            aid, by = _cr_suggest_one(r.get('used_for'), r.get('amazon_detail'), rules)
+            cur = r.get('account_id')
+            use_aid = cur if cur is not None else aid
+            acct = None
+            if use_aid is not None and use_aid in acc_map:
+                a = acc_map[use_aid]
+                acct = {'id': a['id'], 'code': a['code'], 'name': a['name']}
+            out.append({
+                'id': r['id'],
+                'suggested_account': acct,
+                'matched_by': ('assigned' if cur is not None else by),
+            })
+        return jsonify({'status': 'success', 'suggestions': out})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/credit_assign', methods=['POST'])  # ledger-credit-rules-v1
+@login_required
+def api_ledger_credit_assign():
+    """確認済みの (明細id -> 科目id) を保存し、学習辞書にも記録(upsert)。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
+    try:
+        import datetime as _dt
+        data = request.json or {}
+        pairs = data.get('pairs') or []
+        applied = 0
+        learned = 0
+        skipped = []
+        for p in pairs:
+            oid = p.get('id')
+            aid = p.get('account_id')
+            if oid is None or aid is None:
+                skipped.append({'id': oid, 'reason': 'missing'}); continue
+            _r = supabase.table('ledger_orico_statements')\
+                .select('id,used_for,amazon_detail')\
+                .eq('id', oid).eq('facility_code', f_code).execute()
+            row = (_r.data or [None])[0]
+            if not row:
+                skipped.append({'id': oid, 'reason': 'not_found'}); continue
+            # 科目が当該施設の有効科目か再検証
+            _a = supabase.table('accounts').select('id')\
+                .eq('id', aid).eq('facility_code', f_code).eq('is_active', True).execute()
+            if not (_a.data):
+                skipped.append({'id': oid, 'reason': 'bad_account'}); continue
+            # 明細に科目を保存
+            supabase.table('ledger_orico_statements').update({
+                'account_id': aid,
+            }).eq('id', oid).eq('facility_code', f_code).execute()
+            applied += 1
+            # 学習辞書に記録(商品名があれば item、無ければ store)
+            if p.get('learn', True):
+                item = _cr_norm(_cr_item_from_detail(row.get('amazon_detail')))
+                if item:
+                    key_type, key_text = 'item', item
+                else:
+                    key_type, key_text = 'store', _cr_norm(row.get('used_for'))
+                if key_text:
+                    now = _dt.datetime.utcnow().isoformat()
+                    # 既存検索 -> あれば更新、無ければ挿入
+                    _e = supabase.table('ledger_credit_rules').select('id')\
+                        .eq('facility_code', f_code).eq('key_type', key_type)\
+                        .eq('key_text', key_text).execute()
+                    if _e.data:
+                        supabase.table('ledger_credit_rules').update({
+                            'account_id': aid, 'updated_at': now,
+                        }).eq('id', _e.data[0]['id']).execute()
+                    else:
+                        supabase.table('ledger_credit_rules').insert({
+                            'facility_code': f_code, 'key_type': key_type,
+                            'key_text': key_text, 'match_type': 'exact',
+                            'account_id': aid, 'source': 'manual',
+                        }).execute()
+                    learned += 1
+        return jsonify({'status': 'success', 'applied': applied,
+                        'learned': learned, 'skipped': skipped})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============ /ledger-credit-rules-v1 ============
+
 
 
 def is_sekkotsu_enabled(supabase, f_code):  # sekkotsu-guard-v1

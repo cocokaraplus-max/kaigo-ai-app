@@ -910,10 +910,12 @@ async function loadOrico() {
                 html += '</div>';
                 html += '<div style=\"font-size:0.85rem;font-weight:700;color:#202124;white-space:nowrap;margin-left:10px;\">' + amtStr + '</div>';
                 html += '</div>';
+                html += '<div class=\"oacc-slot\" data-oid=\"' + it.id + '\" style=\"padding:2px 2px 8px;border-bottom:1px solid #f0f0f0;\"></div>';  // ledger-credit-3a-v1
             }
             html += '</div>';
         }
         area.innerHTML = html;
+        _oricoApplyAccounts();  // ledger-credit-3a-v1
     } catch (e) {
         area.innerHTML = '\u30a8\u30e9\u30fc: ' + e.message;
     }
@@ -2248,6 +2250,134 @@ async function cashlessApply() {  // ledger-cashless-ui-v1
     }
 }
 // ===== /ledger-cashless-ui-v1 =====
+
+
+// ===== ledger-credit-3a-v1: \u30af\u30ec\u30ab\u660e\u7d30\u306e\u52d8\u5b9a\u79d1\u76ee\u632f\u308a\u5206\u3051UI =====
+// \u8cbb\u7528\u79d1\u76ee\u30ad\u30e3\u30c3\u30b7\u30e5(category==='\u8cbb\u7528')
+window._oricoExpenseAccounts = null;
+
+async function _oricoLoadExpenseAccounts() {
+    if (window._oricoExpenseAccounts) return window._oricoExpenseAccounts;
+    try {
+        var r = await fetch('/api/ledger/accounts');
+        var j = await r.json();
+        if (j.status !== 'success') { window._oricoExpenseAccounts = []; return []; }
+        var list = (j.accounts || []).filter(function(a){
+            return a.category === '\u8cbb\u7528' && a.is_active !== false;
+        });
+        window._oricoExpenseAccounts = list;
+        return list;
+    } catch (e) {
+        window._oricoExpenseAccounts = [];
+        return [];
+    }
+}
+
+// \u660e\u7d30id\u914d\u5217\u3092\u96c6\u3081\u3066credit_suggest\u3092\u53d6\u5f97
+async function _oricoFetchSuggest(ids) {
+    if (!ids.length) return {};
+    try {
+        var r = await fetch('/api/ledger/credit_suggest', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ids: ids})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') return {};
+        var map = {};
+        (j.suggestions || []).forEach(function(s){ map[s.id] = s; });
+        return map;
+    } catch (e) { return {}; }
+}
+
+// \u30bb\u30ec\u30af\u30c8\u306eHTML\u3092\u751f\u6210(selectedId\u306f\u9078\u629e\u6e08\u307f\u79d1\u76eeid)
+function _oricoSelectHtml(oid, accounts, selectedId) {
+    var h = '<select class="oacc-select" data-oid="' + oid + '" style="font-size:0.78rem;padding:4px 6px;border:1px solid #dadce0;border-radius:6px;max-width:60%;">';
+    h += '<option value="">\u672a\u5272\u5f53</option>';
+    for (var i=0;i<accounts.length;i++){
+        var a = accounts[i];
+        var sel = (selectedId != null && a.id === selectedId) ? ' selected' : '';
+        h += '<option value="' + a.id + '"' + sel + '>' + escAmz((a.code||'') + ' ' + (a.name||'')) + '</option>';
+    }
+    h += '</select>';
+    return h;
+}
+
+// \u4e00\u89a7\u63cf\u753b\u5f8c: \u5404\u30b9\u30ed\u30c3\u30c8\u306b\u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u3068\u767b\u9332\u30dc\u30bf\u30f3\u3092\u751f\u6210
+async function _oricoApplyAccounts() {
+    var slots = document.querySelectorAll('.oacc-slot');
+    if (!slots.length) return;
+    var accounts = await _oricoLoadExpenseAccounts();
+    var ids = [];
+    slots.forEach(function(s){
+        var oid = parseInt(s.getAttribute('data-oid'));
+        if (!isNaN(oid)) ids.push(oid);
+    });
+    var sug = await _oricoFetchSuggest(ids);
+    slots.forEach(function(s){
+        var oid = parseInt(s.getAttribute('data-oid'));
+        var info = sug[oid] || {};
+        var acct = info.suggested_account || null;
+        var by = info.matched_by || 'none';
+        var selectedId = acct ? acct.id : null;
+        // \u72b6\u614b\u30e9\u30d9\u30eb
+        var label = '';
+        if (by === 'assigned') {
+            label = '<span style="font-size:0.68rem;color:#34a853;font-weight:700;">\u5272\u5f53\u6e08\u307f</span>';
+        } else if (by === 'item_exact' || by === 'store_exact') {
+            label = '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u5b8c\u5168\u4e00\u81f4)</span>';
+        } else if (by === 'store_partial') {
+            label = '<span style="font-size:0.68rem;color:#1a73e8;font-weight:700;">\u63a8\u5b9a(\u90e8\u5206\u4e00\u81f4)</span>';
+        } else {
+            label = '<span style="font-size:0.68rem;color:#9aa0a6;">\u672a\u5272\u5f53</span>';
+        }
+        var h = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        h += _oricoSelectHtml(oid, accounts, selectedId);
+        h += '<button class="oacc-save" data-oid="' + oid + '" style="font-size:0.74rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">\u767b\u9332</button>';
+        h += label;
+        h += '<span class="oacc-msg" data-oid="' + oid + '" style="font-size:0.7rem;color:#5f6368;"></span>';
+        h += '</div>';
+        s.innerHTML = h;
+    });
+    // \u767b\u9332\u30dc\u30bf\u30f3\u306e\u30a4\u30d9\u30f3\u30c8
+    document.querySelectorAll('.oacc-save').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            _oricoAssignOne(parseInt(btn.getAttribute('data-oid')));
+        });
+    });
+}
+
+// 1\u660e\u7d30\u3092credit_assign\u3067\u4fdd\u5b58+\u5b66\u7fd2
+async function _oricoAssignOne(oid) {
+    var sel = document.querySelector('.oacc-select[data-oid="' + oid + '"]');
+    var msg = document.querySelector('.oacc-msg[data-oid="' + oid + '"]');
+    if (!sel) return;
+    var aid = parseInt(sel.value);
+    if (!sel.value || isNaN(aid)) {
+        if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u79d1\u76ee\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044'; }
+        return;
+    }
+    if (msg) { msg.style.color = '#5f6368'; msg.textContent = '\u767b\u9332\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/credit_assign', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({pairs: [{id: oid, account_id: aid, learn: true}]})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') {
+            if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + (j.message||''); }
+            return;
+        }
+        var skipped = (j.skipped || []).length;
+        if ((j.applied||0) > 0) {
+            if (msg) { msg.style.color = '#34a853'; msg.textContent = '\u767b\u9332\u3057\u307e\u3057\u305f' + ((j.learned||0) ? '(\u5b66\u7fd2\u6e08)' : ''); }
+        } else {
+            if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u767b\u9332\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f'; }
+        }
+    } catch (e) {
+        if (msg) { msg.style.color = '#ea4335'; msg.textContent = '\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+// ===== /ledger-credit-3a-v1 =====
 
 </script>
 {% endblock %}
