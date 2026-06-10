@@ -4881,7 +4881,7 @@ def api_ledger_subledger_pdf():
             + '<td class="num">\uffe5' + format(balance, ',') + '</td>'
             + '</tr></tfoot></table></body></html>'
         )
-        import pdfkit
+        import pdfkit, shutil  # ledger-subledger-pdf-fix-v1
         options = {'encoding': 'UTF-8', 'no-outline': None, 'quiet': ''}
         wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
