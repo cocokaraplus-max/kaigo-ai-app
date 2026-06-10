@@ -302,6 +302,29 @@
         <div id="amazon-match-status" style="font-size:0.76rem;color:#5f6368;margin-top:8px;display:none;"></div>
         <div id="amazon-match-result" style="margin-top:10px;"></div>
     </div>
+    <!-- ledger-credit-3bp-v1: キーワード振り分けルールパネル -->
+    <div id="kwrule-box" style="border:1px solid #e8eaed;border-radius:10px;padding:12px;margin-bottom:16px;background:#fafafa;">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleKwrule()">
+            <div style="font-size:0.86rem;font-weight:800;color:#202124;">キーワード振り分けルール</div>
+            <span id="kwrule-caret" style="font-size:0.8rem;color:#5f6368;">▼</span>
+        </div>
+        <div id="kwrule-body" style="display:none;margin-top:10px;">
+            <div style="font-size:0.76rem;color:#5f6368;line-height:1.6;margin-bottom:8px;">店名に含まれるキーワード(例: ETC)で科目・事業をまとめて振り分けます。</div>
+            <div id="kwrule-list" style="margin-bottom:10px;"></div>
+            <div id="kwrule-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px dashed #dadce0;padding-top:10px;">
+                <input type="text" id="kwrule-keyword" placeholder="キーワード" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;width:110px;">
+                <select id="kwrule-account" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;"></select>
+                <select id="kwrule-division" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;display:none;"></select>
+                <button onclick="saveKwrule()" style="font-size:0.76rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">追加</button>
+                <span id="kwrule-msg" style="font-size:0.72rem;color:#5f6368;"></span>
+            </div>
+            <div style="border-top:1px dashed #dadce0;margin-top:10px;padding-top:10px;">
+                <button onclick="previewBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#1a73e8;background:#e8f0fe;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">全明細に仮割当</button>
+                <span style="font-size:0.72rem;color:#9aa0a6;margin-left:8px;">未割当の明細だけを推定します</span>
+            </div>
+            <div id="kwrule-preview" style="margin-top:10px;"></div>
+        </div>
+    </div>
     <div id="orico-list-area" style="font-size:0.85rem;color:#5f6368;">読込中…</div>
 </div>
 
@@ -2426,6 +2449,179 @@ async function _oricoAssignOne(oid) {
     }
 }
 // ===== /ledger-credit-3a-v1 / ledger-credit-3b-div-v1 =====
+
+// ===== ledger-credit-3bp-v1: \u30ad\u30fc\u30ef\u30fc\u30c9\u632f\u308a\u5206\u3051\u30eb\u30fc\u30eb\uff0b\u4e00\u62ec\u4eee\u5272\u5f53 =====
+window._kwruleBulk = null;  // \u4eee\u5272\u5f53\u4e2d\u306e pairs \u3092\u4fdd\u6301
+
+function toggleKwrule() {
+    var b = document.getElementById('kwrule-body');
+    var c = document.getElementById('kwrule-caret');
+    if (!b) return;
+    var open = (b.style.display === 'none' || !b.style.display);
+    b.style.display = open ? 'block' : 'none';
+    if (c) c.textContent = open ? '\u25b2' : '\u25bc';
+    if (open) initKwrule();
+}
+
+async function initKwrule() {
+    // \u79d1\u76ee\u30bb\u30ec\u30af\u30c8\u3068\u4e8b\u696d\u30bb\u30ec\u30af\u30c8\u3092\u57cb\u3081\u308b
+    var accounts = await _oricoLoadExpenseAccounts();
+    var asel = document.getElementById('kwrule-account');
+    if (asel) {
+        var ah = '<option value="">\u79d1\u76ee\u3092\u9078\u629e</option>';
+        accounts.forEach(function(a){ ah += '<option value="' + a.id + '">' + escAmz((a.code||'') + ' ' + (a.name||'')) + '</option>'; });
+        asel.innerHTML = ah;
+    }
+    var divInfo = await _oricoLoadDivInfo();
+    var dsel = document.getElementById('kwrule-division');
+    if (dsel) {
+        if (divInfo.enabled && (divInfo.divisions||[]).length) {
+            var dh = '<option value="">\u4e8b\u696d\u672a\u5b9a</option>';
+            divInfo.divisions.forEach(function(d){ dh += '<option value="' + d.id + '">' + escAmz(d.name||'') + '</option>'; });
+            dsel.innerHTML = dh;
+            dsel.style.display = '';
+        } else {
+            dsel.style.display = 'none';
+        }
+    }
+    loadKwrules();
+}
+
+async function loadKwrules() {
+    var list = document.getElementById('kwrule-list');
+    if (!list) return;
+    try {
+        var r = await fetch('/api/ledger/partial_rules');
+        var j = await r.json();
+        if (j.status !== 'success') { list.innerHTML = '<div style="font-size:0.74rem;color:#ea4335;">\u8aad\u307f\u8fbc\u307f\u5931\u6557</div>'; return; }
+        var rules = j.rules || [];
+        if (!rules.length) { list.innerHTML = '<div style="font-size:0.74rem;color:#9aa0a6;">\u30eb\u30fc\u30eb\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093</div>'; return; }
+        var h = '';
+        rules.forEach(function(ru){
+            var acc = ru.account ? escAmz((ru.account.code||'') + ' ' + (ru.account.name||'')) : '\u2014';
+            var dv = ru.division ? escAmz(ru.division.name) : '';
+            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;padding:4px 0;border-bottom:1px solid #f0f0f0;">';
+            h += '<span style="font-weight:700;color:#202124;min-width:80px;">' + escAmz(ru.keyword) + '</span>';
+            h += '<span style="color:#1a73e8;">' + acc + '</span>';
+            if (dv) h += '<span style="color:#9334e6;">' + dv + '</span>';
+            h += '<button onclick="deleteKwrule(\'' + encodeURIComponent(ru.keyword) + '\')" style="margin-left:auto;font-size:0.7rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 8px;cursor:pointer;">\u524a\u9664</button>';
+            h += '</div>';
+        });
+        list.innerHTML = h;
+    } catch (e) {
+        list.innerHTML = '<div style="font-size:0.74rem;color:#ea4335;">\u30a8\u30e9\u30fc</div>';
+    }
+}
+
+async function saveKwrule() {
+    var kw = document.getElementById('kwrule-keyword');
+    var asel = document.getElementById('kwrule-account');
+    var dsel = document.getElementById('kwrule-division');
+    var msg = document.getElementById('kwrule-msg');
+    var keyword = (kw && kw.value || '').trim();
+    var aid = asel && asel.value ? parseInt(asel.value) : null;
+    if (!keyword) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b'; } return; }
+    if (!aid) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u79d1\u76ee\u3092\u9078\u629e'; } return; }
+    var body = { keyword: keyword, account_id: aid };
+    if (dsel && dsel.style.display !== 'none' && dsel.value) body.division_id = parseInt(dsel.value);
+    if (msg) { msg.style.color='#5f6368'; msg.textContent='\u4fdd\u5b58\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/partial_rule', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + (j.message||''); } return; }
+        if (msg) { msg.style.color='#34a853'; msg.textContent='\u8ffd\u52a0\u3057\u307e\u3057\u305f'; }
+        if (kw) kw.value = '';
+        loadKwrules();
+    } catch (e) {
+        if (msg) { msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+
+async function deleteKwrule(kwEnc) {
+    var keyword = decodeURIComponent(kwEnc);
+    if (!confirm('\u30eb\u30fc\u30eb\u300c' + keyword + '\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f')) return;
+    try {
+        var r = await fetch('/api/ledger/partial_rule', {
+            method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: keyword})
+        });
+        var j = await r.json();
+        if (j.status === 'success') loadKwrules();
+    } catch (e) {}
+}
+
+// \u5168\u660e\u7d30\u306b\u4eee\u5272\u5f53(\u672a\u5272\u5f53\u306e\u307f) -> \u30ec\u30d3\u30e5\u30fc\u4e00\u89a7\u3092\u8868\u793a
+async function previewBulkAssign() {
+    var area = document.getElementById('kwrule-preview');
+    if (!area) return;
+    area.innerHTML = '<div style="font-size:0.78rem;color:#5f6368;">\u4eee\u5272\u5f53\u4e2d\u2026</div>';
+    try {
+        var r = await fetch('/api/ledger/credit_preview', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({only_unassigned: true})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + (j.message||'') + '</div>'; return; }
+        var prev = j.previews || [];
+        if (!prev.length) { area.innerHTML = '<div style="font-size:0.78rem;color:#9aa0a6;">\u4eee\u5272\u5f53\u3067\u304d\u308b\u672a\u5272\u5f53\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093\u3002\u30eb\u30fc\u30eb\u3092\u8ffd\u52a0\u3057\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002</div>'; window._kwruleBulk = null; return; }
+        // pairs\u3092\u4fdd\u6301(\u79d1\u76ee\u3042\u308a\u306e\u3082\u306e\u306e\u307f\u4fdd\u5b58\u5bfe\u8c61)
+        var pairs = [];
+        var h = '<div style="font-size:0.8rem;font-weight:700;color:#202124;margin-bottom:6px;">\u4eee\u5272\u5f53\u30d7\u30ec\u30d3\u30e5\u30fc (' + prev.length + '\u4ef6)</div>';
+        h += '<div style="max-height:300px;overflow-y:auto;border:1px solid #e8eaed;border-radius:8px;">';
+        prev.forEach(function(p){
+            var amt = (p.amount != null) ? ('\uffe5' + Number(p.amount).toLocaleString()) : '';
+            var accTxt = p.suggested_account ? escAmz((p.suggested_account.code||'') + ' ' + (p.suggested_account.name||'')) : '<span style="color:#9aa0a6;">\u79d1\u76ee\u306a\u3057</span>';
+            var dvTxt = p.suggested_division ? (' / ' + escAmz(p.suggested_division.name)) : '';
+            var byJp = (p.matched_by === 'store_partial') ? '\u90e8\u5206\u4e00\u81f4' : (p.matched_by === 'store_exact' || p.matched_by === 'item_exact') ? '\u5b8c\u5168\u4e00\u81f4' : '';
+            h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.76rem;padding:5px 8px;border-bottom:1px solid #f4f4f4;">';
+            h += '<span style="color:#5f6368;min-width:70px;">' + (p.used_date||'') + '</span>';
+            h += '<span style="flex:1;min-width:0;color:#3c4043;word-break:break-all;">' + escAmz(p.used_for||'') + '</span>';
+            h += '<span style="color:#202124;white-space:nowrap;">' + amt + '</span>';
+            h += '<span style="color:#1a73e8;white-space:nowrap;">' + accTxt + dvTxt + '</span>';
+            if (byJp) h += '<span style="font-size:0.66rem;color:#9aa0a6;white-space:nowrap;">' + byJp + '</span>';
+            h += '</div>';
+            // \u4fdd\u5b58 pair: \u79d1\u76ee\u304c\u3042\u308b\u3082\u306e\u3060\u3051(account_id\u5fc5\u9808)
+            if (p.suggested_account) {
+                var pr = { id: p.id, account_id: p.suggested_account.id, learn: false };
+                if (p.suggested_division) pr.division_id = p.suggested_division.id;
+                pairs.push(pr);
+            }
+        });
+        h += '</div>';
+        h += '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;">';
+        h += '<button onclick="commitBulkAssign()" style="font-size:0.8rem;font-weight:700;color:#fff;background:#34a853;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;">\u3053\u306e\u5185\u5bb9\u3067\u307e\u3068\u3081\u3066\u4fdd\u5b58 (' + pairs.length + '\u4ef6)</button>';
+        h += '<span id="kwrule-commit-msg" style="font-size:0.74rem;color:#5f6368;"></span>';
+        h += '</div>';
+        area.innerHTML = h;
+        window._kwruleBulk = pairs;
+    } catch (e) {
+        area.innerHTML = '<div style="font-size:0.78rem;color:#ea4335;">\u30a8\u30e9\u30fc: ' + e.message + '</div>';
+    }
+}
+
+// \u307e\u3068\u3081\u3066\u4fdd\u5b58: \u4eee\u5272\u5f53 pairs \u3092\u4e00\u62ec credit_assign
+async function commitBulkAssign() {
+    var pairs = window._kwruleBulk || [];
+    var msg = document.getElementById('kwrule-commit-msg');
+    if (!pairs.length) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u4fdd\u5b58\u5bfe\u8c61\u304c\u3042\u308a\u307e\u305b\u3093'; } return; }
+    if (!confirm(pairs.length + '\u4ef6\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f')) return;
+    if (msg) { msg.style.color='#5f6368'; msg.textContent='\u4fdd\u5b58\u4e2d\u2026'; }
+    try {
+        var r = await fetch('/api/ledger/credit_assign', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pairs: pairs})
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + (j.message||''); } return; }
+        var skipped = (j.skipped||[]).length;
+        if (msg) { msg.style.color='#34a853'; msg.textContent = (j.applied||0) + '\u4ef6\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f' + (skipped ? ('\uff08' + skipped + '\u4ef6\u30b9\u30ad\u30c3\u30d7\uff09') : ''); }
+        window._kwruleBulk = null;
+        document.getElementById('kwrule-preview').innerHTML = '<div style="font-size:0.78rem;color:#34a853;">\u4fdd\u5b58\u5b8c\u4e86\u3002\u4e00\u89a7\u3092\u66f4\u65b0\u3057\u307e\u3059\u2026</div>';
+        loadOrico();  // \u660e\u7d30\u4e00\u89a7\u3092\u518d\u8aad\u8fbc
+    } catch (e) {
+        if (msg) { msg.style.color='#ea4335'; msg.textContent='\u30a8\u30e9\u30fc: ' + e.message; }
+    }
+}
+// ===== /ledger-credit-3bp-v1 =====
 
 </script>
 {% endblock %}
