@@ -328,19 +328,19 @@
                 <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;pointer-events:none;" id="toggle-sek-knob"></span>
             </label>
         </div>
-    </div>
-    <!-- credit-front-v1: クレカ明細モード（接骨院モードON時のみ表示） -->
-    <div class="entry-card" id="credit-mode-card" style="display:none;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div>
-                <div style="font-size:0.88rem;font-weight:800;color:#202124;">クレカ明細</div>
-                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">クレジットカード明細の取込・商品内訳の補完を有効にします</div>
+        <!-- credit-nest-v1: 接骨院モードON時のみ現れるクレカ明細トグル(入れ子) -->
+        <div id="credit-mode-card" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #e8eaed;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                    <div style="font-size:0.84rem;font-weight:700;color:#202124;">クレカ明細</div>
+                    <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">クレジットカード明細の取込・商品内訳の補完を有効にします</div>
+                </div>
+                <label style="position:relative;display:inline-block;width:44px;height:24px;flex:none;">
+                    <input type="checkbox" id="toggle-credit" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
+                    <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;pointer-events:none;" id="toggle-credit-bg"></span>
+                    <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;pointer-events:none;" id="toggle-credit-knob"></span>
+                </label>
             </div>
-            <label style="position:relative;display:inline-block;width:44px;height:24px;">
-                <input type="checkbox" id="toggle-credit" onchange="saveSettings()" style="opacity:0;width:0;height:0;">
-                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s;pointer-events:none;" id="toggle-credit-bg"></span><!-- credit-front-v1b -->
-                <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;pointer-events:none;" id="toggle-credit-knob"></span>
-            </label>
         </div>
     </div>
     <!-- 事業部管理 -->
