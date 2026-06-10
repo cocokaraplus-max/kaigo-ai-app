@@ -639,7 +639,7 @@
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('cash')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('cash')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('cash')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('cash')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-cash"></div>
@@ -652,7 +652,7 @@
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="openBalanceModal('bank')">◎ 期首残高</button>
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('bank')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('bank')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('bank')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-bank"></div>
@@ -667,7 +667,7 @@
     </div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('card')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('card')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('card')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-card"></div>
@@ -679,7 +679,7 @@
     <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">売上台帳</div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('sales')">◎ Excel</button>
-      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="printSubLedger('sales')">◎ PDF印刷</button>
+      <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="downloadSubLedgerPdf('sales')">◎ PDF保存</button><!-- ledger-subledger-pdf-v1 -->
     </div>
   </div>
   <div id="sub-ledger-sales"></div>
@@ -2080,6 +2080,21 @@ async function deleteCardMonth() {
     }
     alert(ok + '件を削除しました' + (ng ? ('（' + ng + '件失敗）') : ''));
     loadSubLedger('card');
+}
+
+// ledger-subledger-pdf-v1: 補助元帳をサーバーでPDF生成してダウンロード(別ウィンドウを開かない)
+function downloadSubLedgerPdf(type) {
+  var divEl = document.getElementById('cash-division-filter');
+  var divParam = (divEl && divEl.value && divEl.value !== 'all') ? ('&division_id=' + encodeURIComponent(divEl.value)) : '';
+  var url = '/api/ledger/subledger_pdf?type=' + encodeURIComponent(type) + '&month=' + encodeURIComponent(currentMonth) + divParam;
+  // aタグでダウンロード(同一タブ、画面遷移なし)
+  var a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function printSubLedger(type) {

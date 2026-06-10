@@ -4755,6 +4755,147 @@ def api_ledger_entries():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+def _esc(s):  # ledger-subledger-pdf-v1 HTML escape helper
+    s = '' if s is None else str(s)
+    return (s.replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+@app.route('/api/ledger/subledger_pdf', methods=['GET'])  # ledger-subledger-pdf-v1
+@login_required
+def api_ledger_subledger_pdf():
+    """\u88dc\u52a9\u5143\u5e33(\u73fe\u91d1/\u9810\u91d1/\u7d4c\u8cbb\u30af\u30ec\u30ab/\u58f2\u4e0a)\u3092PDF\u5316\u3057\u3066\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3002"""
+    import json as _json
+    from flask import make_response
+    from urllib.parse import quote
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        sub_type = (request.args.get('type') or '').strip()
+        year_month = (request.args.get('month') or '').strip()
+        div_filter = request.args.get('division_id')
+        cfg = {
+            'cash': {'label': '\u73fe\u91d1\u51fa\u7d0d\u5e33', 'acct': '\u73fe\u91d1', 'bal': '\u6b8b\u9ad8'},
+            'bank': {'label': '\u9810\u91d1\u51fa\u7d0d\u5e33', 'acct': '\u666e\u901a\u9810\u91d1', 'bal': '\u6b8b\u9ad8'},
+            'card': {'label': '\u7d4c\u8cbb\u30af\u30ec\u30ab\u5e33', 'acct': '\u672a\u6255\u91d1', 'bal': '\u672a\u6255\u6b8b\u9ad8'},
+            'sales': {'label': '\u58f2\u4e0a\u53f0\u5e33', 'acct': '\u58f2\u4e0a', 'bal': '\u58f2\u4e0a\u7d2f\u8a08'},
+        }.get(sub_type)
+        if cfg is None:
+            return jsonify({'status': 'error', 'message': 'bad_type'}), 400
+        # entries\u53d6\u5f97(entries API\u3068\u540c\u3058\u6761\u4ef6)
+        query = supabase.table('journal_entries').select(
+            '*, debit:debit_account_id(code,name,category), credit:credit_account_id(code,name,category)'
+        ).eq('facility_code', f_code)
+        if year_month:
+            y, m = year_month.split('-')
+            from datetime import date as _date
+            start = _date(int(y), int(m), 1).isoformat()
+            if int(m) == 12:
+                end = _date(int(y)+1, 1, 1).isoformat()
+            else:
+                end = _date(int(y), int(m)+1, 1).isoformat()
+            query = query.gte('entry_date', start).lt('entry_date', end)
+        if div_filter == 'none':
+            query = query.is_('division_id', 'null')
+        elif div_filter and div_filter != 'all':
+            query = query.eq('division_id', int(div_filter))
+        res = query.order('entry_date', desc=False).execute()
+        rows_data = res.data or []
+        # \u4e8b\u696d\u540d\u89e3\u6c7a
+        dv = supabase.table('ledger_divisions').select('id,name').eq('facility_code', f_code).execute()
+        div_map = {d['id']: d['name'] for d in (dv.data or [])}
+        acct = cfg['acct']
+
+        def _match(e):
+            d = (e.get('debit') or {})
+            c = (e.get('credit') or {})
+            if sub_type == 'sales':
+                return (c.get('category') == '\u53ce\u76ca')
+            return (d.get('name') == acct) or (c.get('name') == acct)
+
+        ents = [e for e in rows_data if _match(e)]
+        # \u884c\u751f\u6210\uff0b\u6b8b\u9ad8
+        balance = 0
+        total_in = 0
+        total_out = 0
+        body_rows = []
+        for e in ents:
+            d = (e.get('debit') or {})
+            c = (e.get('credit') or {})
+            in_amt = 0
+            out_amt = 0
+            amt = e.get('amount') or 0
+            if sub_type == 'sales':
+                in_amt = amt
+            elif d.get('name') == acct:
+                in_amt = amt
+            else:
+                out_amt = amt
+            balance += in_amt - out_amt
+            total_in += in_amt
+            total_out += out_amt
+            if sub_type == 'sales':
+                opposite = d.get('name') or ''
+            else:
+                opposite = (c.get('name') if d.get('name') == acct else d.get('name')) or ''
+            div_name = div_map.get(e.get('division_id'), '') if e.get('division_id') else ''
+            body_rows.append(
+                '<tr><td>' + str(e.get('entry_date') or '') + '</td>'
+                + '<td>' + _esc(div_name) + '</td>'
+                + '<td>' + _esc(opposite) + '</td>'
+                + '<td>' + _esc(e.get('description') or '') + '</td>'
+                + '<td class="num">' + (('\uffe5' + format(in_amt, ',')) if in_amt else '') + '</td>'
+                + '<td class="num">' + (('\uffe5' + format(out_amt, ',')) if (out_amt and sub_type != 'sales') else '') + '</td>'
+                + '<td class="num">\uffe5' + format(balance, ',') + '</td></tr>'
+            )
+        in_label = '\u58f2\u4e0a' if sub_type == 'sales' else '\u5165\u91d1'
+        out_label = '' if sub_type == 'sales' else '\u51fa\u91d1'
+        html_str = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+            'body{font-family:sans-serif;font-size:11pt;margin:14mm;}'
+            'h2{font-size:15pt;margin:0 0 2px;}'
+            'p{font-size:10pt;color:#555;margin:0 0 10px;}'
+            'table{width:100%;border-collapse:collapse;}'
+            'th{background:#e8f0fe;padding:5px 8px;text-align:left;font-size:9.5pt;border-bottom:1px solid #ccc;}'
+            'td{padding:5px 8px;border-bottom:1px solid #eee;font-size:9.5pt;}'
+            'td.num{text-align:right;white-space:nowrap;}'
+            'tfoot td{font-weight:bold;background:#f8f9fa;}'
+            '@page{size:A4;margin:12mm;}'
+            '</style></head><body>'
+            + '<h2>' + cfg['label'] + '</h2>'
+            + '<p>' + _esc(f_code) + ' / \u5bfe\u8c61\u6708: ' + _esc(year_month) + '</p>'
+            + '<table><thead><tr>'
+            + '<th>\u65e5\u4ed8</th><th>\u4e8b\u696d\u90e8</th><th>\u76f8\u624b\u79d1\u76ee</th><th>\u6458\u8981</th>'
+            + '<th class="num">' + in_label + '</th><th class="num">' + out_label + '</th><th class="num">' + cfg['bal'] + '</th>'
+            + '</tr></thead><tbody>'
+            + (''.join(body_rows) if body_rows else '<tr><td colspan="7">\u30c7\u30fc\u30bf\u306f\u3042\u308a\u307e\u305b\u3093</td></tr>')
+            + '</tbody><tfoot><tr>'
+            + '<td colspan="4">\u5408\u8a08</td>'
+            + '<td class="num">\uffe5' + format(total_in, ',') + '</td>'
+            + '<td class="num">' + (('\uffe5' + format(total_out, ',')) if sub_type != 'sales' else '') + '</td>'
+            + '<td class="num">\uffe5' + format(balance, ',') + '</td>'
+            + '</tr></tfoot></table></body></html>'
+        )
+        import pdfkit
+        options = {'encoding': 'UTF-8', 'no-outline': None, 'quiet': ''}
+        wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        fname = cfg['label'] + '_' + (year_month or 'all') + '.pdf'
+        fname_ascii = 'subledger_' + sub_type + '_' + (year_month or 'all') + '.pdf'
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = 'attachment; filename="' + fname_ascii + '"; filename*=UTF-8\'\'' + quote(fname)
+        return response
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/transfer', methods=['POST'])
 @login_required
 def api_ledger_transfer():
