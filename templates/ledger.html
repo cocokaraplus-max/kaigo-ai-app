@@ -103,6 +103,27 @@
         </select>
         <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;white-space:nowrap;" onclick="openTransferModal()">⇄ 事業間移動</button>
     </div>
+    <!-- ledger-export-journal-v1: 税理士向け出力パネル -->
+    <div style="margin-bottom:10px;border:1px solid #e8eaed;border-radius:10px;overflow:hidden;">
+        <div onclick="toggleExportPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#f8f9fa;cursor:pointer;">
+            <span style="font-size:0.84rem;font-weight:700;color:#202124;">📤 税理士向け出力（期間指定）</span>
+            <span id="exp-caret" style="font-size:0.8rem;color:#5f6368;">▼</span>
+        </div>
+        <div id="exp-body" style="display:none;padding:12px;">
+            <div style="font-size:0.74rem;color:#5f6368;margin-bottom:8px;">仕訳帳全体を期間で書き出します。会計ソフトに取り込める標準的な列（日付・借方・貸方・金額・税額・摘要・事業）です。</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                <label style="font-size:0.78rem;color:#3c4043;">開始</label>
+                <input type="month" id="exp-from" class="ledger-form-control" style="font-size:0.82rem;width:auto;">
+                <label style="font-size:0.78rem;color:#3c4043;">終了</label>
+                <input type="month" id="exp-to" class="ledger-form-control" style="font-size:0.82rem;width:auto;">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button onclick="exportJournalRange('csv')" style="font-size:0.8rem;font-weight:700;color:#fff;background:#0f9d58;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">CSV出力</button>
+                <button onclick="exportJournalRange('xlsx')" style="font-size:0.8rem;font-weight:700;color:#0f9d58;background:#e6f4ea;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">Excel出力</button>
+                <span id="exp-msg" style="font-size:0.74rem;color:#5f6368;"></span>
+            </div>
+        </div>
+    </div>
     <!-- 月次サマリー -->
     <div class="summary-card" id="summary-card" style="display:none;">
         <div class="summary-row">
@@ -2159,6 +2180,110 @@ async function exportSubLedgerExcel(type) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, cfg.label);
   XLSX.writeFile(wb, `${cfg.label}_${currentMonth}.xlsx`);
+}
+
+// ledger-export-journal-v1: 税理士向け 仕訳全体エクスポート
+function toggleExportPanel() {
+  var b = document.getElementById('exp-body');
+  var c = document.getElementById('exp-caret');
+  if (!b) return;
+  var open = (b.style.display !== 'none');
+  b.style.display = open ? 'none' : 'block';
+  if (c) c.textContent = open ? '▼' : '▲';
+  // 初期値: 開始=終了=現在の表示月
+  if (!open) {
+    var f = document.getElementById('exp-from'), t = document.getElementById('exp-to');
+    if (f && !f.value) f.value = currentMonth;
+    if (t && !t.value) t.value = currentMonth;
+  }
+}
+
+async function _loadXLSXlib() {
+  if (window.XLSX) return;
+  await new Promise((resolve, reject) => {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// 'YYYY-MM' from..to の月リストを返す
+function _ymList(from, to) {
+  var out = [];
+  var fy = parseInt(from.slice(0,4)), fm = parseInt(from.slice(5,7));
+  var ty = parseInt(to.slice(0,4)), tm = parseInt(to.slice(5,7));
+  var y = fy, m = fm;
+  var guard = 0;
+  while ((y < ty || (y === ty && m <= tm)) && guard < 240) {
+    out.push(y + '-' + String(m).padStart(2,'0'));
+    m++; if (m > 12) { m = 1; y++; }
+    guard++;
+  }
+  return out;
+}
+
+async function exportJournalRange(format) {
+  var msg = document.getElementById('exp-msg');
+  var from = (document.getElementById('exp-from')||{}).value;
+  var to = (document.getElementById('exp-to')||{}).value;
+  if (!from || !to) { if(msg){msg.style.color='#ea4335';msg.textContent='開始月と終了月を指定してください';} return; }
+  if (from > to) { if(msg){msg.style.color='#ea4335';msg.textContent='開始月が終了月より後になっています';} return; }
+  if (msg) { msg.style.color='#5f6368'; msg.textContent='集計中…'; }
+  try {
+    // 事業フィルタ(あれば尊重)
+    var divEl = document.getElementById('journal-division-filter');
+    var divParam = (divEl && divEl.value && divEl.value !== 'all') ? ('&division_id=' + divEl.value) : '';
+    var months = _ymList(from, to);
+    var all = [];
+    for (var i = 0; i < months.length; i++) {
+      var r = await fetch('/api/ledger/entries?month=' + months[i] + divParam);
+      var j = await r.json();
+      if (j.status === 'success') all = all.concat(j.entries || []);
+    }
+    if (!all.length) { if(msg){msg.style.color='#9aa0a6';msg.textContent='この期間に仕訳がありません';} return; }
+    // 日付順に整列
+    all.sort(function(a,b){ return (a.entry_date||'').localeCompare(b.entry_date||'') || (a.id-b.id); });
+    // 事業名解決
+    var divs = window.currentDivisions || [];
+    function divName(id){ if(!id) return ''; var d = divs.find(function(x){return x.id===id;}); return d?d.name:''; }
+    var header = ['日付','借方コード','借方科目','貸方コード','貸方科目','金額','税額','摘要','事業区分'];
+    var rows = all.map(function(e){
+      return [
+        e.entry_date || '',
+        (e.debit && e.debit.code) || '',
+        (e.debit && e.debit.name) || '',
+        (e.credit && e.credit.code) || '',
+        (e.credit && e.credit.name) || '',
+        e.amount != null ? e.amount : '',
+        e.tax_amount != null ? e.tax_amount : '',
+        e.description || '',
+        divName(e.division_id)
+      ];
+    });
+    var period = from + '_' + to;
+    if (format === 'csv') {
+      // UTF-8 BOM 付き CSV(Excel文字化け防止)
+      function esc(v){ v = (v==null?'':String(v)); if(/[",\n]/.test(v)){ return '"' + v.replace(/"/g,'""') + '"'; } return v; }
+      var lines = [header].concat(rows).map(function(r){ return r.map(esc).join(','); }).join('\r\n');
+      var blob = new Blob(['\ufeff' + lines], {type:'text/csv;charset=utf-8;'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = '仕訳帳_' + period + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      await _loadXLSXlib();
+      var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
+      ws['!cols'] = [{wch:12},{wch:10},{wch:16},{wch:10},{wch:16},{wch:12},{wch:10},{wch:30},{wch:14}];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '仕訳帳');
+      XLSX.writeFile(wb, '仕訳帳_' + period + '.xlsx');
+    }
+    if (msg) { msg.style.color='#0f9d58'; msg.textContent = all.length + '件を出力しました'; }
+  } catch (e) {
+    if (msg) { msg.style.color='#ea4335'; msg.textContent = 'エラー: ' + e.message; }
+  }
 }
 
 
