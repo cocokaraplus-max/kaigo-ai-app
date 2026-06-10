@@ -1155,8 +1155,8 @@ if (_d.status === 'success') { window.allAccounts = _d.accounts || []; updateAcc
             window.currentDivisions = _sd.divisions || [];
         }
     }
-    document.getElementById('entry-modal-title').textContent = entry ? '仕訳を編集' : '仕訳を追加';
-    document.getElementById('entry-id').value = entry ? entry.id : '';
+    document.getElementById('entry-modal-title').textContent = (entry && entry.id) ? '仕訳を編集' : '仕訳を追加';  // ledger-entry-id-fix-v1
+    document.getElementById('entry-id').value = (entry && entry.id) ? entry.id : '';  // ledger-entry-id-fix-v1
     const today = new Date().toISOString().slice(0,10);
     document.getElementById('entry-date').value = entry ? entry.entry_date : today;
     document.getElementById('entry-debit').value = entry ? entry.debit_account_id : '';
