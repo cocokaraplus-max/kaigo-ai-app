@@ -82,7 +82,7 @@
     <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
     <button class="ledger-tab" onclick="switchTab('accounts')" id="tab-accounts">勘定科目</button>
-    <button class="ledger-tab" onclick="switchTab('guide')" id="tab-guide" style="display:none;">作業手順マニュアル</button><!-- guide-tab-v1 -->
+    <button class="ledger-tab" onclick="switchTab('guide')" id="tab-guide">作業手順マニュアル</button><!-- guide-tab-v1 / ledger-guide-method-v1 -->
     <button class="ledger-tab" onclick="switchTab('orico')" id="tab-orico" style="display:none;">クレカ明細</button><!-- credit-front-v1 -->
     <button class="ledger-tab" onclick="switchTab('settings')" id="tab-settings">設定</button>
 </div>
@@ -295,6 +295,8 @@
       <div style="font-size:0.78rem;color:#5f6368;margin-bottom:3px;"><span style="font-weight:700;color:#1a73e8;">場所：</span>領収書OCRタブ</div>
       <div style="font-size:0.82rem;color:#202124;margin-bottom:3px;"><span style="font-weight:700;color:#34a853;">操作：</span>領収書を撮影・アップロードするとOCRで読み取ります。</div>
       <div style="font-size:0.82rem;color:#202124;"><span style="font-weight:700;color:#fbbc04;">できること：</span>金額や日付を自動抽出し、経費として仕訳に計上できます。</div>
+      <!-- ledger-guide-method-v1: 記録方法による挙動(JSで出し分け) -->
+      <div id="guide-method-box" style="margin-top:10px;border-top:1px dashed #e0e0e0;padding-top:10px;"></div>
     </div>
     <div class="entry-card" style="margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="flex:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;color:#fff;font-size:0.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;">5</span><span style="font-size:0.92rem;font-weight:800;color:#202124;">介護の消し込み</span></div>
@@ -772,6 +774,24 @@ function changeMonth(delta) {
     }
 }
 
+// ledger-guide-method-v1: 記録方法によってOCRステップの説明を出し分け
+function renderGuideMethod(method) {
+    var box = document.getElementById('guide-method-box');
+    if (!box) return;
+    var head = '<div style=\"font-size:0.8rem;font-weight:800;color:#202124;margin-bottom:6px;\">クレジットカードの記録方法</div>';
+    if (method === 'csv') {
+        box.innerHTML = head
+            + '<div style=\"font-size:0.8rem;color:#5f6368;line-height:1.6;\">この施設は<b style=\"color:#1a73e8;\">CSV方式</b>です。クレジット払いのレシートを領収書OCRで読み取っても、仕訳には計上されず<b>レシート保管庫</b>に保管されます。クレジットの記録は<b>クレカ明細(CSV取込)</b>で行うため、二重計上が起きません。現金・電子マネーのレシートは通常どおり仕訳化できます。</div>'
+            + '<svg viewBox="0 0 320 250" width="100%" style="max-width:320px;display:block;margin:8px auto 0;" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="gm_arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#9aa0a6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect x="88" y="8" width="144" height="46" rx="8" fill="#fff3e0" stroke="#fb8c00" stroke-width="1"/><text x="160" y="28" text-anchor="middle" font-size="12.5" font-weight="700" fill="#202124">レシートをOCR</text><text x="160" y="44" text-anchor="middle" font-size="10.5" fill="#5f6368">支払方法を自動判定</text><line x1="120" y1="54" x2="80" y2="92" stroke="#9aa0a6" stroke-width="1.5" marker-end="url(#gm_arr)"/><line x1="200" y1="54" x2="240" y2="92" stroke="#9aa0a6" stroke-width="1.5" marker-end="url(#gm_arr)"/><text x="92" y="80" text-anchor="middle" font-size="10" fill="#9aa0a6">現金・電子マネー</text><text x="244" y="80" text-anchor="middle" font-size="10" fill="#9aa0a6">クレジット</text><rect x="8" y="96" width="144" height="50" rx="8" fill="#e6f4ea" stroke="#34a853" stroke-width="1"/><text x="80" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#202124">仕訳帳に計上</text><text x="80" y="133" text-anchor="middle" font-size="10" fill="#5f6368">経費として記録</text><rect x="168" y="96" width="144" height="50" rx="8" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1"/><text x="240" y="113" text-anchor="middle" font-size="11.5" font-weight="700" fill="#202124">保管庫に保管</text><text x="240" y="129" text-anchor="middle" font-size="9.5" fill="#5f6368">仕訳化しない</text><text x="240" y="141" text-anchor="middle" font-size="9.5" fill="#5f6368">クレカ明細(CSV)で記録</text><line x1="240" y1="146" x2="240" y2="184" stroke="#9aa0a6" stroke-width="1.5" marker-end="url(#gm_arr)"/><rect x="168" y="188" width="144" height="46" rx="8" fill="#f3e8fd" stroke="#9334e8" stroke-width="1"/><text x="240" y="208" text-anchor="middle" font-size="11.5" font-weight="700" fill="#202124">クレカ明細CSVで取込</text><text x="240" y="224" text-anchor="middle" font-size="9.5" fill="#5f6368">二重計上を防ぎます</text></svg>';
+    } else if (method === 'receipt') {
+        box.innerHTML = head
+            + '<div style=\"font-size:0.8rem;color:#5f6368;line-height:1.6;\">この施設は<b style=\"color:#fb8c00;\">レシート方式</b>です。クレジットも含めて、領収書OCRから仕訳を作成できます。クレカ明細CSVの取込は使いません。</div>'
+            + '<svg viewBox="0 0 320 150" width="100%" style="max-width:320px;display:block;margin:8px auto 0;" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="gm_arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#9aa0a6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect x="88" y="8" width="144" height="46" rx="8" fill="#fff3e0" stroke="#fb8c00" stroke-width="1"/><text x="160" y="28" text-anchor="middle" font-size="12.5" font-weight="700" fill="#202124">レシートをOCR</text><text x="160" y="44" text-anchor="middle" font-size="10.5" fill="#5f6368">現金もクレジットも</text><line x1="160" y1="54" x2="160" y2="90" stroke="#9aa0a6" stroke-width="1.5" marker-end="url(#gm_arr2)"/><rect x="60" y="94" width="200" height="48" rx="8" fill="#e6f4ea" stroke="#34a853" stroke-width="1"/><text x="160" y="114" text-anchor="middle" font-size="12" font-weight="700" fill="#202124">仕訳帳に計上</text><text x="160" y="131" text-anchor="middle" font-size="10" fill="#5f6368">クレジットもそのまま記録できます</text></svg>';
+    } else {
+        box.innerHTML = head
+            + '<div style=\"font-size:0.8rem;color:#9aa0a6;line-height:1.6;\">設定で記録方法(レシート方式／CSV方式)を選ぶと、ここに説明が表示されます。</div>';
+    }
+}
 function switchTab(tab) {
     ['仕訳帳','trial','cash','bank','card','sales','import','receipt','accounts','settings'].map(t => t==='仕訳帳' ? 'journal' : t).concat(['journal']).filter((v,i,a)=>a.indexOf(v)===i);
     ['journal','trial','cash','bank','card','sales','import','receipt','accounts','guide','orico','settings'].forEach(t => {  // credit-front-v1
@@ -1829,9 +1849,11 @@ async function loadSettings() {
     var sekCard = document.getElementById('sekkotsu-mode-card');
     var sekToggle = document.getElementById('toggle-sekkotsu');
     if (sekCard) sekCard.style.display = currentSettings.sekkotsu_mode_allowed ? '' : 'none';
-    // guide-tab-v1: 接骨院モード有効時のみマニュアルタブを表示
+    // ledger-guide-method-v1: ガイドは出納帳が使える人(=このページに来られる人)全員に常時表示
     var guideTabEl = document.getElementById('tab-guide');
-    if (guideTabEl) guideTabEl.style.display = currentSettings.sekkotsu_mode_enabled ? '' : 'none';
+    if (guideTabEl) guideTabEl.style.display = '';
+    // ledger-guide-method-v1: 記録方法によってOCRステップの説明を出し分け
+    renderGuideMethod(currentSettings.credit_input_method);
     // ledger-credit-method-show-v1: クレカ明細タブはCSV方式時のみ表示
     var _isCsv = (currentSettings.credit_input_method === 'csv');
     var oricoTabEl = document.getElementById('tab-orico');
