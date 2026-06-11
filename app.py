@@ -4983,6 +4983,17 @@ def api_ledger_entry_save():
     supabase = get_supabase()
     try:
         data = request.json or {}
+        # ledger-credit-ocrguard-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
+        _rcpt_id = data.get('receipt_id')
+        if _rcpt_id and not data.get('id') and is_credit_csv_enabled(supabase, f_code):
+            try:
+                _rc = supabase.table('receipts').select('ocr_result').eq('id', _rcpt_id).eq('facility_code', f_code).execute()
+                _ocr = (_rc.data[0].get('ocr_result') if _rc.data else None) or {}
+                if isinstance(_ocr, dict) and _ocr.get('payment_method') == 'credit':
+                    return jsonify({'status': 'error', 'code': 'credit_csv_blocked',
+                                    'message': 'クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。'}), 409
+            except Exception:
+                pass
         _rdiv = data.get('division_id')
         payload = {
             'facility_code': f_code,

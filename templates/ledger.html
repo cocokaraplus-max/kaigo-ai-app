@@ -1596,6 +1596,19 @@ function renderReceiptVault() {
 }
 async function createEntryFromOCR(ocr, receiptId) {  // ledger-receipt-learn-v1 / ledger-receipt-link-front-v1
     window._ocrReceiptId = (receiptId !== undefined && receiptId !== null) ? receiptId : null;
+    // ledger-credit-ocrguard-front-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
+    try {
+        var _m = window.currentSettings && window.currentSettings.credit_input_method;
+        if (_m === undefined) {
+            var _sr = await fetch('/api/ledger/settings');
+            var _sd = await _sr.json();
+            if (_sd.status === 'success') { window.currentSettings = _sd.settings || {}; _m = window.currentSettings.credit_input_method; }
+        }
+        if (_m === 'csv' && ocr && (ocr.payment_method||'').toString().toLowerCase() === 'credit') {
+            alert('クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。');
+            return;
+        }
+    } catch (e) {}
     // 学習辞書で借方科目・事業を推定
     var debitId = '';
     var divId = '';
