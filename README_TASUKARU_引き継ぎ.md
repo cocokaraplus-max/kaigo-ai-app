@@ -320,3 +320,47 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 - **検証**: app.py は `python3 -m py_compile app.py`。ledger.html は div均衡（`re.findall(r'<div[\s>]')` と `</div>`）＋ Jinja置換後の `node --check`。
 - **SQL運用の教訓**: Supabase SQL Editor は BEGIN/COMMIT を別実行に分けると確定しない（オートコミットで切れる）。変更文(DELETE/UPDATE)は単発で実行し、後からSELECTで件数確認する。
 
+---
+
+## 12. 2-c 経費クレカ帳タブ廃止＆仕訳帳統合 — 本番反映完了<!-- readme-2c-done-v1 -->
+
+セクション11-4の残タスク①（再設計の本丸）を実装し、DEV→本番まで反映完了。
+
+### 12-1. 本番まで反映し終えたもの
+
+1. **経費クレカ帳タブの廃止＆未払金の補助元帳ビュー化** — DEV→本番 反映済み。
+   - `ledger-2c-cardtab-retire-v1`（templates/ledger.html）:
+     - ナビの「経費クレカ帳」タブボタン(`tab-card`)を撤去。
+     - 仕訳帳タブ内（税理士向け出力パネルの直下）に「💳 未払金（クレジットカード等）」補助元帳リンクを新設→`switchTab('card')`で開く。
+     - `pane-card` 先頭に「‹ 仕訳帳に戻る」リンクを新設（タブが無くなったための戻り導線）。
+     - カード帳の削除UI（行ごとの削除ボタン・「この月をまとめて削除」・操作列ヘッダ/フッタ・関数 `deleteCardEntry`/`deleteCardMonth`）を撤去し**閲覧専用化**。
+   - `ledger-2c-cardview-heading-v1`（templates/ledger.html）:
+     - 見出し「経費クレカ帳（未払金）」→「未払金（クレジットカード等）」。
+     - 説明文「領収書のクレジットカード利用を記録します。」→「クレジットカード等による未払金の補助元帳です。入力は仕訳帳から行います。」。
+     - `SUB_LEDGER_CONFIG.card.label`「経費クレカ帳（未払金）」→「未払金（クレジットカード等）」（Excel/PDF出力のタイトル・ファイル名・シート名に反映）。
+   - **DDL不要・app.py変更なし**（ledger.html のみの改修）。
+   - コミット: DEV `a65354b`（タブ廃止）→ `3e54219`（見出し修正）。本番マージ `57d8a0a`（bc6e6c4..57d8a0a）。
+   - ※本番マージには前回未反映だった README更新 `af8b0e4`（readme-session-close-v1）も同梱された（ドキュメントのみ・実害なし）。
+
+### 12-2. 設計判断・確認した事実（このセッション）
+
+- **未払金ビューは元々ほぼ閲覧ビューだった**。`pane-card` は cash/bank/sales と同じ `loadSubLedger('card')`＋`SUB_LEDGER_CONFIG.card.matchFn`（借方/貸方に未払金を含む仕訳を抽出）で描画する読み取りビューで、カード帳専用の入力フォームは無い。再設計の「仕訳帳を入力ハブに、各帳簿は閲覧ビュー」は未払金については構造的に達成済みで、2-cの実体は「タブをナビから外す＋削除UIを外す＋導線/文言を整える」だった。
+- **削除UIを外しても機能欠落なし**。仕訳帳タブに個別仕訳の編集/削除ボタン（`editEntry`/`deleteEntry`、同じ `/api/ledger/entry/{id}` DELETE）があるため、未払金仕訳の削除は仕訳帳側で可能。
+- **CSV取込の「カード利用履歴」選択肢(`<option value="card">`)は温存**（HIRO判断: 汎用CSVでもカード明細を入れたい）。クレカ明細(orico)タブとは別経路として残す。
+- **switchTab系ロジックは温存**。`'card'` は forEach の表示制御配列・`_monthTabs`（月ナビ表示）・`if(tab==='card') loadSubLedger('card')` に残してあり、リンクから `switchTab('card')` を呼べば pane-card が開く。撤去したのはナビボタンと削除UIのみ。
+
+### 12-3. DEVでの検証（Chrome MCP・DEMO001）
+
+- ダミー未払金仕訳3件（借方=消耗品費/通信費/福利厚生費・貸方=未払金、2026-03）をUIの＋ボタン経由(`saveEntry`)で投入→未払金ビューに表示・列ずれ無し・削除ボタン無しを確認→「‹ 仕訳帳に戻る」動作確認→テスト3件(id 351/352/353)を `/api/ledger/entry/{id}` DELETE で掃除（実データ id 350 は温存）。
+- 見出し・説明文・出力ラベルが新文言に変わったことを本番デプロイ後の再読込で確認。
+
+### 12-4. 残タスク（次セッション、優先度順）
+
+1. **レシート保管庫ビュー新設**（旧①が完了したので、これが次の最優先）。`receipts` 一覧。`receipts.entry_id`(bigint, 既存)で仕訳済み/未仕訳を判別。新テーブル不要。読み出しAPI＋UIを足すだけ。
+2. **フロントの旧トグル整理**: 接骨院モード内のクレカ明細トグル(`credit-mode-card` / `credit_mode_enabled`)は、新方式(`credit_input_method`)に一本化するなら撤去候補。
+3. **11-3の小修正**（`switchTab('orico')` で `initKwrule()` を呼ぶ）を入れるか判断。
+
+### 12-5. 後始末の宿題（独立コミットで処理する）
+
+- **追跡されている空ファイル `tasukaru-dev`（0バイト）がリポジトリ直下にある**。コミット `ee3a3c9`（iPhoneデバッグのalert追加）で誤って混入したもの。ブランチ名 `tasukaru-dev` と曖昧になり `git log tasukaru-dev` がファイル解釈でエラーになる（`git log refs/heads/tasukaru-dev` で回避）。実害は無いが、`git rm tasukaru-dev` → コミット（2-c等の機能変更とは混ぜず単独で）で両ブランチから消すのが望ましい。同様に `README_tasukaru_dev.md` も直下にあるが、こちらは中身のあるドキュメントなので残す。
+
