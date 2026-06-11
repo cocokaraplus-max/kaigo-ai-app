@@ -5016,6 +5016,13 @@ def api_ledger_entry_save():
             res = supabase.table('journal_entries').insert(payload).execute()
             new_id = res.data[0]['id'] if res.data else None
             _ledger_recalc_day(supabase, f_code, payload['entry_date'])
+            # ledger-receipt-link-v1: OCRレシート由来なら receipts.entry_id を紐付け
+            _rid = data.get('receipt_id')
+            if _rid and new_id:
+                try:
+                    supabase.table('receipts').update({'entry_id': new_id}).eq('id', _rid).eq('facility_code', f_code).execute()
+                except Exception:
+                    pass
             return jsonify({'status': 'success', 'id': new_id})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -7097,6 +7104,48 @@ def api_ledger_import_nikkei():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+@app.route('/api/ledger/receipts', methods=['GET'])  # ledger-receipt-vault-v1
+@login_required
+def api_ledger_receipts_list():
+    """レシート保管庫: receipts 一覧。entry_id の有無で仕訳済み/未仕訳を判別。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    try:
+        supabase = get_supabase()
+        res = (supabase.table('receipts')
+               .select('id,image_url,ocr_result,entry_id,created_by,created_at')
+               .eq('facility_code', f_code)
+               .order('created_at', desc=True)
+               .execute())
+        rows = res.data or []
+        items = []
+        for r in rows:
+            ocr = r.get('ocr_result') or {}
+            if not isinstance(ocr, dict):
+                ocr = {}
+            items.append({
+                'id': r.get('id'),
+                'image_url': r.get('image_url') or '',
+                'entry_id': r.get('entry_id'),
+                'is_journaled': bool(r.get('entry_id')),
+                'created_by': r.get('created_by') or '',
+                'created_at': r.get('created_at') or '',
+                'date': ocr.get('date'),
+                'amount': ocr.get('amount') or 0,
+                'tax_amount': ocr.get('tax_amount') or 0,
+                'vendor': ocr.get('vendor') or '',
+                'description': ocr.get('description') or '',
+                'payment_method': ocr.get('payment_method') or '',
+                'ocr': ocr,
+            })
+        return jsonify({'status': 'success', 'receipts': items})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required
