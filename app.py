@@ -5329,7 +5329,7 @@ def api_ledger_import_csv():
                             _orico_fmt = 'orico'; break
                 if _orico_fmt == 'orico':
                     # ledger-credit-guard-v1
-                    if not is_credit_enabled(supabase, f_code):
+                    if not is_credit_csv_enabled(supabase, f_code):
                         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403
                     _o_rows, _o_meta = build_orico_rows(_nik_content)
                     _o_last4 = _o_meta.get('card_last4') or ''
@@ -5467,7 +5467,7 @@ def api_ledger_orico_list():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         res = supabase.table('ledger_orico_statements').select(
@@ -5526,7 +5526,7 @@ def api_ledger_orico_cards_get():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         res = supabase.table('ledger_orico_cards').select('*').eq('facility_code', f_code).eq('is_active', True).order('id').execute()
@@ -5545,7 +5545,7 @@ def api_ledger_orico_card_save():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         data = request.json or {}
@@ -5581,7 +5581,7 @@ def api_ledger_orico_card_delete(card_id):
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403  # ledger-credit-guard-v1
     try:
         supabase.table('ledger_orico_cards').update({'is_active': False}).eq('id', card_id).eq('facility_code', f_code).execute()
@@ -5829,7 +5829,7 @@ def api_ledger_amazon_match():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         f = request.files.get('file')
@@ -5901,7 +5901,7 @@ def api_ledger_amazon_apply():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         import json as _json, datetime as _dt
@@ -6034,7 +6034,7 @@ def api_ledger_credit_suggest():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         data = request.json or {}
@@ -6092,7 +6092,7 @@ def api_ledger_credit_assign():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         import datetime as _dt
@@ -6236,7 +6236,7 @@ def api_ledger_partial_rules_get():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         # 科目のpartial
@@ -6289,7 +6289,7 @@ def api_ledger_partial_rule_save():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         import datetime as _dt
@@ -6353,7 +6353,7 @@ def api_ledger_partial_rule_delete():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         data = request.json or {}
@@ -6382,7 +6382,7 @@ def api_ledger_credit_preview():
     if not _ok and not _dev:
         return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
     supabase = get_supabase()
-    if not is_credit_enabled(supabase, f_code):
+    if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
         data = request.json or {}
@@ -6619,6 +6619,17 @@ def is_credit_enabled(supabase, f_code):  # ledger-credit-mode-v1 / ledger-credi
     try:
         ls = supabase.table('ledger_settings').select('credit_input_method').eq('facility_code', f_code).execute()
         return bool(ls.data and ls.data[0].get('credit_input_method'))
+    except Exception:
+        return False
+
+
+def is_credit_csv_enabled(supabase, f_code):  # ledger-credit-csvguard-v1
+    """クレカCSV方式か: credit_input_method == 'csv' のときのみ True。
+    オリコ明細CSV取込・Amazon突合・明細への科目割当等、CSV方式専用APIのガード。
+    OCR方式/未選択の施設では False（二重計上防止）。"""
+    try:
+        ls = supabase.table('ledger_settings').select('credit_input_method').eq('facility_code', f_code).execute()
+        return bool(ls.data and ls.data[0].get('credit_input_method') == 'csv')
     except Exception:
         return False
 
