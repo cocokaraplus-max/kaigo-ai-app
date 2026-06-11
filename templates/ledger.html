@@ -179,7 +179,7 @@
             <option value="auto">自動判定</option>
             <option value="smaregi">スマレジ</option>
             <option value="bank">銀行明細</option>
-            <option value="card">カード利用履歴</option>
+            <option value="card" id="csv-type-card-opt">カード利用履歴</option><!-- ledger-credit-method-show-v1 -->
             <option value="nikkei">接骨院 日計表</option>  <!-- nikkei-ui-v1 -->
         </select>
     </div>
@@ -1832,9 +1832,13 @@ async function loadSettings() {
     // guide-tab-v1: 接骨院モード有効時のみマニュアルタブを表示
     var guideTabEl = document.getElementById('tab-guide');
     if (guideTabEl) guideTabEl.style.display = currentSettings.sekkotsu_mode_enabled ? '' : 'none';
-    // credit-front-v1: クレカ明細タブは credit_mode_enabled 時のみ
+    // ledger-credit-method-show-v1: クレカ明細タブはCSV方式時のみ表示
+    var _isCsv = (currentSettings.credit_input_method === 'csv');
     var oricoTabEl = document.getElementById('tab-orico');
-    if (oricoTabEl) oricoTabEl.style.display = currentSettings.credit_mode_enabled ? '' : 'none';
+    if (oricoTabEl) oricoTabEl.style.display = _isCsv ? '' : 'none';
+    // CSV取込の「カード利用履歴」選択肢もCSV方式時のみ
+    var _cardOpt = document.getElementById('csv-type-card-opt');
+    if (_cardOpt) _cardOpt.style.display = _isCsv ? '' : 'none';
     // credit-front-v1: クレカ明細トグルは接骨院モードON時のみ表示し反映
     var crCard = document.getElementById('credit-mode-card');
     var crToggle = document.getElementById('toggle-credit');
@@ -1843,10 +1847,10 @@ async function loadSettings() {
         crToggle.checked = currentSettings.credit_mode_enabled || false;
         updateToggleUI('credit', crToggle.checked);
     }
-    // orico-card-ui-v1: クレカ明細ON時は会社カードセクションを表示し読込む
+    // ledger-credit-method-show-v1: 会社カードセクションはCSV方式時のみ
     var _ocSec = document.getElementById('orico-card-section');
     if (_ocSec) {
-        var _ocOn = !!currentSettings.credit_mode_enabled;
+        var _ocOn = _isCsv;
         _ocSec.style.display = _ocOn ? '' : 'none';
         if (_ocOn) loadOricoCards();
     }
