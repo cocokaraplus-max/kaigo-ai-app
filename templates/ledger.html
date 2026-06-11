@@ -77,7 +77,7 @@
     <button class="ledger-tab" onclick="switchTab('trial')" id="tab-trial">試算表</button>
     <button class="ledger-tab" onclick="switchTab('cash')" id="tab-cash">現金出納帳</button>
     <button class="ledger-tab" onclick="switchTab('bank')" id="tab-bank">預金出納帳</button>
-    <button class="ledger-tab" onclick="switchTab('card')" id="tab-card">経費クレカ帳</button>
+    <!-- ledger-2c-cardtab-retire-v1: 経費クレカ帳タブは廃止。未払金は仕訳帳内の補助元帳リンクから閲覧 -->
     <button class="ledger-tab" onclick="switchTab('sales')" id="tab-sales">売上台帳</button>
     <button class="ledger-tab" onclick="switchTab('import')" id="tab-import">CSV取込</button>
     <button class="ledger-tab" onclick="switchTab('receipt')" id="tab-receipt">領収書OCR</button>
@@ -123,6 +123,14 @@
                 <span id="exp-msg" style="font-size:0.74rem;color:#5f6368;"></span>
             </div>
         </div>
+    </div>
+    <!-- ledger-2c-cardtab-retire-v1: 旧経費クレカ帳の閲覧導線（補助元帳） -->
+    <div style="margin-bottom:10px;">
+        <button type="button" onclick="switchTab('card')"
+            style="width:100%;display:flex;align-items:center;justify-content:space-between;background:#f8f9fa;border:1px solid #e8eaed;border-radius:10px;padding:10px 12px;cursor:pointer;">
+            <span style="font-size:0.84rem;font-weight:700;color:#202124;">💳 未払金（クレジットカード等）</span>
+            <span style="font-size:0.78rem;color:#5f6368;">補助元帳を見る ›</span>
+        </button>
     </div>
     <!-- 月次サマリー -->
     <div class="summary-card" id="summary-card" style="display:none;">
@@ -682,6 +690,11 @@
 
 <!-- ===== 経費クレカ帳 ===== -->
 <div id="pane-card" style="display:none;">
+  <!-- ledger-2c-cardtab-retire-v1: タブ撤去に伴う戻り導線 -->
+  <div style="margin-bottom:8px;">
+    <button type="button" onclick="switchTab('journal')"
+        style="background:none;border:none;color:#1a73e8;font-size:0.8rem;cursor:pointer;padding:2px 0;">‹ 仕訳帳に戻る</button>
+  </div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div>
       <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">経費クレカ帳（未払金）</div>
@@ -2071,12 +2084,12 @@ function renderSubLedger(type, entries, cfg, el) {
       <td style="text-align:right;color:#1a73e8;">${inAmt ? fmt(inAmt) : ''}</td>
       <td style="text-align:right;color:#e53935;">${outAmt ? fmt(outAmt) : ''}</td>
       <td style="text-align:right;font-weight:700;">${fmt(balance)}</td>
-      ${type==='card' ? `<td style="text-align:center;"><button onclick="deleteCardEntry(${e.id})" style="font-size:0.66rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 7px;cursor:pointer;">削除</button></td>` : ''}
+      ${/* ledger-2c-cardtab-retire-v1: 削除UI撤去・閲覧専用化 */''}
     </tr>`;  /* ledger-cardledger-del-v1 */
   });
 
   el.innerHTML = `
-    ${type==='card' ? `<div style="text-align:right;margin-bottom:6px;"><button onclick="deleteCardMonth()" style="font-size:0.74rem;color:#ea4335;background:#fce8e6;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">この月をまとめて削除</button></div>` : ''}
+    ${/* ledger-2c-cardtab-retire-v1: 一括削除UI撤去・閲覧専用化 */''}
     <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
       <thead>
@@ -2088,7 +2101,7 @@ function renderSubLedger(type, entries, cfg, el) {
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'売上顕':'入金'}</th>
           <th style="padding:6px 8px;text-align:right;">${type==='sales'?'':'出金'}</th>
           <th style="padding:6px 8px;text-align:right;">${cfg.balanceLabel}</th>
-          ${type==='card' ? '<th style="padding:6px 8px;text-align:center;">操作</th>' : ''}
+          ${/* ledger-2c-cardtab-retire-v1: 操作列ヘッダ撤去 */''}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -2098,7 +2111,7 @@ function renderSubLedger(type, entries, cfg, el) {
           <td style="padding:6px 8px;text-align:right;color:#1a73e8;">${fmt(totalIn)}</td>
           <td style="padding:6px 8px;text-align:right;color:#e53935;">${type==='sales'?'':fmt(totalOut)}</td>
           <td style="padding:6px 8px;text-align:right;">${fmt(balance)}</td>
-          ${type==='card' ? '<td></td>' : ''}
+          ${/* ledger-2c-cardtab-retire-v1: 操作列フッタセル撤去 */''}
         </tr>
       </tfoot>
     </table>
@@ -2106,33 +2119,7 @@ function renderSubLedger(type, entries, cfg, el) {
   `;  /* ledger-cardledger-del-v1 */
 }
 
-// ledger-cardledger-del-v1: 経費クレカ帳 1件削除
-async function deleteCardEntry(id) {
-    if (!confirm('この経費クレカ帳の仕訳を削除しますか？\n元に戻せません。')) return;
-    try {
-        var r = await fetch('/api/ledger/entry/' + id, { method: 'DELETE' });
-        var j = await r.json();
-        if (j.status === 'success') { loadSubLedger('card'); }
-        else { alert('削除に失敗しました: ' + (j.message||'')); }
-    } catch (e) { alert('エラー: ' + e.message); }
-}
-
-// ledger-cardledger-del-v1: 経費クレカ帳 表示中の月をまとめて削除
-async function deleteCardMonth() {
-    var entries = _subLedgerCache['card'] || [];
-    if (!entries.length) { alert('この月に削除する仕訳はありません'); return; }
-    if (!confirm(currentMonth + ' の経費クレカ帳 ' + entries.length + '件を削除します。\n元に戻せません。よろしいですか？')) return;
-    var ok = 0, ng = 0;
-    for (var i = 0; i < entries.length; i++) {
-        try {
-            var r = await fetch('/api/ledger/entry/' + entries[i].id, { method: 'DELETE' });
-            var j = await r.json();
-            if (j.status === 'success') ok++; else ng++;
-        } catch (e) { ng++; }
-    }
-    alert(ok + '件を削除しました' + (ng ? ('（' + ng + '件失敗）') : ''));
-    loadSubLedger('card');
-}
+// ledger-2c-cardtab-retire-v1: deleteCardEntry/deleteCardMonth は閲覧専用化により撤去
 
 // ledger-subledger-pdf-v1: 補助元帳をサーバーでPDF生成してダウンロード(別ウィンドウを開かない)
 function downloadSubLedgerPdf(type) {
