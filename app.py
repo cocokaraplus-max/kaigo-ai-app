@@ -5987,6 +5987,7 @@ def _cr_load_rules(supabase, f_code):
     exact_item = {}
     exact_store = {}
     partial = []
+    partial_item = []  # ledger-credit-itempartial-v1
     try:
         res = supabase.table('ledger_credit_rules').select(
             'key_type,key_text,match_type,account_id'
@@ -5999,24 +6000,34 @@ def _cr_load_rules(supabase, f_code):
                 continue
             if mt == 'partial' and kt == 'store':
                 partial.append((key, aid))
+            elif mt == 'partial' and kt == 'item':  # ledger-credit-itempartial-v1
+                partial_item.append((key, aid))
             elif kt == 'item':
                 exact_item[key] = aid
             elif kt == 'store':
                 exact_store[key] = aid
     except Exception:
         pass
-    return exact_item, exact_store, partial
+    return exact_item, exact_store, partial, partial_item  # ledger-credit-itempartial-v1
 
 
 def _cr_suggest_one(used_for, amazon_detail, rules):
     """1明細の科目推定。 (account_id, matched_by) を返す。未割当は (None,'none')。"""
-    exact_item, exact_store, partial = rules
+    # ledger-credit-itempartial-v1: 4要素(item部分一致を追加)。後方互換で3要素も許容
+    if len(rules) == 4:
+        exact_item, exact_store, partial, partial_item = rules
+    else:
+        exact_item, exact_store, partial = rules
+        partial_item = []
     item = _cr_norm(_cr_item_from_detail(amazon_detail))
     store = _cr_norm(used_for)
     if item and item in exact_item:
         return exact_item[item], 'item_exact'
     if store and store in exact_store:
         return exact_store[store], 'store_exact'
+    for kw, aid in partial_item:  # ledger-credit-itempartial-v1: 品名部分一致
+        if kw and item and kw in item:
+            return aid, 'item_partial'
     for kw, aid in partial:
         if kw and kw in store:
             return aid, 'store_partial'
@@ -6189,6 +6200,7 @@ def _dr_load_rules(supabase, f_code):
     exact_item = {}
     exact_store = {}
     partial = []
+    partial_item = []  # ledger-credit-itempartial-v1
     try:
         res = supabase.table('ledger_division_rules').select(
             'key_type,key_text,match_type,division_id'
@@ -6201,24 +6213,34 @@ def _dr_load_rules(supabase, f_code):
                 continue
             if mt == 'partial' and kt == 'store':
                 partial.append((key, did))
+            elif mt == 'partial' and kt == 'item':  # ledger-credit-itempartial-v1
+                partial_item.append((key, did))
             elif kt == 'item':
                 exact_item[key] = did
             elif kt == 'store':
                 exact_store[key] = did
     except Exception:
         pass
-    return exact_item, exact_store, partial
+    return exact_item, exact_store, partial, partial_item  # ledger-credit-itempartial-v1
 
 
 def _dr_suggest_one(used_for, amazon_detail, rules):
     """1明細の事業推定。(division_id, matched_by)。未割当は(None,'none')。"""  # ledger-credit-3b-div-v1
-    exact_item, exact_store, partial = rules
+    # ledger-credit-itempartial-v1: 4要素対応
+    if len(rules) == 4:
+        exact_item, exact_store, partial, partial_item = rules
+    else:
+        exact_item, exact_store, partial = rules
+        partial_item = []
     item = _cr_norm(_cr_item_from_detail(amazon_detail))
     store = _cr_norm(used_for)
     if item and item in exact_item:
         return exact_item[item], 'item_exact'
     if store and store in exact_store:
         return exact_store[store], 'store_exact'
+    for kw, did in partial_item:  # ledger-credit-itempartial-v1
+        if kw and item and kw in item:
+            return did, 'item_partial'
     for kw, did in partial:
         if kw and kw in store:
             return did, 'store_partial'
@@ -6239,13 +6261,13 @@ def api_ledger_partial_rules_get():
     if not is_credit_csv_enabled(supabase, f_code):
         return jsonify({'status': 'error', 'message': '\u30af\u30ec\u30ab\u660e\u7d30\u30e2\u30fc\u30c9\u304c\u6709\u52b9\u3067\u306f\u3042\u308a\u307e\u305b\u3093'}), 403
     try:
-        # 科目のpartial
-        cr = supabase.table('ledger_credit_rules').select('key_text,account_id')\
-            .eq('facility_code', f_code).eq('key_type', 'store')\
+        # 科目のpartial(store/item両方)  # ledger-credit-itempartial-v1
+        cr = supabase.table('ledger_credit_rules').select('key_text,account_id,key_type')\
+            .eq('facility_code', f_code).in_('key_type', ['store', 'item'])\
             .eq('match_type', 'partial').execute()
-        # 事業のpartial
-        dr = supabase.table('ledger_division_rules').select('key_text,division_id')\
-            .eq('facility_code', f_code).eq('key_type', 'store')\
+        # 事業のpartial(store/item両方)  # ledger-credit-itempartial-v1
+        dr = supabase.table('ledger_division_rules').select('key_text,division_id,key_type')\
+            .eq('facility_code', f_code).in_('key_type', ['store', 'item'])\
             .eq('match_type', 'partial').execute()
         acc = supabase.table('accounts').select('id,code,name')\
             .eq('facility_code', f_code).eq('is_active', True).execute()
@@ -6253,26 +6275,30 @@ def api_ledger_partial_rules_get():
         dv = supabase.table('ledger_divisions').select('id,name')\
             .eq('facility_code', f_code).eq('is_active', True).execute()
         div_map = {d['id']: d for d in (dv.data or [])}
-        merged = {}
+        merged = {}  # ledger-credit-itempartial-v1: (key_type, keyword) 単位で区別
         for r in (cr.data or []):
             k = _cr_norm(r.get('key_text'))
+            kt = r.get('key_type') or 'store'
             if not k:
                 continue
-            merged.setdefault(k, {'keyword': k, 'account': None, 'division': None})
+            mk = (kt, k)
+            merged.setdefault(mk, {'keyword': k, 'key_type': kt, 'account': None, 'division': None})
             aid = r.get('account_id')
             if aid is not None and aid in acc_map:
                 a = acc_map[aid]
-                merged[k]['account'] = {'id': a['id'], 'code': a['code'], 'name': a['name']}
+                merged[mk]['account'] = {'id': a['id'], 'code': a['code'], 'name': a['name']}
         for r in (dr.data or []):
             k = _cr_norm(r.get('key_text'))
+            kt = r.get('key_type') or 'store'
             if not k:
                 continue
-            merged.setdefault(k, {'keyword': k, 'account': None, 'division': None})
+            mk = (kt, k)
+            merged.setdefault(mk, {'keyword': k, 'key_type': kt, 'account': None, 'division': None})
             did = r.get('division_id')
             if did is not None and did in div_map:
                 d = div_map[did]
-                merged[k]['division'] = {'id': d['id'], 'name': d['name']}
-        rules = sorted(merged.values(), key=lambda x: x['keyword'])
+                merged[mk]['division'] = {'id': d['id'], 'name': d['name']}
+        rules = sorted(merged.values(), key=lambda x: (x['key_type'], x['keyword']))
         return jsonify({'status': 'success', 'rules': rules})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -6297,6 +6323,9 @@ def api_ledger_partial_rule_save():
         kw = _cr_norm(data.get('keyword'))
         aid = data.get('account_id')
         did = data.get('division_id')
+        kt = data.get('key_type') or 'store'  # ledger-credit-itempartial-v1
+        if kt not in ('store', 'item'):
+            kt = 'store'
         if not kw:
             return jsonify({'status': 'error', 'message': '\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}), 400
         if aid is None:
@@ -6309,15 +6338,15 @@ def api_ledger_partial_rule_save():
         now = _dt.datetime.utcnow().isoformat()
         # 科目 partial upsert
         _e = supabase.table('ledger_credit_rules').select('id')\
-            .eq('facility_code', f_code).eq('key_type', 'store')\
-            .eq('key_text', kw).execute()
+            .eq('facility_code', f_code).eq('key_type', kt)\
+            .eq('match_type', 'partial').eq('key_text', kw).execute()  # ledger-credit-itempartial-v1
         if _e.data:
             supabase.table('ledger_credit_rules').update({
                 'account_id': aid, 'match_type': 'partial', 'updated_at': now,
             }).eq('id', _e.data[0]['id']).execute()
         else:
             supabase.table('ledger_credit_rules').insert({
-                'facility_code': f_code, 'key_type': 'store', 'key_text': kw,
+                'facility_code': f_code, 'key_type': kt, 'key_text': kw,
                 'match_type': 'partial', 'account_id': aid, 'source': 'manual',
             }).execute()
         # 事業 partial upsert(division_idが渡されたときのみ)
@@ -6326,15 +6355,15 @@ def api_ledger_partial_rule_save():
                 .eq('facility_code', f_code).eq('is_active', True).execute()
             if _dchk.data:
                 _de = supabase.table('ledger_division_rules').select('id')\
-                    .eq('facility_code', f_code).eq('key_type', 'store')\
-                    .eq('key_text', kw).execute()
+                    .eq('facility_code', f_code).eq('key_type', kt)\
+                    .eq('match_type', 'partial').eq('key_text', kw).execute()  # ledger-credit-itempartial-v1
                 if _de.data:
                     supabase.table('ledger_division_rules').update({
                         'division_id': did, 'match_type': 'partial', 'updated_at': now,
                     }).eq('id', _de.data[0]['id']).execute()
                 else:
                     supabase.table('ledger_division_rules').insert({
-                        'facility_code': f_code, 'key_type': 'store', 'key_text': kw,
+                        'facility_code': f_code, 'key_type': kt, 'key_text': kw,
                         'match_type': 'partial', 'division_id': did, 'source': 'manual',
                     }).execute()
         return jsonify({'status': 'success'})
@@ -6358,13 +6387,16 @@ def api_ledger_partial_rule_delete():
     try:
         data = request.json or {}
         kw = _cr_norm(data.get('keyword'))
+        kt = data.get('key_type') or 'store'  # ledger-credit-itempartial-v1
+        if kt not in ('store', 'item'):
+            kt = 'store'
         if not kw:
             return jsonify({'status': 'error', 'message': 'keyword required'}), 400
         supabase.table('ledger_credit_rules').delete()\
-            .eq('facility_code', f_code).eq('key_type', 'store')\
+            .eq('facility_code', f_code).eq('key_type', kt)\
             .eq('match_type', 'partial').eq('key_text', kw).execute()
         supabase.table('ledger_division_rules').delete()\
-            .eq('facility_code', f_code).eq('key_type', 'store')\
+            .eq('facility_code', f_code).eq('key_type', kt)\
             .eq('match_type', 'partial').eq('key_text', kw).execute()
         return jsonify({'status': 'success'})
     except Exception as e:

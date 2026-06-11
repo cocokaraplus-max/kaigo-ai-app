@@ -330,10 +330,14 @@
             <span id="kwrule-caret" style="font-size:0.8rem;color:#5f6368;">▼</span>
         </div>
         <div id="kwrule-body" style="display:none;margin-top:10px;">
-            <div style="font-size:0.76rem;color:#5f6368;line-height:1.6;margin-bottom:8px;">店名に含まれるキーワード(例: ETC)で科目・事業をまとめて振り分けます。</div>
+            <div style="font-size:0.76rem;color:#5f6368;line-height:1.6;margin-bottom:8px;">店名(例: ETC)または品名(例: ウェットティッシュ)に含まれるキーワードで科目・事業をまとめて振り分けます。</div>
             <div id="kwrule-list" style="margin-bottom:10px;"></div>
             <div id="kwrule-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px dashed #dadce0;padding-top:10px;">
                 <input type="text" id="kwrule-keyword" placeholder="キーワード" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;width:110px;">
+                <select id="kwrule-keytype" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;"><!-- ledger-credit-itempartial-front-v1 -->
+                    <option value="store">店名</option>
+                    <option value="item">品名</option>
+                </select>
                 <select id="kwrule-account" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;"></select>
                 <select id="kwrule-division" style="font-size:0.8rem;padding:5px 8px;border:1px solid #dadce0;border-radius:6px;display:none;"></select>
                 <button onclick="saveKwrule()" style="font-size:0.76rem;font-weight:700;color:#fff;background:#1a73e8;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">追加</button>
@@ -2799,11 +2803,16 @@ async function loadKwrules() {
         rules.forEach(function(ru){
             var acc = ru.account ? escAmz((ru.account.code||'') + ' ' + (ru.account.name||'')) : '\u2014';
             var dv = ru.division ? escAmz(ru.division.name) : '';
+            var _kt = ru.key_type || 'store';  // ledger-credit-itempartial-front-v1
+            var _ktLabel = (_kt === 'item') ? '\u54c1\u540d' : '\u5e97\u540d';
+            var _ktColor = (_kt === 'item') ? '#e8710a' : '#5f6368';
+            var _ktBg = (_kt === 'item') ? '#fef0e3' : '#f1f3f4';
             h += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;padding:4px 0;border-bottom:1px solid #f0f0f0;">';
-            h += '<span style="font-weight:700;color:#202124;min-width:80px;">' + escAmz(ru.keyword) + '</span>';
+            h += '<span style="flex:none;font-size:0.66rem;font-weight:700;color:' + _ktColor + ';background:' + _ktBg + ';border-radius:4px;padding:1px 5px;">' + _ktLabel + '</span>';
+            h += '<span style="font-weight:700;color:#202124;min-width:64px;">' + escAmz(ru.keyword) + '</span>';
             h += '<span style="color:#1a73e8;">' + acc + '</span>';
             if (dv) h += '<span style="color:#9334e6;">' + dv + '</span>';
-            h += '<button onclick="deleteKwrule(\'' + encodeURIComponent(ru.keyword) + '\')" style="margin-left:auto;font-size:0.7rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 8px;cursor:pointer;">\u524a\u9664</button>';
+            h += '<button onclick="deleteKwrule(\'' + encodeURIComponent(ru.keyword) + '\',\'' + _kt + '\')" style="margin-left:auto;font-size:0.7rem;color:#ea4335;background:none;border:1px solid #f3c0bd;border-radius:5px;padding:2px 8px;cursor:pointer;">\u524a\u9664</button>';
             h += '</div>';
         });
         list.innerHTML = h;
@@ -2821,7 +2830,9 @@ async function saveKwrule() {
     var aid = asel && asel.value ? parseInt(asel.value) : null;
     if (!keyword) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b'; } return; }
     if (!aid) { if (msg){ msg.style.color='#ea4335'; msg.textContent='\u79d1\u76ee\u3092\u9078\u629e'; } return; }
-    var body = { keyword: keyword, account_id: aid };
+    var ktsel = document.getElementById('kwrule-keytype');  // ledger-credit-itempartial-front-v1
+    var keyType = (ktsel && ktsel.value) || 'store';
+    var body = { keyword: keyword, account_id: aid, key_type: keyType };
     if (dsel && dsel.style.display !== 'none' && dsel.value) body.division_id = parseInt(dsel.value);
     if (msg) { msg.style.color='#5f6368'; msg.textContent='\u4fdd\u5b58\u4e2d\u2026'; }
     try {
@@ -2838,12 +2849,13 @@ async function saveKwrule() {
     }
 }
 
-async function deleteKwrule(kwEnc) {
+async function deleteKwrule(kwEnc, keyType) {  // ledger-credit-itempartial-front-v1
     var keyword = decodeURIComponent(kwEnc);
+    var kt = keyType || 'store';
     if (!confirm('\u30eb\u30fc\u30eb\u300c' + keyword + '\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f')) return;
     try {
         var r = await fetch('/api/ledger/partial_rule', {
-            method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: keyword})
+            method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: keyword, key_type: kt})
         });
         var j = await r.json();
         if (j.status === 'success') loadKwrules();
