@@ -267,3 +267,56 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 - **本番反映完了（このセッション）**: DDL（credit_input_method列）を本番Supabaseに適用、app.py 2パッチ＋ledger.html 1パッチを `tasukaru-dev`→`tasukaru` マージ（コンフリクト無し、ort）→ push（c818a77..328e222）→ 本番デプロイ。本番 cocokaraplus-5526 で動作確認済（モーダル出ない・クレカ明細表示・科目割当動作）。
 - **旧記載の訂正（重要）**: メモリ・旧READMEの「本番にはクレカ明細機能を一切出していない=DEVのみ」は**誤り**だった。実際には本番 cocokaraplus-5526 で `credit_mode_enabled=true`、オリコ明細 **222件** を取込済みで実運用していた。そのため本番DDLでも移行UPDATE（credit_input_method='csv'）が1件発生し、これが無いと新コードで本番のクレカ機能が見えなくなるところだった。今後「本番は未使用」と思い込まないこと。
 
+---
+
+## 11. このセッションの最終状態と次回への引き継ぎ<!-- readme-session-close-v1 -->
+
+### 11-1. このセッションで本番まで反映し終えたもの
+
+1. **会計モジュール再設計（土台＋初回モーダル）** — DEV→本番 反映済み。
+   - `ledger-credit-method-v1`（is_credit_enabled を接骨院モード非依存に。credit_input_method で判定）
+   - `ledger-credit-csvguard-v1`（is_credit_csv_enabled 新設。CSV方式専用ガード13箇所を差し替え）
+   - `ledger-credit-method-modal-v1`（出納帳初回の「記録方法は？」モーダル。receipt/csv 排他選択）
+   - DDL `ledger_settings.credit_input_method`（null/receipt/csv, CHECK制約）を **DEV・本番の両Supabaseに適用済み**。
+   - 本番コミット: `c818a77..328e222`。
+2. **キーワード振り分けルールの品名対応** — DEV→本番 反映済み。
+   - `ledger-credit-itempartial-v1`（app.py: item部分一致をマッチ/保存/取得/削除に対応）
+   - `ledger-credit-itempartial-front-v1`（ledger.html: 店名/品名セレクト・バッジ・key_type送信）
+   - マッチ優先順位: 品名完全→店名完全→**品名部分→店名部分**。DDL不要（既存のkey_type列を使用）。
+   - 本番コミット: `328e222..bc6e6c4`。
+   - 本番(cocokaraplus-5526)で動作確認済み: 店名/品名セレクト表示・事業セレクト表示・既存ルール温存・クレカ明細222件健在。
+
+### 11-2. DEVの現状メモ
+
+- DEMO001 の `credit_input_method` = **'csv'**。
+- DEMO001 の `divisions_enabled` を**このセッション中に false→true に変更**した（キーワードルールの事業セレクト確認のため）。テスト施設なので実害なし。気になれば設定でoffに戻してよい。
+- DEVの学習辞書・クレカ明細のテスト割当はクリーン（このセッション最初に掃除済み）。クレカ明細の実データ132件は保持。
+
+### 11-3. 既知の小さな挙動（次回直すか判断）
+
+- **クレカ明細タブを switchTab('orico') で開いただけでは initKwrule() が呼ばれない**。キーワード振り分けルールのアコーディオンを開いたとき（toggleKwrule の `if(open) initKwrule()`）に初めて事業・科目セレクタが初期化される。実用上はアコーディオンを開けば出るので動くが、「設定で事業区分をONにしてもタブを開いた直後はセレクトが空」に見える。気になるなら switchTab('orico') 時に initKwrule() も呼ぶ小修正を入れる（ledger.html 737行 switchTab / 753行 loadOrico 付近）。
+
+### 11-4. 残タスク（次セッション、優先度順）
+
+1. **2-c: 経費クレカ帳タブの廃止＆仕訳帳統合**（再設計の本丸・最大の改修）。
+   - 仕訳帳を入力ハブに、各帳簿（現金/預金/クレカ未払/売上）は閲覧ビューに徹する。
+   - 経費クレカ帳タブ(`pane-card` / `tab-card`)を撤去し、未払金の閲覧は補助元帳ビューとして残す。
+   - 影響範囲が広いので、現状の各帳簿の入力/表示ロジックを読んでから着手すること。
+2. **レシート保管庫ビュー新設**（receipts一覧。`receipts.entry_id`(bigint, 既存)で仕訳済み/未仕訳を判別。新テーブル不要。読み出しAPI＋UIを足すだけ）。
+3. **フロントの旧トグル整理**: 接骨院モード内のクレカ明細トグル(`credit-mode-card` / `credit_mode_enabled`)は、新方式(credit_input_method)に一本化するなら撤去候補。再設計が進んだら整理する。
+4. **11-3の小修正**（switchTab('orico')でinitKwrule呼ぶ）を入れるか判断。
+
+### 11-5. 将来課題（優先度低）
+
+- 大手EC（楽天/Yahoo!ショッピング等）の注文履歴CSV突合。現状はAmazon専用(`_amazon_match_against_orico`)。各社CSV形式ごとにパーサ追加が必要。実店舗は突合相手CSVが無く対象外。
+- 出納帳の一般リリース時のアクセス制御。現状は開発者MENU手動トグル許可(`admin_settings.ledger_users`/`ledger_enabled`)のクローズドベータ。一般公開時はプラン連動等を設計。
+- レシート×クレカ明細の突合（乗り換え時）。店頭クレカはレシート日付=利用日が一致・1レシート=1決済なので「日付完全一致＋金額完全一致」で硬く突合できる（Amazon突合と違い曖昧さがない）。乗り換え時だけ動く軽い仕組みでよい。常時突合(旧B-1段階2)は実装しないと決定済み。
+
+### 11-6. 次回の開始手順とファイル受け渡し
+
+- **ブランチ**: 開発は `tasukaru-dev`、本番は `tasukaru`。本番反映は DDL先行 → マージ → push → `tasukaru-dev` に戻る。
+- **ファイル受け渡し（このセッションと同じ方式）**: Claudeが必要なファイルのダウンロードコマンド（例: `cp ~/dev/kaigo-ai-app/app.py ~/Downloads/app.py` / templatesは `cp ~/dev/kaigo-ai-app/templates/ledger.html ~/Downloads/ledger.html`）を出す → HIROが実行し、出てきたファイルをチャットに添付する。最新の app.py / ledger.html が必要なときは遠慮なく依頼する。
+- **コード変更**: 直貼り禁止。冪等パッチ.py（marker＋.bak＋assert count==1）をサンドボックスで作成→検証→present_filesでダウンロードリンク。bashの `cat << EOF` も禁止。
+- **検証**: app.py は `python3 -m py_compile app.py`。ledger.html は div均衡（`re.findall(r'<div[\s>]')` と `</div>`）＋ Jinja置換後の `node --check`。
+- **SQL運用の教訓**: Supabase SQL Editor は BEGIN/COMMIT を別実行に分けると確定しない（オートコミットで切れる）。変更文(DELETE/UPDATE)は単発で実行し、後からSELECTで件数確認する。
+
