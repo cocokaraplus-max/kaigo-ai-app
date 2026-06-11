@@ -251,6 +251,8 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 
 ### 10-4. 残実装（次セッション）
 
+- **キーワード振り分けルールの品名対応**（readme-followups-v1 で記録）: 現状の部分一致ルール `partial_rule` は `key_type='store'` 固定で店名（`used_for`）にのみ部分一致。品名（例:「ウェットティッシュ」）でもキーワード指定できるよう `key_type='item'` の部分一致に対応したい（HIRO要望）。要設計: 店名と品名の優先順位 / オリコ明細では品名がAmazonの `amazon_detail` にしか無い点 / 既存のitem完全一致ロジックとの整合。部分一致UIは `ledger.html` の `partial_rules` 管理画面、APIは `partial_rule` POST/DELETE。
+
 - **2-c: 経費クレカ帳タブの廃止＆仕訳帳統合**（最大の改修。仕訳帳を入力ハブに、各帳簿は閲覧ビュー化）。
 - **レシート保管庫ビュー新設**（`receipts` 一覧。`receipts.entry_id` で仕訳済み/未仕訳を判別。新テーブル不要）。
 - フロントの旧トグル（接骨院モード内のクレカ明細トグル `credit-mode-card` / `credit_mode_enabled`）の整理。新方式（credit_input_method）に一本化するなら旧トグルは撤去候補。
@@ -259,4 +261,9 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 
 - **大手ECの注文履歴CSV突合**（楽天・Yahoo!ショッピング等）。現状の突合はAmazon専用（`_amazon_match_against_orico`）。各社CSV形式ごとにパーサ追加が必要。実店舗は突合相手のCSVが存在しないため対象外。
 - **出納帳の一般リリース時のアクセス制御**。現状の「開発者MENU手動トグル許可」はクローズドベータ向け。一般公開時はプラン連動や施設セルフ有効化など別の仕組みを設計する必要がある。
+
+### 10-6. 本番反映実績と旧記載の訂正<!-- readme-followups-v1 -->
+
+- **本番反映完了（このセッション）**: DDL（credit_input_method列）を本番Supabaseに適用、app.py 2パッチ＋ledger.html 1パッチを `tasukaru-dev`→`tasukaru` マージ（コンフリクト無し、ort）→ push（c818a77..328e222）→ 本番デプロイ。本番 cocokaraplus-5526 で動作確認済（モーダル出ない・クレカ明細表示・科目割当動作）。
+- **旧記載の訂正（重要）**: メモリ・旧READMEの「本番にはクレカ明細機能を一切出していない=DEVのみ」は**誤り**だった。実際には本番 cocokaraplus-5526 で `credit_mode_enabled=true`、オリコ明細 **222件** を取込済みで実運用していた。そのため本番DDLでも移行UPDATE（credit_input_method='csv'）が1件発生し、これが無いと新コードで本番のクレカ機能が見えなくなるところだった。今後「本番は未使用」と思い込まないこと。
 
