@@ -240,6 +240,21 @@
     </div>
     <input type="file" id="receipt-input" accept="image/*" multiple style="display:none;" onchange="ocrReceipts(this)">
     <div id="receipt-results"></div>
+    <!-- ledger-receipt-vault-front-v1: レシート保管庫 -->
+    <div id="receipt-vault" style="margin-top:20px;border-top:1px solid #e8eaed;padding-top:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-size:0.9rem;font-weight:800;color:#202124;display:flex;align-items:center;gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#9aa0a6;">inventory_2</span>レシート保管庫
+            </div>
+            <button class="entry-btn" onclick="loadReceiptVault()" title="再読込"><span class="material-symbols-outlined" style="font-size:16px;">refresh</span></button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+            <button id="rv-filter-all" class="ledger-btn" style="flex:1;padding:6px 8px;font-size:0.78rem;" onclick="setReceiptFilter('all')">すべて</button>
+            <button id="rv-filter-unlinked" class="ledger-btn" style="flex:1;padding:6px 8px;font-size:0.78rem;" onclick="setReceiptFilter('unlinked')">未仕訳</button>
+            <button id="rv-filter-linked" class="ledger-btn" style="flex:1;padding:6px 8px;font-size:0.78rem;" onclick="setReceiptFilter('linked')">仕訳済み</button>
+        </div>
+        <div id="receipt-vault-list"><div style="text-align:center;padding:24px;color:#9aa0a6;font-size:0.82rem;">読み込み中...</div></div>
+    </div>
 </div>
 
 <!-- 勘定科目管理ペイン -->
@@ -768,6 +783,7 @@ function switchTab(tab) {
     if (tab === 'card') loadSubLedger('card');
     if (tab === 'sales') loadSubLedger('sales');
     if (tab === 'orico') loadOrico();  // orico-list-ui-v1
+    if (tab === 'receipt') loadReceiptVault();  // ledger-receipt-vault-front-v1
     // month-nav-hide-v1: 月セレクタが意味を持つタブだけ表示
     var _mn = document.getElementById('month-nav');
     if (_mn) {
@@ -1196,7 +1212,7 @@ function onDivisionFilterChange() {
 async function openEntryModal(entry) {
 try {
     // ledger-receipt-learn-v1: OCR由来でないモーダル起動は学習コンテキストをクリア
-    if (!entry || !entry._fromOCR) { window._ocrLearnContext = null; }
+    if (!entry || !entry._fromOCR) { window._ocrLearnContext = null; window._ocrReceiptId = null; }  // ledger-receipt-link-front-v1
 // accountsが空なら先にAPI取得（初回起動時にselectが空になる問題を修正）
 if (!window.allAccounts || window.allAccounts.length === 0) {
 const _r = await fetch('/api/ledger/accounts');
@@ -1262,6 +1278,8 @@ async function saveEntry() {
         description: document.getElementById('entry-desc').value,
         division_id: (_divEl && _divEl.value) ? parseInt(_divEl.value) : null,
     };
+    // ledger-receipt-link-front-v1: 新規かつOCRレシート由来なら receipt_id を同送
+    if (!id && window._ocrReceiptId) payload.receipt_id = window._ocrReceiptId;
     if (id) payload.id = parseInt(id);
     if (!payload.entry_date || !payload.amount) {
         alert('日付と金額は必須です');
@@ -1289,8 +1307,10 @@ async function saveEntry() {
             }
         } catch (e) {}
         window._ocrLearnContext = null;
+        window._ocrReceiptId = null;  // ledger-receipt-link-front-v1
         closeEntryModal();
         loadEntries();
+        if (typeof loadReceiptVault === 'function') { try { loadReceiptVault(); } catch(e){} }  // ledger-receipt-vault-front-v1
     } else {
         alert('保存に失敗しました: ' + (data.message||''));
     }
@@ -1458,7 +1478,7 @@ async function ocrReceipts(input) {
                 <div>${ocrPayBadge(ocr.payment_method)}</div><!-- ledger-receipt-pay-v1 -->
                 <div>📝 ${ocr.description||''}</div>
             </div>
-            <button class="ledger-btn primary" style="margin-top:8px;width:100%;" onclick="createEntryFromOCR(${JSON.stringify(ocr).replace(/"/g,'&quot;')})">この内容で仕訳を作成</button>
+            <button class="ledger-btn primary" style="margin-top:8px;width:100%;" onclick="createEntryFromOCR(${JSON.stringify(ocr).replace(/"/g,'&quot;')}, ${r.receipt_id||'null'})">この内容で仕訳を作成</button>  <!-- ledger-receipt-link-front-v1 -->
         </div>`;
     }).join('');
     input.value = '';
@@ -1471,7 +1491,66 @@ function ocrPayBadge(pm){  // ledger-receipt-pay-v1
     if(pm==='cash') return '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#34a853;border-radius:4px;padding:1px 6px;">現金</span>';
     return '<span style="font-size:0.68rem;color:#9aa0a6;">支払方法不明</span>';
 }
-async function createEntryFromOCR(ocr) {  // ledger-receipt-learn-v1
+// ===== ledger-receipt-vault-front-v1: レシート保管庫 =====
+window._receiptFilter = 'all';
+window._receiptVaultCache = [];
+async function loadReceiptVault() {
+    var box = document.getElementById('receipt-vault-list');
+    if (!box) return;
+    try {
+        var res = await fetch('/api/ledger/receipts');
+        var data = await res.json();
+        if (data.status !== 'success') { box.innerHTML = '<div style=\"text-align:center;padding:20px;color:#d93025;font-size:0.8rem;\">読み込みエラー</div>'; return; }
+        window._receiptVaultCache = data.receipts || [];
+    } catch (e) {
+        box.innerHTML = '<div style=\"text-align:center;padding:20px;color:#d93025;font-size:0.8rem;\">読み込みエラー</div>';
+        return;
+    }
+    renderReceiptVault();
+}
+function setReceiptFilter(f) {
+    window._receiptFilter = f;
+    ['all','unlinked','linked'].forEach(function(k){
+        var b = document.getElementById('rv-filter-'+k);
+        if (b) { b.style.background = (k===f) ? '#1a73e8' : ''; b.style.color = (k===f) ? '#fff' : ''; }
+    });
+    renderReceiptVault();
+}
+function renderReceiptVault() {
+    var box = document.getElementById('receipt-vault-list');
+    if (!box) return;
+    var f = window._receiptFilter || 'all';
+    var all = window._receiptVaultCache || [];
+    var rows = all.filter(function(r){
+        if (f === 'unlinked') return !r.is_journaled;
+        if (f === 'linked') return r.is_journaled;
+        return true;
+    });
+    var nUn = all.filter(function(r){return !r.is_journaled;}).length;
+    var head = '<div style=\"font-size:0.74rem;color:#5f6368;margin-bottom:8px;\">全'+all.length+'件 / 未仕訳'+nUn+'件</div>';
+    if (!rows.length) { box.innerHTML = head + '<div style=\"text-align:center;padding:24px;color:#9aa0a6;font-size:0.82rem;\">該当するレシートはありません</div>'; return; }
+    box.innerHTML = head + rows.map(function(r){
+        var ocr = r.ocr || {};
+        var badge = r.is_journaled
+            ? '<span style=\"font-size:0.68rem;font-weight:700;color:#fff;background:#34a853;border-radius:4px;padding:1px 6px;\">仕訳済み</span>'
+            : '<span style=\"font-size:0.68rem;font-weight:700;color:#fff;background:#fbbc04;border-radius:4px;padding:1px 6px;\">未仕訳</span>';
+        var amt = (r.amount||0).toLocaleString();
+        var tax = (r.tax_amount||0).toLocaleString();
+        var btn = r.is_journaled ? ''
+            : '<button class=\"ledger-btn primary\" style=\"margin-top:8px;width:100%;\" onclick=\'createEntryFromOCR('+JSON.stringify(ocr).replace(/"/g,'&quot;')+', '+(r.id||'null')+')\'>この内容で仕訳を作成</button>';
+        return '<div class=\"entry-card\">'
+            + (r.image_url ? '<img src=\"'+r.image_url+'\" style=\"width:100%;border-radius:8px;margin-bottom:8px;max-height:120px;object-fit:cover;\">' : '')
+            + '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;\">'+badge+'<span style=\"font-size:0.7rem;color:#9aa0a6;\">'+(r.date||'日付不明')+'</span></div>'
+            + '<div style=\"font-size:0.82rem;color:#202124;\">'
+            + '<div>💴 ¥'+amt+'（税 ¥'+tax+'）</div>'
+            + '<div>🏪 '+(ocr.vendor||'不明')+'</div>'
+            + '<div>'+ocrPayBadge(ocr.payment_method)+'</div>'
+            + (ocr.description ? '<div>📝 '+ocr.description+'</div>' : '')
+            + '</div>' + btn + '</div>';
+    }).join('');
+}
+async function createEntryFromOCR(ocr, receiptId) {  // ledger-receipt-learn-v1 / ledger-receipt-link-front-v1
+    window._ocrReceiptId = (receiptId !== undefined && receiptId !== null) ? receiptId : null;
     // 学習辞書で借方科目・事業を推定
     var debitId = '';
     var divId = '';

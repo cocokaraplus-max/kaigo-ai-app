@@ -364,3 +364,35 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 
 - **追跡されている空ファイル `tasukaru-dev`（0バイト）がリポジトリ直下にある**。コミット `ee3a3c9`（iPhoneデバッグのalert追加）で誤って混入したもの。ブランチ名 `tasukaru-dev` と曖昧になり `git log tasukaru-dev` がファイル解釈でエラーになる（`git log refs/heads/tasukaru-dev` で回避）。実害は無いが、`git rm tasukaru-dev` → コミット（2-c等の機能変更とは混ぜず単独で）で両ブランチから消すのが望ましい。同様に `README_tasukaru_dev.md` も直下にあるが、こちらは中身のあるドキュメントなので残す。
 
+---
+
+## 13. ビルド障害の顛末と教訓（2026-06-11）<!-- readme-build-incident-v1 -->
+
+2-cの本番マージ後、本番Cloud Buildが連続して失敗した。原因は**2件とも2-cのコードとは無関係**で、いずれも依存・ビルド環境側の問題だった。記録しておく。
+
+### 13-1. 障害1: requirements.txt 全未固定による pip 依存衝突
+
+- **症状**: 本番ビルド `57d8a0a`（と同内容）で Step 0 Build の `pip install -r requirements.txt` が `ResolutionImpossible` で失敗。
+- **ログ**: `supabase 0.0.3 depends on requests==2.25.1` と `google-genai 2.x depends on requests>=2.28.1` が両立せず。
+- **真因**: `requirements.txt` が `openpyxl==3.1.5` 以外**全部バージョン未固定**だった。Dockerfileが `--no-cache` でビルドするため毎回その時点のPyPI最新を解決しにいく。この日、pip(24.0)のリゾルバが衝突回避のため supabase を初期版 `0.0.3`（依存がほぼ無い壊れた版）まで巻き戻し、その `requests==2.25.1` 固定が google-genai と衝突した。コード変更ではなく**未固定依存の時限爆弾が当日のPyPI状態でたまたま発火**した。
+- **対処**: `req-pin-v1`。直接依存14件を、2026-06-11時点でサンドボックスの `pip install --dry-run` が衝突なく解決する組み合わせに固定。主要: `supabase==2.31.0` / `google-genai==2.8.0`（この2.x系は requests を直接固定しないので衝突しない）。`requirements.txt` 先頭にmarkerコメントと運用ルールを記載。
+- 固定後、DEVビルド（`f99a7cc`）が緑になり解消を確認。
+
+### 13-2. 障害2: pypi.org への一時的な接続タイムアウト
+
+- **症状**: req固定済みの本番ビルド `b534b88`（`c708090e`）が再び Step 0 で失敗。だが**同内容のDEVビルドは緑**。
+- **ログ**: `WARNING: Retrying ... ReadTimeoutError(... pypi.org ... Read timed out)` を5回繰り返した後 `ERROR: Could not find a version that satisfies the requirement httpcore==1.* (from versions: none)`。`from versions: none` は候補リストすら取得できなかった＝**ネットワーク起因**を示す。
+- **真因**: 依存衝突ではなく、`httpcore` 取得時に pypi.org への接続がタイムアウトしただけ。req固定は正しく効いていた（ログ前半で supabase==2.31.0 等は正常にCollect済み）。本番ビルドのタイミングでたまたまPyPI接続が悪かった。
+- **対処**: コンソールの「ビルドを再試行」を押下 → 緑で完走。コード/設定の変更は不要だった。
+
+### 13-3. 教訓（次回これで慌てない）
+
+1. **未固定依存は時限爆弾**。`requirements.txt` は固定する。`--no-cache` ビルドは毎回最新解決＝ある日突然壊れうる。バージョンを上げるときは `pip install --dry-run -r requirements.txt` が衝突なく通ることを確認してから1つずつ。
+2. **ビルドが赤でも即「依存衝突」と決めつけない**。**同じソースで DEV 緑・本番 赤**なら、依存ではなく**一時的ネットワーク**（pypi.org の Read timed out → `No matching distribution` / `from versions: none`）の可能性。まず「ビルドを再試行」で通るか試す。
+3. **ログ末尾を必ず読む**。`gcloud builds log <BUILD_ID> --region=global --project=tasukaru-production | tail -50` でStep0のpip出力まで確実に読める（コンソールUIはStep0ログが「表示するログはありません」になることがある）。`ResolutionImpossible`（依存衝突）か `ReadTimeoutError`（ネットワーク）かで対処が真逆。
+
+### 13-4. 将来の改善候補（任意）
+
+- Dockerfile に `RUN pip install --upgrade pip` を `pip install -r requirements.txt` の前に入れると、リゾルバが新しくなり supabase が初期版へ巻き戻る類の事故を予防できる（今回は固定で回避済みなので必須ではない）。
+- pip のネットワーク耐性を上げるなら `pip install --timeout 60 --retries 10 ...` を検討（httpcoreタイムアウト対策）。今回は再試行で足りたので未実施。
+
