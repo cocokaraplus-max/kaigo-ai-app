@@ -437,6 +437,24 @@
 </div>
 
 <!-- orico-card-ui-v1: 会社カード入力モーダル -->
+<!-- ledger-credit-method-modal-v1: クレカ記録方法の初回選択モーダル -->
+<div class="ledger-modal" id="credit-method-modal">
+    <div class="ledger-modal-content" style="text-align:center;">
+        <div style="font-size:1.05rem;font-weight:800;color:#202124;margin-bottom:6px;line-height:1.5;">クレジットカードの<br>利用履歴の記録方法は？</div>
+        <div style="font-size:0.78rem;color:#5f6368;margin-bottom:18px;">あとから設定で変えられます</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <button class="ledger-btn" style="text-align:left;padding:14px;display:flex;align-items:center;gap:10px;" onclick="chooseCreditMethod('receipt')">
+                <span style="font-size:1.4rem;flex:none;">🧾</span>
+                <span><span style="font-weight:700;color:#202124;">使用したレシートから記録する</span><br><span style="font-size:0.72rem;color:#5f6368;">レシートを撮影して入力</span></span>
+            </button>
+            <button class="ledger-btn" style="text-align:left;padding:14px;display:flex;align-items:center;gap:10px;" onclick="chooseCreditMethod('csv')">
+                <span style="font-size:1.4rem;flex:none;">📄</span>
+                <span><span style="font-weight:700;color:#202124;">CSVを読み込んで記録する</span><br><span style="font-size:0.72rem;color:#5f6368;">カード明細CSVをまとめて取込</span></span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <div class="ledger-modal" id="orico-card-modal">
     <div class="ledger-modal-content">
         <div class="ledger-modal-title" id="orico-card-modal-title">カードを追加</div>
@@ -1607,6 +1625,34 @@ async function saveAccount() {
 window.currentSettings = {};
 window.currentDivisions = [];
 
+// ledger-credit-method-modal-v1: 記録方法モーダル制御
+function maybeShowCreditMethodModal() {
+    var m = document.getElementById('credit-method-modal');
+    if (!m) return;
+    var method = window.currentSettings && window.currentSettings.credit_input_method;
+    if (!method) { m.classList.add('show'); }
+    else { m.classList.remove('show'); }
+}
+async function chooseCreditMethod(method) {
+    if (method !== 'receipt' && method !== 'csv') return;
+    try {
+        var r = await fetch('/api/ledger/settings', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({credit_input_method: method})
+        });
+        var j = await r.json();
+        if (j.status === 'success') {
+            var m = document.getElementById('credit-method-modal');
+            if (m) m.classList.remove('show');
+            await loadSettings();
+        } else {
+            alert('保存に失敗しました: ' + (j.message||''));
+        }
+    } catch(e) {
+        alert('保存に失敗しました');
+    }
+}
 async function loadSettings() {
     const res = await fetch('/api/ledger/settings');
     const data = await res.json();
@@ -1657,6 +1703,8 @@ async function loadSettings() {
     renderDivisions();
     updateDivisionSelects();
     if (currentSettings.auto_cash_fill) calcTodayExpense();
+    // ledger-credit-method-modal-v1: 記録方法未選択なら初回モーダルを表示
+    maybeShowCreditMethodModal();
 }
 
 function updateToggleUI(type, on) {
