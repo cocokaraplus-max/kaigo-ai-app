@@ -697,8 +697,8 @@
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <div>
-      <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;">経費クレカ帳（未払金）</div>
-      <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;"><!-- tab-desc-v2 -->領収書のクレジットカード利用を記録します。</div>
+      <div style="font-size:0.9rem;font-weight:700;color:#1a73e8;"><!-- ledger-2c-cardview-heading-v1 -->未払金（クレジットカード等）</div>
+      <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;"><!-- tab-desc-v2 -->クレジットカード等による未払金の補助元帳です。入力は仕訳帳から行います。</div>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="ledger-btn" style="font-size:0.75rem;padding:5px 10px;" onclick="exportSubLedgerExcel('card')">◎ Excel</button>
@@ -2021,7 +2021,7 @@ async function saveOricoCard() {
 var SUB_LEDGER_CONFIG = {
   cash:  { label: '現金出納帳',     accountName: '現金',  matchFn: (e) => e.debit?.name==='現金' || e.credit?.name==='現金',  balanceLabel: '残高', initBalance: 0 },
   bank:  { label: '預金出納帳',     accountName: '普通預金', matchFn: (e) => e.debit?.name==='普通預金' || e.credit?.name==='普通預金', balanceLabel: '残高', initBalance: 0 },
-  card:  { label: '経費クレカ帳（未払金）', accountName: '未払金', matchFn: (e) => e.debit?.name==='未払金' || e.credit?.name==='未払金', balanceLabel: '未払残高', initBalance: 0 },
+  card:  { label: '未払金（クレジットカード等）', accountName: '未払金', matchFn: (e) => e.debit?.name==='未払金' || e.credit?.name==='未払金', balanceLabel: '未払残高', initBalance: 0 },
   sales: { label: '売上台帳',           accountName: '売上',  matchFn: (e) => e.credit?.category==='収益', balanceLabel: '売上累計', initBalance: 0 },
 };
 
