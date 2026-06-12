@@ -396,3 +396,68 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 - Dockerfile に `RUN pip install --upgrade pip` を `pip install -r requirements.txt` の前に入れると、リゾルバが新しくなり supabase が初期版へ巻き戻る類の事故を予防できる（今回は固定で回避済みなので必須ではない）。
 - pip のネットワーク耐性を上げるなら `pip install --timeout 60 --retries 10 ...` を検討（httpcoreタイムアウト対策）。今回は再試行で足りたので未実施。
 
+
+
+## 14. レシート保管庫・記録方法の排他・ガイド整備（2026-06-11 本番反映済み）<!-- readme-receipt-credit-v1 -->
+
+このセッションで出納帳（会計モジュール）に5件を実装し、すべて DEV検証→本番（cocokaraplus-5526）反映済み。本番ブランチ `tasukaru` のマージコミットは `19a555d`。本番はCSV方式（`credit_input_method='csv'`）。**今回はDDL追加なし**（FK制約変更は §14-2 のとおり ALTER のみ、両環境適用済み）。
+
+### 14-1. 実装した5件（コミット順）
+
+1. **レシート保管庫ビュー＋OCR仕訳紐付け**（`fb2b48b`）
+   - app.py: `ledger-receipt-link-v1`（`/api/ledger/entry` 新規作成時に `receipt_id` があれば `receipts.entry_id = new_id` を埋める）、`ledger-receipt-vault-v1`（`GET /api/ledger/receipts` 保管庫読み出しAPI。`entry_id` 有無で仕訳済み/未仕訳を判別。新テーブル不要）。
+   - ledger.html: `ledger-receipt-link-front-v1`（OCR→仕訳の `receipt_id` 引き回し。`createEntryFromOCR(ocr, receiptId)` → `window._ocrReceiptId` → `saveEntry` が `payload.receipt_id` 同送）、保管庫UI＋JS（`loadReceiptVault`/`setReceiptFilter`/`renderReceiptVault`、`pane-receipt` 内・`switchTab('receipt')`で自動ロード）。
+   - **重要な前提**: この紐付け実装より前のレシートは全て `entry_id=null`（未仕訳表示）。過去分が未仕訳で出るのは正常。
+
+2. **クレカ明細タブの仕訳状態フィルタ**（`cbffb7f`、ledger.htmlのみ）
+   - `ledger-orico-filter-front-v1`。判別基準は **`account_id`（勘定科目）の有無**。割当済み=仕訳済み、null=未仕訳。`loadOrico` を「取得→`window._oricoCache`→`renderOrico()`」に分離し、3ボタン（すべて/未仕訳/仕訳済み）＋件数サマリ。フィルタ後に行が残らない月グループは非表示。app.pyは `account_id` を既に返すため変更不要。
+
+3. **① CSV方式はOCRクレカの仕訳化を弾く**（`3847f92`）
+   - app.py: `ledger-credit-ocrguard-v1`（`/api/ledger/entry` で `receipt_id` あり・新規・CSV方式かつ DBの `receipts.ocr_result.payment_method=='credit'` なら **409 `credit_csv_blocked`**。改ざん耐性のためDBを引く。編集 `data['id']` は対象外）。
+   - ledger.html: `ledger-credit-ocrguard-front-v1`（`createEntryFromOCR` 冒頭で CSV方式かつ `ocr.payment_method=='credit'` なら案内alert＋中断。OCR結果カード・保管庫カード両方がこの関数を通るので一括カバー）。
+   - 弾く対象は **CSV方式×クレジットのみ**。現金/電子マネー/unknown、OCR方式、未選択は通す。OCRの支払方法判定は §9-5（`ledger-receipt-pay-v1`）で精度実証済みなので信頼できる。
+
+4. **② 記録方法でクレカ明細タブ・カード選択肢を出し分け**（`9849d31`、ledger.htmlのみ）
+   - `ledger-credit-method-show-v1`。**CSV方式のときだけ** クレカ明細(orico)タブ・会社カード管理セクション・CSV取込の「カード利用履歴」選択肢を表示。OCR方式・未選択では隠す。従来 `credit_mode_enabled`（旧フラグ）制御だった箇所を `credit_input_method=='csv'` に統一。
+   - 領収書OCRタブ・CSV取込タブ自体は両方式で表示（日計表・キャッシュレス等の共通機能のため、タブごとは消さない）。
+
+5. **ガイド常時表示＋OCRステップに記録方法のモック**（`f56fa7e`、ledger.htmlのみ）
+   - `ledger-guide-method-v1`。作業手順マニュアル（ガイド）タブを `sekkotsu_mode_enabled` 連動から**常時表示**に変更。出納帳ページ（`/ledger`）は未許可者を `redirect('/top')` で弾く（開発者MENUのトグルでHIROのみ許可）ため、ガイドが見えるのは出納帳を許可された人だけ＝意図どおり。
+   - ステップ4（経費・領収書/領収書OCR）に「クレジットカードの記録方法」見出し＋SVGモック図を追加。`renderGuideMethod(credit_input_method)` で出し分け。CSV方式＝「この施設はCSV方式です…保管庫に保管」＋分岐図（既存Amazon突合図と同テイスト・角丸ボックス＋矢印＋色分け）、receipt方式＝「レシート方式です…OCRから仕訳化」＋単純フロー図、未選択＝設定を促す案内。**施設ごとに説明文・図が自動で切替**（DEV/本番とも実機確認済み）。
+
+### 14-2. 重要な設計知見: `receipts.entry_id` の FK制約を `ON DELETE SET NULL` に統一
+
+- `receipts.entry_id` には FK制約 `receipts_entry_id_fkey`（`REFERENCES journal_entries(id)`）がある。
+- 当初 **DEVは `ON DELETE SET NULL`、本番は `ON DELETE`句なし（NO ACTION）** とズレていた。NO ACTION のままだと、OCR紐付き仕訳を仕訳帳から削除しようとすると `23503` で失敗する（レシートが参照しているため）。
+- 対処として**両環境を `ON DELETE SET NULL` に統一**（本番は §14 反映時に ALTER 実行済み）。これで仕訳を削除すると `receipts.entry_id` が自動でnullに戻り、レシートは保管庫に「未仕訳」として残る。孤児参照が出ない。DEVで実証（仕訳削除→receipt自動null戻り確認）。
+- 適用したDDL（既存制約を落として張り直し）:
+  ```sql
+  ALTER TABLE receipts DROP CONSTRAINT receipts_entry_id_fkey;
+  ALTER TABLE receipts ADD CONSTRAINT receipts_entry_id_fkey
+    FOREIGN KEY (entry_id) REFERENCES journal_entries(id) ON DELETE SET NULL;
+  ```
+- **次に別環境（新規施設DB等）を立てるときは、この制約が `SET NULL` になっているか確認すること。**
+
+### 14-3. 記録方法による排他の全体像（完成形）
+
+施設ごとに `credit_settings.credit_input_method`（`receipt` / `csv` / null）で排他。二重計上を構造的に防ぐ。
+
+- **CSV方式（csv）**: クレカは CSV（クレカ明細）が正。クレカ明細タブ・会社カード管理・「カード利用履歴」選択肢を表示。領収書OCRでクレジット判定されたレシートは**仕訳化を弾く**（フロント案内＋サーバ409）＝保管庫に残すだけ。現金/電子マネー/unknownはOCRで仕訳化OK。
+- **レシート方式（receipt）**: クレカも含め全てOCR（または仕訳帳手入力）で記録。クレカ明細タブ・カード選択肢は非表示。OCRのクレカも普通に仕訳化できる。
+- 設計思想: **仕訳帳が入力ハブ**。OCR/CSVはそこへの補助経路。「その施設に関係するUI・説明だけ見せて迷わせない」。
+
+### 14-4. 既知の小課題（次回任意）
+
+- **保管庫一覧の最終カードがボトムナビと重なる**: `pane-receipt` 内の保管庫一覧を最下部までスクロールすると、最後のカードのボタンがボトムナビ（TOP/記録入力…）の裏に入り画面操作しづらい。`pane-receipt` 末尾に下部パディングを足せば解消。
+- **空ファイル `tasukaru-dev`（0バイト・リポジトリ直下）の単独 `git rm`** が依然未対応（§12-5）。機能変更と混ぜず単独コミットで消す。`git log tasukaru-dev` がファイル解釈でエラーになる回避は `git log refs/heads/tasukaru-dev`。
+
+### 14-5. このセッションのコミット（tasukaru-dev）
+
+```
+f56fa7e ガイド常時表示＋OCRステップに記録方法の仕組みをモック追加(guide-method-v1)
+9849d31 記録方法でクレカ明細タブ/カード選択肢を出し分け(credit-method-show-v1)
+3847f92 CSV方式はOCRクレカの仕訳化を弾く(credit-ocrguard-v1)
+cbffb7f クレカ明細タブに仕訳状態フィルタ追加(orico-filter-front-v1)
+fb2b48b レシート保管庫ビュー新設＋OCR仕訳紐付け(receipt-vault/link-v1)
+```
+本番 `tasukaru` へは `19a555d`（Merge）で全件反映。DEV/本番とも実機確認済み（本番はデータ非変更の閲覧＋ガード試行409で副作用なし確認）。
