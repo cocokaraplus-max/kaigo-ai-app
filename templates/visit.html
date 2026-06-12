@@ -133,6 +133,9 @@ function vmDrawTable(days) {
   let wdRow = '<td class="vm-th-fixed">曜日</td>';
   let planRow = '<td class="vm-th-fixed vm-rowlabel plan">予定</td>';
   let actRow = '<td class="vm-th-fixed vm-rowlabel act">実績</td>';
+  // 今日(端末基準)。経過済みの予定日でバイタルがなければ休とみなす。
+  const _now = new Date();
+  const _todayStr = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
   days.forEach(function(d) {
     const c = wdClass(d.weekday);
     dayRow += '<td class="vm-daycell ' + c + '">' + d.day + '</td>';
@@ -147,11 +150,12 @@ function vmDrawTable(days) {
       planMark = '<span class="vm-plan-o">○</span>';
     }
     planRow += '<td class="vm-cell ' + c + '">' + planMark + '</td>';
-    // 実績セル: バイタル実績(出席/振替)を優先、なければ休みの日は「休」
+    // 実績セル: 出席/振替(バイタル) > 休み連絡 > 経過済み予定日でバイタルなし=休。未来は空欄。
     let actMark = '';
     if (d.actual === 'present') actMark = '<span class="vm-act-present">出</span>';
     else if (d.actual === 'transfer') actMark = '<span class="vm-act-transfer">振</span>';
     else if (d.leave) actMark = '<span class="vm-act-leave">休</span>';
+    else if (d.planned && d.date < _todayStr) actMark = '<span class="vm-act-leave">休</span>';
     actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
   });
   const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>'
