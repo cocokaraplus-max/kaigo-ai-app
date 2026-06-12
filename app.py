@@ -2149,7 +2149,7 @@ def get_vital_settings(supabase, f_code):
     except: pass
     return DEFAULT_VITAL_SETTINGS.copy()
 
-# ===== visit-mgmt-v1: 利用管理(予定×実績 月間集約・閲覧ハブ) =====
+# ===== visit-mgmt-v1 / visit-mgmt-idfix-v1: 利用管理(予定×実績 月間集約・閲覧ハブ) =====
 def _visit_weekday_of(date_str):
     """date_str(YYYY-MM-DD)の曜日を JS getDay基準(日曜=0〜土曜=6)で返す。"""
     from datetime import datetime as _dt
@@ -2180,7 +2180,7 @@ def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, pati
         now_iso = _dt.now(_tz.utc).isoformat()
         weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
         status = 'present' if _visit_is_planned_weekday(weekdays, date_str) else 'transfer'
-        existing = supabase.table('visit_records').select('id,status,source').eq('facility_code', f_code).eq('patient_id', int(patient_pid)).eq('visit_date', date_str).execute()
+        existing = supabase.table('visit_records').select('id,status,source').eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).execute()
         if existing.data:
             row = existing.data[0]
             if row.get('source') == 'manual':
@@ -2188,7 +2188,7 @@ def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, pati
             supabase.table('visit_records').update({'status': status, 'source': 'vital_auto', 'checked_at': now_iso, 'updated_at': now_iso}).eq('id', row['id']).execute()
         else:
             supabase.table('visit_records').insert({
-                'facility_code': f_code, 'patient_id': int(patient_pid), 'visit_date': date_str,
+                'facility_code': f_code, 'patient_id': str(patient_pid), 'visit_date': date_str,
                 'status': status, 'source': 'vital_auto', 'checked_at': now_iso, 'staff_name': staff_name,
             }).execute()
     except Exception as e:
@@ -2203,7 +2203,7 @@ def _visit_cleanup_on_vital_delete(supabase, f_code, patient_pid, date_str):
         if remain.data:
             return  # まだバイタルが残っている
         # 自動分のみ削除(手動は残す)
-        supabase.table('visit_records').delete().eq('facility_code', f_code).eq('patient_id', int(patient_pid)).eq('visit_date', date_str).eq('source', 'vital_auto').execute()
+        supabase.table('visit_records').delete().eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).eq('source', 'vital_auto').execute()
     except Exception as e:
         print(f"visit cleanup on vital delete error: {e}", flush=True)
 
@@ -2234,7 +2234,7 @@ def api_visit_month():
         last = '%04d-%02d-%02d' % (year, month, ndays)
         # 実績(visit_records): patient_profiles.id 基準
         rec_map = {}
-        rec = supabase.table('visit_records').select('visit_date,status,source').eq('facility_code', f_code).eq('patient_id', int(pid)).gte('visit_date', first).lte('visit_date', last).execute()
+        rec = supabase.table('visit_records').select('visit_date,status,source').eq('facility_code', f_code).eq('patient_id', str(pid)).gte('visit_date', first).lte('visit_date', last).execute()
         for r in (rec.data or []):
             rec_map[str(r['visit_date'])] = r
         # 休み連絡(records, category=休み連絡): user_name で引く。期間 leave_date_start〜end。
