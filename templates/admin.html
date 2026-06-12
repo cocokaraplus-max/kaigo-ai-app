@@ -466,6 +466,13 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 {# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
 
+  {# ---- 利用管理(月間予定/実績) visit-admin-menu-v1 ---- #}
+  <a href="/visit" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#e6f4ea;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;">
+    <span class="material-symbols-outlined" style="color:#2e7d32;">event_available</span>
+    利用管理（予定・実績の確認）
+    <span class="material-symbols-outlined" style="margin-left:auto;color:#2e7d32;">chevron_right</span>
+  </a>
+
   {# ---- CSVインポート ---- #}
   <div class="accordion-block" style="border-color:#1a73e8;">
     <div class="accordion-head" onclick="toggleAcc('csv')" style="background:#f0f6ff;">
@@ -629,9 +636,6 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           <div class="patient-card-actions">
             <a href="/patient_profile?id={{ p.id }}" class="btn btn-sm" style="background:#e8f0fe;color:#1a73e8;text-decoration:none;">
               <span class="material-symbols-outlined" style="font-size:15px;">edit</span>編集
-            </a>
-            <a href="/visit?patient_id={{ p.id }}" class="btn btn-sm" style="background:#e6f4ea;color:#2e7d32;text-decoration:none;"><!-- visit-admin-link-v1 -->
-              <span class="material-symbols-outlined" style="font-size:15px;">event_available</span>利用管理
             </a>
             <button class="btn btn-sm delete-btn" onclick="confirmDeletePatient('{{ p.id }}','{{ p.user_name }}')">
               <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
