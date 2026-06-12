@@ -32,6 +32,7 @@
 .vm-plan-o { color:#185FA5; font-size:0.95rem; }
 .vm-plan-x { color:#c62828; cursor:pointer; text-decoration:underline; }
 .vm-act-present { color:#2E7D32; }
+.vm-act-leave { color:#c62828; }
 .vm-act-transfer { color:#9334E8; }
 .vm-rowlabel { background:#fafafa; }
 .vm-rowlabel.plan { color:#185FA5; }
@@ -61,9 +62,10 @@
 
   <div class="vm-legend">
     <span><b style="color:#185FA5;">○</b> 予定</span>
-    <span><b style="color:#c62828;">✕</b> 休み(タップで記録へ)</span>
+    <span><b style="color:#c62828;">✕</b> 休み予定(タップで記録へ)</span>
     <span><b style="color:#2E7D32;">出</b> 出席</span>
     <span><b style="color:#9334E8;">振</b> 振替</span>
+    <span><b style="color:#c62828;">休</b> 休み</span>
   </div>
 
   <div class="vm-scrollhint">← 横にスクロールできます →</div>
@@ -145,10 +147,11 @@ function vmDrawTable(days) {
       planMark = '<span class="vm-plan-o">○</span>';
     }
     planRow += '<td class="vm-cell ' + c + '">' + planMark + '</td>';
-    // 実績セル
+    // 実績セル: バイタル実績(出席/振替)を優先、なければ休みの日は「休」
     let actMark = '';
     if (d.actual === 'present') actMark = '<span class="vm-act-present">出</span>';
     else if (d.actual === 'transfer') actMark = '<span class="vm-act-transfer">振</span>';
+    else if (d.leave) actMark = '<span class="vm-act-leave">休</span>';
     actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
   });
   const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>'
