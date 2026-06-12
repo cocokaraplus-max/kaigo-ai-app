@@ -2207,6 +2207,11 @@ def _visit_cleanup_on_vital_delete(supabase, f_code, patient_pid, date_str):
     except Exception as e:
         print(f"visit cleanup on vital delete error: {e}", flush=True)
 
+@app.route('/visit')
+@login_required
+def visit_page():  # visit-page-v1
+    return render_template('visit.html')
+
 @app.route('/api/visit/month', methods=['GET'])
 @login_required
 def api_visit_month():
