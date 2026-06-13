@@ -461,3 +461,84 @@ cbffb7f クレカ明細タブに仕訳状態フィルタ追加(orico-filter-fron
 fb2b48b レシート保管庫ビュー新設＋OCR仕訳紐付け(receipt-vault/link-v1)
 ```
 本番 `tasukaru` へは `19a555d`（Merge）で全件反映。DEV/本番とも実機確認済み（本番はデータ非変更の閲覧＋ガード試行409で副作用なし確認）。
+
+
+## 15. 利用管理（来所管理）実装＋利用者マスタのセキュリティ調査（2026-06-12 DEV反映済み・本番未反映）<!-- readme-visit-mgmt-v1 -->
+
+このセッションで「利用管理（来所管理）」機能を新規実装し DEV で動作確認まで完了。あわせて利用者登録まわりのセキュリティ問題（Supabaseキーのフロント露出）を発見・調査し、対応設計を固めた（実装は次回）。**いずれも本番未反映**。
+
+### 15-1. 利用管理（来所管理）= デイの「月間サービス計画及び実績の記録」をデジタル化
+
+紙の月間実績表テイストで、利用者ごとに「予定（○/休み✕）」と「実績（出席/振替/休み）」を月間表示する閲覧・確認画面。当初は連絡帳機能の検討から派生し、「いつ誰が来たかを記録してケース記録のし忘れを防ぎたい」という要望で先に着手。
+
+**設計の要点（HIROと確定）**
+- **予定**は既存 `patient_visit_days`（weekdays/ampm_per_day）から算出。**移設しない**（曜日設定UIは vitals.html のまま）。曜日コードは **日曜=0〜土曜=6（JS getDay基準）**。Python の weekday() は月=0 なので `(weekday()+1)%7` で変換。
+- **休み（✕）**は既存の休み連絡（`records` テーブル、`category="休み連絡"`、`leave_date_start`〜`leave_date_end` の期間、`leave_record_id`）を参照。**新テーブル不要**。✕タップでケース記録へ飛ばす導線（`/daily_view?record_id=` は未検証）。
+- **実績**はバイタル連動で自動。**予定曜日にバイタル→出席(present)、予定外にバイタル→振替(transfer)**。バイタル削除で実績も自動削除（その日に他バイタルが無ければ）。手作業ゼロが目標。状態は present/transfer の2つ（当日キャンセル・欠席マークは廃止。予定○で実績が空＝休んだと読む）。
+- **休みの実績表示**：実績行に「休」も出す。①休み連絡がある日、②経過済みの予定日でバイタルなし（＝来なかった）。**未来の予定日は空欄**（実績はその日が経過して初めて成立）。
+- 画面は**管理者MENU内「利用者管理」タブの先頭にリンクカード1つ**（各利用者カードには置かない）。利用者選択は**記録入力と同じ検索UI**（ひらがな/漢字/カルテ番号、ひらがな⇄カタカナ変換込み）を移植。スマホ横スクロール・PC全日一画面で同一デザイン。
+
+**実装（DEVコミット）**
+- `7248c85` フェーズA: `GET /api/visit/month`（月間集約）＋バイタル連動（save_vital/add_vital フックで `_visit_auto_upsert`）＋削除連動（delete_vital で `_visit_cleanup_on_vital_delete`）。marker `visit-mgmt-v1`。
+- `1153185` 修正: `visit_records.patient_id` を **bigint→text** に（vitals.patient_id が text=UUID文字列のため）。`int()` を `str()` に。marker `visit-mgmt-idfix-v1`。**DEVで ALTER 実行済み**。
+- `bccb17c` フェーズB: 月間実績表ページ `visit.html` ＋ `/visit` ルート（`visit-page-v1`）＋管理者MENU導線（`visit-admin-link-v1`、後に廃止）。
+- `cd5f91a` 実績行に休み表示。
+- （経過済み予定日→休 の追加コミット）
+- `32b231c` 検索UI化（かな/漢字/カルテ番号）＋管理者MENUに集約（各カードのボタン廃止、`visit-admin-menu-v1`）。
+
+**新テーブル `visit_records`（DEV作成済み・本番未作成）**
+```sql
+CREATE TABLE visit_records (
+  id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL,
+  patient_id TEXT NOT NULL,  -- patient_profiles.id（UUID文字列）基準。vitalsと揃える
+  visit_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','cancelled','transfer')),
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('vital_auto','manual')),
+  checked_at TIMESTAMPTZ, staff_name TEXT, note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (facility_code, patient_id, visit_date)
+);
+-- ※status の absent/cancelled は現設計では未使用（present/transfer のみ）。本番反映時はこのDDL＋patient_id=text で作る。
+```
+
+**DEV検証済み**：月間API（予定/休み/実績集約）、予定日バイタル→出席・予定外→振替、バイタル削除で実績消去（他バイタルが残る日は保持＝設計どおり）、検索UI（かな/漢字/カルテ番号）、管理者MENU導線。テスト用ダミーバイタルは DEV に残置（ダミーデータのため許容）。
+
+### 15-2. 【重要・要対応】利用者登録まわりで Supabaseキーがフロント露出
+
+`admin.html` の利用者**追加・削除・CSV一括取込**の3箇所が、サーバAPIを経由せず**ブラウザから Supabase REST を直叩き**している。そのため `supabase_url` / `supabase_anon_key` がテンプレートに埋め込まれ**フロントに露出**（`const SUPABASE_URL='{{ supabase_url }}'` / `SUPABASE_KEY='{{ supabase_anon_key }}'`）。開発者ツールから鍵を抜けば利用者データに直接アクセス・改ざん可能。**SECRET_KEY露出（§2）と同様に優先対応すべき。**
+
+- 該当箇所（admin.html）：`addPatientProfile()`（POST patient_profiles）、`executeDelete()`（DELETE patient_profiles?id=eq.）、`bulkUpsertPatients()`（CSV、merge-duplicates で patient_profiles に upsert）。
+- HIRO も露出回避に同意済み。**今後はキーをフロントに出さない方針で作業する。**
+
+### 15-3. 利用者マスタの二重構造（調査で判明、設計の前提）
+
+- **`patient_profiles` が利用者マスタの正本**。`id`=**UUID**。氏名・ふりがな(`user_name_kana`)・生年月日・`patient_number`・介護度・目標などフル情報。`get_patients()` はこれを主に読む。
+- **`patients` は補助テーブル**。`id`=**整数**（=`patient_int_id`）。`user_name` で profiles と紐付き、整数IDの採番用。`patient_visit_days`（曜日設定）・誕生日などが `patients.id` 基準。カナは `user_kana`（profiles は `user_name_kana`、**カラム名が違う**）。
+- 利用者を登録するには **両テーブルに行が必要**（profiles=本体、patients=整数ID用）。DEVは51名全員が両方に揃っている（user_name で1対1）。
+- **既存サーバAPIの問題**：`/api/add_patient`・`/api/bulk_register_patients`・`/api/delete_patient` は **`patients` にしか書かない**。フロント直叩きは **`patient_profiles`**。単純にAPIへ差し替えると書き込み先が変わり利用者が一覧から消える。→ **APIを profiles 主軸＋patients 連動に作り直す必要がある。**
+- 現状の物理削除は profiles だけ消し patients 行が残る（ゴミ）。論理削除（利用中止）は `discontinued_date` で別管理。
+
+### 15-4. CSV取込・写真AI読み取りの検証状況
+
+- 関数は存在（`handleCsvFile`/`bulkUpsertPatients`、`scanPatients`/`registerScannedPatients`/`onScanFileSelect`。後者は `/static/admin.js`）。
+- **写真AI読み取り**：サーバ `POST /api/scan_patients_from_image`（Gemini で名簿画像を解析→JSON）。`/api/bulk_register_patients` で登録。1x1ダミー画像では500（不正入力に対する正常な失敗の可能性大）。**実画像での確認は次回**。検証用に**架空名簿PNGを作成済み**（デイサービスさくら、6名、和暦生年月日・利用曜日入り）。
+- **CSV取込**：マモルくん形式CSVをフロントでパース（`CSV_COL_MAP`）→ patient_profiles に直叩き upsert（＝15-2の露出箇所）。
+
+### 15-5. 残タスク（次回）
+
+1. **【最優先】Supabaseキー露出の解消**：利用者 追加・削除・CSV取込を **サーバAPI経由（profiles主軸＋patients連動）**に作り替え、`admin.html` から `SUPABASE_URL`/`SUPABASE_KEY` を削除。基幹テーブルなので慎重に（追加・削除・取込が両テーブルに正しく反映され、一覧表示が壊れないことを実機検証）。
+2. **写真AI読み取りの実機確認**（架空名簿PNGで読み取り→登録）。
+3. **管理者MENU「利用者管理」タブのUI再編**：上から「利用者登録」「利用者一覧・編集」「利用管理」。「利用者登録」を開くと中に「新規手入力登録/CSV取込/写真からAI読み取り」。二段アコーディオンは避け、一段＋タブ切替などスッキリ案をモック提案してから実装。
+4. **利用管理ページに戻るボタン**（管理者MENUへ）。
+5. （以前からの保留）連絡帳機能本体、ナビのランチャー化（記録=緑/情報共有=紫/帳票管理=オレンジのカテゴリ色分けグリッド、モック承認済み）、ケース記録への「今日の来所者」表示。
+
+### 15-6. このセッションの主なコミット（tasukaru-dev、本番未反映）
+```
+32b231c 利用管理: 検索UI化＋管理者MENUに集約
+cd5f91a 利用管理: 実績行に休みを表示（＋経過済み予定日→休 の追加コミット）
+bccb17c 利用管理フェーズB: 月間実績表ページ＋管理者MENU導線
+1153185 利用管理フェーズA修正: visit_records.patient_id を text(UUID)対応
+7248c85 利用管理フェーズA: 月間集約API＋バイタル連動＋削除連動
+ce92aba docs: §14 追記
+```
+**本番反映時の注意**：本番 Supabase に `visit_records`（patient_id=text 版）を作る DDL が先行で必要。
