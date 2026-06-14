@@ -274,8 +274,9 @@ const ROOM_ID    = {{ room_id    | tojson }};
 const MY_NAME    = {{ my_name    | tojson }};
 const MY_COLOR   = {{ my_color   | tojson }};
 const MY_INITIAL = {{ my_initial | tojson }};
-const SUPA_URL   = {{ supabase_url | tojson }};
-const SUPA_KEY   = {{ supabase_anon_key | tojson }};
+// chatroom-key-front-v1: Realtime用キー露出を解消。空にしてpollFallback(ポーリング)に切り替え
+const SUPA_URL   = '';
+const SUPA_KEY   = '';
 
 function escapeHtml(str) {
     return String(str)
