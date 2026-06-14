@@ -7579,6 +7579,55 @@ def api_scan_patients_from_image():
 # facility_code はサーバ側で session 値を強制適用し、
 # フロント由来の値は信用しない。
 # ==========================================
+# ==========================================
+# patients-sync-b1: patients連動ヘルパ(方針B 第1段)
+# profilesに利用者を追加したら patients にも行を作る(孤児防止)。
+# chart_number = profiles.patient_number をコピー(空ならフォールバック採番)。
+# 同名patients行があれば何もしない(重複防止)。曜日は作らない(第2段)。
+# ==========================================
+# patient-number-zerofill-v1: 利用者番号の最低3桁ゼロ埋め整形
+def _normalize_patient_number(pn):
+    """数字のみなら最低3桁ゼロ埋め。3桁以上/英字含む/空はそのまま。"""
+    s = (str(pn) if pn is not None else "").strip()
+    if s.isdigit():
+        return s.zfill(3)
+    return s
+
+
+def _ensure_patient_row(supabase, f_code, profile_row):
+    """profile_row(dict: user_name/user_name_kana/birth_date/patient_number)に対応する
+    patients行を必要なら作成する。戻り値: 作成したら True / 既存なら False。"""
+    try:
+        name = (profile_row.get("user_name") or "").strip()
+        if not name:
+            return False
+        # 既に同名のpatients行があれば作らない
+        exist = supabase.table("patients").select("id").eq("facility_code", f_code).eq("user_name", name).execute()
+        if exist.data:
+            return False
+        # chart_number: patient_number をコピー。空ならフォールバック採番
+        chart = str(profile_row.get("patient_number") or "").strip()
+        if not chart:
+            ex = supabase.table("patients").select("chart_number").eq("facility_code", f_code).execute()
+            nums = []
+            for p in (ex.data or []):
+                try: nums.append(int(p["chart_number"]))
+                except: pass
+            chart = str(max(nums, default=0) + 1).zfill(3)
+        birth = profile_row.get("birth_date") or None
+        supabase.table("patients").insert({
+            "facility_code": f_code,
+            "user_name":     name,
+            "user_kana":     profile_row.get("user_name_kana") or "",
+            "birth_date":    birth,
+            "chart_number":  chart,
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"_ensure_patient_row error: {e}", flush=True)
+        return False
+
+
 @app.route('/api/admin/patient/add', methods=['POST'])
 @login_required
 def api_admin_patient_add():
@@ -7587,6 +7636,9 @@ def api_admin_patient_add():
         data = request.json or {}
         f_code = session["f_code"]
         name = (data.get("user_name") or "").strip()
+        # patient-number-zerofill-v1: 利用者番号を整形
+        if data.get("patient_number"):
+            data["patient_number"] = _normalize_patient_number(data.get("patient_number"))
         if not name:
             return jsonify({"status": "error", "message": "氏名は必須です"}), 400
         row = {
@@ -7600,6 +7652,8 @@ def api_admin_patient_add():
         }
         supabase = get_supabase()
         supabase.table("patient_profiles").insert(row).execute()
+        # patients-sync-b1: patients連動
+        _ensure_patient_row(supabase, f_code, row)
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"admin_patient_add error: {e}", flush=True)
@@ -7620,6 +7674,9 @@ def api_admin_patient_save():
         row = {k: v for k, v in data.items() if k not in ("id", "facility_code")}
         row["facility_code"] = f_code
         row["updated_at"] = datetime.now(tokyo_tz).isoformat()
+        # patient-number-zerofill-v1: 利用者番号を整形
+        if row.get("patient_number"):
+            row["patient_number"] = _normalize_patient_number(row.get("patient_number"))
 
         # user_name 必須(新規時)
         if not pid and not (row.get("user_name") or "").strip():
@@ -7637,6 +7694,8 @@ def api_admin_patient_save():
             # 新規: insert して id を返す
             res = supabase.table("patient_profiles").insert(row).execute()
             new_id = res.data[0]["id"] if res.data else None
+            # patients-sync-b1: patients連動(新規時のみ)
+            _ensure_patient_row(supabase, f_code, row)
             return jsonify({"status": "success", "id": new_id})
     except Exception as e:
         print(f"admin_patient_save error: {e}", flush=True)
@@ -7682,11 +7741,17 @@ def api_admin_patient_bulk_import():
             # facility_code はフロント由来を捨ててsession値で強制
             row["facility_code"] = f_code
             row["updated_at"] = now_iso
+            # patient-number-zerofill-v1: 利用者番号を整形
+            if row.get("patient_number"):
+                row["patient_number"] = _normalize_patient_number(row.get("patient_number"))
             clean.append(row)
         if not clean:
             return jsonify({"status": "error", "message": "取込データがありません"}), 400
         supabase = get_supabase()
         supabase.table("patient_profiles").upsert(clean).execute()
+        # patients-sync-b1: 各行をpatients連動
+        for _r in clean:
+            _ensure_patient_row(supabase, f_code, _r)
         return jsonify({"status": "success", "count": len(clean)})
     except Exception as e:
         print(f"admin_patient_bulk_import error: {e}", flush=True)
