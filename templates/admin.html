@@ -1061,8 +1061,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 // admin.jsの既存関数を補完・上書き
 // ========================================
 
-const SUPABASE_URL  = '{{ supabase_url }}';
-const SUPABASE_KEY  = '{{ supabase_anon_key }}';
+// admin-patient-front-v1: Supabase直叩き廃止、キー露出解消済み
 const FACILITY_CODE = '{{ session.f_code }}';
 
 // ========================================
@@ -1176,17 +1175,13 @@ async function addPatientProfile() {
     updated_at: new Date().toISOString()
   };
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles`, {
+    const res = await fetch('/api/admin/patient/add', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'return=minimal'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error(await res.text());
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.status !== 'success') throw new Error(j.message || ('HTTP ' + res.status));
     showAdminToast('✅ 登録しました');
     setTimeout(() => location.reload(), 1200);
   } catch(e) {
@@ -1209,10 +1204,13 @@ async function executeDelete() {
   closeModal();
   if (_deleteMode === 'patient' && _deletePatientId) {
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles?id=eq.${_deletePatientId}`, {
-        method: 'DELETE',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      const res = await fetch('/api/admin/patient/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: _deletePatientId })
       });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.status !== 'success') throw new Error(j.message || ('HTTP ' + res.status));
       showAdminToast('🗑️ 削除しました');
       setTimeout(() => location.reload(), 1000);
     } catch(e) { showAdminToast('❌ 削除失敗'); }
@@ -1365,17 +1363,13 @@ async function bulkUpsertPatients() {
   if (_csvRecords.length === 0) return;
   showAdminToast(`⏳ ${_csvRecords.length}件を登録中...`);
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_profiles`, {
+    const res = await fetch('/api/admin/patient/bulk_import', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify(_csvRecords)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: _csvRecords })
     });
-    if (!res.ok) throw new Error(await res.text());
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.status !== 'success') throw new Error(j.message || ('HTTP ' + res.status));
     showAdminToast(`✅ ${_csvRecords.length}件を取り込みました`);
     setTimeout(() => location.reload(), 1500);
   } catch(e) {

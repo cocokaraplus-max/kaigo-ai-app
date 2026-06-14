@@ -7573,6 +7573,89 @@ def api_scan_patients_from_image():
         print(f"scan_patients error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e), "patients": []}), 500
 
+# ==========================================
+# admin-patient-api-v1: 利用者管理サーバAPI (admin.htmlの直叩き置換)
+# patient_profiles のみを操作(現状挙動を維持)。
+# facility_code はサーバ側で session 値を強制適用し、
+# フロント由来の値は信用しない。
+# ==========================================
+@app.route('/api/admin/patient/add', methods=['POST'])
+@login_required
+def api_admin_patient_add():
+    """1名手入力登録 (patient_profiles)"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        name = (data.get("user_name") or "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "氏名は必須です"}), 400
+        row = {
+            "facility_code":  f_code,
+            "patient_number": (data.get("patient_number") or None),
+            "user_name":      name,
+            "user_name_kana": (data.get("user_name_kana") or None),
+            "birth_date":     (data.get("birth_date") or None),
+            "care_level":     (data.get("care_level") or None),
+            "updated_at":     datetime.now(tokyo_tz).isoformat(),
+        }
+        supabase = get_supabase()
+        supabase.table("patient_profiles").insert(row).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_patient_add error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/patient/delete', methods=['POST'])
+@login_required
+def api_admin_patient_delete():
+    """1名削除 (patient_profiles)。ログイン施設のレコードのみ削除可。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        pid = (data.get("id") or "").strip()
+        if not pid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        supabase = get_supabase()
+        supabase.table("patient_profiles").delete() \
+            .eq("id", pid).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_patient_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/patient/bulk_import', methods=['POST'])
+@login_required
+def api_admin_patient_bulk_import():
+    """CSV一括取込 (patient_profiles upsert / merge-duplicates)。
+    パース済み records[] を受け、facility_code はサーバ側で強制上書き。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        records = data.get("records", []) or []
+        if not records:
+            return jsonify({"status": "error", "message": "取込データがありません"}), 400
+        now_iso = datetime.now(tokyo_tz).isoformat()
+        clean = []
+        for r in records:
+            if not isinstance(r, dict):
+                continue
+            row = dict(r)
+            # facility_code はフロント由来を捨ててsession値で強制
+            row["facility_code"] = f_code
+            row["updated_at"] = now_iso
+            clean.append(row)
+        if not clean:
+            return jsonify({"status": "error", "message": "取込データがありません"}), 400
+        supabase = get_supabase()
+        supabase.table("patient_profiles").upsert(clean).execute()
+        return jsonify({"status": "success", "count": len(clean)})
+    except Exception as e:
+        print(f"admin_patient_bulk_import error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/bulk_register_patients', methods=['POST'])
 @login_required
 def api_bulk_register_patients():
@@ -7743,9 +7826,7 @@ def admin():
         registered_staffs=registered_staffs,
         f_code=f_code,
         board_editors=board_editors_list,
-        admin_managers=admin_managers_list,
-        supabase_url=os.environ.get('SUPABASE_URL', ''),
-        supabase_anon_key=os.environ.get('SUPABASE_KEY', ''))
+        admin_managers=admin_managers_list)
 
 # ==========================================
 
