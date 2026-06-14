@@ -396,3 +396,149 @@ DEV最新コミット: `66faf78`（tasukaru-dev）。本番にもマージ済み
 - Dockerfile に `RUN pip install --upgrade pip` を `pip install -r requirements.txt` の前に入れると、リゾルバが新しくなり supabase が初期版へ巻き戻る類の事故を予防できる（今回は固定で回避済みなので必須ではない）。
 - pip のネットワーク耐性を上げるなら `pip install --timeout 60 --retries 10 ...` を検討（httpcoreタイムアウト対策）。今回は再試行で足りたので未実施。
 
+
+
+## 14. レシート保管庫・記録方法の排他・ガイド整備（2026-06-11 本番反映済み）<!-- readme-receipt-credit-v1 -->
+
+このセッションで出納帳（会計モジュール）に5件を実装し、すべて DEV検証→本番（cocokaraplus-5526）反映済み。本番ブランチ `tasukaru` のマージコミットは `19a555d`。本番はCSV方式（`credit_input_method='csv'`）。**今回はDDL追加なし**（FK制約変更は §14-2 のとおり ALTER のみ、両環境適用済み）。
+
+### 14-1. 実装した5件（コミット順）
+
+1. **レシート保管庫ビュー＋OCR仕訳紐付け**（`fb2b48b`）
+   - app.py: `ledger-receipt-link-v1`（`/api/ledger/entry` 新規作成時に `receipt_id` があれば `receipts.entry_id = new_id` を埋める）、`ledger-receipt-vault-v1`（`GET /api/ledger/receipts` 保管庫読み出しAPI。`entry_id` 有無で仕訳済み/未仕訳を判別。新テーブル不要）。
+   - ledger.html: `ledger-receipt-link-front-v1`（OCR→仕訳の `receipt_id` 引き回し。`createEntryFromOCR(ocr, receiptId)` → `window._ocrReceiptId` → `saveEntry` が `payload.receipt_id` 同送）、保管庫UI＋JS（`loadReceiptVault`/`setReceiptFilter`/`renderReceiptVault`、`pane-receipt` 内・`switchTab('receipt')`で自動ロード）。
+   - **重要な前提**: この紐付け実装より前のレシートは全て `entry_id=null`（未仕訳表示）。過去分が未仕訳で出るのは正常。
+
+2. **クレカ明細タブの仕訳状態フィルタ**（`cbffb7f`、ledger.htmlのみ）
+   - `ledger-orico-filter-front-v1`。判別基準は **`account_id`（勘定科目）の有無**。割当済み=仕訳済み、null=未仕訳。`loadOrico` を「取得→`window._oricoCache`→`renderOrico()`」に分離し、3ボタン（すべて/未仕訳/仕訳済み）＋件数サマリ。フィルタ後に行が残らない月グループは非表示。app.pyは `account_id` を既に返すため変更不要。
+
+3. **① CSV方式はOCRクレカの仕訳化を弾く**（`3847f92`）
+   - app.py: `ledger-credit-ocrguard-v1`（`/api/ledger/entry` で `receipt_id` あり・新規・CSV方式かつ DBの `receipts.ocr_result.payment_method=='credit'` なら **409 `credit_csv_blocked`**。改ざん耐性のためDBを引く。編集 `data['id']` は対象外）。
+   - ledger.html: `ledger-credit-ocrguard-front-v1`（`createEntryFromOCR` 冒頭で CSV方式かつ `ocr.payment_method=='credit'` なら案内alert＋中断。OCR結果カード・保管庫カード両方がこの関数を通るので一括カバー）。
+   - 弾く対象は **CSV方式×クレジットのみ**。現金/電子マネー/unknown、OCR方式、未選択は通す。OCRの支払方法判定は §9-5（`ledger-receipt-pay-v1`）で精度実証済みなので信頼できる。
+
+4. **② 記録方法でクレカ明細タブ・カード選択肢を出し分け**（`9849d31`、ledger.htmlのみ）
+   - `ledger-credit-method-show-v1`。**CSV方式のときだけ** クレカ明細(orico)タブ・会社カード管理セクション・CSV取込の「カード利用履歴」選択肢を表示。OCR方式・未選択では隠す。従来 `credit_mode_enabled`（旧フラグ）制御だった箇所を `credit_input_method=='csv'` に統一。
+   - 領収書OCRタブ・CSV取込タブ自体は両方式で表示（日計表・キャッシュレス等の共通機能のため、タブごとは消さない）。
+
+5. **ガイド常時表示＋OCRステップに記録方法のモック**（`f56fa7e`、ledger.htmlのみ）
+   - `ledger-guide-method-v1`。作業手順マニュアル（ガイド）タブを `sekkotsu_mode_enabled` 連動から**常時表示**に変更。出納帳ページ（`/ledger`）は未許可者を `redirect('/top')` で弾く（開発者MENUのトグルでHIROのみ許可）ため、ガイドが見えるのは出納帳を許可された人だけ＝意図どおり。
+   - ステップ4（経費・領収書/領収書OCR）に「クレジットカードの記録方法」見出し＋SVGモック図を追加。`renderGuideMethod(credit_input_method)` で出し分け。CSV方式＝「この施設はCSV方式です…保管庫に保管」＋分岐図（既存Amazon突合図と同テイスト・角丸ボックス＋矢印＋色分け）、receipt方式＝「レシート方式です…OCRから仕訳化」＋単純フロー図、未選択＝設定を促す案内。**施設ごとに説明文・図が自動で切替**（DEV/本番とも実機確認済み）。
+
+### 14-2. 重要な設計知見: `receipts.entry_id` の FK制約を `ON DELETE SET NULL` に統一
+
+- `receipts.entry_id` には FK制約 `receipts_entry_id_fkey`（`REFERENCES journal_entries(id)`）がある。
+- 当初 **DEVは `ON DELETE SET NULL`、本番は `ON DELETE`句なし（NO ACTION）** とズレていた。NO ACTION のままだと、OCR紐付き仕訳を仕訳帳から削除しようとすると `23503` で失敗する（レシートが参照しているため）。
+- 対処として**両環境を `ON DELETE SET NULL` に統一**（本番は §14 反映時に ALTER 実行済み）。これで仕訳を削除すると `receipts.entry_id` が自動でnullに戻り、レシートは保管庫に「未仕訳」として残る。孤児参照が出ない。DEVで実証（仕訳削除→receipt自動null戻り確認）。
+- 適用したDDL（既存制約を落として張り直し）:
+  ```sql
+  ALTER TABLE receipts DROP CONSTRAINT receipts_entry_id_fkey;
+  ALTER TABLE receipts ADD CONSTRAINT receipts_entry_id_fkey
+    FOREIGN KEY (entry_id) REFERENCES journal_entries(id) ON DELETE SET NULL;
+  ```
+- **次に別環境（新規施設DB等）を立てるときは、この制約が `SET NULL` になっているか確認すること。**
+
+### 14-3. 記録方法による排他の全体像（完成形）
+
+施設ごとに `credit_settings.credit_input_method`（`receipt` / `csv` / null）で排他。二重計上を構造的に防ぐ。
+
+- **CSV方式（csv）**: クレカは CSV（クレカ明細）が正。クレカ明細タブ・会社カード管理・「カード利用履歴」選択肢を表示。領収書OCRでクレジット判定されたレシートは**仕訳化を弾く**（フロント案内＋サーバ409）＝保管庫に残すだけ。現金/電子マネー/unknownはOCRで仕訳化OK。
+- **レシート方式（receipt）**: クレカも含め全てOCR（または仕訳帳手入力）で記録。クレカ明細タブ・カード選択肢は非表示。OCRのクレカも普通に仕訳化できる。
+- 設計思想: **仕訳帳が入力ハブ**。OCR/CSVはそこへの補助経路。「その施設に関係するUI・説明だけ見せて迷わせない」。
+
+### 14-4. 既知の小課題（次回任意）
+
+- **保管庫一覧の最終カードがボトムナビと重なる**: `pane-receipt` 内の保管庫一覧を最下部までスクロールすると、最後のカードのボタンがボトムナビ（TOP/記録入力…）の裏に入り画面操作しづらい。`pane-receipt` 末尾に下部パディングを足せば解消。
+- **空ファイル `tasukaru-dev`（0バイト・リポジトリ直下）の単独 `git rm`** が依然未対応（§12-5）。機能変更と混ぜず単独コミットで消す。`git log tasukaru-dev` がファイル解釈でエラーになる回避は `git log refs/heads/tasukaru-dev`。
+
+### 14-5. このセッションのコミット（tasukaru-dev）
+
+```
+f56fa7e ガイド常時表示＋OCRステップに記録方法の仕組みをモック追加(guide-method-v1)
+9849d31 記録方法でクレカ明細タブ/カード選択肢を出し分け(credit-method-show-v1)
+3847f92 CSV方式はOCRクレカの仕訳化を弾く(credit-ocrguard-v1)
+cbffb7f クレカ明細タブに仕訳状態フィルタ追加(orico-filter-front-v1)
+fb2b48b レシート保管庫ビュー新設＋OCR仕訳紐付け(receipt-vault/link-v1)
+```
+本番 `tasukaru` へは `19a555d`（Merge）で全件反映。DEV/本番とも実機確認済み（本番はデータ非変更の閲覧＋ガード試行409で副作用なし確認）。
+
+
+## 15. 利用管理（来所管理）実装＋利用者マスタのセキュリティ調査（2026-06-12 DEV反映済み・本番未反映）<!-- readme-visit-mgmt-v1 -->
+
+このセッションで「利用管理（来所管理）」機能を新規実装し DEV で動作確認まで完了。あわせて利用者登録まわりのセキュリティ問題（Supabaseキーのフロント露出）を発見・調査し、対応設計を固めた（実装は次回）。**いずれも本番未反映**。
+
+### 15-1. 利用管理（来所管理）= デイの「月間サービス計画及び実績の記録」をデジタル化
+
+紙の月間実績表テイストで、利用者ごとに「予定（○/休み✕）」と「実績（出席/振替/休み）」を月間表示する閲覧・確認画面。当初は連絡帳機能の検討から派生し、「いつ誰が来たかを記録してケース記録のし忘れを防ぎたい」という要望で先に着手。
+
+**設計の要点（HIROと確定）**
+- **予定**は既存 `patient_visit_days`（weekdays/ampm_per_day）から算出。**移設しない**（曜日設定UIは vitals.html のまま）。曜日コードは **日曜=0〜土曜=6（JS getDay基準）**。Python の weekday() は月=0 なので `(weekday()+1)%7` で変換。
+- **休み（✕）**は既存の休み連絡（`records` テーブル、`category="休み連絡"`、`leave_date_start`〜`leave_date_end` の期間、`leave_record_id`）を参照。**新テーブル不要**。✕タップでケース記録へ飛ばす導線（`/daily_view?record_id=` は未検証）。
+- **実績**はバイタル連動で自動。**予定曜日にバイタル→出席(present)、予定外にバイタル→振替(transfer)**。バイタル削除で実績も自動削除（その日に他バイタルが無ければ）。手作業ゼロが目標。状態は present/transfer の2つ（当日キャンセル・欠席マークは廃止。予定○で実績が空＝休んだと読む）。
+- **休みの実績表示**：実績行に「休」も出す。①休み連絡がある日、②経過済みの予定日でバイタルなし（＝来なかった）。**未来の予定日は空欄**（実績はその日が経過して初めて成立）。
+- 画面は**管理者MENU内「利用者管理」タブの先頭にリンクカード1つ**（各利用者カードには置かない）。利用者選択は**記録入力と同じ検索UI**（ひらがな/漢字/カルテ番号、ひらがな⇄カタカナ変換込み）を移植。スマホ横スクロール・PC全日一画面で同一デザイン。
+
+**実装（DEVコミット）**
+- `7248c85` フェーズA: `GET /api/visit/month`（月間集約）＋バイタル連動（save_vital/add_vital フックで `_visit_auto_upsert`）＋削除連動（delete_vital で `_visit_cleanup_on_vital_delete`）。marker `visit-mgmt-v1`。
+- `1153185` 修正: `visit_records.patient_id` を **bigint→text** に（vitals.patient_id が text=UUID文字列のため）。`int()` を `str()` に。marker `visit-mgmt-idfix-v1`。**DEVで ALTER 実行済み**。
+- `bccb17c` フェーズB: 月間実績表ページ `visit.html` ＋ `/visit` ルート（`visit-page-v1`）＋管理者MENU導線（`visit-admin-link-v1`、後に廃止）。
+- `cd5f91a` 実績行に休み表示。
+- （経過済み予定日→休 の追加コミット）
+- `32b231c` 検索UI化（かな/漢字/カルテ番号）＋管理者MENUに集約（各カードのボタン廃止、`visit-admin-menu-v1`）。
+
+**新テーブル `visit_records`（DEV作成済み・本番未作成）**
+```sql
+CREATE TABLE visit_records (
+  id BIGSERIAL PRIMARY KEY, facility_code TEXT NOT NULL,
+  patient_id TEXT NOT NULL,  -- patient_profiles.id（UUID文字列）基準。vitalsと揃える
+  visit_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','cancelled','transfer')),
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('vital_auto','manual')),
+  checked_at TIMESTAMPTZ, staff_name TEXT, note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (facility_code, patient_id, visit_date)
+);
+-- ※status の absent/cancelled は現設計では未使用（present/transfer のみ）。本番反映時はこのDDL＋patient_id=text で作る。
+```
+
+**DEV検証済み**：月間API（予定/休み/実績集約）、予定日バイタル→出席・予定外→振替、バイタル削除で実績消去（他バイタルが残る日は保持＝設計どおり）、検索UI（かな/漢字/カルテ番号）、管理者MENU導線。テスト用ダミーバイタルは DEV に残置（ダミーデータのため許容）。
+
+### 15-2. 【重要・要対応】利用者登録まわりで Supabaseキーがフロント露出
+
+`admin.html` の利用者**追加・削除・CSV一括取込**の3箇所が、サーバAPIを経由せず**ブラウザから Supabase REST を直叩き**している。そのため `supabase_url` / `supabase_anon_key` がテンプレートに埋め込まれ**フロントに露出**（`const SUPABASE_URL='{{ supabase_url }}'` / `SUPABASE_KEY='{{ supabase_anon_key }}'`）。開発者ツールから鍵を抜けば利用者データに直接アクセス・改ざん可能。**SECRET_KEY露出（§2）と同様に優先対応すべき。**
+
+- 該当箇所（admin.html）：`addPatientProfile()`（POST patient_profiles）、`executeDelete()`（DELETE patient_profiles?id=eq.）、`bulkUpsertPatients()`（CSV、merge-duplicates で patient_profiles に upsert）。
+- HIRO も露出回避に同意済み。**今後はキーをフロントに出さない方針で作業する。**
+
+### 15-3. 利用者マスタの二重構造（調査で判明、設計の前提）
+
+- **`patient_profiles` が利用者マスタの正本**。`id`=**UUID**。氏名・ふりがな(`user_name_kana`)・生年月日・`patient_number`・介護度・目標などフル情報。`get_patients()` はこれを主に読む。
+- **`patients` は補助テーブル**。`id`=**整数**（=`patient_int_id`）。`user_name` で profiles と紐付き、整数IDの採番用。`patient_visit_days`（曜日設定）・誕生日などが `patients.id` 基準。カナは `user_kana`（profiles は `user_name_kana`、**カラム名が違う**）。
+- 利用者を登録するには **両テーブルに行が必要**（profiles=本体、patients=整数ID用）。DEVは51名全員が両方に揃っている（user_name で1対1）。
+- **既存サーバAPIの問題**：`/api/add_patient`・`/api/bulk_register_patients`・`/api/delete_patient` は **`patients` にしか書かない**。フロント直叩きは **`patient_profiles`**。単純にAPIへ差し替えると書き込み先が変わり利用者が一覧から消える。→ **APIを profiles 主軸＋patients 連動に作り直す必要がある。**
+- 現状の物理削除は profiles だけ消し patients 行が残る（ゴミ）。論理削除（利用中止）は `discontinued_date` で別管理。
+
+### 15-4. CSV取込・写真AI読み取りの検証状況
+
+- 関数は存在（`handleCsvFile`/`bulkUpsertPatients`、`scanPatients`/`registerScannedPatients`/`onScanFileSelect`。後者は `/static/admin.js`）。
+- **写真AI読み取り**：サーバ `POST /api/scan_patients_from_image`（Gemini で名簿画像を解析→JSON）。`/api/bulk_register_patients` で登録。1x1ダミー画像では500（不正入力に対する正常な失敗の可能性大）。**実画像での確認は次回**。検証用に**架空名簿PNGを作成済み**（デイサービスさくら、6名、和暦生年月日・利用曜日入り）。
+- **CSV取込**：マモルくん形式CSVをフロントでパース（`CSV_COL_MAP`）→ patient_profiles に直叩き upsert（＝15-2の露出箇所）。
+
+### 15-5. 残タスク（次回）
+
+1. **【最優先】Supabaseキー露出の解消**：利用者 追加・削除・CSV取込を **サーバAPI経由（profiles主軸＋patients連動）**に作り替え、`admin.html` から `SUPABASE_URL`/`SUPABASE_KEY` を削除。基幹テーブルなので慎重に（追加・削除・取込が両テーブルに正しく反映され、一覧表示が壊れないことを実機検証）。
+2. **写真AI読み取りの実機確認**（架空名簿PNGで読み取り→登録）。
+3. **管理者MENU「利用者管理」タブのUI再編**：上から「利用者登録」「利用者一覧・編集」「利用管理」。「利用者登録」を開くと中に「新規手入力登録/CSV取込/写真からAI読み取り」。二段アコーディオンは避け、一段＋タブ切替などスッキリ案をモック提案してから実装。
+4. **利用管理ページに戻るボタン**（管理者MENUへ）。
+5. （以前からの保留）連絡帳機能本体、ナビのランチャー化（記録=緑/情報共有=紫/帳票管理=オレンジのカテゴリ色分けグリッド、モック承認済み）、ケース記録への「今日の来所者」表示。
+
+### 15-6. このセッションの主なコミット（tasukaru-dev、本番未反映）
+```
+32b231c 利用管理: 検索UI化＋管理者MENUに集約
+cd5f91a 利用管理: 実績行に休みを表示（＋経過済み予定日→休 の追加コミット）
+bccb17c 利用管理フェーズB: 月間実績表ページ＋管理者MENU導線
+1153185 利用管理フェーズA修正: visit_records.patient_id を text(UUID)対応
+7248c85 利用管理フェーズA: 月間集約API＋バイタル連動＋削除連動
+ce92aba docs: §14 追記
+```
+**本番反映時の注意**：本番 Supabase に `visit_records`（patient_id=text 版）を作る DDL が先行で必要。

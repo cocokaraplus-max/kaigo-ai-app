@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}利用管理 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* visit-mgmt-v1: 利用管理(月間実績表) */
+.vm-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px 90px; }
+.vm-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
+.vm-head h2 { font-size: 1.12rem; font-weight: 800; color:#202124; margin:0; display:flex; align-items:center; gap:6px; }
+.vm-bar { display:flex; align-items:center; gap:8px; margin-bottom: 12px; flex-wrap:wrap; }
+.vm-select { flex:1; min-width:180px; padding:9px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.92rem; background:#fff; }
+.vm-search-wrap { position: relative; flex:1; min-width:180px; }
+.vm-search-input { width:100%; padding:9px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.92rem; box-sizing:border-box; }
+.vm-candidates { position:absolute; top:100%; left:0; right:0; background:#fff; border:1.5px solid #1a73e8; border-radius:10px; z-index:100; max-height:240px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1); display:none; }
+.vm-candidates.show { display:block; }
+.vm-cand-item { padding:12px 14px; font-size:0.9rem; cursor:pointer; border-bottom:1px solid #f0f0f0; color:#202124; }
+.vm-cand-item:last-child { border-bottom:none; }
+.vm-cand-item:active { background:#e8f0fe; }
+.vm-selected-badge { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#e8f0fe; border-radius:8px; font-size:0.92rem; color:#1a73e8; font-weight:700; }
+.vm-selected-badge button { margin-left:auto; background:none; border:none; color:#5f6368; cursor:pointer; font-size:1.1rem; padding:0 4px; }
+.vm-monthnav { display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:10px; }
+.vm-monthnav button { width:34px; height:34px; border:1px solid #dadce0; border-radius:8px; background:#fff; font-size:1.1rem; cursor:pointer; color:#5f6368; }
+.vm-monthnav button:active { transform:scale(0.95); }
+.vm-month-label { font-size:1.02rem; font-weight:700; color:#202124; min-width:120px; text-align:center; }
+.vm-legend { display:flex; gap:10px; flex-wrap:wrap; font-size:0.72rem; color:#5f6368; margin-bottom:8px; }
+.vm-legend b { font-weight:700; }
+.vm-scrollhint { font-size:0.72rem; color:#9aa0a6; margin-bottom:4px; }
+.vm-table-wrap { overflow-x:auto; border:1px solid #e0e0e0; border-radius:10px; background:#fff; -webkit-overflow-scrolling:touch; }
+.vm-table { border-collapse:collapse; font-size:0.78rem; white-space:nowrap; }
+.vm-table td, .vm-table th { border-right:1px solid #eceff1; border-bottom:1px solid #eceff1; text-align:center; }
+.vm-th-fixed { position:sticky; left:0; z-index:3; background:#f5f7fa; font-weight:700; padding:6px 10px; border-right:1px solid #cfd8dc !important; min-width:54px; }
+.vm-daycell { width:30px; min-width:30px; padding:6px 0; color:#5f6368; }
+.vm-daycell.sat { background:#e8f0fe; }
+.vm-daycell.sun { background:#fce8e6; }
+.vm-wdcell { width:30px; min-width:30px; padding:5px 0; font-size:0.7rem; color:#9aa0a6; }
+.vm-wdcell.sat { background:#e8f0fe; color:#1565c0; }
+.vm-wdcell.sun { background:#fce8e6; color:#c62828; }
+.vm-cell { width:30px; min-width:30px; height:34px; padding:0; font-weight:700; }
+.vm-cell.sat { background:#f5f9ff; }
+.vm-cell.sun { background:#fff5f4; }
+.vm-plan-o { color:#185FA5; font-size:0.95rem; }
+.vm-plan-x { color:#c62828; cursor:pointer; text-decoration:underline; }
+.vm-act-present { color:#2E7D32; }
+.vm-act-leave { color:#c62828; }
+.vm-act-transfer { color:#9334E8; }
+.vm-rowlabel { background:#fafafa; }
+.vm-rowlabel.plan { color:#185FA5; }
+.vm-rowlabel.act { color:#2E7D32; }
+.vm-empty { text-align:center; color:#9aa0a6; font-size:0.9rem; padding:40px 0; }
+.vm-note { font-size:0.72rem; color:#9aa0a6; margin-top:10px; line-height:1.6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="vm-wrap">
+  <div class="vm-head">
+    <h2><span class="material-symbols-outlined">event_available</span>利用管理</h2>
+  </div>
+
+  <div class="vm-bar">
+    <div class="vm-search-wrap" id="vm-search-wrap">
+      <input type="text" id="vm-search" class="vm-search-input"
+        placeholder="例：やまだ / 山田 / 001"
+        autocomplete="off"
+        oninput="vmSearch(this.value)"
+        onkeyup="vmSearch(this.value)"
+        oncompositionend="vmSearch(this.value)">
+      <div class="vm-candidates" id="vm-candidates"></div>
+    </div>
+    <div id="vm-selected-badge" class="vm-selected-badge" style="display:none;flex:1;">
+      <span class="material-symbols-outlined" style="font-size:18px;">person</span>
+      <span id="vm-selected-label"></span>
+      <button onclick="vmClearPatient()" title="変更">✕</button>
+    </div>
+  </div>
+
+  <div class="vm-monthnav">
+    <button onclick="vmShiftMonth(-1)">‹</button>
+    <span class="vm-month-label" id="vm-month-label">—</span>
+    <button onclick="vmShiftMonth(1)">›</button>
+  </div>
+
+  <div class="vm-legend">
+    <span><b style="color:#185FA5;">○</b> 予定</span>
+    <span><b style="color:#c62828;">✕</b> 休み予定(タップで記録へ)</span>
+    <span><b style="color:#2E7D32;">出</b> 出席</span>
+    <span><b style="color:#9334E8;">振</b> 振替</span>
+    <span><b style="color:#c62828;">休</b> 休み</span>
+  </div>
+
+  <div class="vm-scrollhint">← 横にスクロールできます →</div>
+  <div id="vm-content"><div class="vm-empty">利用者を選択してください</div></div>
+
+  <div class="vm-note">
+    予定の○は登録済みの利用曜日から自動表示、休みの✕は休み連絡から自動表示（タップでケース記録へ）。実績の出席・振替はバイタル入力で自動記録されます。この画面は確認用です。
+  </div>
+</div>
+
+<script>
+const WD_NAMES = ['日','月','火','水','木','金','土'];
+let vmYear, vmMonth, vmPatientId = '';
+let VM_PATIENTS = [];
+
+function vmInitMonth() {
+  const d = new Date();
+  vmYear = d.getFullYear();
+  vmMonth = d.getMonth() + 1;
+}
+
+async function vmLoadPatients() {
+  try {
+    const res = await fetch('/api/patients_cache');
+    const data = await res.json();
+    VM_PATIENTS = (data.patients || []).filter(p => !p.is_discontinued).map(p => ({
+      id: p.id, name: p.user_name || '', kana: p.user_kana || '',
+      chart: p.chart_number || p.patient_number || '', label: p.user_name || ''
+    }));
+  } catch (e) { VM_PATIENTS = []; }
+}
+
+window.vmSearch = function(query) {
+  if (window._vmSelected) return;
+  const q = (query || '').trim();
+  const box = document.getElementById('vm-candidates');
+  if (!q) { box.classList.remove('show'); return; }
+  const ql = q.toLowerCase();
+  const qKata = q.replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  const qHira = q.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  const filtered = VM_PATIENTS.filter(p => {
+    const name = p.name || '', kana = p.kana || '', chart = String(p.chart || '');
+    return name.includes(q) || name.toLowerCase().includes(ql) ||
+           kana.includes(q) || kana.includes(qKata) || kana.includes(qHira) || kana.toLowerCase().includes(ql) ||
+           chart.includes(q) || chart.toLowerCase().includes(ql);
+  });
+  vmRenderCandidates(filtered);
+};
+
+window.vmRenderCandidates = function(list) {
+  const box = document.getElementById('vm-candidates');
+  if (!list.length) {
+    box.innerHTML = '<div class="vm-cand-item" style="color:#80868b;">該当なし</div>';
+    box.classList.add('show');
+    return;
+  }
+  box.innerHTML = list.map(p =>
+    '<div class="vm-cand-item" data-id="' + p.id + '" data-label="' + (p.name||'').replace(/"/g,'') + '">' +
+    (p.name||'') + (p.kana ? ' <span style="color:#9aa0a6;font-size:0.8rem;">' + p.kana + '</span>' : '') +
+    (p.chart ? ' <span style="color:#9aa0a6;font-size:0.8rem;">No.' + p.chart + '</span>' : '') + '</div>'
+  ).join('');
+  box.querySelectorAll('[data-id]').forEach(function(el) {
+    const id = el.dataset.id, label = el.dataset.label;
+    el.addEventListener('touchstart', function(e){ e.preventDefault(); vmSelectPatient(id, label); });
+    el.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    el.addEventListener('click', function(){ if (!('ontouchstart' in window)) vmSelectPatient(id, label); });
+  });
+  box.classList.add('show');
+};
+
+window.vmSelectPatient = function(id, label) {
+  window._vmSelected = true;
+  setTimeout(function(){ window._vmSelected = false; }, 800);
+  vmPatientId = id;
+  document.getElementById('vm-selected-label').textContent = label;
+  document.getElementById('vm-selected-badge').style.display = 'flex';
+  document.getElementById('vm-search-wrap').style.display = 'none';
+  document.getElementById('vm-candidates').classList.remove('show');
+  vmRender();
+};
+
+window.vmClearPatient = function() {
+  window._vmSelected = false;
+  vmPatientId = '';
+  document.getElementById('vm-selected-badge').style.display = 'none';
+  document.getElementById('vm-search-wrap').style.display = 'block';
+  document.getElementById('vm-search').value = '';
+  document.getElementById('vm-content').innerHTML = '<div class="vm-empty">利用者を選択してください</div>';
+};
+
+function vmShiftMonth(delta) {
+  vmMonth += delta;
+  if (vmMonth < 1) { vmMonth = 12; vmYear--; }
+  else if (vmMonth > 12) { vmMonth = 1; vmYear++; }
+  vmRender();
+}
+
+async function vmRender() {
+  document.getElementById('vm-month-label').textContent = vmYear + '年 ' + vmMonth + '月';
+  const box = document.getElementById('vm-content');
+  if (!vmPatientId) { box.innerHTML = '<div class="vm-empty">利用者を選択してください</div>'; return; }
+  box.innerHTML = '<div class="vm-empty">読み込み中...</div>';
+  try {
+    const res = await fetch('/api/visit/month?patient_id=' + encodeURIComponent(vmPatientId) + '&year=' + vmYear + '&month=' + vmMonth);
+    const data = await res.json();
+    if (data.status !== 'success') { box.innerHTML = '<div class="vm-empty">読み込みエラー</div>'; return; }
+    vmDrawTable(data.days || []);
+  } catch (e) {
+    box.innerHTML = '<div class="vm-empty">読み込みエラー</div>';
+  }
+}
+
+function vmDrawTable(days) {
+  function wdClass(wd) { return wd === 0 ? 'sun' : (wd === 6 ? 'sat' : ''); }
+  let dayRow = '<td class="vm-th-fixed">日付</td>';
+  let wdRow = '<td class="vm-th-fixed">曜日</td>';
+  let planRow = '<td class="vm-th-fixed vm-rowlabel plan">予定</td>';
+  let actRow = '<td class="vm-th-fixed vm-rowlabel act">実績</td>';
+  // 今日(端末基準)。経過済みの予定日でバイタルがなければ休とみなす。
+  const _now = new Date();
+  const _todayStr = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0');
+  days.forEach(function(d) {
+    const c = wdClass(d.weekday);
+    dayRow += '<td class="vm-daycell ' + c + '">' + d.day + '</td>';
+    wdRow += '<td class="vm-wdcell ' + c + '">' + WD_NAMES[d.weekday] + '</td>';
+    // 予定セル: 休み✕優先、なければ予定○
+    let planMark = '';
+    if (d.leave) {
+      planMark = d.leave_record_id
+        ? '<span class="vm-plan-x" onclick="vmGoRecord(\'' + d.leave_record_id + '\')">✕</span>'
+        : '<span class="vm-plan-x" style="cursor:default;text-decoration:none;">✕</span>';
+    } else if (d.planned) {
+      planMark = '<span class="vm-plan-o">○</span>';
+    }
+    planRow += '<td class="vm-cell ' + c + '">' + planMark + '</td>';
+    // 実績セル: 出席/振替(バイタル) > 休み連絡 > 経過済み予定日でバイタルなし=休。未来は空欄。
+    let actMark = '';
+    if (d.actual === 'present') actMark = '<span class="vm-act-present">出</span>';
+    else if (d.actual === 'transfer') actMark = '<span class="vm-act-transfer">振</span>';
+    else if (d.leave) actMark = '<span class="vm-act-leave">休</span>';
+    else if (d.planned && d.date < _todayStr) actMark = '<span class="vm-act-leave">休</span>';
+    actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
+  });
+  const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>'
+    + '<tr>' + dayRow + '</tr>'
+    + '<tr>' + wdRow + '</tr>'
+    + '<tr>' + planRow + '</tr>'
+    + '<tr>' + actRow + '</tr>'
+    + '</tbody></table></div>';
+  document.getElementById('vm-content').innerHTML = html;
+}
+
+function vmGoRecord(recordId) {
+  // ケース記録(休み連絡)へ遷移。daily_view に記録IDで飛ぶ。
+  location.href = '/daily_view?record_id=' + encodeURIComponent(recordId);
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+  vmInitMonth();
+  document.getElementById('vm-month-label').textContent = vmYear + '年 ' + vmMonth + '月';
+  await vmLoadPatients();
+  // admin等から ?patient_id= で来た場合は選択済み表示にする
+  const params = new URLSearchParams(location.search);
+  const pid = params.get('patient_id');
+  if (pid) {
+    const p = VM_PATIENTS.find(x => String(x.id) === String(pid));
+    if (p) vmSelectPatient(p.id, p.name);
+  }
+});
+</script>
+{% endblock %}

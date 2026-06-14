@@ -2149,6 +2149,138 @@ def get_vital_settings(supabase, f_code):
     except: pass
     return DEFAULT_VITAL_SETTINGS.copy()
 
+# ===== visit-mgmt-v1 / visit-mgmt-idfix-v1: 利用管理(予定×実績 月間集約・閲覧ハブ) =====
+def _visit_weekday_of(date_str):
+    """date_str(YYYY-MM-DD)の曜日を JS getDay基準(日曜=0〜土曜=6)で返す。"""
+    from datetime import datetime as _dt
+    d = _dt.strptime(date_str, "%Y-%m-%d")
+    return (d.weekday() + 1) % 7  # Python月=0..日=6 → 日=0..土=6
+
+def _visit_is_planned_weekday(weekdays, date_str):
+    """weekdays(例 '135', 日曜=0基準の数字並び)に その日の曜日が含まれるか。"""
+    if not weekdays:
+        return False
+    return str(_visit_weekday_of(date_str)) in str(weekdays)
+
+def _visit_planned_weekdays_for(supabase, f_code, patient_int_id):
+    """指定患者(patients.id=patient_int_id)の weekdays 文字列を返す。"""
+    try:
+        res = supabase.table("patient_visit_days").select("weekdays").eq("facility_code", f_code).eq("patient_id", patient_int_id).execute()
+        if res.data:
+            return res.data[0].get("weekdays") or ""
+    except Exception as e:
+        print(f"visit planned weekdays error: {e}", flush=True)
+    return ""
+
+def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, patient_int_id):
+    """バイタル保存時の自動実績。予定曜日なら present、予定外なら transfer。
+    手動(source=manual)レコードは上書きしない。"""
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        now_iso = _dt.now(_tz.utc).isoformat()
+        weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
+        status = 'present' if _visit_is_planned_weekday(weekdays, date_str) else 'transfer'
+        existing = supabase.table('visit_records').select('id,status,source').eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).execute()
+        if existing.data:
+            row = existing.data[0]
+            if row.get('source') == 'manual':
+                return  # 手動は尊重
+            supabase.table('visit_records').update({'status': status, 'source': 'vital_auto', 'checked_at': now_iso, 'updated_at': now_iso}).eq('id', row['id']).execute()
+        else:
+            supabase.table('visit_records').insert({
+                'facility_code': f_code, 'patient_id': str(patient_pid), 'visit_date': date_str,
+                'status': status, 'source': 'vital_auto', 'checked_at': now_iso, 'staff_name': staff_name,
+            }).execute()
+    except Exception as e:
+        print(f"visit auto upsert error: {e}", flush=True)
+
+def _visit_cleanup_on_vital_delete(supabase, f_code, patient_pid, date_str):
+    """バイタル削除後、その日に他バイタルが無ければ vital_auto の visit_records を削除。"""
+    try:
+        if not patient_pid or not date_str:
+            return
+        remain = supabase.table('vitals').select('id').eq('facility_code', f_code).eq('patient_id', patient_pid).eq('measured_date', date_str).execute()
+        if remain.data:
+            return  # まだバイタルが残っている
+        # 自動分のみ削除(手動は残す)
+        supabase.table('visit_records').delete().eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).eq('source', 'vital_auto').execute()
+    except Exception as e:
+        print(f"visit cleanup on vital delete error: {e}", flush=True)
+
+@app.route('/visit')
+@login_required
+def visit_page():  # visit-page-v1
+    return render_template('visit.html')
+
+@app.route('/api/visit/month', methods=['GET'])
+@login_required
+def api_visit_month():
+    """指定利用者・月の 予定/休み/実績 を日ごとに集約して返す(閲覧用)。"""
+    f_code = session.get('f_code')
+    supabase = get_supabase()
+    try:
+        from datetime import datetime as _dt, date as _date
+        import calendar as _cal
+        pid = request.args.get('patient_id')          # patient_profiles.id
+        year = int(request.args.get('year'))
+        month = int(request.args.get('month'))
+        if not pid:
+            return jsonify({'status': 'error', 'message': 'patient_id必須'}), 400
+        # patient_profiles.id → user_name → patients.id(patient_int_id) を解決
+        patients = get_patients(supabase, f_code)
+        pobj = next((p for p in patients if str(p['id']) == str(pid)), None)
+        if not pobj:
+            return jsonify({'status': 'error', 'message': '利用者が見つかりません'}), 404
+        patient_int_id = pobj.get('patient_int_id')
+        weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
+        # 月の日数
+        ndays = _cal.monthrange(year, month)[1]
+        first = '%04d-%02d-01' % (year, month)
+        last = '%04d-%02d-%02d' % (year, month, ndays)
+        # 実績(visit_records): patient_profiles.id 基準
+        rec_map = {}
+        rec = supabase.table('visit_records').select('visit_date,status,source').eq('facility_code', f_code).eq('patient_id', str(pid)).gte('visit_date', first).lte('visit_date', last).execute()
+        for r in (rec.data or []):
+            rec_map[str(r['visit_date'])] = r
+        # 休み連絡(records, category=休み連絡): user_name で引く。期間 leave_date_start〜end。
+        leave_days = {}  # date_str -> record_id
+        try:
+            lv = supabase.table('records').select('id,leave_date_start,leave_date_end').eq('facility_code', f_code).eq('user_name', pobj.get('user_name')).eq('category', '休み連絡').execute()
+            for r in (lv.data or []):
+                ds = r.get('leave_date_start'); de = r.get('leave_date_end') or ds
+                if not ds:
+                    continue
+                d0 = _dt.strptime(str(ds)[:10], '%Y-%m-%d').date()
+                d1 = _dt.strptime(str(de)[:10], '%Y-%m-%d').date()
+                cur = d0
+                from datetime import timedelta as _td
+                while cur <= d1:
+                    if cur.year == year and cur.month == month:
+                        leave_days[cur.isoformat()] = r.get('id')
+                    cur = cur + _td(days=1)
+        except Exception as _le:
+            print(f"visit month leave fetch error: {_le}", flush=True)
+        # 日ごとに組み立て
+        days = []
+        for d in range(1, ndays + 1):
+            ds = '%04d-%02d-%02d' % (year, month, d)
+            wd = _visit_weekday_of(ds)
+            planned = _visit_is_planned_weekday(weekdays, ds)
+            leave_id = leave_days.get(ds)
+            rec = rec_map.get(ds)
+            days.append({
+                'date': ds, 'day': d, 'weekday': wd,
+                'planned': planned,
+                'leave': bool(leave_id),
+                'leave_record_id': leave_id,
+                'actual': (rec.get('status') if rec else None),
+            })
+        return jsonify({'status': 'success', 'patient_id': str(pid),
+                        'user_name': pobj.get('user_name', ''), 'user_kana': pobj.get('user_kana', ''),
+                        'year': year, 'month': month, 'days': days})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/vitals')
 @login_required
 def vitals():
@@ -2289,6 +2421,13 @@ def api_save_vital():
                         supabase.table("chat_rooms").update({"last_message_at": now_iso}).eq("id", room_id).execute()
                 except: pass
 
+        # visit-mgmt-v1: バイタル保存で来所自動記録(予定曜日=出席/予定外=振替)
+        try:
+            _vp = next((p for p in get_patients(supabase, f_code) if str(p["id"]) == str(data.get("patient_id"))), None)
+            _vint = _vp.get("patient_int_id") if _vp else None
+            _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+        except Exception:
+            pass
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2572,6 +2711,13 @@ def api_add_vital():
         }
         res = supabase.table("vitals").insert(payload).execute()
         rid = res.data[0]["id"] if res.data else None
+        # visit-mgmt-v1: バイタル保存で来所自動記録
+        try:
+            _vp = next((p for p in get_patients(supabase, f_code) if str(p["id"]) == str(data.get("patient_id"))), None)
+            _vint = _vp.get("patient_int_id") if _vp else None
+            _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+        except Exception:
+            pass
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         print(f"add_vital error: {e}", flush=True)
@@ -2645,7 +2791,19 @@ def api_delete_vital():
         rid = data.get("id")
         if not rid:
             return jsonify({"status": "error", "message": "idは必須です"}), 400
+        # visit-mgmt-v1: 削除対象の患者・日付を控えてから削除し、実績を後始末
+        _vrow = None
+        try:
+            _vq = supabase.table("vitals").select("patient_id,measured_date").eq("id", rid).execute()
+            _vrow = _vq.data[0] if _vq.data else None
+        except Exception:
+            _vrow = None
         supabase.table("vitals").delete().eq("id", rid).execute()
+        if _vrow:
+            try:
+                _visit_cleanup_on_vital_delete(supabase, session.get("f_code"), _vrow.get("patient_id"), _vrow.get("measured_date"))
+            except Exception:
+                pass
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"delete_vital error: {e}", flush=True)
@@ -7415,6 +7573,89 @@ def api_scan_patients_from_image():
         print(f"scan_patients error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e), "patients": []}), 500
 
+# ==========================================
+# admin-patient-api-v1: 利用者管理サーバAPI (admin.htmlの直叩き置換)
+# patient_profiles のみを操作(現状挙動を維持)。
+# facility_code はサーバ側で session 値を強制適用し、
+# フロント由来の値は信用しない。
+# ==========================================
+@app.route('/api/admin/patient/add', methods=['POST'])
+@login_required
+def api_admin_patient_add():
+    """1名手入力登録 (patient_profiles)"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        name = (data.get("user_name") or "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "氏名は必須です"}), 400
+        row = {
+            "facility_code":  f_code,
+            "patient_number": (data.get("patient_number") or None),
+            "user_name":      name,
+            "user_name_kana": (data.get("user_name_kana") or None),
+            "birth_date":     (data.get("birth_date") or None),
+            "care_level":     (data.get("care_level") or None),
+            "updated_at":     datetime.now(tokyo_tz).isoformat(),
+        }
+        supabase = get_supabase()
+        supabase.table("patient_profiles").insert(row).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_patient_add error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/patient/delete', methods=['POST'])
+@login_required
+def api_admin_patient_delete():
+    """1名削除 (patient_profiles)。ログイン施設のレコードのみ削除可。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        pid = (data.get("id") or "").strip()
+        if not pid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        supabase = get_supabase()
+        supabase.table("patient_profiles").delete() \
+            .eq("id", pid).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_patient_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/patient/bulk_import', methods=['POST'])
+@login_required
+def api_admin_patient_bulk_import():
+    """CSV一括取込 (patient_profiles upsert / merge-duplicates)。
+    パース済み records[] を受け、facility_code はサーバ側で強制上書き。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        records = data.get("records", []) or []
+        if not records:
+            return jsonify({"status": "error", "message": "取込データがありません"}), 400
+        now_iso = datetime.now(tokyo_tz).isoformat()
+        clean = []
+        for r in records:
+            if not isinstance(r, dict):
+                continue
+            row = dict(r)
+            # facility_code はフロント由来を捨ててsession値で強制
+            row["facility_code"] = f_code
+            row["updated_at"] = now_iso
+            clean.append(row)
+        if not clean:
+            return jsonify({"status": "error", "message": "取込データがありません"}), 400
+        supabase = get_supabase()
+        supabase.table("patient_profiles").upsert(clean).execute()
+        return jsonify({"status": "success", "count": len(clean)})
+    except Exception as e:
+        print(f"admin_patient_bulk_import error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/bulk_register_patients', methods=['POST'])
 @login_required
 def api_bulk_register_patients():
@@ -7585,9 +7826,7 @@ def admin():
         registered_staffs=registered_staffs,
         f_code=f_code,
         board_editors=board_editors_list,
-        admin_managers=admin_managers_list,
-        supabase_url=os.environ.get('SUPABASE_URL', ''),
-        supabase_anon_key=os.environ.get('SUPABASE_KEY', ''))
+        admin_managers=admin_managers_list)
 
 # ==========================================
 
