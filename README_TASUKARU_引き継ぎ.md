@@ -542,3 +542,49 @@ bccb17c 利用管理フェーズB: 月間実績表ページ＋管理者MENU導�
 ce92aba docs: §14 追記
 ```
 **本番反映時の注意**：本番 Supabase に `visit_records`（patient_id=text 版）を作る DDL が先行で必要。
+
+
+## 16. 利用者管理 Supabaseキー露出の解消（2026-06-14 本番反映完了）<!-- readme-keyexposure-done-v1 -->
+
+§15-2 で要対応とした **admin.html の利用者 追加・削除・CSV取込の Supabaseキー直叩き露出**を解消し、**DEV検証 → 本番(cocokaraplus-5526)反映まで完了**した。DDLは無し（コードのみ）。
+
+### 16-1. 実施内容
+
+- **サーバAPI 3本を新設**（app.py、marker `admin-patient-api-v1`、`bulk_register_patients` ルート直前に挿入）:
+  - `POST /api/admin/patient/add` … 1名手入力登録
+  - `POST /api/admin/patient/delete` … 1名削除
+  - `POST /api/admin/patient/bulk_import` … CSV一括取込（upsert / merge-duplicates相当）
+  - いずれも `@login_required`。`facility_code` は**サーバ側で `session["f_code"]` を強制適用**し、フロント由来の値は信用しない（なりすまし防止）。
+  - 削除は `id` + `facility_code` の**二条件**で、ログイン施設のレコードのみ削除可。
+- **admin.html**（marker `admin-patient-front-v1`）:
+  - `SUPABASE_URL` / `SUPABASE_KEY` の定義を**削除**（`FACILITY_CODE` は他で使うため残置）。
+  - `addPatientProfile()` / `executeDelete()` / `bulkUpsertPatients()` の `fetch` を上記サーバAPIに差し替え。CSVのパース処理（和暦変換・カナ変換・`CSV_COL_MAP`）はフロントに残し、できた配列を送る形＝**挙動は現状と同一**。
+  - admin の `render_template` から `supabase_url` / `supabase_anon_key` の受け渡しを削除。
+
+### 16-2. 採用した方針と、当初計画(§15)との差分【重要】
+
+- **今回は「方針A: `patient_profiles` のみ操作・現状挙動を維持」で実施した。**
+- §15-3 / §15-5 が想定していた「**profiles主軸＋patients連動**（=方針B）に作り替える」は**今回スコープ外**。理由: 今回の主目的は**キー露出の解消**であり、基幹2テーブルの同時書込（連動）を同じ変更に混ぜると検証範囲が広がり事故リスクが上がるため、純粋な「書込経路をサーバへ移すリファクタ」に限定した。
+- したがって §15-3 に記載の「単純にAPIへ差し替えると書き込み先が変わり一覧から消える」という懸念は**発生しない**（書込先は従来同様 `patient_profiles` のまま）。
+
+### 16-3. DEV検証（Chrome MCP・DEMO001）
+
+- キー定義消滅・`/rest/v1/...`直叩き消滅・marker存在を確認。
+- 追加（API直叩き / 実UIボタン経由の両方）・CSV取込（2件）・削除すべて200 success。
+- **facility_code強制上書きを実証**: `facility_code:'EVIL999'` を混ぜて送っても DEMO001 として保存された。
+- 検証データは全削除し DEMO001 はクリーン状態に復帰。本変更起因のJSコンソールエラーなし。
+
+### 16-4. 残課題（次セッション以降）
+
+1. **他テンプレートの anon_key 露出**: `anon_key` をフロントに渡す箇所が admin.html 以外にも複数ある（`patient_profile.html` の render〔app.py 7799行付近〕、ほか app.py 1901行・9671行付近）。同様に直叩き露出の可能性が高く、今回のパターン（`/api/admin/...` + facility_code強制上書き）を流用してサーバAPI化する。
+2. **二重構造の連動（方針B）= 今回未対応**: 手入力・CSVで追加した利用者は `patient_profiles` のみに入り `patients` には連動しない。`patients` 参照系の画面（バイタル・利用管理・`patient_visit_days` 等）に**新規利用者が出てこない**問題が起きうる。発生したら方針B（profiles書込時に patients 連動作成）+ **既存データのバックフィル**で対応。
+   - 連動ロジックの既存実装が参考になる: `add_today_patient`（app.py、patients+visit_days を連動作成）、`api_bulk_register_patients`（同）。
+   - **DEVと本番は別Supabaseプロジェクト**。データのバックフィルはそれぞれに対して別個に調査・実施が必要（コード修正はマージで両ブランチに反映されるが、既存データの不整合はコードでは直らない）。
+3. §15-5 の残り（写真AI読み取りの実機確認 / 利用者管理タブUI再編 / 利用管理ページの戻るボタン / 連絡帳・ナビランチャー化）は引き続き未対応。
+
+### 16-5. このセッションのコミット
+```
+a3f10f1 (tasukaru-dev) 利用者管理: Supabase直叩きをサーバAPI化、anon_key露出を解消 (admin-patient-api-v1)
+ede09ed (tasukaru)     ↑を本番へマージ反映
+```
+
