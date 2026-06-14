@@ -9847,8 +9847,7 @@ def board():
         is_admin=is_admin_flag,
         patient_names=patient_names,
         is_board_editor=is_board_editor,
-        supabase_url=get_secret("SUPABASE_URL"),
-        supabase_anon_key=get_secret("SUPABASE_KEY"),
+        # board-key-render-removed-v1: Realtime用キー受け渡しを削除(ポーリングで動作)
     )
 
 @app.route("/api/board/create_post", methods=["POST"])

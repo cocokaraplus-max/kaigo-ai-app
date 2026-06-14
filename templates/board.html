@@ -1447,8 +1447,9 @@ body.modal-open .bottom-nav {
 const MY_NAME      = {{ my_name | tojson }};
 const MY_COLOR     = {{ my_color | tojson }};
 const MY_INITIAL   = {{ my_initial | tojson }};
-const SUPA_URL     = {{ supabase_url | tojson }};
-const SUPA_KEY     = {{ supabase_anon_key | tojson }};
+// board-key-front-v1: Realtime用キー露出を解消(ポーリングに置換)
+const SUPA_URL     = '';
+const SUPA_KEY     = '';
 const STAFFS       = {{ staffs | tojson }};
 // 詳細モーダル用: サーバから受け取ったデータをJS化
 const POSTS_DATA      = {{ posts | tojson }};
@@ -2911,28 +2912,28 @@ window.deletePost = async function(postId) {
 // ===== Supabase Realtime（新着投稿を即時表示） =====
 var _lastBoardCheck = Date.now();
 
-function startRealtime() {
-    if (!SUPA_URL || !SUPA_KEY || typeof supabase === 'undefined') return;
+// board-key-front-v1: Realtimeの代わりに unread_count をポーリング(10秒)
+//  未読数が前回より増えたら新着とみなしトースト+リロード。
+var _lastUnread = null;
+async function boardPollNew() {
     try {
-        var client = supabase.createClient(SUPA_URL, SUPA_KEY);
-        client.channel('board_posts')
-            .on('postgres_changes', {
-                event: 'INSERT', schema: 'public', table: 'board_posts'
-            }, function(payload) {
-                _lastBoardCheck = Date.now();
-                if (payload.new.staff_name !== MY_NAME) {
-                    showToast('📋 ' + payload.new.staff_name + 'さんが投稿しました');
-                }
-                setTimeout(function() { window.location.reload(); }, 1000);
-            })
-            .on('postgres_changes', {
-                event: 'DELETE', schema: 'public', table: 'board_posts'
-            }, function() {
-                _lastBoardCheck = Date.now();
-                setTimeout(function() { window.location.reload(); }, 1000);
-            })
-            .subscribe();
+        var res = await fetch('/api/board/unread_count', { cache: 'no-store' });
+        if (!res.ok) return;
+        var data = await res.json();
+        var cur = (data.count != null) ? data.count : (data.unread != null ? data.unread : null);
+        if (cur == null) return;
+        if (_lastUnread != null && cur > _lastUnread) {
+            showToast('📋 新しい投稿があります');
+            _lastBoardCheck = Date.now();
+            setTimeout(function() { window.location.reload(); }, 1000);
+        }
+        _lastUnread = cur;
     } catch(e) {}
+}
+function startRealtime() {
+    // 初回の未読数を記録してからポーリング開始
+    boardPollNew();
+    setInterval(boardPollNew, 10000);
 }
 startRealtime();
 
