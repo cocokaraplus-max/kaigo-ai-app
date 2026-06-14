@@ -7606,6 +7606,43 @@ def api_admin_patient_add():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/admin/patient/save', methods=['POST'])
+@login_required
+def api_admin_patient_save():
+    """admin-patient-save-v1: 利用者情報の保存 (patient_profiles)。
+    idあり=update / idなし=insert。facility_codeはサーバ側で強制。
+    フロントが組み立てたフィールドをそのまま通す(現状挙動を維持)。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        pid = (data.get("id") or "").strip()
+        # idは書き込み対象カラムから除外し、facility_codeは強制
+        row = {k: v for k, v in data.items() if k not in ("id", "facility_code")}
+        row["facility_code"] = f_code
+        row["updated_at"] = datetime.now(tokyo_tz).isoformat()
+
+        # user_name 必須(新規時)
+        if not pid and not (row.get("user_name") or "").strip():
+            return jsonify({"status": "error", "message": "氏名は必須です"}), 400
+
+        supabase = get_supabase()
+        if pid:
+            # 更新: id + facility_code の二条件でログイン施設のみ
+            res = supabase.table("patient_profiles").update(row) \
+                .eq("id", pid).eq("facility_code", f_code).execute()
+            if not res.data:
+                return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+            return jsonify({"status": "success", "id": pid})
+        else:
+            # 新規: insert して id を返す
+            res = supabase.table("patient_profiles").insert(row).execute()
+            new_id = res.data[0]["id"] if res.data else None
+            return jsonify({"status": "success", "id": new_id})
+    except Exception as e:
+        print(f"admin_patient_save error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/admin/patient/delete', methods=['POST'])
 @login_required
 def api_admin_patient_delete():
@@ -7874,10 +7911,8 @@ def patient_profile():
         'patient_profile.html',
         patients=patients,
         selected=selected,
-        supabase_url=os.environ.get('SUPABASE_URL', ''),
         patient_id=patient_id,
-        visit_day_data=visit_day_data,
-        supabase_anon_key=os.environ.get('SUPABASE_KEY', '')
+        visit_day_data=visit_day_data
     )
 
 @app.route('/api/patient_profile/get_by_patient_number')
