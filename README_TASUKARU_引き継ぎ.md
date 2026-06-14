@@ -588,3 +588,53 @@ a3f10f1 (tasukaru-dev) 利用者管理: Supabase直叩きをサーバAPI化、an
 ede09ed (tasukaru)     ↑を本番へマージ反映
 ```
 
+
+## 17. キー露出 第2弾: patient_profile 解消 + Realtime露出の切り分け（2026-06-14 本番反映完了）<!-- readme-keyexposure-2-v1 -->
+
+§16-4-1 で挙げた「他テンプレートの anon_key 露出」を調査し、**直叩き(REST)型は解消・Realtime型は別課題として切り分け**た。
+
+### 17-1. 調査結果: 露出は2種類に分かれる
+
+`anon_key` をフロントに渡すテンプレートは admin.html(§16で解消済)以外に3つ。用途で対応が分かれた:
+
+| テンプレート | キー用途 | 対応 |
+|---|---|---|
+| `patient_profile.html` | **REST直叩き**(保存/削除/一括取込) | **今回サーバAPI化で解消** |
+| `chat_room.html` / `chat_rooms.html` | **Supabase Realtime購読**(websocket) | **保留**(別課題) |
+| `board.html` | **Supabase Realtime購読**(websocket) | **保留**(別課題) |
+
+Realtime型は `supabase.createClient(URL, KEY)` で websocket を張り `postgres_changes` を購読しており(新着投稿/メッセージの即時表示)、**サーバAPI化では解消できない**(websocketはブラウザから直接張る必要がある)。根本対策(自前WS中継 or 署名トークン発行等)は重く、今回スコープ外。
+
+### 17-2. patient_profile.html の解消（実施・本番反映済み）
+
+- **新設API** `POST /api/admin/patient/save`(app.py、marker `admin-patient-save-v1`、delete route直前):
+  - `id`あり=update / `id`なし=insert。`facility_code`はサーバ側で`session["f_code"]`強制。update は `id`+`facility_code`二条件。新規時は採番した`id`を返す。
+  - フロントが組み立てたフィールドをそのまま通す方式(フィールド追加に強い／現状挙動を維持)。
+- **削除・一括取込は §16 の既存API**(`/api/admin/patient/delete`・`/bulk_import`)を**再利用**。
+- **patient_profile.html**(marker `patient-profile-front-v1`): キー定義削除、保存/削除/一括取込の`fetch`を上記APIに差し替え。保存後の patients 同期(`/api/update_patient_birth`、既存サーバAPI)はそのまま残置。
+- app.py の patient_profile render から `supabase_url`/`supabase_anon_key` 受け渡しを削除。
+- **DEV検証(Chrome MCP・DEMO001)**: 保存(新規→ID採番／更新→内容反映)・削除・facility_code強制上書き、すべて確認。検証データは全削除。JSエラーなし。
+
+### 17-3. チャット機能(chat)の現状と扱い【重要・保留】
+
+HIRO 認識では「過去に実装したが今は使っていない」機能。**しかしルート・関数は生存しており、URL直打ちで開ける＝キーは露出したまま**(導線を消しただけ)。
+
+- 生存ルート: `/chat`(`def chat`→`chat_rooms.html`)、`/chat/<room_id>`(`def chat_room`→`chat_room.html`)、`/api/create_room`・`/api/send_room_message`・`/api/delete_room_message`。
+- 使用テーブル: `chat_rooms` / `chat_messages` / `chat_members`。
+- **チャット外からの依存(削除の障害)**:
+  1. **バイタルアラート自動通知**(app.py 2412行付近): バイタル異常値検出時に全スタッフ共有チャットルームへ「再検査が必要」を自動投稿。`try/except`保護あり。
+  2. **未読数集計API**(app.py 3711行付近、`chat_members`/`chat_messages`参照): ナビ等のバッジ用と推測。
+- **判断(このセッション)**: 事故回避のため**今は一切触らない**(コード・名前ともそのまま)。命名(`chat`が役割と不一致)の整理や削除は、上記依存を解いてから別セッションで行う。
+- board.html も同様に Realtime キー露出ありだが、掲示板は現役機能なので削除対象ではない。Realtime露出の根本対策は将来課題。
+
+### 17-4. 残るキー露出(次セッション候補)
+- `chat_room.html` / `chat_rooms.html` / `board.html` の Realtime用 anon_key 露出(上記の通り根本対策が必要)。
+- §16-4-2 の二重構造連動(方針B)＋データバックフィルは引き続き未対応。
+
+### 17-5. このセッションのコミット
+```
+d37ea73 (tasukaru-dev) 利用者情報: patient_profile.htmlのSupabase直叩きをサーバAPI化 (admin-patient-save-v1 / patient-profile-front-v1)
+aadb96c (tasukaru)     ↑を本番へマージ反映
+```
+
+
