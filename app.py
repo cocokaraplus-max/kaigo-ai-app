@@ -7585,6 +7585,15 @@ def api_scan_patients_from_image():
 # chart_number = profiles.patient_number をコピー(空ならフォールバック採番)。
 # 同名patients行があれば何もしない(重複防止)。曜日は作らない(第2段)。
 # ==========================================
+# patient-number-zerofill-v1: 利用者番号の最低3桁ゼロ埋め整形
+def _normalize_patient_number(pn):
+    """数字のみなら最低3桁ゼロ埋め。3桁以上/英字含む/空はそのまま。"""
+    s = (str(pn) if pn is not None else "").strip()
+    if s.isdigit():
+        return s.zfill(3)
+    return s
+
+
 def _ensure_patient_row(supabase, f_code, profile_row):
     """profile_row(dict: user_name/user_name_kana/birth_date/patient_number)に対応する
     patients行を必要なら作成する。戻り値: 作成したら True / 既存なら False。"""
@@ -7627,6 +7636,9 @@ def api_admin_patient_add():
         data = request.json or {}
         f_code = session["f_code"]
         name = (data.get("user_name") or "").strip()
+        # patient-number-zerofill-v1: 利用者番号を整形
+        if data.get("patient_number"):
+            data["patient_number"] = _normalize_patient_number(data.get("patient_number"))
         if not name:
             return jsonify({"status": "error", "message": "氏名は必須です"}), 400
         row = {
@@ -7662,6 +7674,9 @@ def api_admin_patient_save():
         row = {k: v for k, v in data.items() if k not in ("id", "facility_code")}
         row["facility_code"] = f_code
         row["updated_at"] = datetime.now(tokyo_tz).isoformat()
+        # patient-number-zerofill-v1: 利用者番号を整形
+        if row.get("patient_number"):
+            row["patient_number"] = _normalize_patient_number(row.get("patient_number"))
 
         # user_name 必須(新規時)
         if not pid and not (row.get("user_name") or "").strip():
@@ -7726,6 +7741,9 @@ def api_admin_patient_bulk_import():
             # facility_code はフロント由来を捨ててsession値で強制
             row["facility_code"] = f_code
             row["updated_at"] = now_iso
+            # patient-number-zerofill-v1: 利用者番号を整形
+            if row.get("patient_number"):
+                row["patient_number"] = _normalize_patient_number(row.get("patient_number"))
             clean.append(row)
         if not clean:
             return jsonify({"status": "error", "message": "取込データがありません"}), 400
