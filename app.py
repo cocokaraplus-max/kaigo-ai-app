@@ -4651,12 +4651,12 @@ def _ledger_recalc_day(supabase, f_code, target_date):
             return e.get('division_id')
 
         def _expense_for(div):
-            # 貸方=現金 × 借方=費用 × 当該事業部
+            # cashfill-allcash-v1: 貸方=現金の取引をすべて現金支出として集計
+            # (費用だけでなく預り金等の支払も対象。引出は借方=現金なので混入しない)
             return sum(
                 e['amount'] for e in manual_entries
                 if _div_of(e) == div
                 and e.get('credit', {}) and e['credit_account_id'] == cash_id
-                and e.get('debit', {}) and e['debit'].get('category') == '費用'
             )
 
         def _bank_to_cash_for(div):
