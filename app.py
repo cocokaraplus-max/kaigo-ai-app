@@ -4639,64 +4639,89 @@ def _ledger_recalc_day(supabase, f_code, target_date):
         auto_entries = [e for e in all_entries if e.get('source') in ('auto_fill', 'transfer')]
         manual_entries = [e for e in all_entries if e.get('source') not in ('auto_fill', 'transfer')]
 
-        # 手動仕訳から計算
-        # 経費合計: 貸方=現金かつ借方=費用科目
-        expense_total = sum(
-            e['amount'] for e in manual_entries
-            if e.get('credit', {}) and e['credit_account_id'] == cash_id
-            and e.get('debit', {}) and e['debit'].get('category') == '費用'
-        )
-
-        # 銀行→現金入金合計: 借方=現金かつ貸方=普通領金または預金
-        bank_to_cash = sum(
-            e['amount'] for e in manual_entries
-            if e.get('debit', {}) and e['debit_account_id'] == cash_id
-            and e.get('credit', {}) and e['credit'].get('category') == '資産'
-            and e['credit'].get('code') in ('102', '103')
-        )
-
-        # 不足分を計算
-        shortage = expense_total - bank_to_cash
-
-        # 既存自動生成仕訳を全削除
+        # cashfill-per-division-v1: 事業部別・移動先別の現金補填
+        # 補填元(fill_div_id=接骨院)以外の各事業部について、
+        # 「その事業部の現金経費 - 銀行引出」の不足分だけを
+        # 接骨院→当該事業部の事業間移動の対(出金/入金)で立てる。
+        # 既存のauto_fill/transfer仕訳は先に全削除してから立て直す。
         for ae in auto_entries:
             supabase.table('journal_entries').delete().eq('id', ae['id']).execute()
 
-        # 不足分がなければ終了
-        if shortage <= 0:
-            return
+        def _div_of(e):
+            return e.get('division_id')
 
-        # 不足分を補填
-        # 補填元事業部が設定されている場合は事業間移動、なければ事業主借
+        def _expense_for(div):
+            # 貸方=現金 × 借方=費用 × 当該事業部
+            return sum(
+                e['amount'] for e in manual_entries
+                if _div_of(e) == div
+                and e.get('credit', {}) and e['credit_account_id'] == cash_id
+                and e.get('debit', {}) and e['debit'].get('category') == '費用'
+            )
+
+        def _bank_to_cash_for(div):
+            # 借方=現金 × 貸方=預金(102/103) × 当該事業部
+            return sum(
+                e['amount'] for e in manual_entries
+                if _div_of(e) == div
+                and e.get('debit', {}) and e['debit_account_id'] == cash_id
+                and e.get('credit', {}) and e['credit'].get('category') == '資産'
+                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
+            )
+
         if fill_div_id:
-            # 移動元（fill_div）出金仕訳
-            supabase.table('journal_entries').insert({
-                'facility_code': f_code,
-                'entry_date': target_date,
-                'debit_account_id': transfer_id,
-                'credit_account_id': cash_id,
-                'amount': shortage,
-                'tax_amount': 0,
-                'description': '現金補填（出金）',
-                'source': 'auto_fill',
-                'created_by': 'system',
-                'division_id': int(fill_div_id),
-            }).execute()
-            # 合流先（全事業共通または経費発生事業部）入金仕訳
-            supabase.table('journal_entries').insert({
-                'facility_code': f_code,
-                'entry_date': target_date,
-                'debit_account_id': cash_id,
-                'credit_account_id': transfer_id,
-                'amount': shortage,
-                'tax_amount': 0,
-                'description': '現金補填（入金）',
-                'source': 'auto_fill',
-                'created_by': 'system',
-                'division_id': None,
-            }).execute()
+            fill_div_id = int(fill_div_id)
+            # 補填対象事業部 = 手動仕訳に登場する「補填元以外」の事業部
+            target_divs = sorted({
+                _div_of(e) for e in manual_entries
+                if _div_of(e) is not None and int(_div_of(e)) != fill_div_id
+            }, key=lambda x: int(x))
+            for div in target_divs:
+                shortage = _expense_for(div) - _bank_to_cash_for(div)
+                if shortage <= 0:
+                    continue
+                # 接骨院(補填元)側: 借方=事業間移動 / 貸方=現金 → 出金
+                supabase.table('journal_entries').insert({
+                    'facility_code': f_code,
+                    'entry_date': target_date,
+                    'debit_account_id': transfer_id,
+                    'credit_account_id': cash_id,
+                    'amount': shortage,
+                    'tax_amount': 0,
+                    'description': '現金補填（出金）',
+                    'source': 'auto_fill',
+                    'created_by': 'system',
+                    'division_id': fill_div_id,
+                }).execute()
+                # 当該事業部側: 借方=現金 / 貸方=事業間移動 → 入金
+                supabase.table('journal_entries').insert({
+                    'facility_code': f_code,
+                    'entry_date': target_date,
+                    'debit_account_id': cash_id,
+                    'credit_account_id': transfer_id,
+                    'amount': shortage,
+                    'tax_amount': 0,
+                    'description': '現金補填（入金）',
+                    'source': 'auto_fill',
+                    'created_by': 'system',
+                    'division_id': int(div),
+                }).execute()
         else:
-            # 事業主借で補填
+            # 補填元未設定時のフォールバック(旧挙動互換): 全事業部合算を事業主借で補填
+            expense_total = sum(
+                e['amount'] for e in manual_entries
+                if e.get('credit', {}) and e['credit_account_id'] == cash_id
+                and e.get('debit', {}) and e['debit'].get('category') == '費用'
+            )
+            bank_to_cash = sum(
+                e['amount'] for e in manual_entries
+                if e.get('debit', {}) and e['debit_account_id'] == cash_id
+                and e.get('credit', {}) and e['credit'].get('category') == '資産'
+                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
+            )
+            shortage = expense_total - bank_to_cash
+            if shortage <= 0:
+                return
             supabase.table('journal_entries').insert({
                 'facility_code': f_code,
                 'entry_date': target_date,

@@ -676,4 +676,123 @@ aadb96c (tasukaru)     ↑を本番へマージ反映
 - 調査のみ(コード変更なし)。DEVで検証用利用者の追加→削除を実施しクリーンに復帰。本番は非破壊参照(PATIENTS読取)のみ。
 
 
+---
+
+## 19. 次セッションへの引き継ぎ（2026-06-14〜15 セッション完了時点）<!-- readme-handover-2026-06-15 -->
+
+**このセクションは、新しいチャットに切り替わった次の Claude が、HIROから改めて説明を受けなくても作業に入れることを目的に書かれている。まずここを読んでから動くこと。**
+
+### 19-1. 絶対に守る運用ルール【最優先】
+
+**セキュリティ最優先。キー・シークレットの扱い:**
+- `SUPABASE_URL` / `SUPABASE_KEY` / `SECRET_KEY` / 各種APIキー等の値を、**コード・ログ・ターミナル出力・チャット応答のどこにも生で出さない**。
+- 値を表示・確認する必要がある場合は必ずスクランブル(マスキング)する。例: `eyJ...****...XyZ` のように先頭数文字+末尾数文字だけ表示し、中間は伏せる。**全体は決して出さない**。
+- フロント(テンプレート)へキーを渡す設計は今後も避ける。サーバAPI化、もしくは Realtimeをポーリングへ置換、で対応してきた(§16〜18+本セクション)。
+
+**ファイル受け渡しの方法(これが標準フロー):**
+- HIROのローカル: `/Users/ZIMAX 1/dev/kaigo-ai-app/`(Mac, VSCode)。
+- Claudeが既存ファイル(`app.py`, テンプレート, README等)を見たいとき、**VSCodeのターミナルで実行する `cp` コマンドを Claude が提示**する。HIROはそれを実行し、`~/Downloads/` に出たファイルをチャットに添付する。
+  - 例: `cp ~/dev/kaigo-ai-app/app.py ~/Downloads/`
+  - 日本語ファイル名はワイルドカード推奨: `cp ~/dev/kaigo-ai-app/README_TASUKARU_*.md ~/Downloads/`
+- Claudeの成果物(パッチ等)は `/mnt/user-data/outputs/` に出力し、present_files で提示。HIROがDownloads経由でリポジトリに配置 → コミット。
+- コードはチャットに直貼り/heredoc禁止。**冪等パッチ.py** (marker+`.bak`+`assert count==1`)を作って渡し、HIROが実行する形に統一。
+
+**開発ルール(引き続き厳守):**
+- パッチは `marker` で冪等性を担保し、`assert src.count(anchor)==1` でアンカー一意性を検証してから当てる。`.bak_YYYYMMDD_HHMMSS` で自動バックアップ。
+- 検証: app.py は `python3 -m py_compile`、htmlは div均衡 + Jinja除去後 `node --check`。**サンドボックスで通してから渡す**。
+- ブランチ: `tasukaru-dev`(DEV) → `tasukaru`(本番) の**一方向マージ**。作業後は `git checkout tasukaru-dev` に戻る。
+- DDLがある変更は、Supabase DEV/本番の両方に**先に**適用してからコード本番マージ。今回のセッションは全てコードのみでDDL無し。
+- 日本語で応答。grep/sed anchorに日本語を直接書かない(エスケープ表記)。挿入する文字列・コメントは日本語可。
+- 「新しいガードが想定外の挙動」になったら、まずデプロイ未完了/Cloud Runインスタンス混在を疑う。
+- 文字列の `includes` 確認だけで削除完了と判断しない(同名・文脈違いで誤一致する)。テーブルの実IDで対象を取って確実に消す。
+
+### 19-2. プロジェクト基本情報
+
+- TASUKARU(介護施設管理SaaS)。Flask + Supabase + Google Cloud Run、asia-northeast1。運営 合同会社LIFE PLUS。
+- リポジトリ: `cocokaraplus-max/kaigo-ai-app`。
+- DEV施設: `DEMO001`(Supabaseプロジェクト `otjevnmoycnvaxeltrtj`)。
+- 本番施設: `cocokaraplus-5526`(Supabaseプロジェクト `abvglnkwtdeoaazyqwyd`、実運用中)。HIROの「もみの木接骨院」併設のデイサービス。
+- **DEVと本番は別Supabaseプロジェクト**。コード修正はマージで両ブランチに反映できるが、既存データの不整合はコードでは直らない。データ補正は各プロジェクトに対して個別に実施。
+
+### 19-3. このセッションの全成果(本番反映完了)
+
+セキュリティ系のキー露出を全テンプレートで解消し、二重構造問題に方針Bの実装を入れた。本番反映済み。
+
+**(a) キー露出の完全解消**
+
+| テンプレート | 用途 | 解消方法 | マーカー |
+|---|---|---|---|
+| `admin.html` | 利用者 追加/削除/CSV取込 (REST直叩き) | サーバAPI化 `/api/admin/patient/add` `/delete` `/bulk_import` | admin-patient-api-v1 / admin-patient-front-v1 (§16) |
+| `patient_profile.html` | 利用者情報 保存/削除/一括取込 (REST直叩き) | サーバAPI化 `/api/admin/patient/save` (新規でID返却)、delete/bulk_importは再利用 | admin-patient-save-v1 / patient-profile-front-v1 (§17) |
+| `chat_room.html` | チャット (Realtime購読) | キー定義を空文字化 → 既存の pollFallback(`/api/new_messages`)に自動切替 | chatroom-key-front-v1 / chatroom-key-render-removed-v1 |
+| `board.html` | 掲示板 (Realtime購読) | キー定義空文字化 + startRealtime を `/api/board/unread_count` 10秒ポーリング+リロードに置換 | board-key-front-v1 / board-key-render-removed-v1 |
+
+サーバAPIは全て `@login_required` + `facility_code = session["f_code"]` 強制(なりすまし防止)、削除は `id`+`facility_code` 二条件でログイン施設のみ。
+
+**(b) 方針B 第1段: 利用者追加時の patients 連動**
+
+- ヘルパ `_ensure_patient_row(supabase, f_code, profile_row)` を新設し、`add` / `save`(新規) / `bulk_import` の3経路で profiles 書込後に呼び出し(marker `patients-sync-b1`)。
+- `patients` 行を `user_name`(マッチ用)、`user_kana`(profilesの`user_name_kana`から)、`birth_date`、`chart_number` で作成。**`chart_number` は profiles の `patient_number` をコピー**(紙の正本と一致するルール、§17調査で確定)。
+- 同名 patients 行があれば作らない(重複防止)。patient_visit_days(曜日)は第1段では作らない。
+- 利用者番号の整形ヘルパ `_normalize_patient_number()` も追加(marker `patient-number-zerofill-v1`)。数字のみなら**最低3桁ゼロ埋め**(62→062、9→009、3桁以上はそのまま、英字付きは触らない)。大規模施設で自然に4桁化しても破綻しない設計。
+
+**(c) DEVデータ整理**
+
+- 「タスカルちゃん」(patients id=51、HIROが意図的に置いたサンプル)が逆方向孤児(profilesなしpatients)だったため、profilesに `D051` で追加+patients側も `D051` に更新して紐づけ完了。DEMO001は順方向孤児ゼロ・逆方向孤児ゼロ。
+- 本番(cocokaraplus-5526)も順方向孤児ゼロ。逆方向孤児に見えた7名(石川信行、井上智子、宇井静子、鈴木義路、嶺村竹男、宮田鈴子、横地美恵子)は**利用一時停止中**の方々で、`is_discontinued`フラグが立っているため `get_patients`(現役のみ)のリストには出ないが profilesにも patientsにも存在し健全。再開は中止フラグを外すだけで番号・記録ともそのまま引き継げる。
+
+### 19-4. 重要な調査結果(コード読解で確定済み)
+
+**get_patients の仕組み(app.py 165行付近):**
+- profiles 主軸でリストを作り、user_name で patients とマッチして `patient_int_id` を付与。
+- マッチしなければ `patient_int_id = null`(=孤児)。
+
+**バイタル画面の利用者フィルタ(vitals.html `renderPatientList` 1543行付近):**
+- `AMPM_PER_DAY[p.id]` の今日の曜日が `'NONE'`(曜日設定なし) → `return false` で**非表示**。
+- HTMLには `{% for p in patients %}` で全員カードが埋め込まれるが、JS描画時に曜日フィルタで隠れる二段構造。
+- 結論: profilesのみ追加の利用者(=patient_int_id null) → patient_visit_days を持てない → バイタルに出ない。これが§18で確定した二重構造問題の正体。
+
+**カルテ番号(`patients.chart_number`)の運用実態:**
+- 画面検索で使われる「カルテ番号」は `get_patients` が profiles の `patient_number` を `chart_number` フィールドに入れて返すもの。**実は profiles の patient_number 側**。
+- `patients.chart_number` は画面表示・検索にほぼ使われない補助値。本番で4名(板倉/柴田/松岡/宮浦)が紙より1ずれているが実害なし。
+- あいまい検索は部分一致なのでゼロ埋めの有無は実害なし(「62」で「062」もヒット)。
+- `/api/patient_profile/get_by_patient_number`(完全一致API、7802行)は本セッションの調査範囲ではどこからも呼ばれていなかった。
+
+**チャット機能(chat)の現状:**
+- HIROが過去に実装したが**現在は使っていない**(UIから外したのみ、ルートと関数は生きている)。
+- バイタル異常時のアラート自動通知(app.py 2412行付近)と未読数集計(3711行付近)からまだ参照されている。安易に削除できない。
+- chat_room.html に既存のJSエラー `toggleMembers is not defined`(本セッションの変更とは無関係)があり、再開するなら直す。
+
+### 19-5. 残課題(優先度順)
+
+1. **掲示板の確認ボタン挙動**: 「確認済みボタンが未確認に戻る」と現場報告。サーバ保存もDEV動作も正常で再現性なし、**様子見**。再発時に「いつ・誰が・どの投稿で・直前に何をしたか」をメモしてもらう。怪しい箇所: `toggle_check` (app.py 9956行)に facility_code 条件がない(unread_count とは非対称)。同名スタッフは「いない」と HIRO 確認済みなので最有力候補ではないが、保険として条件を揃える改修は低リスク。
+2. **方針B 第2段**: 登録UIに曜日入力欄を統合(HIRO談「登録時に曜日も決まっていることが多い」)。登録と同時に `patient_visit_days` も作れば、追加直後からバイタルに出る完全な体験になる。UX改善で急ぎではない。
+3. **削除時の逆向き孤児**: 利用者を削除すると profiles は消えるが patients が残る(`/api/admin/patient/delete` は profilesのみ削除)。HIRO 運用は「中止フラグ(is_discontinued)」中心なので発症頻度は低く、影響軽微(`get_patients` は profiles 主軸なので画面に出ない)。
+4. **本番の既存カルテ番号ズレ補正(任意・気持ちよさのみ)**: 値ずれ4名(板倉/柴田/松岡/宮浦)と、ゼロ埋め差15名。検索への実害なし確認済み。直すなら `update patients set chart_number = ... where facility_code='cocokaraplus-5526' and id=...` のピンポイントSQLで安全に可能。
+5. **チャット機能の整理(命名・削除)**: 機能整理する場合、バイタルアラート通知と未読バッジの依存解消が先。命名(`chat`が役割と不一致)はその後。
+6. **§15-5 持ち越し**: 写真AI読み取りの実機確認、利用者管理タブのUI再編、利用管理ページの戻るボタン、ナビのランチャー化など。
+
+### 19-6. このセッションのコミット(本番反映済み)
+
+```
+a3f10f1 / ede09ed: §16 admin Supabase直叩きをサーバAPI化
+d37ea73 / aadb96c: §17 patient_profile Supabase直叩きをサーバAPI化
+ca313b1 / b2260a4: B1 利用者連動 patients-sync-b1
+1cbb5f7 / b2260a4: B1 番号ゼロ埋め patient-number-zerofill-v1
+811c818 / fa49c7e: chat_room キー解消(ポーリング切替)
+8269e6a / fa49c7e: board キー解消(unread_count ポーリング)
+```
+
+### 19-7. 引き継ぎ後の最初の一手(おすすめ)
+
+次セッション開始時、HIROから具体的な指示が無ければ、以下のどれかを提案するのが筋。
+
+- **残課題(1)掲示板確認ボタン**: 再発があれば原因の絞り込みから、なければ低リスクな保険修正(toggle_check に facility_code 条件追加)だけ入れる選択肢を提示。
+- **残課題(2)方針B第2段**: 登録UIに曜日欄を入れる設計から。モック提案→承認→実装の順。
+- **残課題(4)カルテ番号ズレ補正**: HIROの「気持ち悪い」を解消したいなら、本番のピンポイントUPDATE SQLを用意して実行してもらう。
+
+HIROは「おまかせ」「おすすめで」と言ってくれることが多い。その場合は理由を添えて1つ推奨し、リスクと判断材料を提示してから進める。慎重に、しかし手は動かす。
+
+
+
 
