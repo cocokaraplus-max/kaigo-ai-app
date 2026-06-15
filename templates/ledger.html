@@ -2215,6 +2215,22 @@ function renderSubLedger(type, entries, cfg, el) {
     el.innerHTML = '<div style="text-align:center;color:#80868b;padding:30px;">この月のデータはありません</div>';
     return;
   }
+  // subledger-inout-sort-v1: 現金/預金出納帳は同一日付内を「入金→出金」順に並べ替える
+  // (入金=借方が対象科目 / 出金=それ以外)。sales/card は対象外。
+  if (type === 'cash' || type === 'bank') {
+    var _acctName = cfg.accountName;
+    var _isIn = function(e) { return (e.debit && e.debit.name === _acctName) ? 0 : 1; };
+    entries = entries.map(function(e, i){ return {e:e, i:i}; });
+    entries.sort(function(a, b){
+      var da = a.e.entry_date || '', db = b.e.entry_date || '';
+      if (da < db) return -1;
+      if (da > db) return 1;
+      var ia = _isIn(a.e), ib = _isIn(b.e);
+      if (ia !== ib) return ia - ib;
+      return a.i - b.i;  // 同区分は元の順(安定ソート)
+    });
+    entries = entries.map(function(x){ return x.e; });
+  }
   const fmt = (n) => '¥' + Number(n).toLocaleString();
   var _balType = Object.keys(SUB_LEDGER_CONFIG).find(function(k){return SUB_LEDGER_CONFIG[k]===cfg;})||"";
   let balance = (_balType==="cash"||_balType==="bank") ? getInitBalance(_balType) : 0;
