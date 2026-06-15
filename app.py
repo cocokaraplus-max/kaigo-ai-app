@@ -4666,7 +4666,7 @@ def _ledger_recalc_day(supabase, f_code, target_date):
                 if _div_of(e) == div
                 and e.get('debit', {}) and e['debit_account_id'] == cash_id
                 and e.get('credit', {}) and e['credit'].get('category') == '資産'
-                and e['credit'].get('code') in ('102', '103')
+                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
             )
 
         if fill_div_id:
@@ -4717,7 +4717,7 @@ def _ledger_recalc_day(supabase, f_code, target_date):
                 e['amount'] for e in manual_entries
                 if e.get('debit', {}) and e['debit_account_id'] == cash_id
                 and e.get('credit', {}) and e['credit'].get('category') == '資産'
-                and e['credit'].get('code') in ('102', '103')
+                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
             )
             shortage = expense_total - bank_to_cash
             if shortage <= 0:
