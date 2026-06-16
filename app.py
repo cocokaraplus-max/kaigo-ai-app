@@ -5178,6 +5178,96 @@ def api_ledger_monthly_balance_save():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+def _ledger_fiscal_period_start(f_code, ref_date=None):  # ledger-opening-balance-api-v1
+    """決算月から、ref_date(既定=今日)が属する決算期の開始日(date)を返す。
+    例: 決算月1「10」 → 期初=11/1。当月が決算月以下なら前年の(決算月+1)月から、
+    超えていれば当年の(決算月+1)月から。"""
+    supabase = get_supabase()
+    fem = 10
+    try:
+        s = supabase.table('ledger_settings').select('fiscal_year_end_month').eq('facility_code', f_code).execute()
+        if s.data and s.data[0].get('fiscal_year_end_month'):
+            fem = int(s.data[0]['fiscal_year_end_month'])
+    except Exception:
+        fem = 10
+    if not (1 <= fem <= 12):
+        fem = 10
+    if ref_date is None:
+        ref_date = datetime.now(tokyo_tz).date()
+    start_month = fem % 12 + 1  # 決算月の翌月
+    y = ref_date.year
+    # ref_date の月が期初月以上ならその年の期初、未満なら前年の期初
+    if ref_date.month >= start_month:
+        py = y
+    else:
+        py = y - 1
+    import datetime as _dt
+    return _dt.date(py, start_month, 1)
+
+@app.route('/api/ledger/opening_balance', methods=['GET'])  # ledger-opening-balance-api-v1
+@login_required
+def api_ledger_opening_balance_get():
+    """期初残高(累積補填の起点)を事業部別に返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        ps_arg = request.args.get('period_start')
+        if ps_arg:
+            period_start = ps_arg
+        else:
+            period_start = _ledger_fiscal_period_start(f_code).isoformat()
+        res = (supabase.table('ledger_opening_balances')
+               .select('division_id,amount')
+               .eq('facility_code', f_code).eq('period_start', period_start)
+               .execute())
+        rows = res.data or []
+        # 期末(期初の1年後の前日)もラベル用に算出
+        import datetime as _dt
+        _ps = _dt.date.fromisoformat(period_start)
+        _pe = _dt.date(_ps.year + 1, _ps.month, 1) - _dt.timedelta(days=1)
+        label = f"{_ps.year}年{_ps.month}月～{_pe.year}年{_pe.month}月期"
+        return jsonify({'status': 'success', 'period_start': period_start, 'period_label': label, 'balances': rows})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/opening_balance', methods=['POST'])  # ledger-opening-balance-api-v1
+@login_required
+def api_ledger_opening_balance_save():
+    """期初残高を事業部別にupsertする。period_start省略時は現在期。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        ps_arg = data.get('period_start')
+        if ps_arg:
+            period_start = ps_arg
+        else:
+            period_start = _ledger_fiscal_period_start(f_code).isoformat()
+        _raw_div = data.get('division_id')
+        division_id = int(_raw_div) if _raw_div else None
+        amount = int(data.get('amount') or 0)
+        payload = {
+            'facility_code': f_code,
+            'division_id': division_id,
+            'period_start': period_start,
+            'amount': amount,
+        }
+        supabase.table('ledger_opening_balances').upsert(
+            payload, on_conflict='facility_code,division_id,period_start').execute()
+        return jsonify({'status': 'success', 'period_start': period_start})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/ledger/transfer', methods=['POST'])
 @login_required
 def api_ledger_transfer():

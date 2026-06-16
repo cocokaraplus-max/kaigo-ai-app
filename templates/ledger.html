@@ -502,6 +502,16 @@
             </select>
         </div>
     </div>
+    <!-- ledger-opening-balance-ui-v1: 期初残高設定 -->
+    <div class="entry-card" id="opening-balance-card">
+        <div style="margin-bottom:8px;">
+            <div style="font-size:0.88rem;font-weight:800;color:#202124;">期初残高（現金）</div>
+            <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">決算期の期初の現金残高を事業部ごとに設定します。累積補填の起点になります。</div>
+            <div style="font-size:0.74rem;color:#1a73e8;margin-top:4px;" id="opening-period-label"></div>
+        </div>
+        <div id="opening-balance-inputs"></div>
+        <button class="ledger-btn primary" style="width:100%;margin-top:8px;" onclick="saveOpeningBalances()">期初残高を保存</button>
+    </div>
 </div>
 
 <!-- orico-card-ui-v1: 会社カード入力モーダル -->
@@ -2028,6 +2038,8 @@ async function loadSettings() {
     // ledger-fiscal-month-ui-v1: 決算月を反映(未設定は10月)
     var _fmSel = document.getElementById('fiscal-month-select');
     if (_fmSel) { _fmSel.value = String(currentSettings.fiscal_year_end_month || 10); }
+    // ledger-opening-balance-ui-v1: 期初残高を読み込んで入力欄を構築
+    if (typeof loadOpeningBalances === 'function') { loadOpeningBalances(); }
     // sekkotsu-toggle-v1: 許可施設のみ表示し、enabled を反映
     var sekCard = document.getElementById('sekkotsu-mode-card');
     var sekToggle = document.getElementById('toggle-sekkotsu');
@@ -2090,6 +2102,53 @@ function updateToggleUI(type, on) {
     }
 }
 
+// ledger-opening-balance-ui-v1: 期初残高の読み込み・保存
+async function loadOpeningBalances() {
+    var wrap = document.getElementById('opening-balance-inputs');
+    if (!wrap) return;
+    var divs = (window.currentDivisions || []);
+    try {
+        var r = await fetch('/api/ledger/opening_balance');
+        var d = await r.json();
+        if (d.status !== 'success') { wrap.innerHTML = '<div style="color:#80868b;font-size:0.8rem;">期初残高を読み込めませんでした</div>'; return; }
+        var lbl = document.getElementById('opening-period-label');
+        if (lbl) lbl.textContent = d.period_label || '';
+        window._openingPeriodStart = d.period_start;
+        var bmap = {};
+        (d.balances || []).forEach(function(b){ bmap[String(b.division_id)] = b.amount; });
+        if (!divs.length) {
+            wrap.innerHTML = '<div style="color:#80868b;font-size:0.8rem;">事業部がありません。事業部管理をONにして事業部を追加してください。</div>';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < divs.length; i++) {
+            var dv = divs[i];
+            var val = (bmap[String(dv.id)] !== undefined) ? bmap[String(dv.id)] : '';
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">'
+                  + '<span style="font-size:0.82rem;color:#202124;">' + (dv.name||'') + '</span>'
+                  + '<input type="number" class="ledger-form-control opening-bal-input" data-div="' + dv.id + '" value="' + val + '" placeholder="0" style="max-width:140px;">'
+                  + '</div>';
+        }
+        wrap.innerHTML = html;
+    } catch(e) { wrap.innerHTML = '<div style="color:red;font-size:0.8rem;">エラー: ' + e.message + '</div>'; }
+}
+async function saveOpeningBalances() {
+    var inputs = document.querySelectorAll('.opening-bal-input');
+    if (!inputs.length) { alert('事業部がありません。'); return; }
+    var ps = window._openingPeriodStart || null;
+    try {
+        for (var i = 0; i < inputs.length; i++) {
+            var el = inputs[i];
+            var divId = parseInt(el.getAttribute('data-div'));
+            var amt = parseInt(el.value) || 0;
+            await fetch('/api/ledger/opening_balance', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({division_id: divId, amount: amt, period_start: ps})
+            });
+        }
+        alert('期初残高を保存しました。');
+    } catch(e) { alert('保存に失敗しました: ' + e.message); }
+}
 async function saveSettings() {
     const _fillDivEl = document.getElementById('fill-division-select');
     var _sekEl = document.getElementById('toggle-sekkotsu');  // sekkotsu-toggle-v1
