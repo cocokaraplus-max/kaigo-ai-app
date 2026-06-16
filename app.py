@@ -4519,6 +4519,14 @@ def api_ledger_settings_save():
                 payload['credit_input_method'] = _m
             elif _m is None or _m == '':
                 payload['credit_input_method'] = None
+        # ledger-fiscal-month-api-v1: 決算月(1〜12)の保存。範囲外は無視
+        if 'fiscal_year_end_month' in data:
+            try:
+                _fm = int(data.get('fiscal_year_end_month'))
+                if 1 <= _fm <= 12:
+                    payload['fiscal_year_end_month'] = _fm
+            except (TypeError, ValueError):
+                pass
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
@@ -4586,7 +4594,27 @@ def api_ledger_division_delete(div_id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ledger-recalc-lock-v1: 施設単位の再計算ロック(同一施設の再計算を直列化し二重補填を防ぐ)
+_ledger_recalc_locks = {}
+_ledger_recalc_locks_guard = threading.Lock()
+def _ledger_recalc_lock_for(f_code):
+    with _ledger_recalc_locks_guard:
+        lk = _ledger_recalc_locks.get(f_code)
+        if lk is None:
+            lk = threading.Lock()
+            _ledger_recalc_locks[f_code] = lk
+        return lk
+
 def _ledger_recalc_day(supabase, f_code, target_date):
+    """現金残高再計算(ロック付ラッパ)。同一施設の再計算を直列化する。"""
+    lock = _ledger_recalc_lock_for(f_code)
+    lock.acquire()
+    try:
+        _ledger_recalc_day_inner(supabase, f_code, target_date)
+    finally:
+        lock.release()
+
+def _ledger_recalc_day_inner(supabase, f_code, target_date):
     """指定日の現金残高を再計算し、自動補填仕訳を更新する。
     現金自動補填機能ONの施設のみ実行。"""
     try:
@@ -4644,8 +4672,12 @@ def _ledger_recalc_day(supabase, f_code, target_date):
         # 「その事業部の現金経費 - 銀行引出」の不足分だけを
         # 接骨院→当該事業部の事業間移動の対(出金/入金)で立てる。
         # 既存のauto_fill/transfer仕訳は先に全削除してから立て直す。
-        for ae in auto_entries:
-            supabase.table('journal_entries').delete().eq('id', ae['id']).execute()
+        # ledger-recalc-lock-v1: 冶等化 — 削除直前にDBから当日auto_fill/transferを再取得して確実に全削除
+        # (関数冒頭取得後に他処理が補填を作っていても、ここで残骸を消し切る)
+        _af_res = supabase.table('journal_entries').select('id').eq('facility_code', f_code).eq('entry_date', target_date).in_('source', ['auto_fill', 'transfer']).execute()
+        _af_ids = [r['id'] for r in (_af_res.data or [])]
+        for _aid in _af_ids:
+            supabase.table('journal_entries').delete().eq('id', _aid).eq('facility_code', f_code).execute()
 
         def _div_of(e):
             return e.get('division_id')
@@ -7337,6 +7369,38 @@ def api_ledger_receipts_list():
                 'ocr': ocr,
             })
         return jsonify({'status': 'success', 'receipts': items})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/receipt_entry', methods=['GET'])  # ledger-receipt-entry-api-v1
+@login_required
+def api_ledger_receipt_entry():
+    """receipt_id に紐付く仕訳の有無と内容を返す。重複防止(上書き判定)用。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    try:
+        supabase = get_supabase()
+        rid = request.args.get('receipt_id')
+        if not rid:
+            return jsonify({'status': 'error', 'message': 'receipt_idが必要です'}), 400
+        rc = (supabase.table('receipts').select('id,entry_id')
+              .eq('id', rid).eq('facility_code', f_code).execute())
+        if not rc.data:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        eid = rc.data[0].get('entry_id')
+        if not eid:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        # 紐付く仕訳の実体を取得(削除済なら entry:null)
+        er = (supabase.table('journal_entries')
+              .select('id,entry_date,debit_account_id,credit_account_id,amount,tax_amount,description,division_id')
+              .eq('id', eid).eq('facility_code', f_code).execute())
+        if not er.data:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        return jsonify({'status': 'success', 'entry_id': eid, 'entry': er.data[0]})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
