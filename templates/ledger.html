@@ -19,6 +19,7 @@
 .entry-amount { font-size:1rem; font-weight:800; color:#202124; }
 .entry-amount.income { color:#34a853; }
 .entry-amount.expense { color:#ea4335; }
+.entry-amount.transfer { color:#80868b; }  /* ledger-journal-transfer-display-v1: 資金移動は中立色 */
 .entry-accounts { font-size:0.78rem; color:#5f6368; display:flex; align-items:center; gap:6px; }
 .entry-desc { font-size:0.82rem; color:#202124; margin-top:4px; }
 .entry-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; width:100%; box-sizing:border-box; }
@@ -1202,19 +1203,26 @@ function renderEntries() {
     list.innerHTML = currentEntries.map(e => {
         const debit = e.debit || {};
         const credit = e.credit || {};
+        // ledger-journal-transfer-display-v1: 収益/費用/振替 の3分類
         const isIncome = credit.category === '収益';
-        const amtClass = isIncome ? 'income' : 'expense';
-        const amtSign = isIncome ? '+' : '-';
+        const isExpense = debit.category === '費用';
+        const isTransfer = !isIncome && !isExpense;  // 損益に無関係な資金移動
+        const amtClass = isIncome ? 'income' : (isExpense ? 'expense' : 'transfer');
+        const amtSign = isIncome ? '+' : (isExpense ? '-' : '');
+        // 振替は「貸方(出た口座) → 借方(入った口座)」で資金の流れを直感的に。収益/費用は従来通り借方→貸方
+        const arrowFrom = isTransfer ? (credit.name||'') : (debit.name||'');
+        const arrowTo = isTransfer ? (debit.name||'') : (credit.name||'');
         return `<div class="entry-card">
             <div class="entry-card-header" style="min-width:0;">
                 <span class="entry-date">${e.entry_date}</span>
                 ${(e.division_id && (window.currentDivisions||[]).find(d=>d.id===e.division_id)) ? '<span style="font-size:0.7rem;background:#e8f0fe;color:#1a73e8;border-radius:8px;padding:2px 7px;margin-left:4px;">' + (window.currentDivisions||[]).find(d=>d.id===e.division_id).name + '</span>' : ''}
+                ${isTransfer ? '<span style="font-size:0.66rem;background:#f1f3f4;color:#80868b;border-radius:8px;padding:2px 7px;margin-left:4px;">振替</span>' : ''}
                 <span class="entry-amount ${amtClass}">${amtSign}¥${e.amount.toLocaleString()}</span>
             </div>
             <div class="entry-accounts">
-                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 6px;border-radius:4px;">${debit.name||''}</span>
+                <span style="background:#e8f0fe;color:#1a73e8;padding:2px 6px;border-radius:4px;">${arrowFrom}</span>
                 <span class="material-symbols-outlined" style="font-size:14px;">arrow_forward</span>
-                <span style="background:#fce8f6;color:#ec4899;padding:2px 6px;border-radius:4px;">${credit.name||''}</span>
+                <span style="background:#fce8f6;color:#ec4899;padding:2px 6px;border-radius:4px;">${arrowTo}</span>
             </div>
             ${e.description ? `<div class="entry-desc">${e.description}</div>` : ''}
             <div class="entry-actions">
