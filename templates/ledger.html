@@ -39,6 +39,24 @@
 .trial-section-header { background:#f1f3f4; font-weight:800; color:#202124; padding:8px; border-radius:6px; margin:10px 0 4px; font-size:0.82rem; }
 
 .fab-add { position:fixed; bottom:140px; right:16px; width:52px; height:52px; border-radius:50%; background:#1a73e8; color:#fff; border:none; box-shadow:0 4px 12px rgba(26,115,232,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:900; }
+/* ledger-backtotop-v1: TOPへ戻るボタン(スマホのみ) */
+.ledger-backtotop {
+  position: fixed;
+  right: 16px;
+  bottom: calc(140px + 60px + env(safe-area-inset-bottom, 0px));
+  width: 44px; height: 44px; border-radius: 50%;
+  background: #fff; color: #1a73e8; border: 1.5px solid #d2e3fc;
+  box-shadow: 0 3px 10px rgba(60,64,67,0.28);
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 901; padding: 0;
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.ledger-backtotop.show { display: flex; opacity: 1; }
+/* PCでは出さない */
+@media (min-width: 769px) {
+  .ledger-backtotop { display: none !important; }
+}
+
 
 /* モーダル */
 .ledger-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; align-items:flex-end; justify-content:center; }
@@ -571,6 +589,11 @@
     <span class="material-symbols-outlined" style="font-size:28px;">add</span>
 </button>
 
+<!-- ledger-backtotop-v1: TOPへ戻る(スマホ) -->
+<button class="ledger-backtotop" id="ledger-backtotop" onclick="ledgerScrollTop()" aria-label="上へ戻る">
+    <span class="material-symbols-outlined" style="font-size:24px;">keyboard_arrow_up</span>
+</button>
+
 <!-- ===== 仕訳入力モーダル ===== -->
 <div class="ledger-modal" id="entry-modal">
     <div class="ledger-modal-content">
@@ -745,6 +768,43 @@
 <script>
 const ACCOUNTS = {{ accounts | tojson }};
 let currentMonth = '';
+// ledger-backtotop-v1: スクロールコンテナを動的判定してTOPへ戻る
+function _ledgerScrollEl() {
+  // 実際にスクロールしている要素を探す(windowが効かないケースへの保険)
+  var cands = [document.querySelector('.page-wrapper'), document.scrollingElement, document.documentElement, document.body];
+  for (var i = 0; i < cands.length; i++) {
+    var el = cands[i];
+    if (el && el.scrollTop > 0) return el;
+  }
+  // どれもscrollTop=0なら、scrollHeightが見た目より大きいコンテナを返す
+  var pw = document.querySelector('.page-wrapper');
+  if (pw && pw.scrollHeight > pw.clientHeight + 4) return pw;
+  return window;
+}
+function ledgerScrollTop() {
+  var el = _ledgerScrollEl();
+  try {
+    if (el === window) window.scrollTo({ top: 0, behavior: 'smooth' });
+    else el.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    if (el === window) window.scrollTo(0, 0); else el.scrollTop = 0;
+  }
+}
+(function() {
+  // スクロール量を監視してボタンの表示切替
+  function _onScroll() {
+    var btn = document.getElementById('ledger-backtotop');
+    if (!btn) return;
+    var pw = document.querySelector('.page-wrapper');
+    var y = (pw && pw.scrollTop) || window.pageYOffset || document.documentElement.scrollTop || (document.body && document.body.scrollTop) || 0;
+    btn.classList.toggle('show', y > 300);
+  }
+  window.addEventListener('scroll', _onScroll, { passive: true });
+  var pw = document.querySelector('.page-wrapper');
+  if (pw) pw.addEventListener('scroll', _onScroll, { passive: true });
+  document.addEventListener('DOMContentLoaded', _onScroll);
+  setTimeout(_onScroll, 500);
+})();
 let currentEntries = [];
 var csvSuggestions = [];
 var csvEntries = [];
