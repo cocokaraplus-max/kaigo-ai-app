@@ -1681,8 +1681,36 @@ function renderReceiptVault() {
             + '</div>' + btn + '</div>';
     }).join('');
 }
-async function createEntryFromOCR(ocr, receiptId) {  // ledger-receipt-learn-v1 / ledger-receipt-link-front-v1
+async function createEntryFromOCR(ocr, receiptId) {  // ledger-receipt-learn-v1 / ledger-receipt-link-front-v1 / ledger-ocr-dup-guard-v1
     window._ocrReceiptId = (receiptId !== undefined && receiptId !== null) ? receiptId : null;
+    // ledger-ocr-dup-guard-v1: このレシートが既に仕訳化済なら上書き/キャンセルを確認
+    if (window._ocrReceiptId) {
+        try {
+            var _re = await fetch('/api/ledger/receipt_entry?receipt_id=' + encodeURIComponent(window._ocrReceiptId));
+            var _rj = await _re.json();
+            if (_rj.status === 'success' && _rj.entry_id && _rj.entry) {
+                var _ok = confirm('この領収書はすでに仕訳化されています。\n上書きしますか？\n\n[OK]既存の仕訳を編集して上書き / [キャンセル]何もしない');
+                if (!_ok) { window._ocrReceiptId = null; return; }
+                // 上書き: 既存仕訳を編集モードで開く(idを渡すので保存でUPDATE)
+                var _e = _rj.entry;
+                window._ocrLearnContext = { vendor: ocr.vendor||'', description: ocr.description||'' };
+                openEntryModal({
+                    id: _e.id,
+                    entry_date: _e.entry_date,
+                    debit_account_id: _e.debit_account_id,
+                    credit_account_id: _e.credit_account_id,
+                    amount: _e.amount,
+                    tax_amount: _e.tax_amount || 0,
+                    description: _e.description || '',
+                    division_id: _e.division_id,
+                    _fromOCR: true,
+                });
+                // 編集上書きのときは receipt_id 再送不要(既に紐付済)
+                window._ocrReceiptId = null;
+                return;
+            }
+        } catch (e) { /* 確認失敗時は従来通り新規作成に進む */ }
+    }
     // ledger-credit-ocrguard-front-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
     try {
         var _m = window.currentSettings && window.currentSettings.credit_input_method;

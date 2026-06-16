@@ -7340,6 +7340,38 @@ def api_ledger_receipts_list():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/ledger/receipt_entry', methods=['GET'])  # ledger-receipt-entry-api-v1
+@login_required
+def api_ledger_receipt_entry():
+    """receipt_id に紐付く仕訳の有無と内容を返す。重複防止(上書き判定)用。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    try:
+        supabase = get_supabase()
+        rid = request.args.get('receipt_id')
+        if not rid:
+            return jsonify({'status': 'error', 'message': 'receipt_idが必要です'}), 400
+        rc = (supabase.table('receipts').select('id,entry_id')
+              .eq('id', rid).eq('facility_code', f_code).execute())
+        if not rc.data:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        eid = rc.data[0].get('entry_id')
+        if not eid:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        # 紐付く仕訳の実体を取得(削除済なら entry:null)
+        er = (supabase.table('journal_entries')
+              .select('id,entry_date,debit_account_id,credit_account_id,amount,tax_amount,description,division_id')
+              .eq('id', eid).eq('facility_code', f_code).execute())
+        if not er.data:
+            return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
+        return jsonify({'status': 'success', 'entry_id': eid, 'entry': er.data[0]})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/ledger/ocr_receipt', methods=['POST'])
 @login_required
 def api_ledger_ocr_receipt():
