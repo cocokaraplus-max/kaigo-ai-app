@@ -487,6 +487,21 @@
             <button class="ledger-btn primary" style="width:100%;" onclick="openDivisionModal()">+ 事業部を追加</button>
         </div>
     </div>
+    <!-- ledger-fiscal-month-ui-v1: 決算月設定 -->
+    <div class="entry-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="font-size:0.88rem;font-weight:800;color:#202124;">決算月</div>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">会社の事業年度の最終月を選びます</div>
+            </div>
+            <select id="fiscal-month-select" onchange="saveSettings()" style="padding:8px 10px;border:1px solid #dadce0;border-radius:8px;font-size:0.9rem;">
+                <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+                <option value="4">4月</option><option value="5">5月</option><option value="6">6月</option>
+                <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+                <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+            </select>
+        </div>
+    </div>
 </div>
 
 <!-- orico-card-ui-v1: 会社カード入力モーダル -->
@@ -1940,6 +1955,9 @@ async function loadSettings() {
         divToggle.checked = currentSettings.divisions_enabled || false;
         updateToggleUI('div', divToggle.checked);
     }
+    // ledger-fiscal-month-ui-v1: 決算月を反映(未設定は10月)
+    var _fmSel = document.getElementById('fiscal-month-select');
+    if (_fmSel) { _fmSel.value = String(currentSettings.fiscal_year_end_month || 10); }
     // sekkotsu-toggle-v1: 許可施設のみ表示し、enabled を反映
     var sekCard = document.getElementById('sekkotsu-mode-card');
     var sekToggle = document.getElementById('toggle-sekkotsu');
@@ -2005,10 +2023,12 @@ function updateToggleUI(type, on) {
 async function saveSettings() {
     const _fillDivEl = document.getElementById('fill-division-select');
     var _sekEl = document.getElementById('toggle-sekkotsu');  // sekkotsu-toggle-v1
+    var _fmSel = document.getElementById('fiscal-month-select');  // ledger-fiscal-month-ui-v1
     const payload = {
         auto_cash_fill: document.getElementById('toggle-auto-fill').checked,
         divisions_enabled: document.getElementById('toggle-divisions').checked,
         cash_fill_division_id: (_fillDivEl && _fillDivEl.value) ? parseInt(_fillDivEl.value) : null,
+        fiscal_year_end_month: (_fmSel && _fmSel.value) ? parseInt(_fmSel.value) : 10,  // ledger-fiscal-month-ui-v1
     };
     if (_sekEl) payload.sekkotsu_mode_enabled = _sekEl.checked;  // sekkotsu-toggle-v1
     var _crEl = document.getElementById('toggle-credit');  // credit-front-v1

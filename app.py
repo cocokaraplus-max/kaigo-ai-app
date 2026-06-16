@@ -4519,6 +4519,14 @@ def api_ledger_settings_save():
                 payload['credit_input_method'] = _m
             elif _m is None or _m == '':
                 payload['credit_input_method'] = None
+        # ledger-fiscal-month-api-v1: 決算月(1〜12)の保存。範囲外は無視
+        if 'fiscal_year_end_month' in data:
+            try:
+                _fm = int(data.get('fiscal_year_end_month'))
+                if 1 <= _fm <= 12:
+                    payload['fiscal_year_end_month'] = _fm
+            except (TypeError, ValueError):
+                pass
         # upsert
         supabase.table('ledger_settings').upsert(payload, on_conflict='facility_code').execute()
         return jsonify({'status': 'success'})
