@@ -881,6 +881,89 @@ ledger-recalc-lock-v1
 - ダミー領収書はClaude側でPillow生成(現金払い・消耗品)。OCR検証に再利用可。
 
 
+---
+
+## 21. 累積現金補填ロジック（決算期ベース）の実装と本番移行（2026-06-16 セッション後半）<!-- readme-ledger-session2-2026-06-16 -->
+
+セクション20の続き。現金自動補填を「単日計算」から「決算期内の累積残高」ベースに作り変えた大改修。**累積本体は本番反映・既存データ立て直しまで完了**。残るは決算確定ボタンと領収書削除・編集。
+
+### 21-1. 動機（HIROの要望）
+
+旧ロジック(_ledger_recalc_day, 単日)は「その日の現金経費 − その日の普通預金引出」の不足を毎日補填していた。そのため**前日に普通預金から引き出した現金が翌日に繰り越されず**、引出を後から入力しても翌日の接骨院補填が見直されなかった(「補填金額が鎮座」問題)。手元現金は翌日以降に繰り越して使えるべき、というのが要望。
+
+### 21-2. 確定設計（HIROと合意済み）
+
+1. **現金残高は事業部ごとに累積管理**(接骨院=補填元は対象外)。
+2. **累積残高ベース補填**: 期初残高を起点に日付順に「普通預金引出+接骨院補填−現金支出」を積み上げ、残高がマイナスに落ちる日に**不足分だけ**接骨院から補填。前日繰越がある限り消化してから補填。
+   - アルゴリズム: 不足 = 当日現金支出E − (前日繰越B + 当日普通預金引出W)。不足>0→補填(残高0)、不足≤0→補填なし(残高=(B+W)−E繰越)。
+3. **決算月**(会社ごと可変、弊社=10月決算→期初11月)。`fiscal_year_end_month`。法人単位で1つ。
+4. **決算確定ボタン**(未実装): 押すと期を締め、確定済み期への変更は保存時アラート。解除可。**押すまでは決算月をまたいでも繰越継続**。
+5. **期初残高は前期末を引き継ぐ**(初回はゼロ/手入力、以後は決算確定時に翌期へコピー予定)。
+6. 介護は使う分だけ補填=月末残高ほぼ0なので、再計算は変更月+翌月程度で収束し軽い。
+
+### 21-3. DDL（DEV/本番 両方適用済み）
+
+- `ledger_settings.fiscal_year_end_month` int 既定10
+- `ledger_fiscal_closes`(id, facility_code, period_end date, is_closed bool, closed_at, released_at) ※決算確定用、まだ未使用
+- `ledger_opening_balances`(id, facility_code, division_id, period_start date, amount bigint, updated_at, unique(facility_code,division_id,period_start)) ※期初残高
+- `ledger_monthly_balances`(id, facility_code, division_id, ledger_type text, month text, amount bigint, updated_at, unique(facility_code,division_id,ledger_type,month)) ※月初残高
+
+### 21-4. 実装（全て本番反映済み）
+
+| marker | 内容 | ファイル |
+|---|---|---|
+| ledger-fiscal-month-api-v1 / -ui-v1 | 決算月の設定(設定画面に1〜12月プルダウン)。GET側は select('*') で返る。 | app.py + ledger.html |
+| ledger-monthly-balance-api-v1 / -ui-v1 | 月初残高をlocalStorage→DB化、事業部別。`GET/POST /api/ledger/monthly_balance`。月初残高モーダルに事業部プルダウン。getInitBalanceはキャッシュ(_monthlyBalanceCache)から返す同期関数化、loadSubLedgerで_prefetchMonthlyBalance事前取得(全事業=合計/特定事業部=その額)。 | app.py + ledger.html |
+| ledger-opening-balance-api-v1 / -ui-v1 | 期初残高の設定UI・API(事業部別手入力)。ヘルパー `_ledger_fiscal_period_start(f_code, ref_date)` が決算月から期初日算出(10月決算なら2025-11-01)。`GET/POST /api/ledger/opening_balance`。設定画面に決算期ラベル+事業部別入力欄。 | app.py + ledger.html |
+| ledger-cumulative-cashfill-v1 | **本丸**。`_ledger_recalc_day_inner` を「その日だけ」→「決算期内を期初残高起点で累積」に作り変え。target_dateの決算期開始日を求め、期初〜min(期末,今日)のauto_fill/transferを全削除→補填元以外の各事業部について期初残高起点で日付順累積し不足日に補填の対を立てる。補填元未設定時は旧フォールバック(事業主借・単日)維持。 | app.py |
+| ledger-opening-autorecalc-v1 | 期初残高を保存したら、その決算期の累積補填を自動再計算(api_ledger_opening_balance_save 内で `_ledger_recalc_day(supabase, f_code, period_start)` を呼ぶ)。期初残高変更が即座に補填へ反映される。 | app.py |
+
+### 21-5. DEV検証（累積本体）= 完全成功
+
+- 6/9引出1万→6/10経費3千(補填0)→6/11経費8千(**6/11だけ補填1千**) ✓
+- **前日(6/8)引出5千を後から追加→6/11補填が自動で見直され消えた** ✓(HIROの当初の悩みが解決)
+- 期初残高が起点に効く(期初を変えて保存だけで補填が即再計算) ✓
+- 複数事業部(div2/div3)の独立累積、決算期またぎ ✓
+- サンドボックスで5シナリオPASS(6/9-6/11例/期初で賄える/複数事業部/引出複数日繰越)
+
+### 21-6. 本番移行（既存補填の立て直し）= 完了
+
+- 本番会計データは**2026年2月開始**(2025-11〜2026-01はデータなし)。決算月10、補填ON、補填元=接骨院(1)。
+- 本番の**期初残高を3事業部とも0**で設定(period_start=2025-11-01)。介護は現金収入なく接骨院補填で回す運用のため期初0が実態。
+- 立て直し方法: 累積計算は「決算期の頭から通し計算」なので、本番のどこか1日(2026-02-01の手動仕訳)を**無変更で再保存**すれば `_ledger_recalc_day` が走り、**期全体(2月〜今日)が一気に立て直る**。手動仕訳(経費・引出・売上)は不変、変わるのはauto_fillのみ。冪等。
+- **シミュレーションと本番結果が完全一致**:
+  - 2月: 旧467,265→新251,713(-215,552) ※2/26引出32万・2/27引出3万が2/28経費21.5万を賄い補填減
+  - 3月: 旧526,261→新391,813(-134,448) ※2月末引出残が3月へ繰越
+  - 4月: 484,170(差0) / 5月: 533,518(差0) / 6月: 473,589(差0) ※月初に大引出なく繰越ほぼ0で日単位と同じ
+- 出納帳画面でも残高の流れ(補填入金→経費出金→残高推移)が自然に表示されることを確認。
+- **注意**: 旧ロジックの補填には戻せない(コードが新ロジックに置換済み)が、手動仕訳は無傷で、補填は何度でも冪等に再計算可能。新ロジックの方が設計として正しい。
+
+### 21-7. 残タスク（次セッション）
+
+1. **決算確定ボタン**(`ledger_fiscal_closes` 使用): 確定/解除UI、確定済み期への変更は保存時アラート(金額提示)、決算確定時に期末残高を翌期初へ自動コピー。**配置はHIRO検討中**(設定内だと押し忘れ懸念→出納帳上部に通知的に出す案、決算月を過ぎた未確定期があるとバッジ等)。
+2. **領収書の削除・編集**(OCR取込画面/保管庫の両方から、仕訳にも反映)。削除時の紐付く仕訳の扱い(残す/消す)は仕様未確定。Claude提案は「領収書のみ削除・仕訳は会計記録として残す」。
+3. (継続) §18方針B第2段、§19残課題 など。
+
+### 21-8. コミット（このセッション後半・全て本番反映済み）
+
+```
+ledger-fiscal-month-api-v1 / ledger-fiscal-month-ui-v1
+ledger-monthly-balance-api-v1 / ledger-monthly-balance-ui-v1
+ledger-opening-balance-api-v1 / ledger-opening-balance-ui-v1
+ledger-cumulative-cashfill-v1
+ledger-opening-autorecalc-v1
+```
+
+### 21-9. 申し送り（重要）
+
+- **ブランチ取り違えに注意**: このセッションで2回、本番マージ後に `git checkout tasukaru-dev` で戻し忘れ、本番ブランチ(tasukaru)に直接コミットした。いずれも内容は検証済みで結果オーライ、dev にmergeで揃えて解消。**各作業の前に必ず `git branch --show-current` で `tasukaru-dev` を確認**すること。本番マージ後は即 `git checkout tasukaru-dev`。
+- `git checkout` のたびに `M README.md` が出続けている(別件の未コミット変更、今回作業と無関係)。
+- DEVに検証ダミーデータ残存(6月の半日型6/9引出1万・6/10経費3千・6/11経費8千、期初残高div2=0等)。実害なし。
+- Chrome MCP連携が時々タイムアウト/HTMLエラー返却。本番未デプロイのAPI(例: opening_balance)は404を返す→デプロイ済みか確認。
+- 現在のブランチ状態: 本番`tasukaru`・`tasukaru-dev` ともに最新コミット(f04aef6相当)で一致済み。
+
+
+
 
 
 
