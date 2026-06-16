@@ -2464,27 +2464,30 @@ async function loadSubLedger(type) {
   }
 }
 
+// ledger-subledger-sort-export-v1: 出納帳の並べ替え共通関数(画面とExcel出力で共用)
+// 現金/預金は同一日付内を「入金(借方=対象科目)→出金」順。sales/cardはそのまま。
+function _sortSubLedgerEntries(type, entries, cfg) {
+  if (type !== 'cash' && type !== 'bank') return entries;
+  var _acctName = cfg.accountName;
+  var _isIn = function(e) { return (e.debit && e.debit.name === _acctName) ? 0 : 1; };
+  var arr = entries.map(function(e, i){ return {e:e, i:i}; });
+  arr.sort(function(a, b){
+    var da = a.e.entry_date || '', db = b.e.entry_date || '';
+    if (da < db) return -1;
+    if (da > db) return 1;
+    var ia = _isIn(a.e), ib = _isIn(b.e);
+    if (ia !== ib) return ia - ib;
+    return a.i - b.i;  // 同区分は元の順(安定ソート)
+  });
+  return arr.map(function(x){ return x.e; });
+}
 function renderSubLedger(type, entries, cfg, el) {
   if (!entries.length) {
     el.innerHTML = '<div style="text-align:center;color:#80868b;padding:30px;">この月のデータはありません</div>';
     return;
   }
-  // subledger-inout-sort-v1: 現金/預金出納帳は同一日付内を「入金→出金」順に並べ替える
-  // (入金=借方が対象科目 / 出金=それ以外)。sales/card は対象外。
-  if (type === 'cash' || type === 'bank') {
-    var _acctName = cfg.accountName;
-    var _isIn = function(e) { return (e.debit && e.debit.name === _acctName) ? 0 : 1; };
-    entries = entries.map(function(e, i){ return {e:e, i:i}; });
-    entries.sort(function(a, b){
-      var da = a.e.entry_date || '', db = b.e.entry_date || '';
-      if (da < db) return -1;
-      if (da > db) return 1;
-      var ia = _isIn(a.e), ib = _isIn(b.e);
-      if (ia !== ib) return ia - ib;
-      return a.i - b.i;  // 同区分は元の順(安定ソート)
-    });
-    entries = entries.map(function(x){ return x.e; });
-  }
+  // ledger-subledger-sort-export-v1: 共通関数で並べ替え(画面とExcelで一致させる)
+  entries = _sortSubLedgerEntries(type, entries, cfg);
   const fmt = (n) => '¥' + Number(n).toLocaleString();
   var _balType = Object.keys(SUB_LEDGER_CONFIG).find(function(k){return SUB_LEDGER_CONFIG[k]===cfg;})||"";
   let balance = (_balType==="cash"||_balType==="bank") ? getInitBalance(_balType) : 0;
@@ -2665,13 +2668,15 @@ async function exportTrialExcel() {  // ledger-trial-excel-v1 / ledger-excel-sty
   await _xlSave(wb, '試算表_' + currentMonth + '.xlsx');
 }
 
-async function exportSubLedgerExcel(type) {  // ledger-excel-styled-v1
+async function exportSubLedgerExcel(type) {  // ledger-excel-styled-v1 / ledger-subledger-sort-export-v1
   const cfg = SUB_LEDGER_CONFIG[type];
-  const entries = _subLedgerCache[type];
+  let entries = _subLedgerCache[type];
   if (!entries || !entries.length) {
     alert('データがありません。先に帳簿タブを開いてください。');
     return;
   }
+  // ledger-subledger-sort-export-v1: 画面と同じ並び順(入金→出金)にしてから出力
+  entries = _sortSubLedgerEntries(type, entries, cfg);
   await _ensureExcelJS();
   const acctName = cfg.accountName;
   const isSales = (type === 'sales');
