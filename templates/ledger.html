@@ -2359,77 +2359,110 @@ function printSubLedger(type) {
   w.document.close();
 }
 
-async function exportTrialExcel() {  // ledger-trial-excel-v1
+// ledger-excel-styled-v1: exceljs ローダー(共通)
+async function _ensureExcelJS() {
+  if (window.ExcelJS) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+// ledger-excel-styled-v1: スタイル定数
+const _XL_THIN = { style: 'thin', color: { argb: 'FFB0B0B0' } };
+const _XL_BORDER = { top: _XL_THIN, left: _XL_THIN, bottom: _XL_THIN, right: _XL_THIN };
+function _xlFill(argb) { return { type: 'pattern', pattern: 'solid', fgColor: { argb: argb } }; }
+function _xlApplyBorder(row) { row.eachCell({ includeEmpty: true }, function(c){ c.border = _XL_BORDER; }); }
+// ledger-excel-styled-v1: exceljsでBlob保存
+async function _xlSave(wb, fname) {
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+async function exportTrialExcel() {  // ledger-trial-excel-v1 / ledger-excel-styled-v1
   const res = await fetch('/api/ledger/trial_balance?month=' + currentMonth);
   const data = await res.json();
   if (data.status !== 'success') { alert('試算表データを取得できませんでした'); return; }
   const tb = data.trial_balance || {};
-  // SheetJS を動的読み込み
-  if (!window.XLSX) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
+  await _ensureExcelJS();
   const [y, m] = currentMonth.split('-');
-  const aoa = [];
-  aoa.push([y + '年' + parseInt(m) + '月 試算表', '', '', '']);
-  aoa.push(['科目', '借方', '貸方', '残高']);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('試算表');
+  ws.columns = [{width:28},{width:14},{width:14},{width:14}];
+  // タイトル行
+  const titleRow = ws.addRow([y + '年' + parseInt(m) + '月 試算表', '', '', '']);
+  titleRow.font = { bold: true, size: 13 };
+  ws.mergeCells(titleRow.number, 1, titleRow.number, 4);
+  // ヘッダー行
+  const headRow = ws.addRow(['科目', '借方', '貸方', '残高']);
+  headRow.eachCell(function(c){ c.font = { bold: true }; c.alignment = { horizontal: 'center' }; c.fill = _xlFill('FFE3EAF5'); c.border = _XL_BORDER; });
   const catOrder = ['収益', '費用', '資産', '負債'];
   catOrder.forEach(cat => {
     const rows = tb[cat] || [];
     if (!rows.length) return;
     const total = rows.reduce((sm, r) => sm + Math.abs(r.balance || 0), 0);
-    aoa.push(['【' + cat + '】 合計: ' + total, '', '', '']);
+    const catRow = ws.addRow(['【' + cat + '】 合計: ' + total, '', '', '']);
+    catRow.eachCell({ includeEmpty: true }, function(c){ c.font = { bold: true }; c.fill = _xlFill('FFF1F3F4'); c.border = _XL_BORDER; });
     rows.forEach(r => {
-      aoa.push([(r.code || '') + ' ' + (r.name || ''), r.debit || 0, r.credit || 0, Math.abs(r.balance || 0)]);
+      const dr = ws.addRow([(r.code || '') + ' ' + (r.name || ''), r.debit || 0, r.credit || 0, Math.abs(r.balance || 0)]);
+      _xlApplyBorder(dr);
+      [2,3,4].forEach(function(ci){ dr.getCell(ci).numFmt = '#,##0'; });
     });
   });
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:28},{wch:14},{wch:14},{wch:14}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '試算表');
-  XLSX.writeFile(wb, '試算表_' + currentMonth + '.xlsx');
+  await _xlSave(wb, '試算表_' + currentMonth + '.xlsx');
 }
 
-async function exportSubLedgerExcel(type) {
+async function exportSubLedgerExcel(type) {  // ledger-excel-styled-v1
   const cfg = SUB_LEDGER_CONFIG[type];
   const entries = _subLedgerCache[type];
   if (!entries || !entries.length) {
     alert('データがありません。先に帳簿タブを開いてください。');
     return;
   }
-  // SheetJS を動的読み込み
-  if (!window.XLSX) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
+  await _ensureExcelJS();
   const acctName = cfg.accountName;
+  const isSales = (type === 'sales');
   let balance = 0;
-  const header = ['日付', '相手科目', '摘要', type==='sales'?'売上顕':'入金', type==='sales'?'':'出金', cfg.balanceLabel];
-  const rows = entries.map(e => {
+  const header = ['日付', '相手科目', '摘要', isSales?'売上高':'入金', isSales?'':'出金', cfg.balanceLabel];
+  const dataRows = entries.map(e => {
     let inAmt = 0, outAmt = 0;
-    if (type === 'sales') { inAmt = e.amount; }
+    if (isSales) { inAmt = e.amount; }
     else if (e.debit?.name === acctName) { inAmt = e.amount; }
     else { outAmt = e.amount; }
     balance += inAmt - outAmt;
-    const opposite = type==='sales'
+    const opposite = isSales
       ? (e.debit?.name || '')
       : (e.debit?.name===acctName ? e.credit?.name : e.debit?.name) || '';
-    const divName = e.division_id ? ((window.currentDivisions||[]).find(d=>d.id===e.division_id)||{name:''}).name : '';
-    return [e.entry_date, opposite, e.description||'', inAmt||'', type==='sales'?'':outAmt||'', balance];
+    return [e.entry_date, opposite, e.description||'', inAmt||'', isSales?'':(outAmt||''), balance];
   });
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:12},{wch:14},{wch:28},{wch:12},{wch:12},{wch:12}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, cfg.label);
-  XLSX.writeFile(wb, `${cfg.label}_${currentMonth}.xlsx`);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(cfg.label);
+  ws.columns = [{width:12},{width:16},{width:30},{width:13},{width:13},{width:14}];
+  // ヘッダー行
+  const headRow = ws.addRow(header);
+  headRow.eachCell({ includeEmpty: true }, function(c){ c.font = { bold: true }; c.alignment = { horizontal: 'center' }; c.fill = _xlFill('FFE3EAF5'); c.border = _XL_BORDER; });
+  // データ行
+  dataRows.forEach(function(r){
+    const row = ws.addRow(r);
+    _xlApplyBorder(row);
+    // 金額列: 入金(4)=薄青 / 出金(5)=薄赤 / 残高(6)
+    const cIn = row.getCell(4); cIn.numFmt = '#,##0'; if (r[3] !== '') cIn.fill = _xlFill('FFEAF2FB');
+    if (!isSales) { const cOut = row.getCell(5); cOut.numFmt = '#,##0'; if (r[4] !== '') cOut.fill = _xlFill('FFFBEAEA'); }
+    row.getCell(6).numFmt = '#,##0';
+  });
+  // 合計行
+  const totalIn = dataRows.reduce(function(s,r){ return s + (Number(r[3])||0); }, 0);
+  const totalOut = isSales ? 0 : dataRows.reduce(function(s,r){ return s + (Number(r[4])||0); }, 0);
+  const totRow = ws.addRow(['合計', '', '', totalIn, isSales?'':totalOut, balance]);
+  totRow.eachCell({ includeEmpty: true }, function(c){ c.font = { bold: true }; c.fill = _xlFill('FFF1F3F4'); c.border = _XL_BORDER; });
+  [4,5,6].forEach(function(ci){ totRow.getCell(ci).numFmt = '#,##0'; });
+  await _xlSave(wb, `${cfg.label}_${currentMonth}.xlsx`);
 }
 
 // ledger-export-journal-v1: 税理士向け 仕訳全体エクスポート
