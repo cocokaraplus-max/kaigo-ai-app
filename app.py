@@ -4614,160 +4614,131 @@ def _ledger_recalc_day(supabase, f_code, target_date):
     finally:
         lock.release()
 
-def _ledger_recalc_day_inner(supabase, f_code, target_date):
-    """指定日の現金残高を再計算し、自動補填仕訳を更新する。
-    現金自動補填機能ONの施設のみ実行。"""
+def _ledger_recalc_day_inner(supabase, f_code, target_date):  # ledger-cumulative-cashfill-v1
+    """決算期内を期初残高起点で累積再計算し、現金補填を立て直す。
+    現金が残っている限りそれを消化し、不足分だけを接骨院から補填する。
+    ロックは呼び出し側ラッパー(_ledger_recalc_day)で直列化済み。"""
     try:
-        # 現金自動補填設定確認
+        import datetime as _dt
+        # 設定確認
         s_res = supabase.table('ledger_settings').select('auto_cash_fill,cash_fill_division_id').eq('facility_code', f_code).execute()
         if not s_res.data or not s_res.data[0].get('auto_cash_fill'):
-            return  # 機能OFFなら何もしない
-
+            return
         fill_div_id = s_res.data[0].get('cash_fill_division_id')
-        settings_data = s_res.data[0]
 
-        # 現金科目取得
+        # 現金科目
         cash_res = supabase.table('accounts').select('id,name').eq('facility_code', f_code).eq('code', '101').execute()
         if not cash_res.data:
             return
         cash_id = cash_res.data[0]['id']
-
-        # 事業主借科目取得（補填用）
-        owner_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '事業主借').execute()
+        # 事業主借(フォールバック用)
+        owner_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '\u4e8b\u696d\u4e3b\u501f').execute()
         if owner_res.data:
             owner_id = owner_res.data[0]['id']
         else:
-            ins = supabase.table('accounts').insert({
-                'facility_code': f_code, 'code': '300', 'name': '事業主借',
-                'category': '純資産', 'tax_type': 'none',
-            }).execute()
-            owner_id = ins.data[0]['id'] if ins.data else cash_id
-
-        # 事業間移動科目取得
-        transfer_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '事業間移動').execute()
+            _io = supabase.table('accounts').insert({'facility_code': f_code, 'code': '300', 'name': '\u4e8b\u696d\u4e3b\u501f', 'category': '\u7d14\u8cc7\u7523', 'tax_type': 'none'}).execute()
+            owner_id = _io.data[0]['id'] if _io.data else cash_id
+        # 事業間移動科目
+        transfer_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('name', '\u4e8b\u696d\u9593\u79fb\u52d5').execute()
         if transfer_res.data:
             transfer_id = transfer_res.data[0]['id']
         else:
-            ins2 = supabase.table('accounts').insert({
-                'facility_code': f_code, 'code': '199', 'name': '事業間移動',
-                'category': '資産', 'tax_type': 'none',
-            }).execute()
-            transfer_id = ins2.data[0]['id'] if ins2.data else cash_id
+            _it = supabase.table('accounts').insert({'facility_code': f_code, 'code': '199', 'name': '\u4e8b\u696d\u9593\u79fb\u52d5', 'category': '\u8cc7\u7523', 'tax_type': 'none'}).execute()
+            transfer_id = _it.data[0]['id'] if _it.data else cash_id
 
-        # 当日の全仕訳取得（自動生成以外）
-        all_res = supabase.table('journal_entries').select(
-            'id,amount,debit_account_id,credit_account_id,source,division_id,'
-            'debit:debit_account_id(id,code,name,category),'
-            'credit:credit_account_id(id,code,name,category)'
-        ).eq('facility_code', f_code).eq('entry_date', target_date).execute()
+        # 補填元未設定時は旧フォールバック(単日・事業主借)
+        if not fill_div_id:
+            _af = supabase.table('journal_entries').select('id').eq('facility_code', f_code).eq('entry_date', target_date).in_('source', ['auto_fill', 'transfer']).execute()
+            for _r in (_af.data or []):
+                supabase.table('journal_entries').delete().eq('id', _r['id']).eq('facility_code', f_code).execute()
+            _all = supabase.table('journal_entries').select('amount,debit_account_id,credit_account_id,source,debit:debit_account_id(code,category),credit:credit_account_id(code,category)').eq('facility_code', f_code).eq('entry_date', target_date).execute()
+            _man = [e for e in (_all.data or []) if e.get('source') not in ('auto_fill', 'transfer')]
+            _exp = sum(e['amount'] for e in _man if e.get('credit') and e['credit_account_id'] == cash_id and e.get('debit') and e['debit'].get('category') == '\u8cbb\u7528')
+            _b2c = sum(e['amount'] for e in _man if e.get('debit') and e['debit_account_id'] == cash_id and e.get('credit') and e['credit'].get('code') == '102')
+            _short = _exp - _b2c
+            if _short > 0:
+                supabase.table('journal_entries').insert({'facility_code': f_code, 'entry_date': target_date, 'debit_account_id': cash_id, 'credit_account_id': owner_id, 'amount': _short, 'tax_amount': 0, 'description': '\u73fe\u91d1\u81ea\u52d5\u88dc\u586b', 'source': 'auto_fill', 'created_by': 'system', 'division_id': None}).execute()
+            return
 
-        all_entries = all_res.data or []
+        fill_div_id = int(fill_div_id)
+        # 決算期の範囲を決定
+        ref = _dt.date.fromisoformat(target_date) if isinstance(target_date, str) else target_date
+        period_start = _ledger_fiscal_period_start(f_code, ref)
+        period_end = _dt.date(period_start.year + 1, period_start.month, 1) - _dt.timedelta(days=1)
+        today = datetime.now(tokyo_tz).date()
+        calc_end = min(period_end, today)
+        if calc_end < period_start:
+            return
+        ps_iso = period_start.isoformat()
+        ce_iso = calc_end.isoformat()
 
-        # 自動生成仕訳（auto_fill/transfer）と手動仕訳を分魔
-        auto_entries = [e for e in all_entries if e.get('source') in ('auto_fill', 'transfer')]
-        manual_entries = [e for e in all_entries if e.get('source') not in ('auto_fill', 'transfer')]
+        # 期間内のauto_fill/transferを全削除(作り直す)
+        _af = supabase.table('journal_entries').select('id').eq('facility_code', f_code).gte('entry_date', ps_iso).lte('entry_date', ce_iso).in_('source', ['auto_fill', 'transfer']).execute()
+        for _r in (_af.data or []):
+            supabase.table('journal_entries').delete().eq('id', _r['id']).eq('facility_code', f_code).execute()
 
-        # cashfill-per-division-v1: 事業部別・移動先別の現金補填
-        # 補填元(fill_div_id=接骨院)以外の各事業部について、
-        # 「その事業部の現金経費 - 銀行引出」の不足分だけを
-        # 接骨院→当該事業部の事業間移動の対(出金/入金)で立てる。
-        # 既存のauto_fill/transfer仕訳は先に全削除してから立て直す。
-        # ledger-recalc-lock-v1: 冶等化 — 削除直前にDBから当日auto_fill/transferを再取得して確実に全削除
-        # (関数冒頭取得後に他処理が補填を作っていても、ここで残骸を消し切る)
-        _af_res = supabase.table('journal_entries').select('id').eq('facility_code', f_code).eq('entry_date', target_date).in_('source', ['auto_fill', 'transfer']).execute()
-        _af_ids = [r['id'] for r in (_af_res.data or [])]
-        for _aid in _af_ids:
-            supabase.table('journal_entries').delete().eq('id', _aid).eq('facility_code', f_code).execute()
+        # 期間内の手動仕訳を一括取得
+        man_res = supabase.table('journal_entries').select(
+            'amount,debit_account_id,credit_account_id,source,division_id,entry_date,'
+            'credit:credit_account_id(code,category)'
+        ).eq('facility_code', f_code).gte('entry_date', ps_iso).lte('entry_date', ce_iso).execute()
+        man_entries = [e for e in (man_res.data or []) if e.get('source') not in ('auto_fill', 'transfer')]
 
-        def _div_of(e):
-            return e.get('division_id')
+        # 補填対象事業部 = 期間内の手動仕訳に登場する「補填元以外」の事業部
+        target_divs = sorted({
+            e.get('division_id') for e in man_entries
+            if e.get('division_id') is not None and int(e.get('division_id')) != fill_div_id
+        }, key=lambda x: int(x))
+        if not target_divs:
+            return
 
-        def _expense_for(div):
-            # cashfill-allcash-v1: 貸方=現金の取引をすべて現金支出として集計
-            # (費用だけでなく預り金等の支払も対象。引出は借方=現金なので混入しない)
-            return sum(
-                e['amount'] for e in manual_entries
-                if _div_of(e) == div
-                and e.get('credit', {}) and e['credit_account_id'] == cash_id
-            )
+        # 期初残高を事業部別に取得
+        ob_res = supabase.table('ledger_opening_balances').select('division_id,amount').eq('facility_code', f_code).eq('period_start', ps_iso).execute()
+        opening = {}
+        for r in (ob_res.data or []):
+            if r.get('division_id') is not None:
+                opening[int(r['division_id'])] = int(r.get('amount') or 0)
 
-        def _bank_to_cash_for(div):
-            # 借方=現金 × 貸方=預金(102/103) × 当該事業部
-            return sum(
-                e['amount'] for e in manual_entries
-                if _div_of(e) == div
-                and e.get('debit', {}) and e['debit_account_id'] == cash_id
-                and e.get('credit', {}) and e['credit'].get('category') == '資産'
-                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
-            )
+        # 日付リスト(期初〜計算終了日)
+        def _daterange(d0, d1):
+            cur = d0
+            while cur <= d1:
+                yield cur
+                cur = cur + _dt.timedelta(days=1)
 
-        if fill_div_id:
-            fill_div_id = int(fill_div_id)
-            # 補填対象事業部 = 手動仕訳に登場する「補填元以外」の事業部
-            target_divs = sorted({
-                _div_of(e) for e in manual_entries
-                if _div_of(e) is not None and int(_div_of(e)) != fill_div_id
-            }, key=lambda x: int(x))
-            for div in target_divs:
-                shortage = _expense_for(div) - _bank_to_cash_for(div)
-                if shortage <= 0:
+        # 事業部ごとに、期初残高起点で累積
+        for div in target_divs:
+            div = int(div)
+            balance = opening.get(div, 0)
+            # 当該事業部の手動仕訳を日付ごとに集計
+            by_date = {}
+            for e in man_entries:
+                if e.get('division_id') is None or int(e['division_id']) != div:
                     continue
-                # 接骨院(補填元)側: 借方=事業間移動 / 貸方=現金 → 出金
-                supabase.table('journal_entries').insert({
-                    'facility_code': f_code,
-                    'entry_date': target_date,
-                    'debit_account_id': transfer_id,
-                    'credit_account_id': cash_id,
-                    'amount': shortage,
-                    'tax_amount': 0,
-                    'description': '現金補填（出金）',
-                    'source': 'auto_fill',
-                    'created_by': 'system',
-                    'division_id': fill_div_id,
-                }).execute()
-                # 当該事業部側: 借方=現金 / 貸方=事業間移動 → 入金
-                supabase.table('journal_entries').insert({
-                    'facility_code': f_code,
-                    'entry_date': target_date,
-                    'debit_account_id': cash_id,
-                    'credit_account_id': transfer_id,
-                    'amount': shortage,
-                    'tax_amount': 0,
-                    'description': '現金補填（入金）',
-                    'source': 'auto_fill',
-                    'created_by': 'system',
-                    'division_id': int(div),
-                }).execute()
-        else:
-            # 補填元未設定時のフォールバック(旧挙動互換): 全事業部合算を事業主借で補填
-            expense_total = sum(
-                e['amount'] for e in manual_entries
-                if e.get('credit', {}) and e['credit_account_id'] == cash_id
-                and e.get('debit', {}) and e['debit'].get('category') == '費用'
-            )
-            bank_to_cash = sum(
-                e['amount'] for e in manual_entries
-                if e.get('debit', {}) and e['debit_account_id'] == cash_id
-                and e.get('credit', {}) and e['credit'].get('category') == '資産'
-                and e['credit'].get('code') in ('102',)  # bankcash-102only-v1: 預金=102のみ(103=売掛金を除外)
-            )
-            shortage = expense_total - bank_to_cash
-            if shortage <= 0:
-                return
-            supabase.table('journal_entries').insert({
-                'facility_code': f_code,
-                'entry_date': target_date,
-                'debit_account_id': cash_id,
-                'credit_account_id': owner_id,
-                'amount': shortage,
-                'tax_amount': 0,
-                'description': '現金自動補填',
-                'source': 'auto_fill',
-                'created_by': 'system',
-                'division_id': None,
-            }).execute()
+                d = e.get('entry_date')
+                if d not in by_date:
+                    by_date[d] = {'exp': 0, 'w': 0}
+                # 現金支出: 貸方=現金
+                if e.get('credit') and e['credit_account_id'] == cash_id:
+                    by_date[d]['exp'] += e['amount']
+                # 普通預金引出: 借方=現金 × 貸方=102
+                if e['debit_account_id'] == cash_id and e.get('credit') and e['credit'].get('code') == '102':
+                    by_date[d]['w'] += e['amount']
+
+            for cur in _daterange(period_start, calc_end):
+                d_iso = cur.isoformat()
+                day = by_date.get(d_iso, {'exp': 0, 'w': 0})
+                E = day['exp']
+                W = day['w']
+                shortage = E - (balance + W)
+                if shortage > 0:
+                    # 接骨院(補填元)→当該事業部へ 不足分を補填
+                    supabase.table('journal_entries').insert({'facility_code': f_code, 'entry_date': d_iso, 'debit_account_id': transfer_id, 'credit_account_id': cash_id, 'amount': shortage, 'tax_amount': 0, 'description': '\u73fe\u91d1\u88dc\u586b\uff08\u51fa\u91d1\uff09', 'source': 'auto_fill', 'created_by': 'system', 'division_id': fill_div_id}).execute()
+                    supabase.table('journal_entries').insert({'facility_code': f_code, 'entry_date': d_iso, 'debit_account_id': cash_id, 'credit_account_id': transfer_id, 'amount': shortage, 'tax_amount': 0, 'description': '\u73fe\u91d1\u88dc\u586b\uff08\u5165\u91d1\uff09', 'source': 'auto_fill', 'created_by': 'system', 'division_id': div}).execute()
+                    balance = 0
+                else:
+                    balance = (balance + W) - E
     except Exception as e:
-        # 再計算のエラーはサイレントにスキップ（本主処理に影響しない）
         import logging
         logging.warning(f'ledger_recalc_day error: {e}')
 
