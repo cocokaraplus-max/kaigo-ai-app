@@ -5235,6 +5235,12 @@ def api_ledger_opening_balance_save():
         }
         supabase.table('ledger_opening_balances').upsert(
             payload, on_conflict='facility_code,division_id,period_start').execute()
+        # ledger-opening-autorecalc-v1: 期初残高保存後、当該決算期の累積補填を自動再計算
+        try:
+            _ledger_recalc_day(supabase, f_code, period_start)
+        except Exception as _re:
+            import logging as _lg
+            _lg.warning(f'opening_balance autorecalc error: {_re}')
         return jsonify({'status': 'success', 'period_start': period_start})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
