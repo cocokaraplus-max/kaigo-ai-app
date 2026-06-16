@@ -4586,7 +4586,27 @@ def api_ledger_division_delete(div_id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ledger-recalc-lock-v1: 施設単位の再計算ロック(同一施設の再計算を直列化し二重補填を防ぐ)
+_ledger_recalc_locks = {}
+_ledger_recalc_locks_guard = threading.Lock()
+def _ledger_recalc_lock_for(f_code):
+    with _ledger_recalc_locks_guard:
+        lk = _ledger_recalc_locks.get(f_code)
+        if lk is None:
+            lk = threading.Lock()
+            _ledger_recalc_locks[f_code] = lk
+        return lk
+
 def _ledger_recalc_day(supabase, f_code, target_date):
+    """現金残高再計算(ロック付ラッパ)。同一施設の再計算を直列化する。"""
+    lock = _ledger_recalc_lock_for(f_code)
+    lock.acquire()
+    try:
+        _ledger_recalc_day_inner(supabase, f_code, target_date)
+    finally:
+        lock.release()
+
+def _ledger_recalc_day_inner(supabase, f_code, target_date):
     """指定日の現金残高を再計算し、自動補填仕訳を更新する。
     現金自動補填機能ONの施設のみ実行。"""
     try:
@@ -4644,8 +4664,12 @@ def _ledger_recalc_day(supabase, f_code, target_date):
         # 「その事業部の現金経費 - 銀行引出」の不足分だけを
         # 接骨院→当該事業部の事業間移動の対(出金/入金)で立てる。
         # 既存のauto_fill/transfer仕訳は先に全削除してから立て直す。
-        for ae in auto_entries:
-            supabase.table('journal_entries').delete().eq('id', ae['id']).execute()
+        # ledger-recalc-lock-v1: 冶等化 — 削除直前にDBから当日auto_fill/transferを再取得して確実に全削除
+        # (関数冒頭取得後に他処理が補填を作っていても、ここで残骸を消し切る)
+        _af_res = supabase.table('journal_entries').select('id').eq('facility_code', f_code).eq('entry_date', target_date).in_('source', ['auto_fill', 'transfer']).execute()
+        _af_ids = [r['id'] for r in (_af_res.data or [])]
+        for _aid in _af_ids:
+            supabase.table('journal_entries').delete().eq('id', _aid).eq('facility_code', f_code).execute()
 
         def _div_of(e):
             return e.get('division_id')
