@@ -5013,6 +5013,27 @@ def api_ledger_subledger_pdf():
             return (d.get('name') == acct) or (c.get('name') == acct)
 
         ents = [e for e in rows_data if _match(e)]
+        # ledger-subledger-pdf-layout-v1: \u753b\u9762/Excel\u3068\u540c\u3058\u4e26\u3073\u9806\u306b(\u65e5\u4ed8\u9806\uff0b\u540c\u65e5\u5185\u306f\u5165\u91d1\u512a\u5148)
+        def _is_out(e):
+            # \u5165\u91d1(\u501f\u65b9=\u5bfe\u8c61\u79d1\u76ee\u307e\u305f\u306fsales)=0, \u51fa\u91d1=1
+            if sub_type == 'sales':
+                return 0
+            d = (e.get('debit') or {})
+            return 0 if d.get('name') == acct else 1
+        ents = sorted(
+            list(enumerate(ents)),
+            key=lambda t: (str(t[1].get('entry_date') or ''), _is_out(t[1]), t[0])
+        )
+        ents = [t[1] for t in ents]
+        # \u4e8b\u696d\u90e8\u3067\u7d5e\u3063\u3066\u3044\u308b\u304b(\u7279\u5b9a\u4e8b\u696d\u90e8) \u2192 \u4e8b\u696d\u90e8\u5217\u3092\u7701\u304d\u30d8\u30c3\u30c0\u30fc\u306b\u51fa\u3059
+        single_div_name = ''
+        show_div_col = True
+        if div_filter and div_filter not in ('all', 'none'):
+            try:
+                single_div_name = div_map.get(int(div_filter), '')
+            except (TypeError, ValueError):
+                single_div_name = ''
+            show_div_col = False
         # \u884c\u751f\u6210\uff0b\u6b8b\u9ad8
         balance = 0
         total_in = 0
@@ -5038,10 +5059,11 @@ def api_ledger_subledger_pdf():
             else:
                 opposite = (c.get('name') if d.get('name') == acct else d.get('name')) or ''
             div_name = div_map.get(e.get('division_id'), '') if e.get('division_id') else ''
+            _div_cell = ('<td class="divcol">' + _esc(div_name) + '</td>') if show_div_col else ''
             body_rows.append(
-                '<tr><td>' + str(e.get('entry_date') or '') + '</td>'
-                + '<td>' + _esc(div_name) + '</td>'
-                + '<td>' + _esc(opposite) + '</td>'
+                '<tr><td class="datecol">' + str(e.get('entry_date') or '') + '</td>'
+                + _div_cell
+                + '<td class="acctcol">' + _esc(opposite) + '</td>'
                 + '<td>' + _esc(e.get('description') or '') + '</td>'
                 + '<td class="num">' + (('\uffe5' + format(in_amt, ',')) if in_amt else '') + '</td>'
                 + '<td class="num">' + (('\uffe5' + format(out_amt, ',')) if (out_amt and sub_type != 'sales') else '') + '</td>'
@@ -5049,27 +5071,44 @@ def api_ledger_subledger_pdf():
             )
         in_label = '\u58f2\u4e0a' if sub_type == 'sales' else '\u5165\u91d1'
         out_label = '' if sub_type == 'sales' else '\u51fa\u91d1'
+        # ledger-subledger-pdf-layout-v1: \u4e8b\u696d\u90e8\u5217\u306e\u51fa\u3057\u5206\u3051\u30fb\u5217\u5e45\u30fb\u6298\u308a\u8fd4\u3057\u6291\u5236
+        _div_th = '<th class="divcol">\u4e8b\u696d\u90e8</th>' if show_div_col else ''
+        _ncols = 7 if show_div_col else 6
+        _foot_span = 4 if show_div_col else 3
+        # colgroup\u3067\u5217\u5e45\u3092\u660e\u793a(\u7e26\u66f8\u304d\u9632\u6b62)
+        if show_div_col:
+            _colgroup = ('<colgroup><col style="width:62px"><col style="width:96px">'
+                         '<col style="width:84px"><col><col style="width:74px">'
+                         '<col style="width:74px"><col style="width:80px"></colgroup>')
+        else:
+            _colgroup = ('<colgroup><col style="width:62px"><col style="width:96px"><col>'
+                         '<col style="width:74px"><col style="width:74px"><col style="width:80px"></colgroup>')
+        _subtitle = (_esc(f_code) + ' / \u5bfe\u8c61\u6708: ' + _esc(year_month))
+        if single_div_name:
+            _subtitle += ' / \u4e8b\u696d\u90e8: ' + _esc(single_div_name)
         html_str = (
             '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
             'body{font-family:sans-serif;font-size:11pt;margin:14mm;}'
             'h2{font-size:15pt;margin:0 0 2px;}'
             'p{font-size:10pt;color:#555;margin:0 0 10px;}'
-            'table{width:100%;border-collapse:collapse;}'
-            'th{background:#e8f0fe;padding:5px 8px;text-align:left;font-size:9.5pt;border-bottom:1px solid #ccc;}'
-            'td{padding:5px 8px;border-bottom:1px solid #eee;font-size:9.5pt;}'
+            'table{width:100%;border-collapse:collapse;table-layout:fixed;}'
+            'th{background:#e8f0fe;padding:5px 6px;text-align:left;font-size:9pt;border-bottom:1px solid #ccc;}'
+            'td{padding:5px 6px;border-bottom:1px solid #eee;font-size:9pt;vertical-align:top;word-break:break-all;}'
             'td.num{text-align:right;white-space:nowrap;}'
+            'td.datecol,td.divcol,td.acctcol{white-space:nowrap;}'
+            'td.acctcol{word-break:keep-all;}'
             'tfoot td{font-weight:bold;background:#f8f9fa;}'
-            '@page{size:A4;margin:12mm;}'
+            '@page{size:A4 landscape;margin:10mm;}'
             '</style></head><body>'
             + '<h2>' + cfg['label'] + '</h2>'
-            + '<p>' + _esc(f_code) + ' / \u5bfe\u8c61\u6708: ' + _esc(year_month) + '</p>'
-            + '<table><thead><tr>'
-            + '<th>\u65e5\u4ed8</th><th>\u4e8b\u696d\u90e8</th><th>\u76f8\u624b\u79d1\u76ee</th><th>\u6458\u8981</th>'
+            + '<p>' + _subtitle + '</p>'
+            + '<table>' + _colgroup + '<thead><tr>'
+            + '<th>\u65e5\u4ed8</th>' + _div_th + '<th>\u76f8\u624b\u79d1\u76ee</th><th>\u6458\u8981</th>'
             + '<th class="num">' + in_label + '</th><th class="num">' + out_label + '</th><th class="num">' + cfg['bal'] + '</th>'
             + '</tr></thead><tbody>'
-            + (''.join(body_rows) if body_rows else '<tr><td colspan="7">\u30c7\u30fc\u30bf\u306f\u3042\u308a\u307e\u305b\u3093</td></tr>')
+            + (''.join(body_rows) if body_rows else ('<tr><td colspan="' + str(_ncols) + '">\u30c7\u30fc\u30bf\u306f\u3042\u308a\u307e\u305b\u3093</td></tr>'))
             + '</tbody><tfoot><tr>'
-            + '<td colspan="4">\u5408\u8a08</td>'
+            + '<td colspan="' + str(_foot_span) + '">\u5408\u8a08</td>'
             + '<td class="num">\uffe5' + format(total_in, ',') + '</td>'
             + '<td class="num">' + (('\uffe5' + format(total_out, ',')) if sub_type != 'sales' else '') + '</td>'
             + '<td class="num">\uffe5' + format(balance, ',') + '</td>'
