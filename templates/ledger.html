@@ -707,6 +707,11 @@
             <label class="ledger-form-label">月</label>
             <input type="month" class="ledger-form-control" id="balance-month">
         </div>
+        <!-- ledger-monthly-balance-ui-v1: 事業部選択 -->
+        <div class="ledger-form-group" id="balance-division-group">
+            <label class="ledger-form-label">事業部</label>
+            <select class="ledger-form-control" id="balance-division"></select>
+        </div>
         <div class="ledger-form-group">
             <label class="ledger-form-label">期首残高（円）</label>
             <input type="number" class="ledger-form-control" id="balance-amount" placeholder="例: 50000">
@@ -1302,32 +1307,97 @@ function openTransferModal() {
 function closeTransferModal() {
     document.getElementById('transfer-modal').classList.remove('show');
 }
-function openBalanceModal(type) {
+// ledger-monthly-balance-ui-v1: 月初残高をDB化(事業部別)
+var _monthlyBalanceCache = {};  // key: type+'_'+month → total
+function _balanceDivOptions(selectedId) {
+    // 事業部プルダウンの選択肢を構築
+    var divs = window.currentDivisions || [];
+    var html = '';
+    if (!divs.length) { html = '<option value="">(事業部なし)</option>'; }
+    for (var i = 0; i < divs.length; i++) {
+        var d = divs[i];
+        var sel = (String(selectedId) === String(d.id)) ? ' selected' : '';
+        html += '<option value="' + d.id + '"' + sel + '>' + (d.name||'') + '</option>';
+    }
+    return html;
+}
+async function openBalanceModal(type) {
     var labels = {cash: '現金出納帳', bank: '預金出納帳'};
     document.getElementById('balance-type').value = type;
-    document.getElementById('balance-modal-desc').textContent = labels[type] + 'の期首残高を設定します。';
+    document.getElementById('balance-modal-desc').textContent = labels[type] + 'の月初残高を事業部ごとに設定します。';
     document.getElementById('balance-month').value = currentMonth;
-    // 既存値を読み込み
-    var key = 'ledger_balance_' + type + '_' + currentMonth;
-    var saved = localStorage.getItem(key);
-    document.getElementById('balance-amount').value = saved || '';
+    // 事業部プルダウン(現在の出納帳フィルタを初期選択)
+    var _f = document.getElementById('cash-division-filter');
+    var _curDiv = (_f && _f.value && _f.value !== 'all') ? _f.value : '';
+    var _sel = document.getElementById('balance-division');
+    if (_sel) {
+        _sel.innerHTML = _balanceDivOptions(_curDiv);
+        _sel.onchange = function(){ _loadBalanceAmountForModal(type); };
+    }
+    await _loadBalanceAmountForModal(type);
     document.getElementById('balance-modal').classList.add('show');
+}
+async function _loadBalanceAmountForModal(type) {
+    // 選択中の事業部の既存月初残高をDBから読む
+    var month = document.getElementById('balance-month').value;
+    var sel = document.getElementById('balance-division');
+    var divId = sel ? sel.value : '';
+    try {
+        var r = await fetch('/api/ledger/monthly_balance?ledger_type=' + encodeURIComponent(type) + '&month=' + encodeURIComponent(month));
+        var d = await r.json();
+        var amt = '';
+        if (d.status === 'success') {
+            var rows = d.balances || [];
+            for (var i = 0; i < rows.length; i++) {
+                if (String(rows[i].division_id||'') === String(divId||'')) { amt = rows[i].amount; break; }
+            }
+        }
+        document.getElementById('balance-amount').value = (amt === '' ? '' : amt);
+    } catch(e) { document.getElementById('balance-amount').value = ''; }
 }
 function closeBalanceModal() {
     document.getElementById('balance-modal').classList.remove('show');
 }
-function saveBalance() {
+async function saveBalance() {
     var type = document.getElementById('balance-type').value;
     var month = document.getElementById('balance-month').value;
     var amount = parseInt(document.getElementById('balance-amount').value) || 0;
-    var key = 'ledger_balance_' + type + '_' + month;
-    localStorage.setItem(key, amount);
+    var sel = document.getElementById('balance-division');
+    var divId = (sel && sel.value) ? parseInt(sel.value) : null;
+    try {
+        await fetch('/api/ledger/monthly_balance', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ledger_type: type, month: month, division_id: divId, amount: amount})
+        });
+    } catch(e) { alert('月初残高の保存に失敗しました: ' + e.message); return; }
     closeBalanceModal();
     loadSubLedger(type);
 }
 function getInitBalance(type) {
-    var key = 'ledger_balance_' + type + '_' + currentMonth;
-    return parseInt(localStorage.getItem(key)) || 0;
+    // キャッシュ(loadSubLedgerで事前取得)から返す。キーは type+'_'+currentMonth
+    var k = type + '_' + currentMonth;
+    return parseInt(_monthlyBalanceCache[k]) || 0;
+}
+async function _prefetchMonthlyBalance(type) {
+    // 出納帳描画前に月初残高を取得しキャッシュ。
+    // 全事業(all)=合計 / 特定事業部=その額。
+    var k = type + '_' + currentMonth;
+    try {
+        var r = await fetch('/api/ledger/monthly_balance?ledger_type=' + encodeURIComponent(type) + '&month=' + encodeURIComponent(currentMonth));
+        var d = await r.json();
+        if (d.status !== 'success') { _monthlyBalanceCache[k] = 0; return; }
+        var f = document.getElementById('cash-division-filter');
+        var curDiv = (f && f.value && f.value !== 'all') ? f.value : 'all';
+        if (curDiv === 'all') {
+            _monthlyBalanceCache[k] = d.total || 0;
+        } else {
+            var amt = 0; var rows = d.balances || [];
+            for (var i = 0; i < rows.length; i++) {
+                if (String(rows[i].division_id||'') === String(curDiv)) { amt = rows[i].amount || 0; break; }
+            }
+            _monthlyBalanceCache[k] = amt;
+        }
+    } catch(e) { _monthlyBalanceCache[k] = 0; }
 }
 
 async function saveTransfer() {
@@ -2319,6 +2389,8 @@ async function loadSubLedger(type) {
     if (data.status !== 'success') { el.innerHTML = '<div style="color:red">読み込み失敗</div>'; return; }
     const entries = (data.entries || []).filter(cfg.matchFn);
     _subLedgerCache[type] = entries;
+    // ledger-monthly-balance-ui-v1: cash/bank は月初残高を事前取得してから描画
+    if (type === 'cash' || type === 'bank') { await _prefetchMonthlyBalance(type); }
     renderSubLedger(type, entries, cfg, el);
   } catch(e) {
     el.innerHTML = '<div style="color:red">エラー: ' + e.message + '</div>';

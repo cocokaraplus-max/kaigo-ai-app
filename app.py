@@ -5119,6 +5119,65 @@ def api_ledger_subledger_pdf():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/ledger/monthly_balance', methods=['GET'])  # ledger-monthly-balance-api-v1
+@login_required
+def api_ledger_monthly_balance_get():
+    """月初残高(帳尻合わせ表示補正)を事業部別に返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        ledger_type = request.args.get('ledger_type', 'cash')
+        month = request.args.get('month')
+        if not month:
+            return jsonify({'status': 'error', 'message': 'monthが必要です'}), 400
+        res = (supabase.table('ledger_monthly_balances')
+               .select('division_id,amount')
+               .eq('facility_code', f_code).eq('ledger_type', ledger_type).eq('month', month)
+               .execute())
+        rows = res.data or []
+        total = sum(int(r.get('amount') or 0) for r in rows)
+        return jsonify({'status': 'success', 'balances': rows, 'total': total})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/monthly_balance', methods=['POST'])  # ledger-monthly-balance-api-v1
+@login_required
+def api_ledger_monthly_balance_save():
+    """月初残高を事業部別にupsertする。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        ledger_type = data.get('ledger_type', 'cash')
+        month = data.get('month')
+        if not month:
+            return jsonify({'status': 'error', 'message': 'monthが必要です'}), 400
+        _raw_div = data.get('division_id')
+        division_id = int(_raw_div) if _raw_div else None
+        amount = int(data.get('amount') or 0)
+        payload = {
+            'facility_code': f_code,
+            'division_id': division_id,
+            'ledger_type': ledger_type,
+            'month': month,
+            'amount': amount,
+        }
+        supabase.table('ledger_monthly_balances').upsert(
+            payload, on_conflict='facility_code,division_id,ledger_type,month').execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/ledger/transfer', methods=['POST'])
 @login_required
 def api_ledger_transfer():
