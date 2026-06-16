@@ -768,10 +768,17 @@ function changeMonth(delta) {
     const d = new Date(y, m-1+delta, 1);
     currentMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
     updateMonthLabel();
-    loadEntries();
-    if (document.getElementById('tab-trial').classList.contains('active')) {
-        loadTrialBalance();
+    // subledger-monthnav-fix-v1: アクティブなタブを判定して再読込
+    var _active = null;
+    var _tabs = ['journal','trial','cash','bank','card','sales','orico'];
+    for (var i = 0; i < _tabs.length; i++) {
+        var _el = document.getElementById('tab-' + _tabs[i]);
+        if (_el && _el.classList.contains('active')) { _active = _tabs[i]; break; }
     }
+    if (_active === 'trial') loadTrialBalance();
+    else if (_active === 'cash' || _active === 'bank' || _active === 'card' || _active === 'sales') loadSubLedger(_active);
+    else if (_active === 'orico') loadOrico();
+    else loadEntries();  // journalまたは未特定は仕訳帳
 }
 
 // ledger-guide-method-v1: 記録方法によってOCRステップの説明を出し分け
@@ -2301,18 +2308,28 @@ function renderSubLedger(type, entries, cfg, el) {
 // ledger-2c-cardtab-retire-v1: deleteCardEntry/deleteCardMonth は閲覧専用化により撤去
 
 // ledger-subledger-pdf-v1: 補助元帳をサーバーでPDF生成してダウンロード(別ウィンドウを開かない)
-function downloadSubLedgerPdf(type) {
+async function downloadSubLedgerPdf(type) {
+  // subledger-pdf-blob-v1: fetchでPDFを取得しBlob+downloadで確実に保存
   var divEl = document.getElementById('cash-division-filter');
   var divParam = (divEl && divEl.value && divEl.value !== 'all') ? ('&division_id=' + encodeURIComponent(divEl.value)) : '';
   var url = '/api/ledger/subledger_pdf?type=' + encodeURIComponent(type) + '&month=' + encodeURIComponent(currentMonth) + divParam;
-  // aタグでダウンロード(同一タブ、画面遷移なし)
-  var a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  var cfg = (typeof SUB_LEDGER_CONFIG !== 'undefined' && SUB_LEDGER_CONFIG[type]) ? SUB_LEDGER_CONFIG[type] : null;
+  var fname = (cfg ? cfg.label : type) + '_' + currentMonth + '.pdf';
+  try {
+    var res = await fetch(url);
+    if (!res.ok) { alert('PDFの生成に失敗しました (' + res.status + ')'); return; }
+    var blob = await res.blob();
+    var objUrl = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = objUrl;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(objUrl); }, 1000);
+  } catch (e) {
+    alert('PDFの保存中にエラーが発生しました: ' + e.message);
+  }
 }
 
 function printSubLedger(type) {
