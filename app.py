@@ -5130,6 +5130,116 @@ def api_ledger_subledger_pdf():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/ledger/orico_pdf', methods=['GET'])  # ledger-orico-pdf-v1
+@login_required
+def api_ledger_orico_pdf():
+    """クレカ明細をPDF出力する(支払日セクション×明細表)。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    if not is_credit_csv_enabled(supabase, f_code):
+        return jsonify({'status': 'error', 'message': 'クレカ明細モードが有効ではありません'}), 403
+    try:
+        flt = request.args.get('filter', 'all')
+        res = supabase.table('ledger_orico_statements').select(
+            'id,payment_date,used_date,used_for,amount,amazon_detail,account_id'
+        ).eq('facility_code', f_code).order('payment_date', desc=True).order('used_date').execute()
+        rows = res.data or []
+        # フィルタ(仕訳状態 = account_id 有無)
+        def _linked(r):
+            a = r.get('account_id')
+            return a is not None and a != ''
+        if flt == 'unlinked':
+            rows = [r for r in rows if not _linked(r)]
+        elif flt == 'linked':
+            rows = [r for r in rows if _linked(r)]
+        # 科目名解決
+        acc_res = supabase.table('accounts').select('id,name').eq('facility_code', f_code).execute()
+        acc_map = {a['id']: a.get('name') or '' for a in (acc_res.data or [])}
+        # Amazon商品名抽出
+        def _amz(raw):
+            if not raw:
+                return ''
+            try:
+                import json as _json
+                d = _json.loads(raw)
+            except Exception:
+                return str(raw)
+            if not isinstance(d, dict):
+                return str(raw)
+            items = d.get('items') or []
+            if items:
+                return ' / '.join(str(x) for x in items)
+            return d.get('summary') or ''
+        # 支払日でグループ化
+        groups = {}
+        for r in rows:
+            key = r.get('payment_date') or '\u4e0d\u660e'
+            groups.setdefault(key, []).append(r)
+        grand_total = 0
+        sections = []
+        for key in sorted(groups.keys(), reverse=True):
+            items = groups[key]
+            sub_total = sum((it.get('amount') or 0) for it in items)
+            grand_total += sub_total
+            body = []
+            for it in items:
+                body.append(
+                    '<tr>'
+                    + '<td class="datecol">' + _esc(it.get('used_date') or '') + '</td>'
+                    + '<td class="forcol">' + _esc(it.get('used_for') or '') + '</td>'
+                    + '<td class="num">\uffe5' + format(it.get('amount') or 0, ',') + '</td>'
+                    + '<td class="acctcol">' + _esc(acc_map.get(it.get('account_id'), '')) + '</td>'
+                    + '<td>' + _esc(_amz(it.get('amazon_detail'))) + '</td>'
+                    + '</tr>'
+                )
+            sections.append(
+                '<div class="sec">' + _esc(key) + ' \u652f\u6255\u3044\u5206'
+                + ' <span class="sectot">\uffe5' + format(sub_total, ',') + '</span></div>'
+                + '<table><colgroup><col style="width:70px"><col style="width:150px">'
+                + '<col style="width:80px"><col style="width:90px"><col></colgroup>'
+                + '<thead><tr><th>\u5229\u7528\u65e5</th><th>\u5229\u7528\u5148</th>'
+                + '<th class="num">\u91d1\u984d</th><th>\u52d8\u5b9a\u79d1\u76ee</th><th>Amazon\u5546\u54c1\u540d</th></tr></thead>'
+                + '<tbody>' + (''.join(body) if body else '<tr><td colspan="5">\u660e\u7d30\u306a\u3057</td></tr>') + '</tbody></table>'
+            )
+        html_str = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+            'body{font-family:sans-serif;font-size:11pt;margin:10mm;}'
+            'h2{font-size:15pt;margin:0 0 2px;}'
+            'p{font-size:10pt;color:#555;margin:0 0 10px;}'
+            '.sec{font-size:11pt;font-weight:bold;color:#1a73e8;border-bottom:2px solid #1a73e8;'
+            'padding:6px 2px 3px;margin:12px 0 4px;}'
+            '.sectot{float:right;font-size:10pt;}'
+            'table{width:100%;border-collapse:collapse;table-layout:fixed;}'
+            'th{background:#e8f0fe;padding:4px 6px;text-align:left;font-size:9pt;border-bottom:1px solid #ccc;}'
+            'td{padding:4px 6px;border-bottom:1px solid #eee;font-size:9pt;vertical-align:top;word-break:break-all;}'
+            'td.num,th.num{text-align:right;white-space:nowrap;}'
+            'td.datecol,td.acctcol{white-space:nowrap;}'
+            '@page{size:A4 landscape;margin:10mm;}'
+            '</style></head><body>'
+            + '<h2>\u30af\u30ec\u30ab\u660e\u7d30</h2>'
+            + '<p>' + _esc(f_code) + ' / \u5408\u8a08 \uffe5' + format(grand_total, ',') + '</p>'
+            + (''.join(sections) if sections else '<p>\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093</p>')
+            + '</body></html>'
+        )
+        import pdfkit, shutil
+        options = {'encoding': 'UTF-8', 'no-outline': None, 'quiet': ''}
+        wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        today = datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        fname = 'クレカ明細_' + today + '.pdf'
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = 'attachment; filename="credit_statement_' + today + '.pdf"; filename*=UTF-8\'\'' + quote(fname)
+        return response
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/ledger/monthly_balance', methods=['GET'])  # ledger-monthly-balance-api-v1
 @login_required
 def api_ledger_monthly_balance_get():

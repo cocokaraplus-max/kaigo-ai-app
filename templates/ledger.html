@@ -400,6 +400,11 @@
             <div id="kwrule-preview" style="margin-top:10px;"></div>
         </div>
     </div>
+    <!-- ledger-orico-export-v1: CSV/PDF出力 -->
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="ledger-btn" style="flex:1;padding:7px 8px;font-size:0.78rem;font-weight:700;" onclick="exportOricoCsv()">↓ CSV出力</button>
+        <button class="ledger-btn" style="flex:1;padding:7px 8px;font-size:0.78rem;font-weight:700;" onclick="exportOricoPdf()">↓ PDF保存</button>
+    </div>
     <!-- ledger-orico-filter-front-v1: 仕訳状態フィルタ -->
     <div id="orico-filter" style="display:flex;gap:6px;margin-bottom:10px;">
         <button id="of-filter-all" class="ledger-btn" style="flex:1;padding:6px 8px;font-size:0.78rem;" onclick="setOricoFilter('all')">すべて</button>
@@ -1102,6 +1107,66 @@ function renderOricoDetail(raw) {
 // ledger-orico-filter-front-v1: 仕訳状態フィルタ
 window._oricoFilter = 'all';
 window._oricoCache = [];
+// ledger-orico-export-v1: クレカ明細をCSV出力(現在のフィルタを尊重)
+function _oricoAccountName(aid) {
+    if (aid === null || aid === undefined || aid === '') return '';
+    try {
+        var list = (typeof ACCOUNTS !== 'undefined') ? ACCOUNTS : [];
+        for (var i = 0; i < list.length; i++) { if (String(list[i].id) === String(aid)) return list[i].name || ''; }
+    } catch (e) {}
+    return '';
+}
+function _oricoAmazonText(raw) {
+    if (!raw) return '';
+    var d = null; try { d = JSON.parse(raw); } catch (e) { return String(raw); }
+    if (!d || typeof d !== 'object') return String(raw);
+    var items = d.items || [];
+    if (items.length) return items.join(' / ');
+    return d.summary || '';
+}
+function _oricoFilteredItems() {
+    var f = window._oricoFilter || 'all';
+    var out = [];
+    (window._oricoCache || []).forEach(function(g){
+        (g.items || []).forEach(function(it){
+            var linked = (it.account_id !== null && it.account_id !== undefined && it.account_id !== '');
+            if (f === 'unlinked' && linked) return;
+            if (f === 'linked' && !linked) return;
+            out.push({payment_date: g.payment_date, it: it});
+        });
+    });
+    return out;
+}
+function exportOricoCsv() {
+    var rows = _oricoFilteredItems();
+    if (!rows.length) { alert('出力する明細がありません。'); return; }
+    var header = ['支払日','利用日','利用先','金額','勘定科目','Amazon商品名'];
+    function esc(v){ v = (v==null?'':String(v)); if(/[",\n]/.test(v)){ return '"' + v.replace(/"/g,'""') + '"'; } return v; }
+    var lines = [header.map(esc).join(',')];
+    rows.forEach(function(r){
+        var it = r.it;
+        lines.push([
+            r.payment_date || '',
+            it.used_date || '',
+            it.used_for || '',
+            (it.amount != null ? it.amount : ''),
+            _oricoAccountName(it.account_id),
+            _oricoAmazonText(it.amazon_detail)
+        ].map(esc).join(','));
+    });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var today = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = 'クレカ明細_' + today + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+function exportOricoPdf() {
+    // ledger-orico-pdf-v1(サーバー側)で実装。現在のフィルタを渡す。
+    var f = window._oricoFilter || 'all';
+    window.open('/api/ledger/orico_pdf?filter=' + encodeURIComponent(f), '_blank');
+}
 async function loadOrico() {
     var area = document.getElementById('orico-list-area');
     if (!area) return;
