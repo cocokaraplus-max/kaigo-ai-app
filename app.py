@@ -5226,6 +5226,8 @@ def api_ledger_orico_pdf():
             + (''.join(sections) if sections else '<p>\u660e\u7d30\u306f\u3042\u308a\u307e\u305b\u3093</p>')
             + '</body></html>'
         )
+        from flask import make_response  # ledger-orico-pdf-fix-v1
+        from urllib.parse import quote  # ledger-orico-pdf-fix-v1
         import pdfkit, shutil
         options = {'encoding': 'UTF-8', 'no-outline': None, 'quiet': ''}
         wk_path = shutil.which('wkhtmltopdf') or '/usr/local/bin/wkhtmltopdf'
