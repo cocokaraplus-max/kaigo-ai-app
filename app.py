@@ -5327,6 +5327,211 @@ def _ledger_fiscal_period_start(f_code, ref_date=None):  # ledger-opening-balanc
     import datetime as _dt
     return _dt.date(py, start_month, 1)
 
+# === ledger-fiscal-close-v1: 決算確定 中核ヘルパー & API ===
+def _ledger_period_bounds(f_code, period_start_iso=None, ref_date=None):
+    """period_start(iso) を起点に (period_start, period_end) を date で返す。
+    period_start_iso 省略時は ref_date(既定=今日) が属する期を使う。"""
+    import datetime as _dt
+    if period_start_iso:
+        ps = _dt.date.fromisoformat(period_start_iso)
+    else:
+        ps = _ledger_fiscal_period_start(f_code, ref_date)
+    pe = _dt.date(ps.year + 1, ps.month, 1) - _dt.timedelta(days=1)
+    return ps, pe
+
+
+def _ledger_period_end_balances(supabase, f_code, period_start_iso):
+    """事業部別の期末現金残高を算出して {division_id(str): amount} で返す。
+    期初残高 + 期間内の全仕訳(auto_fill/transfer含む)の現金増減。
+    現金=借方なら+、貸方なら-。確定済みの帳簿実態をそのまま積算する。"""
+    import datetime as _dt
+    ps, pe = _ledger_period_bounds(f_code, period_start_iso)
+    ps_iso, pe_iso = ps.isoformat(), pe.isoformat()
+    # 現金科目
+    cash_res = supabase.table('accounts').select('id').eq('facility_code', f_code).eq('code', '101').execute()
+    if not cash_res.data:
+        return {}
+    cash_id = cash_res.data[0]['id']
+    # 期初残高
+    ob_res = (supabase.table('ledger_opening_balances')
+              .select('division_id,amount')
+              .eq('facility_code', f_code).eq('period_start', ps_iso).execute())
+    bal = {}
+    for r in (ob_res.data or []):
+        if r.get('division_id') is not None:
+            bal[int(r['division_id'])] = int(r.get('amount') or 0)
+    # 期間内の全仕訳（現金が絡むものだけ集計）
+    je = (supabase.table('journal_entries')
+          .select('amount,debit_account_id,credit_account_id,division_id')
+          .eq('facility_code', f_code)
+          .gte('entry_date', ps_iso).lte('entry_date', pe_iso).execute())
+    for e in (je.data or []):
+        div = e.get('division_id')
+        if div is None:
+            continue
+        div = int(div)
+        amt = int(e.get('amount') or 0)
+        if e.get('debit_account_id') == cash_id:
+            bal[div] = bal.get(div, 0) + amt
+        if e.get('credit_account_id') == cash_id:
+            bal[div] = bal.get(div, 0) - amt
+    return {str(k): int(v) for k, v in bal.items()}
+
+
+def _ledger_is_period_closed(supabase, f_code, entry_date):
+    """entry_date(iso str or date) が確定済み期に属するなら True。
+    確定ガードの共通判定。例外時は安全側で False（ブロックしない）。"""
+    try:
+        import datetime as _dt
+        d = _dt.date.fromisoformat(entry_date) if isinstance(entry_date, str) else entry_date
+        ps = _ledger_fiscal_period_start(f_code, d)
+        res = (supabase.table('ledger_fiscal_closes')
+               .select('is_closed')
+               .eq('facility_code', f_code).eq('period_start', ps.isoformat())
+               .eq('is_closed', True).execute())
+        return bool(res.data)
+    except Exception:
+        return False
+
+
+@app.route('/api/ledger/fiscal_close', methods=['GET'])  # ledger-fiscal-close-v1
+@login_required
+def api_ledger_fiscal_close_list():
+    """直近の決算期一覧（過去5期＋当期）と確定状態を返す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        import datetime as _dt
+        today = datetime.now(tokyo_tz).date()
+        cur_ps = _ledger_fiscal_period_start(f_code)
+        # 当期を含む過去6期分を列挙
+        periods = []
+        ps = cur_ps
+        for _i in range(6):
+            pe = _dt.date(ps.year + 1, ps.month, 1) - _dt.timedelta(days=1)
+            periods.append((ps, pe))
+            ps = _dt.date(ps.year - 1, ps.month, 1)
+        # 確定状態を取得
+        closes = (supabase.table('ledger_fiscal_closes')
+                  .select('period_start,is_closed,closed_at,closed_by')
+                  .eq('facility_code', f_code).execute())
+        closed_map = {}
+        for c in (closes.data or []):
+            closed_map[c.get('period_start')] = c
+        items = []
+        for (p_s, p_e) in periods:
+            ps_iso = p_s.isoformat()
+            c = closed_map.get(ps_iso)
+            is_closed = bool(c and c.get('is_closed'))
+            label = f"{p_s.year}年{p_s.month}月～{p_e.year}年{p_e.month}月期"
+            # 決算月超過で未確定なら overdue フラグ
+            overdue = (not is_closed) and (today > p_e)
+            items.append({
+                'period_start': ps_iso,
+                'period_end': p_e.isoformat(),
+                'label': label,
+                'is_closed': is_closed,
+                'closed_at': (c or {}).get('closed_at'),
+                'closed_by': (c or {}).get('closed_by'),
+                'is_current': (p_s == cur_ps),
+                'overdue': overdue,
+            })
+        return jsonify({'status': 'success', 'periods': items})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/fiscal_close', methods=['POST'])  # ledger-fiscal-close-v1
+@login_required
+def api_ledger_fiscal_close_do():
+    """決算確定。期末残高を算出して翌期初へ上書きコピー、スナップショット保存。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        import datetime as _dt
+        data = request.json or {}
+        ps_iso = data.get('period_start')
+        if not ps_iso:
+            return jsonify({'status': 'error', 'message': 'period_start が必要です'}), 400
+        ps, pe = _ledger_period_bounds(f_code, ps_iso)
+        # 期末残高を算出
+        end_bal = _ledger_period_end_balances(supabase, f_code, ps_iso)
+        # 確定レコードを upsert
+        supabase.table('ledger_fiscal_closes').upsert({
+            'facility_code': f_code,
+            'period_start': ps.isoformat(),
+            'period_end': pe.isoformat(),
+            'is_closed': True,
+            'closed_at': datetime.now(tokyo_tz).isoformat(),
+            'closed_by': my_name,
+            'closing_balances': end_bal,
+        }, on_conflict='facility_code,period_start').execute()
+        # 翌期初 = 期末日の翌日
+        next_ps = (pe + _dt.timedelta(days=1)).isoformat()
+        # 翌期初残高へ事業部別に上書きコピー
+        copied = []
+        for div_str, amt in end_bal.items():
+            supabase.table('ledger_opening_balances').upsert({
+                'facility_code': f_code,
+                'period_start': next_ps,
+                'division_id': int(div_str),
+                'amount': int(amt),
+            }, on_conflict='facility_code,period_start,division_id').execute()
+            copied.append({'division_id': int(div_str), 'amount': int(amt)})
+        # 翌期が当期なら累積補填を再計算（期初が変わったため）
+        try:
+            _today = datetime.now(tokyo_tz).date()
+            _next_ps_d = _dt.date.fromisoformat(next_ps)
+            if _ledger_fiscal_period_start(f_code) == _next_ps_d:
+                _ledger_recalc_day(supabase, f_code, next_ps)
+        except Exception as _re:
+            import logging
+            logging.warning(f'fiscal_close autorecalc error: {_re}')
+        return jsonify({
+            'status': 'success',
+            'message': f"{ps.year}年{ps.month}月期を確定しました。期末残高を翌期初へ反映しました。",
+            'period_start': ps.isoformat(),
+            'next_period_start': next_ps,
+            'copied': copied,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/ledger/fiscal_close/cancel', methods=['POST'])  # ledger-fiscal-close-v1
+@login_required
+def api_ledger_fiscal_close_cancel():
+    """決算確定の解除。is_closed=False に更新（翌期初残高は変更しない）。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '権限がありません'}), 403
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        ps_iso = data.get('period_start')
+        if not ps_iso:
+            return jsonify({'status': 'error', 'message': 'period_start が必要です'}), 400
+        supabase.table('ledger_fiscal_closes').update({
+            'is_closed': False,
+        }).eq('facility_code', f_code).eq('period_start', ps_iso).execute()
+        return jsonify({'status': 'success', 'message': '決算確定を解除しました。'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/ledger/opening_balance', methods=['GET'])  # ledger-opening-balance-api-v1
 @login_required
 def api_ledger_opening_balance_get():
@@ -5414,6 +5619,10 @@ def api_ledger_transfer():
         to_div_id = data.get('to_division_id')
         amount = int(data.get('amount', 0))
         entry_date = data.get('entry_date', datetime.now(tokyo_tz).strftime('%Y-%m-%d'))
+        # ledger-fiscal-close-guard-v1: 確定済み期への事業間移動をブロック
+        if _ledger_is_period_closed(supabase, f_code, entry_date):
+            return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                            'message': 'この日付の決算期は確定済みです。決算確定を解除してください。'}), 409
         description = data.get('description', '事業間現金移動')
         if not from_div_id or not to_div_id or not amount:
             return jsonify({'status': 'error', 'message': '必須項目が足りません'}), 400
@@ -5475,6 +5684,21 @@ def api_ledger_entry_save():
     supabase = get_supabase()
     try:
         data = request.json or {}
+        # ledger-fiscal-close-guard-v1: 確定済み期への保存/編集をブロック
+        _g_newdate = data.get('entry_date')
+        if _g_newdate and _ledger_is_period_closed(supabase, f_code, _g_newdate):
+            return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                            'message': 'この日付の決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
+        _g_eid = data.get('id')
+        if _g_eid:
+            try:
+                _g_old = supabase.table('journal_entries').select('entry_date').eq('id', _g_eid).eq('facility_code', f_code).execute()
+                _g_olddate = _g_old.data[0]['entry_date'] if _g_old.data else None
+                if _g_olddate and _ledger_is_period_closed(supabase, f_code, _g_olddate):
+                    return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                                    'message': 'この仕訳が属する決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
+            except Exception:
+                pass
         # ledger-credit-ocrguard-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
         _rcpt_id = data.get('receipt_id')
         if _rcpt_id and not data.get('id') and is_credit_csv_enabled(supabase, f_code):
@@ -5545,6 +5769,10 @@ def api_ledger_entry_delete(entry_id):
         # 削除前に日付を取得
         del_res = supabase.table('journal_entries').select('entry_date').eq('id', entry_id).execute()
         del_date = del_res.data[0]['entry_date'] if del_res.data else None
+        # ledger-fiscal-close-guard-v1: 確定済み期の削除をブロック
+        if del_date and _ledger_is_period_closed(supabase, f_code, del_date):
+            return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                            'message': 'この仕訳が属する決算期は確定済みです。削除するには決算確定を解除してください。'}), 409
         supabase.table('journal_entries').delete().eq('id', entry_id).eq('facility_code', f_code).execute()
         if del_date:
             _ledger_recalc_day(supabase, f_code, del_date)
@@ -7679,6 +7907,34 @@ def api_ledger_receipt_entry():
         if not er.data:
             return jsonify({'status': 'success', 'entry_id': None, 'entry': None})
         return jsonify({'status': 'success', 'entry_id': eid, 'entry': er.data[0]})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/ledger/receipt/<int:receipt_id>', methods=['DELETE'])  # ledger-receipt-delete-v1
+@login_required
+def api_ledger_receipt_delete(receipt_id):
+    """レシート保管庫から領収書を削除する。
+    HIRO方針: 領収書(receipts行)のみ削除。紐付く仕訳は会計記録として残す。"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    _ok = (f_code == LEDGER_ALLOWED_FACILITY and my_name == LEDGER_ALLOWED_USER)
+    _dev = (f_code == LEDGER_DEV_FACILITY and my_name == LEDGER_DEV_USER)
+    if not _ok and not _dev:
+        return jsonify({'status': 'error', 'message': '\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}), 403
+    supabase = get_supabase()
+    try:
+        # 存在確認（facility_code を必ず突き合わせ）
+        rc = (supabase.table('receipts').select('id,entry_id')
+              .eq('id', receipt_id).eq('facility_code', f_code).execute())
+        if not rc.data:
+            return jsonify({'status': 'error', 'message': '\u9818\u53ce\u66f8\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093'}), 404
+        had_entry = bool(rc.data[0].get('entry_id'))
+        # 領収書行のみ削除（仕訳は残す）
+        supabase.table('receipts').delete().eq('id', receipt_id).eq('facility_code', f_code).execute()
+        msg = '\u9818\u53ce\u66f8\u3092\u524a\u9664\u3057\u307e\u3057\u305f\u3002'
+        if had_entry:
+            msg += '\uff08\u7d10\u4ed8\u304f\u4ed5\u8a33\u306f\u4f1a\u8a08\u8a18\u9332\u3068\u3057\u3066\u6b8b\u3057\u3066\u3044\u307e\u3059\uff09'
+        return jsonify({'status': 'success', 'message': msg, 'kept_entry': had_entry})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 

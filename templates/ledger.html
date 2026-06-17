@@ -522,6 +522,15 @@
         <div id="opening-balance-inputs"></div>
         <button class="ledger-btn primary" style="width:100%;margin-top:8px;" onclick="saveOpeningBalances()">期初残高を保存</button>
     </div>
+
+    <!-- ledger-fiscal-close-ui-v1: 決算確定 -->
+    <div class="entry-card" id="fiscal-close-card">
+        <div style="margin-bottom:8px;">
+            <div style="font-size:0.88rem;font-weight:800;color:#202124;">決算確定</div>
+            <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">決算期を確定すると、その期の仕訳は編集・追加・削除ができなくなります。確定時に期末の現金残高が翌期の期初残高へ自動でコピーされます。修正が必要になったら確定を解除してください。</div>
+        </div>
+        <div id="fiscal-close-list"><div style="text-align:center;padding:20px;color:#9aa0a6;font-size:0.82rem;">読み込み中...</div></div>
+    </div>
 </div>
 
 <!-- orico-card-ui-v1: 会社カード入力モーダル -->
@@ -1864,8 +1873,27 @@ function renderReceiptVault() {
             + '<div>🏪 '+(ocr.vendor||'不明')+'</div>'
             + '<div>'+ocrPayBadge(ocr.payment_method)+'</div>'
             + (ocr.description ? '<div>📝 '+ocr.description+'</div>' : '')
-            + '</div>' + btn + '</div>';
+            + '</div>' + btn            + '<button class=\"ledger-btn cancel\" style=\"margin-top:6px;width:100%;font-size:0.78rem;\" onclick=\'deleteReceiptFromVault('+(r.id||'null')+', '+(r.is_journaled?'true':'false')+')\'>\ud83d\uddd1\ufe0f \u9818\u53ce\u66f8\u3092\u524a\u9664</button>'            + '</div>';  // ledger-receipt-delete-ui-v1
     }).join('');
+}
+async function deleteReceiptFromVault(receiptId, isJournaled) {  // ledger-receipt-delete-ui-v1
+    if (!receiptId) return;
+    var msg = isJournaled
+        ? 'この領収書を削除しますか？\n\n紐付く仕訳（帳簿）は会計記録として残ります。領収書（画像とOCRデータ）のみ削除されます。'
+        : 'この領収書を削除しますか？\n\nこの操作は取り消せません。';
+    if (!confirm(msg)) return;
+    try {
+        var res = await fetch('/api/ledger/receipt/' + encodeURIComponent(receiptId), { method: 'DELETE' });
+        var data = await res.json();
+        if (data.status === 'success') {
+            alert(data.message || '領収書を削除しました。');
+            loadReceiptVault();
+        } else {
+            alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+        }
+    } catch (e) {
+        alert('削除に失敗しました：' + e);
+    }
 }
 async function createEntryFromOCR(ocr, receiptId) {  // ledger-receipt-learn-v1 / ledger-receipt-link-front-v1 / ledger-ocr-dup-guard-v1
     window._ocrReceiptId = (receiptId !== undefined && receiptId !== null) ? receiptId : null;
@@ -2131,6 +2159,8 @@ async function loadSettings() {
     if (_fmSel) { _fmSel.value = String(currentSettings.fiscal_year_end_month || 10); }
     // ledger-opening-balance-ui-v1: 期初残高を読み込んで入力欄を構築
     if (typeof loadOpeningBalances === 'function') { loadOpeningBalances(); }
+    // ledger-fiscal-close-ui-v1: 決算確定の状態を読み込む
+    if (typeof loadFiscalCloses === 'function') { loadFiscalCloses(); }
     // sekkotsu-toggle-v1: 許可施設のみ表示し、enabled を反映
     var sekCard = document.getElementById('sekkotsu-mode-card');
     var sekToggle = document.getElementById('toggle-sekkotsu');
@@ -2194,6 +2224,93 @@ function updateToggleUI(type, on) {
 }
 
 // ledger-opening-balance-ui-v1: 期初残高の読み込み・保存
+// === ledger-fiscal-close-ui-v1: 決算確定 UI ===
+async function loadFiscalCloses() {
+    var box = document.getElementById('fiscal-close-list');
+    if (!box) return;
+    try {
+        var res = await fetch('/api/ledger/fiscal_close');
+        var data = await res.json();
+        if (data.status !== 'success') { box.innerHTML = '<div style="color:#80868b;font-size:0.8rem;">決算情報を読み込めませんでした</div>'; return; }
+        window._fiscalCloses = data.periods || [];
+    } catch (e) {
+        box.innerHTML = '<div style="color:#80868b;font-size:0.8rem;">決算情報を読み込めませんでした</div>';
+        return;
+    }
+    renderFiscalCloses();
+}
+function renderFiscalCloses() {
+    var box = document.getElementById('fiscal-close-list');
+    if (!box) return;
+    var periods = window._fiscalCloses || [];
+    if (!periods.length) { box.innerHTML = '<div style="color:#9aa0a6;font-size:0.82rem;">対象期間がありません</div>'; return; }
+    box.innerHTML = periods.map(function(p){
+        var badge, action;
+        if (p.is_closed) {
+            badge = '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#5f6368;border-radius:4px;padding:1px 6px;">確定済み</span>';
+            action = '<button class="ledger-btn" style="margin-top:8px;width:100%;font-size:0.78rem;" onclick="cancelFiscalClose(\'' + p.period_start + '\', \'' + p.label + '\')">確定を解除</button>';
+        } else {
+            if (p.overdue) {
+                badge = '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#ea4335;border-radius:4px;padding:1px 6px;">未確定（決算月超過）</span>';
+            } else if (p.is_current) {
+                badge = '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#1a73e8;border-radius:4px;padding:1px 6px;">当期</span>';
+            } else {
+                badge = '<span style="font-size:0.68rem;font-weight:700;color:#fff;background:#fbbc04;border-radius:4px;padding:1px 6px;">未確定</span>';
+            }
+            action = '<button class="ledger-btn primary" style="margin-top:8px;width:100%;font-size:0.78rem;" onclick="doFiscalClose(\'' + p.period_start + '\', \'' + p.label + '\')">この期を確定する</button>';
+        }
+        var closedInfo = (p.is_closed && p.closed_at) ? '<div style="font-size:0.68rem;color:#9aa0a6;margin-top:2px;">' + (p.closed_at||'').slice(0,10) + ' ' + (p.closed_by||'') + ' が確定</div>' : '';
+        return '<div class="entry-card" style="margin-bottom:8px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+            + '<span style="font-size:0.82rem;font-weight:700;color:#202124;">' + p.label + '</span>' + badge
+            + '</div>' + closedInfo + action + '</div>';
+    }).join('');
+}
+async function doFiscalClose(periodStart, label) {
+    if (!periodStart) return;
+    if (!confirm(label + ' を決算確定します。\n\n・この期の仕訳は編集・追加・削除ができなくなります。\n・期末の現金残高を翌期の期初残高へ自動コピーします（既存の翌期初残高は上書きされます）。\n\n確定しますか？')) return;
+    try {
+        var res = await fetch('/api/ledger/fiscal_close', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period_start: periodStart }),
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            var detail = '';
+            if (data.copied && data.copied.length) {
+                detail = '\n\n翌期初残高へ反映：\n' + data.copied.map(function(c){ return '事業部' + c.division_id + '：¥' + (c.amount||0).toLocaleString(); }).join('\n');
+            }
+            alert((data.message || '確定しました。') + detail);
+            loadFiscalCloses();
+            if (typeof loadOpeningBalances === 'function') loadOpeningBalances();
+        } else {
+            alert('確定に失敗しました：' + (data.message || '不明なエラー'));
+        }
+    } catch (e) {
+        alert('確定に失敗しました：' + e);
+    }
+}
+async function cancelFiscalClose(periodStart, label) {
+    if (!periodStart) return;
+    if (!confirm(label + ' の決算確定を解除します。\n\nこの期の仕訳を再び編集・追加・削除できるようになります。\n（翌期初残高は変更しません）\n\n解除しますか？')) return;
+    try {
+        var res = await fetch('/api/ledger/fiscal_close/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period_start: periodStart }),
+        });
+        var data = await res.json();
+        if (data.status === 'success') {
+            alert(data.message || '解除しました。');
+            loadFiscalCloses();
+        } else {
+            alert('解除に失敗しました：' + (data.message || '不明なエラー'));
+        }
+    } catch (e) {
+        alert('解除に失敗しました：' + e);
+    }
+}
 async function loadOpeningBalances() {
     var wrap = document.getElementById('opening-balance-inputs');
     if (!wrap) return;
