@@ -1050,6 +1050,96 @@ ledger-orico-pdf-v1 / -fix-v1        (クレカ明細PDF)
 ```
 
 
+---
+
+## 23. 決算確定機能・領収書削除（2026-06-17 セッション後半）<!-- readme-ledger-session4-2026-06-17b -->
+
+セクション22の続き。§22-8 残タスクの 1(決算確定ボタン)と 2(領収書の削除)を実装。**DEV検証済み・本番反映済み**。
+
+### 23-0. DDL: ledger_fiscal_closes を新設計で作り直し（重要）
+
+§21-7 で計画した旧テーブルが DEV/本番ともに残存していた。旧構造は `id/facility_code/period_end/is_closed/closed_at/released_at` で、**新コードが要求する `period_start`/`closed_by`/`closing_balances` が無かった**。`CREATE TABLE IF NOT EXISTS` が既存テーブルを見てスキップするため `column period_start does not exist (42703)` エラーが発生。
+
+**対処**: 両プロジェクトとも0件だったので DROP+CREATE で作り直した。**DEV→本番の順で個別適用**。
+
+```sql
+DROP TABLE IF EXISTS ledger_fiscal_closes;
+CREATE TABLE ledger_fiscal_closes (
+    id BIGSERIAL PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    period_start DATE NOT NULL,      -- 期初日 例 2025-11-01
+    period_end   DATE NOT NULL,      -- 期末日 例 2026-10-31
+    is_closed BOOLEAN NOT NULL DEFAULT TRUE,
+    closed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    closed_by TEXT,
+    closing_balances JSONB,          -- 確定時の事業部別期末残高スナップショット {div: amount}
+    UNIQUE (facility_code, period_start)
+);
+```
+
+教訓: 過去に計画だけして空テーブルを作っていた場合、`IF NOT EXISTS` は構造の食い違いを検出しない。新機能のDDL適用前に既存テーブルの列を必ず確認する。
+
+### 23-1. 決算確定機能 ledger-fiscal-close-v1（app.py）
+
+**ヘルパー**:
+- `_ledger_period_bounds(f_code, period_start_iso, ref_date)`: 期初iso(or今日基準)から (期初, 期末) を返す。
+- `_ledger_period_end_balances(supabase, f_code, period_start_iso)`: **事業部別 期末現金残高**を `{div(str): amount}` で算出。期初残高 + 期間内の全仕訳(auto_fill/transfer含む)の現金増減(借方現金=+/貸方現金=−)。補填ロジックを再現せず、確定済み帳簿実態をそのまま積算する方式(最も正確)。
+- `_ledger_is_period_closed(supabase, f_code, entry_date)`: entry_date が確定済み期に属するか。ガード共通判定。例外時は安全側でFalse。
+
+**API**:
+- `GET /api/ledger/fiscal_close`: 当期含む過去6期を列挙し確定状態を返す。`is_current`/`overdue`(決算月超過の未確定)フラグ付き。
+- `POST /api/ledger/fiscal_close`: 確定。期末残高を算出→`ledger_fiscal_closes`にupsert(スナップショット保存)→**翌期初(=期末日翌日)の`ledger_opening_balances`へ事業部別に上書きコピー**→翌期が当期なら累積補填を再計算。
+- `POST /api/ledger/fiscal_close/cancel`: 解除(is_closed=false)。翌期初残高は変更しない。
+
+### 23-2. 確定済み期のガード ledger-fiscal-close-guard-v1（app.py）
+
+確定済み期への変更を **409 + `code:'fiscal_closed'`** でブロック(HIRO方針: 警告ブロック、解除で再編集可)。挿入箇所4つ:
+- `api_ledger_entry_save`: 新規は entry_date、編集は対象idの現行日付も判定。
+- `api_ledger_entry_delete`: 削除前の日付で判定。
+- `api_ledger_transfer`: 事業間移動の entry_date で判定。
+
+**未対応(意図的)**: CSV取込・クレカ明細取込は今回ガード対象外(取込は期末後に走るケースが稀、形式ごとの日付判定が必要なため)。必要になれば次回追加。
+
+### 23-3. 領収書削除 ledger-receipt-delete-v1（app.py）/ -ui-v1（ledger.html）
+
+**HIRO方針: 領収書(receipts行)のみ削除。紐付く仕訳(journal_entries)は会計記録として残す。**
+- `DELETE /api/ledger/receipt/<int:receipt_id>`: receipts行を削除。entry_id があれば `kept_entry:true` を返し「仕訳は残した」旨をメッセージに付加。仕訳側は一切触らない。画像のStorage物理削除はしない(孤立しても帳簿無害・将来別タスク)。
+- 保管庫(renderReceiptVault)の各カードに「🗑️ 領収書を削除」ボタン。`deleteReceiptFromVault(id, isJournaled)`: 仕訳済みなら確認ダイアログで「紐付く仕訳は会計記録として残ります」と明示→DELETE→loadReceiptVault再読込。
+
+### 23-4. DEV検証結果（すべてPASS）
+
+- 期一覧: 当期(2025-11〜2026-10)=is_current、過去5期=overdue を正しく判定。決算月10月設定が反映。
+- 確定→確定状態記録(closed_by/closed_at)、overdue解消。
+- **期末残高コピー(中身あり)**: 当期確定で事業部1=¥52,015/事業部2=¥1,000/事業部3=¥0 を算出し翌期初(2026-11-01)へ反映。即解除も成功。
+- ガード: 確定済み期(2025-03-15)への仕訳保存が 409 fiscal_closed でブロック。解除後は保存可(検証データは即削除)。
+- 領収書削除: 未仕訳id=4を削除→6件→5件、kept_entry:false 正常。
+
+### 23-5. 申し送り
+
+- DEV検証時、当期確定検証で **翌期初(2026-11-01)の`ledger_opening_balances`にレコードが残存**(事業部1=¥52,015等)。次々期の話で実害は薄く、実態に近い値なので残置可。消すなら `DELETE FROM ledger_opening_balances WHERE facility_code='DEMO001' AND period_start='2026-11-01';`。
+- 本番(cocokaraplus-5526)では決算確定カードの表示確認のみ。**確定操作は実際の決算判断のため HIRO のタイミングで実行**(顧問税理士との整合確認後を推奨)。
+- 役員報酬の会計処理(§22-7・§22-8): 引き続き税理士マター・PENDING。
+
+### 23-6. 残タスク
+
+1. **役員報酬の会計処理**(税理士相談後にシステム反映)。
+2. (任意)CSV/クレカ取込の確定済み期ガード。
+3. (任意)領収書編集機能(OCR結果の修正・仕訳側との同期)。今回は削除のみ実装。
+4. (継続) §18方針B第2段、§19残課題。
+
+### 23-7. このセッションのコミット(本番反映済み)
+
+```
+ledger-fiscal-close-v1        (決算確定 API・ヘルパー)
+ledger-fiscal-close-guard-v1  (確定済み期ガード ×4経路)
+ledger-receipt-delete-v1      (領収書削除 API)
+ledger-fiscal-close-ui-v1     (決算確定 UI)
+ledger-receipt-delete-ui-v1   (保管庫 削除ボタン)
+DDL: ledger_fiscal_closes 作り直し(DEV/本番)
+```
+
+
+
 
 
 
