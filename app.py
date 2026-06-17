@@ -4721,8 +4721,9 @@ def _ledger_recalc_day_inner(supabase, f_code, target_date):  # ledger-cumulativ
                 # 現金支出: 貸方=現金
                 if e.get('credit') and e['credit_account_id'] == cash_id:
                     by_date[d]['exp'] += e['amount']
-                # 普通預金引出: 借方=現金 × 貸方=102
-                if e['debit_account_id'] == cash_id and e.get('credit') and e['credit'].get('code') == '102':
+                # ledger-cashfill-allin-v1: 現金収入 = 借方=現金の手動仕訳すべて
+                # (普通預金引出も売上の現金受取も含む。man_entriesは補填除外済み)
+                if e['debit_account_id'] == cash_id:
                     by_date[d]['w'] += e['amount']
 
             for cur in _daterange(period_start, calc_end):
