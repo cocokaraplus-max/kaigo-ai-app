@@ -963,6 +963,94 @@ ledger-opening-autorecalc-v1
 - 現在のブランチ状態: 本番`tasukaru`・`tasukaru-dev` ともに最新コミット(f04aef6相当)で一致済み。
 
 
+---
+
+## 22. 現金収入拡大・表示/出力改善・二重登録防止・クレカ明細出力（2026-06-17 セッション）<!-- readme-ledger-session3-2026-06-17 -->
+
+セクション21の続き。HIROが本番で気づいた問題の修正と、要望機能の実装。**すべて本番反映・動作確認済み**。最新コミットは tasukaru/tasukaru-dev ともに `89a85b9` 以降で一致。
+
+### 22-1. 累積補填の現金収入を拡大（重要バグ修正） ledger-cashfill-allin-v1
+
+**症状**: 後から感謝祭の売上(現金受取)を入力したのに、その日の補填が見直されず残った。5/30 感謝祭売上¥129,500(借方=現金/貸方=雑費)があるのに、経費¥116,990に対し補填¥116,990が立ったまま。
+
+**原因**: 累積計算の「現金収入W」の集計が「普通預金引出(借方=現金×貸方=102)」だけに限定されていて、売上の現金受取(借方=現金×貸方=売上/雑費)が繰越残高に算入されていなかった。
+
+**修正**: `_ledger_recalc_day_inner` の by_date 構築で、Wの条件を「借方=現金×貸方=102」→「**借方=現金の手動仕訳すべて**」に拡大。man_entries は auto_fill/transfer 除外済みなので、借方=現金なら引出・売上の現金受取など現金が増える取引すべてが算入される(補填自体は入らない)。**HIRO方針: 「現金として一旦入ったものはすべて補填ルールに基づく」**。
+
+**本番立て直し結果**: 5月の補填合計 133,924→16,934(−116,990)。5/30補填消滅。月末残高12,510(感謝祭の黒字¥12,510=売上129,500−経費116,990が現金として残る=実態通り)。サンドボックス4シナリオ+DEV実機(6/10売上2千追加で6/11補填消滅)で検証。
+
+### 22-2. 仕訳帳の振替表示を直感化 ledger-journal-transfer-display-v1
+
+**症状**: 仕訳帳で資金移動(現金↔普通預金)が「現金 → 普通預金 −¥350,000」と費用同様の赤字マイナスで出て直感に反する。普通預金引出(借方現金/貸方102)なのに矢印が逆に見える。
+
+**修正(renderEntries)**: 収益/費用/振替の3分岐表示に。
+- 収益(貸方=収益科目): +緑、矢印 借方→貸方(維持)
+- 費用(借方=費用科目): −赤、矢印 借方→貸方(維持)
+- **振替(損益に無関係)**: 符号なし・中立色グレー(.entry-amount.transfer)+「振替」バッジ、矢印を「**貸方→借方**」(お金が出た口座→入った口座)。例: 借方現金/貸方102 →「普通預金 → 現金」。
+- **画面のみ**。出納帳・税理士提出用出力(CSV/Excel/PDF)は簿記ルールのまま(HIRO方針: 画面=直感的、提出資料=帳簿ルール)。
+
+### 22-3. 出納帳の並び順を画面/Excel/PDFで統一
+
+**症状**: 画面は「同日内 入金→出金」順だが、Excel/PDF出力は並べ替えされず順序が食い違い、PDFでは残高が一時マイナスになっていた(出金が先)。
+
+**修正**:
+- `ledger-subledger-sort-export-v1`(ledger.html): 画面の並べ替えを共通関数 `_sortSubLedgerEntries(type, entries, cfg)` に切り出し、renderSubLedger と exportSubLedgerExcel の両方から呼ぶ。
+- `ledger-subledger-pdf-layout-v1`(app.py, api_ledger_subledger_pdf): PDFも「日付→入金(借方=対象科目)優先」で並べ替え。残高がマイナスにならない。
+
+### 22-4. PDF出納帳のレイアウト改善 ledger-subledger-pdf-layout-v1
+
+**症状**: 事業部「半日型デイサービス」や相手科目が列幅不足で1文字ずつ縦書き折り返し。
+
+**修正(api_ledger_subledger_pdf)**:
+- 事業部で絞っている場合(div_filter が特定事業部)は**事業部列を省き、ヘッダーに「事業部: ○○」を表示**。全事業(all)のときは事業部列を残す(show_div_col)。
+- **A4横向き**(@page size:A4 landscape)+colgroupで列幅明示+table-layout:fixed+nowrap指定で折り返し抑制。
+
+### 22-5. 仕訳の二重登録防止 ledger-save-guard-v1
+
+**症状**: 仕訳保存時にレスポンスが遅く2度押し→2件登録されることがある。
+
+**修正(saveEntry, ledger.html)**:
+- 保存ボタンに id="entry-save-btn"。CSSに .btn-spinner(回転アニメ)+.ledger-btn:disabled。
+- 多重実行ガード `_saveEntryInProgress` フラグ。押下直後にボタン無効化+「(スピナー)保存中...」表示。try/finally で成功・失敗・例外いずれもボタン確実復帰。
+- DEV/本番で表示動作確認済み(保存中はdisabled+opacity0.7+スピナー回転)。
+
+### 22-6. クレカ明細のCSV/PDF出力（新機能） ledger-orico-export-v1 / ledger-orico-pdf-v1
+
+クレカ明細タブ(pane-orico)に「CSV出力」「PDF保存」ボタンを追加。現在のフィルタ(all/unlinked/linked)を尊重。
+
+- **CSV**(ledger.html, フロント完結): UTF-8 BOM付き(Excel文字化け防止)。列=支払日/利用日/利用先/金額/勘定科目/Amazon商品名。科目名は ACCOUNTS から id→name 解決。Amazon商品名は amazon_detail(JSON)の items を「/」結合 or summary。`exportOricoCsv()`。
+- **PDF**(app.py, サーバー生成 `/api/ledger/orico_pdf`): 支払日セクション×明細表(利用日/利用先/金額/勘定科目/Amazon商品名)。A4横+colgroup+table-layout:fixed。`exportOricoPdf()` が `window.open('/api/ledger/orico_pdf?filter=...')`。
+- **クレカ明細モード(is_credit_csv_enabled)有効な施設のみ**。本番(cocokaraplus-5526)で実データ出力・印刷確認済み。
+- **修正 ledger-orico-pdf-fix-v1**: orico_pdf で make_response/quote が未定義(NameError)だったので、subledger_pdf 同様に関数内ローカルインポート `from flask import make_response` / `from urllib.parse import quote` を追加。
+
+### 22-7. 未解決・申し送り
+
+- **役員報酬の会計処理(最重要・PENDING)**: HIROの役員報酬は計上のみで未払い分がある(妻=岸本朋子の給与は実払い済み)。「現金で支払い済み」と記録するため帳簿上も実際も現金が残る(本番半日型の月末残高が0にならない正体)。**累積補填ロジックは正確で、実態を正しく反映している(バグではない)**。金額の記載方法(減額/未払計上)・融資への影響は**顧問税理士マター**。Claudeは判断不可、決まった方針のシステム反映のみ担当。
+- **PDFビューアのダウンロードボタンが効かない件**: ブラウザ/OS標準のPDFビューアの機能で、TASUKARU側では制御不可。印刷からのPDF保存は可能。対処するなら「PDF保存の動作をビューア表示→直接ダウンロードに変更」だが優先度低。
+- **ブランチ取り違え多発(教訓・重要)**: このセッションで本番マージ後に `git checkout tasukaru-dev` で戻し忘れ、本番ブランチ(tasukaru)へ直接コミットが**4回**発生。毎回 dev に merge で揃えて解消(内容は検証済み)。**対策: 本番作業は「checkout tasukaru → merge → push →(デプロイ)→ checkout tasukaru-dev」で1セット。最後の checkout tasukaru-dev まで打って完了とする。各作業前に必ず `git branch --show-current` 確認。**
+- `git checkout` のたびに `M README.md` が出続けている(別件の未コミット変更、無関係)。
+
+### 22-8. 次セッションの残タスク
+
+1. **決算確定ボタン**(`ledger_fiscal_closes` 使用、§21-7参照): 確定/解除UI、確定済み期への変更は保存時アラート、決算確定時に期末残高を翌期初へ自動コピー。配置はHIRO検討中(設定内だと押し忘れ→出納帳上部に通知的に出す案、決算月超過の未確定期にバッジ)。
+2. **領収書の削除・編集**(OCR取込画面/保管庫の両方から、仕訳にも反映)。削除時の紐付く仕訳の扱い未確定。Claude提案: 領収書のみ削除・仕訳は会計記録として残す。
+3. **役員報酬の会計処理**(税理士相談後にシステム反映)。
+4. (継続) §18方針B第2段、§19残課題。
+
+### 22-9. このセッションのコミット(全て本番反映済み)
+
+```
+ledger-journal-transfer-display-v1   (仕訳帳 振替表示)
+ledger-subledger-sort-export-v1      (Excel並び順 共通化)
+ledger-subledger-pdf-layout-v1       (PDF 並び順+レイアウト)
+ledger-cashfill-allin-v1             (現金収入拡大)
+ledger-save-guard-v1                 (二重登録防止)
+ledger-orico-export-v1               (クレカ明細CSV)
+ledger-orico-pdf-v1 / -fix-v1        (クレカ明細PDF)
+```
+
+
+
 
 
 
