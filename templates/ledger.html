@@ -20,6 +20,10 @@
 .entry-amount.income { color:#34a853; }
 .entry-amount.expense { color:#ea4335; }
 .entry-amount.transfer { color:#80868b; }  /* ledger-journal-transfer-display-v1: 資金移動は中立色 */
+/* ledger-save-guard-v1: 保存ボタンのスピナー */
+.btn-spinner { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,0.5); border-top-color:#fff; border-radius:50%; animation:btnspin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
+@keyframes btnspin { to { transform:rotate(360deg); } }
+.ledger-btn:disabled { opacity:0.7; cursor:not-allowed; }
 .entry-accounts { font-size:0.78rem; color:#5f6368; display:flex; align-items:center; gap:6px; }
 .entry-desc { font-size:0.82rem; color:#202124; margin-top:4px; }
 .entry-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; width:100%; box-sizing:border-box; }
@@ -667,7 +671,7 @@
         </div>
         <div class="ledger-btn-row">
             <button class="ledger-btn cancel" onclick="closeEntryModal()">キャンセル</button>
-            <button class="ledger-btn primary" onclick="saveEntry()">保存</button>
+            <button class="ledger-btn primary" id="entry-save-btn" onclick="saveEntry()">保存</button>
         </div>
     </div>
 </div>
@@ -1501,7 +1505,12 @@ async function deleteEntry(id) {
     }
 }
 
+var _saveEntryInProgress = false;  // ledger-save-guard-v1: 多重実行ガード
 async function saveEntry() {
+    // ledger-save-guard-v1: 処理中なら即リターン(連打防止)
+    if (_saveEntryInProgress) return;
+    var _saveBtn = document.getElementById('entry-save-btn');
+    var _saveBtnHtml = _saveBtn ? _saveBtn.innerHTML : null;
     const id = document.getElementById('entry-id').value;
     const _divEl = document.getElementById('entry-division');
     const payload = {
@@ -1520,6 +1529,10 @@ async function saveEntry() {
         alert('日付と金額は必須です');
         return;
     }
+    // ledger-save-guard-v1: ここから保護区間(ボタン無効化＋スピナー)
+    _saveEntryInProgress = true;
+    if (_saveBtn) { _saveBtn.disabled = true; _saveBtn.innerHTML = '<span class="btn-spinner"></span>保存中...'; }
+    try {
     const res = await fetch('/api/ledger/entry', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -1548,6 +1561,11 @@ async function saveEntry() {
         if (typeof loadReceiptVault === 'function') { try { loadReceiptVault(); } catch(e){} }  // ledger-receipt-vault-front-v1
     } else {
         alert('保存に失敗しました: ' + (data.message||''));
+    }
+    } finally {
+        // ledger-save-guard-v1: 成功・失敗・例外いずれもボタン復帰
+        _saveEntryInProgress = false;
+        if (_saveBtn) { _saveBtn.disabled = false; if (_saveBtnHtml !== null) _saveBtn.innerHTML = _saveBtnHtml; }
     }
 }
 
