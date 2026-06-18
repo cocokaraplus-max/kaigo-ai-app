@@ -4,7 +4,7 @@
 {% block extra_style %}
 <style>
 /* renraku-v1 / renraku-visible-ui-v1: 連絡帳 */
-.rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px 150px; }
+.rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px; padding-bottom: calc(var(--rk-nav-h, 137px) + 80px); }  /* renraku-savebar-navh-v1 */
 .rk-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
 .rk-head h2 { font-size: 1.12rem; font-weight: 800; color:#202124; margin:0; display:flex; align-items:center; gap:6px; }
 .rk-datenav { display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:12px; }
@@ -60,7 +60,7 @@
 .rk-toggle input:checked + .rk-slider:before { transform:translateX(16px); }
 .rk-toggle-mini { transform:scale(0.82); }
 /* 保存バー: ボトムメニュー直上に固定 */
-.rk-save-bar { position:fixed; left:0; right:0; bottom:64px; z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); box-shadow:0 -2px 8px rgba(0,0,0,0.05); }
+.rk-save-bar { position:fixed; left:0; right:0; bottom:var(--rk-nav-h, 137px); z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px; box-shadow:0 -2px 8px rgba(0,0,0,0.05); }  /* renraku-savebar-navh-v1 */
 .rk-save-bar-inner { max-width:920px; margin:0 auto; }
 .rk-save-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:800; cursor:pointer; }
 .rk-save-btn:active { background:#1557b0; }
@@ -464,9 +464,18 @@ async function rkSaveBulk(){
   }catch(e){ alert('保存に失敗しました：'+e); }
 }
 
+function rkSyncNavHeight(){
+  // ボトムナビの実高さを測って CSS変数にセット(端末差・safe-area対応)
+  var nav=document.querySelector('.bottom-nav');
+  var h=nav?Math.round(nav.getBoundingClientRect().height):137;
+  if(h>0) document.documentElement.style.setProperty('--rk-nav-h', h+'px');
+}
 document.addEventListener('DOMContentLoaded',function(){
   RK_DATE=rkTodayStr();
   document.getElementById('rk-date').value=RK_DATE;
+  rkSyncNavHeight();
+  setTimeout(rkSyncNavHeight, 600);  // ナビ描画後に再計測
+  window.addEventListener('resize', rkSyncNavHeight);
   rkLoadList();
 });
 </script>
