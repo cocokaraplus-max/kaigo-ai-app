@@ -2446,20 +2446,28 @@ def api_renraku_patient_settings_save():
 
 
 # ===== renraku-ai-family-v1: ご家族へのメッセージ AI下書き生成 =====
-RENRAKU_FAMILY_PROMPT = """あなたは介護施設(デイサービス)の介護職員です。下記は本日の利用者ご本人のケース記録(職員が記録した事実)です。これをもとに、ご家族へお渡しする連絡帳の「ご家族へのメッセージ」を作成してください。
+RENRAKU_FAMILY_PROMPT = """あなたは介護施設(デイサービス)の介護職員です。ご利用者「{user}」様について、ご家族へお渡しする連絡帳の「ご家族へのメッセージ」を作成します。  # renraku-ai-family-prompt-v3
+
+【対象の確認(最重要)】
+この連絡帳の対象は「{user}」様です。文章は必ず「{user}」様ご本人の本日の様子として書いてください。記録には複数の介護職員が登場し、他のご利用者の名前が含まれることもありますが、対象は常に「{user}」様です。主語を取り違えないでください。
+
+【与えられる材料の見方】
+下記のケース記録は、各行が「記録者(職員) / 対象(ご利用者) / 内容」で構成されています。記録者は職員、対象はそのことを書かれたご利用者です。これは誰が誰について書いたかを正しく理解するための情報です。
 
 【厳守事項】
-- ケース記録に書かれている事実だけを使うこと。記録に無いことは絶対に書かない(推測・脚色・創作の禁止)。
-- 他の利用者の名前や情報は一切出さないこと。もし記録に他の方の名前が含まれていても、本人以外の固有名詞は書かない。
-- ご家族に向けた、丁寧で温かく、わかりやすい口調にすること(「〜されました」「〜なさっていました」等の敬体)。
-- 1〜3文程度の簡潔な文章にまとめること。事務的になりすぎず、その日の様子が伝わるように。
-- 医療的な診断・断定は避け、観察された事実をそのまま伝えること。
-- 署名や日付、宛名は不要。本文のみを出力すること。
+- 文章は「{user}」様ご本人の様子として書くこと。記録した職員を主語にしない。
+- 記録した職員の名前は、必要が無ければ本文に出さないこと(通常は出さない)。
+- 本文に「{user}」様ご本人の名前は書かないこと(ご家族が読むため、様子のみを述べる)。
+- 記録の中に他のご利用者の名前が出てきた場合は、その名前を書かず必ず「他の利用者様」と表現すること。
+- ケース記録に書かれた事実だけを使うこと。記録に無いことは推測・脚色・創作しない(ハルシネーション禁止)。
+- ご家族に向けた、丁寧で温かく分かりやすい敬体にすること(「〜されました」「〜なさっていました」等)。
+- 1〜3文程度に簡潔にまとめること。医療的な診断・断定は避け、観察された事実を伝えること。
+- 署名・日付・宛名・記録形式(【】等)は本文に持ち込まないこと。本文のみを出力すること。
 
 【本日のケース記録】
 {records}
 
-上記をもとに、ご家族へのメッセージ本文のみを出力してください。"""
+上記の事実だけをもとに、「{user}」様の本日の様子を、ご家族へのメッセージ本文として出力してください。本文のみを出力してください。"""
 
 
 @app.route('/api/renraku/generate_family', methods=['POST'])  # renraku-ai-family-v1
@@ -2495,14 +2503,14 @@ def api_renraku_generate_family():
         ai_recs = [r for r in recs if r.get('staff_name') == 'AI統合記録']
         normal_recs = [r for r in recs if r.get('staff_name') != 'AI統合記録']
         if ai_recs:
-            recs_text = "\n".join([r.get('content', '') for r in ai_recs])
+            recs_text = "\n".join([f"記録者: AI統合記録 / 対象: {user}様 / 内容: {r.get('content','')}" for r in ai_recs])  # renraku-ai-family-prompt-v3
         elif normal_recs:
-            recs_text = "\n".join([f"【{r.get('staff_name','')}】{r.get('content','')}" for r in normal_recs])
+            recs_text = "\n".join([f"記録者: {r.get('staff_name','')} / 対象: {user}様 / 内容: {r.get('content','')}" for r in normal_recs])  # renraku-ai-family-prompt-v3
         else:
             return jsonify({'status': 'error', 'message': 'この日のケース記録がありません。先にケース記録を入力してください。'}), 200
         from utils import get_generative_model
         model = get_generative_model()
-        resp = model.generate_content([RENRAKU_FAMILY_PROMPT.format(records=recs_text)])
+        resp = model.generate_content([RENRAKU_FAMILY_PROMPT.format(user=user, records=recs_text)])
         text = (resp.text or '').strip()
         return jsonify({'status': 'success', 'message_text': text})
     except Exception as e:
