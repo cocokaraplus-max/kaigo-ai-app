@@ -1139,6 +1139,108 @@ DDL: ledger_fiscal_closes 作り直し(DEV/本番)
 ```
 
 
+## 24. 連絡帳機能（フェーズ1〜AI家族文生成・バイタル測定回マージ）（2026-06-18 セッション）<!-- readme-renraku-session-2026-06-18 -->
+
+デイの「連絡帳」（その日の利用者の様子をご家族に伝えるノート）をゼロから実装し、
+DEV→本番へ反映済み。バイタル表示・表示項目トグル（個別/施設既定）・機能訓練詳細・
+行った場所・ご家族メッセージのAI生成・測定回マージまでを含む。
+
+### 24-1. データモデル（DDL: DEV/本番とも適用済み）
+
+```sql
+-- 連絡帳本体（利用者×日付で1件、items は柔軟な jsonb）
+renraku_notes(
+  id BIGSERIAL PK, facility_code TEXT, patient_id TEXT, note_date DATE,
+  items JSONB, special_note TEXT, family_message TEXT, next_visit TEXT,
+  staff_name TEXT, created_at, updated_at,
+  UNIQUE(facility_code, patient_id, note_date))
+
+-- 施設既定の表示項目（一括設定）
+renraku_settings(
+  facility_code TEXT PK, visible JSONB, updated_at)
+
+-- 利用者ごとの表示項目（個別設定。次回も引き継ぐ）
+renraku_patient_settings(
+  id BIGSERIAL PK, facility_code TEXT, patient_id TEXT, visible JSONB, updated_at,
+  UNIQUE(facility_code, patient_id))
+```
+
+- `items`(jsonb) の主なキー: meal_main/meal_side/water/bath/toilet/training（チップ選択値）、
+  pickup/dropoff（送迎）、rec（レク）、training_details（機能訓練の配列）、places（行った場所の配列）。
+- `visible`(jsonb): 各項目キー→true/false。キーが無い項目は表示(true)扱い。
+  施設既定には `_ai_family`（家族向けAI生成のON/OFF, 既定OFF）も格納。
+
+### 24-2. API（app.py, marker別）
+
+- `renraku-v1`:
+  - `GET /renraku` ページ、`GET /api/renraku/list?date=`（その日バイタルがある利用者一覧）、
+    `GET /api/renraku/get?patient_id=&date=`（単一利用者＋その日の全バイタル時刻順＋note）、
+    `POST /api/renraku/save`（note を upsert）。
+  - 利用者の突合は `patient_profiles.id`(UUID) = vitals.patient_id。
+- `renraku-settings-v1`:
+  - `GET/POST /api/renraku/settings`（施設既定 visible）、
+    `GET/POST /api/renraku/patient_settings`（利用者ごと visible）。
+  - `/api/renraku/get` のレスポンスに `visible`(適用後) と `visible_source`('patient'|'facility'|'default')
+    を追加。優先順位は 個別→施設既定→全表示。
+- `renraku-ai-family-v1`:
+  - `POST /api/renraku/generate_family`（patient_id, date）。
+    その利用者・その日の `records`（ケース記録）を読み、Gemini でご家族向けの文章に変換して返す。
+    AI統合記録(staff_name='AI統合記録')があれば優先、なければ通常記録を結合。
+    プロンプト RENRAKU_FAMILY_PROMPT で「介護職員がご家族へ報告する丁寧な口調／他利用者名は出さない／
+    記録にない事実は創作しない(ハルシネーション禁止)」を厳守。記録が無ければ生成せず案内を返す。
+    生成結果は連絡帳の「ご家族へのメッセージ」欄に挿入し、その後は手で編集可能。
+
+### 24-3. UI（renraku.html, marker別の進化）
+
+- `nav-renraku-v1`(base.html): ボトムナビに「連絡帳」を追加。
+- `renraku-ui-v2`: 各項目を「ヘッダ(ラベル＋トグル, 常時表示)＋ボディ(入力欄, 非表示対象)」の
+  2段構成に変更。**トグルをオフにしてもトグル自体は残り、再表示できる**（旧実装のバグ根治）。
+  バイタル測定が2回以上のときのみ折れ線グラフを描画、1回のみは一覧表だけ（点だけ防止）。
+  機能訓練「実施/一部」で訓練名・時間(分)・メモを複数行追加/削除（items.training_details 配列）。
+- `renraku-savebar-navh-v1`: 「連絡帳を保存」バーをボトムナビ実測高さに固定
+  （`bottom: var(--rk-nav-h)`、JSで `.bottom-nav` の高さ=実測137pxを取得）。固定値だと端末差でずれるため。
+- `renraku-ui-v3`:
+  - 機能訓練の時間入力の右に「分」単位表示。
+  - レク・活動の下に「行った場所」欄（無限追加・削除・トグル付き, items.places 配列）。
+  - 「ご家族へのメッセージ」に「AIで下書き生成」ボタン（施設設定 `_ai_family` がONのときのみ表示）。
+  - 一括設定モーダルの下端をボトムナビの上で止める（隠れる不具合の修正）＋AI生成のON/OFFトグルを追加。
+- `renraku-vital-merge-v1`:
+  - **連絡帳バイタルを「同じ測定回(=10分以内)」単位にまとめて表示**（rkMergeVitals）。
+    本体バイタルは体温と血圧脈拍が別レコードになり得る（同一測定でも別行）。それらは10分以内に
+    登録されているため「同じ回」とみなし、measured_at 昇順で直前と10分以内なら統合。
+    各項目は空でない値を採用（複数あれば後=新しい measured_at を優先）、代表時刻は回の先頭。
+    → 同時刻が2列に割れる/点だけグラフになる不具合を解消。マージ後1回ならグラフ非表示・一覧のみ。
+
+### 24-4. 重要な実装メモ
+
+- 連絡帳の利用者一覧は「その日のバイタルがある人」を対象にしている。
+- ご家族メッセージのAI生成は**既定OFF**。本番で使うには施設の「表示項目の一括設定」で
+  「ご家族向けメッセージのAI生成を使う」をONにする必要がある。
+- vitals は本体が測定ごとに INSERT（同日も別レコード, measured_at で区別）。
+  本番には1日に2〜8レコードの利用者が複数おり、これが §24-3 のマージ対象。
+- 表示項目トグルは個別設定が即保存され、その利用者の次回以降にも引き継がれる。
+
+### 24-5. このセッションのコミット（DEV→本番 反映済み）
+
+```
+renraku-v1                  (連絡帳ページ・list/get/save API)
+nav-renraku-v1              (ボトムナビに連絡帳)
+renraku-settings-v1         (表示項目: 施設既定/利用者ごと API＋get に visible)
+renraku-ai-family-v1        (ご家族メッセージ AI生成 API)
+renraku-ui-v2               (トグル常時表示・1回時グラフ無し・機能訓練詳細)
+renraku-savebar-navh-v1     (保存バーをボトムナビ実測高さに固定)
+renraku-ui-v3               (分単位・行った場所・AI生成ボタン・モーダルかぶり修正)
+renraku-vital-merge-v1      (バイタル 同じ測定回=10分以内 をまとめて表示)
+DDL: renraku_notes / renraku_settings / renraku_patient_settings (DEV/本番)
+```
+
+### 24-6. 連絡帳の残課題（次セッション候補）
+
+- 連絡帳の印刷（フェーズ2）・LINE送信（フェーズ3）は未実装（LINE連携自体が未実装）。
+- 本番デプロイ後の総点検（非破壊チェック）の最終確認。
+
+
+
 
 
 
