@@ -2286,6 +2286,13 @@ def api_renraku_get():
         # 利用者プロフィール
         plist = get_patients(supabase, f_code)
         prof = next((p for p in plist if str(p['id']) == patient_id), None)
+        # renraku-get-visible-v1: 表示項目(個別→施設既定→全表示) を解決
+        _pat_vis = _renraku_patient_visible(supabase, f_code, patient_id)
+        if _pat_vis is not None:
+            _visible, _vis_src = _pat_vis, 'patient'
+        else:
+            _fac_vis = _renraku_facility_visible(supabase, f_code)
+            _visible, _vis_src = (_fac_vis, 'facility') if _fac_vis else ({}, 'default')
         return jsonify({
             'status': 'success',
             'date': date,
@@ -2298,6 +2305,8 @@ def api_renraku_get():
             },
             'note': note,
             'vitals': vitals,
+            'visible': _visible,
+            'visible_source': _vis_src,
         })
     except Exception as e:
         print(f"renraku get error: {e}", flush=True)
@@ -2341,6 +2350,98 @@ def api_renraku_save():
         return jsonify({'status': 'success', 'id': rid})
     except Exception as e:
         print(f"renraku save error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== renraku-settings-v1: 表示項目設定(一括=施設既定 / 個別=利用者ごと) =====
+def _renraku_facility_visible(supabase, f_code):
+    """施設既定の visible(dict) を返す。無ければ {}。"""
+    try:
+        res = supabase.table('renraku_settings').select('visible').eq('facility_code', f_code).execute()
+        if res.data and isinstance(res.data[0].get('visible'), dict):
+            return res.data[0]['visible']
+    except Exception as e:
+        print(f"renraku facility visible error: {e}", flush=True)
+    return {}
+
+
+def _renraku_patient_visible(supabase, f_code, patient_id):
+    """利用者ごとの visible(dict) を返す。無ければ None。"""
+    try:
+        res = (supabase.table('renraku_patient_settings').select('visible')
+               .eq('facility_code', f_code).eq('patient_id', patient_id).execute())
+        if res.data and isinstance(res.data[0].get('visible'), dict):
+            return res.data[0]['visible']
+    except Exception as e:
+        print(f"renraku patient visible error: {e}", flush=True)
+    return None
+
+
+@app.route('/api/renraku/settings', methods=['GET'])  # renraku-settings-v1
+@login_required
+def api_renraku_settings_get():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        return jsonify({'status': 'success', 'visible': _renraku_facility_visible(supabase, f_code)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/settings', methods=['POST'])  # renraku-settings-v1
+@login_required
+def api_renraku_settings_save():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        visible = data.get('visible') or {}
+        if not isinstance(visible, dict):
+            return jsonify({'status': 'error', 'message': 'visible は辞書である必要があります'}), 400
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table('renraku_settings').upsert({
+            'facility_code': f_code, 'visible': visible, 'updated_at': now_iso,
+        }, on_conflict='facility_code').execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f"renraku settings save error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/patient_settings', methods=['GET'])  # renraku-settings-v1
+@login_required
+def api_renraku_patient_settings_get():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        patient_id = str(request.args.get('patient_id') or '')
+        if not patient_id:
+            return jsonify({'status': 'error', 'message': 'patient_id は必須です'}), 400
+        return jsonify({'status': 'success', 'visible': _renraku_patient_visible(supabase, f_code, patient_id)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/patient_settings', methods=['POST'])  # renraku-settings-v1
+@login_required
+def api_renraku_patient_settings_save():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        visible = data.get('visible') or {}
+        if not patient_id:
+            return jsonify({'status': 'error', 'message': 'patient_id は必須です'}), 400
+        if not isinstance(visible, dict):
+            return jsonify({'status': 'error', 'message': 'visible は辞書である必要があります'}), 400
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table('renraku_patient_settings').upsert({
+            'facility_code': f_code, 'patient_id': patient_id, 'visible': visible, 'updated_at': now_iso,
+        }, on_conflict='facility_code,patient_id').execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f"renraku patient settings save error: {e}", flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 

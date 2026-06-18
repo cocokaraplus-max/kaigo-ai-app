@@ -3,15 +3,15 @@
 
 {% block extra_style %}
 <style>
-/* renraku-v1: 連絡帳 */
-.rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px 90px; }
+/* renraku-v1 / renraku-visible-ui-v1: 連絡帳 */
+.rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px 150px; }
 .rk-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
 .rk-head h2 { font-size: 1.12rem; font-weight: 800; color:#202124; margin:0; display:flex; align-items:center; gap:6px; }
 .rk-datenav { display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:12px; }
 .rk-datenav button { width:34px; height:34px; border:1px solid #dadce0; border-radius:8px; background:#fff; font-size:1.1rem; cursor:pointer; color:#5f6368; }
 .rk-datenav button:active { transform:scale(0.95); }
-.rk-date-label { font-size:1.0rem; font-weight:700; color:#202124; min-width:150px; text-align:center; }
 .rk-date-input { border:1px solid #dadce0; border-radius:8px; padding:6px 8px; font-size:0.9rem; }
+.rk-bulk-link { display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; color:#1a73e8; background:none; border:none; cursor:pointer; padding:4px; }
 .rk-empty { text-align:center; color:#9aa0a6; font-size:0.9rem; padding:40px 16px; line-height:1.7; }
 /* 利用者カード一覧 */
 .rk-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:14px 16px; margin-bottom:10px; cursor:pointer; display:flex; align-items:center; gap:12px; transition:box-shadow .15s; }
@@ -22,7 +22,6 @@
 .rk-card-badge { font-size:0.68rem; font-weight:700; border-radius:6px; padding:3px 8px; white-space:nowrap; }
 .rk-badge-noted { background:#e6f4ea; color:#1e8e3e; }
 .rk-badge-todo { background:#fef7e0; color:#b06000; }
-.rk-card-vital { font-size:0.7rem; color:#5f6368; }
 /* 個別連絡帳 */
 .rk-detail-head { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
 .rk-back { background:none; border:none; color:#1a73e8; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:2px; padding:4px; }
@@ -42,20 +41,44 @@
 .rk-legend-dot { width:10px; height:3px; border-radius:2px; display:inline-block; }
 /* チェック項目 */
 .rk-field { margin-bottom:12px; }
-.rk-field-label { font-size:0.78rem; font-weight:700; color:#3c4043; margin-bottom:6px; display:block; }
+.rk-field-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.rk-field-label { font-size:0.78rem; font-weight:700; color:#3c4043; }
 .rk-chips { display:flex; gap:6px; flex-wrap:wrap; }
 .rk-chip { padding:7px 14px; border:1px solid #dadce0; border-radius:20px; font-size:0.82rem; background:#fff; color:#5f6368; cursor:pointer; user-select:none; }
 .rk-chip.active { background:#1a73e8; border-color:#1a73e8; color:#fff; font-weight:700; }
 .rk-row { display:flex; gap:10px; flex-wrap:wrap; }
-.rk-row .rk-field { flex:1; min-width:130px; }
 .rk-input { width:100%; padding:8px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
 .rk-textarea { width:100%; padding:9px 11px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; min-height:70px; resize:vertical; font-family:inherit; }
-.rk-save-bar { position:sticky; bottom:76px; background:linear-gradient(to top,#fff 70%,rgba(255,255,255,0)); padding:10px 0 4px; }
+/* 項目非表示 */
+.rk-item[data-hidden="1"] { display:none; }
+/* トグルスイッチ */
+.rk-toggle { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
+.rk-toggle input { opacity:0; width:0; height:0; }
+.rk-toggle .rk-slider { position:absolute; inset:0; background:#cfd4d9; border-radius:22px; transition:.2s; cursor:pointer; }
+.rk-toggle .rk-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+.rk-toggle input:checked + .rk-slider { background:#1a73e8; }
+.rk-toggle input:checked + .rk-slider:before { transform:translateX(16px); }
+.rk-toggle-mini { transform:scale(0.82); }
+/* 保存バー: ボトムメニュー直上に固定 */
+.rk-save-bar { position:fixed; left:0; right:0; bottom:64px; z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); box-shadow:0 -2px 8px rgba(0,0,0,0.05); }
+.rk-save-bar-inner { max-width:920px; margin:0 auto; }
 .rk-save-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:800; cursor:pointer; }
 .rk-save-btn:active { background:#1557b0; }
 .rk-save-btn:disabled { opacity:0.6; }
-.rk-saved-toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#202124; color:#fff; padding:10px 20px; border-radius:24px; font-size:0.85rem; z-index:500; opacity:0; transition:opacity .25s; pointer-events:none; }
+.rk-saved-toast { position:fixed; bottom:140px; left:50%; transform:translateX(-50%); background:#202124; color:#fff; padding:10px 20px; border-radius:24px; font-size:0.85rem; z-index:500; opacity:0; transition:opacity .25s; pointer-events:none; }
 .rk-saved-toast.show { opacity:1; }
+/* モーダル(一括設定) */
+.rk-modal-mask { position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; display:none; align-items:flex-end; justify-content:center; }
+.rk-modal-mask.show { display:flex; }
+.rk-modal { background:#fff; width:100%; max-width:560px; border-radius:16px 16px 0 0; padding:18px 18px calc(18px + env(safe-area-inset-bottom)); max-height:80vh; overflow-y:auto; }
+.rk-modal h3 { font-size:1.0rem; font-weight:800; color:#202124; margin:0 0 4px; }
+.rk-modal-sub { font-size:0.74rem; color:#9aa0a6; margin-bottom:14px; line-height:1.6; }
+.rk-modal-row { display:flex; align-items:center; justify-content:space-between; padding:10px 2px; border-bottom:1px solid #f0f0f0; }
+.rk-modal-row span { font-size:0.88rem; color:#3c4043; }
+.rk-modal-btns { display:flex; gap:10px; margin-top:16px; }
+.rk-modal-btns button { flex:1; padding:12px; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; border:none; }
+.rk-btn-cancel { background:#f1f3f4; color:#5f6368; }
+.rk-btn-save { background:#1a73e8; color:#fff; }
 </style>
 {% endblock %}
 
@@ -71,6 +94,9 @@
       <button onclick="rkShiftDate(-1)">‹</button>
       <input type="date" id="rk-date" class="rk-date-input" onchange="rkOnDateChange()">
       <button onclick="rkShiftDate(1)">›</button>
+    </div>
+    <div style="text-align:right;margin-bottom:8px;">
+      <button class="rk-bulk-link" onclick="rkOpenBulk()"><span class="material-symbols-outlined" style="font-size:16px;">tune</span>表示項目の一括設定</button>
     </div>
     <div id="rk-list"><div class="rk-empty">読み込み中...</div></div>
   </div>
@@ -91,63 +117,113 @@
     </div>
 
     <div class="rk-section">
-      <div class="rk-section-title"><span class="material-symbols-outlined">checklist</span>本日の様子</div>
-      <div class="rk-row">
-        <div class="rk-field">
-          <label class="rk-field-label">送迎（往路）</label>
-          <input type="text" class="rk-input" id="rk-pickup" placeholder="例：9:15">
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">checklist</span>本日の様子</span>
+        <span style="font-size:0.68rem;color:#9aa0a6;font-weight:600;">各項目のトグルで表示/非表示</span>
+      </div>
+
+      <div class="rk-item" data-fkey="transport">
+        <div class="rk-field-head"><span class="rk-field-label">送迎</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="transport" onchange="rkToggleVisible('transport',this.checked)"><span class="rk-slider"></span></label>
         </div>
-        <div class="rk-field">
-          <label class="rk-field-label">送迎（復路）</label>
-          <input type="text" class="rk-input" id="rk-dropoff" placeholder="例：16:30">
+        <div class="rk-row">
+          <div class="rk-field" style="flex:1;min-width:130px;"><input type="text" class="rk-input" id="rk-pickup" placeholder="往路 例：9:15"></div>
+          <div class="rk-field" style="flex:1;min-width:130px;"><input type="text" class="rk-input" id="rk-dropoff" placeholder="復路 例：16:30"></div>
         </div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">食事（主食）</label>
+
+      <div class="rk-item" data-fkey="meal_main">
+        <div class="rk-field-head"><span class="rk-field-label">食事（主食）</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="meal_main" onchange="rkToggleVisible('meal_main',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="meal_main"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">食事（副食）</label>
+
+      <div class="rk-item" data-fkey="meal_side">
+        <div class="rk-field-head"><span class="rk-field-label">食事（副食）</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="meal_side" onchange="rkToggleVisible('meal_side',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="meal_side"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">水分</label>
+
+      <div class="rk-item" data-fkey="water">
+        <div class="rk-field-head"><span class="rk-field-label">水分</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="water" onchange="rkToggleVisible('water',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="water"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">入浴</label>
+
+      <div class="rk-item" data-fkey="bath">
+        <div class="rk-field-head"><span class="rk-field-label">入浴</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="bath" onchange="rkToggleVisible('bath',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="bath"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">排泄</label>
+
+      <div class="rk-item" data-fkey="toilet">
+        <div class="rk-field-head"><span class="rk-field-label">排泄</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="toilet" onchange="rkToggleVisible('toilet',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="toilet"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">機能訓練・運動</label>
+
+      <div class="rk-item" data-fkey="training">
+        <div class="rk-field-head"><span class="rk-field-label">機能訓練・運動</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="training" onchange="rkToggleVisible('training',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <div class="rk-chips" data-group="training"></div>
       </div>
-      <div class="rk-field">
-        <label class="rk-field-label">レク・活動</label>
+
+      <div class="rk-item" data-fkey="rec">
+        <div class="rk-field-head"><span class="rk-field-label">レク・活動</span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="rec" onchange="rkToggleVisible('rec',this.checked)"><span class="rk-slider"></span></label>
+        </div>
         <input type="text" class="rk-input" id="rk-rec" placeholder="例：午後 体操・ぬり絵">
       </div>
     </div>
 
-    <div class="rk-section">
-      <div class="rk-section-title"><span class="material-symbols-outlined">edit_note</span>特記事項</div>
+    <div class="rk-section rk-item" data-fkey="special_note">
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">edit_note</span>特記事項</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="special_note" onchange="rkToggleVisible('special_note',this.checked)"><span class="rk-slider"></span></label>
+      </div>
       <textarea class="rk-textarea" id="rk-special" placeholder="その日の体調・気づいたことなど"></textarea>
     </div>
 
-    <div class="rk-section">
-      <div class="rk-section-title"><span class="material-symbols-outlined">family_restroom</span>ご家族へのメッセージ</div>
-      <textarea class="rk-textarea" id="rk-family" placeholder="ご家族にお伝えすること"></textarea>
-      <div class="rk-field" style="margin-top:10px;">
-        <label class="rk-field-label">次回利用日</label>
-        <input type="text" class="rk-input" id="rk-next" placeholder="例：6/20（金）">
+    <div class="rk-section rk-item" data-fkey="family_message">
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">family_restroom</span>ご家族へのメッセージ</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="family_message" onchange="rkToggleVisible('family_message',this.checked)"><span class="rk-slider"></span></label>
       </div>
+      <textarea class="rk-textarea" id="rk-family" placeholder="ご家族にお伝えすること"></textarea>
     </div>
 
-    <div class="rk-save-bar">
-      <button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button>
+    <div class="rk-section rk-item" data-fkey="next_visit">
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">event</span>次回利用日</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="next_visit" onchange="rkToggleVisible('next_visit',this.checked)"><span class="rk-slider"></span></label>
+      </div>
+      <input type="text" class="rk-input" id="rk-next" placeholder="例：6/20（金）">
+    </div>
+  </div>
+</div>
+
+<!-- 保存バー(詳細表示中のみ) -->
+<div class="rk-save-bar" id="rk-save-bar" style="display:none;">
+  <div class="rk-save-bar-inner">
+    <button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button>
+  </div>
+</div>
+
+<!-- 一括設定モーダル -->
+<div class="rk-modal-mask" id="rk-bulk-mask">
+  <div class="rk-modal">
+    <h3>表示項目の一括設定</h3>
+    <div class="rk-modal-sub">施設の既定として、連絡帳に表示する項目を選びます。利用者ごとに個別で変えた場合は、そちらが優先されます。</div>
+    <div id="rk-bulk-rows"></div>
+    <div class="rk-modal-btns">
+      <button class="rk-btn-cancel" onclick="rkCloseBulk()">キャンセル</button>
+      <button class="rk-btn-save" onclick="rkSaveBulk()">保存</button>
     </div>
   </div>
 </div>
@@ -155,7 +231,7 @@
 <div class="rk-saved-toast" id="rk-toast">保存しました</div>
 
 <script>
-// renraku-v1: チェック項目の選択肢定義(jsonbのitemsに保存)
+// renraku-visible-ui-v1
 const RK_CHIP_OPTS = {
   meal_main: ['全量','8割','5割','3割','少量','なし'],
   meal_side: ['全量','8割','5割','3割','少量','なし'],
@@ -164,18 +240,33 @@ const RK_CHIP_OPTS = {
   toilet:    ['自立','一部介助','全介助','失禁あり'],
   training:  ['実施','一部','見学','なし'],
 };
-let RK_DATE = '';
-let RK_PATIENT = null;
-let RK_ITEMS = {};
+// 表示制御の対象項目(キー→ラベル)。送迎含む。
+const RK_FIELDS = [
+  ['transport','送迎'],
+  ['meal_main','食事（主食）'],
+  ['meal_side','食事（副食）'],
+  ['water','水分'],
+  ['bath','入浴'],
+  ['toilet','排泄'],
+  ['training','機能訓練・運動'],
+  ['rec','レク・活動'],
+  ['special_note','特記事項'],
+  ['family_message','ご家族へのメッセージ'],
+  ['next_visit','次回利用日'],
+];
+let RK_DATE='', RK_PATIENT=null, RK_ITEMS={};
+let RK_VISIBLE={};         // 現在適用中の表示設定(項目→bool)
+let RK_FACILITY_VIS={};    // 施設既定
 
 function rkTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function rkFmtDate(s){ const [y,m,d]=s.split('-'); const wd=['日','月','火','水','木','金','土'][new Date(s+'T00:00:00').getDay()]; return y+'年'+Number(m)+'月'+Number(d)+'日（'+wd+'）'; }
+// visibleの解決: キーが無ければ true(表示)
+function rkIsVisible(map,key){ return map && map[key]===false ? false : true; }
 
 function rkShiftDate(delta){
   const d=new Date(RK_DATE+'T00:00:00'); d.setDate(d.getDate()+delta);
   RK_DATE=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  document.getElementById('rk-date').value=RK_DATE;
-  rkLoadList();
+  document.getElementById('rk-date').value=RK_DATE; rkLoadList();
 }
 function rkOnDateChange(){ RK_DATE=document.getElementById('rk-date').value||rkTodayStr(); rkLoadList(); }
 
@@ -191,10 +282,8 @@ async function rkLoadList(){
     box.innerHTML=ps.map(function(p){
       const badge=p.noted?'<span class="rk-card-badge rk-badge-noted">記入済み</span>':'<span class="rk-card-badge rk-badge-todo">未記入</span>';
       return '<div class="rk-card" onclick="rkOpenDetail(\''+p.patient_id+'\')">'
-        +'<div class="rk-card-main">'
-        +'<div class="rk-card-name">'+(p.user_name||'(無名)')+'</div>'
-        +'<div class="rk-card-sub">'+(p.patient_number?'No.'+p.patient_number+'　':'')+'バイタル '+p.vital_count+'回</div>'
-        +'</div>'+badge+'</div>';
+        +'<div class="rk-card-main"><div class="rk-card-name">'+(p.user_name||'(無名)')+'</div>'
+        +'<div class="rk-card-sub">'+(p.patient_number?'No.'+p.patient_number+'　':'')+'バイタル '+p.vital_count+'回</div></div>'+badge+'</div>';
     }).join('');
   }catch(e){ box.innerHTML='<div class="rk-empty">読み込みエラー</div>'; }
 }
@@ -205,39 +294,58 @@ async function rkOpenDetail(pid){
     const data=await res.json();
     if(data.status!=='success'){ alert('読み込みエラー'); return; }
     RK_PATIENT=data.patient;
+    RK_VISIBLE=Object.assign({}, data.visible||{});
     document.getElementById('rk-list-view').style.display='none';
     document.getElementById('rk-detail-view').style.display='block';
+    document.getElementById('rk-save-bar').style.display='block';
     document.getElementById('rk-d-name').textContent=data.patient.user_name||'(無名)';
     document.getElementById('rk-d-sub').textContent=(data.patient.patient_number?'No.'+data.patient.patient_number+'　':'')+rkFmtDate(RK_DATE)+(data.patient.care_level?'　'+data.patient.care_level:'');
     rkRenderVitals(data.vitals||[]);
     rkBuildChips();
     rkFillForm(data.note);
+    rkApplyVisible();
     window.scrollTo(0,0);
   }catch(e){ alert('読み込みエラー'); }
 }
 
 function rkBackToList(){
   document.getElementById('rk-detail-view').style.display='none';
+  document.getElementById('rk-save-bar').style.display='none';
   document.getElementById('rk-list-view').style.display='block';
   rkLoadList();
 }
 
-// SVG折れ線(体温・脈拍・SpO2・血圧上)。複数回測定を時刻順にプロット。
+// 表示設定をUIに反映(項目の表示/トグルのON状態)
+function rkApplyVisible(){
+  RK_FIELDS.forEach(function(f){
+    const key=f[0], vis=rkIsVisible(RK_VISIBLE,key);
+    document.querySelectorAll('.rk-item[data-fkey="'+key+'"]').forEach(function(el){ el.setAttribute('data-hidden', vis?'0':'1'); });
+    const cb=document.querySelector('input[data-vis="'+key+'"]'); if(cb) cb.checked=vis;
+  });
+}
+// 個別トグル: その利用者の既定として即保存
+async function rkToggleVisible(key,checked){
+  RK_VISIBLE[key]=checked;
+  document.querySelectorAll('.rk-item[data-fkey="'+key+'"]').forEach(function(el){ el.setAttribute('data-hidden', checked?'0':'1'); });
+  if(!RK_PATIENT) return;
+  try{
+    await fetch('/api/renraku/patient_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patient_id:RK_PATIENT.patient_id, visible:RK_VISIBLE})});
+  }catch(e){ /* 失敗してもUIは反映済み */ }
+}
+
 function rkRenderVitals(vitals){
   const area=document.getElementById('rk-vital-area');
   if(!vitals.length){ area.innerHTML='<div class="rk-vital-empty">この日のバイタル記録はありません</div>'; return; }
   const series=[
-    {key:'temperature', label:'体温', color:'#e8710a', unit:'℃'},
-    {key:'pulse',       label:'脈拍', color:'#1a73e8', unit:''},
-    {key:'spo2',        label:'SpO2', color:'#1e8e3e', unit:'%'},
-    {key:'bp_high',     label:'血圧(上)', color:'#c5221f', unit:''},
+    {key:'temperature', label:'体温', color:'#e8710a'},
+    {key:'pulse',       label:'脈拍', color:'#1a73e8'},
+    {key:'spo2',        label:'SpO2', color:'#1e8e3e'},
+    {key:'bp_high',     label:'血圧(上)', color:'#c5221f'},
   ];
   const times=vitals.map(function(v){ const t=v.measured_at?new Date(v.measured_at):null; return t?(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):'-'; });
-  // グラフ寸法
   const W=Math.max(300, vitals.length*70+60), H=180, padL=36, padR=12, padT=14, padB=26;
   const plotW=W-padL-padR, plotH=H-padT-padB;
   let svg='<svg viewBox="0 0 '+W+' '+H+'" style="min-width:'+W+'px;height:'+H+'px;">';
-  // 各系列を独自スケールで正規化して描画
   series.forEach(function(s){
     const vals=vitals.map(function(v){ const n=parseFloat(v[s.key]); return isNaN(n)?null:n; });
     const present=vals.filter(function(x){return x!==null;});
@@ -251,56 +359,47 @@ function rkRenderVitals(vitals){
       const y=padT+plotH-((val-mn)/(mx-mn))*plotH;
       pts.push([x,y,val]);
     });
-    // 線
     if(pts.length>1){
       let d='M'+pts[0][0]+','+pts[0][1];
       for(let i=1;i<pts.length;i++) d+=' L'+pts[i][0]+','+pts[i][1];
       svg+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2"/>';
     }
-    // 点+値
     pts.forEach(function(p){
       svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="'+s.color+'"/>';
       svg+='<text x="'+p[0]+'" y="'+(p[1]-7)+'" font-size="9" fill="'+s.color+'" text-anchor="middle">'+p[2]+'</text>';
     });
   });
-  // x軸時刻
   times.forEach(function(t,i){
     const x=padL+(vitals.length===1?plotW/2:(plotW*i/(vitals.length-1)));
     svg+='<text x="'+x+'" y="'+(H-8)+'" font-size="9" fill="#9aa0a6" text-anchor="middle">'+t+'</text>';
   });
   svg+='</svg>';
-  // 凡例
   let legend='<div class="rk-vital-legend">'+series.map(function(s){ return '<span><i class="rk-legend-dot" style="background:'+s.color+';"></i>'+s.label+'</span>'; }).join('')+'</div>';
-  // 一覧表
   let th='<tr><th>時刻</th>'+times.map(function(t){return '<th>'+t+'</th>';}).join('')+'</tr>';
-  function row(label,key,unit){ return '<tr><th>'+label+'</th>'+vitals.map(function(v){ const x=v[key]; return '<td>'+(x!==null&&x!==undefined&&x!==''?x+(unit||''):'-')+'</td>'; }).join('')+'</tr>'; }
+  function row(label,key){ return '<tr><th>'+label+'</th>'+vitals.map(function(v){ const x=v[key]; return '<td>'+(x!==null&&x!==undefined&&x!==''?x:'-')+'</td>'; }).join('')+'</tr>'; }
   let table='<div class="rk-chart-wrap"><table class="rk-vital-table">'+th
-    +row('体温','temperature','')
+    +row('体温','temperature')
     +'<tr><th>血圧</th>'+vitals.map(function(v){ const h=v.bp_high,l=v.bp_low; return '<td>'+((h||l)?(h||'-')+'/'+(l||'-'):'-')+'</td>'; }).join('')+'</tr>'
-    +row('脈拍','pulse','')
-    +row('SpO2','spo2','')
+    +row('脈拍','pulse')+row('SpO2','spo2')
     +'</table></div>';
   area.innerHTML=legend+'<div class="rk-chart-wrap">'+svg+'</div>'+table;
 }
 
 function rkBuildChips(){
   document.querySelectorAll('.rk-chips').forEach(function(box){
-    const group=box.dataset.group;
-    const opts=RK_CHIP_OPTS[group]||[];
+    const group=box.dataset.group, opts=RK_CHIP_OPTS[group]||[];
     box.innerHTML=opts.map(function(o){ return '<span class="rk-chip" data-group="'+group+'" data-val="'+o+'" onclick="rkToggleChip(this)">'+o+'</span>'; }).join('');
   });
 }
 function rkToggleChip(el){
   const group=el.dataset.group, val=el.dataset.val;
-  // 単一選択(同グループの他を解除)
   el.parentElement.querySelectorAll('.rk-chip').forEach(function(c){ c.classList.remove('active'); });
   if(RK_ITEMS[group]===val){ RK_ITEMS[group]=''; }
   else { el.classList.add('active'); RK_ITEMS[group]=val; }
 }
 
 function rkFillForm(note){
-  RK_ITEMS = (note&&note.items)?Object.assign({},note.items):{};
-  // チップ復元
+  RK_ITEMS=(note&&note.items)?Object.assign({},note.items):{};
   document.querySelectorAll('.rk-chip').forEach(function(c){
     if(RK_ITEMS[c.dataset.group]===c.dataset.val) c.classList.add('active'); else c.classList.remove('active');
   });
@@ -316,14 +415,11 @@ async function rkSave(){
   if(!RK_PATIENT) return;
   const btn=document.getElementById('rk-save');
   btn.disabled=true; btn.textContent='保存中...';
-  // テキスト系を items に統合
   RK_ITEMS.pickup=document.getElementById('rk-pickup').value;
   RK_ITEMS.dropoff=document.getElementById('rk-dropoff').value;
   RK_ITEMS.rec=document.getElementById('rk-rec').value;
   const payload={
-    patient_id:RK_PATIENT.patient_id,
-    note_date:RK_DATE,
-    items:RK_ITEMS,
+    patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
     special_note:document.getElementById('rk-special').value,
     family_message:document.getElementById('rk-family').value,
     next_visit:document.getElementById('rk-next').value,
@@ -336,6 +432,36 @@ async function rkSave(){
     } else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
   }catch(e){ alert('保存に失敗しました：'+e); }
   finally{ btn.disabled=false; btn.textContent='連絡帳を保存'; }
+}
+
+// ===== 一括設定モーダル =====
+async function rkOpenBulk(){
+  try{
+    const res=await fetch('/api/renraku/settings');
+    const data=await res.json();
+    RK_FACILITY_VIS=(data.status==='success'&&data.visible)?Object.assign({},data.visible):{};
+  }catch(e){ RK_FACILITY_VIS={}; }
+  const rows=RK_FIELDS.map(function(f){
+    const key=f[0], on=rkIsVisible(RK_FACILITY_VIS,key);
+    return '<div class="rk-modal-row"><span>'+f[1]+'</span>'
+      +'<label class="rk-toggle"><input type="checkbox" data-bulk="'+key+'"'+(on?' checked':'')+'><span class="rk-slider"></span></label></div>';
+  }).join('');
+  document.getElementById('rk-bulk-rows').innerHTML=rows;
+  document.getElementById('rk-bulk-mask').classList.add('show');
+}
+function rkCloseBulk(){ document.getElementById('rk-bulk-mask').classList.remove('show'); }
+async function rkSaveBulk(){
+  const vis={};
+  document.querySelectorAll('#rk-bulk-rows input[data-bulk]').forEach(function(cb){ vis[cb.dataset.bulk]=cb.checked; });
+  try{
+    const res=await fetch('/api/renraku/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visible:vis})});
+    const data=await res.json();
+    if(data.status==='success'){
+      RK_FACILITY_VIS=vis; rkCloseBulk();
+      const t=document.getElementById('rk-toast'); t.textContent='一括設定を保存しました'; t.classList.add('show');
+      setTimeout(function(){ t.classList.remove('show'); t.textContent='保存しました'; },1600);
+    } else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
+  }catch(e){ alert('保存に失敗しました：'+e); }
 }
 
 document.addEventListener('DOMContentLoaded',function(){
