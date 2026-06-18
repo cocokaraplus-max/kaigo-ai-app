@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}連絡帳 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* renraku-v1: 連絡帳 */
+.rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px 90px; }
+.rk-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
+.rk-head h2 { font-size: 1.12rem; font-weight: 800; color:#202124; margin:0; display:flex; align-items:center; gap:6px; }
+.rk-datenav { display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:12px; }
+.rk-datenav button { width:34px; height:34px; border:1px solid #dadce0; border-radius:8px; background:#fff; font-size:1.1rem; cursor:pointer; color:#5f6368; }
+.rk-datenav button:active { transform:scale(0.95); }
+.rk-date-label { font-size:1.0rem; font-weight:700; color:#202124; min-width:150px; text-align:center; }
+.rk-date-input { border:1px solid #dadce0; border-radius:8px; padding:6px 8px; font-size:0.9rem; }
+.rk-empty { text-align:center; color:#9aa0a6; font-size:0.9rem; padding:40px 16px; line-height:1.7; }
+/* 利用者カード一覧 */
+.rk-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:14px 16px; margin-bottom:10px; cursor:pointer; display:flex; align-items:center; gap:12px; transition:box-shadow .15s; }
+.rk-card:active { box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+.rk-card-main { flex:1; min-width:0; }
+.rk-card-name { font-size:0.98rem; font-weight:700; color:#202124; }
+.rk-card-sub { font-size:0.74rem; color:#9aa0a6; margin-top:2px; }
+.rk-card-badge { font-size:0.68rem; font-weight:700; border-radius:6px; padding:3px 8px; white-space:nowrap; }
+.rk-badge-noted { background:#e6f4ea; color:#1e8e3e; }
+.rk-badge-todo { background:#fef7e0; color:#b06000; }
+.rk-card-vital { font-size:0.7rem; color:#5f6368; }
+/* 個別連絡帳 */
+.rk-detail-head { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.rk-back { background:none; border:none; color:#1a73e8; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:2px; padding:4px; }
+.rk-detail-name { font-size:1.05rem; font-weight:800; color:#202124; }
+.rk-detail-sub { font-size:0.74rem; color:#9aa0a6; }
+.rk-section { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+.rk-section-title { font-size:0.82rem; font-weight:800; color:#185FA5; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.rk-section-title .material-symbols-outlined { font-size:18px; }
+/* バイタルグラフ */
+.rk-vital-empty { color:#9aa0a6; font-size:0.82rem; text-align:center; padding:16px 0; }
+.rk-chart-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.rk-vital-table { width:100%; border-collapse:collapse; font-size:0.74rem; margin-top:10px; }
+.rk-vital-table th, .rk-vital-table td { border:1px solid #eceff1; padding:5px 6px; text-align:center; white-space:nowrap; }
+.rk-vital-table th { background:#f5f7fa; color:#5f6368; font-weight:700; }
+.rk-vital-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:0.72rem; color:#5f6368; margin-bottom:6px; }
+.rk-vital-legend span { display:flex; align-items:center; gap:4px; }
+.rk-legend-dot { width:10px; height:3px; border-radius:2px; display:inline-block; }
+/* チェック項目 */
+.rk-field { margin-bottom:12px; }
+.rk-field-label { font-size:0.78rem; font-weight:700; color:#3c4043; margin-bottom:6px; display:block; }
+.rk-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.rk-chip { padding:7px 14px; border:1px solid #dadce0; border-radius:20px; font-size:0.82rem; background:#fff; color:#5f6368; cursor:pointer; user-select:none; }
+.rk-chip.active { background:#1a73e8; border-color:#1a73e8; color:#fff; font-weight:700; }
+.rk-row { display:flex; gap:10px; flex-wrap:wrap; }
+.rk-row .rk-field { flex:1; min-width:130px; }
+.rk-input { width:100%; padding:8px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
+.rk-textarea { width:100%; padding:9px 11px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; min-height:70px; resize:vertical; font-family:inherit; }
+.rk-save-bar { position:sticky; bottom:76px; background:linear-gradient(to top,#fff 70%,rgba(255,255,255,0)); padding:10px 0 4px; }
+.rk-save-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:800; cursor:pointer; }
+.rk-save-btn:active { background:#1557b0; }
+.rk-save-btn:disabled { opacity:0.6; }
+.rk-saved-toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#202124; color:#fff; padding:10px 20px; border-radius:24px; font-size:0.85rem; z-index:500; opacity:0; transition:opacity .25s; pointer-events:none; }
+.rk-saved-toast.show { opacity:1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rk-wrap">
+  <div class="rk-head">
+    <h2><span class="material-symbols-outlined">menu_book</span>連絡帳</h2>
+  </div>
+
+  <!-- 一覧ビュー -->
+  <div id="rk-list-view">
+    <div class="rk-datenav">
+      <button onclick="rkShiftDate(-1)">‹</button>
+      <input type="date" id="rk-date" class="rk-date-input" onchange="rkOnDateChange()">
+      <button onclick="rkShiftDate(1)">›</button>
+    </div>
+    <div id="rk-list"><div class="rk-empty">読み込み中...</div></div>
+  </div>
+
+  <!-- 個別ビュー -->
+  <div id="rk-detail-view" style="display:none;">
+    <div class="rk-detail-head">
+      <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
+      <div>
+        <div class="rk-detail-name" id="rk-d-name"></div>
+        <div class="rk-detail-sub" id="rk-d-sub"></div>
+      </div>
+    </div>
+
+    <div class="rk-section">
+      <div class="rk-section-title"><span class="material-symbols-outlined">monitor_heart</span>バイタル（その日の測定）</div>
+      <div id="rk-vital-area"></div>
+    </div>
+
+    <div class="rk-section">
+      <div class="rk-section-title"><span class="material-symbols-outlined">checklist</span>本日の様子</div>
+      <div class="rk-row">
+        <div class="rk-field">
+          <label class="rk-field-label">送迎（往路）</label>
+          <input type="text" class="rk-input" id="rk-pickup" placeholder="例：9:15">
+        </div>
+        <div class="rk-field">
+          <label class="rk-field-label">送迎（復路）</label>
+          <input type="text" class="rk-input" id="rk-dropoff" placeholder="例：16:30">
+        </div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">食事（主食）</label>
+        <div class="rk-chips" data-group="meal_main"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">食事（副食）</label>
+        <div class="rk-chips" data-group="meal_side"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">水分</label>
+        <div class="rk-chips" data-group="water"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">入浴</label>
+        <div class="rk-chips" data-group="bath"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">排泄</label>
+        <div class="rk-chips" data-group="toilet"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">機能訓練・運動</label>
+        <div class="rk-chips" data-group="training"></div>
+      </div>
+      <div class="rk-field">
+        <label class="rk-field-label">レク・活動</label>
+        <input type="text" class="rk-input" id="rk-rec" placeholder="例：午後 体操・ぬり絵">
+      </div>
+    </div>
+
+    <div class="rk-section">
+      <div class="rk-section-title"><span class="material-symbols-outlined">edit_note</span>特記事項</div>
+      <textarea class="rk-textarea" id="rk-special" placeholder="その日の体調・気づいたことなど"></textarea>
+    </div>
+
+    <div class="rk-section">
+      <div class="rk-section-title"><span class="material-symbols-outlined">family_restroom</span>ご家族へのメッセージ</div>
+      <textarea class="rk-textarea" id="rk-family" placeholder="ご家族にお伝えすること"></textarea>
+      <div class="rk-field" style="margin-top:10px;">
+        <label class="rk-field-label">次回利用日</label>
+        <input type="text" class="rk-input" id="rk-next" placeholder="例：6/20（金）">
+      </div>
+    </div>
+
+    <div class="rk-save-bar">
+      <button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="rk-saved-toast" id="rk-toast">保存しました</div>
+
+<script>
+// renraku-v1: チェック項目の選択肢定義(jsonbのitemsに保存)
+const RK_CHIP_OPTS = {
+  meal_main: ['全量','8割','5割','3割','少量','なし'],
+  meal_side: ['全量','8割','5割','3割','少量','なし'],
+  water:     ['多い','普通','少なめ','拒否'],
+  bath:      ['入浴','シャワー','清拭','見守り','なし'],
+  toilet:    ['自立','一部介助','全介助','失禁あり'],
+  training:  ['実施','一部','見学','なし'],
+};
+let RK_DATE = '';
+let RK_PATIENT = null;
+let RK_ITEMS = {};
+
+function rkTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function rkFmtDate(s){ const [y,m,d]=s.split('-'); const wd=['日','月','火','水','木','金','土'][new Date(s+'T00:00:00').getDay()]; return y+'年'+Number(m)+'月'+Number(d)+'日（'+wd+'）'; }
+
+function rkShiftDate(delta){
+  const d=new Date(RK_DATE+'T00:00:00'); d.setDate(d.getDate()+delta);
+  RK_DATE=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  document.getElementById('rk-date').value=RK_DATE;
+  rkLoadList();
+}
+function rkOnDateChange(){ RK_DATE=document.getElementById('rk-date').value||rkTodayStr(); rkLoadList(); }
+
+async function rkLoadList(){
+  const box=document.getElementById('rk-list');
+  box.innerHTML='<div class="rk-empty">読み込み中...</div>';
+  try{
+    const res=await fetch('/api/renraku/list?date='+encodeURIComponent(RK_DATE));
+    const data=await res.json();
+    if(data.status!=='success'){ box.innerHTML='<div class="rk-empty">読み込みエラー</div>'; return; }
+    const ps=data.patients||[];
+    if(!ps.length){ box.innerHTML='<div class="rk-empty">この日のバイタル記録がまだありません。<br>バイタルを記録すると、その利用者がここに表示されます。</div>'; return; }
+    box.innerHTML=ps.map(function(p){
+      const badge=p.noted?'<span class="rk-card-badge rk-badge-noted">記入済み</span>':'<span class="rk-card-badge rk-badge-todo">未記入</span>';
+      return '<div class="rk-card" onclick="rkOpenDetail(\''+p.patient_id+'\')">'
+        +'<div class="rk-card-main">'
+        +'<div class="rk-card-name">'+(p.user_name||'(無名)')+'</div>'
+        +'<div class="rk-card-sub">'+(p.patient_number?'No.'+p.patient_number+'　':'')+'バイタル '+p.vital_count+'回</div>'
+        +'</div>'+badge+'</div>';
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="rk-empty">読み込みエラー</div>'; }
+}
+
+async function rkOpenDetail(pid){
+  try{
+    const res=await fetch('/api/renraku/get?patient_id='+encodeURIComponent(pid)+'&date='+encodeURIComponent(RK_DATE));
+    const data=await res.json();
+    if(data.status!=='success'){ alert('読み込みエラー'); return; }
+    RK_PATIENT=data.patient;
+    document.getElementById('rk-list-view').style.display='none';
+    document.getElementById('rk-detail-view').style.display='block';
+    document.getElementById('rk-d-name').textContent=data.patient.user_name||'(無名)';
+    document.getElementById('rk-d-sub').textContent=(data.patient.patient_number?'No.'+data.patient.patient_number+'　':'')+rkFmtDate(RK_DATE)+(data.patient.care_level?'　'+data.patient.care_level:'');
+    rkRenderVitals(data.vitals||[]);
+    rkBuildChips();
+    rkFillForm(data.note);
+    window.scrollTo(0,0);
+  }catch(e){ alert('読み込みエラー'); }
+}
+
+function rkBackToList(){
+  document.getElementById('rk-detail-view').style.display='none';
+  document.getElementById('rk-list-view').style.display='block';
+  rkLoadList();
+}
+
+// SVG折れ線(体温・脈拍・SpO2・血圧上)。複数回測定を時刻順にプロット。
+function rkRenderVitals(vitals){
+  const area=document.getElementById('rk-vital-area');
+  if(!vitals.length){ area.innerHTML='<div class="rk-vital-empty">この日のバイタル記録はありません</div>'; return; }
+  const series=[
+    {key:'temperature', label:'体温', color:'#e8710a', unit:'℃'},
+    {key:'pulse',       label:'脈拍', color:'#1a73e8', unit:''},
+    {key:'spo2',        label:'SpO2', color:'#1e8e3e', unit:'%'},
+    {key:'bp_high',     label:'血圧(上)', color:'#c5221f', unit:''},
+  ];
+  const times=vitals.map(function(v){ const t=v.measured_at?new Date(v.measured_at):null; return t?(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):'-'; });
+  // グラフ寸法
+  const W=Math.max(300, vitals.length*70+60), H=180, padL=36, padR=12, padT=14, padB=26;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="min-width:'+W+'px;height:'+H+'px;">';
+  // 各系列を独自スケールで正規化して描画
+  series.forEach(function(s){
+    const vals=vitals.map(function(v){ const n=parseFloat(v[s.key]); return isNaN(n)?null:n; });
+    const present=vals.filter(function(x){return x!==null;});
+    if(present.length===0) return;
+    let mn=Math.min.apply(null,present), mx=Math.max.apply(null,present);
+    if(mn===mx){ mn-=1; mx+=1; }
+    let pts=[];
+    vals.forEach(function(val,i){
+      if(val===null) return;
+      const x=padL+(vitals.length===1?plotW/2:(plotW*i/(vitals.length-1)));
+      const y=padT+plotH-((val-mn)/(mx-mn))*plotH;
+      pts.push([x,y,val]);
+    });
+    // 線
+    if(pts.length>1){
+      let d='M'+pts[0][0]+','+pts[0][1];
+      for(let i=1;i<pts.length;i++) d+=' L'+pts[i][0]+','+pts[i][1];
+      svg+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2"/>';
+    }
+    // 点+値
+    pts.forEach(function(p){
+      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="'+s.color+'"/>';
+      svg+='<text x="'+p[0]+'" y="'+(p[1]-7)+'" font-size="9" fill="'+s.color+'" text-anchor="middle">'+p[2]+'</text>';
+    });
+  });
+  // x軸時刻
+  times.forEach(function(t,i){
+    const x=padL+(vitals.length===1?plotW/2:(plotW*i/(vitals.length-1)));
+    svg+='<text x="'+x+'" y="'+(H-8)+'" font-size="9" fill="#9aa0a6" text-anchor="middle">'+t+'</text>';
+  });
+  svg+='</svg>';
+  // 凡例
+  let legend='<div class="rk-vital-legend">'+series.map(function(s){ return '<span><i class="rk-legend-dot" style="background:'+s.color+';"></i>'+s.label+'</span>'; }).join('')+'</div>';
+  // 一覧表
+  let th='<tr><th>時刻</th>'+times.map(function(t){return '<th>'+t+'</th>';}).join('')+'</tr>';
+  function row(label,key,unit){ return '<tr><th>'+label+'</th>'+vitals.map(function(v){ const x=v[key]; return '<td>'+(x!==null&&x!==undefined&&x!==''?x+(unit||''):'-')+'</td>'; }).join('')+'</tr>'; }
+  let table='<div class="rk-chart-wrap"><table class="rk-vital-table">'+th
+    +row('体温','temperature','')
+    +'<tr><th>血圧</th>'+vitals.map(function(v){ const h=v.bp_high,l=v.bp_low; return '<td>'+((h||l)?(h||'-')+'/'+(l||'-'):'-')+'</td>'; }).join('')+'</tr>'
+    +row('脈拍','pulse','')
+    +row('SpO2','spo2','')
+    +'</table></div>';
+  area.innerHTML=legend+'<div class="rk-chart-wrap">'+svg+'</div>'+table;
+}
+
+function rkBuildChips(){
+  document.querySelectorAll('.rk-chips').forEach(function(box){
+    const group=box.dataset.group;
+    const opts=RK_CHIP_OPTS[group]||[];
+    box.innerHTML=opts.map(function(o){ return '<span class="rk-chip" data-group="'+group+'" data-val="'+o+'" onclick="rkToggleChip(this)">'+o+'</span>'; }).join('');
+  });
+}
+function rkToggleChip(el){
+  const group=el.dataset.group, val=el.dataset.val;
+  // 単一選択(同グループの他を解除)
+  el.parentElement.querySelectorAll('.rk-chip').forEach(function(c){ c.classList.remove('active'); });
+  if(RK_ITEMS[group]===val){ RK_ITEMS[group]=''; }
+  else { el.classList.add('active'); RK_ITEMS[group]=val; }
+}
+
+function rkFillForm(note){
+  RK_ITEMS = (note&&note.items)?Object.assign({},note.items):{};
+  // チップ復元
+  document.querySelectorAll('.rk-chip').forEach(function(c){
+    if(RK_ITEMS[c.dataset.group]===c.dataset.val) c.classList.add('active'); else c.classList.remove('active');
+  });
+  document.getElementById('rk-pickup').value=RK_ITEMS.pickup||'';
+  document.getElementById('rk-dropoff').value=RK_ITEMS.dropoff||'';
+  document.getElementById('rk-rec').value=RK_ITEMS.rec||'';
+  document.getElementById('rk-special').value=(note&&note.special_note)||'';
+  document.getElementById('rk-family').value=(note&&note.family_message)||'';
+  document.getElementById('rk-next').value=(note&&note.next_visit)||'';
+}
+
+async function rkSave(){
+  if(!RK_PATIENT) return;
+  const btn=document.getElementById('rk-save');
+  btn.disabled=true; btn.textContent='保存中...';
+  // テキスト系を items に統合
+  RK_ITEMS.pickup=document.getElementById('rk-pickup').value;
+  RK_ITEMS.dropoff=document.getElementById('rk-dropoff').value;
+  RK_ITEMS.rec=document.getElementById('rk-rec').value;
+  const payload={
+    patient_id:RK_PATIENT.patient_id,
+    note_date:RK_DATE,
+    items:RK_ITEMS,
+    special_note:document.getElementById('rk-special').value,
+    family_message:document.getElementById('rk-family').value,
+    next_visit:document.getElementById('rk-next').value,
+  };
+  try{
+    const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    if(data.status==='success'){
+      const t=document.getElementById('rk-toast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1600);
+    } else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
+  }catch(e){ alert('保存に失敗しました：'+e); }
+  finally{ btn.disabled=false; btn.textContent='連絡帳を保存'; }
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+  RK_DATE=rkTodayStr();
+  document.getElementById('rk-date').value=RK_DATE;
+  rkLoadList();
+});
+</script>
+{% endblock %}

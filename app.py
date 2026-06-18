@@ -2206,6 +2206,144 @@ def _visit_cleanup_on_vital_delete(supabase, f_code, patient_pid, date_str):
     except Exception as e:
         print(f"visit cleanup on vital delete error: {e}", flush=True)
 
+# ===== renraku-v1: 連絡帳(フェーズ1) =====
+@app.route('/renraku')
+@login_required
+def renraku_page():  # renraku-v1
+    return render_template('renraku.html')
+
+
+@app.route('/api/renraku/list', methods=['GET'])  # renraku-v1
+@login_required
+def api_renraku_list():
+    """指定日にバイタルがある利用者の一覧を返す。各自の連絡帳記入済みフラグ・測定回数付き。"""
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        date = request.args.get('date') or datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        # その日のバイタル(全回)を取得
+        vres = (supabase.table('vitals')
+                .select('patient_id,user_name,measured_at,temperature,bp_high,bp_low,pulse,spo2')
+                .eq('facility_code', f_code).eq('measured_date', date).execute())
+        vitals = vres.data or []
+        # patient_id ごとに集約
+        by_pid = {}
+        for v in vitals:
+            pid = str(v.get('patient_id'))
+            by_pid.setdefault(pid, []).append(v)
+        # 利用者名の解決(patient_profiles)
+        plist = get_patients(supabase, f_code)
+        pmap = {str(p['id']): p for p in plist}
+        # 連絡帳の記入済み状況
+        nres = (supabase.table('renraku_notes')
+                .select('patient_id')
+                .eq('facility_code', f_code).eq('note_date', date).execute())
+        noted = set(str(r['patient_id']) for r in (nres.data or []))
+        items = []
+        for pid, vs in by_pid.items():
+            prof = pmap.get(pid)
+            name = (prof or {}).get('user_name') or (vs[0].get('user_name') if vs else '') or ''
+            kana = (prof or {}).get('user_kana') or ''
+            chart = (prof or {}).get('patient_number') or ''
+            items.append({
+                'patient_id': pid,
+                'user_name': name,
+                'user_kana': kana,
+                'patient_number': chart,
+                'vital_count': len(vs),
+                'noted': pid in noted,
+            })
+        # かな順
+        items.sort(key=lambda x: (x.get('user_kana') or x.get('user_name') or ''))
+        return jsonify({'status': 'success', 'date': date, 'patients': items})
+    except Exception as e:
+        print(f"renraku list error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/get', methods=['GET'])  # renraku-v1
+@login_required
+def api_renraku_get():
+    """単一利用者の連絡帳+その日の全バイタル(measured_at昇順)を返す。"""
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        patient_id = str(request.args.get('patient_id') or '')
+        date = request.args.get('date') or datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        if not patient_id:
+            return jsonify({'status': 'error', 'message': 'patient_id は必須です'}), 400
+        # 連絡帳本体
+        nres = (supabase.table('renraku_notes')
+                .select('*')
+                .eq('facility_code', f_code).eq('patient_id', patient_id).eq('note_date', date).execute())
+        note = nres.data[0] if nres.data else None
+        # その日の全バイタル(複数回, 時刻昇順)
+        vres = (supabase.table('vitals')
+                .select('id,measured_at,temperature,bp_high,bp_low,pulse,spo2,note,staff_name')
+                .eq('facility_code', f_code).eq('patient_id', patient_id).eq('measured_date', date)
+                .order('measured_at', desc=False).execute())
+        vitals = vres.data or []
+        # 利用者プロフィール
+        plist = get_patients(supabase, f_code)
+        prof = next((p for p in plist if str(p['id']) == patient_id), None)
+        return jsonify({
+            'status': 'success',
+            'date': date,
+            'patient': {
+                'patient_id': patient_id,
+                'user_name': (prof or {}).get('user_name', ''),
+                'user_kana': (prof or {}).get('user_kana', ''),
+                'patient_number': (prof or {}).get('patient_number', ''),
+                'care_level': (prof or {}).get('care_level', ''),
+            },
+            'note': note,
+            'vitals': vitals,
+        })
+    except Exception as e:
+        print(f"renraku get error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/save', methods=['POST'])  # renraku-v1
+@login_required
+def api_renraku_save():
+    """連絡帳を upsert(facility_code+patient_id+note_date)。"""
+    try:
+        f_code = session['f_code']
+        my_name = session['my_name']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        note_date = data.get('note_date')
+        if not patient_id or not note_date:
+            return jsonify({'status': 'error', 'message': 'patient_id と note_date は必須です'}), 400
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = {
+            'facility_code': f_code,
+            'patient_id': patient_id,
+            'note_date': note_date,
+            'items': data.get('items') or {},
+            'special_note': data.get('special_note', ''),
+            'family_message': data.get('family_message', ''),
+            'next_visit': data.get('next_visit', ''),
+            'staff_name': my_name,
+            'updated_at': now_iso,
+        }
+        existing = (supabase.table('renraku_notes').select('id')
+                    .eq('facility_code', f_code).eq('patient_id', patient_id).eq('note_date', note_date).execute())
+        if existing.data:
+            rid = existing.data[0]['id']
+            supabase.table('renraku_notes').update(payload).eq('id', rid).execute()
+        else:
+            payload['created_at'] = now_iso
+            res = supabase.table('renraku_notes').insert(payload).execute()
+            rid = res.data[0]['id'] if res.data else None
+        return jsonify({'status': 'success', 'id': rid})
+    except Exception as e:
+        print(f"renraku save error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/visit')
 @login_required
 def visit_page():  # visit-page-v1
