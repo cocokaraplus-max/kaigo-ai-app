@@ -302,7 +302,41 @@ function rkApplyAiVisibility(){
   const w=document.getElementById('rk-ai-wrap'); if(w) w.style.display=RK_AI_ENABLED?'block':'none';
 }
 
+// renraku-vital-merge-v1: 本体の「同じ測定回(=10分以内)」をまとめる
+function rkMergeVitals(vitals){
+  if(!Array.isArray(vitals) || vitals.length<=1) return (vitals||[]).slice();
+  // measured_at 昇順
+  const arr=vitals.slice().sort(function(a,b){
+    const ta=a.measured_at?new Date(a.measured_at).getTime():0;
+    const tb=b.measured_at?new Date(b.measured_at).getTime():0;
+    return ta-tb;
+  });
+  const WIN=10*60*1000; // 10分
+  const FIELDS=['temperature','pulse','spo2','bp_high','bp_low'];
+  const groups=[];
+  let cur=null, curT=null;
+  arr.forEach(function(v){
+    const t=v.measured_at?new Date(v.measured_at).getTime():null;
+    if(cur===null || curT===null || t===null || (t-curT)>WIN){
+      // 新しいグループ。代表 measured_at は先頭の時刻。
+      cur=Object.assign({}, v);
+      groups.push(cur);
+      curT=t;
+    } else {
+      // 同じ回にマージ。空でない値を採用(後の測定=新しい値を優先)。
+      FIELDS.forEach(function(k){
+        const val=v[k];
+        if(val!==null && val!==undefined && val!==''){ cur[k]=val; }
+      });
+      // 代表時刻(measured_at)は先頭のまま据え置き。連鎖判定の基準時刻は更新。
+      curT=t;
+    }
+  });
+  return groups;
+}
+
 function rkRenderVitals(vitals){
+  vitals=rkMergeVitals(vitals);
   const area=document.getElementById('rk-vital-area');
   if(!vitals.length){ area.innerHTML='<div class="rk-vital-empty">この日のバイタル記録はありません</div>'; return; }
   const times=vitals.map(function(v){ const t=v.measured_at?new Date(v.measured_at):null; return t?(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):'-'; });
