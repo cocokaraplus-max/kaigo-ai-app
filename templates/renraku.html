@@ -3,7 +3,7 @@
 
 {% block extra_style %}
 <style>
-/* renraku-v1 / renraku-visible-ui-v1 / renraku-savebar-navh-v1 / renraku-ui-v2 */
+/* renraku-v1 / visible-ui-v1 / savebar-navh-v1 / ui-v2 / renraku-ui-v3 */
 .rk-wrap { max-width: 920px; margin: 0 auto; padding: 12px 14px; padding-bottom: calc(var(--rk-nav-h, 137px) + 80px); }
 .rk-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
 .rk-head h2 { font-size: 1.12rem; font-weight: 800; color:#202124; margin:0; display:flex; align-items:center; gap:6px; }
@@ -36,26 +36,33 @@
 .rk-vital-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:0.72rem; color:#5f6368; margin-bottom:6px; }
 .rk-vital-legend span { display:flex; align-items:center; gap:4px; }
 .rk-legend-dot { width:10px; height:3px; border-radius:2px; display:inline-block; }
-/* 項目: ヘッダ(常時表示) + ボディ(非表示対象) */
 .rk-field { margin-bottom:14px; }
 .rk-field-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
 .rk-field-label { font-size:0.8rem; font-weight:700; color:#3c4043; }
 .rk-field-body[data-hidden="1"] { display:none; }
-.rk-off-note { font-size:0.72rem; color:#bdc1c6; }
 .rk-chips { display:flex; gap:6px; flex-wrap:wrap; }
 .rk-chip { padding:7px 14px; border:1px solid #dadce0; border-radius:20px; font-size:0.82rem; background:#fff; color:#5f6368; cursor:pointer; user-select:none; }
 .rk-chip.active { background:#1a73e8; border-color:#1a73e8; color:#fff; font-weight:700; }
 .rk-row { display:flex; gap:10px; flex-wrap:wrap; }
 .rk-input { width:100%; padding:8px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
-.rk-textarea { width:100%; padding:9px 11px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; min-height:70px; resize:vertical; font-family:inherit; }
-/* 機能訓練 詳細 */
+.rk-textarea { width:100%; padding:9px 11px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; min-height:80px; resize:vertical; font-family:inherit; }
 .rk-train-detail { margin-top:10px; }
 .rk-train-row { border:1px solid #e8eaed; border-radius:10px; padding:10px; margin-bottom:8px; background:#fafbfc; }
-.rk-train-row .rk-train-top { display:flex; gap:8px; margin-bottom:6px; }
+.rk-train-row .rk-train-top { display:flex; gap:8px; margin-bottom:6px; align-items:center; }
 .rk-train-name { flex:2; min-width:0; }
-.rk-train-min { flex:1; min-width:70px; }
+.rk-train-min { flex:1; min-width:60px; display:flex; align-items:center; gap:4px; }
+.rk-train-min .rk-input { text-align:right; }
+.rk-unit { font-size:0.82rem; color:#5f6368; white-space:nowrap; }
 .rk-train-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:1.1rem; padding:0 4px; flex-shrink:0; }
-.rk-train-add { display:inline-flex; align-items:center; gap:4px; font-size:0.8rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:8px 12px; cursor:pointer; }
+.rk-train-add, .rk-place-add { display:inline-flex; align-items:center; gap:4px; font-size:0.8rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:8px 12px; cursor:pointer; }
+/* 行った場所 */
+.rk-place-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rk-place-row .rk-input { flex:1; }
+.rk-place-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:1.1rem; padding:0 4px; flex-shrink:0; }
+/* AI生成ボタン */
+.rk-ai-btn { display:inline-flex; align-items:center; gap:5px; font-size:0.8rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; margin-bottom:8px; font-weight:700; }
+.rk-ai-btn:disabled { opacity:0.6; }
+.rk-ai-note { font-size:0.68rem; color:#9aa0a6; margin-bottom:8px; line-height:1.5; }
 .rk-toggle { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
 .rk-toggle input { opacity:0; width:0; height:0; }
 .rk-toggle .rk-slider { position:absolute; inset:0; background:#cfd4d9; border-radius:22px; transition:.2s; cursor:pointer; }
@@ -72,11 +79,13 @@
 .rk-saved-toast.show { opacity:1; }
 .rk-modal-mask { position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; display:none; align-items:flex-end; justify-content:center; }
 .rk-modal-mask.show { display:flex; }
-.rk-modal { background:#fff; width:100%; max-width:560px; border-radius:16px 16px 0 0; padding:18px 18px calc(18px + env(safe-area-inset-bottom)); max-height:80vh; overflow-y:auto; }
+/* モーダル下端をボトムナビの上で止める(かぶり修正) */
+.rk-modal { background:#fff; width:100%; max-width:560px; border-radius:16px 16px 0 0; padding:18px; max-height:calc(85vh - var(--rk-nav-h, 137px)); overflow-y:auto; margin-bottom:var(--rk-nav-h, 137px); }
 .rk-modal h3 { font-size:1.0rem; font-weight:800; color:#202124; margin:0 0 4px; }
 .rk-modal-sub { font-size:0.74rem; color:#9aa0a6; margin-bottom:14px; line-height:1.6; }
 .rk-modal-row { display:flex; align-items:center; justify-content:space-between; padding:10px 2px; border-bottom:1px solid #f0f0f0; }
 .rk-modal-row span { font-size:0.88rem; color:#3c4043; }
+.rk-modal-section { font-size:0.72rem; font-weight:700; color:#9aa0a6; margin:14px 0 4px; }
 .rk-modal-btns { display:flex; gap:10px; margin-top:16px; }
 .rk-modal-btns button { flex:1; padding:12px; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; border:none; }
 .rk-btn-cancel { background:#f1f3f4; color:#5f6368; }
@@ -86,9 +95,7 @@
 
 {% block content %}
 <div class="rk-wrap">
-  <div class="rk-head">
-    <h2><span class="material-symbols-outlined">menu_book</span>連絡帳</h2>
-  </div>
+  <div class="rk-head"><h2><span class="material-symbols-outlined">menu_book</span>連絡帳</h2></div>
 
   <div id="rk-list-view">
     <div class="rk-datenav">
@@ -105,10 +112,7 @@
   <div id="rk-detail-view" style="display:none;">
     <div class="rk-detail-head">
       <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
-      <div>
-        <div class="rk-detail-name" id="rk-d-name"></div>
-        <div class="rk-detail-sub" id="rk-d-sub"></div>
-      </div>
+      <div><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
     </div>
 
     <div class="rk-section">
@@ -137,7 +141,13 @@
         <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">family_restroom</span>ご家族へのメッセージ</span>
         <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="family_message" onchange="rkToggleVisible('family_message',this.checked)"><span class="rk-slider"></span></label>
       </div>
-      <div class="rk-field-body" data-bodyfor="family_message"><textarea class="rk-textarea" id="rk-family" placeholder="ご家族にお伝えすること"></textarea></div>
+      <div class="rk-field-body" data-bodyfor="family_message">
+        <div id="rk-ai-wrap" style="display:none;">
+          <button type="button" class="rk-ai-btn" id="rk-ai-btn" onclick="rkGenFamily()"><span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span>AIで下書き生成</button>
+          <div class="rk-ai-note">本日のケース記録をもとに、ご家族向けの文章を生成します。生成後に自由に編集できます。記録にない内容は作成されません。</div>
+        </div>
+        <textarea class="rk-textarea" id="rk-family" placeholder="ご家族にお伝えすること"></textarea>
+      </div>
     </div>
 
     <div class="rk-section" id="rk-sec-next">
@@ -159,6 +169,8 @@
     <h3>表示項目の一括設定</h3>
     <div class="rk-modal-sub">施設の既定として、連絡帳に表示する項目を選びます。利用者ごとに個別で変えた場合は、そちらが優先されます。</div>
     <div id="rk-bulk-rows"></div>
+    <div class="rk-modal-section">機能</div>
+    <div class="rk-modal-row"><span>ご家族向けメッセージのAI生成を使う</span><label class="rk-toggle"><input type="checkbox" id="rk-bulk-ai"><span class="rk-slider"></span></label></div>
     <div class="rk-modal-btns">
       <button class="rk-btn-cancel" onclick="rkCloseBulk()">キャンセル</button>
       <button class="rk-btn-save" onclick="rkSaveBulk()">保存</button>
@@ -169,7 +181,7 @@
 <div class="rk-saved-toast" id="rk-toast">保存しました</div>
 
 <script>
-// renraku-ui-v2
+// renraku-ui-v3
 const RK_CHIP_OPTS = {
   meal_main: ['全量','8割','5割','3割','少量','なし'],
   meal_side: ['全量','8割','5割','3割','少量','なし'],
@@ -178,7 +190,6 @@ const RK_CHIP_OPTS = {
   toilet:    ['自立','一部介助','全介助','失禁あり'],
   training:  ['実施','一部','見学','なし'],
 };
-// 「本日の様子」内の動的フィールド定義(送迎・食事…レク)。特記/家族/次回は固定セクション。
 const RK_DYN_FIELDS = [
   {key:'transport', label:'送迎', type:'transport'},
   {key:'meal_main', label:'食事（主食）', type:'chips'},
@@ -188,10 +199,11 @@ const RK_DYN_FIELDS = [
   {key:'toilet',    label:'排泄', type:'chips'},
   {key:'training',  label:'機能訓練・運動', type:'training'},
   {key:'rec',       label:'レク・活動', type:'text', placeholder:'例：午後 体操・ぬり絵'},
+  {key:'places',    label:'行った場所', type:'places'},
 ];
 const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['next_visit','次回利用日']]);
-let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={};
-let RK_TRAIN=[]; // [{name,minutes,memo}]
+let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={}, RK_AI_ENABLED=false;
+let RK_TRAIN=[], RK_PLACES=[];
 
 function rkTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function rkFmtDate(s){ const [y,m,d]=s.split('-'); const wd=['日','月','火','水','木','金','土'][new Date(s+'T00:00:00').getDay()]; return y+'年'+Number(m)+'月'+Number(d)+'日（'+wd+'）'; }
@@ -221,7 +233,6 @@ async function rkLoadList(){
   }catch(e){ box.innerHTML='<div class="rk-empty">読み込みエラー</div>'; }
 }
 
-// 「本日の様子」フィールドを動的生成(ヘッダ常時表示 + ボディ)
 function rkBuildFields(){
   const wrap=document.getElementById('rk-fields');
   wrap.innerHTML=RK_DYN_FIELDS.map(function(f){
@@ -230,9 +241,10 @@ function rkBuildFields(){
       body='<div class="rk-row"><div style="flex:1;min-width:130px;"><input type="text" class="rk-input" id="rk-pickup" placeholder="往路 例：9:15"></div><div style="flex:1;min-width:130px;"><input type="text" class="rk-input" id="rk-dropoff" placeholder="復路 例：16:30"></div></div>';
     } else if(f.type==='chips'){
       body='<div class="rk-chips" data-group="'+f.key+'"></div>';
-      if(f.key==='training'){}
     } else if(f.type==='training'){
       body='<div class="rk-chips" data-group="training"></div><div class="rk-train-detail" id="rk-train-detail" data-hidden="1"><div id="rk-train-rows"></div><button type="button" class="rk-train-add" onclick="rkTrainAdd()"><span class="material-symbols-outlined" style="font-size:16px;">add</span>訓練を追加</button></div>';
+    } else if(f.type==='places'){
+      body='<div id="rk-place-rows"></div><button type="button" class="rk-place-add" onclick="rkPlaceAdd()"><span class="material-symbols-outlined" style="font-size:16px;">add</span>場所を追加</button>';
     } else if(f.type==='text'){
       body='<input type="text" class="rk-input" id="rk-'+f.key+'" placeholder="'+rkEsc(f.placeholder||'')+'">';
     }
@@ -260,6 +272,7 @@ async function rkOpenDetail(pid){
     rkBuildChips();
     rkFillForm(data.note);
     rkApplyVisible();
+    rkApplyAiVisibility();
     window.scrollTo(0,0);
   }catch(e){ alert('読み込みエラー'); }
 }
@@ -271,7 +284,6 @@ function rkBackToList(){
   rkLoadList();
 }
 
-// 表示制御: ボディだけ隠す。トグルは常に見える。
 function rkApplyVisible(){
   RK_ALL_FIELDS.forEach(function(f){
     const key=f[0], vis=rkIsVisible(RK_VISIBLE,key);
@@ -285,20 +297,18 @@ async function rkToggleVisible(key,checked){
   if(!RK_PATIENT) return;
   try{ await fetch('/api/renraku/patient_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patient_id:RK_PATIENT.patient_id, visible:RK_VISIBLE})}); }catch(e){}
 }
+// AI生成ボタンの表示は施設設定(_ai_family)で制御
+function rkApplyAiVisibility(){
+  const w=document.getElementById('rk-ai-wrap'); if(w) w.style.display=RK_AI_ENABLED?'block':'none';
+}
 
-// バイタル: 2回以上ならグラフ+表、1回のみは表だけ
 function rkRenderVitals(vitals){
   const area=document.getElementById('rk-vital-area');
   if(!vitals.length){ area.innerHTML='<div class="rk-vital-empty">この日のバイタル記録はありません</div>'; return; }
   const times=vitals.map(function(v){ const t=v.measured_at?new Date(v.measured_at):null; return t?(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):'-'; });
   let chart='';
   if(vitals.length>=2){
-    const series=[
-      {key:'temperature', label:'体温', color:'#e8710a'},
-      {key:'pulse',       label:'脈拍', color:'#1a73e8'},
-      {key:'spo2',        label:'SpO2', color:'#1e8e3e'},
-      {key:'bp_high',     label:'血圧(上)', color:'#c5221f'},
-    ];
+    const series=[{key:'temperature',label:'体温',color:'#e8710a'},{key:'pulse',label:'脈拍',color:'#1a73e8'},{key:'spo2',label:'SpO2',color:'#1e8e3e'},{key:'bp_high',label:'血圧(上)',color:'#c5221f'}];
     const W=Math.max(300, vitals.length*70+60), H=180, padL=36, padR=12, padT=14, padB=26;
     const plotW=W-padL-padR, plotH=H-padT-padB;
     let svg='<svg viewBox="0 0 '+W+' '+H+'" style="min-width:'+W+'px;height:'+H+'px;">';
@@ -323,8 +333,7 @@ function rkRenderVitals(vitals){
   let table='<div class="rk-chart-wrap"><table class="rk-vital-table">'+th
     +row('体温','temperature')
     +'<tr><th>血圧</th>'+vitals.map(function(v){ const h=v.bp_high,l=v.bp_low; return '<td>'+((h||l)?(h||'-')+'/'+(l||'-'):'-')+'</td>'; }).join('')+'</tr>'
-    +row('脈拍','pulse')+row('SpO2','spo2')
-    +'</table></div>';
+    +row('脈拍','pulse')+row('SpO2','spo2')+'</table></div>';
   area.innerHTML=chart+table;
 }
 
@@ -340,7 +349,6 @@ function rkToggleChip(el){
   if(RK_ITEMS[group]===val){ RK_ITEMS[group]=''; } else { el.classList.add('active'); RK_ITEMS[group]=val; }
   if(group==='training') rkUpdateTrainVisibility();
 }
-// 機能訓練詳細: 実施/一部 のとき表示
 function rkUpdateTrainVisibility(){
   const show=(RK_ITEMS.training==='実施'||RK_ITEMS.training==='一部');
   const box=document.getElementById('rk-train-detail');
@@ -349,24 +357,31 @@ function rkUpdateTrainVisibility(){
 function rkRenderTrain(){
   const box=document.getElementById('rk-train-rows'); if(!box) return;
   box.innerHTML=RK_TRAIN.map(function(t,i){
-    return '<div class="rk-train-row">'
-      +'<div class="rk-train-top">'
+    return '<div class="rk-train-row"><div class="rk-train-top">'
       +'<div class="rk-train-name"><input type="text" class="rk-input" placeholder="訓練名 例：歩行訓練" value="'+rkEsc(t.name)+'" oninput="rkTrainSet('+i+',\'name\',this.value)"></div>'
-      +'<div class="rk-train-min"><input type="number" class="rk-input" placeholder="分" value="'+rkEsc(t.minutes)+'" oninput="rkTrainSet('+i+',\'minutes\',this.value)"></div>'
-      +'<button type="button" class="rk-train-del" onclick="rkTrainDel('+i+')" title="削除">×</button>'
-      +'</div>'
-      +'<input type="text" class="rk-input" placeholder="メモ（内容・様子など）" value="'+rkEsc(t.memo)+'" oninput="rkTrainSet('+i+',\'memo\',this.value)">'
-      +'</div>';
+      +'<div class="rk-train-min"><input type="number" class="rk-input" placeholder="分" value="'+rkEsc(t.minutes)+'" oninput="rkTrainSet('+i+',\'minutes\',this.value)"><span class="rk-unit">分</span></div>'
+      +'<button type="button" class="rk-train-del" onclick="rkTrainDel('+i+')" title="削除">×</button></div>'
+      +'<input type="text" class="rk-input" placeholder="メモ（内容・様子など）" value="'+rkEsc(t.memo)+'" oninput="rkTrainSet('+i+',\'memo\',this.value)"></div>';
   }).join('');
 }
 function rkTrainAdd(){ RK_TRAIN.push({name:'',minutes:'',memo:''}); rkRenderTrain(); }
 function rkTrainDel(i){ RK_TRAIN.splice(i,1); rkRenderTrain(); }
 function rkTrainSet(i,k,v){ if(RK_TRAIN[i]) RK_TRAIN[i][k]=v; }
+// 行った場所
+function rkRenderPlaces(){
+  const box=document.getElementById('rk-place-rows'); if(!box) return;
+  box.innerHTML=RK_PLACES.map(function(p,i){
+    return '<div class="rk-place-row"><input type="text" class="rk-input" placeholder="例：近隣公園・〇〇神社" value="'+rkEsc(p)+'" oninput="rkPlaceSet('+i+',this.value)"><button type="button" class="rk-place-del" onclick="rkPlaceDel('+i+')" title="削除">×</button></div>';
+  }).join('');
+}
+function rkPlaceAdd(){ RK_PLACES.push(''); rkRenderPlaces(); }
+function rkPlaceDel(i){ RK_PLACES.splice(i,1); rkRenderPlaces(); }
+function rkPlaceSet(i,v){ RK_PLACES[i]=v; }
 
 function rkFillForm(note){
   RK_ITEMS=(note&&note.items)?Object.assign({},note.items):{};
   document.querySelectorAll('.rk-chip').forEach(function(c){ if(RK_ITEMS[c.dataset.group]===c.dataset.val) c.classList.add('active'); else c.classList.remove('active'); });
-  const gv=function(id){ const el=document.getElementById(id); return el; };
+  const gv=function(id){ return document.getElementById(id); };
   if(gv('rk-pickup')) gv('rk-pickup').value=RK_ITEMS.pickup||'';
   if(gv('rk-dropoff')) gv('rk-dropoff').value=RK_ITEMS.dropoff||'';
   if(gv('rk-rec')) gv('rk-rec').value=RK_ITEMS.rec||'';
@@ -374,7 +389,24 @@ function rkFillForm(note){
   if(gv('rk-family')) gv('rk-family').value=(note&&note.family_message)||'';
   if(gv('rk-next')) gv('rk-next').value=(note&&note.next_visit)||'';
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
-  rkRenderTrain(); rkUpdateTrainVisibility();
+  RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
+  rkRenderTrain(); rkUpdateTrainVisibility(); rkRenderPlaces();
+}
+
+async function rkGenFamily(){
+  if(!RK_PATIENT) return;
+  const btn=document.getElementById('rk-ai-btn'); btn.disabled=true;
+  const old=btn.innerHTML; btn.innerHTML='<span class="material-symbols-outlined" style="font-size:16px;">hourglass_top</span>生成中...';
+  try{
+    const res=await fetch('/api/renraku/generate_family',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patient_id:RK_PATIENT.patient_id, date:RK_DATE})});
+    const data=await res.json();
+    if(data.status==='success'){
+      const ta=document.getElementById('rk-family');
+      if(ta.value.trim() && !confirm('既存の文章を生成結果で置き換えますか？')){ }
+      else { ta.value=data.message_text||''; }
+    } else { alert(data.message||'生成できませんでした'); }
+  }catch(e){ alert('生成に失敗しました：'+e); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
 }
 
 async function rkSave(){
@@ -382,10 +414,10 @@ async function rkSave(){
   const btn=document.getElementById('rk-save'); btn.disabled=true; btn.textContent='保存中...';
   const gv=function(id){ const el=document.getElementById(id); return el?el.value:''; };
   RK_ITEMS.pickup=gv('rk-pickup'); RK_ITEMS.dropoff=gv('rk-dropoff'); RK_ITEMS.rec=gv('rk-rec');
-  // 機能訓練詳細: 実施/一部 のときのみ保存。空行は除外。
   if(RK_ITEMS.training==='実施'||RK_ITEMS.training==='一部'){
     RK_ITEMS.training_details=RK_TRAIN.filter(function(t){ return (t.name||'').trim()||(t.minutes||'').toString().trim()||(t.memo||'').trim(); });
   } else { RK_ITEMS.training_details=[]; }
+  RK_ITEMS.places=RK_PLACES.map(function(p){return (p||'').trim();}).filter(function(p){return p;});
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
     special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next') };
   try{
@@ -402,25 +434,33 @@ async function rkOpenBulk(){
   const rows=RK_ALL_FIELDS.map(function(f){ const key=f[0], on=rkIsVisible(RK_FACILITY_VIS,key);
     return '<div class="rk-modal-row"><span>'+rkEsc(f[1])+'</span><label class="rk-toggle"><input type="checkbox" data-bulk="'+key+'"'+(on?' checked':'')+'><span class="rk-slider"></span></label></div>'; }).join('');
   document.getElementById('rk-bulk-rows').innerHTML=rows;
+  document.getElementById('rk-bulk-ai').checked = (RK_FACILITY_VIS._ai_family===true);
   document.getElementById('rk-bulk-mask').classList.add('show');
 }
 function rkCloseBulk(){ document.getElementById('rk-bulk-mask').classList.remove('show'); }
 async function rkSaveBulk(){
   const vis={};
   document.querySelectorAll('#rk-bulk-rows input[data-bulk]').forEach(function(cb){ vis[cb.dataset.bulk]=cb.checked; });
+  vis._ai_family = document.getElementById('rk-bulk-ai').checked;
   try{
     const res=await fetch('/api/renraku/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visible:vis})});
     const data=await res.json();
-    if(data.status==='success'){ RK_FACILITY_VIS=vis; rkCloseBulk(); const t=document.getElementById('rk-toast'); t.textContent='一括設定を保存しました'; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); t.textContent='保存しました'; },1600); }
-    else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
+    if(data.status==='success'){
+      RK_FACILITY_VIS=vis; RK_AI_ENABLED=(vis._ai_family===true); rkApplyAiVisibility(); rkCloseBulk();
+      const t=document.getElementById('rk-toast'); t.textContent='一括設定を保存しました'; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); t.textContent='保存しました'; },1600);
+    } else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
   }catch(e){ alert('保存に失敗しました：'+e); }
 }
 
 function rkSyncNavHeight(){ var nav=document.querySelector('.bottom-nav'); var h=nav?Math.round(nav.getBoundingClientRect().height):137; if(h>0) document.documentElement.style.setProperty('--rk-nav-h', h+'px'); }
+async function rkLoadFacilityAi(){
+  try{ const res=await fetch('/api/renraku/settings'); const data=await res.json(); if(data.status==='success'&&data.visible){ RK_AI_ENABLED=(data.visible._ai_family===true); } }catch(e){}
+}
 document.addEventListener('DOMContentLoaded',function(){
   RK_DATE=rkTodayStr();
   document.getElementById('rk-date').value=RK_DATE;
   rkSyncNavHeight(); setTimeout(rkSyncNavHeight,600); window.addEventListener('resize', rkSyncNavHeight);
+  rkLoadFacilityAi();
   rkLoadList();
 });
 </script>

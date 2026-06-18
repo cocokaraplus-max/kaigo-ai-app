@@ -2445,6 +2445,71 @@ def api_renraku_patient_settings_save():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== renraku-ai-family-v1: ご家族へのメッセージ AI下書き生成 =====
+RENRAKU_FAMILY_PROMPT = """あなたは介護施設(デイサービス)の介護職員です。下記は本日の利用者ご本人のケース記録(職員が記録した事実)です。これをもとに、ご家族へお渡しする連絡帳の「ご家族へのメッセージ」を作成してください。
+
+【厳守事項】
+- ケース記録に書かれている事実だけを使うこと。記録に無いことは絶対に書かない(推測・脚色・創作の禁止)。
+- 他の利用者の名前や情報は一切出さないこと。もし記録に他の方の名前が含まれていても、本人以外の固有名詞は書かない。
+- ご家族に向けた、丁寧で温かく、わかりやすい口調にすること(「〜されました」「〜なさっていました」等の敬体)。
+- 1〜3文程度の簡潔な文章にまとめること。事務的になりすぎず、その日の様子が伝わるように。
+- 医療的な診断・断定は避け、観察された事実をそのまま伝えること。
+- 署名や日付、宛名は不要。本文のみを出力すること。
+
+【本日のケース記録】
+{records}
+
+上記をもとに、ご家族へのメッセージ本文のみを出力してください。"""
+
+
+@app.route('/api/renraku/generate_family', methods=['POST'])  # renraku-ai-family-v1
+@login_required
+def api_renraku_generate_family():
+    try:
+        import datetime as _dt
+        from datetime import time as _dt_time, timedelta as _timedelta
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        date = data.get('date')
+        if not patient_id or not date:
+            return jsonify({'status': 'error', 'message': 'patient_id と date は必須です'}), 400
+        # 利用者名を解決(records は user_name で引く)
+        plist = get_patients(supabase, f_code)
+        prof = next((p for p in plist if str(p['id']) == patient_id), None)
+        if not prof:
+            return jsonify({'status': 'error', 'message': '利用者が見つかりません'}), 404
+        user = prof.get('user_name')
+        try:
+            selected_date = _dt.datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({'status': 'error', 'message': '日付の形式が正しくありません'}), 400
+        t_start = tokyo_tz.localize(_dt.datetime.combine(selected_date, _dt_time.min))
+        res = (supabase.table('records').select('*')
+               .eq('facility_code', f_code).eq('user_name', user)
+               .gte('created_at', t_start.isoformat())
+               .lt('created_at', (t_start + _timedelta(days=1)).isoformat()).execute())
+        recs = res.data or []
+        # AI統合記録があれば優先、なければ通常記録を結合
+        ai_recs = [r for r in recs if r.get('staff_name') == 'AI統合記録']
+        normal_recs = [r for r in recs if r.get('staff_name') != 'AI統合記録']
+        if ai_recs:
+            recs_text = "\n".join([r.get('content', '') for r in ai_recs])
+        elif normal_recs:
+            recs_text = "\n".join([f"【{r.get('staff_name','')}】{r.get('content','')}" for r in normal_recs])
+        else:
+            return jsonify({'status': 'error', 'message': 'この日のケース記録がありません。先にケース記録を入力してください。'}), 200
+        from utils import get_generative_model
+        model = get_generative_model()
+        resp = model.generate_content([RENRAKU_FAMILY_PROMPT.format(records=recs_text)])
+        text = (resp.text or '').strip()
+        return jsonify({'status': 'success', 'message_text': text})
+    except Exception as e:
+        print(f"renraku generate_family error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/visit')
 @login_required
 def visit_page():  # visit-page-v1
