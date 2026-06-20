@@ -2399,20 +2399,6 @@ function makeChartConfig(type, labels, data, accent, lowerIsBetter) {
 // 2系列グラフ描画(系列1=実線 / 系列2=破線)
 // 握力・片脚立位は右/左、5m歩行は通常/最大に流用。
 // 折れ線(1)・エリア(3)は2系列で描画。棒(2)・横棒(5)・数値カード(4)は折れ線にフォールバック。
-// chart-aspect-fix-v2: 表示ボックスの実比率をaspectRatioに渡し、scale/dpr/固定height下の縦横歪みを防ぐ
-function _fixChartAspect(chart, el){
-    try {
-        var box = el.parentNode || el;
-        var r = el.getBoundingClientRect();
-        var w = r.width, h = r.height;
-        if (w > 0 && h > 0) {
-            chart.options.maintainAspectRatio = true;
-            chart.options.aspectRatio = w / h;
-            chart.resize();
-            chart.update('none');
-        }
-    } catch(e) {}
-}
 function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, leftLabel) {
     // 引数未指定(undefined)のみデフォルト適用。null明示は「その系列を描かない」意図として尊重
     if (rightKey === undefined) rightKey = 'standing_balance_right';
@@ -2444,12 +2430,14 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
         backgroundColor: fillArea ? (isMono ? 'rgba(120,120,120,0.10)' : 'rgba(198,40,40,0.13)') : undefined,
         borderWidth: 1.5, pointRadius: 2, tension: 0.3, fill: fillArea
     });
+    var _ar = 1.785;  // chart-aspect-fix-v3
+    try { var _cs = getComputedStyle(el); var _w = parseFloat(_cs.width), _h = parseFloat(_cs.height); if (_w > 0 && _h > 0) _ar = _w / _h; } catch(e) {}
     new Chart(el, {
         type: 'line',
         data: { labels: labels, datasets: datasets },
         options: {
-            /* balance-chart-responsive */
-            responsive: true, maintainAspectRatio: false,
+            /* balance-chart-responsive */  // chart-aspect-fix-v3
+            responsive: true, maintainAspectRatio: true, aspectRatio: _ar,
             plugins: { legend: {
                 display: true, position: 'bottom',
                 labels: { boxWidth: 18, boxHeight: 0, font: { size: 8 }, padding: 4, color: isMono ? '#333' : '#555' }
@@ -2457,8 +2445,6 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
             scales: { x: { display: false }, y: { display: false } }, animation: false
         }
     });
-    var _bch = (window.Chart && Chart.getChart) ? Chart.getChart(el) : null;  // chart-aspect-fix-v2
-    if (_bch) { requestAnimationFrame(function(){ requestAnimationFrame(function(){ _fixChartAspect(_bch, el); }); }); }  // chart-aspect-fix-v2
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
