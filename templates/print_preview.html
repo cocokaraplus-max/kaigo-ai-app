@@ -1338,6 +1338,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <span class="tmpl4-graph-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</span>
           </div>
           <canvas class="mini-chart" id="tmpl4-chart-grip-{{ loop.index }}"></canvas>
+          <div class="rep-legend">  <!-- tmpl4-chart-v1 -->
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+          </div>
         </div>
         {% endif %}
         {% if last_fit.get('tug_sec') and show_tug %}
@@ -1383,6 +1387,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <span class="tmpl4-graph-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span>
           </div>
           <canvas class="mini-chart" id="tmpl4-chart-balance-{{ loop.index }}"></canvas>
+          <div class="rep-legend">  <!-- tmpl4-chart-v1 -->
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+          </div>
         </div>
         {% endif %}
         {% endif %}
@@ -2604,7 +2612,11 @@ if (document.body.classList.contains('tmpl-4')) {
                     var cfg = makeChartConfig(el.id,
                         rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }),
                         rd.weights.map(function(w){ return w.weight_kg; }), accentColor);
-                    if (cfg) new Chart(el, cfg);
+                    if (cfg) {  // tmpl4-chart-v1
+                        var _art4 = 1.785; try { var _cst4 = getComputedStyle(el); var _wt4 = parseFloat(_cst4.width), _ht4 = parseFloat(_cst4.height); if (_wt4 > 0 && _ht4 > 0) _art4 = _wt4 / _ht4; } catch(e) {}
+                        cfg.options = cfg.options || {}; cfg.options.responsive = true; cfg.options.maintainAspectRatio = true; cfg.options.aspectRatio = _art4;
+                        var _mct4 = new Chart(el, cfg); try { _mct4.options.aspectRatio = _art4; _mct4.resize(); } catch(e) {}
+                    }
                 }
             }
         }
@@ -2623,7 +2635,11 @@ if (document.body.classList.contains('tmpl-4')) {
                     renderValueCard(mEl, mData[0], mData[mData.length-1], accentColor, mm.low);
                 } else {
                     var mcfg = makeChartConfig(mEl.id, fitLabels, mData, accentColor, mm.low);
-                    if (mcfg) new Chart(mEl, mcfg);
+                    if (mcfg) {  // tmpl4-chart-v1
+                        var _arm4 = 1.785; try { var _csm4 = getComputedStyle(mEl); var _wm4 = parseFloat(_csm4.width), _hm4 = parseFloat(_csm4.height); if (_wm4 > 0 && _hm4 > 0) _arm4 = _wm4 / _hm4; } catch(e) {}
+                        mcfg.options = mcfg.options || {}; mcfg.options.responsive = true; mcfg.options.maintainAspectRatio = true; mcfg.options.aspectRatio = _arm4;
+                        var _mcm4 = new Chart(mEl, mcfg); try { _mcm4.options.aspectRatio = _arm4; _mcm4.resize(); } catch(e) {}
+                    }
                 }
             });
             // --- 握力(左右2系列) tmpl4版 ---
