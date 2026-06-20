@@ -2520,7 +2520,16 @@ chartData.forEach(function(rd, idx) {
             renderValueCard(el, data[0], data[data.length - 1], accent, m.lowerIsBetter);
         } else {
             var cfg = makeChartConfig(m.id, labels, data, accent, m.lowerIsBetter);
-            if (cfg) new Chart(el, cfg);
+            if (cfg) {  // chart-aspect-fix-v5
+                var _ar5 = 1.785;
+                try { var _cs5 = getComputedStyle(el); var _w5 = parseFloat(_cs5.width), _h5 = parseFloat(_cs5.height); if (_w5 > 0 && _h5 > 0) _ar5 = _w5 / _h5; } catch(e) {}
+                cfg.options = cfg.options || {};
+                cfg.options.responsive = true;
+                cfg.options.maintainAspectRatio = true;
+                cfg.options.aspectRatio = _ar5;
+                var _mc5 = new Chart(el, cfg);
+                try { _mc5.options.aspectRatio = _ar5; _mc5.resize(); } catch(e) {}
+            }
         }
         // トレンドバッジ（chart-xxx-N → trend-xxx-N）
         drawTrendBadge(m.id.replace('chart-', 'trend-'), data, m.lowerIsBetter);
