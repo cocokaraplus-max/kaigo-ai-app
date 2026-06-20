@@ -2432,7 +2432,7 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
     });
     var _ar = 1.785;  // chart-aspect-fix-v3
     try { var _cs = getComputedStyle(el); var _w = parseFloat(_cs.width), _h = parseFloat(_cs.height); if (_w > 0 && _h > 0) _ar = _w / _h; } catch(e) {}
-    new Chart(el, {
+    var _bc = new Chart(el, {  // chart-aspect-fix-v4
         type: 'line',
         data: { labels: labels, datasets: datasets },
         options: {
@@ -2445,6 +2445,7 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
             scales: { x: { display: false }, y: { display: false } }, animation: false
         }
     });
+    try { if (_bc) { _bc.options.aspectRatio = _ar; _bc.resize(); } } catch(e) {}  // chart-aspect-fix-v4
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
