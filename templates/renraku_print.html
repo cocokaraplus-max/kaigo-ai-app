@@ -60,6 +60,7 @@
   body.rkp-landscape .rkp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
   body.rkp-landscape .rkp-body > [data-col='left']  { grid-column: 1; }
   body.rkp-landscape .rkp-body > [data-col='right'] { grid-column: 2; }
+  body.rkp-landscape .rkp-body > [data-col='full'] { grid-column: 1 / -1; }  /* renraku-print-layout-v2 */
   .rkp-orient-toggle { display: inline-flex; border: 1px solid #1a73e8; border-radius: 8px; overflow: hidden; }
   .rkp-orient-toggle button { border: none; background: #fff; color: #1a73e8; font-size: 0.82rem; padding: 8px 14px; cursor: pointer; font-weight: 700; }
   .rkp-orient-toggle button.active { background: #1a73e8; color: #fff; }
@@ -222,7 +223,7 @@ function buildPage(d){
   html+='<div class="rkp-body">';  // renraku-print-orient-v1
 
   // バイタル
-  html+='<div class="rkp-section" data-col="left"><div class="rkp-sec-title">バイタル（その日の測定）</div>'+  // renraku-print-orient-v1
+  html+='<div class="rkp-section" data-col="full"><div class="rkp-sec-title">バイタル（その日の測定）</div>'+  // renraku-print-layout-v2  // renraku-print-orient-v1
         buildVitals(d.vitals)+'</div>';
 
   // 本日の様子(items)
