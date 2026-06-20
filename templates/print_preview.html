@@ -895,6 +895,16 @@ body.mono .rep-facility-box { border-color: #ccc !important; background: #fafafa
 body.mono .rep-patient-row { background: #f0f0f0 !important; border-color: #999 !important; }
 body.mono .rep-cm-office { color: #000 !important; }
 body.mono .rep-fitness-chart-value { color: #000 !important; }
+/* legend-html-v1 : グラフ凡例(HTML) */
+.rep-legend { display: flex; justify-content: center; gap: 10px; align-items: center; margin: 1px 0 0; line-height: 1; flex-wrap: wrap; }
+.rep-legend-item { display: inline-flex; align-items: center; gap: 3px; font-size: 7px; color: #555; white-space: nowrap; }
+.rep-legend-line { display: inline-block; width: 14px; height: 0; vertical-align: middle; }
+.rep-legend-solid { border-top: 2px solid #1565c0; }
+.rep-legend-dashed { border-top: 2px dashed #c62828; }
+body.mono .rep-legend-item { color: #333; }
+body.mono .rep-legend-solid { border-top-color: #000; }
+body.mono .rep-legend-dashed { border-top-color: #888; }
+
 body.mono .rep-fitness-chart-box { background: #f5f5f5 !important; border-color: #ccc !important; }
 body.mono .ach-cont { color: #000 !important; font-weight: 900; }
 body.mono .ach-done { color: #000 !important; }
@@ -1105,6 +1115,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">握力(kg)<span class="rep-fitness-trend" id="trend-grip-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-grip-{{ idx }}"></canvas>
+            <div class="rep-legend">  <!-- legend-html-v1 -->
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+            </div>
             <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
@@ -1126,6 +1140,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">5m歩行(秒)<span class="rep-fitness-trend" id="trend-walk-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-walk-{{ idx }}"></canvas>
+            <div class="rep-legend">  <!-- legend-html-v1 -->
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>通常(実線)</span>
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>最大(破線)</span>
+            </div>
             <div class="rep-fitness-chart-value">通常{% if last_fit.walk_5m_sec %}{{ last_fit.walk_5m_sec }}{% else %}-{% endif %}{% if last_fit.walk_5m_max_sec %} / 最大{{ last_fit.walk_5m_max_sec }}{% endif %}</div>
         </div>
         {% endif %}
@@ -1133,6 +1151,10 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">片脚立位(秒)<span class="rep-fitness-trend" id="trend-balance-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-balance-{{ idx }}"></canvas>
+            <div class="rep-legend">  <!-- legend-html-v1 -->
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+            </div>
             <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
         </div>
         {% endif %}
@@ -2438,8 +2460,8 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
         options: {
             /* balance-chart-responsive */  // chart-aspect-fix-v3
             responsive: true, maintainAspectRatio: true, aspectRatio: _ar,
-            plugins: { legend: {
-                display: true, position: 'bottom',
+            plugins: { legend: {  // legend-html-v1 (HTML凡例に移行のためcanvas内凡例OFF)
+                display: false, position: 'bottom',
                 labels: { boxWidth: 18, boxHeight: 0, font: { size: 8 }, padding: 4, color: isMono ? '#333' : '#555' }
             } },
             scales: { x: { display: false }, y: { display: false } }, animation: false
