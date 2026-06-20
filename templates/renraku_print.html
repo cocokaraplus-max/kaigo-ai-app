@@ -44,6 +44,10 @@
   .rkp-legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
   .rkp-vital-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; margin-top: 6px; }
   .rkp-vital-table th, .rkp-vital-table td { border: 1px solid #dadce0; padding: 3px 6px; text-align: center; }
+  /* renraku-print-tweak-v4 : 値セル(行頭の項目名列以外)を広げる。行頭th=項目名は自然幅。 */
+  .rkp-vital-table td { min-width: 72px; }
+  .rkp-vital-table tr th:not(:first-child) { min-width: 72px; }
+  .rkp-vital-table tr th:first-child { min-width: 0; white-space: nowrap; }
   .rkp-vital-table th { background: #f1f3f4; font-weight: 700; }
   .rkp-chart-wrap { overflow-x: auto; }
 
@@ -218,9 +222,7 @@ function buildPage(d){
   // ヘッダ
   html+='<div class="rkp-head"><div class="rkp-title">連絡帳</div>'+
         '<div class="rkp-date">'+esc(RK_PRINT_DATE)+'</div></div>';
-  html+='<div style="margin-bottom:12px;"><span class="rkp-pname">'+esc(p.user_name||'(無名)')+' 様</span>'+
-        '<span class="rkp-psub">'+(p.patient_number?('No.'+esc(p.patient_number)):'')+
-        (p.care_level?('　'+esc(p.care_level)):'')+'</span></div>';
+  html+='<div style="margin-bottom:12px;"><span class="rkp-pname">'+esc(p.user_name||'(無名)')+' 様</span></div>';  // renraku-print-tweak-v4
   html+='<div class="rkp-body">';  // renraku-print-orient-v1
 
   // バイタル
