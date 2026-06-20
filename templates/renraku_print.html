@@ -55,7 +55,19 @@
 
   .rkp-empty { color: #9aa0a6; font-size: 0.85rem; }
 
+  /* renraku-print-orient-v1 : 横向き2カラム */
+  body.rkp-landscape .rkp-pages { max-width: 1100px; }
+  body.rkp-landscape .rkp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
+  body.rkp-landscape .rkp-body > [data-col='left']  { grid-column: 1; }
+  body.rkp-landscape .rkp-body > [data-col='right'] { grid-column: 2; }
+  .rkp-orient-toggle { display: inline-flex; border: 1px solid #1a73e8; border-radius: 8px; overflow: hidden; }
+  .rkp-orient-toggle button { border: none; background: #fff; color: #1a73e8; font-size: 0.82rem; padding: 8px 14px; cursor: pointer; font-weight: 700; }
+  .rkp-orient-toggle button.active { background: #1a73e8; color: #fff; }
   @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    body.rkp-landscape { }
+  }
+  @media print and (orientation: landscape) { }
     body { background: #fff; }
     .rkp-toolbar, .rkp-edit-hint { display: none !important; }
     .rkp-pages { max-width: none; margin: 0; }
@@ -72,6 +84,10 @@
       <span>🖨</span> 印刷 / PDF保存
     </button>
     <button class="rkp-btn sub" onclick="window.close()">閉じる</button>
+    <span class="rkp-orient-toggle">  <!-- renraku-print-orient-v1 -->
+      <button id="rkp-orient-portrait" class="active" onclick="rkpSetOrient('portrait')">縦</button>
+      <button id="rkp-orient-landscape" onclick="rkpSetOrient('landscape')">横</button>
+    </span>
     <span class="rkp-hint">家族へのメッセージは印刷前にこの画面で編集できます。</span>
   </div>
   <div class="rkp-pages" id="rkp-pages"></div>
@@ -203,26 +219,27 @@ function buildPage(d){
   html+='<div style="margin-bottom:12px;"><span class="rkp-pname">'+esc(p.user_name||'(無名)')+' 様</span>'+
         '<span class="rkp-psub">'+(p.patient_number?('No.'+esc(p.patient_number)):'')+
         (p.care_level?('　'+esc(p.care_level)):'')+'</span></div>';
+  html+='<div class="rkp-body">';  // renraku-print-orient-v1
 
   // バイタル
-  html+='<div class="rkp-section"><div class="rkp-sec-title">バイタル（その日の測定）</div>'+
+  html+='<div class="rkp-section" data-col="left"><div class="rkp-sec-title">バイタル（その日の測定）</div>'+  // renraku-print-orient-v1
         buildVitals(d.vitals)+'</div>';
 
   // 本日の様子(items)
   var itemsHtml=buildItems(items, vis);
-  html+='<div class="rkp-section"><div class="rkp-sec-title">本日の様子</div>'+itemsHtml+'</div>';
+  html+='<div class="rkp-section" data-col="left"><div class="rkp-sec-title">本日の様子</div>'+itemsHtml+'</div>';  // renraku-print-orient-v1
 
   // 特記事項
   if(isVisible(vis,'special_note')){
     var sn=note.special_note||'';
-    if(sn) html+='<div class="rkp-section"><div class="rkp-sec-title">特記事項</div>'+
+    if(sn) html+='<div class="rkp-section" data-col="right"><div class="rkp-sec-title">特記事項</div>'+  // renraku-print-orient-v1
                  '<div class="rkp-text">'+esc(sn)+'</div></div>';
   }
 
   // ご家族へのメッセージ(編集可)
   if(isVisible(vis,'family_message')){
     var fm=note.family_message||'';
-    html+='<div class="rkp-section"><div class="rkp-sec-title">ご家族へのメッセージ</div>'+
+    html+='<div class="rkp-section" data-col="right"><div class="rkp-sec-title">ご家族へのメッセージ</div>'+  // renraku-print-orient-v1
           '<div class="rkp-family" contenteditable="true">'+esc(fm)+'</div>'+
           '<div class="rkp-edit-hint">↑ クリックして編集できます（印刷にのみ反映）</div></div>';
   }
@@ -230,14 +247,25 @@ function buildPage(d){
   // 次回利用日
   if(isVisible(vis,'next_visit')){
     var nv=note.next_visit||'';
-    if(nv) html+='<div class="rkp-section"><div class="rkp-sec-title">次回利用日</div>'+
+    if(nv) html+='<div class="rkp-section" data-col="right"><div class="rkp-sec-title">次回利用日</div>'+  // renraku-print-orient-v1
                  '<div class="rkp-text">'+esc(nv)+'</div></div>';
   }
 
+  html+='</div>';  // rkp-body close (renraku-print-orient-v1)
   html+='</div>';
   return html;
 }
 
+// renraku-print-orient-v1 : 縦横切替
+function rkpSetOrient(o){
+  document.body.classList.toggle('rkp-landscape', o==='landscape');
+  var pp=document.getElementById('rkp-orient-portrait'), pl=document.getElementById('rkp-orient-landscape');
+  if(pp) pp.classList.toggle('active', o==='portrait');
+  if(pl) pl.classList.toggle('active', o==='landscape');
+  var st=document.getElementById('rkp-page-style');
+  if(!st){ st=document.createElement('style'); st.id='rkp-page-style'; document.head.appendChild(st); }
+  st.textContent='@page { size: A4 '+(o==='landscape'?'landscape':'portrait')+'; margin: 12mm; }';
+}
 (function(){
   var root=document.getElementById('rkp-pages');
   if(!RK_PRINT_DATA || !RK_PRINT_DATA.length){
