@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>連絡帳 印刷 - TASUKARU</title>
+<style>
+  /* renraku-print-v1 */
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+         margin: 0; padding: 0; color: #202124; background: #f5f5f5; }
+  .rkp-toolbar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid #e0e0e0;
+                 padding: 10px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; }
+  .rkp-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 700;
+             color: #fff; background: #1a73e8; border: none; border-radius: 8px; padding: 9px 18px; cursor: pointer; }
+  .rkp-btn.sub { color: #1a73e8; background: #e8f0fe; }
+  .rkp-hint { font-size: 0.78rem; color: #5f6368; }
+
+  .rkp-pages { max-width: 800px; margin: 16px auto; }
+  .rkp-page { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+              padding: 20px 24px; margin-bottom: 16px; }
+
+  .rkp-head { display: flex; align-items: baseline; justify-content: space-between;
+              border-bottom: 2px solid #185FA5; padding-bottom: 8px; margin-bottom: 14px; }
+  .rkp-title { font-size: 1.2rem; font-weight: 800; color: #185FA5; }
+  .rkp-date { font-size: 0.95rem; color: #5f6368; }
+  .rkp-pname { font-size: 1.05rem; font-weight: 800; }
+  .rkp-psub { font-size: 0.8rem; color: #5f6368; margin-left: 8px; font-weight: 400; }
+
+  .rkp-section { margin-bottom: 14px; }
+  .rkp-sec-title { font-size: 0.85rem; font-weight: 800; color: #185FA5; margin-bottom: 6px;
+                   border-left: 4px solid #185FA5; padding-left: 8px; }
+  .rkp-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; }
+  .rkp-kv { display: inline-flex; gap: 4px; }
+  .rkp-kv .k { color: #5f6368; }
+  .rkp-kv .v { font-weight: 700; }
+  .rkp-list { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+  .rkp-list li { margin-bottom: 2px; }
+  .rkp-text { font-size: 0.9rem; white-space: pre-wrap; line-height: 1.6; }
+
+  /* バイタル */
+  .rkp-vital-legend { display: flex; gap: 12px; font-size: 0.75rem; color: #5f6368; margin-bottom: 4px; flex-wrap: wrap; }
+  .rkp-vital-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .rkp-legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+  .rkp-vital-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; margin-top: 6px; }
+  .rkp-vital-table th, .rkp-vital-table td { border: 1px solid #dadce0; padding: 3px 6px; text-align: center; }
+  .rkp-vital-table th { background: #f1f3f4; font-weight: 700; }
+  .rkp-chart-wrap { overflow-x: auto; }
+
+  /* 家族メッセージ(編集可) */
+  .rkp-family { border: 1px dashed #1a73e8; border-radius: 6px; padding: 10px; font-size: 0.92rem;
+                line-height: 1.7; min-height: 40px; background: #fafdff; outline: none; white-space: pre-wrap; }
+  .rkp-family:focus { background: #fff; border-style: solid; }
+  .rkp-edit-hint { font-size: 0.72rem; color: #9aa0a6; margin-top: 2px; }
+
+  .rkp-empty { color: #9aa0a6; font-size: 0.85rem; }
+
+  @media print {
+    body { background: #fff; }
+    .rkp-toolbar, .rkp-edit-hint { display: none !important; }
+    .rkp-pages { max-width: none; margin: 0; }
+    .rkp-page { border: none; border-radius: 0; margin: 0; padding: 0 8mm;
+                page-break-after: always; }
+    .rkp-page:last-child { page-break-after: auto; }
+    .rkp-family { border-color: transparent; background: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="rkp-toolbar">
+    <button class="rkp-btn" onclick="window.print()">
+      <span>🖨</span> 印刷 / PDF保存
+    </button>
+    <button class="rkp-btn sub" onclick="window.close()">閉じる</button>
+    <span class="rkp-hint">家族へのメッセージは印刷前にこの画面で編集できます。</span>
+  </div>
+  <div class="rkp-pages" id="rkp-pages"></div>
+
+<script>
+// renraku-print-v1
+// サーバーから埋め込まれるデータ。{{ ... }} は Jinja で置換。
+var RK_PRINT_DATA = {{ print_data_json | safe }};
+var RK_PRINT_DATE = {{ date_json | safe }};
+var RK_FACILITY_NAME = {{ facility_name_json | safe }};
+
+// 動的項目の定義(連絡帳画面 RK_DYN_FIELDS と対応)
+var RK_DYN_FIELDS = [
+  {key:'transport', label:'送迎', type:'transport'},
+  {key:'meal_main', label:'食事（主食）', type:'chips'},
+  {key:'meal_side', label:'食事（副食）', type:'chips'},
+  {key:'water',     label:'水分', type:'chips'},
+  {key:'bath',      label:'入浴', type:'chips'},
+  {key:'toilet',    label:'排泄', type:'chips'},
+  {key:'training',  label:'機能訓練・運動', type:'training'},
+  {key:'rec',       label:'レク・活動', type:'text'},
+  {key:'places',    label:'行った場所', type:'places'}
+];
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+// visible 判定: visible[key] が false 以外なら表示(未定義=表示)
+function isVisible(vis, key){
+  if(!vis) return true;
+  return vis[key] !== false;
+}
+
+// バイタルSVG+表(連絡帳画面のロジックを移植)
+function buildVitals(vitals){
+  if(!vitals || !vitals.length) return '<div class="rkp-empty">この日のバイタル記録はありません</div>';
+  var times = vitals.map(function(v){ var t=v.measured_at?new Date(v.measured_at):null;
+    return t?(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')):'-'; });
+  var chart='';
+  if(vitals.length>=2){
+    var series=[{key:'temperature',label:'体温',color:'#e8710a'},{key:'pulse',label:'脈拍',color:'#1a73e8'},
+                {key:'spo2',label:'SpO2',color:'#1e8e3e'},{key:'bp_high',label:'血圧(上)',color:'#c5221f'}];
+    var W=Math.max(300, vitals.length*70+60), H=180, padL=36, padR=12, padT=14, padB=26;
+    var plotW=W-padL-padR, plotH=H-padT-padB;
+    var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;height:auto;">';
+    series.forEach(function(s){
+      var vals=vitals.map(function(v){ var n=parseFloat(v[s.key]); return isNaN(n)?null:n; });
+      var present=vals.filter(function(x){return x!==null;});
+      if(present.length===0) return;
+      var mn=Math.min.apply(null,present), mx=Math.max.apply(null,present);
+      if(mn===mx){ mn-=1; mx+=1; }
+      var pts=[];
+      vals.forEach(function(val,i){ if(val===null) return; var x=padL+(plotW*i/(vitals.length-1));
+        var y=padT+plotH-((val-mn)/(mx-mn))*plotH; pts.push([x,y,val]); });
+      if(pts.length>1){ var d='M'+pts[0][0]+','+pts[0][1]; for(var i=1;i<pts.length;i++) d+=' L'+pts[i][0]+','+pts[i][1];
+        svg+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2"/>'; }
+      pts.forEach(function(p){ svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="'+s.color+'"/>'+
+        '<text x="'+p[0]+'" y="'+(p[1]-7)+'" font-size="9" fill="'+s.color+'" text-anchor="middle">'+p[2]+'</text>'; });
+    });
+    times.forEach(function(t,i){ var x=padL+(plotW*i/(vitals.length-1));
+      svg+='<text x="'+x+'" y="'+(H-8)+'" font-size="9" fill="#9aa0a6" text-anchor="middle">'+esc(t)+'</text>'; });
+    svg+='</svg>';
+    var legend='<div class="rkp-vital-legend">'+series.map(function(s){
+      return '<span><i class="rkp-legend-dot" style="background:'+s.color+';"></i>'+s.label+'</span>'; }).join('')+'</div>';
+    chart=legend+'<div class="rkp-chart-wrap">'+svg+'</div>';
+  }
+  var th='<tr><th>時刻</th>'+times.map(function(t){return '<th>'+esc(t)+'</th>';}).join('')+'</tr>';
+  function row(label,key){ return '<tr><th>'+label+'</th>'+vitals.map(function(v){ var x=v[key];
+    return '<td>'+((x!==null&&x!==undefined&&x!=='')?esc(x):'-')+'</td>'; }).join('')+'</tr>'; }
+  var table='<div class="rkp-chart-wrap"><table class="rkp-vital-table">'+th
+    +row('体温','temperature')
+    +'<tr><th>血圧</th>'+vitals.map(function(v){ var h=v.bp_high,l=v.bp_low;
+      return '<td>'+((h||l)?(esc(h||'-')+'/'+esc(l||'-')):'-')+'</td>'; }).join('')+'</tr>'
+    +row('脈拍','pulse')+row('SpO2','spo2')+'</table></div>';
+  return chart+table;
+}
+
+// items の本日の様子を整形
+function buildItems(items, vis){
+  items = items || {};
+  var parts=[];
+  RK_DYN_FIELDS.forEach(function(f){
+    if(!isVisible(vis, f.key)) return;
+    if(f.type==='transport'){
+      var pu=items.pickup||'', dr=items.dropoff||'';
+      if(!pu && !dr) return;
+      var s=[]; if(pu) s.push('送り（迎え）: '+esc(pu)); if(dr) s.push('送り（送り）: '+esc(dr));
+      parts.push('<div class="rkp-kv"><span class="k">'+esc(f.label)+'</span><span class="v">'+
+        (pu?('迎 '+esc(pu)):'')+(dr?('　送 '+esc(dr)):'')+'</span></div>');
+    } else if(f.type==='chips'){
+      var v=items[f.key]||'';
+      if(!v) return;
+      parts.push('<div class="rkp-kv"><span class="k">'+esc(f.label)+'</span><span class="v">'+esc(v)+'</span></div>');
+    } else if(f.type==='text'){
+      var t=items[f.key]||'';
+      if(!t) return;
+      parts.push('<div class="rkp-kv"><span class="k">'+esc(f.label)+'</span><span class="v">'+esc(t)+'</span></div>');
+    } else if(f.type==='training'){
+      var td=items.training_details;
+      var tstate=items.training||'';
+      if((!td||!td.length) && !tstate) return;
+      var html='<div class="rkp-kv"><span class="k">'+esc(f.label)+'</span><span class="v">'+esc(tstate||'実施')+'</span></div>';
+      if(td && td.length){
+        html+='<ul class="rkp-list">'+td.map(function(t){
+          var seg=[]; if(t.name) seg.push(esc(t.name));
+          if(t.minutes!==''&&t.minutes!=null) seg.push(esc(t.minutes)+'分');
+          if(t.memo) seg.push(esc(t.memo));
+          return '<li>'+seg.join(' / ')+'</li>'; }).join('')+'</ul>';
+      }
+      parts.push(html);
+    } else if(f.type==='places'){
+      var pl=items.places;
+      if(!pl || !pl.length) return;
+      parts.push('<div class="rkp-kv"><span class="k">'+esc(f.label)+'</span></div>'+
+        '<ul class="rkp-list">'+pl.map(function(p){ return '<li>'+esc(p)+'</li>'; }).join('')+'</ul>');
+    }
+  });
+  if(!parts.length) return '<div class="rkp-empty">記録なし</div>';
+  return '<div class="rkp-row">'+parts.join('')+'</div>';
+}
+
+function buildPage(d){
+  var p=d.patient||{}, note=d.note||{}, vis=d.visible||{};
+  var items=note.items||{};
+  var html='<div class="rkp-page">';
+  // ヘッダ
+  html+='<div class="rkp-head"><div class="rkp-title">れんらくちょう</div>'+
+        '<div class="rkp-date">'+esc(RK_PRINT_DATE)+'</div></div>';
+  html+='<div style="margin-bottom:12px;"><span class="rkp-pname">'+esc(p.user_name||'(無名)')+' 様</span>'+
+        '<span class="rkp-psub">'+(p.patient_number?('No.'+esc(p.patient_number)):'')+
+        (p.care_level?('　'+esc(p.care_level)):'')+'</span></div>';
+
+  // バイタル
+  html+='<div class="rkp-section"><div class="rkp-sec-title">バイタル（その日の測定）</div>'+
+        buildVitals(d.vitals)+'</div>';
+
+  // 本日の様子(items)
+  var itemsHtml=buildItems(items, vis);
+  html+='<div class="rkp-section"><div class="rkp-sec-title">本日の様子</div>'+itemsHtml+'</div>';
+
+  // 特記事項
+  if(isVisible(vis,'special_note')){
+    var sn=note.special_note||'';
+    if(sn) html+='<div class="rkp-section"><div class="rkp-sec-title">特記事項</div>'+
+                 '<div class="rkp-text">'+esc(sn)+'</div></div>';
+  }
+
+  // ご家族へのメッセージ(編集可)
+  if(isVisible(vis,'family_message')){
+    var fm=note.family_message||'';
+    html+='<div class="rkp-section"><div class="rkp-sec-title">ご家族へのメッセージ</div>'+
+          '<div class="rkp-family" contenteditable="true">'+esc(fm)+'</div>'+
+          '<div class="rkp-edit-hint">↑ クリックして編集できます（印刷にのみ反映）</div></div>';
+  }
+
+  // 次回利用日
+  if(isVisible(vis,'next_visit')){
+    var nv=note.next_visit||'';
+    if(nv) html+='<div class="rkp-section"><div class="rkp-sec-title">次回利用日</div>'+
+                 '<div class="rkp-text">'+esc(nv)+'</div></div>';
+  }
+
+  html+='</div>';
+  return html;
+}
+
+(function(){
+  var root=document.getElementById('rkp-pages');
+  if(!RK_PRINT_DATA || !RK_PRINT_DATA.length){
+    root.innerHTML='<div class="rkp-page"><div class="rkp-empty">印刷対象の連絡帳がありません。</div></div>';
+    return;
+  }
+  root.innerHTML = RK_PRINT_DATA.map(buildPage).join('');
+})();
+</script>
+</body>
+</html>

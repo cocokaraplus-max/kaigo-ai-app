@@ -2207,6 +2207,60 @@ def _visit_cleanup_on_vital_delete(supabase, f_code, patient_pid, date_str):
         print(f"visit cleanup on vital delete error: {e}", flush=True)
 
 # ===== renraku-v1: 連絡帳(フェーズ1) =====
+@app.route('/renraku/print')  # renraku-print-route-v1
+@login_required
+def renraku_print_page():
+    """\u9023\u7d61\u5e33\u5370\u5237\u30da\u30fc\u30b8\u3002date \u3068 ids(\u30ab\u30f3\u30de\u533a\u5207\u308a) \u3092\u53d7\u3051\u308b\u3002"""
+    import json as _json
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        date = request.args.get('date') or datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        ids_raw = request.args.get('ids') or ''
+        ids = [s.strip() for s in ids_raw.split(',') if s.strip()]
+        plist = get_patients(supabase, f_code)
+        fac_vis = _renraku_facility_visible(supabase, f_code)
+        out = []
+        for pid in ids:
+            nres = (supabase.table('renraku_notes').select('*')
+                    .eq('facility_code', f_code).eq('patient_id', pid).eq('note_date', date).execute())
+            note = nres.data[0] if nres.data else None
+            vres = (supabase.table('vitals')
+                    .select('id,measured_at,temperature,bp_high,bp_low,pulse,spo2,note,staff_name')
+                    .eq('facility_code', f_code).eq('patient_id', pid).eq('measured_date', date)
+                    .order('measured_at', desc=False).execute())
+            vitals = vres.data or []
+            prof = next((p for p in plist if str(p['id']) == str(pid)), None)
+            pat_vis = _renraku_patient_visible(supabase, f_code, pid)
+            visible = pat_vis if pat_vis is not None else (fac_vis or {})
+            out.append({
+                'patient': {
+                    'patient_id': pid,
+                    'user_name': (prof or {}).get('user_name', ''),
+                    'user_kana': (prof or {}).get('user_kana', ''),
+                    'patient_number': (prof or {}).get('patient_number', ''),
+                    'care_level': (prof or {}).get('care_level', ''),
+                },
+                'note': note,
+                'vitals': vitals,
+                'visible': visible,
+            })
+        fac_name = ''
+        try:
+            fr = supabase.table('facilities').select('facility_name').eq('facility_code', f_code).execute()
+            if fr.data:
+                fac_name = fr.data[0].get('facility_name', '') or ''
+        except Exception:
+            fac_name = ''
+        return render_template('renraku_print.html',
+                               print_data_json=_json.dumps(out, ensure_ascii=False, default=str),
+                               date_json=_json.dumps(date, ensure_ascii=False),
+                               facility_name_json=_json.dumps(fac_name, ensure_ascii=False))
+    except Exception as e:
+        print(f"renraku print error: {e}", flush=True)
+        return f"\u5370\u5237\u30da\u30fc\u30b8\u306e\u751f\u6210\u306b\u5931\u6557\u3057\u307e\u3057\u305f: {e}", 500
+
+
 @app.route('/renraku')
 @login_required
 def renraku_page():  # renraku-v1
