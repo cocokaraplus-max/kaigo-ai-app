@@ -104,6 +104,7 @@
       <button onclick="rkShiftDate(1)">›</button>
     </div>
     <div style="text-align:right;margin-bottom:8px;">
+      <button class="rk-bulk-link" onclick="rkPrintAll()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>まとめて印刷</button>  <!-- renraku-print-link-v1 -->
       <button class="rk-bulk-link" onclick="rkOpenBulk()"><span class="material-symbols-outlined" style="font-size:16px;">tune</span>表示項目の一括設定</button>
     </div>
     <div id="rk-list"><div class="rk-empty">読み込み中...</div></div>
@@ -112,7 +113,8 @@
   <div id="rk-detail-view" style="display:none;">
     <div class="rk-detail-head">
       <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
-      <div><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
+      <div style="flex:1;"><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
+      <button class="rk-bulk-link" onclick="rkPrintOne()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>印刷</button>  <!-- renraku-print-link-v1 -->
     </div>
 
     <div class="rk-section">
@@ -203,6 +205,7 @@ const RK_DYN_FIELDS = [
 ];
 const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['next_visit','次回利用日']]);
 let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={}, RK_AI_ENABLED=false;
+let RK_LIST=[];  // renraku-print-link-v1
 let RK_TRAIN=[], RK_PLACES=[];
 
 function rkTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -225,6 +228,7 @@ async function rkLoadList(){
     const data=await res.json();
     if(data.status!=='success'){ box.innerHTML='<div class="rk-empty">読み込みエラー</div>'; return; }
     const ps=data.patients||[];
+    RK_LIST=ps;  // renraku-print-link-v1
     if(!ps.length){ box.innerHTML='<div class="rk-empty">この日のバイタル記録がまだありません。<br>バイタルを記録すると、その利用者がここに表示されます。</div>'; return; }
     box.innerHTML=ps.map(function(p){
       const badge=p.noted?'<span class="rk-card-badge rk-badge-noted">記入済み</span>':'<span class="rk-card-badge rk-badge-todo">未記入</span>';
@@ -463,6 +467,18 @@ async function rkSave(){
   finally{ btn.disabled=false; btn.textContent='連絡帳を保存'; }
 }
 
+// renraku-print-link-v1 : 印刷導線
+function rkPrintOne(){
+  if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('印刷対象の利用者が選択されていません。'); return; }
+  var url='/renraku/print?date='+encodeURIComponent(RK_DATE)+'&ids='+encodeURIComponent(RK_PATIENT.patient_id);
+  window.open(url, '_blank');
+}
+function rkPrintAll(){
+  var ids=(RK_LIST||[]).filter(function(p){ return p.noted; }).map(function(p){ return p.patient_id; });
+  if(!ids.length){ alert('この日に記入済みの連絡帳がありません。'); return; }
+  var url='/renraku/print?date='+encodeURIComponent(RK_DATE)+'&ids='+encodeURIComponent(ids.join(','));
+  window.open(url, '_blank');
+}
 async function rkOpenBulk(){
   try{ const res=await fetch('/api/renraku/settings'); const data=await res.json(); RK_FACILITY_VIS=(data.status==='success'&&data.visible)?Object.assign({},data.visible):{}; }catch(e){ RK_FACILITY_VIS={}; }
   const rows=RK_ALL_FIELDS.map(function(f){ const key=f[0], on=rkIsVisible(RK_FACILITY_VIS,key);
