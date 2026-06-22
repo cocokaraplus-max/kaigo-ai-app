@@ -231,6 +231,115 @@ def api_line_settings_save():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== line-friends-api-v1 : LINE友だち管理API(一覧/紐付/解除、管理者限定) =====
+def _line_patient_name_map(supabase, f_code):
+    """id(UUID) -> 表示名 のマップを get_patients から作る。"""
+    m = {}
+    try:
+        for p in get_patients(supabase, f_code):
+            pid = p.get('id')
+            if pid:
+                m[str(pid)] = {
+                    'user_name': p.get('user_name') or '',
+                    'user_name_kana': p.get('user_name_kana') or '',
+                    'patient_number': p.get('patient_number') or '',
+                }
+    except Exception as e:
+        print(f'_line_patient_name_map error: {e}', flush=True)
+    return m
+
+
+@app.route('/api/line/friends', methods=['GET'])  # line-friends-api-v1
+@login_required
+def api_line_friends_list():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        r = supabase.table('line_friends').select('*').eq('facility_code', f_code).order('updated_at', desc=True).execute()
+        rows = r.data or []
+        name_map = _line_patient_name_map(supabase, f_code)
+        friends = []
+        for row in rows:
+            pid = row.get('patient_id')
+            pinfo = name_map.get(str(pid)) if pid else None
+            friends.append({
+                'line_user_id': row.get('line_user_id'),
+                'display_name': row.get('display_name') or '',
+                'status': row.get('status') or 'unlinked',
+                'patient_id': pid,
+                'patient_name': (pinfo['user_name'] if pinfo else ''),
+                'linked_by': row.get('linked_by') or '',
+                'updated_at': row.get('updated_at') or '',
+            })
+        return jsonify({'status': 'success', 'friends': friends})
+    except Exception as e:
+        print(f'api_line_friends_list error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/line/friends/link', methods=['POST'])  # line-friends-api-v1
+@login_required
+def api_line_friends_link():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        uid = (data.get('line_user_id') or '').strip()
+        pid = (data.get('patient_id') or '').strip()
+        if not uid or not pid:
+            return jsonify({'status': 'error', 'message': 'line_user_id と patient_id が必要です'}), 400
+        # patient_id が当該施設の利用者か検証(誤紐付防止)
+        name_map = _line_patient_name_map(supabase, f_code)
+        if str(pid) not in name_map:
+            return jsonify({'status': 'error', 'message': 'この利用者は施設に存在しません'}), 400
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        # facility_code + line_user_id の二条件guard
+        supabase.table('line_friends').update({
+            'patient_id': pid,
+            'status': 'linked',
+            'linked_by': my_name,
+            'updated_at': now_iso,
+        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
+        return jsonify({'status': 'success', 'patient_name': name_map[str(pid)]['user_name']})
+    except Exception as e:
+        print(f'api_line_friends_link error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/line/friends/unlink', methods=['POST'])  # line-friends-api-v1
+@login_required
+def api_line_friends_unlink():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        uid = (data.get('line_user_id') or '').strip()
+        if not uid:
+            return jsonify({'status': 'error', 'message': 'line_user_id が必要です'}), 400
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table('line_friends').update({
+            'patient_id': None,
+            'status': 'unlinked',
+            'linked_by': None,
+            'updated_at': now_iso,
+        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f'api_line_friends_unlink error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ===== line-profile-v1 : LINEプロフィール取得(display_name) =====
 def _line_get_profile(token, user_id):
     """施設トークンで GET /v2/bot/profile/{userId}。取得できたら displayName、失敗したら None。例外は投げない。"""
