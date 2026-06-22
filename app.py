@@ -20,6 +20,7 @@ import pytz
 import re
 import base64
 import json
+from cryptography.fernet import Fernet  # line-crypto-v1
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -60,6 +61,79 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 # ==========================================
 def get_secret(key):
     return os.environ.get(key, "")
+
+# ===== line-crypto-v1 : LINE設定の暗号化と施設別取得/保存 =====
+_line_fernet_cache = None
+def _line_get_fernet():
+    """LINE_TOKEN_ENC_KEY から Fernet を作る(キャッシュ)。"""
+    global _line_fernet_cache
+    if _line_fernet_cache is None:
+        key = get_secret('LINE_TOKEN_ENC_KEY').strip()
+        if not key:
+            raise RuntimeError('LINE_TOKEN_ENC_KEY が設定されていません')
+        _line_fernet_cache = Fernet(key.encode())
+    return _line_fernet_cache
+
+def _line_encrypt(plain):
+    """平文を暗号化して文字列で返す。空はそのまま返す。"""
+    if plain is None or plain == '':
+        return None
+    return _line_get_fernet().encrypt(plain.encode()).decode()
+
+def _line_decrypt(enc):
+    """暗号文を復号して平文で返す。失敗時は None。"""
+    if not enc:
+        return None
+    try:
+        return _line_get_fernet().decrypt(enc.encode()).decode()
+    except Exception as e:
+        print(f'line decrypt error: {e}', flush=True)
+        return None
+
+def get_line_settings(supabase, f_code):
+    """施設の line_settings を取得し、token/secret を復号して返す。無ければ None。"""
+    try:
+        res = supabase.table('line_settings').select('*').eq('facility_code', f_code).execute()
+        if not res.data:
+            return None
+        row = res.data[0]
+        return {
+            'facility_code': row.get('facility_code'),
+            'channel_access_token': _line_decrypt(row.get('channel_access_token_enc')),
+            'channel_secret': _line_decrypt(row.get('channel_secret_enc')),
+            'line_oa_name': row.get('line_oa_name') or '',
+            'enabled': bool(row.get('enabled')),
+            'has_token': bool(row.get('channel_access_token_enc')),
+            'has_secret': bool(row.get('channel_secret_enc')),
+        }
+    except Exception as e:
+        print(f'get_line_settings error: {e}', flush=True)
+        return None
+
+def save_line_settings(supabase, f_code, token=None, secret=None, oa_name=None, enabled=None):
+    """施設のLINE設定を upsert。token/secret が空の場合は既存値を温存。"""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    existing = None
+    try:
+        r = supabase.table('line_settings').select('*').eq('facility_code', f_code).execute()
+        existing = r.data[0] if r.data else None
+    except Exception as e:
+        print(f'save_line_settings select error: {e}', flush=True)
+    payload = {'facility_code': f_code, 'updated_at': now_iso}
+    if token:
+        payload['channel_access_token_enc'] = _line_encrypt(token)
+    if secret:
+        payload['channel_secret_enc'] = _line_encrypt(secret)
+    if oa_name is not None:
+        payload['line_oa_name'] = oa_name
+    if enabled is not None:
+        payload['enabled'] = bool(enabled)
+    if existing:
+        supabase.table('line_settings').update(payload).eq('facility_code', f_code).execute()
+    else:
+        payload['created_at'] = now_iso
+        supabase.table('line_settings').insert(payload).execute()
+    return True
 
 def get_supabase():
     url = get_secret("SUPABASE_URL").strip()
