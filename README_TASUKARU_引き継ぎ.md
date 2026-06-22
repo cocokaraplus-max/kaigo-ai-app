@@ -1247,3 +1247,56 @@ DDL: renraku_notes / renraku_settings / renraku_patient_settings (DEV/本番)
 
 
 
+## 25. 連絡帳印刷（フェーズ2）完成・モニタリンググラフ修正・LINE連携の土台（2026-06-22 セッション）<!-- readme-print-line-session-2026-06-22 -->
+
+### 25-1. モニタリング報告書グラフの歪み・凡例修正（本番反映済み d8dc2e9）
+
+`templates/print_preview.html` のフィットネスmini-chart（体重/握力/TUG/CS-30/5m歩行/片脚立位）が縦横に歪む問題と、canvas内凡例が線に重なる問題を解消。
+
+- **真因**: canvas が CSS で固定高さ＋`maintainAspectRatio:false` のため、Chart.js のバッファ比率と表示ボックス比率が不一致。さらに描画経路が2系統あった。
+  - 2系列（grip/walk/balance）→ `drawBalanceChart` 経由
+  - 1系列（weight/tug/cs30）→ `makeChartConfig` + `new Chart` 経由（こちらは options に aspectRatio 指定が無く Chart.js デフォルト=2 で横伸び）
+- **解法**: 生成時に `maintainAspectRatio:true` + `aspectRatio`（canvas実寸比 w/h）を指定し、**生成直後に同期で `chart.options.aspectRatio=ar; chart.resize();`** を呼ぶ。初期options指定だけでは固定高さに負けるため、生成後の同期resizeが決め手。
+- **凡例**: canvas内凡例（Chart.js legend）をやめ、canvas直後にHTML凡例（実線/破線サンプル＋「右(実線)/左(破線)」等）を配置。極小サイズでも線と重ならず歪まない。
+- **教訓**: 歪みは描画経路ごとに対処が要る。グラフ修正は「全描画経路を最初に洗い出してから」着手すべき（経路特定を後回しにして遠回りした）。
+- マーカー: `chart-aspect-fix-v3`(c14b569) / `chart-aspect-fix-v4`(42df6f4) / `chart-aspect-fix-v5`(ba32331) / `legend-html-v1`(b07e0e2、template=1) / `tmpl4-chart-v1`(d8dc2e9、template=4)
+- 補足: 「1 / 1」表示は `.page-number`（@media print で `display:none !important`、画面のみ表示）の仕様。連絡帳画面のバイタルSVGは手書きSVGのため歪み問題なし。
+
+### 25-2. 連絡帳の印刷（フェーズ2）完成（本番反映済み 0f0159c）
+
+仕様: 1利用者・1日・1枚、一枚ずつ／まとめて連続印刷、表示項目は既存visible設定（個別→施設→全表示）を流用、ご家族メッセージはAI生成文を印刷前に編集可、バイタルは表＋SVGグラフ（2回以上測定時）、縦/横選択可。
+
+- **ルート**: `app.py` に `/renraku/print?date=&ids=`（カンマ区切りで複数patient_id）。各idの renraku_notes / vitals / profile / visible を集約し JSON 埋め込みでテンプレに渡す。マーカー `renraku-print-route-v1`(889280e)。
+- **テンプレ**: `templates/renraku_print.html`（新規）。サーバーから `RK_PRINT_DATA` を受け取り JS で各利用者カードを描画。buildVitals（連絡帳画面のSVGロジック移植・Chart.js不使用）/ buildItems（RK_DYN_FIELDS: transport/meal_main/meal_side/water/bath/toilet/training/rec/places + special_note/family_message/next_visit）/ buildPage。家族メッセージは `contenteditable`。@media print でツールバー非表示。
+- **縦横切替**: 縦=1カラム、横=当初2カラム→最終的に1カラム縦積みに変更（`rkpSetOrient` で `@page size` を動的style要素で切替）。マーカー `renraku-print-orient-v1`(2bf67ae) / `renraku-print-layout-v2`(a803a13、バイタル上部全幅) / `renraku-print-layout-v3`(711d7fe、横=1カラム縦積み・バイタル表 width:auto左揃え)。
+- **微調整**: バイタル値セル min-width:72px（項目名列除く）、氏名行は氏名＋様のみ（No./介護度削除）、バイタル表ベース幅 width:auto（縦横とも左揃え自然幅）。マーカー `renraku-print-tweak-v4`(4d0b27d) / `renraku-print-tweak-v5`(ec1c59e)。タイトルは「連絡帳」（当初ひらがな誤記を修正 51e84a5）。コメント内 `{{ ... }}` のJinja誤解釈バグ修正(469f539)。
+- **導線**: `templates/renraku.html` に印刷ボタン。詳細=「印刷」(rkPrintOne→その利用者1枚)、一覧=「まとめて印刷」(rkPrintAll→`RK_LIST` のうち `noted`(記入済み)のみカンマ連結、0件ならalert)。`rkLoadList` で `RK_LIST` 保持。マーカー `renraku-print-link-v1`(0f0159c)。
+
+### 25-3. プロンプトのトーン調整・本人認識強化（本番反映済み e7c78e4）
+
+連絡帳AI家族文とモニタリング報告書の生成を、硬すぎる敬語（二重敬語）からトーンB（やさしいです・ます、過剰敬語回避）に統一。利用者本人名を明示し、他利用者は「他の利用者様」と伏字化（先月モニタリングで本人認識できず変な文章になった不具合の対処）。app.py の RENRAKU_FAMILY_PROMPT / api_generate_monitoring の BASE_PROMPT / _auto_generate_monitoring の BASE_PROMPT の3箇所。マーカー `prompt-tone-v1`。
+
+### 25-4. LINE連携の土台（DEVのみ・本番未反映）<!-- readme-line-foundation -->
+
+**方針: 施設別トークン方式（SaaS対応）**。全施設共通1アカウントではなく、施設ごとに自前のLINE公式アカウント・自前トークンを使う。データもアカウントも施設ごとに完全分断。家族から見れば「いつものその施設のLINE」から連絡帳が届く。
+
+- **DDL（DEVのSupabaseに適用済み）**: `line_settings`（facility_code text PK / channel_access_token_enc text / channel_secret_enc text / line_oa_name text / enabled boolean default false / created_at / updated_at）。トークン・シークレットは Fernet 暗号化して `_enc` カラムに保存。
+- **暗号化**: `cryptography` の Fernet（supabase の依存で既にインストール済み、requirements.txt 追加不要）。マスター鍵は環境変数 `LINE_TOKEN_ENC_KEY`（**DEVと本番で別々の鍵**にする方針＝各環境で暗号化し直す）。
+- **app.py ヘルパ（マーカー `line-crypto-v1`、856a66c）**: `_line_get_fernet()` / `_line_encrypt(plain)` / `_line_decrypt(enc)` / `get_line_settings(supabase, f_code)`（復号済み設定を返す。`has_token`/`has_secret` フラグ付き）/ `save_line_settings(...)`（暗号化upsert、token/secret空なら既存値温存）。
+- **テスト用アカウント**: スタッフ用公式LINE「【公式】ココプラスタッフ用」(@145tminp)で Messaging API 有効化（Channel ID **2010464312**、プロバイダー TASUKARU）。本番の家族とつながっている公式LINEとは別アカウント。本番アカウントは開発完成後に同様に有効化して本番 line_settings に登録する。
+- **DEV環境変数（GCPコンソールから設定済み）**: `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET`(2b6e7…) / `LINE_TOKEN_ENC_KEY`。※前者2つは開発初期の動作確認用。最終的にトークンはDB（line_settings）へ移行し環境変数からは削除予定。`LINE_TOKEN_ENC_KEY` は残す。
+- **セキュリティ方針**: トークンは平文表示しない（設定画面はマスク表示・登録/更新のみ）、保存は暗号化、登録は施設管理者限定、Cloud Run はHTTPS。トークンはターミナル履歴を避けGCPコンソール画面から入力。
+
+### 25-5. LINE連携の次タスク（次セッション）<!-- readme-line-todo -->
+
+実装順（おすすめ）:
+1. **施設のLINE設定画面**（管理者限定・トークンはマスク表示・`save_line_settings` を呼ぶ保存API）。
+2. **Webhook**（公開エンドポイント `/line/webhook`。署名検証に `get_line_settings` の `channel_secret` を使用。どの施設宛てかの判別が必要）。
+3. **友だちのuserId受信と未紐付けリスト**（友だち追加 or メッセージ受信で userId 取得。Webhook 設定前に追加済みの人は一度メッセージを送ってもらう必要あり）。
+4. **家族↔利用者の紐付け**（合言葉=利用者ごとの招待コードで自動紐付け ＋ 管理画面で手動紐付け の併用。誤紐付けは事故になるため慎重に）。
+5. **連絡帳のLINE向け整形**（行った場所・食事量を箇条書き、連絡事項は家族向け文章、血圧グラフは**画像(PNG)**で送る ※LINEは公式アカウントからのPDFファイル送信に非対応）。
+6. **送信プレビュー編集UI** → **送信API**（プッシュメッセージ。1回最大3吹き出し＝1通。料金は通数=送信回数×友だち数）。
+
+注意点メモ:
+- LINE公式アカウントの応答モードは「チャット」のまま Webhook 有効化で手動チャットとAPI送信を共存可能（本番アカウントは日常的に手動チャット運用中のため要配慮）。
+- 料金: コミュニケーション(0円/月200通)・ライト(5,000円/月5,000通)・スタンダード(15,000円)。プッシュ/マルチキャスト/ブロードキャストが課金対象、リプライは対象外。
