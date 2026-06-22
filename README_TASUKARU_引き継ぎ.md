@@ -1300,3 +1300,23 @@ DDL: renraku_notes / renraku_settings / renraku_patient_settings (DEV/本番)
 注意点メモ:
 - LINE公式アカウントの応答モードは「チャット」のまま Webhook 有効化で手動チャットとAPI送信を共存可能（本番アカウントは日常的に手動チャット運用中のため要配慮）。
 - 料金: コミュニケーション(0円/月200通)・ライト(5,000円/月5,000通)・スタンダード(15,000円)。プッシュ/マルチキャスト/ブロードキャストが課金対象、リプライは対象外。
+
+
+## 26. LINE連携設定UI追加・起動時NameError修正（2026-06-22 セッション）<!-- readme-s26-line-ui-fix -->
+
+### 26-1. LINE連携設定画面のUI追加（DEV・マーカー `line-settings-ui-v1`）
+
+`templates/admin.html` の「AIカテゴリ自動振り分け」section-box の直前に「LINE連携設定」section-box を追加。
+
+- **入力項目**: 公式アカウント名 / チャネルアクセストークン / チャネルシークレット / 有効トグル / 保存ボタン。
+- **マスク表示**: トークン・シークレットは `type=password`。プレースホルダーは登録状況に応じて「登録済み。変更時のみ入力」/「未登録」を出し分け。値そのものは画面に表示しない。
+- **JS**: 最後の `</script>` 手前に `loadLineSettings()`（`DOMContentLoaded` で GET `/api/line/settings` を叩きマスク反映）と `saveLineSettings()`（POST。空の token/secret は送らず既存値温存）を追加。
+- 検証済み（Chrome MCP）: `#line-settings-box` 表示、GET API が `status:success` でマスク情報のみ返却。
+
+### 26-2. 起動時 `NameError: name 'login_required' is not defined` 修正（マーカー `line-api-move-v1`、c36fa96）
+
+- **現象**: 上記UI追加の push で DEV が再起動した際、全パスが **503 Service Unavailable**。gunicorn worker が import 時にクラッシュ。
+- **真因**: 前セッションで追加した LINE設定API（`/api/line/settings` GET/POST、`@login_required` 使用）が app.py の **139行付近**にあり、`login_required` の def（**222行付近**）より**前**だった。import時にデコレータを評価して未定義で落ちた。（`py_compile` は構文チェックのみで import時の NameError は検出しないためローカルでは気づけなかった）
+- **対処**: LINE設定APIの2ルートを `login_required` 定義の**直後**へ移動。ヘルパ（`_line_*` / `get_line_settings` / `save_line_settings`）はデコレータ未使用なので移動不要・そのまま。
+- **検証**: Cloud Build は成功していたが起動失敗→ログで `NameError` を特定。修正 push 後は `/login` が200、`/admin` 正常表示を確認。
+- **教訓**: **デコレータを使うルート/関数は、そのデコレータ定義より後ろに置く。** ファイル前方（import直後の領域）に `@login_required` 付きルートを追加すると起動時に落ちる。今後 LINE 関連のルートは `line-api-move-v1` ブロック（login_required定義後）付近に追加すること。

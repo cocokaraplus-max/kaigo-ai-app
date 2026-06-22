@@ -231,6 +231,67 @@ def api_line_settings_save():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== line-webhook-v1 : LINE Webhook 受信(公開・署名検証・未紐付保存) =====
+def _line_save_friend(supabase, f_code, user_id, display_name=None):
+    """line_friends に userId を未紐付(unlinked)で upsert。既存は status を触らず updated_at のみ更新。"""
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        r = supabase.table('line_friends').select('id,status').eq('facility_code', f_code).eq('line_user_id', user_id).execute()
+        if r.data:
+            upd = {'updated_at': now_iso}
+            if display_name:
+                upd['display_name'] = display_name
+            supabase.table('line_friends').update(upd).eq('facility_code', f_code).eq('line_user_id', user_id).execute()
+        else:
+            supabase.table('line_friends').insert({
+                'facility_code': f_code,
+                'line_user_id': user_id,
+                'display_name': display_name,
+                'status': 'unlinked',
+                'created_at': now_iso,
+                'updated_at': now_iso,
+            }).execute()
+    except Exception as e:
+        print(f'_line_save_friend error: {e}', flush=True)
+
+
+@app.route('/line/webhook/<facility_code>', methods=['POST'])  # line-webhook-v1
+def line_webhook(facility_code):
+    import hmac, hashlib
+    try:
+        supabase = get_supabase()
+        s = get_line_settings(supabase, facility_code)
+        # 設定なし or 無効 or secret 未登録なら 401(イベントは処理しない)
+        if not s or not s.get('channel_secret'):
+            print(f'line_webhook: no settings/secret for {facility_code}', flush=True)
+            return 'ng', 401
+        body = request.get_data()  # bytes(署名検証は生ボディで行う)
+        sig = request.headers.get('X-Line-Signature', '')
+        mac = hmac.new(s['channel_secret'].encode('utf-8'), body, hashlib.sha256).digest()
+        expected = base64.b64encode(mac).decode('utf-8')
+        if not hmac.compare_digest(expected, sig):
+            print(f'line_webhook: bad signature for {facility_code}', flush=True)
+            return 'ng', 401
+        # 署名OK。イベント処理
+        payload = request.get_json(silent=True) or {}
+        events = payload.get('events', []) or []
+        for ev in events:
+            etype = ev.get('type')
+            src = ev.get('source', {}) or {}
+            uid = src.get('userId')
+            if not uid:
+                continue
+            # follow(友だち追加) / message で userId を未紐付保存
+            if etype in ('follow', 'message'):
+                _line_save_friend(supabase, facility_code, uid)
+        return 'ok', 200
+    except Exception as e:
+        print(f'line_webhook error: {e}', flush=True)
+        # エラーでも200を返しLINE側のリトライ暴走を避ける(要件に応じて要検討)
+        return 'ok', 200
+
+
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
@@ -13552,8 +13613,8 @@ def line_send_message(user_id, messages):
         return False
 
 # --- LINE Webhook ---
-@app.route('/api/line/webhook', methods=['POST'])
-def line_webhook():
+@app.route('/api/line/webhook', methods=['POST'])  # line-webhook-legacy-rename-v1 (legacy/unused)
+def line_webhook_legacy():
     """LINEからのWebhook受信（管理者の返信で承認処理）"""
     channel_secret = get_secret("LINE_CHANNEL_SECRET")
     body = request.get_data(as_text=True)
