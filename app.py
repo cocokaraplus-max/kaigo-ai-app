@@ -231,6 +231,26 @@ def api_line_settings_save():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== line-profile-v1 : LINEプロフィール取得(display_name) =====
+def _line_get_profile(token, user_id):
+    """施設トークンで GET /v2/bot/profile/{userId}。取得できたら displayName、失敗したら None。例外は投げない。"""
+    if not token or not user_id:
+        return None
+    import urllib.request, json as _json
+    try:
+        req = urllib.request.Request(
+            'https://api.line.me/v2/bot/profile/' + user_id,
+            headers={'Authorization': 'Bearer ' + token},
+            method='GET'
+        )
+        with urllib.request.urlopen(req, timeout=3) as res:
+            if res.status == 200:
+                data = _json.loads(res.read().decode('utf-8'))
+                return data.get('displayName')
+    except Exception as e:
+        print(f'_line_get_profile error: {e}', flush=True)
+    return None
+
 # ===== line-webhook-v1 : LINE Webhook 受信(公開・署名検証・未紐付保存) =====
 def _line_save_friend(supabase, f_code, user_id, display_name=None):
     """line_friends に userId を未紐付(unlinked)で upsert。既存は status を触らず updated_at のみ更新。"""
@@ -284,7 +304,9 @@ def line_webhook(facility_code):
                 continue
             # follow(友だち追加) / message で userId を未紐付保存
             if etype in ('follow', 'message'):
-                _line_save_friend(supabase, facility_code, uid)
+                # line-profile-v1: 可能なら display_name を取得(失敗しても保存は実行)
+                dname = _line_get_profile(s.get('channel_access_token'), uid)
+                _line_save_friend(supabase, facility_code, uid, display_name=dname)
         return 'ok', 200
     except Exception as e:
         print(f'line_webhook error: {e}', flush=True)
