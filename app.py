@@ -135,6 +135,52 @@ def save_line_settings(supabase, f_code, token=None, secret=None, oa_name=None, 
         supabase.table('line_settings').insert(payload).execute()
     return True
 
+def get_supabase():
+    url = get_secret("SUPABASE_URL").strip()
+    key = get_secret("SUPABASE_KEY").strip()
+    return create_client(url, key)
+
+def send_email(to_email, subject, html_content):
+    """SendGridでメール送信"""
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        api_key = get_secret("SENDGRID_API_KEY")
+        from_email = get_secret("SENDGRID_FROM_EMAIL")
+        from_email = from_email.strip() if from_email else from_email
+        print(f"[send_email] to={to_email} subject={subject!r} api_key_set={bool(api_key)} from_email={from_email!r}", flush=True)
+        if not api_key or not from_email:
+            print(f"[send_email] EARLY RETURN: missing credentials (api_key={bool(api_key)}, from_email={bool(from_email)})", flush=True)
+            return False
+        message = Mail(
+            from_email=from_email,
+            to_emails=to_email,
+            subject=subject,
+            html_content=html_content
+        )
+        sg = SendGridAPIClient(api_key)
+        response = sg.send(message)
+        print(f"[send_email] SendGrid response status={response.status_code}", flush=True)
+        return 200 <= response.status_code < 300
+    except Exception as e:
+        print(f"[send_email] Exception: {type(e).__name__}: {e}", flush=True)
+        return False
+
+# ==========================================
+# ログイン必須デコレータ
+# ==========================================
+from functools import wraps
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("f_code") or not session.get("my_name"):
+            if request.args.get("partial"):
+                return jsonify({"redirect": "/login"})
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+# ===== line-api-move-v1 : LINE設定API(login_required定義後に配置) =====
 # ===== line-settings-api-v1 : LINE設定の取得/保存API(管理者限定) =====
 @app.route('/api/line/settings', methods=['GET'])  # line-settings-api-v1
 @login_required
@@ -184,50 +230,6 @@ def api_line_settings_save():
         print(f'api_line_settings_save error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-def get_supabase():
-    url = get_secret("SUPABASE_URL").strip()
-    key = get_secret("SUPABASE_KEY").strip()
-    return create_client(url, key)
-
-def send_email(to_email, subject, html_content):
-    """SendGridでメール送信"""
-    try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
-        api_key = get_secret("SENDGRID_API_KEY")
-        from_email = get_secret("SENDGRID_FROM_EMAIL")
-        from_email = from_email.strip() if from_email else from_email
-        print(f"[send_email] to={to_email} subject={subject!r} api_key_set={bool(api_key)} from_email={from_email!r}", flush=True)
-        if not api_key or not from_email:
-            print(f"[send_email] EARLY RETURN: missing credentials (api_key={bool(api_key)}, from_email={bool(from_email)})", flush=True)
-            return False
-        message = Mail(
-            from_email=from_email,
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_content
-        )
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
-        print(f"[send_email] SendGrid response status={response.status_code}", flush=True)
-        return 200 <= response.status_code < 300
-    except Exception as e:
-        print(f"[send_email] Exception: {type(e).__name__}: {e}", flush=True)
-        return False
-
-# ==========================================
-# ログイン必須デコレータ
-# ==========================================
-from functools import wraps
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get("f_code") or not session.get("my_name"):
-            if request.args.get("partial"):
-                return jsonify({"redirect": "/login"})
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
 
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
