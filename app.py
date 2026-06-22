@@ -135,6 +135,55 @@ def save_line_settings(supabase, f_code, token=None, secret=None, oa_name=None, 
         supabase.table('line_settings').insert(payload).execute()
     return True
 
+# ===== line-settings-api-v1 : LINE設定の取得/保存API(管理者限定) =====
+@app.route('/api/line/settings', methods=['GET'])  # line-settings-api-v1
+@login_required
+def api_line_settings_get():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        s = get_line_settings(supabase, f_code)
+        if not s:
+            return jsonify({'status': 'success', 'enabled': False, 'line_oa_name': '',
+                            'has_token': False, 'has_secret': False})
+        # token/secret の値そのものは返さない(マスク)
+        return jsonify({'status': 'success',
+                        'enabled': s['enabled'],
+                        'line_oa_name': s['line_oa_name'],
+                        'has_token': s['has_token'],
+                        'has_secret': s['has_secret']})
+    except Exception as e:
+        print(f'api_line_settings_get error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/line/settings', methods=['POST'])  # line-settings-api-v1
+@login_required
+def api_line_settings_save():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        oa_name = data.get('line_oa_name')
+        token = (data.get('channel_access_token') or '').strip()
+        secret = (data.get('channel_secret') or '').strip()
+        enabled = data.get('enabled')
+        # 空文字は None 扱い(既存値温存)
+        save_line_settings(supabase, f_code,
+                           token=token or None,
+                           secret=secret or None,
+                           oa_name=oa_name,
+                           enabled=enabled)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f'api_line_settings_save error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 def get_supabase():
     url = get_secret("SUPABASE_URL").strip()
     key = get_secret("SUPABASE_KEY").strip()
