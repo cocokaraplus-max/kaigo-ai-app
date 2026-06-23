@@ -1361,3 +1361,23 @@ patch_readme_s27 系がREADMEを0バイトに破壊する事故が発生。原�
 
 ### 28-6. 今セッションのコミット（DEV、tasukaru-dev）
 dd8beca 送信API+UI / 02b35e8 保存バー移動 / cb0a608 モーダルナビ回避 / 4f027e1 保存バー480px / 67a31d6 --page-max-width連動。
+
+## 29. カレンダー：繰り返し予定＋先の予定表示バグ修正（2026-06-23）<!-- readme-s29-calendar -->
+
+カレンダーの2つの問題を解消し、繰り返し予定機能を追加。**カレンダー分のみ本番反映済み**（cherry-pick）。LINE関連は本番未反映のまま。
+
+### 29-1. 先の予定が消えるバグ（真因と修正）
+- **真因**: calendar.html は初期ロードの `ALL_EVENTS`（calendar_view が埋め込む今月-31日〜+62日のみ）だけを使い、月送り(changeMonth)で新しい月のデータを再取得していなかった。`/api/calendar_events` はサーバーに存在するが**JSから一度も呼ばれていなかった**。約2ヶ月より先の予定は保存されても表示されず「記録されない」ように見えていた。
+- **修正（マーカー `calendar-repeat-v1`）**: `__ensureEventsLoaded()` を新設。changeMonth/goToday/switchView 時に表示月の通常イベントを `/api/calendar_events?from=&to=` から取得し ALL_EVENTS にマージ（id重複排除・取得済み月は window.__loadedKeys で記録しスキップ）。これで何ヶ月先でも表示される。
+
+### 29-2. 繰り返し予定（毎日/毎週/毎月/毎年）＝ルール保存方式
+- **方式**: 実体展開せず、元イベント1件＋`repeat_type`/`repeat_until` のルールだけ保存（calendar_events に既存カラムあり、DDL追加不要）。表示時に getFilteredEvents が**表示範囲ぶんだけ計算展開**して仮想イベントを生成。レコードが増えず、何年先でも自動表示。月が変われば自動でその月分が出る（毎月・毎年も先まで常に表示される状態が計算で実現）。
+- **計算ルール（`__calcRepeatOccurrences`）**: daily=毎日 / weekly=同曜日 / monthly=同じ日(無い月はスキップ) / yearly=同じ月日(2/29は閏年のみ)。元イベント開始日より前は出さない。repeat_until 以降は出さない。仮想イベントは `_virtual:true`/`_srcId` 付き、event_date/end_date を該当日に。
+- 繰り返しイベントのクリック→編集/削除は元イベント(ルール)に作用＝繰り返し全体の編集/削除。**個別回の例外は今回スコープ外**（必要になれば例外日記録を後付け）。
+
+### 29-3. 繰り返し日クリックで予定が出ない不具合
+- **真因（マーカー `calendar-cellclick-repeat-v1`）**: onCellClick が `ALL_EVENTS`(実レコードのみ)を直接filterし、繰り返し展開分(仮想イベント)を拾えていなかった。月表示(getFilteredEvents使用)には出るがクリックでは出ない不整合。
+- **修正**: onCellClick の予定収集を `getFilteredEvents()`(繰り返し展開込み・カレンダーフィルタ内包)ベースに変更。実機(2026年10月の毎週繰り返し)で月表示・クリック両方に表示されることを確認。
+
+### 29-4. 本番反映（カレンダーのみ・cherry-pick）
+本番(tasukaru)は §25(0f0159c)で止まっていたため、tasukaru-dev 全体ではなくカレンダー2コミットのみ cherry-pick して本番反映（0f0159c → a5b82b9 → c107a40）。**LINE関連は本番未反映のまま**（本番反映には本番Supabaseへ line_friends DDL適用＋本番Cloud Runへ LINE_TOKEN_ENC_KEY 設定 が前提）。マーカー: calendar-repeat-v1, calendar-cellclick-repeat-v1。
