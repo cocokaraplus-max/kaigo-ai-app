@@ -1045,13 +1045,11 @@ window.toggleCalendar = function(id) {
 window.onCellClick = function(dateStr) {
     clickedDate = dateStr;
     
-    // その日の予定を取得
-    const dayEvents = ALL_EVENTS.filter(event => {
+    // その日の予定を取得 (calendar-cellclick-repeat-v1: 繰り返し展開込み)
+    const dayEvents = getFilteredEvents().filter(event => {
         const s = event.event_date;
         const en = event.end_date || event.event_date;
-        const inRange = s <= dateStr && dateStr <= en;
-        if (activeCalIds.has("all")) return inRange;
-        return inRange && activeCalIds.has(event.calendar_id);
+        return s <= dateStr && dateStr <= en;
     });
     
     // 常に予定一覧を表示（予定がない場合は空の一覧）
