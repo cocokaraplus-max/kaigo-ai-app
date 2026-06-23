@@ -535,6 +535,29 @@ def api_renraku_line_send():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== renraku-photo-api-v1 : 連絡帳写真アップロード(case-photos・公開URL) =====
+@app.route('/api/renraku/upload_photo', methods=['POST'])  # renraku-photo-api-v1
+@login_required
+def api_renraku_upload_photo():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        files = request.files.getlist('photos')
+        if not files:
+            single = request.files.get('photo')
+            if single:
+                files = [single]
+        files = [f for f in files if f and f.filename]
+        if not files:
+            return jsonify({'status': 'error', 'message': '画像がありません'}), 400
+        from utils import upload_images_to_supabase
+        urls = upload_images_to_supabase(supabase, files, f_code)
+        return jsonify({'status': 'success', 'urls': urls or []})
+    except Exception as e:
+        print(f'api_renraku_upload_photo error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ===== line-profile-v1 : LINEプロフィール取得(display_name) =====
 def _line_get_profile(token, user_id):
     """施設トークンで GET /v2/bot/profile/{userId}。取得できたら displayName、失敗したら None。例外は投げない。"""
@@ -2901,6 +2924,7 @@ def api_renraku_save():
             'special_note': data.get('special_note', ''),
             'family_message': data.get('family_message', ''),
             'next_visit': data.get('next_visit', ''),
+            'image_urls': data.get('image_urls') or [],  # renraku-photo-api-v1
             'staff_name': my_name,
             'updated_at': now_iso,
         }

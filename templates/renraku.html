@@ -151,6 +151,20 @@
       </div>
     </div>
 
+    <div class="rk-section" id="rk-sec-photo">  <!-- renraku-photo-ui-v1 -->
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">photo_camera</span>写真</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="image_urls" onchange="rkToggleVisible('image_urls',this.checked)"><span class="rk-slider"></span></label>
+      </div>
+      <div class="rk-field-body" data-bodyfor="image_urls">
+        <div id="rk-photo-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
+        <input type="file" id="rk-photo-input" accept="image/*" multiple style="display:none;" onchange="rkPhotoSelected(this)">
+        <button type="button" class="rk-ai-btn" id="rk-photo-add-btn" onclick="document.getElementById('rk-photo-input').click()" style="background:#1a73e8;">
+          <span class="material-symbols-outlined" style="font-size:16px;">add_a_photo</span>写真を追加</button>
+        <span id="rk-photo-status" style="margin-left:8px;font-size:0.85rem;color:#5f6368;"></span>
+      </div>
+    </div>
+
     <div class="rk-section" id="rk-sec-next">
       <div class="rk-section-title" style="justify-content:space-between;display:flex;">
         <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">event</span>次回利用日</span>
@@ -208,8 +222,9 @@ const RK_DYN_FIELDS = [
   {key:'rec',       label:'レク・活動', type:'text', placeholder:'例：午後 体操・ぬり絵'},
   {key:'places',    label:'行った場所', type:'places'},
 ];
-const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['next_visit','次回利用日']]);
+const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['image_urls','写真'],['next_visit','次回利用日']]);  /* renraku-photo-ui-v1 */
 let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={}, RK_AI_ENABLED=false;
+let RK_IMAGES=[];  /* renraku-photo-ui-v1 : 写真公開URL配列 */
 let RK_LIST=[];  // renraku-print-link-v1
 let RK_TRAIN=[], RK_PLACES=[];
 
@@ -431,6 +446,8 @@ function rkFillForm(note){
   if(gv('rk-special')) gv('rk-special').value=(note&&note.special_note)||'';
   if(gv('rk-family')) gv('rk-family').value=(note&&note.family_message)||'';
   if(gv('rk-next')) gv('rk-next').value=(note&&note.next_visit)||'';
+  RK_IMAGES=(note&&Array.isArray(note.image_urls))?note.image_urls.slice():[];  /* renraku-photo-ui-v1 */
+  rkRenderPhotos();
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
   RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
   rkRenderTrain(); rkUpdateTrainVisibility(); rkRenderPlaces();
@@ -452,6 +469,38 @@ async function rkGenFamily(){
   finally{ btn.disabled=false; btn.innerHTML=old; }
 }
 
+// renraku-photo-ui-v1 : 写真アップロード・サムネ描画・削除
+function rkRenderPhotos(){
+  var wrap=document.getElementById('rk-photo-thumbs'); if(!wrap) return;
+  wrap.innerHTML=(RK_IMAGES||[]).map(function(url,i){
+    return '<div style="position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">'
+      +'<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;" onclick="window.open(\''+url+'\',\'_blank\')">'
+      +'<button type="button" onclick="rkRemovePhoto('+i+')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;font-size:13px;line-height:20px;cursor:pointer;padding:0;">×</button>'
+      +'</div>';
+  }).join('');
+}
+function rkRemovePhoto(i){ RK_IMAGES.splice(i,1); rkRenderPhotos(); }
+async function rkPhotoSelected(input){
+  if(!input.files||!input.files.length) return;
+  var statusEl=document.getElementById('rk-photo-status');
+  if(statusEl) statusEl.textContent='アップロード中...';
+  var fd=new FormData();
+  for(var i=0;i<input.files.length;i++){ fd.append('photos', input.files[i]); }
+  try{
+    var res=await fetch('/api/renraku/upload_photo',{method:'POST',body:fd});
+    var data=await res.json();
+    if(data.status==='success'&&Array.isArray(data.urls)){
+      RK_IMAGES=RK_IMAGES.concat(data.urls);
+      rkRenderPhotos();
+      if(statusEl) statusEl.textContent='';
+    } else {
+      if(statusEl) statusEl.textContent='';
+      alert('写真のアップロードに失敗しました：'+(data.message||'不明'));
+    }
+  }catch(e){ if(statusEl) statusEl.textContent=''; alert('アップロードに失敗しました：'+e); }
+  finally{ input.value=''; }
+}
+
 async function rkSave(){
   if(!RK_PATIENT) return;
   const btn=document.getElementById('rk-save'); btn.disabled=true; btn.textContent='保存中...';
@@ -462,7 +511,7 @@ async function rkSave(){
   } else { RK_ITEMS.training_details=[]; }
   RK_ITEMS.places=RK_PLACES.map(function(p){return (p||'').trim();}).filter(function(p){return p;});
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
-    special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next') };
+    special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next'), image_urls:RK_IMAGES };  /* renraku-photo-ui-v1 */
   try{
     const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await res.json();
