@@ -854,8 +854,102 @@ function renderWeek() {
 }
 
 function getFilteredEvents() {
-    if (activeCalIds.has('all')) return ALL_EVENTS;
-    return ALL_EVENTS.filter(e => activeCalIds.has(e.calendar_id));
+    // calendar-repeat-v1: カレンダーフィルタ適用 + 繰り返し展開
+    let base = ALL_EVENTS;
+    if (!activeCalIds.has('all')) base = ALL_EVENTS.filter(e => activeCalIds.has(e.calendar_id));
+    // 表示範囲(月表示=表示月の前後42日相当 / 週表示=その週)を決める
+    let rangeStart, rangeEnd;
+    if (currentView === 'week') {
+        rangeStart = new Date(currentWeekStart); rangeStart.setHours(0,0,0,0);
+        rangeEnd = new Date(currentWeekStart); rangeEnd.setDate(rangeEnd.getDate()+6); rangeEnd.setHours(0,0,0,0);
+    } else {
+        rangeStart = new Date(currentYear, currentMonth, 1); rangeStart.setDate(rangeStart.getDate()-7);
+        rangeEnd = new Date(currentYear, currentMonth+1, 0); rangeEnd.setDate(rangeEnd.getDate()+7);
+    }
+    const out = [];
+    base.forEach(ev => {
+        const rt = ev.repeat_type || 'none';
+        if (rt === 'none' || !ev.event_date) { out.push(ev); return; }
+        // 繰り返し: 範囲内の該当日を計算して仮想イベント生成
+        const occ = __calcRepeatOccurrences(ev, rangeStart, rangeEnd);
+        if (occ.length === 0) {
+            // 元イベント自体が範囲内なら素で出す(保険)
+            return;
+        }
+        const durMs = (() => {
+            const s = new Date((ev.event_date)+'T00:00:00');
+            const e = new Date(((ev.end_date||ev.event_date))+'T00:00:00');
+            return Math.max(0, e - s);
+        })();
+        occ.forEach(d => {
+            const ds = __ymd(d);
+            const endD = new Date(d.getTime() + durMs);
+            out.push(Object.assign({}, ev, {
+                event_date: ds,
+                end_date: __ymd(endD),
+                _virtual: true,
+                _srcId: ev.id
+            }));
+        });
+    });
+    return out;
+}
+
+// calendar-repeat-v1: 日付ヘルパ
+function __ymd(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// calendar-repeat-v1: 繰り返しの該当日を範囲内で列挙
+function __calcRepeatOccurrences(ev, rangeStart, rangeEnd) {
+    const res = [];
+    const startD = new Date(ev.event_date + 'T00:00:00');
+    if (isNaN(startD)) return res;
+    const until = ev.repeat_until ? new Date(ev.repeat_until + 'T23:59:59') : null;
+    const rt = ev.repeat_type;
+    // 探索の実上限(範囲終端 と until の小さい方)
+    let hardEnd = new Date(rangeEnd); hardEnd.setHours(23,59,59,999);
+    if (until && until < hardEnd) hardEnd = until;
+    if (startD > hardEnd) return res;
+
+    if (rt === 'daily') {
+        let c = new Date(Math.max(startD, rangeStart)); c.setHours(0,0,0,0);
+        // c を startD の歩調に合わせる必要はない(毎日なので)
+        if (c < startD) c = new Date(startD);
+        while (c <= hardEnd) { res.push(new Date(c)); c.setDate(c.getDate()+1); }
+    } else if (rt === 'weekly') {
+        const dow = startD.getDay();
+        let c = new Date(startD);
+        // rangeStart 付近まで一気に進める(週単位)
+        while (c < rangeStart) c.setDate(c.getDate()+7);
+        while (c <= hardEnd) { if (c >= startD) res.push(new Date(c)); c.setDate(c.getDate()+7); }
+    } else if (rt === 'monthly') {
+        const day = startD.getDate();
+        // 範囲内の各月で day が存在すれば該当
+        let y = rangeStart.getFullYear(), m = rangeStart.getMonth();
+        const endY = hardEnd.getFullYear(), endM = hardEnd.getMonth();
+        while (y < endY || (y === endY && m <= endM)) {
+            const lastDay = new Date(y, m+1, 0).getDate();
+            if (day <= lastDay) {
+                const cand = new Date(y, m, day);
+                if (cand >= startD && cand <= hardEnd && cand >= rangeStart) res.push(cand);
+            }
+            m++; if (m > 11) { m = 0; y++; }
+        }
+    } else if (rt === 'yearly') {
+        const mo = startD.getMonth(), day = startD.getDate();
+        let y = rangeStart.getFullYear();
+        const endY = hardEnd.getFullYear();
+        while (y <= endY) {
+            const lastDay = new Date(y, mo+1, 0).getDate();
+            if (day <= lastDay) {
+                const cand = new Date(y, mo, day);
+                if (cand >= startD && cand <= hardEnd && cand >= rangeStart) res.push(cand);
+            }
+            y++;
+        }
+    }
+    return res;
 }
 
 function getCalColor(calId) {
@@ -864,6 +958,29 @@ function getCalColor(calId) {
 }
 
 // ===== ナビゲーション =====
+// calendar-repeat-v1: 取得済み範囲を覚えて、未取得の月の通常イベントをサーバーから補充
+window.__loadedKeys = window.__loadedKeys || new Set();
+async function __ensureEventsLoaded() {
+    try {
+        let y, m;
+        if (currentView === 'week') {
+            const ws = new Date(currentWeekStart); y = ws.getFullYear(); m = ws.getMonth();
+        } else { y = currentYear; m = currentMonth; }
+        const key = y + '-' + m;
+        if (window.__loadedKeys.has(key)) return;
+        window.__loadedKeys.add(key);
+        const from = `${y}-${String(m+1).padStart(2,'0')}-01`;
+        const lastDay = new Date(y, m+1, 0).getDate();
+        const to = `${y}-${String(m+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+        const res = await fetch(`/api/calendar_events?from=${from}&to=${to}`, {cache:'no-store'});
+        const d = await res.json();
+        const incoming = d.events || [];
+        const existing = new Set(ALL_EVENTS.map(e=>String(e.id)));
+        incoming.forEach(e => { if (!existing.has(String(e.id))) ALL_EVENTS.push(e); });
+        renderCalendar();
+    } catch(e) { console.error('[ensureEventsLoaded]', e); }
+}
+
 window.changeMonth = function(delta) {
     if (currentView === 'week') {
         // 週表示は7日単位で移動
@@ -873,7 +990,7 @@ window.changeMonth = function(delta) {
         if (currentMonth > 11) { currentMonth=0; currentYear++; }
         if (currentMonth < 0)  { currentMonth=11; currentYear--; }
     }
-    renderCalendar();
+    __ensureEventsLoaded(); renderCalendar();
 };
 window.goToday = function() {
     const today = new Date();
@@ -882,7 +999,7 @@ window.goToday = function() {
     currentWeekStart = new Date(today);
     currentWeekStart.setDate(today.getDate() - today.getDay());
     currentWeekStart.setHours(0,0,0,0);
-    renderCalendar();
+    __ensureEventsLoaded(); renderCalendar();
 };
 window.switchView = function(view) {
     currentView = view;
