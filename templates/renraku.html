@@ -114,8 +114,6 @@
     <div class="rk-detail-head">
       <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
       <div style="flex:1;"><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
-      <button class="rk-bulk-link" onclick="rkPrintOne()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>印刷</button>  <!-- renraku-print-link-v1 -->
-      <button class="rk-bulk-link" onclick="rkLineOpen()" style="background:#06c755;color:#fff;border-color:#06c755;"><span class="material-symbols-outlined" style="font-size:16px;">send</span>LINEで送る</button>  <!-- renraku-line-ui-v1 -->
     </div>
 
     <div class="rk-section">
@@ -164,7 +162,13 @@
 </div>
 
 <div class="rk-save-bar" id="rk-save-bar" style="display:none;">
-  <div class="rk-save-bar-inner"><button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button></div>
+  <div class="rk-save-bar-inner">
+    <button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button>
+    <div style="display:flex;gap:8px;margin-top:8px;">  <!-- renraku-savebar-actions-v1 -->
+      <button onclick="rkPrintOne()" style="flex:1;padding:11px;border:1.5px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">print</span>印刷</button>
+      <button onclick="rkLineOpen()" style="flex:2;padding:11px;border:none;background:#06c755;color:#fff;border-radius:10px;font-weight:800;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">send</span>LINEで送る</button>
+    </div>
+  </div>
 </div>
 
 <div class="rk-modal-mask" id="rk-bulk-mask">
