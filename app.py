@@ -340,6 +340,201 @@ def api_line_friends_unlink():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ===== renraku-line-send-v1 : 連絡帳をLINEで送る(テキスト・第一段階) =====
+def _line_push(token, to_user_id, messages):
+    """施設トークンで push。1回最大3吹き出し(messagesは最大3個)。成功でTrue。"""
+    import urllib.request, json as _json
+    if not token or not to_user_id or not messages:
+        return False
+    try:
+        payload = _json.dumps({'to': to_user_id, 'messages': messages[:3]}).encode('utf-8')
+        req = urllib.request.Request(
+            'https://api.line.me/v2/bot/message/push',
+            data=payload,
+            headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as res:
+            return res.status == 200
+    except Exception as e:
+        print(f'_line_push error: {e}', flush=True)
+        return False
+
+
+def _rk_chips_text(v):
+    """items の chips 値(文字列 or 配列)を読みやすい文字列に。"""
+    if v is None:
+        return ''
+    if isinstance(v, list):
+        return '、'.join([str(x) for x in v if str(x).strip()])
+    return str(v).strip()
+
+
+def _renraku_to_line_text(note, vitals, patient_name):
+    """連絡帳を家族向けテキストに整形する。"""
+    items = (note or {}).get('items') or {}
+    lines = []
+    lines.append(f'{patient_name}様の連絡帳です。')
+    lines.append('')
+
+    # 行った場所
+    places = _rk_chips_text(items.get('places'))
+    if places:
+        lines.append(f'【行った場所】{places}')
+    # 食事量
+    mm = _rk_chips_text(items.get('meal_main'))
+    ms = _rk_chips_text(items.get('meal_side'))
+    if mm or ms:
+        parts = []
+        if mm: parts.append(f'主食 {mm}')
+        if ms: parts.append(f'副食 {ms}')
+        lines.append('【お食事】' + '、'.join(parts))
+    water = _rk_chips_text(items.get('water'))
+    if water:
+        lines.append(f'【水分】{water}')
+    # 入浴
+    bath = _rk_chips_text(items.get('bath'))
+    if bath:
+        lines.append(f'【入浴】{bath}')
+    # 排泄
+    toilet = _rk_chips_text(items.get('toilet'))
+    if toilet:
+        lines.append(f'【排泄】{toilet}')
+    # 機能訓練
+    training = _rk_chips_text(items.get('training'))
+    if training:
+        lines.append(f'【機能訓練・運動】{training}')
+
+    # バイタル(数値テキスト)
+    if vitals:
+        vlines = []
+        for v in vitals:
+            seg = []
+            if v.get('temperature') is not None:
+                seg.append(f"体温{v.get('temperature')}")
+            if v.get('bp_high') is not None and v.get('bp_low') is not None:
+                seg.append(f"血圧{v.get('bp_high')}/{v.get('bp_low')}")
+            if v.get('pulse') is not None:
+                seg.append(f"脈拍{v.get('pulse')}")
+            if v.get('spo2') is not None:
+                seg.append(f"SpO2 {v.get('spo2')}%")
+            if seg:
+                vlines.append('・' + '、'.join(seg))
+        if vlines:
+            lines.append('')
+            lines.append('【体調・バイタル】')
+            lines.extend(vlines)
+
+    # 特記事項
+    special = (note or {}).get('special_note') or ''
+    if special.strip():
+        lines.append('')
+        lines.append('【連絡事項】')
+        lines.append(special.strip())
+
+    # ご家族へのメッセージ
+    fam = (note or {}).get('family_message') or ''
+    if fam.strip():
+        lines.append('')
+        lines.append(fam.strip())
+
+    # 次回
+    nv = (note or {}).get('next_visit') or ''
+    if nv.strip():
+        lines.append('')
+        lines.append(f'【次回ご利用】{nv.strip()}')
+
+    return '\n'.join(lines).strip()
+
+
+def _renraku_fetch_for_line(supabase, f_code, patient_id, note_date):
+    """連絡帳 note + vitals + 利用者名 を取得(renraku_print と同様)。"""
+    nres = (supabase.table('renraku_notes').select('*')
+            .eq('facility_code', f_code).eq('patient_id', patient_id).eq('note_date', note_date).execute())
+    note = nres.data[0] if nres.data else None
+    vres = (supabase.table('vitals')
+            .select('measured_at,temperature,bp_high,bp_low,pulse,spo2')
+            .eq('facility_code', f_code).eq('patient_id', patient_id).eq('measured_date', note_date)
+            .order('measured_at', desc=False).execute())
+    vitals = vres.data or []
+    name_map = _line_patient_name_map(supabase, f_code)
+    pname = (name_map.get(str(patient_id)) or {}).get('user_name', '') if name_map else ''
+    return note, vitals, pname
+
+
+def _line_linked_recipients(supabase, f_code, patient_id):
+    """その利用者に linked な友だち(userId, display_name)のリスト。"""
+    r = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+         .eq('facility_code', f_code).eq('patient_id', patient_id).eq('status', 'linked').execute())
+    return r.data or []
+
+
+@app.route('/api/renraku/line_preview', methods=['POST'])  # renraku-line-send-v1
+@login_required
+def api_renraku_line_preview():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        note_date = data.get('note_date')
+        if not patient_id or not note_date:
+            return jsonify({'status': 'error', 'message': 'patient_id と note_date が必要です'}), 400
+        note, vitals, pname = _renraku_fetch_for_line(supabase, f_code, patient_id, note_date)
+        if not note:
+            return jsonify({'status': 'error', 'message': 'この日の連絡帳がまだありません'}), 400
+        text = _renraku_to_line_text(note, vitals, pname)
+        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
+                        'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
+        return jsonify({'status': 'success', 'text': text,
+                        'patient_name': pname,
+                        'recipient_count': len(recipients),
+                        'recipients': recip_view})
+    except Exception as e:
+        print(f'api_renraku_line_preview error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/line_send', methods=['POST'])  # renraku-line-send-v1
+@login_required
+def api_renraku_line_send():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        note_date = data.get('note_date')
+        text = (data.get('text') or '').strip()
+        if not patient_id or not note_date or not text:
+            return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
+        # 施設のLINE設定(有効・トークン)
+        s = get_line_settings(supabase, f_code)
+        if not s or not s.get('enabled') or not s.get('channel_access_token'):
+            return jsonify({'status': 'error', 'message': 'LINE連携が有効でないかトークン未登録です'}), 400
+        token = s['channel_access_token']
+        # 安全ルール: linked のみ送信
+        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        if not recipients:
+            return jsonify({'status': 'error', 'message': '紐付け済みのご家族がいません'}), 400
+        messages = [{'type': 'text', 'text': text}]
+        sent = 0
+        failed = 0
+        for r in recipients:
+            uid = r.get('line_user_id')
+            if not uid:
+                continue
+            if _line_push(token, uid, messages):
+                sent += 1
+            else:
+                failed += 1
+        return jsonify({'status': 'success', 'sent': sent, 'failed': failed,
+                        'recipient_count': len(recipients)})
+    except Exception as e:
+        print(f'api_renraku_line_send error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ===== line-profile-v1 : LINEプロフィール取得(display_name) =====
 def _line_get_profile(token, user_id):
     """施設トークンで GET /v2/bot/profile/{userId}。取得できたら displayName、失敗したら None。例外は投げない。"""

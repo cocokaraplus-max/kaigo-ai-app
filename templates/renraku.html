@@ -115,6 +115,7 @@
       <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
       <div style="flex:1;"><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
       <button class="rk-bulk-link" onclick="rkPrintOne()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>印刷</button>  <!-- renraku-print-link-v1 -->
+      <button class="rk-bulk-link" onclick="rkLineOpen()" style="background:#06c755;color:#fff;border-color:#06c755;"><span class="material-symbols-outlined" style="font-size:16px;">send</span>LINEで送る</button>  <!-- renraku-line-ui-v1 -->
     </div>
 
     <div class="rk-section">
@@ -514,4 +515,75 @@ document.addEventListener('DOMContentLoaded',function(){
   rkLoadList();
 });
 </script>
+
+<!-- renraku-line-ui-v1 : LINE送信プレビューモーダル -->
+<div id="rk-line-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:88vh;overflow:auto;padding:18px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span class="material-symbols-outlined" style="color:#06c755;">send</span>
+      <div style="font-weight:800;font-size:1.02rem;">LINEで送る</div>
+      <button onclick="rkLineClose()" style="margin-left:auto;border:none;background:#f1f3f4;border-radius:8px;width:32px;height:32px;cursor:pointer;">✕</button>
+    </div>
+    <div id="rk-line-recipients" style="font-size:0.85rem;color:#5f6368;background:#f8f9fa;border-radius:10px;padding:10px;margin-bottom:10px;line-height:1.6;"></div>
+    <div style="font-size:0.8rem;color:#9aa0a6;margin-bottom:4px;">送信内容（送信前に編集できます）</div>
+    <textarea id="rk-line-text" style="width:100%;min-height:220px;border:1.5px solid #e0e0e0;border-radius:10px;padding:12px;box-sizing:border-box;font-size:0.9rem;line-height:1.6;font-family:inherit;"></textarea>
+    <div id="rk-line-msg" style="font-size:0.82rem;text-align:center;margin:8px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button onclick="rkLineClose()" style="flex:1;padding:12px;border:1.5px solid #e0e0e0;background:#fff;border-radius:10px;cursor:pointer;font-weight:700;color:#5f6368;">キャンセル</button>
+      <button id="rk-line-send-btn" onclick="rkLineSend()" style="flex:2;padding:12px;border:none;background:#06c755;color:#fff;border-radius:10px;cursor:pointer;font-weight:800;">この内容で送信</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== renraku-line-ui-v1 : 連絡帳 LINE送信 =====
+async function rkLineOpen(){
+  if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('送信対象の利用者が選択されていません。'); return; }
+  const msg=document.getElementById('rk-line-msg'); if(msg) msg.textContent='';
+  const recEl=document.getElementById('rk-line-recipients');
+  const txtEl=document.getElementById('rk-line-text');
+  if(recEl) recEl.textContent='読み込み中...';
+  if(txtEl) txtEl.value='';
+  document.getElementById('rk-line-modal').style.display='flex';
+  try{
+    const d=await fetch('/api/renraku/line_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
+    if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
+    if(txtEl) txtEl.value=d.text||'';
+    if(recEl){
+      if(d.recipient_count>0){
+        const names=(d.recipients||[]).map(r=>rkEsc(r.display_name)+'（…'+rkEsc(r.user_id_tail)+'）').join('、');
+        recEl.innerHTML='<b>送信先（紐付け済み '+d.recipient_count+'名）：</b><br>'+names;
+      }else{
+        recEl.innerHTML='<span style="color:#d93025;font-weight:700;">紐付け済みのご家族がいません。管理画面の「LINE友だち管理」で紐付けてください。</span>';
+      }
+    }
+  }catch(e){ console.error('rkLineOpen',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
+}
+
+function rkLineClose(){ document.getElementById('rk-line-modal').style.display='none'; }
+
+async function rkLineSend(){
+  const txtEl=document.getElementById('rk-line-text');
+  const msg=document.getElementById('rk-line-msg');
+  const btn=document.getElementById('rk-line-send-btn');
+  const text=(txtEl?txtEl.value:'').trim();
+  if(!text){ if(msg){msg.style.color='#d93025';msg.textContent='送信内容が空です';} return; }
+  if(!confirm('紐付け済みのご家族にLINEで送信します。\nよろしいですか？')) return;
+  if(btn) btn.disabled=true;
+  if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
+  try{
+    const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text})}).then(r=>r.json());
+    if(d.status==='success'){
+      if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
+      setTimeout(rkLineClose, 1500);
+    }else{
+      if(msg){msg.style.color='#d93025';msg.textContent='失敗: '+(d.message||'');}
+    }
+  }catch(e){ console.error('rkLineSend',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
+  finally{ if(btn) btn.disabled=false; }
+}
+</script>
+
 {% endblock %}
