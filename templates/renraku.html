@@ -70,8 +70,8 @@
 .rk-toggle input:checked + .rk-slider { background:#1a73e8; }
 .rk-toggle input:checked + .rk-slider:before { transform:translateX(16px); }
 .rk-toggle-mini { transform:scale(0.82); }
-.rk-save-bar { position:fixed; left:0; right:0; bottom:var(--rk-nav-h, 137px); z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px; box-shadow:0 -2px 8px rgba(0,0,0,0.05); }
-.rk-save-bar-inner { max-width:480px; margin:0 auto; }  /* renraku-savebar-width-v1 : ボトムナビ幅に合わせる */
+.rk-save-bar { position:fixed; left:50%; transform:translateX(-50%); max-width:var(--page-max-width, 480px); width:100%; box-sizing:border-box; bottom:var(--rk-nav-h, 137px); z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px; box-shadow:0 -2px 8px rgba(0,0,0,0.05); }  /* renraku-savebar-var-v1 : 本文幅・中央 */
+.rk-save-bar-inner { width:100%; margin:0 auto; }  /* renraku-savebar-var-v1 : バー側で幅制御 */
 .rk-save-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:800; cursor:pointer; }
 .rk-save-btn:active { background:#1557b0; }
 .rk-save-btn:disabled { opacity:0.6; }

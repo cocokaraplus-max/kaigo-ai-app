@@ -275,7 +275,7 @@ body.nav-editing {
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
             flex-shrink: 0;
-            max-width: 480px;
+            max-width: var(--page-max-width, 480px);  /* bottomnav-width-var-v1 : 本文と同幅・可変追従 */
             width: 100%;
             margin: 0 auto;
             touch-action: pan-x;
