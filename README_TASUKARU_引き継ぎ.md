@@ -1381,3 +1381,30 @@ dd8beca 送信API+UI / 02b35e8 保存バー移動 / cb0a608 モーダルナビ�
 
 ### 29-4. 本番反映（カレンダーのみ・cherry-pick）
 本番(tasukaru)は §25(0f0159c)で止まっていたため、tasukaru-dev 全体ではなくカレンダー2コミットのみ cherry-pick して本番反映（0f0159c → a5b82b9 → c107a40）。**LINE関連は本番未反映のまま**（本番反映には本番Supabaseへ line_friends DDL適用＋本番Cloud Runへ LINE_TOKEN_ENC_KEY 設定 が前提）。マーカー: calendar-repeat-v1, calendar-cellclick-repeat-v1。
+
+## 30. 連絡帳の写真添付＋写真LINE送信（2026-06-23）<!-- readme-s30-renraku-photo -->
+
+連絡帳に写真を添付（第二段階）し、その写真をLINEで家族に送信（第三段階）まで完成。実機で整形テキスト＋写真6枚の送信成功。全てDEV止まり、本番未反映（LINE一式と同じく本番準備が前提）。
+
+### 30-1. 連絡帳への写真添付（第二段階）
+- **DDL（DEV適用済）**: `alter table renraku_notes add column if not exists image_urls jsonb default '[]'::jsonb;`
+- **方式A**: 写真は専用APIで即アップロード→公開URL受領、連絡帳保存はJSONのまま image_urls 配列を足すだけ（既存JSON保存を壊さない）。既存ケース記録(records)と同じ case-photos バケット流用（公開・get_public_url）。
+- **アップロードAPI（マーカー `renraku-photo-api-v1`）**: `POST /api/renraku/upload_photo`（multipart, @login_required）。`utils.upload_images_to_supabase(supabase, files, f_code)` で case-photos に UUID名アップロード→公開URL配列返却。配置は api_renraku_line_send 末尾の後ろ（login_required定義後）。保存API api_renraku_save の payload に image_urls 追加。
+- **UI（マーカー `renraku-photo-ui-v1`）**: 連絡帳詳細の家族メッセージの後ろに「写真」フィールド（表示トグル付き）。「写真を追加」→ `<input type=file accept=image/* multiple>` → 即アップロード→サムネ表示→×削除。状態は RK_IMAGES（URL配列）。rkSave payload に image_urls、rkFillForm で note.image_urls から復元。RK_ALL_FIELDS に ['image_urls','写真'] 追加。
+
+### 30-2. 写真をLINE送信（第三段階）
+- **マーカー `renraku-line-photo-v1`（app.py）**:
+  - `_line_push` の messages[:3] → messages[:5]（LINE仕様: 1pushで最大5メッセージ）。
+  - `_line_image_messages(urls)`: https URLから `{type:'image', originalContentUrl, previewImageUrl}` を生成（https以外は除外）。
+  - `_line_push_chunked(token, uid, messages)`: messages を5件ずつ分割して順にpush。
+  - api_renraku_line_send: data から image_urls 受領（送信APIは text を受け取る方式のため note でなくフロントから渡す）。messages = テキスト + 画像メッセージ、_line_push_chunked で送信。
+  - api_renraku_line_preview: 戻りに photo_count 追加。
+- **マーカー `renraku-line-send-images-v1`（renraku.html）**: rkLineSend の送信 body に image_urls:RK_IMAGES を追加。
+- **実機確認**: 青木さんに写真6枚添付→LINE送信。テキスト1+画像6=7メッセージ→5件+2件の2回pushに自動分割。HIRO🐻❄️のLINEに整形テキスト＋写真が届くことを確認。case-photos公開URLがLINEから取得可能（HEAD 200/image/png）であることも実証。
+
+### 30-3. 運用メモ・教訓
+- **ブラウザキャッシュ注意**: デプロイ直後、ブラウザが古いJS（image_urlsを渡さない版のrkLineSend）を保持していると写真が送られない。デプロイ後はリロード（必要ならスーパーリロード）してから送信テストすること。最初「写真が届かない」と見えたのはこれが原因だった。
+- 写真プライバシー: case-photos は公開バケット（既存ケース記録と同じ扱い）。LINE送信は写真URLを家族に渡すことになる。当面は既存ケース記録と同じ基準で運用。プライバシー強化が必要なら署名付きURL方式へ後日移行可能。
+
+### 30-4. 今セッションのコミット（DEV、tasukaru-dev）
+03bbb3e 写真添付API+UI(第二段階) / e3c60cb 写真LINE送信(第三段階)。
