@@ -347,7 +347,7 @@ def _line_push(token, to_user_id, messages):
     if not token or not to_user_id or not messages:
         return False
     try:
-        payload = _json.dumps({'to': to_user_id, 'messages': messages[:3]}).encode('utf-8')
+        payload = _json.dumps({'to': to_user_id, 'messages': messages[:5]}).encode('utf-8')  # renraku-line-photo-v1 : LINE上限は5
         req = urllib.request.Request(
             'https://api.line.me/v2/bot/message/push',
             data=payload,
@@ -368,6 +368,30 @@ def _rk_chips_text(v):
     if isinstance(v, list):
         return '、'.join([str(x) for x in v if str(x).strip()])
     return str(v).strip()
+
+
+def _line_image_messages(image_urls):
+    """公開URL配列から LINE imageMessage を生成。renraku-line-photo-v1"""
+    msgs = []
+    for u in (image_urls or []):
+        if not u or not str(u).startswith('https://'):
+            continue
+        msgs.append({'type': 'image', 'originalContentUrl': u, 'previewImageUrl': u})
+    return msgs
+
+
+def _line_push_chunked(token, to_user_id, messages):
+    """messages を 5件ずつに分割して順に push。全部成功で True。renraku-line-photo-v1"""
+    ok = True
+    any_sent = False
+    for i in range(0, len(messages), 5):
+        chunk = messages[i:i+5]
+        if not chunk:
+            continue
+        any_sent = True
+        if not _line_push(token, to_user_id, chunk):
+            ok = False
+    return ok and any_sent
 
 
 def _renraku_to_line_text(note, vitals, patient_name):
@@ -487,10 +511,12 @@ def api_renraku_line_preview():
         recipients = _line_linked_recipients(supabase, f_code, patient_id)
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
+        _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
         return jsonify({'status': 'success', 'text': text,
                         'patient_name': pname,
                         'recipient_count': len(recipients),
-                        'recipients': recip_view})
+                        'recipients': recip_view,
+                        'photo_count': _photo_count})
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -506,6 +532,8 @@ def api_renraku_line_send():
         patient_id = str(data.get('patient_id') or '')
         note_date = data.get('note_date')
         text = (data.get('text') or '').strip()
+        _image_urls = data.get('image_urls') or []  # renraku-line-photo-v1
+
         if not patient_id or not note_date or not text:
             return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
         # 施設のLINE設定(有効・トークン)
@@ -518,13 +546,17 @@ def api_renraku_line_send():
         if not recipients:
             return jsonify({'status': 'error', 'message': '紐付け済みのご家族がいません'}), 400
         messages = [{'type': 'text', 'text': text}]
+        try:
+            messages += _line_image_messages(_image_urls)  # renraku-line-photo-v1
+        except Exception as _img_e:
+            print(f'line image msg build error: {_img_e}', flush=True)
         sent = 0
         failed = 0
         for r in recipients:
             uid = r.get('line_user_id')
             if not uid:
                 continue
-            if _line_push(token, uid, messages):
+            if _line_push_chunked(token, uid, messages):  # renraku-line-photo-v1
                 sent += 1
             else:
                 failed += 1

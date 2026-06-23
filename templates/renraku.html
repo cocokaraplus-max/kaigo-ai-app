@@ -627,7 +627,7 @@ async function rkLineSend(){
   if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
   try{
     const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text})}).then(r=>r.json());
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES})}).then(r=>r.json());  /* renraku-line-send-images-v1 */
     if(d.status==='success'){
       if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
       setTimeout(rkLineClose, 1500);
