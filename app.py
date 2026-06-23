@@ -20,6 +20,7 @@ import pytz
 import re
 import base64
 import json
+from cryptography.fernet import Fernet  # line-crypto-v1
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -60,6 +61,79 @@ tokyo_tz = pytz.timezone('Asia/Tokyo')
 # ==========================================
 def get_secret(key):
     return os.environ.get(key, "")
+
+# ===== line-crypto-v1 : LINE設定の暗号化と施設別取得/保存 =====
+_line_fernet_cache = None
+def _line_get_fernet():
+    """LINE_TOKEN_ENC_KEY から Fernet を作る(キャッシュ)。"""
+    global _line_fernet_cache
+    if _line_fernet_cache is None:
+        key = get_secret('LINE_TOKEN_ENC_KEY').strip()
+        if not key:
+            raise RuntimeError('LINE_TOKEN_ENC_KEY が設定されていません')
+        _line_fernet_cache = Fernet(key.encode())
+    return _line_fernet_cache
+
+def _line_encrypt(plain):
+    """平文を暗号化して文字列で返す。空はそのまま返す。"""
+    if plain is None or plain == '':
+        return None
+    return _line_get_fernet().encrypt(plain.encode()).decode()
+
+def _line_decrypt(enc):
+    """暗号文を復号して平文で返す。失敗時は None。"""
+    if not enc:
+        return None
+    try:
+        return _line_get_fernet().decrypt(enc.encode()).decode()
+    except Exception as e:
+        print(f'line decrypt error: {e}', flush=True)
+        return None
+
+def get_line_settings(supabase, f_code):
+    """施設の line_settings を取得し、token/secret を復号して返す。無ければ None。"""
+    try:
+        res = supabase.table('line_settings').select('*').eq('facility_code', f_code).execute()
+        if not res.data:
+            return None
+        row = res.data[0]
+        return {
+            'facility_code': row.get('facility_code'),
+            'channel_access_token': _line_decrypt(row.get('channel_access_token_enc')),
+            'channel_secret': _line_decrypt(row.get('channel_secret_enc')),
+            'line_oa_name': row.get('line_oa_name') or '',
+            'enabled': bool(row.get('enabled')),
+            'has_token': bool(row.get('channel_access_token_enc')),
+            'has_secret': bool(row.get('channel_secret_enc')),
+        }
+    except Exception as e:
+        print(f'get_line_settings error: {e}', flush=True)
+        return None
+
+def save_line_settings(supabase, f_code, token=None, secret=None, oa_name=None, enabled=None):
+    """施設のLINE設定を upsert。token/secret が空の場合は既存値を温存。"""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    existing = None
+    try:
+        r = supabase.table('line_settings').select('*').eq('facility_code', f_code).execute()
+        existing = r.data[0] if r.data else None
+    except Exception as e:
+        print(f'save_line_settings select error: {e}', flush=True)
+    payload = {'facility_code': f_code, 'updated_at': now_iso}
+    if token:
+        payload['channel_access_token_enc'] = _line_encrypt(token)
+    if secret:
+        payload['channel_secret_enc'] = _line_encrypt(secret)
+    if oa_name is not None:
+        payload['line_oa_name'] = oa_name
+    if enabled is not None:
+        payload['enabled'] = bool(enabled)
+    if existing:
+        supabase.table('line_settings').update(payload).eq('facility_code', f_code).execute()
+    else:
+        payload['created_at'] = now_iso
+        supabase.table('line_settings').insert(payload).execute()
+    return True
 
 def get_supabase():
     url = get_secret("SUPABASE_URL").strip()
@@ -105,6 +179,499 @@ def login_required(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
+
+# ===== line-api-move-v1 : LINE設定API(login_required定義後に配置) =====
+# ===== line-settings-api-v1 : LINE設定の取得/保存API(管理者限定) =====
+@app.route('/api/line/settings', methods=['GET'])  # line-settings-api-v1
+@login_required
+def api_line_settings_get():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        s = get_line_settings(supabase, f_code)
+        if not s:
+            return jsonify({'status': 'success', 'enabled': False, 'line_oa_name': '',
+                            'has_token': False, 'has_secret': False})
+        # token/secret の値そのものは返さない(マスク)
+        return jsonify({'status': 'success',
+                        'enabled': s['enabled'],
+                        'line_oa_name': s['line_oa_name'],
+                        'has_token': s['has_token'],
+                        'has_secret': s['has_secret']})
+    except Exception as e:
+        print(f'api_line_settings_get error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/line/settings', methods=['POST'])  # line-settings-api-v1
+@login_required
+def api_line_settings_save():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        oa_name = data.get('line_oa_name')
+        token = (data.get('channel_access_token') or '').strip()
+        secret = (data.get('channel_secret') or '').strip()
+        enabled = data.get('enabled')
+        # 空文字は None 扱い(既存値温存)
+        save_line_settings(supabase, f_code,
+                           token=token or None,
+                           secret=secret or None,
+                           oa_name=oa_name,
+                           enabled=enabled)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f'api_line_settings_save error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== line-friends-api-v1 : LINE友だち管理API(一覧/紐付/解除、管理者限定) =====
+def _line_patient_name_map(supabase, f_code):
+    """id(UUID) -> 表示名 のマップを get_patients から作る。"""
+    m = {}
+    try:
+        for p in get_patients(supabase, f_code):
+            pid = p.get('id')
+            if pid:
+                m[str(pid)] = {
+                    'user_name': p.get('user_name') or '',
+                    'user_name_kana': p.get('user_name_kana') or '',
+                    'patient_number': p.get('patient_number') or '',
+                }
+    except Exception as e:
+        print(f'_line_patient_name_map error: {e}', flush=True)
+    return m
+
+
+@app.route('/api/line/friends', methods=['GET'])  # line-friends-api-v1
+@login_required
+def api_line_friends_list():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        r = supabase.table('line_friends').select('*').eq('facility_code', f_code).order('updated_at', desc=True).execute()
+        rows = r.data or []
+        name_map = _line_patient_name_map(supabase, f_code)
+        friends = []
+        for row in rows:
+            pid = row.get('patient_id')
+            pinfo = name_map.get(str(pid)) if pid else None
+            friends.append({
+                'line_user_id': row.get('line_user_id'),
+                'display_name': row.get('display_name') or '',
+                'status': row.get('status') or 'unlinked',
+                'patient_id': pid,
+                'patient_name': (pinfo['user_name'] if pinfo else ''),
+                'linked_by': row.get('linked_by') or '',
+                'updated_at': row.get('updated_at') or '',
+            })
+        return jsonify({'status': 'success', 'friends': friends})
+    except Exception as e:
+        print(f'api_line_friends_list error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/line/friends/link', methods=['POST'])  # line-friends-api-v1
+@login_required
+def api_line_friends_link():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        uid = (data.get('line_user_id') or '').strip()
+        pid = (data.get('patient_id') or '').strip()
+        if not uid or not pid:
+            return jsonify({'status': 'error', 'message': 'line_user_id と patient_id が必要です'}), 400
+        # patient_id が当該施設の利用者か検証(誤紐付防止)
+        name_map = _line_patient_name_map(supabase, f_code)
+        if str(pid) not in name_map:
+            return jsonify({'status': 'error', 'message': 'この利用者は施設に存在しません'}), 400
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        # facility_code + line_user_id の二条件guard
+        supabase.table('line_friends').update({
+            'patient_id': pid,
+            'status': 'linked',
+            'linked_by': my_name,
+            'updated_at': now_iso,
+        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
+        return jsonify({'status': 'success', 'patient_name': name_map[str(pid)]['user_name']})
+    except Exception as e:
+        print(f'api_line_friends_link error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/line/friends/unlink', methods=['POST'])  # line-friends-api-v1
+@login_required
+def api_line_friends_unlink():
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name', '')
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({'status': 'error', 'message': '管理者権限がありません'}), 403
+        data = request.json or {}
+        uid = (data.get('line_user_id') or '').strip()
+        if not uid:
+            return jsonify({'status': 'error', 'message': 'line_user_id が必要です'}), 400
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table('line_friends').update({
+            'patient_id': None,
+            'status': 'unlinked',
+            'linked_by': None,
+            'updated_at': now_iso,
+        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f'api_line_friends_unlink error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== renraku-line-send-v1 : 連絡帳をLINEで送る(テキスト・第一段階) =====
+def _line_push(token, to_user_id, messages):
+    """施設トークンで push。1回最大3吹き出し(messagesは最大3個)。成功でTrue。"""
+    import urllib.request, json as _json
+    if not token or not to_user_id or not messages:
+        return False
+    try:
+        payload = _json.dumps({'to': to_user_id, 'messages': messages[:5]}).encode('utf-8')  # renraku-line-photo-v1 : LINE上限は5
+        req = urllib.request.Request(
+            'https://api.line.me/v2/bot/message/push',
+            data=payload,
+            headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as res:
+            return res.status == 200
+    except Exception as e:
+        print(f'_line_push error: {e}', flush=True)
+        return False
+
+
+def _rk_chips_text(v):
+    """items の chips 値(文字列 or 配列)を読みやすい文字列に。"""
+    if v is None:
+        return ''
+    if isinstance(v, list):
+        return '、'.join([str(x) for x in v if str(x).strip()])
+    return str(v).strip()
+
+
+def _line_image_messages(image_urls):
+    """公開URL配列から LINE imageMessage を生成。renraku-line-photo-v1"""
+    msgs = []
+    for u in (image_urls or []):
+        if not u or not str(u).startswith('https://'):
+            continue
+        msgs.append({'type': 'image', 'originalContentUrl': u, 'previewImageUrl': u})
+    return msgs
+
+
+def _line_push_chunked(token, to_user_id, messages):
+    """messages を 5件ずつに分割して順に push。全部成功で True。renraku-line-photo-v1"""
+    ok = True
+    any_sent = False
+    for i in range(0, len(messages), 5):
+        chunk = messages[i:i+5]
+        if not chunk:
+            continue
+        any_sent = True
+        if not _line_push(token, to_user_id, chunk):
+            ok = False
+    return ok and any_sent
+
+
+def _renraku_to_line_text(note, vitals, patient_name):
+    """連絡帳を家族向けテキストに整形する。"""
+    items = (note or {}).get('items') or {}
+    lines = []
+    lines.append(f'{patient_name}様の連絡帳です。')
+    lines.append('')
+
+    # 行った場所
+    places = _rk_chips_text(items.get('places'))
+    if places:
+        lines.append(f'【行った場所】{places}')
+    # 食事量
+    mm = _rk_chips_text(items.get('meal_main'))
+    ms = _rk_chips_text(items.get('meal_side'))
+    if mm or ms:
+        parts = []
+        if mm: parts.append(f'主食 {mm}')
+        if ms: parts.append(f'副食 {ms}')
+        lines.append('【お食事】' + '、'.join(parts))
+    water = _rk_chips_text(items.get('water'))
+    if water:
+        lines.append(f'【水分】{water}')
+    # 入浴
+    bath = _rk_chips_text(items.get('bath'))
+    if bath:
+        lines.append(f'【入浴】{bath}')
+    # 排泄
+    toilet = _rk_chips_text(items.get('toilet'))
+    if toilet:
+        lines.append(f'【排泄】{toilet}')
+    # 機能訓練
+    training = _rk_chips_text(items.get('training'))
+    if training:
+        lines.append(f'【機能訓練・運動】{training}')
+
+    # バイタル(数値テキスト)
+    if vitals:
+        vlines = []
+        for v in vitals:
+            seg = []
+            if v.get('temperature') is not None:
+                seg.append(f"体温{v.get('temperature')}")
+            if v.get('bp_high') is not None and v.get('bp_low') is not None:
+                seg.append(f"血圧{v.get('bp_high')}/{v.get('bp_low')}")
+            if v.get('pulse') is not None:
+                seg.append(f"脈拍{v.get('pulse')}")
+            if v.get('spo2') is not None:
+                seg.append(f"SpO2 {v.get('spo2')}%")
+            if seg:
+                vlines.append('・' + '、'.join(seg))
+        if vlines:
+            lines.append('')
+            lines.append('【体調・バイタル】')
+            lines.extend(vlines)
+
+    # 特記事項
+    special = (note or {}).get('special_note') or ''
+    if special.strip():
+        lines.append('')
+        lines.append('【連絡事項】')
+        lines.append(special.strip())
+
+    # ご家族へのメッセージ
+    fam = (note or {}).get('family_message') or ''
+    if fam.strip():
+        lines.append('')
+        lines.append(fam.strip())
+
+    # 次回
+    nv = (note or {}).get('next_visit') or ''
+    if nv.strip():
+        lines.append('')
+        lines.append(f'【次回ご利用】{nv.strip()}')
+
+    return '\n'.join(lines).strip()
+
+
+def _renraku_fetch_for_line(supabase, f_code, patient_id, note_date):
+    """連絡帳 note + vitals + 利用者名 を取得(renraku_print と同様)。"""
+    nres = (supabase.table('renraku_notes').select('*')
+            .eq('facility_code', f_code).eq('patient_id', patient_id).eq('note_date', note_date).execute())
+    note = nres.data[0] if nres.data else None
+    vres = (supabase.table('vitals')
+            .select('measured_at,temperature,bp_high,bp_low,pulse,spo2')
+            .eq('facility_code', f_code).eq('patient_id', patient_id).eq('measured_date', note_date)
+            .order('measured_at', desc=False).execute())
+    vitals = vres.data or []
+    name_map = _line_patient_name_map(supabase, f_code)
+    pname = (name_map.get(str(patient_id)) or {}).get('user_name', '') if name_map else ''
+    return note, vitals, pname
+
+
+def _line_linked_recipients(supabase, f_code, patient_id):
+    """その利用者に linked な友だち(userId, display_name)のリスト。"""
+    r = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+         .eq('facility_code', f_code).eq('patient_id', patient_id).eq('status', 'linked').execute())
+    return r.data or []
+
+
+@app.route('/api/renraku/line_preview', methods=['POST'])  # renraku-line-send-v1
+@login_required
+def api_renraku_line_preview():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        note_date = data.get('note_date')
+        if not patient_id or not note_date:
+            return jsonify({'status': 'error', 'message': 'patient_id と note_date が必要です'}), 400
+        note, vitals, pname = _renraku_fetch_for_line(supabase, f_code, patient_id, note_date)
+        if not note:
+            return jsonify({'status': 'error', 'message': 'この日の連絡帳がまだありません'}), 400
+        text = _renraku_to_line_text(note, vitals, pname)
+        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
+                        'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
+        _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
+        return jsonify({'status': 'success', 'text': text,
+                        'patient_name': pname,
+                        'recipient_count': len(recipients),
+                        'recipients': recip_view,
+                        'photo_count': _photo_count})
+    except Exception as e:
+        print(f'api_renraku_line_preview error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/line_send', methods=['POST'])  # renraku-line-send-v1
+@login_required
+def api_renraku_line_send():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        data = request.json or {}
+        patient_id = str(data.get('patient_id') or '')
+        note_date = data.get('note_date')
+        text = (data.get('text') or '').strip()
+        _image_urls = data.get('image_urls') or []  # renraku-line-photo-v1
+
+        if not patient_id or not note_date or not text:
+            return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
+        # 施設のLINE設定(有効・トークン)
+        s = get_line_settings(supabase, f_code)
+        if not s or not s.get('enabled') or not s.get('channel_access_token'):
+            return jsonify({'status': 'error', 'message': 'LINE連携が有効でないかトークン未登録です'}), 400
+        token = s['channel_access_token']
+        # 安全ルール: linked のみ送信
+        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        if not recipients:
+            return jsonify({'status': 'error', 'message': '紐付け済みのご家族がいません'}), 400
+        messages = [{'type': 'text', 'text': text}]
+        try:
+            messages += _line_image_messages(_image_urls)  # renraku-line-photo-v1
+        except Exception as _img_e:
+            print(f'line image msg build error: {_img_e}', flush=True)
+        sent = 0
+        failed = 0
+        for r in recipients:
+            uid = r.get('line_user_id')
+            if not uid:
+                continue
+            if _line_push_chunked(token, uid, messages):  # renraku-line-photo-v1
+                sent += 1
+            else:
+                failed += 1
+        return jsonify({'status': 'success', 'sent': sent, 'failed': failed,
+                        'recipient_count': len(recipients)})
+    except Exception as e:
+        print(f'api_renraku_line_send error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== renraku-photo-api-v1 : 連絡帳写真アップロード(case-photos・公開URL) =====
+@app.route('/api/renraku/upload_photo', methods=['POST'])  # renraku-photo-api-v1
+@login_required
+def api_renraku_upload_photo():
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        files = request.files.getlist('photos')
+        if not files:
+            single = request.files.get('photo')
+            if single:
+                files = [single]
+        files = [f for f in files if f and f.filename]
+        if not files:
+            return jsonify({'status': 'error', 'message': '画像がありません'}), 400
+        from utils import upload_images_to_supabase
+        urls = upload_images_to_supabase(supabase, files, f_code)
+        return jsonify({'status': 'success', 'urls': urls or []})
+    except Exception as e:
+        print(f'api_renraku_upload_photo error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== line-profile-v1 : LINEプロフィール取得(display_name) =====
+def _line_get_profile(token, user_id):
+    """施設トークンで GET /v2/bot/profile/{userId}。取得できたら displayName、失敗したら None。例外は投げない。"""
+    if not token or not user_id:
+        return None
+    import urllib.request, json as _json
+    try:
+        req = urllib.request.Request(
+            'https://api.line.me/v2/bot/profile/' + user_id,
+            headers={'Authorization': 'Bearer ' + token},
+            method='GET'
+        )
+        with urllib.request.urlopen(req, timeout=3) as res:
+            if res.status == 200:
+                data = _json.loads(res.read().decode('utf-8'))
+                return data.get('displayName')
+    except Exception as e:
+        print(f'_line_get_profile error: {e}', flush=True)
+    return None
+
+# ===== line-webhook-v1 : LINE Webhook 受信(公開・署名検証・未紐付保存) =====
+def _line_save_friend(supabase, f_code, user_id, display_name=None):
+    """line_friends に userId を未紐付(unlinked)で upsert。既存は status を触らず updated_at のみ更新。"""
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        r = supabase.table('line_friends').select('id,status').eq('facility_code', f_code).eq('line_user_id', user_id).execute()
+        if r.data:
+            upd = {'updated_at': now_iso}
+            if display_name:
+                upd['display_name'] = display_name
+            supabase.table('line_friends').update(upd).eq('facility_code', f_code).eq('line_user_id', user_id).execute()
+        else:
+            supabase.table('line_friends').insert({
+                'facility_code': f_code,
+                'line_user_id': user_id,
+                'display_name': display_name,
+                'status': 'unlinked',
+                'created_at': now_iso,
+                'updated_at': now_iso,
+            }).execute()
+    except Exception as e:
+        print(f'_line_save_friend error: {e}', flush=True)
+
+
+@app.route('/line/webhook/<facility_code>', methods=['POST'])  # line-webhook-v1
+def line_webhook(facility_code):
+    import hmac, hashlib
+    try:
+        supabase = get_supabase()
+        s = get_line_settings(supabase, facility_code)
+        # 設定なし or 無効 or secret 未登録なら 401(イベントは処理しない)
+        if not s or not s.get('channel_secret'):
+            print(f'line_webhook: no settings/secret for {facility_code}', flush=True)
+            return 'ng', 401
+        body = request.get_data()  # bytes(署名検証は生ボディで行う)
+        sig = request.headers.get('X-Line-Signature', '')
+        mac = hmac.new(s['channel_secret'].encode('utf-8'), body, hashlib.sha256).digest()
+        expected = base64.b64encode(mac).decode('utf-8')
+        if not hmac.compare_digest(expected, sig):
+            print(f'line_webhook: bad signature for {facility_code}', flush=True)
+            return 'ng', 401
+        # 署名OK。イベント処理
+        payload = request.get_json(silent=True) or {}
+        events = payload.get('events', []) or []
+        for ev in events:
+            etype = ev.get('type')
+            src = ev.get('source', {}) or {}
+            uid = src.get('userId')
+            if not uid:
+                continue
+            # follow(友だち追加) / message で userId を未紐付保存
+            if etype in ('follow', 'message'):
+                # line-profile-v1: 可能なら display_name を取得(失敗しても保存は実行)
+                dname = _line_get_profile(s.get('channel_access_token'), uid)
+                _line_save_friend(supabase, facility_code, uid, display_name=dname)
+        return 'ok', 200
+    except Exception as e:
+        print(f'line_webhook error: {e}', flush=True)
+        # エラーでも200を返しLINE側のリトライ暴走を避ける(要件に応じて要検討)
+        return 'ok', 200
+
 
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
@@ -2389,6 +2956,7 @@ def api_renraku_save():
             'special_note': data.get('special_note', ''),
             'family_message': data.get('family_message', ''),
             'next_visit': data.get('next_visit', ''),
+            'image_urls': data.get('image_urls') or [],  # renraku-photo-api-v1
             'staff_name': my_name,
             'updated_at': now_iso,
         }
@@ -13427,8 +13995,8 @@ def line_send_message(user_id, messages):
         return False
 
 # --- LINE Webhook ---
-@app.route('/api/line/webhook', methods=['POST'])
-def line_webhook():
+@app.route('/api/line/webhook', methods=['POST'])  # line-webhook-legacy-rename-v1 (legacy/unused)
+def line_webhook_legacy():
     """LINEからのWebhook受信（管理者の返信で承認処理）"""
     channel_secret = get_secret("LINE_CHANNEL_SECRET")
     body = request.get_data(as_text=True)

@@ -932,6 +932,50 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </button>
   </div>
 
+  {# ---- LINE連携設定 (line-settings-ui-v1) ---- #}
+  <div class="section-box" id="line-settings-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">chat</span>LINE連携設定
+    </div>
+    <div style="font-size:0.85rem;color:#5f6368;margin-bottom:12px;line-height:1.5;">
+      施設専用のLINE公式アカウントと連携し、連絡帳をご家族にLINEで送信できます。トークン類は暗号化して保存されます。
+    </div>
+    <div class="form-group">
+      <label style="font-size:0.82rem;font-weight:700;color:#5f6368;">公式アカウント名</label>
+      <input type="text" id="line-oa-name" class="form-control" placeholder="例: 【公式】○○デイサービス">
+    </div>
+    <div class="form-group">
+      <label style="font-size:0.82rem;font-weight:700;color:#5f6368;">チャネルアクセストークン</label>
+      <input type="password" id="line-token" class="form-control" placeholder="登録済み。変更時のみ入力" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label style="font-size:0.82rem;font-weight:700;color:#5f6368;">チャネルシークレット</label>
+      <input type="password" id="line-secret" class="form-control" placeholder="登録済み。変更時のみ入力" autocomplete="new-password">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:0.88rem;margin-bottom:12px;">
+      <input type="checkbox" id="line-enabled" style="margin:0;width:18px;height:18px;">LINE連携を有効にする
+    </label>
+    <button class="btn btn-primary" onclick="saveLineSettings()">
+      <span class="material-symbols-outlined">save</span>保存
+    </button>
+    <div id="line-msg" style="font-size:0.82rem;text-align:center;margin-top:8px;min-height:18px;"></div>
+  </div>
+
+  {# ---- LINE友だち管理 (line-friends-ui-v1) ---- #}
+  <div class="section-box" id="line-friends-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">group</span>LINE友だち管理
+    </div>
+    <div style="font-size:0.85rem;color:#5f6368;margin-bottom:12px;line-height:1.5;">
+      LINEで友だち追加したご家族を、利用者と紐付けます。<b>紐付けた方にその利用者の連絡帳が届くようになります。慎重に確認してください。</b>
+    </div>
+    <button class="btn" onclick="loadLineFriends()" style="background:#e8f0fe;color:#1a73e8;font-weight:700;margin-bottom:12px;">
+      <span class="material-symbols-outlined">refresh</span>一覧を更新
+    </button>
+    <div id="line-friends-list"></div>
+    <div id="line-friends-msg" style="font-size:0.82rem;text-align:center;margin-top:8px;min-height:18px;"></div>
+  </div>
+
   {# ---- AIカテゴリ自動振り分け ---- #}
   <div class="section-box">
     <div class="section-box-title">
@@ -1502,6 +1546,184 @@ window.testTTSAdmin = function() {
     }, 400);
 };
 
+
+
+// ===== line-settings-ui-v1 : LINE連携設定 =====
+async function loadLineSettings(){
+  try{
+    const r = await fetch('/api/line/settings', {cache:'no-store'});
+    const d = await r.json();
+    if(d.status !== 'success') return;
+    const oa = document.getElementById('line-oa-name');
+    const tok = document.getElementById('line-token');
+    const sec = document.getElementById('line-secret');
+    const en  = document.getElementById('line-enabled');
+    if(oa) oa.value = d.line_oa_name || '';
+    if(en) en.checked = !!d.enabled;
+    if(tok) tok.placeholder = d.has_token ? '登録済み。変更時のみ入力' : '未登録';
+    if(sec) sec.placeholder = d.has_secret ? '登録済み。変更時のみ入力' : '未登録';
+  }catch(e){ console.error('loadLineSettings', e); }
+}
+async function saveLineSettings(){
+  const msg = document.getElementById('line-msg');
+  const oa  = document.getElementById('line-oa-name');
+  const tok = document.getElementById('line-token');
+  const sec = document.getElementById('line-secret');
+  const en  = document.getElementById('line-enabled');
+  const body = {
+    line_oa_name: oa ? oa.value.trim() : '',
+    enabled: en ? en.checked : false
+  };
+  // 空のトークン/シークレットは送らない(既存値温存)
+  if(tok && tok.value.trim()) body.channel_access_token = tok.value.trim();
+  if(sec && sec.value.trim()) body.channel_secret = sec.value.trim();
+  if(msg){ msg.style.color='#5f6368'; msg.textContent='保存中...'; }
+  try{
+    const r = await fetch('/api/line/settings', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if(d.status === 'success'){
+      if(msg){ msg.style.color='#1a73e8'; msg.textContent='保存しました'; }
+      if(tok) tok.value='';
+      if(sec) sec.value='';
+      loadLineSettings();
+    }else{
+      if(msg){ msg.style.color='#d93025'; msg.textContent='保存失敗: ' + (d.message||''); }
+    }
+  }catch(e){
+    if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; }
+    console.error('saveLineSettings', e);
+  }
+}
+document.addEventListener('DOMContentLoaded', loadLineSettings);
+
+
+// ===== line-friends-ui-v1 : LINE友だち管理 =====
+let _lfPatients = [];   // /api/patients_cache の利用者一覧
+let _lfFriends = [];    // 友だち一覧
+let _lfSelected = {};   // line_user_id -> 選択中 patient {id,user_name,...}
+
+function _lfEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+async function _lfLoadPatients(){
+  if(_lfPatients.length) return _lfPatients;
+  try{
+    const d = await fetch('/api/patients_cache',{cache:'no-store'}).then(r=>r.json());
+    _lfPatients = (d.patients||[]).filter(p=>!p.is_discontinued);
+  }catch(e){ console.error('_lfLoadPatients', e); }
+  return _lfPatients;
+}
+
+async function loadLineFriends(){
+  const listEl = document.getElementById('line-friends-list');
+  const msg = document.getElementById('line-friends-msg');
+  if(msg) msg.textContent = '';
+  if(listEl) listEl.innerHTML = '<div style="color:#80868b;font-size:0.85rem;padding:8px;">読み込み中...</div>';
+  await _lfLoadPatients();
+  try{
+    const d = await fetch('/api/line/friends?_t='+Date.now(),{cache:'no-store'}).then(r=>r.json());
+    if(d.status !== 'success'){ if(listEl) listEl.innerHTML = '<div style="color:#d93025;">読み込み失敗</div>'; return; }
+    _lfFriends = d.friends || [];
+    _lfRender();
+  }catch(e){ console.error('loadLineFriends', e); if(listEl) listEl.innerHTML = '<div style="color:#d93025;">通信エラー</div>'; }
+}
+
+function _lfRender(){
+  const listEl = document.getElementById('line-friends-list');
+  if(!listEl) return;
+  if(!_lfFriends.length){ listEl.innerHTML = '<div style="color:#80868b;font-size:0.85rem;padding:8px;">友だちはまだいません。LINEで友だち追加されるとここに表示されます。</div>'; return; }
+  listEl.innerHTML = _lfFriends.map(f=>{
+    const uidTail = _lfEsc((f.line_user_id||'').slice(-6));
+    const dname = _lfEsc(f.display_name || '(名前未取得)');
+    if(f.status === 'linked'){
+      return '<div style="border:1.5px solid #34a853;border-radius:12px;padding:12px;margin-bottom:10px;background:#f0faf2;">'
+        + '<div style="font-weight:700;">'+dname+' <span style="color:#80868b;font-size:0.78rem;font-weight:400;">…'+uidTail+'</span></div>'
+        + '<div style="color:#188038;font-size:0.88rem;margin:6px 0;"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">link</span> '+_lfEsc(f.patient_name)+' 様のご家族として紐付済み</div>'
+        + '<button class="btn" onclick="lfUnlink(\''+_lfEsc(f.line_user_id)+'\',\''+_lfEsc(f.patient_name)+'\')" style="background:#fce8e6;color:#d93025;font-size:0.85rem;padding:8px 14px;">紐付けを解除</button>'
+        + '</div>';
+    } else {
+      return '<div style="border:1.5px solid #e0e0e0;border-radius:12px;padding:12px;margin-bottom:10px;">'
+        + '<div style="font-weight:700;">'+dname+' <span style="color:#80868b;font-size:0.78rem;font-weight:400;">…'+uidTail+'</span></div>'
+        + '<div style="color:#9aa0a6;font-size:0.82rem;margin:4px 0 8px;">未紐付け</div>'
+        + '<input type="text" placeholder="利用者を名前・ふりがなで検索" autocomplete="off" '
+        +   'oninput="lfSearch(\''+_lfEsc(f.line_user_id)+'\', this.value)" '
+        +   'style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">'
+        + '<div id="lf-results-'+_lfEsc(f.line_user_id)+'" style="margin-top:6px;"></div>'
+        + '</div>';
+    }
+  }).join('');
+}
+
+function lfSearch(uid, q){
+  const el = document.getElementById('lf-results-'+uid);
+  if(!el) return;
+  q = (q||'').trim();
+  if(!q){ el.innerHTML=''; return; }
+  const ql = q.toLowerCase();
+  const hits = _lfPatients.filter(p=>{
+    return (p.user_name||'').toLowerCase().includes(ql)
+        || (p.user_name_kana||'').toLowerCase().includes(ql)
+        || String(p.patient_number||'').includes(q);
+  }).slice(0,8);
+  if(!hits.length){ el.innerHTML = '<div style="color:#9aa0a6;font-size:0.82rem;padding:6px;">該当なし</div>'; return; }
+  el.innerHTML = hits.map(p=>{
+    const nm = _lfEsc(p.user_name), kn = _lfEsc(p.user_name_kana), no = _lfEsc(p.patient_number);
+    return '<div onclick="lfConfirmLink(\''+_lfEsc(uid)+'\',\''+_lfEsc(p.id)+'\')" '
+      + 'style="padding:10px;border:1px solid #e8eaed;border-radius:8px;margin-bottom:4px;cursor:pointer;background:#fff;">'
+      + '<b>'+nm+'</b> <span style="color:#80868b;font-size:0.78rem;">'+kn+'</span>'
+      + (no?' <span style="color:#1a73e8;font-size:0.78rem;">No.'+no+'</span>':'')
+      + '</div>';
+  }).join('');
+}
+
+function lfConfirmLink(uid, pid){
+  const p = _lfPatients.find(x=>String(x.id)===String(pid));
+  const f = _lfFriends.find(x=>x.line_user_id===uid);
+  if(!p || !f) return;
+  const dname = f.display_name || '(名前未取得)';
+  const ok = confirm('「'+dname+'」さんを「'+p.user_name+'」様のご家族として登録します。\n\n以後、この方に「'+p.user_name+'」様の連絡帳が届くようになります。\nよろしいですか？');
+  if(!ok) return;
+  lfDoLink(uid, pid);
+}
+
+async function lfDoLink(uid, pid){
+  const msg = document.getElementById('line-friends-msg');
+  if(msg){ msg.style.color='#5f6368'; msg.textContent='登録中...'; }
+  try{
+    const d = await fetch('/api/line/friends/link',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({line_user_id: uid, patient_id: pid})
+    }).then(r=>r.json());
+    if(d.status==='success'){
+      if(msg){ msg.style.color='#188038'; msg.textContent=(d.patient_name||'')+' 様と紐付けました'; }
+      loadLineFriends();
+    } else {
+      if(msg){ msg.style.color='#d93025'; msg.textContent='失敗: '+(d.message||''); }
+    }
+  }catch(e){ if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; } console.error('lfDoLink', e); }
+}
+
+async function lfUnlink(uid, pname){
+  const ok = confirm('「'+pname+'」様との紐付けを解除します。\n以後、この方に連絡帳は届かなくなります。\nよろしいですか？');
+  if(!ok) return;
+  const msg = document.getElementById('line-friends-msg');
+  if(msg){ msg.style.color='#5f6368'; msg.textContent='解除中...'; }
+  try{
+    const d = await fetch('/api/line/friends/unlink',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({line_user_id: uid})
+    }).then(r=>r.json());
+    if(d.status==='success'){
+      if(msg){ msg.style.color='#188038'; msg.textContent='解除しました'; }
+      loadLineFriends();
+    } else {
+      if(msg){ msg.style.color='#d93025'; msg.textContent='失敗: '+(d.message||''); }
+    }
+  }catch(e){ if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; } console.error('lfUnlink', e); }
+}
 
 </script>
 {% endblock %}

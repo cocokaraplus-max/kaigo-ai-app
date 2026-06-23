@@ -70,8 +70,8 @@
 .rk-toggle input:checked + .rk-slider { background:#1a73e8; }
 .rk-toggle input:checked + .rk-slider:before { transform:translateX(16px); }
 .rk-toggle-mini { transform:scale(0.82); }
-.rk-save-bar { position:fixed; left:0; right:0; bottom:var(--rk-nav-h, 137px); z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px; box-shadow:0 -2px 8px rgba(0,0,0,0.05); }
-.rk-save-bar-inner { max-width:920px; margin:0 auto; }
+.rk-save-bar { position:fixed; left:50%; transform:translateX(-50%); max-width:var(--page-max-width, 480px); width:100%; box-sizing:border-box; bottom:var(--rk-nav-h, 137px); z-index:60; background:#fff; border-top:1px solid #e8eaed; padding:10px 14px; box-shadow:0 -2px 8px rgba(0,0,0,0.05); }  /* renraku-savebar-var-v1 : 本文幅・中央 */
+.rk-save-bar-inner { width:100%; margin:0 auto; }  /* renraku-savebar-var-v1 : バー側で幅制御 */
 .rk-save-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:800; cursor:pointer; }
 .rk-save-btn:active { background:#1557b0; }
 .rk-save-btn:disabled { opacity:0.6; }
@@ -114,7 +114,6 @@
     <div class="rk-detail-head">
       <button class="rk-back" onclick="rkBackToList()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
       <div style="flex:1;"><div class="rk-detail-name" id="rk-d-name"></div><div class="rk-detail-sub" id="rk-d-sub"></div></div>
-      <button class="rk-bulk-link" onclick="rkPrintOne()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>印刷</button>  <!-- renraku-print-link-v1 -->
     </div>
 
     <div class="rk-section">
@@ -152,6 +151,20 @@
       </div>
     </div>
 
+    <div class="rk-section" id="rk-sec-photo">  <!-- renraku-photo-ui-v1 -->
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">photo_camera</span>写真</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="image_urls" onchange="rkToggleVisible('image_urls',this.checked)"><span class="rk-slider"></span></label>
+      </div>
+      <div class="rk-field-body" data-bodyfor="image_urls">
+        <div id="rk-photo-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
+        <input type="file" id="rk-photo-input" accept="image/*" multiple style="display:none;" onchange="rkPhotoSelected(this)">
+        <button type="button" class="rk-ai-btn" id="rk-photo-add-btn" onclick="document.getElementById('rk-photo-input').click()" style="background:#1a73e8;">
+          <span class="material-symbols-outlined" style="font-size:16px;">add_a_photo</span>写真を追加</button>
+        <span id="rk-photo-status" style="margin-left:8px;font-size:0.85rem;color:#5f6368;"></span>
+      </div>
+    </div>
+
     <div class="rk-section" id="rk-sec-next">
       <div class="rk-section-title" style="justify-content:space-between;display:flex;">
         <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">event</span>次回利用日</span>
@@ -163,7 +176,13 @@
 </div>
 
 <div class="rk-save-bar" id="rk-save-bar" style="display:none;">
-  <div class="rk-save-bar-inner"><button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button></div>
+  <div class="rk-save-bar-inner">
+    <button class="rk-save-btn" id="rk-save" onclick="rkSave()">連絡帳を保存</button>
+    <div style="display:flex;gap:8px;margin-top:8px;">  <!-- renraku-savebar-actions-v1 -->
+      <button onclick="rkPrintOne()" style="flex:1;padding:11px;border:1.5px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">print</span>印刷</button>
+      <button onclick="rkLineOpen()" style="flex:2;padding:11px;border:none;background:#06c755;color:#fff;border-radius:10px;font-weight:800;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">send</span>LINEで送る</button>
+    </div>
+  </div>
 </div>
 
 <div class="rk-modal-mask" id="rk-bulk-mask">
@@ -203,8 +222,9 @@ const RK_DYN_FIELDS = [
   {key:'rec',       label:'レク・活動', type:'text', placeholder:'例：午後 体操・ぬり絵'},
   {key:'places',    label:'行った場所', type:'places'},
 ];
-const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['next_visit','次回利用日']]);
+const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['image_urls','写真'],['next_visit','次回利用日']]);  /* renraku-photo-ui-v1 */
 let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={}, RK_AI_ENABLED=false;
+let RK_IMAGES=[];  /* renraku-photo-ui-v1 : 写真公開URL配列 */
 let RK_LIST=[];  // renraku-print-link-v1
 let RK_TRAIN=[], RK_PLACES=[];
 
@@ -426,6 +446,8 @@ function rkFillForm(note){
   if(gv('rk-special')) gv('rk-special').value=(note&&note.special_note)||'';
   if(gv('rk-family')) gv('rk-family').value=(note&&note.family_message)||'';
   if(gv('rk-next')) gv('rk-next').value=(note&&note.next_visit)||'';
+  RK_IMAGES=(note&&Array.isArray(note.image_urls))?note.image_urls.slice():[];  /* renraku-photo-ui-v1 */
+  rkRenderPhotos();
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
   RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
   rkRenderTrain(); rkUpdateTrainVisibility(); rkRenderPlaces();
@@ -447,6 +469,38 @@ async function rkGenFamily(){
   finally{ btn.disabled=false; btn.innerHTML=old; }
 }
 
+// renraku-photo-ui-v1 : 写真アップロード・サムネ描画・削除
+function rkRenderPhotos(){
+  var wrap=document.getElementById('rk-photo-thumbs'); if(!wrap) return;
+  wrap.innerHTML=(RK_IMAGES||[]).map(function(url,i){
+    return '<div style="position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">'
+      +'<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;" onclick="window.open(\''+url+'\',\'_blank\')">'
+      +'<button type="button" onclick="rkRemovePhoto('+i+')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;font-size:13px;line-height:20px;cursor:pointer;padding:0;">×</button>'
+      +'</div>';
+  }).join('');
+}
+function rkRemovePhoto(i){ RK_IMAGES.splice(i,1); rkRenderPhotos(); }
+async function rkPhotoSelected(input){
+  if(!input.files||!input.files.length) return;
+  var statusEl=document.getElementById('rk-photo-status');
+  if(statusEl) statusEl.textContent='アップロード中...';
+  var fd=new FormData();
+  for(var i=0;i<input.files.length;i++){ fd.append('photos', input.files[i]); }
+  try{
+    var res=await fetch('/api/renraku/upload_photo',{method:'POST',body:fd});
+    var data=await res.json();
+    if(data.status==='success'&&Array.isArray(data.urls)){
+      RK_IMAGES=RK_IMAGES.concat(data.urls);
+      rkRenderPhotos();
+      if(statusEl) statusEl.textContent='';
+    } else {
+      if(statusEl) statusEl.textContent='';
+      alert('写真のアップロードに失敗しました：'+(data.message||'不明'));
+    }
+  }catch(e){ if(statusEl) statusEl.textContent=''; alert('アップロードに失敗しました：'+e); }
+  finally{ input.value=''; }
+}
+
 async function rkSave(){
   if(!RK_PATIENT) return;
   const btn=document.getElementById('rk-save'); btn.disabled=true; btn.textContent='保存中...';
@@ -457,7 +511,7 @@ async function rkSave(){
   } else { RK_ITEMS.training_details=[]; }
   RK_ITEMS.places=RK_PLACES.map(function(p){return (p||'').trim();}).filter(function(p){return p;});
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
-    special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next') };
+    special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next'), image_urls:RK_IMAGES };  /* renraku-photo-ui-v1 */
   try{
     const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await res.json();
@@ -514,4 +568,75 @@ document.addEventListener('DOMContentLoaded',function(){
   rkLoadList();
 });
 </script>
+
+<!-- renraku-line-ui-v1 : LINE送信プレビューモーダル -->
+<div id="rk-line-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">  <!-- renraku-line-modal-fix-v1 -->
+  <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:calc(88vh - var(--rk-nav-h, 137px));overflow:auto;padding:18px;margin-bottom:var(--rk-nav-h, 137px);box-sizing:border-box;">  <!-- renraku-line-modal-fix-v1 -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span class="material-symbols-outlined" style="color:#06c755;">send</span>
+      <div style="font-weight:800;font-size:1.02rem;">LINEで送る</div>
+      <button onclick="rkLineClose()" style="margin-left:auto;border:none;background:#f1f3f4;border-radius:8px;width:32px;height:32px;cursor:pointer;">✕</button>
+    </div>
+    <div id="rk-line-recipients" style="font-size:0.85rem;color:#5f6368;background:#f8f9fa;border-radius:10px;padding:10px;margin-bottom:10px;line-height:1.6;"></div>
+    <div style="font-size:0.8rem;color:#9aa0a6;margin-bottom:4px;">送信内容（送信前に編集できます）</div>
+    <textarea id="rk-line-text" style="width:100%;min-height:220px;border:1.5px solid #e0e0e0;border-radius:10px;padding:12px;box-sizing:border-box;font-size:0.9rem;line-height:1.6;font-family:inherit;"></textarea>
+    <div id="rk-line-msg" style="font-size:0.82rem;text-align:center;margin:8px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button onclick="rkLineClose()" style="flex:1;padding:12px;border:1.5px solid #e0e0e0;background:#fff;border-radius:10px;cursor:pointer;font-weight:700;color:#5f6368;">キャンセル</button>
+      <button id="rk-line-send-btn" onclick="rkLineSend()" style="flex:2;padding:12px;border:none;background:#06c755;color:#fff;border-radius:10px;cursor:pointer;font-weight:800;">この内容で送信</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== renraku-line-ui-v1 : 連絡帳 LINE送信 =====
+async function rkLineOpen(){
+  if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('送信対象の利用者が選択されていません。'); return; }
+  const msg=document.getElementById('rk-line-msg'); if(msg) msg.textContent='';
+  const recEl=document.getElementById('rk-line-recipients');
+  const txtEl=document.getElementById('rk-line-text');
+  if(recEl) recEl.textContent='読み込み中...';
+  if(txtEl) txtEl.value='';
+  document.getElementById('rk-line-modal').style.display='flex';
+  try{
+    const d=await fetch('/api/renraku/line_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
+    if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
+    if(txtEl) txtEl.value=d.text||'';
+    if(recEl){
+      if(d.recipient_count>0){
+        const names=(d.recipients||[]).map(r=>rkEsc(r.display_name)+'（…'+rkEsc(r.user_id_tail)+'）').join('、');
+        recEl.innerHTML='<b>送信先（紐付け済み '+d.recipient_count+'名）：</b><br>'+names;
+      }else{
+        recEl.innerHTML='<span style="color:#d93025;font-weight:700;">紐付け済みのご家族がいません。管理画面の「LINE友だち管理」で紐付けてください。</span>';
+      }
+    }
+  }catch(e){ console.error('rkLineOpen',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
+}
+
+function rkLineClose(){ document.getElementById('rk-line-modal').style.display='none'; }
+
+async function rkLineSend(){
+  const txtEl=document.getElementById('rk-line-text');
+  const msg=document.getElementById('rk-line-msg');
+  const btn=document.getElementById('rk-line-send-btn');
+  const text=(txtEl?txtEl.value:'').trim();
+  if(!text){ if(msg){msg.style.color='#d93025';msg.textContent='送信内容が空です';} return; }
+  if(!confirm('紐付け済みのご家族にLINEで送信します。\nよろしいですか？')) return;
+  if(btn) btn.disabled=true;
+  if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
+  try{
+    const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES})}).then(r=>r.json());  /* renraku-line-send-images-v1 */
+    if(d.status==='success'){
+      if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
+      setTimeout(rkLineClose, 1500);
+    }else{
+      if(msg){msg.style.color='#d93025';msg.textContent='失敗: '+(d.message||'');}
+    }
+  }catch(e){ console.error('rkLineSend',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
+  finally{ if(btn) btn.disabled=false; }
+}
+</script>
+
 {% endblock %}
