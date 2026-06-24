@@ -5125,7 +5125,7 @@ def api_evaluation_ingest_file():
 ・フィラー(「あー」「えー」等)や言いよどみ・無意味な繰り返しは除去し、読みやすい記録に整える（ただし発言内容は変えない・要約や補完はしない）  # eval-transcribe-filler-v1
 """
 
-            resp = model.generate_content([{"mime_type": mime, "data": file_bytes}, prompt])
+            resp = model.generate_content([prompt, {"mime_type": mime, "data": file_bytes}])  # eval-ingest-order-v1
             return jsonify({"status": "success", "text": resp.text.strip()})
 
         # ---------- 画像: Gemini で OCR ----------
