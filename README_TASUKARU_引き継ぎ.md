@@ -1408,3 +1408,36 @@ dd8beca 送信API+UI / 02b35e8 保存バー移動 / cb0a608 モーダルナビ�
 
 ### 30-4. 今セッションのコミット（DEV、tasukaru-dev）
 03bbb3e 写真添付API+UI(第二段階) / e3c60cb 写真LINE送信(第三段階)。
+
+## 31. LINE本番反映＋記録/掲示板/評価の改善（2026-06-24）<!-- readme-s31-session64 -->
+
+SESSION_64。LINE連携＋連絡帳写真を**本番反映**し、記録入力・掲示板・評価まわりの不具合4件を修正（すべてDEV→本番反映済み）。
+
+### 31-1. LINE連携＋連絡帳写真の本番反映（完了）
+- **本番Supabase DDL適用**（コードより先・冪等）: `line_friends`（9列・PK=id・unique(facility_code,line_user_id)）/ `line_settings`（7列・PK=facility_code・channel_access_token_enc/channel_secret_enc/line_oa_name/enabled）/ `renraku_notes.image_urls`(jsonb)。DEV実テーブルと照合して確定。
+- **本番Cloud Run** に `LINE_TOKEN_ENC_KEY`（本番用の別Fernet鍵）設定。既存env温存。鍵はHIROが手元生成・保管（チャットに平文露出なし）。
+- **コード反映**: DEVの4ファイル（app.py / templates/admin.html / templates/renraku.html / templates/base.html）を**ファイル単位で本番へ**（`git checkout tasukaru-dev -- <files>`）。カレンダーは calendar.html のみで今回の4ファイルに含まれず、本番のカレンダーcherry-pick(c107a40)を巻き戻さない。本番コミット dda0ed1。
+- **LINEチャネル繋ぎ替え**: 運用中の公式アカウント「機能訓練型デイサービス【ココカラプラス】」にMessaging API有効化（プロバイダー=同名・後変更不可）。Webhook URL=`https://tasukaru-191764727533.asia-northeast1.run.app/line/webhook/cocokaraplus-5526`、Webhookオン、検証200成功。あいさつメッセージはオン維持（プッシュ送信と競合せず両立可）。本番admin画面に token/secret 入力＋enabled。実機で友だち受信（unlinked保存・display_name取得）確認。
+- **注意/未了**: 新規作成した別アカウント「【公式ココカラプラス】利用者連絡帳」は紛らわしいので削除予定（繋ぎ替え完了後）。既存の友だち（家族）は繋いだ時点では line_friends に自動で入らず、家族が一度メッセージ送信/再追加した時にWebhook受信して登録される（運用で取り込む）。
+
+### 31-2. 記録入力の保存スピナー（inp-save-spinner-v1・本番反映済み）
+templates/input.html。saveRecord は押下後すぐAIカテゴリ提案(/api/records/suggest_category)をawaitしモーダル応答も待つため「保存中」表示が遅れていた。修正: 押下直後に即「カテゴリ確認中...」(回転sync)→モーダル中は通常復帰→POST中「保存中...」。本番コミット 2f628e8。
+
+### 31-3. 掲示板の確認済みボタン（board-toggle-optimistic-v1・本番反映済み）
+templates/board.html。症状「1回で反応せず2度押すと反応／確認したのに未読に戻る」。Chrome連携(MCP)で原因特定: サーバーAPI・DB保存・JS判定は全て正常（toggleCheck直接呼び出しで確認済み⇄未確認が正しく動作）。真因は (1)押下後 pointerEvents='none' のまま通信完了まで無効化されタップが死ぬ (2)視覚フィードバック欠如で二度押し→トグルなので確認済みが未読に戻る。修正: 楽観的UI更新（押下即トグル＋処理中の薄表示）＋API成功でサーバー確定状態に同期＋失敗時ロールバック＋dataset.busyで連打ガード。本番コミット 1e80935。
+
+### 31-4. 評価AI生成の改善（eval-aifill-tone-v1 / eval-aifill-medical-v1・本番反映済み）
+app.py /api/evaluation/ai_fill のプロンプト。(1)文字化け「堂すぎず碕けず」→「硬すぎず砕けすぎず」修正＋二重敬語禁止を明示。(2)機能訓練指導員（PT/OT/ST/柔整/看護師等）として医学的視点・機能訓練の専門的観点（身体機能・ADL・関節可動域・筋力・バランス・歩行・認知/嚥下機能等）を踏まえる、を明示。Chrome連携でテキスト元データを投入し品質確認（数値正確・ハルシネーション無・自然な口調）。
+
+### 31-5. 評価メモ文字起こしの改善（eval-transcribe-filler-v1 / eval-ingest-order-v1・本番反映済み）
+app.py /api/evaluation/ingest_file。(1)両モード(dialog/solo)のフィラー方針を「そのまま記載」→「フィラー・言いよどみ・無意味な繰り返しは除去し読みやすく整える（内容は変えない）」に変更。(2)プロンプト混入バグ: generate_content([{音声}, prompt]) の順で音声→指示の流れになりGeminiが指示文まで出力に混入＋フィラー指示も効かず。generate_content([prompt, {音声}]) に順序逆転して解消（音声側のみ・画像側L5145は触らず）。実機（音声録音）で混入消失・フィラー除去を確認。
+※評価メモ欄とは別に /api/transcribe も存在（こちらは元からフィラー省略指示あり）。
+
+### 31-6. 教訓
+- 長文のヒアドキュメント貼り付けはターミナルで化けやすい。app.pyの小さな日本語置換は `python3 -c "..."` の1行版が安全（marker確認＋count assert＋.bak付き）。
+- README追記は従来どおり `cat >>`（Python全文書き直し厳禁）。今回も §31 を末尾追記し wc -c で増加確認。
+
+### 31-7. 次タスク候補
+- 新規LINEアカウント「利用者連絡帳」の削除。
+- 既存友だち(家族)の line_friends 取り込み運用の設計（案内文等）。
+- admin LINE設定ガイド: 外部ドキュメント(Notion等)へのリンク方式で作成予定（施設職員向けに設定手順を丁寧に）。たたき台の手順文はSESSION_64の操作ログが素材。
