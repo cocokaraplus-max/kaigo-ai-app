@@ -2472,37 +2472,57 @@ window.toggleReaction = async function(postId, emoji) {
 };
 
 // ===== 確認済みトグル(リアクションとは独立した処理) =====
+// ===== board-toggle-optimistic-v1 : 押下即反応の楽観的UI更新＋API失敗時ロールバック =====
+// ボタンの見た目を即座にトグルして「効いてない感」を消し、二度押しで戻る事故を防ぐ。
 window.toggleCheck = async function(postId) {
     var btn = document.getElementById('check-btn-' + postId);
-    // 連打防止のため一時的に無効化
-    if (btn) btn.style.pointerEvents = 'none';
+    if (!btn) return;
+    // 多重送信ガード(連打防止)
+    if (btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1';
+
+    var icon  = btn.querySelector('.material-symbols-outlined');
+    var label = btn.querySelector('.check-label');
+    // ロールバック用に現在状態を保存
+    var wasChecked = btn.classList.contains('checked');
+
+    // ===== 楽観的UI更新: 押した瞬間に見た目をトグル =====
+    var optimistic = !wasChecked; // これからの状態
+    btn.classList.toggle('checked', optimistic);
+    btn.classList.toggle('unchecked', !optimistic);
+    if (icon)  icon.textContent  = optimistic ? 'check_circle' : 'radio_button_unchecked';
+    if (label) label.textContent = optimistic ? '確認済み' : '未確認';
+    btn.style.opacity = '0.55'; // 処理中の薄表示
+
     try {
         var res = await fetch('/api/board/toggle_check', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ post_id: postId })
         });
         var data = await res.json();
-        if (data.status === 'success') {
+        if (data && data.status === 'success') {
             var names = data.checked_names || [];
-            // CHECKS_DATA キャッシュを最新に更新(未読カウント計算で参照される)
-            if (typeof CHECKS_DATA !== 'undefined') {
-                CHECKS_DATA[postId] = names;
-            }
-            var isMine = names.indexOf(MY_NAME) !== -1;
-            if (btn) {
-                btn.classList.toggle('checked', isMine);
-                btn.classList.toggle('unchecked', !isMine);
-                var icon = btn.querySelector('.material-symbols-outlined');
-                if (icon) icon.textContent = isMine ? 'check_circle' : 'radio_button_unchecked';
-                var label = btn.querySelector('.check-label');
-                if (label) label.textContent = isMine ? '確認済み' : '未確認';
-            }
-            // 未読カウントを即時再計算
+            if (typeof CHECKS_DATA !== 'undefined') { CHECKS_DATA[postId] = names; }
+            // サーバーの確定状態で同期(楽観更新が正しければ見た目は変わらない)
+            var isMine = (typeof MY_NAME !== 'undefined') && names.indexOf(MY_NAME) !== -1;
+            btn.classList.toggle('checked', isMine);
+            btn.classList.toggle('unchecked', !isMine);
+            if (icon)  icon.textContent  = isMine ? 'check_circle' : 'radio_button_unchecked';
+            if (label) label.textContent = isMine ? '確認済み' : '未確認';
             if (typeof updateUnreadCount === 'function') updateUnreadCount();
+        } else {
+            throw new Error('server returned non-success');
         }
-    } catch(e) {}
-    finally {
-        if (btn) btn.style.pointerEvents = '';
+    } catch(e) {
+        // ===== API失敗: 元の状態にロールバック =====
+        btn.classList.toggle('checked', wasChecked);
+        btn.classList.toggle('unchecked', !wasChecked);
+        if (icon)  icon.textContent  = wasChecked ? 'check_circle' : 'radio_button_unchecked';
+        if (label) label.textContent = wasChecked ? '確認済み' : '未確認';
+        try { if (typeof showToast === 'function') showToast('通信に失敗しました。もう一度お試しください'); } catch(_e){}
+    } finally {
+        btn.style.opacity = '';
+        btn.dataset.busy = '';
     }
 };
 
