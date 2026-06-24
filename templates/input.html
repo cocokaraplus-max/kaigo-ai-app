@@ -716,6 +716,9 @@ window.saveRecord = async function() {
         }
     }
 
+    // ===== inp-save-spinner-v1 (A): 押下直後に即グルグル(無反応時間の解消) =====
+    var _saveBtn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
+    if (_saveBtn) { _saveBtn.disabled = true; _saveBtn.innerHTML = '<span class="material-symbols-outlined" style="animation: inpSpin 1s linear infinite; vertical-align:middle;">sync</span> カテゴリ確認中...'; }
     // === Session 31 Step 6: AIカテゴリ提案 ===
     const curCat = document.getElementById('selected-category').value || 'その他';
     if (curCat === 'その他' && content && content.trim().length >= 5) {
@@ -730,6 +733,8 @@ window.saveRecord = async function() {
                 sgData.result.confidence === 'high' &&
                 sgData.result.category &&
                 sgData.result.category !== 'その他') {
+                // ===== inp-save-spinner-v1 (B): モーダル操作待ち中はボタンを通常に戻す =====
+                if (_saveBtn) { _saveBtn.disabled = false; _saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> 保存'; }
                 const userYes = await aicSuggestModalShow(sgData.result);
                 if (userYes) {
                     const selCat = document.getElementById('selected-category');
@@ -751,8 +756,9 @@ window.saveRecord = async function() {
         }
     }
 
-    const btn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> 保存中...'; }
+    // ===== inp-save-spinner-v1 (C): POST中は回転syncで「保存中...」 =====
+    const btn = _saveBtn || document.querySelector('.btn-primary[onclick="saveRecord()"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined" style="animation: inpSpin 1s linear infinite; vertical-align:middle;">sync</span> 保存中...'; }
 
     try {
         const formData = new FormData();
