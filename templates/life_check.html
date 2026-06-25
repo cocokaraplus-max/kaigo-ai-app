@@ -83,6 +83,14 @@
 .hist-table th { background:#f8f9fb; color:#5f6368; font-weight:700; }
 .hist-table td.dt { text-align:left; white-space:nowrap; }
 .lc-prefill-note { font-size:0.74rem; color:#9aa0a6; margin-bottom:8px; }
+/* lc-bi-mode-v1: シート種別トグル */
+.lc-mode-row { margin-top:14px; }
+.lc-mode-label { display:block; font-size:0.8rem; font-weight:700; color:#5f6368; margin-bottom:6px; }
+.lc-mode-toggle { display:flex; gap:8px; }
+.lc-mode-btn { flex:1; padding:10px 8px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff; color:#5f6368; font-size:0.86rem; font-weight:700; cursor:pointer; line-height:1.3; transition:all 0.15s; }
+.lc-mode-btn small { display:block; font-size:0.68rem; font-weight:600; opacity:0.8; margin-top:2px; }
+.lc-mode-btn.active { background:#0C447C; border-color:#0C447C; color:#fff; }
+
 .lc-indep-btn { width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff; font-size:0.92rem; cursor:pointer; box-sizing:border-box; color:#202124; }  /* lc-indep-picker-v1 */
 .lc-indep-btn .material-symbols-outlined { font-size:20px; color:#5f6368; }
 .lc-indep-val { color:#9aa0a6; }
@@ -159,6 +167,15 @@
         </select>
       </div>
     </div>
+    <!-- lc-bi-mode-v1: シート種別トグル -->
+    <div class="lc-mode-row" id="lc-mode-row">
+      <label class="lc-mode-label">シート種別</label>
+      <div class="lc-mode-toggle">
+        <button type="button" class="lc-mode-btn" data-mode="full" onclick="lcSetMode('full')">様式3-2<small>（要介護向け）</small></button>
+        <button type="button" class="lc-mode-btn" data-mode="bi" onclick="lcSetMode('bi')">BI<small>（要支援・事業対象者向け）</small></button>
+      </div>
+      <input type="hidden" id="lc-sheet-mode" value="full">
+    </div>
   </div>
 
   <div class="lc-card">
@@ -203,7 +220,7 @@
     <div id="lc-adl-area"></div>
   </div>
 
-  <div class="lc-card">
+  <div class="lc-card" id="lc-card-level">  <!-- lc-bi-mode-v1: BIモードで非表示 -->
     <div class="lc-card-title"><span class="material-symbols-outlined">accessibility_new</span>車椅子・IADL・基本動作（4段階）</div>
     <div id="lc-level-area"></div>
   </div>
@@ -307,6 +324,18 @@ function lcPickPatient(id) {
   lcApplyMaster(p);  // lc-master-prefill-v1
   lcLoadHistory();
 }
+function lcSetMode(mode) {  // lc-bi-mode-v1: 様式3-2(full)/BI(bi) 切替
+  if (mode !== 'bi') mode = 'full';
+  var hid = document.getElementById('lc-sheet-mode'); if (hid) hid.value = mode;
+  document.querySelectorAll('.lc-mode-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-mode')===mode); });
+  var lvCard = document.getElementById('lc-card-level');
+  if (lvCard) lvCard.style.display = (mode==='bi') ? 'none' : '';
+}
+function lcModeFromCareLevel(cl) {  // lc-bi-mode-v1: 介護度→初期モード
+  cl = cl || '';
+  if (cl === '事業対象者' || cl === '要支援1' || cl === '要支援2' || cl.indexOf('要支援')===0) return 'bi';
+  return 'full';
+}
 function lcApplyMaster(p) {  // lc-master-prefill-v1: 患者マスタ優先で基本情報をセット
   function setIfHas(id, val) {
     if (val == null || val === '') return;
@@ -326,6 +355,7 @@ function lcApplyMaster(p) {  // lc-master-prefill-v1: 患者マスタ優先で�
   if (p.care_level) window._lcMasterFilled.care_level = true;
   if (p.birth_date) window._lcMasterFilled.birth_date = true;
   if (p.gender) window._lcMasterFilled.gender = true;
+  lcSetMode(lcModeFromCareLevel(p.care_level));  // lc-bi-mode-v1: 介護度で初期モード決定
 }
 
 var LC_INDEP_GUIDE = {  // lc-indep-picker-v1
