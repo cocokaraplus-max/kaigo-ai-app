@@ -331,6 +331,7 @@ function lcSetMode(mode) {  // lc-bi-mode-v1: 様式3-2(full)/BI(bi) 切替
   var lvCard = document.getElementById('lc-card-level');
   if (lvCard) lvCard.style.display = (mode==='bi') ? 'none' : '';
 }
+document.addEventListener('DOMContentLoaded', function(){ try { lcSetMode('full'); } catch(e){} });  // lc-bi-mode-save-v1: 初期表示は様式3-2をactive
 function lcModeFromCareLevel(cl) {  // lc-bi-mode-v1: 介護度→初期モード
   cl = cl || '';
   if (cl === '事業対象者' || cl === '要支援1' || cl === '要支援2' || cl.indexOf('要支援')===0) return 'bi';
@@ -660,6 +661,8 @@ function lcPrefill(prev) {
     }
     lcPrefillSub(it.key, prev);
   });
+  // lc-bi-mode-save-v1: 保存されたシート種別を復元(過去レコードはそのモードを尊重)
+  if (prev.sheet_mode) lcSetMode(prev.sheet_mode);
   lcRecalcTotal();
 }
 function lcPrefillSub(key, prev) {
@@ -690,6 +693,9 @@ async function lcSave() {
     var el = document.getElementById('lc-'+f);
     if (el && el.value !== '') payload[f] = el.value;
   });
+  // lc-bi-mode-save-v1: シート種別を保存
+  var _smEl = document.getElementById('lc-sheet-mode');
+  payload.sheet_mode = (_smEl && _smEl.value) ? _smEl.value : 'full';
   LC_ADL.forEach(function(it){
     var st = lcState[it.key] || {};
     if (typeof st.score === 'number') payload[it.key] = st.score;
