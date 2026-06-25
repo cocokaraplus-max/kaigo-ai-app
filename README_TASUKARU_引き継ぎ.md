@@ -1499,3 +1499,31 @@ SESSION_65後半。休み連絡カテゴリの「連絡者」表示改善（文�
 
 ### 33-4. 次タスク候補（生活機能チェックのBI切替）
 - 要支援・事業対象者はBI（バーセルインデックス）、要介護は生活機能チェックシート（様式3-2）。利用者選択で介護度を自動表示し、どちらかに手動切替も可能にする構想。要確認: 介護度データ（要支援/要介護/事業対象者）が patient_profiles 等に保存されているか。未保存なら介護度入力の仕組みから。
+
+## 34. 生活機能チェックのBI/様式3-2 切替（2026-06-25）<!-- readme-s34-session65 -->
+
+SESSION_65後半。生活機能チェック(life_check)で、介護度に応じてシート種別を出し分ける機能を追加。要支援・事業対象者はBI(バーセルインデックス)、要介護は様式3-2。利用者選択で介護度から自動判定、手動トグルも可。選んだモードは保存・復元。DEV検証後、本番反映済み。
+
+### 34-1. 仕様
+- **シート種別**: full(様式3-2、要介護向け・全カード表示) / bi(BI、要支援・事業対象者向け・IADL等カードを隠す)。
+- **自動判定**: 利用者選択時、care_level から初期モード決定。要支援1/要支援2/事業対象者 → bi、要介護1〜5 → full（`lcModeFromCareLevel`）。
+- **手動切替**: 「シート種別」トグル（様式3-2(要介護向け)/BI(要支援・事業対象者向け)）で随時変更可（`lcSetMode`）。
+- **BIモードで隠すカード**: `#lc-card-level`（車椅子・IADL・基本動作（4段階））のみ。基本情報・ADL(Barthel)・評価日等は両モード共通で表示。
+- **保存/復元**: sheet_mode を保存。過去レコードを開くとそのモードで復元（保存モードを尊重）。新規入力時は介護度から自動判定。
+
+### 34-2. 実装
+- **DDL**: `life_function_checks` に `sheet_mode TEXT DEFAULT 'full'` 追加。DEV・本番両方適用済み（既存レコードは 'full' 扱い）。
+- **lc-bi-mode-v1**（life_check.html ステップB）: シート種別トグルUI（ヘッダーカード内、訪問種別の下）、`#lc-card-level` にid付与、`lcSetMode(mode)`（カード表示切替+トグルactive+hidden値）、`lcModeFromCareLevel(cl)`、`lcApplyMaster` 末尾で初期モード判定。CSS `.lc-mode-row/.lc-mode-toggle/.lc-mode-btn`。
+- **lc-bi-mode-save-v1**（life_check.html + app.py ステップC）: 保存payloadに `sheet_mode`（`lc-sheet-mode` hidden値、既定full）。app.py `_LIFE_META_FIELDS` に `sheet_mode` 追加で保存許可。`lcPrefill` で `if (prev.sheet_mode) lcSetMode(prev.sheet_mode)` 復元。DOMContentLoaded で `lcSetMode('full')` 初期表示。
+
+### 34-3. 検証
+- DEV(DEMO001)は要支援/事業対象者の利用者が居なかったため、テスト用に阿部武さんの介護度を「要支援1」に設定（戻さず残置）。
+- 阿部さん選択→自動でBIモード（BIボタンactive・IADLカードnone）を実データで確認。要介護3の利用者では様式3-2のまま。
+- BIモードで保存→`/api/save_life_check` 200、DB上 sheet_mode='bi' で保存を確認（2026-06-26、care_level=要支援1）。
+- 介護度判定: 要支援1/要支援2/事業対象者→bi、要介護1/3→full、空→full すべて正しい。
+
+### 34-4. 注意・次タスク候補
+- 既存レコード（sheet_mode 未設定）は DEFAULT 'full' で full 扱い。
+- 帳票出力（生活機能チェックの印刷）が BI/様式3-2 でレイアウト出し分けが必要かは未対応。現状は表示の出し分けのみ。印刷側でBI時にIADL欄を省くかは要検討。
+- DEVのテスト記録（阿部さん 2026-06-26）と介護度(要支援1)は残置。本番には影響なし。
+- 利用者基本情報ページ（patient_info）の下部ボタン（削除/キャンセル/保存バー）の幅をボトムナビに揃える依頼が保留中（掲示板・lc-totalと同系のfixed幅揃え）。
