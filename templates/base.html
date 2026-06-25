@@ -270,13 +270,13 @@ body.nav-editing {
             overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: none;
-            padding: 0 1.2rem; /* bottomnav-pad-align-v1: 本文(page-wrapper)と同じ左右paddingで幅を揃える */
+            padding: 0; /* bottomnav-pad-align-v2: paddingは0に戻しmax-widthで幅を揃える */
             padding-bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
             box-sizing: border-box; /* bottomnav-pad-align-v1 */
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
             flex-shrink: 0;
-            max-width: var(--page-max-width, 480px);  /* bottomnav-width-var-v1 : 本文と同幅・可変追従 */
+            max-width: calc(var(--page-max-width, 480px) - 2.4rem);  /* bottomnav-pad-align-v2: 本文の内容幅(左右1.2remパディングを差し引く)に揃える */
             width: 100%;
             margin: 0 auto;
             touch-action: pan-x;
