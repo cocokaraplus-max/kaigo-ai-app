@@ -276,7 +276,7 @@ body.nav-editing {
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
             flex-shrink: 0;
-            max-width: calc(var(--page-max-width, 480px) - 2.4rem);  /* bottomnav-pad-align-v2: 本文の内容幅(左右1.2remパディングを差し引く)に揃える */
+            max-width: var(--page-max-width, 480px);  /* bottomnav-fullbleed-v1: 本文(page-wrapper)の背景端まで広げ、board-fullbleed-v1のタブ/検索/投稿カードと揃える */
             width: 100%;
             margin: 0 auto;
             touch-action: pan-x;
