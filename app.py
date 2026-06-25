@@ -11273,6 +11273,27 @@ def api_unblock_device():
 # 掲示板
 # ==========================================
 
+# board-paginate-helper-v1: Supabaseのデフォルト行数上限(1000)による
+# 取りこぼしを防ぐための共通ページング取得ヘルパー。
+# make_query: 毎回新しいクエリビルダを返す関数(ラムダ)。
+#   例: lambda: supabase.table('x').select('*').eq('facility_code', f_code)
+# .range()/.execute() はヘルパー内で付与するので渡さないこと。
+def _fetch_all_paginated(make_query, page_size=1000, max_pages=50):
+    rows = []
+    page = 0
+    while True:
+        lo = page * page_size
+        res = make_query().range(lo, lo + page_size - 1).execute()
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        page += 1
+        if page >= max_pages:
+            break
+    return rows
+
+
 @app.route('/board')
 @login_required
 def board():
@@ -11316,11 +11337,11 @@ def board():
         board_categories = []
     try:
         if post_ids:
-            # 自分以外が書いた全コメントを取得(未読対象)
-            ccs = supabase.table("board_comments").select("id,post_id,staff_name").in_("post_id", post_ids).eq("facility_code", f_code).execute()
+            # 自分以外が書いた全コメントを取得(未読対象) [board-paginate-helper-v1: ページング]
+            _ccs_rows = _fetch_all_paginated(lambda: supabase.table("board_comments").select("id,post_id,staff_name").eq("facility_code", f_code).in_("post_id", post_ids))
             unread_comment_ids_by_post = {}
             all_other_comment_ids = []
-            for c in (ccs.data or []):
+            for c in _ccs_rows:
                 if c["staff_name"] == my_name:
                     continue
                 all_other_comment_ids.append(c["id"])
@@ -11336,8 +11357,9 @@ def board():
             for pid in post_ids:
                 ids = unread_comment_ids_by_post.get(pid, set())
                 comments_count[pid] = len(ids - read_comment_ids)
-            rres = supabase.table("board_reactions").select("*").in_("post_id", post_ids).execute()
-            for r in (rres.data or []):
+            # [board-paginate-helper-v1: ページング + facility_code絞り]
+            _rres_rows = _fetch_all_paginated(lambda: supabase.table("board_reactions").select("*").eq("facility_code", f_code).in_("post_id", post_ids))
+            for r in _rres_rows:
                 pid = r["post_id"]
                 em = r["reaction"]
                 # Session 32 Phase 3c: ✅ は board_checks に移行済みなのでスキップ
@@ -11346,8 +11368,9 @@ def board():
                 if pid not in reactions_data: reactions_data[pid] = {}
                 if em not in reactions_data[pid]: reactions_data[pid][em] = []
                 reactions_data[pid][em].append(r["staff_name"])
-            rdres = supabase.table("board_reads").select("post_id,staff_name").in_("post_id", post_ids).execute()
-            for r in (rdres.data or []):
+            # [board-paginate-helper-v1: ページング + facility_code絞り]
+            _rdres_rows = _fetch_all_paginated(lambda: supabase.table("board_reads").select("post_id,staff_name").eq("facility_code", f_code).in_("post_id", post_ids))
+            for r in _rdres_rows:
                 pid = r["post_id"]
                 if pid not in read_data: read_data[pid] = []
                 read_data[pid].append(r["staff_name"])
@@ -11356,26 +11379,11 @@ def board():
             # 確認済みが取りこぼされ、画面は未確認なのにDBは確認済みというゴーストが発生していた。
             # range()で全件をページング取得し、facility_codeでも絞る。
             try:
-                _chk_page = 0
-                _chk_size = 1000
-                while True:
-                    _lo = _chk_page * _chk_size
-                    _hi = _lo + _chk_size - 1
-                    chres = (supabase.table("board_checks")
-                             .select("post_id,staff_name")
-                             .eq("facility_code", f_code)
-                             .in_("post_id", post_ids)
-                             .range(_lo, _hi).execute())
-                    _rows = chres.data or []
-                    for r in _rows:
-                        pid = r["post_id"]
-                        if pid not in checks_data: checks_data[pid] = []
-                        checks_data[pid].append(r["staff_name"])
-                    if len(_rows) < _chk_size:
-                        break
-                    _chk_page += 1
-                    if _chk_page > 50:  # セーフティ：最夤50000行で打ち切り
-                        break
+                _chk_rows = _fetch_all_paginated(lambda: supabase.table("board_checks").select("post_id,staff_name").eq("facility_code", f_code).in_("post_id", post_ids))
+                for r in _chk_rows:
+                    pid = r["post_id"]
+                    if pid not in checks_data: checks_data[pid] = []
+                    checks_data[pid].append(r["staff_name"])
             except Exception as e:
                 print(f"board_checks load error: {e}")
             # 投稿ごとのカテゴリー情報をマップ化
