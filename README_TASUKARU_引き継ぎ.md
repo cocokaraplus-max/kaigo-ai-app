@@ -1441,3 +1441,32 @@ app.py /api/evaluation/ingest_file。(1)両モード(dialog/solo)のフィラー
 - 新規LINEアカウント「利用者連絡帳」の削除。
 - 既存友だち(家族)の line_friends 取り込み運用の設計（案内文等）。
 - admin LINE設定ガイド: 外部ドキュメント(Notion等)へのリンク方式で作成予定（施設職員向けに設定手順を丁寧に）。たたき台の手順文はSESSION_64の操作ログが素材。
+
+## 32. 掲示板「確認済みが未確認に戻る」問題の根治（2026-06-25）<!-- readme-s32-session65 -->
+
+SESSION_65。掲示板で「確認ボタンを押しても確認済みにならず未確認に戻る／未読が増える」という長期の不具合を、Chrome連携(MCP)で本番ライブ調査し、真因を特定して根治。対症ではなく構造的修正まで実施。本番反映済み。
+
+### 32-1. 症状と最初の誤診
+- 症状: 確認ボタンを押すと一瞬「確認済み」になるが離す/スクロールすると「未確認」に戻る。押すと未読数が増えることもある。本番・PC両方で再現。
+- 当初はフロント(楽観的UI更新 board-toggle-optimistic-v1)やタッチイベント、リロードを疑ったが、いずれも主因ではなかった。Chrome連携でクリック・toggleCheck発火・fetch応答・DOM変化・reload呼び出しを逐一計測して切り分けた。
+
+### 32-2. 調査途中で見つかった副次バグ（先に修正・本番反映済み）
+- **board-poll-singleton-v1**: 掲示板の新着ポーリング `startRealtime()` が SPA 再注入のたびに `setInterval(boardPollNew)` を張り直し、本番で **56個並走**していた。`window._boardPollTimer` で常に1本に。本番コミット e4437d3。
+- **board-poll-noreload-v1**: `boardPollNew` の新着検知時 `setTimeout(window.location.reload)` が楽観的UI更新を巻き戻す元凶になり得たため、ページ全体の自動リロードを廃止。新着はトースト通知＋未読バッジ更新のみに変更。本番反映済み。
+
+### 32-3. 真因（board-checks-pagination-v1 → board-paginate-helper-v1）
+- **真因はサーバー側 `board()` の `checks_data` 構築**。`supabase.table("board_checks").select(...).in_("post_id", post_ids).execute()` に `.range()` が無く、**Supabaseのデフォルト1000行上限**で古い投稿(若いID)の確認済みレコードが取りこぼされていた。
+- 結果、**画面=未確認(赤) なのに DB=確認済み** というゴースト投稿が発生。ユーザーが赤を押す→サーバーはDBの真の状態(確認済み)を見て `removed`(外す)→確認済みにならず未読が増える。
+- Chrome連携で実証: 本番で岸本の確認済みは初期描画131件しか取れていなかったが、DB実体は162件。未触の投稿8件中7件がゴースト(画面未確認・DB確認済み)だった。
+- 修正: まず `board_checks` のみ `range()` ページング化(board-checks-pagination-v1)。その後、他施設展開を見据え**共通ヘルパー `_fetch_all_paginated(make_query, page_size=1000, max_pages=50)`** を新設し、`board()` 内の取得系4クエリ(board_comments / board_reactions / board_reads / board_checks)を全件ページング取得に統一(board-paginate-helper-v1)。reactions/reads には `facility_code` 絞りも追加。本番反映後、確認済み 162件=DOM 162件で整合確認。
+
+### 32-4. 教訓
+- **`.in_(...).execute()` でまとめ取得している箇所は、データ増で必ず1000行上限に当たる。** 「画面とDBが食い違う」系の不具合はこれを疑う。今後の大量取得は `_fetch_all_paginated()` を使う。
+- 症状の見た目(UIが戻る/リロードされる)に引きずられず、サーバーが返す確定値(toggle応答の action と checked_names)を直接見ると早い。`action:"removed"` が出たら「押す前からDB上は確認済み」=ゴーストのサイン。
+- Chrome連携の計測は、監視ラッパ(location.reload上書き等)自体が挙動を変えうる。素の再現と計測を分けて考える。
+- ヘルパーはクエリビルダを使い回さず「毎回ビルダを返すラムダ」を受ける方式にした(supabase-py のバージョン非依存・再 .range() 安全)。
+
+### 32-5. 次タスク候補
+- 同パターンの他ルート(board以外で `.in_(...).execute()` を使う箇所)を `_fetch_all_paginated()` に順次移行。
+- `/calendar` の `CalendarBarConnect ... reading 'top'` エラー(既存・fallback動作中)の調査。
+- DEVのダミー投稿(post_id 13〜22)は検証用に残置中。不要になれば削除。
