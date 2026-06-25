@@ -1470,3 +1470,32 @@ SESSION_65。掲示板で「確認ボタンを押しても確認済みになら�
 - 同パターンの他ルート(board以外で `.in_(...).execute()` を使う箇所)を `_fetch_all_paginated()` に順次移行。
 - `/calendar` の `CalendarBarConnect ... reading 'top'` エラー(既存・fallback動作中)の調査。
 - DEVのダミー投稿(post_id 13〜22)は検証用に残置中。不要になれば削除。
+
+## 33. 休み連絡の連絡者バッジ化 ＋ UI幅揃え（2026-06-25）<!-- readme-s33-session65 -->
+
+SESSION_65後半。休み連絡カテゴリの「連絡者」表示改善（文章→バッジ分離、無断欠席=連絡なし追加）と、掲示板/TOP/ボトムナビ/生活機能チェックのUI幅揃え。すべてDEV検証後に本番反映済み。
+
+### 33-1. 休み連絡の連絡者バッジ化
+- **方針**: ケース記録のcontentから連絡者文章を分離。日付・理由はそのまま、連絡者は「休み連絡」カテゴリタグの右横にバッジ表示。「連絡なし」（無断欠席）を選択肢に追加し赤で目立たせる。
+- **leave-reporter-display-v1**: `_build_leave_content`（app.py 819付近）を「{period}はお休みです。理由：…」に変更し連絡者を文章から除去（reporter_type/other_detailは互換のため引数に残す）。`_reporter_map_n`（app.py 9931付近・モニタリング側）に `none:連絡なし` 追加。input.html に「連絡なし」ボタン（`data-leave-type="none"`）＋赤スタイル`.leave-btn-none.selected`＋アラート文言調整。daily_view.html のバッジを全タイプ対応（self/family(関係性)/caremanager/other/none）、noneは赤クラス。
+- **leave-badge-in-modal-v1**: 個別記録モーダル `openRecordsModal`（daily_view.html 3499付近）は records-hidden 内の各記録から meta/content/category/vas/photo/actions を**個別に拾い再構築**する方式のため、連絡者バッジが欠落していた。`.leave-reporter-badge` を拾って差し込む処理を追加。
+- **leave-badge-inline-v1**: バッジを `<div>`→`<span>`化しアイコン除去（文言「連絡：○○」、noneは「連絡：連絡なし」）。モーダルでカテゴリタグとバッジを flex 横並び（カテゴリ右横）に。
+- **leave-badge-textonly-v1**: バッジの背景枠を撤廃し文字のみ（noneは赤文字）。モーダルheaderの meta を `textContent` で取ると material-symbols のリガチャ名（schedule/label/edit）が文字化けするため、meta を clone→`.material-symbols-outlined` 要素を除去してからテキスト化。
+- **注意**: 過去の休み連絡レコードはcontentに旧文章「○○から連絡がありました」が残る（新規入力分から新仕様）。一括更新は未実施。
+- **構造メモ**: daily_view は「利用者アコーディオン→AI要約→個別記録N件を見る（openRecordsModal）」の構造。個別記録は `records-hidden-{idx}`（display:none）に格納され、モーダルが再構築して表示。要素を足すときは openRecordsModal の再構築ロジックに拾う処理が必要。`leave_reporter_type` 値: self/family/caremanager/other/none。
+
+### 33-2. UI幅揃え・微調整
+- **top-lcalert-height-v1**（top.html）: TOP生活機能チェック枠の高さをタスク枠に揃える。原因は `.lcalert-header` に margin-bottom が無く `.birthday-header`(margin-bottom:10px)より10px低かった→ `.lcalert-header` に margin-bottom:10px。
+- **board-posts-padtop-v1**（board.html）: 最初の投稿がstickyヘッダー(.board-sticky-stack)に潜り込む→ `#posts-container` に padding-top:12px。
+- **board-header-align-v1**（board.html）: `.board-tabs-wrap` の左右padding 12px→0（タブを投稿カード/検索窓の端へ）。
+- **board-fullbleed-v1**（board.html）: タブ帯・検索窓・投稿カードを page-wrapper の白背景の端まで広げて揃える。page-wrapperの左右padding(1.2rem)を負マージンで相殺（`#posts-container` margin -1.2rem、`.board-tabs-wrap` margin -1.2rem+padding 1.2rem、`.board-search-bar` margin -1.2rem）。
+- **bottomnav-pad-align-v1/v2・bottomnav-fullbleed-v1**（base.html）: ボトムナビ幅を本文（白背景端）に揃える試行錯誤。v1=padding追加（box-sizing:border-boxで外枠幅変わらず無効）→v2=`max-width: calc(--page-max-width - 2.4rem)`（内容幅）→最終 fullbleed=`max-width: var(--page-max-width)`（白背景端）。最終的にタブ/検索/投稿カード/ナビ/本文すべて同一左右端で一致。
+- **lc-total-navwidth-v1**（life_check.html）: 生活機能チェックのADL合計固定バー `.lc-total` の max-width 720px→`var(--page-max-width)`（ボトムナビと同幅）。本文 `.lc-wrap`(720px) は変更せず。
+
+### 33-3. 教訓
+- 固定/sticky要素の幅は page-wrapper の左右padding(1.2rem)を意識する。**box-sizing:border-box では padding を足しても外枠幅は変わらない**ので、幅を変えたいときは max-width か negative margin を使う。
+- 要素境界(getBoundingClientRect)が揃っているのに見た目がズレる時は、Chrome連携で**ガイド線をDOMに描画**して視覚確認すると食い違いの正体が早く分かる（今回「白い部分」=page-wrapperの白背景端であり、中の要素がpadding内側にあったのが原因と判明）。
+- ライブで `element.style.xxx` を当てて揃うことを先に検証してから、確定パッチを作ると往復が減る。
+
+### 33-4. 次タスク候補（生活機能チェックのBI切替）
+- 要支援・事業対象者はBI（バーセルインデックス）、要介護は生活機能チェックシート（様式3-2）。利用者選択で介護度を自動表示し、どちらかに手動切替も可能にする構想。要確認: 介護度データ（要支援/要介護/事業対象者）が patient_profiles 等に保存されているか。未保存なら介護度入力の仕組みから。
