@@ -11352,12 +11352,30 @@ def board():
                 if pid not in read_data: read_data[pid] = []
                 read_data[pid].append(r["staff_name"])
             # Session 32: 確認済み(board_checks)を取得
+            # board-checks-pagination-v1: Supabaseのデフォルト1000行上限で古い投稿の
+            # 確認済みが取りこぼされ、画面は未確認なのにDBは確認済みというゴーストが発生していた。
+            # range()で全件をページング取得し、facility_codeでも絞る。
             try:
-                chres = supabase.table("board_checks").select("post_id,staff_name").in_("post_id", post_ids).execute()
-                for r in (chres.data or []):
-                    pid = r["post_id"]
-                    if pid not in checks_data: checks_data[pid] = []
-                    checks_data[pid].append(r["staff_name"])
+                _chk_page = 0
+                _chk_size = 1000
+                while True:
+                    _lo = _chk_page * _chk_size
+                    _hi = _lo + _chk_size - 1
+                    chres = (supabase.table("board_checks")
+                             .select("post_id,staff_name")
+                             .eq("facility_code", f_code)
+                             .in_("post_id", post_ids)
+                             .range(_lo, _hi).execute())
+                    _rows = chres.data or []
+                    for r in _rows:
+                        pid = r["post_id"]
+                        if pid not in checks_data: checks_data[pid] = []
+                        checks_data[pid].append(r["staff_name"])
+                    if len(_rows) < _chk_size:
+                        break
+                    _chk_page += 1
+                    if _chk_page > 50:  # セーフティ：最夤50000行で打ち切り
+                        break
             except Exception as e:
                 print(f"board_checks load error: {e}")
             # 投稿ごとのカテゴリー情報をマップ化
