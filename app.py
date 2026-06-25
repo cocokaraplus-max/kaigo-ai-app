@@ -818,14 +818,9 @@ DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日�
 # ==========================================
 def _build_leave_content(period, reporter_type, other_detail, leave_reason):
     """休み連絡のcontent文字列を生成する共通関数"""
-    _reporter_map = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
-    _reporter = _reporter_map.get(reporter_type or "", "")
-    if reporter_type == "other" and other_detail:
-        _reporter = other_detail
-    if _reporter:
-        base = f"{period}はお休みと{_reporter}から連絡がありました。"
-    else:
-        base = f"{period}はお休みと連絡がありました。"
+    # leave-reporter-display-v1: 連絡者はcontent文章には入れず、daily_viewのバッジでのみ表示する。
+    # 日付・理由の文章は従来通り。reporter_type/other_detail は互換性のため引数に残す。
+    base = f"{period}はお休みです。"
     if leave_reason:
         base += f"理由：{leave_reason}"
     return base
@@ -9928,7 +9923,7 @@ def api_generate_monitoring():
                 _ls_str = f"{_ls_d.month}月{_ls_d.day}日"
                 _lr_reason = (lr.get("leave_reason") or "").strip()
                 _lr_type = lr.get("leave_reporter_type") or ""
-                _reporter_map_n = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他"}
+                _reporter_map_n = {"self": "本人", "family": "家族", "caremanager": "ケアマネ", "other": "その他", "none": "連絡なし"}  # leave-reporter-display-v1
                 _reporter_n = _reporter_map_n.get(_lr_type, "")
                 if _le and _le[:10] != _ls[:10]:
                     _le_d = _dt2.strptime(_le[:10], "%Y-%m-%d")

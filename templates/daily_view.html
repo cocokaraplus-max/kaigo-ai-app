@@ -773,6 +773,7 @@
     font-weight: 700;
 }
 .leave-reporter-badge .material-symbols-outlined { font-size: 15px; }
+.leave-reporter-badge-none { background: #fce8e6; color: #c5221f; }  /* leave-reporter-display-v1: 無断欠席を赤で明示 */
 
 /* Session 33: 編集 UI 内の「誰から/関係性」ボタン */
 .leave-edit-btn, .leave-edit-rel-btn {
@@ -1347,10 +1348,11 @@
             </div>
             {% endif %}
             {# Session 33: 休み連絡カテゴリの「○○より連絡」表示 #}
+            {# leave-reporter-display-v1: 連絡者バッジを全タイプ対応。noneは赤クラス。 #}
             {% if r.category == '休み連絡' and r.leave_reporter_type %}
-            <div class="leave-reporter-badge" id="leave-badge-{{ r.id }}">
-                <span class="material-symbols-outlined">person</span>
-                {% if r.leave_reporter_type == 'self' %}本人より連絡{% elif r.leave_reporter_type == 'family' %}{% if r.leave_reporter_relation %}{{ r.leave_reporter_relation }}から連絡{% else %}家族から連絡{% endif %}{% endif %}
+            <div class="leave-reporter-badge{% if r.leave_reporter_type == 'none' %} leave-reporter-badge-none{% endif %}" id="leave-badge-{{ r.id }}">
+                <span class="material-symbols-outlined">{% if r.leave_reporter_type == 'none' %}report{% else %}person{% endif %}</span>
+                {% if r.leave_reporter_type == 'self' %}連絡：本人{% elif r.leave_reporter_type == 'family' %}連絡：{% if r.leave_reporter_relation %}{{ r.leave_reporter_relation }}{% else %}家族{% endif %}{% elif r.leave_reporter_type == 'caremanager' %}連絡：ケアマネ{% elif r.leave_reporter_type == 'other' %}連絡：その他{% elif r.leave_reporter_type == 'none' %}連絡なし{% endif %}
             </div>
             {% endif %}
             <div class="record-content" id="content-{{ r.id }}">{{ r.content }}</div>

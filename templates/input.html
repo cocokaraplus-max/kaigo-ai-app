@@ -289,6 +289,7 @@
     transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 .leave-btn:hover { border-color: #EC4899; }
+.leave-btn-none.selected { background: #c5221f !important; border-color: #c5221f !important; color: #fff !important; }  /* leave-reporter-display-v1 */
 .leave-btn.selected {
     background: #FBEAF0;
     border-color: #EC4899;
@@ -579,6 +580,7 @@
             <button type="button" class="leave-btn" data-leave-type="family">家族</button>
             <button type="button" class="leave-btn" data-leave-type="caremanager">ケアマネ</button>
             <button type="button" class="leave-btn" data-leave-type="other">その他</button>
+            <button type="button" class="leave-btn leave-btn-none" data-leave-type="none">連絡なし</button>  <!-- leave-reporter-display-v1 -->
         </div>
         <input type="hidden" id="leave-reporter-type" name="leave_reporter_type" value="">
 
@@ -711,7 +713,7 @@ window.saveRecord = async function() {
         if (endEl && !endEl.value) endEl.value = recDate;
         const _repType = document.getElementById('leave-reporter-type').value;
         if (!_repType) {
-            alert('「誰から」を選択してください(本人 / 家族)');
+            alert('「誰から」を選択してください（本人・家族・ケアマネ・その他・連絡なし）');
             return;
         }
     }
