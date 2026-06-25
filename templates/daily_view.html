@@ -3505,6 +3505,7 @@ window.openRecordsModal = function(userName, accordionIdx) {
         var meta = item.querySelector('.record-meta');
         var content = item.querySelector('.record-content');
         var category = item.querySelector('.aic-card-tag');
+        var leaveBadge = item.querySelector('.leave-reporter-badge');  // leave-badge-in-modal-v1
         var vasDisplay = item.querySelector('.vas-display');
         var photoGrid = item.querySelector('.photo-grid');
         var actions = item.querySelector('.record-actions');
@@ -3512,6 +3513,7 @@ window.openRecordsModal = function(userName, accordionIdx) {
         html += '<div style="font-size:0.82rem;font-weight:600;color:#5f6368;margin-bottom:8px;">';
         html += (meta ? meta.textContent.trim().replace(/\s+/g, ' ') : '') + '</div>';
         if (category) html += '<div style="margin-bottom:8px;">' + category.outerHTML + '</div>';
+        if (leaveBadge) html += leaveBadge.outerHTML;  // leave-badge-in-modal-v1: 連絡者バッジ(連絡なしは赤)
         html += '<div style="font-size:0.92rem;line-height:1.8;color:#202124;white-space:pre-wrap;margin-bottom:10px;">';
         html += (content ? content.textContent.trim() : '') + '</div>';
         if (vasDisplay) html += vasDisplay.outerHTML;
