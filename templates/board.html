@@ -2943,13 +2943,11 @@ async function boardPollNew() {
         var cur = (data.count != null) ? data.count : (data.unread != null ? data.unread : null);
         if (cur == null) return;
         if (_lastUnread != null && cur > _lastUnread) {
-            // board-poll-singleton-v1: 直近の操作(確認ボタン等)から5秒以内は
-            // 楽観的UI更新を巻き戻さないようリロードを見送る。
-            var sinceAct = Date.now() - (_lastBoardCheck || 0);
-            if (sinceAct < 5000) { _lastUnread = cur; return; }
-            showToast('📋 新しい投稿があります');
-            _lastBoardCheck = Date.now();
-            setTimeout(function() { window.location.reload(); }, 1000);
+            // board-poll-noreload-v1: ページ全体の自動リロードを廃止。
+            // 確認ボタン等の楽観的UI更新がリロードで巻き戻る問題を根治。
+            // 新着はトーストで知らせるのみ（手動更新で表示）。未読バッジは更新する。
+            showToast('📋 新しい投稿があります（更新してご覧ください）');
+            if (typeof updateUnreadCount === 'function') { try { updateUnreadCount(); } catch(_e){} }
         }
         _lastUnread = cur;
     } catch(e) {}
