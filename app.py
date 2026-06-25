@@ -13114,6 +13114,7 @@ _LIFE_NOTE_FIELDS = [f + "_note" for f in _LIFE_ADL_FIELDS] + [
 _LIFE_META_FIELDS = [
     "visit_type", "birth_date", "gender", "evaluator", "evaluator_job",
     "care_level", "adl_independence", "dementia_independence", "note",
+    "sheet_mode",  # lc-bi-mode-save-v1: 様式3-2(full)/BI(bi)
 ]
 
 
