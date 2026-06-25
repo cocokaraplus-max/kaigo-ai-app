@@ -270,8 +270,9 @@ body.nav-editing {
             overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: none;
-            padding: 0;
+            padding: 0 1.2rem; /* bottomnav-pad-align-v1: 本文(page-wrapper)と同じ左右paddingで幅を揃える */
             padding-bottom: max(74px, calc(env(safe-area-inset-bottom) + 50px));
+            box-sizing: border-box; /* bottomnav-pad-align-v1 */
             box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
             gap: 0;
             flex-shrink: 0;
