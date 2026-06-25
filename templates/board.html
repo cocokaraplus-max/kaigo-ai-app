@@ -2943,6 +2943,10 @@ async function boardPollNew() {
         var cur = (data.count != null) ? data.count : (data.unread != null ? data.unread : null);
         if (cur == null) return;
         if (_lastUnread != null && cur > _lastUnread) {
+            // board-poll-singleton-v1: 直近の操作(確認ボタン等)から5秒以内は
+            // 楽観的UI更新を巻き戻さないようリロードを見送る。
+            var sinceAct = Date.now() - (_lastBoardCheck || 0);
+            if (sinceAct < 5000) { _lastUnread = cur; return; }
             showToast('📋 新しい投稿があります');
             _lastBoardCheck = Date.now();
             setTimeout(function() { window.location.reload(); }, 1000);
@@ -2951,9 +2955,11 @@ async function boardPollNew() {
     } catch(e) {}
 }
 function startRealtime() {
-    // 初回の未読数を記録してからポーリング開始
+    // board-poll-singleton-v1: setIntervalの多重起動を防止。
+    // board.htmlがSPAで複数回注入されてもタイマーは常に1本だけ。
+    if (window._boardPollTimer) { clearInterval(window._boardPollTimer); window._boardPollTimer = null; }
     boardPollNew();
-    setInterval(boardPollNew, 10000);
+    window._boardPollTimer = setInterval(boardPollNew, 10000);
 }
 startRealtime();
 
