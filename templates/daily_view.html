@@ -774,6 +774,9 @@
 }
 .leave-reporter-badge .material-symbols-outlined { font-size: 15px; }
 .leave-reporter-badge-none { background: #fce8e6; color: #c5221f; }  /* leave-reporter-display-v1: 無断欠席を赤で明示 */
+/* leave-badge-textonly-v1: バッジの背景枠を撤廃し文字のみに。noneは赤文字。 */
+.leave-reporter-badge { background: transparent !important; padding: 0 !important; border-radius: 0 !important; color: #5f6368 !important; }
+.leave-reporter-badge-none { background: transparent !important; color: #c5221f !important; }
 
 /* Session 33: 編集 UI 内の「誰から/関係性」ボタン */
 .leave-edit-btn, .leave-edit-rel-btn {
@@ -3511,7 +3514,14 @@ window.openRecordsModal = function(userName, accordionIdx) {
         var actions = item.querySelector('.record-actions');
         html += '<div style="border:1px solid #e8eaed;border-radius:12px;padding:14px;margin-bottom:12px;">';
         html += '<div style="font-size:0.82rem;font-weight:600;color:#5f6368;margin-bottom:8px;">';
-        html += (meta ? meta.textContent.trim().replace(/\s+/g, ' ') : '') + '</div>';
+        // leave-badge-textonly-v1: metaからmaterial-symbolsアイコン名(schedule/label/edit等)を除去してからテキスト化
+        var _metaText = '';
+        if (meta) {
+            var _mc = meta.cloneNode(true);
+            _mc.querySelectorAll('.material-symbols-outlined, [class*="material-symbols"]').forEach(function(s){ s.remove(); });
+            _metaText = _mc.textContent.trim().replace(/\s+/g, ' ');
+        }
+        html += _metaText + '</div>';
         // leave-badge-inline-v1: カテゴリタグの右横に連絡者バッジを横並び表示
         if (category || leaveBadge) {
             html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">';
