@@ -1247,3 +1247,255 @@ DDL: renraku_notes / renraku_settings / renraku_patient_settings (DEV/本番)
 
 
 
+## 25. 連絡帳印刷（フェーズ2）完成・モニタリンググラフ修正・LINE連携の土台（2026-06-22 セッション）<!-- readme-print-line-session-2026-06-22 -->
+
+### 25-1. モニタリング報告書グラフの歪み・凡例修正（本番反映済み d8dc2e9）
+
+`templates/print_preview.html` のフィットネスmini-chart（体重/握力/TUG/CS-30/5m歩行/片脚立位）が縦横に歪む問題と、canvas内凡例が線に重なる問題を解消。
+
+- **真因**: canvas が CSS で固定高さ＋`maintainAspectRatio:false` のため、Chart.js のバッファ比率と表示ボックス比率が不一致。さらに描画経路が2系統あった。
+  - 2系列（grip/walk/balance）→ `drawBalanceChart` 経由
+  - 1系列（weight/tug/cs30）→ `makeChartConfig` + `new Chart` 経由（こちらは options に aspectRatio 指定が無く Chart.js デフォルト=2 で横伸び）
+- **解法**: 生成時に `maintainAspectRatio:true` + `aspectRatio`（canvas実寸比 w/h）を指定し、**生成直後に同期で `chart.options.aspectRatio=ar; chart.resize();`** を呼ぶ。初期options指定だけでは固定高さに負けるため、生成後の同期resizeが決め手。
+- **凡例**: canvas内凡例（Chart.js legend）をやめ、canvas直後にHTML凡例（実線/破線サンプル＋「右(実線)/左(破線)」等）を配置。極小サイズでも線と重ならず歪まない。
+- **教訓**: 歪みは描画経路ごとに対処が要る。グラフ修正は「全描画経路を最初に洗い出してから」着手すべき（経路特定を後回しにして遠回りした）。
+- マーカー: `chart-aspect-fix-v3`(c14b569) / `chart-aspect-fix-v4`(42df6f4) / `chart-aspect-fix-v5`(ba32331) / `legend-html-v1`(b07e0e2、template=1) / `tmpl4-chart-v1`(d8dc2e9、template=4)
+- 補足: 「1 / 1」表示は `.page-number`（@media print で `display:none !important`、画面のみ表示）の仕様。連絡帳画面のバイタルSVGは手書きSVGのため歪み問題なし。
+
+### 25-2. 連絡帳の印刷（フェーズ2）完成（本番反映済み 0f0159c）
+
+仕様: 1利用者・1日・1枚、一枚ずつ／まとめて連続印刷、表示項目は既存visible設定（個別→施設→全表示）を流用、ご家族メッセージはAI生成文を印刷前に編集可、バイタルは表＋SVGグラフ（2回以上測定時）、縦/横選択可。
+
+- **ルート**: `app.py` に `/renraku/print?date=&ids=`（カンマ区切りで複数patient_id）。各idの renraku_notes / vitals / profile / visible を集約し JSON 埋め込みでテンプレに渡す。マーカー `renraku-print-route-v1`(889280e)。
+- **テンプレ**: `templates/renraku_print.html`（新規）。サーバーから `RK_PRINT_DATA` を受け取り JS で各利用者カードを描画。buildVitals（連絡帳画面のSVGロジック移植・Chart.js不使用）/ buildItems（RK_DYN_FIELDS: transport/meal_main/meal_side/water/bath/toilet/training/rec/places + special_note/family_message/next_visit）/ buildPage。家族メッセージは `contenteditable`。@media print でツールバー非表示。
+- **縦横切替**: 縦=1カラム、横=当初2カラム→最終的に1カラム縦積みに変更（`rkpSetOrient` で `@page size` を動的style要素で切替）。マーカー `renraku-print-orient-v1`(2bf67ae) / `renraku-print-layout-v2`(a803a13、バイタル上部全幅) / `renraku-print-layout-v3`(711d7fe、横=1カラム縦積み・バイタル表 width:auto左揃え)。
+- **微調整**: バイタル値セル min-width:72px（項目名列除く）、氏名行は氏名＋様のみ（No./介護度削除）、バイタル表ベース幅 width:auto（縦横とも左揃え自然幅）。マーカー `renraku-print-tweak-v4`(4d0b27d) / `renraku-print-tweak-v5`(ec1c59e)。タイトルは「連絡帳」（当初ひらがな誤記を修正 51e84a5）。コメント内 `{{ ... }}` のJinja誤解釈バグ修正(469f539)。
+- **導線**: `templates/renraku.html` に印刷ボタン。詳細=「印刷」(rkPrintOne→その利用者1枚)、一覧=「まとめて印刷」(rkPrintAll→`RK_LIST` のうち `noted`(記入済み)のみカンマ連結、0件ならalert)。`rkLoadList` で `RK_LIST` 保持。マーカー `renraku-print-link-v1`(0f0159c)。
+
+### 25-3. プロンプトのトーン調整・本人認識強化（本番反映済み e7c78e4）
+
+連絡帳AI家族文とモニタリング報告書の生成を、硬すぎる敬語（二重敬語）からトーンB（やさしいです・ます、過剰敬語回避）に統一。利用者本人名を明示し、他利用者は「他の利用者様」と伏字化（先月モニタリングで本人認識できず変な文章になった不具合の対処）。app.py の RENRAKU_FAMILY_PROMPT / api_generate_monitoring の BASE_PROMPT / _auto_generate_monitoring の BASE_PROMPT の3箇所。マーカー `prompt-tone-v1`。
+
+### 25-4. LINE連携の土台（DEVのみ・本番未反映）<!-- readme-line-foundation -->
+
+**方針: 施設別トークン方式（SaaS対応）**。全施設共通1アカウントではなく、施設ごとに自前のLINE公式アカウント・自前トークンを使う。データもアカウントも施設ごとに完全分断。家族から見れば「いつものその施設のLINE」から連絡帳が届く。
+
+- **DDL（DEVのSupabaseに適用済み）**: `line_settings`（facility_code text PK / channel_access_token_enc text / channel_secret_enc text / line_oa_name text / enabled boolean default false / created_at / updated_at）。トークン・シークレットは Fernet 暗号化して `_enc` カラムに保存。
+- **暗号化**: `cryptography` の Fernet（supabase の依存で既にインストール済み、requirements.txt 追加不要）。マスター鍵は環境変数 `LINE_TOKEN_ENC_KEY`（**DEVと本番で別々の鍵**にする方針＝各環境で暗号化し直す）。
+- **app.py ヘルパ（マーカー `line-crypto-v1`、856a66c）**: `_line_get_fernet()` / `_line_encrypt(plain)` / `_line_decrypt(enc)` / `get_line_settings(supabase, f_code)`（復号済み設定を返す。`has_token`/`has_secret` フラグ付き）/ `save_line_settings(...)`（暗号化upsert、token/secret空なら既存値温存）。
+- **テスト用アカウント**: スタッフ用公式LINE「【公式】ココプラスタッフ用」(@145tminp)で Messaging API 有効化（Channel ID **2010464312**、プロバイダー TASUKARU）。本番の家族とつながっている公式LINEとは別アカウント。本番アカウントは開発完成後に同様に有効化して本番 line_settings に登録する。
+- **DEV環境変数（GCPコンソールから設定済み）**: `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET`(2b6e7…) / `LINE_TOKEN_ENC_KEY`。※前者2つは開発初期の動作確認用。最終的にトークンはDB（line_settings）へ移行し環境変数からは削除予定。`LINE_TOKEN_ENC_KEY` は残す。
+- **セキュリティ方針**: トークンは平文表示しない（設定画面はマスク表示・登録/更新のみ）、保存は暗号化、登録は施設管理者限定、Cloud Run はHTTPS。トークンはターミナル履歴を避けGCPコンソール画面から入力。
+
+### 25-5. LINE連携の次タスク（次セッション）<!-- readme-line-todo -->
+
+実装順（おすすめ）:
+1. **施設のLINE設定画面**（管理者限定・トークンはマスク表示・`save_line_settings` を呼ぶ保存API）。
+2. **Webhook**（公開エンドポイント `/line/webhook`。署名検証に `get_line_settings` の `channel_secret` を使用。どの施設宛てかの判別が必要）。
+3. **友だちのuserId受信と未紐付けリスト**（友だち追加 or メッセージ受信で userId 取得。Webhook 設定前に追加済みの人は一度メッセージを送ってもらう必要あり）。
+4. **家族↔利用者の紐付け**（合言葉=利用者ごとの招待コードで自動紐付け ＋ 管理画面で手動紐付け の併用。誤紐付けは事故になるため慎重に）。
+5. **連絡帳のLINE向け整形**（行った場所・食事量を箇条書き、連絡事項は家族向け文章、血圧グラフは**画像(PNG)**で送る ※LINEは公式アカウントからのPDFファイル送信に非対応）。
+6. **送信プレビュー編集UI** → **送信API**（プッシュメッセージ。1回最大3吹き出し＝1通。料金は通数=送信回数×友だち数）。
+
+注意点メモ:
+- LINE公式アカウントの応答モードは「チャット」のまま Webhook 有効化で手動チャットとAPI送信を共存可能（本番アカウントは日常的に手動チャット運用中のため要配慮）。
+- 料金: コミュニケーション(0円/月200通)・ライト(5,000円/月5,000通)・スタンダード(15,000円)。プッシュ/マルチキャスト/ブロードキャストが課金対象、リプライは対象外。
+
+
+## 26. LINE連携設定UI追加・起動時NameError修正（2026-06-22 セッション）<!-- readme-s26-line-ui-fix -->
+
+### 26-1. LINE連携設定画面のUI追加（DEV・マーカー `line-settings-ui-v1`）
+
+`templates/admin.html` の「AIカテゴリ自動振り分け」section-box の直前に「LINE連携設定」section-box を追加。
+
+- **入力項目**: 公式アカウント名 / チャネルアクセストークン / チャネルシークレット / 有効トグル / 保存ボタン。
+- **マスク表示**: トークン・シークレットは `type=password`。プレースホルダーは登録状況に応じて「登録済み。変更時のみ入力」/「未登録」を出し分け。値そのものは画面に表示しない。
+- **JS**: 最後の `</script>` 手前に `loadLineSettings()`（`DOMContentLoaded` で GET `/api/line/settings` を叩きマスク反映）と `saveLineSettings()`（POST。空の token/secret は送らず既存値温存）を追加。
+- 検証済み（Chrome MCP）: `#line-settings-box` 表示、GET API が `status:success` でマスク情報のみ返却。
+
+### 26-2. 起動時 `NameError: name 'login_required' is not defined` 修正（マーカー `line-api-move-v1`、c36fa96）
+
+- **現象**: 上記UI追加の push で DEV が再起動した際、全パスが **503 Service Unavailable**。gunicorn worker が import 時にクラッシュ。
+- **真因**: 前セッションで追加した LINE設定API（`/api/line/settings` GET/POST、`@login_required` 使用）が app.py の **139行付近**にあり、`login_required` の def（**222行付近**）より**前**だった。import時にデコレータを評価して未定義で落ちた。（`py_compile` は構文チェックのみで import時の NameError は検出しないためローカルでは気づけなかった）
+- **対処**: LINE設定APIの2ルートを `login_required` 定義の**直後**へ移動。ヘルパ（`_line_*` / `get_line_settings` / `save_line_settings`）はデコレータ未使用なので移動不要・そのまま。
+- **検証**: Cloud Build は成功していたが起動失敗→ログで `NameError` を特定。修正 push 後は `/login` が200、`/admin` 正常表示を確認。
+- **教訓**: **デコレータを使うルート/関数は、そのデコレータ定義より後ろに置く。** ファイル前方（import直後の領域）に `@login_required` 付きルートを追加すると起動時に落ちる。今後 LINE 関連のルートは `line-api-move-v1` ブロック（login_required定義後）付近に追加すること。
+
+## 27. LINE連携：Webhook実機疎通・display_name取得・友だち紐付け完成（2026-06-22）<!-- readme-s27-line-friends -->
+
+LINE連携の受信側（Webhook〜家族紐付け）をDEVで完成させ、実機（@145tminp）で確認。全てDEV止まり、本番未反映。
+
+- **DDL（DEV適用済）**: `line_friends`（id uuid PK / facility_code / line_user_id / display_name / patient_id（null=未紐付）/ status default 'unlinked' / linked_by / created_at / updated_at / unique(facility_code,line_user_id)）+ index idx_line_friends_fac。
+- **Webhook（`line-webhook-v1`、e8c6c32）**: `POST /line/webhook/<facility_code>`。施設判別=URLのfacility_code。署名検証=get_line_settingsの復号secretでHMAC-SHA256(生ボディ)。follow/messageでuserIdをunlinked保存。
+- **旧webhook衝突解消（`line-webhook-legacy-rename-v1`）**: 旧line_webhook()とview関数名衝突で起動失敗→旧をline_webhook_legacyにリネーム。**教訓**: py_compileではendpoint名衝突を検出できない。push前に `SECRET_KEY=dummy python3 -c "import app"` でimport確認。
+- **display_name取得（`line-profile-v1`、3fba279）**: _line_get_profile()、タイムアウト3秒・失敗時None。実機でdisplay_name取得確認。
+- **友だち管理（`line-friends-api-v1`/`line-friends-ui-v1`）**: 【設計方針：手動紐付けを主軸、合言葉は当面見送り】。誤送信=個人情報漏洩のため必ず人の確認を介す。API 3本(管理者限定・二条件guard・利用者存在検証): GET /api/line/friends, POST .../link, POST .../unlink。UI=admin.html「LINE友だち管理」box、検索窓+確認ダイアログ+解除。実機で青木利夫(5c0f9541-)に紐付け確認。
+
+### 27-送信側の絶対ルール<!-- readme-line-send-rule -->
+**linked の友だちにしか送信しない。** unlinked には絶対送信しない。
+
+## 28. 連絡帳をLINEで家族に送信（テキスト・第一段階）完成（2026-06-23）<!-- readme-s28-line-send -->
+
+連絡帳をLINEでご家族に送る機能（テキスト）をDEVで完成し、実機送信成功。全てDEV止まり。
+
+### 28-1. 送信API（マーカー `renraku-line-send-v1`）
+- `_line_push(token, to, messages)`: 施設トークンでpush。1回最大3吹き出し(messages[:3])。旧get_line_headers(env単一トークン)は使わず施設別方式。
+- `_renraku_to_line_text(note, vitals, name)`: 行った場所・食事・入浴・排泄・機能訓練・特記・家族メッセージを箇条書き、バイタルは数値テキスト(複数回は1行ずつ)。renraku_print と同じ取得パターン(renraku_notes + vitalsをmeasured_dateで絞る)。
+- `POST /api/renraku/line_preview`（整形文+linked宛先を返す、送らない）/ `POST /api/renraku/line_send`（確定文をlinkedの全userIdへpush）。**安全: linkedのみ・enabled+token必須**。
+
+### 28-2. 送信UI（マーカー `renraku-line-ui-v1`）
+連絡帳詳細の保存バーに「LINEで送る」ボタン。プレビューモーダル（宛先明示・編集可テキストエリア・送信前confirm・二重送信防止）。
+
+### 28-3. UI仕上げ（ボトムナビ・保存バーの可変幅統一）
+- 保存バー2段化（`renraku-savebar-actions-v1`）上=保存/下=印刷・LINEで送る。ヘッダに置くとボトムナビに隠れるため移動。
+- LINE送信モーダルのナビ回避（`renraku-line-modal-fix-v1`）: max-height:calc(88vh - --rk-nav-h) + margin-bottom:--rk-nav-h。
+- **ボトムナビ・保存バーを `--page-max-width` 連動（`bottomnav-width-var-v1`/`renraku-savebar-var-v1`）**: 本文(.page-wrapper)は --page-max-width(初期480px)で幅制御、PCはリサイズハンドル(page-resize-handle)で可変。ナビ(base.html全ページ共通)と保存バーも max-width:var(--page-max-width) にして本文幅に追従。本文・ナビ・保存バーが同幅で揃う。
+
+### 28-4. 次タスク（写真送信）<!-- readme-line-photo-todo -->
+1. **連絡帳への写真添付（第二段階）**: renraku_notes に画像URL配列カラム追加(DDL)。UIでアップロード。utils.upload_images_to_supabase(supabase, [photo], f_code) を流用(case-photosバケット、get_public_urlで公開URLを返す)。
+2. **写真をLINE送信（第三段階）**: imageMessage(originalContentUrl/previewImageUrlに公開https URL)。1通3吹き出し制限に注意。**要確認: case-photosバケットが公開(public)設定か**(非公開だとLINEが画像取得不可)。
+3. （任意）バイタルグラフのPNG送信。現状は数値テキストで十分。
+
+### 28-5. README破損事故と復旧（重要）
+patch_readme_s27 系がREADMEを0バイトに破壊する事故が発生。原因はPythonの open(path,'w') が書き込み前にトランケートし、本文中のサロゲート文字(結合絵文字)で UnicodeEncodeError が出て空のまま残ったこと。git(e8c6c32, §26まで138KB)から復元し、§27/§28は `cat >>` で末尾追記する方式で復旧。**教訓: READMEへの追記はPythonで全文書き直さず、追記分のみ cat >> で足す。**
+
+### 28-6. 今セッションのコミット（DEV、tasukaru-dev）
+dd8beca 送信API+UI / 02b35e8 保存バー移動 / cb0a608 モーダルナビ回避 / 4f027e1 保存バー480px / 67a31d6 --page-max-width連動。
+
+## 29. カレンダー：繰り返し予定＋先の予定表示バグ修正（2026-06-23）<!-- readme-s29-calendar -->
+
+カレンダーの2つの問題を解消し、繰り返し予定機能を追加。**カレンダー分のみ本番反映済み**（cherry-pick）。LINE関連は本番未反映のまま。
+
+### 29-1. 先の予定が消えるバグ（真因と修正）
+- **真因**: calendar.html は初期ロードの `ALL_EVENTS`（calendar_view が埋め込む今月-31日〜+62日のみ）だけを使い、月送り(changeMonth)で新しい月のデータを再取得していなかった。`/api/calendar_events` はサーバーに存在するが**JSから一度も呼ばれていなかった**。約2ヶ月より先の予定は保存されても表示されず「記録されない」ように見えていた。
+- **修正（マーカー `calendar-repeat-v1`）**: `__ensureEventsLoaded()` を新設。changeMonth/goToday/switchView 時に表示月の通常イベントを `/api/calendar_events?from=&to=` から取得し ALL_EVENTS にマージ（id重複排除・取得済み月は window.__loadedKeys で記録しスキップ）。これで何ヶ月先でも表示される。
+
+### 29-2. 繰り返し予定（毎日/毎週/毎月/毎年）＝ルール保存方式
+- **方式**: 実体展開せず、元イベント1件＋`repeat_type`/`repeat_until` のルールだけ保存（calendar_events に既存カラムあり、DDL追加不要）。表示時に getFilteredEvents が**表示範囲ぶんだけ計算展開**して仮想イベントを生成。レコードが増えず、何年先でも自動表示。月が変われば自動でその月分が出る（毎月・毎年も先まで常に表示される状態が計算で実現）。
+- **計算ルール（`__calcRepeatOccurrences`）**: daily=毎日 / weekly=同曜日 / monthly=同じ日(無い月はスキップ) / yearly=同じ月日(2/29は閏年のみ)。元イベント開始日より前は出さない。repeat_until 以降は出さない。仮想イベントは `_virtual:true`/`_srcId` 付き、event_date/end_date を該当日に。
+- 繰り返しイベントのクリック→編集/削除は元イベント(ルール)に作用＝繰り返し全体の編集/削除。**個別回の例外は今回スコープ外**（必要になれば例外日記録を後付け）。
+
+### 29-3. 繰り返し日クリックで予定が出ない不具合
+- **真因（マーカー `calendar-cellclick-repeat-v1`）**: onCellClick が `ALL_EVENTS`(実レコードのみ)を直接filterし、繰り返し展開分(仮想イベント)を拾えていなかった。月表示(getFilteredEvents使用)には出るがクリックでは出ない不整合。
+- **修正**: onCellClick の予定収集を `getFilteredEvents()`(繰り返し展開込み・カレンダーフィルタ内包)ベースに変更。実機(2026年10月の毎週繰り返し)で月表示・クリック両方に表示されることを確認。
+
+### 29-4. 本番反映（カレンダーのみ・cherry-pick）
+本番(tasukaru)は §25(0f0159c)で止まっていたため、tasukaru-dev 全体ではなくカレンダー2コミットのみ cherry-pick して本番反映（0f0159c → a5b82b9 → c107a40）。**LINE関連は本番未反映のまま**（本番反映には本番Supabaseへ line_friends DDL適用＋本番Cloud Runへ LINE_TOKEN_ENC_KEY 設定 が前提）。マーカー: calendar-repeat-v1, calendar-cellclick-repeat-v1。
+
+## 30. 連絡帳の写真添付＋写真LINE送信（2026-06-23）<!-- readme-s30-renraku-photo -->
+
+連絡帳に写真を添付（第二段階）し、その写真をLINEで家族に送信（第三段階）まで完成。実機で整形テキスト＋写真6枚の送信成功。全てDEV止まり、本番未反映（LINE一式と同じく本番準備が前提）。
+
+### 30-1. 連絡帳への写真添付（第二段階）
+- **DDL（DEV適用済）**: `alter table renraku_notes add column if not exists image_urls jsonb default '[]'::jsonb;`
+- **方式A**: 写真は専用APIで即アップロード→公開URL受領、連絡帳保存はJSONのまま image_urls 配列を足すだけ（既存JSON保存を壊さない）。既存ケース記録(records)と同じ case-photos バケット流用（公開・get_public_url）。
+- **アップロードAPI（マーカー `renraku-photo-api-v1`）**: `POST /api/renraku/upload_photo`（multipart, @login_required）。`utils.upload_images_to_supabase(supabase, files, f_code)` で case-photos に UUID名アップロード→公開URL配列返却。配置は api_renraku_line_send 末尾の後ろ（login_required定義後）。保存API api_renraku_save の payload に image_urls 追加。
+- **UI（マーカー `renraku-photo-ui-v1`）**: 連絡帳詳細の家族メッセージの後ろに「写真」フィールド（表示トグル付き）。「写真を追加」→ `<input type=file accept=image/* multiple>` → 即アップロード→サムネ表示→×削除。状態は RK_IMAGES（URL配列）。rkSave payload に image_urls、rkFillForm で note.image_urls から復元。RK_ALL_FIELDS に ['image_urls','写真'] 追加。
+
+### 30-2. 写真をLINE送信（第三段階）
+- **マーカー `renraku-line-photo-v1`（app.py）**:
+  - `_line_push` の messages[:3] → messages[:5]（LINE仕様: 1pushで最大5メッセージ）。
+  - `_line_image_messages(urls)`: https URLから `{type:'image', originalContentUrl, previewImageUrl}` を生成（https以外は除外）。
+  - `_line_push_chunked(token, uid, messages)`: messages を5件ずつ分割して順にpush。
+  - api_renraku_line_send: data から image_urls 受領（送信APIは text を受け取る方式のため note でなくフロントから渡す）。messages = テキスト + 画像メッセージ、_line_push_chunked で送信。
+  - api_renraku_line_preview: 戻りに photo_count 追加。
+- **マーカー `renraku-line-send-images-v1`（renraku.html）**: rkLineSend の送信 body に image_urls:RK_IMAGES を追加。
+- **実機確認**: 青木さんに写真6枚添付→LINE送信。テキスト1+画像6=7メッセージ→5件+2件の2回pushに自動分割。HIRO🐻❄️のLINEに整形テキスト＋写真が届くことを確認。case-photos公開URLがLINEから取得可能（HEAD 200/image/png）であることも実証。
+
+### 30-3. 運用メモ・教訓
+- **ブラウザキャッシュ注意**: デプロイ直後、ブラウザが古いJS（image_urlsを渡さない版のrkLineSend）を保持していると写真が送られない。デプロイ後はリロード（必要ならスーパーリロード）してから送信テストすること。最初「写真が届かない」と見えたのはこれが原因だった。
+- 写真プライバシー: case-photos は公開バケット（既存ケース記録と同じ扱い）。LINE送信は写真URLを家族に渡すことになる。当面は既存ケース記録と同じ基準で運用。プライバシー強化が必要なら署名付きURL方式へ後日移行可能。
+
+### 30-4. 今セッションのコミット（DEV、tasukaru-dev）
+03bbb3e 写真添付API+UI(第二段階) / e3c60cb 写真LINE送信(第三段階)。
+
+## 31. LINE本番反映＋記録/掲示板/評価の改善（2026-06-24）<!-- readme-s31-session64 -->
+
+SESSION_64。LINE連携＋連絡帳写真を**本番反映**し、記録入力・掲示板・評価まわりの不具合4件を修正（すべてDEV→本番反映済み）。
+
+### 31-1. LINE連携＋連絡帳写真の本番反映（完了）
+- **本番Supabase DDL適用**（コードより先・冪等）: `line_friends`（9列・PK=id・unique(facility_code,line_user_id)）/ `line_settings`（7列・PK=facility_code・channel_access_token_enc/channel_secret_enc/line_oa_name/enabled）/ `renraku_notes.image_urls`(jsonb)。DEV実テーブルと照合して確定。
+- **本番Cloud Run** に `LINE_TOKEN_ENC_KEY`（本番用の別Fernet鍵）設定。既存env温存。鍵はHIROが手元生成・保管（チャットに平文露出なし）。
+- **コード反映**: DEVの4ファイル（app.py / templates/admin.html / templates/renraku.html / templates/base.html）を**ファイル単位で本番へ**（`git checkout tasukaru-dev -- <files>`）。カレンダーは calendar.html のみで今回の4ファイルに含まれず、本番のカレンダーcherry-pick(c107a40)を巻き戻さない。本番コミット dda0ed1。
+- **LINEチャネル繋ぎ替え**: 運用中の公式アカウント「機能訓練型デイサービス【ココカラプラス】」にMessaging API有効化（プロバイダー=同名・後変更不可）。Webhook URL=`https://tasukaru-191764727533.asia-northeast1.run.app/line/webhook/cocokaraplus-5526`、Webhookオン、検証200成功。あいさつメッセージはオン維持（プッシュ送信と競合せず両立可）。本番admin画面に token/secret 入力＋enabled。実機で友だち受信（unlinked保存・display_name取得）確認。
+- **注意/未了**: 新規作成した別アカウント「【公式ココカラプラス】利用者連絡帳」は紛らわしいので削除予定（繋ぎ替え完了後）。既存の友だち（家族）は繋いだ時点では line_friends に自動で入らず、家族が一度メッセージ送信/再追加した時にWebhook受信して登録される（運用で取り込む）。
+
+### 31-2. 記録入力の保存スピナー（inp-save-spinner-v1・本番反映済み）
+templates/input.html。saveRecord は押下後すぐAIカテゴリ提案(/api/records/suggest_category)をawaitしモーダル応答も待つため「保存中」表示が遅れていた。修正: 押下直後に即「カテゴリ確認中...」(回転sync)→モーダル中は通常復帰→POST中「保存中...」。本番コミット 2f628e8。
+
+### 31-3. 掲示板の確認済みボタン（board-toggle-optimistic-v1・本番反映済み）
+templates/board.html。症状「1回で反応せず2度押すと反応／確認したのに未読に戻る」。Chrome連携(MCP)で原因特定: サーバーAPI・DB保存・JS判定は全て正常（toggleCheck直接呼び出しで確認済み⇄未確認が正しく動作）。真因は (1)押下後 pointerEvents='none' のまま通信完了まで無効化されタップが死ぬ (2)視覚フィードバック欠如で二度押し→トグルなので確認済みが未読に戻る。修正: 楽観的UI更新（押下即トグル＋処理中の薄表示）＋API成功でサーバー確定状態に同期＋失敗時ロールバック＋dataset.busyで連打ガード。本番コミット 1e80935。
+
+### 31-4. 評価AI生成の改善（eval-aifill-tone-v1 / eval-aifill-medical-v1・本番反映済み）
+app.py /api/evaluation/ai_fill のプロンプト。(1)文字化け「堂すぎず碕けず」→「硬すぎず砕けすぎず」修正＋二重敬語禁止を明示。(2)機能訓練指導員（PT/OT/ST/柔整/看護師等）として医学的視点・機能訓練の専門的観点（身体機能・ADL・関節可動域・筋力・バランス・歩行・認知/嚥下機能等）を踏まえる、を明示。Chrome連携でテキスト元データを投入し品質確認（数値正確・ハルシネーション無・自然な口調）。
+
+### 31-5. 評価メモ文字起こしの改善（eval-transcribe-filler-v1 / eval-ingest-order-v1・本番反映済み）
+app.py /api/evaluation/ingest_file。(1)両モード(dialog/solo)のフィラー方針を「そのまま記載」→「フィラー・言いよどみ・無意味な繰り返しは除去し読みやすく整える（内容は変えない）」に変更。(2)プロンプト混入バグ: generate_content([{音声}, prompt]) の順で音声→指示の流れになりGeminiが指示文まで出力に混入＋フィラー指示も効かず。generate_content([prompt, {音声}]) に順序逆転して解消（音声側のみ・画像側L5145は触らず）。実機（音声録音）で混入消失・フィラー除去を確認。
+※評価メモ欄とは別に /api/transcribe も存在（こちらは元からフィラー省略指示あり）。
+
+### 31-6. 教訓
+- 長文のヒアドキュメント貼り付けはターミナルで化けやすい。app.pyの小さな日本語置換は `python3 -c "..."` の1行版が安全（marker確認＋count assert＋.bak付き）。
+- README追記は従来どおり `cat >>`（Python全文書き直し厳禁）。今回も §31 を末尾追記し wc -c で増加確認。
+
+### 31-7. 次タスク候補
+- 新規LINEアカウント「利用者連絡帳」の削除。
+- 既存友だち(家族)の line_friends 取り込み運用の設計（案内文等）。
+- admin LINE設定ガイド: 外部ドキュメント(Notion等)へのリンク方式で作成予定（施設職員向けに設定手順を丁寧に）。たたき台の手順文はSESSION_64の操作ログが素材。
+
+## 32. 掲示板「確認済みが未確認に戻る」問題の根治（2026-06-25）<!-- readme-s32-session65 -->
+
+SESSION_65。掲示板で「確認ボタンを押しても確認済みにならず未確認に戻る／未読が増える」という長期の不具合を、Chrome連携(MCP)で本番ライブ調査し、真因を特定して根治。対症ではなく構造的修正まで実施。本番反映済み。
+
+### 32-1. 症状と最初の誤診
+- 症状: 確認ボタンを押すと一瞬「確認済み」になるが離す/スクロールすると「未確認」に戻る。押すと未読数が増えることもある。本番・PC両方で再現。
+- 当初はフロント(楽観的UI更新 board-toggle-optimistic-v1)やタッチイベント、リロードを疑ったが、いずれも主因ではなかった。Chrome連携でクリック・toggleCheck発火・fetch応答・DOM変化・reload呼び出しを逐一計測して切り分けた。
+
+### 32-2. 調査途中で見つかった副次バグ（先に修正・本番反映済み）
+- **board-poll-singleton-v1**: 掲示板の新着ポーリング `startRealtime()` が SPA 再注入のたびに `setInterval(boardPollNew)` を張り直し、本番で **56個並走**していた。`window._boardPollTimer` で常に1本に。本番コミット e4437d3。
+- **board-poll-noreload-v1**: `boardPollNew` の新着検知時 `setTimeout(window.location.reload)` が楽観的UI更新を巻き戻す元凶になり得たため、ページ全体の自動リロードを廃止。新着はトースト通知＋未読バッジ更新のみに変更。本番反映済み。
+
+### 32-3. 真因（board-checks-pagination-v1 → board-paginate-helper-v1）
+- **真因はサーバー側 `board()` の `checks_data` 構築**。`supabase.table("board_checks").select(...).in_("post_id", post_ids).execute()` に `.range()` が無く、**Supabaseのデフォルト1000行上限**で古い投稿(若いID)の確認済みレコードが取りこぼされていた。
+- 結果、**画面=未確認(赤) なのに DB=確認済み** というゴースト投稿が発生。ユーザーが赤を押す→サーバーはDBの真の状態(確認済み)を見て `removed`(外す)→確認済みにならず未読が増える。
+- Chrome連携で実証: 本番で岸本の確認済みは初期描画131件しか取れていなかったが、DB実体は162件。未触の投稿8件中7件がゴースト(画面未確認・DB確認済み)だった。
+- 修正: まず `board_checks` のみ `range()` ページング化(board-checks-pagination-v1)。その後、他施設展開を見据え**共通ヘルパー `_fetch_all_paginated(make_query, page_size=1000, max_pages=50)`** を新設し、`board()` 内の取得系4クエリ(board_comments / board_reactions / board_reads / board_checks)を全件ページング取得に統一(board-paginate-helper-v1)。reactions/reads には `facility_code` 絞りも追加。本番反映後、確認済み 162件=DOM 162件で整合確認。
+
+### 32-4. 教訓
+- **`.in_(...).execute()` でまとめ取得している箇所は、データ増で必ず1000行上限に当たる。** 「画面とDBが食い違う」系の不具合はこれを疑う。今後の大量取得は `_fetch_all_paginated()` を使う。
+- 症状の見た目(UIが戻る/リロードされる)に引きずられず、サーバーが返す確定値(toggle応答の action と checked_names)を直接見ると早い。`action:"removed"` が出たら「押す前からDB上は確認済み」=ゴーストのサイン。
+- Chrome連携の計測は、監視ラッパ(location.reload上書き等)自体が挙動を変えうる。素の再現と計測を分けて考える。
+- ヘルパーはクエリビルダを使い回さず「毎回ビルダを返すラムダ」を受ける方式にした(supabase-py のバージョン非依存・再 .range() 安全)。
+
+### 32-5. 次タスク候補
+- 同パターンの他ルート(board以外で `.in_(...).execute()` を使う箇所)を `_fetch_all_paginated()` に順次移行。
+- `/calendar` の `CalendarBarConnect ... reading 'top'` エラー(既存・fallback動作中)の調査。
+- DEVのダミー投稿(post_id 13〜22)は検証用に残置中。不要になれば削除。
+
+## 33. 休み連絡の連絡者バッジ化 ＋ UI幅揃え（2026-06-25）<!-- readme-s33-session65 -->
+
+SESSION_65後半。休み連絡カテゴリの「連絡者」表示改善（文章→バッジ分離、無断欠席=連絡なし追加）と、掲示板/TOP/ボトムナビ/生活機能チェックのUI幅揃え。すべてDEV検証後に本番反映済み。
+
+### 33-1. 休み連絡の連絡者バッジ化
+- **方針**: ケース記録のcontentから連絡者文章を分離。日付・理由はそのまま、連絡者は「休み連絡」カテゴリタグの右横にバッジ表示。「連絡なし」（無断欠席）を選択肢に追加し赤で目立たせる。
+- **leave-reporter-display-v1**: `_build_leave_content`（app.py 819付近）を「{period}はお休みです。理由：…」に変更し連絡者を文章から除去（reporter_type/other_detailは互換のため引数に残す）。`_reporter_map_n`（app.py 9931付近・モニタリング側）に `none:連絡なし` 追加。input.html に「連絡なし」ボタン（`data-leave-type="none"`）＋赤スタイル`.leave-btn-none.selected`＋アラート文言調整。daily_view.html のバッジを全タイプ対応（self/family(関係性)/caremanager/other/none）、noneは赤クラス。
+- **leave-badge-in-modal-v1**: 個別記録モーダル `openRecordsModal`（daily_view.html 3499付近）は records-hidden 内の各記録から meta/content/category/vas/photo/actions を**個別に拾い再構築**する方式のため、連絡者バッジが欠落していた。`.leave-reporter-badge` を拾って差し込む処理を追加。
+- **leave-badge-inline-v1**: バッジを `<div>`→`<span>`化しアイコン除去（文言「連絡：○○」、noneは「連絡：連絡なし」）。モーダルでカテゴリタグとバッジを flex 横並び（カテゴリ右横）に。
+- **leave-badge-textonly-v1**: バッジの背景枠を撤廃し文字のみ（noneは赤文字）。モーダルheaderの meta を `textContent` で取ると material-symbols のリガチャ名（schedule/label/edit）が文字化けするため、meta を clone→`.material-symbols-outlined` 要素を除去してからテキスト化。
+- **注意**: 過去の休み連絡レコードはcontentに旧文章「○○から連絡がありました」が残る（新規入力分から新仕様）。一括更新は未実施。
+- **構造メモ**: daily_view は「利用者アコーディオン→AI要約→個別記録N件を見る（openRecordsModal）」の構造。個別記録は `records-hidden-{idx}`（display:none）に格納され、モーダルが再構築して表示。要素を足すときは openRecordsModal の再構築ロジックに拾う処理が必要。`leave_reporter_type` 値: self/family/caremanager/other/none。
+
+### 33-2. UI幅揃え・微調整
+- **top-lcalert-height-v1**（top.html）: TOP生活機能チェック枠の高さをタスク枠に揃える。原因は `.lcalert-header` に margin-bottom が無く `.birthday-header`(margin-bottom:10px)より10px低かった→ `.lcalert-header` に margin-bottom:10px。
+- **board-posts-padtop-v1**（board.html）: 最初の投稿がstickyヘッダー(.board-sticky-stack)に潜り込む→ `#posts-container` に padding-top:12px。
+- **board-header-align-v1**（board.html）: `.board-tabs-wrap` の左右padding 12px→0（タブを投稿カード/検索窓の端へ）。
+- **board-fullbleed-v1**（board.html）: タブ帯・検索窓・投稿カードを page-wrapper の白背景の端まで広げて揃える。page-wrapperの左右padding(1.2rem)を負マージンで相殺（`#posts-container` margin -1.2rem、`.board-tabs-wrap` margin -1.2rem+padding 1.2rem、`.board-search-bar` margin -1.2rem）。
+- **bottomnav-pad-align-v1/v2・bottomnav-fullbleed-v1**（base.html）: ボトムナビ幅を本文（白背景端）に揃える試行錯誤。v1=padding追加（box-sizing:border-boxで外枠幅変わらず無効）→v2=`max-width: calc(--page-max-width - 2.4rem)`（内容幅）→最終 fullbleed=`max-width: var(--page-max-width)`（白背景端）。最終的にタブ/検索/投稿カード/ナビ/本文すべて同一左右端で一致。
+- **lc-total-navwidth-v1**（life_check.html）: 生活機能チェックのADL合計固定バー `.lc-total` の max-width 720px→`var(--page-max-width)`（ボトムナビと同幅）。本文 `.lc-wrap`(720px) は変更せず。
+
+### 33-3. 教訓
+- 固定/sticky要素の幅は page-wrapper の左右padding(1.2rem)を意識する。**box-sizing:border-box では padding を足しても外枠幅は変わらない**ので、幅を変えたいときは max-width か negative margin を使う。
+- 要素境界(getBoundingClientRect)が揃っているのに見た目がズレる時は、Chrome連携で**ガイド線をDOMに描画**して視覚確認すると食い違いの正体が早く分かる（今回「白い部分」=page-wrapperの白背景端であり、中の要素がpadding内側にあったのが原因と判明）。
+- ライブで `element.style.xxx` を当てて揃うことを先に検証してから、確定パッチを作ると往復が減る。
+
+### 33-4. 次タスク候補（生活機能チェックのBI切替）
+- 要支援・事業対象者はBI（バーセルインデックス）、要介護は生活機能チェックシート（様式3-2）。利用者選択で介護度を自動表示し、どちらかに手動切替も可能にする構想。要確認: 介護度データ（要支援/要介護/事業対象者）が patient_profiles 等に保存されているか。未保存なら介護度入力の仕組みから。
