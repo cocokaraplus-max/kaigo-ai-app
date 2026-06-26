@@ -15179,3 +15179,178 @@ def api_jisseki_svctime_save():
     except Exception as e:
         print("api_jisseki_svctime_save error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-svctime-summary-v1: 提供時間別 延べ人数の集計(step2)
+# 介護サービス(要介護)=時間幅区分別 / 総合事業(要支援・事業対象者)=5h未満/5-7h/7h以上
+# 保険分のみ集計。自費は別カウント。
+# ==========================================
+_JIS_TIME_CATS = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h']
+_JIS_KAIGO_LEVELS = set(['\u8981\u4ecb\u8b771','\u8981\u4ecb\u8b772','\u8981\u4ecb\u8b773','\u8981\u4ecb\u8b774','\u8981\u4ecb\u8b775'])
+_JIS_SOGO_LEVELS = set(['\u4e8b\u696d\u5bfe\u8c61\u8005','\u8981\u652f\u63f41','\u8981\u652f\u63f42'])
+
+
+def _jis_time_lower_bound(cat):
+    """\'3-4h\' -> 3 (\u4e0b\u9650\u6642\u6570)\u3002\u4e0d\u660e\u306f None\u3002"""
+    try:
+        return int(str(cat).split('-')[0])
+    except Exception:
+        return None
+
+
+def _jis_sogo_bucket(cat):
+    """\u6642\u9593\u5e45\u533a\u5206 -> \u7dcf\u5408\u4e8b\u696d\u306e\u7c97\u533a\u5206(\u4e0b\u9650\u3067\u5224\u5b9a)\u3002"""
+    lb = _jis_time_lower_bound(cat)
+    if lb is None:
+        return None
+    if lb < 5:
+        return '5h\u672a\u6e80'
+    if lb < 7:
+        return '5-7h'
+    return '7h\u4ee5\u4e0a'
+
+
+@app.route("/api/jisseki/service_time_summary", methods=["GET"])
+@login_required
+def api_jisseki_svctime_summary():
+    """jisseki-svctime-summary-v1: 提供時間別 延べ人数を返す(保険分のみ+自費別カウント)。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        year = int(request.args.get("year"))
+        month = int(request.args.get("month"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "year/month\u5fc5\u9808"}), 400
+    try:
+        import calendar as _c
+        from datetime import date as _d
+        ndays = _c.monthrange(year, month)[1]
+        first = "%04d-%02d-01" % (year, month)
+        last = "%04d-%02d-%02d" % (year, month, ndays)
+
+        # 1) vitals: (patient_id, measured_date) ユニーク
+        vit = supabase.table("vitals").select("patient_id, measured_date") \
+            .eq("facility_code", f_code) \
+            .gte("measured_date", first).lte("measured_date", last).execute()
+        visit_days = {}  # patient_id -> set(date_iso)
+        for r in (vit.data or []):
+            pid = r.get("patient_id"); md = (r.get("measured_date") or "")[:10]
+            if pid and md:
+                visit_days.setdefault(pid, set()).add(md)
+        patient_ids = list(visit_days.keys())
+
+        # 空ならゼロで返す
+        def _empty():
+            kaigo = {c: 0 for c in _JIS_TIME_CATS}
+            sogo = {'5h\u672a\u6e80': 0, '5-7h': 0, '7h\u4ee5\u4e0a': 0}
+            return kaigo, sogo
+        if not patient_ids:
+            kaigo, sogo = _empty()
+            return jsonify({"status": "success", "year": year, "month": month,
+                            "kaigo": kaigo, "sogo": sogo,
+                            "jihi": {"kaigo": 0, "sogo": 0},
+                            "unclassified": 0})
+
+        # 2) care_level_history 一括(月末時点の介護度)
+        hist_map = {}
+        CHUNK = 100
+        for i in range(0, len(patient_ids), CHUNK):
+            chunk = patient_ids[i:i+CHUNK]
+            hres = supabase.table("care_level_history") \
+                .select("patient_id, care_level, valid_from, id") \
+                .eq("facility_code", f_code).in_("patient_id", chunk).execute()
+            for h in (hres.data or []):
+                hist_map.setdefault(str(h.get("patient_id")), []).append(h)
+
+        def level_at(pid):
+            best = None
+            for h in hist_map.get(str(pid), []):
+                vf = (h.get("valid_from") or "")[:10]
+                if not vf or vf > last:
+                    continue
+                if best is None or vf > (best.get("valid_from") or "")[:10] or \
+                   (vf == (best.get("valid_from") or "")[:10] and (h.get("id") or 0) > (best.get("id") or 0)):
+                    best = h
+            return (best.get("care_level") if best else None)
+
+        # 3) service_time_settings(施設の曜日→提供時間)
+        sts = supabase.table("service_time_settings").select("weekday, time_category") \
+            .eq("facility_code", f_code).execute()
+        wd_cat = {}  # weekday(int) -> time_category
+        for r in (sts.data or []):
+            wd_cat[int(r.get("weekday"))] = r.get("time_category")
+
+        # 4) patient_jihi_weekdays(利用者×曜日の自費)
+        pjw = {}  # patient_id -> set(weekday)
+        for i in range(0, len(patient_ids), CHUNK):
+            chunk = patient_ids[i:i+CHUNK]
+            pres = supabase.table("patient_jihi_weekdays").select("patient_id, weekday") \
+                .eq("facility_code", f_code).in_("patient_id", chunk).execute()
+            for r in (pres.data or []):
+                pjw.setdefault(str(r.get("patient_id")), set()).add(int(r.get("weekday")))
+
+        # 5) visit_day_overrides(来所日ごとの上書き)
+        ovr = {}  # (patient_id, date_iso) -> {time_category, payment_type}
+        for i in range(0, len(patient_ids), CHUNK):
+            chunk = patient_ids[i:i+CHUNK]
+            ores = supabase.table("visit_day_overrides") \
+                .select("patient_id, visit_date, time_category, payment_type") \
+                .eq("facility_code", f_code).in_("patient_id", chunk) \
+                .gte("visit_date", first).lte("visit_date", last).execute()
+            for r in (ores.data or []):
+                key = (str(r.get("patient_id")), (r.get("visit_date") or "")[:10])
+                ovr[key] = {"time_category": r.get("time_category"), "payment_type": r.get("payment_type")}
+
+        # 6) 集計
+        kaigo, sogo = _empty()
+        jihi_kaigo = 0
+        jihi_sogo = 0
+        unclassified = 0
+
+        for pid, dates in visit_days.items():
+            lv = level_at(pid)
+            is_kaigo = lv in _JIS_KAIGO_LEVELS
+            is_sogo = lv in _JIS_SOGO_LEVELS
+            jihi_wds = pjw.get(str(pid), set())
+            for ds in dates:
+                o = ovr.get((str(pid), ds), {})
+                # 提供時間区分
+                cat = o.get("time_category")
+                if not cat:
+                    wd = _d.fromisoformat(ds).weekday()  # Mon=0..Sun=6
+                    # service_time_settings は 0=日..6=土 なので換算: JS getDayと揃える
+                    js_wd = (wd + 1) % 7  # Python Mon=0 -> JSは Mon=1; Sun: Py=6 -> JS=0
+                    cat = wd_cat.get(js_wd)
+                # 保険/自費判定
+                ptype = o.get("payment_type")
+                if not ptype:
+                    wd = _d.fromisoformat(ds).weekday()
+                    js_wd = (wd + 1) % 7
+                    ptype = "jihi" if js_wd in jihi_wds else "hoken"
+                # 集計
+                if ptype == "jihi":
+                    if is_kaigo: jihi_kaigo += 1
+                    elif is_sogo: jihi_sogo += 1
+                    continue
+                # 保険分
+                if not cat:
+                    unclassified += 1
+                    continue
+                if is_kaigo:
+                    if cat in kaigo: kaigo[cat] += 1
+                    else: unclassified += 1
+                elif is_sogo:
+                    b = _jis_sogo_bucket(cat)
+                    if b: sogo[b] += 1
+                    else: unclassified += 1
+                else:
+                    unclassified += 1
+
+        return jsonify({"status": "success", "year": year, "month": month,
+                        "kaigo": kaigo, "sogo": sogo,
+                        "jihi": {"kaigo": jihi_kaigo, "sogo": jihi_sogo},
+                        "unclassified": unclassified})
+    except Exception as e:
+        print("api_jisseki_svctime_summary error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
