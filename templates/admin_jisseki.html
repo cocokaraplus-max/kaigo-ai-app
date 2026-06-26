@@ -82,7 +82,7 @@
   <!-- jisseki-charts-v1 -->
   <div class="jis-charts" style="margin-top:18px;">
     <div class="jis-section-label">グラフ</div>
-    <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;"><canvas id="chart-carelevel" height="220"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;"><div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;"><button type="button" id="cl-type-doughnut" onclick="setCareLevelChartType('doughnut')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">円</button><button type="button" id="cl-type-bar" onclick="setCareLevelChartType('bar')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">棒</button></div><canvas id="chart-carelevel" height="220"></canvas></div>
     <div style="background:#fff;border-radius:12px;padding:14px;"><canvas id="chart-svctime" height="220"></canvas></div>
   </div>
 </div>
@@ -273,18 +273,45 @@
   loadSvcTime();
   // jisseki-charts-v1: chart drawing
   var _chartCL = null, _chartSV = null;
+  // jisseki-chart-toggle-v1: 円/棒 切り替え対応
+  var _clType = 'doughnut';
+  var _clLastData = null;
+  var CL_COLORS = ['#2e7d32','#4a9d5b','#6fb87f','#9bcfa6','#c3e3c9','#c79a3d','#e0b85f','#efd49a'];
+  function setCareLevelChartType(t){
+    _clType = t;
+    var bd = document.getElementById('cl-type-doughnut'), bb = document.getElementById('cl-type-bar');
+    if (bd && bb) {
+      var donut = (t === 'doughnut');
+      bd.style.borderColor = donut ? '#4a9d5b' : '#dadce0'; bd.style.background = donut ? '#eef7f0' : '#fff'; bd.style.color = donut ? '#2e7d32' : '#9aa0a6';
+      bb.style.borderColor = donut ? '#dadce0' : '#4a9d5b'; bb.style.background = donut ? '#fff' : '#eef7f0'; bb.style.color = donut ? '#9aa0a6' : '#2e7d32';
+    }
+    if (_clLastData) drawCareLevelChart(_clLastData);
+  }
+  window.setCareLevelChartType = setCareLevelChartType;
   function drawCareLevelChart(data){
     if (typeof Chart === 'undefined') return;
     var el = document.getElementById('chart-carelevel'); if (!el) return;
+    _clLastData = data;
     var byLevel = {}; (data.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
-    var labels = (KAIGO||[]).concat(SOGO||[]);
-    var vals = labels.map(function(lv){ var r = byLevel[lv]; return r ? r.jin : 0; });
+    var allLabels = (KAIGO||[]).concat(SOGO||[]);
+    var allVals = allLabels.map(function(lv){ var r = byLevel[lv]; return r ? r.jin : 0; });
     if (_chartCL) _chartCL.destroy();
-    _chartCL = new Chart(el, {
-      type: 'bar',
-      data: { labels: labels, datasets: [{ label: '実人数', data: vals, backgroundColor: '#4a9d5b' }] },
-      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '介護度別 実人数' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
-    });
+    if (_clType === 'doughnut') {
+      // 0は除外して見やすく
+      var labels = [], vals = [], colors = [];
+      allLabels.forEach(function(lv, i){ if (allVals[i] > 0) { labels.push(lv); vals.push(allVals[i]); colors.push(CL_COLORS[i % CL_COLORS.length]); } });
+      _chartCL = new Chart(el, {
+        type: 'doughnut',
+        data: { labels: labels, datasets: [{ data: vals, backgroundColor: colors }] },
+        options: { responsive: true, plugins: { legend: { position: 'right' }, title: { display: true, text: '介護度別 実人数（構成比）' } } }
+      });
+    } else {
+      _chartCL = new Chart(el, {
+        type: 'bar',
+        data: { labels: allLabels, datasets: [{ label: '実人数', data: allVals, backgroundColor: '#4a9d5b' }] },
+        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '介護度別 実人数' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+    }
   }
   function drawSvcTimeChart(j){
     if (typeof Chart === 'undefined') return;
