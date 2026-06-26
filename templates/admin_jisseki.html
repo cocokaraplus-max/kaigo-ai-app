@@ -42,6 +42,31 @@
   .svct-row select { flex:1; padding:7px 9px; border:2px solid #cfe3d4; border-radius:9px; font-size:0.9rem; background:#fff; }
   .svct-save { margin-top:12px; width:100%; padding:11px; background:#2e7d32; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95rem; cursor:pointer; }
   .svct-save:active { opacity:0.85; }
+
+/* jisseki-print-v1 */
+.jis-print-only { display: none; }
+@media print {
+  /* ナビ・操作系を隠す */
+  nav, .bottom-nav, .navbar, header, .jis-controls, .jis-print-bar, .svct-acc, .jis-note,
+  .jis-head, .jis-section-label > .material-symbols-outlined { display: none !important; }
+  /* 印刷ヘッダー表示 */
+  .jis-print-only { display: block !important; text-align: center; margin-bottom: 14px; }
+  .jis-print-title { font-size: 18pt; font-weight: 800; color: #000; }
+  .jis-print-sub { font-size: 12pt; color: #222; margin-top: 4px; }
+  /* 範囲出し分け */
+  body:not(.print-charts) #jis-body,
+  body:not(.print-charts) #jis-svctime-body { display: block; }
+  body.print-charts #jis-body,
+  body.print-charts #jis-svctime-body { display: none !important; }
+  body.print-tables .jis-charts { display: none !important; }
+  /* A4・色 */
+  @page { size: A4 portrait; margin: 14mm; }
+  body { background: #fff !important; }
+  .jis-table { width: 100%; border-collapse: collapse; }
+  .jis-table th, .jis-table td { border: 1px solid #888 !important; padding: 4px 8px; }
+  .jis-charts canvas { max-width: 100% !important; }
+  .pct { color: #444 !important; }
+}
 </style>
 {% endblock %}
 
@@ -56,6 +81,17 @@
     <select id="jis-year"></select>
     <select id="jis-month"></select>
     <span style="font-size:0.85rem;color:#4f6b56;">の実績</span>
+  </div>
+  <!-- jisseki-print-v1 -->
+  <div class="jis-print-bar" style="margin:4px 0 8px;">
+    <button type="button" class="jis-print-btn" onclick="openPrintMenu()" style="display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;font-weight:700;padding:7px 14px;border-radius:9px;border:1.5px solid #2e7d32;background:#fff;color:#2e7d32;cursor:pointer;">
+      <span class="material-symbols-outlined" style="font-size:18px;">print</span>印刷 / PDF保存
+    </button>
+  </div>
+  <!-- 印刷用ヘッダー(画面では非表示、印刷時のみ表示) -->
+  <div id="jis-print-header" class="jis-print-only">
+    <div class="jis-print-title">実績集計表</div>
+    <div class="jis-print-sub" id="jis-print-period"></div>
   </div>
   <div class="jis-note">月末時点の要介護度で集計しています。来所実績（バイタル記録）が集計の対象です。</div>
 
@@ -334,6 +370,39 @@
       options: { responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '提供時間別 延べ人数(保険)' } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
   }
+  // jisseki-print-v1: 印刷/PDF
+  window.openPrintMenu = function(){
+    var existing = document.getElementById('jis-print-modal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'jis-print-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:320px;width:100%;padding:20px;">'
+      + '<div style="font-weight:800;color:#1e5e26;margin-bottom:6px;">印刷 / PDF保存</div>'
+      + '<div style="font-size:0.78rem;color:#6b7d6f;margin-bottom:14px;">印刷する内容を選んでください。印刷ダイアログで「PDFに保存」も選べます。</div>'
+      + '<button onclick="doJisPrint(\'tables\')" style="width:100%;padding:11px;margin-bottom:8px;border-radius:10px;border:1.5px solid #2e7d32;background:#eef7f0;color:#1e5e26;font-weight:700;cursor:pointer;">表だけ</button>'
+      + '<button onclick="doJisPrint(\'charts\')" style="width:100%;padding:11px;margin-bottom:8px;border-radius:10px;border:1.5px solid #2e7d32;background:#eef7f0;color:#1e5e26;font-weight:700;cursor:pointer;">グラフだけ</button>'
+      + '<button onclick="doJisPrint(\'both\')" style="width:100%;padding:11px;margin-bottom:12px;border-radius:10px;border:1.5px solid #2e7d32;background:#eef7f0;color:#1e5e26;font-weight:700;cursor:pointer;">両方</button>'
+      + '<button onclick="closeJisPrint()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #dadce0;background:#fff;color:#5f6368;font-weight:700;cursor:pointer;">キャンセル</button>'
+      + '</div>';
+    document.body.appendChild(modal);
+  };
+  window.closeJisPrint = function(){ var m = document.getElementById('jis-print-modal'); if (m) m.remove(); };
+  window.doJisPrint = function(scope){
+    closeJisPrint();
+    // 印刷ヘッダーの期間を埋める
+    var ph = document.getElementById('jis-print-period');
+    if (ph) ph.textContent = ySel.value + '年 ' + mSel.value + '月';
+    // body にクラス付与
+    document.body.classList.remove('print-tables','print-charts','print-both');
+    document.body.classList.add('print-' + scope);
+    // 印刷
+    setTimeout(function(){
+      window.print();
+      // 後始末
+      setTimeout(function(){ document.body.classList.remove('print-tables','print-charts','print-both'); }, 500);
+    }, 100);
+  };
   ySel.addEventListener('change', load);
   mSel.addEventListener('change', load);
   load();
