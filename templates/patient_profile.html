@@ -351,7 +351,7 @@
 
           <div class="form-group">
             <label>介護度</label>
-            <select id="care_level" name="care_level">
+            <select id="care_level" name="care_level" data-orig="{{ selected.care_level if selected else '' }}">  <!-- clh-front-v1 -->
               <option value="">選択してください</option>
               {% for level in ['事業対象者','要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'] %}
               <option value="{{ level }}" {% if selected and selected.care_level == level %}selected{% endif %}>{{ level }}</option>
@@ -749,6 +749,31 @@ async function saveProfile(e) {
 
   try {
     data.id = id || null;
+    // clh-front-v1: 既存利用者で介護度が変わったら変更日を確認
+    if (id) {
+      const careSel = document.getElementById('care_level');
+      const origCare = (careSel.getAttribute('data-orig') || '').trim();
+      const newCare = (careSel.value || '').trim();
+      if (newCare && newCare !== origCare) {
+        const today = new Date().toISOString().slice(0,10);
+        const cs = document.getElementById('certification_start_date');
+        const def = (cs && cs.value) ? cs.value : today;
+        const vf = window.prompt(
+          '\u4ecb\u8b77\u5ea6\u3092\u300c' + (origCare || '\u672a\u8a2d\u5b9a') + '\u300d\u2192\u300c' + newCare + '\u300d\u306b\u5909\u66f4\u3057\u307e\u3059\u3002\n\u3053\u306e\u4ecb\u8b77\u5ea6\u306e\u9069\u7528\u958b\u59cb\u65e5\uff08\u5909\u66f4\u65e5\uff09\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002',
+          def
+        );
+        if (vf === null) {
+          showToast('\u26a0\ufe0f \u4fdd\u5b58\u3092\u4e2d\u6b62\u3057\u307e\u3057\u305f');
+          return;
+        }
+        const vfTrim = vf.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(vfTrim)) {
+          showToast('\u274c \u5909\u66f4\u65e5\u306f YYYY-MM-DD \u5f62\u5f0f\u3067\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044');
+          return;
+        }
+        data.care_level_valid_from = vfTrim;
+      }
+    }
     const res = await fetch('/api/admin/patient/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
