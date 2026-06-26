@@ -9260,7 +9260,8 @@ def api_admin_patient_save():
         f_code = session["f_code"]
         pid = (data.get("id") or "").strip()
         # idは書き込み対象カラムから除外し、facility_codeは強制
-        row = {k: v for k, v in data.items() if k not in ("id", "facility_code")}
+        # clh-history-v1-fix1: care_level_valid_from は履歴用なので patient_profiles へは書かない
+        row = {k: v for k, v in data.items() if k not in ("id", "facility_code", "care_level_valid_from")}
         row["facility_code"] = f_code
         row["updated_at"] = datetime.now(tokyo_tz).isoformat()
         # patient-number-zerofill-v1: 利用者番号を整形
