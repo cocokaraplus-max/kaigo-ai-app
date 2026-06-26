@@ -14985,3 +14985,133 @@ def print_preview():
         selected_images_json=selected_images_json,
         img_layouts_json=img_layouts_json,
     )
+
+
+# ==========================================
+# jisseki-clsummary-v1: 実績集計(第2段階A) 介護度別の実人数・延べ人数
+# 集計源: vitals(来所実績) / 判定軸: care_level_history(月末時点の介護度)
+# 保険/自費の区別は未実装(2Bで追加)
+# ==========================================
+import calendar as _jis_cal
+from datetime import date as _jis_date
+
+# 提出帳票の介護度区分(表示順)
+_JIS_CARE_ORDER = [
+    "\u4e8b\u696d\u5bfe\u8c61\u8005",  # 事業対象者
+    "\u8981\u652f\u63f41",            # 要支援1
+    "\u8981\u652f\u63f42",            # 要支援2
+    "\u8981\u4ecb\u8b771",            # 要介護1
+    "\u8981\u4ecb\u8b772",            # 要介護2
+    "\u8981\u4ecb\u8b773",            # 要介護3
+    "\u8981\u4ecb\u8b774",            # 要介護4
+    "\u8981\u4ecb\u8b775",            # 要介護5
+]
+
+
+def _jis_level_at_month_end(history_rows, month_end_iso):
+    """その利用者の履歴行(list of dict)から、
+    month_end_iso(月末日 'YYYY-MM-DD')時点で有効な care_level を返す。
+    valid_from <= 月末日 の中で valid_from 最大(同日なら id 最大)を採用。"""
+    best = None
+    for h in history_rows:
+        vf = (h.get("valid_from") or "")[:10]
+        if not vf or vf > month_end_iso:
+            continue
+        if best is None:
+            best = h
+        else:
+            bvf = (best.get("valid_from") or "")[:10]
+            if vf > bvf or (vf == bvf and (h.get("id") or 0) > (best.get("id") or 0)):
+                best = h
+    return (best.get("care_level") if best else None)
+
+
+@app.route("/api/jisseki/care_level_summary", methods=["GET"])
+@login_required
+def api_jisseki_care_level_summary():
+    """jisseki-clsummary-v1: 対象月の介護度別 実人数/延べ人数/割合を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        year = int(request.args.get("year"))
+        month = int(request.args.get("month"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "year/month\u5fc5\u9808"}), 400
+    try:
+        ndays = _jis_cal.monthrange(year, month)[1]
+        first = "%04d-%02d-01" % (year, month)
+        last = "%04d-%02d-%02d" % (year, month, ndays)
+
+        # 1) vitals から 来所日(patient_id, measured_date) を取得
+        vit = supabase.table("vitals").select("patient_id, measured_date") \
+            .eq("facility_code", f_code) \
+            .gte("measured_date", first).lte("measured_date", last).execute()
+        # (patient_id, date) をユニーク化 → 来所日集合
+        visit_days = {}  # patient_id -> set(date)
+        for r in (vit.data or []):
+            pid = r.get("patient_id")
+            md = (r.get("measured_date") or "")[:10]
+            if not pid or not md:
+                continue
+            visit_days.setdefault(pid, set()).add(md)
+
+        patient_ids = list(visit_days.keys())
+        if not patient_ids:
+            # データ無しでも区分は0埋めで返す
+            rows = [{"care_level": lv, "jin": 0, "nobe": 0, "jin_pct": 0.0, "nobe_pct": 0.0} for lv in _JIS_CARE_ORDER]
+            return jsonify({"status": "success", "year": year, "month": month,
+                            "rows": rows, "no_level": {"jin": 0, "nobe": 0},
+                            "total": {"jin": 0, "nobe": 0}})
+
+        # 2) care_level_history を 対象利用者分一括取得(N+1回避)
+        #    patient_id は uuid カラムだが文字列で in 指定可能
+        hist_map = {}  # patient_id(str) -> list of history dict
+        CHUNK = 100
+        for i in range(0, len(patient_ids), CHUNK):
+            chunk = patient_ids[i:i + CHUNK]
+            hres = supabase.table("care_level_history") \
+                .select("patient_id, care_level, valid_from, id") \
+                .eq("facility_code", f_code).in_("patient_id", chunk).execute()
+            for h in (hres.data or []):
+                hist_map.setdefault(str(h.get("patient_id")), []).append(h)
+
+        # 3) 介護度別に集計
+        agg = {lv: {"jin": 0, "nobe": 0} for lv in _JIS_CARE_ORDER}
+        no_level = {"jin": 0, "nobe": 0}
+        for pid, dates in visit_days.items():
+            nobe = len(dates)  # 来所日数
+            lv = _jis_level_at_month_end(hist_map.get(str(pid), []), last)
+            if lv in agg:
+                agg[lv]["jin"] += 1
+                agg[lv]["nobe"] += nobe
+            else:
+                no_level["jin"] += 1
+                no_level["nobe"] += nobe
+
+        total_jin = sum(a["jin"] for a in agg.values()) + no_level["jin"]
+        total_nobe = sum(a["nobe"] for a in agg.values()) + no_level["nobe"]
+
+        def _pct(n, d):
+            return round((n * 100.0 / d), 1) if d else 0.0
+
+        rows = []
+        for lv in _JIS_CARE_ORDER:
+            a = agg[lv]
+            rows.append({
+                "care_level": lv,
+                "jin": a["jin"],
+                "nobe": a["nobe"],
+                "jin_pct": _pct(a["jin"], total_jin),
+                "nobe_pct": _pct(a["nobe"], total_nobe),
+            })
+
+        return jsonify({
+            "status": "success",
+            "year": year, "month": month,
+            "rows": rows,
+            "no_level": no_level,
+            "total": {"jin": total_jin, "nobe": total_nobe},
+        })
+    except Exception as e:
+        print("api_jisseki_care_level_summary error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
