@@ -15412,3 +15412,90 @@ def api_jisseki_jihi_wd_save():
     except Exception as e:
         print("api_jisseki_jihi_wd_save error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-visit-override-v1: 来所日ごとの保険/自費上書き (visit_day_overrides)
+# patient_id = patient_profiles.id (uuid、vitalsと同基準)
+# ==========================================
+@app.route("/api/jisseki/visit_overrides", methods=["GET"])
+@login_required
+def api_jisseki_visit_overrides_get():
+    """jisseki-visit-override-v1: 指定日の全上書きを返す(一括)。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    date = (request.args.get("date") or "").strip()
+    if not date:
+        return jsonify({"status": "error", "message": "date\u5fc5\u9808"}), 400
+    try:
+        res = supabase.table("visit_day_overrides") \
+            .select("patient_id, payment_type, time_category") \
+            .eq("facility_code", f_code).eq("visit_date", date).execute()
+        overrides = {}
+        for r in (res.data or []):
+            overrides[str(r.get("patient_id"))] = {
+                "payment_type": r.get("payment_type"),
+                "time_category": r.get("time_category"),
+            }
+        return jsonify({"status": "success", "overrides": overrides})
+    except Exception as e:
+        print("api_jisseki_visit_overrides_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jisseki/visit_override", methods=["POST"])
+@login_required
+def api_jisseki_visit_override_save():
+    """jisseki-visit-override-v1: 1件の上書きを upsert。
+    body: {patient_id(uuid), visit_date, payment_type?('hoken'|'jihi'), time_category?}
+    payment_type と time_category が両方 null/空 なら行を削除。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        pid = (data.get("patient_id") or "").strip()
+        vdate = (data.get("visit_date") or "").strip()
+        if not pid or not vdate:
+            return jsonify({"status": "error", "message": "patient_id/visit_date\u5fc5\u9808"}), 400
+        ptype = data.get("payment_type")
+        if ptype not in ("hoken", "jihi", None, ""):
+            return jsonify({"status": "error", "message": "payment_type\u4e0d\u6b63"}), 400
+        ptype = ptype or None
+        tcat = (data.get("time_category") or None)
+        # 両方空なら行削除(デフォルトに戻す)
+        if not ptype and not tcat:
+            supabase.table("visit_day_overrides").delete() \
+                .eq("facility_code", f_code).eq("patient_id", pid).eq("visit_date", vdate).execute()
+            return jsonify({"status": "success", "deleted": True})
+        supabase.table("visit_day_overrides").upsert({
+            "facility_code": f_code,
+            "patient_id": pid,
+            "visit_date": vdate,
+            "payment_type": ptype,
+            "time_category": tcat,
+        }, on_conflict="facility_code,patient_id,visit_date").execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_jisseki_visit_override_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-jihi-all-v1: 施設全体の自費曜日デフォルトを一括取得
+# ==========================================
+@app.route("/api/jisseki/jihi_weekdays_all", methods=["GET"])
+@login_required
+def api_jisseki_jihi_all_get():
+    """jisseki-jihi-all-v1: {patient_id: [weekday,...]} を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        res = supabase.table("patient_jihi_weekdays").select("patient_id, weekday") \
+            .eq("facility_code", f_code).execute()
+        out = {}
+        for r in (res.data or []):
+            out.setdefault(str(r.get("patient_id")), []).append(int(r.get("weekday")))
+        return jsonify({"status": "success", "data": out})
+    except Exception as e:
+        print("api_jisseki_jihi_all_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

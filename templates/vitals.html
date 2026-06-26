@@ -103,6 +103,9 @@
 }
 .patient-vital-card.alert { border-color:#ea4335; }
 .patient-vital-card.recheck { border-color:#ff6f00; background:#fff8e1; }
+.patient-vital-card.jihi { border-color:#e8a33d !important; background:#fff3e0 !important; }
+.vital-jihi-btn { font-size:0.66rem; font-weight:700; padding:3px 8px; border-radius:7px; border:1.5px solid #dadce0; background:#fff; color:#9aa0a6; cursor:pointer; margin:0 12px 10px; }
+.vital-jihi-btn[data-jihi="1"] { color:#b85c00; border-color:#e8a33d; background:#fff3e0; }
 .patient-vital-header {
     display:flex; align-items:center; justify-content:space-between;
     padding:12px 16px; cursor:pointer; background:#f8f9fa;
@@ -1215,6 +1218,47 @@ const PATIENTS    = {{ patients | tojson }};
 const VISIT_DAYS  = {{ visit_days | tojson }};
 const AMPM_DATA   = {{ ampm_data | tojson }};
 const AMPM_PER_DAY = {{ ampm_per_day | tojson }};
+// jihi-vitals-ui-v1: jihi(self-pay) state
+var JIHI_WEEKDAYS_ALL = {};   // {patient_id: [weekday,...]}
+var VISIT_OVERRIDES = {};     // {patient_id: {payment_type, time_category}}  (for current date)
+function _vitalDateStr(){ return (document.getElementById('vital-date') && document.getElementById('vital-date').value) || (typeof TODAY!=='undefined'?TODAY:''); }
+function _weekdayOf(ds){ try { return new Date(ds + 'T00:00:00').getDay(); } catch(e){ return -1; } }
+// \u81ea\u8cbb\u5224\u5b9a: \u305d\u306e\u65e5\u306eoverride\u512a\u5148 \u2192 \u66dc\u65e5\u30c7\u30d5\u30a9\u30eb\u30c8
+function isJihiInit(pid){
+  var o = VISIT_OVERRIDES[String(pid)];
+  if (o && o.payment_type) return o.payment_type === 'jihi';
+  var wd = _weekdayOf(_vitalDateStr());
+  var arr = JIHI_WEEKDAYS_ALL[String(pid)] || [];
+  return arr.indexOf(wd) !== -1;
+}
+async function loadJihiState(){
+  var ds = _vitalDateStr();
+  try {
+    var a = await fetch('/api/jisseki/jihi_weekdays_all').then(function(r){return r.json();});
+    JIHI_WEEKDAYS_ALL = (a && a.data) ? a.data : {};
+  } catch(e){ JIHI_WEEKDAYS_ALL = {}; }
+  try {
+    var b = await fetch('/api/jisseki/visit_overrides?date=' + encodeURIComponent(ds)).then(function(r){return r.json();});
+    VISIT_OVERRIDES = (b && b.overrides) ? b.overrides : {};
+  } catch(e){ VISIT_OVERRIDES = {}; }
+}
+window.toggleVitalJihi = async function(pid){
+  var ds = _vitalDateStr();
+  var cur = isJihiInit(pid);
+  var next = cur ? 'hoken' : 'jihi';
+  // \u753b\u9762\u5373\u6642\u53cd\u6620
+  VISIT_OVERRIDES[String(pid)] = Object.assign({}, VISIT_OVERRIDES[String(pid)] || {}, {payment_type: next});
+  var card = document.getElementById('vcard-' + pid);
+  var btn = document.querySelector('.vital-jihi-btn[data-pid="' + pid + '"]');
+  if (card) { if (next === 'jihi') card.classList.add('jihi'); else card.classList.remove('jihi'); }
+  if (btn) btn.dataset.jihi = (next === 'jihi') ? '1' : '0';
+  try {
+    await fetch('/api/jisseki/visit_override', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patient_id: pid, visit_date: ds, payment_type: next})
+    });
+  } catch(e){}
+};
 const VITALS_DATA = {{ vitals_data | tojson }};
 // 全件キャッシュ(patient_id → [配列]) — 何回目表示用
 const VITALS_ALL_DATA = {};
@@ -1410,6 +1454,7 @@ window.onVitalDateChange = async function() {
 
 // 指定日のバイタル + 除外データを再取得して VITALS_DATA / EXCLUDES_TODAY を更新
 async function reloadVitalsForDate(dateStr) {
+    await loadJihiState();  // jihi-vitals-ui-v1
     try {
         // バイタル取得
         const vRes = await fetch('/api/vitals_daily?date=' + encodeURIComponent(dateStr));
@@ -1434,10 +1479,11 @@ async function reloadVitalsForDate(dateStr) {
 }
 
 // ページ読み込み時に今日の曜日をアクティブに + 曜日ラベル表示
-requestAnimationFrame(() => {
+requestAnimationFrame(async () => {
     selectAmpm('ALL');
     document.querySelector(`.wd-tab[data-day="${currentWeekday}"]`)?.classList.add('active');
     updateWeekdayLabel();
+    await loadJihiState();  // jihi-vitals-ui-v1
     renderPatientList();
 });
 
@@ -1615,7 +1661,7 @@ function renderPatientList() {
             const badge = isRecheck ? '<span class="vital-recheck-badge">再検査</span>'
                         : (hasAlert ? '<span class="vital-alert-badge">アラート</span>' : '');
             return `
-            <div class="patient-vital-card ${isRecheck ? 'recheck' : (hasAlert ? 'alert' : '')}" id="vcard-${p.id}" style="position:relative;overflow:hidden;border-radius:12px;">
+            <div class="patient-vital-card ${isJihiInit(p.id) ? 'jihi' : ''} ${isRecheck ? 'recheck' : (hasAlert ? 'alert' : '')}" id="vcard-${p.id}" style="position:relative;overflow:hidden;border-radius:12px;">
                 <div class="swipe-delete-bg">
                     <span class="material-symbols-outlined">delete</span><span>削除</span>
                 </div>
@@ -1626,6 +1672,7 @@ function renderPatientList() {
                         </span>
                         <span style="font-size:0.7rem;color:#80868b;">${p.user_kana || ''}</span>
                     </button>
+                    <button type="button" class="vital-jihi-btn" data-pid="${p.id}" data-jihi="${isJihiInit(p.id) ? '1' : '0'}" onclick="event.stopPropagation(); toggleVitalJihi('${p.id}')">\u81ea\u8cbb</button>
                 </div>
             </div>`;
         }).join('') + `</div>`;
