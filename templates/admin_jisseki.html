@@ -53,12 +53,11 @@
   .jis-print-only { display: block !important; text-align: center; margin-bottom: 14px; }
   .jis-print-title { font-size: 18pt; font-weight: 800; color: #000; }
   .jis-print-sub { font-size: 12pt; color: #222; margin-top: 4px; }
-  /* 範囲出し分け */
-  body:not(.print-charts) #jis-body,
-  body:not(.print-charts) #jis-svctime-body { display: block; }
-  body.print-charts #jis-body,
-  body.print-charts #jis-svctime-body { display: none !important; }
-  body.print-tables .jis-charts { display: none !important; }
+  /* 範囲出し分け (jisseki-print-fix-v1) */
+  html body.print-charts #jis-body,
+  html body.print-charts #jis-svctime-body { display: none !important; }
+  html body.print-tables .jis-charts,
+  html body.print-tables .jis-charts * { display: none !important; visibility: hidden !important; }
   /* A4・色 */
   @page { size: A4 portrait; margin: 14mm; }
   body { background: #fff !important; }
@@ -390,18 +389,17 @@
   window.closeJisPrint = function(){ var m = document.getElementById('jis-print-modal'); if (m) m.remove(); };
   window.doJisPrint = function(scope){
     closeJisPrint();
-    // 印刷ヘッダーの期間を埋める
     var ph = document.getElementById('jis-print-period');
     if (ph) ph.textContent = ySel.value + '年 ' + mSel.value + '月';
-    // body にクラス付与
     document.body.classList.remove('print-tables','print-charts','print-both');
     document.body.classList.add('print-' + scope);
-    // 印刷
-    setTimeout(function(){
-      window.print();
-      // 後始末
-      setTimeout(function(){ document.body.classList.remove('print-tables','print-charts','print-both'); }, 500);
-    }, 100);
+    // 印刷完了後にクラス除去(プレビュー表示中は維持) jisseki-print-fix-v1
+    var cleanup = function(){
+      document.body.classList.remove('print-tables','print-charts','print-both');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(function(){ window.print(); }, 150);
   };
   ySel.addEventListener('change', load);
   mSel.addEventListener('change', load);
