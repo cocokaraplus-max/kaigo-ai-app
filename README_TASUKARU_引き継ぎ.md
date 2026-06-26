@@ -1772,3 +1772,32 @@ WHERE care_level IS NOT NULL;
 - **自費の利用者×曜日設定UI**: patient_jihi_weekdays を編集するUI(利用者情報ページ patient_profile が自然)。
 - **step3(日別上書きUI)**: visit_day_overrides を編集するUI(イレギュラー対応)。
 - 集計の確定値(参考, 介護度別・保険自費区別なし): 2026-05=71名/353, 2026-06=68名/342。
+
+## 39. 【実績集計・第3段階step2 完了 + 利用管理エラー修正】（2026-06-27）<!-- readme-s39-jisseki-3step2 -->
+
+§38の続き。提供時間別の延べ人数集計(API+UI)を実装・本番反映。あわせて利用管理ページの既存バグ(visit_records本番未作成)を発見・修正し、過去実績をvitalsから復元した。
+
+### 39-1. 提供時間別 延べ人数 集計（markers `jisseki-svctime-summary-v1`, `jisseki-svctime-sum-ui-v1`）
+- `GET /api/jisseki/service_time_summary?year=&month=`。集計源 = vitals + service_time_settings + patient_jihi_weekdays + visit_day_overrides。
+- 来所日ごと判定: 提供時間=visit_day_overrides.time_category → service_time_settings(曜日) → 未分類。保険/自費=overrides.payment_type → patient_jihi_weekdays該当曜日なら自費 → 保険。**保険分のみ集計、自費は別カウント**。
+- 介護サービス(要介護1〜5)=時間幅区分別(2-3h〜13-14h)。総合事業(事業対象者/要支援1/2)=5h未満/5-7h/7h以上(時間幅の**下限**で判定: <5=5h未満, 5〜6=5-7h, 7以上=7h以上)。
+- **曜日変換の罠**: service_time_settings.weekday は 0=日〜6=土(JS getDay基準)。Python date.weekday()は月=0〜日=6。変換 `js_wd=(py_wd+1)%7`。app.py内で変換済み。
+- UI: /admin/jisseki の介護度別集計の下に提供時間別の表2つ(介護/総合)+うち自費+未分類警告。介護サービス表は延べ>0の区分のみ表示。
+- 検証(本番2026-06): 介護サービス 3-4h=124・7-8h=18(小計142)、総合事業 5h未満=200、自費0、未分類0、総計342=介護度別の延べと一致。曜日変換・区分判定すべて正常。
+- デプロイ: 本番 revision tasukaru-00718-w5n。コミット b88d08c(dev)/77f99b2(本番)。
+- **patch v1はSyntaxErrorで失敗**(JSブロックの\\uがPython文字列に解釈された+空白混入)。v2でJSブロックをraw文字列(r'''...''')にして解決。今後JS内に\\uを埋めるパッチはraw文字列必須。
+
+### 39-2. 【既存バグ修正】利用管理ページ visit_records 本番未作成
+- 本番で /visit の利用者選択時に500エラー(PGRST205 "Could not find the table 'public.visit_records'")。原因=visit_recordsテーブルが本番DBに存在しなかった(§37で判明したのと同じ、ずっとDDL未適用)。バイタル保存時の自動記録(visit-mgmt-v1)も書き込み失敗していた。
+- 対応(全て本番Supabaseで実行):
+  1. visit_records テーブル作成。DEVと同一構造・制約: PK(id), UNIQUE(facility_code,patient_id,visit_date), CHECK status∈{present,absent,cancelled,transfer}, CHECK source∈{vital_auto,manual}, patient_id=**text**。
+  2. vitalsから過去全来所を移行: `INSERT ... SELECT DISTINCT facility_code, patient_id, measured_date, 'present', 'vital_auto' FROM vitals WHERE facility_code='cocokaraplus-5526' ON CONFLICT DO NOTHING`。
+  3. 移行結果: 2026-05=353件/71名, 2026-06=342件/68名(実績集計の確定値と完全一致)。**過去の利用者の実績も漏れなく記録された**。
+- 確認: /api/visit/month が200で正常応答、過去の出席日が表示される。コード変更なし(本来の設計に戻しただけ)。
+- 注意: status は英語値(present=出席/absent=休み/cancelled=中止/transfer=振替), source(vital_auto/manual)。実績集計API(care_level_summary/service_time_summary)はvitalsを直接見るのでvisit_recordsのstatus値に依存しない。
+
+### 39-3. 実績集計の現状(進捗)
+- 完了: 第1段階(介護度履歴), 第2段階A(介護度別集計 API+画面), 第3段階step1(提供時間の曜日設定), 第3段階step2(提供時間別集計)。すべて本番反映済み。
+- 確定値(参考): 2026-05=実71名/延353, 2026-06=実68名/延342。
+- 残り: ①自費の利用者×曜日設定UI(patient_jihi_weekdays編集、利用者情報ページが自然)、②日別上書きUI(visit_day_overrides、イレギュラー対応)、③グラフ(第4段階)、④印刷帳票(第5段階)。
+- **ガイド必須事項**: 「提供時間の曜日設定」(/admin/jisseki上部)は各事業所が必ず最初に設定する必要がある(未設定だと提供時間別が未分類になる)。施設ごとに自由設定(他事業所は平日7h提供などHIRO施設と異なる)。マニュアル/ガイドに必ず記載。同一曜日でも利用者ごとに提供時間が違う場合はvisit_day_overridesで対応。
