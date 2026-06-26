@@ -76,6 +76,9 @@
   <div id="jis-body">
     <div class="jis-loading">読み込み中…</div>
   </div>
+
+  <!-- jisseki-svctime-sum-ui-v1 -->
+  <div id="jis-svctime-body"></div>
 </div>
 
 <script>
@@ -156,9 +159,11 @@
         }
         if ((j.total||{}).jin === 0) {
           document.getElementById('jis-body').innerHTML = '<div class="jis-empty">この月の来所実績はまだありません。</div>';
+          document.getElementById('jis-svctime-body').innerHTML = '';
           return;
         }
         render(j);
+        loadSvcTimeSummary();
       })
       .catch(function(){
         document.getElementById('jis-body').innerHTML = '<div class="jis-empty">読み込みに失敗しました。</div>';
@@ -183,6 +188,52 @@
     });
     document.getElementById('svct-rows').innerHTML = rows;
   }
+
+  // jisseki-svctime-sum-ui-v1: provide-time summary tables
+  function svctRow(label, n){
+    return '<tr><td>'+label+'</td><td>'+n+'</td></tr>';
+  }
+  function renderSvcTime(d){
+    var html = '';
+    var kaigo = d.kaigo || {};
+    var kbody = '', ksum = 0;
+    Object.keys(kaigo).forEach(function(c){
+      if (kaigo[c] > 0) { kbody += svctRow(c, kaigo[c]); ksum += kaigo[c]; }
+    });
+    if (!kbody) kbody = '<tr><td colspan="2" style="text-align:center;color:#8a988c;">\u5b9f\u7e3e\u306a\u3057</td></tr>';
+    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570\uff08\u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9\uff09</div>';
+    html += '<table class="jis-table"><thead><tr><th>\u63d0\u4f9b\u6642\u9593</th><th>\u5ef6\u3079\u4eba\u6570</th></tr></thead><tbody>'+kbody+'</tbody>'
+      + '<tfoot><tr><td>\u5c0f\u8a08</td><td>'+ksum+'</td></tr></tfoot></table>';
+
+    var sogo = d.sogo || {};
+    var sorder = ['5h\u672a\u6e80','5-7h','7h\u4ee5\u4e0a'];
+    var sbody = '', ssum = 0;
+    sorder.forEach(function(k){ var v = sogo[k]||0; sbody += svctRow(k, v); ssum += v; });
+    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570\uff08\u7dcf\u5408\u4e8b\u696d\uff09</div>';
+    html += '<table class="jis-table"><thead><tr><th>\u63d0\u4f9b\u6642\u9593</th><th>\u5ef6\u3079\u4eba\u6570</th></tr></thead><tbody>'+sbody+'</tbody>'
+      + '<tfoot><tr><td>\u5c0f\u8a08</td><td>'+ssum+'</td></tr></tfoot></table>';
+
+    var jihi = d.jihi || {kaigo:0, sogo:0};
+    if (jihi.kaigo > 0 || jihi.sogo > 0) {
+      html += '<div class="jis-total-line" style="background:#fff3e0;">'
+        + '<div class="item"><span class="k">\u3046\u3061\u81ea\u8cbb\uff08\u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9\uff09\u5ef6\u3079</span><span class="v" style="color:#b85c00;">'+jihi.kaigo+'</span></div>'
+        + '<div class="item"><span class="k">\u3046\u3061\u81ea\u8cbb\uff08\u7dcf\u5408\u4e8b\u696d\uff09\u5ef6\u3079</span><span class="v" style="color:#b85c00;">'+jihi.sogo+'</span></div></div>';
+    }
+
+    if (d.unclassified > 0) {
+      html += '<div class="jis-note" style="color:#b85c00;">\u26a0\ufe0f \u63d0\u4f9b\u6642\u9593\u304c\u672a\u8a2d\u5b9a\u306e\u6765\u6240\u304c '+d.unclassified+' \u4ef6\u3042\u308a\u307e\u3059\u3002\u4e0a\u306e\u300c\u63d0\u4f9b\u6642\u9593\u306e\u66dc\u65e5\u8a2d\u5b9a\u300d\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002</div>';
+    }
+
+    document.getElementById('jis-svctime-body').innerHTML = html;
+  }
+
+  window.loadSvcTimeSummary = function(){
+    var y = ySel.value, m = mSel.value;
+    fetch('/api/jisseki/service_time_summary?year='+y+'&month='+m)
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if (j.status==='success') renderSvcTime(j); else document.getElementById('jis-svctime-body').innerHTML=''; })
+      .catch(function(){ document.getElementById('jis-svctime-body').innerHTML=''; });
+  };
 
   function loadSvcTime(){
     fetch('/api/jisseki/service_time_settings')
