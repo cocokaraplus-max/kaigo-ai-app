@@ -1833,3 +1833,47 @@ HIROの要望: 日々はバイタル測定画面で自費を完結させたい(�
 - 完了(本番反映済み): 第1段階(介護度履歴), 第2段階A(介護度別集計), 第3段階step1(提供時間の曜日設定), step2(提供時間別集計), 自費A(自費曜日デフォルト)。
 - 残り: 自費B(バイタル画面の日別自費), 提供時間の日別上書きUI, グラフ(第4段階), 印刷帳票(第5段階)。
 - ガイド必須: 「提供時間の曜日設定」は各事業所が最初に設定必須(未設定で未分類になる)。
+
+## 41. 【実績集計・自費B + 日別上書きUI + グラフ(第4段階) 完了】（2026-06-27）<!-- readme-s41-jihiB-charts -->
+
+§40の続き。自費判別を end-to-end で完成させ、グラフ(第4段階)まで実装・本番反映。残りは印刷帳票(第5段階)のみ。
+
+### 41-1. 自費B: バイタル測定画面の日別自費トグル（markers `jisseki-visit-override-v1`, `jisseki-jihi-all-v1`, `jihi-vitals-ui-v1`）
+- API3本(app.py): 
+  - `GET /api/jisseki/visit_overrides?date=` … その日の全上書きを {patient_id: {payment_type, time_category}} で返す
+  - `POST /api/jisseki/visit_override` … {patient_id(uuid), visit_date, payment_type, time_category?} を upsert。両方空なら行削除
+  - `GET /api/jisseki/jihi_weekdays_all` … 施設全体の自費曜日デフォルト {patient_id: [weekday,...]}
+- UI(vitals.html): バイタル測定カード(renderPatientList, `vcard-${p.id}`, p.id=patient_profiles.id=UUID)に「自費」トグル追加。自費ON時カード全体オレンジ(.jihi)。初期判定 isJihiInit() = その日のvisit_overrides → なければ曜日デフォルト。reloadVitalsForDate冒頭と初期化(requestAnimationFrame async化)で loadJihiState() を呼ぶ。
+- 検証(DEV): トグル→ボタン1・カードオレンジ・DB保存(payment_type='jihi')確認。初期化(土曜タブactive)も正常。テストデータクリア済。
+- デプロイ: dev=85fdb84, 本番=691c1dd。
+
+### 41-2. 提供時間/自費の日別上書きUI: 利用管理ページ（markers `visit-override-ui-v1`, `jisseki-voverride-range-v1`）
+- 他事業所向け(HIRO施設はレア)。利用管理ページ(/visit, visit.html)の来所日(出/振)セルをタップ→モーダルで保険/自費・提供時間を上書き。自費の日はセルがオレンジ+「自」印。
+- API: `GET /api/jisseki/visit_overrides_range?patient_id=&start=&end=` … 月範囲の上書きを {date: {payment_type, time_category}} で返す(月表示用)。
+- 月表示時に vmLoadOverrides() で一括取得、vmDrawTable で実績セルに反映。保存は visit_override API。
+- **バグ修正2件**: ①vmSaveOverride 末尾の vmLoadMonth() は存在しない関数→ vmRender() に修正(6095ca4)。②(別ファイルだが同根)パッチのraw文字列内の \uXXXX 問題。
+- patient_id は UUID(vmPatientId=patient_profiles.id)。集計と紐付く。
+- デプロイ: dev=6095ca4, 本番=699bc57。
+
+### 41-3. グラフ(第4段階)（markers `jisseki-charts-v1`, `jisseki-chart-toggle-v1`）
+- 実績集計ページ(/admin/jisseki)に Chart.js(CDN v4.4.1)でグラフ追加。
+- 介護度別: **円(doughnut)⇔棒(bar) 切り替え**。デフォルト円(構成比)、0人区分は円から除外。右上トグルボタン。
+- 提供時間別: 棒グラフ(介護=青/総合=黄)。
+- 年月変更で表もグラフも連動。Chartインスタンスは destroy→再生成。
+- **重要バグ修正**: setCareLevelChartType が IIFE 内定義で inline onclick から呼べない → `window.setCareLevelChartType = setCareLevelChartType;` で公開(08163da)。
+- デプロイ: dev=08163da, 本番=6779e1e。
+
+### 41-4. 【重要教訓】パッチの raw 文字列内に \uXXXX を書くと文字化けする
+- JSブロックを raw 文字列(r'''...''')で書くと、その中の `\uXXXX` は **Pythonにデコードされず、そのままJSへ文字列として出力**される。JSのソース内の `\uXXXX` はJS実行時にはデコードされるが、**HTMLにテキストとして出力する箇所(innerHTML, <span>等)では `\u63d0\u4f9b` のまま画面に表示されてしまう**。
+- 実際に admin_jisseki.html で「提供時間の曜日設定」等が `\u63d0\u4f9b...` と表示された。Pythonで `\uXXXX`→実文字に一括デコードして修正(d8373cb/f16a8b2)。
+- **今後の鉄則**: パッチでJSブロックを raw 文字列で書く場合も、**日本語は実際の日本語文字をそのまま書く**(\uエスケープにしない)。非raw文字列なら \uXXXX でよい(Pythonがデコードする)。raw文字列とエスケープの使い分けに注意。
+
+### 41-5. 【課題メモ】care_level_summary の temp_ID 堅牢化(本番影響なし)
+- DEVの2026-05 vitals に `temp_1777610085179` という非UUIDの仮ID(臨時利用者登録の名残)が混入し、care_level_summary が patient_id を uuid キャストする際に 22P02 エラーで500。
+- **本番(cocokaraplus-5526)は5月6月とも正常**(temp_ID無し)。DEV限定のテストデータ問題。
+- ただし将来、本番で temp_ 形式の臨時利用者がvitalsに入ると同じエラーになりうる。care_level_summary/service_time_summary で非UUIDの patient_id をスキップする堅牢化が望ましい(優先度中、本番が困っていないので後回し)。
+
+### 41-6. 実績集計 全体進捗
+- 完了(本番反映済み): 第1段階(介護度履歴), 第2段階A(介護度別集計), 第3段階(提供時間の曜日設定+提供時間別集計), 自費A/B(曜日デフォルト+バイタル画面トグル+日別上書きUI), 第4段階(グラフ)。
+- **残り: 第5段階(印刷帳票) のみ**。提出様式「地域密着型通所介護 実績集計表」の印刷出力。これがHIROの当初目的(まもる君クラウドに出力機能がなく手作業だった)の本丸。
+- 集計データは全て揃っている(care_level_summary, service_time_summary)。印刷は既存の print_preview/print_output の流儀を参考にできる。
