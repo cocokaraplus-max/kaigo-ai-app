@@ -1801,3 +1801,35 @@ WHERE care_level IS NOT NULL;
 - 確定値(参考): 2026-05=実71名/延353, 2026-06=実68名/延342。
 - 残り: ①自費の利用者×曜日設定UI(patient_jihi_weekdays編集、利用者情報ページが自然)、②日別上書きUI(visit_day_overrides、イレギュラー対応)、③グラフ(第4段階)、④印刷帳票(第5段階)。
 - **ガイド必須事項**: 「提供時間の曜日設定」(/admin/jisseki上部)は各事業所が必ず最初に設定する必要がある(未設定だと提供時間別が未分類になる)。施設ごとに自由設定(他事業所は平日7h提供などHIRO施設と異なる)。マニュアル/ガイドに必ず記載。同一曜日でも利用者ごとに提供時間が違う場合はvisit_day_overridesで対応。
+
+## 40. 【実績集計・自費判別 設計確定 + 自費曜日デフォルトA 完了】（2026-06-27）<!-- readme-s40-jihi-A -->
+
+§39の続き。自費(保険外利用)判別の設計を固め、自費曜日デフォルト設定(A)を実装・本番反映。要支援・事業対象者で週の利用上限を超えた分を自費で来所しており、提出帳票(介護保険実績)に混ぜると過大になるため別カウントが必要。
+
+### 40-1. 【重要】自費判別の設計方針(HIROと確定)
+- 当初「曜日デフォルトにvalid_fromを足して履歴化」を検討したが、介護度変更で自費曜日が変わる(例: 5月は土曜自費→6月から日曜自費)と過去月集計が狂う問題があり、UIも複雑になる。
+- **採用方針: 日別記録(visit_day_overrides)を主役にする**。集計の真実は「実際の来所日が保険か自費か」だけ。それを日付単位で持てば、後から設定を変えても過去の日付の記録は不変=過去が狂わない。valid_fromのような期間管理が不要。
+- 役割分担:
+  - **曜日デフォルト(patient_jihi_weekdays)** = 「普段この曜日が自費」の入力補助テンプレート(初期値)。
+  - **日別記録(visit_day_overrides)** = 各来所日の確定事実。集計はこれを最優先。
+- 判定ロジック(集計, 既実装): visit_day_overrides.payment_type → なければ patient_jihi_weekdays に該当曜日あれば自費 → なければ保険。**この順は service_time_summary に実装済み**。
+
+### 40-2. 自費曜日デフォルト A（markers `jisseki-jihi-wd-v1`, `jihi-weekday-ui-v1`）
+- `GET/POST /api/jisseki/patient_jihi_weekdays`。GET=指定利用者の自費曜日リスト。POST=全削除→再挿入(weekdays配列)。weekday=0日〜6土(JS getDay基準)。
+- UI: 利用者情報ページ(patient_profile)の「📅利用日登録」の各曜日ボタンの下に「自費」トグルを追加。タップでON/OFF(ONはオレンジ)、表示時GET復元、トグル時POST保存。
+- **重要・ID基準**: 既存の曜日ボタン(save_weekday_ampm)は PATIENT_ID=**patients.id(整数)** を使う(app.py 9564: patient_profilesをuser_nameでpatientsに変換)。しかし自費は集計と紐付くため **profile.id(UUID)** が必要。テンプレートに `PROFILE_UUID = selected.id`(UUID)を別途渡し、自費APIにはこれを使う(§37の整数ID/UUID混在の罠を回避)。
+- 検証(DEV, 阿部武): 保存[6,0]→GET[0,6]、変更[6]→GET[6]、クリア[]→GET[]。全削除→再挿入が正常。テストデータはクリア済み。
+- デプロイ: dev=2ed940f、本番=4ac2fed。DDL(patient_jihi_weekdays)は§38step1で両環境作成済みなのでコード反映のみ。
+
+### 40-3. 次（自費B = バイタル測定画面の日別自費チェック）
+HIROの要望: 日々はバイタル測定画面で自費を完結させたい(利用管理ページに行かなくてよい)。
+- バイタル測定画面(/vitals, templates/vitals.html)の各利用者カード(renderPatientList, 1537行〜, `id="vcard-${p.id}"`)に自費トグルを追加。
+- **p.id は patient_profiles.id(UUID)**(PATIENTS={{patients|tojson}}, /vitalsルートは738行でpatient_profilesから作る)。なので visit_day_overrides に p.id(UUID)で保存でき、集計と紐付く。
+- 仕様: 自費ボタンで**カード全体の色が変わる**(オレンジ系)。トグルで visit_day_overrides に (patient_id=UUID, その日のmeasured_date, payment_type='jihi'/'hoken') を保存。初期表示=その日のvisit_day_overrides → なければ曜日デフォルト(patient_jihi_weekdays)で判定。
+- visit_day_overrides テーブルは§38step1で両環境作成済み(facility_code, patient_id uuid, visit_date, time_category, payment_type, UNIQUE(facility,patient,date))。集計(service_time_summary)はoverrides優先で実装済みなので、保存さえ実装すれば自動反映される。
+- 提供時間の日別上書き(time_category)も同じvisit_day_overridesで後から足せる。
+
+### 40-4. 実績集計 全体進捗
+- 完了(本番反映済み): 第1段階(介護度履歴), 第2段階A(介護度別集計), 第3段階step1(提供時間の曜日設定), step2(提供時間別集計), 自費A(自費曜日デフォルト)。
+- 残り: 自費B(バイタル画面の日別自費), 提供時間の日別上書きUI, グラフ(第4段階), 印刷帳票(第5段階)。
+- ガイド必須: 「提供時間の曜日設定」は各事業所が最初に設定必須(未設定で未分類になる)。
