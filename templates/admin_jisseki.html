@@ -30,6 +30,18 @@
   .jis-total-line .v { font-size:1.3rem; font-weight:800; color:#1e5e26; }
   .jis-empty { text-align:center; color:#8a988c; padding:30px 0; font-size:0.9rem; }
   .jis-loading { text-align:center; color:#6b7d6f; padding:24px 0; }
+  /* jisseki-svctime-ui-v1 */
+  .svct-acc { border:2px solid #cfe3d4; border-radius:12px; margin-bottom:16px; overflow:hidden; background:#fff; }
+  .svct-head { display:flex; align-items:center; gap:8px; padding:12px 14px; background:#f0f6ff; cursor:pointer; font-weight:700; color:#1e5e26; font-size:0.92rem; }
+  .svct-head .svct-caret { margin-left:auto; font-size:1.1rem; color:#4f6b56; }
+  .svct-body { display:none; padding:12px 14px; }
+  .svct-body.open { display:block; }
+  .svct-desc { font-size:0.8rem; color:#6b7d6f; margin-bottom:10px; }
+  .svct-row { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #f0f4f0; }
+  .svct-row label { width:3.5em; font-weight:600; color:#1e3a24; font-size:0.9rem; }
+  .svct-row select { flex:1; padding:7px 9px; border:2px solid #cfe3d4; border-radius:9px; font-size:0.9rem; background:#fff; }
+  .svct-save { margin-top:12px; width:100%; padding:11px; background:#2e7d32; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95rem; cursor:pointer; }
+  .svct-save:active { opacity:0.85; }
 </style>
 {% endblock %}
 
@@ -46,6 +58,20 @@
     <span style="font-size:0.85rem;color:#4f6b56;">の実績</span>
   </div>
   <div class="jis-note">月末時点の要介護度で集計しています。来所実績（バイタル記録）が集計の対象です。</div>
+
+  <!-- jisseki-svctime-ui-v1 -->
+  <div class="svct-acc">
+    <div class="svct-head" onclick="document.querySelector('.svct-body').classList.toggle('open'); this.querySelector('.svct-caret').textContent = document.querySelector('.svct-body').classList.contains('open') ? '\u2212' : '\uff0b';">
+      <span class="material-symbols-outlined" style="font-size:18px;">schedule</span>
+      <span>\u63d0\u4f9b\u6642\u9593\u306e\u66dc\u65e5\u8a2d\u5b9a</span>
+      <span class="svct-caret">\uff0b</span>
+    </div>
+    <div class="svct-body">
+      <div class="svct-desc">\u66dc\u65e5\u3054\u3068\u306e\u63d0\u4f9b\u6642\u9593\u3092\u8a2d\u5b9a\u3057\u307e\u3059\u3002\u63d0\u4f9b\u6642\u9593\u5225\u306e\u96c6\u8a08\u306b\u4f7f\u308f\u308c\u307e\u3059\u3002</div>
+      <div id="svct-rows"></div>
+      <button class="svct-save" onclick="saveSvcTime()">\u8a2d\u5b9a\u3092\u4fdd\u5b58</button>
+    </div>
+  </div>
 
   <div id="jis-body">
     <div class="jis-loading">読み込み中…</div>
@@ -139,6 +165,54 @@
       });
   }
 
+  // jisseki-svctime-ui-v1: 提供時間の曜日設定
+  var WD_LABELS = ['\u65e5','\u6708','\u706b','\u6c34','\u6728','\u91d1','\u571f'];
+  var TIME_CATS = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
+
+  function buildSvcRows(settings){
+    var rows = '';
+    // 表示順: 月火水木金土日 (1..6,0)
+    var order = [1,2,3,4,5,6,0];
+    order.forEach(function(wd){
+      var cur = settings[String(wd)] || '';
+      var opts = '<option value="">\u55b6\u696d\u306a\u3057</option>';
+      TIME_CATS.forEach(function(c){
+        opts += '<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+'</option>';
+      });
+      rows += '<div class="svct-row"><label>'+WD_LABELS[wd]+'\u66dc</label><select data-wd="'+wd+'">'+opts+'</select></div>';
+    });
+    document.getElementById('svct-rows').innerHTML = rows;
+  }
+
+  function loadSvcTime(){
+    fetch('/api/jisseki/service_time_settings')
+      .then(function(r){ return r.json(); })
+      .then(function(j){ buildSvcRows((j && j.settings) ? j.settings : {}); })
+      .catch(function(){ buildSvcRows({}); });
+  }
+
+  window.saveSvcTime = function(){
+    var settings = {};
+    document.querySelectorAll('#svct-rows select').forEach(function(sel){
+      settings[sel.getAttribute('data-wd')] = sel.value || '';
+    });
+    fetch('/api/jisseki/service_time_settings', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({settings: settings})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j.status === 'success') {
+        if (typeof showToast === 'function') showToast('\u2705 \u4fdd\u5b58\u3057\u307e\u3057\u305f');
+        load(); // 集計を再読み込み
+      } else {
+        if (typeof showToast === 'function') showToast('\u274c \u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+      }
+    })
+    .catch(function(){ if (typeof showToast === 'function') showToast('\u274c \u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f'); });
+  };
+
+  loadSvcTime();
   ySel.addEventListener('change', load);
   mSel.addEventListener('change', load);
   load();

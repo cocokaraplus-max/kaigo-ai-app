@@ -15127,3 +15127,55 @@ def admin_jisseki():
     if not session.get("admin_authenticated", False):
         return redirect(url_for("dev_login"))
     return render("admin_jisseki.html")
+
+
+# ==========================================
+# jisseki-svctime-v1: 提供時間の曜日設定(施設単位)
+# weekday: 0=日 .. 6=土 (JS Date.getDay() と揃える)
+# ==========================================
+@app.route("/api/jisseki/service_time_settings", methods=["GET"])
+@login_required
+def api_jisseki_svctime_get():
+    """jisseki-svctime-v1: 施設の曜日→提供時間設定を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        res = supabase.table("service_time_settings") \
+            .select("weekday, time_category").eq("facility_code", f_code).execute()
+        settings = {}
+        for r in (res.data or []):
+            settings[str(r.get("weekday"))] = r.get("time_category")
+        return jsonify({"status": "success", "settings": settings})
+    except Exception as e:
+        print("api_jisseki_svctime_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jisseki/service_time_settings", methods=["POST"])
+@login_required
+def api_jisseki_svctime_save():
+    """jisseki-svctime-v1: 7曜日分の提供時間設定を保存(upsert/削除)。
+    body: {settings: {"0":"7-8h", "1":"3-4h", ...}} 空文字列/nullは「営業なし」=削除。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        settings = data.get("settings") or {}
+        for wd in range(0, 7):
+            key = str(wd)
+            cat = (settings.get(key) or "").strip()
+            if cat:
+                # upsert(facility_code, weekday の UNIQUE で上書き)
+                supabase.table("service_time_settings").upsert({
+                    "facility_code": f_code,
+                    "weekday": wd,
+                    "time_category": cat,
+                }, on_conflict="facility_code,weekday").execute()
+            else:
+                # 営業なし = その曜日の設定を削除
+                supabase.table("service_time_settings").delete() \
+                    .eq("facility_code", f_code).eq("weekday", wd).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_jisseki_svctime_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
