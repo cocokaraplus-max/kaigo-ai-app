@@ -1659,3 +1659,43 @@ WHERE care_level IS NOT NULL;
 - 月末時点判定ロジック: 対象月末日 >= valid_from の中で valid_from 最大のレコードを採用。
 - データ源は visit_records（来所実績）。提供時間別はまだ（第3段階で service_time_settings）。
 - 別経路 `/api/update_patient_care_level`（app.py 10836付近, モニタリング系の介護度更新）は現状 care_level_history に未連動。第2段階前に履歴連動させるか要検討（ここで介護度が変わっても履歴が残らないと集計がズレる可能性）。
+
+## 37. 【実績集計表・第2段階A 完了】介護度別集計 + 重大なデータ整合修正（2026-06-26）<!-- readme-s37-jisseki-2a -->
+
+§36の続き。介護度別の実人数・延べ人数・割合を集計するAPIと画面を実装し、DEV検証→本番反映まで完了。**この過程で集計の前提が崩れる重大事項が3つ判明し、すべて解決した**。提出物の正確性に直結するため詳細を残す。
+
+### 37-1. 【最重要】集計源は visit_records ではなく vitals
+- 当初 visit_records を実績の真実のソースと想定していたが、**本番DBに visit_records テーブルが存在しなかった**（PGRST205 "Could not find the table 'public.visit_records'"）。READMEの旧記録にも「visit_records（DEV作成済み・本番未作成）」「本番反映時の注意：本番に visit_records を作るDDLが先行で必要」と残っていた＝本番DDLが未適用のままだった。
+- 対応: 集計源を **vitals テーブル**に変更。vitals は facility_code / patient_id(text=UUID) / measured_date(date) / user_name を持ち、来所実績として使える。
+- **重要な制約**: vitals のデータは **2026年5月以降のみ**（TASUKARU本格運用開始がこの時期）。過去月（令06年11月など）は vitals から出せない。HIRO確認済み「5月以降でTASUKARUを使い始めたから問題ない」。集計対象は2026年5月〜。
+
+### 37-2. 集計API（app.py, marker `jisseki-clsummary-v1`）
+- `GET /api/jisseki/care_level_summary?year=&month=`
+- ロジック: vitals から (patient_id, measured_date) をユニーク化 → 実人数=ユニーク患者数、延べ人数=ユニーク来所日数の合計。各患者を care_level_history から「対象月末時点で有効な介護度」(valid_from <= 月末日 の最新)で分類。介護度8区分(事業対象者/要支援1/要支援2/要介護1〜5)を0埋めで返す + no_level(介護度なし)別枠 + total + 割合。
+- N+1回避: care_level_history を対象患者分一括取得(in_、100件チャンク)してPython側で月末判定。
+- **型差の注意**: vitals.patient_id は text、care_level_history.patient_id は uuid。SQLで直接joinするとき `::uuid` キャストが必要(`42883: operator does not exist: uuid = text`)。Python clientのin_は文字列でOK。
+
+### 37-3. 集計画面（marker `jisseki-page-v1`）
+- `/admin/jisseki`(admin_authenticated必須)。テンプレート `templates/admin_jisseki.html`(base.html継承、extra_style + content block)。
+- admin.html の「利用管理」ボタン(visit-admin-menu-v1)の直前に「実績集計表」リンク追加。
+- 画面: 年月セレクタ(2026〜今年、デフォルト当月)、介護サービス表(要介護1〜5+小計)、総合事業表(事業対象者/要支援1/要支援2+小計)、合計(実人数/延べ)、注記「月末時点の要介護度で集計」。no_level>0時はオレンジ警告。グラフは第4段階、提供時間別は第3段階、自費判別は第2段階Bでまだ。
+
+### 37-4. 【重大】データ整合の修正3件（提出数字の正確性に直結）
+集計を回す中で「介護度なし」に落ちる利用者が判明し、根本原因を特定して修正した。
+1. **森川秀子**(48140e81-...): care_level_history の valid_from が 2026-07-01(未来)になっており6月集計から漏れていた。原因=移行時に certification_start_date(認定更新日=7/1)を valid_from にしたため。さらに重複2件。→ 1件削除+valid_from を 2000-01-01 に遡及(HIRO確認「ずっと要介護5」)。
+2. **川崎和子**(9ab0b4ea-...): valid_from=2026-06-01 で5月集計から漏れ。5月も来所あり・ずっと要介護1。→ valid_from を 2000-01-01 に遡及。
+3. **宮浦チヨ子**: vitals に旧ID(8d721ea5-...)で記録され、patient_profiles には別ID(38066ee1-..., 事業対象者)で存在する**ID不整合(孤児vitals)**。5月の来所が「介護度なし」に落ち、かつ新旧IDで二重カウントされていた。→ vitals の旧IDを正しいIDに名寄せUPDATE。
+- 名寄せ後、**孤児ID全件チェック**(vitals.patient_id で patient_profiles に存在しないもの)=0件を確認。
+- **確定数字**: 2026-05 = 実人数71・延べ353 / 2026-06 = 実人数68・延べ342。no_level 両月とも0。
+
+### 37-5. 注意・次への申し送り
+- **patient_visit_days は patient_id が整数ID(79行)とUUID(6行)混在**。vitals/care_level_history(UUID基準)と直接joinできない。第2段階Bの自費設定をここに乗せるのは危険。自費設定は **UUID(patient_profiles.id)基準で新規に持つ**方針。
+- care_level_history の移行 valid_from=certification_start_date は「認定更新日が運用開始後だと過去月から漏れる」罠がある。今回は森川・川崎の2名のみ該当(query 51で全件確認済み)で修正済みだが、今後 certification_start_date 起点の移行をする場合は要注意。
+- 「介護度なし」=care_level_history に有効レコードが無い利用者。画面にオレンジ警告を出すので運用で気づける。
+- デプロイ: API=本番revision 既存、画面=本番反映済み。コミット: jisseki-clsummary-v1(9a16ed9 dev/824efaf 本番)、jisseki-page-v1(8e99b34 dev/本番反映済み)。
+
+### 37-6. 次（第2段階B = 自費判別）
+- 要支援・事業対象者で週の利用回数上限を超えた分を自費で来所している利用者がいる。介護保険実績(提出帳票)に自費分を混ぜると過大になるため、**来所日ごとに保険/自費を判別**する必要がある。
+- HIRO要望: ①曜日で自費の日を指定(自動判別) + ②イレギュラーは来所日ごとに手動チェック。自費は別カウント(「うち自費」)。
+- 設計案(UUID基準): 曜日デフォルト(利用者×曜日→自費フラグ) + 日別上書き(来所日×payment_type)。判定=日別上書き優先→曜日デフォルト→なければ保険。
+- 第2段階Bに着手するところから次回再開。
