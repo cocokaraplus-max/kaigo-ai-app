@@ -323,7 +323,7 @@ async function vmSaveOverride(dateStr){
     await fetch('/api/jisseki/visit_override', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   } catch(e){}
   vmCloseOverride();
-  vmLoadMonth();  // \u518d\u8aad\u307f\u8fbc\u307f\u3067\u5370\u3092\u53cd\u6620
+  vmRender();  // \u518d\u8aad\u307f\u8fbc\u307f\u3067\u5370\u3092\u53cd\u6620
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
