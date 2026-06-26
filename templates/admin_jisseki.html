@@ -61,15 +61,15 @@
 
   <!-- jisseki-svctime-ui-v1 -->
   <div class="svct-acc">
-    <div class="svct-head" onclick="document.querySelector('.svct-body').classList.toggle('open'); this.querySelector('.svct-caret').textContent = document.querySelector('.svct-body').classList.contains('open') ? '\u2212' : '\uff0b';">
+    <div class="svct-head" onclick="document.querySelector('.svct-body').classList.toggle('open'); this.querySelector('.svct-caret').textContent = document.querySelector('.svct-body').classList.contains('open') ? '−' : '＋';">
       <span class="material-symbols-outlined" style="font-size:18px;">schedule</span>
-      <span>\u63d0\u4f9b\u6642\u9593\u306e\u66dc\u65e5\u8a2d\u5b9a</span>
-      <span class="svct-caret">\uff0b</span>
+      <span>提供時間の曜日設定</span>
+      <span class="svct-caret">＋</span>
     </div>
     <div class="svct-body">
-      <div class="svct-desc">\u66dc\u65e5\u3054\u3068\u306e\u63d0\u4f9b\u6642\u9593\u3092\u8a2d\u5b9a\u3057\u307e\u3059\u3002\u63d0\u4f9b\u6642\u9593\u5225\u306e\u96c6\u8a08\u306b\u4f7f\u308f\u308c\u307e\u3059\u3002</div>
+      <div class="svct-desc">曜日ごとの提供時間を設定します。提供時間別の集計に使われます。</div>
       <div id="svct-rows"></div>
-      <button class="svct-save" onclick="saveSvcTime()">\u8a2d\u5b9a\u3092\u4fdd\u5b58</button>
+      <button class="svct-save" onclick="saveSvcTime()">設定を保存</button>
     </div>
   </div>
 
@@ -178,7 +178,7 @@
   }
 
   // jisseki-svctime-ui-v1: 提供時間の曜日設定
-  var WD_LABELS = ['\u65e5','\u6708','\u706b','\u6c34','\u6728','\u91d1','\u571f'];
+  var WD_LABELS = ['日','月','火','水','木','金','土'];
   var TIME_CATS = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
 
   function buildSvcRows(settings){
@@ -187,11 +187,11 @@
     var order = [1,2,3,4,5,6,0];
     order.forEach(function(wd){
       var cur = settings[String(wd)] || '';
-      var opts = '<option value="">\u55b6\u696d\u306a\u3057</option>';
+      var opts = '<option value="">営業なし</option>';
       TIME_CATS.forEach(function(c){
         opts += '<option value="'+c+'"'+(c===cur?' selected':'')+'>'+c+'</option>';
       });
-      rows += '<div class="svct-row"><label>'+WD_LABELS[wd]+'\u66dc</label><select data-wd="'+wd+'">'+opts+'</select></div>';
+      rows += '<div class="svct-row"><label>'+WD_LABELS[wd]+'曜</label><select data-wd="'+wd+'">'+opts+'</select></div>';
     });
     document.getElementById('svct-rows').innerHTML = rows;
   }
@@ -207,28 +207,28 @@
     Object.keys(kaigo).forEach(function(c){
       if (kaigo[c] > 0) { kbody += svctRow(c, kaigo[c]); ksum += kaigo[c]; }
     });
-    if (!kbody) kbody = '<tr><td colspan="2" style="text-align:center;color:#8a988c;">\u5b9f\u7e3e\u306a\u3057</td></tr>';
-    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570\uff08\u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9\uff09</div>';
-    html += '<table class="jis-table"><thead><tr><th>\u63d0\u4f9b\u6642\u9593</th><th>\u5ef6\u3079\u4eba\u6570</th></tr></thead><tbody>'+kbody+'</tbody>'
-      + '<tfoot><tr><td>\u5c0f\u8a08</td><td>'+ksum+'</td></tr></tfoot></table>';
+    if (!kbody) kbody = '<tr><td colspan="2" style="text-align:center;color:#8a988c;">実績なし</td></tr>';
+    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>提供時間別 延べ人数（介護サービス）</div>';
+    html += '<table class="jis-table"><thead><tr><th>提供時間</th><th>延べ人数</th></tr></thead><tbody>'+kbody+'</tbody>'
+      + '<tfoot><tr><td>小計</td><td>'+ksum+'</td></tr></tfoot></table>';
 
     var sogo = d.sogo || {};
-    var sorder = ['5h\u672a\u6e80','5-7h','7h\u4ee5\u4e0a'];
+    var sorder = ['5h未満','5-7h','7h以上'];
     var sbody = '', ssum = 0;
     sorder.forEach(function(k){ var v = sogo[k]||0; sbody += svctRow(k, v); ssum += v; });
-    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570\uff08\u7dcf\u5408\u4e8b\u696d\uff09</div>';
-    html += '<table class="jis-table"><thead><tr><th>\u63d0\u4f9b\u6642\u9593</th><th>\u5ef6\u3079\u4eba\u6570</th></tr></thead><tbody>'+sbody+'</tbody>'
-      + '<tfoot><tr><td>\u5c0f\u8a08</td><td>'+ssum+'</td></tr></tfoot></table>';
+    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">schedule</span>提供時間別 延べ人数（総合事業）</div>';
+    html += '<table class="jis-table"><thead><tr><th>提供時間</th><th>延べ人数</th></tr></thead><tbody>'+sbody+'</tbody>'
+      + '<tfoot><tr><td>小計</td><td>'+ssum+'</td></tr></tfoot></table>';
 
     var jihi = d.jihi || {kaigo:0, sogo:0};
     if (jihi.kaigo > 0 || jihi.sogo > 0) {
       html += '<div class="jis-total-line" style="background:#fff3e0;">'
-        + '<div class="item"><span class="k">\u3046\u3061\u81ea\u8cbb\uff08\u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9\uff09\u5ef6\u3079</span><span class="v" style="color:#b85c00;">'+jihi.kaigo+'</span></div>'
-        + '<div class="item"><span class="k">\u3046\u3061\u81ea\u8cbb\uff08\u7dcf\u5408\u4e8b\u696d\uff09\u5ef6\u3079</span><span class="v" style="color:#b85c00;">'+jihi.sogo+'</span></div></div>';
+        + '<div class="item"><span class="k">うち自費（介護サービス）延べ</span><span class="v" style="color:#b85c00;">'+jihi.kaigo+'</span></div>'
+        + '<div class="item"><span class="k">うち自費（総合事業）延べ</span><span class="v" style="color:#b85c00;">'+jihi.sogo+'</span></div></div>';
     }
 
     if (d.unclassified > 0) {
-      html += '<div class="jis-note" style="color:#b85c00;">\u26a0\ufe0f \u63d0\u4f9b\u6642\u9593\u304c\u672a\u8a2d\u5b9a\u306e\u6765\u6240\u304c '+d.unclassified+' \u4ef6\u3042\u308a\u307e\u3059\u3002\u4e0a\u306e\u300c\u63d0\u4f9b\u6642\u9593\u306e\u66dc\u65e5\u8a2d\u5b9a\u300d\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002</div>';
+      html += '<div class="jis-note" style="color:#b85c00;">⚠️ 提供時間が未設定の来所が '+d.unclassified+' 件あります。上の「提供時間の曜日設定」を確認してください。</div>';
     }
 
     document.getElementById('jis-svctime-body').innerHTML = html;
@@ -261,13 +261,13 @@
     .then(function(r){ return r.json(); })
     .then(function(j){
       if (j.status === 'success') {
-        if (typeof showToast === 'function') showToast('\u2705 \u4fdd\u5b58\u3057\u307e\u3057\u305f');
+        if (typeof showToast === 'function') showToast('✅ 保存しました');
         load(); // 集計を再読み込み
       } else {
-        if (typeof showToast === 'function') showToast('\u274c \u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+        if (typeof showToast === 'function') showToast('❌ 保存に失敗しました');
       }
     })
-    .catch(function(){ if (typeof showToast === 'function') showToast('\u274c \u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f'); });
+    .catch(function(){ if (typeof showToast === 'function') showToast('❌ 保存に失敗しました'); });
   };
 
   loadSvcTime();
@@ -282,29 +282,29 @@
     if (_chartCL) _chartCL.destroy();
     _chartCL = new Chart(el, {
       type: 'bar',
-      data: { labels: labels, datasets: [{ label: '\u5b9f\u4eba\u6570', data: vals, backgroundColor: '#4a9d5b' }] },
-      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '\u4ecb\u8b77\u5ea6\u5225 \u5b9f\u4eba\u6570' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+      data: { labels: labels, datasets: [{ label: '実人数', data: vals, backgroundColor: '#4a9d5b' }] },
+      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '介護度別 実人数' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
   }
   function drawSvcTimeChart(j){
     if (typeof Chart === 'undefined') return;
     var el = document.getElementById('chart-svctime'); if (!el) return;
     var kaigo = j.kaigo || {}, sogo = j.sogo || {};
-    // \u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9(\u6642\u9593\u5e45)\u3068\u7dcf\u5408\u4e8b\u696d(\u7c97\u533a\u5206)\u3092\u4e26\u3079\u308b
+    // 介護サービス(時間幅)と総合事業(粗区分)を並べる
     var kaigoCats = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
     var kaigoLabels = [], kaigoVals = [];
-    kaigoCats.forEach(function(c){ if ((kaigo[c]||0) > 0) { kaigoLabels.push('\u4ecb\u8b77 '+c); kaigoVals.push(kaigo[c]); } });
-    var sogoCats = ['5h\u672a\u6e80','5-7h','7h\u4ee5\u4e0a'];
+    kaigoCats.forEach(function(c){ if ((kaigo[c]||0) > 0) { kaigoLabels.push('介護 '+c); kaigoVals.push(kaigo[c]); } });
+    var sogoCats = ['5h未満','5-7h','7h以上'];
     var sogoLabels = [], sogoVals = [];
-    sogoCats.forEach(function(c){ if ((sogo[c]||0) > 0) { sogoLabels.push('\u7dcf\u5408 '+c); sogoVals.push(sogo[c]); } });
+    sogoCats.forEach(function(c){ if ((sogo[c]||0) > 0) { sogoLabels.push('総合 '+c); sogoVals.push(sogo[c]); } });
     var labels = kaigoLabels.concat(sogoLabels);
     var vals = kaigoVals.concat(sogoVals);
     var colors = kaigoLabels.map(function(){ return '#3b82a6'; }).concat(sogoLabels.map(function(){ return '#c79a3d'; }));
     if (_chartSV) _chartSV.destroy();
     _chartSV = new Chart(el, {
       type: 'bar',
-      data: { labels: labels, datasets: [{ label: '\u5ef6\u3079\u4eba\u6570', data: vals, backgroundColor: colors }] },
-      options: { responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570(\u4fdd\u967a)' } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      data: { labels: labels, datasets: [{ label: '延べ人数', data: vals, backgroundColor: colors }] },
+      options: { responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '提供時間別 延べ人数(保険)' } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
     });
   }
   ySel.addEventListener('change', load);
