@@ -582,6 +582,8 @@
         .pp-wd-btn[data-state="AM"]   { color:#185FA5; border-color:#185FA5; background:#E6F1FB; }
         .pp-wd-btn[data-state="PM"]   { color:#BA7517; border-color:#BA7517; background:#FAEEDA; }
         .pp-wd-btn[data-state="ALL"]  { color:#3B6D11; border-color:#3B6D11; background:#EAF3DE; }
+        .pp-jihi-btn { font-size:0.68rem; font-weight:700; padding:4px 0; border-radius:8px; border:1.5px solid #dadce0; background:#fff; color:#9aa0a6; cursor:pointer; text-align:center; width:100%; transition:all 0.15s; }
+        .pp-jihi-btn[data-jihi="1"] { color:#b85c00; border-color:#e8a33d; background:#fff3e0; }
         </style>
         <div style="margin-bottom:8px;font-size:0.75rem;color:#5f6368;">
           <span style="background:#E6F1FB;color:#185FA5;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">AM</span>午前のみ　
@@ -594,6 +596,8 @@
           <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
             <div style="font-weight:700;font-size:0.82rem;color:#3c4043;">{{ label }}</div>
             <button type="button" class="pp-wd-btn" data-day="{{ day_num }}" data-state="NONE" onclick="togglePPWeekday(this)">×</button>
+            <!-- jihi-weekday-ui-v1 -->
+            <button type="button" class="pp-jihi-btn" data-day="{{ day_num }}" data-jihi="0" onclick="togglePPJihi(this)">自費</button>
           </div>
           {% endfor %}
         </div>
@@ -930,6 +934,7 @@ function showToast(msg) {
 }
 // 利用日登録
 const PATIENT_ID = {{ patient_id | tojson }};
+const PROFILE_UUID = {{ (selected.id if selected else None) | tojson }};  // jihi-weekday-ui-v1
 const VISIT_DAY_DATA = {{ visit_day_data | tojson }};
 const DAY_KEYS = ['1','2','3','4','5','6','0'];
 const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
@@ -943,6 +948,40 @@ const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
     btn.textContent = STATE_LABELS[state] || '×';
   });
 })();
+// jihi-weekday-ui-v1: jihi weekday toggle (profile.id=UUID base)
+(function initPPJihi(){
+  if (!PROFILE_UUID) return;
+  fetch('/api/jisseki/patient_jihi_weekdays?patient_id=' + encodeURIComponent(PROFILE_UUID))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      var wds = (j && j.weekdays) ? j.weekdays : [];
+      wds.forEach(function(wd){
+        var b = document.querySelector('.pp-jihi-btn[data-day="' + wd + '"]');
+        if (b) b.dataset.jihi = '1';
+      });
+    })
+    .catch(function(){});
+})();
+async function togglePPJihi(btn){
+  if (!PROFILE_UUID) { alert('\u5229\u7528\u8005\u3092\u4fdd\u5b58\u3057\u3066\u304b\u3089\u8a2d\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044'); return; }
+  btn.dataset.jihi = (btn.dataset.jihi === '1') ? '0' : '1';
+  // \u73fe\u5728\u306e\u81ea\u8cbb\u66dc\u65e5\u3092\u96c6\u3081\u3066\u4fdd\u5b58
+  var wds = [];
+  document.querySelectorAll('.pp-jihi-btn[data-jihi="1"]').forEach(function(b){
+    wds.push(parseInt(b.dataset.day, 10));
+  });
+  try {
+    var res = await fetch('/api/jisseki/patient_jihi_weekdays', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patient_id: PROFILE_UUID, weekdays: wds})
+    });
+    var data = await res.json();
+    if (data.status === 'success') {
+      var st = document.getElementById('pp-weekday-save-status');
+      if (st) { st.textContent = '\u2713 \u4fdd\u5b58\u3057\u307e\u3057\u305f'; st.style.display = 'block'; setTimeout(function(){ st.style.display='none'; }, 2000); }
+    }
+  } catch(e) {}
+}
 async function togglePPWeekday(btn) {
   const states = ['NONE','AM','PM','ALL'];
   const labels = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};

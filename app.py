@@ -15354,3 +15354,61 @@ def api_jisseki_svctime_summary():
     except Exception as e:
         print("api_jisseki_svctime_summary error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-jihi-wd-v1: 利用者の自費曜日設定 (patient_jihi_weekdays)
+# weekday: 0=日 .. 6=土 (JS Date.getDay() と揃える)
+# ==========================================
+@app.route("/api/jisseki/patient_jihi_weekdays", methods=["GET"])
+@login_required
+def api_jisseki_jihi_wd_get():
+    """jisseki-jihi-wd-v1: 指定利用者の自費曜日を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    pid = (request.args.get("patient_id") or "").strip()
+    if not pid:
+        return jsonify({"status": "error", "message": "patient_id\u5fc5\u9808"}), 400
+    try:
+        res = supabase.table("patient_jihi_weekdays").select("weekday") \
+            .eq("facility_code", f_code).eq("patient_id", pid).execute()
+        weekdays = sorted([int(r.get("weekday")) for r in (res.data or [])])
+        return jsonify({"status": "success", "weekdays": weekdays})
+    except Exception as e:
+        print("api_jisseki_jihi_wd_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jisseki/patient_jihi_weekdays", methods=["POST"])
+@login_required
+def api_jisseki_jihi_wd_save():
+    """jisseki-jihi-wd-v1: 利用者の自費曜日を保存(全削除→再挿入)。
+    body: {patient_id: "...", weekdays: [0,6]}"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        pid = (data.get("patient_id") or "").strip()
+        if not pid:
+            return jsonify({"status": "error", "message": "patient_id\u5fc5\u9808"}), 400
+        wds = data.get("weekdays") or []
+        # 既存を全削除してから再挿入(シンプル・確実)
+        supabase.table("patient_jihi_weekdays").delete() \
+            .eq("facility_code", f_code).eq("patient_id", pid).execute()
+        rows = []
+        seen = set()
+        for w in wds:
+            try:
+                wi = int(w)
+            except (TypeError, ValueError):
+                continue
+            if wi < 0 or wi > 6 or wi in seen:
+                continue
+            seen.add(wi)
+            rows.append({"facility_code": f_code, "patient_id": pid, "weekday": wi})
+        if rows:
+            supabase.table("patient_jihi_weekdays").insert(rows).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_jisseki_jihi_wd_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
