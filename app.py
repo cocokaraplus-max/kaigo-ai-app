@@ -9148,6 +9148,41 @@ def _normalize_patient_number(pn):
     return s
 
 
+# ==========================================
+# clh-history-v1: 介護度履歴の記録ヘルパ
+# care_level_history に「介護度＋適用開始日」を積む。
+# 最新履歴と同じ介護度なら何もしない（重複防止）。
+# valid_from は 'YYYY-MM-DD' 文字列 or None（Noneなら本日）。
+# ==========================================
+def _record_care_level_history(supabase, f_code, patient_id, new_level, valid_from=None):
+    """clh-history-v1: 介護度が変わったときだけ care_level_history に1件追加。"""
+    try:
+        nl = (new_level or "").strip()
+        if not nl:
+            return False
+        if not patient_id:
+            return False
+        # 既存履歴の最新(care_level)を取得
+        prev = supabase.table("care_level_history") \
+            .select("care_level") \
+            .eq("facility_code", f_code).eq("patient_id", patient_id) \
+            .order("valid_from", desc=True).limit(1).execute()
+        prev_level = (prev.data[0]["care_level"] if prev.data else None)
+        if prev_level is not None and (prev_level or "").strip() == nl:
+            return False  # 変化なし
+        vf = (valid_from or "").strip() or datetime.now(tokyo_tz).date().isoformat()
+        supabase.table("care_level_history").insert({
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "care_level": nl,
+            "valid_from": vf,
+        }).execute()
+        return True
+    except Exception as e:
+        print("_record_care_level_history error: %s" % e, flush=True)
+        return False
+
+
 def _ensure_patient_row(supabase, f_code, profile_row):
     """profile_row(dict: user_name/user_name_kana/birth_date/patient_number)に対応する
     patients行を必要なら作成する。戻り値: 作成したら True / 既存なら False。"""
@@ -9243,6 +9278,9 @@ def api_admin_patient_save():
                 .eq("id", pid).eq("facility_code", f_code).execute()
             if not res.data:
                 return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+            # clh-history-v1: 介護度履歴を記録（変わったときだけ）
+            if "care_level" in row:
+                _record_care_level_history(supabase, f_code, pid, row.get("care_level"), data.get("care_level_valid_from"))
             return jsonify({"status": "success", "id": pid})
         else:
             # 新規: insert して id を返す
@@ -9250,6 +9288,10 @@ def api_admin_patient_save():
             new_id = res.data[0]["id"] if res.data else None
             # patients-sync-b1: patients連動(新規時のみ)
             _ensure_patient_row(supabase, f_code, row)
+            # clh-history-v1: 初回介護度履歴を記録。valid_fromは認定開始日→無ければ本日
+            if new_id and row.get("care_level"):
+                _vf = data.get("care_level_valid_from") or row.get("certification_start_date")
+                _record_care_level_history(supabase, f_code, new_id, row.get("care_level"), _vf)
             return jsonify({"status": "success", "id": new_id})
     except Exception as e:
         print(f"admin_patient_save error: {e}", flush=True)
