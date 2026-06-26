@@ -1597,3 +1597,65 @@ SESSION_65末。HIROの帳票「地域密着型通所介護 実績集計表」�
 - 月末時点の介護度判定: valid_from を遡り、対象月末日時点で最新の有効レコードを採用。
 - 提供時間が曜日一律で全施設をカバーできるかは要検証（御施設はOK）。祝日・臨時営業日の扱いも論点。
 - 既存の visit_records が実績の真実のソース（source of truth）。バイタル未入力日の扱い（来所したがバイタル無し等）が集計に影響しないか確認。
+
+## 36. 【実績集計表・第1段階 完了】介護度履歴 care_level_history（2026-06-26）<!-- readme-s36-clh-phase1 -->
+
+§35の実績集計表の土台。**介護度を履歴で持つ仕組み**を実装し、DEV検証→本番反映まで完了。第1段階の目的は「対象月の月末時点で有効な介護度」を後から正確に引けるようにすること。
+
+### 36-1. DDL（DEV・本番 両環境に適用済み）
+```sql
+CREATE TABLE IF NOT EXISTS care_level_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facility_code TEXT NOT NULL,
+    patient_id UUID NOT NULL,
+    care_level TEXT,
+    valid_from DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_clh_lookup
+    ON care_level_history (facility_code, patient_id, valid_from DESC);
+```
+- patient_id は patient_profiles.id (uuid) を指す。facility_code でテナント分離。
+- valid_from = その介護度の適用開始日（変更日）。
+
+### 36-2. 既存データ移行（両環境で実行済み）
+```sql
+INSERT INTO care_level_history (facility_code, patient_id, care_level, valid_from)
+SELECT facility_code, id, care_level,
+       COALESCE(certification_start_date, DATE '2000-01-01')
+FROM patient_profiles
+WHERE care_level IS NOT NULL;
+```
+- valid_from は **certification_start_date があればそれ、無ければ 2000-01-01 固定**（「ずっとこの介護度」扱いで過去月集計を必ずヒットさせる）。HIROと合意した(a)案を、認定開始日があれば活かす形に発展。
+- care_level が NULL の利用者は移行しない（介護度設定時に履歴が作られる）。
+- 移行件数: DEV=3件、**本番=72件**（profiles_with_level と一致を確認済み）。
+
+### 36-3. バックエンド（app.py, marker `clh-history-v1`, fix1 `clh-history-v1-fix1`）
+- ヘルパー `_record_care_level_history(supabase, f_code, patient_id, new_level, valid_from=None)` を `_ensure_patient_row` 手前に新設。
+  - 最新履歴の care_level と同じなら何もしない（**重複防止**）。違う/履歴ゼロなら1件 INSERT。valid_from 未指定なら本日。
+- `api_admin_patient_save`（/api/admin/patient/save）の update / insert 両分岐から呼ぶ。
+  - update: フロントの `care_level_valid_from`（無ければ本日）で記録。
+  - insert: care_level_valid_from → certification_start_date → 本日 の順で valid_from を決め初回履歴を記録。
+- **fix1**: row 構築の除外キーに `care_level_valid_from` を追加。これが無いと patient_profiles に未知カラムとして書き込まれ PGRST204 エラー（DEV検証で発見・修正）。
+
+### 36-4. フロント（patient_profile.html, marker `clh-front-v1`）
+- `<select id="care_level">` に `data-orig`（初期介護度）を埋め込み。
+- saveProfile: **既存利用者（id有り）で介護度が data-orig から変わったとき**だけ window.prompt で変更日（適用開始日）を確認。既定値は certification_start_date→無ければ本日。YYYY-MM-DD 形式チェック。キャンセルで保存中断。変更時のみ `care_level_valid_from` をペイロードに付与。
+- 新規登録・介護度変更なしのときは従来どおり（バックエンドのヘルパーが重複防止）。
+
+### 36-5. 検証結果（DEV, 阿部武 e95d99ad-...）
+- 要支援1→要支援2 変更（valid_from=2026-06-26）→ 履歴2件（要支援1@2000-01-01, 要支援2@2026-06-26）。
+- 要支援2のまま再保存 → 履歴増えず（重複防止OK）。
+- patient_profiles.care_level も要支援2に更新（本体と履歴の整合OK）。
+- ※DEVの阿部武はテストデータとして要支援2のまま放置（本番影響なし）。
+
+### 36-6. デプロイ
+- DEV: revision tasukaru-dev-01562-xll。本番: revision tasukaru-00707-lrm。
+- コミット: clh第1段階 (ed4dc81/c2bb1f7=dev, 58998a1=本番)。
+- 本番作業後 git checkout tasukaru-dev に戻し済み・クリーン確認済み。
+
+### 36-7. 次（第2段階）
+- 対象月を選び、**月末時点で有効な介護度**を care_level_history から判定して、介護度別の実人数・延べ人数・割合を画面集計。
+- 月末時点判定ロジック: 対象月末日 >= valid_from の中で valid_from 最大のレコードを採用。
+- データ源は visit_records（来所実績）。提供時間別はまだ（第3段階で service_time_settings）。
+- 別経路 `/api/update_patient_care_level`（app.py 10836付近, モニタリング系の介護度更新）は現状 care_level_history に未連動。第2段階前に履歴連動させるか要検討（ここで介護度が変わっても履歴が残らないと集計がズレる可能性）。
