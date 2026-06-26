@@ -287,6 +287,7 @@
     }
     if (_clLastData) drawCareLevelChart(_clLastData);
   }
+  window.setCareLevelChartType = setCareLevelChartType;
   function drawCareLevelChart(data){
     if (typeof Chart === 'undefined') return;
     var el = document.getElementById('chart-carelevel'); if (!el) return;
