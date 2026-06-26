@@ -79,6 +79,12 @@
 
   <!-- jisseki-svctime-sum-ui-v1 -->
   <div id="jis-svctime-body"></div>
+  <!-- jisseki-charts-v1 -->
+  <div class="jis-charts" style="margin-top:18px;">
+    <div class="jis-section-label">グラフ</div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;"><canvas id="chart-carelevel" height="220"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;"><canvas id="chart-svctime" height="220"></canvas></div>
+  </div>
 </div>
 
 <script>
@@ -145,6 +151,7 @@
       + '<div class="item"><span class="k">延べ人数 合計</span><span class="v">'+t.nobe+'</span></div></div>';
 
     document.getElementById('jis-body').innerHTML = html;
+    drawCareLevelChart(data);  // jisseki-charts-v1
   }
 
   function load(){
@@ -231,7 +238,7 @@
     var y = ySel.value, m = mSel.value;
     fetch('/api/jisseki/service_time_summary?year='+y+'&month='+m)
       .then(function(r){ return r.json(); })
-      .then(function(j){ if (j.status==='success') renderSvcTime(j); else document.getElementById('jis-svctime-body').innerHTML=''; })
+      .then(function(j){ if (j.status==='success') { renderSvcTime(j); drawSvcTimeChart(j); } else document.getElementById('jis-svctime-body').innerHTML=''; })  // jisseki-charts-v1
       .catch(function(){ document.getElementById('jis-svctime-body').innerHTML=''; });
   };
 
@@ -264,9 +271,46 @@
   };
 
   loadSvcTime();
+  // jisseki-charts-v1: chart drawing
+  var _chartCL = null, _chartSV = null;
+  function drawCareLevelChart(data){
+    if (typeof Chart === 'undefined') return;
+    var el = document.getElementById('chart-carelevel'); if (!el) return;
+    var byLevel = {}; (data.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
+    var labels = (KAIGO||[]).concat(SOGO||[]);
+    var vals = labels.map(function(lv){ var r = byLevel[lv]; return r ? r.jin : 0; });
+    if (_chartCL) _chartCL.destroy();
+    _chartCL = new Chart(el, {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ label: '\u5b9f\u4eba\u6570', data: vals, backgroundColor: '#4a9d5b' }] },
+      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '\u4ecb\u8b77\u5ea6\u5225 \u5b9f\u4eba\u6570' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+  function drawSvcTimeChart(j){
+    if (typeof Chart === 'undefined') return;
+    var el = document.getElementById('chart-svctime'); if (!el) return;
+    var kaigo = j.kaigo || {}, sogo = j.sogo || {};
+    // \u4ecb\u8b77\u30b5\u30fc\u30d3\u30b9(\u6642\u9593\u5e45)\u3068\u7dcf\u5408\u4e8b\u696d(\u7c97\u533a\u5206)\u3092\u4e26\u3079\u308b
+    var kaigoCats = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
+    var kaigoLabels = [], kaigoVals = [];
+    kaigoCats.forEach(function(c){ if ((kaigo[c]||0) > 0) { kaigoLabels.push('\u4ecb\u8b77 '+c); kaigoVals.push(kaigo[c]); } });
+    var sogoCats = ['5h\u672a\u6e80','5-7h','7h\u4ee5\u4e0a'];
+    var sogoLabels = [], sogoVals = [];
+    sogoCats.forEach(function(c){ if ((sogo[c]||0) > 0) { sogoLabels.push('\u7dcf\u5408 '+c); sogoVals.push(sogo[c]); } });
+    var labels = kaigoLabels.concat(sogoLabels);
+    var vals = kaigoVals.concat(sogoVals);
+    var colors = kaigoLabels.map(function(){ return '#3b82a6'; }).concat(sogoLabels.map(function(){ return '#c79a3d'; }));
+    if (_chartSV) _chartSV.destroy();
+    _chartSV = new Chart(el, {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ label: '\u5ef6\u3079\u4eba\u6570', data: vals, backgroundColor: colors }] },
+      options: { responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '\u63d0\u4f9b\u6642\u9593\u5225 \u5ef6\u3079\u4eba\u6570(\u4fdd\u967a)' } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
   ySel.addEventListener('change', load);
   mSel.addEventListener('change', load);
   load();
 })();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
