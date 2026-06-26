@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}実績集計 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+  .jis-wrap { max-width: var(--page-max-width, 720px); margin: 0 auto; padding: 16px 14px 80px; }
+  .jis-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .jis-head .material-symbols-outlined { color:#2e7d32; font-size:26px; }
+  .jis-title { font-size:1.15rem; font-weight:800; color:#1e5e26; }
+  .jis-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .jis-controls select {
+    padding:8px 10px; border:2px solid #cfe3d4; border-radius:10px;
+    font-size:0.95rem; background:#fff; color:#1e3a24; font-weight:600;
+  }
+  .jis-note { font-size:0.8rem; color:#6b7d6f; margin:4px 2px 14px; }
+  .jis-section-label {
+    font-size:0.9rem; font-weight:800; color:#1e5e26; margin:18px 2px 8px;
+    display:flex; align-items:center; gap:6px;
+  }
+  table.jis-table { width:100%; border-collapse:collapse; font-size:0.9rem; background:#fff;
+    border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .jis-table th, .jis-table td { padding:9px 8px; text-align:right; border-bottom:1px solid #eef2ee; }
+  .jis-table th:first-child, .jis-table td:first-child { text-align:left; }
+  .jis-table thead th { background:#e6f4ea; color:#1e5e26; font-weight:700; font-size:0.82rem; }
+  .jis-table tfoot td { background:#f3f9f4; font-weight:800; color:#1e3a24; border-top:2px solid #cfe3d4; }
+  .jis-table td .pct { color:#7a8a7d; font-size:0.78rem; }
+  .jis-total-line { display:flex; gap:18px; flex-wrap:wrap; margin:18px 2px 0;
+    padding:14px 16px; background:#e6f4ea; border-radius:12px; }
+  .jis-total-line .item { display:flex; flex-direction:column; }
+  .jis-total-line .k { font-size:0.78rem; color:#4f6b56; font-weight:600; }
+  .jis-total-line .v { font-size:1.3rem; font-weight:800; color:#1e5e26; }
+  .jis-empty { text-align:center; color:#8a988c; padding:30px 0; font-size:0.9rem; }
+  .jis-loading { text-align:center; color:#6b7d6f; padding:24px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jis-wrap">
+  <div class="jis-head">
+    <span class="material-symbols-outlined">monitoring</span>
+    <span class="jis-title">実績集計表</span>
+  </div>
+
+  <div class="jis-controls">
+    <select id="jis-year"></select>
+    <select id="jis-month"></select>
+    <span style="font-size:0.85rem;color:#4f6b56;">の実績</span>
+  </div>
+  <div class="jis-note">月末時点の要介護度で集計しています。来所実績（バイタル記録）が集計の対象です。</div>
+
+  <div id="jis-body">
+    <div class="jis-loading">読み込み中…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 介護サービス（要介護）と総合事業（要支援・事業対象者）の区分
+  var KAIGO = ['要介護1','要介護2','要介護3','要介護4','要介護5'];
+  var SOGO  = ['事業対象者','要支援1','要支援2'];
+
+  var ySel = document.getElementById('jis-year');
+  var mSel = document.getElementById('jis-month');
+
+  // 年セレクタ: 2026〜今年。月: 1〜12。デフォルトは当月。
+  var now = new Date();
+  var curY = now.getFullYear();
+  var curM = now.getMonth() + 1;
+  for (var y = 2026; y <= curY; y++) {
+    var o = document.createElement('option'); o.value = y; o.textContent = y + '年'; ySel.appendChild(o);
+  }
+  for (var m = 1; m <= 12; m++) {
+    var om = document.createElement('option'); om.value = m; om.textContent = m + '月'; mSel.appendChild(om);
+  }
+  ySel.value = curY; mSel.value = curM;
+
+  function rowHtml(label, r){
+    if(!r) r = {jin:0,nobe:0,jin_pct:0,nobe_pct:0};
+    return '<tr><td>'+label+'</td>'
+      + '<td>'+r.jin+'<span class="pct"> ('+r.jin_pct+'%)</span></td>'
+      + '<td>'+r.nobe+'<span class="pct"> ('+r.nobe_pct+'%)</span></td></tr>';
+  }
+
+  function sectionTable(title, icon, levels, byLevel){
+    var sub_jin = 0, sub_nobe = 0;
+    var body = '';
+    levels.forEach(function(lv){
+      var r = byLevel[lv] || {jin:0,nobe:0,jin_pct:0,nobe_pct:0};
+      sub_jin += r.jin; sub_nobe += r.nobe;
+      body += rowHtml(lv, r);
+    });
+    return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">'+icon+'</span>'+title+'</div>'
+      + '<table class="jis-table"><thead><tr><th>区分</th><th>実人数（割合）</th><th>延べ人数（割合）</th></tr></thead>'
+      + '<tbody>'+body+'</tbody>'
+      + '<tfoot><tr><td>小計</td><td>'+sub_jin+'</td><td>'+sub_nobe+'</td></tr></tfoot></table>';
+  }
+
+  function render(data){
+    var byLevel = {};
+    (data.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
+
+    var html = '';
+    html += sectionTable('介護サービス', 'medical_services', KAIGO, byLevel);
+    html += sectionTable('総合事業', 'volunteer_activism', SOGO, byLevel);
+
+    // 介護度なし（履歴未整備）があれば注意表示
+    var nl = data.no_level || {jin:0,nobe:0};
+    if (nl.jin > 0) {
+      html += '<div class="jis-note" style="color:#b85c00;">'
+        + '⚠️ 介護度が未設定の利用者が ' + nl.jin + '名（延べ' + nl.nobe + '）います。'
+        + '利用者情報で介護度を設定すると集計に反映されます。</div>';
+    }
+
+    var t = data.total || {jin:0,nobe:0};
+    html += '<div class="jis-total-line">'
+      + '<div class="item"><span class="k">利用者数 合計（実人数）</span><span class="v">'+t.jin+'</span></div>'
+      + '<div class="item"><span class="k">延べ人数 合計</span><span class="v">'+t.nobe+'</span></div></div>';
+
+    document.getElementById('jis-body').innerHTML = html;
+  }
+
+  function load(){
+    var y = ySel.value, m = mSel.value;
+    document.getElementById('jis-body').innerHTML = '<div class="jis-loading">読み込み中…</div>';
+    fetch('/api/jisseki/care_level_summary?year='+y+'&month='+m)
+      .then(function(res){ return res.json(); })
+      .then(function(j){
+        if (j.status !== 'success') {
+          document.getElementById('jis-body').innerHTML = '<div class="jis-empty">集計を取得できませんでした。</div>';
+          return;
+        }
+        if ((j.total||{}).jin === 0) {
+          document.getElementById('jis-body').innerHTML = '<div class="jis-empty">この月の来所実績はまだありません。</div>';
+          return;
+        }
+        render(j);
+      })
+      .catch(function(){
+        document.getElementById('jis-body').innerHTML = '<div class="jis-empty">読み込みに失敗しました。</div>';
+      });
+  }
+
+  ySel.addEventListener('change', load);
+  mSel.addEventListener('change', load);
+  load();
+})();
+</script>
+{% endblock %}

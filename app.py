@@ -15115,3 +15115,15 @@ def api_jisseki_care_level_summary():
     except Exception as e:
         print("api_jisseki_care_level_summary error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-page-v1: 実績集計 画面
+# ==========================================
+@app.route("/admin/jisseki")
+@login_required
+def admin_jisseki():
+    """jisseki-page-v1: 実績集計表の表示(管理者MENU)。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    return render("admin_jisseki.html")
