@@ -1699,3 +1699,76 @@ WHERE care_level IS NOT NULL;
 - HIRO要望: ①曜日で自費の日を指定(自動判別) + ②イレギュラーは来所日ごとに手動チェック。自費は別カウント(「うち自費」)。
 - 設計案(UUID基準): 曜日デフォルト(利用者×曜日→自費フラグ) + 日別上書き(来所日×payment_type)。判定=日別上書き優先→曜日デフォルト→なければ保険。
 - 第2段階Bに着手するところから次回再開。
+
+## 37. 【実績集計表・第2段階A 完了】介護度別集計 + 重大なデータ整合修正（2026-06-26）<!-- readme-s37-jisseki-2a -->
+
+§36の続き。介護度別の実人数・延べ人数・割合を集計するAPIと画面を実装し、DEV検証→本番反映まで完了。**この過程で集計の前提が崩れる重大事項が3つ判明し、すべて解決した**。提出物の正確性に直結するため詳細を残す。
+
+### 37-1. 【最重要】集計源は visit_records ではなく vitals
+- 当初 visit_records を実績の真実のソースと想定していたが、**本番DBに visit_records テーブルが存在しなかった**（PGRST205 "Could not find the table 'public.visit_records'"）。READMEの旧記録にも「visit_records（DEV作成済み・本番未作成）」「本番反映時の注意：本番に visit_records を作るDDLが先行で必要」と残っていた＝本番DDLが未適用のままだった。
+- 対応: 集計源を **vitals テーブル**に変更。vitals は facility_code / patient_id(text=UUID) / measured_date(date) / user_name を持ち、来所実績として使える。
+- **重要な制約**: vitals のデータは **2026年5月以降のみ**（TASUKARU本格運用開始がこの時期）。過去月（令06年11月など）は vitals から出せない。HIRO確認済み「5月以降でTASUKARUを使い始めたから問題ない」。集計対象は2026年5月〜。
+
+### 37-2. 集計API（app.py, marker `jisseki-clsummary-v1`）
+- `GET /api/jisseki/care_level_summary?year=&month=`
+- ロジック: vitals から (patient_id, measured_date) をユニーク化 → 実人数=ユニーク患者数、延べ人数=ユニーク来所日数の合計。各患者を care_level_history から「対象月末時点で有効な介護度」(valid_from <= 月末日 の最新)で分類。介護度8区分(事業対象者/要支援1/要支援2/要介護1〜5)を0埋めで返す + no_level(介護度なし)別枠 + total + 割合。
+- N+1回避: care_level_history を対象患者分一括取得(in_、100件チャンク)してPython側で月末判定。
+- **型差の注意**: vitals.patient_id は text、care_level_history.patient_id は uuid。SQLで直接joinするとき `::uuid` キャストが必要(`42883: operator does not exist: uuid = text`)。Python clientのin_は文字列でOK。
+
+### 37-3. 集計画面（marker `jisseki-page-v1`）
+- `/admin/jisseki`(admin_authenticated必須)。テンプレート `templates/admin_jisseki.html`(base.html継承、extra_style + content block)。
+- admin.html の「利用管理」ボタン(visit-admin-menu-v1)の直前に「実績集計表」リンク追加。
+- 画面: 年月セレクタ(2026〜今年、デフォルト当月)、介護サービス表(要介護1〜5+小計)、総合事業表(事業対象者/要支援1/要支援2+小計)、合計(実人数/延べ)、注記「月末時点の要介護度で集計」。no_level>0時はオレンジ警告。グラフは第4段階、提供時間別は第3段階、自費判別は第2段階Bでまだ。
+
+### 37-4. 【重大】データ整合の修正3件（提出数字の正確性に直結）
+集計を回す中で「介護度なし」に落ちる利用者が判明し、根本原因を特定して修正した。
+1. **森川秀子**(48140e81-...): care_level_history の valid_from が 2026-07-01(未来)になっており6月集計から漏れていた。原因=移行時に certification_start_date(認定更新日=7/1)を valid_from にしたため。さらに重複2件。→ 1件削除+valid_from を 2000-01-01 に遡及(HIRO確認「ずっと要介護5」)。
+2. **川崎和子**(9ab0b4ea-...): valid_from=2026-06-01 で5月集計から漏れ。5月も来所あり・ずっと要介護1。→ valid_from を 2000-01-01 に遡及。
+3. **宮浦チヨ子**: vitals に旧ID(8d721ea5-...)で記録され、patient_profiles には別ID(38066ee1-..., 事業対象者)で存在する**ID不整合(孤児vitals)**。5月の来所が「介護度なし」に落ち、かつ新旧IDで二重カウントされていた。→ vitals の旧IDを正しいIDに名寄せUPDATE。
+- 名寄せ後、**孤児ID全件チェック**(vitals.patient_id で patient_profiles に存在しないもの)=0件を確認。
+- **確定数字**: 2026-05 = 実人数71・延べ353 / 2026-06 = 実人数68・延べ342。no_level 両月とも0。
+
+### 37-5. 注意・次への申し送り
+- **patient_visit_days は patient_id が整数ID(79行)とUUID(6行)混在**。vitals/care_level_history(UUID基準)と直接joinできない。第2段階Bの自費設定をここに乗せるのは危険。自費設定は **UUID(patient_profiles.id)基準で新規に持つ**方針。
+- care_level_history の移行 valid_from=certification_start_date は「認定更新日が運用開始後だと過去月から漏れる」罠がある。今回は森川・川崎の2名のみ該当(query 51で全件確認済み)で修正済みだが、今後 certification_start_date 起点の移行をする場合は要注意。
+- 「介護度なし」=care_level_history に有効レコードが無い利用者。画面にオレンジ警告を出すので運用で気づける。
+- デプロイ: API=本番revision 既存、画面=本番反映済み。コミット: jisseki-clsummary-v1(9a16ed9 dev/824efaf 本番)、jisseki-page-v1(8e99b34 dev/本番反映済み)。
+
+### 37-6. 次（第2段階B = 自費判別）
+- 要支援・事業対象者で週の利用回数上限を超えた分を自費で来所している利用者がいる。介護保険実績(提出帳票)に自費分を混ぜると過大になるため、**来所日ごとに保険/自費を判別**する必要がある。
+- HIRO要望: ①曜日で自費の日を指定(自動判別) + ②イレギュラーは来所日ごとに手動チェック。自費は別カウント(「うち自費」)。
+- 設計案(UUID基準): 曜日デフォルト(利用者×曜日→自費フラグ) + 日別上書き(来所日×payment_type)。判定=日別上書き優先→曜日デフォルト→なければ保険。
+- 第2段階Bに着手するところから次回再開。
+
+## 38. 【実績集計表・第3段階 step1 完了】提供時間の曜日設定（土台）（2026-06-26）<!-- readme-s38-jisseki-3step1 -->
+
+§37の続き。提供時間別の延べ人数集計に向けた土台。提供時間・自費判別の両方を「曜日設定」で持つ方針をHIROと合意し、3テーブルのDDLと提供時間の曜日設定UIを実装。DEV検証→本番反映済み。
+
+### 38-1. HIROと合意した設計方針
+- 提供時間は**施設ごとに設定**（HIRO施設=平日3-4h/日曜7-8hだが、施設により異なるためSaaSとして設定式に）。曜日で決まる（全利用者共通）。
+- 自費は**利用者ごとに異なる**（利用者毎に自費の利用日が違う）。要支援・事業対象者で週の上限を超えた分を自費利用。提出帳票（介護保険実績）に自費を混ぜると過大になるため別カウント。
+- 提供時間区分は時間幅: 2-3h / 3-4h / 4-5h / 5-6h / 6-7h / 7-8h / 8-9h / 9-10h / 10-11h / 11-12h / 12-13h / 13-14h。総合事業の帳票区分（5h未満/5-7h/7h以上）はこの細区分から導出予定。
+
+### 38-2. DDL（DEV・本番 両環境に適用済み）
+すべて patient_id は UUID（§37-5の教訓: patient_visit_days は整数ID混在で使えない）。weekday は 0=日〜6=土（JS Date.getDay()と揃える）。
+- `service_time_settings`(facility_code, weekday, time_category, UNIQUE(facility_code,weekday)): 施設の曜日→提供時間。
+- `patient_jihi_weekdays`(facility_code, patient_id uuid, weekday, UNIQUE(facility_code,patient_id,weekday)): 利用者×曜日の自費デフォルト。
+- `visit_day_overrides`(facility_code, patient_id uuid, visit_date, time_category, payment_type, UNIQUE(facility_code,patient_id,visit_date)): 来所日ごとの上書き(イレギュラー対応)。
+- index: idx_pjw_lookup, idx_vdo_lookup。
+
+### 38-3. 提供時間の曜日設定 API+UI（markers `jisseki-svctime-v1`, `jisseki-svctime-ui-v1`）
+- `GET/POST /api/jisseki/service_time_settings`。POSTは7曜日分をupsert(on_conflict=facility_code,weekday)、空文字の曜日は「営業なし」=delete。
+- UI: /admin/jisseki 上部にアコーディオン「提供時間の曜日設定」。月火水木金土日のセレクト(営業なし/2-3h〜13-14h)、保存ボタン、表示時GET復元、保存後に集計再読み込み。
+- 検証(DEV/本番とも): 月〜金=3-4h, 日=7-8h, 土=営業なし を保存→GET復元OK。営業なし=削除も正常。**本番にもHIRO施設の設定を投入済み**。
+- デプロイ: 本番 revision tasukaru-00715-4dk。コミット c1be0e4(dev)/9446577(本番)。
+
+### 38-4. 判定ロジック設計（step2以降で実装）
+来所日ごとに以下で判定する予定:
+- 提供時間区分 = visit_day_overrides.time_category があればそれ → なければ service_time_settings(その曜日) → なければ未分類。
+- 保険/自費 = visit_day_overrides.payment_type があればそれ → なければ patient_jihi_weekdays に該当曜日あれば自費 → なければ保険。
+
+### 38-5. 残り（次回ここから）
+- **step2**: 提供時間別 延べ人数の集計を実績集計表に追加。介護サービス(時間幅区分別)+総合事業(5h未満/5-7h/7h以上)。保険分のみ計上、自費は別カウント。集計源 vitals + service_time_settings + patient_jihi_weekdays + visit_day_overrides。
+- **自費の利用者×曜日設定UI**: patient_jihi_weekdays を編集するUI(利用者情報ページ patient_profile が自然)。
+- **step3(日別上書きUI)**: visit_day_overrides を編集するUI(イレギュラー対応)。
+- 集計の確定値(参考, 介護度別・保険自費区別なし): 2026-05=71名/353, 2026-06=68名/342。
