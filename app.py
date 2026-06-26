@@ -15499,3 +15499,34 @@ def api_jisseki_jihi_all_get():
     except Exception as e:
         print("api_jisseki_jihi_all_get error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-voverride-range-v1: 来所日上書きを月範囲で一括取得(利用管理ページ用)
+# ==========================================
+@app.route("/api/jisseki/visit_overrides_range", methods=["GET"])
+@login_required
+def api_jisseki_voverride_range_get():
+    """jisseki-voverride-range-v1: 指定利用者の start〜end の上書きを {date: {...}} で返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    pid = (request.args.get("patient_id") or "").strip()
+    start = (request.args.get("start") or "").strip()
+    end = (request.args.get("end") or "").strip()
+    if not pid or not start or not end:
+        return jsonify({"status": "error", "message": "patient_id/start/end\u5fc5\u9808"}), 400
+    try:
+        res = supabase.table("visit_day_overrides") \
+            .select("visit_date, payment_type, time_category") \
+            .eq("facility_code", f_code).eq("patient_id", pid) \
+            .gte("visit_date", start).lte("visit_date", end).execute()
+        out = {}
+        for r in (res.data or []):
+            out[str(r.get("visit_date"))] = {
+                "payment_type": r.get("payment_type"),
+                "time_category": r.get("time_category"),
+            }
+        return jsonify({"status": "success", "overrides": out})
+    except Exception as e:
+        print("api_jisseki_voverride_range_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -48,6 +48,9 @@
 .vm-rowlabel.act { color:#2E7D32; }
 .vm-empty { text-align:center; color:#9aa0a6; font-size:0.9rem; padding:40px 0; }
 .vm-note { font-size:0.72rem; color:#9aa0a6; margin-top:10px; line-height:1.6; }
+
+.vm-cell-jihi { background:#fff3e0 !important; }
+.vm-jihi-dot { display:inline-block; font-size:0.6rem; color:#b85c00; font-weight:700; margin-left:1px; vertical-align:super; }
 </style>
 {% endblock %}
 
@@ -192,6 +195,7 @@ async function vmRender() {
     const res = await fetch('/api/visit/month?patient_id=' + encodeURIComponent(vmPatientId) + '&year=' + vmYear + '&month=' + vmMonth);
     const data = await res.json();
     if (data.status !== 'success') { box.innerHTML = '<div class="vm-empty">読み込みエラー</div>'; return; }
+    await vmLoadOverrides();
     vmDrawTable(data.days || []);
   } catch (e) {
     box.innerHTML = '<div class="vm-empty">読み込みエラー</div>';
@@ -223,11 +227,20 @@ function vmDrawTable(days) {
     planRow += '<td class="vm-cell ' + c + '">' + planMark + '</td>';
     // 実績セル: 出席/振替(バイタル) > 休み連絡 > 経過済み予定日でバイタルなし=休。未来は空欄。
     let actMark = '';
-    if (d.actual === 'present') actMark = '<span class="vm-act-present">出</span>';
-    else if (d.actual === 'transfer') actMark = '<span class="vm-act-transfer">振</span>';
-    else if (d.leave) actMark = '<span class="vm-act-leave">休</span>';
-    else if (d.planned && d.date < _todayStr) actMark = '<span class="vm-act-leave">休</span>';
-    actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
+    let actCellExtra = '';
+    if (d.actual === 'present') actMark = '<span class="vm-act-present">\u51fa</span>';
+    else if (d.actual === 'transfer') actMark = '<span class="vm-act-transfer">\u632f</span>';
+    else if (d.leave) actMark = '<span class="vm-act-leave">\u4f11</span>';
+    else if (d.planned && d.date < _todayStr) actMark = '<span class="vm-act-leave">\u4f11</span>';
+    // visit-override-ui-v1: \u6765\u6240\u65e5(\u51fa/\u632f)\u306f\u30bf\u30c3\u30d7\u3067\u4e0a\u66f8\u304d\u30e2\u30fc\u30c0\u30eb
+    if (d.actual === 'present' || d.actual === 'transfer') {
+      const ov = VM_OVERRIDES[d.date] || {};
+      const isJihi = ov.payment_type === 'jihi';
+      if (isJihi) actCellExtra = ' vm-cell-jihi';
+      actRow += '<td class="vm-cell ' + c + actCellExtra + '" style="cursor:pointer;" onclick="vmOpenOverride(\'' + d.date + '\')">' + actMark + (isJihi ? '<span class="vm-jihi-dot">\u81ea</span>' : '') + '</td>';
+    } else {
+      actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
+    }
   });
   const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>'
     + '<tr>' + dayRow + '</tr>'
@@ -239,8 +252,78 @@ function vmDrawTable(days) {
 }
 
 function vmGoRecord(recordId) {
-  // ケース記録(休み連絡)へ遷移。daily_view に記録IDで飛ぶ。
+  // \u30b1\u30fc\u30b9\u8a18\u9332(\u4f11\u307f\u9023\u7d61)\u3078\u9077\u79fb\u3002daily_view \u306b\u8a18\u9332ID\u3067\u98db\u3076\u3002
   location.href = '/daily_view?record_id=' + encodeURIComponent(recordId);
+}
+// visit-override-ui-v1: \u6765\u6240\u65e5\u3054\u3068\u306e\u4e0a\u66f8\u304d(\u4fdd\u967a/\u81ea\u8cbb + \u63d0\u4f9b\u6642\u9593)
+var VM_OVERRIDES = {};  // {date: {payment_type, time_category}}
+var VM_TIME_CATS = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
+async function vmLoadOverrides(){
+  VM_OVERRIDES = {};
+  var ndays = new Date(vmYear, vmMonth, 0).getDate();
+  var first = vmYear + '-' + String(vmMonth).padStart(2,'0') + '-01';
+  var last = vmYear + '-' + String(vmMonth).padStart(2,'0') + '-' + String(ndays).padStart(2,'0');
+  // \u65e5\u5358\u4f4d\u306eAPI\u3092\u6708\u5206\u53e9\u304f\u306e\u306f\u91cd\u3044\u306e\u3067\u3001\u65e5\u3054\u3068\u306b\u306f\u305b\u305a
+  // visit_overrides API \u306f date \u5358\u4f4d\u306a\u306e\u3067\u3001\u6708\u306e\u5404\u65e5\u3092\u307e\u3068\u3081\u3066\u53d6\u308b\u4ee3\u308f\u308a\u306b
+  // \u30d0\u30c3\u30af\u30a8\u30f3\u30c9\u306b\u6708\u7bc4\u56f2API\u304c\u7121\u3044\u305f\u3081\u3001\u3053\u3053\u3067\u306f\u9078\u629e\u5229\u7528\u8005\u306e\u6708\u5206\u3092\u4e00\u62ec\u53d6\u5f97\u3059\u308b\u5c02\u7528\u5448\u3092\u4f7f\u3046\u3002
+  try {
+    var r = await fetch('/api/jisseki/visit_overrides_range?patient_id=' + encodeURIComponent(vmPatientId) + '&start=' + first + '&end=' + last);
+    var j = await r.json();
+    if (j && j.overrides) VM_OVERRIDES = j.overrides;  // {date: {...}}
+  } catch(e){ VM_OVERRIDES = {}; }
+}
+function vmOpenOverride(dateStr){
+  var ov = VM_OVERRIDES[dateStr] || {};
+  var curPay = ov.payment_type || 'hoken';
+  var curCat = ov.time_category || '';
+  var opts = '<option value="">\u8a2d\u5b9a\u3069\u304a\u308a</option>';
+  VM_TIME_CATS.forEach(function(c){ opts += '<option value="'+c+'"'+(c===curCat?' selected':'')+'>'+c+'</option>'; });
+  var modal = document.getElementById('vm-override-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'vm-override-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:20px;';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:18px;">'
+    + '<div style="font-weight:800;color:#1e5e26;margin-bottom:4px;">' + dateStr + ' \u306e\u8a2d\u5b9a</div>'
+    + '<div style="font-size:0.78rem;color:#6b7d6f;margin-bottom:14px;">\u30a4\u30ec\u30ae\u30e5\u30e9\u30fc\u306a\u4fdd\u967a/\u81ea\u8cbb\u30fb\u63d0\u4f9b\u6642\u9593\u3092\u4e0a\u66f8\u304d\u3057\u307e\u3059\u3002</div>'
+    + '<div style="margin-bottom:12px;"><div style="font-size:0.8rem;font-weight:700;margin-bottom:6px;">\u533a\u5206</div>'
+    + '<div style="display:flex;gap:8px;">'
+    + '<button id="vmov-hoken" onclick="vmSetPay(\'hoken\')" style="flex:1;padding:10px;border-radius:9px;border:2px solid '+(curPay!=='jihi'?'#2e7d32':'#dadce0')+';background:'+(curPay!=='jihi'?'#eef7f0':'#fff')+';font-weight:700;color:'+(curPay!=='jihi'?'#1e5e26':'#9aa0a6')+';cursor:pointer;">\u4fdd\u967a</button>'
+    + '<button id="vmov-jihi" onclick="vmSetPay(\'jihi\')" style="flex:1;padding:10px;border-radius:9px;border:2px solid '+(curPay==='jihi'?'#e8a33d':'#dadce0')+';background:'+(curPay==='jihi'?'#fff3e0':'#fff')+';font-weight:700;color:'+(curPay==='jihi'?'#b85c00':'#9aa0a6')+';cursor:pointer;">\u81ea\u8cbb</button>'
+    + '</div></div>'
+    + '<div style="margin-bottom:16px;"><div style="font-size:0.8rem;font-weight:700;margin-bottom:6px;">\u63d0\u4f9b\u6642\u9593(\u4e0a\u66f8\u304d)</div>'
+    + '<select id="vmov-cat" style="width:100%;padding:9px;border:2px solid #cfe3d4;border-radius:9px;">' + opts + '</select></div>'
+    + '<div style="display:flex;gap:8px;">'
+    + '<button onclick="vmCloseOverride()" style="flex:1;padding:11px;border-radius:10px;border:1.5px solid #dadce0;background:#fff;color:#5f6368;font-weight:700;cursor:pointer;">\u30ad\u30e3\u30f3\u30bb\u30eb</button>'
+    + '<button onclick="vmSaveOverride(\'' + dateStr + '\')" style="flex:1;padding:11px;border-radius:10px;border:none;background:#2e7d32;color:#fff;font-weight:700;cursor:pointer;">\u4fdd\u5b58</button>'
+    + '</div></div>';
+  modal.style.display = 'flex';
+  modal.dataset.pay = curPay;
+}
+function vmSetPay(p){
+  var modal = document.getElementById('vm-override-modal');
+  if (modal) modal.dataset.pay = p;
+  var h = document.getElementById('vmov-hoken'), j = document.getElementById('vmov-jihi');
+  if (h && j) {
+    var on = (p === 'jihi');
+    h.style.borderColor = on ? '#dadce0' : '#2e7d32'; h.style.background = on ? '#fff' : '#eef7f0'; h.style.color = on ? '#9aa0a6' : '#1e5e26';
+    j.style.borderColor = on ? '#e8a33d' : '#dadce0'; j.style.background = on ? '#fff3e0' : '#fff'; j.style.color = on ? '#b85c00' : '#9aa0a6';
+  }
+}
+function vmCloseOverride(){ var m = document.getElementById('vm-override-modal'); if (m) m.style.display = 'none'; }
+async function vmSaveOverride(dateStr){
+  var modal = document.getElementById('vm-override-modal');
+  var pay = (modal && modal.dataset.pay) || 'hoken';
+  var cat = document.getElementById('vmov-cat') ? document.getElementById('vmov-cat').value : '';
+  // \u4fdd\u967a\u304b\u3064\u63d0\u4f9b\u6642\u9593\u672a\u6307\u5b9a \u306a\u3089 override \u524a\u9664(\u30c7\u30d5\u30a9\u30eb\u30c8\u306b\u623b\u3059)
+  var body = { patient_id: vmPatientId, visit_date: dateStr, payment_type: (pay === 'jihi' ? 'jihi' : (cat ? 'hoken' : null)), time_category: (cat || null) };
+  try {
+    await fetch('/api/jisseki/visit_override', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  } catch(e){}
+  vmCloseOverride();
+  vmLoadMonth();  // \u518d\u8aad\u307f\u8fbc\u307f\u3067\u5370\u3092\u53cd\u6620
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
