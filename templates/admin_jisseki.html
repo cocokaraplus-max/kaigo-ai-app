@@ -325,7 +325,7 @@
   }
   window.setCareLevelChartType = setCareLevelChartType;
   function drawCareLevelChart(data){
-    if (typeof Chart === 'undefined') return;
+    if (typeof Chart === 'undefined') { /* jisseki-chart-initload-fix-v1 */ setTimeout(function(){ drawCareLevelChart(data); }, 200); return; }
     var el = document.getElementById('chart-carelevel'); if (!el) return;
     _clLastData = data;
     var byLevel = {}; (data.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
@@ -350,7 +350,7 @@
     }
   }
   function drawSvcTimeChart(j){
-    if (typeof Chart === 'undefined') return;
+    if (typeof Chart === 'undefined') { /* jisseki-chart-initload-fix-v1 */ setTimeout(function(){ drawSvcTimeChart(j); }, 200); return; }
     var el = document.getElementById('chart-svctime'); if (!el) return;
     var kaigo = j.kaigo || {}, sogo = j.sogo || {};
     // 介護サービス(時間幅)と総合事業(粗区分)を並べる
