@@ -389,25 +389,12 @@
   };
   window.closeJisPrint = function(){ var m = document.getElementById('jis-print-modal'); if (m) m.remove(); };
   window.doJisPrint = function(scope){
+    // jisseki-print-switch-v1: 印刷専用ページを開く(A4最適化・出し分け確実)
     closeJisPrint();
-    var ph = document.getElementById('jis-print-period');
-    if (ph) ph.textContent = ySel.value + '年 ' + mSel.value + '月';
-    // jisseki-print-fix-v2: 出し分けは要素に直接 inline display:none(ブラウザ非依存で確実)
-    var charts = document.querySelector('.jis-charts');
-    var body1 = document.getElementById('jis-body');
-    var body2 = document.getElementById('jis-svctime-body');
-    var hidden = [];
-    function hide(el){ if (el){ el.setAttribute('data-prev-display', el.style.display || ''); el.style.display = 'none'; hidden.push(el); } }
-    if (scope === 'tables') { hide(charts); }
-    else if (scope === 'charts') { hide(body1); hide(body2); }
-    // both は何も隠さない
-    var restore = function(){
-      hidden.forEach(function(el){ el.style.display = el.getAttribute('data-prev-display') || ''; el.removeAttribute('data-prev-display'); });
-      hidden = [];
-      window.removeEventListener('afterprint', restore);
-    };
-    window.addEventListener('afterprint', restore);
-    setTimeout(function(){ window.print(); setTimeout(restore, 1500); }, 150);
+    var url = '/admin/jisseki/print?year=' + encodeURIComponent(ySel.value)
+            + '&month=' + encodeURIComponent(mSel.value)
+            + '&scope=' + encodeURIComponent(scope);
+    window.open(url, '_blank');
   };
   ySel.addEventListener('change', load);
   mSel.addEventListener('change', load);

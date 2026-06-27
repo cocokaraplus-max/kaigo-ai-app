@@ -15530,3 +15530,27 @@ def api_jisseki_voverride_range_get():
     except Exception as e:
         print("api_jisseki_voverride_range_get error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
+# jisseki-print-route-v1: 実績集計の印刷専用ページ
+# ==========================================
+@app.route("/admin/jisseki/print")
+@login_required
+def admin_jisseki_print():
+    """jisseki-print-route-v1: 印刷最適化した実績集計ページ。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code", "")
+    facility_name = ""
+    try:
+        fr = supabase.table("facilities").select("facility_name").eq("facility_code", f_code).execute()
+        if fr.data:
+            facility_name = fr.data[0].get("facility_name") or ""
+    except Exception as e:
+        print("admin_jisseki_print facility_name error: %s" % e, flush=True)
+    year = request.args.get("year", "")
+    month = request.args.get("month", "")
+    scope = request.args.get("scope", "both")
+    return render_template("admin_jisseki_print.html",
+                           facility_name=facility_name,
+                           year=year, month=month, scope=scope)

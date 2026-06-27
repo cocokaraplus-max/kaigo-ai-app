@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>実績集計表 印刷</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: #000; margin: 0; padding: 16px; background: #f5f5f5; }
+  .sheet { background: #fff; max-width: 760px; margin: 0 auto; padding: 24px 28px; }
+  .ttl-wrap { text-align: center; margin-bottom: 16px; }
+  .ttl { font-size: 18pt; font-weight: 800; }
+  .sub { font-size: 11pt; color: #222; margin-top: 4px; }
+  .sec-label { font-size: 11pt; font-weight: 700; color: #1e5e26; margin: 0 0 4px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+  table.jt { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  table.jt th, table.jt td { border: 1px solid #888; padding: 3px 7px; }
+  table.jt th { background: #eef4ea; }
+  table.jt td.r, table.jt th.r { text-align: right; }
+  table.jt tr.sub-row { background: #f6f6f3; font-weight: 700; }
+  .total-line { display: flex; gap: 22px; justify-content: flex-end; font-size: 11pt; padding: 7px 4px; border-top: 2px solid #1e5e26; margin-bottom: 10px; }
+  .total-line b { font-weight: 800; }
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .chart-box { border: 1px solid #ddd; border-radius: 6px; padding: 10px; }
+  .chart-box .cap { font-size: 9pt; color: #555; text-align: center; margin-bottom: 6px; }
+  .note { font-size: 9pt; color: #b85c00; margin: 8px 0; }
+  .jihi-line { font-size: 10pt; color: #b85c00; margin: 2px 0 10px; text-align: right; }
+  .toolbar { max-width: 760px; margin: 0 auto 12px; display: flex; gap: 8px; justify-content: flex-end; }
+  .toolbar button { font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px; border: 1.5px solid #2e7d32; background: #2e7d32; color: #fff; cursor: pointer; }
+  .toolbar button.sec { background: #fff; color: #2e7d32; }
+  /* scope による出し分け */
+  body.scope-tables .charts-wrap { display: none; }
+  body.scope-charts .tables-wrap { display: none; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar { display: none !important; }
+    .sheet { max-width: none; padding: 0; }
+    @page { size: A4 portrait; margin: 12mm; }
+    table.jt { break-inside: avoid; }
+    .charts-row { break-inside: avoid; }
+    canvas { max-height: 70mm !important; }
+  }
+</style>
+</head>
+<body class="scope-{{ scope }}">
+
+<div class="toolbar">
+  <button onclick="window.print()">印刷 / PDF保存</button>
+  <button class="sec" onclick="window.close()">閉じる</button>
+</div>
+
+<div class="sheet">
+  <div class="ttl-wrap">
+    <div class="ttl">実績集計表</div>
+    <div class="sub">{% if facility_name %}{{ facility_name }}　{% endif %}<span id="period"></span></div>
+  </div>
+
+  <div id="loading" style="text-align:center; color:#888; padding:30px; font-size:11pt;">読み込み中…</div>
+
+  <div id="content" style="display:none;">
+    <!-- 表エリア -->
+    <div class="tables-wrap">
+      <div class="two-col">
+        <div>
+          <div class="sec-label">介護サービス</div>
+          <table class="jt">
+            <thead><tr><th>区分</th><th class="r">実人数</th><th class="r">延べ</th></tr></thead>
+            <tbody id="kaigo-rows"></tbody>
+          </table>
+        </div>
+        <div>
+          <div class="sec-label">総合事業</div>
+          <table class="jt">
+            <thead><tr><th>区分</th><th class="r">実人数</th><th class="r">延べ</th></tr></thead>
+            <tbody id="sogo-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="total-line">
+        <div>利用者数 合計（実）：<b id="total-jin">-</b></div>
+        <div>延べ人数 合計：<b id="total-nobe">-</b></div>
+      </div>
+
+      <div id="nolevel-note" class="note" style="display:none;"></div>
+
+      <div class="two-col">
+        <div>
+          <div class="sec-label" style="font-size:10pt;">提供時間別 延べ（介護サービス）</div>
+          <table class="jt"><thead><tr><th>提供時間</th><th class="r">延べ</th></tr></thead><tbody id="svc-kaigo-rows"></tbody></table>
+        </div>
+        <div>
+          <div class="sec-label" style="font-size:10pt;">提供時間別 延べ（総合事業）</div>
+          <table class="jt"><thead><tr><th>提供時間</th><th class="r">延べ</th></tr></thead><tbody id="svc-sogo-rows"></tbody></table>
+        </div>
+      </div>
+      <div class="jihi-line" id="jihi-line" style="display:none;"></div>
+    </div>
+
+    <!-- グラフエリア -->
+    <div class="charts-wrap">
+      <div class="charts-row">
+        <div class="chart-box">
+          <div class="cap">介護度別 構成比</div>
+          <canvas id="chart-cl" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="cap">提供時間別 延べ人数</div>
+          <canvas id="chart-sv" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const YEAR = {{ year | tojson }};
+const MONTH = {{ month | tojson }};
+const SCOPE = {{ scope | tojson }};
+const KAIGO = ['要介護1','要介護2','要介護3','要介護4','要介護5'];
+const SOGO = ['事業対象者','要支援1','要支援2'];
+const CL_COLORS = ['#2e7d32','#4a9d5b','#6fb87f','#9bcfa6','#c3e3c9','#c79a3d','#e0b85f','#efd49a'];
+
+document.getElementById('period').textContent = YEAR + '年 ' + MONTH + '月';
+
+function rowHtml(label, r){
+  r = r || {jin:0,nobe:0,jin_pct:0,nobe_pct:0};
+  return '<tr><td>'+label+'</td><td class="r">'+r.jin+'</td><td class="r">'+r.nobe+'</td></tr>';
+}
+function fillTables(data){
+  var byLevel = {}; (data.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
+  var kHtml = '', kJin=0, kNobe=0;
+  KAIGO.forEach(function(lv){ var r = byLevel[lv]||{jin:0,nobe:0}; kJin+=r.jin; kNobe+=r.nobe; kHtml += rowHtml(lv, r); });
+  kHtml += '<tr class="sub-row"><td>小計</td><td class="r">'+kJin+'</td><td class="r">'+kNobe+'</td></tr>';
+  document.getElementById('kaigo-rows').innerHTML = kHtml;
+  var sHtml = '', sJin=0, sNobe=0;
+  SOGO.forEach(function(lv){ var r = byLevel[lv]||{jin:0,nobe:0}; sJin+=r.jin; sNobe+=r.nobe; sHtml += rowHtml(lv, r); });
+  sHtml += '<tr class="sub-row"><td>小計</td><td class="r">'+sJin+'</td><td class="r">'+sNobe+'</td></tr>';
+  document.getElementById('sogo-rows').innerHTML = sHtml;
+  var t = data.total||{jin:0,nobe:0};
+  document.getElementById('total-jin').textContent = t.jin;
+  document.getElementById('total-nobe').textContent = t.nobe;
+  var nl = data.no_level||{jin:0,nobe:0};
+  if (nl.jin > 0){
+    var n = document.getElementById('nolevel-note');
+    n.style.display = 'block';
+    n.textContent = '※ 介護度未設定 '+nl.jin+'名（延べ'+nl.nobe+'）があります。';
+  }
+}
+function fillSvcTables(j){
+  var kaigo = j.kaigo||{}, sogo = j.sogo||{};
+  var kCats = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
+  var kHtml=''; kCats.forEach(function(c){ if((kaigo[c]||0)>0) kHtml += '<tr><td>'+c+'</td><td class="r">'+kaigo[c]+'</td></tr>'; });
+  if(!kHtml) kHtml = '<tr><td colspan="2" style="color:#999;text-align:center;">なし</td></tr>';
+  document.getElementById('svc-kaigo-rows').innerHTML = kHtml;
+  var sCats = ['5h未満','5-7h','7h以上'];
+  var sHtml=''; sCats.forEach(function(c){ if((sogo[c]||0)>0) sHtml += '<tr><td>'+c+'</td><td class="r">'+sogo[c]+'</td></tr>'; });
+  if(!sHtml) sHtml = '<tr><td colspan="2" style="color:#999;text-align:center;">なし</td></tr>';
+  document.getElementById('svc-sogo-rows').innerHTML = sHtml;
+  var jihi = j.jihi||{kaigo:0,sogo:0};
+  if ((jihi.kaigo||0)+(jihi.sogo||0) > 0){
+    var jl = document.getElementById('jihi-line');
+    jl.style.display = 'block';
+    jl.textContent = 'うち自費　介護サービス：'+jihi.kaigo+'　総合事業：'+jihi.sogo;
+  }
+}
+function drawCharts(clData, svData){
+  if (typeof Chart === 'undefined'){ setTimeout(function(){ drawCharts(clData, svData); }, 200); return; }
+  // 介護度別 円
+  var byLevel = {}; (clData.rows||[]).forEach(function(r){ byLevel[r.care_level] = r; });
+  var allLabels = KAIGO.concat(SOGO);
+  var labels=[], vals=[], colors=[];
+  allLabels.forEach(function(lv,i){ var r=byLevel[lv]; var v=r?r.jin:0; if(v>0){ labels.push(lv); vals.push(v); colors.push(CL_COLORS[i%CL_COLORS.length]); } });
+  new Chart(document.getElementById('chart-cl'), {
+    type:'doughnut',
+    data:{ labels:labels, datasets:[{ data:vals, backgroundColor:colors }] },
+    options:{ responsive:true, animation:false, plugins:{ legend:{ position:'right', labels:{ font:{ size:10 } } } } }
+  });
+  // 提供時間別 棒
+  var kaigo = svData.kaigo||{}, sogo = svData.sogo||{};
+  var kCats = ['2-3h','3-4h','4-5h','5-6h','6-7h','7-8h','8-9h','9-10h','10-11h','11-12h','12-13h','13-14h'];
+  var bl=[], bv=[], bc=[];
+  kCats.forEach(function(c){ if((kaigo[c]||0)>0){ bl.push('介護'+c); bv.push(kaigo[c]); bc.push('#3b82a6'); } });
+  ['5h未満','5-7h','7h以上'].forEach(function(c){ if((sogo[c]||0)>0){ bl.push('総合'+c); bv.push(sogo[c]); bc.push('#c79a3d'); } });
+  new Chart(document.getElementById('chart-sv'), {
+    type:'bar',
+    data:{ labels:bl, datasets:[{ data:bv, backgroundColor:bc }] },
+    options:{ responsive:true, animation:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+}
+
+(async function(){
+  try {
+    var cl = await fetch('/api/jisseki/care_level_summary?year='+YEAR+'&month='+MONTH).then(function(r){ return r.json(); });
+    var sv = await fetch('/api/jisseki/service_time_summary?year='+YEAR+'&month='+MONTH).then(function(r){ return r.json(); });
+    if (cl.status !== 'success'){ document.getElementById('loading').textContent = '集計を取得できませんでした。'; return; }
+    fillTables(cl);
+    if (sv.status === 'success') fillSvcTables(sv);
+    if (SCOPE !== 'tables') drawCharts(cl, (sv.status==='success'?sv:{kaigo:{},sogo:{}}));
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    // 描画を待ってから印刷
+    setTimeout(function(){ window.print(); }, 700);
+  } catch(e){
+    document.getElementById('loading').textContent = '読み込みに失敗しました。';
+  }
+})();
+</script>
+
+</body>
+</html>
