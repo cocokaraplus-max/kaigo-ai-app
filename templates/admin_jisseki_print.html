@@ -200,8 +200,7 @@ function drawCharts(clData, svData){
     if (SCOPE !== 'tables') drawCharts(cl, (sv.status==='success'?sv:{kaigo:{},sogo:{}}));
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
-    // 描画を待ってから印刷
-    setTimeout(function(){ window.print(); }, 700);
+    // 自動印刷はしない。ユーザーがボタンを押したときだけ印刷する。
   } catch(e){
     document.getElementById('loading').textContent = '読み込みに失敗しました。';
   }
