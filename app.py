@@ -15026,6 +15026,26 @@ def _jis_level_at_month_end(history_rows, month_end_iso):
     return (best.get("care_level") if best else None)
 
 
+
+# === jisseki-archive-api-v1: 過去月アーカイブ参照ヘルパ ===
+def _jisseki_archive_lookup(supabase, f_code, year, month, kind):
+    """対象月のアーカイブ payload[kind] を返す。無ければ None。
+    kind: 'care_level_summary' or 'service_time_summary'。
+    既存集計には影響しない読み取り専用。"""
+    try:
+        res = supabase.table("jisseki_archive").select("payload") \
+            .eq("facility_code", f_code).eq("year", year).eq("month", month) \
+            .limit(1).execute()
+        rows = res.data or []
+        if not rows:
+            return None
+        payload = rows[0].get("payload") or {}
+        return payload.get(kind)
+    except Exception as _e:
+        print("_jisseki_archive_lookup error: %s" % _e, flush=True)
+        return None
+
+
 @app.route("/api/jisseki/care_level_summary", methods=["GET"])
 @login_required
 def api_jisseki_care_level_summary():
@@ -15057,6 +15077,10 @@ def api_jisseki_care_level_summary():
 
         patient_ids = list(visit_days.keys())
         if not patient_ids:
+            # jisseki-archive-api-v1: vitals空ならアーカイブ参照(あれば返す)
+            _arch = _jisseki_archive_lookup(supabase, f_code, year, month, "care_level_summary")
+            if _arch is not None:
+                return jsonify(_arch)
             # データ無しでも区分は0埋めで返す
             rows = [{"care_level": lv, "jin": 0, "nobe": 0, "jin_pct": 0.0, "nobe_pct": 0.0} for lv in _JIS_CARE_ORDER]
             return jsonify({"status": "success", "year": year, "month": month,
@@ -15246,6 +15270,10 @@ def api_jisseki_svctime_summary():
             sogo = {'5h\u672a\u6e80': 0, '5-7h': 0, '7h\u4ee5\u4e0a': 0}
             return kaigo, sogo
         if not patient_ids:
+            # jisseki-archive-api-v1: vitals空ならアーカイブ参照(あれば返す)
+            _arch = _jisseki_archive_lookup(supabase, f_code, year, month, "service_time_summary")
+            if _arch is not None:
+                return jsonify(_arch)
             kaigo, sogo = _empty()
             return jsonify({"status": "success", "year": year, "month": month,
                             "kaigo": kaigo, "sogo": sogo,
