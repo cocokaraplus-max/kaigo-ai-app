@@ -12564,6 +12564,7 @@ def admin_keiyaku_print():
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
         pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
 
+        from flask import make_response  # keiyaku-print-makeresp-fix-v1
         from urllib.parse import quote
         doc_label = {"juyo": "重要事項説明書", "keiyaku": "利用契約書", "both": "契約書一式"}.get(doc, "書類")
         type_label = {"han": "半日型", "ichi": "1日型"}.get(st, "")
