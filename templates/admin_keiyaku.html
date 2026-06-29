@@ -469,7 +469,7 @@
       const on=isOn(a.id);
       const d=document.createElement('div');
       d.className='kk-add'+(on?' on':'');
-      const grpTag = a.group ? `<span class="meta" style="color:#b06a00">（${esc(a.group)}グループ：いずれか一方）</span>` : '';
+      const grpTag = a.group ? `<span class="meta" style="color:#b06a00">※いずれか一方のみ選択できます</span>` : '';
       d.innerHTML=`<div class="chk">${on?'✓':''}</div>
         <div style="flex:1;min-width:0">
           <div class="nm">${esc(a.name)}</div>
