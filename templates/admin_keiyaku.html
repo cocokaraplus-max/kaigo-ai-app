@@ -3,7 +3,7 @@
 {% block extra_style %}
 <style>
   /* keiyaku-page-v1 : 設定UI＋プレビュー（CDS風・緑系） */
-  .kk-wrap{max-width:var(--page-max-width,720px);margin:0 auto;padding:16px 14px 96px}
+  .kk-wrap{max-width:var(--page-max-width,720px);margin:0 auto;padding:16px 14px;padding-bottom:calc(var(--kk-nav-h,137px) + 96px)}
   .kk-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
   .kk-head .material-symbols-outlined{color:#2e7d32;font-size:26px}
   .kk-title{font-size:1.15rem;font-weight:800;color:#1e5e26}
@@ -72,15 +72,15 @@
     background:#fff;color:#5a5a5a;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:inherit}
   .kk-pv-tabs button.on{background:#2f6b5e;color:#fff;border-color:#2f6b5e}
 
-  .kk-actionbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;
-    width:100%;max-width:var(--page-max-width,720px);
+  .kk-actionbar{position:fixed;left:50%;transform:translateX(-50%);bottom:var(--kk-nav-h,137px);
+    width:100%;max-width:var(--page-max-width,480px);box-sizing:border-box;
     background:rgba(246,244,239,.96);backdrop-filter:blur(8px);
     border-top:1px solid #d8d4cc;padding:12px 14px;display:flex;gap:10px;z-index:50}
   .kk-actionbar button{flex:1;padding:14px;border-radius:12px;border:0;font-size:0.92rem;
     font-weight:700;font-family:inherit;cursor:pointer}
   .kk-btn-save{background:#fff;border:2px solid #2f6b5e !important;color:#2f6b5e}
   .kk-btn-print{background:#2f6b5e;color:#fff}
-  .kk-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;
+  .kk-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kk-nav-h,137px) + 80px);
     background:#1e5e26;color:#fff;padding:10px 18px;border-radius:20px;font-size:0.82rem;
     font-weight:600;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
   .kk-toast.show{opacity:1}
@@ -627,6 +627,16 @@
   };
 
   /* ---- 起動 ---- */
+  // keiyaku-navh-v1: ボトムナビ(.bottom-nav)の高さを実測し --kk-nav-h にセット。
+  // 固定アクションバーをボトムナビの真上に正確配置（連絡帳 --rk-nav-h と同方式）。
+  function kkSyncNavHeight(){
+    var nav=document.querySelector('.bottom-nav');
+    var h=nav?Math.round(nav.getBoundingClientRect().height):137;
+    if(h>0) document.documentElement.style.setProperty('--kk-nav-h', h+'px');
+  }
+  kkSyncNavHeight();
+  window.addEventListener('resize', kkSyncNavHeight);
+  window.addEventListener('load', kkSyncNavHeight);
   loadSettings();
 })();
 </script>
