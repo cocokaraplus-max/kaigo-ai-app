@@ -17,16 +17,59 @@ keiyaku_render.py  (marker: keiyaku-render-v1)
 import math
 
 # ===== 料金計算（app.py の _kk_* と同一ロジック） =====
+# keiyaku-timeclass-v1: 地域密着型通所介護 基本単位数を国の所要時間区分(time_class)で保持。
+# 出典: 介護給付費単位数等サービスコード表(令和8年6月施行版) 78 1xxx 地域密着型通所介護費(本体)。
 _BASE = {
-    "han":  {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},
-    "ichi": {1: 947, 2: 1097, 3: 1251, 4: 1404, 5: 1557},
+    "3-4h": {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},
+    "4-5h": {1: 436, 2: 501, 3: 566, 4: 629, 5: 695},
+    "5-6h": {1: 657, 2: 776, 3: 896, 4: 1013, 5: 1134},
+    "6-7h": {1: 678, 2: 801, 3: 925, 4: 1049, 5: 1172},
+    "7-8h": {1: 753, 2: 890, 3: 1032, 4: 1172, 5: 1312},
+    "8-9h": {1: 783, 2: 925, 3: 1072, 4: 1220, 5: 1365},
 }
+# 旧種別キー(han/ichi)→time_class の後方互換マッピング。
+_LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
 _AREA_UP = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.0}
 _KUNREN1 = 56
 _KUNREN2 = 20
 _KAGAKU = 40
-_SHOGUU_RATE = 0.125
+# keiyaku-timeclass-v1: 介護職員等処遇改善加算 6区分の率(/1000)。既定はⅡロ(2ro)=12.5%。
+_SHOGUU_RATES = {
+    "1i": 0.117, "1ro": 0.127, "2i": 0.115, "2ro": 0.125, "3": 0.105, "4": 0.089,
+}
+_SHOGUU_LABELS = {
+    "1i": "介護職員等処遇改善加算（Ⅰ）イ……11.7％/月",
+    "1ro": "介護職員等処遇改善加算（Ⅰ）ロ……12.7％/月",
+    "2i": "介護職員等処遇改善加算（Ⅱ）イ……11.5％/月",
+    "2ro": "介護職員等処遇改善加算Ⅱロ（Ⅱ２）……12.5％/月（令和8年6月〜）",
+    "3": "介護職員等処遇改善加算（Ⅲ）……10.5％/月",
+    "4": "介護職員等処遇改善加算（Ⅳ）……8.9％/月",
+}
+_SHOGUU_RATE = 0.125  # 後方互換: 旧コードが参照する既定率(Ⅱロ)。
 _JINKENHI = 0.45
+
+
+def _resolve_tc(F, key):
+    """keiyaku-timeclass-v1: 種別キー/旧キーから time_class を解決して _BASE 参照キーを返す。
+    優先順: service[key]['time_class'] → 旧キー名(han/ichi)変換 → そのまま(既に time_class)。"""
+    if key in _BASE:
+        return key
+    sv = _g(F, "service", key, default={})
+    tc = sv.get("time_class") if isinstance(sv, dict) else None
+    if tc in _BASE:
+        return tc
+    if key in _LEGACY_TC:
+        return _LEGACY_TC[key]
+    return "3-4h"
+
+
+def _shoguu_rate(adds):
+    """keiyaku-timeclass-v1: adds から処遇改善率を取得。shoguu_type 優先、無ければ既定Ⅱロ。
+    旧データ(shoguu:bool のみ)は True で 12.5%、False/未設定で 0。"""
+    if not adds.get("shoguu"):
+        return 0.0
+    stype = adds.get("shoguu_type", "2ro")
+    return _SHOGUU_RATES.get(stype, _SHOGUU_RATES["2ro"])
 
 
 def _floor(x):
@@ -42,15 +85,17 @@ def _tanka(area_level):
     return math.floor(raw * 100 + 0.5) / 100
 
 
-def _jiko_monthly(st, lv, wari, visits, adds, area):
-    per_visit = _BASE[st][lv] + (_KUNREN1 if adds.get("kunren1") else 0)
+def _jiko_monthly(F, st, lv, wari, visits, adds, area):
+    tc = _resolve_tc(F, st)
+    per_visit = _BASE[tc][lv] + (_KUNREN1 if adds.get("kunren1") else 0)
     monthly = per_visit * visits
     if adds.get("kunren2"):
         monthly += _KUNREN2
     if adds.get("kagaku"):
         monthly += _KAGAKU
-    if adds.get("shoguu"):
-        monthly += _round_half(monthly * _SHOGUU_RATE)
+    rate = _shoguu_rate(adds)
+    if rate:
+        monthly += _round_half(monthly * rate)
     total_yen = _floor(monthly * _tanka(area))
     kyufu = _floor(total_yen * (10 - wari) / 10)
     return total_yen - kyufu
@@ -85,7 +130,8 @@ def _fee_table(F, st):
     adds = F.get("adds", {})
     area = int(F.get("area_level", 3))
     vpm = int(F.get("visits_per_month", 4))
-    b = _BASE[st]
+    tc = _resolve_tc(F, st)
+    b = _BASE[tc]
     vmap = {1: vpm, 2: vpm * 2, 3: vpm * 3}
     head = (
         '<tr><th class="hh">負担割合</th><th class="hh">利用回数</th>'
@@ -99,7 +145,7 @@ def _fee_table(F, st):
     for w in (1, 2, 3):
         for kai in (1, 2, 3):
             vals = "".join(
-                f"<td>{_yen(_jiko_monthly(st, l, w, vmap[kai], adds, area))}</td>"
+                f"<td>{_yen(_jiko_monthly(F, st, l, w, vmap[kai], adds, area))}</td>"
                 for l in range(1, 6)
             )
             wlabel = f"{w}割" if kai == 1 else ""
@@ -119,7 +165,9 @@ def _adds_line(F):
     if adds.get("kagaku"):
         parts.append("「科学的介護推進体制加算」……40単位/月")
     if adds.get("shoguu"):
-        parts.append("「介護職員等処遇改善加算Ⅱロ（Ⅱ２）」サービス別加算率……12.5％/月（令和8年6月〜）")
+        stype = adds.get("shoguu_type", "2ro")
+        label = _SHOGUU_LABELS.get(stype, _SHOGUU_LABELS["2ro"])
+        parts.append("「" + label.split("……")[0] + "」サービス別加算率……" + label.split("……")[1])
     return "／".join(parts)
 
 

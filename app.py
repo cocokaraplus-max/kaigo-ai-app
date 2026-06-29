@@ -12371,14 +12371,51 @@ def api_board_update_category():
 import math as _kk_math
 
 # --- 基本単位数マスタ（国コード表 令和8年6月施行版で確認済み） ---
+# keiyaku-timeclass-app-v1: 地域密着型通所介護 基本単位数を国の所要時間区分(time_class)で保持。
+# 出典: 介護給付費単位数等サービスコード表(令和8年6月施行版) 78 1xxx 地域密着型通所介護費(本体)。
 _KK_BASE = {
-    "han":  {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},      # 半日型 3時間
-    "ichi": {1: 947, 2: 1097, 3: 1251, 4: 1404, 5: 1557},  # 1日型 7時間
+    "3-4h": {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},
+    "4-5h": {1: 436, 2: 501, 3: 566, 4: 629, 5: 695},
+    "5-6h": {1: 657, 2: 776, 3: 896, 4: 1013, 5: 1134},
+    "6-7h": {1: 678, 2: 801, 3: 925, 4: 1049, 5: 1172},
+    "7-8h": {1: 753, 2: 890, 3: 1032, 4: 1172, 5: 1312},
+    "8-9h": {1: 783, 2: 925, 3: 1072, 4: 1220, 5: 1365},
 }
+# keiyaku-timeclass-app-v1: 旧種別キー(han/ichi)→time_class 後方互換マッピング。
+_KK_LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
 _KK_KUNREN1_PER_VISIT = 56   # 個別機能訓練加算Ⅰイ 56単位/回（毎回）
 _KK_KUNREN2_MONTHLY   = 20   # 個別機能訓練加算Ⅱ 20単位/月
 _KK_KAGAKU_MONTHLY    = 40   # 科学的介護推進体制加算 40単位/月
-_KK_SHOGUU_RATE       = 0.125  # 介護職員等処遇改善加算Ⅱロ（Ⅱ２）125/1000
+_KK_SHOGUU_RATE       = 0.125  # 後方互換: 既定率(Ⅱロ 125/1000)。
+# keiyaku-timeclass-app-v1: 介護職員等処遇改善加算 6区分の率(/1000)。既定はⅡロ(2ro)=12.5%。
+_KK_SHOGUU_RATES = {
+    "1i": 0.117, "1ro": 0.127, "2i": 0.115, "2ro": 0.125, "3": 0.105, "4": 0.089,
+}
+
+
+def _kk_resolve_tc(service_type, F=None):
+    """keiyaku-timeclass-app-v1: 種別キー/旧キーから _KK_BASE 参照キー(time_class)を解決。
+    優先順: 既に time_class → F['service'][key]['time_class'] → 旧キー(han/ichi)変換 → 既定3-4h。"""
+    if service_type in _KK_BASE:
+        return service_type
+    if isinstance(F, dict):
+        sv = F.get("service", {})
+        if isinstance(sv, dict):
+            node = sv.get(service_type)
+            if isinstance(node, dict) and node.get("time_class") in _KK_BASE:
+                return node["time_class"]
+    if service_type in _KK_LEGACY_TC:
+        return _KK_LEGACY_TC[service_type]
+    return "3-4h"
+
+
+def _kk_shoguu_rate(adds):
+    """keiyaku-timeclass-app-v1: adds から処遇改善率。shoguu_type 優先、無ければ既定Ⅱロ。
+    旧データ(shoguu:bool のみ)は True で 12.5%、False/未設定で 0。"""
+    if not adds.get("shoguu"):
+        return 0.0
+    stype = adds.get("shoguu_type", "2ro")
+    return _KK_SHOGUU_RATES.get(stype, _KK_SHOGUU_RATES["2ro"])
 _KK_JINKENHI_RATIO    = 0.45   # 通所介護 人件費割合
 _KK_AREA_UPLIFT = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.00}
 _KK_DEFAULT_VISITS_PER_MONTH = 4
@@ -12393,8 +12430,8 @@ def _kk_tanka(area_level):
     raw = 10 * (1 + uplift * _KK_JINKENHI_RATIO)
     return _kk_math.floor(raw * 100 + 0.5) / 100
 
-def _kk_monthly_units(service_type, level, visits_per_month, adds):
-    b = _KK_BASE[service_type][level]
+def _kk_monthly_units(service_type, level, visits_per_month, adds, F=None):
+    b = _KK_BASE[_kk_resolve_tc(service_type, F)][level]  # keiyaku-timeclass-app-v1
     per_visit = b
     if adds.get("kunren1"):
         per_visit += _KK_KUNREN1_PER_VISIT
@@ -12405,9 +12442,9 @@ def _kk_monthly_units(service_type, level, visits_per_month, adds):
         monthly += _KK_KAGAKU_MONTHLY
     return monthly
 
-def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3):
+def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3, F=None):
     """1回あたりの自己負担額（参考値）。基本＋毎回加算（個別Ⅰ）のみ。"""
-    units = _KK_BASE[service_type][level]
+    units = _KK_BASE[_kk_resolve_tc(service_type, F)][level]  # keiyaku-timeclass-app-v1
     if adds.get("kunren1"):
         units += _KK_KUNREN1_PER_VISIT
     price = _kk_tanka(area_level)
@@ -12416,10 +12453,11 @@ def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3):
     return {"units": units, "total_yen": total_yen, "kyufu": kyufu,
             "jiko": total_yen - kyufu, "unit_price": price}
 
-def _kk_calc_monthly(service_type, level, wari, visits_per_month, adds, area_level=3):
+def _kk_calc_monthly(service_type, level, wari, visits_per_month, adds, area_level=3, F=None):
     """月額目安（正規計算＝請求基準）。月総単位で処遇改善まで含めて算出。"""
-    m_units = _kk_monthly_units(service_type, level, visits_per_month, adds)
-    shoguu = _kk_round_half_up(m_units * _KK_SHOGUU_RATE) if adds.get("shoguu") else 0
+    m_units = _kk_monthly_units(service_type, level, visits_per_month, adds, F)  # keiyaku-timeclass-app-v1
+    _rate = _kk_shoguu_rate(adds)  # keiyaku-timeclass-app-v1: 6区分から率を取得
+    shoguu = _kk_round_half_up(m_units * _rate) if _rate else 0
     total_units = m_units + shoguu
     price = _kk_tanka(area_level)
     total_yen = _kk_math.floor(total_units * price)
@@ -12428,18 +12466,19 @@ def _kk_calc_monthly(service_type, level, wari, visits_per_month, adds, area_lev
             "total_yen": total_yen, "kyufu": kyufu,
             "jiko": total_yen - kyufu, "unit_price": price}
 
-def _kk_build_fee_table(service_type, adds, area_level=3, visits_per_month=None):
+def _kk_build_fee_table(service_type, adds, area_level=3, visits_per_month=None, F=None):
     """料金表データを生成。要介護1〜5×(1回単価 / 月額目安1・2・3割)。"""
     if visits_per_month is None:
         visits_per_month = _KK_DEFAULT_VISITS_PER_MONTH
+    _tc = _kk_resolve_tc(service_type, F)  # keiyaku-timeclass-app-v1
     rows = []
     for lv in range(1, 6):
-        pv = _kk_calc_per_visit(service_type, lv, 1, adds, area_level)
-        m = {w: _kk_calc_monthly(service_type, lv, w, visits_per_month, adds, area_level)
+        pv = _kk_calc_per_visit(service_type, lv, 1, adds, area_level, F)
+        m = {w: _kk_calc_monthly(service_type, lv, w, visits_per_month, adds, area_level, F)
              for w in (1, 2, 3)}
         rows.append({
             "level": lv,
-            "base_units": _KK_BASE[service_type][lv],
+            "base_units": _KK_BASE[_tc][lv],
             "per_visit_jiko": pv["jiko"],
             "monthly": {str(w): m[w]["jiko"] for w in (1, 2, 3)},
         })
@@ -12639,7 +12678,13 @@ def api_keiyaku_settings_get():
         area_level = int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3
         vpm = int(facility.get("visits_per_month", _KK_DEFAULT_VISITS_PER_MONTH)) if isinstance(facility, dict) else _KK_DEFAULT_VISITS_PER_MONTH
 
-        fee = {st: _kk_build_fee_table(st, adds, area_level, vpm) for st in ("han", "ichi")}
+        # keiyaku-timeclass-app-v1: service._order があれば各種別キーで、無ければ旧 han/ichi 既定。
+        _svc = facility.get("service", {}) if isinstance(facility, dict) else {}
+        _order = _svc.get("_order") if isinstance(_svc, dict) else None
+        if not (isinstance(_order, list) and _order):
+            _order = ["han", "ichi"]
+        _F_for_fee = {"service": _svc}
+        fee = {st: _kk_build_fee_table(st, adds, area_level, vpm, _F_for_fee) for st in _order}
 
         return jsonify({
             "status": "success",
