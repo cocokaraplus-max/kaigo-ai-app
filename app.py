@@ -12367,6 +12367,200 @@ def api_board_update_category():
 
 
 
+# ===== keiyaku-calc-api-v1 : 契約書・重要事項説明書 料金計算と設定API =====
+import math as _kk_math
+
+# --- 基本単位数マスタ（国コード表 令和8年6月施行版で確認済み） ---
+_KK_BASE = {
+    "han":  {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},      # 半日型 3時間
+    "ichi": {1: 947, 2: 1097, 3: 1251, 4: 1404, 5: 1557},  # 1日型 7時間
+}
+_KK_KUNREN1_PER_VISIT = 56   # 個別機能訓練加算Ⅰイ 56単位/回（毎回）
+_KK_KUNREN2_MONTHLY   = 20   # 個別機能訓練加算Ⅱ 20単位/月
+_KK_KAGAKU_MONTHLY    = 40   # 科学的介護推進体制加算 40単位/月
+_KK_SHOGUU_RATE       = 0.125  # 介護職員等処遇改善加算Ⅱロ（Ⅱ２）125/1000
+_KK_JINKENHI_RATIO    = 0.45   # 通所介護 人件費割合
+_KK_AREA_UPLIFT = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.00}
+_KK_DEFAULT_VISITS_PER_MONTH = 4
+_KK_FEE_TABLE_NOTE = "月4回（週1回）利用の場合の目安です。利用回数により金額は変わります。"
+
+def _kk_round_half_up(x):
+    return _kk_math.floor(x + 0.5)
+
+def _kk_tanka(area_level):
+    """1単位単価 = 四捨五入(10×(1+上乗せ率×人件費割合), 小数2位)。豊田市3級地→10.68円"""
+    uplift = _KK_AREA_UPLIFT.get(area_level, 0.0)
+    raw = 10 * (1 + uplift * _KK_JINKENHI_RATIO)
+    return _kk_math.floor(raw * 100 + 0.5) / 100
+
+def _kk_monthly_units(service_type, level, visits_per_month, adds):
+    b = _KK_BASE[service_type][level]
+    per_visit = b
+    if adds.get("kunren1"):
+        per_visit += _KK_KUNREN1_PER_VISIT
+    monthly = per_visit * visits_per_month
+    if adds.get("kunren2"):
+        monthly += _KK_KUNREN2_MONTHLY
+    if adds.get("kagaku"):
+        monthly += _KK_KAGAKU_MONTHLY
+    return monthly
+
+def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3):
+    """1回あたりの自己負担額（参考値）。基本＋毎回加算（個別Ⅰ）のみ。"""
+    units = _KK_BASE[service_type][level]
+    if adds.get("kunren1"):
+        units += _KK_KUNREN1_PER_VISIT
+    price = _kk_tanka(area_level)
+    total_yen = _kk_math.floor(units * price)
+    kyufu = _kk_math.floor(total_yen * (10 - wari) / 10)
+    return {"units": units, "total_yen": total_yen, "kyufu": kyufu,
+            "jiko": total_yen - kyufu, "unit_price": price}
+
+def _kk_calc_monthly(service_type, level, wari, visits_per_month, adds, area_level=3):
+    """月額目安（正規計算＝請求基準）。月総単位で処遇改善まで含めて算出。"""
+    m_units = _kk_monthly_units(service_type, level, visits_per_month, adds)
+    shoguu = _kk_round_half_up(m_units * _KK_SHOGUU_RATE) if adds.get("shoguu") else 0
+    total_units = m_units + shoguu
+    price = _kk_tanka(area_level)
+    total_yen = _kk_math.floor(total_units * price)
+    kyufu = _kk_math.floor(total_yen * (10 - wari) / 10)
+    return {"visits": visits_per_month, "total_units": total_units,
+            "total_yen": total_yen, "kyufu": kyufu,
+            "jiko": total_yen - kyufu, "unit_price": price}
+
+def _kk_build_fee_table(service_type, adds, area_level=3, visits_per_month=None):
+    """料金表データを生成。要介護1〜5×(1回単価 / 月額目安1・2・3割)。"""
+    if visits_per_month is None:
+        visits_per_month = _KK_DEFAULT_VISITS_PER_MONTH
+    rows = []
+    for lv in range(1, 6):
+        pv = _kk_calc_per_visit(service_type, lv, 1, adds, area_level)
+        m = {w: _kk_calc_monthly(service_type, lv, w, visits_per_month, adds, area_level)
+             for w in (1, 2, 3)}
+        rows.append({
+            "level": lv,
+            "base_units": _KK_BASE[service_type][lv],
+            "per_visit_jiko": pv["jiko"],
+            "monthly": {str(w): m[w]["jiko"] for w in (1, 2, 3)},
+        })
+    return {
+        "service_type": service_type,
+        "unit_price": _kk_tanka(area_level),
+        "area_level": area_level,
+        "visits_per_month": visits_per_month,
+        "note": _KK_FEE_TABLE_NOTE,
+        "rows": rows,
+    }
+
+# --- 設定の読み書き（admin_settings の4キー。既存パターン: update→無ければinsert） ---
+_KK_KEYS = ("keiyaku_facility", "keiyaku_jihi", "keiyaku_staff", "keiyaku_adds")
+
+def _kk_get_setting(supabase, f_code, key):
+    """admin_settings から1キー読み出し。JSON文字列はパースして返す。無ければ None。"""
+    try:
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", key).execute()
+        if res.data and len(res.data) > 0:
+            raw = res.data[0].get("value")
+            if raw is None or raw == "":
+                return None
+            try:
+                return json.loads(raw)
+            except Exception:
+                return raw
+    except Exception as e:
+        print(f"_kk_get_setting error ({key}): {e}", flush=True)
+    return None
+
+def _kk_save_setting(supabase, f_code, key, value):
+    """admin_settings へ1キー保存。dict/list は JSON 文字列化。
+    (facility_code,key) のユニーク制約が無いため existing 分岐。"""
+    if isinstance(value, (dict, list)):
+        value_json = json.dumps(value, ensure_ascii=False)
+    else:
+        value_json = value
+    existing = supabase.table("admin_settings").select("id").eq(
+        "facility_code", f_code).eq("key", key).execute()
+    if existing.data and len(existing.data) > 0:
+        supabase.table("admin_settings").update({"value": value_json}).eq(
+            "facility_code", f_code).eq("key", key).execute()
+    else:
+        supabase.table("admin_settings").insert({
+            "facility_code": f_code, "key": key, "value": value_json}).execute()
+
+# --- 設定API: GET（設定＋計算済み料金表を返す） ---
+# ===== keiyaku-page-v1 : 契約書・重要事項説明書 設定UI画面 =====
+@app.route("/admin/keiyaku")
+@login_required
+def admin_keiyaku():
+    """keiyaku-page-v1: 契約書・重要事項説明書の設定UI＋プレビュー(管理者MENU)。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    return render("admin_keiyaku.html")
+# ===== /keiyaku-page-v1 =====
+
+
+@app.route("/admin/keiyaku/settings", methods=["GET"])  # keiyaku-calc-api-v1
+@login_required
+def api_keiyaku_settings_get():
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
+        staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
+        adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
+            "kunren1": True, "kunren2": True, "kagaku": True, "shoguu": True}
+
+        area_level = int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3
+        vpm = int(facility.get("visits_per_month", _KK_DEFAULT_VISITS_PER_MONTH)) if isinstance(facility, dict) else _KK_DEFAULT_VISITS_PER_MONTH
+
+        fee = {st: _kk_build_fee_table(st, adds, area_level, vpm) for st in ("han", "ichi")}
+
+        return jsonify({
+            "status": "success",
+            "facility": facility, "jihi": jihi, "staff": staff, "adds": adds,
+            "area_level": area_level, "visits_per_month": vpm,
+            "unit_price": _kk_tanka(area_level),
+            "fee": fee,
+        })
+    except Exception as e:
+        print(f"api_keiyaku_settings_get error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- 設定API: POST（4キーを保存） ---
+@app.route("/admin/keiyaku/settings", methods=["POST"])  # keiyaku-calc-api-v1
+@login_required
+def api_keiyaku_settings_save():
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        data = request.get_json(silent=True) or {}
+        if "facility" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_facility", data["facility"])
+        if "jihi" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_jihi", data["jihi"])
+        if "staff" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_staff", data["staff"])
+        if "adds" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_adds", data["adds"])
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"api_keiyaku_settings_save error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /keiyaku-calc-api-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)

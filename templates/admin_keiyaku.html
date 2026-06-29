@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}契約書・重要事項説明書 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+  /* keiyaku-page-v1 : 設定UI＋プレビュー（CDS風・緑系） */
+  .kk-wrap{max-width:var(--page-max-width,720px);margin:0 auto;padding:16px 14px 96px}
+  .kk-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .kk-head .material-symbols-outlined{color:#2e7d32;font-size:26px}
+  .kk-title{font-size:1.15rem;font-weight:800;color:#1e5e26}
+  .kk-lead{font-size:0.82rem;color:#6b7d6f;margin:0 2px 16px}
+
+  .kk-group{background:#fff;border:1px solid #d8d4cc;border-radius:12px;
+    padding:14px 16px;margin-bottom:14px}
+  .kk-group h2{font-size:0.95rem;font-weight:700;color:#1e3a24;margin:0 0 10px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .kk-group h2 .tag{font-size:0.66rem;font-weight:600;color:#2f6b5e;background:#e7f1ee;
+    padding:2px 8px;border-radius:20px}
+  .kk-desc{font-size:0.72rem;color:#6b7d6f;margin:0 0 10px}
+
+  .kk-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .kk-row:last-child{margin-bottom:0}
+  .kk-seg{display:flex;border:1px solid #d8d4cc;border-radius:10px;overflow:hidden;flex:1;min-width:0}
+  .kk-seg button{flex:1;border:0;background:#fff;padding:10px 6px;font-size:0.85rem;
+    color:#5a5a5a;cursor:pointer;font-family:inherit;white-space:nowrap;font-weight:600}
+  .kk-seg button.on{background:#2f6b5e;color:#fff}
+
+  label.kk-field{font-size:0.74rem;color:#6b7d6f;display:block;margin:0 0 4px}
+  .kk-input{width:100%;padding:10px 12px;border:1px solid #d8d4cc;border-radius:10px;
+    font-size:0.9rem;font-family:inherit;background:#fff;color:#1e3a24}
+
+  .kk-add{display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid #ebe8e1;
+    border-radius:10px;margin-bottom:8px;cursor:pointer;user-select:none}
+  .kk-add:last-child{margin-bottom:0}
+  .kk-add.locked{background:#faf8f4;cursor:default}
+  .kk-add .chk{width:22px;height:22px;border:2px solid #d8d4cc;border-radius:6px;flex:none;
+    margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff}
+  .kk-add.on .chk{background:#2f6b5e;border-color:#2f6b5e}
+  .kk-add.locked .chk{background:#5a5a5a;border-color:#5a5a5a}
+  .kk-add .nm{font-size:0.86rem;font-weight:600;color:#1e3a24}
+  .kk-add .meta{font-size:0.74rem;color:#6b7d6f;margin-top:2px}
+  .kk-add .locktag{font-size:0.6rem;color:#8a5410;background:#fbeede;
+    padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:1px}
+
+  .kk-listrow{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+  .kk-listrow input{padding:9px 10px;border:1px solid #d8d4cc;border-radius:8px;
+    font-size:0.8rem;font-family:inherit;background:#fff;min-width:0;color:#1e3a24}
+  .kk-listrow .del{flex:none;width:34px;height:34px;border:1px solid #d8d4cc;border-radius:8px;
+    background:#fff;color:#c0392b;cursor:pointer;font-size:18px;display:flex;
+    align-items:center;justify-content:center;padding:0;line-height:1}
+  .ji-name{flex:1.4}.ji-price{flex:0.9;text-align:right}.ji-unit{flex:0.7}
+  .st-role{flex:1}.st-work{flex:1.3}.st-count{flex:1.1}
+  .kk-note-input{width:100%;padding:7px 10px;border:1px dashed #d8d4cc;border-radius:8px;
+    font-size:0.72rem;font-family:inherit;background:#faf9f6;color:#6b7d6f;margin-bottom:8px}
+  .kk-addbtn{width:100%;padding:11px;border:1px dashed #2f6b5e;border-radius:10px;
+    background:#e7f1ee;color:#2f6b5e;font-size:0.8rem;font-weight:700;font-family:inherit;
+    cursor:pointer;margin-top:4px}
+
+  .kk-mini{font-size:0.74rem;border-collapse:collapse;width:100%}
+  .kk-mini th,.kk-mini td{border:1px solid #ebe8e1;padding:5px 6px;text-align:center}
+  .kk-mini th{background:#f3f1ec;font-weight:700;color:#1e3a24}
+  .kk-mini td.k{text-align:left;color:#6b7d6f;white-space:nowrap}
+  .kk-pv-tabs{display:flex;gap:6px;margin-bottom:10px}
+  .kk-pv-tabs button{flex:1;padding:8px;border:1px solid #d8d4cc;border-radius:8px;
+    background:#fff;color:#5a5a5a;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:inherit}
+  .kk-pv-tabs button.on{background:#2f6b5e;color:#fff;border-color:#2f6b5e}
+
+  .kk-actionbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;
+    width:100%;max-width:var(--page-max-width,720px);
+    background:rgba(246,244,239,.96);backdrop-filter:blur(8px);
+    border-top:1px solid #d8d4cc;padding:12px 14px;display:flex;gap:10px;z-index:50}
+  .kk-actionbar button{flex:1;padding:14px;border-radius:12px;border:0;font-size:0.92rem;
+    font-weight:700;font-family:inherit;cursor:pointer}
+  .kk-btn-save{background:#fff;border:2px solid #2f6b5e !important;color:#2f6b5e}
+  .kk-btn-print{background:#2f6b5e;color:#fff}
+  .kk-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;
+    background:#1e5e26;color:#fff;padding:10px 18px;border-radius:20px;font-size:0.82rem;
+    font-weight:600;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
+  .kk-toast.show{opacity:1}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kk-wrap">
+  <div class="kk-head">
+    <span class="material-symbols-outlined">description</span>
+    <span class="kk-title">契約書・重要事項説明書</span>
+  </div>
+  <p class="kk-lead">サービス種別・加算・自費料金・職員配置を設定すると、料金が自動計算されます。設定を保存し、印刷で契約書・重説をPDF化できます。</p>
+
+  <div class="kk-group">
+    <h2>サービス種別</h2>
+    <div class="kk-row">
+      <div class="kk-seg" id="kk-seg-type">
+        <button data-type="han" class="on">半日型（3時間）</button>
+        <button data-type="ichi">1日型（7時間）</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="kk-group">
+    <h2>事業所・地域区分 <span class="tag">単価に反映</span></h2>
+    <div class="kk-row">
+      <div class="kk-seg" id="kk-seg-area" style="flex-wrap:wrap">
+        <button data-area="1">1級地</button>
+        <button data-area="2">2級地</button>
+        <button data-area="3" class="on">3級地</button>
+        <button data-area="4">4級地</button>
+        <button data-area="5">5級地</button>
+        <button data-area="6">6級地</button>
+        <button data-area="7">7級地</button>
+        <button data-area="0">その他</button>
+      </div>
+    </div>
+    <p class="kk-desc" id="kk-tanka-note">通所介護（人件費45%）× 3級地（上乗せ15%）= <b>10.68円</b>／単位</p>
+  </div>
+
+  <div class="kk-group">
+    <h2>加算の選択 <span class="tag">料金に反映</span></h2>
+    <div id="kk-addlist"></div>
+  </div>
+
+  <div class="kk-group">
+    <h2>自費料金・その他の費用 <span class="tag">施設ごとに設定</span></h2>
+    <p class="kk-desc">飲み物代やおむつ代など、施設ごとに自由に追加・編集できます。重要事項説明書に反映されます。</p>
+    <div id="kk-jihilist"></div>
+    <button class="kk-addbtn" id="kk-add-jihi">＋ 項目を追加</button>
+  </div>
+
+  <div class="kk-group">
+    <h2>職員の配置 <span class="tag">施設ごとに設定</span></h2>
+    <p class="kk-desc">職種・業務内容・配置人数（常勤換算）を自由に記入できます。重要事項説明書に反映されます。</p>
+    <div id="kk-stafflist"></div>
+    <button class="kk-addbtn" id="kk-add-staff">＋ 職種を追加</button>
+  </div>
+
+  <div class="kk-group">
+    <h2>料金プレビュー <span class="tag">サーバ計算・請求基準</span></h2>
+    <div class="kk-pv-tabs" id="kk-pv-wari">
+      <button data-wari="1" class="on">1割負担</button>
+      <button data-wari="2">2割負担</button>
+      <button data-wari="3">3割負担</button>
+    </div>
+    <table class="kk-mini" id="kk-pv-table"></table>
+    <p class="kk-desc" id="kk-pv-note" style="margin-top:10px"></p>
+    <p class="kk-desc" id="kk-pv-shoguu" style="margin-top:2px"></p>
+  </div>
+
+  <div class="kk-actionbar">
+    <button class="kk-btn-save" id="kk-save">設定を保存</button>
+    <button class="kk-btn-print" id="kk-print">印刷 / PDF</button>
+  </div>
+  <div class="kk-toast" id="kk-toast"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* ===== keiyaku-page-v1 : 設定UI＋プレビュー（サーバAPI連動） ===== */
+(function(){
+  const AREA_LABEL = {1:'1級地（上乗せ20%）',2:'2級地（上乗せ16%）',3:'3級地（上乗せ15%）',
+    4:'4級地（上乗せ12%）',5:'5級地（上乗せ10%）',6:'6級地（上乗せ6%）',7:'7級地（上乗せ3%）',0:'その他（上乗せ0%）'};
+
+  const ADDS_DEF = [
+    {id:'kunren1', name:'個別機能訓練加算Ⅰ１', meta:'56単位 × 利用回数'},
+    {id:'kunren2', name:'個別機能訓練加算Ⅱ',   meta:'20単位 / 月'},
+    {id:'kagaku',  name:'科学的介護推進体制加算',meta:'40単位 / 月'},
+    {id:'shoguu',  name:'介護職員等処遇改善加算Ⅱロ（Ⅱ２）',meta:'12.5%（令和8年6月〜／旧 9.0%から変更）'},
+  ];
+
+  const state = {
+    type:'han', area:3, wari:1,
+    adds:{kunren1:true,kunren2:true,kagaku:true,shoguu:true},
+    jihi:[], staff:[],
+    fee:null,            // サーバ返却の料金表 {han,ichi}
+    visits_per_month:4,
+    unit_price:10.68,
+    facility:{},
+    dirty:false,
+  };
+
+  const $ = s => document.querySelector(s);
+  const yen = n => Number(n).toLocaleString('ja-JP');
+  const esc = t => (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  /* ---- API ---- */
+  async function loadSettings(){
+    try{
+      const r = await fetch('/admin/keiyaku/settings');
+      const d = await r.json();
+      if(d.status!=='success'){ toast('読み込みに失敗しました'); return; }
+      state.facility = d.facility || {};
+      state.area = Number(d.area_level||3);
+      state.visits_per_month = Number(d.visits_per_month||4);
+      state.unit_price = Number(d.unit_price||10.68);
+      state.adds = Object.assign({kunren1:true,kunren2:true,kagaku:true,shoguu:true}, d.adds||{});
+      state.jihi = Array.isArray(d.jihi)? d.jihi : [];
+      state.staff = Array.isArray(d.staff)? d.staff : [];
+      state.fee = d.fee || null;
+      if(state.facility && state.facility.service_type==='ichi') state.type='ichi';
+      syncSegs(); renderAll();
+    }catch(e){ toast('通信エラー'); }
+  }
+
+  async function refreshFee(){
+    // 加算・地域区分を変えたら、保存せずサーバへ計算だけ依頼するため一旦保存→GET。
+    // 設計上 settings POST は4キー保存のみなので、ここでは facility/adds を保存してから GET で再計算。
+    await saveSettings(true);
+    try{
+      const r = await fetch('/admin/keiyaku/settings');
+      const d = await r.json();
+      if(d.status==='success'){
+        state.fee = d.fee || null;
+        state.unit_price = Number(d.unit_price||state.unit_price);
+        renderPreview();
+      }
+    }catch(e){}
+  }
+
+  async function saveSettings(silent){
+    const facility = Object.assign({}, state.facility, {
+      area_level: state.area,
+      service_type: state.type,
+      visits_per_month: state.visits_per_month,
+    });
+    const payload = { facility, adds: state.adds, jihi: state.jihi, staff: state.staff };
+    try{
+      const r = await fetch('/admin/keiyaku/settings', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if(d.status==='success'){ state.dirty=false; if(!silent) toast('保存しました'); return true; }
+      if(!silent) toast('保存に失敗しました');
+    }catch(e){ if(!silent) toast('通信エラー'); }
+    return false;
+  }
+
+  /* ---- セグメント同期 ---- */
+  function syncSegs(){
+    document.querySelectorAll('#kk-seg-type button').forEach(b=>
+      b.classList.toggle('on', b.dataset.type===state.type));
+    document.querySelectorAll('#kk-seg-area button').forEach(b=>
+      b.classList.toggle('on', Number(b.dataset.area)===state.area));
+    updateTankaNote();
+  }
+  function updateTankaNote(){
+    const lbl = AREA_LABEL[state.area]||'';
+    $('#kk-tanka-note').innerHTML =
+      `通所介護（人件費45%）× ${esc(lbl)} = <b>${state.unit_price}円</b>／単位`;
+  }
+
+  /* ---- 加算 ---- */
+  function renderAdds(){
+    const el=$('#kk-addlist'); el.innerHTML='';
+    ADDS_DEF.forEach(a=>{
+      const on=!!state.adds[a.id];
+      const d=document.createElement('div');
+      d.className='kk-add'+(on?' on':'');
+      d.innerHTML=`<div class="chk">${on?'✓':''}</div>
+        <div style="flex:1;min-width:0">
+          <div class="nm">${esc(a.name)}</div>
+          <div class="meta">${esc(a.meta)}</div>
+        </div>`;
+      d.onclick=()=>{ state.adds[a.id]=!state.adds[a.id]; state.dirty=true; renderAdds(); refreshFee(); };
+      el.appendChild(d);
+    });
+  }
+
+  /* ---- 自費 ---- */
+  function renderJihi(){
+    const el=$('#kk-jihilist'); el.innerHTML='';
+    state.jihi.forEach((j,i)=>{
+      const wrap=document.createElement('div');
+      const row=document.createElement('div'); row.className='kk-listrow';
+      row.innerHTML=`
+        <input class="ji-name" placeholder="項目名" value="${esc(j.name||'')}">
+        <input class="ji-price" placeholder="金額" value="${esc(j.price||'')}">
+        <input class="ji-unit" placeholder="単位" value="${esc(j.unit||'')}">
+        <button class="del" aria-label="削除">×</button>`;
+      const note=document.createElement('input');
+      note.className='kk-note-input'; note.placeholder='補足説明（任意）'; note.value=j.note||'';
+      const [nm,pr,un]=row.querySelectorAll('input');
+      nm.oninput=e=>{state.jihi[i].name=e.target.value; state.dirty=true;};
+      pr.oninput=e=>{state.jihi[i].price=e.target.value; state.dirty=true;};
+      un.oninput=e=>{state.jihi[i].unit=e.target.value; state.dirty=true;};
+      note.oninput=e=>{state.jihi[i].note=e.target.value; state.dirty=true;};
+      row.querySelector('.del').onclick=()=>{state.jihi.splice(i,1); state.dirty=true; renderJihi();};
+      wrap.appendChild(row); wrap.appendChild(note); el.appendChild(wrap);
+    });
+  }
+
+  /* ---- 職員 ---- */
+  function renderStaff(){
+    const el=$('#kk-stafflist'); el.innerHTML='';
+    state.staff.forEach((s,i)=>{
+      const row=document.createElement('div'); row.className='kk-listrow';
+      row.innerHTML=`
+        <input class="st-role" placeholder="職種" value="${esc(s.role||'')}">
+        <input class="st-work" placeholder="業務内容" value="${esc(s.work||'')}">
+        <input class="st-count" placeholder="配置人数" value="${esc(s.count||'')}">
+        <button class="del" aria-label="削除">×</button>`;
+      const [ro,wo,co]=row.querySelectorAll('input');
+      ro.oninput=e=>{state.staff[i].role=e.target.value; state.dirty=true;};
+      wo.oninput=e=>{state.staff[i].work=e.target.value; state.dirty=true;};
+      co.oninput=e=>{state.staff[i].count=e.target.value; state.dirty=true;};
+      row.querySelector('.del').onclick=()=>{state.staff.splice(i,1); state.dirty=true; renderStaff();};
+      el.appendChild(row);
+    });
+  }
+
+  /* ---- 料金プレビュー（サーバ返却値を表示） ---- */
+  function renderPreview(){
+    const tbl=$('#kk-pv-table');
+    if(!state.fee || !state.fee[state.type]){ tbl.innerHTML='<tr><td>計算中…</td></tr>'; return; }
+    const ft = state.fee[state.type];
+    const w = String(state.wari);
+    let h = '<tr><th>要介護度</th><th>1回単価<br>(参考)</th><th>月額目安<br>(請求基準)</th></tr>';
+    ft.rows.forEach(r=>{
+      h += `<tr><td class="k">要介護${r.level}<br><span style="font-size:0.66rem;color:#9aa">${r.base_units}単位</span></td>`+
+           `<td>${yen(r.per_visit_jiko)}円</td>`+
+           `<td><b>${yen(r.monthly[w])}円</b></td></tr>`;
+    });
+    tbl.innerHTML=h;
+    $('#kk-pv-note').textContent = ft.note || '';
+    const sh = state.adds.shoguu
+      ? '処遇改善加算Ⅱロ（Ⅱ２） 12.5% を適用中（旧 9.0%）'
+      : '処遇改善加算なし';
+    $('#kk-pv-shoguu').textContent = `${state.wari}割負担 ／ ${sh}`;
+  }
+
+  function renderAll(){ renderAdds(); renderJihi(); renderStaff(); renderPreview(); updateTankaNote(); }
+
+  /* ---- トースト ---- */
+  let toastTimer=null;
+  function toast(msg){
+    const t=$('#kk-toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+  }
+
+  /* ---- イベント ---- */
+  document.querySelectorAll('#kk-seg-type button').forEach(b=>{
+    b.onclick=()=>{ state.type=b.dataset.type; state.dirty=true; syncSegs(); refreshFee(); };
+  });
+  document.querySelectorAll('#kk-seg-area button').forEach(b=>{
+    b.onclick=()=>{ state.area=Number(b.dataset.area); state.dirty=true; syncSegs(); refreshFee(); };
+  });
+  document.querySelectorAll('#kk-pv-wari button').forEach(b=>{
+    b.onclick=()=>{
+      state.wari=Number(b.dataset.wari);
+      document.querySelectorAll('#kk-pv-wari button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); renderPreview();
+    };
+  });
+  $('#kk-add-jihi').onclick=()=>{ state.jihi.push({name:'',price:'',unit:'1回',note:''}); state.dirty=true; renderJihi(); };
+  $('#kk-add-staff').onclick=()=>{ state.staff.push({role:'',work:'',count:''}); state.dirty=true; renderStaff(); };
+  $('#kk-save').onclick=()=> saveSettings(false);
+  $('#kk-print').onclick=async()=>{
+    if(state.dirty){ await saveSettings(true); }
+    const url = `/admin/keiyaku/print?type=${encodeURIComponent(state.type)}&wari=${state.wari}`;
+    window.open(url, '_blank');
+  };
+
+  /* ---- 起動 ---- */
+  loadSettings();
+})();
+</script>
+{% endblock %}
