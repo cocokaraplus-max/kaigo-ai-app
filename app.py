@@ -12367,6 +12367,591 @@ def api_board_update_category():
 
 
 
+# ===== keiyaku-calc-api-v1 : 契約書・重要事項説明書 料金計算と設定API =====
+import math as _kk_math
+
+# --- 基本単位数マスタ（国コード表 令和8年6月施行版で確認済み） ---
+# keiyaku-timeclass-app-v1: 地域密着型通所介護 基本単位数を国の所要時間区分(time_class)で保持。
+# 出典: 介護給付費単位数等サービスコード表(令和8年6月施行版) 78 1xxx 地域密着型通所介護費(本体)。
+_KK_BASE = {
+    "3-4h": {1: 416, 2: 478, 3: 540, 4: 600, 5: 663},
+    "4-5h": {1: 436, 2: 501, 3: 566, 4: 629, 5: 695},
+    "5-6h": {1: 657, 2: 776, 3: 896, 4: 1013, 5: 1134},
+    "6-7h": {1: 678, 2: 801, 3: 925, 4: 1049, 5: 1172},
+    "7-8h": {1: 753, 2: 890, 3: 1032, 4: 1172, 5: 1312},
+    "8-9h": {1: 783, 2: 925, 3: 1072, 4: 1220, 5: 1365},
+}
+# keiyaku-timeclass-app-v1: 旧種別キー(han/ichi)→time_class 後方互換マッピング。
+_KK_LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
+_KK_KUNREN1_PER_VISIT = 56   # 個別機能訓練加算Ⅰイ 56単位/回（毎回）
+_KK_KUNREN2_MONTHLY   = 20   # 個別機能訓練加算Ⅱ 20単位/月
+_KK_KAGAKU_MONTHLY    = 40   # 科学的介護推進体制加算 40単位/月
+_KK_SHOGUU_RATE       = 0.125  # 後方互換: 既定率(Ⅱロ 125/1000)。
+# keiyaku-timeclass-app-v1: 介護職員等処遇改善加算 6区分の率(/1000)。既定はⅡロ(2ro)=12.5%。
+_KK_SHOGUU_RATES = {
+    "1i": 0.117, "1ro": 0.127, "2i": 0.115, "2ro": 0.125, "3": 0.105, "4": 0.089,
+}
+
+# ===== keiyaku-addmaster-app-v1 : 加算マスタ（keiyaku_render.py と同一方針） =====
+# calc: per_visit=単位×月回数 / per_month=月1回定額 /
+#       per_month_cap=単位×min(回数,cap) / rate_on_total=処遇改善(月総単位×率)
+# in_fee_default: 料金表(要介護別月額自己負担)に金額で織り込む既定。
+#   True=毎月確実 → 料金表に反映。False=頻度/利用者依存 → 一覧表に単位×条件のみ。
+# C-1では現状4加算をマスタ駆動で従来と完全一致させる。C-2以降で他加算を追加。
+_KK_ADD_MASTER = {
+    "kunren1": {"units": _KK_KUNREN1_PER_VISIT, "calc": "per_visit",
+                "scope": "service", "group": "kunren_kobetsu", "in_fee_default": True,  # keiyaku-c2-adds-app-v1
+                "label": "個別機能訓練加算Ⅰ１", "note": "56単位／回（利用日ごと）"},
+    "kunren2": {"units": _KK_KUNREN2_MONTHLY, "calc": "per_month",
+                "scope": "service", "in_fee_default": True,
+                "label": "個別機能訓練加算Ⅱ", "note": "20単位／月"},
+    "kagaku":  {"units": _KK_KAGAKU_MONTHLY, "calc": "per_month",
+                "scope": "service", "in_fee_default": True,
+                "label": "科学的介護推進体制加算", "note": "40単位／月"},
+    "shoguu":  {"calc": "rate_on_total", "scope": "facility",
+                "in_fee_default": True, "label": "介護職員等処遇改善加算",
+                "note": "月総単位数に所定の率を乗じて算定"},
+    # keiyaku-c2-adds-app-v1: C-2追加5加算（毎回算定 per_visit・料金表に反映）。
+    "kunren1ro": {"units": 76, "calc": "per_visit", "scope": "service",
+                  "group": "kunren_kobetsu", "in_fee_default": True,
+                  "label": "個別機能訓練加算Ⅰ２（Ⅰロ）",
+                  "note": "76単位／回（利用日ごと。Ⅰ１と排他）"},
+    "chuju":   {"units": 45, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True, "label": "中重度者ケア体制加算",
+                "note": "45単位／回（利用日ごと。利用者全員に算定可）"},
+    "ninchi":  {"units": 60, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True, "label": "認知症加算",
+                "note": "60単位／回（利用日ごと。要件を満たす場合）"},
+    "nyuyoku1": {"units": 40, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅰ",
+                 "note": "40単位／回（入浴介助実施日。Ⅱと排他）"},
+    "nyuyoku2": {"units": 55, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅱ",
+                 "note": "55単位／回（入浴介助実施日。Ⅰと排他）"},
+    # keiyaku-c4a-koukuu-app-v1: 限度つき・低頻度。既定 in_fee:False（料金表でなく一覧表へ）。
+    "koukuu1": {"units": 150, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅰ",
+                "note": "150単位／回（月2回を限度。Ⅱと排他）"},
+    "koukuu2": {"units": 160, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅱ",
+                "note": "160単位／回（月2回を限度。Ⅰと排他。LIFE提出要件）"},
+    # keiyaku-c4b-adds-app-v1: 栄養・連携・ADL・若年性・生活相談員（共生型）。
+    "eiyou_assess": {"units": 50, "calc": "per_month", "scope": "service",
+                     "in_fee_default": False,
+                     "label": "栄養アセスメント加算", "note": "50単位／月（LIFE提出要件）"},
+    "eiyou_kaizen": {"units": 200, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                     "in_fee_default": False,
+                     "label": "栄養改善加算", "note": "200単位／回（月2回を限度）"},
+    "screening1": {"units": 20, "calc": "low_freq", "scope": "service",
+                   "group": "screening", "in_fee_default": False,
+                   "label": "口腔・栄養スクリーニング加算Ⅰ",
+                   "note": "20単位／回（6月に1回を限度）"},
+    "renkei1": {"units": 100, "calc": "low_freq", "scope": "service",
+                "group": "renkei", "in_fee_default": False,
+                "label": "生活機能向上連携加算Ⅰ",
+                "note": "100単位／回（原則3月に1回を限度。Ⅱと排他）"},
+    "renkei2": {"units": 200, "calc": "per_month", "scope": "service",
+                "group": "renkei", "in_fee_default": False,
+                "label": "生活機能向上連携加算Ⅱ", "note": "200単位／月（Ⅰと排他）"},
+    "adl1": {"units": 30, "calc": "per_month", "scope": "service",
+             "group": "adl", "in_fee_default": False,
+             "label": "ADL維持等加算Ⅰ", "note": "30単位／月（Ⅱと排他。LIFE提出要件）"},
+    "adl2": {"units": 60, "calc": "per_month", "scope": "service",
+             "group": "adl", "in_fee_default": False,
+             "label": "ADL維持等加算Ⅱ", "note": "60単位／月（Ⅰと排他。LIFE提出要件）"},
+    "jakunen": {"units": 60, "calc": "per_visit", "scope": "service",
+                "in_fee_default": False,
+                "label": "若年性認知症利用者受入加算",
+                "note": "60単位／回（利用日ごと。要件を満たす場合）"},
+    "soudan": {"units": 13, "calc": "per_visit", "scope": "service",
+               "in_fee_default": False,
+               "label": "生活相談員配置等加算",
+               "note": "13単位／回（利用日ごと。※共生型地域密着型通所介護のみ算定可。"
+                       "共生型は基本報酬が所定単位の93/100となる点に留意）"},
+}
+
+
+def _kk_add_state(adds, key):
+    """keiyaku-addmaster-app-v1: adds[key] を {on, in_fee} に正規化。
+    旧bool形式 adds={kunren1:True} は {on:True, in_fee:マスタ既定} に読み替え。
+    新dict形式 adds={kunren1:{on,in_fee}} は値を尊重。"""
+    m = _KK_ADD_MASTER.get(key, {})
+    in_fee_def = bool(m.get("in_fee_default"))
+    v = adds.get(key)
+    if isinstance(v, dict):
+        st = {"on": bool(v.get("on")),
+              "in_fee": bool(v.get("in_fee", in_fee_def))}
+    else:
+        st = {"on": bool(v), "in_fee": in_fee_def}
+    # keiyaku-c4b-adds-app-v1: low_freq（超低頻度）は料金表に載せず一覧専用→in_fee強制False。
+    if m.get("calc") == "low_freq":
+        st["in_fee"] = False
+    return st
+
+
+def _kk_add_master_public():
+    """keiyaku-c3-master-api-v1: UI配信用に加算マスタのメタ情報を抜き出す。
+    dict挿入順=表示順を維持。計算内部値も含め安全な範囲で返す。"""
+    out = {}
+    for k, m in _KK_ADD_MASTER.items():
+        out[k] = {
+            "label": m.get("label", k),
+            "note": m.get("note", ""),
+            "group": m.get("group"),
+            "scope": m.get("scope", "service"),
+            "calc": m.get("calc"),
+            "units": m.get("units"),
+            "cap": m.get("cap"),  # keiyaku-c4a-koukuu-app-v1
+            "in_fee_default": bool(m.get("in_fee_default")),
+        }
+    return out
+
+
+def _kk_resolve_tc(service_type, F=None):
+    """keiyaku-timeclass-app-v1: 種別キー/旧キーから _KK_BASE 参照キー(time_class)を解決。
+    優先順: 既に time_class → F['service'][key]['time_class'] → 旧キー(han/ichi)変換 → 既定3-4h。"""
+    if service_type in _KK_BASE:
+        return service_type
+    if isinstance(F, dict):
+        sv = F.get("service", {})
+        if isinstance(sv, dict):
+            node = sv.get(service_type)
+            if isinstance(node, dict) and node.get("time_class") in _KK_BASE:
+                return node["time_class"]
+    if service_type in _KK_LEGACY_TC:
+        return _KK_LEGACY_TC[service_type]
+    return "3-4h"
+
+
+def _kk_shoguu_rate(adds):
+    """keiyaku-timeclass-app-v1 / addmaster-app-v1: 処遇改善率を取得。
+    on 判定は _kk_add_state 経由で旧bool/新dict両形式に対応。率は shoguu_type 優先。"""
+    if not _kk_add_state(adds, "shoguu")["on"]:  # keiyaku-addmaster-app-v1
+        return 0.0
+    stype = adds.get("shoguu_type", "2ro")
+    return _KK_SHOGUU_RATES.get(stype, _KK_SHOGUU_RATES["2ro"])
+_KK_JINKENHI_RATIO    = 0.45   # 通所介護 人件費割合
+_KK_AREA_UPLIFT = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.00}
+_KK_DEFAULT_VISITS_PER_MONTH = 4
+_KK_FEE_TABLE_NOTE = "月4回（週1回）利用の場合の目安です。利用回数により金額は変わります。"
+
+def _kk_round_half_up(x):
+    return _kk_math.floor(x + 0.5)
+
+def _kk_tanka(area_level):
+    """1単位単価 = 四捨五入(10×(1+上乗せ率×人件費割合), 小数2位)。豊田市3級地→10.68円"""
+    uplift = _KK_AREA_UPLIFT.get(area_level, 0.0)
+    raw = 10 * (1 + uplift * _KK_JINKENHI_RATIO)
+    return _kk_math.floor(raw * 100 + 0.5) / 100
+
+def _kk_monthly_units(service_type, level, visits_per_month, adds, F=None):
+    # keiyaku-addmaster-app-v1: 加算マスタ駆動。処遇改善(rate_on_total)は含めず
+    # 月総単位を返す（処遇改善は _kk_calc_monthly 側で最後に乗算）。
+    # 料金表に金額で織り込むのは on かつ in_fee の加算のみ。従来4加算と完全一致。
+    per_visit = _KK_BASE[_kk_resolve_tc(service_type, F)][level]
+    monthly_fixed = 0
+    for _k, _m in _KK_ADD_MASTER.items():
+        _s = _kk_add_state(adds, _k)
+        if not (_s["on"] and _s["in_fee"]):
+            continue
+        _c = _m.get("calc")
+        if _c == "per_visit":
+            per_visit += _m["units"]
+        elif _c == "per_month":
+            monthly_fixed += _m["units"]
+        elif _c == "per_month_cap":
+            monthly_fixed += _m["units"] * min(visits_per_month,
+                                               _m.get("cap", visits_per_month))
+    return per_visit * visits_per_month + monthly_fixed
+
+def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3, F=None):
+    """1回あたりの自己負担額（参考値）。基本＋毎回加算（per_visit）のみ。"""
+    # keiyaku-addmaster-app-v1: per_visit 加算を on かつ in_fee のものだけ合算。
+    units = _KK_BASE[_kk_resolve_tc(service_type, F)][level]
+    for _k, _m in _KK_ADD_MASTER.items():
+        if _m.get("calc") != "per_visit":
+            continue
+        _s = _kk_add_state(adds, _k)
+        if _s["on"] and _s["in_fee"]:
+            units += _m["units"]
+    price = _kk_tanka(area_level)
+    total_yen = _kk_math.floor(units * price)
+    kyufu = _kk_math.floor(total_yen * (10 - wari) / 10)
+    return {"units": units, "total_yen": total_yen, "kyufu": kyufu,
+            "jiko": total_yen - kyufu, "unit_price": price}
+
+def _kk_calc_monthly(service_type, level, wari, visits_per_month, adds, area_level=3, F=None):
+    """月額目安（正規計算＝請求基準）。月総単位で処遇改善まで含めて算出。"""
+    m_units = _kk_monthly_units(service_type, level, visits_per_month, adds, F)  # keiyaku-timeclass-app-v1
+    _rate = _kk_shoguu_rate(adds)  # keiyaku-timeclass-app-v1: 6区分から率を取得
+    shoguu = _kk_round_half_up(m_units * _rate) if _rate else 0
+    total_units = m_units + shoguu
+    price = _kk_tanka(area_level)
+    total_yen = _kk_math.floor(total_units * price)
+    kyufu = _kk_math.floor(total_yen * (10 - wari) / 10)
+    return {"visits": visits_per_month, "total_units": total_units,
+            "total_yen": total_yen, "kyufu": kyufu,
+            "jiko": total_yen - kyufu, "unit_price": price}
+
+def _kk_build_fee_table(service_type, adds, area_level=3, visits_per_month=None, F=None):
+    """料金表データを生成。要介護1〜5×(1回単価 / 月額目安1・2・3割)。"""
+    if visits_per_month is None:
+        visits_per_month = _KK_DEFAULT_VISITS_PER_MONTH
+    _tc = _kk_resolve_tc(service_type, F)  # keiyaku-timeclass-app-v1
+    rows = []
+    for lv in range(1, 6):
+        pv = _kk_calc_per_visit(service_type, lv, 1, adds, area_level, F)
+        m = {w: _kk_calc_monthly(service_type, lv, w, visits_per_month, adds, area_level, F)
+             for w in (1, 2, 3)}
+        rows.append({
+            "level": lv,
+            "base_units": _KK_BASE[_tc][lv],
+            "per_visit_jiko": pv["jiko"],
+            "monthly": {str(w): m[w]["jiko"] for w in (1, 2, 3)},
+        })
+    return {
+        "service_type": service_type,
+        "unit_price": _kk_tanka(area_level),
+        "area_level": area_level,
+        "visits_per_month": visits_per_month,
+        "note": _KK_FEE_TABLE_NOTE,
+        "rows": rows,
+    }
+
+# --- 設定の読み書き（admin_settings の4キー。既存パターン: update→無ければinsert） ---
+_KK_KEYS = ("keiyaku_facility", "keiyaku_jihi", "keiyaku_staff", "keiyaku_adds")
+
+def _kk_get_setting(supabase, f_code, key):
+    """admin_settings から1キー読み出し。JSON文字列はパースして返す。無ければ None。"""
+    try:
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", key).execute()
+        if res.data and len(res.data) > 0:
+            raw = res.data[0].get("value")
+            if raw is None or raw == "":
+                return None
+            try:
+                return json.loads(raw)
+            except Exception:
+                return raw
+    except Exception as e:
+        print(f"_kk_get_setting error ({key}): {e}", flush=True)
+    return None
+
+def _kk_save_setting(supabase, f_code, key, value):
+    """admin_settings へ1キー保存。dict/list は JSON 文字列化。
+    (facility_code,key) のユニーク制約が無いため existing 分岐。"""
+    if isinstance(value, (dict, list)):
+        value_json = json.dumps(value, ensure_ascii=False)
+    else:
+        value_json = value
+    existing = supabase.table("admin_settings").select("id").eq(
+        "facility_code", f_code).eq("key", key).execute()
+    if existing.data and len(existing.data) > 0:
+        supabase.table("admin_settings").update({"value": value_json}).eq(
+            "facility_code", f_code).eq("key", key).execute()
+    else:
+        supabase.table("admin_settings").insert({
+            "facility_code": f_code, "key": key, "value": value_json}).execute()
+
+# --- 設定API: GET（設定＋計算済み料金表を返す） ---
+# ===== keiyaku-page-v1 : 契約書・重要事項説明書 設定UI画面 =====
+@app.route("/admin/keiyaku")
+@login_required
+def admin_keiyaku():
+    """keiyaku-page-v1: 契約書・重要事項説明書の設定UI＋プレビュー(管理者MENU)。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    return render("admin_keiyaku.html")
+# ===== /keiyaku-page-v1 =====
+
+
+# ===== keiyaku-print-v1 : 契約書・重要事項説明書 印刷ルート（PDF生成） =====
+@app.route("/admin/keiyaku/print")
+@login_required
+def admin_keiyaku_print():
+    """keiyaku-print-v1: 契約書・重説を設定値から生成しPDF/HTMLで返す(管理者限定)。
+    ?doc=juyo|keiyaku|both  &type=han|ichi  &format=pdf|html
+    """
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return ("管理者権限がありません", 403)
+
+        doc = request.args.get("doc", "both")
+        if doc not in ("juyo", "keiyaku", "both"):
+            doc = "both"
+        # keiyaku-service-order-v1: st の確定は facility 読み出し後（_order 参照のため）に後送り。
+        st_req = request.args.get("type", "")
+        out_format = request.args.get("format", "pdf")
+
+        # 4キーを読み出して統合 F dict を構築（keiyaku_render が期待する形）
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        if not isinstance(facility, dict):
+            facility = {}
+        facility = _kk_ensure_service_order(facility)  # keiyaku-service-migrate-v1
+        jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
+        staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
+        adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
+            "kunren1": True, "kunren2": True, "kagaku": True, "shoguu": True}
+
+        F = dict(facility)
+        F["jihi"] = jihi
+        F["staff"] = staff
+        F["adds"] = adds
+        # area_level / visits_per_month は facility 側にある想定。無ければ既定。
+        F.setdefault("area_level", int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3)
+        F.setdefault("visits_per_month", int(facility.get("visits_per_month", 4)) if isinstance(facility, dict) else 4)
+
+        # keiyaku-service-order-v1: 種別キー st を facility.service._order で解決。
+        _svc = facility.get("service", {}) if isinstance(facility, dict) else {}
+        _order = _svc.get("_order") if isinstance(_svc, dict) else None
+        if not (isinstance(_order, list) and _order):
+            _order = [k for k in ("han", "ichi") if isinstance(_svc, dict) and k in _svc] or ["han"]
+        if st_req and st_req in _svc and st_req != "_order":
+            st = st_req
+        elif st_req in ("han", "ichi") and st_req in _svc:
+            st = st_req
+        else:
+            st = _order[0]
+
+        import keiyaku_render as _kr
+        html_str = _kr.render_print_html(F, doc, st)
+
+        if out_format == "html":
+            return html_str
+
+        # PDF生成（既存作法: pdfkit + wkhtmltopdf。日本語フォントはイメージに導入済み）
+        import pdfkit
+        import shutil as _sh
+        options = {
+            "encoding": "UTF-8",
+            "no-outline": None,
+            "quiet": "",
+            "disable-smart-shrinking": "",
+            "margin-top": "0",
+            "margin-right": "0",
+            "margin-bottom": "0",
+            "margin-left": "0",
+        }
+        wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+
+        from flask import make_response  # keiyaku-print-makeresp-fix-v1
+        from urllib.parse import quote
+        doc_label = {"juyo": "重要事項説明書", "keiyaku": "利用契約書", "both": "契約書一式"}.get(doc, "書類")
+        # keiyaku-service-order-v1: 表示名は種別の label を優先、無ければ旧辞書、無ければ空。
+        _node = _svc.get(st) if isinstance(_svc, dict) else None
+        if isinstance(_node, dict) and _node.get("label"):
+            type_label = str(_node.get("label"))
+        else:
+            type_label = {"han": "半日型", "ichi": "1日型"}.get(st, "")
+        fname = f"{doc_label}_{type_label}.pdf"
+        fname_ascii = "keiyaku.pdf"
+        fname_encoded = quote(fname)
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = (
+            'inline; filename="' + fname_ascii + '"; filename*=UTF-8\'\'' + fname_encoded)
+        return response
+    except Exception as e:
+        print(f"admin_keiyaku_print error: {e}", flush=True)
+        return (f"PDF生成エラー: {e}", 500)
+# ===== /keiyaku-print-v1 =====
+
+
+# ===== keiyaku-seed-v1 : ココカラプラス初期データ投入API（管理者限定） =====
+@app.route("/admin/keiyaku/seed", methods=["POST"])
+@login_required
+def api_keiyaku_seed():
+    """keiyaku-seed-v1: ココカラプラスの契約書・重説初期データを4キーに投入。
+    既に keiyaku_facility がある施設は force!=1 のとき skip。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        force = request.args.get("force", "0") == "1"
+        existing = _kk_get_setting(supabase, f_code, "keiyaku_facility")
+        if existing and not force:
+            return jsonify({
+                "status": "skipped",
+                "message": "既に keiyaku_facility が存在します。上書きするには ?force=1 を付けてください。",
+            })
+
+        import keiyaku_seed_cocokara as _seed
+        _kk_save_setting(supabase, f_code, "keiyaku_facility", _seed.KEIYAKU_FACILITY)
+        _kk_save_setting(supabase, f_code, "keiyaku_jihi", _seed.KEIYAKU_JIHI)
+        _kk_save_setting(supabase, f_code, "keiyaku_staff", _seed.KEIYAKU_STAFF)
+        _kk_save_setting(supabase, f_code, "keiyaku_adds", _seed.KEIYAKU_ADDS)
+
+        return jsonify({
+            "status": "success",
+            "message": f"初期データを投入しました（facility/jihi/staff/adds）。施設: {f_code}",
+            "forced": force,
+        })
+    except Exception as e:
+        print(f"api_keiyaku_seed error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /keiyaku-seed-v1 =====
+
+
+@app.route("/admin/keiyaku/settings", methods=["GET"])  # keiyaku-calc-api-v1
+@login_required
+def api_keiyaku_settings_get():
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        facility = _kk_ensure_service_order(facility)  # keiyaku-service-migrate-v1
+        jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
+        staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
+        adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
+            "kunren1": True, "kunren2": True, "kagaku": True, "shoguu": True}
+
+        area_level = int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3
+        vpm = int(facility.get("visits_per_month", _KK_DEFAULT_VISITS_PER_MONTH)) if isinstance(facility, dict) else _KK_DEFAULT_VISITS_PER_MONTH
+
+        # keiyaku-timeclass-app-v1: service._order があれば各種別キーで、無ければ旧 han/ichi 既定。
+        _svc = facility.get("service", {}) if isinstance(facility, dict) else {}
+        _order = _svc.get("_order") if isinstance(_svc, dict) else None
+        if not (isinstance(_order, list) and _order):
+            _order = ["han", "ichi"]
+        _F_for_fee = {"service": _svc}
+        fee = {st: _kk_build_fee_table(st, adds, area_level, vpm, _F_for_fee) for st in _order}
+
+        return jsonify({
+            "status": "success",
+            "facility": facility, "jihi": jihi, "staff": staff, "adds": adds,
+            "area_level": area_level, "visits_per_month": vpm,
+            "unit_price": _kk_tanka(area_level),
+            "fee": fee,
+            "add_master": _kk_add_master_public(),  # keiyaku-c3-master-api-v1
+        })
+    except Exception as e:
+        print(f"api_keiyaku_settings_get error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- 設定API: POST（4キーを保存） ---
+@app.route("/admin/keiyaku/settings", methods=["POST"])  # keiyaku-calc-api-v1
+@login_required
+def api_keiyaku_settings_save():
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        data = request.get_json(silent=True) or {}
+        if "facility" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_facility", data["facility"])
+        if "jihi" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_jihi", data["jihi"])
+        if "staff" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_staff", data["staff"])
+        if "adds" in data:
+            _kk_save_setting(supabase, f_code, "keiyaku_adds", data["adds"])
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"api_keiyaku_settings_save error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+# ===== keiyaku-service-migrate-v1 : service 構造補完ヘルパ＋移行API =====
+_KK_SERVICE_DEFAULT_LABEL = {"han": "半日型（3時間）", "ichi": "1日型（7時間）"}
+_KK_SERVICE_DEFAULT_TC = {"han": "3-4h", "ichi": "7-8h"}
+
+
+def _kk_ensure_service_order(facility):
+    """facility["service"] に _order/label/time_class を補完したコピーを返す（非破壊）。
+    旧 han/ichi のみのデータでも種別構造として扱えるようにする。"""
+    if not isinstance(facility, dict):
+        return facility
+    svc = facility.get("service")
+    if not isinstance(svc, dict):
+        return facility
+    svc = dict(svc)  # 浅いコピー
+    # _order 補完: 既存の種別キー（_order 以外の dict 値）を han,ichi 優先＋出現順で。
+    keys = [k for k in svc.keys() if k != "_order" and isinstance(svc.get(k), dict)]
+    order = svc.get("_order")
+    if not (isinstance(order, list) and order):
+        ordered = [k for k in ("han", "ichi") if k in keys]
+        ordered += [k for k in keys if k not in ordered]
+        order = ordered or ["han"]
+    else:
+        # _order にあるが実体が無いキーを除外、実体はあるが _order に無いキーを末尾追加。
+        order = [k for k in order if k in keys] + [k for k in keys if k not in order]
+        if not order:
+            order = ["han"]
+    svc["_order"] = order
+    # 各種別の label / time_class 補完。
+    for k in order:
+        node = dict(svc.get(k) or {})
+        if not node.get("label"):
+            node["label"] = _KK_SERVICE_DEFAULT_LABEL.get(k, k)
+        if not node.get("time_class"):
+            node["time_class"] = _KK_SERVICE_DEFAULT_TC.get(k, "3-4h")
+        svc[k] = node
+    out = dict(facility)
+    out["service"] = svc
+    return out
+
+
+@app.route("/admin/keiyaku/migrate_service", methods=["POST"])
+@login_required
+def api_keiyaku_migrate_service():
+    """keiyaku-service-migrate-v1: 既存 service を _order/label/time_class 付き構造へ
+    永続化する管理者限定API。既に _order があり force!=1 なら skip。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        force = request.args.get("force", "0") == "1"
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        if not isinstance(facility, dict):
+            return jsonify({"status": "error", "message": "keiyaku_facility がありません"}), 400
+
+        svc = facility.get("service", {})
+        already = isinstance(svc, dict) and isinstance(svc.get("_order"), list) and svc.get("_order")
+        if already and not force:
+            return jsonify({"status": "skipped",
+                            "message": "既に _order があります。上書きは ?force=1。",
+                            "service_order": svc.get("_order")})
+
+        migrated = _kk_ensure_service_order(facility)
+        _kk_save_setting(supabase, f_code, "keiyaku_facility", migrated)
+        return jsonify({"status": "success",
+                        "message": "service を _order/label/time_class 構造へ移行しました。",
+                        "service_order": migrated.get("service", {}).get("_order"),
+                        "forced": force})
+    except Exception as e:
+        print(f"api_keiyaku_migrate_service error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /keiyaku-service-migrate-v1 =====
+# ===== /keiyaku-calc-api-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
