@@ -67,7 +67,7 @@ _JINKENHI = 0.45
 _ADD_MASTER = {
     # --- C-1 対象（現状4加算。従来と完全一致させる） ---
     "kunren1": {"units": _KUNREN1, "calc": "per_visit", "scope": "service",
-                "group": "kunren1", "in_fee_default": True,
+                "group": "kunren_kobetsu", "in_fee_default": True,
                 "label": "個別機能訓練加算Ⅰ１",
                 "note": "56単位／回（利用日ごと）"},
     "kunren2": {"units": _KUNREN2, "calc": "per_month", "scope": "service",
@@ -82,6 +82,28 @@ _ADD_MASTER = {
                 "in_fee_default": True,
                 "label": "介護職員等処遇改善加算",
                 "note": "月総単位数に所定の率を乗じて算定"},
+    # --- C-2 追加（毎回算定 per_visit・in_fee:true で料金表に反映） ---
+    # 単位数は介護給付費単位数等サービスコード表(78系)・告示で確認済み。
+    "kunren1ro": {"units": 76, "calc": "per_visit", "scope": "service",
+                  "group": "kunren_kobetsu", "in_fee_default": True,
+                  "label": "個別機能訓練加算Ⅰ２（Ⅰロ）",
+                  "note": "76単位／回（利用日ごと。Ⅰ１と排他）"},
+    "chuju":   {"units": 45, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True,
+                "label": "中重度者ケア体制加算",
+                "note": "45単位／回（利用日ごと。利用者全員に算定可）"},
+    "ninchi":  {"units": 60, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True,
+                "label": "認知症加算",
+                "note": "60単位／回（利用日ごと。要件を満たす場合）"},
+    "nyuyoku1": {"units": 40, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅰ",
+                 "note": "40単位／回（入浴介助実施日。Ⅱと排他）"},
+    "nyuyoku2": {"units": 55, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅱ",
+                 "note": "55単位／回（入浴介助実施日。Ⅰと排他）"},
 }
 
 # in_fee_default が True の加算キー集合（C-1の現状4加算）。

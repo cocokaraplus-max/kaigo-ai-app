@@ -12400,7 +12400,7 @@ _KK_SHOGUU_RATES = {
 # C-1では現状4加算をマスタ駆動で従来と完全一致させる。C-2以降で他加算を追加。
 _KK_ADD_MASTER = {
     "kunren1": {"units": _KK_KUNREN1_PER_VISIT, "calc": "per_visit",
-                "scope": "service", "group": "kunren1", "in_fee_default": True,
+                "scope": "service", "group": "kunren_kobetsu", "in_fee_default": True,  # keiyaku-c2-adds-app-v1
                 "label": "個別機能訓練加算Ⅰ１", "note": "56単位／回（利用日ごと）"},
     "kunren2": {"units": _KK_KUNREN2_MONTHLY, "calc": "per_month",
                 "scope": "service", "in_fee_default": True,
@@ -12411,6 +12411,25 @@ _KK_ADD_MASTER = {
     "shoguu":  {"calc": "rate_on_total", "scope": "facility",
                 "in_fee_default": True, "label": "介護職員等処遇改善加算",
                 "note": "月総単位数に所定の率を乗じて算定"},
+    # keiyaku-c2-adds-app-v1: C-2追加5加算（毎回算定 per_visit・料金表に反映）。
+    "kunren1ro": {"units": 76, "calc": "per_visit", "scope": "service",
+                  "group": "kunren_kobetsu", "in_fee_default": True,
+                  "label": "個別機能訓練加算Ⅰ２（Ⅰロ）",
+                  "note": "76単位／回（利用日ごと。Ⅰ１と排他）"},
+    "chuju":   {"units": 45, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True, "label": "中重度者ケア体制加算",
+                "note": "45単位／回（利用日ごと。利用者全員に算定可）"},
+    "ninchi":  {"units": 60, "calc": "per_visit", "scope": "service",
+                "in_fee_default": True, "label": "認知症加算",
+                "note": "60単位／回（利用日ごと。要件を満たす場合）"},
+    "nyuyoku1": {"units": 40, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅰ",
+                 "note": "40単位／回（入浴介助実施日。Ⅱと排他）"},
+    "nyuyoku2": {"units": 55, "calc": "per_visit", "scope": "service",
+                 "group": "nyuyoku", "in_fee_default": True,
+                 "label": "入浴介助加算Ⅱ",
+                 "note": "55単位／回（入浴介助実施日。Ⅰと排他）"},
 }
 
 
