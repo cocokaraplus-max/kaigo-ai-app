@@ -193,6 +193,7 @@
   const state = {
     type:'han', area:3, wari:1,
     adds:{kunren1:true,kunren2:true,kagaku:true,shoguu:true,shoguu_type:'2ro'},
+    addMaster:null,      // keiyaku-c3-ui-v1: サーバ配信の加算定義 {key:{label,note,group,calc,scope,in_fee_default}}
     jihi:[], staff:[],
     fee:null,            // サーバ返却の料金表 {種別キー: 料金表}
     visits_per_month:4,
@@ -220,6 +221,8 @@
       state.visits_per_month = Number(d.visits_per_month||4);
       state.unit_price = Number(d.unit_price||10.68);
       state.adds = Object.assign({kunren1:true,kunren2:true,kagaku:true,shoguu:true,shoguu_type:'2ro'}, d.adds||{});
+      // keiyaku-c3-ui-v1: サーバ配信の加算マスタ（無ければフロント既定にフォールバック）。
+      state.addMaster = (d.add_master && typeof d.add_master==='object') ? d.add_master : null;
       state.jihi = Array.isArray(d.jihi)? d.jihi : [];
       state.staff = Array.isArray(d.staff)? d.staff : [];
       state.fee = d.fee || null;
@@ -444,18 +447,45 @@
   ];
   function renderAdds(){
     const el=$('#kk-addlist'); el.innerHTML='';
-    ADDS_DEF.forEach(a=>{
-      const on=!!state.adds[a.id];
+    // keiyaku-c3-ui-v1: 加算定義はサーバ配信マスタ優先、無ければフロント既定(4加算)。
+    let defs;
+    if(state.addMaster){
+      defs = Object.keys(state.addMaster).map(k=>{
+        const m = state.addMaster[k] || {};
+        return {id:k, name:(m.label||k), meta:(m.note||''), group:(m.group||null)};
+      });
+    }else{
+      defs = ADDS_DEF.map(a=>({id:a.id, name:a.name, meta:a.meta, group:null}));
+    }
+    // on判定: 旧bool形式 true / 新dict形式 {on:true} の両対応。
+    const isOn = id => { const v=state.adds[id]; return (v && typeof v==='object') ? !!v.on : !!v; };
+    // setOn: 形式を保ったままon/offを設定（dictならon更新、それ以外はbool）。
+    const setOn = (id,val) => {
+      const v=state.adds[id];
+      if(v && typeof v==='object'){ v.on=val; }
+      else{ state.adds[id]=val; }
+    };
+    defs.forEach(a=>{
+      const on=isOn(a.id);
       const d=document.createElement('div');
       d.className='kk-add'+(on?' on':'');
+      const grpTag = a.group ? `<span class="meta" style="color:#b06a00">（${esc(a.group)}グループ：いずれか一方）</span>` : '';
       d.innerHTML=`<div class="chk">${on?'✓':''}</div>
         <div style="flex:1;min-width:0">
           <div class="nm">${esc(a.name)}</div>
-          <div class="meta">${esc(a.meta)}</div>
+          <div class="meta">${esc(a.meta)} ${grpTag}</div>
         </div>`;
-      d.onclick=()=>{ state.adds[a.id]=!state.adds[a.id]; state.dirty=true; renderAdds(); refreshFee(); };
+      d.onclick=()=>{
+        const next = !isOn(a.id);
+        // keiyaku-c3-ui-v1: 排他グループ。onにする際は同グループの他キーをoffにする。
+        if(next && a.group){
+          defs.forEach(o=>{ if(o.id!==a.id && o.group===a.group) setOn(o.id,false); });
+        }
+        setOn(a.id, next);
+        state.dirty=true; renderAdds(); refreshFee();
+      };
       el.appendChild(d);
-      // 処遇改善がオンのとき、直下に区分セレクトを表示（クリックトグルとは独立）。
+      // 処遇改善がオンのとき、直下に区分セレクトを表示。
       if(a.id==='shoguu' && on){
         const wrap=document.createElement('div');
         wrap.className='kk-fld'; wrap.style.margin='6px 0 4px';

@@ -12446,6 +12446,23 @@ def _kk_add_state(adds, key):
     return {"on": bool(v), "in_fee": in_fee_def}
 
 
+def _kk_add_master_public():
+    """keiyaku-c3-master-api-v1: UI配信用に加算マスタのメタ情報を抜き出す。
+    dict挿入順=表示順を維持。計算内部値も含め安全な範囲で返す。"""
+    out = {}
+    for k, m in _KK_ADD_MASTER.items():
+        out[k] = {
+            "label": m.get("label", k),
+            "note": m.get("note", ""),
+            "group": m.get("group"),
+            "scope": m.get("scope", "service"),
+            "calc": m.get("calc"),
+            "units": m.get("units"),
+            "in_fee_default": bool(m.get("in_fee_default")),
+        }
+    return out
+
+
 def _kk_resolve_tc(service_type, F=None):
     """keiyaku-timeclass-app-v1: 種別キー/旧キーから _KK_BASE 参照キー(time_class)を解決。
     優先順: 既に time_class → F['service'][key]['time_class'] → 旧キー(han/ichi)変換 → 既定3-4h。"""
@@ -12776,6 +12793,7 @@ def api_keiyaku_settings_get():
             "area_level": area_level, "visits_per_month": vpm,
             "unit_price": _kk_tanka(area_level),
             "fee": fee,
+            "add_master": _kk_add_master_public(),  # keiyaku-c3-master-api-v1
         })
     except Exception as e:
         print(f"api_keiyaku_settings_get error: {e}", flush=True)
