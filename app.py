@@ -12500,6 +12500,125 @@ def admin_keiyaku():
 # ===== /keiyaku-page-v1 =====
 
 
+# ===== keiyaku-print-v1 : 契約書・重要事項説明書 印刷ルート（PDF生成） =====
+@app.route("/admin/keiyaku/print")
+@login_required
+def admin_keiyaku_print():
+    """keiyaku-print-v1: 契約書・重説を設定値から生成しPDF/HTMLで返す(管理者限定)。
+    ?doc=juyo|keiyaku|both  &type=han|ichi  &format=pdf|html
+    """
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return ("管理者権限がありません", 403)
+
+        doc = request.args.get("doc", "both")
+        if doc not in ("juyo", "keiyaku", "both"):
+            doc = "both"
+        st = request.args.get("type", "han")
+        if st not in ("han", "ichi"):
+            st = "han"
+        out_format = request.args.get("format", "pdf")
+
+        # 4キーを読み出して統合 F dict を構築（keiyaku_render が期待する形）
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        if not isinstance(facility, dict):
+            facility = {}
+        jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
+        staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
+        adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
+            "kunren1": True, "kunren2": True, "kagaku": True, "shoguu": True}
+
+        F = dict(facility)
+        F["jihi"] = jihi
+        F["staff"] = staff
+        F["adds"] = adds
+        # area_level / visits_per_month は facility 側にある想定。無ければ既定。
+        F.setdefault("area_level", int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3)
+        F.setdefault("visits_per_month", int(facility.get("visits_per_month", 4)) if isinstance(facility, dict) else 4)
+
+        import keiyaku_render as _kr
+        html_str = _kr.render_print_html(F, doc, st)
+
+        if out_format == "html":
+            return html_str
+
+        # PDF生成（既存作法: pdfkit + wkhtmltopdf。日本語フォントはイメージに導入済み）
+        import pdfkit
+        import shutil as _sh
+        options = {
+            "encoding": "UTF-8",
+            "no-outline": None,
+            "quiet": "",
+            "disable-smart-shrinking": "",
+            "margin-top": "0",
+            "margin-right": "0",
+            "margin-bottom": "0",
+            "margin-left": "0",
+        }
+        wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+
+        from urllib.parse import quote
+        doc_label = {"juyo": "重要事項説明書", "keiyaku": "利用契約書", "both": "契約書一式"}.get(doc, "書類")
+        type_label = {"han": "半日型", "ichi": "1日型"}.get(st, "")
+        fname = f"{doc_label}_{type_label}.pdf"
+        fname_ascii = "keiyaku.pdf"
+        fname_encoded = quote(fname)
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = (
+            'inline; filename="' + fname_ascii + '"; filename*=UTF-8\'\'' + fname_encoded)
+        return response
+    except Exception as e:
+        print(f"admin_keiyaku_print error: {e}", flush=True)
+        return (f"PDF生成エラー: {e}", 500)
+# ===== /keiyaku-print-v1 =====
+
+
+# ===== keiyaku-seed-v1 : ココカラプラス初期データ投入API（管理者限定） =====
+@app.route("/admin/keiyaku/seed", methods=["POST"])
+@login_required
+def api_keiyaku_seed():
+    """keiyaku-seed-v1: ココカラプラスの契約書・重説初期データを4キーに投入。
+    既に keiyaku_facility がある施設は force!=1 のとき skip。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        force = request.args.get("force", "0") == "1"
+        existing = _kk_get_setting(supabase, f_code, "keiyaku_facility")
+        if existing and not force:
+            return jsonify({
+                "status": "skipped",
+                "message": "既に keiyaku_facility が存在します。上書きするには ?force=1 を付けてください。",
+            })
+
+        import keiyaku_seed_cocokara as _seed
+        _kk_save_setting(supabase, f_code, "keiyaku_facility", _seed.KEIYAKU_FACILITY)
+        _kk_save_setting(supabase, f_code, "keiyaku_jihi", _seed.KEIYAKU_JIHI)
+        _kk_save_setting(supabase, f_code, "keiyaku_staff", _seed.KEIYAKU_STAFF)
+        _kk_save_setting(supabase, f_code, "keiyaku_adds", _seed.KEIYAKU_ADDS)
+
+        return jsonify({
+            "status": "success",
+            "message": f"初期データを投入しました（facility/jihi/staff/adds）。施設: {f_code}",
+            "forced": force,
+        })
+    except Exception as e:
+        print(f"api_keiyaku_seed error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /keiyaku-seed-v1 =====
+
+
 @app.route("/admin/keiyaku/settings", methods=["GET"])  # keiyaku-calc-api-v1
 @login_required
 def api_keiyaku_settings_get():
