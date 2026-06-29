@@ -12392,6 +12392,40 @@ _KK_SHOGUU_RATES = {
     "1i": 0.117, "1ro": 0.127, "2i": 0.115, "2ro": 0.125, "3": 0.105, "4": 0.089,
 }
 
+# ===== keiyaku-addmaster-app-v1 : 加算マスタ（keiyaku_render.py と同一方針） =====
+# calc: per_visit=単位×月回数 / per_month=月1回定額 /
+#       per_month_cap=単位×min(回数,cap) / rate_on_total=処遇改善(月総単位×率)
+# in_fee_default: 料金表(要介護別月額自己負担)に金額で織り込む既定。
+#   True=毎月確実 → 料金表に反映。False=頻度/利用者依存 → 一覧表に単位×条件のみ。
+# C-1では現状4加算をマスタ駆動で従来と完全一致させる。C-2以降で他加算を追加。
+_KK_ADD_MASTER = {
+    "kunren1": {"units": _KK_KUNREN1_PER_VISIT, "calc": "per_visit",
+                "scope": "service", "group": "kunren1", "in_fee_default": True,
+                "label": "個別機能訓練加算Ⅰ１", "note": "56単位／回（利用日ごと）"},
+    "kunren2": {"units": _KK_KUNREN2_MONTHLY, "calc": "per_month",
+                "scope": "service", "in_fee_default": True,
+                "label": "個別機能訓練加算Ⅱ", "note": "20単位／月"},
+    "kagaku":  {"units": _KK_KAGAKU_MONTHLY, "calc": "per_month",
+                "scope": "service", "in_fee_default": True,
+                "label": "科学的介護推進体制加算", "note": "40単位／月"},
+    "shoguu":  {"calc": "rate_on_total", "scope": "facility",
+                "in_fee_default": True, "label": "介護職員等処遇改善加算",
+                "note": "月総単位数に所定の率を乗じて算定"},
+}
+
+
+def _kk_add_state(adds, key):
+    """keiyaku-addmaster-app-v1: adds[key] を {on, in_fee} に正規化。
+    旧bool形式 adds={kunren1:True} は {on:True, in_fee:マスタ既定} に読み替え。
+    新dict形式 adds={kunren1:{on,in_fee}} は値を尊重。"""
+    m = _KK_ADD_MASTER.get(key, {})
+    in_fee_def = bool(m.get("in_fee_default"))
+    v = adds.get(key)
+    if isinstance(v, dict):
+        return {"on": bool(v.get("on")),
+                "in_fee": bool(v.get("in_fee", in_fee_def))}
+    return {"on": bool(v), "in_fee": in_fee_def}
+
 
 def _kk_resolve_tc(service_type, F=None):
     """keiyaku-timeclass-app-v1: 種別キー/旧キーから _KK_BASE 参照キー(time_class)を解決。
@@ -12410,9 +12444,9 @@ def _kk_resolve_tc(service_type, F=None):
 
 
 def _kk_shoguu_rate(adds):
-    """keiyaku-timeclass-app-v1: adds から処遇改善率。shoguu_type 優先、無ければ既定Ⅱロ。
-    旧データ(shoguu:bool のみ)は True で 12.5%、False/未設定で 0。"""
-    if not adds.get("shoguu"):
+    """keiyaku-timeclass-app-v1 / addmaster-app-v1: 処遇改善率を取得。
+    on 判定は _kk_add_state 経由で旧bool/新dict両形式に対応。率は shoguu_type 優先。"""
+    if not _kk_add_state(adds, "shoguu")["on"]:  # keiyaku-addmaster-app-v1
         return 0.0
     stype = adds.get("shoguu_type", "2ro")
     return _KK_SHOGUU_RATES.get(stype, _KK_SHOGUU_RATES["2ro"])
@@ -12431,22 +12465,35 @@ def _kk_tanka(area_level):
     return _kk_math.floor(raw * 100 + 0.5) / 100
 
 def _kk_monthly_units(service_type, level, visits_per_month, adds, F=None):
-    b = _KK_BASE[_kk_resolve_tc(service_type, F)][level]  # keiyaku-timeclass-app-v1
-    per_visit = b
-    if adds.get("kunren1"):
-        per_visit += _KK_KUNREN1_PER_VISIT
-    monthly = per_visit * visits_per_month
-    if adds.get("kunren2"):
-        monthly += _KK_KUNREN2_MONTHLY
-    if adds.get("kagaku"):
-        monthly += _KK_KAGAKU_MONTHLY
-    return monthly
+    # keiyaku-addmaster-app-v1: 加算マスタ駆動。処遇改善(rate_on_total)は含めず
+    # 月総単位を返す（処遇改善は _kk_calc_monthly 側で最後に乗算）。
+    # 料金表に金額で織り込むのは on かつ in_fee の加算のみ。従来4加算と完全一致。
+    per_visit = _KK_BASE[_kk_resolve_tc(service_type, F)][level]
+    monthly_fixed = 0
+    for _k, _m in _KK_ADD_MASTER.items():
+        _s = _kk_add_state(adds, _k)
+        if not (_s["on"] and _s["in_fee"]):
+            continue
+        _c = _m.get("calc")
+        if _c == "per_visit":
+            per_visit += _m["units"]
+        elif _c == "per_month":
+            monthly_fixed += _m["units"]
+        elif _c == "per_month_cap":
+            monthly_fixed += _m["units"] * min(visits_per_month,
+                                               _m.get("cap", visits_per_month))
+    return per_visit * visits_per_month + monthly_fixed
 
 def _kk_calc_per_visit(service_type, level, wari, adds, area_level=3, F=None):
-    """1回あたりの自己負担額（参考値）。基本＋毎回加算（個別Ⅰ）のみ。"""
-    units = _KK_BASE[_kk_resolve_tc(service_type, F)][level]  # keiyaku-timeclass-app-v1
-    if adds.get("kunren1"):
-        units += _KK_KUNREN1_PER_VISIT
+    """1回あたりの自己負担額（参考値）。基本＋毎回加算（per_visit）のみ。"""
+    # keiyaku-addmaster-app-v1: per_visit 加算を on かつ in_fee のものだけ合算。
+    units = _KK_BASE[_kk_resolve_tc(service_type, F)][level]
+    for _k, _m in _KK_ADD_MASTER.items():
+        if _m.get("calc") != "per_visit":
+            continue
+        _s = _kk_add_state(adds, _k)
+        if _s["on"] and _s["in_fee"]:
+            units += _m["units"]
     price = _kk_tanka(area_level)
     total_yen = _kk_math.floor(units * price)
     kyufu = _kk_math.floor(total_yen * (10 - wari) / 10)

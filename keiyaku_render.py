@@ -49,6 +49,59 @@ _SHOGUU_RATE = 0.125  # 後方互換: 旧コードが参照する既定率(Ⅱ�
 _JINKENHI = 0.45
 
 
+# ===== keiyaku-addmaster-v1 : 加算マスタ（地域密着型通所介護） =====
+# 各加算の定義。C-1ではまず現状4加算(kunren1/kunren2/kagaku/shoguu)を
+# マスタ駆動で従来と完全一致させることを最優先とする。C-2以降で他加算を追加。
+#
+# calc 種別と月額換算ルール（計算の芯）:
+#   per_visit      : units × 月利用回数（毎回算定。例 個別Ⅰ・中重度・認知症）
+#   per_month      : units（月1回定額。例 個別Ⅱ・科学的介護）
+#   per_month_cap  : units × min(月利用回数, cap)（限度つき。例 口腔機能向上 月2回）
+#   rate_on_total  : 他加算込みの月総単位 × 率（処遇改善のみ。最後に乗算）
+# in_fee_default : 料金表(要介護別月額自己負担)に金額で織り込む既定値。
+#   True  = 毎月確実に乗る加算 → 料金表の数字に反映。
+#   False = 利用者/頻度依存 → 料金表には載せず、加算一覧表に「単位×条件」で明記。
+# group : 排他グループ（同一グループは1つのみ算定可）。
+# scope : 'service'=種別ごと / 'facility'=施設共通。
+# note  : 加算一覧表に出す条件文（単位数＋限度の説明）。
+_ADD_MASTER = {
+    # --- C-1 対象（現状4加算。従来と完全一致させる） ---
+    "kunren1": {"units": _KUNREN1, "calc": "per_visit", "scope": "service",
+                "group": "kunren1", "in_fee_default": True,
+                "label": "個別機能訓練加算Ⅰ１",
+                "note": "56単位／回（利用日ごと）"},
+    "kunren2": {"units": _KUNREN2, "calc": "per_month", "scope": "service",
+                "in_fee_default": True,
+                "label": "個別機能訓練加算Ⅱ",
+                "note": "20単位／月"},
+    "kagaku":  {"units": _KAGAKU, "calc": "per_month", "scope": "service",
+                "in_fee_default": True,
+                "label": "科学的介護推進体制加算",
+                "note": "40単位／月"},
+    "shoguu":  {"calc": "rate_on_total", "scope": "facility",
+                "in_fee_default": True,
+                "label": "介護職員等処遇改善加算",
+                "note": "月総単位数に所定の率を乗じて算定"},
+}
+
+# in_fee_default が True の加算キー集合（C-1の現状4加算）。
+_ADD_KEYS_IN_FEE = tuple(k for k, m in _ADD_MASTER.items()
+                         if m.get("in_fee_default"))
+
+
+def _add_state(adds, key):
+    """keiyaku-addmaster-v1: adds[key] を {on, in_fee} に正規化して返す。
+    後方互換: 旧 bool 値（adds={kunren1:True,...}）は
+    {on:True, in_fee:マスタ既定} に読み替える。dict なら on/in_fee を尊重。"""
+    m = _ADD_MASTER.get(key, {})
+    in_fee_def = bool(m.get("in_fee_default"))
+    v = adds.get(key)
+    if isinstance(v, dict):
+        return {"on": bool(v.get("on")),
+                "in_fee": bool(v.get("in_fee", in_fee_def))}
+    return {"on": bool(v), "in_fee": in_fee_def}
+
+
 def _resolve_tc(F, key):
     """keiyaku-timeclass-v1: 種別キー/旧キーから time_class を解決して _BASE 参照キーを返す。
     優先順: service[key]['time_class'] → 旧キー名(han/ichi)変換 → そのまま(既に time_class)。"""
@@ -64,9 +117,10 @@ def _resolve_tc(F, key):
 
 
 def _shoguu_rate(adds):
-    """keiyaku-timeclass-v1: adds から処遇改善率を取得。shoguu_type 優先、無ければ既定Ⅱロ。
-    旧データ(shoguu:bool のみ)は True で 12.5%、False/未設定で 0。"""
-    if not adds.get("shoguu"):
+    """keiyaku-timeclass-v1 / addmaster-v1: adds から処遇改善率を取得。
+    on 判定は _add_state 経由で旧bool/新dictの両形式に対応。
+    率は shoguu_type 優先、無ければ既定Ⅱロ。off時は 0。"""
+    if not _add_state(adds, "shoguu")["on"]:
         return 0.0
     stype = adds.get("shoguu_type", "2ro")
     return _SHOGUU_RATES.get(stype, _SHOGUU_RATES["2ro"])
@@ -86,14 +140,32 @@ def _tanka(area_level):
 
 
 def _jiko_monthly(F, st, lv, wari, visits, adds, area):
+    """keiyaku-addmaster-v1: 加算マスタ駆動で月額自己負担を算出。
+    料金表に金額で織り込むのは on かつ in_fee の加算のみ。
+    処遇改善(rate_on_total)は他加算込みの月総単位に率を乗じ最後に加算。
+    現状4加算では従来ロジックと完全一致する（C-1検証要件）。"""
     tc = _resolve_tc(F, st)
-    per_visit = _BASE[tc][lv] + (_KUNREN1 if adds.get("kunren1") else 0)
-    monthly = per_visit * visits
-    if adds.get("kunren2"):
-        monthly += _KUNREN2
-    if adds.get("kagaku"):
-        monthly += _KAGAKU
-    rate = _shoguu_rate(adds)
+    base = _BASE[tc][lv]
+
+    # 毎回乗る加算(per_visit)を1回あたり単位に合算 → ×回数
+    per_visit = base
+    monthly_fixed = 0  # per_month / per_month_cap の月額単位合計
+    rate = 0.0
+    for key, m in _ADD_MASTER.items():
+        stt = _add_state(adds, key)
+        if not (stt["on"] and stt["in_fee"]):
+            continue
+        calc = m.get("calc")
+        if calc == "per_visit":
+            per_visit += m["units"]
+        elif calc == "per_month":
+            monthly_fixed += m["units"]
+        elif calc == "per_month_cap":
+            monthly_fixed += m["units"] * min(visits, m.get("cap", visits))
+        elif calc == "rate_on_total":
+            rate = _shoguu_rate(adds)
+
+    monthly = per_visit * visits + monthly_fixed
     if rate:
         monthly += _round_half(monthly * rate)
     total_yen = _floor(monthly * _tanka(area))
