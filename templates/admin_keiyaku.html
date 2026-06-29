@@ -212,6 +212,7 @@
         state.fee = d.fee || null;
         state.unit_price = Number(d.unit_price||state.unit_price);
         renderPreview();
+        updateTankaNote();
       }
     }catch(e){}
   }
