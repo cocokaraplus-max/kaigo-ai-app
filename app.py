@@ -12439,6 +12439,39 @@ _KK_ADD_MASTER = {
                 "group": "koukuu", "in_fee_default": False,
                 "label": "口腔機能向上加算Ⅱ",
                 "note": "160単位／回（月2回を限度。Ⅰと排他。LIFE提出要件）"},
+    # keiyaku-c4b-adds-app-v1: 栄養・連携・ADL・若年性・生活相談員（共生型）。
+    "eiyou_assess": {"units": 50, "calc": "per_month", "scope": "service",
+                     "in_fee_default": False,
+                     "label": "栄養アセスメント加算", "note": "50単位／月（LIFE提出要件）"},
+    "eiyou_kaizen": {"units": 200, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                     "in_fee_default": False,
+                     "label": "栄養改善加算", "note": "200単位／回（月2回を限度）"},
+    "screening1": {"units": 20, "calc": "low_freq", "scope": "service",
+                   "group": "screening", "in_fee_default": False,
+                   "label": "口腔・栄養スクリーニング加算Ⅰ",
+                   "note": "20単位／回（6月に1回を限度）"},
+    "renkei1": {"units": 100, "calc": "low_freq", "scope": "service",
+                "group": "renkei", "in_fee_default": False,
+                "label": "生活機能向上連携加算Ⅰ",
+                "note": "100単位／回（原則3月に1回を限度。Ⅱと排他）"},
+    "renkei2": {"units": 200, "calc": "per_month", "scope": "service",
+                "group": "renkei", "in_fee_default": False,
+                "label": "生活機能向上連携加算Ⅱ", "note": "200単位／月（Ⅰと排他）"},
+    "adl1": {"units": 30, "calc": "per_month", "scope": "service",
+             "group": "adl", "in_fee_default": False,
+             "label": "ADL維持等加算Ⅰ", "note": "30単位／月（Ⅱと排他。LIFE提出要件）"},
+    "adl2": {"units": 60, "calc": "per_month", "scope": "service",
+             "group": "adl", "in_fee_default": False,
+             "label": "ADL維持等加算Ⅱ", "note": "60単位／月（Ⅰと排他。LIFE提出要件）"},
+    "jakunen": {"units": 60, "calc": "per_visit", "scope": "service",
+                "in_fee_default": False,
+                "label": "若年性認知症利用者受入加算",
+                "note": "60単位／回（利用日ごと。要件を満たす場合）"},
+    "soudan": {"units": 13, "calc": "per_visit", "scope": "service",
+               "in_fee_default": False,
+               "label": "生活相談員配置等加算",
+               "note": "13単位／回（利用日ごと。※共生型地域密着型通所介護のみ算定可。"
+                       "共生型は基本報酬が所定単位の93/100となる点に留意）"},
 }
 
 
@@ -12450,9 +12483,14 @@ def _kk_add_state(adds, key):
     in_fee_def = bool(m.get("in_fee_default"))
     v = adds.get(key)
     if isinstance(v, dict):
-        return {"on": bool(v.get("on")),
-                "in_fee": bool(v.get("in_fee", in_fee_def))}
-    return {"on": bool(v), "in_fee": in_fee_def}
+        st = {"on": bool(v.get("on")),
+              "in_fee": bool(v.get("in_fee", in_fee_def))}
+    else:
+        st = {"on": bool(v), "in_fee": in_fee_def}
+    # keiyaku-c4b-adds-app-v1: low_freq（超低頻度）は料金表に載せず一覧専用→in_fee強制False。
+    if m.get("calc") == "low_freq":
+        st["in_fee"] = False
+    return st
 
 
 def _kk_add_master_public():

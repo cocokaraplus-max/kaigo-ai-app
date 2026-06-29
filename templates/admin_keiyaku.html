@@ -453,10 +453,10 @@
       defs = Object.keys(state.addMaster).map(k=>{
         const m = state.addMaster[k] || {};
         return {id:k, name:(m.label||k), meta:(m.note||''), group:(m.group||null),
-                in_fee_default: !!m.in_fee_default};
+                in_fee_default: !!m.in_fee_default, calc:(m.calc||null)};
       });
     }else{
-      defs = ADDS_DEF.map(a=>({id:a.id, name:a.name, meta:a.meta, group:null, in_fee_default:true}));
+      defs = ADDS_DEF.map(a=>({id:a.id, name:a.name, meta:a.meta, group:null, in_fee_default:true, calc:null}));
     }
     // on判定: 旧bool形式 true / 新dict形式 {on:true} の両対応。
     const isOn = id => { const v=state.adds[id]; return (v && typeof v==='object') ? !!v.on : !!v; };
@@ -501,7 +501,8 @@
       el.appendChild(d);
       // keiyaku-c4-ui-v1: in_fee_default=false の加算がonのとき「料金表に含める」トグルを表示。
       // 毎回確実な加算(in_fee_default=true)はトグル不要（常に料金表反映）。
-      if(on && a.id!=='shoguu' && !a.in_fee_default){
+      // keiyaku-c4b: low_freq（6月/3月1回等）は料金表に載せられないためトグルを出さない。
+      if(on && a.id!=='shoguu' && !a.in_fee_default && a.calc!=='low_freq'){
         const fw=document.createElement('div');
         fw.style.cssText='margin:4px 0 8px 34px;font-size:13px';
         const inf=isInFee(a.id);
