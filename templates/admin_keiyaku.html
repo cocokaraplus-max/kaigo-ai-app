@@ -452,10 +452,11 @@
     if(state.addMaster){
       defs = Object.keys(state.addMaster).map(k=>{
         const m = state.addMaster[k] || {};
-        return {id:k, name:(m.label||k), meta:(m.note||''), group:(m.group||null)};
+        return {id:k, name:(m.label||k), meta:(m.note||''), group:(m.group||null),
+                in_fee_default: !!m.in_fee_default};
       });
     }else{
-      defs = ADDS_DEF.map(a=>({id:a.id, name:a.name, meta:a.meta, group:null}));
+      defs = ADDS_DEF.map(a=>({id:a.id, name:a.name, meta:a.meta, group:null, in_fee_default:true}));
     }
     // on判定: 旧bool形式 true / 新dict形式 {on:true} の両対応。
     const isOn = id => { const v=state.adds[id]; return (v && typeof v==='object') ? !!v.on : !!v; };
@@ -464,6 +465,19 @@
       const v=state.adds[id];
       if(v && typeof v==='object'){ v.on=val; }
       else{ state.adds[id]=val; }
+    };
+    // keiyaku-c4-ui-v1: in_fee（料金表に含める）取得/設定。
+    // 既定はマスタの in_fee_default。dict形式に in_fee があればそれを優先。
+    const defOf = id => defs.find(x=>x.id===id) || {};
+    const isInFee = id => {
+      const v=state.adds[id];
+      if(v && typeof v==='object' && ('in_fee' in v)) return !!v.in_fee;
+      return !!defOf(id).in_fee_default;
+    };
+    const setInFee = (id,val) => {
+      let v=state.adds[id];
+      if(!(v && typeof v==='object')){ v={on:isOn(id)}; state.adds[id]=v; }
+      v.in_fee=val;
     };
     defs.forEach(a=>{
       const on=isOn(a.id);
@@ -485,6 +499,19 @@
         state.dirty=true; renderAdds(); refreshFee();
       };
       el.appendChild(d);
+      // keiyaku-c4-ui-v1: in_fee_default=false の加算がonのとき「料金表に含める」トグルを表示。
+      // 毎回確実な加算(in_fee_default=true)はトグル不要（常に料金表反映）。
+      if(on && a.id!=='shoguu' && !a.in_fee_default){
+        const fw=document.createElement('div');
+        fw.style.cssText='margin:4px 0 8px 34px;font-size:13px';
+        const inf=isInFee(a.id);
+        fw.innerHTML=`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#555">
+          <input type="checkbox" ${inf?'checked':''}> 料金表（月額目安）に含める
+          <span style="color:#999">（既定は含めず、加算一覧に条件のみ記載）</span></label>`;
+        const cb=fw.querySelector('input');
+        cb.onchange=()=>{ setInFee(a.id, cb.checked); state.dirty=true; refreshFee(); };
+        el.appendChild(fw);
+      }
       // 処遇改善がオンのとき、直下に区分セレクトを表示。
       if(a.id==='shoguu' && on){
         const wrap=document.createElement('div');

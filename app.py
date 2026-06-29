@@ -12430,6 +12430,15 @@ _KK_ADD_MASTER = {
                  "group": "nyuyoku", "in_fee_default": True,
                  "label": "入浴介助加算Ⅱ",
                  "note": "55単位／回（入浴介助実施日。Ⅰと排他）"},
+    # keiyaku-c4a-koukuu-app-v1: 限度つき・低頻度。既定 in_fee:False（料金表でなく一覧表へ）。
+    "koukuu1": {"units": 150, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅰ",
+                "note": "150単位／回（月2回を限度。Ⅱと排他）"},
+    "koukuu2": {"units": 160, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅱ",
+                "note": "160単位／回（月2回を限度。Ⅰと排他。LIFE提出要件）"},
 }
 
 
@@ -12458,6 +12467,7 @@ def _kk_add_master_public():
             "scope": m.get("scope", "service"),
             "calc": m.get("calc"),
             "units": m.get("units"),
+            "cap": m.get("cap"),  # keiyaku-c4a-koukuu-app-v1
             "in_fee_default": bool(m.get("in_fee_default")),
         }
     return out

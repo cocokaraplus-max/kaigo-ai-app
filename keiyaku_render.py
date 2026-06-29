@@ -104,6 +104,16 @@ _ADD_MASTER = {
                  "group": "nyuyoku", "in_fee_default": True,
                  "label": "入浴介助加算Ⅱ",
                  "note": "55単位／回（入浴介助実施日。Ⅰと排他）"},
+    # --- C-4 追加（限度つき・低頻度。既定 in_fee:False＝料金表でなく一覧表に条件のみ） ---
+    # 口腔機能向上加算: 1回150/160単位、3月以内に限り月2回を限度（要介護は月最大2回）。
+    "koukuu1": {"units": 150, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅰ",
+                "note": "150単位／回（月2回を限度。Ⅱと排他）"},
+    "koukuu2": {"units": 160, "calc": "per_month_cap", "cap": 2, "scope": "service",
+                "group": "koukuu", "in_fee_default": False,
+                "label": "口腔機能向上加算Ⅱ",
+                "note": "160単位／回（月2回を限度。Ⅰと排他。LIFE提出要件）"},
 }
 
 # in_fee_default が True の加算キー集合（C-1の現状4加算）。
@@ -265,6 +275,38 @@ def _adds_line(F):
     return "／".join(parts)
 
 
+# keiyaku-c4-table-v1: 加算一覧表。on の全加算を「名称／単位数・条件／料金表反映区分」で表示。
+# in_fee:true（毎月確実）は料金表に金額反映済み、in_fee:false（限度つき・低頻度）は
+# 「※実施月のみ・料金表別途」と明示し、HIROの方針「単位×条件（〇回まで算定）」を満たす。
+def _adds_table(F):
+    adds = F.get("adds", {})
+    rows = ""
+    for key, m in _ADD_MASTER.items():
+        stt = _add_state(adds, key)
+        if not stt["on"]:
+            continue
+        label = _esc(m.get("label", key))
+        # 処遇改善は率表記（区分別ラベルを使う）。
+        if m.get("calc") == "rate_on_total":
+            stype = adds.get("shoguu_type", "2ro")
+            slabel = _SHOGUU_LABELS.get(stype, _SHOGUU_LABELS["2ro"])
+            jname, jrate = (slabel.split("……") + [""])[:2]
+            cond = "月総単位数 × " + jrate if jrate else "月総単位数に所定の率を乗じて算定"
+            label = _esc(jname)
+            hanei = "料金表に反映済み"
+        else:
+            cond = _esc(m.get("note", ""))
+            hanei = "料金表に反映済み" if stt["in_fee"] else "※実施月のみ算定／料金表とは別に加算"
+        rows += (f'<tr><td class="k">{label}</td>'
+                 f'<td class="L">{cond}</td>'
+                 f'<td class="L">{hanei}</td></tr>')
+    if not rows:
+        return ""
+    head = ('<tr><th class="L">加算名</th><th class="L">単位数・算定条件</th>'
+            '<th class="L">料金表への反映</th></tr>')
+    return f'<table class="ptab">{head}{rows}</table>'
+
+
 # ===== 自費・職員 テーブル =====
 def _jihi_table(F):
     rows = ""
@@ -387,8 +429,8 @@ def render_juyo(F, st):
 <p class="note">※週1回＝月{int(F.get("visits_per_month",4))}回換算で算出。利用回数により金額は変わります。</p></div>'''
 
     sec_kasan = f'''<div class="sec"><div class="sec-h">各種加算の概要</div>
-<p>{_adds_line(F)}</p>
-<p class="note">上記加算率にて算出した単位（一単位未満の端数四捨五入）　※当該加算は、すべてのご契約者に加算されます。　※区分支給限度基準額の算定対象外です。</p></div>'''
+{_adds_table(F)}
+<p class="note">「料金表に反映済み」の加算は、上記の月額自己負担額に含まれています。「※実施月のみ算定／料金表とは別に加算」の加算は、サービスを実施した月に限り、上記単位数・限度回数に基づき別途加算されます（一単位未満の端数四捨五入）。いずれも区分支給限度基準額の算定対象外です。</p></div>'''
 
     sec_jihi = f'''<div class="sec"><div class="sec-h">自費料金・その他の費用</div>
 {_jihi_table(F)}
