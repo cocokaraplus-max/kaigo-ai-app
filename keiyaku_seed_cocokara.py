@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-keiyaku_seed_cocokara.py  (marker: keiyaku-seed-v1)
+keiyaku_seed_cocokara.py  (marker: keiyaku-seed-v1 / keiyaku-service-order-v1)
 ココカラプラス（cocokaraplus-5526）の契約書・重要事項説明書 初期データ。
 
 投入先キー（admin_settings）:
@@ -38,7 +38,10 @@ KEIYAKU_FACILITY = {
         "setsubi": "食堂兼機能訓練室1室、静養室1室、送迎車両4台、相談室1室",
     },
     "service": {
+        "_order": ["han", "ichi"],
         "han": {
+            "label": "半日型（3時間）",
+            "time_class": "3-4h",
             "teiin": "午前10名、午後10名",
             "eigyobi": "月～金曜日（祝日は営業しております）／土曜日・日曜日は定休日",
             "eigyo_time": "午前8時30分～午後17時30分",
@@ -49,6 +52,8 @@ KEIYAKU_FACILITY = {
             "kanran_time": "午前9時00分",
         },
         "ichi": {
+            "label": "1日型（7時間）",
+            "time_class": "7-8h",
             "teiin": "10名",
             "eigyobi": "日曜日のみ営業",
             "eigyo_time": "9時00分～17時30分",

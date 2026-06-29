@@ -12558,15 +12558,15 @@ def admin_keiyaku_print():
         doc = request.args.get("doc", "both")
         if doc not in ("juyo", "keiyaku", "both"):
             doc = "both"
-        st = request.args.get("type", "han")
-        if st not in ("han", "ichi"):
-            st = "han"
+        # keiyaku-service-order-v1: st の確定は facility 読み出し後（_order 参照のため）に後送り。
+        st_req = request.args.get("type", "")
         out_format = request.args.get("format", "pdf")
 
         # 4キーを読み出して統合 F dict を構築（keiyaku_render が期待する形）
         facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
         if not isinstance(facility, dict):
             facility = {}
+        facility = _kk_ensure_service_order(facility)  # keiyaku-service-migrate-v1
         jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
         staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
         adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
@@ -12579,6 +12579,18 @@ def admin_keiyaku_print():
         # area_level / visits_per_month は facility 側にある想定。無ければ既定。
         F.setdefault("area_level", int(facility.get("area_level", 3)) if isinstance(facility, dict) else 3)
         F.setdefault("visits_per_month", int(facility.get("visits_per_month", 4)) if isinstance(facility, dict) else 4)
+
+        # keiyaku-service-order-v1: 種別キー st を facility.service._order で解決。
+        _svc = facility.get("service", {}) if isinstance(facility, dict) else {}
+        _order = _svc.get("_order") if isinstance(_svc, dict) else None
+        if not (isinstance(_order, list) and _order):
+            _order = [k for k in ("han", "ichi") if isinstance(_svc, dict) and k in _svc] or ["han"]
+        if st_req and st_req in _svc and st_req != "_order":
+            st = st_req
+        elif st_req in ("han", "ichi") and st_req in _svc:
+            st = st_req
+        else:
+            st = _order[0]
 
         import keiyaku_render as _kr
         html_str = _kr.render_print_html(F, doc, st)
@@ -12606,7 +12618,12 @@ def admin_keiyaku_print():
         from flask import make_response  # keiyaku-print-makeresp-fix-v1
         from urllib.parse import quote
         doc_label = {"juyo": "重要事項説明書", "keiyaku": "利用契約書", "both": "契約書一式"}.get(doc, "書類")
-        type_label = {"han": "半日型", "ichi": "1日型"}.get(st, "")
+        # keiyaku-service-order-v1: 表示名は種別の label を優先、無ければ旧辞書、無ければ空。
+        _node = _svc.get(st) if isinstance(_svc, dict) else None
+        if isinstance(_node, dict) and _node.get("label"):
+            type_label = str(_node.get("label"))
+        else:
+            type_label = {"han": "半日型", "ichi": "1日型"}.get(st, "")
         fname = f"{doc_label}_{type_label}.pdf"
         fname_ascii = "keiyaku.pdf"
         fname_encoded = quote(fname)
@@ -12670,6 +12687,7 @@ def api_keiyaku_settings_get():
             return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
 
         facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        facility = _kk_ensure_service_order(facility)  # keiyaku-service-migrate-v1
         jihi = _kk_get_setting(supabase, f_code, "keiyaku_jihi") or []
         staff = _kk_get_setting(supabase, f_code, "keiyaku_staff") or []
         adds = _kk_get_setting(supabase, f_code, "keiyaku_adds") or {
@@ -12723,6 +12741,82 @@ def api_keiyaku_settings_save():
         print(f"api_keiyaku_settings_save error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+
+# ===== keiyaku-service-migrate-v1 : service 構造補完ヘルパ＋移行API =====
+_KK_SERVICE_DEFAULT_LABEL = {"han": "半日型（3時間）", "ichi": "1日型（7時間）"}
+_KK_SERVICE_DEFAULT_TC = {"han": "3-4h", "ichi": "7-8h"}
+
+
+def _kk_ensure_service_order(facility):
+    """facility["service"] に _order/label/time_class を補完したコピーを返す（非破壊）。
+    旧 han/ichi のみのデータでも種別構造として扱えるようにする。"""
+    if not isinstance(facility, dict):
+        return facility
+    svc = facility.get("service")
+    if not isinstance(svc, dict):
+        return facility
+    svc = dict(svc)  # 浅いコピー
+    # _order 補完: 既存の種別キー（_order 以外の dict 値）を han,ichi 優先＋出現順で。
+    keys = [k for k in svc.keys() if k != "_order" and isinstance(svc.get(k), dict)]
+    order = svc.get("_order")
+    if not (isinstance(order, list) and order):
+        ordered = [k for k in ("han", "ichi") if k in keys]
+        ordered += [k for k in keys if k not in ordered]
+        order = ordered or ["han"]
+    else:
+        # _order にあるが実体が無いキーを除外、実体はあるが _order に無いキーを末尾追加。
+        order = [k for k in order if k in keys] + [k for k in keys if k not in order]
+        if not order:
+            order = ["han"]
+    svc["_order"] = order
+    # 各種別の label / time_class 補完。
+    for k in order:
+        node = dict(svc.get(k) or {})
+        if not node.get("label"):
+            node["label"] = _KK_SERVICE_DEFAULT_LABEL.get(k, k)
+        if not node.get("time_class"):
+            node["time_class"] = _KK_SERVICE_DEFAULT_TC.get(k, "3-4h")
+        svc[k] = node
+    out = dict(facility)
+    out["service"] = svc
+    return out
+
+
+@app.route("/admin/keiyaku/migrate_service", methods=["POST"])
+@login_required
+def api_keiyaku_migrate_service():
+    """keiyaku-service-migrate-v1: 既存 service を _order/label/time_class 付き構造へ
+    永続化する管理者限定API。既に _order があり force!=1 なら skip。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        force = request.args.get("force", "0") == "1"
+        facility = _kk_get_setting(supabase, f_code, "keiyaku_facility") or {}
+        if not isinstance(facility, dict):
+            return jsonify({"status": "error", "message": "keiyaku_facility がありません"}), 400
+
+        svc = facility.get("service", {})
+        already = isinstance(svc, dict) and isinstance(svc.get("_order"), list) and svc.get("_order")
+        if already and not force:
+            return jsonify({"status": "skipped",
+                            "message": "既に _order があります。上書きは ?force=1。",
+                            "service_order": svc.get("_order")})
+
+        migrated = _kk_ensure_service_order(facility)
+        _kk_save_setting(supabase, f_code, "keiyaku_facility", migrated)
+        return jsonify({"status": "success",
+                        "message": "service を _order/label/time_class 構造へ移行しました。",
+                        "service_order": migrated.get("service", {}).get("_order"),
+                        "forced": force})
+    except Exception as e:
+        print(f"api_keiyaku_migrate_service error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /keiyaku-service-migrate-v1 =====
 # ===== /keiyaku-calc-api-v1 =====
 
 

@@ -88,12 +88,10 @@
   <p class="kk-lead">サービス種別・加算・自費料金・職員配置を設定すると、料金が自動計算されます。設定を保存し、印刷で契約書・重説をPDF化できます。</p>
 
   <div class="kk-group">
-    <h2>サービス種別</h2>
+    <h2>サービス種別 <span class="tag">種別ごとに契約書</span></h2>
+    <p class="kk-desc">施設が提供する種別を選びます。料金は国の所要時間区分に基づいて計算されます。（種別の追加・名称・時間区分の編集は順次対応予定）</p>
     <div class="kk-row">
-      <div class="kk-seg" id="kk-seg-type">
-        <button data-type="han" class="on">半日型（3時間）</button>
-        <button data-type="ichi">1日型（7時間）</button>
-      </div>
+      <div class="kk-seg" id="kk-seg-type" style="flex-wrap:wrap"></div>
     </div>
   </div>
 
@@ -171,10 +169,12 @@
     type:'han', area:3, wari:1,
     adds:{kunren1:true,kunren2:true,kagaku:true,shoguu:true},
     jihi:[], staff:[],
-    fee:null,            // サーバ返却の料金表 {han,ichi}
+    fee:null,            // サーバ返却の料金表 {種別キー: 料金表}
     visits_per_month:4,
     unit_price:10.68,
     facility:{},
+    service:{},          // keiyaku-service-order: {_order:[...], han:{label,time_class,...}, ...}
+    order:[],            // 種別キーの並び
     dirty:false,
   };
 
@@ -196,7 +196,19 @@
       state.jihi = Array.isArray(d.jihi)? d.jihi : [];
       state.staff = Array.isArray(d.staff)? d.staff : [];
       state.fee = d.fee || null;
-      if(state.facility && state.facility.service_type==='ichi') state.type='ichi';
+      // keiyaku-service-order: service 構造と _order を取り込む。
+      state.service = (state.facility && typeof state.facility.service==='object' && state.facility.service) ? state.facility.service : {};
+      let order = Array.isArray(state.service._order) ? state.service._order.slice() : [];
+      if(!order.length){
+        order = ['han','ichi'].filter(k => state.service[k]);
+        if(!order.length) order = Object.keys(state.fee||{});
+        if(!order.length) order = ['han'];
+      }
+      state.order = order;
+      // 保存済み種別 or 先頭。
+      const saved = state.facility && state.facility.service_type;
+      state.type = (saved && order.includes(saved)) ? saved : order[0];
+      buildTypeSeg();
       syncSegs(); renderAll();
     }catch(e){ toast('通信エラー'); }
   }
@@ -234,6 +246,25 @@
       if(!silent) toast('保存に失敗しました');
     }catch(e){ if(!silent) toast('通信エラー'); }
     return false;
+  }
+
+  /* ---- 種別セグメント動的生成（keiyaku-service-order） ---- */
+  function typeLabel(key){
+    const node = state.service[key];
+    if(node && node.label) return node.label;
+    return key==='han'?'半日型（3時間）':(key==='ichi'?'1日型（7時間）':key);
+  }
+  function buildTypeSeg(){
+    const seg = $('#kk-seg-type'); if(!seg) return;
+    seg.innerHTML='';
+    state.order.forEach(key=>{
+      const b=document.createElement('button');
+      b.dataset.type=key;
+      b.textContent=typeLabel(key);
+      if(key===state.type) b.classList.add('on');
+      b.onclick=()=>{ state.type=key; state.dirty=true; syncSegs(); refreshFee(); };
+      seg.appendChild(b);
+    });
   }
 
   /* ---- セグメント同期 ---- */
@@ -339,9 +370,7 @@
   }
 
   /* ---- イベント ---- */
-  document.querySelectorAll('#kk-seg-type button').forEach(b=>{
-    b.onclick=()=>{ state.type=b.dataset.type; state.dirty=true; syncSegs(); refreshFee(); };
-  });
+  // 種別ボタンのイベントは buildTypeSeg() 内で動的に付与（keiyaku-service-order）。
   document.querySelectorAll('#kk-seg-area button').forEach(b=>{
     b.onclick=()=>{ state.area=Number(b.dataset.area); state.dirty=true; syncSegs(); refreshFee(); };
   });
