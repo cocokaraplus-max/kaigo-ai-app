@@ -208,6 +208,31 @@ def _ov(F, tpl_id, default_html):
     return default_html
 
 
+# keiyaku-stepb2-v1: その他特記事項（施設共通）。重説末尾に出力。
+def _tokki_section(F):
+    """F['tokki'] = [{'name':..., 'body':...}, ...]。
+    改ページは F['tokki_page_break'] が真なら新ページから開始（案イ・トグル1個）。"""
+    items = F.get("tokki", [])
+    if not isinstance(items, list):
+        items = []
+    rows = ""
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = _esc(it.get("name", ""))
+        body = _esc(it.get("body", "")).replace("\n", "<br>")
+        if not (name or body):
+            continue
+        rows += (f'<div class="tokki-item">'
+                 f'<div class="tokki-name">{name}</div>'
+                 f'<div class="tokki-body">{body}</div></div>')
+    if not rows:
+        return ""
+    cls = "sec tokki-sec page-break" if F.get("tokki_page_break") else "sec tokki-sec"
+    inner = f'<div class="{cls}"><div class="sec-h">その他特記事項</div>{rows}</div>'
+    return _ov(F, "juyo_tokki", inner)
+
+
 # ===== 重要事項説明書 本文 =====
 def render_juyo(F, st):
     sv = _g(F, "service", st, default={})
@@ -308,7 +333,7 @@ def render_juyo(F, st):
     return ("<div class=\"paper\">" + head + sec_houjin + sec_jigyosho + sec_staff +
             sec_hyoka + sec_tokucho + sec_ryokin + sec_kasan + sec_jihi +
             sec_shiharai + sec_kinkyu + sec_shuryo + sec_kujo + sec_saigai +
-            sec_souchou + sign + "</div>")
+            sec_souchou + _tokki_section(F) + sign + "</div>")
 
 
 # ===== 利用契約書 本文（全22条） =====
@@ -434,6 +459,9 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .ch{font-weight:700;font-size:11.5pt;text-align:center;background:#eef3f1;padding:2mm 0;margin:3.5mm 0 2.5mm;letter-spacing:1px;page-break-after:avoid}
 .sec{margin:0 0 3mm;page-break-inside:avoid}
 .sec-h{font-weight:700;font-size:10pt;border-left:4px solid #2f6b5e;padding-left:6px;margin:0 0 1.5mm;page-break-after:avoid}
+.tokki-sec .tokki-item{margin:0 0 2mm;page-break-inside:avoid}
+.tokki-name{font-weight:700;font-size:9pt;margin:0 0 0.5mm}
+.tokki-body{font-size:9pt;line-height:1.55;white-space:normal}
 .sec p,.paper>p{margin:0 0 1.5mm;font-size:9pt;line-height:1.55}
 .center{text-align:center}
 .note{font-size:7.5pt;color:#333;margin:1mm 0;line-height:1.5}

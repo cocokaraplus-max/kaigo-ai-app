@@ -51,9 +51,17 @@
   .st-role{flex:1}.st-work{flex:1.3}.st-count{flex:1.1}
   .kk-note-input{width:100%;padding:7px 10px;border:1px dashed #d8d4cc;border-radius:8px;
     font-size:0.72rem;font-family:inherit;background:#faf9f6;color:#6b7d6f;margin-bottom:8px}
-  .kk-addbtn{width:100%;padding:11px;border:1px dashed #2f6b5e;border-radius:10px;
-    background:#e7f1ee;color:#2f6b5e;font-size:0.8rem;font-weight:700;font-family:inherit;
+  .kk-addbtn{width:auto;padding:9px 14px;border:1px dashed #2f6b5e;border-radius:10px;
+    background:#e7f1ee;color:#2f6b5e;font-size:0.78rem;font-weight:700;font-family:inherit;
     cursor:pointer;margin-top:4px}
+  .kk-edit-card{background:#faf9f6;border:1px solid #e4e0d8;border-radius:10px;padding:10px;margin:0 0 10px}
+  .kk-fld{display:flex;flex-direction:column;gap:3px;margin:0 0 8px}
+  .kk-fld>span{font-size:0.72rem;font-weight:700;color:#3a5a44}
+  .kk-fld input,.kk-fld select,.kk-fld textarea{font-family:inherit;font-size:0.82rem;
+    padding:7px 8px;border:1px solid #d8d4cc;border-radius:8px;background:#fff;width:100%;box-sizing:border-box}
+  .kk-fld textarea{resize:vertical}
+  .kk-delbtn{padding:5px 12px;border:1px solid #c66;border-radius:8px;background:#fff;
+    color:#c33;font-size:0.74rem;font-weight:700;font-family:inherit;cursor:pointer}
 
   .kk-mini{font-size:0.74rem;border-collapse:collapse;width:100%}
   .kk-mini th,.kk-mini td{border:1px solid #ebe8e1;padding:5px 6px;text-align:center}
@@ -89,10 +97,17 @@
 
   <div class="kk-group">
     <h2>サービス種別 <span class="tag">種別ごとに契約書</span></h2>
-    <p class="kk-desc">施設が提供する種別を選びます。料金は国の所要時間区分に基づいて計算されます。（種別の追加・名称・時間区分の編集は順次対応予定）</p>
+    <p class="kk-desc">施設が提供する種別を自由に追加・命名できます。料金は選んだ「国の所要時間区分」で計算されます。</p>
     <div class="kk-row">
       <div class="kk-seg" id="kk-seg-type" style="flex-wrap:wrap"></div>
     </div>
+    <div class="kk-row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+      <button class="kk-addbtn" id="kk-type-add">＋ 種別を追加</button>
+      <button class="kk-addbtn" id="kk-type-left" title="左へ移動">◀ 並べ替え</button>
+      <button class="kk-addbtn" id="kk-type-right" title="右へ移動">並べ替え ▶</button>
+      <button class="kk-addbtn" id="kk-type-del" style="border-color:#c66;color:#c33">この種別を削除</button>
+    </div>
+    <div id="kk-type-editor" style="margin-top:12px"></div>
   </div>
 
   <div class="kk-group">
@@ -132,6 +147,16 @@
   </div>
 
   <div class="kk-group">
+    <h2>その他特記事項 <span class="tag">全種別共通・重説末尾</span></h2>
+    <p class="kk-desc">送迎範囲の補足や持ち物案内など、重要事項説明書の末尾にまとめて記載されます（全種別共通）。</p>
+    <div id="kk-tokkilist"></div>
+    <button class="kk-addbtn" id="kk-add-tokki">＋ 特記事項を追加</button>
+    <label class="kk-check" style="margin-top:10px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="kk-tokki-pb"> その他特記事項を新しいページから始める（量が多く前ページに収まらない場合）
+    </label>
+  </div>
+
+  <div class="kk-group">
     <h2>料金プレビュー <span class="tag">サーバ計算・請求基準</span></h2>
     <div class="kk-pv-tabs" id="kk-pv-wari">
       <button data-wari="1" class="on">1割負担</button>
@@ -162,12 +187,12 @@
     {id:'kunren1', name:'個別機能訓練加算Ⅰ１', meta:'56単位 × 利用回数'},
     {id:'kunren2', name:'個別機能訓練加算Ⅱ',   meta:'20単位 / 月'},
     {id:'kagaku',  name:'科学的介護推進体制加算',meta:'40単位 / 月'},
-    {id:'shoguu',  name:'介護職員等処遇改善加算Ⅱロ（Ⅱ２）',meta:'12.5%（令和8年6月〜／旧 9.0%から変更）'},
+    {id:'shoguu',  name:'介護職員等処遇改善加算',meta:'区分を選択（既定：Ⅱロ 12.5%）'},
   ];
 
   const state = {
     type:'han', area:3, wari:1,
-    adds:{kunren1:true,kunren2:true,kagaku:true,shoguu:true},
+    adds:{kunren1:true,kunren2:true,kagaku:true,shoguu:true,shoguu_type:'2ro'},
     jihi:[], staff:[],
     fee:null,            // サーバ返却の料金表 {種別キー: 料金表}
     visits_per_month:4,
@@ -175,6 +200,8 @@
     facility:{},
     service:{},          // keiyaku-service-order: {_order:[...], han:{label,time_class,...}, ...}
     order:[],            // 種別キーの並び
+    tokki:[],            // keiyaku-stepb2: その他特記事項 [{name,body},...]（施設共通）
+    tokki_page_break:false,
     dirty:false,
   };
 
@@ -192,7 +219,7 @@
       state.area = Number(d.area_level||3);
       state.visits_per_month = Number(d.visits_per_month||4);
       state.unit_price = Number(d.unit_price||10.68);
-      state.adds = Object.assign({kunren1:true,kunren2:true,kagaku:true,shoguu:true}, d.adds||{});
+      state.adds = Object.assign({kunren1:true,kunren2:true,kagaku:true,shoguu:true,shoguu_type:'2ro'}, d.adds||{});
       state.jihi = Array.isArray(d.jihi)? d.jihi : [];
       state.staff = Array.isArray(d.staff)? d.staff : [];
       state.fee = d.fee || null;
@@ -205,10 +232,18 @@
         if(!order.length) order = ['han'];
       }
       state.order = order;
+      // keiyaku-stepb2: 各種別dictを state.service に保持（編集用）。
+      state.service = {};
+      order.forEach(k=>{
+        const node = (state.facility.service && state.facility.service[k]) || {};
+        state.service[k] = Object.assign({}, node);
+      });
+      state.tokki = Array.isArray(state.facility.tokki) ? state.facility.tokki.map(x=>Object.assign({},x)) : [];
+      state.tokki_page_break = !!state.facility.tokki_page_break;
       // 保存済み種別 or 先頭。
       const saved = state.facility && state.facility.service_type;
       state.type = (saved && order.includes(saved)) ? saved : order[0];
-      buildTypeSeg();
+      buildTypeSeg(); renderTypeEditor(); renderTokki();
       syncSegs(); renderAll();
     }catch(e){ toast('通信エラー'); }
   }
@@ -230,10 +265,16 @@
   }
 
   async function saveSettings(silent){
+    // keiyaku-stepb2: service(_order+各種別) と tokki を facility に含めて保存。
+    const svc = { _order: state.order.slice() };
+    state.order.forEach(k=>{ svc[k] = Object.assign({}, state.service[k] || {}); });
     const facility = Object.assign({}, state.facility, {
       area_level: state.area,
       service_type: state.type,
       visits_per_month: state.visits_per_month,
+      service: svc,
+      tokki: state.tokki,
+      tokki_page_break: state.tokki_page_break,
     });
     const payload = { facility, adds: state.adds, jihi: state.jihi, staff: state.staff };
     try{
@@ -262,10 +303,120 @@
       b.dataset.type=key;
       b.textContent=typeLabel(key);
       if(key===state.type) b.classList.add('on');
-      b.onclick=()=>{ state.type=key; state.dirty=true; syncSegs(); refreshFee(); };
+      b.onclick=()=>{ state.type=key; state.dirty=true; syncSegs(); renderTypeEditor(); refreshFee(); };
       seg.appendChild(b);
     });
   }
+
+  /* ---- 種別の中身編集フォーム（keiyaku-stepb2） ---- */
+  const TIME_CLASSES = [
+    ['3-4h','3時間以上4時間未満（3-4h）'],
+    ['4-5h','4時間以上5時間未満（4-5h）'],
+    ['5-6h','5時間以上6時間未満（5-6h）'],
+    ['6-7h','6時間以上7時間未満（6-7h）'],
+    ['7-8h','7時間以上8時間未満（7-8h）'],
+    ['8-9h','8時間以上9時間未満（8-9h）'],
+  ];
+  // 種別ごとの編集項目（label/time_class 以外の8項目）。将来ここに足せば項目追加可能。
+  const SVC_FIELDS = [
+    ['teiin','定員'],
+    ['eigyobi','営業日'],
+    ['eigyo_time','営業時間'],
+    ['teikyo_time','サービス提供時間（時刻）'],
+    ['teikyo_hours','提供時間（◯時間）'],
+    ['svc_naiyo','サービス内容（重説用）'],
+    ['svc_keiyaku','サービス内容（契約書用）'],
+    ['kanran_time','記録閲覧の開始時刻'],
+  ];
+  function renderTypeEditor(){
+    const box = $('#kk-type-editor'); if(!box) return;
+    const key = state.type;
+    const node = state.service[key] || (state.service[key] = {});
+    let h = '<div class="kk-edit-card">';
+    // label
+    h += `<label class="kk-fld"><span>種別の名称（自由）</span>
+      <input type="text" data-svc="label" value="${escAttr(node.label||'')}" placeholder="例：午前コース／半日型（3時間）"></label>`;
+    // time_class
+    h += `<label class="kk-fld"><span>料金計算の時間区分（国の区分）</span><select data-svc="time_class">`;
+    TIME_CLASSES.forEach(([v,l])=>{ h+=`<option value="${v}"${(node.time_class||'3-4h')===v?' selected':''}>${l}</option>`; });
+    h += `</select></label>`;
+    // 8 fields
+    SVC_FIELDS.forEach(([k,lab])=>{
+      const val = node[k]||'';
+      if(k==='svc_naiyo'||k==='svc_keiyaku'){
+        h += `<label class="kk-fld"><span>${lab}</span><textarea data-svc="${k}" rows="2">${escHtml(val)}</textarea></label>`;
+      } else {
+        h += `<label class="kk-fld"><span>${lab}</span><input type="text" data-svc="${k}" value="${escAttr(val)}"></label>`;
+      }
+    });
+    h += '</div>';
+    box.innerHTML = h;
+    box.querySelectorAll('[data-svc]').forEach(el=>{
+      el.oninput = ()=>{
+        const f = el.dataset.svc;
+        state.service[key][f] = el.value;
+        state.dirty = true;
+        if(f==='label'){ buildTypeSeg(); }
+        if(f==='time_class'){ refreshFee(); }
+      };
+    });
+  }
+
+  function newTypeKey(){
+    // han/ichi/t3... の衝突しないキーを採番。
+    let i=3;
+    while(state.order.includes('t'+i)) i++;
+    return 't'+i;
+  }
+  function addType(){
+    const key = newTypeKey();
+    state.service[key] = {label:'新しい種別', time_class:'3-4h'};
+    state.order.push(key);
+    state.type = key;
+    state.dirty = true;
+    buildTypeSeg(); renderTypeEditor(); syncSegs(); refreshFee();
+  }
+  function delType(){
+    if(state.order.length<=1){ toast('最後の1種別は削除できません'); return; }
+    const key = state.type;
+    if(!confirm(`種別「${typeLabel(key)}」を削除しますか？`)) return;
+    state.order = state.order.filter(k=>k!==key);
+    delete state.service[key];
+    state.type = state.order[0];
+    state.dirty = true;
+    buildTypeSeg(); renderTypeEditor(); syncSegs(); refreshFee();
+  }
+  function moveType(dir){
+    const i = state.order.indexOf(state.type);
+    const j = i+dir;
+    if(i<0||j<0||j>=state.order.length) return;
+    const a = state.order;
+    [a[i],a[j]]=[a[j],a[i]];
+    state.dirty = true;
+    buildTypeSeg(); syncSegs();
+  }
+
+  /* ---- その他特記事項（keiyaku-stepb2） ---- */
+  function renderTokki(){
+    const box = $('#kk-tokkilist'); if(!box) return;
+    box.innerHTML='';
+    state.tokki.forEach((it,idx)=>{
+      const row=document.createElement('div'); row.className='kk-edit-card';
+      row.innerHTML =
+        `<label class="kk-fld"><span>項目名</span><input type="text" data-tk="name" value="${escAttr(it.name||'')}" placeholder="例：送迎範囲"></label>
+         <label class="kk-fld"><span>内容</span><textarea data-tk="body" rows="2" placeholder="例：中学校区内。区域外はご相談ください。">${escHtml(it.body||'')}</textarea></label>
+         <button class="kk-delbtn" data-del="${idx}">削除</button>`;
+      row.querySelectorAll('[data-tk]').forEach(el=>{
+        el.oninput=()=>{ state.tokki[idx][el.dataset.tk]=el.value; state.dirty=true; };
+      });
+      row.querySelector('[data-del]').onclick=()=>{ state.tokki.splice(idx,1); state.dirty=true; renderTokki(); };
+      box.appendChild(row);
+    });
+    const pb = $('#kk-tokki-pb'); if(pb) pb.checked = !!state.tokki_page_break;
+  }
+
+  function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s){ return escHtml(s).replace(/"/g,'&quot;'); }
 
   /* ---- セグメント同期 ---- */
   function syncSegs(){
@@ -282,6 +433,15 @@
   }
 
   /* ---- 加算 ---- */
+  // keiyaku-stepb2: 処遇改善6区分。
+  const SHOGUU_OPTS = [
+    ['1i','介護職員等処遇改善加算（Ⅰ）イ……11.7%'],
+    ['1ro','介護職員等処遇改善加算（Ⅰ）ロ……12.7%'],
+    ['2i','介護職員等処遇改善加算（Ⅱ）イ……11.5%'],
+    ['2ro','介護職員等処遇改善加算Ⅱロ（Ⅱ２）……12.5%（令和8年6月〜）'],
+    ['3','介護職員等処遇改善加算（Ⅲ）……10.5%'],
+    ['4','介護職員等処遇改善加算（Ⅳ）……8.9%'],
+  ];
   function renderAdds(){
     const el=$('#kk-addlist'); el.innerHTML='';
     ADDS_DEF.forEach(a=>{
@@ -295,6 +455,17 @@
         </div>`;
       d.onclick=()=>{ state.adds[a.id]=!state.adds[a.id]; state.dirty=true; renderAdds(); refreshFee(); };
       el.appendChild(d);
+      // 処遇改善がオンのとき、直下に区分セレクトを表示（クリックトグルとは独立）。
+      if(a.id==='shoguu' && on){
+        const wrap=document.createElement('div');
+        wrap.className='kk-fld'; wrap.style.margin='6px 0 4px';
+        const cur=state.adds.shoguu_type||'2ro';
+        let opts=''; SHOGUU_OPTS.forEach(([v,l])=>{ opts+=`<option value="${v}"${cur===v?' selected':''}>${l}</option>`; });
+        wrap.innerHTML=`<span>処遇改善加算の区分</span><select id="kk-shoguu-type">${opts}</select>`;
+        const sel=wrap.querySelector('select');
+        sel.onchange=()=>{ state.adds.shoguu_type=sel.value; state.dirty=true; refreshFee(); };
+        el.appendChild(wrap);
+      }
     });
   }
 
@@ -371,6 +542,13 @@
 
   /* ---- イベント ---- */
   // 種別ボタンのイベントは buildTypeSeg() 内で動的に付与（keiyaku-service-order）。
+  // keiyaku-stepb2: 種別操作・特記事項。
+  { const b=$('#kk-type-add'); if(b) b.onclick=addType; }
+  { const b=$('#kk-type-del'); if(b) b.onclick=delType; }
+  { const b=$('#kk-type-left'); if(b) b.onclick=()=>moveType(-1); }
+  { const b=$('#kk-type-right'); if(b) b.onclick=()=>moveType(1); }
+  { const b=$('#kk-add-tokki'); if(b) b.onclick=()=>{ state.tokki.push({name:'',body:''}); state.dirty=true; renderTokki(); }; }
+  { const pb=$('#kk-tokki-pb'); if(pb) pb.onchange=()=>{ state.tokki_page_break=pb.checked; state.dirty=true; }; }
   document.querySelectorAll('#kk-seg-area button').forEach(b=>{
     b.onclick=()=>{ state.area=Number(b.dataset.area); state.dirty=true; syncSegs(); refreshFee(); };
   });
