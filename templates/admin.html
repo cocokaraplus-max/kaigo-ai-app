@@ -782,6 +782,12 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
               style="accent-color:#f9ab00;">
             <span class="material-symbols-outlined" style="font-size:14px;color:#a06200;">admin_panel_settings</span>
           </label>
+          <label class="perm-toggle" title="タイムカードに表示しない">  {# timecard-hidden-toggle-v1 #}
+            <input type="checkbox" id="tc-hidden-{{ loop.index }}"
+              {% if s.name in (timecard_hidden|default([])) %}checked{% endif %}
+              onchange="toggleTimecardHidden('{{ s.name }}', this.checked)">
+            <span class="material-symbols-outlined" style="font-size:14px;">schedule</span>
+          </label>
           <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}','{{ s.name }}','{{ s.birth_date or '' }}')" title="誕生日設定">
             <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
           </button>
@@ -1428,6 +1434,23 @@ async function bulkUpsertPatients() {
 }
 
 // ---- 権限管理（admin.jsから移植・改善） ----
+// timecard-hidden-toggle-v1: タイムカードに表示しない設定
+async function toggleTimecardHidden(staffName, hidden){
+  try{
+    const res = await fetch('/api/admin/toggle_timecard_hidden', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ staff_name: staffName, hidden: hidden })
+    });
+    const j = await res.json();
+    if(j.success){
+      if(typeof showAdminToast === 'function'){
+        showAdminToast(hidden ? `\u23f0 ${staffName} をタイムカードに表示しない` : `\u23f0 ${staffName} をタイムカードに表示`);
+      }
+    }else{
+      alert(j.msg || 'タイムカード表示設定の更新に失敗しました');
+    }
+  }catch(e){ alert('通信エラー: ' + e); }
+}
 var _boardEditors  = {{ board_editors | tojson }};
 var _adminManagers = {{ admin_managers | tojson }};
 

@@ -994,6 +994,42 @@ def api_toggle_ledger_access():
         return jsonify({"success": True, "msg": f"{staff_name} の出納帳権限を更新"})
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@app.route('/api/admin/toggle_timecard_hidden', methods=['POST'])  # timecard-hidden-icon-v1
+def api_toggle_timecard_hidden():
+    """職員を打刻画面に表示する/しないを切り替え。admin_settings(timecard_hidden)の名前リスト。"""
+    if not session.get("admin_authenticated"):
+        return jsonify({"success": False, "msg": "権限がありません"}), 403
+    import json as _json
+    f_code = session["f_code"]
+    data = request.get_json() or {}
+    staff_name = data.get("staff_name")
+    hidden = data.get("hidden", False)  # True=表示しない
+    if not staff_name:
+        return jsonify({"success": False, "msg": "staff_name required"}), 400
+    try:
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", "timecard_hidden").execute()
+        current = _json.loads(res.data[0].get("value") or "[]") if res.data else []
+        if not isinstance(current, list):
+            current = []
+        if hidden:
+            if staff_name not in current:
+                current.append(staff_name)
+        else:
+            current = [n for n in current if n != staff_name]
+        new_value = _json.dumps(current, ensure_ascii=False)
+        if res.data:
+            supabase.table("admin_settings").update({"value": new_value}).eq(
+                "facility_code", f_code).eq("key", "timecard_hidden").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": "timecard_hidden", "value": new_value
+            }).execute()
+        return jsonify({"success": True, "msg": f"{staff_name} のタイムカード表示設定を更新"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
     try:
         import json as _json
         res = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "ledger_users").execute()
@@ -9494,6 +9530,17 @@ def admin():
                 if not isinstance(board_editors_list, list):
                     board_editors_list = []
         except: pass
+    # timecard-hidden-icon-v1: タイムカード非表示リスト
+    timecard_hidden_list = []
+    if authenticated:
+        try:
+            import json as _json
+            res_th = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "timecard_hidden").execute()
+            if res_th.data and res_th.data[0].get("value"):
+                timecard_hidden_list = _json.loads(res_th.data[0]["value"])
+                if not isinstance(timecard_hidden_list, list):
+                    timecard_hidden_list = []
+        except: pass
 
     # 管理者リスト(admin_managers)
     admin_managers_list = []
@@ -9525,6 +9572,7 @@ def admin():
         registered_staffs=registered_staffs,
         f_code=f_code,
         board_editors=board_editors_list,
+        timecard_hidden=timecard_hidden_list,
         admin_managers=admin_managers_list)
 
 # ==========================================
@@ -13017,12 +13065,38 @@ def _tc_facility_enabled(supabase, f_code):
         return False
 
 
-def _tc_staff_list(supabase, f_code):
+def _tc_hidden_names(supabase, f_code):
+    """timecard-hidden-icon-v1: 打刻画面に出さない職員名リスト(admin_settings)。"""
     try:
-        res = supabase.table("staffs").select("staff_name,icon_emoji").eq(
+        import json as _json
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", "timecard_hidden").execute()
+        if res.data and res.data[0].get("value"):
+            v = _json.loads(res.data[0]["value"])
+            return set(v) if isinstance(v, list) else set()
+        return set()
+    except Exception as e:
+        print(f"_tc_hidden_names error: {e}", flush=True)
+        return set()
+
+
+def _tc_staff_list(supabase, f_code):
+    """timecard-hidden-icon-v1: 在籍職員(is_active)から timecard_hidden を除外。
+    アイコンは icon_image_url(画像) を優先、無ければ icon_emoji。"""
+    try:
+        hidden = _tc_hidden_names(supabase, f_code)
+        res = supabase.table("staffs").select(
+            "staff_name,icon_emoji,icon_image_url").eq(
             "facility_code", f_code).eq("is_active", True).execute()
-        return [{"name": r.get("staff_name"), "emoji": r.get("icon_emoji") or ""}
-                for r in (res.data or []) if r.get("staff_name")]
+        out = []
+        for r in (res.data or []):
+            nm = r.get("staff_name")
+            if not nm or nm in hidden:
+                continue
+            out.append({"name": nm,
+                        "emoji": r.get("icon_emoji") or "",
+                        "image": r.get("icon_image_url") or ""})
+        return out
     except Exception as e:
         print(f"_tc_staff_list error: {e}", flush=True)
         return []
