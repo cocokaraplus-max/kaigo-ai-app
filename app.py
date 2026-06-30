@@ -10543,7 +10543,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed").execute()  # dev-sekkotsu-allow-v1
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1
         facilities = res.data or []
     except: pass
 
@@ -10577,6 +10577,7 @@ def dev_menu():
                 "discount_rate": fac.get("discount_rate", 0) or 0,
                 "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
                 "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
+                "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -10690,6 +10691,24 @@ def api_dev_toggle_sekkotsu_allowed():
     try:
         supabase = get_supabase()
         supabase.table('facilities').update({'sekkotsu_mode_allowed': allowed}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/dev/toggle_timecard', methods=['POST'])  # timecard-devtoggle-v1
+def api_dev_toggle_timecard():
+    """施設ごとのタイムカード機能ON/OFF(課金管理)。開発者認証必須。"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'timecard_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -12950,6 +12969,681 @@ def api_keiyaku_migrate_service():
         return jsonify({"status": "error", "message": str(e)}), 500
 # ===== /keiyaku-service-migrate-v1 =====
 # ===== /keiyaku-calc-api-v1 =====
+
+
+
+# ===== timecard-api-v1 : タイムカード機能 Phase 1 =====
+# 打刻画面は公開ルート(ログイン不要)。有効デバイストークン必須。承認/設定は管理者限定。
+from datetime import datetime as _tc_dt, timezone as _tc_tz, timedelta as _tc_td
+
+_TC_PUNCH_TYPES = ("in", "out", "break_start", "break_end")
+_TC_JST = _tc_tz(_tc_td(hours=9))
+
+
+def _tc_now_jst():
+    return _tc_dt.now(_TC_JST)
+
+
+def _tc_today_range_jst(base=None):
+    """JSTの当日 [00:00, 翌00:00) を UTC ISO 文字列で返す。"""
+    d = (base or _tc_now_jst()).astimezone(_TC_JST)
+    start = d.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + _tc_td(days=1)
+    return start.astimezone(_tc_tz.utc).isoformat(), end.astimezone(_tc_tz.utc).isoformat()
+
+
+def _tc_device_lookup(supabase, token):
+    """有効なデバイスなら行(dict)を返す。無ければ None。"""
+    if not token:
+        return None
+    try:
+        res = supabase.table("timecard_devices").select("*").eq(
+            "device_token", token).eq("is_active", True).execute()
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f"_tc_device_lookup error: {e}", flush=True)
+        return None
+
+
+def _tc_facility_enabled(supabase, f_code):
+    try:
+        res = supabase.table("facilities").select("timecard_enabled").eq(
+            "facility_code", f_code).execute()
+        rows = res.data or []
+        return bool(rows and rows[0].get("timecard_enabled"))
+    except Exception as e:
+        print(f"_tc_facility_enabled error: {e}", flush=True)
+        return False
+
+
+def _tc_staff_list(supabase, f_code):
+    try:
+        res = supabase.table("staffs").select("staff_name,icon_emoji").eq(
+            "facility_code", f_code).eq("is_active", True).execute()
+        return [{"name": r.get("staff_name"), "emoji": r.get("icon_emoji") or ""}
+                for r in (res.data or []) if r.get("staff_name")]
+    except Exception as e:
+        print(f"_tc_staff_list error: {e}", flush=True)
+        return []
+
+
+def _tc_today_punches(supabase, f_code, staff_name=None):
+    """当日(JST)の打刻明細(論理削除除く)を時刻昇順で返す。"""
+    start_iso, end_iso = _tc_today_range_jst()
+    try:
+        q = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("is_deleted", False).gte(
+            "punched_at", start_iso).lt("punched_at", end_iso)
+        if staff_name:
+            q = q.eq("staff_name", staff_name)
+        res = q.order("punched_at", desc=False).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"_tc_today_punches error: {e}", flush=True)
+        return []
+
+
+def _tc_staff_state(punches):
+    """打刻列から現在状態を判定。'out'(未出勤/退勤済) 'working' 'break' のいずれか。
+    最後の in/out と break の対応で素直に決める。"""
+    state = "out"
+    for p in punches:
+        t = p.get("punch_type")
+        if t == "in":
+            state = "working"
+        elif t == "out":
+            state = "out"
+        elif t == "break_start":
+            if state == "working":
+                state = "break"
+        elif t == "break_end":
+            if state == "break":
+                state = "working"
+    return state
+
+
+@app.route("/timecard")
+def timecard_page():
+    """打刻画面(公開)。実際の可否はクライアントから /timecard/bootstrap で判定。"""
+    return render_template("timecard.html")
+
+
+@app.route("/timecard/bootstrap", methods=["POST"])
+def timecard_bootstrap():
+    """デバイストークンを照合し、有効なら施設名・職員リスト・各人の当日状態を返す。
+    未登録/無効なら registered:false を返し職員情報は出さない(情報露出を避ける)。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        supabase = get_supabase()
+        dev = _tc_device_lookup(supabase, token)
+        if not dev:
+            return jsonify({"status": "ok", "registered": False})
+        f_code = dev.get("facility_code")
+        if not _tc_facility_enabled(supabase, f_code):
+            return jsonify({"status": "ok", "registered": True,
+                            "enabled": False,
+                            "message": "この施設ではタイムカード機能が有効になっていません。"})
+        # 施設名
+        fac_name = f_code
+        try:
+            fr = supabase.table("facilities").select("facility_name").eq(
+                "facility_code", f_code).execute()
+            if fr.data and fr.data[0].get("facility_name"):
+                fac_name = fr.data[0]["facility_name"]
+        except Exception:
+            pass
+        # last_used_at 更新(失敗は無視)
+        try:
+            supabase.table("timecard_devices").update(
+                {"last_used_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+            ).eq("id", dev["id"]).execute()
+        except Exception:
+            pass
+        staff = _tc_staff_list(supabase, f_code)
+        punches = _tc_today_punches(supabase, f_code)
+        by_staff = {}
+        for p in punches:
+            by_staff.setdefault(p.get("staff_name"), []).append(p)
+        for s in staff:
+            s["state"] = _tc_staff_state(by_staff.get(s["name"], []))
+        return jsonify({"status": "ok", "registered": True, "enabled": True,
+                        "facility_code": f_code, "facility_name": fac_name,
+                        "device_label": dev.get("device_label") or "",
+                        "staff": staff})
+    except Exception as e:
+        print(f"timecard_bootstrap error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/timecard/punch", methods=["POST"])
+def timecard_punch():
+    """打刻1件を記録(公開・有効token必須)。punch_type妥当性と施設有効を確認。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        punch_type = (data.get("punch_type") or "").strip()
+        supabase = get_supabase()
+        dev = _tc_device_lookup(supabase, token)
+        if not dev:
+            return jsonify({"status": "error", "message": "このデバイスは登録されていません。"}), 403
+        f_code = dev.get("facility_code")
+        if not _tc_facility_enabled(supabase, f_code):
+            return jsonify({"status": "error", "message": "タイムカード機能が無効です。"}), 403
+        if punch_type not in _TC_PUNCH_TYPES:
+            return jsonify({"status": "error", "message": "打刻種別が不正です。"}), 400
+        if not staff_name:
+            return jsonify({"status": "error", "message": "職員が選択されていません。"}), 400
+        # 職員が在籍しているか確認
+        names = {s["name"] for s in _tc_staff_list(supabase, f_code)}
+        if staff_name not in names:
+            return jsonify({"status": "error", "message": "職員が見つかりません。"}), 400
+        # 状態の簡易整合(二重出勤や break の入れ子崩れを防ぐ)
+        punches = _tc_today_punches(supabase, f_code, staff_name)
+        state = _tc_staff_state(punches)
+        ok = {
+            "in": state == "out",
+            "out": state in ("working", "break"),
+            "break_start": state == "working",
+            "break_end": state == "break",
+        }.get(punch_type, False)
+        if not ok:
+            msg = {"in": "すでに出勤済みです。", "out": "出勤打刻がありません。",
+                   "break_start": "出勤中のみ休憩を開始できます。",
+                   "break_end": "休憩中ではありません。"}.get(punch_type, "打刻できません。")
+            return jsonify({"status": "error", "message": msg}), 409
+        now_iso = _tc_now_jst().astimezone(_tc_tz.utc).isoformat()
+        supabase.table("timecard_records").insert({
+            "facility_code": f_code, "staff_name": staff_name,
+            "punch_type": punch_type, "punched_at": now_iso,
+            "device_token": token,
+        }).execute()
+        new_state = _tc_staff_state(_tc_today_punches(supabase, f_code, staff_name))
+        return jsonify({"status": "success", "state": new_state,
+                        "punched_at": now_iso})
+    except Exception as e:
+        print(f"timecard_punch error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/devices", methods=["GET"])
+@login_required
+def admin_timecard_devices():
+    """施設のデバイス一覧(承認/未承認)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        res = supabase.table("timecard_devices").select("*").eq(
+            "facility_code", f_code).order("created_at", desc=True).execute()
+        return jsonify({"status": "success", "devices": res.data or []})
+    except Exception as e:
+        print(f"admin_timecard_devices error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/timecard/device/request", methods=["POST"])
+def timecard_device_request():
+    """未登録デバイスの承認申請。client生成のtokenを is_active=false で登録。
+    既に存在すれば何もしない(冪等)。管理者が後で承認する。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        f_code = (data.get("facility_code") or "").strip()
+        label = (data.get("label") or "").strip()
+        if not token or not f_code:
+            return jsonify({"status": "error", "message": "token と facility_code が必要です。"}), 400
+        supabase = get_supabase()
+        existing = supabase.table("timecard_devices").select("id,is_active").eq(
+            "facility_code", f_code).eq("device_token", token).execute()
+        if existing.data:
+            return jsonify({"status": "ok", "message": "申請済みです。管理者の承認をお待ちください。"})
+        supabase.table("timecard_devices").insert({
+            "facility_code": f_code, "device_token": token,
+            "device_label": label or "新しいデバイス", "is_active": False,
+        }).execute()
+        return jsonify({"status": "ok", "message": "申請しました。管理者の承認をお待ちください。"})
+    except Exception as e:
+        print(f"timecard_device_request error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/device/approve", methods=["POST"])
+@login_required
+def admin_timecard_device_approve():
+    """デバイスを承認(is_active=true)。ラベルも更新可。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        label = (data.get("label") or "").strip()
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        upd = {"is_active": True, "approved_by": my_name}
+        if label:
+            upd["device_label"] = label
+        supabase.table("timecard_devices").update(upd).eq(
+            "id", dev_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_device_approve error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/device/revoke", methods=["POST"])
+@login_required
+def admin_timecard_device_revoke():
+    """デバイスを無効化(is_active=false)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        supabase.table("timecard_devices").update({"is_active": False}).eq(
+            "id", dev_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_device_revoke error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard", methods=["GET"])
+@login_required
+def admin_timecard_page():
+    """当日の全職員打刻一覧(管理者画面)。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return redirect(url_for("admin"))
+        return render_template("admin_timecard.html")
+    except Exception as e:
+        print(f"admin_timecard_page error: {e}", flush=True)
+        return redirect(url_for("admin"))
+
+
+@app.route("/admin/timecard/today", methods=["GET"])
+@login_required
+def admin_timecard_today():
+    """当日(JST)の全職員打刻と状態(JSON)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        punches = _tc_today_punches(supabase, f_code)
+        by_staff = {}
+        for p in punches:
+            by_staff.setdefault(p.get("staff_name"), []).append(p)
+        staff = _tc_staff_list(supabase, f_code)
+        out = []
+        for s in staff:
+            ps = by_staff.get(s["name"], [])
+            out.append({"name": s["name"], "emoji": s["emoji"],
+                        "state": _tc_staff_state(ps),
+                        "punches": [{"id": p["id"], "type": p["punch_type"],
+                                     "at": p["punched_at"]} for p in ps]})
+        return jsonify({"status": "success", "staff": out})
+    except Exception as e:
+        print(f"admin_timecard_today error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ----- timecard-monthly-v1 : 月次労働時間集計 -----
+def _tc_month_range_jst(year, month):
+    """指定年月(JST)の [当月1日00:00, 翌月1日00:00) を UTC ISO で返す。"""
+    start = _tc_dt(year, month, 1, 0, 0, 0, tzinfo=_TC_JST)
+    if month == 12:
+        end = _tc_dt(year + 1, 1, 1, 0, 0, 0, tzinfo=_TC_JST)
+    else:
+        end = _tc_dt(year, month + 1, 1, 0, 0, 0, tzinfo=_TC_JST)
+    return start.astimezone(_tc_tz.utc).isoformat(), end.astimezone(_tc_tz.utc).isoformat()
+
+
+def _tc_parse_iso(s):
+    """SupabaseのISO文字列を aware datetime に。失敗時 None。"""
+    if not s:
+        return None
+    try:
+        t = s.replace("Z", "+00:00")
+        return _tc_dt.fromisoformat(t)
+    except Exception:
+        try:
+            return _tc_dt.fromisoformat(s[:19] + "+00:00")
+        except Exception:
+            return None
+
+
+def _tc_day_key(iso):
+    """打刻時刻(UTC ISO)を JST の YYYY-MM-DD に。"""
+    dtv = _tc_parse_iso(iso)
+    if not dtv:
+        return None
+    return dtv.astimezone(_TC_JST).strftime("%Y-%m-%d")
+
+
+def _tc_compute_day(punches):
+    """1日分の打刻列(時刻昇順)から労働時間(分)を計算。
+    返り値: {"minutes": int|None, "incomplete": bool, "flags": [..],
+             "in": iso|None, "out": iso|None, "break_min": int}
+    欠損は補完しない: in欠落/out欠落/break_end欠落 は incomplete=True, minutes=None。"""
+    flags = []
+    in_t = None
+    out_t = None
+    work_min = 0
+    break_min = 0
+    cur_in = None
+    cur_break = None
+    incomplete = False
+
+    for p in punches:
+        t = p.get("punch_type")
+        at = _tc_parse_iso(p.get("punched_at"))
+        if at is None:
+            continue
+        if t == "in":
+            if cur_in is not None:
+                flags.append("二重出勤")
+                incomplete = True
+            cur_in = at
+            if in_t is None:
+                in_t = at
+        elif t == "out":
+            if cur_in is None:
+                flags.append("出勤なしで退勤")
+                incomplete = True
+            else:
+                # 退勤時に休憩が開いていれば未クローズ→補完せず印
+                if cur_break is not None:
+                    flags.append("休憩終了の打刻なし")
+                    incomplete = True
+                    cur_break = None
+                work_min += int((at - cur_in).total_seconds() // 60)
+                cur_in = None
+            out_t = at
+        elif t == "break_start":
+            if cur_in is None:
+                flags.append("勤務外の休憩")
+                incomplete = True
+            if cur_break is not None:
+                flags.append("休憩が連続")
+                incomplete = True
+            cur_break = at
+        elif t == "break_end":
+            if cur_break is None:
+                flags.append("休憩開始なしで終了")
+                incomplete = True
+            else:
+                break_min += int((at - cur_break).total_seconds() // 60)
+                cur_break = None
+
+    # 走査後に開いたままの勤務/休憩がある → 退勤漏れ等
+    if cur_in is not None:
+        flags.append("退勤の打刻なし")
+        incomplete = True
+    if cur_break is not None:
+        flags.append("休憩終了の打刻なし")
+        incomplete = True
+
+    minutes = None if incomplete else max(0, work_min - break_min)
+    # 重複フラグを除去(順序維持)
+    seen = set()
+    uniq = []
+    for fl in flags:
+        if fl not in seen:
+            seen.add(fl)
+            uniq.append(fl)
+    return {"minutes": minutes, "incomplete": incomplete, "flags": uniq,
+            "in": in_t.isoformat() if in_t else None,
+            "out": out_t.isoformat() if out_t else None,
+            "break_min": break_min}
+
+
+@app.route("/admin/timecard/monthly", methods=["GET"])
+@login_required
+def admin_timecard_monthly():
+    """職員別・日別の労働時間と月合計(JSON)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+
+        start_iso, end_iso = _tc_month_range_jst(year, month)
+        res = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("is_deleted", False).gte(
+            "punched_at", start_iso).lt("punched_at", end_iso).order(
+            "punched_at", desc=False).execute()
+        rows = res.data or []
+
+        # staff -> day -> punches
+        by_staff = {}
+        for r in rows:
+            sn = r.get("staff_name")
+            dk = _tc_day_key(r.get("punched_at"))
+            if not sn or not dk:
+                continue
+            by_staff.setdefault(sn, {}).setdefault(dk, []).append(r)
+
+        staff_master = _tc_staff_list(supabase, f_code)
+        name_order = [s["name"] for s in staff_master]
+        emoji_map = {s["name"]: s["emoji"] for s in staff_master}
+        # 明細にしか出てこない退職者等も拾う
+        for sn in by_staff.keys():
+            if sn not in name_order:
+                name_order.append(sn)
+
+        result = []
+        for sn in name_order:
+            days_map = by_staff.get(sn, {})
+            days = []
+            total_min = 0
+            worked_days = 0
+            incomplete_days = 0
+            for dk in sorted(days_map.keys()):
+                comp = _tc_compute_day(days_map[dk])
+                if comp["minutes"] is not None:
+                    total_min += comp["minutes"]
+                    if comp["minutes"] > 0:
+                        worked_days += 1
+                if comp["incomplete"]:
+                    incomplete_days += 1
+                days.append({"date": dk, "minutes": comp["minutes"],
+                             "incomplete": comp["incomplete"], "flags": comp["flags"],
+                             "in": comp["in"], "out": comp["out"],
+                             "break_min": comp["break_min"]})
+            result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
+                           "days": days, "total_minutes": total_min,
+                           "worked_days": worked_days,
+                           "incomplete_days": incomplete_days})
+
+        return jsonify({"status": "success", "year": year, "month": month,
+                        "staff": result})
+    except Exception as e:
+        print(f"admin_timecard_monthly error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/report", methods=["GET"])
+@login_required
+def admin_timecard_report_page():
+    """月次集計の管理画面。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return redirect(url_for("admin"))
+        return render_template("admin_timecard_report.html")
+    except Exception as e:
+        print(f"admin_timecard_report_page error: {e}", flush=True)
+        return redirect(url_for("admin"))
+
+# ----- timecard-edit-v1 : 管理者による打刻編集(UPDATE方式・編集者/メモ記録) -----
+def _tc_jst_to_utc_iso(date_str, time_str):
+    """ "YYYY-MM-DD" + "HH:MM"(JST) を UTC ISO に。失敗時 None。"""
+    try:
+        y, mo, d = [int(x) for x in date_str.split("-")]
+        hh, mm = [int(x) for x in time_str.split(":")]
+        jst = _tc_dt(y, mo, d, hh, mm, 0, tzinfo=_TC_JST)
+        return jst.astimezone(_tc_tz.utc).isoformat()
+    except Exception:
+        return None
+
+
+def _tc_admin_guard():
+    """(f_code, my_name, supabase) を返す。管理者でなければ (None,...)。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return None, my_name, supabase
+    return f_code, my_name, supabase
+
+
+@app.route("/admin/timecard/edit", methods=["POST"])
+@login_required
+def admin_timecard_edit():
+    """既存打刻の時刻を修正。punched_at を上書きし edited_by/note を記録。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rec_id = data.get("id")
+        date_str = (data.get("date") or "").strip()
+        time_str = (data.get("time") or "").strip()
+        note = (data.get("note") or "").strip()
+        if not rec_id or not date_str or not time_str:
+            return jsonify({"status": "error", "message": "id・date・time が必要です。"}), 400
+        iso = _tc_jst_to_utc_iso(date_str, time_str)
+        if not iso:
+            return jsonify({"status": "error", "message": "日時の形式が不正です。"}), 400
+        # 自施設の行のみ更新
+        upd = {"punched_at": iso, "edited_by": my_name,
+               "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+        if note:
+            upd["note"] = note
+        supabase.table("timecard_records").update(upd).eq(
+            "id", rec_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_edit error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/add", methods=["POST"])
+@login_required
+def admin_timecard_add():
+    """打刻を追加(打刻漏れの補完)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        punch_type = (data.get("punch_type") or "").strip()
+        date_str = (data.get("date") or "").strip()
+        time_str = (data.get("time") or "").strip()
+        note = (data.get("note") or "").strip()
+        if punch_type not in _TC_PUNCH_TYPES:
+            return jsonify({"status": "error", "message": "打刻種別が不正です。"}), 400
+        if not staff_name or not date_str or not time_str:
+            return jsonify({"status": "error", "message": "職員・日付・時刻が必要です。"}), 400
+        iso = _tc_jst_to_utc_iso(date_str, time_str)
+        if not iso:
+            return jsonify({"status": "error", "message": "日時の形式が不正です。"}), 400
+        supabase.table("timecard_records").insert({
+            "facility_code": f_code, "staff_name": staff_name,
+            "punch_type": punch_type, "punched_at": iso,
+            "edited_by": my_name, "note": note or "管理者が追加",
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_add error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/delete", methods=["POST"])
+@login_required
+def admin_timecard_delete():
+    """打刻を論理削除(is_deleted=true)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rec_id = data.get("id")
+        note = (data.get("note") or "").strip()
+        if not rec_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        upd = {"is_deleted": True, "edited_by": my_name,
+               "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+        if note:
+            upd["note"] = note
+        supabase.table("timecard_records").update(upd).eq(
+            "id", rec_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/day", methods=["GET"])
+@login_required
+def admin_timecard_day():
+    """指定職員・指定日(JST)の打刻明細(編集用。論理削除除く)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        staff_name = (request.args.get("staff_name") or "").strip()
+        date_str = (request.args.get("date") or "").strip()
+        if not staff_name or not date_str:
+            return jsonify({"status": "error", "message": "staff_name・date が必要です。"}), 400
+        start_iso = _tc_jst_to_utc_iso(date_str, "00:00")
+        end_dt = _tc_parse_iso(start_iso) + _tc_td(days=1)
+        end_iso = end_dt.isoformat()
+        res = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "is_deleted", False).gte("punched_at", start_iso).lt(
+            "punched_at", end_iso).order("punched_at", desc=False).execute()
+        out = [{"id": r["id"], "type": r["punch_type"], "at": r["punched_at"],
+                "edited_by": r.get("edited_by"), "note": r.get("note")}
+               for r in (res.data or [])]
+        return jsonify({"status": "success", "punches": out})
+    except Exception as e:
+        print(f"admin_timecard_day error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /timecard-edit-v1 -----
+
+# ----- /timecard-monthly-v1 -----
+
+# ===== /timecard-api-v1 =====
 
 
 if __name__ == '__main__':

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}タイムカード管理 - TASUKARU{% endblock %}
+
+{% block content %}
+<style>
+  /* timecard-admin-ui-v1 */
+  .tca-wrap{max-width:var(--page-max-width,480px);margin:0 auto;padding:16px 14px 120px}
+  .tca-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .tca-head .material-symbols-outlined{font-size:26px;color:#2f6b5e}
+  .tca-title{font-size:1.15rem;font-weight:800}
+  .tca-lead{font-size:.86rem;color:#777;margin-bottom:14px}
+  .tca-tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tca-tabs button{flex:1;padding:10px;border-radius:10px;border:1px solid #d8d4cc;
+    background:#fff;font-family:inherit;font-weight:700;font-size:.9rem;cursor:pointer;color:#555}
+  .tca-tabs button.on{background:#2f6b5e;color:#fff;border-color:#2f6b5e}
+  .tca-group{background:#fff;border:1px solid #d8d4cc;border-radius:12px;padding:14px;margin-bottom:12px}
+  .tca-date{font-size:.92rem;color:#555;margin-bottom:10px;font-weight:700}
+  .tca-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0ede7}
+  .tca-row:last-child{border-bottom:0}
+  .tca-row .emoji{font-size:1.5rem}
+  .tca-row .nm{font-weight:700;flex:1}
+  .tca-badge{font-size:.74rem;font-weight:700;padding:3px 9px;border-radius:10px}
+  .b-working{background:#e3f4ea;color:#1e7d4f}
+  .b-break{background:#fbf0dc;color:#c77d12}
+  .b-out{background:#eee;color:#8a8a8a}
+  .tca-times{font-size:.78rem;color:#888;margin-top:3px;line-height:1.5}
+  .tca-dev{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #f0ede7}
+  .tca-dev:last-child{border-bottom:0}
+  .tca-dev .dinfo{flex:1;min-width:0}
+  .tca-dev .dlabel{font-weight:700;font-size:.95rem}
+  .tca-dev .dmeta{font-size:.74rem;color:#999;margin-top:2px;word-break:break-all}
+  .tca-dev-btn{border:0;border-radius:9px;padding:8px 12px;font-size:.82rem;font-weight:700;
+    font-family:inherit;cursor:pointer;white-space:nowrap}
+  .btn-approve{background:#2f6b5e;color:#fff}
+  .btn-revoke{background:#fff;border:1.5px solid #c0392b !important;color:#c0392b}
+  .tca-empty{color:#999;font-size:.86rem;text-align:center;padding:20px 0}
+  .tca-pill{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:6px}
+  .pill-on{background:#e3f4ea;color:#1e7d4f}
+  .pill-off{background:#fdeaea;color:#c0392b}
+  .tca-refresh{background:none;border:0;color:#2f6b5e;font-weight:700;font-size:.86rem;
+    cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;margin-left:auto}
+</style>
+
+<div class="tca-wrap">
+  <div class="tca-head">
+    <span class="material-symbols-outlined">schedule</span>
+    <span class="tca-title">タイムカード管理</span>
+    <button class="tca-refresh" id="tca-refresh"><span class="material-symbols-outlined" style="font-size:18px">refresh</span>更新</button>
+  </div>
+  <div class="tca-lead">当日の打刻状況の確認と、打刻に使うデバイスの承認を行います。</div>
+
+  <a href="/admin/timecard/report" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin-bottom:14px;background:#2f6b5e;border-radius:10px;text-decoration:none;color:#fff;font-weight:700;font-size:.92rem;"><span class="material-symbols-outlined" style="font-size:20px">calendar_month</span>月次の勤怠集計を見る</a>
+
+  <div class="tca-tabs">
+    <button data-tab="today" class="on">本日の打刻</button>
+    <button data-tab="devices">デバイス承認</button>
+  </div>
+
+  <div id="tca-today">
+    <div class="tca-group">
+      <div class="tca-date" id="tca-today-date"></div>
+      <div id="tca-today-list"><div class="tca-empty">読み込み中…</div></div>
+    </div>
+  </div>
+
+  <div id="tca-devices" class="hidden">
+    <div class="tca-group">
+      <div class="tca-date">承認待ち・登録済みデバイス</div>
+      <div id="tca-dev-list"><div class="tca-empty">読み込み中…</div></div>
+    </div>
+    <p style="font-size:.78rem;color:#999;line-height:1.6">打刻用タブレットで <b>/timecard</b> を開くと、未登録のデバイスはここに「承認待ち」で表示されます。承認するとそのデバイスで打刻できるようになります。</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+(function(){
+  "use strict";
+  function $(id){ return document.getElementById(id); }
+  function esc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  var STATE_LABEL={working:"勤務中",break:"休憩中",out:"未出勤／退勤"};
+  var STATE_CLS={working:"b-working",break:"b-break",out:"b-out"};
+  var PT_LABEL={in:"出勤",out:"退勤",break_start:"休憩開始",break_end:"休憩終了"};
+
+  function fmtTime(iso){
+    try{ var d=new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+    catch(e){ return "--:--"; }
+  }
+
+  function switchTab(tab){
+    document.querySelectorAll(".tca-tabs button").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-tab")===tab);
+    });
+    $("tca-today").classList.toggle("hidden", tab!=="today");
+    $("tca-devices").classList.toggle("hidden", tab!=="devices");
+    if(tab==="today") loadToday(); else loadDevices();
+  }
+
+  async function loadToday(){
+    var now=new Date(), wd=["日","月","火","水","木","金","土"][now.getDay()];
+    $("tca-today-date").textContent=now.getFullYear()+"年"+(now.getMonth()+1)+"月"+now.getDate()+"日（"+wd+"）の打刻";
+    try{
+      var res=await fetch("/admin/timecard/today");
+      var j=await res.json();
+      if(j.status!=="success"){ $("tca-today-list").innerHTML='<div class="tca-empty">'+esc(j.message||"取得失敗")+'</div>'; return; }
+      var staff=j.staff||[];
+      if(!staff.length){ $("tca-today-list").innerHTML='<div class="tca-empty">職員が登録されていません。</div>'; return; }
+      $("tca-today-list").innerHTML=staff.map(function(s){
+        var times=(s.punches||[]).map(function(p){ return PT_LABEL[p.type]+" "+fmtTime(p.at); }).join("　");
+        return '<div class="tca-row"><span class="emoji">'+(s.emoji||"👤")+'</span>'
+          +'<div style="flex:1"><div class="nm">'+esc(s.name)+'</div>'
+          +(times?'<div class="tca-times">'+esc(times)+'</div>':'<div class="tca-times" style="color:#bbb">打刻なし</div>')
+          +'</div><span class="tca-badge '+STATE_CLS[s.state]+'">'+STATE_LABEL[s.state]+'</span></div>';
+      }).join("");
+    }catch(e){ $("tca-today-list").innerHTML='<div class="tca-empty">通信エラー</div>'; }
+  }
+
+  async function loadDevices(){
+    try{
+      var res=await fetch("/admin/timecard/devices");
+      var j=await res.json();
+      if(j.status!=="success"){ $("tca-dev-list").innerHTML='<div class="tca-empty">'+esc(j.message||"取得失敗")+'</div>'; return; }
+      var devs=j.devices||[];
+      if(!devs.length){ $("tca-dev-list").innerHTML='<div class="tca-empty">登録されたデバイスはありません。</div>'; return; }
+      $("tca-dev-list").innerHTML=devs.map(function(d){
+        var on=d.is_active;
+        var pill=on?'<span class="tca-pill pill-on">承認済み</span>':'<span class="tca-pill pill-off">承認待ち</span>';
+        var btn=on
+          ?'<button class="tca-dev-btn btn-revoke" data-act="revoke" data-id="'+d.id+'">無効化</button>'
+          :'<button class="tca-dev-btn btn-approve" data-act="approve" data-id="'+d.id+'">承認</button>';
+        return '<div class="tca-dev"><div class="dinfo"><div class="dlabel">'+esc(d.device_label||"（名称なし）")+pill+'</div>'
+          +'<div class="dmeta">ID: '+esc(String(d.device_token||"").slice(0,20))+'…'
+          +(d.approved_by?' / 承認:'+esc(d.approved_by):'')+'</div></div>'+btn+'</div>';
+      }).join("");
+      $("tca-dev-list").querySelectorAll(".tca-dev-btn").forEach(function(b){
+        b.addEventListener("click", function(){ devAction(b.getAttribute("data-act"), b.getAttribute("data-id")); });
+      });
+    }catch(e){ $("tca-dev-list").innerHTML='<div class="tca-empty">通信エラー</div>'; }
+  }
+
+  async function devAction(act, id){
+    var url=act==="approve"?"/admin/timecard/device/approve":"/admin/timecard/device/revoke";
+    var body={id:Number(id)};
+    if(act==="approve"){
+      var label=prompt("このデバイスの名前（例：玄関タブレット）。空欄なら現在の名前のまま。","");
+      if(label && label.trim()) body.label=label.trim();
+    }
+    try{
+      var res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      var j=await res.json();
+      if(j.status==="success"){ loadDevices(); }
+      else{ alert(j.message||"失敗しました"); }
+    }catch(e){ alert("通信エラー"); }
+  }
+
+  document.querySelectorAll(".tca-tabs button").forEach(function(b){
+    b.addEventListener("click", function(){ switchTab(b.getAttribute("data-tab")); });
+  });
+  $("tca-refresh").addEventListener("click", function(){
+    var cur=document.querySelector(".tca-tabs button.on").getAttribute("data-tab");
+    switchTab(cur);
+  });
+
+  loadToday();
+})();
+</script>
+{% endblock %}

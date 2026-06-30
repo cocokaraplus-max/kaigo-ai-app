@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>タイムカード - TASUKARU</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+<style>
+  /* timecard-ui-v1 : 公開打刻画面。共用タブレット向けに大きめタッチ。base非継承の単独画面 */
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--tc-green:#2f6b5e;--tc-green-d:#255647;--tc-bg:#f6f4ef;--tc-line:#d8d4cc;
+        --tc-ink:#2b2b2b;--tc-sub:#777;--tc-work:#1e7d4f;--tc-break:#c77d12;--tc-out:#8a8a8a}
+  html,body{height:100%}
+  body{font-family:-apple-system,'Helvetica Neue',sans-serif;background:var(--tc-bg);
+       color:var(--tc-ink);min-height:100vh;display:flex;flex-direction:column;align-items:center}
+  .tc-wrap{width:100%;max-width:var(--page-max-width,480px);margin:0 auto;
+           padding:18px 16px 40px;flex:1;display:flex;flex-direction:column}
+  .tc-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .tc-head .material-symbols-outlined{font-size:30px;color:var(--tc-green)}
+  .tc-title{font-size:1.25rem;font-weight:800;letter-spacing:.02em}
+  .tc-fac{font-size:.92rem;color:var(--tc-sub);margin-bottom:2px}
+  .tc-clock{font-variant-numeric:tabular-nums;font-size:2.3rem;font-weight:800;
+            color:var(--tc-green-d);margin:10px 0 4px;letter-spacing:.02em}
+  .tc-date{font-size:.95rem;color:var(--tc-sub);margin-bottom:16px}
+  .tc-device-label{font-size:.78rem;color:#aaa;margin-top:2px}
+
+  /* 状態メッセージ／ローディング */
+  .tc-card{background:#fff;border:1px solid var(--tc-line);border-radius:16px;
+           padding:22px 18px;margin-top:8px}
+  .tc-card h2{font-size:1.05rem;margin-bottom:10px}
+  .tc-card p{font-size:.92rem;color:#555;line-height:1.6}
+  .tc-muted{color:var(--tc-sub);font-size:.86rem}
+
+  /* 職員タイル */
+  .tc-staff-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:6px}
+  .tc-staff{background:#fff;border:2px solid var(--tc-line);border-radius:16px;
+            padding:16px 10px;text-align:center;cursor:pointer;transition:.12s;
+            display:flex;flex-direction:column;align-items:center;gap:8px;min-height:104px;
+            justify-content:center}
+  .tc-staff:active{transform:scale(.97)}
+  .tc-staff .emoji{font-size:1.9rem;line-height:1}
+  .tc-staff .nm{font-size:1rem;font-weight:700}
+  .tc-staff .st{font-size:.74rem;font-weight:700;padding:2px 8px;border-radius:10px}
+  .st-working{background:#e3f4ea;color:var(--tc-work)}
+  .st-break{background:#fbf0dc;color:var(--tc-break)}
+  .st-out{background:#eee;color:var(--tc-out)}
+  .tc-staff.is-working{border-color:var(--tc-work)}
+  .tc-staff.is-break{border-color:var(--tc-break)}
+
+  /* 打刻パネル(職員選択後) */
+  .tc-panel-name{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .tc-panel-name .emoji{font-size:2rem}
+  .tc-panel-name .nm{font-size:1.3rem;font-weight:800}
+  .tc-state-line{font-size:.95rem;margin:6px 0 16px}
+  .tc-btns{display:grid;gap:12px}
+  .tc-btn{border:0;border-radius:14px;padding:18px;font-size:1.1rem;font-weight:800;
+          font-family:inherit;cursor:pointer;color:#fff;display:flex;align-items:center;
+          justify-content:center;gap:8px;transition:.12s}
+  .tc-btn:active{transform:scale(.98)}
+  .tc-btn[disabled]{opacity:.35;cursor:not-allowed}
+  .tc-btn-in{background:var(--tc-work)}
+  .tc-btn-out{background:#c0392b}
+  .tc-btn-bs{background:var(--tc-break)}
+  .tc-btn-be{background:#2f6b5e}
+  .tc-back{margin-top:18px;background:none;border:0;color:var(--tc-green);
+           font-size:.95rem;font-weight:700;cursor:pointer;font-family:inherit;
+           display:flex;align-items:center;gap:4px}
+  .tc-link{margin-top:14px;text-align:center}
+  .tc-link a{color:var(--tc-sub);font-size:.82rem;text-decoration:underline}
+
+  /* トースト */
+  .tc-toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);
+            background:#1e5e26;color:#fff;padding:12px 22px;border-radius:24px;
+            font-size:.95rem;font-weight:700;opacity:0;transition:.25s;pointer-events:none;z-index:80}
+  .tc-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .tc-toast.err{background:#b53636}
+
+  .tc-input{width:100%;padding:13px 14px;border:1px solid var(--tc-line);border-radius:12px;
+            font-size:1rem;font-family:inherit;margin-top:10px}
+  .tc-submit{width:100%;margin-top:12px;background:var(--tc-green);color:#fff;border:0;
+             border-radius:12px;padding:15px;font-size:1.02rem;font-weight:800;
+             font-family:inherit;cursor:pointer}
+  .hidden{display:none!important}
+  .tc-spin{width:34px;height:34px;border:3px solid var(--tc-line);border-top-color:var(--tc-green);
+           border-radius:50%;animation:tcspin 1s linear infinite;margin:24px auto}
+  @keyframes tcspin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="tc-wrap">
+  <div class="tc-head">
+    <span class="material-symbols-outlined">schedule</span>
+    <span class="tc-title">タイムカード</span>
+  </div>
+  <div class="tc-fac" id="tc-fac"></div>
+  <div class="tc-clock" id="tc-clock">--:--</div>
+  <div class="tc-date" id="tc-date"></div>
+
+  <!-- ローディング -->
+  <div id="tc-loading"><div class="tc-spin"></div></div>
+
+  <!-- 未登録デバイス -->
+  <div id="tc-unreg" class="tc-card hidden">
+    <h2>このデバイスは未登録です</h2>
+    <p>タイムカードを使うには、施設の管理者による承認が必要です。施設コードを入力して承認を申請してください。</p>
+    <input class="tc-input" id="tc-fac-input" placeholder="施設コード（例：cocokaraplus-5526）" autocomplete="off">
+    <input class="tc-input" id="tc-label-input" placeholder="このデバイスの名前（例：玄関タブレット）" autocomplete="off">
+    <button class="tc-submit" id="tc-request-btn">承認を申請する</button>
+    <p class="tc-muted" id="tc-device-token-disp" style="margin-top:12px"></p>
+  </div>
+
+  <!-- 申請済み・無効 -->
+  <div id="tc-pending" class="tc-card hidden">
+    <h2 id="tc-pending-title">承認待ちです</h2>
+    <p id="tc-pending-msg">管理者がこのデバイスを承認すると、打刻できるようになります。承認後この画面を再読み込みしてください。</p>
+    <button class="tc-submit" id="tc-reload-btn" style="margin-top:16px">再読み込み</button>
+  </div>
+
+  <!-- 職員選択 -->
+  <div id="tc-staff-view" class="hidden">
+    <div class="tc-staff-grid" id="tc-staff-grid"></div>
+    <div class="tc-device-label" id="tc-dev-label"></div>
+  </div>
+
+  <!-- 打刻パネル -->
+  <div id="tc-punch-view" class="hidden">
+    <div class="tc-card">
+      <div class="tc-panel-name">
+        <span class="emoji" id="tc-pn-emoji"></span>
+        <span class="nm" id="tc-pn-name"></span>
+      </div>
+      <div class="tc-state-line" id="tc-pn-state"></div>
+      <div class="tc-btns">
+        <button class="tc-btn tc-btn-in" data-pt="in"><span class="material-symbols-outlined">login</span>出勤</button>
+        <button class="tc-btn tc-btn-bs" data-pt="break_start"><span class="material-symbols-outlined">free_breakfast</span>休憩開始</button>
+        <button class="tc-btn tc-btn-be" data-pt="break_end"><span class="material-symbols-outlined">work</span>休憩終了</button>
+        <button class="tc-btn tc-btn-out" data-pt="out"><span class="material-symbols-outlined">logout</span>退勤</button>
+      </div>
+    </div>
+    <button class="tc-back" id="tc-back-btn"><span class="material-symbols-outlined">arrow_back</span>職員選択に戻る</button>
+  </div>
+</div>
+
+<div class="tc-toast" id="tc-toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var TOKEN_KEY = "tasukaru_timecard_device_token";
+  var state = { token:null, facility:null, staff:[], current:null };
+
+  function $(id){ return document.getElementById(id); }
+
+  function getToken(){
+    var t = null;
+    try { t = localStorage.getItem(TOKEN_KEY); } catch(e){}
+    if(!t){
+      t = "tcd_" + (crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g,"")
+            : (Date.now().toString(36)+Math.random().toString(36).slice(2)));
+      try { localStorage.setItem(TOKEN_KEY, t); } catch(e){}
+    }
+    return t;
+  }
+
+  function toast(msg, isErr){
+    var t = $("tc-toast");
+    t.textContent = msg;
+    t.className = "tc-toast show" + (isErr ? " err" : "");
+    setTimeout(function(){ t.className = "tc-toast"; }, 2200);
+  }
+
+  /* 時計 */
+  function tickClock(){
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2,"0");
+    var mm = String(now.getMinutes()).padStart(2,"0");
+    var ss = String(now.getSeconds()).padStart(2,"0");
+    $("tc-clock").textContent = hh+":"+mm+":"+ss;
+    var wd = ["日","月","火","水","木","金","土"][now.getDay()];
+    $("tc-date").textContent = now.getFullYear()+"年"+(now.getMonth()+1)+"月"+now.getDate()+"日（"+wd+"）";
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  function show(view){
+    ["tc-loading","tc-unreg","tc-pending","tc-staff-view","tc-punch-view"].forEach(function(id){
+      $(id).classList.add("hidden");
+    });
+    if(view) $(view).classList.remove("hidden");
+  }
+
+  var STATE_LABEL = { working:"勤務中", break:"休憩中", out:"未出勤／退勤済み" };
+  var STATE_CLASS = { working:"st-working", break:"st-break", out:"st-out" };
+
+  function renderStaff(){
+    var grid = $("tc-staff-grid");
+    grid.innerHTML = "";
+    if(!state.staff.length){
+      grid.innerHTML = '<p class="tc-muted" style="grid-column:1/-1">登録されている職員がいません。</p>';
+    }
+    state.staff.forEach(function(s){
+      var div = document.createElement("div");
+      var cls = s.state === "working" ? " is-working" : (s.state === "break" ? " is-break" : "");
+      div.className = "tc-staff" + cls;
+      div.innerHTML = '<span class="emoji">'+(s.emoji||"👤")+'</span>'
+        + '<span class="nm">'+escapeHtml(s.name)+'</span>'
+        + '<span class="st '+STATE_CLASS[s.state]+'">'+STATE_LABEL[s.state]+'</span>';
+      div.onclick = function(){ openPunch(s); };
+      grid.appendChild(div);
+    });
+  }
+
+  function escapeHtml(t){
+    return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function openPunch(s){
+    state.current = s;
+    $("tc-pn-emoji").textContent = s.emoji || "👤";
+    $("tc-pn-name").textContent = s.name;
+    refreshPunchButtons(s.state);
+    show("tc-punch-view");
+  }
+
+  function refreshPunchButtons(st){
+    $("tc-pn-state").innerHTML = "現在の状態：<b>"+STATE_LABEL[st]+"</b>";
+    var allow = {
+      "in": st === "out",
+      "out": st === "working" || st === "break",
+      "break_start": st === "working",
+      "break_end": st === "break"
+    };
+    document.querySelectorAll("#tc-punch-view .tc-btn").forEach(function(b){
+      b.disabled = !allow[b.getAttribute("data-pt")];
+    });
+  }
+
+  async function punch(pt){
+    if(!state.current) return;
+    try{
+      var res = await fetch("/timecard/punch", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token, staff_name: state.current.name, punch_type: pt })
+      });
+      var j = await res.json();
+      if(j.status === "success"){
+        var label = {in:"出勤",out:"退勤",break_start:"休憩開始",break_end:"休憩終了"}[pt];
+        toast(state.current.name + " さん " + label + " を記録しました");
+        state.current.state = j.state;
+        refreshPunchButtons(j.state);
+        // 一覧側にも反映
+        var hit = state.staff.find(function(x){ return x.name === state.current.name; });
+        if(hit) hit.state = j.state;
+        if(pt === "out"){ setTimeout(function(){ backToStaff(); }, 900); }
+      }else{
+        toast(j.message || "打刻できませんでした", true);
+      }
+    }catch(e){ toast("通信エラーが発生しました", true); }
+  }
+
+  function backToStaff(){
+    state.current = null;
+    renderStaff();
+    show("tc-staff-view");
+  }
+
+  async function bootstrap(){
+    show("tc-loading");
+    state.token = getToken();
+    try{
+      var res = await fetch("/timecard/bootstrap", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token })
+      });
+      var j = await res.json();
+      if(j.status !== "ok"){ toast("読み込みに失敗しました", true); return; }
+      if(!j.registered){
+        $("tc-device-token-disp").textContent = "デバイスID: " + state.token.slice(0,16) + "…";
+        show("tc-unreg");
+        return;
+      }
+      if(j.enabled === false){
+        $("tc-pending-title").textContent = "ご利用いただけません";
+        $("tc-pending-msg").textContent = j.message || "この施設ではタイムカード機能が有効になっていません。";
+        show("tc-pending");
+        return;
+      }
+      // 有効
+      state.facility = j.facility_code;
+      state.staff = j.staff || [];
+      $("tc-fac").textContent = j.facility_name || j.facility_code || "";
+      $("tc-dev-label").textContent = j.device_label ? ("端末：" + j.device_label) : "";
+      renderStaff();
+      show("tc-staff-view");
+    }catch(e){
+      toast("通信エラーが発生しました", true);
+    }
+  }
+
+  /* 承認申請 */
+  async function requestDevice(){
+    var fac = ($("tc-fac-input").value || "").trim();
+    var label = ($("tc-label-input").value || "").trim();
+    if(!fac){ toast("施設コードを入力してください", true); return; }
+    try{
+      var res = await fetch("/timecard/device/request", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token, facility_code: fac, label: label })
+      });
+      var j = await res.json();
+      if(j.status === "ok"){
+        $("tc-pending-title").textContent = "申請しました";
+        $("tc-pending-msg").textContent = j.message || "管理者の承認をお待ちください。承認後、再読み込みしてください。";
+        show("tc-pending");
+      }else{
+        toast(j.message || "申請に失敗しました", true);
+      }
+    }catch(e){ toast("通信エラーが発生しました", true); }
+  }
+
+  /* イベント */
+  document.querySelectorAll("#tc-punch-view .tc-btn").forEach(function(b){
+    b.addEventListener("click", function(){ punch(b.getAttribute("data-pt")); });
+  });
+  $("tc-back-btn").addEventListener("click", backToStaff);
+  $("tc-request-btn").addEventListener("click", requestDevice);
+  $("tc-reload-btn").addEventListener("click", function(){ bootstrap(); });
+
+  bootstrap();
+})();
+</script>
+</body>
+</html>

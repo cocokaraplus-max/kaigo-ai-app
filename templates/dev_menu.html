@@ -197,6 +197,7 @@
                     <th>記録数</th>
                     <th>出納帳</th>
                     <th>接骨院</th>  <!-- dev-sekkotsu-toggle-v1 -->
+                    <th>タイムカード</th>  <!-- timecard-devtoggle-html-v1 -->
                 </tr>
             </thead>
             <tbody>
@@ -268,6 +269,12 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="toggleSekkotsuAllowed('{{ s.facility_code }}', this.checked)"
                                 {% if s.sekkotsu_mode_allowed %}checked{% endif %}>
+                        </label>
+                    </td>
+                    <td style="text-align:center;">  <!-- timecard-devtoggle-html-v1 -->
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleTimecard('{{ s.facility_code }}', this.checked)"
+                                {% if s.timecard_enabled %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
@@ -447,6 +454,18 @@ window.onTTSToggle = function(enabled) {
     .then(function(data) { if (data.error) alert(data.error); })
     .catch(function(){});
 };
+async function toggleTimecard(facilityCode, enabled) {  // timecard-devtoggle-html-v1
+    try {
+        const res = await fetch('/api/dev/toggle_timecard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ facility_code: facilityCode, enabled: enabled })
+        });
+        const j = await res.json();
+        if (!j.success) { alert('タイムカード設定の更新に失敗しました: ' + (j.message || '')); }
+    } catch (e) { alert('通信エラー: ' + e); }
+}
+
 async function toggleSekkotsuAllowed(facilityCode, allowed) {  // dev-sekkotsu-toggle-v1
   try {
     const res = await fetch('/api/dev/toggle_sekkotsu_allowed', {
