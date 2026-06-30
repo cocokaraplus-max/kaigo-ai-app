@@ -13714,6 +13714,27 @@ def admin_timecard_day():
     except Exception as e:
         print(f"admin_timecard_day error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/admin/timecard/device/delete", methods=["POST"])  # timecard-devdel-v1
+def admin_timecard_device_delete():
+    """不要なデバイス登録を物理削除。打刻記録は別テーブルなので残る。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        # 自施設のデバイスのみ削除
+        supabase.table("timecard_devices").delete().eq(
+            "id", dev_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_device_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ----- /timecard-edit-v1 -----
 
 # ----- /timecard-monthly-v1 -----

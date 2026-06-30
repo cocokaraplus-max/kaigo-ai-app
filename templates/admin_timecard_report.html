@@ -9,6 +9,9 @@
   .tcr-head .material-symbols-outlined{font-size:26px;color:#2f6b5e}
   .tcr-title{font-size:1.15rem;font-weight:800}
   .tcr-lead{font-size:.86rem;color:#777;margin-bottom:14px}
+  .tcr-back{display:inline-flex;align-items:center;gap:4px;background:none;border:0;
+    color:#2f6b5e;font-weight:700;font-size:.9rem;cursor:pointer;font-family:inherit;
+    padding:4px 0;margin-bottom:10px;text-decoration:none}
   .tcr-monthbar{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px}
   .tcr-monthbar button{background:#fff;border:1px solid #d8d4cc;border-radius:10px;width:40px;height:40px;
     font-size:1.2rem;cursor:pointer;font-family:inherit;color:#2f6b5e}
@@ -72,12 +75,13 @@
   .tcm-empty{color:#aaa;font-size:.85rem;padding:8px 0}
 
   @media print{
-    .tcr-monthbar button,.tcr-actions,.tcr-edit{display:none!important}
+    .tcr-monthbar button,.tcr-actions,.tcr-edit,.tcr-back{display:none!important}
     .tcr-collapsed .tcr-days{display:block!important}
   }
 </style>
 
 <div class="tcr-wrap">
+  <a href="/admin/timecard" class="tcr-back"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span>当日の打刻に戻る</a>
   <div class="tcr-head">
     <span class="material-symbols-outlined">calendar_month</span>
     <span class="tcr-title">勤怠集計</span>
