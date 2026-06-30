@@ -10543,7 +10543,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed").execute()  # dev-sekkotsu-allow-v1
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1
         facilities = res.data or []
     except: pass
 
@@ -10577,6 +10577,7 @@ def dev_menu():
                 "discount_rate": fac.get("discount_rate", 0) or 0,
                 "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
                 "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
+                "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -10690,6 +10691,24 @@ def api_dev_toggle_sekkotsu_allowed():
     try:
         supabase = get_supabase()
         supabase.table('facilities').update({'sekkotsu_mode_allowed': allowed}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/dev/toggle_timecard', methods=['POST'])  # timecard-devtoggle-v1
+def api_dev_toggle_timecard():
+    """施設ごとのタイムカード機能ON/OFF(課金管理)。開発者認証必須。"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'timecard_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
