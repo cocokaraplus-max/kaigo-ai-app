@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}勤怠集計 - TASUKARU{% endblock %}
+
+{% block content %}
+<style>
+  /* timecard-report-ui-v1 */
+  .tcr-wrap{max-width:var(--page-max-width,480px);margin:0 auto;padding:16px 14px 120px}
+  .tcr-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .tcr-head .material-symbols-outlined{font-size:26px;color:#2f6b5e}
+  .tcr-title{font-size:1.15rem;font-weight:800}
+  .tcr-lead{font-size:.86rem;color:#777;margin-bottom:14px}
+  .tcr-monthbar{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px}
+  .tcr-monthbar button{background:#fff;border:1px solid #d8d4cc;border-radius:10px;width:40px;height:40px;
+    font-size:1.2rem;cursor:pointer;font-family:inherit;color:#2f6b5e}
+  .tcr-month-label{font-size:1.05rem;font-weight:800;min-width:140px;text-align:center}
+  .tcr-staff{background:#fff;border:1px solid #d8d4cc;border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .tcr-staff-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;
+    background:#fafafa;border-bottom:1px solid #f0ede7}
+  .tcr-staff-head .emoji{font-size:1.5rem}
+  .tcr-staff-head .nm{font-weight:800;flex:1}
+  .tcr-staff-head .tot{font-weight:800;color:#2f6b5e;font-size:1.05rem}
+  .tcr-staff-head .sub{font-size:.74rem;color:#999;display:block;text-align:right;font-weight:400}
+  .tcr-warn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e09b16;margin-left:6px}
+  .tcr-days{padding:6px 14px 12px}
+  .tcr-day{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f4f1ec;font-size:.86rem}
+  .tcr-day:last-child{border-bottom:0}
+  .tcr-day .d{width:64px;color:#666;font-variant-numeric:tabular-nums}
+  .tcr-day .io{flex:1;color:#888;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .tcr-day .hrs{font-weight:700;font-variant-numeric:tabular-nums}
+  .tcr-day.bad{background:#fff8ec;margin:0 -14px;padding:8px 14px}
+  .tcr-flag{color:#c77d12;font-size:.74rem;font-weight:700}
+  .tcr-empty{color:#999;font-size:.86rem;text-align:center;padding:24px 0}
+  .tcr-collapsed .tcr-days{display:none}
+  .tcr-summary{background:#eef5f3;border:1px solid #d7e6e1;border-radius:12px;padding:12px 14px;
+    margin-bottom:14px;font-size:.88rem;color:#2f6b5e}
+  .tcr-summary b{font-size:1.05rem}
+  .tcr-actions{display:flex;gap:8px;margin-bottom:14px}
+  .tcr-actions button{flex:1;padding:10px;border-radius:10px;border:1px solid #d8d4cc;background:#fff;
+    font-family:inherit;font-weight:700;font-size:.88rem;cursor:pointer;color:#2f6b5e;
+    display:flex;align-items:center;justify-content:center;gap:6px}
+</style>
+
+<div class="tcr-wrap">
+  <div class="tcr-head">
+    <span class="material-symbols-outlined">calendar_month</span>
+    <span class="tcr-title">勤怠集計</span>
+  </div>
+  <div class="tcr-lead">月ごとの職員別労働時間です。打刻漏れのある日は黄色で表示され、合計には含みません。</div>
+
+  <div class="tcr-monthbar">
+    <button id="tcr-prev">‹</button>
+    <span class="tcr-month-label" id="tcr-month-label">----年--月</span>
+    <button id="tcr-next">›</button>
+  </div>
+
+  <div class="tcr-actions">
+    <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">print</span>印刷 / PDF</button>
+  </div>
+
+  <div id="tcr-body"><div class="tcr-empty">読み込み中…</div></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+(function(){
+  "use strict";
+  function $(id){ return document.getElementById(id); }
+  function esc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  var cur = new Date();
+  var year = cur.getFullYear(), month = cur.getMonth()+1;
+
+  function fmtHM(min){
+    if(min==null) return "—";
+    var h=Math.floor(min/60), m=min%60;
+    return h+"時間"+(m? (" "+m+"分"):"");
+  }
+  function fmtTime(iso){
+    if(!iso) return "--:--";
+    try{ var d=new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }catch(e){ return "--:--"; }
+  }
+  function dayLabel(dk){
+    var p=dk.split("-"); var d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
+    var wd=["日","月","火","水","木","金","土"][d.getDay()];
+    return Number(p[2])+"日("+wd+")";
+  }
+
+  async function load(){
+    $("tcr-month-label").textContent = year+"年"+month+"月";
+    $("tcr-body").innerHTML = '<div class="tcr-empty">読み込み中…</div>';
+    try{
+      var res = await fetch("/admin/timecard/monthly?year="+year+"&month="+month);
+      var j = await res.json();
+      if(j.status!=="success"){ $("tcr-body").innerHTML='<div class="tcr-empty">'+esc(j.message||"取得失敗")+'</div>'; return; }
+      render(j);
+    }catch(e){ $("tcr-body").innerHTML='<div class="tcr-empty">通信エラー</div>'; }
+  }
+
+  function render(j){
+    var staff=j.staff||[];
+    var anyData = staff.some(function(s){ return s.days.length>0; });
+    if(!anyData){ $("tcr-body").innerHTML='<div class="tcr-empty">この月の打刻記録はありません。</div>'; return; }
+
+    var grandMin=0, grandIncomplete=0;
+    staff.forEach(function(s){ grandMin+=s.total_minutes; grandIncomplete+=s.incomplete_days; });
+
+    var html='<div class="tcr-summary">施設合計：<b>'+fmtHM(grandMin)+'</b>'
+      +(grandIncomplete? '　／　要確認の日 <b>'+grandIncomplete+'</b>日':'')+'</div>';
+
+    staff.forEach(function(s){
+      if(!s.days.length) return;
+      var warn = s.incomplete_days>0 ? '<span class="tcr-warn-dot"></span>' : '';
+      html += '<div class="tcr-staff tcr-collapsed">'
+        +'<div class="tcr-staff-head" data-toggle>'
+        +'<span class="emoji">'+(s.emoji||"👤")+'</span>'
+        +'<span class="nm">'+esc(s.name)+warn+'</span>'
+        +'<span class="tot">'+fmtHM(s.total_minutes)
+        +'<span class="sub">'+s.worked_days+'日勤務'+(s.incomplete_days? '・要確認'+s.incomplete_days+'日':'')+'</span></span>'
+        +'</div><div class="tcr-days">';
+      s.days.forEach(function(d){
+        if(d.incomplete){
+          html += '<div class="tcr-day bad"><span class="d">'+dayLabel(d.date)+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+'</span>'
+            +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span></div>';
+        }else{
+          var brk = d.break_min? '（休憩'+d.break_min+'分）':'';
+          html += '<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+'</span>'
+            +'<span class="hrs">'+fmtHM(d.minutes)+'</span></div>';
+        }
+      });
+      html += '</div></div>';
+    });
+    $("tcr-body").innerHTML = html;
+
+    document.querySelectorAll("[data-toggle]").forEach(function(h){
+      h.addEventListener("click", function(){
+        h.closest(".tcr-staff").classList.toggle("tcr-collapsed");
+      });
+    });
+  }
+
+  $("tcr-prev").addEventListener("click", function(){
+    month--; if(month<1){ month=12; year--; } load();
+  });
+  $("tcr-next").addEventListener("click", function(){
+    month++; if(month>12){ month=1; year++; } load();
+  });
+  $("tcr-print").addEventListener("click", function(){ window.print(); });
+
+  load();
+})();
+</script>
+{% endblock %}

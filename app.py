@@ -13302,6 +13302,208 @@ def admin_timecard_today():
     except Exception as e:
         print(f"admin_timecard_today error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ----- timecard-monthly-v1 : 月次労働時間集計 -----
+def _tc_month_range_jst(year, month):
+    """指定年月(JST)の [当月1日00:00, 翌月1日00:00) を UTC ISO で返す。"""
+    start = _tc_dt(year, month, 1, 0, 0, 0, tzinfo=_TC_JST)
+    if month == 12:
+        end = _tc_dt(year + 1, 1, 1, 0, 0, 0, tzinfo=_TC_JST)
+    else:
+        end = _tc_dt(year, month + 1, 1, 0, 0, 0, tzinfo=_TC_JST)
+    return start.astimezone(_tc_tz.utc).isoformat(), end.astimezone(_tc_tz.utc).isoformat()
+
+
+def _tc_parse_iso(s):
+    """SupabaseのISO文字列を aware datetime に。失敗時 None。"""
+    if not s:
+        return None
+    try:
+        t = s.replace("Z", "+00:00")
+        return _tc_dt.fromisoformat(t)
+    except Exception:
+        try:
+            return _tc_dt.fromisoformat(s[:19] + "+00:00")
+        except Exception:
+            return None
+
+
+def _tc_day_key(iso):
+    """打刻時刻(UTC ISO)を JST の YYYY-MM-DD に。"""
+    dtv = _tc_parse_iso(iso)
+    if not dtv:
+        return None
+    return dtv.astimezone(_TC_JST).strftime("%Y-%m-%d")
+
+
+def _tc_compute_day(punches):
+    """1日分の打刻列(時刻昇順)から労働時間(分)を計算。
+    返り値: {"minutes": int|None, "incomplete": bool, "flags": [..],
+             "in": iso|None, "out": iso|None, "break_min": int}
+    欠損は補完しない: in欠落/out欠落/break_end欠落 は incomplete=True, minutes=None。"""
+    flags = []
+    in_t = None
+    out_t = None
+    work_min = 0
+    break_min = 0
+    cur_in = None
+    cur_break = None
+    incomplete = False
+
+    for p in punches:
+        t = p.get("punch_type")
+        at = _tc_parse_iso(p.get("punched_at"))
+        if at is None:
+            continue
+        if t == "in":
+            if cur_in is not None:
+                flags.append("二重出勤")
+                incomplete = True
+            cur_in = at
+            if in_t is None:
+                in_t = at
+        elif t == "out":
+            if cur_in is None:
+                flags.append("出勤なしで退勤")
+                incomplete = True
+            else:
+                # 退勤時に休憩が開いていれば未クローズ→補完せず印
+                if cur_break is not None:
+                    flags.append("休憩終了の打刻なし")
+                    incomplete = True
+                    cur_break = None
+                work_min += int((at - cur_in).total_seconds() // 60)
+                cur_in = None
+            out_t = at
+        elif t == "break_start":
+            if cur_in is None:
+                flags.append("勤務外の休憩")
+                incomplete = True
+            if cur_break is not None:
+                flags.append("休憩が連続")
+                incomplete = True
+            cur_break = at
+        elif t == "break_end":
+            if cur_break is None:
+                flags.append("休憩開始なしで終了")
+                incomplete = True
+            else:
+                break_min += int((at - cur_break).total_seconds() // 60)
+                cur_break = None
+
+    # 走査後に開いたままの勤務/休憩がある → 退勤漏れ等
+    if cur_in is not None:
+        flags.append("退勤の打刻なし")
+        incomplete = True
+    if cur_break is not None:
+        flags.append("休憩終了の打刻なし")
+        incomplete = True
+
+    minutes = None if incomplete else max(0, work_min - break_min)
+    # 重複フラグを除去(順序維持)
+    seen = set()
+    uniq = []
+    for fl in flags:
+        if fl not in seen:
+            seen.add(fl)
+            uniq.append(fl)
+    return {"minutes": minutes, "incomplete": incomplete, "flags": uniq,
+            "in": in_t.isoformat() if in_t else None,
+            "out": out_t.isoformat() if out_t else None,
+            "break_min": break_min}
+
+
+@app.route("/admin/timecard/monthly", methods=["GET"])
+@login_required
+def admin_timecard_monthly():
+    """職員別・日別の労働時間と月合計(JSON)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+
+        start_iso, end_iso = _tc_month_range_jst(year, month)
+        res = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("is_deleted", False).gte(
+            "punched_at", start_iso).lt("punched_at", end_iso).order(
+            "punched_at", desc=False).execute()
+        rows = res.data or []
+
+        # staff -> day -> punches
+        by_staff = {}
+        for r in rows:
+            sn = r.get("staff_name")
+            dk = _tc_day_key(r.get("punched_at"))
+            if not sn or not dk:
+                continue
+            by_staff.setdefault(sn, {}).setdefault(dk, []).append(r)
+
+        staff_master = _tc_staff_list(supabase, f_code)
+        name_order = [s["name"] for s in staff_master]
+        emoji_map = {s["name"]: s["emoji"] for s in staff_master}
+        # 明細にしか出てこない退職者等も拾う
+        for sn in by_staff.keys():
+            if sn not in name_order:
+                name_order.append(sn)
+
+        result = []
+        for sn in name_order:
+            days_map = by_staff.get(sn, {})
+            days = []
+            total_min = 0
+            worked_days = 0
+            incomplete_days = 0
+            for dk in sorted(days_map.keys()):
+                comp = _tc_compute_day(days_map[dk])
+                if comp["minutes"] is not None:
+                    total_min += comp["minutes"]
+                    if comp["minutes"] > 0:
+                        worked_days += 1
+                if comp["incomplete"]:
+                    incomplete_days += 1
+                days.append({"date": dk, "minutes": comp["minutes"],
+                             "incomplete": comp["incomplete"], "flags": comp["flags"],
+                             "in": comp["in"], "out": comp["out"],
+                             "break_min": comp["break_min"]})
+            result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
+                           "days": days, "total_minutes": total_min,
+                           "worked_days": worked_days,
+                           "incomplete_days": incomplete_days})
+
+        return jsonify({"status": "success", "year": year, "month": month,
+                        "staff": result})
+    except Exception as e:
+        print(f"admin_timecard_monthly error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/report", methods=["GET"])
+@login_required
+def admin_timecard_report_page():
+    """月次集計の管理画面。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return redirect(url_for("admin"))
+        return render_template("admin_timecard_report.html")
+    except Exception as e:
+        print(f"admin_timecard_report_page error: {e}", flush=True)
+        return redirect(url_for("admin"))
+# ----- /timecard-monthly-v1 -----
+
 # ===== /timecard-api-v1 =====
 
 
