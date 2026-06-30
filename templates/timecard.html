@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>タイムカード - TASUKARU</title>
+<!-- timecard-icon-v1: ホーム画面追加時のアイコン(走るアライグマ)とアプリ風表示 -->
+<link rel="apple-touch-icon" href="/static/tasukaru_hashiru.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="タイムカード">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 <style>
   /* timecard-ui-v1 : 公開打刻画面。共用タブレット向けに大きめタッチ。base非継承の単独画面 */
@@ -201,12 +206,21 @@
       var div = document.createElement("div");
       var cls = s.state === "working" ? " is-working" : (s.state === "break" ? " is-break" : "");
       div.className = "tc-staff" + cls;
-      div.innerHTML = '<span class="emoji">'+(s.emoji||"👤")+'</span>'
+      div.innerHTML = iconHtml(s, 38)
         + '<span class="nm">'+escapeHtml(s.name)+'</span>'
         + '<span class="st '+STATE_CLASS[s.state]+'">'+STATE_LABEL[s.state]+'</span>';
       div.onclick = function(){ openPunch(s); };
       grid.appendChild(div);
     });
+  }
+
+  // timecard-hidden-icon-v1: アイコン表示。画像>絵文字>人型 の優先。
+  function iconHtml(s, px){
+    if(s && s.image){
+      return '<img class="emoji" src="'+escapeHtml(s.image)+'" alt="" '
+        + 'style="width:'+px+'px;height:'+px+'px;border-radius:50%;object-fit:cover;">';
+    }
+    return '<span class="emoji">'+((s && s.emoji) || "👤")+'</span>';
   }
 
   function escapeHtml(t){
@@ -216,7 +230,8 @@
 
   function openPunch(s){
     state.current = s;
-    $("tc-pn-emoji").textContent = s.emoji || "👤";
+    var holder = $("tc-pn-emoji");
+    holder.outerHTML = iconHtml(s, 36).replace('class="emoji"', 'class="emoji" id="tc-pn-emoji"');
     $("tc-pn-name").textContent = s.name;
     refreshPunchButtons(s.state);
     show("tc-punch-view");
