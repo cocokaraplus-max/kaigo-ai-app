@@ -187,6 +187,33 @@
     </div>
 </div>
 
+<!-- timecard-top-btn-v1 : 承認済み打刻デバイスのときだけ表示 -->
+<a id="tc-top-punch-link" href="/timecard"
+   style="display:none;align-items:center;justify-content:center;gap:8px;padding:14px;
+   margin:4px 0 14px;background:#2f6b5e;border-radius:12px;text-decoration:none;color:#fff;
+   font-weight:800;font-size:1rem;">
+  <span class="material-symbols-outlined">schedule</span>タイムカードで打刻する
+</a>
+<script>
+(function(){
+  try{
+    var KEY="tasukaru_timecard_device_token";
+    var token=null;
+    try{ token=localStorage.getItem(KEY); }catch(e){}
+    if(!token) return;  // トークンが無い端末は出さない(申請もTOPからはしない)
+    fetch("/timecard/bootstrap",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({token:token})})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j && j.status==="ok" && j.registered===true && j.enabled===true){
+          var el=document.getElementById("tc-top-punch-link");
+          if(el) el.style.display="flex";
+        }
+      }).catch(function(){});
+  }catch(e){}
+})();
+</script>
+
 <!-- ★ ユーザー設定モーダル -->
 
 
