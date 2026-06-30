@@ -13502,6 +13502,145 @@ def admin_timecard_report_page():
     except Exception as e:
         print(f"admin_timecard_report_page error: {e}", flush=True)
         return redirect(url_for("admin"))
+
+# ----- timecard-edit-v1 : 管理者による打刻編集(UPDATE方式・編集者/メモ記録) -----
+def _tc_jst_to_utc_iso(date_str, time_str):
+    """ "YYYY-MM-DD" + "HH:MM"(JST) を UTC ISO に。失敗時 None。"""
+    try:
+        y, mo, d = [int(x) for x in date_str.split("-")]
+        hh, mm = [int(x) for x in time_str.split(":")]
+        jst = _tc_dt(y, mo, d, hh, mm, 0, tzinfo=_TC_JST)
+        return jst.astimezone(_tc_tz.utc).isoformat()
+    except Exception:
+        return None
+
+
+def _tc_admin_guard():
+    """(f_code, my_name, supabase) を返す。管理者でなければ (None,...)。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return None, my_name, supabase
+    return f_code, my_name, supabase
+
+
+@app.route("/admin/timecard/edit", methods=["POST"])
+@login_required
+def admin_timecard_edit():
+    """既存打刻の時刻を修正。punched_at を上書きし edited_by/note を記録。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rec_id = data.get("id")
+        date_str = (data.get("date") or "").strip()
+        time_str = (data.get("time") or "").strip()
+        note = (data.get("note") or "").strip()
+        if not rec_id or not date_str or not time_str:
+            return jsonify({"status": "error", "message": "id・date・time が必要です。"}), 400
+        iso = _tc_jst_to_utc_iso(date_str, time_str)
+        if not iso:
+            return jsonify({"status": "error", "message": "日時の形式が不正です。"}), 400
+        # 自施設の行のみ更新
+        upd = {"punched_at": iso, "edited_by": my_name,
+               "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+        if note:
+            upd["note"] = note
+        supabase.table("timecard_records").update(upd).eq(
+            "id", rec_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_edit error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/add", methods=["POST"])
+@login_required
+def admin_timecard_add():
+    """打刻を追加(打刻漏れの補完)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        punch_type = (data.get("punch_type") or "").strip()
+        date_str = (data.get("date") or "").strip()
+        time_str = (data.get("time") or "").strip()
+        note = (data.get("note") or "").strip()
+        if punch_type not in _TC_PUNCH_TYPES:
+            return jsonify({"status": "error", "message": "打刻種別が不正です。"}), 400
+        if not staff_name or not date_str or not time_str:
+            return jsonify({"status": "error", "message": "職員・日付・時刻が必要です。"}), 400
+        iso = _tc_jst_to_utc_iso(date_str, time_str)
+        if not iso:
+            return jsonify({"status": "error", "message": "日時の形式が不正です。"}), 400
+        supabase.table("timecard_records").insert({
+            "facility_code": f_code, "staff_name": staff_name,
+            "punch_type": punch_type, "punched_at": iso,
+            "edited_by": my_name, "note": note or "管理者が追加",
+        }).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_add error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/delete", methods=["POST"])
+@login_required
+def admin_timecard_delete():
+    """打刻を論理削除(is_deleted=true)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rec_id = data.get("id")
+        note = (data.get("note") or "").strip()
+        if not rec_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        upd = {"is_deleted": True, "edited_by": my_name,
+               "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+        if note:
+            upd["note"] = note
+        supabase.table("timecard_records").update(upd).eq(
+            "id", rec_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"admin_timecard_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/day", methods=["GET"])
+@login_required
+def admin_timecard_day():
+    """指定職員・指定日(JST)の打刻明細(編集用。論理削除除く)。"""
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        staff_name = (request.args.get("staff_name") or "").strip()
+        date_str = (request.args.get("date") or "").strip()
+        if not staff_name or not date_str:
+            return jsonify({"status": "error", "message": "staff_name・date が必要です。"}), 400
+        start_iso = _tc_jst_to_utc_iso(date_str, "00:00")
+        end_dt = _tc_parse_iso(start_iso) + _tc_td(days=1)
+        end_iso = end_dt.isoformat()
+        res = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "is_deleted", False).gte("punched_at", start_iso).lt(
+            "punched_at", end_iso).order("punched_at", desc=False).execute()
+        out = [{"id": r["id"], "type": r["punch_type"], "at": r["punched_at"],
+                "edited_by": r.get("edited_by"), "note": r.get("note")}
+               for r in (res.data or [])]
+        return jsonify({"status": "success", "punches": out})
+    except Exception as e:
+        print(f"admin_timecard_day error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /timecard-edit-v1 -----
+
 # ----- /timecard-monthly-v1 -----
 
 # ===== /timecard-api-v1 =====
