@@ -1009,6 +1009,7 @@ def api_toggle_timecard_hidden():
     if not staff_name:
         return jsonify({"success": False, "msg": "staff_name required"}), 400
     try:
+        supabase = get_supabase()  # timecard-hidden-fix-v1
         res = supabase.table("admin_settings").select("value").eq(
             "facility_code", f_code).eq("key", "timecard_hidden").execute()
         current = _json.loads(res.data[0].get("value") or "[]") if res.data else []
