@@ -1067,6 +1067,10 @@ function doReportPrint(){
       svgEl.setAttribute('width', w);
       svgEl.setAttribute('height', h);
     }
+    // monitoring-pdf-svg-xmlns-fix-v2: outerHTML文字列化時にxmlns属性が失われるため明示的に付与
+    if(!svgEl.getAttribute('xmlns')){
+      svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    }
   });
 
   var btn = document.querySelector('.rep-print-bar button:not(.close)');
