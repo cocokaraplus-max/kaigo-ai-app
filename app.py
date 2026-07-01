@@ -15572,11 +15572,11 @@ def api_monitoring_report_pdf():
             _level += 1
 
         if not _fits_one_page:
+            # monitoring-pdf-remove-forced-break-v1: 強制改ページを外し、並び替えのみで自然な流れに任せる。
             _reordered_html = _move_fitness_section_to_end(safe_html)
             _extra_css = (
                 _FITGRID_FIX_CSS
                 + _FITLEVEL_CSS.get(_READABLE_MAX_LEVEL, _FITLEVEL_CSS[4])
-                + _PAGE_BREAK_BEFORE_FIT_CSS
             )
             _full_html = _build_full_html(_reordered_html, _extra_css)
             pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
