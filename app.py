@@ -15284,7 +15284,11 @@ def api_monitoring_report_pdf():
             'width:auto !important; vertical-align:top !important; } '
             '.rep-free2 { display:block !important; } '
             '.rep-free { width:100% !important; min-height:0 !important; } '
-            '.rep-free + .rep-free { margin-top:5px !important; }'
+            '.rep-free + .rep-free { margin-top:5px !important; } '
+            # monitoring-pdf-font-fix-v1: 'Hiragino Sans'/'Noto Sans JP'はサーバー上に存在せず、
+            # 意図しないフォールバックフォントで幅広く描画されていたため、
+            # 実際にインストール済みの'Noto Sans CJK JP'を明示指定する。
+            '.rep-root { font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif !important; }'
         )
 
         _FITLEVEL_CSS = {
