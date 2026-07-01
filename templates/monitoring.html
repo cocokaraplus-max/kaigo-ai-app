@@ -180,7 +180,9 @@ body.report-preview-open nav { display:none !important; }
 @media print {
   body * { visibility:hidden !important; }
   #report-sheet, #report-sheet * { visibility:visible !important; }
-  #report-sheet { display:block !important; position:absolute; left:0; top:0; width:100%; margin:0; padding:0; border:none; background:#fff; }
+  /* mon-print-position-static-v1: position:absoluteだとnormal flowから外れ、印刷時のページ分割が
+     正しく機能しないため static に変更。left/topは不要になったため削除。 */
+  #report-sheet { display:block !important; position:static !important; width:100%; margin:0; padding:0; border:none; background:#fff; }
   /* mon-print-overflow-fix-v1: プレビュー用 preview-on の fixed/overflow/padding を印刷時のみ解除。
      これが残っていると1画面分の高さで内容が切れ、2枚目に続かない不具合が起きる。 */
   #report-sheet.preview-on {
