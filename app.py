@@ -15270,7 +15270,7 @@ def api_monitoring_report_pdf():
             fit_level = int(data.get("fit_level", 2))
         except (TypeError, ValueError):
             fit_level = 2
-        fit_level = max(0, min(2, fit_level))
+        fit_level = max(0, min(4, fit_level))  # monitoring-pdf-fitlevel-extend-server-v1
 
         # monitoring-pdf-free2-stack-server-v1: 個別機能訓練実施による変化/課題とその要因の
         # 2カラム表示は各枠にmin-height:80pxがあり、文章が短いと
@@ -15326,6 +15326,44 @@ def api_monitoring_report_pdf():
                 '.rep-req-top .l, .rep-req-top .r { padding:3px 7px !important; } '
                 '.rep-req-body .l, .rep-req-body .r { padding:3px 7px !important; min-height:0 !important; } '
                 '.rep-foot { margin-top:3px !important; padding-top:3px !important; }'
+            ),
+            3: (
+                '.rep-fit-grid { margin-bottom:4px !important; } '
+                '.rep-root { font-size:10.5px !important; } '
+                '.rep-2col { margin-bottom:4px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:4px !important; } '
+                '.rep-goals { margin-bottom:4px !important; } '
+                '.rep-free2 { margin-bottom:4px !important; } '
+                '.rep-free { min-height:0 !important; padding:3px 6px !important; } '
+                '.rep-mon-tbl { margin-bottom:4px !important; } '
+                '.rep-mon-tbl td { padding:3px 5px !important; min-height:0 !important; '
+                'line-height:1.25 !important; } '
+                '.rep-fit-h { margin-bottom:2px !important; } '
+                '.rep-special { margin-bottom:2px !important; padding:3px 6px !important; } '
+                '.rep-sat { margin-bottom:2px !important; } '
+                '.rep-req { margin-bottom:2px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:2px 6px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:2px 6px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; }'
+            ),
+            4: (
+                '.rep-fit-grid { margin-bottom:3px !important; } '
+                '.rep-root { font-size:10px !important; } '
+                '.rep-2col { margin-bottom:3px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:3px !important; } '
+                '.rep-goals { margin-bottom:3px !important; } '
+                '.rep-free2 { margin-bottom:3px !important; } '
+                '.rep-free { min-height:0 !important; padding:3px 5px !important; } '
+                '.rep-mon-tbl { margin-bottom:3px !important; } '
+                '.rep-mon-tbl td { padding:2px 4px !important; min-height:0 !important; '
+                'line-height:1.2 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:2px !important; padding:2px 5px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:2px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:2px 5px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:2px 5px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; }'
             ),
         }
 
