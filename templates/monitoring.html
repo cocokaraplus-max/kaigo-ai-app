@@ -920,11 +920,12 @@ function buildReport(d){
 }
 
 // サンプルデータ（プレビュー用・確定モックv6準拠）
+/* mon-sampledata-anonymize-v1: sample patient/caremanager data anonymized */
 function reportSampleData(){
   return {
     _today:'令和8年3月31日',
-    patient:{ user_name:'宇井 静子', user_name_kana:'ウィ シズコ', birth_text:'昭和20年1月25日(79歳)' },
-    caremanager:{ support_office:'ウィズケアプランセンター', care_manager_name:'越野 幸恵', care_level:'要介護1' },
+    patient:{ user_name:'タスカル 太郎', user_name_kana:'たすかる たろう', birth_text:'1940-01-01' },
+    caremanager:{ support_office:'サンプル居宅介護支援事業所', care_manager_name:'サンプル 花子', care_level:'要介護1' },
     evaluation:{
       care_classification:'要介護',
       training_goal:'',
