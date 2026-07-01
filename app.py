@@ -15448,11 +15448,15 @@ def api_monitoring_report_pdf():
                 '.rep-special { margin-bottom:0px !important; padding:1px 2px !important; } '
                 '.rep-sat { margin-bottom:0px !important; } '
                 '.rep-req { margin-bottom:0px !important; } '
-                '.rep-req-top .l, .rep-req-top .r { padding:1px 2px !important; } '
-                '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 2px !important; font-size:8px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; font-size:8px !important; } '
                 '.rep-foot { margin-top:0px !important; padding-top:0px !important; } '
                 '.rep-fit-card svg, .rep-fit-card img { max-height:16px !important; '
-                'width:auto !important; display:block !important; margin:0 auto !important; }'
+                'width:auto !important; display:block !important; margin:0 auto !important; } '
+                # monitoring-pdf-tail-squeeze-server-v1: これまで対象外だったrep-sat-box/rep-req-topの固定値を縮小
+                '.rep-sat-box { padding:2px 6px !important; } '
+                '.rep-sat-box .v { font-size:10px !important; } '
+                '.rep-sat-leg { font-size:6px !important; }'
             ),
         }
 
