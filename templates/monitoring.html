@@ -1055,6 +1055,84 @@ function doReportPrint(){
   var repRoot = document.getElementById('rep-root');
   if(!repRoot){ alert('報告書の内容が見つかりません。'); return; }
 
+  // monitoring-pdf-fitlevel-client-v1: 印刷ページの実寸幅で高さを計測し、最も余裕のある
+  // フィットレベル(0=広め/1=中間/2=最大圧縮)を自動選択する。
+  function measureFitLevel(sourceEl){
+    var PAGE_W = 733;   // A4内寸(210mm-16mm)の概算px幅
+    var PAGE_H = 1062;  // A4内寸(297mm-16mm)の概算px高さ
+
+    var levelCSS = {
+      0: '',
+      1: (
+        '#fit-measure .rep-root{font-size:11.5px !important;} ' +
+        '#fit-measure .rep-fit-grid{margin-bottom:6px !important;} ' +
+        '#fit-measure .rep-2col{margin-bottom:6px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-user{margin-bottom:6px !important;} ' +
+        '#fit-measure .rep-goals{margin-bottom:6px !important;} ' +
+        '#fit-measure .rep-free2{margin-bottom:6px !important;} ' +
+        '#fit-measure .rep-free{min-height:0 !important;padding:5px 8px !important;} ' +
+        '#fit-measure .rep-mon-tbl{margin-bottom:6px !important;} ' +
+        '#fit-measure .rep-mon-tbl td{padding:4px 7px !important;min-height:0 !important;line-height:1.4 !important;} ' +
+        '#fit-measure .rep-fit-h{margin-bottom:3px !important;} ' +
+        '#fit-measure .rep-special{margin-bottom:4px !important;padding:5px 8px !important;} ' +
+        '#fit-measure .rep-sat{margin-bottom:3px !important;} ' +
+        '#fit-measure .rep-req{margin-bottom:4px !important;} ' +
+        '#fit-measure .rep-req-top .l,#fit-measure .rep-req-top .r{padding:4px 8px !important;} ' +
+        '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:4px 8px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-foot{margin-top:5px !important;padding-top:4px !important;}'
+      ),
+      2: (
+        '#fit-measure .rep-fit-grid{margin-bottom:5px !important;} ' +
+        '#fit-measure .rep-root{font-size:11px !important;} ' +
+        '#fit-measure .rep-2col{margin-bottom:5px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-user{margin-bottom:5px !important;} ' +
+        '#fit-measure .rep-goals{margin-bottom:5px !important;} ' +
+        '#fit-measure .rep-free2{margin-bottom:5px !important;} ' +
+        '#fit-measure .rep-free{min-height:0 !important;padding:4px 7px !important;} ' +
+        '#fit-measure .rep-mon-tbl{margin-bottom:5px !important;} ' +
+        '#fit-measure .rep-mon-tbl td{padding:4px 6px !important;min-height:0 !important;line-height:1.3 !important;} ' +
+        '#fit-measure .rep-fit-h{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-special{margin-bottom:3px !important;padding:4px 7px !important;} ' +
+        '#fit-measure .rep-sat{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-req{margin-bottom:3px !important;} ' +
+        '#fit-measure .rep-req-top .l,#fit-measure .rep-req-top .r{padding:3px 7px !important;} ' +
+        '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:3px 7px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-foot{margin-top:3px !important;padding-top:3px !important;}'
+      )
+    };
+
+    var container = document.createElement('div');
+    container.id = 'fit-measure';
+    container.style.position = 'fixed';
+    container.style.left = '-99999px';
+    container.style.top = '0';
+    container.style.width = PAGE_W + 'px';
+    container.style.visibility = 'hidden';
+
+    var clone = sourceEl.cloneNode(true);
+    clone.style.width = '100%';
+    container.appendChild(clone);
+    document.body.appendChild(container);
+
+    var styleEl = document.createElement('style');
+    document.head.appendChild(styleEl);
+
+    var chosenLevel = 2;
+    try {
+      for (var lvl = 0; lvl <= 2; lvl++) {
+        styleEl.textContent = levelCSS[lvl];
+        var h = clone.scrollHeight;
+        if (h <= PAGE_H) { chosenLevel = lvl; break; }
+      }
+    } finally {
+      document.head.removeChild(styleEl);
+      document.body.removeChild(container);
+    }
+    return chosenLevel;
+  }
+
+  var fitLevel = measureFitLevel(repRoot);
+
   var btn = document.querySelector('.rep-print-bar button:not(.close)');
   var origBtnText = btn ? btn.textContent : null;
   if(btn){ btn.disabled = true; btn.textContent = '⏳ PDF作成中...'; }
@@ -1107,7 +1185,7 @@ function doReportPrint(){
     return fetch('/api/monitoring_report_pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: htmlStr, filename: fname })
+      body: JSON.stringify({ html: htmlStr, filename: fname, fit_level: fitLevel })
     });
   })
   .then(function(res){
