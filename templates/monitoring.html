@@ -1062,9 +1062,20 @@ function doReportPrint(){
     var PAGE_H = 960;   // monitoring-pdf-fitlevel-margin-v1: 1062pxから安全マージンを取り960pxに
     // (ブラウザ計測とwkhtmltopdf実出力の微差を吸収するための安全マージン)
 
+    // monitoring-pdf-fitlevel-measure-fitgrid-v1: サーバー側は全レベル共通でfit-gridをtable変換して
+    // 送っているため、計測側にも同じtable変換を反映させ、測定誤差を防ぐ。
+    var FITGRID_FIX_CSS = (
+      '#fit-measure .rep-fit-grid{display:table !important;width:100% !important;' +
+      'table-layout:fixed !important;border-collapse:separate !important;' +
+      'border-spacing:5px 0 !important;} ' +
+      '#fit-measure .rep-fit-card{display:table-cell !important;flex:none !important;' +
+      'width:auto !important;vertical-align:top !important;}'
+    );
+
     var levelCSS = {
-      0: '',
+      0: FITGRID_FIX_CSS,
       1: (
+        FITGRID_FIX_CSS + ' ' +
         '#fit-measure .rep-root{font-size:11.5px !important;} ' +
         '#fit-measure .rep-fit-grid{margin-bottom:6px !important;} ' +
         '#fit-measure .rep-2col{margin-bottom:6px !important;min-height:0 !important;} ' +
@@ -1083,6 +1094,7 @@ function doReportPrint(){
         '#fit-measure .rep-foot{margin-top:5px !important;padding-top:4px !important;}'
       ),
       2: (
+        FITGRID_FIX_CSS + ' ' +
         '#fit-measure .rep-fit-grid{margin-bottom:5px !important;} ' +
         '#fit-measure .rep-root{font-size:11px !important;} ' +
         '#fit-measure .rep-2col{margin-bottom:5px !important;min-height:0 !important;} ' +
