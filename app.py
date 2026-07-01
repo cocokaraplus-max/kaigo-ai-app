@@ -15160,6 +15160,141 @@ def api_admin_save_facility_info():
 # 利用者・年月を指定し、報告書1枚に必要な全データをまとめて返す。
 # 既存APIのロジックを踏襲。既存ルートは一切変更しない。
 # ============================================================
+# ============================================================
+# monitoring-pdf-endpoint-v1: モニタリング報告書サーバーサイドPDF生成
+# クライアントで構築済みの#rep-root HTML断片を受け取り、画面の
+# nav・入力フォームを含まない独立文書としてpdfkitでPDF化する。
+# 印刷用CSSはmonitoring.htmlの.rep-*定義をパッチ適用時に自動抽出。
+# ============================================================
+_MONITORING_REPORT_CSS = """
+.rep-root { font-family:'Hiragino Sans','Noto Sans JP',sans-serif; color:#202124; font-size:12px; line-height:1.5; width:100%; }
+.rep-root, .rep-root table { width:100% !important; }
+.rep-head { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin-bottom:10px; }
+.rep-title { font-size:17px; font-weight:600; color:#0C447C; letter-spacing:0.04em; text-align:center; grid-column:2; }
+.rep-date { font-size:10px; color:#888780; text-align:right; grid-column:3; }
+.rep-date b { color:#202124; font-size:11px; font-weight:600; }
+.rep-2col { display:flex; gap:10px; margin-bottom:8px; align-items:stretch; min-height:72px; }
+.rep-box { flex:1; border:0.5px solid #C9C7BD; border-radius:4px; padding:12px 16px; }
+.rep-box.fac { background:#FBFAF6; display:flex; align-items:center; gap:9px; }
+.rep-fac-logo { width:40px; height:40px; border-radius:4px; object-fit:contain; flex-shrink:0; background:#E6F1FB; }
+.rep-cm-office { font-size:15px; font-weight:700; color:#202124; border-left:3px solid #1a73e8; padding-left:8px; }
+.rep-cm-name { font-size:13px; font-weight:600; margin-top:6px; color:#202124; padding-left:11px; }
+.rep-fac-cat { font-size:9px; color:#5F5E5A; }
+.rep-fac-name { font-size:12px; font-weight:600; }
+.rep-fac-addr { font-size:9px; color:#5F5E5A; margin-top:2px; }
+.rep-user { display:flex; border: 2px solid #1a73e8; border-radius:3px; margin-bottom:8px; background: #e8f0fe; overflow:hidden; }
+.rep-user-main { flex:1; padding:6px 11px; display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; font-size:10px; }
+.rep-user-kana { font-size:8px; color:#888780; display:block; line-height:1.2; }
+.rep-user-name { font-size:13px; font-weight:600; color:#202124; display:block; line-height:1.2; }
+.rep-user-meta-l { color:#888780; font-size:9px; margin-right:5px; }
+        .rep-care-badge { display: inline-block; border: 1.5px solid #1a73e8; color: #1a73e8; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 7px; margin-left: 2px; }
+.rep-user-author { min-width:96px; padding:6px 9px; border-left:0.5px solid #C9C7BD; background:#fff; display:flex; flex-direction:column; justify-content:center; }
+.rep-user-author span:first-child { color:#888780; font-size:8px; }
+.rep-user-author span:last-child { font-size:11px; font-weight:600; margin-top:2px; }
+.rep-goals { display:flex; gap:8px; margin-bottom:8px; }
+.rep-goal-col { flex:1; }
+.rep-goal-h { font-size:11px; font-weight:600; color:#0C447C; margin-bottom:4px; }
+.rep-goal-h small { font-size:9px; color:#888780; font-weight:400; }
+.rep-tbl { width:100%; border-collapse:collapse; font-size:9px; }
+.rep-tbl td { border:0.5px solid #E0E0E0; padding:4px 5px; }
+.rep-tbl td.k { width:38px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
+.rep-tbl td.st { width:58px; text-align:center; font-weight:700; font-size:9px; }
+.rep-tbl-cont { width:38px; text-align:center; font-size:9px; font-weight:700; border-radius:3px; }
+.rep-tbl-cont.cont-keep { color:#5F6368; background:#F1F3F4; }
+.rep-tbl-cont.cont-chg  { color:#E65100; background:#FFF3E0; }
+.rep-tbl td.st-cont  { color:#BA7517; background:#FFF8E7; }
+.rep-tbl td.st-done  { color:#1a7a3c; background:#E6F4EA; }
+.rep-tbl td.st-part  { color:#1a55a8; background:#E8F0FE; }
+.rep-tbl td.st-fail  { color:#c0392b; background:#FCE8E6; }
+.rep-tbl td.st-other { color:#5f6368; }
+.rep-free2 { display:flex; gap:8px; margin-bottom:8px; }
+.rep-free { flex:1; border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; min-height: 80px; }
+.rep-free-h { font-size: 11px; font-weight: 600; color: #0c447c; border-left: 3px solid #378add; padding-left: 7px; margin: 0 0 5px; }
+.rep-free-b { font-size: 11px; line-height:1.55; white-space:pre-wrap; }
+.rep-sec-h { font-size:11px; font-weight:600; color:#0C447C; border-left:3px solid #378ADD; padding-left:7px; margin:0 0 5px; }
+.rep-mon-tbl { width:100%; border-collapse:collapse; font-size:9px; margin-bottom:8px; }
+.rep-mon-tbl td { border:0.5px solid #E0E0E0; padding:5px 7px; vertical-align:top; min-height: 72px; }
+.rep-mon-tbl td.cat { width:74px; background:#FAFBFF; color:#5F5E5A; font-weight:600; }
+.rep-fit-h { display:flex; justify-content:space-between; align-items:baseline; border-left:3px solid #1D9E75; padding-left:7px; margin-bottom:5px; }
+.rep-fit-h span:first-child { font-size:11px; font-weight:600; color:#04342C; }
+.rep-fit-h span:last-child { font-size:8px; color:#888780; }
+.rep-fit-grid { display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap; }
+.rep-fit-card { flex:1; min-width:90px; border:0.5px solid #E0E0E0; border-radius:3px; padding:4px 6px; }
+.rep-fit-card-h { font-size:8px; color:#5F5E5A; display:flex; justify-content:space-between; }
+.rep-fit-card-h b { color:#0F6E56; }
+.rep-special { border:0.5px solid #E0E0E0; border-radius:3px; padding:6px 9px; margin-bottom:8px; font-size:9px; }
+.rep-special b { color:#04342C; font-weight:600; }
+.rep-req { border:0.5px solid #C9C7BD; border-radius:3px; overflow:hidden; margin-bottom:6px; }
+.rep-req-top { display:flex; align-items:center; border-bottom:0.5px solid #E0E0E0; }
+.rep-req-top .l { flex:1; padding:5px 9px; font-size:9px; }
+.rep-req-top .r { padding:5px 11px; font-size:9px; border-left:0.5px solid #E0E0E0; display:flex; gap:14px; }
+.rep-req-body { display:flex; }
+.rep-req-body .l { width:96px; padding:5px 9px; font-size:9px; color:#5F5E5A; background:#FAFBFF; border-right:0.5px solid #E0E0E0; }
+.rep-req-body .r { flex:1; padding:5px 9px; font-size:9px; min-height:22px; }
+.rep-sat { display:flex; gap:8px; align-items:stretch; font-size:9px; margin-bottom:6px; }
+.rep-sat-box { border:0.5px solid #C9C7BD; border-radius:3px; padding:5px 11px; display:flex; align-items:center; gap:6px; }
+.rep-sat-box .v { font-size:13px; font-weight:600; color:#0F6E56; }
+.rep-sat-leg { flex:1; display:flex; align-items:center; justify-content:flex-end; font-size:7px; color:#B4B2A9; }
+.rep-foot { border-top:0.5px solid #E0E0E0; padding-top:6px; margin-top:8px; text-align:right; font-size:8px; color:#888780; }
+"""
+
+@app.route('/api/monitoring_report_pdf', methods=['POST'])
+@login_required
+def api_monitoring_report_pdf():
+    """モニタリング報告書をサーバーサイドでPDF化して返す。
+    body: {"html": "<div id=\\"rep-root\\">...</div>", "filename": "..."}
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        rep_html = data.get("html", "")
+        if not rep_html or "rep-root" not in rep_html:
+            return jsonify({"status": "error", "message": "invalid html"}), 400
+
+        # 簡易サニタイズ: scriptタグ等は除去（PDF化用途のみのため最小限）
+        import re as _re
+        safe_html = _re.sub(r'<script[\s\S]*?</script>', '', rep_html, flags=_re.IGNORECASE)
+        safe_html = _re.sub(r'\son\w+\s*=\s*"[^"]*"', '', safe_html, flags=_re.IGNORECASE)
+        safe_html = _re.sub(r"\son\w+\s*=\s*'[^']*'", '', safe_html, flags=_re.IGNORECASE)
+
+        full_html = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            '<style>@page { size: A4 portrait; margin: 8mm; } '
+            'body { margin:0; padding:0; } '
+            + _MONITORING_REPORT_CSS +
+            '</style></head><body>' + safe_html + '</body></html>'
+        )
+
+        import pdfkit, shutil as _sh
+        options = {
+            "encoding": "UTF-8",
+            "no-outline": None,
+            "quiet": "",
+            "disable-smart-shrinking": "",
+            "margin-top": "0",
+            "margin-right": "0",
+            "margin-bottom": "0",
+            "margin-left": "0",
+        }
+        wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(full_html, False, options=options, configuration=config)
+
+        from flask import make_response
+        from urllib.parse import quote
+        fname = (data.get("filename") or "monitoring_report.pdf").strip() or "monitoring_report.pdf"
+        if not fname.endswith(".pdf"):
+            fname += ".pdf"
+        fname_encoded = quote(fname)
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = (
+            f"attachment; filename=monitoring_report.pdf; filename*=UTF-8''{fname_encoded}"
+        )
+        return response
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/monitoring_report_data')
 @login_required
 def api_monitoring_report_data():

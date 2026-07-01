@@ -1047,15 +1047,49 @@ function closeReportPreview(){
   document.body.classList.remove('report-preview-open');document.getElementById('report-sheet').classList.remove('preview-on');
 }
 function doReportPrint(){
+  // monitoring-pdf-client-v1: サーバーサイドPDF生成に切り替え。
+  // window.print()は画面用CSSの影響（100vh固定・overflow:hidden等）を
+  // 受けてページ送りが崩れることがあったため、画面表示と完全に分離した
+  // 独立文書としてサーバー側でPDF化する方式に変更。
   if(_reportData) buildReport(_reportData);
-  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  var hint = document.getElementById("ios-print-hint");
-  if (isIOS) {
-    if (hint) hint.style.display = "";
-  } else {
-    if (hint) hint.style.display = "none";
-    window.print();
-  }
+
+  var repRoot = document.getElementById('rep-root');
+  if(!repRoot){ alert('報告書の内容が見つかりません。'); return; }
+
+  var btn = document.querySelector('.rep-print-bar button:not(.close)');
+  var origBtnText = btn ? btn.textContent : null;
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ PDF作成中...'; }
+
+  var patientName = (_reportData && _reportData.patient && _reportData.patient.user_name) || '';
+  var fname = 'モニタリング報告書' + (patientName ? ('_' + patientName) : '') + '.pdf';
+
+  fetch('/api/monitoring_report_pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html: repRoot.outerHTML, filename: fname })
+  })
+  .then(function(res){
+    if(!res.ok){
+      return res.json().then(function(j){ throw new Error(j.message || ('HTTP ' + res.status)); });
+    }
+    return res.blob();
+  })
+  .then(function(blob){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+  })
+  .catch(function(e){
+    alert('PDF作成に失敗しました: ' + e.message);
+  })
+  .finally(function(){
+    if(btn){ btn.disabled = false; btn.textContent = origBtnText; }
+  });
 }
 // 作成者変更時に再描画（担当者名を反映）
 document.addEventListener('change', function(e){
