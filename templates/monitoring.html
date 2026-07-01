@@ -1052,26 +1052,8 @@ function doReportPrint(){
   // 受けてページ送りが崩れることがあったため、画面表示と完全に分離した
   // 独立文書としてサーバー側でPDF化する方式に変更。
   if(_reportData) buildReport(_reportData);
-
   var repRoot = document.getElementById('rep-root');
   if(!repRoot){ alert('報告書の内容が見つかりません。'); return; }
-
-  // monitoring-pdf-svg-size-fix-v1: wkhtmltopdfはwidth/height属性のないSVGを0サイズとして
-  // 扱うことがあるため、送信直前に実測サイズを属性として明示的に埋め込む。
-  // (インラインstyleが画面表示では優先されるため見た目には影響しない)
-  Array.prototype.forEach.call(repRoot.querySelectorAll('svg'), function(svgEl){
-    if(!svgEl.getAttribute('width') || !svgEl.getAttribute('height')){
-      var rect = svgEl.getBoundingClientRect();
-      var w = Math.max(1, Math.round(rect.width));
-      var h = Math.max(1, Math.round(rect.height));
-      svgEl.setAttribute('width', w);
-      svgEl.setAttribute('height', h);
-    }
-    // monitoring-pdf-svg-xmlns-fix-v2: outerHTML文字列化時にxmlns属性が失われるため明示的に付与
-    if(!svgEl.getAttribute('xmlns')){
-      svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    }
-  });
 
   var btn = document.querySelector('.rep-print-bar button:not(.close)');
   var origBtnText = btn ? btn.textContent : null;
@@ -1080,10 +1062,53 @@ function doReportPrint(){
   var patientName = (_reportData && _reportData.patient && _reportData.patient.user_name) || '';
   var fname = 'モニタリング報告書' + (patientName ? ('_' + patientName) : '') + '.pdf';
 
-  fetch('/api/monitoring_report_pdf', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html: repRoot.outerHTML, filename: fname })
+  // monitoring-pdf-svg-to-png-v3: wkhtmltopdf(patched qt)はinline SVGの描画サポートが
+  // 不十分なため、送信直前にSVGをcanvas経由でPNG画像に変換(rasterize)し、
+  // <img>タグに置き換えて送信する。画面表示のライブDOMは変更せず、
+  // 送信用HTML文字列上でのみ置換する。
+  function svgToPngDataUri(svgEl){
+    return new Promise(function(resolve){
+      var rect = svgEl.getBoundingClientRect();
+      var scale = 2;
+      var w = Math.max(1, Math.round(rect.width * scale));
+      var h = Math.max(1, Math.round(rect.height * scale));
+      var clone = svgEl.cloneNode(true);
+      clone.setAttribute('width', w);
+      clone.setAttribute('height', h);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      var svgStr = new XMLSerializer().serializeToString(clone);
+      var svgBlob = new Blob([svgStr], {type: 'image/svg+xml;charset=utf-8'});
+      var url = URL.createObjectURL(svgBlob);
+      var img = new Image();
+      img.onload = function(){
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  var svgEls = Array.prototype.slice.call(repRoot.querySelectorAll('svg'));
+  Promise.all(svgEls.map(svgToPngDataUri)).then(function(dataUris){
+    var htmlStr = repRoot.outerHTML;
+    var idx = 0;
+    htmlStr = htmlStr.replace(/<svg[^>]*>[\s\S]*?<\/svg>/g, function(match){
+      var uri = dataUris[idx];
+      idx++;
+      if(!uri){ return match; }
+      return '<img src="' + uri + '" style="width:100%;height:auto;display:block;">';
+    });
+
+    return fetch('/api/monitoring_report_pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: htmlStr, filename: fname })
+    });
   })
   .then(function(res){
     if(!res.ok){
