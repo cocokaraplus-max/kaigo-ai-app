@@ -181,6 +181,14 @@ body.report-preview-open nav { display:none !important; }
   body * { visibility:hidden !important; }
   #report-sheet, #report-sheet * { visibility:visible !important; }
   #report-sheet { display:block !important; position:absolute; left:0; top:0; width:100%; margin:0; padding:0; border:none; background:#fff; }
+  /* mon-print-overflow-fix-v1: プレビュー用 preview-on の fixed/overflow/padding を印刷時のみ解除。
+     これが残っていると1画面分の高さで内容が切れ、2枚目に続かない不具合が起きる。 */
+  #report-sheet.preview-on {
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
   .rep-print-bar, nav, .bottom-nav { display:none !important; }
   @page { size:A4 portrait; margin:8mm; }
   /* 確定v6の中身は変えず、各枠を横いっぱいに広げA4にフィット */
@@ -912,11 +920,12 @@ function buildReport(d){
 }
 
 // サンプルデータ（プレビュー用・確定モックv6準拠）
+/* mon-sampledata-anonymize-v1: sample patient/caremanager data anonymized */
 function reportSampleData(){
   return {
     _today:'令和8年3月31日',
-    patient:{ user_name:'宇井 静子', user_name_kana:'ウィ シズコ', birth_text:'昭和20年1月25日(79歳)' },
-    caremanager:{ support_office:'ウィズケアプランセンター', care_manager_name:'越野 幸恵', care_level:'要介護1' },
+    patient:{ user_name:'タスカル 太郎', user_name_kana:'たすかる たろう', birth_text:'1940-01-01' },
+    caremanager:{ support_office:'サンプル居宅介護支援事業所', care_manager_name:'サンプル 花子', care_level:'要介護1' },
     evaluation:{
       care_classification:'要介護',
       training_goal:'',
