@@ -15279,9 +15279,15 @@ def api_monitoring_report_pdf():
             '.rep-free { min-height:0 !important; padding:4px 7px !important; } '
             '.rep-mon-tbl { margin-bottom:5px !important; } '
             '.rep-mon-tbl td { padding:4px 6px !important; min-height:0 !important; } '
-            '.rep-fit-h { margin-bottom:3px !important; } '
-            '.rep-special { margin-bottom:5px !important; } '
-            '.rep-sat { margin-bottom:4px !important; }'
+            '.rep-fit-h { margin-bottom:2px !important; } '
+            '.rep-special { margin-bottom:3px !important; padding:4px 7px !important; } '
+            '.rep-sat { margin-bottom:2px !important; } '
+            '.rep-req { margin-bottom:3px !important; } '
+            '.rep-req-top .l, .rep-req-top .r { padding:3px 7px !important; } '
+            '.rep-req-body .l, .rep-req-body .r { padding:3px 7px !important; min-height:0 !important; } '
+            '.rep-mon-tbl td { line-height:1.3 !important; } '
+            '.rep-foot { margin-top:3px !important; padding-top:3px !important; }'
+            # monitoring-pdf-compact-v2
         )
         full_html = (
             '<!DOCTYPE html><html><head><meta charset="utf-8">'
