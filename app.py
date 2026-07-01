@@ -15259,12 +15259,23 @@ def api_monitoring_report_pdf():
         # monitoring-pdf-margin-fix-v1: wkhtmltopdfは@pageのCSS margin指定を正しく解釈しないため、
         # @page{margin:0}にし、.page-padの実寸paddingで余白を作る
         # （既存の契約書PDF(keiyaku_render.py)と同じ技法）。
+        # monitoring-pdf-fitgrid-table-v1: wkhtmltopdfはFlexboxのサポートが不完全で
+        # .rep-fit-grid(体力測定カード)が横並びにならず縦積みになり
+        # ページを大幅に消費する不具合が発生したため、PDF生成時のみ
+        # table/table-cellレイアウトに上書きする(画面表示には影響しない)。
+        _MONITORING_PDF_EXTRA_CSS = (
+            '.rep-fit-grid { display:table !important; width:100% !important; '
+            'table-layout:fixed !important; border-collapse:separate !important; '
+            'border-spacing:5px 0 !important; margin-bottom:8px !important; } '
+            '.rep-fit-card { display:table-cell !important; flex:none !important; '
+            'width:auto !important; vertical-align:top !important; }'
+        )
         full_html = (
             '<!DOCTYPE html><html><head><meta charset="utf-8">'
             '<style>@page { size: A4 portrait; margin: 0; } '
             'html, body { margin:0; padding:0; } '
             '.page-pad { padding: 8mm; box-sizing: border-box; } '
-            + _MONITORING_REPORT_CSS +
+            + _MONITORING_REPORT_CSS + _MONITORING_PDF_EXTRA_CSS +
             '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
         )
 
