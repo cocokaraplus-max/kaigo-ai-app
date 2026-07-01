@@ -15263,12 +15263,25 @@ def api_monitoring_report_pdf():
         # .rep-fit-grid(体力測定カード)が横並びにならず縦積みになり
         # ページを大幅に消費する不具合が発生したため、PDF生成時のみ
         # table/table-cellレイアウトに上書きする(画面表示には影響しない)。
+        # monitoring-pdf-compact-v1: A4 1ページにできるだけ収まるよう、PDF生成時のみ
+        # フォントサイズをわずかに縮小し、各セクションの余白を詰める。
         _MONITORING_PDF_EXTRA_CSS = (
             '.rep-fit-grid { display:table !important; width:100% !important; '
             'table-layout:fixed !important; border-collapse:separate !important; '
-            'border-spacing:5px 0 !important; margin-bottom:8px !important; } '
+            'border-spacing:5px 0 !important; margin-bottom:5px !important; } '
             '.rep-fit-card { display:table-cell !important; flex:none !important; '
-            'width:auto !important; vertical-align:top !important; }'
+            'width:auto !important; vertical-align:top !important; } '
+            '.rep-root { font-size:11px !important; } '
+            '.rep-2col { margin-bottom:5px !important; min-height:0 !important; } '
+            '.rep-user { margin-bottom:5px !important; } '
+            '.rep-goals { margin-bottom:5px !important; } '
+            '.rep-free2 { margin-bottom:5px !important; } '
+            '.rep-free { min-height:0 !important; padding:4px 7px !important; } '
+            '.rep-mon-tbl { margin-bottom:5px !important; } '
+            '.rep-mon-tbl td { padding:4px 6px !important; min-height:0 !important; } '
+            '.rep-fit-h { margin-bottom:3px !important; } '
+            '.rep-special { margin-bottom:5px !important; } '
+            '.rep-sat { margin-bottom:4px !important; }'
         )
         full_html = (
             '<!DOCTYPE html><html><head><meta charset="utf-8">'
