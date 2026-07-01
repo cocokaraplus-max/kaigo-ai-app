@@ -1059,7 +1059,8 @@ function doReportPrint(){
   // フィットレベル(0=広め/1=中間/2=最大圧縮)を自動選択する。
   function measureFitLevel(sourceEl){
     var PAGE_W = 733;   // A4内寸(210mm-16mm)の概算px幅
-    var PAGE_H = 1062;  // A4内寸(297mm-16mm)の概算px高さ
+    var PAGE_H = 960;   // monitoring-pdf-fitlevel-margin-v1: 1062pxから安全マージンを取り960pxに
+    // (ブラウザ計測とwkhtmltopdf実出力の微差を吸収するための安全マージン)
 
     var levelCSS = {
       0: '',
