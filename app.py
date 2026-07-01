@@ -15497,26 +15497,89 @@ def api_monitoring_report_pdf():
                 return None
             return None
 
-        _level = fit_level
-        pdf_bytes = None
-        while True:
-            _extra_css = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(_level, _FITLEVEL_CSS[8])
-            _full_html = (
+        # monitoring-pdf-readable-cap-v1: フォント縮小は読みやすさを保てる範囲(レベル4=10.5px)
+        # までに制限。それでも1ページに収まらない場合はフォントを
+        # これ以上縮めず、体力測定グラフだけを文末(2ページ目)に移動し、
+        # それより後ろにあった特記事項・希望・満足度等のテキストは
+        # 元の位置のまま1ページ目側に残す（実質的に引き上げられる）。
+        _READABLE_MAX_LEVEL = 4
+        _PAGE_BREAK_BEFORE_FIT_CSS = (
+            '.rep-fit-h { page-break-before: always !important; '
+            'break-before: page !important; }'
+        )
+
+        def _extract_div_block(_html, _class_name):
+            import re as __re
+            _pat = __re.compile(r'<div[^>]*\bclass="' + __re.escape(_class_name) + r'"[^>]*>')
+            _m = _pat.search(_html)
+            if not _m:
+                return None
+            _start = _m.start()
+            _pos = _m.end()
+            _depth = 1
+            _tag_re = __re.compile(r'<div\b|</div>')
+            for _tm in _tag_re.finditer(_html, _pos):
+                if _tm.group() == '</div>':
+                    _depth -= 1
+                    if _depth == 0:
+                        _end = _tm.end()
+                        return (_start, _end, _html[_start:_end])
+                else:
+                    _depth += 1
+            return None
+
+        def _move_fitness_section_to_end(_html):
+            _fit_h = _extract_div_block(_html, 'rep-fit-h')
+            _fit_grid = _extract_div_block(_html, 'rep-fit-grid')
+            if not _fit_h or not _fit_grid:
+                return _html
+            _blocks = sorted([_fit_h, _fit_grid], key=lambda _b: _b[0])
+            _early, _late = _blocks[0], _blocks[1]
+            _reordered = _html[:_late[0]] + _html[_late[1]:]
+            _reordered = _reordered[:_early[0]] + _reordered[_early[1]:]
+            _combined = _early[2] + _late[2]
+            _last_close = _reordered.rfind('</div>')
+            if _last_close != -1:
+                _reordered = _reordered[:_last_close] + _combined + _reordered[_last_close:]
+            else:
+                _reordered = _reordered + _combined
+            return _reordered
+
+        def _build_full_html(_body_html, _extra_css):
+            return (
                 '<!DOCTYPE html><html><head><meta charset="utf-8">'
                 '<style>@page { size: A4 portrait; margin: 0; } '
                 'html, body { margin:0; padding:0; } '
                 '.page-pad { padding: 8mm; box-sizing: border-box; } '
                 + _MONITORING_REPORT_CSS + _extra_css +
-                '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
+                '</style></head><body><div class="page-pad">' + _body_html + '</div></body></html>'
             )
+
+        _level = min(fit_level, _READABLE_MAX_LEVEL)
+        pdf_bytes = None
+        _fits_one_page = False
+        while _level <= _READABLE_MAX_LEVEL:
+            _extra_css = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(_level, _FITLEVEL_CSS[_READABLE_MAX_LEVEL])
+            _full_html = _build_full_html(safe_html, _extra_css)
             pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
             _pages = _count_pdf_pages(pdf_bytes)
             if _pages is None:
-                # pdfinfoが使えない場合は現状の結果をそのまま採用（従来動作にフォールバック）
+                _fits_one_page = True
                 break
-            if _pages <= 1 or _level >= 8:
+            if _pages <= 1:
+                _fits_one_page = True
                 break
             _level += 1
+
+        if not _fits_one_page:
+            _reordered_html = _move_fitness_section_to_end(safe_html)
+            _extra_css = (
+                _FITGRID_FIX_CSS
+                + _FITLEVEL_CSS.get(_READABLE_MAX_LEVEL, _FITLEVEL_CSS[4])
+                + _PAGE_BREAK_BEFORE_FIT_CSS
+            )
+            _full_html = _build_full_html(_reordered_html, _extra_css)
+            pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
 
         from flask import make_response
         from urllib.parse import quote
