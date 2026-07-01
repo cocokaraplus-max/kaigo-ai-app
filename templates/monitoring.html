@@ -1056,6 +1056,19 @@ function doReportPrint(){
   var repRoot = document.getElementById('rep-root');
   if(!repRoot){ alert('報告書の内容が見つかりません。'); return; }
 
+  // monitoring-pdf-svg-size-fix-v1: wkhtmltopdfはwidth/height属性のないSVGを0サイズとして
+  // 扱うことがあるため、送信直前に実測サイズを属性として明示的に埋め込む。
+  // (インラインstyleが画面表示では優先されるため見た目には影響しない)
+  Array.prototype.forEach.call(repRoot.querySelectorAll('svg'), function(svgEl){
+    if(!svgEl.getAttribute('width') || !svgEl.getAttribute('height')){
+      var rect = svgEl.getBoundingClientRect();
+      var w = Math.max(1, Math.round(rect.width));
+      var h = Math.max(1, Math.round(rect.height));
+      svgEl.setAttribute('width', w);
+      svgEl.setAttribute('height', h);
+    }
+  });
+
   var btn = document.querySelector('.rep-print-bar button:not(.close)');
   var origBtnText = btn ? btn.textContent : null;
   if(btn){ btn.disabled = true; btn.textContent = '⏳ PDF作成中...'; }

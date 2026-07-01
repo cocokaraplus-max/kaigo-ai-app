@@ -15256,12 +15256,16 @@ def api_monitoring_report_pdf():
         safe_html = _re.sub(r'\son\w+\s*=\s*"[^"]*"', '', safe_html, flags=_re.IGNORECASE)
         safe_html = _re.sub(r"\son\w+\s*=\s*'[^']*'", '', safe_html, flags=_re.IGNORECASE)
 
+        # monitoring-pdf-margin-fix-v1: wkhtmltopdfは@pageのCSS margin指定を正しく解釈しないため、
+        # @page{margin:0}にし、.page-padの実寸paddingで余白を作る
+        # （既存の契約書PDF(keiyaku_render.py)と同じ技法）。
         full_html = (
             '<!DOCTYPE html><html><head><meta charset="utf-8">'
-            '<style>@page { size: A4 portrait; margin: 8mm; } '
-            'body { margin:0; padding:0; } '
+            '<style>@page { size: A4 portrait; margin: 0; } '
+            'html, body { margin:0; padding:0; } '
+            '.page-pad { padding: 8mm; box-sizing: border-box; } '
             + _MONITORING_REPORT_CSS +
-            '</style></head><body>' + safe_html + '</body></html>'
+            '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
         )
 
         import pdfkit, shutil as _sh
