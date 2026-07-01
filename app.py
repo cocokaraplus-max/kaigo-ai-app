@@ -15272,12 +15272,19 @@ def api_monitoring_report_pdf():
             fit_level = 2
         fit_level = max(0, min(2, fit_level))
 
+        # monitoring-pdf-free2-stack-server-v1: 個別機能訓練実施による変化/課題とその要因の
+        # 2カラム表示は各枠にmin-height:80pxがあり、文章が短いと
+        # 大きな空白ができてページを消費するため、PDF生成時は
+        # 縦積み・全幅表示に変更し、折り返し行数と空白を減らす。
         _FITGRID_FIX_CSS = (
             '.rep-fit-grid { display:table !important; width:100% !important; '
             'table-layout:fixed !important; border-collapse:separate !important; '
             'border-spacing:5px 0 !important; } '
             '.rep-fit-card { display:table-cell !important; flex:none !important; '
-            'width:auto !important; vertical-align:top !important; }'
+            'width:auto !important; vertical-align:top !important; } '
+            '.rep-free2 { display:block !important; } '
+            '.rep-free { width:100% !important; min-height:0 !important; } '
+            '.rep-free + .rep-free { margin-top:5px !important; }'
         )
 
         _FITLEVEL_CSS = {

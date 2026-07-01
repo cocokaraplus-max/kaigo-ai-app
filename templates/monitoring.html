@@ -1064,12 +1064,16 @@ function doReportPrint(){
 
     // monitoring-pdf-fitlevel-measure-fitgrid-v1: サーバー側は全レベル共通でfit-gridをtable変換して
     // 送っているため、計測側にも同じtable変換を反映させ、測定誤差を防ぐ。
+    // monitoring-pdf-free2-stack-client-v1: サーバー側の縦積みレイアウト変更を計測にも反映
     var FITGRID_FIX_CSS = (
       '#fit-measure .rep-fit-grid{display:table !important;width:100% !important;' +
       'table-layout:fixed !important;border-collapse:separate !important;' +
       'border-spacing:5px 0 !important;} ' +
       '#fit-measure .rep-fit-card{display:table-cell !important;flex:none !important;' +
-      'width:auto !important;vertical-align:top !important;}'
+      'width:auto !important;vertical-align:top !important;} ' +
+      '#fit-measure .rep-free2{display:block !important;} ' +
+      '#fit-measure .rep-free{width:100% !important;min-height:0 !important;} ' +
+      '#fit-measure .rep-free + .rep-free{margin-top:5px !important;}'
     );
 
     var levelCSS = {
