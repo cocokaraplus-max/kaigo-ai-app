@@ -15270,7 +15270,7 @@ def api_monitoring_report_pdf():
             fit_level = int(data.get("fit_level", 2))
         except (TypeError, ValueError):
             fit_level = 2
-        fit_level = max(0, min(4, fit_level))  # monitoring-pdf-fitlevel-extend-server-v1
+        fit_level = max(0, min(6, fit_level))  # monitoring-pdf-fitlevel-extend2-server-v1
 
         # monitoring-pdf-free2-stack-server-v1: 個別機能訓練実施による変化/課題とその要因の
         # 2カラム表示は各枠にmin-height:80pxがあり、文章が短いと
@@ -15368,6 +15368,48 @@ def api_monitoring_report_pdf():
                 '.rep-req-body .l, .rep-req-body .r { padding:2px 5px !important; min-height:0 !important; } '
                 '.rep-foot { margin-top:2px !important; padding-top:2px !important; } '
                 '.rep-fit-card svg, .rep-fit-card img { max-height:36px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            5: (
+                '.rep-fit-grid { margin-bottom:2px !important; } '
+                '.rep-root { font-size:9.5px !important; } '
+                '.rep-2col { margin-bottom:2px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:2px !important; } '
+                '.rep-goals { margin-bottom:2px !important; } '
+                '.rep-free2 { margin-bottom:2px !important; } '
+                '.rep-free { min-height:0 !important; padding:2px 4px !important; } '
+                '.rep-mon-tbl { margin-bottom:2px !important; } '
+                '.rep-mon-tbl td { padding:2px 3px !important; min-height:0 !important; '
+                'line-height:1.15 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:1px !important; padding:2px 4px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:1px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 4px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 4px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:28px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            6: (
+                '.rep-fit-grid { margin-bottom:1px !important; } '
+                '.rep-root { font-size:9px !important; } '
+                '.rep-2col { margin-bottom:1px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:1px !important; } '
+                '.rep-goals { margin-bottom:1px !important; } '
+                '.rep-free2 { margin-bottom:1px !important; } '
+                '.rep-free { min-height:0 !important; padding:2px 3px !important; } '
+                '.rep-mon-tbl { margin-bottom:1px !important; } '
+                '.rep-mon-tbl td { padding:1px 3px !important; min-height:0 !important; '
+                'line-height:1.1 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:1px !important; padding:1px 3px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:1px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 3px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 3px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:22px !important; '
                 'width:auto !important; display:block !important; margin:0 auto !important; }'
             ),
         }

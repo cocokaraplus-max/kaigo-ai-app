@@ -1156,6 +1156,46 @@ function doReportPrint(){
         '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:2px 5px !important;min-height:0 !important;} ' +
         '#fit-measure .rep-foot{margin-top:2px !important;padding-top:2px !important;} ' +
         '#fit-measure .rep-fit-card svg,#fit-measure .rep-fit-card img{max-height:36px !important;width:auto !important;display:block !important;margin:0 auto !important;}'
+      ),
+      5: (
+        FITGRID_FIX_CSS + ' ' +
+        '#fit-measure .rep-fit-grid{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-root{font-size:9.5px !important;} ' +
+        '#fit-measure .rep-2col{margin-bottom:2px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-user{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-goals{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-free2{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-free{min-height:0 !important;padding:2px 4px !important;} ' +
+        '#fit-measure .rep-mon-tbl{margin-bottom:2px !important;} ' +
+        '#fit-measure .rep-mon-tbl td{padding:2px 3px !important;min-height:0 !important;line-height:1.15 !important;} ' +
+        '#fit-measure .rep-fit-h{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-special{margin-bottom:1px !important;padding:2px 4px !important;} ' +
+        '#fit-measure .rep-sat{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-req{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-req-top .l,#fit-measure .rep-req-top .r{padding:1px 4px !important;} ' +
+        '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:1px 4px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-foot{margin-top:1px !important;padding-top:1px !important;} ' +
+        '#fit-measure .rep-fit-card svg,#fit-measure .rep-fit-card img{max-height:28px !important;width:auto !important;display:block !important;margin:0 auto !important;}'
+      ),
+      6: (
+        FITGRID_FIX_CSS + ' ' +
+        '#fit-measure .rep-fit-grid{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-root{font-size:9px !important;} ' +
+        '#fit-measure .rep-2col{margin-bottom:1px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-user{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-goals{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-free2{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-free{min-height:0 !important;padding:2px 3px !important;} ' +
+        '#fit-measure .rep-mon-tbl{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-mon-tbl td{padding:1px 3px !important;min-height:0 !important;line-height:1.1 !important;} ' +
+        '#fit-measure .rep-fit-h{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-special{margin-bottom:1px !important;padding:1px 3px !important;} ' +
+        '#fit-measure .rep-sat{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-req{margin-bottom:1px !important;} ' +
+        '#fit-measure .rep-req-top .l,#fit-measure .rep-req-top .r{padding:1px 3px !important;} ' +
+        '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:1px 3px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-foot{margin-top:1px !important;padding-top:1px !important;} ' +
+        '#fit-measure .rep-fit-card svg,#fit-measure .rep-fit-card img{max-height:22px !important;width:auto !important;display:block !important;margin:0 auto !important;}'
       )
     };
 
@@ -1175,9 +1215,9 @@ function doReportPrint(){
     var styleEl = document.createElement('style');
     document.head.appendChild(styleEl);
 
-    var chosenLevel = 4;  // monitoring-pdf-fitlevel-extend-client-v1
+    var chosenLevel = 6;  // monitoring-pdf-fitlevel-extend2-client-v1
     try {
-      for (var lvl = 0; lvl <= 4; lvl++) {
+      for (var lvl = 0; lvl <= 6; lvl++) {
         styleEl.textContent = levelCSS[lvl];
         var h = clone.scrollHeight;
         if (h <= PAGE_H) { chosenLevel = lvl; break; }
