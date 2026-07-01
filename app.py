@@ -15270,7 +15270,7 @@ def api_monitoring_report_pdf():
             fit_level = int(data.get("fit_level", 2))
         except (TypeError, ValueError):
             fit_level = 2
-        fit_level = max(0, min(2, fit_level))
+        fit_level = max(0, min(8, fit_level))  # monitoring-pdf-fitlevel-extend4-server-v1
 
         # monitoring-pdf-free2-stack-server-v1: 個別機能訓練実施による変化/課題とその要因の
         # 2カラム表示は各枠にmin-height:80pxがあり、文章が短いと
@@ -15284,7 +15284,11 @@ def api_monitoring_report_pdf():
             'width:auto !important; vertical-align:top !important; } '
             '.rep-free2 { display:block !important; } '
             '.rep-free { width:100% !important; min-height:0 !important; } '
-            '.rep-free + .rep-free { margin-top:5px !important; }'
+            '.rep-free + .rep-free { margin-top:5px !important; } '
+            # monitoring-pdf-font-fix-v1: 'Hiragino Sans'/'Noto Sans JP'はサーバー上に存在せず、
+            # 意図しないフォールバックフォントで幅広く描画されていたため、
+            # 実際にインストール済みの'Noto Sans CJK JP'を明示指定する。
+            '.rep-root { font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif !important; }'
         )
 
         _FITLEVEL_CSS = {
@@ -15327,19 +15331,142 @@ def api_monitoring_report_pdf():
                 '.rep-req-body .l, .rep-req-body .r { padding:3px 7px !important; min-height:0 !important; } '
                 '.rep-foot { margin-top:3px !important; padding-top:3px !important; }'
             ),
+            3: (
+                '.rep-fit-grid { margin-bottom:4px !important; } '
+                '.rep-root { font-size:10.5px !important; } '
+                '.rep-2col { margin-bottom:4px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:4px !important; } '
+                '.rep-goals { margin-bottom:4px !important; } '
+                '.rep-free2 { margin-bottom:4px !important; } '
+                '.rep-free { min-height:0 !important; padding:3px 6px !important; } '
+                '.rep-mon-tbl { margin-bottom:4px !important; } '
+                '.rep-mon-tbl td { padding:3px 5px !important; min-height:0 !important; '
+                'line-height:1.25 !important; } '
+                '.rep-fit-h { margin-bottom:2px !important; } '
+                '.rep-special { margin-bottom:2px !important; padding:3px 6px !important; } '
+                '.rep-sat { margin-bottom:2px !important; } '
+                '.rep-req { margin-bottom:2px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:2px 6px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:2px 6px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; } '
+                # monitoring-pdf-chart-height-cap-server-v1
+                '.rep-fit-card svg, .rep-fit-card img { max-height:48px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            4: (
+                '.rep-fit-grid { margin-bottom:3px !important; } '
+                '.rep-root { font-size:10px !important; } '
+                '.rep-2col { margin-bottom:3px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:3px !important; } '
+                '.rep-goals { margin-bottom:3px !important; } '
+                '.rep-free2 { margin-bottom:3px !important; } '
+                '.rep-free { min-height:0 !important; padding:3px 5px !important; } '
+                '.rep-mon-tbl { margin-bottom:3px !important; } '
+                '.rep-mon-tbl td { padding:2px 4px !important; min-height:0 !important; '
+                'line-height:1.2 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:2px !important; padding:2px 5px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:2px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:2px 5px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:2px 5px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:36px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            5: (
+                '.rep-fit-grid { margin-bottom:2px !important; } '
+                '.rep-root { font-size:9.5px !important; } '
+                '.rep-2col { margin-bottom:2px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:2px !important; } '
+                '.rep-goals { margin-bottom:2px !important; } '
+                '.rep-free2 { margin-bottom:2px !important; } '
+                '.rep-free { min-height:0 !important; padding:2px 4px !important; } '
+                '.rep-mon-tbl { margin-bottom:2px !important; } '
+                '.rep-mon-tbl td { padding:2px 3px !important; min-height:0 !important; '
+                'line-height:1.15 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:1px !important; padding:2px 4px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:1px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 4px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 4px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:28px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            6: (
+                '.rep-fit-grid { margin-bottom:1px !important; } '
+                '.rep-root { font-size:9px !important; } '
+                '.rep-2col { margin-bottom:1px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:1px !important; } '
+                '.rep-goals { margin-bottom:1px !important; } '
+                '.rep-free2 { margin-bottom:1px !important; } '
+                '.rep-free { min-height:0 !important; padding:2px 3px !important; } '
+                '.rep-mon-tbl { margin-bottom:1px !important; } '
+                '.rep-mon-tbl td { padding:1px 3px !important; min-height:0 !important; '
+                'line-height:1.1 !important; } '
+                '.rep-fit-h { margin-bottom:1px !important; } '
+                '.rep-special { margin-bottom:1px !important; padding:1px 3px !important; } '
+                '.rep-sat { margin-bottom:1px !important; } '
+                '.rep-req { margin-bottom:1px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 3px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 3px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:22px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            7: (
+                '.rep-fit-grid { margin-bottom:1px !important; } '
+                '.rep-root { font-size:8.5px !important; } '
+                '.rep-2col { margin-bottom:1px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:1px !important; } '
+                '.rep-goals { margin-bottom:1px !important; } '
+                '.rep-free2 { margin-bottom:1px !important; } '
+                '.rep-free { min-height:0 !important; padding:1px 3px !important; } '
+                '.rep-mon-tbl { margin-bottom:1px !important; } '
+                '.rep-mon-tbl td { padding:1px 2px !important; min-height:0 !important; '
+                'line-height:1.05 !important; } '
+                '.rep-fit-h { margin-bottom:0px !important; } '
+                '.rep-special { margin-bottom:1px !important; padding:1px 2px !important; } '
+                '.rep-sat { margin-bottom:0px !important; } '
+                '.rep-req { margin-bottom:1px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 2px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:18px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            8: (
+                '.rep-fit-grid { margin-bottom:0px !important; } '
+                '.rep-root { font-size:8px !important; } '
+                '.rep-2col { margin-bottom:0px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:0px !important; } '
+                '.rep-goals { margin-bottom:0px !important; } '
+                '.rep-free2 { margin-bottom:0px !important; } '
+                '.rep-free { min-height:0 !important; padding:1px 2px !important; } '
+                '.rep-mon-tbl { margin-bottom:0px !important; } '
+                '.rep-mon-tbl td { padding:1px 2px !important; min-height:0 !important; '
+                'line-height:1.0 !important; } '
+                '.rep-fit-h { margin-bottom:0px !important; } '
+                '.rep-special { margin-bottom:0px !important; padding:1px 2px !important; } '
+                '.rep-sat { margin-bottom:0px !important; } '
+                '.rep-req { margin-bottom:0px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 2px !important; font-size:8px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; font-size:8px !important; } '
+                '.rep-foot { margin-top:0px !important; padding-top:0px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:16px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; } '
+                # monitoring-pdf-tail-squeeze-server-v1: これまで対象外だったrep-sat-box/rep-req-topの固定値を縮小
+                '.rep-sat-box { padding:2px 6px !important; } '
+                '.rep-sat-box .v { font-size:10px !important; } '
+                '.rep-sat-leg { font-size:6px !important; }'
+            ),
         }
 
-        _MONITORING_PDF_EXTRA_CSS = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(fit_level, _FITLEVEL_CSS[2])
-        full_html = (
-            '<!DOCTYPE html><html><head><meta charset="utf-8">'
-            '<style>@page { size: A4 portrait; margin: 0; } '
-            'html, body { margin:0; padding:0; } '
-            '.page-pad { padding: 8mm; box-sizing: border-box; } '
-            + _MONITORING_REPORT_CSS + _MONITORING_PDF_EXTRA_CSS +
-            '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
-        )
-
-        # monitoring-pdf-debug-mode-remove-v1: monitoring-pdf-debug-mode-v1は原因判明・修正完了に伴い削除済み。
+        # monitoring-pdf-verify-loop-v1: 実際にPDFを生成しpdfinfoでページ数を確認、
+        # 1枚に収まらなければfit_levelを上げて再生成する(最大レベル8まで)。
+        # ブラウザ側計測とサーバー側レンダリングの食い違いを吸収するため。
         import pdfkit, shutil as _sh
         options = {
             "encoding": "UTF-8",
@@ -15353,7 +15480,106 @@ def api_monitoring_report_pdf():
         }
         wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
-        pdf_bytes = pdfkit.from_string(full_html, False, options=options, configuration=config)
+
+        def _count_pdf_pages(_pdf_bytes):
+            import tempfile, subprocess
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".pdf") as _tf:
+                    _tf.write(_pdf_bytes)
+                    _tf.flush()
+                    _out = subprocess.run(
+                        ["pdfinfo", _tf.name], capture_output=True, text=True, timeout=10
+                    )
+                    for _line in _out.stdout.splitlines():
+                        if _line.startswith("Pages:"):
+                            return int(_line.split(":")[1].strip())
+            except Exception:
+                return None
+            return None
+
+        # monitoring-pdf-readable-cap-v1: フォント縮小は読みやすさを保てる範囲(レベル4=10.5px)
+        # までに制限。それでも1ページに収まらない場合はフォントを
+        # これ以上縮めず、体力測定グラフだけを文末(2ページ目)に移動し、
+        # それより後ろにあった特記事項・希望・満足度等のテキストは
+        # 元の位置のまま1ページ目側に残す（実質的に引き上げられる）。
+        _READABLE_MAX_LEVEL = 4
+        _PAGE_BREAK_BEFORE_FIT_CSS = (
+            '.rep-fit-h { page-break-before: always !important; '
+            'break-before: page !important; }'
+        )
+
+        def _extract_div_block(_html, _class_name):
+            import re as __re
+            _pat = __re.compile(r'<div[^>]*\bclass="' + __re.escape(_class_name) + r'"[^>]*>')
+            _m = _pat.search(_html)
+            if not _m:
+                return None
+            _start = _m.start()
+            _pos = _m.end()
+            _depth = 1
+            _tag_re = __re.compile(r'<div\b|</div>')
+            for _tm in _tag_re.finditer(_html, _pos):
+                if _tm.group() == '</div>':
+                    _depth -= 1
+                    if _depth == 0:
+                        _end = _tm.end()
+                        return (_start, _end, _html[_start:_end])
+                else:
+                    _depth += 1
+            return None
+
+        def _move_fitness_section_to_end(_html):
+            _fit_h = _extract_div_block(_html, 'rep-fit-h')
+            _fit_grid = _extract_div_block(_html, 'rep-fit-grid')
+            if not _fit_h or not _fit_grid:
+                return _html
+            _blocks = sorted([_fit_h, _fit_grid], key=lambda _b: _b[0])
+            _early, _late = _blocks[0], _blocks[1]
+            _reordered = _html[:_late[0]] + _html[_late[1]:]
+            _reordered = _reordered[:_early[0]] + _reordered[_early[1]:]
+            _combined = _early[2] + _late[2]
+            _last_close = _reordered.rfind('</div>')
+            if _last_close != -1:
+                _reordered = _reordered[:_last_close] + _combined + _reordered[_last_close:]
+            else:
+                _reordered = _reordered + _combined
+            return _reordered
+
+        def _build_full_html(_body_html, _extra_css):
+            return (
+                '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                '<style>@page { size: A4 portrait; margin: 0; } '
+                'html, body { margin:0; padding:0; } '
+                '.page-pad { padding: 8mm; box-sizing: border-box; } '
+                + _MONITORING_REPORT_CSS + _extra_css +
+                '</style></head><body><div class="page-pad">' + _body_html + '</div></body></html>'
+            )
+
+        _level = min(fit_level, _READABLE_MAX_LEVEL)
+        pdf_bytes = None
+        _fits_one_page = False
+        while _level <= _READABLE_MAX_LEVEL:
+            _extra_css = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(_level, _FITLEVEL_CSS[_READABLE_MAX_LEVEL])
+            _full_html = _build_full_html(safe_html, _extra_css)
+            pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
+            _pages = _count_pdf_pages(pdf_bytes)
+            if _pages is None:
+                _fits_one_page = True
+                break
+            if _pages <= 1:
+                _fits_one_page = True
+                break
+            _level += 1
+
+        if not _fits_one_page:
+            # monitoring-pdf-remove-forced-break-v1: 強制改ページを外し、並び替えのみで自然な流れに任せる。
+            _reordered_html = _move_fitness_section_to_end(safe_html)
+            _extra_css = (
+                _FITGRID_FIX_CSS
+                + _FITLEVEL_CSS.get(_READABLE_MAX_LEVEL, _FITLEVEL_CSS[4])
+            )
+            _full_html = _build_full_html(_reordered_html, _extra_css)
+            pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
 
         from flask import make_response
         from urllib.parse import quote
