@@ -15464,17 +15464,9 @@ def api_monitoring_report_pdf():
             ),
         }
 
-        _MONITORING_PDF_EXTRA_CSS = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(fit_level, _FITLEVEL_CSS[2])
-        full_html = (
-            '<!DOCTYPE html><html><head><meta charset="utf-8">'
-            '<style>@page { size: A4 portrait; margin: 0; } '
-            'html, body { margin:0; padding:0; } '
-            '.page-pad { padding: 8mm; box-sizing: border-box; } '
-            + _MONITORING_REPORT_CSS + _MONITORING_PDF_EXTRA_CSS +
-            '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
-        )
-
-        # monitoring-pdf-debug-mode-remove-v1: monitoring-pdf-debug-mode-v1は原因判明・修正完了に伴い削除済み。
+        # monitoring-pdf-verify-loop-v1: 実際にPDFを生成しpdfinfoでページ数を確認、
+        # 1枚に収まらなければfit_levelを上げて再生成する(最大レベル8まで)。
+        # ブラウザ側計測とサーバー側レンダリングの食い違いを吸収するため。
         import pdfkit, shutil as _sh
         options = {
             "encoding": "UTF-8",
@@ -15488,7 +15480,43 @@ def api_monitoring_report_pdf():
         }
         wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
-        pdf_bytes = pdfkit.from_string(full_html, False, options=options, configuration=config)
+
+        def _count_pdf_pages(_pdf_bytes):
+            import tempfile, subprocess
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".pdf") as _tf:
+                    _tf.write(_pdf_bytes)
+                    _tf.flush()
+                    _out = subprocess.run(
+                        ["pdfinfo", _tf.name], capture_output=True, text=True, timeout=10
+                    )
+                    for _line in _out.stdout.splitlines():
+                        if _line.startswith("Pages:"):
+                            return int(_line.split(":")[1].strip())
+            except Exception:
+                return None
+            return None
+
+        _level = fit_level
+        pdf_bytes = None
+        while True:
+            _extra_css = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(_level, _FITLEVEL_CSS[8])
+            _full_html = (
+                '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                '<style>@page { size: A4 portrait; margin: 0; } '
+                'html, body { margin:0; padding:0; } '
+                '.page-pad { padding: 8mm; box-sizing: border-box; } '
+                + _MONITORING_REPORT_CSS + _extra_css +
+                '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
+            )
+            pdf_bytes = pdfkit.from_string(_full_html, False, options=options, configuration=config)
+            _pages = _count_pdf_pages(pdf_bytes)
+            if _pages is None:
+                # pdfinfoが使えない場合は現状の結果をそのまま採用（従来動作にフォールバック）
+                break
+            if _pages <= 1 or _level >= 8:
+                break
+            _level += 1
 
         from flask import make_response
         from urllib.parse import quote
