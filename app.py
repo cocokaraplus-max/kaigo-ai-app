@@ -15344,7 +15344,10 @@ def api_monitoring_report_pdf():
                 '.rep-req { margin-bottom:2px !important; } '
                 '.rep-req-top .l, .rep-req-top .r { padding:2px 6px !important; } '
                 '.rep-req-body .l, .rep-req-body .r { padding:2px 6px !important; min-height:0 !important; } '
-                '.rep-foot { margin-top:2px !important; padding-top:2px !important; }'
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; } '
+                # monitoring-pdf-chart-height-cap-server-v1
+                '.rep-fit-card svg, .rep-fit-card img { max-height:48px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
             ),
             4: (
                 '.rep-fit-grid { margin-bottom:3px !important; } '
@@ -15363,7 +15366,9 @@ def api_monitoring_report_pdf():
                 '.rep-req { margin-bottom:2px !important; } '
                 '.rep-req-top .l, .rep-req-top .r { padding:2px 5px !important; } '
                 '.rep-req-body .l, .rep-req-body .r { padding:2px 5px !important; min-height:0 !important; } '
-                '.rep-foot { margin-top:2px !important; padding-top:2px !important; }'
+                '.rep-foot { margin-top:2px !important; padding-top:2px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:36px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
             ),
         }
 
