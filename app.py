@@ -15265,30 +15265,64 @@ def api_monitoring_report_pdf():
         # table/table-cellレイアウトに上書きする(画面表示には影響しない)。
         # monitoring-pdf-compact-v1: A4 1ページにできるだけ収まるよう、PDF生成時のみ
         # フォントサイズをわずかに縮小し、各セクションの余白を詰める。
-        _MONITORING_PDF_EXTRA_CSS = (
+        # monitoring-pdf-fitlevel-server-v1: fit_levelに応じてCSSを切り替える（自動フィット機能の土台）
+        try:
+            fit_level = int(data.get("fit_level", 2))
+        except (TypeError, ValueError):
+            fit_level = 2
+        fit_level = max(0, min(2, fit_level))
+
+        _FITGRID_FIX_CSS = (
             '.rep-fit-grid { display:table !important; width:100% !important; '
             'table-layout:fixed !important; border-collapse:separate !important; '
-            'border-spacing:5px 0 !important; margin-bottom:5px !important; } '
+            'border-spacing:5px 0 !important; } '
             '.rep-fit-card { display:table-cell !important; flex:none !important; '
-            'width:auto !important; vertical-align:top !important; } '
-            '.rep-root { font-size:11px !important; } '
-            '.rep-2col { margin-bottom:5px !important; min-height:0 !important; } '
-            '.rep-user { margin-bottom:5px !important; } '
-            '.rep-goals { margin-bottom:5px !important; } '
-            '.rep-free2 { margin-bottom:5px !important; } '
-            '.rep-free { min-height:0 !important; padding:4px 7px !important; } '
-            '.rep-mon-tbl { margin-bottom:5px !important; } '
-            '.rep-mon-tbl td { padding:4px 6px !important; min-height:0 !important; } '
-            '.rep-fit-h { margin-bottom:2px !important; } '
-            '.rep-special { margin-bottom:3px !important; padding:4px 7px !important; } '
-            '.rep-sat { margin-bottom:2px !important; } '
-            '.rep-req { margin-bottom:3px !important; } '
-            '.rep-req-top .l, .rep-req-top .r { padding:3px 7px !important; } '
-            '.rep-req-body .l, .rep-req-body .r { padding:3px 7px !important; min-height:0 !important; } '
-            '.rep-mon-tbl td { line-height:1.3 !important; } '
-            '.rep-foot { margin-top:3px !important; padding-top:3px !important; }'
-            # monitoring-pdf-compact-v2
+            'width:auto !important; vertical-align:top !important; }'
         )
+
+        _FITLEVEL_CSS = {
+            0: '',
+            1: (
+                '.rep-fit-grid { margin-bottom:6px !important; } '
+                '.rep-root { font-size:11.5px !important; } '
+                '.rep-2col { margin-bottom:6px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:6px !important; } '
+                '.rep-goals { margin-bottom:6px !important; } '
+                '.rep-free2 { margin-bottom:6px !important; } '
+                '.rep-free { min-height:0 !important; padding:5px 8px !important; } '
+                '.rep-mon-tbl { margin-bottom:6px !important; } '
+                '.rep-mon-tbl td { padding:4px 7px !important; min-height:0 !important; '
+                'line-height:1.4 !important; } '
+                '.rep-fit-h { margin-bottom:3px !important; } '
+                '.rep-special { margin-bottom:4px !important; padding:5px 8px !important; } '
+                '.rep-sat { margin-bottom:3px !important; } '
+                '.rep-req { margin-bottom:4px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:4px 8px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:4px 8px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:5px !important; padding-top:4px !important; }'
+            ),
+            2: (
+                '.rep-fit-grid { margin-bottom:5px !important; } '
+                '.rep-root { font-size:11px !important; } '
+                '.rep-2col { margin-bottom:5px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:5px !important; } '
+                '.rep-goals { margin-bottom:5px !important; } '
+                '.rep-free2 { margin-bottom:5px !important; } '
+                '.rep-free { min-height:0 !important; padding:4px 7px !important; } '
+                '.rep-mon-tbl { margin-bottom:5px !important; } '
+                '.rep-mon-tbl td { padding:4px 6px !important; min-height:0 !important; '
+                'line-height:1.3 !important; } '
+                '.rep-fit-h { margin-bottom:2px !important; } '
+                '.rep-special { margin-bottom:3px !important; padding:4px 7px !important; } '
+                '.rep-sat { margin-bottom:2px !important; } '
+                '.rep-req { margin-bottom:3px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:3px 7px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:3px 7px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:3px !important; padding-top:3px !important; }'
+            ),
+        }
+
+        _MONITORING_PDF_EXTRA_CSS = _FITGRID_FIX_CSS + _FITLEVEL_CSS.get(fit_level, _FITLEVEL_CSS[2])
         full_html = (
             '<!DOCTYPE html><html><head><meta charset="utf-8">'
             '<style>@page { size: A4 portrait; margin: 0; } '
