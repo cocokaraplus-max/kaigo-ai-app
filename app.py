@@ -15298,11 +15298,7 @@ def api_monitoring_report_pdf():
             '</style></head><body><div class="page-pad">' + safe_html + '</div></body></html>'
         )
 
-        # monitoring-pdf-debug-mode-v1: 調査用一時デバッグモード。原因判明後は削除推奨。
-        if request.args.get("debug") == "html":
-            from flask import Response
-            return Response(full_html, mimetype="text/html")
-
+        # monitoring-pdf-debug-mode-remove-v1: monitoring-pdf-debug-mode-v1は原因判明・修正完了に伴い削除済み。
         import pdfkit, shutil as _sh
         options = {
             "encoding": "UTF-8",
