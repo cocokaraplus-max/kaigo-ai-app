@@ -197,6 +197,19 @@ body.report-preview-open nav { display:none !important; }
   #rep-root { width:100% !important; font-size:13px !important; }
   #rep-root table { width:100% !important; }
   .rep-goals, .rep-free2, .rep-mon-tbl tr { break-inside:avoid; }
+  /* mon-print-bodywrapper-fix-v1: base.htmlのbody{height:100vh;overflow:hidden}と
+     .page-wrapper{overflow-y:auto}がSPAシェル用に指定されており、
+     印刷時もこれが有効だと画面1枚分の高さで内容が切れてしまう。
+     印刷時のみ解除し、通常の文書フロー（複数ページ）を許可する。 */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .page-wrapper {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
 }
 
 </style>
