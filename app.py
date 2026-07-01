@@ -15270,7 +15270,7 @@ def api_monitoring_report_pdf():
             fit_level = int(data.get("fit_level", 2))
         except (TypeError, ValueError):
             fit_level = 2
-        fit_level = max(0, min(7, fit_level))  # monitoring-pdf-fitlevel-extend3-server-v1
+        fit_level = max(0, min(8, fit_level))  # monitoring-pdf-fitlevel-extend4-server-v1
 
         # monitoring-pdf-free2-stack-server-v1: 個別機能訓練実施による変化/課題とその要因の
         # 2カラム表示は各枠にmin-height:80pxがあり、文章が短いと
@@ -15431,6 +15431,27 @@ def api_monitoring_report_pdf():
                 '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; } '
                 '.rep-foot { margin-top:1px !important; padding-top:1px !important; } '
                 '.rep-fit-card svg, .rep-fit-card img { max-height:18px !important; '
+                'width:auto !important; display:block !important; margin:0 auto !important; }'
+            ),
+            8: (
+                '.rep-fit-grid { margin-bottom:0px !important; } '
+                '.rep-root { font-size:8px !important; } '
+                '.rep-2col { margin-bottom:0px !important; min-height:0 !important; } '
+                '.rep-user { margin-bottom:0px !important; } '
+                '.rep-goals { margin-bottom:0px !important; } '
+                '.rep-free2 { margin-bottom:0px !important; } '
+                '.rep-free { min-height:0 !important; padding:1px 2px !important; } '
+                '.rep-mon-tbl { margin-bottom:0px !important; } '
+                '.rep-mon-tbl td { padding:1px 2px !important; min-height:0 !important; '
+                'line-height:1.0 !important; } '
+                '.rep-fit-h { margin-bottom:0px !important; } '
+                '.rep-special { margin-bottom:0px !important; padding:1px 2px !important; } '
+                '.rep-sat { margin-bottom:0px !important; } '
+                '.rep-req { margin-bottom:0px !important; } '
+                '.rep-req-top .l, .rep-req-top .r { padding:1px 2px !important; } '
+                '.rep-req-body .l, .rep-req-body .r { padding:1px 2px !important; min-height:0 !important; } '
+                '.rep-foot { margin-top:0px !important; padding-top:0px !important; } '
+                '.rep-fit-card svg, .rep-fit-card img { max-height:16px !important; '
                 'width:auto !important; display:block !important; margin:0 auto !important; }'
             ),
         }

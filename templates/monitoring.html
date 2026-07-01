@@ -1216,6 +1216,26 @@ function doReportPrint(){
         '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:1px 2px !important;min-height:0 !important;} ' +
         '#fit-measure .rep-foot{margin-top:1px !important;padding-top:1px !important;} ' +
         '#fit-measure .rep-fit-card svg,#fit-measure .rep-fit-card img{max-height:18px !important;width:auto !important;display:block !important;margin:0 auto !important;}'
+      ),
+      8: (
+        FITGRID_FIX_CSS + ' ' +
+        '#fit-measure .rep-fit-grid{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-root{font-size:8px !important;} ' +
+        '#fit-measure .rep-2col{margin-bottom:0px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-user{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-goals{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-free2{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-free{min-height:0 !important;padding:1px 2px !important;} ' +
+        '#fit-measure .rep-mon-tbl{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-mon-tbl td{padding:1px 2px !important;min-height:0 !important;line-height:1.0 !important;} ' +
+        '#fit-measure .rep-fit-h{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-special{margin-bottom:0px !important;padding:1px 2px !important;} ' +
+        '#fit-measure .rep-sat{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-req{margin-bottom:0px !important;} ' +
+        '#fit-measure .rep-req-top .l,#fit-measure .rep-req-top .r{padding:1px 2px !important;} ' +
+        '#fit-measure .rep-req-body .l,#fit-measure .rep-req-body .r{padding:1px 2px !important;min-height:0 !important;} ' +
+        '#fit-measure .rep-foot{margin-top:0px !important;padding-top:0px !important;} ' +
+        '#fit-measure .rep-fit-card svg,#fit-measure .rep-fit-card img{max-height:16px !important;width:auto !important;display:block !important;margin:0 auto !important;}'
       )
     };
 
@@ -1235,9 +1255,9 @@ function doReportPrint(){
     var styleEl = document.createElement('style');
     document.head.appendChild(styleEl);
 
-    var chosenLevel = 7;  // monitoring-pdf-fitlevel-extend3-client-v1
+    var chosenLevel = 8;  // monitoring-pdf-fitlevel-extend4-client-v1
     try {
-      for (var lvl = 0; lvl <= 7; lvl++) {
+      for (var lvl = 0; lvl <= 8; lvl++) {
         styleEl.textContent = levelCSS[lvl];
         var h = clone.scrollHeight;
         if (h <= PAGE_H) { chosenLevel = lvl; break; }
