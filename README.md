@@ -1063,3 +1063,43 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 - Chrome連携で4ページとも白背景/1.5px solid #e0e0e0/角丸8px を確認。コミット `b525c75`(visit) / `a1b3379`(jisseki/keiyaku/timecard)。
 
 **メモ**: `/visit` に Chrome連携の navigate で直接アクセスすると `/admin` にリダイレクトされることがあるが、管理者MENUのリンク経由(a[href="/visit"]クリック)では正常表示。実利用は管理者MENUからの導線なので問題なし。
+
+
+---
+
+## §28 施設オンボーディング（LINE→施設自動発行→課金）— 第2段階完了（2026-07-03）
+
+### 目的
+TASUKARUを新規導入する施設を、QR→LINE友だち追加→フォーム入力→Stripe決済→施設自動発行→初回ログインまで**全自動完結**させる導線。従来のメール方式（/register）を置き換える。承認ステップなし（決済完了で即発行）。
+
+### 重要な前提（過去の落とし穴）
+- ログイン認証は `facilities.admin_password` ではなく **`staffs` テーブルの `password_hash`** で行われる。職員ゼロの施設はログイン不能（旧PAYTEST01でハマった）。
+- 既存 `/register`(app.py 1301) は `facilities` に平文 `admin_password` を入れるだけで **`staffs` を作らないため実質ログインできない**。新オンボーディングはこの欠陥を構造的に解消する。
+
+### 確定した設計
+- 施設コード = 意味を持たないランダム `f`+16進10桁（例 `f7k2m9x4qp`）。施設名は `facility_name` に保持。コードから施設を推測不可＝セキュア。
+- 最初の管理者職員 = フォームで「管理者のお名前」を入力させ `staffs` に作成。
+- 初回ログイン = **初回設定リンク方式**（仮PWは送らない）。`/setup?token=xxx` で本人がパスワード設定。トークンは使い捨て・24時間有効。パスワードはLINEトーク履歴に残らない＝セキュア。
+- 無料トライアル1ヶ月を踏襲（`trial_ends_at`＝`expires_at`＝発行+30日）。
+- 施設情報入力は **LIFF**（LINEログイン済みuserIdを確実取得）で作る方針。なりすまし防止。
+
+### この段階で実装したもの（第2段階=サーバcore、DEVのみ・本番未反映）
+- **DDL（DEV Supabase適用済み）**
+  - `staffs.setup_token TEXT` / `staffs.setup_token_expires TIMESTAMPTZ`
+  - `facilities.onboard_id TEXT`（決済再送に対する二重発行防止キー）
+- **onboard-webhook-v1**（app.py `stripe_webhook` 内）: `checkout.session.completed` で `meta.onboard_id` があれば発火。onboard_id重複チェック（冪等）→施設コード採番→`facilities` INSERT→`staffs` に管理者職員INSERT（password_hash空・setup_token発行）→`line_send_message` で本人userIdに初回設定リンク送信→`line_notify_admin` で開発者に通知。metadataで受け取る値: `onboard_id / facility_name / admin_name / line_user_id / plan / term`。
+- **onboard-setup-route-v1**: `/setup`（GET=token検証しフォーム表示 / POST=8文字以上・確認一致→sha256でhash保存→setup_tokenをNULL化）。テンプレ `setup.html`（state: form/done/expired/invalid）。
+- **onboard-liff-page-v1**: `/onboard`（LIFFエンドポイントの器。現状は接続確認用の空ページ）。テンプレ `onboard.html`。
+- コミット `8448536`（tasukaru-dev）。DEVデプロイ・表示確認済み（`/onboard`＝器ページ表示、`/setup` token無し＝「リンクが無効です」で正しく拒否）。
+
+### 送信インフラ（既存流用・新規環境変数不要）
+- 特定userId送信 = `line_send_message(user_id, messages)`（app.py 16161、`LINE_CHANNEL_ACCESS_TOKEN`＝オンボーディング用アカウント「TASUKARU」のトークンを使用）。
+- `_line_push(token, to_user_id, messages)`（app.py 344）は施設別トークン用。オンボーディングは施設非依存なので `line_send_message` 側を使用。
+
+### 残タスク（次段階）
+1. **第3段階フロント**: `/onboard` に LIFF SDK読み込み＋施設情報フォーム（施設名・管理者名）＋プラン選択＋`onboard_id`発番＋`/api/stripe/create_checkout` 連携（metadataに onboard_id/facility_name/admin_name/line_user_id/plan/term を載せる）。
+2. **LIFF登録**: LINE Developers の TASUKARUチャンネルに LIFFアプリ追加→エンドポイントを `/onboard` に設定→LIFF ID取得→フロントに埋め込み。
+3. **友だち追加自動返信**: line webhook の follow イベントで LIFF URL を返信。
+4. **DEV通し確認**: LIFF→フォーム→テスト決済（4242）→webhook→施設発行→setupリンク受信→初回ログイン、をE2Eで確認。
+5. **本番展開**: 上記3 DDL を本番Supabaseへ適用→本番マージ。
+6. **将来課題**: 既存 `/register`(メール方式)の扱い（廃止 or 併存）。うちの `cocokaraplus-5526` はコード変更しない（多数テーブル・環境変数・LINE Webhook URLに埋め込み済みのため、やるなら独立の移行タスク）。
