@@ -973,3 +973,39 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 **解決手順**: アドレスバーの鍵マーク → サイトの設定 → カメラを許可(またはサイトデータをリセット)→ 再読み込みで許可ダイアログが正常表示され、カメラ起動成功。
 
 **今後の対応**: コード修正は不要。別端末で再発した場合も同手順で解決可能。現場マニュアル/manual.htmlのトラブルシュート項への追記は次回検討候補。
+
+### 追記(2026-07-02): 評価メモ修正・音声ルーティング・追加利用連絡・体力体重測定改善・充足チェック表
+
+本セッションで実装し本番反映した5件。
+
+**1. 評価メモの患者間持ち越しバグ修正** (marker `eval-memo-reset-fix-v1`)
+評価ページで、評価メモ入力後に別の利用者(データなし)を開くと前の利用者のメモが残るバグを修正。`evalResetForm()` のクリア対象配列に `eval-memo` が含まれていなかったため追加。コミット `01f6458`。
+
+**2. 休み連絡の理由欄への音声入力修正** (marker `leave-reason-voice-target-v1` / `extra-validate-voice-v1`)
+記録入力の音声入力(`inpConfirm`)が文字起こし結果を常に `content-area` に入れていたため、休み連絡カテゴリ(内容欄非表示)では理由欄に反映されなかった。書き込み先を「休み連絡→leave-reason / 追加利用連絡→extra-reason / その他→content-area」に分岐。コミット `bd30fd1`。
+
+**3. 追加利用連絡 新機能** (marker `extra-use-*`)
+休み連絡と同じ仕組み(記録入力→ケース記録→「TASUKARUケース記録連動」カレンダー→双方向同期)で追加利用連絡を新設。入力項目は日付(期間+飛び日)+理由のみ。カレンダーは青 `#1e88e5`「○○様 追加利用」、`record_id` で紐づけ。カレンダー編集/削除でケース記録も同期(編集=content再生成、削除=残日で再生成or記録削除)。
+- DDL: `records` に `extra_date_start` / `extra_date_end` (date) / `extra_reason` (text) 追加。`record_categories` に「追加利用連絡」行追加(DEV sort_order=85、本番は休み連絡の隣に整列 sort_order=9、color=#1E88E5)。DEV・本番両方に適用済み。
+- contentヘルパー `_build_extra_content` / `_build_extra_content_multi` 新設(`_format_leave_period` を再利用)。
+- 既存の休み連絡ロジックは全て `category=="休み連絡"` でガードされているため、`category=="追加利用連絡"` の分岐を並列追加する方式で既存を一切壊さず実装。
+- サーバー側 content必須バリデーション(1445行)も休み連絡のみ除外だったため追加利用連絡も除外(marker `extra-server-validate-v1`)。この修正漏れが初回保存失敗の原因だった。
+- Chrome連携で保存・編集(日付変更でcontent追従)・削除(記録も削除)の双方向同期を全パターン検証済み。コミット `fd7b33d` / `ff5ca7f`。
+
+**4. 体力・体重測定ページの改善** (fitness.html)
+- 履歴編集を日付セル(`.dt`)タップのみに限定(marker `fitness-dt-only-tap-v1`)。以前は行全体(`.hist-row`)が反応していた。
+- 保存し忘れアラート(marker `fitness-unsaved-alert-v1`): `fitHasUnsaved()` 判定 + `beforeunload`(離脱)+ 利用者切替/リセット時の `confirm`。
+- 利用者切替時の入力欄クリア(marker `fitness-clear-on-switch-v1`): `fitClearInputs()` を新設し `fitPickPatient` / `resetFitPatient` で呼ぶ。切替時に前利用者の入力値が残る問題を解消。
+- コミット `0ea4cf9` / `dbe9550`。
+
+**5. 体力・体重 充足チェック表** (marker `fitness-check-*`)
+体力・体重ページ上部に「入力」「一覧」タブを新設。一覧タブに月別の充足チェック表。
+- 対象者: その月に `vitals` 実績がある利用者。実績なしで当月に休み連絡がある人は「休」。
+- 状態: 測定済✓(done) / 未測定(missing) / 休(absent) / 対象外(not_target グレー)の4状態。
+- 表示: 利用者名の横に体重・体力測定を並べる3列統合テーブル(marker `fitness-combined-table-v1`)。
+- 体重判定: その月に `body_weights` に記録あり。
+- 体力判定: 施設設定で2モード切替(`admin_settings` key=`fitness_check_settings`)。モードA=利用者ごと前回測定+3ヶ月サイクル、モードB=施設一律の測定月指定(基準月チップ選択)。
+- API: `GET /api/fitness_check?year=&month=`(充足判定)、`GET/POST /api/fitness_check_settings`(サイクル設定)。DDL不要(admin_settings流用)。
+- Chrome連携でタブ切替・4状態判定・3列描画・設定切替を検証済み。コミット `d6135ed` / `4a98636`。
+
+**開発メモ**: str_replace/パッチのアンカーは実ファイルの空行まで完全一致が必須。本セッションでも fit-wrap 直後や content-section 直前、life-check-api ブロック前などで空行を含め忘れて0件エラーが複数回発生し、`cat -v -e -t` で確認して修正した。macOS の `cat` は `-A` 非対応のため `cat -v -e -t` を使用。
