@@ -219,7 +219,26 @@ function fitFilterPatients() {
   box.style.display = 'block';
 }
 
+// fitness-unsaved-alert-v1: 未保存判定 + 離脱/切替時の保存し忘れ防止
+window.fitHasUnsaved = function() {
+  var ids = ['w-kg','w-note','f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-walk5m-max','f-sitstand','f-note'];
+  for (var i=0;i<ids.length;i++){
+    var el = document.getElementById(ids[i]);
+    if (el && String(el.value).trim() !== '') return true;
+  }
+  return false;
+};
+window.addEventListener('beforeunload', function(e){
+  if (window.fitHasUnsaved && window.fitHasUnsaved()) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
 function fitPickPatient(id) {
+  if (window.fitHasUnsaved && window.fitHasUnsaved()) {
+    if (!confirm('入力中の内容が保存されていません。保存せずに利用者を切り替えますか？')) return;
+  }
   const p = FIT_PATIENTS.find(x => String(x.id) === String(id));
   if (!p) return;
   FIT_SELECTED = p;
@@ -244,6 +263,9 @@ function setMsg(id, text, ok) {
 }
 // 保存後アクション: 別の利用者 / 同じ利用者で続ける
 window.resetFitPatient = function() {
+  if (window.fitHasUnsaved && window.fitHasUnsaved()) {
+    if (!confirm('入力中の内容が保存されていません。保存せずに選び直しますか？')) return;
+  }
   FIT_SELECTED = null;
   var ids = ['fit-patient-id','fit-patient-name','fit-patient-input'];
   ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
@@ -419,7 +441,9 @@ document.addEventListener('click', function (e) {
   }
 });
 
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function(e) {  /* fitness-dt-only-tap-v1 */
+  var _dtCell = e.target.closest('.dt');
+  if (!_dtCell) return;
   const row = e.target.closest('.hist-row[data-fkey]');
   if (row && window._fitData && window._fitData[row.dataset.fkey]) {
     fitLoadForEdit(window._fitData[row.dataset.fkey]);
@@ -429,7 +453,9 @@ document.addEventListener('click', function(e) {
     weightLoadForEdit(window._fitData[wrow.dataset.wkey]);
   }
 });
-document.addEventListener('touchend', function(e) {
+document.addEventListener('touchend', function(e) {  /* fitness-dt-only-tap-v1 */
+  var _dtCell = e.target.closest('.dt');
+  if (!_dtCell) return;
   const row = e.target.closest('.hist-row[data-fkey]');
   if (row && window._fitData && window._fitData[row.dataset.fkey]) {
     e.preventDefault();
