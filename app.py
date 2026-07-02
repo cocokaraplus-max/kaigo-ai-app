@@ -1298,6 +1298,73 @@ def api_whoami():
         "dev_authenticated": session.get("dev_authenticated", False),
     })
 
+# onboard-setup-route-v1 : 初回パスワード設定(オンボーディングでLINE送信されたリンク)
+@app.route('/setup', methods=['GET', 'POST'])
+def onboard_setup():
+    import hashlib as _su_hashlib
+    from datetime import datetime as _su_dt, timezone as _su_tz
+    supabase = get_supabase()
+    token = (request.values.get("token") or "").strip()
+    if not token:
+        return render_template("setup.html", state="invalid")
+    try:
+        res = supabase.table("staffs").select(
+            "id,staff_name,facility_code,setup_token,setup_token_expires,is_active"
+        ).eq("setup_token", token).eq("is_active", True).execute()
+        rows = res.data or []
+    except Exception as e:
+        print(f"[Setup] lookup error: {e}", flush=True)
+        return render_template("setup.html", state="invalid")
+    if not rows:
+        return render_template("setup.html", state="invalid")
+    row = rows[0]
+    # 期限チェック
+    exp = row.get("setup_token_expires")
+    if exp:
+        try:
+            exp_dt = _su_dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=_su_tz.utc)
+            if _su_dt.now(_su_tz.utc) > exp_dt:
+                return render_template("setup.html", state="expired")
+        except Exception:
+            pass
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        pw2 = request.form.get("password2", "")
+        if not pw or len(pw) < 8:
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="パスワードは8文字以上で設定してください。")
+        if pw != pw2:
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="確認用パスワードが一致しません。")
+        pw_hash = _su_hashlib.sha256(pw.encode()).hexdigest()
+        try:
+            supabase.table("staffs").update({
+                "password_hash": pw_hash,
+                "setup_token": None,
+                "setup_token_expires": None,
+            }).eq("id", row["id"]).execute()
+        except Exception as e:
+            print(f"[Setup] update error: {e}", flush=True)
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="保存に失敗しました。時間をおいて再度お試しください。")
+        return render_template("setup.html", state="done",
+                               facility_code=row.get("facility_code", ""),
+                               staff_name=row.get("staff_name", ""))
+    return render_template("setup.html", state="form", token=token,
+                           staff_name=row.get("staff_name", ""))
+
+
+# onboard-liff-page-v1 : LIFFエンドポイントの器(この後フォーム+LIFF SDKを載せる)
+@app.route('/onboard')
+def onboard_page():
+    return render_template("onboard.html")
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     error = None
@@ -16407,6 +16474,88 @@ def stripe_webhook():
         meta = session_data.get("metadata") or {}
         if not isinstance(meta, dict):
             meta = {}
+        # onboard-webhook-v1 : 新規施設オンボーディング(まだ施設が存在しない状態での決済)
+        onboard_id = meta.get("onboard_id")
+        if onboard_id:
+            try:
+                import secrets as _ob_secrets
+                import hashlib as _ob_hashlib
+                from datetime import datetime as _ob_dt, timedelta as _ob_td, timezone as _ob_tz
+                supabase = get_supabase()
+                # 冪等: 同じ onboard_id の施設が既にあれば再発行しない(Stripeの再送対策)
+                dup = supabase.table("facilities").select("facility_code").eq("onboard_id", onboard_id).execute()
+                if dup.data:
+                    print(f"[Onboard] onboard_id {onboard_id} already provisioned; skip", flush=True)
+                    return jsonify({"status": "ok"}), 200
+                ob_plan = meta.get("plan", "starter")
+                ob_term = meta.get("term", "monthly")
+                ob_fac_name = (meta.get("facility_name") or "").strip() or "新規施設"
+                ob_admin_name = (meta.get("admin_name") or "").strip() or "管理者"
+                ob_user_id = (meta.get("line_user_id") or "").strip()
+                # 施設コード: 意味を持たないランダム(f + 10桁hex)。衝突時は数回リトライ
+                new_code = None
+                for _ in range(5):
+                    cand = "f" + _ob_secrets.token_hex(5)
+                    ex = supabase.table("facilities").select("facility_code").eq("facility_code", cand).execute()
+                    if not ex.data:
+                        new_code = cand
+                        break
+                if not new_code:
+                    print("[Onboard] failed to allocate facility_code", flush=True)
+                    return jsonify({"status": "ok"}), 200
+                _ob_now = _ob_dt.now(_ob_tz.utc)
+                # 1ヶ月無料トライアル: 初月はトライアル、有効期限=トライアル終了日
+                trial_end = _ob_now + _ob_td(days=30)
+                supabase.table("facilities").insert({
+                    "facility_code": new_code,
+                    "facility_name": ob_fac_name,
+                    "plan": ob_plan,
+                    "is_active": True,
+                    "trial_ends_at": trial_end.isoformat(),
+                    "expires_at": trial_end.isoformat(),
+                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_customer_id": session_data.get("customer"),
+                    "onboard_id": onboard_id,
+                }).execute()
+                # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
+                setup_token = _ob_secrets.token_urlsafe(32)
+                setup_exp = (_ob_now + _ob_td(hours=24)).isoformat()
+                supabase.table("staffs").insert({
+                    "facility_code": new_code,
+                    "staff_name": ob_admin_name,
+                    "password_hash": "",
+                    "is_active": True,
+                    "setup_token": setup_token,
+                    "setup_token_expires": setup_exp,
+                }).execute()
+                # LINEで初回設定リンクを本人(userId)に送信。パスワードは送らない=履歴に残さない
+                setup_url = request.host_url.rstrip("/") + "/setup?token=" + setup_token
+                if ob_user_id:
+                    line_send_message(ob_user_id, [{
+                        "type": "text",
+                        "text": "\n".join([
+                            "【TASUKARU】ご登録ありがとうございます。",
+                            "",
+                            "施設名: " + ob_fac_name,
+                            "施設コード: " + new_code,
+                            "管理者: " + ob_admin_name,
+                            "",
+                            "下のリンクから初回パスワードを設定してください(24時間有効)。",
+                            setup_url,
+                        ])
+                    }])
+                # 開発者にも新規契約を通知(施設コードのみ。トークン等は載せない)
+                line_notify_admin("\n".join([
+                    "【TASUKARU】新規オンボーディング",
+                    "施設名: " + ob_fac_name,
+                    "施設コード: " + new_code,
+                    "プラン: " + ob_plan,
+                ]))
+                print(f"[Onboard] provisioned {new_code} (plan={ob_plan})", flush=True)
+            except Exception as _ob_e:
+                print(f"[Onboard] error: {_ob_e}", flush=True)
+            return jsonify({"status": "ok"}), 200
+
         f_code = meta.get("facility_code")
         plan = meta.get("plan", "starter")
         term = meta.get("term", "monthly")
