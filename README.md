@@ -960,3 +960,16 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 ### 開発運用上の注意（今回発生した事故）
 本セッション中、commitが誤って本番ブランチ(tasukaru)に直接乗る事故が2回発生。原因はコマンド実行時のブランチ確認漏れとみられる。**commit前には必ず`git branch --show-current`でtasukaru-devにいることを確認すること。**
 復旧手順: `git checkout tasukaru-dev && git cherry-pick <該当コミット> && git push origin tasukaru-dev` → `git checkout tasukaru && git reset --hard origin/tasukaru`
+
+### 追記(2026-07-02): Androidバイタルカメラ問題 解決
+前セッションで「次回持ち越し・未解決」としていたAndroid端末のカメラ起動不可(`NotAllowedError: Permission denied`)は解決。
+
+**原因**: コードの不具合ではなく、Chromeがサイト単位で記憶していたカメラ権限が「ブロック」状態になっていた。
+- 端末はChromeのブックマーク/URLから起動(PWAではない)→ PWA権限タイミング問題は除外
+- Android設定→アプリ→Chrome→カメラ権限は「毎回確認」= OSレベルでは正常
+- 同端末の他サイト(Google Meet等)ではカメラ正常動作 = 端末・Chrome本体は正常
+- 上記3点から、TASUKARUサイト個別のカメラ権限ブロックと特定
+
+**解決手順**: アドレスバーの鍵マーク → サイトの設定 → カメラを許可(またはサイトデータをリセット)→ 再読み込みで許可ダイアログが正常表示され、カメラ起動成功。
+
+**今後の対応**: コード修正は不要。別端末で再発した場合も同手順で解決可能。現場マニュアル/manual.htmlのトラブルシュート項への追記は次回検討候補。
