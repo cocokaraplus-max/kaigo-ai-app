@@ -61,12 +61,40 @@
 }
 .pick-list div { padding:10px 12px; font-size:0.85rem; cursor:pointer; border-bottom:1px solid #f1f3f4; }
 .pick-list div:hover { background:#e8f0fe; }
+/* fitness-tab-ui-v1 */
+.fit-tabs { display:flex; gap:0; margin-bottom:14px; border-bottom:2px solid #e0e0e0; }
+.fit-tab { flex:1; text-align:center; padding:12px 0; font-size:0.95rem; font-weight:700; color:#5f6368; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; user-select:none; }
+.fit-tab.active { color:#1a73e8; border-bottom-color:#1a73e8; }
+.fc-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+.fc-toolbar select, .fc-toolbar input[type=month] { padding:8px 10px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.9rem; }
+.fc-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+.fc-table th, .fc-table td { border:1px solid #e8eaed; padding:8px 10px; text-align:left; }
+.fc-table th { background:#f8f9fa; font-weight:700; color:#5f6368; }
+.fc-badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.8rem; font-weight:700; }
+.fc-done { background:#e6f4ea; color:#137333; }
+.fc-missing { background:#fce8e6; color:#c5221f; }
+.fc-absent { background:#fef7e0; color:#b06000; }
+.fc-nottarget { background:#f1f3f4; color:#9aa0a6; }
+.fc-row-nottarget { opacity:0.5; }
+.fc-sec-title { font-size:0.95rem; font-weight:700; color:#202124; margin:18px 0 8px; display:flex; align-items:center; gap:6px; }
+.fc-summary { font-size:0.82rem; color:#5f6368; margin-bottom:6px; }
+.fc-settings { background:#f8f9fa; border:1px solid #e8eaed; border-radius:10px; padding:12px 14px; margin-bottom:16px; }
+.fc-settings label { font-size:0.85rem; font-weight:700; color:#5f6368; display:block; margin-bottom:6px; }
+.fc-months { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.fc-month-chip { padding:5px 10px; border:1.5px solid #e0e0e0; border-radius:14px; font-size:0.8rem; cursor:pointer; user-select:none; }
+.fc-month-chip.on { background:#1a73e8; color:#fff; border-color:#1a73e8; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="fit-wrap">
 
+  <!-- fitness-tab-ui-v1: タブバー -->
+  <div class="fit-tabs">
+    <div class="fit-tab active" id="tabbtn-input" onclick="fcSwitchTab('input')">入力</div>
+    <div class="fit-tab" id="tabbtn-list" onclick="fcSwitchTab('list')">一覧</div>
+  </div>
+  <div id="tab-input">
   <div class="fit-card">
     <div class="fit-row patient-pick">
       <label>利用者を選択</label>
@@ -162,12 +190,212 @@
       <div class="hist-empty">利用者を選ぶと履歴が表示されます</div>
     </div>
   </div>
+  </div><!-- /tab-input -->
+
+  <!-- fitness-tab-ui-v1: 一覧タブ(充足チェック表) -->
+  <div id="tab-list" style="display:none;">
+    <div class="fc-toolbar">
+      <label style="font-weight:700;color:#5f6368;font-size:0.9rem;">対象月</label>
+      <input type="month" id="fc-month" onchange="fcLoad()">
+      <button type="button" onclick="fcToggleSettings()" style="margin-left:auto;background:none;border:1.5px solid #e0e0e0;border-radius:8px;padding:8px 12px;font-size:0.85rem;cursor:pointer;color:#5f6368;">⚙️ 体力測定の設定</button>
+    </div>
+    <div class="fc-settings" id="fc-settings" style="display:none;">
+      <label>体力測定のサイクル判定</label>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="fc-mode" value="A" onchange="fcOnModeChange()"> 利用者ごとの3ヶ月サイクル(前回測定から3ヶ月)
+        </label>
+        <label style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="fc-mode" value="B" onchange="fcOnModeChange()"> 施設一律の3ヶ月サイクル(測定月を指定)
+        </label>
+      </div>
+      <div id="fc-months-wrap" style="display:none;margin-top:10px;">
+        <label style="font-weight:400;">測定月(タップで選択)</label>
+        <div class="fc-months" id="fc-months"></div>
+      </div>
+      <button type="button" onclick="fcSaveSettings()" style="margin-top:12px;background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:0.85rem;font-weight:700;cursor:pointer;">設定を保存</button>
+      <span id="fc-settings-msg" style="margin-left:10px;font-size:0.82rem;"></span>
+    </div>
+    <div id="fc-content">
+      <div style="color:#9aa0a6;font-size:0.88rem;padding:20px 0;text-align:center;">対象月を選ぶと充足チェック表が表示されます</div>
+    </div>
+  </div>
 
 </div>
 {% endblock %}
 
 {% block extra_script %}
 <script>
+/* fitness-check-js-v1 */
+// FITNESS_CHECK_MARKER
+var FC_LOADED = false;
+var FC_MODE = 'A';
+var FC_BASE_MONTHS = [1,4,7,10];
+
+window.fcSwitchTab = function(tab) {
+  var ti = document.getElementById('tab-input');
+  var tl = document.getElementById('tab-list');
+  var bi = document.getElementById('tabbtn-input');
+  var bl = document.getElementById('tabbtn-list');
+  if (tab === 'list') {
+    if (ti) ti.style.display = 'none';
+    if (tl) tl.style.display = 'block';
+    if (bi) bi.classList.remove('active');
+    if (bl) bl.classList.add('active');
+    if (!FC_LOADED) {
+      FC_LOADED = true;
+      var mi = document.getElementById('fc-month');
+      if (mi && !mi.value) {
+        var d = new Date();
+        mi.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      }
+      fcLoadSettings().then(function(){ fcLoad(); });
+    }
+  } else {
+    if (ti) ti.style.display = 'block';
+    if (tl) tl.style.display = 'none';
+    if (bi) bi.classList.add('active');
+    if (bl) bl.classList.remove('active');
+  }
+};
+
+function fcLoadSettings() {
+  return fetch('/api/fitness_check_settings', {credentials:'include'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d && d.status === 'success') {
+        FC_MODE = d.cycle_mode || 'A';
+        FC_BASE_MONTHS = (d.base_months && d.base_months.length) ? d.base_months : [1,4,7,10];
+        var ra = document.querySelector('input[name="fc-mode"][value="'+FC_MODE+'"]');
+        if (ra) ra.checked = true;
+        fcRenderMonthChips();
+        var wrap = document.getElementById('fc-months-wrap');
+        if (wrap) wrap.style.display = (FC_MODE === 'B') ? 'block' : 'none';
+      }
+    })
+    .catch(function(e){ console.error('fcLoadSettings', e); });
+}
+
+window.fcToggleSettings = function() {
+  var el = document.getElementById('fc-settings');
+  if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+};
+
+window.fcOnModeChange = function() {
+  var sel = document.querySelector('input[name="fc-mode"]:checked');
+  var mode = sel ? sel.value : 'A';
+  var wrap = document.getElementById('fc-months-wrap');
+  if (wrap) wrap.style.display = (mode === 'B') ? 'block' : 'none';
+};
+
+function fcRenderMonthChips() {
+  var box = document.getElementById('fc-months');
+  if (!box) return;
+  var html = '';
+  for (var m=1; m<=12; m++) {
+    var on = FC_BASE_MONTHS.indexOf(m) !== -1 ? ' on' : '';
+    html += '<span class="fc-month-chip'+on+'" data-m="'+m+'" onclick="fcToggleMonth('+m+')">'+m+'月</span>';
+  }
+  box.innerHTML = html;
+}
+
+window.fcToggleMonth = function(m) {
+  var i = FC_BASE_MONTHS.indexOf(m);
+  if (i === -1) FC_BASE_MONTHS.push(m);
+  else FC_BASE_MONTHS.splice(i,1);
+  FC_BASE_MONTHS.sort(function(a,b){return a-b;});
+  fcRenderMonthChips();
+};
+
+window.fcSaveSettings = function() {
+  var sel = document.querySelector('input[name="fc-mode"]:checked');
+  var mode = sel ? sel.value : 'A';
+  var msg = document.getElementById('fc-settings-msg');
+  fetch('/api/fitness_check_settings', {
+    method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+    body: JSON.stringify({cycle_mode: mode, base_months: FC_BASE_MONTHS})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d && d.status === 'success') {
+      FC_MODE = d.cycle_mode; FC_BASE_MONTHS = d.base_months;
+      if (msg){ msg.textContent = '保存しました'; msg.style.color = '#137333'; }
+      fcLoad();
+    } else {
+      if (msg){ msg.textContent = (d && d.message) || '保存に失敗しました'; msg.style.color = '#c5221f'; }
+    }
+  }).catch(function(e){
+    if (msg){ msg.textContent = '通信エラー'; msg.style.color = '#c5221f'; }
+  });
+};
+
+window.fcLoad = function() {
+  var mi = document.getElementById('fc-month');
+  var box = document.getElementById('fc-content');
+  if (!mi || !mi.value || !box) return;
+  var parts = mi.value.split('-');
+  var y = parts[0], m = parseInt(parts[1],10);
+  box.innerHTML = '<div style="color:#9aa0a6;padding:16px 0;text-align:center;">読み込み中...</div>';
+  fetch('/api/fitness_check?year='+y+'&month='+m, {credentials:'include'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d || d.status !== 'success') {
+        box.innerHTML = '<div style="color:#c5221f;padding:16px 0;">読み込みエラー: '+((d&&d.message)||'')+'</div>';
+        return;
+      }
+      box.innerHTML = fcRenderCombined(d.weights, d.fitness);  /* fitness-combined-table-v1 */
+    })
+    .catch(function(e){
+      box.innerHTML = '<div style="color:#c5221f;padding:16px 0;">通信エラー: '+e+'</div>';
+    });
+};
+
+function fcBadge(status) {
+  if (status === 'done') return '<span class="fc-badge fc-done">✓ 測定済</span>';
+  if (status === 'missing') return '<span class="fc-badge fc-missing">未測定</span>';
+  if (status === 'absent') return '<span class="fc-badge fc-absent">休</span>';
+  if (status === 'not_target') return '<span class="fc-badge fc-nottarget">対象外</span>';
+  return '';
+}
+
+function fcRenderCombined(weights, fitness) {  /* fitness-combined-table-v1 */
+  weights = weights || []; fitness = fitness || [];
+  // patient_id でマージ
+  var map = {};
+  var order = [];
+  weights.forEach(function(r){
+    var pid = String(r.patient_id);
+    if (!map[pid]) { map[pid] = {name:r.user_name, chart:r.chart_number, w:null, f:null}; order.push(pid); }
+    map[pid].w = r.status;
+  });
+  fitness.forEach(function(r){
+    var pid = String(r.patient_id);
+    if (!map[pid]) { map[pid] = {name:r.user_name, chart:r.chart_number, w:null, f:null}; order.push(pid); }
+    map[pid].f = r.status;
+  });
+  var wDone = weights.filter(function(r){return r.status==='done';}).length;
+  var wTgt = weights.filter(function(r){return r.status==='done'||r.status==='missing';}).length;
+  var fDone = fitness.filter(function(r){return r.status==='done';}).length;
+  var fTgt = fitness.filter(function(r){return r.status==='done'||r.status==='missing';}).length;
+  var html = '<div class="fc-summary" style="font-size:0.85rem;margin-bottom:10px;">'
+    + '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">monitor_weight</span> 体重 済'+wDone+'/対象'+wTgt+' 　'
+    + '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">fitness_center</span> 体力測定 済'+fDone+'/対象'+fTgt+'</div>';
+  if (!order.length) {
+    html += '<div style="color:#9aa0a6;font-size:0.85rem;padding:8px 0;">この月に利用実績のある利用者がいません</div>';
+    return html;
+  }
+  html += '<table class="fc-table"><thead><tr><th>利用者</th><th style="width:96px;">体重</th><th style="width:96px;">体力測定</th></tr></thead><tbody>';
+  order.forEach(function(pid){
+    var e = map[pid];
+    var nm = e.name || '';
+    var chart = e.chart ? ('(No.'+e.chart+') ') : '';
+    var wCell = (e.w!==null) ? fcBadge(e.w) : '';
+    var fCell = (e.f!==null) ? fcBadge(e.f) : '';
+    var fTdCls = (e.f === 'not_target') ? ' class="fc-row-nottarget"' : '';
+    html += '<tr><td>'+chart+nm+'</td><td>'+wCell+'</td><td'+fTdCls+'>'+fCell+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+// FITNESS_CHECK_MARKER_END
 // 全角数字・全角記号を半角化する(現場で全角入力されても通るように)
 function fitToHalf(v) {
   if (v === null || v === undefined) return '';
