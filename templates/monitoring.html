@@ -280,12 +280,17 @@ body.report-preview-open nav { display:none !important; }
   <!-- ④ 文字数 -->
   <div class="step-card">
     <div class="step-title"><span class="num">4</span>カテゴリあたりの文字数</div>
-    <div class="char-btns" id="char-btns">
-      <div class="char-btn" data-val="100" onclick="setChar(this)">100</div>
-      <div class="char-btn active" data-val="200" onclick="setChar(this)">200</div>
-      <div class="char-btn" data-val="300" onclick="setChar(this)">300</div>
-      <div class="char-btn" data-val="400" onclick="setChar(this)">400</div>
-      <div class="char-btn" data-val="500" onclick="setChar(this)">500</div>
+    <!-- monitoring-charlen-options-v1: 100刻みから50刻み(100〜500・9段階)に拡張 -->
+    <div class="char-btns" id="char-btns" style="flex-wrap:wrap;">
+      <div class="char-btn" data-val="100" onclick="setChar(this)" style="flex:1 1 18%;">100</div>
+      <div class="char-btn" data-val="150" onclick="setChar(this)" style="flex:1 1 18%;">150</div>
+      <div class="char-btn active" data-val="200" onclick="setChar(this)" style="flex:1 1 18%;">200</div>
+      <div class="char-btn" data-val="250" onclick="setChar(this)" style="flex:1 1 18%;">250</div>
+      <div class="char-btn" data-val="300" onclick="setChar(this)" style="flex:1 1 18%;">300</div>
+      <div class="char-btn" data-val="350" onclick="setChar(this)" style="flex:1 1 18%;">350</div>
+      <div class="char-btn" data-val="400" onclick="setChar(this)" style="flex:1 1 18%;">400</div>
+      <div class="char-btn" data-val="450" onclick="setChar(this)" style="flex:1 1 18%;">450</div>
+      <div class="char-btn" data-val="500" onclick="setChar(this)" style="flex:1 1 18%;">500</div>
     </div>
     <div id="char-desc" style="font-size:0.75rem;color:#80868b;margin-top:6px;text-align:center;">各カテゴリ 200文字程度で生成します</div>
   </div>
