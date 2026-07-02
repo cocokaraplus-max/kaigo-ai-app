@@ -1320,11 +1320,16 @@
                               oninput="evalUpdateStatus()"></textarea>
                     <div style="display:flex;align-items:center;gap:8px;margin-top:10px;margin-bottom:0;">
                         <span style="font-size:0.8rem;color:#5f6368;white-space:nowrap;">文字数</span>
+                        <!-- assessment-charlen-options-v1: 100刻みから50刻み(100〜500・9段階)に拡張 -->
                         <select id="eval-ai-char-count" style="font-size:0.8rem;padding:4px 8px;border-radius:6px;border:1px solid #e0e0e0;background:#f8f9fa;color:#3c4043;">
                             <option value="100">100文字</option>
+                            <option value="150">150文字</option>
                             <option value="200" selected>200文字</option>
+                            <option value="250">250文字</option>
                             <option value="300">300文字</option>
+                            <option value="350">350文字</option>
                             <option value="400">400文字</option>
+                            <option value="450">450文字</option>
                             <option value="500">500文字</option>
                         </select>
                     </div>
