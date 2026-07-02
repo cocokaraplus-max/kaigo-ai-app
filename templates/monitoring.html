@@ -280,18 +280,20 @@ body.report-preview-open nav { display:none !important; }
   <!-- ④ 文字数 -->
   <div class="step-card">
     <div class="step-title"><span class="num">4</span>カテゴリあたりの文字数</div>
-    <!-- monitoring-charlen-options-v1: 100刻みから50刻み(100〜500・9段階)に拡張 -->
-    <div class="char-btns" id="char-btns" style="flex-wrap:wrap;">
-      <div class="char-btn" data-val="100" onclick="setChar(this)" style="flex:1 1 18%;">100</div>
-      <div class="char-btn" data-val="150" onclick="setChar(this)" style="flex:1 1 18%;">150</div>
-      <div class="char-btn active" data-val="200" onclick="setChar(this)" style="flex:1 1 18%;">200</div>
-      <div class="char-btn" data-val="250" onclick="setChar(this)" style="flex:1 1 18%;">250</div>
-      <div class="char-btn" data-val="300" onclick="setChar(this)" style="flex:1 1 18%;">300</div>
-      <div class="char-btn" data-val="350" onclick="setChar(this)" style="flex:1 1 18%;">350</div>
-      <div class="char-btn" data-val="400" onclick="setChar(this)" style="flex:1 1 18%;">400</div>
-      <div class="char-btn" data-val="450" onclick="setChar(this)" style="flex:1 1 18%;">450</div>
-      <div class="char-btn" data-val="500" onclick="setChar(this)" style="flex:1 1 18%;">500</div>
-    </div>
+    <!-- monitoring-charlen-dropdown-v1: ボタン形式からドロップダウン形式に変更 -->
+    <select id="char-select" onchange="setCharSelect(this)"
+      style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0e0e0;
+             font-size:0.9rem;font-weight:700;color:#3c4043;background:#fff;">
+      <option value="100">100文字</option>
+      <option value="150">150文字</option>
+      <option value="200" selected>200文字</option>
+      <option value="250">250文字</option>
+      <option value="300">300文字</option>
+      <option value="350">350文字</option>
+      <option value="400">400文字</option>
+      <option value="450">450文字</option>
+      <option value="500">500文字</option>
+    </select>
     <div id="char-desc" style="font-size:0.75rem;color:#80868b;margin-top:6px;text-align:center;">各カテゴリ 200文字程度で生成します</div>
   </div>
 
@@ -380,11 +382,9 @@ function setMode(mode) {
   }
 }
 
-// 文字数選択
-function setChar(el) {
-  document.querySelectorAll(".char-btn").forEach(b => b.classList.remove("active"));
-  el.classList.add("active");
-  currentChar = parseInt(el.dataset.val);
+// monitoring-charlen-dropdown-v1: 文字数選択（ドロップダウン版）
+function setCharSelect(el) {
+  currentChar = parseInt(el.value);
   const charLabel = document.getElementById("char-desc");
   charLabel.textContent = currentMode === "full"
     ? `全体を${currentChar}文字程度で生成します`
