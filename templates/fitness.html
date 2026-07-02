@@ -235,10 +235,18 @@ window.addEventListener('beforeunload', function(e){
     return '';
   }
 });
+// fitness-clear-on-switch-v1: 入力欄の共通クリア関数
+window.fitClearInputs = function() {
+  var ids = ['w-kg','w-note','f-grip-r','f-grip-l','f-balance-r','f-balance-l','f-tug','f-walk5m','f-walk5m-max','f-sitstand','f-note'];
+  ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  var wm=document.getElementById('w-msg'); if(wm){ wm.textContent=''; wm.className='fit-msg'; }
+  var fm=document.getElementById('f-msg'); if(fm){ fm.textContent=''; fm.className='fit-msg'; }
+};
 function fitPickPatient(id) {
   if (window.fitHasUnsaved && window.fitHasUnsaved()) {
     if (!confirm('入力中の内容が保存されていません。保存せずに利用者を切り替えますか？')) return;
   }
+  if (window.fitClearInputs) window.fitClearInputs();
   const p = FIT_PATIENTS.find(x => String(x.id) === String(id));
   if (!p) return;
   FIT_SELECTED = p;
@@ -266,6 +274,7 @@ window.resetFitPatient = function() {
   if (window.fitHasUnsaved && window.fitHasUnsaved()) {
     if (!confirm('入力中の内容が保存されていません。保存せずに選び直しますか？')) return;
   }
+  if (window.fitClearInputs) window.fitClearInputs();
   FIT_SELECTED = null;
   var ids = ['fit-patient-id','fit-patient-name','fit-patient-input'];
   ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
