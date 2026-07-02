@@ -910,3 +910,66 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 ### 残タスク（次回）
 - 実績集計表(/admin/jisseki)の年数変更ができない不具合（要調査）。
 - 契約書・重要事項説明書の「印マーク」削除（現物確認後）。
+
+## session-2026-07-01-monitoring-pdf-fix
+
+### 概要
+モニタリング報告書の印刷（PDF出力）が途中で切れる不具合の調査・修正。調査の過程で個人情報漏洩も発見・修正。最終的にサーバーサイドPDF生成＋自動フィット機能を構築し本番反映。
+
+### 主な変更点
+
+**印刷方式の全面刷新**
+- `window.print()`（ブラウザ印刷）→ サーバーサイドPDF生成（pdfkit + wkhtmltopdf）に移行
+- 新規APIエンドポイント `POST /api/monitoring_report_pdf` を追加（app.py）
+- marker: `monitoring-pdf-endpoint-v1`, `monitoring-pdf-client-v1`
+
+**印刷不具合の個別修正（判明順）**
+- 余白が出ない → `@page{margin:0}` + `.page-pad`実寸パディング方式（契約書PDFと同じ技法）: `monitoring-pdf-margin-fix-v1`
+- グラフが表示されない → SVGをcanvas経由でPNGに変換してから送信: `monitoring-pdf-svg-to-png-v3`
+- 体力測定カードが縦積みになる → `.rep-fit-grid`をtable表示に強制変換: `monitoring-pdf-fitgrid-table-v1`
+- 個別機能訓練実施による変化/課題とその要因の2カラム→縦積み・全幅表示に変更（無駄な最小高さ削減）: `monitoring-pdf-free2-stack-server-v1` / `-client-v1`
+
+**【重要】個人情報漏洩の発見・修正**
+- `reportSampleData()`(monitoring.html)内に実在の利用者名・ケアマネ事業所名がハードコードされていたことを発見
+- 汎用ダミー値に置換。DEV・本番とも対応済み
+- marker: `mon-sampledata-anonymize-v1`
+
+**自動フィット機能（文章量に応じたフォント・余白の自動調整）**
+- クライアント側で印刷ページ幅(733px)の隠しコンテナで高さを計測し、レベル0〜8(フォント12px〜8px)から最適なものを自動選択
+- marker: `monitoring-pdf-fitlevel-client-v1`, `-server-v1`, 各`extend`/`extend2`/`extend3`/`extend4`系
+- フォント名の不一致(`Hiragino Sans`/`Noto Sans JP`指定 vs 実際は`Noto Sans CJK JP`のみ導入)を発見・修正: `monitoring-pdf-font-fix-v1`
+- ブラウザ計測とサーバー実レンダリングの食い違いが解消しきらないため、サーバー側で実際にPDF生成→pdfinfoでページ数確認→収まらなければfit_level昇格して再生成するループ方式に変更: `monitoring-pdf-verify-loop-v1`
+- Dockerfileに`poppler-utils`(pdfinfo)を追加（poppler-utilsというパッケージ名自体をマーカー代わりに使用）
+- 最終方針: 「1ページ絶対主義」をやめ、読みやすさの上限(レベル4=10.5px)までしか縮小しない。収まらない場合は体力測定グラフのみ文末(2ページ目)に移動し、テキストは1ページ目側に自然に残す: `monitoring-pdf-readable-cap-v1`
+- 強制改ページを試したが3ページ化を招いたため撤回、並び替えのみ採用: `monitoring-pdf-remove-forced-break-v1`
+
+**文字数選択UIの拡張**
+- モニタリング(monitoring.html)・評価(assessment.html)ともに文字数選択肢を5段階(100/200/300/400/500)→9段階(50刻み、100〜500)に拡張
+- marker: `monitoring-charlen-options-v1`, `assessment-charlen-options-v1`
+- モニタリング側はボタン形式からドロップダウン形式に変更(評価ページと統一感を持たせるため): `monitoring-charlen-dropdown-v1`
+
+### 技術的な学び（重要）
+- **wkhtmltopdf(patched qt)の弱点**: CSS `@page`のmargin指定、inline SVG描画、Flexboxレイアウト。いずれも今回確立した回避パターン(`.page-pad`実寸パディング、SVG→PNG変換、table強制変換)を今後のPDF機能で最初から使うこと。
+- **フォント名は必ずサーバー実機(`fc-list`)で確認する**。CSSのfont-family指定と実際にインストールされているフォント名の不一致は、PDF関連の不具合原因として真っ先に疑うべき。
+- **ブラウザでの高さ計測とサーバーレンダリングは完全には一致しない**前提で設計する。「絶対に1ページに収める」より「読みやすさを保った上で自然に収まる範囲を狙う」方針の方が保守的で壊れにくい。
+
+### 未解決・次回持ち越し
+- **レイアウトエディタ構想**: ユーザーが1ページ目・2ページ目の内容を自由に手動配置できる機能。自動フィットの限界を超える本質的な解決策として提案あり。未着手。
+- **Androidでバイタルのカメラが起動しない不具合**: `NotAllowedError: Permission denied`と判明(診断用パッチ`vitals-camera-error-diagnose-v1`で可視化、本番反映済み)。Chrome(Android版)使用を確認済み。Android設定側のアプリ権限、Chromeのサイト別カメラ権限(アドレスバーの鍵マーク→サイトの設定)の確認を依頼中。次回、解決したか確認からスタート。
+
+### 開発運用上の注意（今回発生した事故）
+本セッション中、commitが誤って本番ブランチ(tasukaru)に直接乗る事故が2回発生。原因はコマンド実行時のブランチ確認漏れとみられる。**commit前には必ず`git branch --show-current`でtasukaru-devにいることを確認すること。**
+復旧手順: `git checkout tasukaru-dev && git cherry-pick <該当コミット> && git push origin tasukaru-dev` → `git checkout tasukaru && git reset --hard origin/tasukaru`
+
+### 追記(2026-07-02): Androidバイタルカメラ問題 解決
+前セッションで「次回持ち越し・未解決」としていたAndroid端末のカメラ起動不可(`NotAllowedError: Permission denied`)は解決。
+
+**原因**: コードの不具合ではなく、Chromeがサイト単位で記憶していたカメラ権限が「ブロック」状態になっていた。
+- 端末はChromeのブックマーク/URLから起動(PWAではない)→ PWA権限タイミング問題は除外
+- Android設定→アプリ→Chrome→カメラ権限は「毎回確認」= OSレベルでは正常
+- 同端末の他サイト(Google Meet等)ではカメラ正常動作 = 端末・Chrome本体は正常
+- 上記3点から、TASUKARUサイト個別のカメラ権限ブロックと特定
+
+**解決手順**: アドレスバーの鍵マーク → サイトの設定 → カメラを許可(またはサイトデータをリセット)→ 再読み込みで許可ダイアログが正常表示され、カメラ起動成功。
+
+**今後の対応**: コード修正は不要。別端末で再発した場合も同手順で解決可能。現場マニュアル/manual.htmlのトラブルシュート項への追記は次回検討候補。
