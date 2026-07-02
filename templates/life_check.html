@@ -32,8 +32,8 @@
 
 .lc-group-label { font-size:0.8rem; font-weight:700; color:#0C447C; margin:16px 0 8px; padding-left:4px; border-left:4px solid #B5D4F4; }
 .lc-item { border:1px solid #eee; border-radius:11px; padding:11px 12px; margin-bottom:10px; }
-.lc-item-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
-.lc-item-name { font-size:0.88rem; font-weight:700; color:#202124; }
+.lc-item-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; background:#e6f1fb; border-left:4px solid #185FA5; border-radius:0 8px 8px 0; padding:9px 12px; }  /* lc-ui-visibility-v1 */
+.lc-item-name { font-size:0.92rem; font-weight:700; color:#0C447C; }  /* lc-ui-visibility-v1 */
 .lc-item-score { font-size:0.78rem; color:#0C447C; font-weight:700; }
 .lc-opts { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }  /* lc-ui-fix-v1 */
 .lc-opt {  /* lc-ui-fix-v1: full-width stacked, uniform */
@@ -42,7 +42,7 @@
   flex:0 0 100%; width:100%; min-width:0; box-sizing:border-box;
 }
 .lc-opt .opt-pt { font-weight:700; color:#0C447C; margin-right:5px; }
-.lc-opt.selected { border-color:#1a73e8; background:#e8f0fe; color:#174ea6; }
+.lc-opt.selected { border-color:#5f6368; border-width:2px; background:#f1f3f4; color:#202124; font-weight:700; }  /* lc-ui-visibility-v1 */
 .lc-opt-level { flex:1 1 0; width:auto; text-align:center; }  /* lc-ui-fix-v1: keep 4-level horizontal */
 .lc-opts.lc-opts-level { flex-direction:row; flex-wrap:wrap; }
 .lc-sub { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
@@ -55,7 +55,11 @@
 .lc-issue button.issue-off { border-color:#0F6E56; background:#e6f4ef; color:#0F6E56; font-weight:700; }
 .lc-issue-label { font-size:0.74rem; color:#80868b; }
 .lc-textfields { margin-top:8px; }
-.lc-textfields input { width:100%; padding:7px 10px; border:1.5px solid #ececec; border-radius:8px; font-size:0.8rem; box-sizing:border-box; margin-top:5px; }
+.lc-textfields { margin-top:10px; background:#f8f9fa; border-top:1px solid #eee; border-radius:0 0 8px 8px; padding:10px 10px; margin-left:-12px; margin-right:-12px; margin-bottom:-11px; }  /* lc-ui-visibility-v1 */
+.lc-field-label { font-size:0.72rem; color:#5f6368; font-weight:700; margin:0 0 3px 2px; }  /* lc-ui-visibility-v1 */
+.lc-field-wrap { margin-top:8px; }
+.lc-field-wrap:first-child { margin-top:0; }
+.lc-textfields textarea { width:100%; padding:8px 10px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:0.84rem; line-height:1.5; box-sizing:border-box; font-family:inherit; resize:vertical; min-height:40px; overflow:hidden; }  /* lc-ui-visibility-v1 */
 .lc-ai-btn {
   border:1px solid #B5D4F4; background:#f3f8ff; color:#0C447C; border-radius:8px;
   padding:5px 10px; font-size:0.74rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
@@ -429,6 +433,14 @@ function lcBuildInputs() {
   });
   document.getElementById('lc-level-area').innerHTML = levelHtml;
 }
+function lcAutoGrow(el) {  /* lc-textarea-v1 */
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
+function lcAutoGrowAll() {
+  document.querySelectorAll('.lc-textfields textarea').forEach(function(t){ lcAutoGrow(t); });
+}
 function lcItemBlock(key, label, optsHtml, isAdl) {
   return '<div class="lc-item" data-item="'+key+'">'+
     '<div class="lc-item-head"><span class="lc-item-name">'+lcEsc(label)+'</span>'+
@@ -442,9 +454,15 @@ function lcItemBlock(key, label, optsHtml, isAdl) {
       '</div>'+
       '<button type="button" class="lc-ai-btn" data-ai="'+key+'"><span class="material-symbols-outlined">smart_toy</span>AI相談</button>'+
     '</div>'+
-    '<div class="lc-textfields">'+
-      '<input type="text" data-env="'+key+'" placeholder="環境（実施場所・補助具など）">'+
-      '<input type="text" data-note="'+key+'" placeholder="状況・生活課題">'+
+    '<div class="lc-textfields">'+  /* lc-textarea-v1 */
+      '<div class="lc-field-wrap">'+
+        '<div class="lc-field-label">環境（実施場所・補助具など）</div>'+
+        '<textarea data-env="'+key+'" rows="1" placeholder="例：屋内・屋外／歩行器あり" oninput="lcAutoGrow(this)"></textarea>'+
+      '</div>'+
+      '<div class="lc-field-wrap">'+
+        '<div class="lc-field-label">状況・生活課題</div>'+
+        '<textarea data-note="'+key+'" rows="2" placeholder="観察した状況や生活課題" oninput="lcAutoGrow(this)"></textarea>'+
+      '</div>'+
     '</div>'+
     '<div class="lc-assist" id="assist-'+key+'"></div>'+  // lc-assist-ui-v1
   '</div>';
@@ -673,9 +691,9 @@ function lcPrefillSub(key, prev) {
     if (b) b.classList.add(iss ? 'issue-on' : 'issue-off');
   }
   var env = prev[key+'_env'];
-  if (env) { lcState[key]=lcState[key]||{}; lcState[key].env=env; var ee=document.querySelector('[data-env="'+key+'"]'); if(ee) ee.value=env; }
+  if (env) { lcState[key]=lcState[key]||{}; lcState[key].env=env; var ee=document.querySelector('[data-env="'+key+'"]'); if(ee) { ee.value=env; if(typeof lcAutoGrow==='function') lcAutoGrow(ee); } }  /* lc-autogrow-restore-v1 */
   var note = prev[key+'_note'];
-  if (note) { lcState[key]=lcState[key]||{}; lcState[key].note=note; var ne=document.querySelector('[data-note="'+key+'"]'); if(ne) ne.value=note; }
+  if (note) { lcState[key]=lcState[key]||{}; lcState[key].note=note; var ne=document.querySelector('[data-note="'+key+'"]'); if(ne) { ne.value=note; if(typeof lcAutoGrow==='function') lcAutoGrow(ne); } }  /* lc-autogrow-restore-v1 */
 }
 
 async function lcSave() {
