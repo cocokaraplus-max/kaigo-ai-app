@@ -1956,7 +1956,10 @@ const videoEl = document.getElementById('camera-video');
         const resetBtn = document.getElementById('cam-zoom-reset');
         if (resetBtn) resetBtn.style.display = 'none';
     } catch(e) {
-        alert('カメラへのアクセスが許可されていません');
+        // vitals-camera-error-diagnose-v1: 調査用に実際のエラー内容を表示する
+        console.error('openCamera error:', e);
+        alert('カメラの起動に失敗しました\n\nエラー種別: ' + (e && e.name ? e.name : '不明') +
+              '\nメッセージ: ' + (e && e.message ? e.message : String(e)));
         closeCamera();
     }
 };
