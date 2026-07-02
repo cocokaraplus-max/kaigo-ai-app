@@ -1443,7 +1443,7 @@ def input_view():
         photos = request.files.getlist("photos")
 
         _cat_for_check = request.form.get("category", "")
-        if not sel or sel == "" or (not content and _cat_for_check != "休み連絡"):
+        if not sel or sel == "" or (not content and _cat_for_check != "休み連絡" and _cat_for_check != "追加利用連絡"):  # extra-server-validate-v1
             error = "利用者と内容を入力してください。"
         else:
             try:
