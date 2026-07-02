@@ -1123,10 +1123,12 @@ async function inpSendToGemini() {
     reader.readAsDataURL(blob);
 }
 
-window.inpConfirm = function() {
+window.inpConfirm = function() {  /* leave-reason-voice-target-v1 */
     const text = (document.getElementById('inp-v-result')?.value || '').trim();
     if (text) {
-        const ta = document.getElementById('content-area');
+        var _catSel = document.getElementById('selected-category');
+        var _isLeave = _catSel && _catSel.value === '休み連絡';
+        const ta = document.getElementById(_isLeave ? 'leave-reason' : 'content-area');
         if (ta) ta.value = ta.value.trim() ? ta.value.trim() + '\n' + text : text;
     }
     inpRetake();
