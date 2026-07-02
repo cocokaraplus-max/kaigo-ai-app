@@ -341,8 +341,7 @@ window.fcLoad = function() {
         box.innerHTML = '<div style="color:#c5221f;padding:16px 0;">読み込みエラー: '+((d&&d.message)||'')+'</div>';
         return;
       }
-      box.innerHTML = fcRenderTable('体重測定', d.weights, false)
-                    + fcRenderTable('体力測定', d.fitness, true);
+      box.innerHTML = fcRenderCombined(d.weights, d.fitness);  /* fitness-combined-table-v1 */
     })
     .catch(function(e){
       box.innerHTML = '<div style="color:#c5221f;padding:16px 0;">通信エラー: '+e+'</div>';
@@ -357,23 +356,41 @@ function fcBadge(status) {
   return '';
 }
 
-function fcRenderTable(title, rows, isFitness) {
-  rows = rows || [];
-  var done = rows.filter(function(r){return r.status==='done';}).length;
-  var target = rows.filter(function(r){return r.status==='done'||r.status==='missing';}).length;
-  var icon = isFitness ? 'fitness_center' : 'monitor_weight';
-  var html = '<div class="fc-sec-title"><span class="material-symbols-outlined" style="font-size:20px;">'+icon+'</span>'+title+'</div>';
-  html += '<div class="fc-summary">測定済 '+done+' / 対象 '+target+' 名</div>';
-  if (!rows.length) {
+function fcRenderCombined(weights, fitness) {  /* fitness-combined-table-v1 */
+  weights = weights || []; fitness = fitness || [];
+  // patient_id でマージ
+  var map = {};
+  var order = [];
+  weights.forEach(function(r){
+    var pid = String(r.patient_id);
+    if (!map[pid]) { map[pid] = {name:r.user_name, chart:r.chart_number, w:null, f:null}; order.push(pid); }
+    map[pid].w = r.status;
+  });
+  fitness.forEach(function(r){
+    var pid = String(r.patient_id);
+    if (!map[pid]) { map[pid] = {name:r.user_name, chart:r.chart_number, w:null, f:null}; order.push(pid); }
+    map[pid].f = r.status;
+  });
+  var wDone = weights.filter(function(r){return r.status==='done';}).length;
+  var wTgt = weights.filter(function(r){return r.status==='done'||r.status==='missing';}).length;
+  var fDone = fitness.filter(function(r){return r.status==='done';}).length;
+  var fTgt = fitness.filter(function(r){return r.status==='done'||r.status==='missing';}).length;
+  var html = '<div class="fc-summary" style="font-size:0.85rem;margin-bottom:10px;">'
+    + '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">monitor_weight</span> 体重 済'+wDone+'/対象'+wTgt+' 　'
+    + '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">fitness_center</span> 体力測定 済'+fDone+'/対象'+fTgt+'</div>';
+  if (!order.length) {
     html += '<div style="color:#9aa0a6;font-size:0.85rem;padding:8px 0;">この月に利用実績のある利用者がいません</div>';
     return html;
   }
-  html += '<table class="fc-table"><thead><tr><th>利用者</th><th style="width:110px;">状態</th></tr></thead><tbody>';
-  rows.forEach(function(r){
-    var cls = (r.status === 'not_target') ? ' class="fc-row-nottarget"' : '';
-    var nm = r.user_name || '';
-    var chart = r.chart_number ? ('(No.'+r.chart_number+') ') : '';
-    html += '<tr'+cls+'><td>'+chart+nm+'</td><td>'+fcBadge(r.status)+'</td></tr>';
+  html += '<table class="fc-table"><thead><tr><th>利用者</th><th style="width:96px;">体重</th><th style="width:96px;">体力測定</th></tr></thead><tbody>';
+  order.forEach(function(pid){
+    var e = map[pid];
+    var nm = e.name || '';
+    var chart = e.chart ? ('(No.'+e.chart+') ') : '';
+    var wCell = (e.w!==null) ? fcBadge(e.w) : '';
+    var fCell = (e.f!==null) ? fcBadge(e.f) : '';
+    var fTdCls = (e.f === 'not_target') ? ' class="fc-row-nottarget"' : '';
+    html += '<tr><td>'+chart+nm+'</td><td>'+wCell+'</td><td'+fTdCls+'>'+fCell+'</td></tr>';
   });
   html += '</tbody></table>';
   return html;
