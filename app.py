@@ -866,6 +866,22 @@ def _build_leave_content_multi(dates, reporter_type, other_detail, leave_reason)
     period = _format_leave_period(dates)
     return _build_leave_content(period, reporter_type, other_detail, leave_reason)
 
+
+# extra-use-content-helper-v1
+# ==========================================
+# 追加利用連絡content生成ヘルパー
+# ==========================================
+def _build_extra_content(period, extra_reason):
+    """追加利用連絡のcontent文字列を生成する共通関数。"""
+    base = f"{period}は追加利用です。"
+    if extra_reason:
+        base += f"理由：{extra_reason}"
+    return base
+def _build_extra_content_multi(dates, extra_reason):
+    """複数日(飛び日含む)の追加利用連絡content文字列を生成する。"""
+    period = _format_leave_period(dates)
+    return _build_extra_content(period, extra_reason)
+
 # ==========================================
 # 管理者権限ヘルパー
 # ==========================================
@@ -1494,6 +1510,36 @@ def input_view():
                             content = _build_leave_content(_period, leave_reporter_type, _other_detail, leave_reason_val)
                         except Exception as _ce:
                             print(f"[休み連絡content生成エラー] {_ce}", flush=True)
+                    # extra-use-save-content-v1: 追加利用連絡の値取得とcontent生成
+                    extra_date_start_val = (request.form.get("extra_date_start", "") or "").strip()
+                    extra_date_end_val = (request.form.get("extra_date_end", "") or "").strip()
+                    extra_reason_val = (request.form.get("extra_reason", "") or "").strip() if category == "追加利用連絡" else ""
+                    extra_dates_raw = (request.form.get("extra_dates", "") or "").strip()
+                    extra_dates_list = []
+                    if extra_dates_raw:
+                        extra_dates_list = [d.strip() for d in extra_dates_raw.split(",") if d.strip()]
+                    if category == "追加利用連絡" and extra_dates_list:
+                        try:
+                            from datetime import datetime as _dtx0
+                            _sortedx = sorted(extra_dates_list, key=lambda x: _dtx0.strptime(x, "%Y-%m-%d"))
+                            extra_date_start_val = _sortedx[0]
+                            extra_date_end_val = _sortedx[-1]
+                            content = _build_extra_content_multi(extra_dates_list, extra_reason_val)
+                        except Exception as _cex:
+                            print(f"[追加利用連絡content生成エラー(複数日)] {_cex}", flush=True)
+                    elif category == "追加利用連絡" and extra_date_start_val:
+                        try:
+                            from datetime import datetime as _dtx
+                            _lsx = _dtx.strptime(extra_date_start_val, "%Y-%m-%d")
+                            _lsx_str = f"{_lsx.month}月{_lsx.day}日"
+                            if extra_date_end_val and extra_date_end_val != extra_date_start_val:
+                                _lex = _dtx.strptime(extra_date_end_val, "%Y-%m-%d")
+                                _periodx = f"{_lsx_str}〜{_lex.month}月{_lex.day}日"
+                            else:
+                                _periodx = _lsx_str
+                            content = _build_extra_content(_periodx, extra_reason_val)
+                        except Exception as _cex2:
+                            print(f"[追加利用連絡content生成エラー] {_cex2}", flush=True)
                     insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
                         "chart_number": m.group(1),
@@ -1509,6 +1555,10 @@ def input_view():
                         "leave_date_start": leave_date_start_val if category == "休み連絡" else None,
                         "leave_date_end": (leave_date_end_val or leave_date_start_val) if category == "休み連絡" else None,
                         "leave_reason": leave_reason_val if category == "休み連絡" else None,
+                        # extra-use-insert-cols-v1
+                        "extra_date_start": extra_date_start_val if category == "追加利用連絡" else None,
+                        "extra_date_end": (extra_date_end_val or extra_date_start_val) if category == "追加利用連絡" else None,
+                        "extra_reason": extra_reason_val if category == "追加利用連絡" else None,
                     }).execute()
 
                     # Session 29 (B-4): AIタグ自動生成。失敗してもメイン処理は止めない
@@ -1577,6 +1627,56 @@ def input_view():
                                         print(f"[calendar sync] linked record {new_id} to {len(_cal_dates)} event(s), first={first_event_id}", flush=True)
                         except Exception as _cal_err:
                             print(f"[calendar sync] failed: {_cal_err}", flush=True)
+
+                    # extra-use-cal-register-v1: 追加利用連絡カテゴリはカレンダーに自動登録(青色)
+                    if category == "追加利用連絡" and new_id:
+                        try:
+                            user_name_for_cal_x = m.group(2)
+                            if extra_dates_list:
+                                _xcal_dates = sorted(set(extra_dates_list))
+                            else:
+                                _xs0 = (request.form.get("extra_date_start", "") or "").strip()
+                                _xe0 = (request.form.get("extra_date_end", "") or "").strip()
+                                _xcal_dates = [_xs0] if _xs0 else []
+                                _xsingle_end = _xe0 or _xs0
+                            if _xcal_dates:
+                                xcal_id = _get_or_create_system_calendar(supabase, f_code, my_name)
+                                if xcal_id:
+                                    xfirst_event_id = None
+                                    for _xidx, _xcd in enumerate(_xcal_dates):
+                                        if extra_dates_list:
+                                            _xev_end = _xcd
+                                        else:
+                                            _xev_end = _xsingle_end or _xcd
+                                        xcal_payload = {
+                                            "facility_code": f_code,
+                                            "calendar_id": xcal_id,
+                                            "title": f"{user_name_for_cal_x}様 追加利用",
+                                            "event_date": _xcd,
+                                            "end_date": _xev_end,
+                                            "all_day": True,
+                                            "color": "#1e88e5",
+                                            "memo": content,
+                                            "created_by": my_name,
+                                            "record_id": new_id,
+                                        }
+                                        xcal_res = supabase.table("calendar_events").insert(xcal_payload).execute()
+                                        _xeid = None
+                                        if xcal_res.data:
+                                            _xeid = xcal_res.data[0]["id"]
+                                        else:
+                                            xfetch_res = supabase.table("calendar_events").select("id").eq("facility_code", f_code).eq("calendar_id", xcal_id).eq("event_date", _xcd).eq("created_by", my_name).order("id", desc=True).limit(1).execute()
+                                            if xfetch_res.data:
+                                                _xeid = xfetch_res.data[0]["id"]
+                                        if _xeid and xfirst_event_id is None:
+                                            xfirst_event_id = _xeid
+                                    if xfirst_event_id:
+                                        supabase.table("records").update(
+                                            {"calendar_event_id": xfirst_event_id}
+                                        ).eq("id", new_id).execute()
+                                        print(f"[extra calendar sync] linked record {new_id} to {len(_xcal_dates)} event(s), first={xfirst_event_id}", flush=True)
+                        except Exception as _xcal_err:
+                            print(f"[extra calendar sync] failed: {_xcal_err}", flush=True)
 
                     # Session 36: VAS データを record_vas テーブルに一括 INSERT。失敗してもメイン処理は止めない
                     try:
@@ -4331,6 +4431,22 @@ def api_save_calendar_event():
                             for r in (all_ev.data or []):
                                 supabase.table("calendar_events").update({"memo": _new_content}).eq("id", r["id"]).execute()
                             print(f"[カレンダー同期(複数日)] record {_linked_record_id} を {len(_dates_all)} 日で再生成", flush=True)
+                    elif rec_q.data and rec_q.data[0].get("category") == "追加利用連絡":
+                        # extra-use-cal-edit-sync-v1: 追加利用連絡のカレンダー→ケース記録同期(複数日)
+                        _xrec_q = supabase.table("records").select("extra_reason").eq("id", _linked_record_id).execute()
+                        _x_reason = (_xrec_q.data[0].get("extra_reason") if _xrec_q.data else "") or ""
+                        all_ev_x = supabase.table("calendar_events").select("id,event_date").eq("facility_code", f_code).eq("record_id", _linked_record_id).execute()
+                        _dates_all_x = sorted([r["event_date"] for r in (all_ev_x.data or []) if r.get("event_date")])
+                        if _dates_all_x:
+                            _new_content_x = _build_extra_content_multi(_dates_all_x, _x_reason)
+                            supabase.table("records").update({
+                                "content": _new_content_x,
+                                "extra_date_start": _dates_all_x[0],
+                                "extra_date_end": _dates_all_x[-1],
+                            }).eq("id", _linked_record_id).execute()
+                            for r in (all_ev_x.data or []):
+                                supabase.table("calendar_events").update({"memo": _new_content_x}).eq("id", r["id"]).execute()
+                            print(f"[カレンダー同期(追加利用複数日)] record {_linked_record_id} を {len(_dates_all_x)} 日で再生成", flush=True)
                 except Exception as _ml_err:
                     print(f"[calendar sync multi update] failed: {_ml_err}", flush=True)
                 return jsonify({"status": "success", "id": event_id, "memo": payload.get("memo", "")})
@@ -4463,6 +4579,21 @@ def api_delete_calendar_event():
                             # 残りイベントのmemoも更新
                             for r in remain_rows:
                                 supabase.table("calendar_events").update({"memo": new_content}).eq("id", r["id"]).execute()
+                    elif rec0.get("category") == "追加利用連絡":
+                        # extra-use-cal-delete-sync-v1: 追加利用連絡のイベント削除→残日でケース記録を作り直す
+                        _xrec_d = supabase.table("records").select("extra_reason").eq("id", target_record_id).execute()
+                        _x_reason_d = (_xrec_d.data[0].get("extra_reason") if _xrec_d.data else "") or ""
+                        _dates_x = sorted([r["event_date"] for r in remain_rows if r.get("event_date")])
+                        if _dates_x:
+                            new_content_x = _build_extra_content_multi(_dates_x, _x_reason_d)
+                            supabase.table("records").update({
+                                "content": new_content_x,
+                                "extra_date_start": _dates_x[0],
+                                "extra_date_end": _dates_x[-1],
+                                "calendar_event_id": remain_rows[0]["id"],
+                            }).eq("id", target_record_id).execute()
+                            for r in remain_rows:
+                                supabase.table("calendar_events").update({"memo": new_content_x}).eq("id", r["id"]).execute()
             else:
                 # 残りなし → ケース記録も削除
                 supabase.table("records").delete().eq("id", target_record_id).execute()
@@ -13882,7 +14013,7 @@ def api_admin_ai_categorize_apply():
         return jsonify({"ok": False, "error": "一度に適用できるのは100件までです"}), 400
 
     # Session 33: 「休み連絡」を含む
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡"}
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡", "追加利用連絡"}  # extra-valid-categories-v1
 
     normalized = []
     for it in items:
@@ -14181,7 +14312,7 @@ def api_records_apply_ai_category(record_id):
     ai_reason = str(payload.get("ai_reason") or "")[:200]
 
     # Session 33: 「休み連絡」を含む
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡"}
+    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡", "追加利用連絡"}  # extra-valid-categories-v1
     if new_cat not in VALID_CATEGORIES:
         return jsonify({"ok": False, "error": "不正なカテゴリです"}), 400
 

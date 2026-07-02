@@ -645,6 +645,52 @@
         </div>
     </div>
 
+    <!-- extra-use-form-block-v1: 追加利用連絡カテゴリ専用フォーム(category=追加利用連絡 のときだけ display:block) -->
+    <div class="form-group" id="extra-form-block" style="display:none;">
+        <div style="display:flex;align-items:center;gap:6px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.85rem;font-weight:700;">
+            <span class="material-symbols-outlined" style="font-size:18px;">event_available</span>
+            追加利用の連絡がケース記録とカレンダーに残ります
+        </div>
+        <!-- 追加利用期間 -->
+        <div style="margin-top:4px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">event</span>
+                追加利用日(期間)
+            </label>
+            <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
+                <input type="date" class="form-control" id="extra-date-start" name="extra_date_start" onchange="(function(){var e=document.getElementById('extra-date-end');if(e){e.value=this.value;}}).call(this)">
+                <span style="color:#80868b;font-size:0.8rem;">〜</span>
+                <input type="date" class="form-control" id="extra-date-end" name="extra_date_end">
+            </div>
+            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">連続した追加利用はこちら。飛び飛びの日は下で追加してください。</div>
+        </div>
+        <!-- 飛び日(複数日)追加 -->
+        <div style="margin-top:16px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">date_range</span>
+                飛び飛びの追加利用日を追加(任意)
+            </label>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <input type="date" class="form-control" id="extra-multi-input" style="width:100%;">
+                <button type="button" class="btn" onclick="addExtraMultiDate()" style="width:100%;background:#1e88e5;color:#fff;border:none;border-radius:8px;padding:12px 16px;cursor:pointer;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">add</span>この日を追加
+                </button>
+            </div>
+            <div id="extra-multi-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+            <input type="hidden" id="extra-dates" name="extra_dates" value="">
+            <div style="font-size:0.75rem;color:#9aa0a6;margin-top:4px;">追加した日それぞれにカレンダー「追加利用」が作成され、ケース記録１件にまとめて記載されます。</div>
+        </div>
+        <!-- 追加利用の理由 -->
+        <div style="margin-top:16px;">
+            <label class="form-label">
+                <span class="material-symbols-outlined">comment</span>
+                追加利用の理由(任意)
+            </label>
+            <textarea class="form-control" id="extra-reason" name="extra_reason" rows="3"
+                   placeholder="例：家族の都合で、リハビリ強化のため" style="resize:vertical;min-height:80px;"></textarea>
+        </div>
+    </div>
+
     <div class="form-group" id="content-section">
         <label class="form-label">
             <span class="material-symbols-outlined">description</span>
@@ -696,7 +742,7 @@ window.saveRecord = async function() {
     }
     // 休み連絡の場合はcontentはサーバー側で自動生成するのでバリデーションをスキップ
     const _catForValidate = document.getElementById('selected-category')?.value || '';
-    if (!content && _catForValidate !== '休み連絡') {
+    if (!content && _catForValidate !== '休み連絡' && _catForValidate !== '追加利用連絡') {  /* extra-validate-voice-v1 */
         alert('内容を入力してください');
         return;
     }
@@ -747,6 +793,7 @@ window.saveRecord = async function() {
                     // Session 36: AI 提案でカテゴリが書き換わった後、カテゴリ依存フォームの表示も切替
                     if (typeof updateLeaveFormVisibility === 'function') {
                         try { updateLeaveFormVisibility(); } catch(e) {}
+                        try { if (typeof updateExtraFormVisibility === 'function') updateExtraFormVisibility(); } catch(e) {}  /* extra-call-visibility-v1 */
                     }
                     if (typeof updateVasWidgetVisibility === 'function') {
                         try { updateVasWidgetVisibility(); } catch(e) {}
@@ -782,6 +829,11 @@ window.saveRecord = async function() {
         formData.append('leave_reporter_type', document.getElementById('leave-reporter-type')?.value || '');
         formData.append('leave_reporter_relation', document.getElementById('leave-reporter-relation')?.value || '');
         formData.append('leave_reason', document.getElementById('leave-reason')?.value || '');
+        /* extra-send-reset-v1 */
+        formData.append('extra_date_start', document.getElementById('extra-date-start')?.value || '');
+        formData.append('extra_date_end', document.getElementById('extra-date-end')?.value || '');
+        formData.append('extra_dates', document.getElementById('extra-dates')?.value || '');
+        formData.append('extra_reason', document.getElementById('extra-reason')?.value || '');
         // Session 36: VAS 入力データ
         formData.append('vas_records', document.getElementById('vas-records-json')?.value || '[]');
 
@@ -845,6 +897,11 @@ window.saveRecord = async function() {
             if (typeof resetLeaveMultiDates === 'function') resetLeaveMultiDates();
             document.getElementById('leave-other-detail') && (document.getElementById('leave-other-detail').value = '');
             document.getElementById('leave-reason') && (document.getElementById('leave-reason').value = '');
+            /* extra-send-reset-v1 */
+            document.getElementById('extra-date-start') && (document.getElementById('extra-date-start').value = '');
+            document.getElementById('extra-date-end') && (document.getElementById('extra-date-end').value = '');
+            if (typeof resetExtraMultiDates === 'function') resetExtraMultiDates();
+            document.getElementById('extra-reason') && (document.getElementById('extra-reason').value = '');
             document.getElementById('leave-other-block') && (document.getElementById('leave-other-block').style.display = 'none');
             var lvBlock = document.getElementById('leave-form-block');
             var lvType = document.getElementById('leave-reporter-type');
@@ -1127,8 +1184,11 @@ window.inpConfirm = function() {  /* leave-reason-voice-target-v1 */
     const text = (document.getElementById('inp-v-result')?.value || '').trim();
     if (text) {
         var _catSel = document.getElementById('selected-category');
-        var _isLeave = _catSel && _catSel.value === '休み連絡';
-        const ta = document.getElementById(_isLeave ? 'leave-reason' : 'content-area');
+        var _catVal = _catSel ? _catSel.value : '';
+        var _voiceTargetId = 'content-area';  /* extra-validate-voice-v1 */
+        if (_catVal === '休み連絡') _voiceTargetId = 'leave-reason';
+        else if (_catVal === '追加利用連絡') _voiceTargetId = 'extra-reason';
+        const ta = document.getElementById(_voiceTargetId);
         if (ta) ta.value = ta.value.trim() ? ta.value.trim() + '\n' + text : text;
     }
     inpRetake();
@@ -1294,6 +1354,7 @@ window.selectCategoryOption = function(optEl) {
     closeCategoryPicker();
     // Session 33: 休み連絡フォームの表示切替
     updateLeaveFormVisibility();
+    if (typeof updateExtraFormVisibility === 'function') updateExtraFormVisibility();  /* extra-call-visibility-v1 */
     // Session 36: VAS ウィジェットの表示切替(心身状況/訓練状況 のとき表示)
     updateVasWidgetVisibility();
 };
@@ -1307,7 +1368,9 @@ window.updateLeaveFormVisibility = function() {
     block.style.display = isLeave ? 'block' : 'none';
     // 休み連絡のときは「内容」欄を隠す（他カテゴリでは表示に戻す）
     var contentSection = document.getElementById('content-section');
-    if (contentSection) contentSection.style.display = isLeave ? 'none' : '';
+    /* extra-content-toggle-v1 */
+    var _hideContent = (sel.value === '休み連絡' || sel.value === '追加利用連絡');
+    if (contentSection) contentSection.style.display = _hideContent ? 'none' : '';
     if (!isLeave) {
         // 休み連絡以外に切り替わったら入力値・選択状態をクリア
         var lvType = document.getElementById('leave-reporter-type');
@@ -1354,6 +1417,58 @@ window.resetLeaveMultiDates = function() {
     var hidden = document.getElementById('leave-dates');
     if (hidden) hidden.value = '';
     renderLeaveMultiTags();
+};
+
+// ===== extra-use-form-js-v1: 追加利用連絡 飛び日(複数日)管理 =====
+window._extraMultiDates = window._extraMultiDates || [];
+window.addExtraMultiDate = function() {
+    var inp = document.getElementById('extra-multi-input');
+    if (!inp) return;
+    var v = inp.value;
+    if (!v) return;
+    if (window._extraMultiDates.indexOf(v) === -1) {
+        window._extraMultiDates.push(v);
+        window._extraMultiDates.sort();
+        renderExtraMultiTags();
+    }
+    inp.value = '';
+};
+window.removeExtraMultiDate = function(v) {
+    window._extraMultiDates = window._extraMultiDates.filter(function(d){ return d !== v; });
+    renderExtraMultiTags();
+};
+function renderExtraMultiTags() {
+    var box = document.getElementById('extra-multi-tags');
+    var hidden = document.getElementById('extra-dates');
+    if (hidden) hidden.value = window._extraMultiDates.join(',');
+    if (!box) return;
+    box.innerHTML = window._extraMultiDates.map(function(d){
+        return '<span style="display:inline-flex;align-items:center;gap:4px;background:#e3f2fd;color:#1565c0;border-radius:14px;padding:4px 12px;font-size:0.85rem;">'
+            + d + '<span style="cursor:pointer;font-weight:700;font-size:1rem;" onclick="removeExtraMultiDate(\''+d+'\')">×</span></span>';
+    }).join('');
+}
+window.resetExtraMultiDates = function() {
+    window._extraMultiDates = [];
+    var hidden = document.getElementById('extra-dates');
+    if (hidden) hidden.value = '';
+    renderExtraMultiTags();
+};
+// 追加利用連絡フォームの表示切替・初期化
+window.updateExtraFormVisibility = function() {
+    var sel = document.getElementById('selected-category');
+    var block = document.getElementById('extra-form-block');
+    if (!sel || !block) return;
+    var isExtra = (sel.value === '追加利用連絡');
+    block.style.display = isExtra ? 'block' : 'none';
+    if (!isExtra) {
+        var ds = document.getElementById('extra-date-start');
+        var de = document.getElementById('extra-date-end');
+        var rs = document.getElementById('extra-reason');
+        if (ds) ds.value = '';
+        if (de) de.value = '';
+        if (rs) rs.value = '';
+        if (typeof resetExtraMultiDates === 'function') resetExtraMultiDates();
+    }
 };
 
 // Session 36: VAS ウィジェットの表示切替・初期化
