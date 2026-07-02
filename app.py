@@ -14642,12 +14642,12 @@ def api_fitness_history():
 # fitness-check-api-v1
 @app.route("/api/fitness_check")
 @login_required
-def api_fitness_check():
+def api_fitness_check():  # fitness-check-username-v1
     """指定月の体重・体力測定の充足チェック一覧を返す。
     対象: その月にvitals(来所実績)がある利用者。
-    実績なく休み連絡がある人は status=absent(休)。"""
+    実績なく休み連絡がある人は status=absent(休)。
+    突き合わせは user_name ベース(patient_id は整数/UUID混在のため使わない)。"""
     import calendar as _cal
-    from datetime import date as _date
     try:
         f_code = session["f_code"]
         supabase = get_supabase()
@@ -14659,55 +14659,48 @@ def api_fitness_check():
         ndays = _cal.monthrange(year, month)[1]
         first = "%04d-%02d-01" % (year, month)
         last = "%04d-%02d-%02d" % (year, month, ndays)
-        ym = "%04d-%02d" % (year, month)
 
-        # ① 患者マスタ(id, user_name, chart_number, かな順)
-        pts = supabase.table("patients").select("id, user_name, chart_number, user_kana").eq("facility_code", f_code).order("user_kana").execute()
+        # ① 患者マスタ(user_name, chart_number, かな順)
+        pts = supabase.table("patients").select("user_name, chart_number, user_kana").eq("facility_code", f_code).order("user_kana").execute()
         patients = pts.data or []
-        id_to_name = {}
-        for p in patients:
-            id_to_name[str(p.get("id"))] = p.get("user_name")
 
-        # ② 当月 vitals → 実績のある patient_id
-        vit = supabase.table("vitals").select("patient_id").eq("facility_code", f_code).gte("measured_date", first).lte("measured_date", last).execute()
-        visited_ids = set(str(r.get("patient_id")) for r in (vit.data or []) if r.get("patient_id") is not None)
+        # ② 当月 vitals → 実績のある user_name
+        vit = supabase.table("vitals").select("user_name").eq("facility_code", f_code).gte("measured_date", first).lte("measured_date", last).execute()
+        visited_names = set((r.get("user_name") or "").strip() for r in (vit.data or []) if r.get("user_name"))
 
         # ③ 当月の休み連絡(user_name) → 休み集合
         lv = supabase.table("records").select("user_name, leave_date_start, leave_date_end, created_at").eq("facility_code", f_code).eq("category", "休み連絡").execute()
         absent_names = set()
         for r in (lv.data or []):
-            nm = r.get("user_name")
+            nm = (r.get("user_name") or "").strip()
             if not nm:
                 continue
             ds = (r.get("leave_date_start") or "")[:10]
             de = (r.get("leave_date_end") or ds)[:10]
             ca = (r.get("created_at") or "")[:10]
-            # 休み期間か作成日のいずれかが当月にかかれば当月の休みとみなす
             if (ds and first <= ds <= last) or (de and first <= de <= last) or (ca and first <= ca <= last):
                 absent_names.add(nm)
 
-        # ④ 当月 body_weights → 測定済 patient_id
-        bw = supabase.table("body_weights").select("patient_id").eq("facility_code", f_code).gte("measured_date", first).lte("measured_date", last).execute()
-        weight_done_ids = set(str(r.get("patient_id")) for r in (bw.data or []) if r.get("patient_id") is not None)
+        # ④ 当月 body_weights → 測定済 user_name
+        bw = supabase.table("body_weights").select("user_name").eq("facility_code", f_code).gte("measured_date", first).lte("measured_date", last).execute()
+        weight_done_names = set((r.get("user_name") or "").strip() for r in (bw.data or []) if r.get("user_name"))
 
-        # ⑤ fitness_tests 全件(patient_id, measured_date) → 各人の測定日リスト
-        ftall = supabase.table("fitness_tests").select("patient_id, measured_date").eq("facility_code", f_code).execute()
-        fit_dates = {}  # pid -> sorted list of dates
+        # ⑤ fitness_tests 全件(user_name, measured_date) → 各人の測定日リスト
+        ftall = supabase.table("fitness_tests").select("user_name, measured_date").eq("facility_code", f_code).execute()
+        fit_dates = {}
         for r in (ftall.data or []):
-            pid = str(r.get("patient_id")); md = (r.get("measured_date") or "")[:10]
-            if pid and md:
-                fit_dates.setdefault(pid, []).append(md)
-        for pid in fit_dates:
-            fit_dates[pid].sort()
-        # 当月に体力測定した patient_id
-        fit_done_ids = set()
-        for pid, ds in fit_dates.items():
+            nm = (r.get("user_name") or "").strip(); md = (r.get("measured_date") or "")[:10]
+            if nm and md:
+                fit_dates.setdefault(nm, []).append(md)
+        for nm in fit_dates:
+            fit_dates[nm].sort()
+        fit_done_names = set()
+        for nm, ds in fit_dates.items():
             if any(first <= d <= last for d in ds):
-                fit_done_ids.add(pid)
+                fit_done_names.add(nm)
 
-        # ⑥ fitness 設定(admin_settings: fitness_check_settings)
-        cycle_mode = "A"
-        base_months = [1, 4, 7, 10]
+        # ⑥ fitness 設定(admin_settings)
+        cycle_mode = "A"; base_months = [1, 4, 7, 10]
         try:
             st = supabase.table("admin_settings").select("value").eq("facility_code", f_code).eq("key", "fitness_check_settings").execute()
             if st.data:
@@ -14722,52 +14715,46 @@ def api_fitness_check():
         except Exception as _se:
             print("[fitness_check] settings load error: %s" % _se, flush=True)
 
-        # 体力測定の「当月が測定対象か」判定
-        def _is_fit_target(pid):
+        def _is_fit_target(nm):
             if cycle_mode == "B":
-                # 施設一律: 当月が基準月なら全員対象
                 return month in base_months
-            # モードA: 利用者ごとに直近測定+3ヶ月が到来しているか
-            ds = fit_dates.get(pid) or []
+            ds = fit_dates.get(nm) or []
             prev = [d for d in ds if d < first]
             if not prev:
-                return True  # 過去測定なし → 初回なので対象
+                return True
             last_d = prev[-1]
             ly, lm = int(last_d[:4]), int(last_d[5:7])
-            # 前回測定の3ヶ月後以降なら対象
             target_ym = ly * 12 + (lm - 1) + 3
             cur_ym = year * 12 + (month - 1)
             return cur_ym >= target_ym
 
-        # ⑦ 各利用者の状態を判定
         weight_rows = []
         fitness_rows = []
         for p in patients:
-            pid = str(p.get("id"))
-            nm = p.get("user_name")
+            nm = (p.get("user_name") or "").strip()
             chart = p.get("chart_number")
-            visited = pid in visited_ids
+            if not nm:
+                continue
+            visited = nm in visited_names
             absent = (not visited) and (nm in absent_names)
             if not visited and not absent:
-                continue  # 実績も休みもない人は表に出さない
-            base = {"patient_id": pid, "user_name": nm, "chart_number": chart}
-            # 体重
+                continue
+            base = {"patient_id": nm, "user_name": nm, "chart_number": chart}
             if absent:
                 w_status = "absent"
-            elif pid in weight_done_ids:
+            elif nm in weight_done_names:
                 w_status = "done"
             else:
                 w_status = "missing"
             wr = dict(base); wr["status"] = w_status; weight_rows.append(wr)
-            # 体力測定
             if absent:
                 f_status = "absent"
-            elif pid in fit_done_ids:
+            elif nm in fit_done_names:
                 f_status = "done"
-            elif _is_fit_target(pid):
+            elif _is_fit_target(nm):
                 f_status = "missing"
             else:
-                f_status = "not_target"  # 対象月外(グレーアウト)
+                f_status = "not_target"
             fr = dict(base); fr["status"] = f_status; fitness_rows.append(fr)
 
         return jsonify({
