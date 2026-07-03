@@ -769,6 +769,15 @@ def line_webhook_tasukaru():
                         setup_url,
                     ])}])
                 continue
+            # staff-kaizen-reply-v1 : 「アプリ改善依頼」→ 受付案内を返信
+            if "アプリ改善依頼" in text or "改善依頼" in text or "要望" in text:
+                line_send_message(uid, [{"type": "text", "text":
+                    "\n".join([
+                        "ご要望・お困りごとをお聞かせください。",
+                        "このトークにそのままメッセージを送っていただければ、担当者が確認します。",
+                        "（画面の使いにくい点・追加してほしい機能など、なんでもお気軽にどうぞ）",
+                    ])}])
+                continue
             # 3) それ以外 → 使い方ガイド
             line_send_message(uid, [{"type": "text", "text":
                 "パスワードを再発行するには「パスワード」と送ってください。\n"
