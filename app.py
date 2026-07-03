@@ -16441,6 +16441,76 @@ def stripe_create_checkout():
         print("[Stripe] checkout error: " + str(e), flush=True)
         return jsonify({"error": str(e)}), 500
 
+
+# onboard-checkout-v1 : 施設オンボーディング用 Checkout 作成(ログイン不要)
+# LIFFフォームから施設名・管理者名・LINE userId・plan・term を受け取り、
+# onboard_id を発番して metadata に載せる。決済完了で stripe_webhook の
+# onboard-webhook-v1 分岐が施設を自動発行する。
+@app.route('/api/onboard/create_checkout', methods=['POST'])
+def onboard_create_checkout():
+    import secrets as _oc_secrets
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    data = request.get_json(silent=True) or {}
+    facility_name = (data.get("facility_name") or "").strip()
+    admin_name = (data.get("admin_name") or "").strip()
+    line_user_id = (data.get("line_user_id") or "").strip()
+    plan = (data.get("plan") or "starter").lower()
+    term = (data.get("term") or "monthly").lower()
+    base_url = request.host_url.rstrip("/")
+
+    if not facility_name or not admin_name:
+        return jsonify({"error": "facility_name and admin_name required"}), 400
+    if plan not in ("starter", "standard", "pro"):
+        return jsonify({"error": "invalid plan: " + plan}), 400
+
+    # 既存 create_checkout と同一の term マッピング
+    TERM_MAP = {
+        "monthly": ("M",    "subscription"),
+        "1y_m":    ("1Y_M", "subscription"),
+        "1y_l":    ("1Y_L", "payment"),
+        "2y_m":    ("2Y_M", "subscription"),
+        "2y_l":    ("2Y_L", "payment"),
+        "3y_m":    ("3Y_M", "subscription"),
+        "3y_l":    ("3Y_L", "payment"),
+    }
+    if term not in TERM_MAP:
+        return jsonify({"error": "invalid term: " + term}), 400
+    suffix, checkout_mode = TERM_MAP[term]
+    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    price_id = get_secret(env_key)
+    if not price_id:
+        return jsonify({"error": "price not configured: " + env_key}), 400
+
+    onboard_id = _oc_secrets.token_urlsafe(24)
+    try:
+        params = dict(
+            mode=checkout_mode,
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=base_url + "/onboard?checkout=success",
+            cancel_url=base_url + "/onboard?checkout=cancel",
+            metadata={
+                "onboard_id": onboard_id,
+                "facility_name": facility_name,
+                "admin_name": admin_name,
+                "line_user_id": line_user_id,
+                "plan": plan,
+                "term": term,
+            },
+            locale="ja",
+        )
+        # subscription のときは1ヶ月無料トライアルを付与(初月無課金)
+        if checkout_mode == "subscription":
+            params["subscription_data"] = {
+                "trial_period_days": 30,
+                "metadata": {"onboard_id": onboard_id},
+            }
+        checkout = stripe.checkout.Session.create(**params)
+        return jsonify({"url": checkout.url})
+    except Exception as e:
+        print("[Onboard] checkout error: " + str(e), flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # --- Stripe Webhook ---
 @app.route('/api/stripe/webhook', methods=['POST'])
 def stripe_webhook():
