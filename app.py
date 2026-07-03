@@ -810,6 +810,77 @@ def api_issue_link_code():
         return jsonify({"error": str(e)}), 500
 
 
+# staff-start-link-v1 : 職員利用開始 3点照合API + LIFF器
+@app.route('/api/staff/start_link', methods=['POST'])
+def api_staff_start_link():
+    """職員利用開始: 施設コード + 職員名 + 6桁コード + userId の3点(+userId)照合。
+    一致で line_user_id 紐付け -> setup_token 発行 -> /setup リンク返却。"""
+    import hashlib as _ss_hashlib  # noqa: F401 (未使用でも将来用)
+    import secrets as _ss_secrets
+    from datetime import datetime as _ss_dt, timezone as _ss_tz, timedelta as _ss_td
+    data = request.get_json(silent=True) or {}
+    facility_code = (data.get("facility_code") or "").strip()
+    staff_name = (data.get("staff_name") or "").strip()
+    link_code = (data.get("link_code") or "").strip()
+    line_user_id = (data.get("line_user_id") or "").strip()
+    if not facility_code or not staff_name or not link_code:
+        return jsonify({"error": "missing_fields"}), 400
+    if not re.fullmatch(r"[0-9]{6}", link_code):
+        return jsonify({"error": "bad_code"}), 400
+    if not line_user_id:
+        return jsonify({"error": "no_line_user"}), 400
+    try:
+        supabase = get_supabase()
+        # 3点照合: facility_code + staff_name + link_code (is_active)
+        res = supabase.table("staffs").select(
+            "id,staff_name,facility_code,link_code,link_code_expires,is_active"
+        ).eq("facility_code", facility_code).eq(
+            "staff_name", staff_name).eq(
+            "link_code", link_code).eq("is_active", True).execute()
+        rows = res.data or []
+        if not rows:
+            return jsonify({"error": "no_match"}), 404
+        st = rows[0]
+        # 有効期限チェック
+        exp = st.get("link_code_expires")
+        if not exp:
+            return jsonify({"error": "expired"}), 400
+        try:
+            ed = _ss_dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+            if ed.tzinfo is None:
+                ed = ed.replace(tzinfo=_ss_tz.utc)
+            if _ss_dt.now(_ss_tz.utc) > ed:
+                return jsonify({"error": "expired"}), 400
+        except Exception:
+            return jsonify({"error": "expired"}), 400
+        # setup_token 発行
+        token = _ss_secrets.token_urlsafe(32)
+        token_exp = (_ss_dt.now(_ss_tz.utc) + _ss_td(hours=24)).isoformat()
+        # line_user_id 紐付け + setup_token 発行 + 6桁コード消費
+        supabase.table("staffs").update({
+            "line_user_id": line_user_id,
+            "setup_token": token,
+            "setup_token_expires": token_exp,
+            "link_code": None,
+            "link_code_expires": None,
+        }).eq("id", st["id"]).execute()
+        setup_url = request.host_url.rstrip("/") + "/setup?token=" + token
+        return jsonify({
+            "status": "ok",
+            "staff_name": st.get("staff_name", ""),
+            "setup_url": setup_url,
+        })
+    except Exception as e:
+        print(f"staff_start_link error: {e}", flush=True)
+        return jsonify({"error": "server_error"}), 500
+
+
+@app.route('/staff_start')
+def staff_start_page():
+    """職員利用開始 LIFF 画面の器"""
+    return render_template("staff_start.html")
+
+
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
