@@ -320,6 +320,35 @@ function generateQR(el, url) {
         correctLevel: QRCode.CorrectLevel.M
     });
 }
+// ========== issueStartCode-v1 : 利用開始コード発行 ==========
+async function issueStartCode() {
+    const sel = document.getElementById('startcode-staff');
+    const staffName = sel ? sel.value : '';
+    if (!staffName) { alert('職員を選択してください'); return; }
+    let res, data;
+    try {
+        res = await fetch('/api/admin/issue_link_code', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ staff_name: staffName })
+        });
+        data = await res.json();
+    } catch (e) {
+        alert('通信に失敗しました');
+        return;
+    }
+    if (!res.ok || data.error) {
+        const msg = data && data.error ? data.error : 'unknown';
+        alert('発行に失敗しました: ' + msg);
+        return;
+    }
+    document.getElementById('startcode-staffname').textContent = (data.staff_name || staffName) + ' さん';
+    document.getElementById('startcode-value').textContent = data.code || '';
+    const facEl = document.getElementById('startcode-facility');
+    if (facEl) facEl.textContent = data.facility_code || '';
+    document.getElementById('startcode-area').style.display = 'block';
+}
+
 // ========== 管理者ログアウト ==========
 async function adminLogout() {
     await fetch('/api/admin_logout', {

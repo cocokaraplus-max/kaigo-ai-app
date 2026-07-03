@@ -677,22 +677,38 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 {# ==================== 職員管理タブ ==================== #}
 <div class="tab-panel" id="tab-staff">
 
-  {# ---- QRコード招待 ---- #}
+  {# ---- staff-startcode-block-v1 : 利用開始コード発行 ---- #}
   <div class="section-box" style="background:linear-gradient(135deg,#e8f0fe,#f3e5f5);border:1.5px solid #90caf9;">
     <div class="section-box-title" style="color:#1a73e8;">
-      <span class="material-symbols-outlined" style="color:#1a73e8;">qr_code</span>
-      招待QRコードを発行
+      <span class="material-symbols-outlined" style="color:#1a73e8;">key</span>
+      利用開始コードを発行
     </div>
     <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-      QRコードをスタッフのスマホで読み取ると自分で登録できます。有効時間は<b>30分</b>です。
+      職員を選んでコードを発行します。職員はLINEで<b>TASUKARU</b>を友だち追加し、
+      リッチメニューの「利用開始」から<b>施設コード・お名前・この6桁コード</b>を入力して登録します。
+      有効時間は<b>24時間</b>です。
     </div>
-    <button class="btn btn-primary" onclick="issueInviteQR()">
-      <span class="material-symbols-outlined">qr_code_2</span>QRコードを発行する
+    <div class="form-group" style="margin-bottom:10px;">
+      <label class="form-label">職員を選択</label>
+      <select id="startcode-staff" class="form-control">
+        <option value="">— 職員を選択 —</option>
+        {% for s in staff_list %}
+        <option value="{{ s.name }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="issueStartCode()">
+      <span class="material-symbols-outlined">key</span>6桁コードを発行する
     </button>
-    <div id="invite-qr-area" style="display:none;margin-top:16px;text-align:center;">
-      <div id="invite-qr-code" style="display:inline-block;padding:12px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>
-      <div style="font-size:0.78rem;color:#80868b;margin-top:8px;">⏰ 30分後に自動失効</div>
-      <div style="font-size:0.75rem;color:#5f6368;margin-top:4px;word-break:break-all;" id="invite-url-text"></div>
+    <div id="startcode-area" style="display:none;margin-top:16px;text-align:center;">
+      <div style="display:inline-block;padding:16px 22px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <div style="font-size:0.75rem;color:#80868b;margin-bottom:6px;" id="startcode-staffname"></div>
+        <div style="font-size:2rem;font-weight:700;letter-spacing:0.35em;color:#1a73e8;" id="startcode-value"></div>
+        <div style="font-size:0.78rem;color:#5f6368;margin-top:10px;">
+          施設コード：<b id="startcode-facility"></b>
+        </div>
+      </div>
+      <div style="font-size:0.78rem;color:#80868b;margin-top:8px;">⏰ 24時間後に自動失効</div>
     </div>
   </div>
 
