@@ -673,6 +673,223 @@ def line_webhook(facility_code):
         return 'ok', 200
 
 
+# staff-line-webhook-v1 : TASUKARUアカウント用webhook(職員LINE紐付け・パスワード再発行)
+@app.route('/line/webhook/tasukaru', methods=['POST'])
+def line_webhook_tasukaru():
+    import hmac as _hm, hashlib as _hl, secrets as _sc, re as _re
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _tdl
+    try:
+        secret = get_secret("LINE_CHANNEL_SECRET")
+        if not secret:
+            print("line_webhook_tasukaru: no LINE_CHANNEL_SECRET", flush=True)
+            return "ng", 401
+        body = request.get_data()
+        sig = request.headers.get("X-Line-Signature", "")
+        mac = _hm.new(secret.encode("utf-8"), body, _hl.sha256).digest()
+        expected = base64.b64encode(mac).decode("utf-8")
+        if not _hm.compare_digest(expected, sig):
+            print("line_webhook_tasukaru: bad signature", flush=True)
+            return "ng", 401
+        payload = request.get_json(silent=True) or {}
+        events = payload.get("events", []) or []
+        supabase = get_supabase()
+        base_url = request.host_url.rstrip("/").replace("http://", "https://")
+        for ev in events:
+            etype = ev.get("type")
+            src = ev.get("source", {}) or {}
+            uid = src.get("userId")
+            if not uid:
+                continue
+            if etype == "follow":
+                line_send_message(uid, [{"type": "text", "text":
+                    "TASUKARUです。職員アカウントとの連携をご希望の場合は、管理者から渡された6桁のコードを送信してください。"}])
+                continue
+            if etype != "message":
+                continue
+            msg = ev.get("message", {}) or {}
+            if msg.get("type") != "text":
+                continue
+            text = (msg.get("text") or "").strip()
+            # 1) 6桁数字 → 紐付けコード照合
+            if _re.fullmatch(r"[0-9]{6}", text):
+                now_iso = _dt.now(_tz.utc).isoformat()
+                res = supabase.table("staffs").select(
+                    "id,staff_name,facility_code,link_code,link_code_expires,is_active"
+                ).eq("link_code", text).eq("is_active", True).execute()
+                rows = res.data or []
+                matched = None
+                for r in rows:
+                    exp = r.get("link_code_expires")
+                    if not exp:
+                        continue
+                    try:
+                        ed = _dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+                        if ed.tzinfo is None:
+                            ed = ed.replace(tzinfo=_tz.utc)
+                        if _dt.now(_tz.utc) <= ed:
+                            matched = r
+                            break
+                    except Exception:
+                        continue
+                if not matched:
+                    line_send_message(uid, [{"type": "text", "text":
+                        "コードが無効か、有効期限が切れています。管理者に再発行を依頼してください。"}])
+                    continue
+                supabase.table("staffs").update({
+                    "line_user_id": uid,
+                    "link_code": None,
+                    "link_code_expires": None,
+                }).eq("id", matched["id"]).execute()
+                line_send_message(uid, [{"type": "text", "text":
+                    matched.get("staff_name", "") + " さんのアカウントと連携しました。\n"
+                    "パスワードを忘れたときは「パスワード」と送ってください。再設定用のリンクをお送りします。"}])
+                continue
+            # 2) 「パスワード」を含む → 紐付け済みなら再発行
+            if "パスワード" in text or "ぱすわーど" in text:
+                res = supabase.table("staffs").select(
+                    "id,staff_name,facility_code,is_active"
+                ).eq("line_user_id", uid).eq("is_active", True).execute()
+                rows = res.data or []
+                if not rows:
+                    line_send_message(uid, [{"type": "text", "text":
+                        "このLINEはまだ職員アカウントと連携されていません。管理者から6桁コードを受け取り、先に連携してください。"}])
+                    continue
+                st = rows[0]
+                token = _sc.token_urlsafe(32)
+                exp = (_dt.now(_tz.utc) + _tdl(hours=24)).isoformat()
+                supabase.table("staffs").update({
+                    "setup_token": token,
+                    "setup_token_expires": exp,
+                }).eq("id", st["id"]).execute()
+                setup_url = base_url + "/setup?token=" + token
+                line_send_message(uid, [{"type": "text", "text":
+                    "\n".join([
+                        st.get("staff_name", "") + " さんのパスワード再設定リンクです(24時間有効)。",
+                        "下のリンクから新しいパスワードを設定してください。",
+                        setup_url,
+                    ])}])
+                continue
+            # staff-kaizen-reply-v1 : 「アプリ改善依頼」→ 受付案内を返信
+            if "アプリ改善依頼" in text or "改善依頼" in text or "要望" in text:
+                line_send_message(uid, [{"type": "text", "text":
+                    "\n".join([
+                        "ご要望・お困りごとをお聞かせください。",
+                        "このトークにそのままメッセージを送っていただければ、担当者が確認します。",
+                        "（画面の使いにくい点・追加してほしい機能など、なんでもお気軽にどうぞ）",
+                    ])}])
+                continue
+            # 3) それ以外 → 使い方ガイド
+            line_send_message(uid, [{"type": "text", "text":
+                "パスワードを再発行するには「パスワード」と送ってください。\n"
+                "初めての方は、管理者から渡された6桁コードを送信して連携してください。"}])
+        return "ok", 200
+    except Exception as e:
+        print(f"line_webhook_tasukaru error: {e}", flush=True)
+        return "ok", 200
+
+
+# staff-linkcode-api-v1 : 管理者が対象職員のLINE紐付けコード(6桁)を発行
+@app.route('/api/admin/issue_link_code', methods=['POST'])
+def api_issue_link_code():
+    import random as _rnd
+    from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    data = request.get_json(silent=True) or {}
+    staff_name = (data.get("staff_name") or "").strip()
+    if not staff_name:
+        return jsonify({"error": "staff_name required"}), 400
+    try:
+        supabase = get_supabase()
+        res = supabase.table("staffs").select("id,staff_name").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq("is_active", True).execute()
+        rows = res.data or []
+        if not rows:
+            return jsonify({"error": "staff not found"}), 404
+        code = "".join([str(_rnd.randint(0, 9)) for _ in range(6)])
+        exp = (_dt2.now(_tz2.utc) + _td2(hours=24)).isoformat()
+        supabase.table("staffs").update({
+            "link_code": code,
+            "link_code_expires": exp,
+        }).eq("id", rows[0]["id"]).execute()
+        return jsonify({"status": "ok", "code": code, "staff_name": staff_name})
+    except Exception as e:
+        print(f"issue_link_code error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# staff-start-link-v1 : 職員利用開始 3点照合API + LIFF器
+@app.route('/api/staff/start_link', methods=['POST'])
+def api_staff_start_link():
+    """職員利用開始: 施設コード + 職員名 + 6桁コード + userId の3点(+userId)照合。
+    一致で line_user_id 紐付け -> setup_token 発行 -> /setup リンク返却。"""
+    import hashlib as _ss_hashlib  # noqa: F401 (未使用でも将来用)
+    import secrets as _ss_secrets
+    from datetime import datetime as _ss_dt, timezone as _ss_tz, timedelta as _ss_td
+    data = request.get_json(silent=True) or {}
+    facility_code = (data.get("facility_code") or "").strip()
+    staff_name = (data.get("staff_name") or "").strip()
+    link_code = (data.get("link_code") or "").strip()
+    line_user_id = (data.get("line_user_id") or "").strip()
+    if not facility_code or not staff_name or not link_code:
+        return jsonify({"error": "missing_fields"}), 400
+    if not re.fullmatch(r"[0-9]{6}", link_code):
+        return jsonify({"error": "bad_code"}), 400
+    if not line_user_id:
+        return jsonify({"error": "no_line_user"}), 400
+    try:
+        supabase = get_supabase()
+        # 3点照合: facility_code + staff_name + link_code (is_active)
+        res = supabase.table("staffs").select(
+            "id,staff_name,facility_code,link_code,link_code_expires,is_active"
+        ).eq("facility_code", facility_code).eq(
+            "staff_name", staff_name).eq(
+            "link_code", link_code).eq("is_active", True).execute()
+        rows = res.data or []
+        if not rows:
+            return jsonify({"error": "no_match"}), 404
+        st = rows[0]
+        # 有効期限チェック
+        exp = st.get("link_code_expires")
+        if not exp:
+            return jsonify({"error": "expired"}), 400
+        try:
+            ed = _ss_dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+            if ed.tzinfo is None:
+                ed = ed.replace(tzinfo=_ss_tz.utc)
+            if _ss_dt.now(_ss_tz.utc) > ed:
+                return jsonify({"error": "expired"}), 400
+        except Exception:
+            return jsonify({"error": "expired"}), 400
+        # setup_token 発行
+        token = _ss_secrets.token_urlsafe(32)
+        token_exp = (_ss_dt.now(_ss_tz.utc) + _ss_td(hours=24)).isoformat()
+        # line_user_id 紐付け + setup_token 発行 + 6桁コード消費
+        supabase.table("staffs").update({
+            "line_user_id": line_user_id,
+            "setup_token": token,
+            "setup_token_expires": token_exp,
+            "link_code": None,
+            "link_code_expires": None,
+        }).eq("id", st["id"]).execute()
+        setup_url = request.host_url.rstrip("/") + "/setup?token=" + token
+        return jsonify({
+            "status": "ok",
+            "staff_name": st.get("staff_name", ""),
+            "setup_url": setup_url,
+        })
+    except Exception as e:
+        print(f"staff_start_link error: {e}", flush=True)
+        return jsonify({"error": "server_error"}), 500
+
+
+@app.route('/staff_start')
+def staff_start_page():
+    """職員利用開始 LIFF 画面の器"""
+    return render_template("staff_start.html")
+
+
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
@@ -1297,6 +1514,73 @@ def api_whoami():
         "admin_authenticated": session.get("admin_authenticated", False),
         "dev_authenticated": session.get("dev_authenticated", False),
     })
+
+# onboard-setup-route-v1 : 初回パスワード設定(オンボーディングでLINE送信されたリンク)
+@app.route('/setup', methods=['GET', 'POST'])
+def onboard_setup():
+    import hashlib as _su_hashlib
+    from datetime import datetime as _su_dt, timezone as _su_tz
+    supabase = get_supabase()
+    token = (request.values.get("token") or "").strip()
+    if not token:
+        return render_template("setup.html", state="invalid")
+    try:
+        res = supabase.table("staffs").select(
+            "id,staff_name,facility_code,setup_token,setup_token_expires,is_active"
+        ).eq("setup_token", token).eq("is_active", True).execute()
+        rows = res.data or []
+    except Exception as e:
+        print(f"[Setup] lookup error: {e}", flush=True)
+        return render_template("setup.html", state="invalid")
+    if not rows:
+        return render_template("setup.html", state="invalid")
+    row = rows[0]
+    # 期限チェック
+    exp = row.get("setup_token_expires")
+    if exp:
+        try:
+            exp_dt = _su_dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=_su_tz.utc)
+            if _su_dt.now(_su_tz.utc) > exp_dt:
+                return render_template("setup.html", state="expired")
+        except Exception:
+            pass
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        pw2 = request.form.get("password2", "")
+        if not pw or len(pw) < 8:
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="パスワードは8文字以上で設定してください。")
+        if pw != pw2:
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="確認用パスワードが一致しません。")
+        pw_hash = _su_hashlib.sha256(pw.encode()).hexdigest()
+        try:
+            supabase.table("staffs").update({
+                "password_hash": pw_hash,
+                "setup_token": None,
+                "setup_token_expires": None,
+            }).eq("id", row["id"]).execute()
+        except Exception as e:
+            print(f"[Setup] update error: {e}", flush=True)
+            return render_template("setup.html", state="form", token=token,
+                                   staff_name=row.get("staff_name", ""),
+                                   error="保存に失敗しました。時間をおいて再度お試しください。")
+        return render_template("setup.html", state="done",
+                               facility_code=row.get("facility_code", ""),
+                               staff_name=row.get("staff_name", ""))
+    return render_template("setup.html", state="form", token=token,
+                           staff_name=row.get("staff_name", ""))
+
+
+# onboard-liff-page-v1 : LIFFエンドポイントの器(この後フォーム+LIFF SDKを載せる)
+@app.route('/onboard')
+def onboard_page():
+    return render_template("onboard.html")
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -16374,6 +16658,80 @@ def stripe_create_checkout():
         print("[Stripe] checkout error: " + str(e), flush=True)
         return jsonify({"error": str(e)}), 500
 
+
+# onboard-checkout-v1 : 施設オンボーディング用 Checkout 作成(ログイン不要)
+# LIFFフォームから施設名・管理者名・LINE userId・plan・term を受け取り、
+# onboard_id を発番して metadata に載せる。決済完了で stripe_webhook の
+# onboard-webhook-v1 分岐が施設を自動発行する。
+@app.route('/api/onboard/create_checkout', methods=['POST'])
+def onboard_create_checkout():
+    import secrets as _oc_secrets
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    data = request.get_json(silent=True) or {}
+    facility_name = (data.get("facility_name") or "").strip()
+    admin_name = (data.get("admin_name") or "").strip()
+    contact_email = (data.get("email") or "").strip()  # onboard-email-v1
+    line_user_id = (data.get("line_user_id") or "").strip()
+    plan = (data.get("plan") or "starter").lower()
+    term = (data.get("term") or "monthly").lower()
+    base_url = request.host_url.rstrip("/")
+
+    if not facility_name or not admin_name:
+        return jsonify({"error": "facility_name and admin_name required"}), 400
+    if plan not in ("starter", "standard", "pro"):
+        return jsonify({"error": "invalid plan: " + plan}), 400
+
+    # 既存 create_checkout と同一の term マッピング
+    TERM_MAP = {
+        "monthly": ("M",    "subscription"),
+        "1y_m":    ("1Y_M", "subscription"),
+        "1y_l":    ("1Y_L", "payment"),
+        "2y_m":    ("2Y_M", "subscription"),
+        "2y_l":    ("2Y_L", "payment"),
+        "3y_m":    ("3Y_M", "subscription"),
+        "3y_l":    ("3Y_L", "payment"),
+    }
+    if term not in TERM_MAP:
+        return jsonify({"error": "invalid term: " + term}), 400
+    suffix, checkout_mode = TERM_MAP[term]
+    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    price_id = get_secret(env_key)
+    if not price_id:
+        return jsonify({"error": "price not configured: " + env_key}), 400
+
+    onboard_id = _oc_secrets.token_urlsafe(24)
+    try:
+        params = dict(
+            mode=checkout_mode,
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=base_url + "/onboard?checkout=success",
+            cancel_url=base_url + "/onboard?checkout=cancel",
+            metadata={
+                "onboard_id": onboard_id,
+                "facility_name": facility_name,
+                "admin_name": admin_name,
+                "line_user_id": line_user_id,
+                "plan": plan,
+                "term": term,
+                "email": contact_email,
+            },
+            locale="ja",
+        )
+        # subscription のときは1ヶ月無料トライアルを付与(初月無課金)
+        if contact_email:  # onboard-email-v1 : Stripe顧客にもメールを設定
+            params["customer_email"] = contact_email
+        if checkout_mode == "subscription":
+            params["subscription_data"] = {
+                "trial_period_days": 30,
+                "metadata": {"onboard_id": onboard_id},
+            }
+        checkout = stripe.checkout.Session.create(**params)
+        return jsonify({"url": checkout.url})
+    except Exception as e:
+        print("[Onboard] checkout error: " + str(e), flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # --- Stripe Webhook ---
 @app.route('/api/stripe/webhook', methods=['POST'])
 def stripe_webhook():
@@ -16407,6 +16765,90 @@ def stripe_webhook():
         meta = session_data.get("metadata") or {}
         if not isinstance(meta, dict):
             meta = {}
+        # onboard-webhook-v1 : 新規施設オンボーディング(まだ施設が存在しない状態での決済)
+        onboard_id = meta.get("onboard_id")
+        if onboard_id:
+            try:
+                import secrets as _ob_secrets
+                import hashlib as _ob_hashlib
+                from datetime import datetime as _ob_dt, timedelta as _ob_td, timezone as _ob_tz
+                supabase = get_supabase()
+                # 冪等: 同じ onboard_id の施設が既にあれば再発行しない(Stripeの再送対策)
+                dup = supabase.table("facilities").select("facility_code").eq("onboard_id", onboard_id).execute()
+                if dup.data:
+                    print(f"[Onboard] onboard_id {onboard_id} already provisioned; skip", flush=True)
+                    return jsonify({"status": "ok"}), 200
+                ob_plan = meta.get("plan", "starter")
+                ob_term = meta.get("term", "monthly")
+                ob_fac_name = (meta.get("facility_name") or "").strip() or "新規施設"
+                ob_admin_name = (meta.get("admin_name") or "").strip() or "管理者"
+                ob_user_id = (meta.get("line_user_id") or "").strip()
+                # 施設コード: 意味を持たないランダム(f + 10桁hex)。衝突時は数回リトライ
+                new_code = None
+                for _ in range(5):
+                    cand = "f" + _ob_secrets.token_hex(5)
+                    ex = supabase.table("facilities").select("facility_code").eq("facility_code", cand).execute()
+                    if not ex.data:
+                        new_code = cand
+                        break
+                if not new_code:
+                    print("[Onboard] failed to allocate facility_code", flush=True)
+                    return jsonify({"status": "ok"}), 200
+                _ob_now = _ob_dt.now(_ob_tz.utc)
+                # 1ヶ月無料トライアル: 初月はトライアル、有効期限=トライアル終了日
+                trial_end = _ob_now + _ob_td(days=30)
+                supabase.table("facilities").insert({
+                    "facility_code": new_code,
+                    "facility_name": ob_fac_name,
+                    "plan": ob_plan,
+                    "is_active": True,
+                    "trial_ends_at": trial_end.isoformat(),
+                    "expires_at": trial_end.isoformat(),
+                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_customer_id": session_data.get("customer"),
+                    "onboard_id": onboard_id,
+                    "contact_email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
+                }).execute()
+                # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
+                setup_token = _ob_secrets.token_urlsafe(32)
+                setup_exp = (_ob_now + _ob_td(hours=24)).isoformat()
+                supabase.table("staffs").insert({
+                    "facility_code": new_code,
+                    "staff_name": ob_admin_name,
+                    "password_hash": "",
+                    "is_active": True,
+                    "setup_token": setup_token,
+                    "setup_token_expires": setup_exp,
+                    "email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
+                }).execute()
+                # LINEで初回設定リンクを本人(userId)に送信。パスワードは送らない=履歴に残さない
+                setup_url = request.host_url.rstrip("/") + "/setup?token=" + setup_token
+                if ob_user_id:
+                    line_send_message(ob_user_id, [{
+                        "type": "text",
+                        "text": "\n".join([
+                            "【TASUKARU】ご登録ありがとうございます。",
+                            "",
+                            "施設名: " + ob_fac_name,
+                            "施設コード: " + new_code,
+                            "管理者: " + ob_admin_name,
+                            "",
+                            "下のリンクから初回パスワードを設定してください(24時間有効)。",
+                            setup_url,
+                        ])
+                    }])
+                # 開発者にも新規契約を通知(施設コードのみ。トークン等は載せない)
+                line_notify_admin("\n".join([
+                    "【TASUKARU】新規オンボーディング",
+                    "施設名: " + ob_fac_name,
+                    "施設コード: " + new_code,
+                    "プラン: " + ob_plan,
+                ]))
+                print(f"[Onboard] provisioned {new_code} (plan={ob_plan})", flush=True)
+            except Exception as _ob_e:
+                print(f"[Onboard] error: {_ob_e}", flush=True)
+            return jsonify({"status": "ok"}), 200
+
         f_code = meta.get("facility_code")
         plan = meta.get("plan", "starter")
         term = meta.get("term", "monthly")

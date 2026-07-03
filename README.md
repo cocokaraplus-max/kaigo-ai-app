@@ -1009,3 +1009,164 @@ Session 57 以降で新しい情報が判明した場合は、このREADMEを更
 - Chrome連携でタブ切替・4状態判定・3列描画・設定切替を検証済み。コミット `d6135ed` / `4a98636`。
 
 **開発メモ**: str_replace/パッチのアンカーは実ファイルの空行まで完全一致が必須。本セッションでも fit-wrap 直後や content-section 直前、life-check-api ブロック前などで空行を含め忘れて0件エラーが複数回発生し、`cat -v -e -t` で確認して修正した。macOS の `cat` は `-A` 非対応のため `cat -v -e -t` を使用。
+
+### 追記(2026-07-02 午後): 充足チェックuser_name修正・生活機能チェックUI改善・かな表記・戻るボタン統一
+
+本セッション後半の作業。すべて本番反映済み。
+
+**6. 充足チェックAPI user_nameベース修正** (marker `fitness-check-username-v1`)
+本番の体力・体重充足チェックが全員「休」表示になるバグを修正。原因は `vitals.patient_id` が UUID、`patients.id` が整数で突き合わせ不一致(patient_profiles UUID系 vs legacy patients 整数系の二重テーブル問題)。DEV は偶然 vitals が整数 patient_id で動いていた。`api_fitness_check` を丸ごと user_name ベースの突き合わせに書き換え。本番確認済み: body_weights(234)/fitness_tests(145)/vitals(1299) すべて user_name が完全に埋まっている。コミット `b8b6452`。
+
+**7. 生活機能チェック(life_check.html)UI改善** (marker `lc-ui-visibility-v1` / `lc-textarea-v1` / `lc-autogrow-restore-v1`)
+記入欄が1行 input で長文が読めない問題と、選択欄・入力項目・カテゴリの視覚的区別を改善。
+- カテゴリ見出し(`.lc-item-head`)をブルー帯(背景#e6f1fb+左帯#185FA5)に、`.lc-item-name` を濃青#0C447C に。
+- 選択中の点数(`.lc-opt.selected`)を青→グレー強調(border#5f6368 2px+背景#f1f3f4+太字)に。カテゴリのブルーと色を分けて区別しやすく。
+- 記入欄の input×2 → ラベル付き textarea×2 に変更(環境/状況・生活課題)。下部に薄い背景で分離。`lcAutoGrow`/`lcAutoGrowAll` で内容に応じ高さ自動調整。データ復元(`lcPrefillSub`)時にも高さを合わせる。
+- 既存の data-env/data-note の .value 読み書きは textarea でもそのまま動くため互換。選択ロジック(JS)は無変更。
+- Chrome連携で検証: カテゴリ帯 rgb(230,241,251)、選択中グレー rgb(241,243,244)/border rgb(95,99,104)/太字700、textarea 高さ 59→78px 自動拡張を確認。コミット `8bce6f8`。
+
+**8. カナ→かな表記変更** (marker `kana-to-hira-v1`, admin.html)
+新規手入力登録のラベル「カナ」→「かな」、利用者一覧検索プレースホルダー「名前・カナ・番号で絞り込み」→「名前・かな・番号で絞り込み」の表示テキスト2箇所のみ変更。CSV取込マッピングキー(`'カナ':'user_name_kana'`)やコメント・変換処理は変更しない。コミット `b525c75`。
+
+**9. 管理者MENU戻るボタンの設置・統一** (marker `visit-back-btn-v1` / `admin-back-btn-v1`)
+管理者MENU(`/admin`)配下ページに「管理者MENUに戻る」ボタンを統一デザインで設置。
+- 統一デザイン: `<a href="/admin">` インラインスタイル(白背景/1.5px薄グレー枠#e0e0e0/角丸8px/グレー文字#5f6368/arrow_backアイコン+「管理者MENUに戻る」)。
+- 利用管理(visit.html): 新規設置。実績集計表(admin_jisseki.html)/契約書・重要事項説明書(admin_keiyaku.html): 新規設置。タイムカード(admin_timecard.html): 既存の `.tca-back`(背景/枠なし)を統一デザインに差し替え。
+- 各ページのルート: /visit, /admin/jisseki, /admin/keiyaku, /admin/timecard。戻り先は全て /admin。
+- Chrome連携で4ページとも白背景/1.5px solid #e0e0e0/角丸8px を確認。コミット `b525c75`(visit) / `a1b3379`(jisseki/keiyaku/timecard)。
+
+**メモ**: `/visit` に Chrome連携の navigate で直接アクセスすると `/admin` にリダイレクトされることがあるが、管理者MENUのリンク経由(a[href="/visit"]クリック)では正常表示。実利用は管理者MENUからの導線なので問題なし。
+
+### 追記(2026-07-02 午後): 充足チェックuser_name修正・生活機能チェックUI改善・かな表記・戻るボタン統一
+
+本セッション後半の作業。すべて本番反映済み。
+
+**6. 充足チェックAPI user_nameベース修正** (marker `fitness-check-username-v1`)
+本番の体力・体重充足チェックが全員「休」表示になるバグを修正。原因は `vitals.patient_id` が UUID、`patients.id` が整数で突き合わせ不一致(patient_profiles UUID系 vs legacy patients 整数系の二重テーブル問題)。DEV は偶然 vitals が整数 patient_id で動いていた。`api_fitness_check` を丸ごと user_name ベースの突き合わせに書き換え。本番確認済み: body_weights(234)/fitness_tests(145)/vitals(1299) すべて user_name が完全に埋まっている。コミット `b8b6452`。
+
+**7. 生活機能チェック(life_check.html)UI改善** (marker `lc-ui-visibility-v1` / `lc-textarea-v1` / `lc-autogrow-restore-v1`)
+記入欄が1行 input で長文が読めない問題と、選択欄・入力項目・カテゴリの視覚的区別を改善。
+- カテゴリ見出し(`.lc-item-head`)をブルー帯(背景#e6f1fb+左帯#185FA5)に、`.lc-item-name` を濃青#0C447C に。
+- 選択中の点数(`.lc-opt.selected`)を青→グレー強調(border#5f6368 2px+背景#f1f3f4+太字)に。カテゴリのブルーと色を分けて区別しやすく。
+- 記入欄の input×2 → ラベル付き textarea×2 に変更(環境/状況・生活課題)。下部に薄い背景で分離。`lcAutoGrow`/`lcAutoGrowAll` で内容に応じ高さ自動調整。データ復元(`lcPrefillSub`)時にも高さを合わせる。
+- 既存の data-env/data-note の .value 読み書きは textarea でもそのまま動くため互換。選択ロジック(JS)は無変更。
+- Chrome連携で検証: カテゴリ帯 rgb(230,241,251)、選択中グレー rgb(241,243,244)/border rgb(95,99,104)/太字700、textarea 高さ 59→78px 自動拡張を確認。コミット `8bce6f8`。
+
+**8. カナ→かな表記変更** (marker `kana-to-hira-v1`, admin.html)
+新規手入力登録のラベル「カナ」→「かな」、利用者一覧検索プレースホルダー「名前・カナ・番号で絞り込み」→「名前・かな・番号で絞り込み」の表示テキスト2箇所のみ変更。CSV取込マッピングキー(`'カナ':'user_name_kana'`)やコメント・変換処理は変更しない。コミット `b525c75`。
+
+**9. 管理者MENU戻るボタンの設置・統一** (marker `visit-back-btn-v1` / `admin-back-btn-v1`)
+管理者MENU(`/admin`)配下ページに「管理者MENUに戻る」ボタンを統一デザインで設置。
+- 統一デザイン: `<a href="/admin">` インラインスタイル(白背景/1.5px薄グレー枠#e0e0e0/角丸8px/グレー文字#5f6368/arrow_backアイコン+「管理者MENUに戻る」)。
+- 利用管理(visit.html): 新規設置。実績集計表(admin_jisseki.html)/契約書・重要事項説明書(admin_keiyaku.html): 新規設置。タイムカード(admin_timecard.html): 既存の `.tca-back`(背景/枠なし)を統一デザインに差し替え。
+- 各ページのルート: /visit, /admin/jisseki, /admin/keiyaku, /admin/timecard。戻り先は全て /admin。
+- Chrome連携で4ページとも白背景/1.5px solid #e0e0e0/角丸8px を確認。コミット `b525c75`(visit) / `a1b3379`(jisseki/keiyaku/timecard)。
+
+**メモ**: `/visit` に Chrome連携の navigate で直接アクセスすると `/admin` にリダイレクトされることがあるが、管理者MENUのリンク経由(a[href="/visit"]クリック)では正常表示。実利用は管理者MENUからの導線なので問題なし。
+
+
+---
+
+## §28 施設オンボーディング（LINE→施設自動発行→課金）— 第2段階完了（2026-07-03）
+
+### 目的
+TASUKARUを新規導入する施設を、QR→LINE友だち追加→フォーム入力→Stripe決済→施設自動発行→初回ログインまで**全自動完結**させる導線。従来のメール方式（/register）を置き換える。承認ステップなし（決済完了で即発行）。
+
+### 重要な前提（過去の落とし穴）
+- ログイン認証は `facilities.admin_password` ではなく **`staffs` テーブルの `password_hash`** で行われる。職員ゼロの施設はログイン不能（旧PAYTEST01でハマった）。
+- 既存 `/register`(app.py 1301) は `facilities` に平文 `admin_password` を入れるだけで **`staffs` を作らないため実質ログインできない**。新オンボーディングはこの欠陥を構造的に解消する。
+
+### 確定した設計
+- 施設コード = 意味を持たないランダム `f`+16進10桁（例 `f7k2m9x4qp`）。施設名は `facility_name` に保持。コードから施設を推測不可＝セキュア。
+- 最初の管理者職員 = フォームで「管理者のお名前」を入力させ `staffs` に作成。
+- 初回ログイン = **初回設定リンク方式**（仮PWは送らない）。`/setup?token=xxx` で本人がパスワード設定。トークンは使い捨て・24時間有効。パスワードはLINEトーク履歴に残らない＝セキュア。
+- 無料トライアル1ヶ月を踏襲（`trial_ends_at`＝`expires_at`＝発行+30日）。
+- 施設情報入力は **LIFF**（LINEログイン済みuserIdを確実取得）で作る方針。なりすまし防止。
+
+### この段階で実装したもの（第2段階=サーバcore、DEVのみ・本番未反映）
+- **DDL（DEV Supabase適用済み）**
+  - `staffs.setup_token TEXT` / `staffs.setup_token_expires TIMESTAMPTZ`
+  - `facilities.onboard_id TEXT`（決済再送に対する二重発行防止キー）
+- **onboard-webhook-v1**（app.py `stripe_webhook` 内）: `checkout.session.completed` で `meta.onboard_id` があれば発火。onboard_id重複チェック（冪等）→施設コード採番→`facilities` INSERT→`staffs` に管理者職員INSERT（password_hash空・setup_token発行）→`line_send_message` で本人userIdに初回設定リンク送信→`line_notify_admin` で開発者に通知。metadataで受け取る値: `onboard_id / facility_name / admin_name / line_user_id / plan / term`。
+- **onboard-setup-route-v1**: `/setup`（GET=token検証しフォーム表示 / POST=8文字以上・確認一致→sha256でhash保存→setup_tokenをNULL化）。テンプレ `setup.html`（state: form/done/expired/invalid）。
+- **onboard-liff-page-v1**: `/onboard`（LIFFエンドポイントの器。現状は接続確認用の空ページ）。テンプレ `onboard.html`。
+- コミット `8448536`（tasukaru-dev）。DEVデプロイ・表示確認済み（`/onboard`＝器ページ表示、`/setup` token無し＝「リンクが無効です」で正しく拒否）。
+
+### 送信インフラ（既存流用・新規環境変数不要）
+- 特定userId送信 = `line_send_message(user_id, messages)`（app.py 16161、`LINE_CHANNEL_ACCESS_TOKEN`＝オンボーディング用アカウント「TASUKARU」のトークンを使用）。
+- `_line_push(token, to_user_id, messages)`（app.py 344）は施設別トークン用。オンボーディングは施設非依存なので `line_send_message` 側を使用。
+
+### 残タスク（次段階）
+1. **第3段階フロント**: `/onboard` に LIFF SDK読み込み＋施設情報フォーム（施設名・管理者名）＋プラン選択＋`onboard_id`発番＋`/api/stripe/create_checkout` 連携（metadataに onboard_id/facility_name/admin_name/line_user_id/plan/term を載せる）。
+2. **LIFF登録**: LINE Developers の TASUKARUチャンネルに LIFFアプリ追加→エンドポイントを `/onboard` に設定→LIFF ID取得→フロントに埋め込み。
+3. **友だち追加自動返信**: line webhook の follow イベントで LIFF URL を返信。
+4. **DEV通し確認**: LIFF→フォーム→テスト決済（4242）→webhook→施設発行→setupリンク受信→初回ログイン、をE2Eで確認。
+5. **本番展開**: 上記3 DDL を本番Supabaseへ適用→本番マージ。
+6. **将来課題**: 既存 `/register`(メール方式)の扱い（廃止 or 併存）。うちの `cocokaraplus-5526` はコード変更しない（多数テーブル・環境変数・LINE Webhook URLに埋め込み済みのため、やるなら独立の移行タスク）。
+
+
+---
+
+## §29 施設オンボーディング完成 ＋ 職員LINE紐付け・パスワード再発行（2026-07-03）
+
+### A. 施設オンボーディング：E2E完全動作（DEV・本番未展開）
+
+§28の続き。第3段階フロント＋メール保存まで完成し、DEVでE2E通し確認済み。
+
+**フロー（全自動・実証済み）**
+QR/LIFF URL → LINE友だち追加 → LIFFフォーム（`/onboard`, LIFF ID `2010588249-kQNvvhlg`）でuserId自動取得＋施設名・管理者名・メール入力＋プラン×支払い条件フル選択 → Stripe Checkout（サンドボックス・初月無料トライアル `trial_period_days=30`）→ 決済完了webhook → 施設自動発行（`f`+16進10桁のランダムコード）→ 管理者職員を`staffs`に自動生成 → メール保存（`facilities.contact_email` と `staffs.email` 両方）→ 初回設定リンクをTASUKARUアカウントからLINE送信 → `/setup?token=xxx`でパスワード設定 → ログイン成功。
+
+**この日追加した実装**
+- `onboard-checkout-v1`：`/api/onboard/create_checkout`（ログイン不要・LIFFフォーム専用）。既存 `create_checkout` は無傷。TERM_MAP・`STRIPE_PRICE_{PLAN}_{SUFFIX}` を流用。subscription時 `trial_period_days=30`。metadataに onboard_id/facility_name/admin_name/line_user_id/plan/term/email。
+- `onboard-email-v1`：メール必須化。checkout で email 受領→metadata＋`customer_email`、webhook で `facilities.contact_email` と `staffs.email` に保存。DDL `facilities.contact_email TEXT` 追加済み（DEV）。
+- `onboard.html`：LIFFフォーム（施設名・管理者名・メール・プラン3・支払い条件7）。メール欄の重複バグを修正済み。
+- コミット: `287e6fe`(フォーム+checkout), `960d313`(email), `0805511`(dup email fix)。
+
+**送信元アカウント是正（重要）**
+初回設定リンク等の送信は `line_send_message`（`LINE_CHANNEL_ACCESS_TOKEN`）を使う。これを**オンボーディング用「TASUKARU」アカウント**のトークンに差し替え済み（DEV）。理由: 施設が友だち追加するのはTASUKARUなので、他アカウントのトークンでは届かない。`LINE_CHANNEL_ACCESS_TOKEN` を使う3箇所（招待・開発者通知・オンボーディング）は全てTASUKARUで正しい。
+
+### B. 職員LINE紐付け ＋ パスワード再発行：E2E動作（DEV・本番未展開）
+
+介護現場向け。メールに頼らず、職員が自分のLINEでパスワードを再発行できる。
+
+**DDL（DEV適用済み）**: `staffs` に `line_user_id TEXT` / `link_code TEXT` / `link_code_expires TIMESTAMPTZ`。
+
+**実装（`staff-line-webhook-v1` / `staff-linkcode-api-v1`, コミット `5f86328`）**
+- `/line/webhook/tasukaru`：TASUKARU用webhook。署名検証は `LINE_CHANNEL_SECRET`（**TASUKARUのChannel Secretに差し替え済み**）。
+  - follow → 案内メッセージ返信
+  - 本文が6桁数字 → `link_code` 照合（期限内）→ `staffs.line_user_id` 保存 → 「連携しました」返信
+  - 本文に「パスワード」含む＋紐付け済み → `setup_token`発行 → `/setup`リンク返信
+  - それ以外 → 使い方ガイド返信
+- `/api/admin/issue_link_code`：管理者が対象職員の6桁コード発行（24時間有効・session f_code 限定）。
+
+**LINE Developers 設定（TASUKARU Messaging APIチャンネル `2010177151`）**
+- Webhook URL: `https://tasukaru-dev-191764727533.asia-northeast1.run.app/line/webhook/tasukaru`
+- 「Webhookの利用」ON、検証「成功」確認済み（初回タイムアウトはCloud Runコールドスタート、2回目で成功）。
+
+**E2E確認済み**: デモ職員Aに6桁コード発行 → LINEで送信 → 連携完了 → 「パスワード」送信 → 再設定リンク受信。
+
+### C. 次回やること（リッチメニュー方式の職員利用開始）※未実装・構想
+
+HIRO案: TASUKARUのLINEに**リッチメニュー**を作り、管理者は「TASUKARU友だち追加リンク」を職員に送るだけ。職員はリッチメニューの「利用開始」から自分で登録（紐付け＋初回設定）。「パスワード再発行」ボタンも常設。
+
+**本人確認は厳密方式に決定**: 施設コード＋職員名＋管理者発行の利用開始コード（＝既存の6桁 `link_code` を流用）の3点照合。
+
+**未実装の必要パーツ**
+1. `/staff_start` LIFF画面（施設コード・職員名・6桁コード入力 → userId取得）。
+2. 3点照合API（一致で `line_user_id` 紐付け＋`setup_token`発行→`/setup`へ）。既存の照合ロジック（webhook 717-740行付近）と `/setup`（1439行）を流用。
+3. LINE DevelopersでLIFFアプリをもう1つ追加（同じLINEログインチャンネル `2010588249` に、エンドポイント `/staff_start`）→ 新LIFF ID取得→画面に埋め込み。
+4. リッチメニュー作成（画像＋ボタン領域定義、LINE側作業）。「利用開始」→ staff_start LIFF、「パスワード再発行」→ 既存フロー。
+5. E2E確認 → 本番展開。
+
+**補足（管理者の自動紐付け・未実装）**: オンボーディングで作られる管理者は決済時にuserIdが判明しているので、施設発行時に `staffs.line_user_id` へ自動保存すれば紐付け不要にできる（webhook側の軽微改修）。一般職員はリッチメニュー方式で自己紐付け。
+
+### D. 本番展開でやること（オンボーディング＋職員紐付け、まとめて）
+1. 本番Supabaseに DDL適用: `staffs.setup_token` / `setup_token_expires`、`facilities.onboard_id`、`facilities.contact_email`、`staffs.line_user_id` / `link_code` / `link_code_expires`。
+2. 本番Cloud Runの環境変数: `LINE_CHANNEL_ACCESS_TOKEN`＝TASUKARUトークン、`LINE_CHANNEL_SECRET`＝TASUKARUシークレット に更新（※本番で他機能への影響を確認してから）。
+3. 本番TASUKARUチャンネルのWebhook URLを本番Cloud Runの `/line/webhook/tasukaru` に設定。
+4. 本番LIFFアプリのエンドポイントを本番 `/onboard`（＋将来 `/staff_start`）に。
+5. `tasukaru-dev` → `tasukaru` マージ。
+
+### メモ
+- DEVテストデータは都度クリーンアップ（`WHERE onboard_id IS NOT NULL` で施設＋staffs削除）。この日のテスト施設は削除済み。
+- 初回設定リンクは `https://` で送出（`request.host_url` を https 補正済み）。

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>職員 利用開始 | TASUKARU</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --green:#2e7d32; --green-d:#1b5e20; --bg:#f5f7f6; --line:#d9e0dc;
+    --text:#233028; --sub:#6b7a70; --err:#c62828;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    background:var(--bg); color:var(--text); -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:440px; margin:0 auto; padding:20px 16px 48px;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 18px; box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  h1{font-size:20px; margin:4px 0 6px; color:var(--green-d);}
+  .lead{font-size:13px; color:var(--sub); margin:0 0 18px; line-height:1.6;}
+  label{display:block; font-size:13px; font-weight:600; margin:14px 0 6px;}
+  input{
+    width:100%; padding:12px 12px; font-size:16px; border:1px solid var(--line);
+    border-radius:10px; background:#fbfdfc; color:var(--text);
+  }
+  input:focus{outline:none; border-color:var(--green); background:#fff;}
+  .hint{font-size:11px; color:var(--sub); margin:4px 0 0;}
+  .code-input{letter-spacing:.35em; text-align:center; font-weight:700;}
+  button{
+    width:100%; margin-top:22px; padding:14px; font-size:16px; font-weight:700;
+    color:#fff; background:var(--green); border:none; border-radius:10px; cursor:pointer;
+  }
+  button:disabled{background:#a8c3ab; cursor:default;}
+  .msg{margin-top:16px; font-size:13px; line-height:1.6; padding:12px 14px; border-radius:10px; display:none;}
+  .msg.err{display:block; background:#fdecec; color:var(--err); border:1px solid #f6c9c9;}
+  .msg.ok{display:block; background:#eaf5eb; color:var(--green-d); border:1px solid #cfe6d1;}
+  .status{font-size:12px; color:var(--sub); margin-top:14px; text-align:center; min-height:16px;}
+  a.setup-link{color:var(--green-d); font-weight:700; word-break:break-all;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>職員の利用開始</h1>
+    <p class="lead">
+      施設コード・お名前・管理者から受け取った6桁コードを入力してください。<br>
+      確認後、パスワード設定画面のリンクをご案内します。
+    </p>
+
+    <label for="facility_code">施設コード</label>
+    <input id="facility_code" type="text" autocomplete="off" inputmode="text"
+           placeholder="例）f0123456789">
+    <p class="hint">管理者から共有された施設コードを入力してください。</p>
+
+    <label for="staff_name">お名前</label>
+    <input id="staff_name" type="text" autocomplete="off"
+           placeholder="例）山田 太郎">
+    <p class="hint">職員登録されているお名前（フルネーム）を入力してください。</p>
+
+    <label for="link_code">6桁コード</label>
+    <input id="link_code" class="code-input" type="tel" inputmode="numeric"
+           maxlength="6" autocomplete="one-time-code" placeholder="______">
+    <p class="hint">管理者が発行した6桁の数字コード（24時間有効）。</p>
+
+    <button id="submitBtn" disabled>確認して進む</button>
+
+    <div id="msg" class="msg"></div>
+    <div id="status" class="status">LINEを確認中…</div>
+  </div>
+</div>
+
+<script>
+  // LIFF ID: LIFFアプリ作成後に実IDへ差し替えること
+  var LIFF_ID = "2010588249-eVxq4tL5";
+
+  var lineUserId = null;
+  var elFacility = document.getElementById("facility_code");
+  var elName = document.getElementById("staff_name");
+  var elCode = document.getElementById("link_code");
+  var elBtn = document.getElementById("submitBtn");
+  var elMsg = document.getElementById("msg");
+  var elStatus = document.getElementById("status");
+
+  function showMsg(text, type){
+    elMsg.className = "msg " + (type || "err");
+    elMsg.innerHTML = text;
+  }
+  function clearMsg(){ elMsg.className = "msg"; elMsg.innerHTML = ""; }
+
+  function initLiff(){
+    if (typeof liff === "undefined"){
+      elStatus.textContent = "LIFF SDKの読み込みに失敗しました。";
+      return;
+    }
+    liff.init({ liffId: LIFF_ID }).then(function(){
+      if (!liff.isLoggedIn()){
+        liff.login();
+        return;
+      }
+      return liff.getProfile().then(function(profile){
+        lineUserId = profile.userId;
+        elStatus.textContent = "LINE確認OK。情報を入力してください。";
+        elBtn.disabled = false;
+      });
+    }).catch(function(err){
+      elStatus.textContent = "LINEの初期化に失敗しました。LINEアプリ内から開いてください。";
+      console.error("liff init error", err);
+    });
+  }
+
+  elBtn.addEventListener("click", function(){
+    clearMsg();
+    var facility_code = (elFacility.value || "").trim();
+    var staff_name = (elName.value || "").trim();
+    var link_code = (elCode.value || "").trim();
+
+    if (!facility_code || !staff_name || !link_code){
+      showMsg("すべての項目を入力してください。", "err");
+      return;
+    }
+    if (!/^[0-9]{6}$/.test(link_code)){
+      showMsg("6桁コードは数字6桁で入力してください。", "err");
+      return;
+    }
+    if (!lineUserId){
+      showMsg("LINE情報が取得できていません。LINEアプリ内から開き直してください。", "err");
+      return;
+    }
+
+    elBtn.disabled = true;
+    elBtn.textContent = "確認中…";
+
+    fetch("/api/staff/start_link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        facility_code: facility_code,
+        staff_name: staff_name,
+        link_code: link_code,
+        line_user_id: lineUserId
+      })
+    }).then(function(res){
+      return res.json().then(function(data){ return { ok: res.ok, data: data }; });
+    }).then(function(r){
+      if (!r.ok || r.data.error){
+        var em = r.data.error || "unknown";
+        var jp = {
+          "missing_fields": "入力に不足があります。",
+          "bad_code": "6桁コードの形式が正しくありません。",
+          "no_line_user": "LINE情報が取得できませんでした。",
+          "no_match": "施設コード・お名前・6桁コードが一致しません。ご確認ください。",
+          "expired": "6桁コードの有効期限が切れています。管理者に再発行を依頼してください。",
+          "server_error": "サーバーエラーが発生しました。時間をおいてお試しください。"
+        };
+        showMsg(jp[em] || ("エラー: " + em), "err");
+        elBtn.disabled = false;
+        elBtn.textContent = "確認して進む";
+        return;
+      }
+      var url = r.data.setup_url;
+      var name = r.data.staff_name || "";
+      showMsg(
+        name + " さんの確認ができました。<br>下のリンクからパスワードを設定してください。<br><br>" +
+        '<a class="setup-link" href="' + url + '">' + url + '</a>',
+        "ok"
+      );
+      elStatus.textContent = "";
+      // 1.2秒後に自動遷移
+      setTimeout(function(){ window.location.href = url; }, 1200);
+    }).catch(function(err){
+      console.error(err);
+      showMsg("通信に失敗しました。電波状況をご確認のうえ再度お試しください。", "err");
+      elBtn.disabled = false;
+      elBtn.textContent = "確認して進む";
+    });
+  });
+
+  initLiff();
+</script>
+</body>
+</html>
