@@ -21,10 +21,10 @@
   .who { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #2f6b5e; background: #eaf3f0; border-radius: 12px; padding: 10px 12px; margin-bottom: 16px; }
   .who .material-symbols-outlined { font-size: 1.2rem; }
   label { display: block; font-size: 0.85rem; font-weight: 700; margin: 14px 0 6px; }
-  input[type=text] {
+  input[type=text], input[type=email] {
     width: 100%; padding: 13px 14px; border: 1.5px solid #d5dddb; border-radius: 12px; font-size: 1rem; outline: none;
   }
-  input[type=text]:focus { border-color: #2f6b5e; }
+  input[type=text]:focus, input[type=email]:focus { border-color: #2f6b5e; }
   .section-title { font-size: 0.95rem; font-weight: 800; margin: 4px 0 10px; }
   .plan-grid { display: grid; gap: 10px; }
   .opt {
@@ -78,6 +78,12 @@
         <label>管理者のお名前</label>
         <input type="text" id="admin_name" placeholder="例: 山田 太郎" autocomplete="off">
         <div class="note">お名前は初回ログイン時のアカウント名になります。</div>
+        <label>メールアドレス</label>
+        <input type="email" id="email" placeholder="例: info@example.com" autocomplete="off" inputmode="email">
+        <div class="note">ご連絡やお手続きの確認に使用します。</div>
+        <label>メールアドレス</label>
+        <input type="text" id="email" placeholder="例: info@example.com" autocomplete="off" inputmode="email">
+        <div class="note">ご連絡やパスワード再設定に使います。</div>
       </div>
 
       <div class="card">
@@ -129,10 +135,14 @@
   }
   function clearErr(){ document.getElementById("err").style.display = "none"; }
 
+  function emailValid(v){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
   function refreshSubmit(){
     var fn = document.getElementById("facility_name").value.trim();
     var an = document.getElementById("admin_name").value.trim();
-    var ok = fn && an && state.plan && state.term;
+    var em = document.getElementById("email").value.trim();
+    var ok = fn && an && emailValid(em) && state.plan && state.term;
     document.getElementById("submit-btn").disabled = !ok;
   }
 
@@ -160,6 +170,7 @@
   });
   document.getElementById("facility_name").addEventListener("input", refreshSubmit);
   document.getElementById("admin_name").addEventListener("input", refreshSubmit);
+  document.getElementById("email").addEventListener("input", refreshSubmit);
 
   // 送信
   document.getElementById("submit-btn").addEventListener("click", function(){
@@ -169,6 +180,7 @@
     var payload = {
       facility_name: document.getElementById("facility_name").value.trim(),
       admin_name: document.getElementById("admin_name").value.trim(),
+      email: document.getElementById("email").value.trim(),
       line_user_id: state.userId,
       plan: state.plan,
       term: state.term

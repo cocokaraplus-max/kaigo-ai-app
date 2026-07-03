@@ -16453,6 +16453,7 @@ def onboard_create_checkout():
     data = request.get_json(silent=True) or {}
     facility_name = (data.get("facility_name") or "").strip()
     admin_name = (data.get("admin_name") or "").strip()
+    contact_email = (data.get("email") or "").strip()  # onboard-email-v1
     line_user_id = (data.get("line_user_id") or "").strip()
     plan = (data.get("plan") or "starter").lower()
     term = (data.get("term") or "monthly").lower()
@@ -16495,10 +16496,13 @@ def onboard_create_checkout():
                 "line_user_id": line_user_id,
                 "plan": plan,
                 "term": term,
+                "email": contact_email,
             },
             locale="ja",
         )
         # subscription のときは1ヶ月無料トライアルを付与(初月無課金)
+        if contact_email:  # onboard-email-v1 : Stripe顧客にもメールを設定
+            params["customer_email"] = contact_email
         if checkout_mode == "subscription":
             params["subscription_data"] = {
                 "trial_period_days": 30,
@@ -16586,6 +16590,7 @@ def stripe_webhook():
                     "stripe_subscription_id": session_data.get("subscription"),
                     "stripe_customer_id": session_data.get("customer"),
                     "onboard_id": onboard_id,
+                    "contact_email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
                 }).execute()
                 # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
                 setup_token = _ob_secrets.token_urlsafe(32)
@@ -16597,6 +16602,7 @@ def stripe_webhook():
                     "is_active": True,
                     "setup_token": setup_token,
                     "setup_token_expires": setup_exp,
+                    "email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
                 }).execute()
                 # LINEで初回設定リンクを本人(userId)に送信。パスワードは送らない=履歴に残さない
                 setup_url = request.host_url.rstrip("/") + "/setup?token=" + setup_token
