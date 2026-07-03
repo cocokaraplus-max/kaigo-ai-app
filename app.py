@@ -673,6 +673,143 @@ def line_webhook(facility_code):
         return 'ok', 200
 
 
+# staff-line-webhook-v1 : TASUKARUアカウント用webhook(職員LINE紐付け・パスワード再発行)
+@app.route('/line/webhook/tasukaru', methods=['POST'])
+def line_webhook_tasukaru():
+    import hmac as _hm, hashlib as _hl, secrets as _sc, re as _re
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _tdl
+    try:
+        secret = get_secret("LINE_CHANNEL_SECRET")
+        if not secret:
+            print("line_webhook_tasukaru: no LINE_CHANNEL_SECRET", flush=True)
+            return "ng", 401
+        body = request.get_data()
+        sig = request.headers.get("X-Line-Signature", "")
+        mac = _hm.new(secret.encode("utf-8"), body, _hl.sha256).digest()
+        expected = base64.b64encode(mac).decode("utf-8")
+        if not _hm.compare_digest(expected, sig):
+            print("line_webhook_tasukaru: bad signature", flush=True)
+            return "ng", 401
+        payload = request.get_json(silent=True) or {}
+        events = payload.get("events", []) or []
+        supabase = get_supabase()
+        base_url = request.host_url.rstrip("/").replace("http://", "https://")
+        for ev in events:
+            etype = ev.get("type")
+            src = ev.get("source", {}) or {}
+            uid = src.get("userId")
+            if not uid:
+                continue
+            if etype == "follow":
+                line_send_message(uid, [{"type": "text", "text":
+                    "TASUKARUです。職員アカウントとの連携をご希望の場合は、管理者から渡された6桁のコードを送信してください。"}])
+                continue
+            if etype != "message":
+                continue
+            msg = ev.get("message", {}) or {}
+            if msg.get("type") != "text":
+                continue
+            text = (msg.get("text") or "").strip()
+            # 1) 6桁数字 → 紐付けコード照合
+            if _re.fullmatch(r"[0-9]{6}", text):
+                now_iso = _dt.now(_tz.utc).isoformat()
+                res = supabase.table("staffs").select(
+                    "id,staff_name,facility_code,link_code,link_code_expires,is_active"
+                ).eq("link_code", text).eq("is_active", True).execute()
+                rows = res.data or []
+                matched = None
+                for r in rows:
+                    exp = r.get("link_code_expires")
+                    if not exp:
+                        continue
+                    try:
+                        ed = _dt.fromisoformat(str(exp).replace("Z", "+00:00"))
+                        if ed.tzinfo is None:
+                            ed = ed.replace(tzinfo=_tz.utc)
+                        if _dt.now(_tz.utc) <= ed:
+                            matched = r
+                            break
+                    except Exception:
+                        continue
+                if not matched:
+                    line_send_message(uid, [{"type": "text", "text":
+                        "コードが無効か、有効期限が切れています。管理者に再発行を依頼してください。"}])
+                    continue
+                supabase.table("staffs").update({
+                    "line_user_id": uid,
+                    "link_code": None,
+                    "link_code_expires": None,
+                }).eq("id", matched["id"]).execute()
+                line_send_message(uid, [{"type": "text", "text":
+                    matched.get("staff_name", "") + " さんのアカウントと連携しました。\n"
+                    "パスワードを忘れたときは「パスワード」と送ってください。再設定用のリンクをお送りします。"}])
+                continue
+            # 2) 「パスワード」を含む → 紐付け済みなら再発行
+            if "パスワード" in text or "ぱすわーど" in text:
+                res = supabase.table("staffs").select(
+                    "id,staff_name,facility_code,is_active"
+                ).eq("line_user_id", uid).eq("is_active", True).execute()
+                rows = res.data or []
+                if not rows:
+                    line_send_message(uid, [{"type": "text", "text":
+                        "このLINEはまだ職員アカウントと連携されていません。管理者から6桁コードを受け取り、先に連携してください。"}])
+                    continue
+                st = rows[0]
+                token = _sc.token_urlsafe(32)
+                exp = (_dt.now(_tz.utc) + _tdl(hours=24)).isoformat()
+                supabase.table("staffs").update({
+                    "setup_token": token,
+                    "setup_token_expires": exp,
+                }).eq("id", st["id"]).execute()
+                setup_url = base_url + "/setup?token=" + token
+                line_send_message(uid, [{"type": "text", "text":
+                    "\n".join([
+                        st.get("staff_name", "") + " さんのパスワード再設定リンクです(24時間有効)。",
+                        "下のリンクから新しいパスワードを設定してください。",
+                        setup_url,
+                    ])}])
+                continue
+            # 3) それ以外 → 使い方ガイド
+            line_send_message(uid, [{"type": "text", "text":
+                "パスワードを再発行するには「パスワード」と送ってください。\n"
+                "初めての方は、管理者から渡された6桁コードを送信して連携してください。"}])
+        return "ok", 200
+    except Exception as e:
+        print(f"line_webhook_tasukaru error: {e}", flush=True)
+        return "ok", 200
+
+
+# staff-linkcode-api-v1 : 管理者が対象職員のLINE紐付けコード(6桁)を発行
+@app.route('/api/admin/issue_link_code', methods=['POST'])
+def api_issue_link_code():
+    import random as _rnd
+    from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    data = request.get_json(silent=True) or {}
+    staff_name = (data.get("staff_name") or "").strip()
+    if not staff_name:
+        return jsonify({"error": "staff_name required"}), 400
+    try:
+        supabase = get_supabase()
+        res = supabase.table("staffs").select("id,staff_name").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq("is_active", True).execute()
+        rows = res.data or []
+        if not rows:
+            return jsonify({"error": "staff not found"}), 404
+        code = "".join([str(_rnd.randint(0, 9)) for _ in range(6)])
+        exp = (_dt2.now(_tz2.utc) + _td2(hours=24)).isoformat()
+        supabase.table("staffs").update({
+            "link_code": code,
+            "link_code_expires": exp,
+        }).eq("id", rows[0]["id"]).execute()
+        return jsonify({"status": "ok", "code": code, "staff_name": staff_name})
+    except Exception as e:
+        print(f"issue_link_code error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
 def render(template, **kwargs):
     """partial param returns JSON content only (Jinja2 block mode)"""
     if request.args.get("partial"):
