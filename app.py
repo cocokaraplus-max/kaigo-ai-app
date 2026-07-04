@@ -9524,14 +9524,27 @@ def admin_auth():
     f_code = session["f_code"]
     pw = request.form.get("admin_pw", "")
     mode = request.form.get("mode", "admin")  # admin or dev
+    # admin-lockout-v1 : 認証段ごとに失敗ロック(施設コード#段 + IP)
+    _al_ip = _login_client_ip()
+    _al_key = f"{f_code}#dev" if mode == "dev" else f"{f_code}#admin"
+    if _login_is_locked(get_supabase(), _al_key, _al_ip):
+        return render_template("admin.html",
+            authenticated=False, dev_mode=(mode == "dev"),
+            patients=[], blocked=[], staff_list=[],
+            hist_limit=30,
+            error="認証に何度も失敗したため、しばらくロックされています。約15分後に再度お試しください。",
+            claude_url=None, registered_staffs=[], f_code=f_code,
+            board_editors=[], admin_managers=[])
 
     # 開発者認証
     if mode == "dev":
         dev_pw = get_secret("DEV_PASSWORD") or "tasukaru-dev-2024"
         if pw == dev_pw:
+            _login_clear_fail(get_supabase(), _al_key, _al_ip)  # admin-lockout-v1
             session["dev_authenticated"] = True
             return redirect(url_for("dev_menu"))
         else:
+            _login_record_fail(get_supabase(), _al_key, _al_ip)  # admin-lockout-v1
             return render_template("admin.html",
                 authenticated=False, dev_mode=True,
                 patients=[], blocked=[], staff_list=[],
@@ -9563,6 +9576,7 @@ def admin_auth():
 
         s = staff_res.data[0]
         if not verify_password(pw, s.get("password_hash", "")):
+            _login_record_fail(supabase, _al_key, _al_ip)  # admin-lockout-v1
             return render_template("admin.html",
                 authenticated=False, dev_mode=False,
                 patients=[], blocked=[], staff_list=[],
@@ -9580,6 +9594,7 @@ def admin_auth():
                 claude_url=None, registered_staffs=[], f_code=f_code,
                 board_editors=[], admin_managers=[])
 
+        _login_clear_fail(supabase, _al_key, _al_ip)  # admin-lockout-v1
         session["admin_authenticated"] = True
         return redirect(url_for("admin"))
     except Exception as e:
@@ -11016,30 +11031,12 @@ def api_generate_daily_summary():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/admin_login', methods=['POST'])
+@app.route('/api/admin_login', methods=['POST'])  # admin-lockout-v1 : disabled legacy route
 @login_required
 def api_admin_login():
-    try:
-        data = request.json
-        f_code = session["f_code"]
-        mode = data.get("mode", "admin")
-
-        if mode == "dev":
-            dev_pw = get_secret("DEV_PASSWORD") or "tasukaru-dev-2024"
-            if data["password"] == dev_pw:
-                session["dev_authenticated"] = True
-                return jsonify({"status": "success", "redirect": "/dev"})
-            return jsonify({"status": "error"})
-
-        supabase = get_supabase()
-        res = supabase.table("admin_settings").select("value").eq("key", "admin_password").eq("facility_code", f_code).execute()
-        cur_pw = res.data[0]['value'] if res.data else "8888"
-        if data["password"] == cur_pw:
-            session["admin_authenticated"] = True
-            return jsonify({"status": "success", "redirect": "/admin"})
-        return jsonify({"status": "error"})
-    except Exception as e:
-        return jsonify({"status": "error"}), 500
+    # admin-lockout-v1 : この経路は未使用かつ権限チェック無しの緩い実装だったため無効化。
+    # 管理者認証は /admin_auth (個人PW + is_admin_user + 失敗ロック) に一本化。
+    return jsonify({"status": "error", "message": "この経路は無効です。"}), 403
 
 @app.route('/api/admin_logout', methods=['POST'])
 def api_admin_logout():
