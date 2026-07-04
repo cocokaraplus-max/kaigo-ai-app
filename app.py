@@ -1580,6 +1580,11 @@ def onboard_setup():
 @app.route('/onboard')
 def onboard_page():
     return render_template("onboard.html")
+# onboard-done-v1 : 決済後の完了ページ(LIFF非読込。LINEで開くループ回避)
+@app.route('/onboard/done')
+def onboard_done_page():
+    st = (request.args.get("st") or "success").strip()
+    return render_template("onboard_done.html", st=st)
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -16704,8 +16709,8 @@ def onboard_create_checkout():
         params = dict(
             mode=checkout_mode,
             line_items=[{"price": price_id, "quantity": 1}],
-            success_url=base_url + "/onboard?checkout=success",
-            cancel_url=base_url + "/onboard?checkout=cancel",
+            success_url=base_url + "/onboard/done?st=success",
+            cancel_url=base_url + "/onboard/done?st=cancel",
             metadata={
                 "onboard_id": onboard_id,
                 "facility_name": facility_name,
