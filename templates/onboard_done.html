@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>登録完了 | TASUKARU</title>
+<style>
+  :root{ --blue:#1558d0; --blue-d:#0d3f9e; --bg:#f5f7fb; --text:#202124; --sub:#5f6368; --green:#2e9e4f; }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:440px;margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;}
+  .card{background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 2px 12px rgba(0,0,0,.06);text-align:center;}
+  .icon{width:88px;height:88px;border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;}
+  .icon.ok{background:#e8f5ea;}
+  .icon.cancel{background:#fdecec;}
+  .icon svg{width:48px;height:48px;}
+  h1{font-size:22px;margin:0 0 12px;}
+  h1.ok{color:var(--green);}
+  h1.cancel{color:#c62828;}
+  p{font-size:14px;color:var(--sub);line-height:1.8;margin:0 0 8px;}
+  .steps{text-align:left;background:#f0f5ff;border:1px solid #d3e0fb;border-radius:12px;padding:16px 18px;margin:22px 0 4px;}
+  .steps-t{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:10px;}
+  .step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;font-size:13px;color:var(--text);line-height:1.6;}
+  .step:last-child{margin-bottom:0;}
+  .num{background:var(--blue);color:#fff;border-radius:50%;width:22px;height:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;}
+  .note{font-size:12px;color:var(--sub);margin-top:18px;line-height:1.7;}
+  .brand{font-size:13px;color:var(--blue);font-weight:700;margin-top:24px;letter-spacing:1px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    {% if st == "cancel" %}
+      <div class="icon cancel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+      </div>
+      <h1 class="cancel">お支払いがキャンセルされました</h1>
+      <p>決済は行われていません。<br>もう一度お申し込みになる場合は、LINEのトーク画面に戻って「利用開始」からやり直してください。</p>
+      <div class="note">ご不明な点はLINEのトークからお問い合わせください。</div>
+    {% else %}
+      <div class="icon ok">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2e9e4f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      </div>
+      <h1 class="ok">お申し込みありがとうございます</h1>
+      <p>ご登録の手続きが完了しました。<br>続いて、<b>パスワード設定のご案内</b>をLINEにお送りします。</p>
+      <div class="steps">
+        <div class="steps-t">このあとの流れ</div>
+        <div class="step"><span class="num">1</span><div><b>LINEのトーク画面に戻ってください。</b>TASUKARUから設定リンクが届きます（数十秒ほどで届きます）。</div></div>
+        <div class="step"><span class="num">2</span><div>リンクを開いて<b>パスワードを設定</b>してください。</div></div>
+        <div class="step"><span class="num">3</span><div>設定したパスワードで<b>ログイン</b>すれば利用開始です。</div></div>
+      </div>
+      <div class="note">この画面は閉じていただいて大丈夫です。<br>設定リンクが届かない場合は、LINEのトークからお問い合わせください。</div>
+    {% endif %}
+    <div class="brand">TASUKARU</div>
+  </div>
+</div>
+</body>
+</html>

@@ -369,6 +369,10 @@ body.ss-open .bottom-nav{display:none !important}
             <div class="toc-ic" style="background:#0F6E56;"><span class="material-symbols-outlined" style="color:#fff;">checklist</span></div>
             <span class="toc-lbl">生活機能CHECK</span>
         </a>
+        <a class="toc-a" style="background:#e8f5e9;" href="#s-line-start">  <!-- manual-line-start-v1 -->
+            <div class="toc-ic" style="background:#06c755;"><span class="material-symbols-outlined" style="color:#fff;">chat</span></div>
+            <span class="toc-lbl">LINE利用開始</span>
+        </a>
         <a class="toc-a" style="background:#fff3e0;" href="#s-updates">
             <div class="toc-ic" style="background:#ff9800;"><span class="material-symbols-outlined" style="color:#fff;">notifications</span></div>
             <span class="toc-lbl">更新ログ</span>
@@ -2130,6 +2134,115 @@ body.ss-open .bottom-nav{display:none !important}
 
         <div class="mb" style="border-left-color:#f0a829;margin-top:12px;">
             <div class="mb-text">💡 <b>ヒント</b>：自立度の判定基準は厚生労働省の基準をもとにしています。AI相談の候補や記載案は<b>参考情報</b>です。利用者様の実際の様子をよく観察して、最終的な評価は職員が判断してください。</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== manual-line-start-v1 : LINE利用開始 ===== -->
+<div class="sc" id="s-line-start">
+    <div class="sc-hd">
+        <div class="sc-ic" style="background:#e8f5e9;"><span class="material-symbols-outlined" style="font-size:26px;color:#06c755;">chat</span></div>
+        <div><div class="sc-ttl">LINE利用開始</div><div class="sc-sub">📱 LINEと連携してパスワードを自分で再発行</div></div>
+    </div>
+    <div class="sc-bd">
+        <div class="mb">
+            <img src="/static/tasukaru_onegai.png" alt="タスカルくん" style="background:#06c755;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">TASUKARUの<b>公式LINE</b>と連携しておくと、パスワードを忘れても<b>自分で再発行</b>できるよ📱<br>まずは管理者が発行する<b>6桁コード</b>が必要なんだ!</div>
+        </div>
+
+        <!-- 管理者向け -->
+        <div class="point-box" style="background:linear-gradient(135deg,#e8f0fe,#f3e5f5);border:1.5px solid #90caf9;margin-bottom:16px;">
+            <div class="point-box-title" style="color:#1a73e8;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#1a73e8;">key</span>
+                <b>【管理者】6桁コードを発行する</b>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#1a73e8;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">1</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">職員管理をひらく</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">管理者MENU → <b>職員管理</b>タブ → 一番上の<b>「利用開始コードを発行」</b>。</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#1a73e8;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">2</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">職員をえらんで発行</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">プルダウンで職員を選び<b>「6桁コードを発行する」</b>を押すと、6桁の数字が表示される(<b>24時間有効</b>)。</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#1a73e8;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">3</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">職員に3つを伝える</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;"><b>施設コード</b>・<b>お名前</b>・<b>6桁コード</b>の3つを職員に伝える。</div>
+                    </div>
+                </div>
+            </div>
+            <div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:10px;padding:10px 12px;margin-top:10px;">
+                <div style="font-size:0.78rem;color:#5d4037;line-height:1.6;">
+                    <b>⚠ お名前は登録名と完全一致で</b><br>
+                    発行画面のプルダウンに出ている<b>そのままの表記</b>(スペースの有無・漢字も含めて)を伝えてください。ちがうと照合できません。
+                </div>
+            </div>
+        </div>
+
+        <!-- 職員向け -->
+        <div class="point-box" style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border:1.5px solid #81c784;margin-bottom:14px;">
+            <div class="point-box-title" style="color:#2e7d32;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:#2e7d32;">smartphone</span>
+                <b>【職員】LINEで利用開始する</b>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#2e7d32;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">1</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">TASUKARUを友だち追加</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">案内されたLINEの友だち追加リンク(またはQR)からTASUKARUを追加する。</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#2e7d32;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">2</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">「利用開始」をタップ</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">画面下の<b>メニュー</b>から<b>「利用開始」</b>をタップ。</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                    <div style="background:#2e7d32;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:0.85rem;">3</div>
+                    <div>
+                        <div style="font-weight:800;font-size:0.9rem;color:#202124;">3つを入力してパスワード設定</div>
+                        <div style="font-size:0.78rem;color:#5f6368;margin-top:3px;line-height:1.5;">管理者から受け取った<b>施設コード・お名前・6桁コード</b>を入力 → 案内に沿って<b>パスワードを設定</b>すれば完了!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- メニューの3ボタン -->
+        <div class="mb" style="margin-top:14px;">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#06c755;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">LINEの下メニューには<b>3つのボタン</b>があるよ🦝</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:10px;align-items:center;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                <span class="material-symbols-outlined" style="color:#2e7d32;">person_add</span>
+                <div><b style="font-size:0.88rem;">利用開始</b><span style="font-size:0.78rem;color:#5f6368;"> … はじめて連携するとき</span></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                <span class="material-symbols-outlined" style="color:#1a73e8;">key</span>
+                <div><b style="font-size:0.88rem;">パスワード再発行</b><span style="font-size:0.78rem;color:#5f6368;"> … 連携済みの人がパスワードを忘れたとき。再設定リンクが届きます</span></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;background:#fff;border-radius:10px;padding:10px 12px;border:1px solid #e0e0e0;">
+                <span class="material-symbols-outlined" style="color:#f9ab00;">lightbulb</span>
+                <div><b style="font-size:0.88rem;">アプリ改善依頼</b><span style="font-size:0.78rem;color:#5f6368;"> … 使いにくい点や追加してほしい機能をそのまま送れます</span></div>
+            </div>
+        </div>
+
+        <div style="background:#e8f5e9;border:1px solid #81c784;border-radius:10px;padding:10px 12px;margin-top:12px;">
+            <div style="font-size:0.78rem;color:#2e7d32;line-height:1.6;">
+                <b>💡 パスワードを忘れたら</b><br>
+                LINE連携が済んでいれば、下メニューの<b>「パスワード再発行」</b>をタップするだけで再設定リンクが届きます。連携がまだの人は、先に管理者から6桁コードをもらって「利用開始」から連携してください。
+            </div>
         </div>
     </div>
 </div>
