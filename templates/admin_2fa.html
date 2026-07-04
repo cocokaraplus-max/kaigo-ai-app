@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理者認証コード入力 | TASUKARU</title>
+  <style>
+    :root { --blue:#2f6bff; --blue-d:#2456d6; --ink:#1f2430; --muted:#6b7280;
+            --line:#e5e7eb; --bg:#f6f8fc; --err-bg:#fdecec; --err:#c0392b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+           background:var(--bg); color:var(--ink); }
+    .wrap { max-width:440px; margin:0 auto; padding:28px 20px 60px; }
+    .head { display:flex; align-items:center; gap:10px; margin:8px 0 22px; }
+    .head .shield { width:30px; height:30px; color:var(--blue); flex:none; }
+    .head h1 { font-size:20px; margin:0; font-weight:700; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px 20px; }
+    .lead { font-size:14px; color:var(--muted); line-height:1.7; margin:0 0 18px; }
+    .lead b { color:var(--ink); }
+    label { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:600; margin:0 0 8px; }
+    label .lock { width:18px; height:18px; color:var(--blue); }
+    input[type="text"] { width:100%; font-size:26px; letter-spacing:.4em; text-align:center;
+      padding:14px 12px; border:1.5px solid var(--line); border-radius:12px; outline:none;
+      font-variant-numeric:tabular-nums; }
+    input[type="text"]:focus { border-color:var(--blue); }
+    .err { margin:14px 0 0; background:var(--err-bg); color:var(--err); border-radius:12px;
+      padding:12px 14px; font-size:13.5px; line-height:1.6; display:flex; gap:8px; align-items:flex-start; }
+    .err svg { width:18px; height:18px; flex:none; margin-top:1px; }
+    .btn { width:100%; margin-top:18px; background:var(--blue); color:#fff; border:none;
+      border-radius:12px; padding:15px; font-size:16px; font-weight:700; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:8px; }
+    .btn:hover { background:var(--blue-d); }
+    .btn svg { width:20px; height:20px; }
+    .sub { text-align:center; margin:18px 0 0; }
+    .sub form { display:inline; }
+    .sub button { background:none; border:none; color:var(--blue); font-size:13.5px;
+      text-decoration:underline; cursor:pointer; padding:6px; }
+    .note { margin:16px 0 0; font-size:12px; color:var(--muted); line-height:1.7; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <svg class="shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      <h1>認証コードの入力</h1>
+    </div>
+
+    <div class="card">
+      <p class="lead">
+        <b>{{ staff_name }}</b> 様のLINEに6桁の認証コードを送信しました。<br>
+        LINEに届いた番号を入力してください。
+      </p>
+
+      <form method="POST" action="/admin_2fa_verify" id="f2fa">
+        <label>
+          <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          認証コード（6桁）
+        </label>
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" pattern="[0-9]{6}" placeholder="－ － － － － －" autofocus required>
+
+        {% if error %}
+        <div class="err">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <button class="btn" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+          認証する
+        </button>
+      </form>
+
+      <div class="sub">
+        <form method="POST" action="/admin_auth">
+          <input type="hidden" name="mode" value="admin">
+          <input type="hidden" name="admin_pw" value="">
+          <!-- コードが届かない場合は管理者MENUからやり直し -->
+        </form>
+        <a href="/admin" style="color:var(--muted);font-size:13px;">管理者MENUに戻る</a>
+      </div>
+
+      <p class="note">
+        ※ コードの有効期限は5分です。届かない場合は管理者MENUに戻り、もう一度パスワードを入力するとコードが再送されます。<br>
+        ※ お心当たりのない通知が届いた場合は、パスワードが第三者に知られている可能性があります。パスワードの変更をご検討ください。
+      </p>
+    </div>
+  </div>
+</body>
+</html>
