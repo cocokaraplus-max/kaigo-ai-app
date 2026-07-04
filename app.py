@@ -170,6 +170,67 @@ def send_email(to_email, subject, html_content):
 # ログイン必須デコレータ
 # ==========================================
 from functools import wraps
+# ===== login-lockout-v1 : ログイン失敗ロック(施設コード+IP単位) =====
+def _login_client_ip():
+    from flask import request
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+_LOGIN_FAIL_LIMIT = 10
+_LOGIN_LOCK_MINUTES = 15
+
+def _login_is_locked(supabase, f_code, ip):
+    """ロック中なら True。副作用なし(判定のみ)。"""
+    try:
+        res = supabase.table('login_attempts').select('locked_until').eq(
+            'facility_code', f_code).eq('ip', ip).execute()
+        rows = res.data or []
+        if not rows:
+            return False
+        lu = rows[0].get('locked_until')
+        if not lu:
+            return False
+        lu_dt = datetime.fromisoformat(str(lu).replace('Z', '+00:00'))
+        if lu_dt.tzinfo is None:
+            lu_dt = lu_dt.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < lu_dt
+    except Exception as e:
+        print(f'[login-lockout] is_locked error: {e}', flush=True)
+        return False
+
+def _login_record_fail(supabase, f_code, ip):
+    """失敗を+1。限界到達で15分ロック。"""
+    try:
+        now = datetime.now(timezone.utc)
+        res = supabase.table('login_attempts').select('id,fail_count').eq(
+            'facility_code', f_code).eq('ip', ip).execute()
+        rows = res.data or []
+        if rows:
+            cnt = (rows[0].get('fail_count') or 0) + 1
+            upd = {'fail_count': cnt, 'updated_at': now.isoformat()}
+            if cnt >= _LOGIN_FAIL_LIMIT:
+                upd['locked_until'] = (now + timedelta(minutes=_LOGIN_LOCK_MINUTES)).isoformat()
+            supabase.table('login_attempts').update(upd).eq('id', rows[0]['id']).execute()
+        else:
+            supabase.table('login_attempts').insert({
+                'facility_code': f_code, 'ip': ip, 'fail_count': 1,
+                'updated_at': now.isoformat(),
+            }).execute()
+    except Exception as e:
+        print(f'[login-lockout] record_fail error: {e}', flush=True)
+
+def _login_clear_fail(supabase, f_code, ip):
+    """成功時: 該当(施設コード+IP)の失敗カウンタをリセット。"""
+    try:
+        supabase.table('login_attempts').update({
+            'fail_count': 0, 'locked_until': None,
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+        }).eq('facility_code', f_code).eq('ip', ip).execute()
+    except Exception as e:
+        print(f'[login-lockout] clear_fail error: {e}', flush=True)
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -1440,9 +1501,12 @@ def login():
     if request.method == 'POST':
         f_code = request.form.get("f_code", "").strip()
         password = request.form.get("password", "").strip()
+        _login_ip = _login_client_ip()  # login-lockout-v1
 
         if not f_code or not password:
             error = "施設コードとパスワードを入力してください。"
+        elif _login_is_locked(get_supabase(), f_code, _login_ip):  # login-lockout-v1
+            error = "ログインに何度も失敗したため、しばらくロックされています。約15分後に再度お試しください。"
         else:
             try:
                 supabase = get_supabase()
@@ -1484,9 +1548,11 @@ def login():
                                     break
 
                             if not matched_staff:
+                                _login_record_fail(supabase, f_code, _login_ip)  # login-lockout-v1
                                 error = "パスワードが違います。"
                             else:
                                 my_name = matched_staff["staff_name"]
+                                _login_clear_fail(supabase, f_code, _login_ip)  # login-lockout-v1
                                 session["f_code"] = f_code
                                 session["my_name"] = my_name
                                 session["saved_f_code"] = f_code
