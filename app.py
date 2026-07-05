@@ -17009,6 +17009,7 @@ def stripe_webhook():
                     "setup_token": setup_token,
                     "setup_token_expires": setup_exp,
                     "email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
+                    "line_user_id": ob_user_id or None,  # onboard-admin-line-link-v1 : 初回管理者を2FA可能に紐付け
                 }).execute()
                 # LINEで初回設定リンクを本人(userId)に送信。パスワードは送らない=履歴に残さない
                 setup_url = request.host_url.rstrip("/") + "/setup?token=" + setup_token
