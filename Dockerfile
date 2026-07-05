@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     fonts-noto-cjk \
     poppler-utils \
+    libheif1 \
     libssl3 \
     libx11-6 \
     libxext6 \
