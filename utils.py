@@ -3,6 +3,48 @@ from google import genai
 from google.genai import types
 import os
 import uuid
+# upload-heic-jpeg-normalize-v1 : 画像正立+JPEG変換用
+import io as _img_io
+try:
+    from PIL import Image as _PILImage, ImageOps as _PILImageOps
+    try:
+        import pillow_heif as _pillow_heif
+        _pillow_heif.register_heif_opener()
+        _HEIC_OK = True
+    except Exception as _heic_e:
+        _HEIC_OK = False
+        print('[img-normalize] pillow_heif 未使用: ' + str(_heic_e), flush=True)
+    _PIL_OK = True
+except Exception as _pil_e:
+    _PIL_OK = False
+    print('[img-normalize] PIL 未使用: ' + str(_pil_e), flush=True)
+
+def _normalize_image_to_jpeg(raw_bytes):
+    """画像バイトをEXIF正立補正しJPEGに統一変換して返す。
+    失敗時は None を返し、呼び出し側が元バイトにフォールバックする。"""
+    if not _PIL_OK:
+        return None
+    try:
+        im = _PILImage.open(_img_io.BytesIO(raw_bytes))
+        im = _PILImageOps.exif_transpose(im)  # 向きを正立に
+        if im.mode not in ('RGB', 'L'):
+            im = im.convert('RGB')
+        # 長辺2048にリサイズ(大きすぎる写真の軽量化。小さい画像はそのまま)
+        max_side = 2048
+        w, h = im.size
+        if max(w, h) > max_side:
+            if w >= h:
+                nw, nh = max_side, int(h * max_side / w)
+            else:
+                nw, nh = int(w * max_side / h), max_side
+            im = im.resize((nw, nh), _PILImage.LANCZOS)
+        out = _img_io.BytesIO()
+        im.save(out, format='JPEG', quality=85, optimize=True)
+        return out.getvalue()
+    except Exception as _e:
+        print('[img-normalize] 変換失敗(元バイトで保存): ' + str(_e), flush=True)
+        return None
+
 import time as time_module
 
 tokyo_tz = pytz.timezone('Asia/Tokyo')
@@ -17,14 +59,22 @@ def upload_images_to_supabase(supabase, imgs, f_code):
     image_urls = []
     for img_file in imgs:
         try:
-            filename = img_file.filename
-            ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
-            file_name = f"{f_code}/{uuid.uuid4()}.{ext}"
+            # upload-heic-jpeg-normalize-v1 : 正立+JPEG統一変換。失敗時は元バイト・元拡張子で保存(従来動作)。
             img_bytes = img_file.read()
+            _jpeg = _normalize_image_to_jpeg(img_bytes)
+            if _jpeg is not None:
+                img_bytes = _jpeg
+                ext = 'jpg'
+                content_type = 'image/jpeg'
+            else:
+                filename = img_file.filename or ''
+                ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
+                content_type = img_file.content_type or 'image/jpeg'
+            file_name = f"{f_code}/{uuid.uuid4()}.{ext}"
             supabase.storage.from_("case-photos").upload(
                 path=file_name,
                 file=img_bytes,
-                file_options={"content-type": img_file.content_type or "image/jpeg"}
+                file_options={"content-type": content_type}
             )
             url = supabase.storage.from_("case-photos").get_public_url(file_name)
             image_urls.append(url)
