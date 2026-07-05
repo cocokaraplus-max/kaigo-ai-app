@@ -16867,6 +16867,10 @@ def onboard_create_checkout():
 
     if not facility_name or not admin_name:
         return jsonify({"error": "facility_name and admin_name required"}), 400
+    # onboard-line-required-v1 : 初回管理者を必ず2FA可能にするため line_user_id を必須化
+    if not line_user_id:
+        return jsonify({"error": "line_required",
+            "message": "お申し込みにはLINEの友だち追加が必要です。LINEから開いてやり直してください。"}), 400
     if plan not in ("starter", "standard", "pro"):
         return jsonify({"error": "invalid plan: " + plan}), 400
 
