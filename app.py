@@ -9630,7 +9630,7 @@ def admin_auth():
         my_name = session.get("my_name", "")
 
         # まず、ログイン中スタッフの個人パスワードと一致するか確認
-        staff_res = supabase.table("staffs").select("staff_name,password_hash,email").eq(
+        staff_res = supabase.table("staffs").select("staff_name,password_hash,email,line_user_id").eq(  # admin-2fa-select-fix-v1
             "facility_code", f_code
         ).eq("staff_name", my_name).eq("is_active", True).execute()
 
