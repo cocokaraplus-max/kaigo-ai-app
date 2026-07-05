@@ -231,6 +231,74 @@ def _login_clear_fail(supabase, f_code, ip):
     except Exception as e:
         print(f'[login-lockout] clear_fail error: {e}', flush=True)
 
+# ===== admin-2fa-v1 : 管理者ログインの2段階認証(LINE 6桁コード) =====
+_ADMIN_2FA_TTL_MIN = 5
+_ADMIN_2FA_MAX_ATTEMPTS = 5
+
+def _admin_2fa_hash(code):
+    import hashlib
+    return hashlib.sha256(str(code).encode()).hexdigest()
+
+def _admin_2fa_gen_code():
+    import secrets
+    return f"{secrets.randbelow(1000000):06d}"
+
+def _admin_2fa_issue(supabase, f_code, staff_name, line_user_id):
+    """6桁コード生成→ハッシュ保存→LINE送信。送信成功でTrue。"""
+    try:
+        code = _admin_2fa_gen_code()
+        now = datetime.now(timezone.utc)
+        exp = (now + timedelta(minutes=_ADMIN_2FA_TTL_MIN)).isoformat()
+        row = {
+            'facility_code': f_code, 'staff_name': staff_name,
+            'code_hash': _admin_2fa_hash(code), 'expires_at': exp,
+            'attempts': 0, 'created_at': now.isoformat(),
+        }
+        # UNIQUE(facility_code, staff_name) 前提: 既存を消してから作り直す
+        supabase.table('admin_2fa_codes').delete().eq(
+            'facility_code', f_code).eq('staff_name', staff_name).execute()
+        supabase.table('admin_2fa_codes').insert(row).execute()
+        msg = (
+            '【TASUKARU】管理者ログインの認証コードです。\n\n'
+            f'認証コード: {code}\n\n'
+            'この番号を画面に入力してください（5分間有効）。\n'
+            'お心当たりがない場合はこのメッセージを無視してください。'
+        )
+        return line_send_message(line_user_id, [{'type': 'text', 'text': msg}])
+    except Exception as e:
+        print(f'[admin-2fa] issue error: {e}', flush=True)
+        return False
+
+def _admin_2fa_verify(supabase, f_code, staff_name, code):
+    """照合。戻り値: (ok:bool, reason:str)。試行回数を消費。"""
+    try:
+        res = supabase.table('admin_2fa_codes').select('*').eq(
+            'facility_code', f_code).eq('staff_name', staff_name).execute()
+        rows = res.data or []
+        if not rows:
+            return (False, 'no_code')
+        r = rows[0]
+        # 期限
+        exp_dt = datetime.fromisoformat(str(r['expires_at']).replace('Z', '+00:00'))
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > exp_dt:
+            return (False, 'expired')
+        # 試行回数
+        if (r.get('attempts') or 0) >= _ADMIN_2FA_MAX_ATTEMPTS:
+            return (False, 'too_many')
+        # 照合
+        if _admin_2fa_hash(code) == r.get('code_hash'):
+            supabase.table('admin_2fa_codes').delete().eq('id', r['id']).execute()
+            return (True, 'ok')
+        # 失敗: 試行数+1
+        supabase.table('admin_2fa_codes').update(
+            {'attempts': (r.get('attempts') or 0) + 1}).eq('id', r['id']).execute()
+        return (False, 'mismatch')
+    except Exception as e:
+        print(f'[admin-2fa] verify error: {e}', flush=True)
+        return (False, 'error')
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -9562,7 +9630,7 @@ def admin_auth():
         my_name = session.get("my_name", "")
 
         # まず、ログイン中スタッフの個人パスワードと一致するか確認
-        staff_res = supabase.table("staffs").select("staff_name,password_hash,email").eq(
+        staff_res = supabase.table("staffs").select("staff_name,password_hash,email,line_user_id").eq(  # admin-2fa-select-fix-v1
             "facility_code", f_code
         ).eq("staff_name", my_name).eq("is_active", True).execute()
 
@@ -9595,8 +9663,29 @@ def admin_auth():
                 board_editors=[], admin_managers=[])
 
         _login_clear_fail(supabase, _al_key, _al_ip)  # admin-lockout-v1
-        session["admin_authenticated"] = True
-        return redirect(url_for("admin"))
+        # ===== admin-2fa-v1 : パスワード+権限OK。ここで2FAゲート =====
+        _2fa_line_uid = (s.get("line_user_id") or "").strip()
+        if not _2fa_line_uid:
+            # 厳格: LINE未紐付けの管理者は入れない
+            return render_template("admin.html",
+                authenticated=False, dev_mode=False,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30,
+                error="管理者機能の利用にはLINEの紐づけが必要です。リッチメニューの「利用開始」からLINE連携を完了してから再度お試しください。",
+                claude_url=None, registered_staffs=[], f_code=f_code,
+                board_editors=[], admin_managers=[])
+        # コード発行 + LINE送信
+        if not _admin_2fa_issue(supabase, f_code, my_name, _2fa_line_uid):
+            return render_template("admin.html",
+                authenticated=False, dev_mode=False,
+                patients=[], blocked=[], staff_list=[],
+                hist_limit=30,
+                error="認証コードのLINE送信に失敗しました。時間をおいて再度お試しください。",
+                claude_url=None, registered_staffs=[], f_code=f_code,
+                board_editors=[], admin_managers=[])
+        # 認証保留状態をセッションに置く(まだ admin_authenticated にしない)
+        session["pending_admin_2fa"] = {"f_code": f_code, "staff_name": my_name}
+        return render_template("admin_2fa.html", staff_name=my_name, error=None)
     except Exception as e:
         return render_template("admin.html",
             authenticated=False, dev_mode=False,
@@ -9604,6 +9693,38 @@ def admin_auth():
             hist_limit=30, error=f"認証中にエラーが発生しました: {e}",
             claude_url=None, registered_staffs=[], f_code=f_code,
             board_editors=[], admin_managers=[])
+
+@app.route('/admin_2fa_verify', methods=['POST'])  # admin-2fa-v1
+@login_required
+def admin_2fa_verify():
+    pend = session.get("pending_admin_2fa") or {}
+    f_code = session.get("f_code")
+    my_name = session.get("my_name", "")
+    # 保留状態の整合性チェック
+    if not pend or pend.get("f_code") != f_code or pend.get("staff_name") != my_name:
+        return redirect(url_for("admin"))
+    code = (request.form.get("code", "") or "").strip()
+    supabase = get_supabase()
+    ok, reason = _admin_2fa_verify(supabase, f_code, my_name, code)
+    if ok:
+        session.pop("pending_admin_2fa", None)
+        session["admin_authenticated"] = True
+        return redirect(url_for("admin"))
+    msg_map = {
+        "expired": "コードの有効期限が切れました。最初からやり直してください。",
+        "too_many": "入力回数の上限に達しました。最初からやり直してください。",
+        "no_code": "有効なコードがありません。最初からやり直してください。",
+    }
+    if reason in ("expired", "too_many", "no_code"):
+        session.pop("pending_admin_2fa", None)
+        return render_template("admin.html",
+            authenticated=False, dev_mode=False,
+            patients=[], blocked=[], staff_list=[],
+            hist_limit=30, error=msg_map.get(reason),
+            claude_url=None, registered_staffs=[], f_code=f_code,
+            board_editors=[], admin_managers=[])
+    return render_template("admin_2fa.html", staff_name=my_name,
+        error="認証コードが違います。もう一度入力してください。")
 
 @app.route('/api/scan_patients_from_image', methods=['POST'])
 @login_required
