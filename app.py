@@ -41,6 +41,55 @@ def make_session_permanent():
     from flask import session
     session.permanent = True
 
+# ===== upload-ext-guard-v1 : アップロード拡張子ホワイトリスト検査 =====
+# 許可: 画像 / 音声 / PDF / 表計算。それ以外(実行可能スクリプト等)は拒否。
+_UPLOAD_ALLOWED_EXTS = {
+    # 画像
+    '.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.gif',
+    # 音声
+    '.m4a', '.mp3', '.wav', '.webm', '.ogg', '.aac', '.mp4',
+    # 文書
+    '.pdf',
+    # 表計算
+    '.csv', '.xlsx', '.xls',
+}
+# 明示的に危険とみなす拡張子(名前のどこかに含まれていても拒否 = 二重拡張子偽装対策)
+_UPLOAD_DANGEROUS_EXTS = {
+    '.php', '.phtml', '.php3', '.php4', '.php5', '.pht',
+    '.exe', '.sh', '.bat', '.cmd', '.com', '.cgi', '.pl',
+    '.py', '.rb', '.jsp', '.asp', '.aspx', '.htaccess',
+    '.js', '.mjs', '.html', '.htm', '.svg', '.xhtml', '.shtml',
+}
+
+@app.before_request
+def _upload_ext_guard():  # upload-ext-guard-v1
+    from flask import request, jsonify
+    try:
+        if not request.files:
+            return None
+        for _key in request.files:
+            for _fs in request.files.getlist(_key):
+                name = (getattr(_fs, 'filename', '') or '').strip().lower()
+                if not name:
+                    continue  # ファイル未選択フィールドは素通り
+                # 危険拡張子が名前のどこかに含まれる(.php.jpg 等の偽装)なら拒否
+                parts = name.split('.')
+                tokens = {'.' + p for p in parts[1:]}
+                if tokens & _UPLOAD_DANGEROUS_EXTS:
+                    return jsonify({'error': 'file_type_not_allowed',
+                        'message': 'このファイル形式はアップロードできません。'}), 400
+                # 末尾拡張子がホワイトリストに無ければ拒否
+                dot = name.rfind('.')
+                ext = name[dot:] if dot >= 0 else ''
+                if ext not in _UPLOAD_ALLOWED_EXTS:
+                    return jsonify({'error': 'file_type_not_allowed',
+                        'message': 'このファイル形式はアップロードできません。画像・音声・PDF・CSV/Excelのみ対応しています。'}), 400
+    except Exception as _e:
+        # 判定ロジック自体の例外では通す(既存アップロード機能の全滅を防ぐ fail-open)
+        print('[upload-ext-guard] check skipped due to error: ' + str(_e), flush=True)
+        return None
+    return None
+
 # ============================================================
 # HTMLno-cache
 # ============================================================
