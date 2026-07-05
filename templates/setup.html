@@ -45,6 +45,22 @@
     display: block; text-align: center; margin-top: 20px; padding: 14px;
     background: #2f6b5e; color: #fff; border-radius: 12px; text-decoration: none; font-weight: 800;
   }
+  /* setup-pw-eye-toggle-v1 */
+  .pw-wrap { position: relative; }
+  .pw-wrap input[type=password],
+  .pw-wrap input[type=text] {
+    width: 100%; padding: 13px 46px 13px 14px; border: 1.5px solid #d5dddb;
+    border-radius: 12px; font-size: 1rem; outline: none;
+  }
+  .pw-wrap input:focus { border-color: #2f6b5e; }
+  .pw-eye {
+    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+    width: 36px; height: 36px; margin: 0; padding: 0;
+    background: none; border: none; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: #7a8783;
+  }
+  .pw-eye:active { opacity: 1; background: #eef2f1; }
+  .pw-eye .material-symbols-outlined { font-size: 22px; }
 </style>
 </head>
 <body>
@@ -60,9 +76,15 @@
       {% if error %}<div class="err">{{ error }}</div>{% endif %}
       <form method="POST" action="/setup?token={{ token }}">
         <label>新しいパスワード（8文字以上）</label>
-        <input type="password" name="password" autocomplete="new-password" required>
+        <div class="pw-wrap">
+          <input type="password" name="password" id="pw1" autocomplete="new-password" required>
+          <button type="button" class="pw-eye" data-target="pw1" aria-label="パスワードを表示"><span class="material-symbols-outlined">visibility</span></button>
+        </div>
         <label>パスワード（確認）</label>
-        <input type="password" name="password2" autocomplete="new-password" required>
+        <div class="pw-wrap">
+          <input type="password" name="password2" id="pw2" autocomplete="new-password" required>
+          <button type="button" class="pw-eye" data-target="pw2" aria-label="パスワードを表示"><span class="material-symbols-outlined">visibility</span></button>
+        </div>
         <button type="submit">この内容で設定する</button>
       </form>
       <div class="note">設定後、このパスワードと施設コードでログインできます。パスワードは暗号化して保存され、運営側からは見えません。</div>
@@ -89,5 +111,24 @@
       <a class="btn-link" href="/login">ログイン画面へ</a>
     {% endif %}
   </div>
+  <script>
+  /* setup-pw-eye-toggle-v1 */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.pw-eye') : null;
+    if (!btn) return;
+    var inp = document.getElementById(btn.getAttribute('data-target'));
+    if (!inp) return;
+    var icon = btn.querySelector('.material-symbols-outlined');
+    if (inp.type === 'password') {
+      inp.type = 'text';
+      if (icon) icon.textContent = 'visibility_off';
+      btn.setAttribute('aria-label', 'パスワードを隠す');
+    } else {
+      inp.type = 'password';
+      if (icon) icon.textContent = 'visibility';
+      btn.setAttribute('aria-label', 'パスワードを表示');
+    }
+  });
+  </script>
 </body>
 </html>

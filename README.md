@@ -1197,3 +1197,30 @@ HIRO案: TASUKARUのLINEに**リッチメニュー**を作り、管理者は「T
   3. 二段階/多要素認証（メールコード方式が現実的）
 - 認証実装の着手点：before_request(app.py 39行, 現状セッション永続化のみ=土台に使える)、/login(1435行〜)、admin_auth(9457行)、is_admin_user。
 - 有効化後の技術タスク：本番モードでPrice ID 21個作成、本番Cloud Runに STRIPE_SECRET_KEY(live)+本番Price ID+Webhook署名シークレット設定、Webhook本番登録。本番運用開始までオンボーディングQRは外部配布しない（現在STRIPE_SECRET_KEYは削除済みで決済は動かない状態）。
+---
+
+## セキュリティ実装（2026-07-05 / Stripe本番化・申告書対応）
+
+Stripe「セキュリティ対策措置状況申告書」対応として、以下を実装・本番リリース済み（本番HEAD `3cbc022`）。
+
+### 認証セキュリティ
+- **ログイン失敗ロック** (`login-lockout-v1`): 通常ログインの失敗を記録し10回失敗で15分ロック。テーブル `login_attempts`（`facility_code, ip, fail_count, locked_until` / UNIQUE(facility_code, ip)）。ロック単位は施設コード+IP。IPは `X-Forwarded-For` 先頭。ヘルパ `_login_client_ip / _login_is_locked / _login_record_fail / _login_clear_fail`（`login_required` 直前に定義）。
+- **管理者/開発者認証のロック** (`admin-lockout-v1`): `/admin_auth` のadmin段・dev段に同じ失敗ロックを適用。ロックキーは `login_attempts` を流用し `{f_code}#admin` / `{f_code}#dev` で分離（通常ログインと巻き込まない）。旧経路 `/api/admin_login`（"8888"デフォルト・平文照合・権限チェック無しの抜け穴）を403で無効化し、管理者認証を `/admin_auth` に一本化。
+- **管理者ログイン2FA** (`admin-2fa-v1`): 管理者認証にLINE経由の6桁コードによる二要素認証を必須化。テーブル `admin_2fa_codes`（`facility_code, staff_name, code_hash, expires_at, attempts` / UNIQUE(facility_code, staff_name)）。コードはSHA-256ハッシュ保存、有効期限5分・試行5回。フロー: パスワード+権限OK → line_user_id取得（未紐付けは入れない=厳格）→ コード生成・LINE送信 → `admin_2fa.html` → `/admin_2fa_verify` で照合成功 → admin_authenticated=True。送信は既存 `line_send_message`。テンプレート `templates/admin_2fa.html` 新設。
+  - 注意: `admin_auth` のstaff SELECTに `line_user_id` を含める必要がある（`admin-2fa-select-fix-v1`）。
+
+### アップロード対策
+- **拡張子ホワイトリスト** (`upload-ext-guard-v1`): `@app.before_request` フックで全アップロードファイルの拡張子を一括検査。許可（画像/音声/PDF/CSV/Excel）以外を400拒否。危険拡張子（.php/.exe/.js/.html/.svg等）は二重拡張子偽装含め拒否。判定例外時はfail-open（既存機能の全滅防止）。定数 `_UPLOAD_ALLOWED_EXTS / _UPLOAD_DANGEROUS_EXTS`。既存18受け口は無改変。
+
+### オンボーディングと2FAの整合
+- **初回管理者のLINE紐付け** (`onboard-admin-line-link-v1`): `stripe_webhook` の初回管理者staffs insertに `line_user_id: ob_user_id` を追加。これが無いと新規施設の初回管理者が厳格2FAで管理者MENUに入れず詰む。
+- **checkout必須化** (`onboard-line-required-v1`): `onboard_create_checkout` で `line_user_id` を必須化（空なら400 line_required）。webhook到達時にline_user_idが必ず埋まる状態を保証。
+- **旧/register封鎖** (`onboard-register-retire-v1` + `onboard-register-link-v1`): 旧 `/register`（平文admin_password保存・staffs行を作らない・決済を経ず施設作成・メール前提の抜け穴、login.htmlから現役リンクされていた）を `/onboard` へのリダイレクトで無効化。login.htmlの「施設の新規登録はこちら」を `/register`→`/onboard` に付け替え。
+
+### 脆弱性診断体制
+- `pip-audit` で依存パッケージの既知脆弱性を診断（pdfkit CVE-2025-26240 を検知したが、TASUKARUは利用者入力を `_esc()` でHTMLエスケープ済みのため攻撃条件に非該当・実リスク無しと評価。修正版未リリースのため監視継続）。
+- GitHub Dependabot（dependency graph / alerts / security updates / malware alerts）を有効化し、継続的・自動的な脆弱性・マルウェア検知を運用。
+
+### 前提・運用メモ
+- LINEログインチャネル「TASUKARU施設登録」を「開発中→公開」に変更済み（これが無いと開発者ロール以外は利用開始LIFFを開けず、職員・新規施設のオンボーディングが全滅する）。
+- 管理者は全員LINE紐付けが必須（厳格2FA）。共用アカウント（PC1/PC2等）は施設共用端末のLINEに紐付ける方針。本番実施設で管理者ロックを10回失敗で試すと自分が締め出される（緊急解除: `UPDATE login_attempts SET fail_count=0, locked_until=NULL WHERE facility_code='cocokaraplus-5526#admin';`）。

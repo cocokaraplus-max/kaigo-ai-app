@@ -48,6 +48,10 @@
 .hist-block-label { font-size:0.78rem; font-weight:700; color:#80868b; margin:12px 0 6px; }
 .hist-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .hist-table th, .hist-table td { border:1px solid #e8eaed; padding:6px 7px; text-align:center; }
+/* fitness-hist-scroll-v1 */
+.hist-table th, .hist-table td { white-space:nowrap; }
+.hist-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:4px; }
+.hist-scroll .hist-table { width:auto; min-width:100%; }
 .hist-table th { background:#f8f9fb; color:#5f6368; font-weight:700; }
 .hist-table td.dt { text-align:left; white-space:nowrap; }
 .hist-empty { font-size:0.8rem; color:#9aa0a6; padding:10px 0; text-align:center; }
@@ -627,7 +631,7 @@ async function loadHistory() {
 
     html += '<div class="hist-block-label">体重</div>';
     if ((j.weights || []).length) {
-      html += '<table class="hist-table"><tr><th>測定日</th><th>体重(kg)</th><th>備考</th></tr>';
+      html += '<div class="hist-scroll"><table class="hist-table"><tr><th>測定日</th><th>体重(kg)</th><th>備考</th></tr>';
       j.weights.forEach(w => {
         const wKey = 'wt_' + w.id;
         window._fitData = window._fitData || {};
@@ -637,14 +641,14 @@ async function loadHistory() {
                 `<td>${w.note || ''}</td>` +
                 `<td><button onclick="event.stopPropagation();deleteRecord('weight','${w.id}','${w.measured_date}',this)" style="background:none;border:none;color:#ea4335;font-size:1rem;cursor:pointer;padding:2px 6px;" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation()">🗑</button></td></tr>`;
       });
-      html += '</table>';
+      html += '</table></div>';
     } else {
       html += '<div class="hist-empty">体重の記録はまだありません</div>';
     }
 
     html += '<div class="hist-block-label">体力測定</div>';
     if ((j.fitness || []).length) {
-      html += '<table class="hist-table"><tr>' +
+      html += '<div class="hist-scroll"><table class="hist-table"><tr>' +
         '<th>測定日</th><th>握右</th><th>握左</th><th>片足右/左</th>' +
         '<th>TUG</th><th>5m通</th><th>5m最</th><th>立座</th></tr>';
       j.fitness.forEach(f => {
@@ -661,7 +665,7 @@ async function loadHistory() {
           `<td>${fmtNum(f.sit_stand_30sec)}</td>` +
           `<td><button onclick="event.stopPropagation();deleteRecord('fitness','${f.id}','${f.measured_date}',this)" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation();deleteRecord('fitness','${f.id}','${f.measured_date}',this)" style="background:none;border:none;color:#ea4335;font-size:1rem;cursor:pointer;padding:2px 6px;" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation()">🗑</button></td></tr>`;
       });
-      html += '</table>';
+      html += '</table></div>';
     } else {
       html += '<div class="hist-empty">体力測定の記録はまだありません</div>';
     }
