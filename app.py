@@ -1723,6 +1723,9 @@ def onboard_done_page():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    # onboard-register-retire-v1 : 旧経路を無効化。正規オンボーディング(/onboard)へ誘導。
+    # 以前は平文パスワードで施設を作成し決済も経ない抜け穴だった。以降のコードは到達不能。
+    return redirect(url_for("onboard"))
     error = None
     success = None
     if request.method == 'POST':
