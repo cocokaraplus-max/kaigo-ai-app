@@ -41,6 +41,55 @@ def make_session_permanent():
     from flask import session
     session.permanent = True
 
+# ===== upload-ext-guard-v1 : アップロード拡張子ホワイトリスト検査 =====
+# 許可: 画像 / 音声 / PDF / 表計算。それ以外(実行可能スクリプト等)は拒否。
+_UPLOAD_ALLOWED_EXTS = {
+    # 画像
+    '.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.gif',
+    # 音声
+    '.m4a', '.mp3', '.wav', '.webm', '.ogg', '.aac', '.mp4',
+    # 文書
+    '.pdf',
+    # 表計算
+    '.csv', '.xlsx', '.xls',
+}
+# 明示的に危険とみなす拡張子(名前のどこかに含まれていても拒否 = 二重拡張子偽装対策)
+_UPLOAD_DANGEROUS_EXTS = {
+    '.php', '.phtml', '.php3', '.php4', '.php5', '.pht',
+    '.exe', '.sh', '.bat', '.cmd', '.com', '.cgi', '.pl',
+    '.py', '.rb', '.jsp', '.asp', '.aspx', '.htaccess',
+    '.js', '.mjs', '.html', '.htm', '.svg', '.xhtml', '.shtml',
+}
+
+@app.before_request
+def _upload_ext_guard():  # upload-ext-guard-v1
+    from flask import request, jsonify
+    try:
+        if not request.files:
+            return None
+        for _key in request.files:
+            for _fs in request.files.getlist(_key):
+                name = (getattr(_fs, 'filename', '') or '').strip().lower()
+                if not name:
+                    continue  # ファイル未選択フィールドは素通り
+                # 危険拡張子が名前のどこかに含まれる(.php.jpg 等の偽装)なら拒否
+                parts = name.split('.')
+                tokens = {'.' + p for p in parts[1:]}
+                if tokens & _UPLOAD_DANGEROUS_EXTS:
+                    return jsonify({'error': 'file_type_not_allowed',
+                        'message': 'このファイル形式はアップロードできません。'}), 400
+                # 末尾拡張子がホワイトリストに無ければ拒否
+                dot = name.rfind('.')
+                ext = name[dot:] if dot >= 0 else ''
+                if ext not in _UPLOAD_ALLOWED_EXTS:
+                    return jsonify({'error': 'file_type_not_allowed',
+                        'message': 'このファイル形式はアップロードできません。画像・音声・PDF・CSV/Excelのみ対応しています。'}), 400
+    except Exception as _e:
+        # 判定ロジック自体の例外では通す(既存アップロード機能の全滅を防ぐ fail-open)
+        print('[upload-ext-guard] check skipped due to error: ' + str(_e), flush=True)
+        return None
+    return None
+
 # ============================================================
 # HTMLno-cache
 # ============================================================
@@ -1723,6 +1772,9 @@ def onboard_done_page():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    # onboard-register-retire-v1 : 旧経路を無効化。正規オンボーディング(/onboard)へ誘導。
+    # 以前は平文パスワードで施設を作成し決済も経ない抜け穴だった。以降のコードは到達不能。
+    return redirect(url_for("onboard"))
     error = None
     success = None
     if request.method == 'POST':
@@ -16867,6 +16919,10 @@ def onboard_create_checkout():
 
     if not facility_name or not admin_name:
         return jsonify({"error": "facility_name and admin_name required"}), 400
+    # onboard-line-required-v1 : 初回管理者を必ず2FA可能にするため line_user_id を必須化
+    if not line_user_id:
+        return jsonify({"error": "line_required",
+            "message": "お申し込みにはLINEの友だち追加が必要です。LINEから開いてやり直してください。"}), 400
     if plan not in ("starter", "standard", "pro"):
         return jsonify({"error": "invalid plan: " + plan}), 400
 
@@ -17009,6 +17065,7 @@ def stripe_webhook():
                     "setup_token": setup_token,
                     "setup_token_expires": setup_exp,
                     "email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
+                    "line_user_id": ob_user_id or None,  # onboard-admin-line-link-v1 : 初回管理者を2FA可能に紐付け
                 }).execute()
                 # LINEで初回設定リンクを本人(userId)に送信。パスワードは送らない=履歴に残さない
                 setup_url = request.host_url.rstrip("/") + "/setup?token=" + setup_token
