@@ -18460,9 +18460,7 @@ def api_meeting_transcribe():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/api/meeting/summarize", methods=["POST"])
-@login_required
-def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1
+def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1 / fix meetings-minutes-struct-parse-fix-v1
     """第4表議事録本文(■ 見出し)を構造化dictに分解。Gemini不要・高速。"""
     import re as _re_p
     if not text:
@@ -18537,6 +18535,8 @@ def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1
     }
 
 
+@app.route("/api/meeting/summarize", methods=["POST"])
+@login_required
 def api_meeting_summarize():
     """文字起こし→担当者会議の議事録を生成(Gemini)。"""
     ok, f_code, my_name = _meetings_gate_ok()
