@@ -1307,3 +1307,37 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 ### ブランチ状態
 - DEV(tasukaru-dev) HEAD = de5e559（会議API群・DDL・フロント・第4表議事録・READMEを含む見込み）。本番未マージ。
 - 本番マージ時に必要(再掲): 本番Supabaseへ meetings系DDL 3本(meetings_seed / meetings_altcand / meetings_audio_session)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中(既存バケット)。
+
+---
+
+## 担当者会議 アセスメントシート＋3成果物PDF出力 完成（2026-07-06 追記その4）
+
+同日その3の続き。現場要望対応: 議事録からアセスメントシート生成、そこからICF分類、3成果物すべてPDF出力。すべてDEV・MCP動作確認済み。本番未マージ。
+
+### 現場要望（達成済み）
+「議事録作成後、そこからアセスメントシートを作成し、さらにその情報からICFを分類。3つの成果物(議事録・アセスメント・ICF分類ボード)を作れて、それぞれ印刷・PDF保存できる機能」＋「ハルシネーション絶対なし」「職員が全項目を修正・削除・追加できる」。
+
+### 完了（DEV push済み・MCP確認済み）
+- **アセスメントシート生成API** `/api/meeting/assessment`(POST, marker: meetings-assessment-api-v1): 議事録+文字起こし→課題分析標準項目23項目(令和5年改定版)をJSON配列で生成(Gemini)。**ハルシネーション対策を多層で担保**: プロンプトで創作厳禁・無い項目は必ず recorded:false / body:「（未記載）」、生成後の正規化でも body が「（未記載）」なら recorded を強制false。MCP確認: 23項目生成・基本情報系(社会保障/認定情報/じょくそう/口腔/コミュニケーション等)が創作されず正しく未記載、語られた内容は該当項目に整理、を確認。
+- **アセスメント編集UI**(admin_meetings.html, meetings-assessment-v1): 23項目を**項目ごとに編集・削除・追加**。未記載項目はグレー破線表示、職員が手入力で補完(未記載↔記載でスタイル即時切替)。「＋項目を追加」で新規、各項目に削除ボタン。MCP確認: 未記載への手入力→記載化、項目追加、項目削除、すべて保存・復元まで確認。
+- **DB**: `meetings.assessment`カラム追加(text, DDL meetings-assessment-v1, DEV投入済み)。項目配列のJSON文字列を保存。
+- **ICF分類の入力元トグル**: 「アセスメントから分類 / 議事録から分類」を選択可(meetings-assessment-wire-v1)。classify_icf の入力を汎用化(minutes_text 無ければ source_text 使用)、プロンプトの「議事録」を「会議情報」に汎用化。saveにassessment追加。MCP確認: アセスメントから分類→11付箋生成OK。
+- **3成果物PDF出力** `/api/meeting/pdf?meeting_id=xxx&type=minutes|assessment|icf`(GET, marker: meetings-pdf-v1 / makeresp-fix: meetings-pdf-makeresp-fix-v1): 方式A(pdfkit/wkhtmltopdf、既存ledger/monitoring流儀準拠)。議事録=第4表体裁、アセスメント=23項目table、ICF=モデル図6スロットをtableで静的再現。**wkhtmltopdf制約対応**: Flexbox不使用tableベース、@page margin避けbody padding。**注意: make_response は関数内で個別import必須**(トップレベルflask importに無い。既存PDF関数も同様)。フロントは各カードにPDFボタン(保存済み会議のみ表示、保存後はその場に留まりPDF可)。MCP確認: 3タイプとも200・正しい%PDF・妥当サイズ(議事録26KB/アセス90KB/ICF25KB)。**レイアウト目視はHIRO実機確認が必要**(MCPはバイナリ生成成功までしか見えない)。
+
+### 設計確定事項
+- アセスメント様式=課題分析標準項目23項目(令和5年改定)。基本情報9項目+課題分析14項目+特記。
+- 編集方式=案A(JSON構造、項目ごと編集/削除/追加)。案B(ベタテキスト)は不採用。
+- ハルシネーション絶対なし=最優先要件。未記載を明示し職員が補完。人が承認思想。
+- PDF=方式A(サーバpdfkit)で3成果物統一。ICFボードはFlexNGなのでtable静的版。
+
+### 次にやること
+1. **アセスメントPDFのレイアウト目視確認**(HIRO実機。文字化け・表崩れ・モデル図配置)。必要なら微調整。
+2. **分類AIの活動/参加自動振り分け**(任意・精度向上、これまで通り保留可)。
+3. **会議資料OCR**(方向A): カメラ/ファイル→Gemini画像OCR→議事録/アセスメント生成の入力に合流。既存 parse_assessment_file / api_ledger_ocr_receipt 流用。
+4. アセスメント項目の振り分け精度微調整(意欲低下/睡眠が「これまでの生活」に入る等の軽微なズレ。プロンプト調整で改善可)。
+5. 会議情報フォームに出席者欄追加。患者リスト取得。管理者MENU導線リンク設置。実機ドラッグ/録音確認。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = bdc0a0e。本番未マージ。
+- 本番マージ時に必要(再掲・更新): 本番Supabaseへ meetings系DDL 5本(meetings_seed / meetings_altcand / meetings_audio_session / meetings_board_slot / meetings_assessment)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中。wkhtmltopdf・日本語フォントはイメージ導入済み。
+- テスト会議数件がDEMO001に残存(ダミー・無害)。
