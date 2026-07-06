@@ -18506,12 +18506,36 @@ def api_meeting_summarize():
 
 【文字起こし】
 {transcript[:8000]}"""  # meetings-summarize-form4-v1
+        # meetings-minutes-struct-api-v1: 構造化JSONも出力させる指示を追記
+        prompt += (
+            "\n\nまず上記の議事録本文を出力し、その後に必ず次の区切り行を単独で出力する:\n"
+            "===STRUCT_JSON===\n"
+            "続けて同じ内容を次のJSONで出力(前置き・```禁止)。無い情報は（記載なし）、"
+            "出席者は明確な人のみ配列に。\n"
+            '{"header":{"date":"","place":"","attendees":[],"absentees":""},'
+            '"items":[],"discussion":"","conclusions":[],"issues":""}'
+        )
         model = get_generative_model()
         resp = model.generate_content(prompt)
         minutes = (resp.text or "").strip()
         if not minutes:
             return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
-        return jsonify({"status": "success", "minutes": minutes})
+        import re as _re_s, json as _json_s  # meetings-minutes-struct-api-v1
+        raw = minutes
+        struct = None
+        if raw and "===STRUCT_JSON===" in raw:
+            _parts = raw.split("===STRUCT_JSON===", 1)
+            minutes = _parts[0].strip()
+            _jtxt = _parts[1].strip()
+            _jtxt = _re_s.sub(r"^```[a-zA-Z]*\n?", "", _jtxt).strip()
+            _jtxt = _re_s.sub(r"```$", "", _jtxt).strip()
+            _m = _re_s.search(r"\{.*\}", _jtxt, _re_s.DOTALL)
+            if _m:
+                try:
+                    struct = _json_s.loads(_m.group())
+                except Exception:
+                    struct = None
+        return jsonify({"status": "success", "minutes": minutes, "minutes_struct": struct})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- /meetings-transcribe-summarize-v1 ---
@@ -18562,6 +18586,10 @@ def api_meeting_save():
         if _assessment is not None and not isinstance(_assessment, str):
             import json as _json_a
             _assessment = _json_a.dumps(_assessment, ensure_ascii=False)
+        _minutes_struct = data.get("minutes_struct")  # meetings-minutes-struct-save-v1
+        if _minutes_struct is not None and not isinstance(_minutes_struct, str):
+            import json as _json_ms
+            _minutes_struct = _json_ms.dumps(_minutes_struct, ensure_ascii=False)
         m_row = {
             "facility_code": f_code,
             "patient_id": patient_id,
@@ -18569,6 +18597,7 @@ def api_meeting_save():
             "meeting_date": meeting_date,
             "transcript": transcript,
             "minutes": minutes,
+            "minutes_struct": _minutes_struct,
             "assessment": _assessment,
             "audio_session_id": audio_session_id,
             "status": "confirmed",
@@ -18808,14 +18837,125 @@ _MTG_PDF_BASE_CSS = """
 """
 
 
-def _mtg_pdf_html_minutes(meeting):
+def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
+    import json as _json_m
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
     date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
-    minutes = _mtg_pdf_esc(meeting.get("minutes") or "（議事録なし）")
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
-    <h1>サービス担当者会議の要点</h1>
-    <div class="sub">{title}　開催日: {date}</div>
-    <div class="box">{minutes}</div>
+    # 構造化データ
+    st = None
+    raw = meeting.get("minutes_struct")
+    if raw:
+        try:
+            st = _json_m.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            st = None
+    # フォールバック: 構造化が無ければ従来の全文box
+    if not st or not isinstance(st, dict):
+        minutes = _mtg_pdf_esc(meeting.get("minutes") or "（議事録なし）")
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
+        <h1>サービス担当者会議の要点</h1>
+        <div class="sub">{title}　開催日: {date}</div>
+        <div class="box">{minutes}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    header = st.get("header") or {}
+    h_date = _mtg_pdf_esc(header.get("date") or "（記載なし）")
+    h_place = _mtg_pdf_esc(header.get("place") or "（記載なし）")
+    atts = header.get("attendees") or []
+    h_att = _mtg_pdf_esc("、".join(atts) if atts else "（記載なし）")
+    h_abs = _mtg_pdf_esc(header.get("absentees") or "（記載なし）")
+    items = st.get("items") or []
+    disc = _mtg_pdf_esc(st.get("discussion") or "（記載なし）")
+    concl = st.get("conclusions") or []
+    issues = _mtg_pdf_esc(st.get("issues") or "（記載なし）")
+    care_level = _mtg_pdf_esc(meeting.get("care_level") or "")
+
+    items_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in items) or "<li>（記載なし）</li>"
+    concl_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in concl) or "<li>（記載なし）</li>"
+
+    if style == "c":
+        # 案C: 公的様式風の罫線
+        css = _MTG_PDF_BASE_CSS + """
+          .cwrap { border:2px solid #333; }
+          .ctitle { text-align:center; font-size:14pt; font-weight:bold; padding:8px; border-bottom:1px solid #333; }
+          table.ct { width:100%; border-collapse:collapse; }
+          table.ct td { border:1px solid #333; padding:5px 8px; font-size:10pt; vertical-align:top; }
+          table.ct td.lbl { background:#f0f0f0; font-weight:bold; width:20%; }
+          table.ct ul { margin:0; padding-left:16px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="cwrap">
+        <div class="ctitle">サービス担当者会議の要点</div>
+        <table class="ct">
+          <tr><td class="lbl">利用者名</td><td>{title}</td><td class="lbl">開催日</td><td>{h_date if h_date!='（記載なし）' else date}</td></tr>
+          <tr><td class="lbl">開催場所</td><td>{h_place}</td><td class="lbl">欠席者</td><td>{h_abs}</td></tr>
+          <tr><td class="lbl">出席者</td><td colspan="3">{h_att}</td></tr>
+          <tr><td class="lbl">検討した項目</td><td colspan="3"><ul>{items_html}</ul></td></tr>
+          <tr><td class="lbl">検討内容</td><td colspan="3">{disc}</td></tr>
+          <tr><td class="lbl">結論(決定事項)</td><td colspan="3"><ul>{concl_html}</ul></td></tr>
+          <tr><td class="lbl">残された課題</td><td colspan="3">{issues}</td></tr>
+        </table>
+        </div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "b":
+        # 案B: 決定事項を番号強調(ビジネス)
+        concl_num = "".join(
+            f'<div class="bnum"><span class="bn">{i+1}</span><span>{_mtg_pdf_esc(x)}</span></div>'
+            for i, x in enumerate(concl)
+        ) or '<div class="bnum"><span>（記載なし）</span></div>'
+        css = _MTG_PDF_BASE_CSS + """
+          .bhead { display:flex; justify-content:space-between; border-bottom:1px solid #333; padding-bottom:6px; margin-bottom:10px; }
+          .btitle { font-size:14pt; font-weight:bold; }
+          .bmeta { font-size:9pt; color:#666; }
+          table.bi { width:100%; font-size:10pt; margin-bottom:10px; }
+          table.bi td.l { color:#666; width:18%; }
+          .bbox { background:#f5f8f5; border-radius:5px; padding:8px 10px; margin-bottom:10px; }
+          .bboxt { font-weight:bold; color:#1e5e26; margin-bottom:5px; }
+          .bnum { display:flex; gap:7px; margin-bottom:4px; align-items:flex-start; }
+          .bn { background:#2e7d32; color:#fff; border-radius:50%; width:16px; height:16px;
+                display:inline-block; text-align:center; line-height:16px; font-size:9pt; flex-shrink:0; }
+          .bsec { font-weight:bold; margin:8px 0 3px; }
+          table.bi ul { margin:2px 0; padding-left:16px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="bhead"><div class="btitle">サービス担当者会議 議事録</div><div class="bmeta">作成: {date} ／ TASUKARU</div></div>
+        <table class="bi">
+          <tr><td class="l">利用者</td><td>{title}{('（'+care_level+'）') if care_level else ''}</td></tr>
+          <tr><td class="l">開催場所</td><td>{h_place}</td></tr>
+          <tr><td class="l">出席者</td><td>{h_att}</td></tr>
+        </table>
+        <div class="bbox"><div class="bboxt">◆ 決定事項</div>{concl_num}</div>
+        <div class="bsec">検討した項目</div><ul>{items_html}</ul>
+        <div class="bsec">検討内容</div><div>{disc}</div>
+        <div class="bsec">残された課題・次回に向けて</div><div>{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    # 案A(既定): ヘッダー表＋見出し区切り(バランス)
+    css = _MTG_PDF_BASE_CSS + """
+      .atitle { text-align:center; font-size:14pt; font-weight:bold; letter-spacing:1px;
+                padding-bottom:8px; border-bottom:2px solid #2e7d32; margin-bottom:10px; }
+      table.ah { width:100%; border-collapse:collapse; font-size:10pt; margin-bottom:12px; }
+      table.ah td { border:1px solid #cdd6cf; padding:5px 8px; vertical-align:top; }
+      table.ah td.lbl { background:#f1f6f1; font-weight:bold; color:#2e5e33; width:20%; }
+      .asec { font-weight:bold; color:#2e5e33; border-left:4px solid #2e7d32; padding-left:8px; margin:12px 0 4px; }
+      .asec + ul, .asec + div { padding-left:10px; margin-top:2px; }
+      ul { margin:2px 0; padding-left:20px; }
+    """
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+    <div class="atitle">サービス担当者会議 議事録</div>
+    <table class="ah">
+      <tr><td class="lbl">利用者名</td><td>{title}</td><td class="lbl">開催日</td><td>{h_date if h_date!='（記載なし）' else date}</td></tr>
+      <tr><td class="lbl">開催場所</td><td>{h_place}</td><td class="lbl">欠席者</td><td>{h_abs}</td></tr>
+      <tr><td class="lbl">出席者</td><td colspan="3">{h_att}</td></tr>
+    </table>
+    <div class="asec">1. 検討した項目</div><ul>{items_html}</ul>
+    <div class="asec">2. 検討内容</div><div>{disc}</div>
+    <div class="asec">3. 結論(決定事項)</div><ul>{concl_html}</ul>
+    <div class="asec">4. 残された課題・次回に向けて</div><div>{issues}</div>
     <div class="foot">TASUKARU にて作成</div>
     </body></html>"""
 
@@ -18938,7 +19078,10 @@ def api_meeting_pdf():
             html_str = _mtg_pdf_html_icf(meeting, lr.data or [], _name_map)
             label = "ICF分類"
         else:
-            html_str = _mtg_pdf_html_minutes(meeting)
+            _style = (request.args.get("style") or "a").strip().lower()  # meetings-pdf-minutes-styles-v1
+            if _style not in ("a", "b", "c"):
+                _style = "a"
+            html_str = _mtg_pdf_html_minutes(meeting, _style)
             label = "議事録"
 
         import pdfkit, shutil as _sh_p

@@ -226,9 +226,20 @@
         <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
           <span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成
         </button>
-        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfMinutes" style="display:none;" onclick="mtgPdf('minutes')">
-          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録PDF
-        </button>
+      </div>
+      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
+        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録PDF（レイアウトを選べます）:</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','a')">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>A スッキリ
+          </button>
+          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','b')">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>B ビジネス
+          </button>
+          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','c')">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>C フォーマル
+          </button>
+        </div>
       </div>
     </div>
 
@@ -288,6 +299,7 @@ let mtgState = {
   assessment: [],       // アセスメント23項目(項目編集の正)
   asmtSeq: 1,           // アセスメント項目のローカル連番
   srcType: 'assessment',// ICF分類の入力元 assessment|minutes
+  minutesStruct: null,  // 構造化議事録(3スタイルPDF用)
   editingMeetingId: null,
 };
 
@@ -370,6 +382,7 @@ function mtgStartNew() {
   mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
                transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
                assessment: [], asmtSeq: 1, srcType: 'assessment',
+               minutesStruct: null,
                editingMeetingId: null };
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
@@ -401,6 +414,11 @@ async function mtgOpen(meetingId) {
     document.getElementById('mtgPatient').value = m.patient_id || '';
     document.getElementById('mtgTranscript').value = m.transcript || '';
     document.getElementById('mtgMinutes').value = m.minutes || '';
+    // 構造化議事録の復元(3スタイルPDF用)
+    if (m.minutes_struct) {
+      try { mtgState.minutesStruct = (typeof m.minutes_struct === 'string') ? JSON.parse(m.minutes_struct) : m.minutes_struct; }
+      catch(e) { mtgState.minutesStruct = null; }
+    }
     // アセスメント復元(JSON文字列 → 項目配列)
     if (m.assessment) {
       try {
@@ -454,12 +472,13 @@ function mtgUpdatePdfButtons() {
 }
 
 // PDF出力(保存済みデータからサーバ生成)
-function mtgPdf(type) {
+function mtgPdf(type, style) {
   if (!mtgState.editingMeetingId) {
     alert('先に保存してください。PDFは保存された内容から作成されます。');
     return;
   }
-  const url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type + '&_t=' + Date.now();
+  let url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type + '&_t=' + Date.now();
+  if (style) url += '&style=' + style;
   window.open(url, '_blank');
 }
 
@@ -638,6 +657,7 @@ async function mtgSummarize() {
     const d = await r.json();
     if (d.status === 'success') {
       document.getElementById('mtgMinutes').value = d.minutes || '';
+      mtgState.minutesStruct = d.minutes_struct || null;
     } else { alert(d.message || '議事録の作成に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
@@ -792,6 +812,7 @@ async function mtgSave() {
     patient_id: document.getElementById('mtgPatient').value,
     transcript: document.getElementById('mtgTranscript').value,
     minutes: document.getElementById('mtgMinutes').value,
+    minutes_struct: mtgState.minutesStruct,
     assessment: mtgState.assessment.map(it => ({ heading: it.heading, body: it.body, recorded: it.recorded })),
     audio_session_id: mtgState.sessionId,
     stickies,
