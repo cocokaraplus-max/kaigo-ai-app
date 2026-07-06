@@ -18367,6 +18367,266 @@ def api_jisseki_voverride_range_get():
 # ==========================================
 # jisseki-print-route-v1: 実績集計の印刷専用ページ
 # ==========================================
+# --- meetings-transcribe-summarize-v1 : 会議 録音→文字起こし / 議事録生成 ---
+def _meetings_gate_ok():
+    """meetings_enabled ゲート。OKなら(True, f_code, my_name)。"""
+    if "f_code" not in session:
+        return (False, None, None)
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        supabase = get_supabase()
+        g = supabase.table("admin_settings").select("value")\
+            .eq("facility_code", f_code).eq("key", "meetings_enabled").execute()
+        enabled = False
+        if g.data:
+            v = g.data[0].get("value")
+            enabled = (v is True) or (str(v).lower() in ("true", "1", '"true"'))
+        return (enabled, f_code, my_name)
+    except Exception:
+        return (False, f_code, my_name)
+
+
+# meetings-transcribe-chunk-v1
+@app.route("/api/meeting/transcribe", methods=["POST"])
+@login_required
+def api_meeting_transcribe():
+    """会議録音のチャンク1個を受け取り、Storageに保存しつつGeminiで文字起こし。
+    長時間会議はフロントで時間分割(方式1)し、このAPIを順次呼ぶ。
+    受け取り: audio(file), session_id(録音セッションUUID), chunk_index(0始まり)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        audio = request.files.get("audio")
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or "").lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "音声が短すぎます。もう一度お話しください。"})
+        ext_mime = {
+            ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+            ".wav": "audio/wav",  ".aac": "audio/aac",
+            ".ogg": "audio/ogg",  ".webm": "audio/webm",
+            ".mp4": "audio/mp4",
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), "audio/webm")
+
+        # --- チャンク音声を Storage に保存 (assessment-audio バケット流用) ---
+        import re as _re2
+        session_id = (request.form.get("session_id") or "").strip()
+        # session_id はフロント発行のUUID。安全のため英数-のみ許可。
+        session_id = _re2.sub(r"[^0-9a-zA-Z\-]", "", session_id)[:64]
+        try:
+            chunk_index = int(request.form.get("chunk_index") or 0)
+        except Exception:
+            chunk_index = 0
+        ext = mime.split("/")[-1]
+        if ext == "mpeg":
+            ext = "mp3"
+        audio_url = ""
+        if session_id:
+            try:
+                supabase = get_supabase()
+                path = f"{f_code}/meetings/{session_id}/{chunk_index:04d}.{ext}"
+                supabase.storage.from_("assessment-audio").upload(
+                    path=path, file=audio_bytes,
+                    file_options={"content-type": mime}
+                )
+                audio_url = supabase.storage.from_("assessment-audio").get_public_url(path)
+            except Exception as _ue:
+                # 保存失敗しても文字起こしは続行(fail-safe)。
+                print(f"[meeting] chunk upload failed: {_ue}", flush=True)
+                audio_url = ""
+
+        prompt = """これは介護施設の担当者会議(サービス担当者会議)の録音です。
+発話内容を、話し言葉のフィラー(えー・あのー等)を除いて、正確に文字起こししてください。
+・発言者が判別できる場合は「ケアマネ:」「指導員:」等の話者ラベルを付けてよい(不明なら省略)。
+・数値・固有名詞(利用者名・薬名・部位名)は聞き取れた通りに残す。
+・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        text = (resp.text or "").strip()
+        # 無音チャンク等でテキストが空でもエラーにしない(連結時に飛ばせるよう空文字返す)
+        return jsonify({"status": "success", "transcript": text,
+                        "chunk_index": chunk_index, "audio_url": audio_url,
+                        "session_id": session_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/summarize", methods=["POST"])
+@login_required
+def api_meeting_summarize():
+    """文字起こし→担当者会議の議事録を生成(Gemini)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        data = request.get_json(silent=True) or {}
+        transcript = (data.get("transcript") or "").strip()
+        if not transcript:
+            return jsonify({"status": "error", "message": "文字起こしテキストがありません"}), 400
+        prompt = f"""あなたは介護施設の相談員です。以下は担当者会議(サービス担当者会議)の文字起こしです。
+これを、後からICF(国際生活機能分類)で分類しやすい議事録に整えてください。
+
+整え方:
+・利用者本人の状態を、心身の機能・身体の状況・生活動作(できること/介助が必要なこと)・環境や家族の状況、に触れながら箇条書きで整理する。
+・発言の事実に忠実に。会議で出ていない情報を創作・推測で足さない。
+・専門用語に置き換えず、会議で語られた具体的な様子(例:「杖で20m歩ける」)をそのまま残す。
+・見出しを付けてよいが、簡潔に。
+
+出力は議事録本文のみ。前置き・説明・マークダウンの```は不要。
+
+【文字起こし】
+{transcript[:8000]}"""
+        model = get_generative_model()
+        resp = model.generate_content(prompt)
+        minutes = (resp.text or "").strip()
+        if not minutes:
+            return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
+        return jsonify({"status": "success", "minutes": minutes})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-transcribe-summarize-v1 ---
+
+
+# --- meetings-save-list-get-v1 : 会議の一括保存 / 一覧 / 読み込み ---
+import re as _re_uuid_mod
+_UUID_RE = _re_uuid_mod.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+@app.route("/api/meeting/save", methods=["POST"])
+@login_required
+def api_meeting_save():
+    """会議1件 + 付箋(meeting_icf_links)を一括保存(案X)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "").strip() or "担当者会議"
+        meeting_date = (data.get("meeting_date") or "").strip() or None
+        patient_id = (data.get("patient_id") or "").strip()
+        patient_id = patient_id if _UUID_RE.match(patient_id) else None
+        transcript = data.get("transcript") or ""
+        minutes = data.get("minutes") or ""
+        audio_session_id = (data.get("audio_session_id") or "").strip() or None
+        stickies = data.get("stickies") or []
+        if not isinstance(stickies, list):
+            return jsonify({"status": "error", "message": "stickies の形式が不正です"}), 400
+
+        # 会議レコードをinsert
+        m_row = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "title": title,
+            "meeting_date": meeting_date,
+            "transcript": transcript,
+            "minutes": minutes,
+            "audio_session_id": audio_session_id,
+            "status": "confirmed",
+            "created_by": my_name,
+        }
+        m_res = supabase.table("meetings").insert(m_row).execute()
+        if not (m_res.data and m_res.data[0].get("id")):
+            return jsonify({"status": "error", "message": "会議の保存に失敗しました"}), 500
+        meeting_id = m_res.data[0]["id"]
+
+        # 付箋を一括insert。icf_codeがマスタに無いものはコードnull(手動メモ付箋)として保存。
+        _valid = set()
+        try:
+            _mc = supabase.table("icf_codes").select("code").eq("level", 2).execute()
+            _valid = {r["code"] for r in (_mc.data or [])}
+        except Exception:
+            _valid = set()
+
+        saved = 0
+        for s in stickies:
+            if not isinstance(s, dict):
+                continue
+            code = (str(s.get("icf_code") or "").strip()) or None
+            if code and code not in _valid:
+                # マスタ外コードは握りつぶさず、コードnull + noteに退避(データ健全性優先)
+                _n = s.get("note") or ""
+                s = dict(s); s["note"] = (f"[未確定:{code}] " + _n).strip()
+                code = None
+            alt = (str(s.get("alt_icf_code") or "").strip()) or None
+            if alt and alt not in _valid:
+                alt = None
+            link = {
+                "meeting_id": meeting_id,
+                "icf_code": code,
+                "source_text": s.get("source_text") or None,
+                "note": s.get("note") or None,
+                "confidence": s.get("confidence") or "auto",
+                "confirmed": bool(s.get("confirmed", False)),
+                "board_component": (str(s.get("board_component") or "").strip() or None),
+                "sort_order": int(s.get("sort_order") or 0),
+                "alt_icf_code": alt,
+                "alt_reason": s.get("alt_reason") or None,
+            }
+            supabase.table("meeting_icf_links").insert(link).execute()
+            saved += 1
+
+        return jsonify({"status": "success", "meeting_id": meeting_id, "saved_stickies": saved})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/list", methods=["GET"])
+@login_required
+def api_meeting_list():
+    """施設の会議一覧(新しい順)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        r = supabase.table("meetings")\
+            .select("id,title,meeting_date,patient_id,status,created_at")\
+            .eq("facility_code", f_code)\
+            .order("meeting_date", desc=True)\
+            .order("created_at", desc=True)\
+            .limit(200).execute()
+        return jsonify({"status": "success", "meetings": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/get", methods=["GET"])
+@login_required
+def api_meeting_get():
+    """会議1件 + 付箋を読み込み(ボード復元)。他施設IDは弾く。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        meeting_id = (request.args.get("meeting_id") or "").strip()
+        if not _UUID_RE.match(meeting_id):
+            return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
+        mr = supabase.table("meetings").select("*")\
+            .eq("id", meeting_id).eq("facility_code", f_code).execute()
+        if not mr.data:
+            return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        meeting = mr.data[0]
+        lr = supabase.table("meeting_icf_links").select("*")\
+            .eq("meeting_id", meeting_id)\
+            .order("board_component").order("sort_order").execute()
+        return jsonify({"status": "success", "meeting": meeting, "stickies": lr.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-save-list-get-v1 ---
+
+
 # --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
 @app.route("/api/meeting/classify_icf", methods=["POST"])
 def api_meeting_classify_icf():
