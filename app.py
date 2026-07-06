@@ -18862,8 +18862,17 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
     header = st.get("header") or {}
     h_date = _mtg_pdf_esc(header.get("date") or "（記載なし）")
     h_place = _mtg_pdf_esc(header.get("place") or "（記載なし）")
-    atts = header.get("attendees") or []
-    h_att = _mtg_pdf_esc("、".join(atts) if atts else "（記載なし）")
+    atts = header.get("attendees") or []  # meetings-pdf-attendees-fix-v1
+    def _fmt_att(a):
+        if isinstance(a, dict):
+            role = (a.get("role") or "").strip()
+            name = (a.get("name") or "").strip()
+            if name and name not in ("（氏名なし）", "（記載なし）"):
+                return (role + "（" + name + "）") if role else name
+            return role or name or ""
+        return str(a).strip()
+    _att_list = [x for x in (_fmt_att(a) for a in atts) if x]
+    h_att = _mtg_pdf_esc("、".join(_att_list) if _att_list else "（記載なし）")
     h_abs = _mtg_pdf_esc(header.get("absentees") or "（記載なし）")
     items = st.get("items") or []
     disc = _mtg_pdf_esc(st.get("discussion") or "（記載なし）")
