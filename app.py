@@ -18661,6 +18661,23 @@ def api_meeting_get():
 # --- /meetings-save-list-get-v1 ---
 
 
+# --- meetings-icf-master-v1 : ICF第2レベル全件(手動追加のコード選択用) ---
+@app.route("/api/meeting/icf_master", methods=["GET"])
+@login_required
+def api_meeting_icf_master():
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        r = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
+            .eq("level", 2).order("sort_order").execute()
+        return jsonify({"status": "success", "codes": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-icf-master-v1 ---
+
+
 # --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
 @app.route("/api/meeting/classify_icf", methods=["POST"])
 def api_meeting_classify_icf():

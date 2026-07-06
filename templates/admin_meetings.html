@@ -63,8 +63,42 @@
   #mtgClassifyResult { white-space:pre-wrap; font-size:0.8rem; color:#333;
     background:#f7f9f7; border-radius:10px; padding:12px; max-height:340px; overflow:auto; }
 
-  /* 付箋ボード用コンテナ(次の塊で実装) */
+  /* 付箋ボード (meetings-board-v1) */
   #mtgBoard { min-height:40px; }
+  .mtg-board-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  @media (max-width:520px){ .mtg-board-grid { grid-template-columns:1fr; } }
+  .mtg-zone { background:#f4f7f4; border-radius:10px; padding:8px; min-height:120px; }
+  .mtg-zone.dragover { outline:2px dashed #2e7d32; outline-offset:-2px; background:#eaf4ec; }
+  .mtg-zone-label { font-size:0.78rem; font-weight:700; margin-bottom:6px; }
+  .mtg-sticky { border-radius:8px; padding:7px 8px; margin-bottom:6px; font-size:0.8rem;
+    cursor:grab; touch-action:none; border:1px solid transparent; }
+  .mtg-sticky:active { cursor:grabbing; }
+  .mtg-sticky.dragging { opacity:0.45; }
+  .mtg-sticky .st-code { font-weight:700; }
+  .mtg-sticky .st-src { font-size:0.7rem; opacity:0.8; margin-top:3px; }
+  .mtg-sticky .st-row { margin-top:5px; display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  .mtg-sticky .st-btn { font-size:0.68rem; padding:2px 7px; border-radius:6px;
+    border:0.5px solid #cfd8cf; background:#fff; cursor:pointer; color:#33453a; }
+  .mtg-sticky .st-btn.on { background:#9FE1CB; border-color:#0F6E56; color:#04342C; }
+  .mtg-sticky .st-alt { font-size:0.68rem; padding:2px 7px; border-radius:6px;
+    border:0.5px dashed #BA7517; background:#FAEEDA; color:#412402; cursor:pointer; }
+  .mtg-zone-empty { border:1px dashed #b7c6ba; border-radius:8px; padding:12px 6px;
+    font-size:0.72rem; color:#8a988c; text-align:center; }
+  .mtg-zone-add { width:100%; font-size:0.7rem; padding:5px; border-radius:6px;
+    border:0.5px dashed #b7c6ba; background:transparent; color:#5f7a63; cursor:pointer; margin-top:2px; }
+  /* ICFコード検索モーダル(簡易) */
+  .mtg-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex;
+    align-items:center; justify-content:center; z-index:9999; padding:16px; }
+  .mtg-modal { background:#fff; border-radius:14px; padding:16px; width:100%; max-width:440px;
+    max-height:80vh; display:flex; flex-direction:column; }
+  .mtg-modal h4 { margin:0 0 10px; font-size:0.95rem; color:#1e5e26; }
+  .mtg-modal input { width:100%; padding:9px 11px; border:2px solid #cfe3d4; border-radius:9px;
+    font-size:0.9rem; box-sizing:border-box; margin-bottom:8px; }
+  .mtg-modal-list { overflow:auto; flex:1; }
+  .mtg-modal-item { padding:8px 9px; border-bottom:1px solid #eef2ee; cursor:pointer; font-size:0.82rem; }
+  .mtg-modal-item:active { background:#f0f6f1; }
+  .mtg-modal-close { margin-top:8px; padding:9px; border:none; border-radius:9px;
+    background:#eaf4ec; color:#1e5e26; font-weight:700; cursor:pointer; }
 </style>
 {% endblock %}
 
@@ -182,8 +216,20 @@ let mtgState = {
   recorder: null,
   recording: false,
   transcriptParts: {},  // chunk_index -> text (順序保証のため辞書で集約)
-  classifyResults: [],  // 分類API結果(次の塊でボードに描画)
+  classifyResults: [],  // 分類API生結果
+  boardCards: [],       // ボード上の付箋状態(ドラッグ/追加/承認を反映。保存の正)
+  cardSeq: 1,           // 付箋のローカル連番
   editingMeetingId: null,
+};
+
+// ICFマスタ(手動追加のコード選択用。ページロードで一度取得しJSに保持)
+let mtgIcfMaster = [];
+const MTG_COMP_NAME = { b:'心身機能', s:'身体構造', d:'活動と参加', e:'環境因子' };
+const MTG_COMP_COLOR = {
+  b:{bg:'#EEEDFE', tx:'#26215C', line:'#3C3489'},
+  s:{bg:'#E1F5EE', tx:'#04342C', line:'#0F6E56'},
+  d:{bg:'#FAECE7', tx:'#4A1B0C', line:'#993C1D'},
+  e:{bg:'#E6F1FB', tx:'#042C53', line:'#185FA5'},
 };
 
 function uuid() {
@@ -236,7 +282,8 @@ async function mtgLoadList() {
 // ===== 新規 =====
 function mtgStartNew() {
   mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
-               transcriptParts: {}, classifyResults: [], editingMeetingId: null };
+               transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
+               editingMeetingId: null };
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('mtgDate').value = today;
@@ -244,7 +291,7 @@ function mtgStartNew() {
   document.getElementById('mtgTranscript').value = '';
   document.getElementById('mtgMinutes').value = '';
   document.getElementById('mtgBoardCard').style.display = 'none';
-  document.getElementById('mtgClassifyResult').textContent = '';
+  document.getElementById('mtgBoard').innerHTML = '<div id="mtgClassifyResult"></div>';
   document.getElementById('mtgChunks').textContent = '';
   document.getElementById('mtgRecStatus').textContent = '';
   mtgShow('edit');
@@ -264,11 +311,24 @@ async function mtgOpen(meetingId) {
     document.getElementById('mtgPatient').value = m.patient_id || '';
     document.getElementById('mtgTranscript').value = m.transcript || '';
     document.getElementById('mtgMinutes').value = m.minutes || '';
-    // 付箋の復元は次の塊(ボード実装)で対応。今は件数だけ表示。
+    // 保存済み付箋を boardCards に復元してボード描画
     if (d.stickies && d.stickies.length) {
+      mtgState.boardCards = d.stickies.map(s => ({
+        id: mtgState.cardSeq++,
+        icf_code: s.icf_code || '',
+        title_ja: mtgMasterTitle(s.icf_code) || (s.icf_code ? '' : (s.note || 'メモ')),
+        component: s.board_component || mtgCompOf(s.icf_code) || 'b',
+        source_text: s.source_text || '',
+        note: s.note || '',
+        confidence: s.confidence || 'auto',
+        confirmed: !!s.confirmed,
+        alt_icf_code: s.alt_icf_code || null,
+        alt_title_ja: mtgMasterTitle(s.alt_icf_code) || null,
+        alt_reason: s.alt_reason || null,
+        sort_order: s.sort_order || 0,
+      }));
       document.getElementById('mtgBoardCard').style.display = 'block';
-      document.getElementById('mtgClassifyResult').textContent =
-        '保存済みの付箋 '+d.stickies.length+'件（ボード表示は次バージョンで対応）';
+      mtgRenderBoard();
     }
     mtgShow('edit');
   } catch(e) { alert('読み込みエラー: '+e); }
@@ -389,13 +449,23 @@ async function mtgClassify() {
     const d = await r.json();
     if (d.status === 'success') {
       mtgState.classifyResults = d.results || [];
-      // 次の塊で付箋ボードに描画。今は結果を仮表示。
+      // 生結果を boardCards に変換(以降ドラッグ/保存はboardCardsが正)
+      mtgState.boardCards = (d.results||[]).map((x, i) => ({
+        id: mtgState.cardSeq++,
+        icf_code: x.icf_code || '',
+        title_ja: x.title_ja || '',
+        component: x.component || 'b',
+        source_text: x.source_text || '',
+        note: '',
+        confidence: x.confidence || 'auto',
+        confirmed: false,
+        alt_icf_code: x.alt_icf_code || null,
+        alt_title_ja: x.alt_title_ja || null,
+        alt_reason: x.alt_reason || null,
+        sort_order: i,
+      }));
       document.getElementById('mtgBoardCard').style.display = 'block';
-      document.getElementById('mtgClassifyResult').textContent =
-        (d.results||[]).map(x => '['+x.component+'] '+x.icf_code+' '+x.title_ja
-          + ' ('+x.confidence+')'
-          + (x.alt_icf_code ? ' / 次点:'+x.alt_icf_code+' '+(x.alt_title_ja||'') : '')
-          + '\n    根拠:「'+(x.source_text||'')+'」').join('\n');
+      mtgRenderBoard();
     } else { alert(d.message || 'ICF分類に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
@@ -404,17 +474,23 @@ async function mtgClassify() {
 
 // ===== 保存(案X 一括) =====
 async function mtgSave() {
-  // 付箋はボード実装後に board_component/sort_order を持たせる。今は分類結果を素直に保存。
-  const stickies = (mtgState.classifyResults||[]).map((x, i) => ({
-    icf_code: x.icf_code,
-    source_text: x.source_text,
-    confidence: x.confidence,
-    confirmed: false,
-    board_component: x.component,
-    sort_order: i,
-    alt_icf_code: x.alt_icf_code,
-    alt_reason: x.alt_reason,
-  }));
+  // ボード状態(boardCards)から収集。領域内の並び順にsort_orderを採番。
+  const byZone = {};
+  const stickies = (mtgState.boardCards||[]).map((c) => {
+    byZone[c.component] = (byZone[c.component] || 0);
+    const so = byZone[c.component]++;
+    return {
+      icf_code: c.icf_code || null,
+      source_text: c.source_text || null,
+      note: c.note || null,
+      confidence: c.confidence || 'auto',
+      confirmed: !!c.confirmed,
+      board_component: c.component,
+      sort_order: so,
+      alt_icf_code: c.alt_icf_code || null,
+      alt_reason: c.alt_reason || null,
+    };
+  });
   const payload = {
     title: document.getElementById('mtgTitle').value.trim(),
     meeting_date: document.getElementById('mtgDate').value,
@@ -441,9 +517,150 @@ async function mtgSave() {
   btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
 }
 
+// ===== ICFマスタ ヘルパー =====
+function mtgMasterTitle(code){ if(!code) return ''; const m=mtgIcfMaster.find(x=>x.code===code); return m?m.title_ja:''; }
+function mtgCompOf(code){ if(!code) return ''; const m=mtgIcfMaster.find(x=>x.code===code); return m?m.component:''; }
+
+async function mtgLoadIcfMaster(){
+  if(mtgIcfMaster.length) return;
+  try{
+    const r = await fetch('/api/meeting/icf_master');
+    const d = await r.json();
+    if(d.status==='success') mtgIcfMaster = d.codes || [];
+  }catch(e){ /* 失敗しても手動追加以外は動く */ }
+}
+
+// ===== ボード描画 =====
+function mtgRenderBoard(){
+  const board = document.getElementById('mtgBoard');
+  const comps = ['b','s','d','e'];
+  board.className = 'mtg-board-grid';
+  board.innerHTML = comps.map(comp=>{
+    const col = MTG_COMP_COLOR[comp];
+    const list = mtgState.boardCards.filter(c=>c.component===comp);
+    const inner = list.length
+      ? list.map(c=>mtgStickyHTML(c)).join('')
+      : '<div class="mtg-zone-empty">空白領域<br>会議で言及なし</div>';
+    return '<div class="mtg-zone" data-comp="'+comp+'">'
+      + '<div class="mtg-zone-label" style="color:'+col.line+'">'+MTG_COMP_NAME[comp]+' ('+comp+')</div>'
+      + inner
+      + '<button class="mtg-zone-add" data-add="'+comp+'">＋追加</button>'
+      + '</div>';
+  }).join('');
+  mtgWireBoard();
+}
+
+function mtgEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function mtgStickyHTML(c){
+  const col = MTG_COMP_COLOR[c.component] || MTG_COMP_COLOR.b;
+  let bg=col.bg, bd='1px solid transparent', tc=col.tx;
+  if(c.confirmed){ bg='#E1F5EE'; bd='2px solid #0F6E56'; tc='#04342C'; }
+  else if(c.confidence==='needs_review'){ bg='#FAEEDA'; bd='1px dashed #BA7517'; tc='#412402'; }
+  const label = c.icf_code ? (mtgEsc(c.icf_code)+' '+mtgEsc(c.title_ja||mtgMasterTitle(c.icf_code))) : mtgEsc(c.note||'メモ');
+  const src = c.source_text ? '<div class="st-src">「'+mtgEsc(c.source_text)+'」</div>' : '';
+  const alt = c.alt_icf_code
+    ? '<button class="st-alt" data-alt="'+c.id+'">もしかして: '+mtgEsc(c.alt_icf_code)+' '+mtgEsc(c.alt_title_ja||mtgMasterTitle(c.alt_icf_code))+'</button>'
+    : '';
+  return '<div class="mtg-sticky" draggable="true" data-id="'+c.id+'" '
+    + 'style="background:'+bg+'; color:'+tc+'; border:'+bd+'">'
+    + '<div class="st-code">'+label+'</div>'
+    + src
+    + '<div class="st-row">'
+    + '<button class="st-btn'+(c.confirmed?' on':'')+'" data-ok="'+c.id+'">'+(c.confirmed?'✓承認':'承認')+'</button>'
+    + '<button class="st-btn" data-edit="'+c.id+'">コード</button>'
+    + '<button class="st-btn" data-del="'+c.id+'">削除</button>'
+    + '</div>'
+    + alt
+    + '</div>';
+}
+
+// ===== ボード配線(ドラッグ+操作) =====
+function mtgWireBoard(){
+  // 操作ボタン
+  document.querySelectorAll('#mtgBoard [data-ok]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const c=mtgFindCard(b.dataset.ok); if(c){ c.confirmed=!c.confirmed; mtgRenderBoard(); }});
+  document.querySelectorAll('#mtgBoard [data-del]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); mtgState.boardCards = mtgState.boardCards.filter(x=>String(x.id)!==String(b.dataset.del)); mtgRenderBoard(); });
+  document.querySelectorAll('#mtgBoard [data-alt]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const c=mtgFindCard(b.dataset.alt); if(c && c.alt_icf_code){
+      const oc=c.icf_code, ot=c.title_ja; c.icf_code=c.alt_icf_code; c.title_ja=c.alt_title_ja||mtgMasterTitle(c.alt_icf_code);
+      const nc=mtgCompOf(c.icf_code); if(nc) c.component=nc;
+      c.alt_icf_code=oc||null; c.alt_title_ja=ot||null; mtgRenderBoard(); }});
+  document.querySelectorAll('#mtgBoard [data-edit]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); mtgOpenIcfPicker(c=>{ const card=mtgFindCard(b.dataset.edit); if(card){ card.icf_code=c.code; card.title_ja=c.title_ja; card.component=c.component; mtgRenderBoard(); }}); });
+  document.querySelectorAll('#mtgBoard [data-add]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const comp=b.dataset.add;
+    mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id: mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, source_text:'', note:'', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, comp); });
+
+  // ドラッグ(PC: HTML5 DnD)
+  let dragId=null;
+  document.querySelectorAll('#mtgBoard .mtg-sticky').forEach(el=>{
+    el.addEventListener('dragstart', e=>{ dragId=el.dataset.id; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    el.addEventListener('dragend', e=>{ el.classList.remove('dragging'); });
+    // タッチ: Pointer Eventsで長押し移動
+    el.addEventListener('pointerdown', ev=>{
+      if(ev.pointerType==='mouse') return;
+      dragId=el.dataset.id; el.classList.add('dragging');
+      const up=e2=>{
+        el.classList.remove('dragging');
+        const t=document.elementFromPoint(e2.clientX,e2.clientY);
+        const z=t&&t.closest('.mtg-zone');
+        if(z){ const c=mtgFindCard(dragId); if(c){ c.component=z.dataset.comp; mtgRenderBoard(); } }
+        document.removeEventListener('pointerup',up);
+      };
+      document.addEventListener('pointerup',up);
+    });
+  });
+  document.querySelectorAll('#mtgBoard .mtg-zone').forEach(z=>{
+    z.addEventListener('dragover', e=>{ e.preventDefault(); z.classList.add('dragover'); });
+    z.addEventListener('dragleave', e=>{ z.classList.remove('dragover'); });
+    z.addEventListener('drop', e=>{ e.preventDefault(); z.classList.remove('dragover');
+      const c=mtgFindCard(dragId); if(c){ c.component=z.dataset.comp; mtgRenderBoard(); } });
+  });
+}
+
+function mtgFindCard(id){ return mtgState.boardCards.find(x=>String(x.id)===String(id)); }
+
+// ===== ICFコード選択モーダル =====
+async function mtgOpenIcfPicker(onPick, presetComp){
+  await mtgLoadIcfMaster();
+  if(!mtgIcfMaster.length){ alert('ICFマスタを取得できませんでした'); return; }
+  const bg = document.createElement('div');
+  bg.className='mtg-modal-bg';
+  bg.innerHTML = '<div class="mtg-modal">'
+    + '<h4>ICFコードを選択</h4>'
+    + '<input type="text" id="mtgPickSearch" placeholder="コードや名称で検索（例: 歩行, d450）" />'
+    + '<div class="mtg-modal-list" id="mtgPickList"></div>'
+    + '<button class="mtg-modal-close" id="mtgPickClose">閉じる</button>'
+    + '</div>';
+  document.body.appendChild(bg);
+  const listEl = bg.querySelector('#mtgPickList');
+  const searchEl = bg.querySelector('#mtgPickSearch');
+  const draw = (q)=>{
+    q=(q||'').trim().toLowerCase();
+    let arr = mtgIcfMaster;
+    if(presetComp) arr = arr.filter(x=>x.component===presetComp);
+    if(q) arr = arr.filter(x=> (x.code+' '+x.title_ja).toLowerCase().includes(q));
+    listEl.innerHTML = arr.slice(0,80).map(x=>
+      '<div class="mtg-modal-item" data-code="'+x.code+'">'+MTG_COMP_NAME[x.component]+' ｜ <b>'+x.code+'</b> '+mtgEsc(x.title_ja)+'</div>'
+    ).join('') || '<div class="mtg-modal-item">該当なし</div>';
+    listEl.querySelectorAll('[data-code]').forEach(it=>it.onclick=()=>{
+      const c = mtgIcfMaster.find(m=>m.code===it.dataset.code);
+      document.body.removeChild(bg); if(c) onPick(c);
+    });
+  };
+  searchEl.oninput = ()=>draw(searchEl.value);
+  bg.querySelector('#mtgPickClose').onclick = ()=>document.body.removeChild(bg);
+  bg.onclick = e=>{ if(e.target===bg) document.body.removeChild(bg); };
+  draw('');
+  searchEl.focus();
+}
+
 // ===== 初期化 =====
 document.addEventListener('DOMContentLoaded', () => {
   mtgLoadList();
+  mtgLoadIcfMaster();  // 手動追加用マスタを先読み
 });
 </script>
 {% endblock %}
