@@ -18889,6 +18889,13 @@ _MTG_PDF_BASE_CSS = """
 """
 
 
+def _mtg_pdf_extract_body(html):  # meetings-pdf-all-v1
+    """完全HTMLから<body>...</body>の中身だけ取り出す。"""
+    import re as _re_b
+    m = _re_b.search(r"<body[^>]*>(.*)</body>", html, _re_b.DOTALL | _re_b.IGNORECASE)
+    return m.group(1) if m else html
+
+
 def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
     import json as _json_m
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
@@ -19129,7 +19136,23 @@ def api_meeting_pdf():
             return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
         meeting = mr.data[0]
 
-        if ptype == "assessment":
+        if ptype == "all":  # meetings-pdf-all-v1: 3点まとめて1つのPDFに
+            _style = (request.args.get("style") or "a").strip().lower()
+            if _style not in ("a", "b", "c"):
+                _style = "a"
+            _lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
+            _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
+            _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
+            _h_min = _mtg_pdf_extract_body(_mtg_pdf_html_minutes(meeting, _style))
+            _h_asm = _mtg_pdf_extract_body(_mtg_pdf_html_assessment(meeting))
+            _h_icf = _mtg_pdf_extract_body(_mtg_pdf_html_icf(meeting, _lr.data or [], _name_map))
+            _pb = '<div style="page-break-before:always;"></div>'
+            _body = _h_min + _pb + _h_asm + _pb + _h_icf
+            html_str = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
+                        '<style>' + _MTG_PDF_BASE_CSS + '</style></head><body>'
+                        + _body + '</body></html>')
+            label = "担当者会議一式"
+        elif ptype == "assessment":
             html_str = _mtg_pdf_html_assessment(meeting)
             label = "アセスメントシート"
         elif ptype == "icf":

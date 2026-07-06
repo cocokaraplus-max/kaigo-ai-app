@@ -130,6 +130,26 @@
   .mtg-src-toggle button { flex:1; padding:7px; border-radius:8px; border:0.5px solid #cfd8cf;
     background:#fff; font-size:0.8rem; cursor:pointer; color:#33453a; }
   .mtg-src-toggle button.on { border:2px solid #2e7d32; background:#eaf4ec; color:#1e5e26; font-weight:700; }
+  /* 議事録作成中のタスカルくんローディング */
+  .mtg-tsk-overlay { position:absolute; inset:0; background:rgba(255,255,255,0.94); border-radius:14px;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:6px; overflow:hidden; z-index:20; }
+  .mtg-tsk-overlay.is-active { display:flex; }
+  .mtg-tsk-lane { position:relative; width:100%; height:130px; }
+  .mtg-tsk-runner { position:absolute; bottom:10px; animation:mtgTskRun 3.2s ease-in-out infinite; z-index:3; }
+  .mtg-tsk-flip { animation:mtgTskFlip 3.2s ease-in-out infinite; }
+  .mtg-tsk-bob { animation:mtgTskBob 0.32s ease-in-out infinite; transform-origin:bottom center; }
+  .mtg-tsk-runner img { width:58px; height:58px; object-fit:contain; filter:brightness(0) opacity(0.5); display:block; }
+  .mtg-tsk-doc { position:absolute; left:50%; margin-left:-14px; width:28px; height:9px; background:#fff;
+    border:1.5px solid #7a8a6f; border-radius:2px; }
+  .mtg-tsk-label { font-size:1rem; font-weight:700; color:#202124; }
+  .mtg-tsk-sub { font-size:0.78rem; color:#5f6368; }
+  @keyframes mtgTskRun { 0%{left:8%;} 50%{left:calc(92% - 58px);} 100%{left:8%;} }
+  @keyframes mtgTskFlip { 0%,49%{transform:scaleX(1);} 50%,99%{transform:scaleX(-1);} 100%{transform:scaleX(1);} }
+  @keyframes mtgTskBob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
+  @keyframes mtgTskStack1 { 0%,10%{opacity:0;transform:translateY(-30px) scale(0.6);} 18%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack2 { 0%,32%{opacity:0;transform:translateY(-30px) scale(0.6);} 40%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack3 { 0%,54%{opacity:0;transform:translateY(-30px) scale(0.6);} 62%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack4 { 0%,76%{opacity:0;transform:translateY(-30px) scale(0.6);} 84%,100%{opacity:1;transform:translateY(0) scale(1);} }
 </style>
 {% endblock %}
 
@@ -217,8 +237,25 @@
     </div>
 
     <!-- ステップ3: 議事録 -->
-    <div class="mtg-card">
+    <div class="mtg-card" style="position:relative;">
       <h3><span class="material-symbols-outlined">description</span>議事録</h3>
+      <div class="mtg-tsk-overlay" id="mtgTskOverlay">
+        <div class="mtg-tsk-lane">
+          <div class="mtg-tsk-doc" style="bottom:14px; animation:mtgTskStack1 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:23px; animation:mtgTskStack2 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:32px; animation:mtgTskStack3 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:41px; animation:mtgTskStack4 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-runner">
+            <div class="mtg-tsk-flip">
+              <div class="mtg-tsk-bob">
+                <img src="{{ url_for('static', filename='tasukaruカラー.png') }}" alt="">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mtg-tsk-label">議事録を作成中…</div>
+        <div class="mtg-tsk-sub">タスカルくんが書類をまとめています</div>
+      </div>
       <div class="mtg-field">
         <textarea id="mtgMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。"></textarea>
       </div>
@@ -280,6 +317,12 @@
         <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfIcf" style="display:none;" onclick="mtgPdf('icf')">
           <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>ICF図PDF
         </button>
+      </div>
+      <div id="mtgPdfAll" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cfd8cf;">
+        <button class="mtg-btn" style="width:100%; background:#2e7d32; color:#fff; border-color:#2e7d32;" onclick="mtgPdf('all')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録・アセスメント・ICF図をまとめてPDF
+        </button>
+        <div style="font-size:0.72rem; color:#5f7a63; margin-top:5px; text-align:center;">3つの記録を1つのPDFにまとめて印刷・保存できます</div>
       </div>
     </div>
   </div>
@@ -396,7 +439,7 @@ function mtgStartNew() {
   document.getElementById('mtgBoard').innerHTML = '';
   document.getElementById('mtgChunks').textContent = '';
   document.getElementById('mtgRecStatus').textContent = '';
-  ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf','mtgPdfAll'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
   mtgShow('edit');
 }
 
@@ -469,6 +512,8 @@ function mtgUpdatePdfButtons() {
   document.getElementById('mtgPdfMinutes').style.display = minutesOk ? '' : 'none';
   document.getElementById('mtgPdfAssess').style.display = assessOk ? '' : 'none';
   document.getElementById('mtgPdfIcf').style.display = icfOk ? '' : 'none';
+  const allEl = document.getElementById('mtgPdfAll');
+  if (allEl) allEl.style.display = (minutesOk && assessOk && icfOk) ? '' : 'none';
 }
 
 // PDF出力(保存済みデータからサーバ生成)
@@ -648,7 +693,9 @@ async function mtgSummarize() {
   const transcript = document.getElementById('mtgTranscript').value.trim();
   if (!transcript) { alert('先に文字起こしを入力してください'); return; }
   const btn = document.getElementById('mtgSummarizeBtn');
+  const overlay = document.getElementById('mtgTskOverlay');
   btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
+  if (overlay) overlay.classList.add('is-active');
   try {
     const r = await fetch('/api/meeting/summarize', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -660,6 +707,7 @@ async function mtgSummarize() {
       mtgState.minutesStruct = d.minutes_struct || null;
     } else { alert(d.message || '議事録の作成に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
+  if (overlay) overlay.classList.remove('is-active');
   btn.disabled = false;
   btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成';
 }
