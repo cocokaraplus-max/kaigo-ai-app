@@ -18603,6 +18603,7 @@ def api_meeting_save():
                 "confidence": s.get("confidence") or "auto",
                 "confirmed": bool(s.get("confirmed", False)),
                 "board_component": (str(s.get("board_component") or "").strip() or None),
+                "board_slot": (str(s.get("board_slot") or "").strip() or None),  # meetings-board-slot-api-v1
                 "sort_order": int(s.get("sort_order") or 0),
                 "alt_icf_code": alt,
                 "alt_reason": s.get("alt_reason") or None,
@@ -18654,7 +18655,7 @@ def api_meeting_get():
         meeting = mr.data[0]
         lr = supabase.table("meeting_icf_links").select("*")\
             .eq("meeting_id", meeting_id)\
-            .order("board_component").order("sort_order").execute()
+            .order("board_slot").order("sort_order").execute()  # meetings-board-slot-api-v1
         return jsonify({"status": "success", "meeting": meeting, "stickies": lr.data or []})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

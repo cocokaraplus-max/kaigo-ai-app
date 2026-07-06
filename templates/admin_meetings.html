@@ -65,6 +65,18 @@
 
   /* 付箋ボード (meetings-board-v1) */
   #mtgBoard { min-height:40px; }
+  /* ICF生活機能モデル図レイアウト (meetings-model-v1) */
+  .mtg-model-top { display:grid; grid-template-columns:1fr; max-width:60%; margin:0 auto; }
+  .mtg-model-mid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .mtg-model-bot { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  @media (max-width:520px){
+    .mtg-model-top { max-width:100%; }
+    .mtg-model-mid { grid-template-columns:1fr; }
+    .mtg-model-bot { grid-template-columns:1fr; }
+  }
+  .mtg-model-arrows { text-align:center; color:#9aa89d; font-size:1rem; line-height:1.1; }
+  .mtg-model-arrows.mtg-arrows-3 { display:flex; justify-content:space-around; }
+  .mtg-model-note { margin-top:8px; font-size:0.7rem; color:#7a8a7d; text-align:center; }
   .mtg-board-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
   @media (max-width:520px){ .mtg-board-grid { grid-template-columns:1fr; } }
   .mtg-zone { background:#f4f7f4; border-radius:10px; padding:8px; min-height:120px; }
@@ -231,6 +243,23 @@ const MTG_COMP_COLOR = {
   d:{bg:'#FAECE7', tx:'#4A1B0C', line:'#993C1D'},
   e:{bg:'#E6F1FB', tx:'#042C53', line:'#185FA5'},
 };
+// ICF生活機能モデル図の6スロット定義
+const MTG_SLOTS = {
+  health:        { name:'健康状態', sub:'病気・疾患・けが', bg:'#F1EFE8', tx:'#2C2C2A', line:'#5F5E5A', codeless:true },
+  bs:            { name:'心身機能・身体構造', sub:'b・s', bg:'#EEEDFE', tx:'#26215C', line:'#3C3489' },
+  activity:      { name:'活動', sub:'している/できる', bg:'#FAECE7', tx:'#4A1B0C', line:'#993C1D' },
+  participation: { name:'参加', sub:'役割・社会', bg:'#FBEAF0', tx:'#4B1528', line:'#72243E' },
+  environment:   { name:'環境因子', sub:'e', bg:'#E6F1FB', tx:'#042C53', line:'#185FA5' },
+  personal:      { name:'個人因子', sub:'年齢・性格など', bg:'#E1F5EE', tx:'#04342C', line:'#0F6E56', codeless:true },
+};
+// ICF構成要素(b/s/d/e) → 初期スロット
+function mtgSlotOf(component, savedSlot){
+  if (savedSlot && MTG_SLOTS[savedSlot]) return savedSlot;
+  if (component === 'b' || component === 's') return 'bs';
+  if (component === 'd') return 'activity';   // 初期は活動。人が参加へ動かせる
+  if (component === 'e') return 'environment';
+  return 'bs';
+}
 
 function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -291,7 +320,7 @@ function mtgStartNew() {
   document.getElementById('mtgTranscript').value = '';
   document.getElementById('mtgMinutes').value = '';
   document.getElementById('mtgBoardCard').style.display = 'none';
-  document.getElementById('mtgBoard').innerHTML = '<div id="mtgClassifyResult"></div>';
+  document.getElementById('mtgBoard').innerHTML = '';
   document.getElementById('mtgChunks').textContent = '';
   document.getElementById('mtgRecStatus').textContent = '';
   mtgShow('edit');
@@ -318,6 +347,7 @@ async function mtgOpen(meetingId) {
         icf_code: s.icf_code || '',
         title_ja: mtgMasterTitle(s.icf_code) || (s.icf_code ? '' : (s.note || 'メモ')),
         component: s.board_component || mtgCompOf(s.icf_code) || 'b',
+        slot: mtgSlotOf(s.board_component || mtgCompOf(s.icf_code) || 'b', s.board_slot),
         source_text: s.source_text || '',
         note: s.note || '',
         confidence: s.confidence || 'auto',
@@ -455,6 +485,7 @@ async function mtgClassify() {
         icf_code: x.icf_code || '',
         title_ja: x.title_ja || '',
         component: x.component || 'b',
+        slot: mtgSlotOf(x.component || 'b', null),
         source_text: x.source_text || '',
         note: '',
         confidence: x.confidence || 'auto',
@@ -474,11 +505,12 @@ async function mtgClassify() {
 
 // ===== 保存(案X 一括) =====
 async function mtgSave() {
-  // ボード状態(boardCards)から収集。領域内の並び順にsort_orderを採番。
-  const byZone = {};
+  // ボード状態(boardCards)から収集。スロット内の並び順にsort_orderを採番。
+  const bySlot = {};
   const stickies = (mtgState.boardCards||[]).map((c) => {
-    byZone[c.component] = (byZone[c.component] || 0);
-    const so = byZone[c.component]++;
+    const slot = c.slot || mtgSlotOf(c.component, null);
+    bySlot[slot] = (bySlot[slot] || 0);
+    const so = bySlot[slot]++;
     return {
       icf_code: c.icf_code || null,
       source_text: c.source_text || null,
@@ -486,6 +518,7 @@ async function mtgSave() {
       confidence: c.confidence || 'auto',
       confirmed: !!c.confirmed,
       board_component: c.component,
+      board_slot: slot,
       sort_order: so,
       alt_icf_code: c.alt_icf_code || null,
       alt_reason: c.alt_reason || null,
@@ -530,31 +563,47 @@ async function mtgLoadIcfMaster(){
   }catch(e){ /* 失敗しても手動追加以外は動く */ }
 }
 
-// ===== ボード描画 =====
+// ===== ボード描画(ICF生活機能モデル図レイアウト) =====
+function mtgZoneHTML(slot){
+  const s = MTG_SLOTS[slot];
+  const list = mtgState.boardCards.filter(c=>(c.slot||mtgSlotOf(c.component,null))===slot);
+  const inner = list.length
+    ? list.map(c=>mtgStickyHTML(c)).join('')
+    : '<div class="mtg-zone-empty">言及なし</div>';
+  const addLabel = s.codeless ? '＋メモを追加' : '＋追加';
+  return '<div class="mtg-zone" data-slot="'+slot+'">'
+    + '<div class="mtg-zone-label" style="color:'+s.line+'">'+s.name
+    + (s.sub?' <span style="font-weight:400; font-size:0.68rem; opacity:0.8;">'+s.sub+'</span>':'')+'</div>'
+    + inner
+    + '<button class="mtg-zone-add" data-add="'+slot+'">'+addLabel+'</button>'
+    + '</div>';
+}
+
 function mtgRenderBoard(){
   const board = document.getElementById('mtgBoard');
-  const comps = ['b','s','d','e'];
-  board.className = 'mtg-board-grid';
-  board.innerHTML = comps.map(comp=>{
-    const col = MTG_COMP_COLOR[comp];
-    const list = mtgState.boardCards.filter(c=>c.component===comp);
-    const inner = list.length
-      ? list.map(c=>mtgStickyHTML(c)).join('')
-      : '<div class="mtg-zone-empty">空白領域<br>会議で言及なし</div>';
-    return '<div class="mtg-zone" data-comp="'+comp+'">'
-      + '<div class="mtg-zone-label" style="color:'+col.line+'">'+MTG_COMP_NAME[comp]+' ('+comp+')</div>'
-      + inner
-      + '<button class="mtg-zone-add" data-add="'+comp+'">＋追加</button>'
-      + '</div>';
-  }).join('');
+  board.className = '';
+  board.innerHTML =
+      '<div class="mtg-model">'
+    +   '<div class="mtg-model-top">' + mtgZoneHTML('health') + '</div>'
+    +   '<div class="mtg-model-arrows">↕</div>'
+    +   '<div class="mtg-model-mid">'
+    +     mtgZoneHTML('bs') + mtgZoneHTML('activity') + mtgZoneHTML('participation')
+    +   '</div>'
+    +   '<div class="mtg-model-arrows mtg-arrows-3"><span>↕</span><span>↕</span><span>↕</span></div>'
+    +   '<div class="mtg-model-bot">'
+    +     mtgZoneHTML('environment') + mtgZoneHTML('personal')
+    +   '</div>'
+    +   '<div class="mtg-model-note">↕ 各要素は相互に影響し合う（ICF生活機能モデル）</div>'
+    + '</div>';
   mtgWireBoard();
 }
 
 function mtgEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function mtgStickyHTML(c){
-  const col = MTG_COMP_COLOR[c.component] || MTG_COMP_COLOR.b;
-  let bg=col.bg, bd='1px solid transparent', tc=col.tx;
+  const slot = c.slot || mtgSlotOf(c.component, null);
+  const base = MTG_SLOTS[slot] || MTG_SLOTS.bs;
+  let bg=base.bg, bd='1px solid transparent', tc=base.tx;
   if(c.confirmed){ bg='#E1F5EE'; bd='2px solid #0F6E56'; tc='#04342C'; }
   else if(c.confidence==='needs_review'){ bg='#FAEEDA'; bd='1px dashed #BA7517'; tc='#412402'; }
   const label = c.icf_code ? (mtgEsc(c.icf_code)+' '+mtgEsc(c.title_ja||mtgMasterTitle(c.icf_code))) : mtgEsc(c.note||'メモ');
@@ -562,13 +611,16 @@ function mtgStickyHTML(c){
   const alt = c.alt_icf_code
     ? '<button class="st-alt" data-alt="'+c.id+'">もしかして: '+mtgEsc(c.alt_icf_code)+' '+mtgEsc(c.alt_title_ja||mtgMasterTitle(c.alt_icf_code))+'</button>'
     : '';
+  const codeBtn = MTG_SLOTS[slot] && MTG_SLOTS[slot].codeless
+    ? '<button class="st-btn" data-note="'+c.id+'">編集</button>'
+    : '<button class="st-btn" data-edit="'+c.id+'">コード</button>';
   return '<div class="mtg-sticky" draggable="true" data-id="'+c.id+'" '
     + 'style="background:'+bg+'; color:'+tc+'; border:'+bd+'">'
     + '<div class="st-code">'+label+'</div>'
     + src
     + '<div class="st-row">'
     + '<button class="st-btn'+(c.confirmed?' on':'')+'" data-ok="'+c.id+'">'+(c.confirmed?'✓承認':'承認')+'</button>'
-    + '<button class="st-btn" data-edit="'+c.id+'">コード</button>'
+    + codeBtn
     + '<button class="st-btn" data-del="'+c.id+'">削除</button>'
     + '</div>'
     + alt
@@ -587,18 +639,31 @@ function mtgWireBoard(){
       const oc=c.icf_code, ot=c.title_ja; c.icf_code=c.alt_icf_code; c.title_ja=c.alt_title_ja||mtgMasterTitle(c.alt_icf_code);
       const nc=mtgCompOf(c.icf_code); if(nc) c.component=nc;
       c.alt_icf_code=oc||null; c.alt_title_ja=ot||null; mtgRenderBoard(); }});
+  // コード付き付箋のコード変更
   document.querySelectorAll('#mtgBoard [data-edit]').forEach(b=>b.onclick=e=>{
     e.stopPropagation(); mtgOpenIcfPicker(c=>{ const card=mtgFindCard(b.dataset.edit); if(card){ card.icf_code=c.code; card.title_ja=c.title_ja; card.component=c.component; mtgRenderBoard(); }}); });
+  // コードなし付箋(健康状態・個人因子)のメモ編集
+  document.querySelectorAll('#mtgBoard [data-note]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const card=mtgFindCard(b.dataset.note); if(!card) return;
+    const v = prompt('メモを入力', card.note||''); if(v!==null){ card.note=v.trim(); mtgRenderBoard(); }});
+  // ＋追加(スロット別。健康状態/個人因子はコードなしメモ、それ以外はICFコード選択)
   document.querySelectorAll('#mtgBoard [data-add]').forEach(b=>b.onclick=e=>{
-    e.stopPropagation(); const comp=b.dataset.add;
-    mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id: mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, source_text:'', note:'', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, comp); });
+    e.stopPropagation(); const slot=b.dataset.add;
+    if(MTG_SLOTS[slot] && MTG_SLOTS[slot].codeless){
+      const v = prompt(MTG_SLOTS[slot].name+'のメモを入力'); if(v && v.trim()){
+        mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:'', title_ja:'', component:'', slot:slot, source_text:'', note:v.trim(), confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 });
+        mtgRenderBoard(); }
+    } else {
+      const presetComp = (slot==='bs') ? null : (slot==='environment' ? 'e' : 'd');
+      mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, slot:slot, source_text:'', note:'', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, presetComp); }
+  });
 
-  // ドラッグ(PC: HTML5 DnD)
+  // ドラッグ(PC: HTML5 DnD / タッチ: Pointer Events)。スロット間移動。
   let dragId=null;
+  const moveTo = (slot)=>{ const c=mtgFindCard(dragId); if(c && slot){ c.slot=slot; mtgRenderBoard(); } };
   document.querySelectorAll('#mtgBoard .mtg-sticky').forEach(el=>{
     el.addEventListener('dragstart', e=>{ dragId=el.dataset.id; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
     el.addEventListener('dragend', e=>{ el.classList.remove('dragging'); });
-    // タッチ: Pointer Eventsで長押し移動
     el.addEventListener('pointerdown', ev=>{
       if(ev.pointerType==='mouse') return;
       dragId=el.dataset.id; el.classList.add('dragging');
@@ -606,7 +671,7 @@ function mtgWireBoard(){
         el.classList.remove('dragging');
         const t=document.elementFromPoint(e2.clientX,e2.clientY);
         const z=t&&t.closest('.mtg-zone');
-        if(z){ const c=mtgFindCard(dragId); if(c){ c.component=z.dataset.comp; mtgRenderBoard(); } }
+        if(z) moveTo(z.dataset.slot);
         document.removeEventListener('pointerup',up);
       };
       document.addEventListener('pointerup',up);
@@ -615,8 +680,7 @@ function mtgWireBoard(){
   document.querySelectorAll('#mtgBoard .mtg-zone').forEach(z=>{
     z.addEventListener('dragover', e=>{ e.preventDefault(); z.classList.add('dragover'); });
     z.addEventListener('dragleave', e=>{ z.classList.remove('dragover'); });
-    z.addEventListener('drop', e=>{ e.preventDefault(); z.classList.remove('dragover');
-      const c=mtgFindCard(dragId); if(c){ c.component=z.dataset.comp; mtgRenderBoard(); } });
+    z.addEventListener('drop', e=>{ e.preventDefault(); z.classList.remove('dragover'); moveTo(z.dataset.slot); });
   });
 }
 
