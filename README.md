@@ -1341,3 +1341,58 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 - DEV(tasukaru-dev) HEAD = bdc0a0e。本番未マージ。
 - 本番マージ時に必要(再掲・更新): 本番Supabaseへ meetings系DDL 5本(meetings_seed / meetings_altcand / meetings_audio_session / meetings_board_slot / meetings_assessment)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中。wkhtmltopdf・日本語フォントはイメージ導入済み。
 - テスト会議数件がDEMO001に残存(ダミー・無害)。
+
+---
+
+## 担当者会議 PDF出力・音声・導線 大幅拡張（2026-07-06 追記その5）
+
+同日その4の続き。3成果物PDF出力の実装後、実際の会議音声で通しテストし、多数の改善を実施。すべてDEV・MCP確認済み。本番未マージ。DEV HEAD = 65cd50f。
+
+### 完了（DEV push済み・MCP確認済み）
+
+**PDF makeresp修正（marker: meetings-pdf-makeresp-fix-v1）**: 3成果物PDFが `make_response is not defined` で500。トップレベルflask importに make_response が無く、既存PDF関数は各関数内で個別importしていた。同様に関数内importを追加して解決。
+
+**音声ファイルアップロード（フロントのみ）**: 録音カードに「音声ファイル」ボタン追加。既にある会議音声を選択→Web Audio APIでデコード→5分ごとに時間分割→各チャンクをWAV化→既存 transcribe API へ順次送信（サーバ改修不要）。長時間音声も安全。実際の会議音声で文字起こし成功。
+
+**ICF図PDFリッチ化（marker: meetings-pdf-rich-icf-v1）**: コードのみ表示→icf_codesマスタを引いて名称付き（b114 見当識機能）に。スロット別の色付き付箋（画面ボードと同配色）、分類根拠テキスト表示。あわせて**PDFキャッシュバグ修正**: 別会議のPDFに前の会議の内容が出る問題。フロントでPDF URLにタイムスタンプ `_t=Date.now()` 付与＋サーバでno-cacheヘッダー（Cache-Control: no-store...）。出席者オブジェクト形式 {name,role} 対応（marker: meetings-pdf-attendees-fix-v1、「役職（氏名）」形式、氏名不明は役職のみ）。
+
+**議事録3スタイルPDF（A/B/C）**: 議事録を構造化データ(minutes_struct)で持ち、3レイアウトに流し込む。
+- 案A=ヘッダー表＋見出し区切り(バランス・スッキリ)、案B=決定事項を番号強調(ビジネス)、案C=公的様式風の罫線(フォーマル)。visualizerでモック3案提示しHIROが選択→3スタイル選択式に決定。
+- DB: `meetings.minutes_struct`(text, DDL marker: meetings-minutes-struct-v1, DEV投入済み)。
+- **構造化の作り方(重要)**: 当初 summarize が Gemini で構造化JSONも生成する方式(marker: meetings-minutes-struct-api-v1)だったが、長い会議(20585字)で議事録生成に43-45秒かかりタイムアウト/500発生。→ **コード解析方式に変更**(marker: meetings-minutes-struct-parse-v1): `_mtg_parse_minutes_struct(text)` が第4表議事録本文の「■見出し」をパースして構造化dict生成。Gemini再生成不要で速度は本文生成のみに。
+- **重大バグと修正(教訓)**: パーサ関数定義を `@app.route` と `def api_meeting_summarize` の間に挿入してしまい、デコレータがパーサに付いて全summarizeが500に。→ パーサをデコレータの前へ移動(marker: meetings-minutes-struct-parse-fix-v1)。**教訓: デコレータとdefの間に関数を挿入してはいけない**。
+- save/get で minutes_struct 保存・復元(marker: meetings-minutes-struct-save-v1)。フロントは議事録カードにA/B/C 3ボタン(保存済み+議事録ありで表示)、mtgPdf(type,style)。
+- MCP確認: 20585字で200・items4/conclusions4・構造化OK。3スタイルとも200・正しいPDF。
+
+**3点まとめてPDF（marker: meetings-pdf-all-v1）**: type=all で議事録・アセスメント・ICF図を1つのPDFに(page-break区切り)。各ビルダーの<body>中身を `_mtg_pdf_extract_body()` で抽出し連結。3成果物揃うと緑の「まとめてPDF」ボタン表示。実際の会議音声で3点入りPDF生成成功。
+
+**タスカルくんローディング**: 議事録作成中(43秒)、議事録カードにタスカルくんが左右に走り真ん中に書類が積み上がるアニメ表示(mtgTskOverlay)。既存の `static/tasukaruカラー.png` を影絵処理(filter:brightness(0) opacity(0.5))で流用。ケース記録カテゴリ変更のタスカルくん歩行アニメと同トーン。mtgSummarize 実行中だけ is-active。
+
+**ICF図PDF 1枚化（marker: meetings-pdf-icf-fit-v1）**: 付箋が多い実会議でICF図が崩れた(3列に大量付箋で潰れ)。付箋総数に応じてフォント/padding/根拠長を自動縮小(density: ≤12/≤20/≤30/それ超)、@page A4 landscape(横向き)、列幅固定33.33%＋word-break折り返し、根拠テキストを密度に応じ短縮。**単独ICF図PDFには効くが、まとめPDF(type=all)内のICFには未反映**(まとめは縦向き固定でICFビルダーの@page landscapeが無視される。次回対応)。
+
+**ボトムメニュー修正・導線追加（base.html）**:
+- 連絡帳(/renraku)が並び替え対象から漏れていたのを修正(movableHrefs 3箇所に追加、marker: nav-renraku-movable-v1)。
+- 担当者会議の入り口「記録・ICF分類」をボトムメニューに追加(href=/admin/meetings, groupsアイコン, marker: nav-meetings-v1)。並び替え対象にも追加(movableHrefs 3箇所に /admin/meetings)。**現状は全施設に表示**(PRO制限は次回)。
+
+### 重要な教訓（今回得た）
+- **デコレータとdefの間に関数を挿入禁止**(元関数のデコレータが新関数に付き500)。パーサ挿入で実際に発生。
+- パッチのアンカーに日本語を含めるとエンコード差異でマッチ0件になりやすい→**ASCII行(markerコメント/純英数字行)を小さいアンカーに**。大きな塊は空行有無でも失敗。
+- 冪等パッチを2回実行すると2回目ALREADY_APPLIED。git commitは1回目の変更を拾うので問題なし(HIROが2回貼りがちだが害なし)。
+- **議事録生成が43秒かかるのはモデルでなく処理量**(20585字入力8000字切り+3000字出力)。既にgemini-2.5-flash使用中。構造化をコード化しても本体生成時間は不変。タイムアウト対策/UX(タスカルくん)で緩和。utils.py get_generative_model は全機能共通なので変更は全機能影響。
+- 「できない/変わってない」は手順・未保存・キャッシュ・未実装が原因のことが多い。MCPで実際に叩いて切り分ける(例: 3スタイルボタンは保存済み+議事録ありでのみ表示)。
+
+### 次にやること（PENDING）
+1. **[要対応] PDF出力の使い勝手改善(次回まとめて)**:
+   (a) **まとめPDF内のICF崩れ**: type=all のICFにも1枚化(横向き/自動縮小)を反映。ただしwkhtmltopdfは1PDF内で向き混在が苦手→ICFだけ別PDF化して結合、またはまとめ全体を横向き、等の設計判断が要る。
+   (b) **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→パラメータで反映。
+   (c) **一括印刷時も議事録スタイル(A/B/C)選択**: 現状 type=all は議事録スタイルA固定。選べるようにする。
+2. **[報告済み・未対応] 対象利用者selectが選択できない**: 患者リスト取得が未実装(selectが空)。
+3. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+4. **担当者会議のPRO制限**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard 等のパターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトムの「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡しが必要)。本番マージ前に必須。
+5. アセスメント項目の振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。会議情報フォームに出席者欄追加。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 65cd50f。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(meetings_seed/altcand/audio_session/board_slot/assessment/**minutes_struct**)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設の meetings_enabled。wkhtmltopdf・日本語フォント導入済み。tasukaruカラー.png は static に既存。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。現状は全施設にボトム「記録・ICF分類」が出る。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。
