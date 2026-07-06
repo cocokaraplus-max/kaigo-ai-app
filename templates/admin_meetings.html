@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+{% block title %}担当者会議 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+  .mtg-wrap { max-width: var(--page-max-width, 720px); margin: 0 auto; padding: 16px 14px 90px; }
+  .mtg-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .mtg-head .material-symbols-outlined { color:#2e7d32; font-size:26px; }
+  .mtg-title { font-size:1.15rem; font-weight:800; color:#1e5e26; }
+  .mtg-pro { margin-left:auto; font-size:0.72rem; font-weight:800; color:#7b5cff;
+    background:#efeafe; padding:3px 10px; border-radius:20px; }
+
+  .mtg-card { background:#fff; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    padding:16px 14px; margin-bottom:16px; }
+  .mtg-card h3 { font-size:0.98rem; font-weight:800; color:#1e5e26; margin:0 0 12px;
+    display:flex; align-items:center; gap:7px; }
+  .mtg-card h3 .material-symbols-outlined { font-size:20px; color:#2e7d32; }
+
+  .mtg-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    padding:11px 16px; border:none; border-radius:10px; font-weight:700; font-size:0.95rem;
+    cursor:pointer; background:#2e7d32; color:#fff; }
+  .mtg-btn:active { opacity:0.85; }
+  .mtg-btn[disabled] { opacity:0.45; cursor:default; }
+  .mtg-btn.sec { background:#eaf4ec; color:#1e5e26; }
+  .mtg-btn.rec { background:#d9432f; }
+  .mtg-btn.rec.on { background:#a5271a; animation:mtgpulse 1.3s infinite; }
+  @keyframes mtgpulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .mtg-btn-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  .mtg-field { margin-bottom:12px; }
+  .mtg-field label { display:block; font-size:0.82rem; font-weight:700; color:#4f6b56; margin-bottom:5px; }
+  .mtg-field input, .mtg-field textarea, .mtg-field select {
+    width:100%; padding:10px 11px; border:2px solid #cfe3d4; border-radius:10px;
+    font-size:0.95rem; color:#1e3a24; background:#fff; box-sizing:border-box; font-family:inherit; }
+  .mtg-field textarea { min-height:130px; resize:vertical; line-height:1.6; }
+
+  .mtg-note { font-size:0.78rem; color:#6b7d6f; margin:6px 2px; line-height:1.5; }
+  .mtg-rec-status { font-size:0.85rem; color:#4f6b56; font-weight:600; margin-left:4px; }
+  .mtg-rec-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#d9432f;
+    margin-right:5px; vertical-align:-1px; }
+  .mtg-chunks { font-size:0.78rem; color:#7a8a7d; margin-top:8px; }
+
+  .mtg-empty { text-align:center; color:#8a988c; padding:26px 0; font-size:0.9rem; }
+  .mtg-loading { text-align:center; color:#6b7d6f; padding:18px 0; font-size:0.88rem; }
+  .mtg-spin { display:inline-block; width:16px; height:16px; border:2px solid #cfe3d4;
+    border-top-color:#2e7d32; border-radius:50%; animation:mtgspin 0.8s linear infinite; vertical-align:-3px; margin-right:6px; }
+  @keyframes mtgspin { to { transform:rotate(360deg) } }
+
+  /* 会議一覧 */
+  .mtg-list-item { display:flex; align-items:center; gap:10px; padding:12px 12px;
+    border:2px solid #eef2ee; border-radius:12px; margin-bottom:8px; cursor:pointer; background:#fff; }
+  .mtg-list-item:active { background:#f6faf7; }
+  .mtg-list-item .mi-icon { color:#2e7d32; font-size:22px; }
+  .mtg-list-item .mi-main { flex:1; min-width:0; }
+  .mtg-list-item .mi-title { font-weight:700; color:#1e3a24; font-size:0.92rem;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mtg-list-item .mi-date { font-size:0.76rem; color:#7a8a7d; margin-top:2px; }
+
+  /* ステップ表示切替 */
+  .mtg-step { display:none; }
+  .mtg-step.active { display:block; }
+
+  /* 分類結果 仮表示(次の塊でボードに置き換え) */
+  #mtgClassifyResult { white-space:pre-wrap; font-size:0.8rem; color:#333;
+    background:#f7f9f7; border-radius:10px; padding:12px; max-height:340px; overflow:auto; }
+
+  /* 付箋ボード用コンテナ(次の塊で実装) */
+  #mtgBoard { min-height:40px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mtg-wrap">
+  <div class="mtg-head">
+    <span class="material-symbols-outlined">groups</span>
+    <span class="mtg-title">担当者会議 ICF分類</span>
+    <span class="mtg-pro">PRO</span>
+  </div>
+
+  <!-- ========== 一覧ビュー ========== -->
+  <div id="mtgListView">
+    <div class="mtg-btn-row" style="margin-bottom:14px;">
+      <button class="mtg-btn" onclick="mtgStartNew()">
+        <span class="material-symbols-outlined" style="font-size:20px;">add</span>新規会議
+      </button>
+    </div>
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">history</span>会議の記録</h3>
+      <div id="mtgListBody">
+        <div class="mtg-loading"><span class="mtg-spin"></span>読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 編集ビュー(新規/既存) ========== -->
+  <div id="mtgEditView" style="display:none;">
+    <div class="mtg-btn-row" style="margin-bottom:14px;">
+      <button class="mtg-btn sec" onclick="mtgBackToList()">
+        <span class="material-symbols-outlined" style="font-size:20px;">arrow_back</span>一覧に戻る
+      </button>
+    </div>
+
+    <!-- 会議の基本情報 -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">edit_note</span>会議情報</h3>
+      <div class="mtg-field">
+        <label>タイトル</label>
+        <input type="text" id="mtgTitle" placeholder="担当者会議" />
+      </div>
+      <div class="mtg-field">
+        <label>開催日</label>
+        <input type="date" id="mtgDate" />
+      </div>
+      <div class="mtg-field">
+        <label>対象利用者（任意）</label>
+        <select id="mtgPatient"><option value="">選択なし</option></select>
+      </div>
+    </div>
+
+    <!-- ステップ1: 録音 -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">mic</span>録音して文字起こし</h3>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn rec" id="mtgRecBtn" onclick="mtgToggleRec()">
+          <span class="material-symbols-outlined" style="font-size:20px;">mic</span>
+          <span id="mtgRecLabel">録音開始</span>
+        </button>
+        <span class="mtg-rec-status" id="mtgRecStatus"></span>
+      </div>
+      <div class="mtg-chunks" id="mtgChunks"></div>
+      <div class="mtg-note">
+        長い会議にも対応できるよう、録音は数分ごとに自動で区切って順に文字起こしします。
+        録音しながら文字起こしが進みます。マイクの使用許可を求められたら「許可」してください。
+      </div>
+    </div>
+
+    <!-- ステップ2: 文字起こし -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">subject</span>文字起こし</h3>
+      <div class="mtg-field">
+        <textarea id="mtgTranscript" placeholder="録音の文字起こしがここに入ります。直接入力・貼り付けも可能です。"></textarea>
+      </div>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn" id="mtgSummarizeBtn" onclick="mtgSummarize()">
+          <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成
+        </button>
+      </div>
+    </div>
+
+    <!-- ステップ3: 議事録 -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">description</span>議事録</h3>
+      <div class="mtg-field">
+        <textarea id="mtgMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。"></textarea>
+      </div>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn" id="mtgClassifyBtn" onclick="mtgClassify()">
+          <span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する
+        </button>
+      </div>
+    </div>
+
+    <!-- ステップ4: 分類結果(次の塊で付箋ボードに置換) -->
+    <div class="mtg-card" id="mtgBoardCard" style="display:none;">
+      <h3><span class="material-symbols-outlined">dashboard</span>ICF分類ボード</h3>
+      <div id="mtgBoard">
+        <div id="mtgClassifyResult"></div>
+      </div>
+      <div class="mtg-btn-row" style="margin-top:14px;">
+        <button class="mtg-btn" id="mtgSaveBtn" onclick="mtgSave()">
+          <span class="material-symbols-outlined" style="font-size:20px;">save</span>保存
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 状態 =====
+let mtgState = {
+  sessionId: null,      // 録音セッションUUID(チャンクを束ねる)
+  chunkIndex: 0,
+  recorder: null,
+  recording: false,
+  transcriptParts: {},  // chunk_index -> text (順序保証のため辞書で集約)
+  classifyResults: [],  // 分類API結果(次の塊でボードに描画)
+  editingMeetingId: null,
+};
+
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// ===== ビュー切替 =====
+function mtgShow(view) {
+  document.getElementById('mtgListView').style.display = (view === 'list') ? 'block' : 'none';
+  document.getElementById('mtgEditView').style.display = (view === 'edit') ? 'block' : 'none';
+}
+function mtgBackToList() {
+  if (mtgState.recording) { alert('録音中です。停止してから戻ってください。'); return; }
+  mtgShow('list');
+  mtgLoadList();
+}
+
+// ===== 一覧 =====
+async function mtgLoadList() {
+  const body = document.getElementById('mtgListBody');
+  body.innerHTML = '<div class="mtg-loading"><span class="mtg-spin"></span>読み込み中...</div>';
+  try {
+    const r = await fetch('/api/meeting/list');
+    const d = await r.json();
+    if (d.status !== 'success') { body.innerHTML = '<div class="mtg-empty">'+(d.message||'読み込みに失敗しました')+'</div>'; return; }
+    if (!d.meetings.length) { body.innerHTML = '<div class="mtg-empty">まだ会議の記録はありません</div>'; return; }
+    body.innerHTML = d.meetings.map(m => {
+      const dt = m.meeting_date || (m.created_at||'').slice(0,10);
+      const title = (m.title||'担当者会議').replace(/</g,'&lt;');
+      return '<div class="mtg-list-item" onclick="mtgOpen(\\''+m.id+'\\')">'
+        + '<span class="material-symbols-outlined mi-icon">groups</span>'
+        + '<div class="mi-main"><div class="mi-title">'+title+'</div>'
+        + '<div class="mi-date">'+dt+'</div></div>'
+        + '<span class="material-symbols-outlined" style="color:#c3d3c6;">chevron_right</span></div>';
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="mtg-empty">読み込みエラー: '+e+'</div>';
+  }
+}
+
+// ===== 新規 =====
+function mtgStartNew() {
+  mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
+               transcriptParts: {}, classifyResults: [], editingMeetingId: null };
+  document.getElementById('mtgTitle').value = '';
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('mtgDate').value = today;
+  document.getElementById('mtgPatient').value = '';
+  document.getElementById('mtgTranscript').value = '';
+  document.getElementById('mtgMinutes').value = '';
+  document.getElementById('mtgBoardCard').style.display = 'none';
+  document.getElementById('mtgClassifyResult').textContent = '';
+  document.getElementById('mtgChunks').textContent = '';
+  document.getElementById('mtgRecStatus').textContent = '';
+  mtgShow('edit');
+}
+
+// ===== 既存を開く =====
+async function mtgOpen(meetingId) {
+  try {
+    const r = await fetch('/api/meeting/get?meeting_id='+encodeURIComponent(meetingId));
+    const d = await r.json();
+    if (d.status !== 'success') { alert(d.message||'読み込みに失敗しました'); return; }
+    mtgStartNew();
+    mtgState.editingMeetingId = meetingId;
+    const m = d.meeting;
+    document.getElementById('mtgTitle').value = m.title || '';
+    document.getElementById('mtgDate').value = m.meeting_date || '';
+    document.getElementById('mtgPatient').value = m.patient_id || '';
+    document.getElementById('mtgTranscript').value = m.transcript || '';
+    document.getElementById('mtgMinutes').value = m.minutes || '';
+    // 付箋の復元は次の塊(ボード実装)で対応。今は件数だけ表示。
+    if (d.stickies && d.stickies.length) {
+      document.getElementById('mtgBoardCard').style.display = 'block';
+      document.getElementById('mtgClassifyResult').textContent =
+        '保存済みの付箋 '+d.stickies.length+'件（ボード表示は次バージョンで対応）';
+    }
+    mtgShow('edit');
+  } catch(e) { alert('読み込みエラー: '+e); }
+}
+
+// ===== 録音(チャンク分割) =====
+const MTG_CHUNK_MS = 5 * 60 * 1000; // 5分ごとに区切る
+
+async function mtgToggleRec() {
+  if (mtgState.recording) { mtgStopRec(); return; }
+  await mtgStartRec();
+}
+
+async function mtgStartRec() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mtgState.recording = true;
+    document.getElementById('mtgRecBtn').classList.add('on');
+    document.getElementById('mtgRecLabel').textContent = '録音停止';
+    document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...';
+
+    const startChunkRecorder = () => {
+      if (!mtgState.recording) { stream.getTracks().forEach(t=>t.stop()); return; }
+      const rec = new MediaRecorder(stream);
+      const blobs = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) blobs.push(e.data); };
+      rec.onstop = async () => {
+        if (blobs.length) {
+          const blob = new Blob(blobs, { type: blobs[0].type || 'audio/webm' });
+          await mtgSendChunk(blob);
+        }
+        if (mtgState.recording) startChunkRecorder(); // 次のチャンクへ
+      };
+      mtgState.recorder = rec;
+      rec.start();
+      // 5分後に区切る
+      mtgState._chunkTimer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, MTG_CHUNK_MS);
+    };
+    startChunkRecorder();
+  } catch(e) {
+    alert('マイクを使用できません: '+e);
+    mtgState.recording = false;
+  }
+}
+
+function mtgStopRec() {
+  mtgState.recording = false;
+  document.getElementById('mtgRecBtn').classList.remove('on');
+  document.getElementById('mtgRecLabel').textContent = '録音開始';
+  document.getElementById('mtgRecStatus').textContent = '文字起こし処理中...';
+  clearTimeout(mtgState._chunkTimer);
+  if (mtgState.recorder && mtgState.recorder.state === 'recording') {
+    mtgState.recorder.stop(); // onstopで最後のチャンクを送信
+  }
+}
+
+async function mtgSendChunk(blob) {
+  const idx = mtgState.chunkIndex++;
+  const fd = new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.webm');
+  fd.append('session_id', mtgState.sessionId);
+  fd.append('chunk_index', idx);
+  document.getElementById('mtgChunks').textContent = 'チャンク送信中... ('+(idx+1)+')';
+  try {
+    const r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
+      mtgRebuildTranscript();
+      document.getElementById('mtgChunks').textContent = '文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
+    } else {
+      document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'の文字起こし失敗: '+(d.message||'');
+    }
+  } catch(e) {
+    document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'送信エラー: '+e;
+  }
+  if (!mtgState.recording) document.getElementById('mtgRecStatus').textContent = '文字起こし完了';
+}
+
+// チャンクを番号順に連結してtextareaへ(手編集は録音停止後を想定)
+function mtgRebuildTranscript() {
+  const keys = Object.keys(mtgState.transcriptParts).map(Number).sort((a,b)=>a-b);
+  const joined = keys.map(k => mtgState.transcriptParts[k]).filter(Boolean).join('\\n');
+  document.getElementById('mtgTranscript').value = joined;
+}
+
+// ===== 議事録生成 =====
+async function mtgSummarize() {
+  const transcript = document.getElementById('mtgTranscript').value.trim();
+  if (!transcript) { alert('先に文字起こしを入力してください'); return; }
+  const btn = document.getElementById('mtgSummarizeBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
+  try {
+    const r = await fetch('/api/meeting/summarize', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ transcript })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      document.getElementById('mtgMinutes').value = d.minutes || '';
+    } else { alert(d.message || '議事録の作成に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成';
+}
+
+// ===== ICF分類 =====
+async function mtgClassify() {
+  const minutes = document.getElementById('mtgMinutes').value.trim();
+  if (!minutes) { alert('先に議事録を作成してください'); return; }
+  const btn = document.getElementById('mtgClassifyBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>分類中...';
+  try {
+    const r = await fetch('/api/meeting/classify_icf', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ minutes_text: minutes })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.classifyResults = d.results || [];
+      // 次の塊で付箋ボードに描画。今は結果を仮表示。
+      document.getElementById('mtgBoardCard').style.display = 'block';
+      document.getElementById('mtgClassifyResult').textContent =
+        (d.results||[]).map(x => '['+x.component+'] '+x.icf_code+' '+x.title_ja
+          + ' ('+x.confidence+')'
+          + (x.alt_icf_code ? ' / 次点:'+x.alt_icf_code+' '+(x.alt_title_ja||'') : '')
+          + '\\n    根拠:「'+(x.source_text||'')+'」').join('\\n');
+    } else { alert(d.message || 'ICF分類に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する';
+}
+
+// ===== 保存(案X 一括) =====
+async function mtgSave() {
+  // 付箋はボード実装後に board_component/sort_order を持たせる。今は分類結果を素直に保存。
+  const stickies = (mtgState.classifyResults||[]).map((x, i) => ({
+    icf_code: x.icf_code,
+    source_text: x.source_text,
+    confidence: x.confidence,
+    confirmed: false,
+    board_component: x.component,
+    sort_order: i,
+    alt_icf_code: x.alt_icf_code,
+    alt_reason: x.alt_reason,
+  }));
+  const payload = {
+    title: document.getElementById('mtgTitle').value.trim(),
+    meeting_date: document.getElementById('mtgDate').value,
+    patient_id: document.getElementById('mtgPatient').value,
+    transcript: document.getElementById('mtgTranscript').value,
+    minutes: document.getElementById('mtgMinutes').value,
+    audio_session_id: mtgState.sessionId,
+    stickies,
+  };
+  const btn = document.getElementById('mtgSaveBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>保存中...';
+  try {
+    const r = await fetch('/api/meeting/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      alert('保存しました（付箋 '+d.saved_stickies+'件）');
+      mtgBackToList();
+    } else { alert(d.message || '保存に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
+}
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', () => {
+  mtgLoadList();
+});
+</script>
+{% endblock %}

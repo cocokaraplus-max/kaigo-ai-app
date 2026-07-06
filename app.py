@@ -18497,6 +18497,20 @@ def api_meeting_summarize():
 # --- /meetings-transcribe-summarize-v1 ---
 
 
+# --- meetings-page-route-v1 : 担当者会議 画面(管理者MENU) ---
+@app.route("/admin/meetings")
+@login_required
+def admin_meetings():
+    """担当者会議 ICF分類 画面。meetings_enabled の施設のみ。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return redirect(url_for("admin"))
+    return render("admin_meetings.html")
+# --- /meetings-page-route-v1 ---
+
+
 # --- meetings-save-list-get-v1 : 会議の一括保存 / 一覧 / 読み込み ---
 import re as _re_uuid_mod
 _UUID_RE = _re_uuid_mod.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
