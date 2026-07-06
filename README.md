@@ -1277,3 +1277,33 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 ### ブランチ状態
 - DEV(tasukaru-dev) HEAD = 46786f8（会議API群・DDL・READMEを含む見込み）。本番未マージ。
 - 本番マージ時に必要: 本番Supabaseへ meetings系DDL（meetings_seed.sql / meetings_altcand.sql / meetings_audio_session.sql）を先に流す＋ icf_codes_seed.sql（未投入なら）＋ admin_settingsに本番施設のmeetings_enabled。
+
+---
+
+## 担当者会議 ICF分類機能 フロント骨格＋第4表議事録 完成（2026-07-06 追記その2）
+
+同日その1(サーバ側完成)の続き。フロント骨格が動作確認済み、議事録が第4表準拠に格上げ。すべてDEV。本番未マージ。
+
+### 完了（DEV push済み・動作確認済み）
+- **画面** `/admin/meetings`（route marker: meetings-page-route-v1 / template: templates/admin_meetings.html）。既存admin_*流儀（base.html継承・block content・緑系デザイン・CSRFなし）。単一ページ内ステップ遷移（一覧⇔編集ビュー）。`admin_authenticated` + `_meetings_gate_ok()` の二重ガード。管理者MENUへの導線リンクはまだ未設置（当面は直URLで確認）。
+- **フロントのフロー**（録音以外MCP確認済み）: 一覧(list)→新規→会議情報(タイトル/開催日/対象利用者)→録音UI(MediaRecorderで5分チャンク自動分割・session_id発行・chunk_index順次transcribe・連結)→文字起こし(編集可)→「議事録を作成」(summarize)→「ICF分類する」(classify_icf)→結果表示→「保存」(save一括)。既存会議はget で復元。
+- **動作確認結果**: 新規→議事録貼付→分類13件(次点候補d540→d440も的確に出た)→保存(会議+付箋13件)→一覧反映→get復元(board_component/confidence/次点候補まで完全復元)まで一気通貫でOK。テスト会議 a96d8dad がDEMO001に1件残存(ダミー・無害)。
+- **バグ修正済み**: 一覧生成のonclick属性でシングルクオート過剰エスケープ→SyntaxErrorで全JS未定義だった。data-mid属性＋addEventListener(イベント委譲)に変更して解決。`\\n`(バックスラッシュ2つ)→`\n`も2箇所修正。**教訓: Jinjaテンプレ内のJSは引用符を素直に書く。onclick属性に文字列を埋めるより data-* + イベント委譲が安全。**
+- **議事録を第4表準拠に格上げ**（marker: meetings-summarize-form4-v1 / 方向C）。厚労省標準様式「第4表 サービス担当者会議の要点」の5セクション(開催情報/検討した項目/検討内容/結論(決定事項)/残された課題・次回)＋末尾に「本人の状態整理(ICF分類用)」。**最重要ルール: 正式書類のため文字起こしに無い情報(出席者氏名・開催場所・開催日)は創作せず「（記載なし）」**。MCP確認で第4表構成・創作なし・結論独立・次回開催時期抽出・ICF状態整理まで良好に生成されることを確認済み。
+
+### 設計確定・気づき（次回の前提）
+- OCR拡張の方針を決定: **会議資料(ケアプラン第1〜3表・アセスメント・主治医意見書等)をカメラ/ファイルで撮影→OCR(Gemini画像解析)→テキスト抽出→議事録生成(summarize)の入力に合流**（方向A採用）。口頭で出ない基礎情報(要介護度・既往・長期短期目標・既存サービス)でICF材料を厚くし、空白領域炙り出しの精度を上げる。既存資産 `parse_assessment_file` / `api_ledger_ocr_receipt`(Gemini画像OCR) の流儀を流用可能。まず様式を問わない汎用OCR(1枚撮って本文抽出)から。第2表専用パーサ等は後回し。
+- 開催情報(日付・場所・出席者氏名)は議事録で（記載なし）になりがち→**フロントの会議情報フォームに出席者欄を足し、summarizeプロンプトに渡して実データで埋める**改善余地(後回し可)。
+- 対象利用者selectは現状「選択なし」のみ(患者リスト取得を未実装)。ボード実装前後で患者リスト取得を足す。
+
+### 次にやること（優先順）
+1. **付箋ボードのドラッグUI**（メイン未実装）: b/s/d/e 4領域に付箋ドラッグ移動・空白セルから手動追記・AI確定/要確認の色分け・次点候補ワンタップ移動・承認(confirmed)。保存時に board_component/sort_order を持たせる。get復元でボード描画。
+2. **会議資料OCR**（方向A）: フロントにカメラ/ファイル選択→OCR API(Gemini画像)→抽出テキストを議事録生成の入力に合流。
+3. 会議情報フォームに出席者欄追加＋summarizeへ受け渡し。患者リスト取得。
+4. 曖昧議事録で needs_review/次点候補の出方を検証。
+5. 録音の実機確認(マイクが要る・HIRO操作。MCPでは不可)。長時間(数十分×5分チャンク)の通しテスト。
+6. ICF図の可視化(構成要素別・章別グルーピング・空白領域の見せ方)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = de5e559（会議API群・DDL・フロント・第4表議事録・READMEを含む見込み）。本番未マージ。
+- 本番マージ時に必要(再掲): 本番Supabaseへ meetings系DDL 3本(meetings_seed / meetings_altcand / meetings_audio_session)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中(既存バケット)。
