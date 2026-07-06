@@ -217,12 +217,17 @@ async function mtgLoadList() {
     body.innerHTML = d.meetings.map(m => {
       const dt = m.meeting_date || (m.created_at||'').slice(0,10);
       const title = (m.title||'担当者会議').replace(/</g,'&lt;');
-      return '<div class="mtg-list-item" onclick="mtgOpen(\\''+m.id+'\\')">'
+      const mid = String(m.id).replace(/"/g,'&quot;');
+      return '<div class="mtg-list-item" data-mid="'+mid+'">'
         + '<span class="material-symbols-outlined mi-icon">groups</span>'
         + '<div class="mi-main"><div class="mi-title">'+title+'</div>'
         + '<div class="mi-date">'+dt+'</div></div>'
         + '<span class="material-symbols-outlined" style="color:#c3d3c6;">chevron_right</span></div>';
     }).join('');
+    // イベント委譲: onclick属性を使わず引用符問題を回避
+    body.querySelectorAll('.mtg-list-item').forEach(el => {
+      el.addEventListener('click', () => mtgOpen(el.getAttribute('data-mid')));
+    });
   } catch(e) {
     body.innerHTML = '<div class="mtg-empty">読み込みエラー: '+e+'</div>';
   }
@@ -346,7 +351,7 @@ async function mtgSendChunk(blob) {
 // チャンクを番号順に連結してtextareaへ(手編集は録音停止後を想定)
 function mtgRebuildTranscript() {
   const keys = Object.keys(mtgState.transcriptParts).map(Number).sort((a,b)=>a-b);
-  const joined = keys.map(k => mtgState.transcriptParts[k]).filter(Boolean).join('\\n');
+  const joined = keys.map(k => mtgState.transcriptParts[k]).filter(Boolean).join('\n');
   document.getElementById('mtgTranscript').value = joined;
 }
 
@@ -390,7 +395,7 @@ async function mtgClassify() {
         (d.results||[]).map(x => '['+x.component+'] '+x.icf_code+' '+x.title_ja
           + ' ('+x.confidence+')'
           + (x.alt_icf_code ? ' / 次点:'+x.alt_icf_code+' '+(x.alt_title_ja||'') : '')
-          + '\\n    根拠:「'+(x.source_text||'')+'」').join('\\n');
+          + '\n    根拠:「'+(x.source_text||'')+'」').join('\n');
     } else { alert(d.message || 'ICF分類に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
