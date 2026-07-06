@@ -18782,6 +18782,164 @@ recorded は body に実際の情報がある場合 true、「（未記載）」
 # --- /meetings-assessment-api-v1 ---
 
 
+# --- meetings-pdf-v1 : 会議3成果物のPDF出力(議事録/アセスメント/ICFボード) ---
+def _mtg_pdf_esc(s):
+    s = "" if s is None else str(s)
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+             .replace('"', "&quot;").replace("\n", "<br>"))
+
+_MTG_PDF_BASE_CSS = """
+  * { box-sizing: border-box; }
+  body { font-family: 'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222;
+         padding: 14mm 12mm; font-size: 11pt; line-height: 1.6; }
+  h1 { font-size: 15pt; text-align:center; margin: 0 0 4mm; }
+  .sub { text-align:center; font-size: 10pt; color:#444; margin-bottom: 6mm; }
+  .meta { width:100%; border-collapse:collapse; margin-bottom: 5mm; font-size: 10pt; }
+  .meta td { padding: 2px 6px; }
+  .sec { margin: 4mm 0 1mm; font-weight:bold; font-size: 11.5pt;
+         border-left: 4px solid #2e7d32; padding-left: 6px; }
+  .box { border:1px solid #cfd8cf; border-radius:4px; padding: 6px 8px; margin-bottom: 3mm;
+         white-space: normal; }
+  table.grid { width:100%; border-collapse:collapse; margin-bottom: 3mm; }
+  table.grid td, table.grid th { border:1px solid #b9c7bb; padding:5px 7px; vertical-align:top; font-size:10pt; }
+  table.grid th { background:#eef4ee; text-align:left; width: 34%; }
+  .unrec { color:#999; }
+  .foot { margin-top: 8mm; font-size: 9pt; color:#666; text-align:right; }
+"""
+
+
+def _mtg_pdf_html_minutes(meeting):
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+    minutes = _mtg_pdf_esc(meeting.get("minutes") or "（議事録なし）")
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
+    <h1>サービス担当者会議の要点</h1>
+    <div class="sub">{title}　開催日: {date}</div>
+    <div class="box">{minutes}</div>
+    <div class="foot">TASUKARU にて作成</div>
+    </body></html>"""
+
+
+def _mtg_pdf_html_assessment(meeting):
+    import json as _json_p
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+    items = []
+    raw = meeting.get("assessment")
+    if raw:
+        try:
+            items = _json_p.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            items = []
+    rows = []
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        head = _mtg_pdf_esc(it.get("heading") or "")
+        body = it.get("body") or "（未記載）"
+        cls = ' class="unrec"' if (not it.get("recorded")) or body == "（未記載）" else ""
+        rows.append(f'<tr><th>{head}</th><td{cls}>{_mtg_pdf_esc(body)}</td></tr>')
+    body_html = "".join(rows) or '<tr><td colspan="2">（アセスメント項目なし）</td></tr>'
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
+    <h1>アセスメントシート（課題分析標準項目）</h1>
+    <div class="sub">{title}　作成日: {date}</div>
+    <table class="grid">{body_html}</table>
+    <div class="foot">TASUKARU にて作成／未記載項目は職員が確認・補完してください</div>
+    </body></html>"""
+
+
+def _mtg_pdf_html_icf(meeting, stickies):
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+
+    def chips(slot_key):
+        lst = [s for s in stickies if (s.get("board_slot") or "") == slot_key]
+        inner = []
+        for s in lst:
+            code = s.get("icf_code") or ""
+            note = _mtg_pdf_esc(s.get("note") or "")
+            if code:
+                label = _mtg_pdf_esc(code) + ((" " + note) if note else "")
+            else:
+                label = note or "メモ"
+            inner.append(f'<div class="chip">{label}</div>')
+        return "".join(inner) or '<div class="empty">（言及なし）</div>'
+
+    def zone(slot_key, slot_name, colspan=1):
+        cs = f' colspan="{colspan}"' if colspan > 1 else ""
+        return f'<td class="zone"{cs}><div class="zt">{slot_name}</div>{chips(slot_key)}</td>'
+
+    top = "<tr>" + zone("health", "健康状態", 3) + "</tr>"
+    mid = "<tr>" + zone("bs", "心身機能・身体構造") + zone("activity", "活動") + zone("participation", "参加") + "</tr>"
+    bot = "<tr>" + zone("environment", "環境因子") + zone("personal", "個人因子", 2) + "</tr>"
+
+    css = _MTG_PDF_BASE_CSS + """
+      table.icf { width:100%; border-collapse:collapse; margin-top:3mm; }
+      table.icf td.zone { border:1px solid #b9c7bb; padding:6px; vertical-align:top; width:33%; }
+      .zt { font-weight:bold; font-size:9.5pt; color:#2e7d32; margin-bottom:3px; }
+      .chip { border:1px solid #cfd8cf; border-radius:4px; padding:3px 5px; margin-bottom:3px; font-size:9pt; }
+      .empty { color:#aaa; font-size:9pt; }
+      .arrow { text-align:center; color:#999; font-size:11pt; padding:1mm 0; }
+    """
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+    <h1>ICF 生活機能モデル図</h1>
+    <div class="sub">{title}　{date}</div>
+    <table class="icf">{top}</table>
+    <div class="arrow">↕</div>
+    <table class="icf">{mid}</table>
+    <div class="arrow">↕</div>
+    <table class="icf">{bot}</table>
+    <div class="foot">TASUKARU にて作成／↕は各要素の相互作用（ICF生活機能モデル）</div>
+    </body></html>"""
+
+
+@app.route("/api/meeting/pdf", methods=["GET"])
+@login_required
+def api_meeting_pdf():
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        import re as _re_p
+        supabase = get_supabase()
+        meeting_id = (request.args.get("meeting_id") or "").strip()
+        ptype = (request.args.get("type") or "minutes").strip()
+        if not _re_p.match(r"^[0-9a-fA-F-]{36}$", meeting_id):
+            return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
+        mr = supabase.table("meetings").select("*")\
+            .eq("id", meeting_id).eq("facility_code", f_code).execute()
+        if not mr.data:
+            return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        meeting = mr.data[0]
+
+        if ptype == "assessment":
+            html_str = _mtg_pdf_html_assessment(meeting)
+            label = "アセスメントシート"
+        elif ptype == "icf":
+            lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
+            html_str = _mtg_pdf_html_icf(meeting, lr.data or [])
+            label = "ICF分類"
+        else:
+            html_str = _mtg_pdf_html_minutes(meeting)
+            label = "議事録"
+
+        import pdfkit, shutil as _sh_p
+        from urllib.parse import quote as _quote_p
+        options = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+        wk_path = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        fname = label + "_" + (meeting.get("meeting_date") or "") + ".pdf"
+        fname_ascii = "meeting_" + ptype + ".pdf"
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = 'attachment; filename="' + fname_ascii + "\"; filename*=UTF-8''" + _quote_p(fname)
+        return response
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-pdf-v1 ---
+
+
 # --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
 @app.route("/api/meeting/classify_icf", methods=["POST"])
 def api_meeting_classify_icf():

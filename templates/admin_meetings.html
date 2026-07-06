@@ -221,6 +221,9 @@
         <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
           <span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成
         </button>
+        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfMinutes" style="display:none;" onclick="mtgPdf('minutes')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録PDF
+        </button>
       </div>
     </div>
 
@@ -242,6 +245,9 @@
         <button class="mtg-btn" id="mtgClassifyBtn" onclick="mtgClassify()">
           <span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する
         </button>
+        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfAssess" style="display:none;" onclick="mtgPdf('assessment')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>アセスメントPDF
+        </button>
       </div>
     </div>
 
@@ -254,6 +260,9 @@
       <div class="mtg-btn-row" style="margin-top:14px;">
         <button class="mtg-btn" id="mtgSaveBtn" onclick="mtgSave()">
           <span class="material-symbols-outlined" style="font-size:20px;">save</span>保存
+        </button>
+        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfIcf" style="display:none;" onclick="mtgPdf('icf')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>ICF図PDF
         </button>
       </div>
     </div>
@@ -369,6 +378,7 @@ function mtgStartNew() {
   document.getElementById('mtgBoard').innerHTML = '';
   document.getElementById('mtgChunks').textContent = '';
   document.getElementById('mtgRecStatus').textContent = '';
+  ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
   mtgShow('edit');
 }
 
@@ -422,8 +432,30 @@ async function mtgOpen(meetingId) {
       document.getElementById('mtgBoardCard').style.display = 'block';
       mtgRenderBoard();
     }
+    mtgUpdatePdfButtons();
     mtgShow('edit');
   } catch(e) { alert('読み込みエラー: '+e); }
+}
+
+// PDFボタンの表示制御(保存済み会議=editingMeetingIdがある時のみ)
+function mtgUpdatePdfButtons() {
+  const show = !!mtgState.editingMeetingId;
+  const minutesOk = show && !!document.getElementById('mtgMinutes').value.trim();
+  const assessOk = show && mtgState.assessment.length > 0;
+  const icfOk = show && mtgState.boardCards.length > 0;
+  document.getElementById('mtgPdfMinutes').style.display = minutesOk ? '' : 'none';
+  document.getElementById('mtgPdfAssess').style.display = assessOk ? '' : 'none';
+  document.getElementById('mtgPdfIcf').style.display = icfOk ? '' : 'none';
+}
+
+// PDF出力(保存済みデータからサーバ生成)
+function mtgPdf(type) {
+  if (!mtgState.editingMeetingId) {
+    alert('先に保存してください。PDFは保存された内容から作成されます。');
+    return;
+  }
+  const url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type;
+  window.open(url, '_blank');
 }
 
 // ===== 録音(チャンク分割) =====
@@ -688,8 +720,10 @@ async function mtgSave() {
     });
     const d = await r.json();
     if (d.status === 'success') {
-      alert('保存しました（付箋 '+d.saved_stickies+'件）');
-      mtgBackToList();
+      // 保存後もこの画面に留まり、PDF出力を可能にする
+      if (d.meeting_id) mtgState.editingMeetingId = d.meeting_id;
+      mtgUpdatePdfButtons();
+      alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
     } else { alert(d.message || '保存に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
