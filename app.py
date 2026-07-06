@@ -18462,6 +18462,81 @@ def api_meeting_transcribe():
 
 @app.route("/api/meeting/summarize", methods=["POST"])
 @login_required
+def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1
+    """第4表議事録本文(■ 見出し)を構造化dictに分解。Gemini不要・高速。"""
+    import re as _re_p
+    if not text:
+        return None
+    # ■ で始まる見出しごとに分割
+    sections = {}
+    cur = None
+    buf = []
+    for line in text.split("\n"):
+        s = line.strip()
+        m = _re_p.match(r"^[■◆●]\s*(.+)$", s)
+        if m:
+            if cur is not None:
+                sections[cur] = "\n".join(buf).strip()
+            cur = m.group(1).strip()
+            buf = []
+        else:
+            if cur is not None:
+                buf.append(line)
+    if cur is not None:
+        sections[cur] = "\n".join(buf).strip()
+
+    def _find(*keys):
+        for k, v in sections.items():
+            for key in keys:
+                if key in k:
+                    return v
+        return ""
+
+    def _to_list(block):
+        out = []
+        for ln in (block or "").split("\n"):
+            t = ln.strip().lstrip("・.-　 ").strip()
+            if t:
+                out.append(t)
+        return out
+
+    # 開催情報からheaderを抽出
+    kaisai = _find("開催情報")
+    header = {"date": "（記載なし）", "place": "（記載なし）", "attendees": [], "absentees": "（記載なし）"}
+    if kaisai:
+        att_mode = False
+        for ln in kaisai.split("\n"):
+            t = ln.strip()
+            if not t:
+                continue
+            if "開催日" in t:
+                header["date"] = t.split("：", 1)[-1].split(":", 1)[-1].split("/", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "開催場所" in t:
+                header["place"] = t.split("：", 1)[-1].split(":", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "欠席" in t:
+                header["absentees"] = t.split("：", 1)[-1].split(":", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "出席者" in t:
+                v = t.split("：", 1)[-1].split(":", 1)[-1].strip()
+                if v:
+                    header["attendees"].append(v)
+                att_mode = True
+            elif att_mode:
+                cand = t.lstrip("・.-　 ").strip()
+                if cand and "（記載なし）" not in cand:
+                    header["attendees"].append(cand)
+
+    return {
+        "header": header,
+        "items": _to_list(_find("検討した項目", "検討項目")),
+        "discussion": _find("検討内容") or "（記載なし）",
+        "conclusions": _to_list(_find("結論", "決定事項")),
+        "issues": _find("残された課題", "次回") or "（記載なし）",
+    }
+
+
 def api_meeting_summarize():
     """文字起こし→担当者会議の議事録を生成(Gemini)。"""
     ok, f_code, my_name = _meetings_gate_ok()
@@ -18506,35 +18581,12 @@ def api_meeting_summarize():
 
 【文字起こし】
 {transcript[:8000]}"""  # meetings-summarize-form4-v1
-        # meetings-minutes-struct-api-v1: 構造化JSONも出力させる指示を追記
-        prompt += (
-            "\n\nまず上記の議事録本文を出力し、その後に必ず次の区切り行を単独で出力する:\n"
-            "===STRUCT_JSON===\n"
-            "続けて同じ内容を次のJSONで出力(前置き・```禁止)。無い情報は（記載なし）、"
-            "出席者は明確な人のみ配列に。\n"
-            '{"header":{"date":"","place":"","attendees":[],"absentees":""},'
-            '"items":[],"discussion":"","conclusions":[],"issues":""}'
-        )
-        model = get_generative_model()
+        model = get_generative_model()  # meetings-minutes-struct-parse-v1
         resp = model.generate_content(prompt)
         minutes = (resp.text or "").strip()
         if not minutes:
             return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
-        import re as _re_s, json as _json_s  # meetings-minutes-struct-api-v1
-        raw = minutes
-        struct = None
-        if raw and "===STRUCT_JSON===" in raw:
-            _parts = raw.split("===STRUCT_JSON===", 1)
-            minutes = _parts[0].strip()
-            _jtxt = _parts[1].strip()
-            _jtxt = _re_s.sub(r"^```[a-zA-Z]*\n?", "", _jtxt).strip()
-            _jtxt = _re_s.sub(r"```$", "", _jtxt).strip()
-            _m = _re_s.search(r"\{.*\}", _jtxt, _re_s.DOTALL)
-            if _m:
-                try:
-                    struct = _json_s.loads(_m.group())
-                except Exception:
-                    struct = None
+        struct = _mtg_parse_minutes_struct(minutes)  # meetings-minutes-struct-parse-v1
         return jsonify({"status": "success", "minutes": minutes, "minutes_struct": struct})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
