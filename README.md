@@ -1242,3 +1242,38 @@ Stripe「セキュリティ対策措置状況申告書」対応として、以�
 ### 次回の選択肢（未着手）
 - (A) 会議データモデル（`meetings` 等）＋AI分類フローの設計に進む（第2レベルマスタで機能を形にする）← 前進重視ならこちら
 - (B) 英語4桁データの取得経路を腰を据えて調査（WHO Browserの内部API/データファイル特定、または信頼できる二次配布の発掘）。確実に取れる保証はないため、独立タスクとして計画的に。
+
+---
+
+## 担当者会議 ICF分類機能 サーバ側完成（2026-07-06 追記）
+
+担当者会議を録音→文字起こし→議事録生成→ICF分類し、付箋ボードで可視化する機能（PRO限定予定）。サーバ側が一通り完成。次回は**フロント（録音の時間分割ロジック＋付箋ボード画面）から再開**。
+
+### 完了（DEV投入・push済み。本番未マージ）
+DB（DEV Supabaseに投入済み。本番は機能リリース時に同SQLを流す）:
+- `meetings`（marker: meetings-ddl-v1）: 会議レコード。id/facility_code/patient_id(uuid,nullable)/title/meeting_date/audio_path/transcript/minutes/status/created_by。`audio_session_id`（marker: meetings-audio-session-v1）追加済み。
+- `meeting_icf_links`（meetings-ddl-v1）: 付箋1枚=1行。icf_code(FK,null許容=手動メモ付箋)/source_text/note/confidence(auto|needs_review)/confirmed/board_component(b/s/d/e)/sort_order/qualifier_capacity/qualifier_performance（2軸は将来用・今NULL）。次点候補 `alt_icf_code`/`alt_reason`（meetings-icf-altcand-v1）追加済み。
+- ゲート: `admin_settings` に `meetings_enabled`。DEMO001は`true`投入済み（実質限定運用。将来PROプランで解放）。**admin_settingsに(facility_code,key)のUNIQUE制約は無い**ので on conflict 不可。既存行の有無を見て insert/update を出し分ける。
+
+API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_ok()` = login_required + meetings_enabled）:
+- `/api/meeting/transcribe`（POST, meetings-transcribe-chunk-v1）: 録音チャンク1個を受け取り、`assessment-audio/{f_code}/meetings/{session_id}/{index:04d}.{ext}` に保存しつつGeminiで文字起こし。**長時間会議はフロントで時間分割（方式1）**し順次呼ぶ。保存失敗してもfail-safeで文字起こし続行。無音チャンクは空文字返す。フォーム: audio/session_id/chunk_index。音声はassessment-audioバケット流用（utils無改修）。
+- `/api/meeting/summarize`（POST, meetings-transcribe-summarize-v1）: 文字起こし→ICF分類しやすい議事録生成（Gemini）。
+- `/api/meeting/classify_icf`（POST, meetings-icf-classify-v1）: 議事録→ICF分類。**方式A＋次点候補**（全362件をicf_codesから動的取得しプロンプトに埋め、迷えばalt1件）。マスタ外コードは弾く（創作防止）。入力=minutes_text直POST。model=claude-sonnet-4-5。**テスト議事録で分類精度検証済み・良好**（膝の痛みb280と関節可動性b710を正しく分離、福祉用具e120まで拾う、4構成要素に分布）。ただしテストではneeds_review/altが0件→曖昧議事録での挙動は未検証。
+- `/api/meeting/save`（POST, meetings-save-list-get-v1）: **案X（保存時に一括作成）**。meetings 1件insert→付箋を一括insert。patient_idはUUID検証しng時null。マスタ外コードは握りつぶさずnoteに`[未確定:xxx]`退避。
+- `/api/meeting/list`（GET）: 施設の会議一覧（meeting_date→created_at降順・最大200）。
+- `/api/meeting/get`（GET, meeting_id）: 会議＋付箋を読み込み（ボード復元）。他施設IDは弾く。
+
+### 設計確定事項（次回の前提。再検討不要）
+- 付箋ボードUI: b/s/d/e の4領域に付箋をドラッグ移動＋空白セルから手動追記。AI確定(塗り)と要確認(破線)を色分け。空白領域を明示（＝会議で拾えていないICF上の空白の可視化＝差別化の核心）。次点候補は付箋に「もしかして: d460?」と小さく出しワンタップで移せる想定。
+- 「活動と参加(d)」は**まず1軸で機能化**（分けない）。能力/実行の2軸（ICF公式qualifier）は `qualifier_capacity`/`qualifier_performance` カラムを仕込み済みで**後付け可能**。
+- 権限は施設ユーザゲート＋将来PRO。当面meetings_enabledで実質限定start。
+- 音声は保存する方針（後で聞き直せる）。録音は長時間前提でフロント時間分割（5分チャンク等）→順次transcribe→連結→summarize→classify→save。session_idはフロント発行UUIDでチャンクを束ね、save時にmeetings.audio_session_idに記録。
+
+### 次にやること
+1. **フロント実装**（メイン）: 録音UI（MediaRecorderで時間分割・session_id発行・chunk_index順次送信）→ 文字起こし連結表示 → 議事録編集 → 「ICF分類」→ 付箋ボード（ドラッグ移動・追記・承認）→ 保存。会議一覧・読み込み画面。PRO限定ゲート表示。
+2. 曖昧な議事録で needs_review / 次点候補(alt) の出方を検証。
+3. ICF図の可視化（構成要素別・章別グルーピング、空白領域の見せ方）。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 46786f8（会議API群・DDL・READMEを含む見込み）。本番未マージ。
+- 本番マージ時に必要: 本番Supabaseへ meetings系DDL（meetings_seed.sql / meetings_altcand.sql / meetings_audio_session.sql）を先に流す＋ icf_codes_seed.sql（未投入なら）＋ admin_settingsに本番施設のmeetings_enabled。
