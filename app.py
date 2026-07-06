@@ -18925,6 +18925,7 @@ def api_meeting_pdf():
 
         import pdfkit, shutil as _sh_p
         from urllib.parse import quote as _quote_p
+        from flask import make_response  # meetings-pdf-makeresp-fix-v1
         options = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
         wk_path = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
