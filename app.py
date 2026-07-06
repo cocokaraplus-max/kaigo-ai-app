@@ -18367,6 +18367,112 @@ def api_jisseki_voverride_range_get():
 # ==========================================
 # jisseki-print-route-v1: 実績集計の印刷専用ページ
 # ==========================================
+# --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
+@app.route("/api/meeting/classify_icf", methods=["POST"])
+def api_meeting_classify_icf():
+    if "f_code" not in session:
+        return jsonify({"status": "error", "message": "ログインが必要です"}), 401
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    # 設定ゲート: admin_settings の meetings_enabled=true の施設のみ。
+    # (当面は自施設のみtrueにして実質限定運用。将来PROプランで解放)
+    try:
+        _g = supabase.table("admin_settings").select("value")\
+            .eq("facility_code", f_code).eq("key", "meetings_enabled").execute()
+        _enabled = False
+        if _g.data:
+            _v = _g.data[0].get("value")
+            _enabled = (_v is True) or (str(_v).lower() in ("true", "1", '"true"'))
+        if not _enabled:
+            return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    except Exception:
+        return jsonify({"status": "error", "message": "設定確認に失敗しました"}), 500
+
+    try:
+        import anthropic as _anthropic, json as _json, re as _re
+        data = request.get_json(silent=True) or {}
+        minutes_text = (data.get("minutes_text") or "").strip()
+        if not minutes_text:
+            return jsonify({"status": "error", "message": "議事録テキストがありません"}), 400
+
+        # ICFマスタ(第2レベル)を動的取得。マスタ更新に自動追従。
+        _m = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
+            .eq("level", 2).order("sort_order").execute()
+        master = _m.data or []
+        if not master:
+            return jsonify({"status": "error", "message": "ICFマスタが未投入です"}), 500
+        master_list = "\n".join(
+            [f"{r['code']} {r['title_ja']} (component={r['component']}, chapter={r['chapter']})"
+             for r in master]
+        )
+        valid_codes = {r["code"] for r in master}
+
+        prompt = f"""あなたは介護の担当者会議の議事録をICF(国際生活機能分類)に分類する専門家です。
+以下の【ICFマスタ】に載っているコードの中からのみ選んでください。
+マスタに無いコードや、あなたの記憶にあるコードを創作してはいけません。
+1つの発言が複数コードに該当する場合は複数返して構いません。
+意味が近くて迷うコードがある場合は、次点候補(alt)を1つだけ添えてください。
+該当が曖昧・確信が持てないものは confidence を "needs_review" にしてください。
+
+出力は以下のJSON配列のみ。前置き・説明・マークダウンの```は一切禁止。
+[
+  {{
+    "icf_code": "d450",
+    "source_text": "議事録中の根拠となった箇所を短く引用",
+    "confidence": "auto",
+    "alt_icf_code": "d460",
+    "alt_reason": "移動全般とも取れるため"
+  }}
+]
+次点候補が無ければ alt_icf_code と alt_reason は null。
+該当が1件も無ければ [] を返す。
+
+【ICFマスタ】
+{master_list}
+
+【議事録】
+{minutes_text[:6000]}"""
+
+        client = _anthropic.Anthropic()
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=3000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = message.content[0].text.strip()
+        raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+        raw = _re.sub(r"```$", "", raw).strip()
+        parsed = _json.loads(raw)
+
+        # マスタに無いコードは弾く(創作防止)。componentも付けて返す。
+        code_to_comp = {r["code"]: r["component"] for r in master}
+        code_to_title = {r["code"]: r["title_ja"] for r in master}
+        results = []
+        for s in parsed:
+            c = str(s.get("icf_code") or "").strip()
+            if c not in valid_codes:
+                continue
+            alt = str(s.get("alt_icf_code") or "").strip()
+            if alt and alt not in valid_codes:
+                alt = ""
+            results.append({
+                "icf_code": c,
+                "title_ja": code_to_title.get(c, ""),
+                "component": code_to_comp.get(c, ""),
+                "source_text": s.get("source_text", ""),
+                "confidence": s.get("confidence", "auto"),
+                "alt_icf_code": alt or None,
+                "alt_title_ja": code_to_title.get(alt, "") if alt else None,
+                "alt_reason": (s.get("alt_reason") if alt else None),
+            })
+        # 保存はフロントの承認後(別API)で。ここでは候補を返すのみ(人が承認思想)。
+        return jsonify({"status": "success", "count": len(results), "results": results})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-icf-classify-v1 ---
+
+
 @app.route("/admin/jisseki/print")
 @login_required
 def admin_jisseki_print():
