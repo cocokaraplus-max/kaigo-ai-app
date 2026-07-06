@@ -18679,6 +18679,104 @@ def api_meeting_icf_master():
 # --- /meetings-icf-master-v1 ---
 
 
+# --- meetings-assessment-api-v1 : 議事録+文字起こし→課題分析23項目アセスメント ---
+@app.route("/api/meeting/assessment", methods=["POST"])
+@login_required
+def api_meeting_assessment():
+    """課題分析標準項目23項目のアセスメントをJSON配列で生成(Gemini)。
+    ハルシネーション厳禁。語られていない項目は recorded:false / body:「（未記載）」。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        import re as _re, json as _json
+        data = request.get_json(silent=True) or {}
+        minutes = (data.get("minutes") or "").strip()
+        transcript = (data.get("transcript") or "").strip()
+        if not minutes and not transcript:
+            return jsonify({"status": "error", "message": "議事録または文字起こしがありません"}), 400
+
+        # 23項目の見出し(表示順は現場が読みやすい順)
+        items = [
+            "基本情報（氏名・生年月日・住所・連絡先・家族構成等）",
+            "これまでの生活と現在の状況（生活歴・職歴・趣味・価値観等）",
+            "社会保障制度の利用状況（介護保険・医療保険・年金・障害等）",
+            "現在利用している支援や社会資源（フォーマル/インフォーマル）",
+            "日常生活自立度（障害・認知症）",
+            "主訴・意向（本人・家族等の要望）",
+            "認定情報（要介護度・審査会意見・区分支給限度額等）",
+            "今回のアセスメントの理由（初回・更新・区分変更・状態変化等）",
+            "健康状態（既往・服薬・主治医意見・身長体重BMI血圧等）",
+            "ADL（寝返り・起き上がり・移乗・歩行・着衣・入浴・排泄等）",
+            "IADL（調理・掃除・買物・金銭管理・服薬管理・交通機関利用等）",
+            "認知機能や判断能力",
+            "コミュニケーション（視覚・聴覚・言語等の理解と表出）",
+            "生活リズム（1日/1週間・睡眠・活動と休息）",
+            "排泄の状況",
+            "じょくそう・皮膚の問題",
+            "口腔内の状況（歯・義歯・咀嚼・嚥下・口腔衛生）",
+            "食事摂取の状況（栄養・水分・食形態・摂取方法等）",
+            "社会との関わり（社会活動への参加・役割・孤独感等）",
+            "家族等の状況（介護者の有無・介護力・負担感・支援参加意思等）",
+            "居住環境（住宅改修の必要性・危険箇所・生活動線等）",
+            "その他留意すべき事項（虐待・経済的困窮・医療依存度・看取り等）",
+            "特記事項・まとめ",
+        ]
+        items_text = "\n".join([f"{i+1}. {h}" for i, h in enumerate(items)])
+
+        prompt = f"""あなたは介護支援専門員です。以下の担当者会議の【議事録】と【文字起こし】から、
+介護の課題分析標準項目に沿ったアセスメントシートを作成してください。
+
+【絶対厳守のルール(最重要)】
+・議事録と文字起こしに実際に書かれている・語られている事実だけを記載する。
+・推測・一般論・創作は一切禁止。情報が無い項目は、必ず body を「（未記載）」とし recorded を false にする。
+・「たぶん」「思われる」で埋めてはいけない。語られていなければ未記載。これは正式書類であり、事実でない記載は重大な誤りになる。
+・曖昧語(しっかり・適宜・時々)を避け、語られた具体的事実(数量・頻度・条件・介助度)をそのまま書く。
+・ADLは語られた介助度(自立/見守り/一部介助/全介助 等)を残す。
+
+【出力する項目(この23項目すべてを必ず出力)】
+{items_text}
+
+【出力形式】
+JSON配列のみ。前置き・説明・マークダウンの```は一切禁止。
+各要素: {{"id": 連番, "heading": "項目名", "body": "内容 または （未記載）", "recorded": true/false}}
+recorded は body に実際の情報がある場合 true、「（未記載）」の場合 false。
+
+【議事録】
+{minutes[:6000]}
+
+【文字起こし】
+{transcript[:6000]}"""
+
+        model = get_generative_model()
+        resp = model.generate_content(prompt)
+        raw = (resp.text or "").strip()
+        raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+        raw = _re.sub(r"```$", "", raw).strip()
+        m = _re.search(r"\[.*\]", raw, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "アセスメントを生成できませんでした"}), 500
+        parsed = _json.loads(m.group())
+        # 正規化(id採番・型担保)
+        out = []
+        for i, it in enumerate(parsed):
+            if not isinstance(it, dict):
+                continue
+            body = str(it.get("body") or "").strip() or "（未記載）"
+            rec = bool(it.get("recorded", False)) and body != "（未記載）"
+            out.append({
+                "id": i + 1,
+                "heading": str(it.get("heading") or "").strip(),
+                "body": body,
+                "recorded": rec,
+            })
+        return jsonify({"status": "success", "assessment": out})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-assessment-api-v1 ---
+
+
 # --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
 @app.route("/api/meeting/classify_icf", methods=["POST"])
 def api_meeting_classify_icf():
