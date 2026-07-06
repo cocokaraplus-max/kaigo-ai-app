@@ -189,12 +189,17 @@
           <span class="material-symbols-outlined" style="font-size:20px;">mic</span>
           <span id="mtgRecLabel">録音開始</span>
         </button>
+        <button class="mtg-btn sec" id="mtgFileBtn" onclick="document.getElementById('mtgAudioFile').click()">
+          <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>音声ファイル
+        </button>
+        <input type="file" id="mtgAudioFile" accept="audio/*" style="display:none;" onchange="mtgUploadAudio(this.files[0])" />
         <span class="mtg-rec-status" id="mtgRecStatus"></span>
       </div>
       <div class="mtg-chunks" id="mtgChunks"></div>
       <div class="mtg-note">
-        長い会議にも対応できるよう、録音は数分ごとに自動で区切って順に文字起こしします。
-        録音しながら文字起こしが進みます。マイクの使用許可を求められたら「許可」してください。
+        その場で録音するか、既にある会議の音声ファイルを選んで文字起こしできます。
+        長い会議にも対応できるよう、数分ごとに区切って順に処理します。
+        マイク録音では使用許可を求められたら「許可」してください。
       </div>
     </div>
 
@@ -530,6 +535,86 @@ async function mtgSendChunk(blob) {
     document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'送信エラー: '+e;
   }
   if (!mtgState.recording) document.getElementById('mtgRecStatus').textContent = '文字起こし完了';
+}
+
+// ===== 音声ファイルのアップロード(ブラウザで時間分割→順次文字起こし) =====
+const MTG_FILE_CHUNK_SEC = 300; // 5分ごとに分割
+
+async function mtgUploadAudio(file) {
+  if (!file) return;
+  document.getElementById('mtgAudioFile').value = ''; // 同じファイル再選択できるよう
+  const statusEl = document.getElementById('mtgRecStatus');
+  const chunksEl = document.getElementById('mtgChunks');
+  statusEl.textContent = '音声を読み込み中...';
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    const arrBuf = await file.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(arrBuf);
+    const sr = audioBuf.sampleRate;
+    const totalSec = audioBuf.duration;
+    const numChunks = Math.max(1, Math.ceil(totalSec / MTG_FILE_CHUNK_SEC));
+    statusEl.innerHTML = '<span class="mtg-rec-dot"></span>文字起こし中...';
+    chunksEl.textContent = '全'+numChunks+'チャンクを処理します...';
+    for (let i = 0; i < numChunks; i++) {
+      const startSec = i * MTG_FILE_CHUNK_SEC;
+      const endSec = Math.min(totalSec, startSec + MTG_FILE_CHUNK_SEC);
+      const wavBlob = mtgSliceToWav(audioBuf, startSec, endSec);
+      chunksEl.textContent = 'チャンク '+(i+1)+'/'+numChunks+' を文字起こし中...';
+      await mtgSendFileChunk(wavBlob, i);
+    }
+    statusEl.textContent = '文字起こし完了';
+    chunksEl.textContent = '完了: '+Object.keys(mtgState.transcriptParts).length+'チャンク';
+    ctx.close();
+  } catch(e) {
+    statusEl.textContent = '';
+    alert('音声ファイルの処理に失敗しました: '+e);
+  }
+}
+
+// AudioBufferの一部区間をWAV(16bit PCM mono)に変換
+function mtgSliceToWav(audioBuf, startSec, endSec) {
+  const sr = audioBuf.sampleRate;
+  const startF = Math.floor(startSec * sr);
+  const endF = Math.floor(endSec * sr);
+  const len = endF - startF;
+  // モノラルにミックスダウン
+  const ch = audioBuf.numberOfChannels;
+  const out = new Float32Array(len);
+  for (let c = 0; c < ch; c++) {
+    const data = audioBuf.getChannelData(c);
+    for (let i = 0; i < len; i++) out[i] += data[startF + i] / ch;
+  }
+  // 16bit PCM WAV
+  const buffer = new ArrayBuffer(44 + len * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + len*2, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sr, true); view.setUint32(28, sr*2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, len*2, true);
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    let s = Math.max(-1, Math.min(1, out[i]));
+    view.setInt16(off, s < 0 ? s*0x8000 : s*0x7FFF, true); off += 2;
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+async function mtgSendFileChunk(blob, idx) {
+  const fd = new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.wav');
+  fd.append('session_id', mtgState.sessionId);
+  fd.append('chunk_index', mtgState.chunkIndex++);
+  try {
+    const r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
+      mtgRebuildTranscript();
+    }
+  } catch(e) { /* 1チャンク失敗しても続行 */ }
 }
 
 // チャンクを番号順に連結してtextareaへ(手編集は録音停止後を想定)
