@@ -111,6 +111,25 @@
   .mtg-modal-item:active { background:#f0f6f1; }
   .mtg-modal-close { margin-top:8px; padding:9px; border:none; border-radius:9px;
     background:#eaf4ec; color:#1e5e26; font-weight:700; cursor:pointer; }
+  /* アセスメントシート 項目編集 (meetings-assessment-v1) */
+  .mtg-asmt-item { border:1px solid #e3eae4; border-radius:10px; padding:9px 10px; margin-bottom:8px; background:#fff; }
+  .mtg-asmt-item.unrec { background:#f6f7f6; border-style:dashed; }
+  .mtg-asmt-head { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+  .mtg-asmt-heading { flex:1; font-size:0.82rem; font-weight:700; color:#1e5e26; border:none;
+    background:transparent; padding:2px 0; }
+  .mtg-asmt-heading:focus { outline:1px solid #cfe3d4; border-radius:4px; }
+  .mtg-asmt-badge { font-size:0.62rem; padding:1px 6px; border-radius:5px; background:#eee; color:#888; }
+  .mtg-asmt-body { width:100%; min-height:44px; border:1px solid #e3eae4; border-radius:8px;
+    padding:7px 8px; font-size:0.83rem; color:#33453a; box-sizing:border-box; font-family:inherit; resize:vertical; line-height:1.5; }
+  .mtg-asmt-del { font-size:0.68rem; padding:2px 7px; border-radius:6px; border:0.5px solid #e0b4b4;
+    background:#fbf1f1; color:#a33; cursor:pointer; }
+  .mtg-asmt-add { width:100%; padding:8px; border-radius:8px; border:0.5px dashed #b7c6ba;
+    background:transparent; color:#5f7a63; cursor:pointer; font-size:0.82rem; margin-top:2px; }
+  /* 分類の入力元トグル */
+  .mtg-src-toggle { display:flex; gap:6px; margin-bottom:10px; }
+  .mtg-src-toggle button { flex:1; padding:7px; border-radius:8px; border:0.5px solid #cfd8cf;
+    background:#fff; font-size:0.8rem; cursor:pointer; color:#33453a; }
+  .mtg-src-toggle button.on { border:2px solid #2e7d32; background:#eaf4ec; color:#1e5e26; font-weight:700; }
 </style>
 {% endblock %}
 
@@ -199,6 +218,27 @@
         <textarea id="mtgMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。"></textarea>
       </div>
       <div class="mtg-btn-row">
+        <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
+          <span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成
+        </button>
+      </div>
+    </div>
+
+    <!-- ステップ4: アセスメントシート(課題分析23項目) -->
+    <div class="mtg-card" id="mtgAssessCard" style="display:none;">
+      <h3><span class="material-symbols-outlined">assignment_ind</span>アセスメントシート</h3>
+      <div class="mtg-note" style="margin-top:0;">
+        議事録と文字起こしから自動作成した下書きです。すべての項目を自由に修正・削除・追加できます。
+        会議で語られていない項目は「（未記載）」です。事実に基づき職員が補完してください。
+      </div>
+      <div id="mtgAssessList"></div>
+      <button class="mtg-asmt-add" onclick="mtgAssessAddItem()">＋ 項目を追加</button>
+      <div class="mtg-note" style="margin-bottom:4px;">ICF分類の入力元を選べます:</div>
+      <div class="mtg-src-toggle">
+        <button id="mtgSrcAssess" class="on" onclick="mtgSetSrc('assessment')">アセスメントから分類</button>
+        <button id="mtgSrcMinutes" onclick="mtgSetSrc('minutes')">議事録から分類</button>
+      </div>
+      <div class="mtg-btn-row" style="margin-top:12px;">
         <button class="mtg-btn" id="mtgClassifyBtn" onclick="mtgClassify()">
           <span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する
         </button>
@@ -231,6 +271,9 @@ let mtgState = {
   classifyResults: [],  // 分類API生結果
   boardCards: [],       // ボード上の付箋状態(ドラッグ/追加/承認を反映。保存の正)
   cardSeq: 1,           // 付箋のローカル連番
+  assessment: [],       // アセスメント23項目(項目編集の正)
+  asmtSeq: 1,           // アセスメント項目のローカル連番
+  srcType: 'assessment',// ICF分類の入力元 assessment|minutes
   editingMeetingId: null,
 };
 
@@ -312,6 +355,7 @@ async function mtgLoadList() {
 function mtgStartNew() {
   mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
                transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
+               assessment: [], asmtSeq: 1, srcType: 'assessment',
                editingMeetingId: null };
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
@@ -319,6 +363,8 @@ function mtgStartNew() {
   document.getElementById('mtgPatient').value = '';
   document.getElementById('mtgTranscript').value = '';
   document.getElementById('mtgMinutes').value = '';
+  document.getElementById('mtgAssessCard').style.display = 'none';
+  document.getElementById('mtgAssessList').innerHTML = '';
   document.getElementById('mtgBoardCard').style.display = 'none';
   document.getElementById('mtgBoard').innerHTML = '';
   document.getElementById('mtgChunks').textContent = '';
@@ -340,6 +386,22 @@ async function mtgOpen(meetingId) {
     document.getElementById('mtgPatient').value = m.patient_id || '';
     document.getElementById('mtgTranscript').value = m.transcript || '';
     document.getElementById('mtgMinutes').value = m.minutes || '';
+    // アセスメント復元(JSON文字列 → 項目配列)
+    if (m.assessment) {
+      try {
+        const arr = (typeof m.assessment === 'string') ? JSON.parse(m.assessment) : m.assessment;
+        if (Array.isArray(arr) && arr.length) {
+          mtgState.assessment = arr.map(it => ({
+            id: mtgState.asmtSeq++,
+            heading: it.heading || '',
+            body: it.body || '（未記載）',
+            recorded: !!it.recorded && (it.body||'') !== '（未記載）',
+          }));
+          document.getElementById('mtgAssessCard').style.display = 'block';
+          mtgRenderAssessment();
+        }
+      } catch(e) { /* 壊れたJSONは無視 */ }
+    }
     // 保存済み付箋を boardCards に復元してボード描画
     if (d.stickies && d.stickies.length) {
       mtgState.boardCards = d.stickies.map(s => ({
@@ -465,16 +527,99 @@ async function mtgSummarize() {
   btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成';
 }
 
+// ===== アセスメント生成(議事録+文字起こし) =====
+async function mtgAssess() {
+  const minutes = document.getElementById('mtgMinutes').value.trim();
+  const transcript = document.getElementById('mtgTranscript').value.trim();
+  if (!minutes && !transcript) { alert('先に議事録または文字起こしを作成してください'); return; }
+  const btn = document.getElementById('mtgAssessBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
+  try {
+    const r = await fetch('/api/meeting/assessment', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ minutes, transcript })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.assessment = (d.assessment||[]).map(it => ({
+        id: mtgState.asmtSeq++,
+        heading: it.heading || '',
+        body: it.body || '（未記載）',
+        recorded: !!it.recorded && (it.body||'') !== '（未記載）',
+      }));
+      document.getElementById('mtgAssessCard').style.display = 'block';
+      mtgRenderAssessment();
+    } else { alert(d.message || 'アセスメントの作成に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成';
+}
+
+// アセスメント描画(項目ごとに編集・削除)
+function mtgRenderAssessment() {
+  const wrap = document.getElementById('mtgAssessList');
+  wrap.innerHTML = mtgState.assessment.map(it => {
+    const unrec = !it.recorded;
+    return '<div class="mtg-asmt-item'+(unrec?' unrec':'')+'" data-aid="'+it.id+'">'
+      + '<div class="mtg-asmt-head">'
+      + '<input class="mtg-asmt-heading" data-ah="'+it.id+'" value="'+mtgEsc(it.heading)+'" />'
+      + (unrec ? '<span class="mtg-asmt-badge">未記載</span>' : '')
+      + '<button class="mtg-asmt-del" data-adel="'+it.id+'">削除</button>'
+      + '</div>'
+      + '<textarea class="mtg-asmt-body" data-ab="'+it.id+'" placeholder="（未記載）事実に基づき記入できます">'+mtgEsc(it.body==='（未記載）'?'':it.body)+'</textarea>'
+      + '</div>';
+  }).join('');
+  // 配線
+  wrap.querySelectorAll('[data-ab]').forEach(t=>t.onchange=()=>{
+    const it=mtgState.assessment.find(x=>String(x.id)===t.dataset.ab);
+    if(it){ const v=t.value.trim(); it.body = v || '（未記載）'; it.recorded = !!v;
+      // 未記載↔記載でスタイルが変わるので再描画
+      mtgRenderAssessment(); }
+  });
+  wrap.querySelectorAll('[data-ah]').forEach(h=>h.onchange=()=>{
+    const it=mtgState.assessment.find(x=>String(x.id)===h.dataset.ah);
+    if(it){ it.heading=h.value.trim(); }
+  });
+  wrap.querySelectorAll('[data-adel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('この項目を削除しますか？')) return;
+    mtgState.assessment = mtgState.assessment.filter(x=>String(x.id)!==b.dataset.adel);
+    mtgRenderAssessment();
+  });
+}
+
+function mtgAssessAddItem() {
+  mtgState.assessment.push({ id: mtgState.asmtSeq++, heading:'新しい項目', body:'', recorded:false });
+  mtgRenderAssessment();
+  document.getElementById('mtgAssessCard').style.display = 'block';
+}
+
+// ICF分類の入力元トグル
+function mtgSetSrc(t) {
+  mtgState.srcType = t;
+  document.getElementById('mtgSrcAssess').classList.toggle('on', t==='assessment');
+  document.getElementById('mtgSrcMinutes').classList.toggle('on', t==='minutes');
+}
+
+
 // ===== ICF分類 =====
 async function mtgClassify() {
-  const minutes = document.getElementById('mtgMinutes').value.trim();
-  if (!minutes) { alert('先に議事録を作成してください'); return; }
+  // 入力元: アセスメント(構造化テキスト) or 議事録
+  let sourceText = '';
+  if (mtgState.srcType === 'assessment' && mtgState.assessment.length) {
+    sourceText = mtgState.assessment
+      .filter(it => it.recorded && it.body && it.body !== '（未記載）')
+      .map(it => '■ '+it.heading+'\n'+it.body).join('\n\n');
+    if (!sourceText) { alert('アセスメントに記載された項目がありません。議事録から分類するか、項目を記入してください。'); return; }
+  } else {
+    sourceText = document.getElementById('mtgMinutes').value.trim();
+    if (!sourceText) { alert('先に議事録を作成してください'); return; }
+  }
   const btn = document.getElementById('mtgClassifyBtn');
   btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>分類中...';
   try {
     const r = await fetch('/api/meeting/classify_icf', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ minutes_text: minutes })
+      body: JSON.stringify({ source_text: sourceText })
     });
     const d = await r.json();
     if (d.status === 'success') {
@@ -530,6 +675,7 @@ async function mtgSave() {
     patient_id: document.getElementById('mtgPatient').value,
     transcript: document.getElementById('mtgTranscript').value,
     minutes: document.getElementById('mtgMinutes').value,
+    assessment: mtgState.assessment.map(it => ({ heading: it.heading, body: it.body, recorded: it.recorded })),
     audio_session_id: mtgState.sessionId,
     stickies,
   };

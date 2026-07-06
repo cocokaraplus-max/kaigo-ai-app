@@ -18558,6 +18558,10 @@ def api_meeting_save():
             return jsonify({"status": "error", "message": "stickies の形式が不正です"}), 400
 
         # 会議レコードをinsert
+        _assessment = data.get("assessment")  # meetings-assessment-wire-v1
+        if _assessment is not None and not isinstance(_assessment, str):
+            import json as _json_a
+            _assessment = _json_a.dumps(_assessment, ensure_ascii=False)
         m_row = {
             "facility_code": f_code,
             "patient_id": patient_id,
@@ -18565,6 +18569,7 @@ def api_meeting_save():
             "meeting_date": meeting_date,
             "transcript": transcript,
             "minutes": minutes,
+            "assessment": _assessment,
             "audio_session_id": audio_session_id,
             "status": "confirmed",
             "created_by": my_name,
@@ -18802,9 +18807,10 @@ def api_meeting_classify_icf():
     try:
         import anthropic as _anthropic, json as _json, re as _re
         data = request.get_json(silent=True) or {}
-        minutes_text = (data.get("minutes_text") or "").strip()
+        # meetings-assessment-wire-v1: minutes_text が無ければ source_text(アセスメント等)を使う
+        minutes_text = (data.get("minutes_text") or data.get("source_text") or "").strip()
         if not minutes_text:
-            return jsonify({"status": "error", "message": "議事録テキストがありません"}), 400
+            return jsonify({"status": "error", "message": "分類する会議情報がありません"}), 400
 
         # ICFマスタ(第2レベル)を動的取得。マスタ更新に自動追従。
         _m = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
@@ -18818,7 +18824,7 @@ def api_meeting_classify_icf():
         )
         valid_codes = {r["code"] for r in master}
 
-        prompt = f"""あなたは介護の担当者会議の議事録をICF(国際生活機能分類)に分類する専門家です。
+        prompt = f"""あなたは介護の担当者会議の会議情報(議事録またはアセスメント)をICF(国際生活機能分類)に分類する専門家です。
 以下の【ICFマスタ】に載っているコードの中からのみ選んでください。
 マスタに無いコードや、あなたの記憶にあるコードを創作してはいけません。
 1つの発言が複数コードに該当する場合は複数返して構いません。
@@ -18841,7 +18847,7 @@ def api_meeting_classify_icf():
 【ICFマスタ】
 {master_list}
 
-【議事録】
+【会議情報】
 {minutes_text[:6000]}"""
 
         client = _anthropic.Anthropic()
