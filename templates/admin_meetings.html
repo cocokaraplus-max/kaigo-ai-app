@@ -459,7 +459,7 @@ function mtgPdf(type) {
     alert('先に保存してください。PDFは保存された内容から作成されます。');
     return;
   }
-  const url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type;
+  const url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type + '&_t=' + Date.now();
   window.open(url, '_blank');
 }
 
