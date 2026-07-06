@@ -18848,7 +18848,16 @@ def _mtg_pdf_html_assessment(meeting):
     </body></html>"""
 
 
-def _mtg_pdf_html_icf(meeting, stickies):
+def _mtg_pdf_html_icf(meeting, stickies, name_map=None):  # meetings-pdf-rich-icf-v1
+    nm = name_map or {}
+    SLOT_STYLE = {
+        "health": ("#F1EFE8", "#2C2C2A", "#5F5E5A"),
+        "bs": ("#EEEDFE", "#26215C", "#3C3489"),
+        "activity": ("#FAECE7", "#4A1B0C", "#993C1D"),
+        "participation": ("#FBEAF0", "#4B1528", "#72243E"),
+        "environment": ("#E6F1FB", "#042C53", "#185FA5"),
+        "personal": ("#E1F5EE", "#04342C", "#0F6E56"),
+    }
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
     date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
 
@@ -18859,27 +18868,34 @@ def _mtg_pdf_html_icf(meeting, stickies):
             code = s.get("icf_code") or ""
             note = _mtg_pdf_esc(s.get("note") or "")
             if code:
-                label = _mtg_pdf_esc(code) + ((" " + note) if note else "")
+                nm_ja = _mtg_pdf_esc(nm.get(code, ""))
+                label = '<span class="cc">' + _mtg_pdf_esc(code) + '</span> ' + nm_ja
             else:
                 label = note or "メモ"
-            inner.append(f'<div class="chip">{label}</div>')
+            _bg = SLOT_STYLE.get(slot_key, ("#f4f7f4", "#333", "#2e7d32"))
+            _src = s.get("source_text") or ""
+            _src_html = ('<div class="csrc">' + _mtg_pdf_esc(_src[:60]) + '</div>') if _src else ""
+            inner.append(f'<div class="chip" style="background:{_bg[0]};color:{_bg[1]};">{label}{_src_html}</div>')
         return "".join(inner) or '<div class="empty">（言及なし）</div>'
 
     def zone(slot_key, slot_name, colspan=1):
         cs = f' colspan="{colspan}"' if colspan > 1 else ""
-        return f'<td class="zone"{cs}><div class="zt">{slot_name}</div>{chips(slot_key)}</td>'
+        _z = SLOT_STYLE.get(slot_key, ("#f4f7f4", "#333", "#2e7d32"))
+        return f'<td class="zone"{cs}><div class="zt" style="color:{_z[2]};">{slot_name}</div>{chips(slot_key)}</td>'
 
     top = "<tr>" + zone("health", "健康状態", 3) + "</tr>"
     mid = "<tr>" + zone("bs", "心身機能・身体構造") + zone("activity", "活動") + zone("participation", "参加") + "</tr>"
     bot = "<tr>" + zone("environment", "環境因子") + zone("personal", "個人因子", 2) + "</tr>"
 
     css = _MTG_PDF_BASE_CSS + """
-      table.icf { width:100%; border-collapse:collapse; margin-top:3mm; }
-      table.icf td.zone { border:1px solid #b9c7bb; padding:6px; vertical-align:top; width:33%; }
-      .zt { font-weight:bold; font-size:9.5pt; color:#2e7d32; margin-bottom:3px; }
-      .chip { border:1px solid #cfd8cf; border-radius:4px; padding:3px 5px; margin-bottom:3px; font-size:9pt; }
-      .empty { color:#aaa; font-size:9pt; }
-      .arrow { text-align:center; color:#999; font-size:11pt; padding:1mm 0; }
+      table.icf { width:100%; border-collapse:collapse; margin-top:3mm; table-layout:fixed; }
+      table.icf td.zone { border:1.5px solid #9fb3a2; padding:6px; vertical-align:top; width:33%; background:#fbfdfb; }
+      .zt { font-weight:bold; font-size:10pt; margin-bottom:4px; padding-bottom:2px; border-bottom:1px solid #dbe6dd; }
+      .chip { border-radius:6px; padding:4px 7px; margin-bottom:4px; font-size:9pt; line-height:1.4; }
+      .chip .cc { font-weight:bold; }
+      .chip .csrc { font-size:7.5pt; opacity:0.75; margin-top:2px; }
+      .empty { color:#aaa; font-size:9pt; font-style:italic; }
+      .arrow { text-align:center; color:#7aa17e; font-size:13pt; padding:1mm 0; font-weight:bold; }
     """
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
     <h1>ICF 生活機能モデル図</h1>
@@ -18917,7 +18933,9 @@ def api_meeting_pdf():
             label = "アセスメントシート"
         elif ptype == "icf":
             lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
-            html_str = _mtg_pdf_html_icf(meeting, lr.data or [])
+            _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
+            _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
+            html_str = _mtg_pdf_html_icf(meeting, lr.data or [], _name_map)
             label = "ICF分類"
         else:
             html_str = _mtg_pdf_html_minutes(meeting)
@@ -18934,6 +18952,7 @@ def api_meeting_pdf():
         fname_ascii = "meeting_" + ptype + ".pdf"
         response = make_response(pdf_bytes)
         response.headers["Content-Type"] = "application/pdf"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"  # meetings-pdf-rich-icf-v1
         response.headers["Content-Disposition"] = 'attachment; filename="' + fname_ascii + "\"; filename*=UTF-8''" + _quote_p(fname)
         return response
     except Exception as e:
