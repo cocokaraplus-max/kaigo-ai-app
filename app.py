@@ -19069,6 +19069,15 @@ def _mtg_pdf_html_icf(meeting, stickies, name_map=None):  # meetings-pdf-rich-ic
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
     date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
 
+    _total = len([s for s in stickies if (s.get("board_slot") or "")])  # meetings-pdf-icf-fit-v1
+    if _total <= 12:
+        _dz = {"chip_fs": "9pt", "src_fs": "7.5pt", "pad": "4px 7px", "mb": "4px", "zt": "10pt", "srclen": 60}
+    elif _total <= 20:
+        _dz = {"chip_fs": "8pt", "src_fs": "6.8pt", "pad": "3px 6px", "mb": "3px", "zt": "9.5pt", "srclen": 44}
+    elif _total <= 30:
+        _dz = {"chip_fs": "7pt", "src_fs": "6pt", "pad": "2px 5px", "mb": "2px", "zt": "9pt", "srclen": 32}
+    else:
+        _dz = {"chip_fs": "6.2pt", "src_fs": "5.4pt", "pad": "2px 4px", "mb": "2px", "zt": "8.5pt", "srclen": 24}
     def chips(slot_key):
         lst = [s for s in stickies if (s.get("board_slot") or "") == slot_key]
         inner = []
@@ -19082,7 +19091,8 @@ def _mtg_pdf_html_icf(meeting, stickies, name_map=None):  # meetings-pdf-rich-ic
                 label = note or "メモ"
             _bg = SLOT_STYLE.get(slot_key, ("#f4f7f4", "#333", "#2e7d32"))
             _src = s.get("source_text") or ""
-            _src_html = ('<div class="csrc">' + _mtg_pdf_esc(_src[:60]) + '</div>') if _src else ""
+            _srct = _src[:_dz["srclen"]] + ("…" if len(_src) > _dz["srclen"] else "")  # meetings-pdf-icf-fit-v1
+            _src_html = ('<div class="csrc">' + _mtg_pdf_esc(_srct) + '</div>') if _src else ""
             inner.append(f'<div class="chip" style="background:{_bg[0]};color:{_bg[1]};">{label}{_src_html}</div>')
         return "".join(inner) or '<div class="empty">（言及なし）</div>'
 
@@ -19095,15 +19105,20 @@ def _mtg_pdf_html_icf(meeting, stickies, name_map=None):  # meetings-pdf-rich-ic
     mid = "<tr>" + zone("bs", "心身機能・身体構造") + zone("activity", "活動") + zone("participation", "参加") + "</tr>"
     bot = "<tr>" + zone("environment", "環境因子") + zone("personal", "個人因子", 2) + "</tr>"
 
-    css = _MTG_PDF_BASE_CSS + """
-      table.icf { width:100%; border-collapse:collapse; margin-top:3mm; table-layout:fixed; }
-      table.icf td.zone { border:1.5px solid #9fb3a2; padding:6px; vertical-align:top; width:33%; background:#fbfdfb; }
-      .zt { font-weight:bold; font-size:10pt; margin-bottom:4px; padding-bottom:2px; border-bottom:1px solid #dbe6dd; }
-      .chip { border-radius:6px; padding:4px 7px; margin-bottom:4px; font-size:9pt; line-height:1.4; }
-      .chip .cc { font-weight:bold; }
-      .chip .csrc { font-size:7.5pt; opacity:0.75; margin-top:2px; }
-      .empty { color:#aaa; font-size:9pt; font-style:italic; }
-      .arrow { text-align:center; color:#7aa17e; font-size:13pt; padding:1mm 0; font-weight:bold; }
+    css = _MTG_PDF_BASE_CSS + f"""
+      @page {{ size: A4 landscape; margin: 8mm; }}
+      table.icf {{ width:100%; border-collapse:collapse; margin-top:2mm; table-layout:fixed; }}
+      table.icf td.zone {{ border:1.2px solid #9fb3a2; padding:4px; vertical-align:top; width:33.33%;
+                           background:#fbfdfb; word-break:break-word; overflow-wrap:anywhere; }}
+      .zt {{ font-weight:bold; font-size:{_dz['zt']}; margin-bottom:3px; padding-bottom:2px; border-bottom:1px solid #dbe6dd; }}
+      .chip {{ border-radius:5px; padding:{_dz['pad']}; margin-bottom:{_dz['mb']}; font-size:{_dz['chip_fs']};
+               line-height:1.3; word-break:break-word; overflow-wrap:anywhere; }}
+      .chip .cc {{ font-weight:bold; }}
+      .chip .csrc {{ font-size:{_dz['src_fs']}; opacity:0.72; margin-top:1px; }}
+      .empty {{ color:#aaa; font-size:8pt; font-style:italic; }}
+      .arrow {{ text-align:center; color:#7aa17e; font-size:11pt; padding:0.5mm 0; font-weight:bold; }}
+      h1 {{ font-size:14pt; margin:0 0 1mm; }}
+      .sub {{ font-size:9pt; margin-bottom:1mm; }}
     """
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
     <h1>ICF 生活機能モデル図</h1>
