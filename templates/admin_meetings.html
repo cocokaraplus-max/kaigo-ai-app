@@ -158,7 +158,7 @@
   .mtg-pbadge.show { display:flex; }
   .mtg-pname { font-weight:700; font-size:0.9rem; flex:1; color:#1e5e26; }
   .mtg-pclear { background:none; border:none; cursor:pointer; padding:0; color:#80868b; font-size:18px; line-height:1; }
-  .mtg-pcands { position:absolute; z-index:200; width:100%; display:none; border:1px solid #e0e0e0; border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-top:2px; box-sizing:border-box; }
+  .mtg-pcands { position:absolute; z-index:1000; width:100%; display:none; border:1px solid #e0e0e0; border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.15); margin-top:2px; box-sizing:border-box; }
   .mtg-pcands.show { display:block; }
   .mtg-pcand { display:block; width:100%; padding:12px 14px; font-size:0.86rem; text-align:left; background:#fff; border:none; border-bottom:1px solid #f0f0f0; cursor:pointer; font-family:inherit; color:#202124; }
   .mtg-pcand:last-child { border-bottom:none; }
@@ -199,7 +199,7 @@
     </div>
 
     <!-- 会議の基本情報 -->
-    <div class="mtg-card">
+    <div class="mtg-card" id="mtgInfoCard" style="position:relative; z-index:50;">
       <h3><span class="material-symbols-outlined">edit_note</span>会議情報</h3>
       <div class="mtg-field">
         <label>タイトル</label>
