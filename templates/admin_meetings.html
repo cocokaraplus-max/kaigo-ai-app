@@ -265,16 +265,20 @@
         </button>
       </div>
       <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
-        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録PDF（レイアウトを選べます）:</div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','a')">
-            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>A スッキリ
-          </button>
-          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','b')">
-            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>B ビジネス
-          </button>
-          <button class="mtg-btn sec" style="flex:1; min-width:110px;" onclick="mtgPdf('minutes','c')">
-            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>C フォーマル
+        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
+            <option value="a">A ｜ スッキリ（表＋見出し）</option>
+            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
+            <option value="c">C ｜ フォーマル（公的様式風）</option>
+            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
+            <option value="e">E ｜ カード（決定事項を強調）</option>
+            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
+            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
+            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
+          </select>
+          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
           </button>
         </div>
       </div>
@@ -319,7 +323,7 @@
         </button>
       </div>
       <div id="mtgPdfAll" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cfd8cf;">
-        <button class="mtg-btn" style="width:100%; background:#2e7d32; color:#fff; border-color:#2e7d32;" onclick="mtgPdf('all')">
+        <button class="mtg-btn" style="width:100%; background:#2e7d32; color:#fff; border-color:#2e7d32;" onclick="mtgPdf('all', (document.getElementById('mtgStyleSelect')||{}).value || 'a')">
           <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録・アセスメント・ICF図をまとめてPDF
         </button>
         <div style="font-size:0.72rem; color:#5f7a63; margin-top:5px; text-align:center;">3つの記録を1つのPDFにまとめて印刷・保存できます</div>

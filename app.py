@@ -19003,6 +19003,174 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
     items_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in items) or "<li>（記載なし）</li>"
     concl_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in concl) or "<li>（記載なし）</li>"
 
+    _eff_date = h_date if h_date != "（記載なし）" else date  # meetings-pdf-minutes-styles2-v1
+    _cl = ("（" + care_level + "）") if care_level else ""
+    _concl_num = "".join(
+        f'<div class="num"><span class="n">{i+1}</span><span class="nt">{_mtg_pdf_esc(x)}</span></div>'
+        for i, x in enumerate(concl)
+    ) or '<div class="num"><span class="nt">（記載なし）</span></div>'
+
+    if style == "d":  # サイドバー型
+        css = _MTG_PDF_BASE_CSS + """
+          .wrap { border:1px solid #e5e0d5; border-radius:10px; overflow:hidden; }
+          table.d { width:100%; border-collapse:collapse; }
+          td.side { width:32%; background:#1f4d33; color:#fff; padding:16px 14px; vertical-align:top; }
+          .side .ttl { font-size:13pt; padding-bottom:8px; border-bottom:1px solid #3d6b50; margin-bottom:12px; }
+          .side .lb { font-size:8pt; color:#b8cec0; margin-bottom:1px; }
+          .side .vl { font-size:10.5pt; margin-bottom:9px; }
+          td.body { padding:16px 18px; vertical-align:top; }
+          .body .sh { color:#1f4d33; font-weight:bold; font-size:10.5pt; margin-bottom:3px; }
+          .body .sc { font-size:10pt; color:#444; margin-bottom:12px; line-height:1.6; padding-left:2px; }
+          .body ul { margin:2px 0 12px; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="wrap"><table class="d"><tr>
+          <td class="side">
+            <div class="ttl">サービス担当者会議</div>
+            <div class="lb">利用者</div><div class="vl">{title}</div>
+            <div class="lb">開催日</div><div class="vl">{_eff_date}</div>
+            <div class="lb">開催場所</div><div class="vl">{h_place}</div>
+            <div class="lb">出席者</div><div class="vl">{h_att}</div>
+            <div class="lb">欠席者</div><div class="vl">{h_abs}</div>
+          </td>
+          <td class="body">
+            <div class="sh">検討した項目</div><ul>{items_html}</ul>
+            <div class="sh">検討内容</div><div class="sc">{disc}</div>
+            <div class="sh">結論（決定事項）</div><ul>{concl_html}</ul>
+            <div class="sh">残された課題・次回に向けて</div><div class="sc">{issues}</div>
+          </td>
+        </tr></table></div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "e":  # カード型
+        css = _MTG_PDF_BASE_CSS + """
+          .ehead { border-left:4px solid #2e7d5b; padding-left:10px; margin-bottom:14px; }
+          .ehead .t { font-size:14pt; font-weight:bold; }
+          .ehead .s { font-size:9.5pt; color:#777; margin-top:2px; }
+          table.ecards { width:100%; border-collapse:separate; border-spacing:6px 0; margin-bottom:14px; }
+          table.ecards td { background:#fff; border:1px solid #e5e0d5; border-radius:8px; padding:8px 10px; vertical-align:top; width:33%; }
+          .ecards .cl { font-size:8.5pt; color:#2e7d5b; font-weight:bold; margin-bottom:3px; }
+          .ecards .cv { font-size:9.5pt; color:#555; line-height:1.5; }
+          .ebox { background:#eef6f1; border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+          .ebox .bt { font-size:10.5pt; font-weight:bold; color:#1e6b4a; margin-bottom:6px; }
+          .num { margin-bottom:4px; font-size:10pt; color:#2a4a3a; }
+          .num .n { display:inline-block; min-width:16px; color:#2e7d5b; font-weight:bold; }
+          .esec { font-size:10pt; color:#666; line-height:1.7; margin-bottom:8px; }
+          .esec .k { color:#2e7d5b; font-weight:bold; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="ehead"><div class="t">サービス担当者会議 議事録</div>
+          <div class="s">{title}{_cl}　·　{_eff_date}</div></div>
+        <table class="ecards"><tr>
+          <td><div class="cl">検討項目</div><div class="cv">{_mtg_pdf_esc("／".join(items) if items else "（記載なし）")}</div></td>
+          <td><div class="cl">出席者</div><div class="cv">{h_att}</div></td>
+          <td><div class="cl">開催場所</div><div class="cv">{h_place}</div></td>
+        </tr></table>
+        <div class="ebox"><div class="bt">◆ 決定事項</div>{_concl_num}</div>
+        <div class="esec"><span class="k">検討内容　</span>{disc}</div>
+        <div class="esec"><span class="k">残された課題　</span>{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "f":  # タイムライン型
+        css = _MTG_PDF_BASE_CSS + """
+          .fhead { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a2a2a; margin-bottom:16px; }
+          .fhead .t { font-size:14pt; font-weight:bold; letter-spacing:2px; }
+          .fhead .s { font-size:9.5pt; color:#888; margin-top:3px; letter-spacing:1px; }
+          table.tl { width:100%; border-collapse:collapse; font-size:10pt; }
+          table.tl td.dot { width:18px; vertical-align:top; text-align:center; padding:0; }
+          .dotc { width:9px; height:9px; border-radius:50%; background:#2e7d5b; margin:2px auto 0; }
+          .dotc.end { background:#d85a30; }
+          .line { width:1px; background:#d5ddd6; margin:2px auto; }
+          table.tl td.c { vertical-align:top; padding-bottom:12px; padding-left:4px; }
+          .tl .h { font-weight:bold; color:#1e6b4a; font-size:10pt; margin-bottom:2px; }
+          .tl .h.end { color:#b0431f; }
+          .tl .b { color:#555; line-height:1.6; }
+          .tl ul { margin:2px 0; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="fhead"><div class="t">サービス担当者会議 議事録</div>
+          <div class="s">{title}　|　{care_level or '　'}　|　{_eff_date}</div></div>
+        <table class="tl">
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:34px;"></div></td>
+              <td class="c"><div class="h">検討した項目</div><div class="b"><ul>{items_html}</ul></div></td></tr>
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:48px;"></div></td>
+              <td class="c"><div class="h">検討内容</div><div class="b">{disc}</div></td></tr>
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:34px;"></div></td>
+              <td class="c"><div class="h">結論（決定事項）</div><div class="b"><ul>{concl_html}</ul></div></td></tr>
+          <tr><td class="dot"><div class="dotc end"></div></td>
+              <td class="c"><div class="h end">残された課題・次回に向けて</div><div class="b">{issues}</div></td></tr>
+        </table>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "g":  # エグゼクティブ型
+        css = _MTG_PDF_BASE_CSS + """
+          .ghead { border-bottom:2px solid #1a1a1a; padding-bottom:10px; margin-bottom:16px; }
+          .ghead table { width:100%; border-collapse:collapse; }
+          .ghead .t { font-size:15pt; letter-spacing:0.5px; }
+          .ghead .en { font-size:7.5pt; color:#999; letter-spacing:2px; margin-top:3px; }
+          .ghead .meta { text-align:right; font-size:9pt; color:#666; line-height:1.6; }
+          table.ginfo { width:100%; font-size:10pt; margin-bottom:16px; border-collapse:collapse; }
+          table.ginfo td.k { color:#999; letter-spacing:1px; width:14%; padding:2px 0; }
+          table.ginfo td.v { padding:2px 0; }
+          .gsh { font-size:11.5pt; color:#1a1a1a; margin-bottom:4px; letter-spacing:0.5px; }
+          .gsc { font-size:10pt; color:#444; line-height:1.75; margin-bottom:14px; padding-left:16px; }
+          .gsc ul { margin:2px 0; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="ghead"><table><tr>
+          <td><div class="t">サービス担当者会議 議事録</div>
+              <div class="en">SERVICE COORDINATION MEETING MINUTES</div></td>
+          <td class="meta">{_eff_date}<br>TASUKARU</td>
+        </tr></table></div>
+        <table class="ginfo">
+          <tr><td class="k">利用者</td><td class="v">{title}</td><td class="k">認定</td><td class="v">{care_level or '（記載なし）'}</td></tr>
+          <tr><td class="k">出席者</td><td class="v" colspan="3">{h_att}</td></tr>
+        </table>
+        <div class="gsh">Ⅰ.　検討した項目</div><div class="gsc"><ul>{items_html}</ul></div>
+        <div class="gsh">Ⅱ.　検討内容</div><div class="gsc">{disc}</div>
+        <div class="gsh">Ⅲ.　結論（決定事項）</div><div class="gsc"><ul>{concl_html}</ul></div>
+        <div class="gsh">Ⅳ.　残された課題・次回に向けて</div><div class="gsc">{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "h":  # モダンミニマル型
+        css = _MTG_PDF_BASE_CSS + """
+          .hbar { width:34px; height:3px; background:#2e7d5b; margin-bottom:10px; }
+          .htt { font-size:16pt; font-weight:bold; letter-spacing:0.5px; }
+          .hsub { font-size:9.5pt; color:#aaa; margin-top:5px; letter-spacing:1px; margin-bottom:20px; }
+          table.hcol { width:100%; border-collapse:collapse; margin-bottom:18px; }
+          table.hcol td { vertical-align:top; width:50%; padding:0 14px; }
+          table.hcol td.l { border-right:1px solid #eee; padding-left:0; }
+          .hlb { font-size:8pt; color:#bbb; letter-spacing:2px; margin-bottom:4px; }
+          .hvl { font-size:10pt; color:#555; line-height:1.6; }
+          .hdec { font-size:8.5pt; color:#2e7d5b; letter-spacing:2px; margin-bottom:8px; }
+          table.hnum { width:100%; border-collapse:collapse; font-size:10.5pt; }
+          table.hnum td.n { width:34px; vertical-align:top; font-size:17pt; font-weight:bold; color:#dcdcdc; padding-bottom:10px; }
+          table.hnum td.t { vertical-align:top; color:#444; line-height:1.5; padding-bottom:10px; }
+          .hnotes { border-top:1px solid #eee; padding-top:12px; font-size:9.5pt; color:#888; line-height:1.7; margin-top:6px; }
+          .hnotes .k { color:#2e7d5b; letter-spacing:1px; }
+        """
+        _hnum = "".join(
+            f'<tr><td class="n">{i+1:02d}</td><td class="t">{_mtg_pdf_esc(x)}</td></tr>'
+            for i, x in enumerate(concl)
+        ) or '<tr><td class="t">（記載なし）</td></tr>'
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="hbar"></div>
+        <div class="htt">サービス担当者会議</div>
+        <div class="hsub">{title}　—　{care_level or ''}　—　{_eff_date}</div>
+        <table class="hcol"><tr>
+          <td class="l"><div class="hlb">MEMBERS</div><div class="hvl">{h_att}</div></td>
+          <td><div class="hlb">AGENDA</div><div class="hvl">{_mtg_pdf_esc(" / ".join(items) if items else "（記載なし）")}</div></td>
+        </tr></table>
+        <div class="hdec">DECISIONS</div>
+        <table class="hnum">{_hnum}</table>
+        <div class="hnotes"><span class="k">NOTES　</span>{disc}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
     if style == "c":
         # 案C: 公的様式風の罫線
         css = _MTG_PDF_BASE_CSS + """
@@ -19215,7 +19383,7 @@ def api_meeting_pdf():
         _combined_pdf = None  # meetings-pdf-all-merge-v1
         if ptype == "all":
             _style = (request.args.get("style") or "a").strip().lower()
-            if _style not in ("a", "b", "c"):
+            if _style not in ("a", "b", "c", "d", "e", "f", "g", "h"):  # meetings-pdf-styles-ah-v1
                 _style = "a"
             _lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
             _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
@@ -19246,7 +19414,7 @@ def api_meeting_pdf():
             label = "ICF分類"
         else:
             _style = (request.args.get("style") or "a").strip().lower()  # meetings-pdf-minutes-styles-v1
-            if _style not in ("a", "b", "c"):
+            if _style not in ("a", "b", "c", "d", "e", "f", "g", "h"):  # meetings-pdf-styles-ah-v1
                 _style = "a"
             html_str = _mtg_pdf_html_minutes(meeting, _style)
             label = "議事録"
