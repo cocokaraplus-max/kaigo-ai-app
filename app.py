@@ -19388,19 +19388,14 @@ def api_meeting_pdf():
             _lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
             _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
             _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
-            # 縦: 議事録 + アセスメント(page-break区切り)
-            _h_min = _mtg_pdf_extract_body(_mtg_pdf_html_minutes(meeting, _style))
-            _h_asm = _mtg_pdf_extract_body(_mtg_pdf_html_assessment(meeting))
-            _pb = '<div style="page-break-before:always;"></div>'
-            _portrait_html = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
-                              '<style>' + _MTG_PDF_BASE_CSS + '</style></head><body>'
-                              + _h_min + _pb + _h_asm + '</body></html>')
-            _portrait_pdf = _mtg_pdf_render(_portrait_html)
-            # 横: ICF図(ビルダーが@page landscape/自動縮小を内包)
+            # meetings-pdf-all-fullcss-v1: 各成果物を完全HTML(スタイル固有CSS込み)で
+            # 個別にPDF生成し結合する。body抜き出しだと議事録の装飾が失われるため。
+            _min_pdf = _mtg_pdf_render(_mtg_pdf_html_minutes(meeting, _style))   # 議事録(選択スタイルのCSS込み・縦)
+            _asm_pdf = _mtg_pdf_render(_mtg_pdf_html_assessment(meeting))        # アセスメント(縦)
             _icf_html = _mtg_pdf_html_icf(meeting, _lr.data or [], _name_map)
-            _icf_pdf = _mtg_pdf_render(_icf_html, landscape=True)  # meetings-pdf-landscape-opt-v1
-            # 結合(縦→横)
-            _combined_pdf = _mtg_pdf_merge([_portrait_pdf, _icf_pdf])
+            _icf_pdf = _mtg_pdf_render(_icf_html, landscape=True)               # ICF図(横)
+            # 結合: 議事録 → アセスメント → ICF
+            _combined_pdf = _mtg_pdf_merge([_min_pdf, _asm_pdf, _icf_pdf])
             label = "担当者会議一式"
             html_str = ""
         elif ptype == "assessment":
