@@ -18905,19 +18905,54 @@ def _mtg_pdf_render(html_str):  # meetings-pdf-all-merge-v1
     return pdfkit.from_string(html_str, False, options=_opts, configuration=_cfg)
 
 
-def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1
-    """複数のPDFバイト列をfitz(PyMuPDF)で1つに結合。向き混在OK。"""
-    import fitz
-    out = fitz.open()
-    for b in pdf_bytes_list:
-        if not b:
-            continue
-        src = fitz.open(stream=b, filetype="pdf")
-        out.insert_pdf(src)
-        src.close()
-    data = out.tobytes()
-    out.close()
-    return data
+def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1 / robust: meetings-pdf-merge-robust-v1
+    """複数PDFバイト列を1つに結合。向き混在OK。
+    pdfunite(poppler) → PyMuPDF(fitz) → 先頭のみ、の順にフォールバック。"""
+    _blobs = [b for b in pdf_bytes_list if b]
+    if not _blobs:
+        return b""
+    if len(_blobs) == 1:
+        return _blobs[0]
+    # 1) pdfunite(poppler-utils, 依存追加なし)
+    import shutil as _sh_m
+    if _sh_m.which("pdfunite"):
+        import tempfile, os, subprocess
+        _tmp = tempfile.mkdtemp()
+        try:
+            _ins = []
+            for _i, _b in enumerate(_blobs):
+                _p = os.path.join(_tmp, f"in_{_i}.pdf")
+                with open(_p, "wb") as _f:
+                    _f.write(_b)
+                _ins.append(_p)
+            _out = os.path.join(_tmp, "out.pdf")
+            _r = subprocess.run(["pdfunite"] + _ins + [_out],
+                                capture_output=True, timeout=30)
+            if _r.returncode == 0 and os.path.exists(_out):
+                with open(_out, "rb") as _f:
+                    return _f.read()
+        except Exception:
+            pass
+        finally:
+            try:
+                _sh_m.rmtree(_tmp, ignore_errors=True)
+            except Exception:
+                pass
+    # 2) PyMuPDF(fitz)
+    try:
+        import fitz
+        _out = fitz.open()
+        for _b in _blobs:
+            _src = fitz.open(stream=_b, filetype="pdf")
+            _out.insert_pdf(_src)
+            _src.close()
+        _data = _out.tobytes()
+        _out.close()
+        return _data
+    except Exception:
+        pass
+    # 3) 最終フォールバック: 先頭PDFのみ返す(結合不可環境)
+    return _blobs[0]
 
 
 def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
