@@ -19806,6 +19806,7 @@ def api_staff_minutes_save():
             "minutes_style": minutes_style,
             "decisions": _as_text(data.get("decisions")),
             "todos": _as_text(data.get("todos")),
+            "mindmap": data.get("mindmap") or None,  # staff-minutes-mindmap-v1
             "status": "confirmed",
             "created_by": my_name,
         }
@@ -20007,6 +20008,102 @@ def api_staff_minutes_pdf():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- /staff-minutes-api-v1 ---
+
+
+# ============================================================
+# staff-minutes-mindmap-v1 : 勉強会・会議議事録 マインドマップ
+#   議事録(or文字起こし)→Geminiで階層Markdown生成。markmapで画面描画。
+#   PDFはブラウザから送られたSVGを静的HTMLに埋めて wkhtmltopdf で横向き化。
+# ============================================================
+
+@app.route("/api/staff_minutes/mindmap", methods=["POST"])
+@login_required
+def api_staff_minutes_mindmap():
+    """議事録(or文字起こし)から markmap 用の階層Markdownを生成する。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "kono kinou wa yuukou ka sarete imasen"}), 403
+    try:
+        from utils import get_generative_model
+        data = request.get_json(silent=True) or {}
+        source = (data.get("minutes") or "").strip()
+        if not source:
+            source = (data.get("transcript") or "").strip()
+        title = (data.get("title") or "").strip() or "kaigi"
+        if not source:
+            return jsonify({"status": "error", "message": "gijiroku matawa mojiokoshi ga arimasen"}), 400
+        prompt = f"""以下は介護施設の勉強会・会議の議事録(または文字起こし)です。
+これをマインドマップ用の階層Markdownに整理してください。
+
+【出力ルール】
+・1行目は「# {title}」(中心テーマ = 会議名)。
+・大きなテーマを「## 見出し」、その具体項目を「### 見出し」で表す。必要なら「#### 」まで。
+・各ノードは短く(体言止め・15文字以内目安)。長い文は要点だけ切り出す。
+・議事録に書かれていない情報は作らない。読み取れる範囲だけ。
+・決定事項やToDoも枝として入れてよい(例: ## 決定事項 / ## ToDo)。
+・出力はMarkdownの見出し行のみ。説明・前置き・コードブロック記号(```)は不要。
+
+【議事録】
+{source[:8000]}"""
+        model = get_generative_model()
+        resp = model.generate_content(prompt)
+        md = (resp.text or "").strip()
+        # コードフェンスが付いてきたら剥がす
+        if md.startswith("```"):
+            md = md.strip("`")
+            if md[:8].lower().startswith("markdown"):
+                md = md[8:]
+            md = md.strip()
+        if not md.startswith("#"):
+            md = "# " + title + "\n" + md
+        return jsonify({"status": "success", "mindmap": md})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/staff_minutes/mindmap_pdf", methods=["POST"])
+@login_required
+def api_staff_minutes_mindmap_pdf():
+    """ブラウザで描画した markmap の SVG文字列を受け取り、静的HTMLに埋めて
+    wkhtmltopdf で横向きPDF化して返す。JS実行を伴わないので安定描画できる。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "kono kinou wa yuukou ka sarete imasen"}), 403
+    try:
+        data = request.get_json(silent=True) or {}
+        svg = data.get("svg") or ""
+        title = (data.get("title") or "kaigi").strip()
+        if "<svg" not in svg:
+            return jsonify({"status": "error", "message": "SVG ga arimasen"}), 400
+        # 危険要素を軽く除去(script等)。markmapのSVGは静的想定。
+        import re as _re_mm
+        svg = _re_mm.sub(r"<script[\s\S]*?</script>", "", svg, flags=_re_mm.I)
+        esc_title = _mtg_pdf_esc(title)
+        html_str = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+@page {{ margin: 8mm; }}
+body {{ margin:0; font-family:'Noto Sans JP',sans-serif; }}
+.mm-title {{ font-size:14pt; font-weight:700; color:#1b5e20; text-align:center; margin:4px 0 8px; }}
+.mm-wrap {{ width:100%; text-align:center; }}
+.mm-wrap svg {{ width:100%; height:auto; max-height:180mm; }}
+.mm-foot {{ text-align:center; color:#888; font-size:8pt; margin-top:6px; }}
+</style></head><body>
+<div class="mm-title">{esc_title}　マインドマップ</div>
+<div class="mm-wrap">{svg}</div>
+<div class="mm-foot">TASUKARU にて作成</div>
+</body></html>"""
+        pdf_bytes = _mtg_pdf_render(html_str, landscape=True)
+        from urllib.parse import quote as _quote_mm
+        from flask import make_response
+        fname = "mindmap_" + title + ".pdf"
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Content-Disposition"] = 'attachment; filename="mindmap.pdf"; filename*=UTF-8\'\'' + _quote_mm(fname)
+        return response
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /staff-minutes-mindmap-v1 ---
 
 
 @app.route("/admin/jisseki/print")

@@ -69,6 +69,11 @@
 .sm-edit-banner { display:none; background:#fff3e0; border:1.5px solid #ffb74d; border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:0.85rem; color:#e65100; align-items:center; justify-content:space-between; gap:10px; }
 .sm-edit-banner.show { display:flex; }
 .sm-edit-banner button { padding:6px 10px; border-radius:8px; border:none; background:#e65100; color:#fff; font-weight:700; cursor:pointer; font-size:0.78rem; }
+/* マインドマップ */
+.sm-mm-area { position:relative; border:1.5px solid #e0e0e0; border-radius:10px; background:#fbfdfb; margin-top:10px; overflow:hidden; }
+.sm-mm-area > svg { width:100%; height:420px; display:block; }
+.sm-mm-empty { text-align:center; color:#9aa0a6; font-size:0.85rem; padding:40px 12px; }
+.sm-mm-hint { font-size:0.76rem; color:#8a958c; margin-top:6px; line-height:1.5; }
 </style>
 {% endblock %}
 {% block content %}
@@ -163,6 +168,25 @@
     <div class="sm-msg" id="smMsg"></div>
   </div>
 
+  <!-- マインドマップ -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">account_tree</span>マインドマップ</h3>
+    <div class="sm-actions">
+      <button type="button" class="sm-btn sm-btn-primary" onclick="smMakeMindmap()">
+        <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>マインドマップを作成
+      </button>
+      <button type="button" class="sm-btn sm-btn-sub" onclick="smMindmapPdf()">
+        <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>マインドマップPDF
+      </button>
+    </div>
+    <div class="sm-loading" id="smMmLoading"><div class="sm-spin"></div>マインドマップを作成中…</div>
+    <div class="sm-mm-area" id="smMmArea">
+      <div class="sm-mm-empty" id="smMmEmpty">「マインドマップを作成」で議事録から自動生成されます。<br>作成後はドラッグで移動・スクロールで拡大縮小・枝をタップで開閉できます。</div>
+      <svg id="smMmSvg" style="display:none;"></svg>
+    </div>
+    <div class="sm-mm-hint">会議名を中心に、議題・決定事項・ToDoなどが枝分かれで表示されます。保存すると次回も再表示されます。</div>
+  </div>
+
   <!-- 一覧 -->
   <div class="sm-card">
     <h3><span class="material-symbols-outlined">history</span>保存した議事録</h3>
@@ -171,6 +195,10 @@
 </div>
 {% endblock %}
 {% block extra_script %}
+<!-- markmap (mindmap) CDN: d3 + markmap-lib + markmap-view -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18"></script>
 <script>
 // staff-minutes-ui-v1
 var SM_CHUNK_MS = 55000;  // 約55秒ごとにチャンク化(担当者会議と同発想)
@@ -317,7 +345,8 @@ async function smSave(){
     minutes_struct: window._smMinutesStruct || null,
     minutes_style: document.getElementById('smStyle').value,
     decisions: smDTtoArray('smDecisions'),
-    todos: smDTtoArray('smTodos')
+    todos: smDTtoArray('smTodos'),
+    mindmap: smMmMarkdown || null
   };
   smMsg('保存中...', true);
   try {
@@ -340,6 +369,80 @@ function smPdf(){
   var style = document.getElementById('smStyle').value;
   var url = '/api/staff_minutes/pdf?id='+encodeURIComponent(smState.editingId)+'&style='+style+'&_t='+Date.now();
   window.open(url, '_blank');
+}
+
+// ===== マインドマップ =====
+var smMmMarkdown = null;   // 現在のマインドマップMarkdown
+var smMmInstance = null;   // markmapインスタンス
+
+async function smMakeMindmap(){
+  var minutes = document.getElementById('smMinutes').value.trim();
+  var transcript = document.getElementById('smTranscript').value.trim();
+  if (!minutes && !transcript) { smMsg('先に議事録か文字起こしを用意してください', false); return; }
+  document.getElementById('smMmLoading').classList.add('show');
+  try {
+    var r = await fetch('/api/staff_minutes/mindmap', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        title: document.getElementById('smTitle').value.trim() || '会議',
+        minutes: minutes, transcript: transcript
+      })
+    });
+    var d = await r.json();
+    if (d.status === 'success') {
+      smMmMarkdown = d.mindmap || '';
+      smRenderMindmap(smMmMarkdown);
+      smMsg('マインドマップを作成しました', true);
+    } else { smMsg('作成に失敗: '+(d.message||''), false); }
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+  finally { document.getElementById('smMmLoading').classList.remove('show'); }
+}
+
+function smRenderMindmap(md){
+  if (!md) return;
+  if (!window.markmap || !window.markmap.Transformer) { smMsg('マインドマップ描画ライブラリの読み込み中です。少し待って再度お試しください。', false); return; }
+  try {
+    var mk = window.markmap;
+    var transformer = new mk.Transformer();
+    var res = transformer.transform(md);
+    var root = res.root;
+    var assets = transformer.getUsedAssets ? transformer.getUsedAssets(res.features) : null;
+    if (assets) { if (assets.styles) mk.loadCSS(assets.styles); if (assets.scripts) mk.loadJS(assets.scripts, { getMarkmap: function(){ return mk; } }); }
+    var svg = document.getElementById('smMmSvg');
+    document.getElementById('smMmEmpty').style.display = 'none';
+    svg.style.display = 'block';
+    // 既存インスタンスがあれば作り直す
+    svg.innerHTML = '';
+    smMmInstance = mk.Markmap.create(svg, { autoFit: true, duration: 300 }, root);
+    setTimeout(function(){ if (smMmInstance && smMmInstance.fit) smMmInstance.fit(); }, 200);
+  } catch(e) { smMsg('マインドマップ描画エラー: '+e, false); }
+}
+
+async function smMindmapPdf(){
+  var svg = document.getElementById('smMmSvg');
+  if (!smMmMarkdown || svg.style.display === 'none') { smMsg('先にマインドマップを作成してください', false); return; }
+  // fit してから現在のSVGを取得
+  try { if (smMmInstance && smMmInstance.fit) { smMmInstance.fit(); await new Promise(r=>setTimeout(r,300)); } } catch(e){}
+  var svgStr = svg.outerHTML;
+  smMsg('マインドマップPDFを作成中...', true);
+  try {
+    var r = await fetch('/api/staff_minutes/mindmap_pdf', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title: document.getElementById('smTitle').value.trim() || '会議', svg: svgStr })
+    });
+    if (!r.ok) { var ed = await r.json().catch(function(){return{};}); smMsg('PDF作成に失敗: '+(ed.message||r.status), false); return; }
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    smMsg('マインドマップPDFを作成しました', true);
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+}
+
+function smClearMindmap(){
+  smMmMarkdown = null; smMmInstance = null;
+  var svg = document.getElementById('smMmSvg');
+  svg.innerHTML = ''; svg.style.display = 'none';
+  document.getElementById('smMmEmpty').style.display = 'block';
 }
 
 // ===== 一覧・編集・削除 =====
@@ -381,6 +484,9 @@ async function smOpen(id){
     smFillDT('smTodos', m.todos);
     document.getElementById('smStyle').value = m.minutes_style || 'a';
     window._smMinutesStruct = m.minutes_struct || null;
+    // マインドマップ復元
+    if (m.mindmap) { smMmMarkdown = m.mindmap; smRenderMindmap(m.mindmap); }
+    else { smClearMindmap(); }
     smShowEditBanner(m.meeting_date || '');
     smMsg('', true);
     window.scrollTo({ top:0, behavior:'smooth' });
@@ -415,6 +521,7 @@ function smStartNew(){
   document.getElementById('smStyle').value = 'a';
   document.getElementById('smChunks').textContent = '';
   document.getElementById('smEditBanner').classList.remove('show');
+  smClearMindmap();
   smMsg('', true);
 }
 
