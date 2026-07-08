@@ -18896,6 +18896,30 @@ def _mtg_pdf_extract_body(html):  # meetings-pdf-all-v1
     return m.group(1) if m else html
 
 
+def _mtg_pdf_render(html_str):  # meetings-pdf-all-merge-v1
+    """HTML文字列をPDFバイトに(pdfkit)。ICF等の@pageはHTML側CSSが効く。"""
+    import pdfkit, shutil as _sh_p
+    _opts = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+    _wk = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+    _cfg = pdfkit.configuration(wkhtmltopdf=_wk)
+    return pdfkit.from_string(html_str, False, options=_opts, configuration=_cfg)
+
+
+def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1
+    """複数のPDFバイト列をfitz(PyMuPDF)で1つに結合。向き混在OK。"""
+    import fitz
+    out = fitz.open()
+    for b in pdf_bytes_list:
+        if not b:
+            continue
+        src = fitz.open(stream=b, filetype="pdf")
+        out.insert_pdf(src)
+        src.close()
+    data = out.tobytes()
+    out.close()
+    return data
+
+
 def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
     import json as _json_m
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
@@ -19151,22 +19175,29 @@ def api_meeting_pdf():
             return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
         meeting = mr.data[0]
 
-        if ptype == "all":  # meetings-pdf-all-v1: 3点まとめて1つのPDFに
+        _combined_pdf = None  # meetings-pdf-all-merge-v1
+        if ptype == "all":
             _style = (request.args.get("style") or "a").strip().lower()
             if _style not in ("a", "b", "c"):
                 _style = "a"
             _lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
             _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
             _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
+            # 縦: 議事録 + アセスメント(page-break区切り)
             _h_min = _mtg_pdf_extract_body(_mtg_pdf_html_minutes(meeting, _style))
             _h_asm = _mtg_pdf_extract_body(_mtg_pdf_html_assessment(meeting))
-            _h_icf = _mtg_pdf_extract_body(_mtg_pdf_html_icf(meeting, _lr.data or [], _name_map))
             _pb = '<div style="page-break-before:always;"></div>'
-            _body = _h_min + _pb + _h_asm + _pb + _h_icf
-            html_str = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
-                        '<style>' + _MTG_PDF_BASE_CSS + '</style></head><body>'
-                        + _body + '</body></html>')
+            _portrait_html = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
+                              '<style>' + _MTG_PDF_BASE_CSS + '</style></head><body>'
+                              + _h_min + _pb + _h_asm + '</body></html>')
+            _portrait_pdf = _mtg_pdf_render(_portrait_html)
+            # 横: ICF図(ビルダーが@page landscape/自動縮小を内包)
+            _icf_html = _mtg_pdf_html_icf(meeting, _lr.data or [], _name_map)
+            _icf_pdf = _mtg_pdf_render(_icf_html)
+            # 結合(縦→横)
+            _combined_pdf = _mtg_pdf_merge([_portrait_pdf, _icf_pdf])
             label = "担当者会議一式"
+            html_str = ""
         elif ptype == "assessment":
             html_str = _mtg_pdf_html_assessment(meeting)
             label = "アセスメントシート"
@@ -19189,7 +19220,10 @@ def api_meeting_pdf():
         options = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
         wk_path = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
-        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        if _combined_pdf is not None:  # meetings-pdf-all-merge-v1
+            pdf_bytes = _combined_pdf
+        else:
+            pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
         fname = label + "_" + (meeting.get("meeting_date") or "") + ".pdf"
         fname_ascii = "meeting_" + ptype + ".pdf"
         response = make_response(pdf_bytes)
