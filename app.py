@@ -14985,6 +14985,19 @@ def life_check_page():
     )
 
 
+@app.route('/life_check_view')  # lc-view-page-route-v1
+@login_required
+def life_check_view_page():
+    """life function check : read-only viewer page (print/PDF style)."""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    return render(
+        "life_check_view.html",
+        patients=patients,
+    )
+
+
 @app.route('/api/save_body_weight', methods=['POST'])
 @login_required
 def api_save_body_weight():

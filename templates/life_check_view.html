@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}生活機能チェック閲覧 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* lc-view-page-route-v1: 閲覧専用（印刷・PDF風の清書レイアウト） */
+.lcv-wrap { max-width:760px; margin:0 auto; padding-bottom:80px; }
+/* 入力/記録一覧 共通タブ */
+.lc-tabs { display:flex; gap:0; max-width:760px; margin:0 auto 14px; border:1.5px solid #1a73e8; border-radius:12px; overflow:hidden; }
+.lc-tab { flex:1; text-align:center; padding:11px 0; font-size:0.9rem; font-weight:700; color:#1a73e8; background:#fff; text-decoration:none; cursor:pointer; }
+.lc-tab.active { background:#1a73e8; color:#fff; }
+.lc-tab + .lc-tab { border-left:1.5px solid #1a73e8; }
+.lcv-hist-actions { display:flex; gap:8px; align-items:center; }
+.lcv-hist-edit { padding:6px 12px; border:1.5px solid #1a73e8; background:#fff; color:#1a73e8; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+.lcv-hist-edit:hover { background:#1a73e8; color:#fff; }
+.lcv-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:16px; margin-bottom:14px; }
+.lcv-card-title { font-size:0.92rem; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:7px; padding-bottom:10px; border-bottom:2px solid #B5D4F4; color:#0C447C; }
+.lcv-card-title .material-symbols-outlined { font-size:20px; }
+.lcv-row { margin-bottom:12px; position:relative; }
+.lcv-row label { font-size:0.78rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.lcv-row input { width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0; font-size:0.92rem; box-sizing:border-box; }
+.patient-pick { position:relative; }
+.pick-list { position:absolute; top:100%; left:0; right:0; background:#fff; border:1.5px solid #d0d0d0; border-radius:10px; margin-top:4px; max-height:280px; overflow-y:auto; display:none; z-index:1000; box-shadow:0 6px 18px rgba(0,0,0,.12); }
+.pick-item { padding:10px 12px; cursor:pointer; font-size:0.9rem; border-bottom:1px solid #f0f0f0; }
+.pick-item:hover { background:#eef5ff; }
+.lcv-selected { margin-top:8px; font-size:0.88rem; color:#0C447C; font-weight:700; }
+
+/* 履歴一覧 */
+.lcv-hist-title { font-size:0.85rem; font-weight:700; color:#5f6368; margin-bottom:8px; }
+.lcv-hist-list { display:flex; flex-direction:column; gap:8px; }
+.lcv-hist-item { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border:1.5px solid #e0e0e0; border-radius:10px; cursor:pointer; background:#fafafa; }
+.lcv-hist-item:hover { background:#eef5ff; border-color:#1a73e8; }
+.lcv-hist-item.active { background:#e3f0ff; border-color:#1a73e8; }
+.lcv-hist-date { font-weight:700; font-size:0.95rem; color:#0C447C; }
+.lcv-hist-meta { font-size:0.8rem; color:#5f6368; }
+.lcv-hist-empty { padding:16px; text-align:center; color:#9aa0a6; font-size:0.88rem; }
+
+/* 清書(印刷風)シート */
+.lcv-sheet { background:#fff; border:1px solid #333; border-radius:6px; padding:22px; margin-top:8px; display:none; }
+.lcv-sheet.show { display:block; }
+.lcv-sheet-head { text-align:center; border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:16px; }
+.lcv-sheet-head h2 { font-size:1.05rem; margin:0 0 4px; letter-spacing:2px; }
+.lcv-sheet-head .sub { font-size:0.8rem; color:#555; }
+.lcv-meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 18px; margin-bottom:16px; font-size:0.86rem; }
+.lcv-meta-grid .m { display:flex; border-bottom:1px dotted #bbb; padding:5px 2px; }
+.lcv-meta-grid .m .k { width:44%; color:#555; font-weight:700; }
+.lcv-meta-grid .m .v { flex:1; }
+.lcv-sec { margin-bottom:16px; }
+.lcv-sec-t { font-size:0.86rem; font-weight:700; color:#0C447C; border-left:4px solid #1a73e8; padding-left:8px; margin-bottom:8px; }
+.lcv-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.lcv-table th, .lcv-table td { border:1px solid #ccc; padding:6px 8px; text-align:left; vertical-align:top; }
+.lcv-table th { background:#f2f6fc; color:#0C447C; font-weight:700; white-space:nowrap; }
+.lcv-table td.sc { text-align:center; font-weight:700; white-space:nowrap; }
+.lcv-table td.note { color:#444; font-size:0.78rem; }
+.lcv-total { text-align:right; font-weight:700; font-size:0.92rem; color:#0C447C; margin-top:6px; }
+.lcv-note-box { border:1px solid #ccc; border-radius:6px; padding:10px 12px; font-size:0.84rem; min-height:40px; white-space:pre-wrap; background:#fafafa; }
+.lcv-empty-cell { color:#bbb; }
+.lcv-actions { display:flex; gap:10px; margin-top:16px; }
+.lcv-actions button { flex:1; padding:11px; border:none; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; }
+.lcv-btn-print { background:#0C447C; color:#fff; }
+.lcv-btn-print:hover { background:#093461; }
+
+@media print {
+  .bottom-nav, .lcv-card:not(.lcv-sheet-card), .lcv-actions, .lcv-hist-card, .lcv-pick-card { display:none !important; }
+  .lcv-sheet { border:none; padding:0; }
+  .page-wrapper, body { background:#fff !important; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="lcv-wrap">
+  <div class="lc-tabs">
+    <a class="lc-tab" href="/life_check">入力</a>
+    <a class="lc-tab active" href="/life_check_view">記録一覧</a>
+  </div>
+  <div class="lcv-card lcv-pick-card">
+    <div class="lcv-card-title"><span class="material-symbols-outlined">visibility</span>生活機能チェック 閲覧（読み取り専用）</div>
+    <div class="lcv-row patient-pick">
+      <label>利用者</label>
+      <input type="text" id="lcv-patient-search" placeholder="名前・ふりがなで検索..." autocomplete="off">
+      <div class="pick-list" id="lcv-pick-list"></div>
+      <div class="lcv-selected" id="lcv-selected"></div>
+    </div>
+  </div>
+
+  <div class="lcv-card lcv-hist-card" id="lcv-hist-card" style="display:none;">
+    <div class="lcv-hist-title" id="lcv-hist-title">評価履歴</div>
+    <div class="lcv-hist-list" id="lcv-hist-list"></div>
+  </div>
+
+  <div class="lcv-card lcv-sheet-card" id="lcv-sheet-card" style="display:none;">
+    <div class="lcv-sheet show" id="lcv-sheet"></div>
+    <div class="lcv-actions">
+      <button type="button" class="lcv-btn-print" onclick="window.print()">印刷 / PDF保存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+var LCV_ADL = [
+  {key:"adl_eating",   label:"食事"},
+  {key:"adl_transfer", label:"椅子とベッド間の移乗"},
+  {key:"adl_grooming", label:"整容"},
+  {key:"adl_toilet",   label:"トイレ動作"},
+  {key:"adl_bathing",  label:"入浴"},
+  {key:"adl_walking",  label:"移動"},
+  {key:"adl_stairs",   label:"階段昇降"},
+  {key:"adl_dressing", label:"更衣"},
+  {key:"adl_bowel",    label:"排便コントロール"},
+  {key:"adl_bladder",  label:"排尿コントロール"}
+];
+var LCV_LEVEL = [
+  {key:"adl_wheelchair", label:"車椅子操作", group:"ADL"},
+  {key:"iadl_cooking",   label:"調理", group:"IADL"},
+  {key:"iadl_laundry",   label:"洗濯", group:"IADL"},
+  {key:"iadl_cleaning",  label:"掃除", group:"IADL"},
+  {key:"basic_rollover", label:"寝返り", group:"基本動作"},
+  {key:"basic_situp",    label:"起き上がり", group:"基本動作"},
+  {key:"basic_sitting",  label:"座位", group:"基本動作"},
+  {key:"basic_standup",  label:"立ち上がり", group:"基本動作"},
+  {key:"basic_standing", label:"立位", group:"基本動作"}
+];
+var LCV_LEVEL_LABEL = {independent:"自立", watch:"見守り", partial:"一部介助", full:"全介助"};
+var LCV_VISIT_LABEL = {initial:"初回（計画作成前）", periodic:"定期（3か月ごと）"};
+
+var LCV_PATIENTS = [];
+var LCV_SELECTED = null;
+var LCV_CHECKS = [];
+
+function lcvEsc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function lcvNorm(s){ return (s||'').replace(/\s/g,'').toLowerCase(); }
+
+async function lcvLoadPatients() {
+  try {
+    var r = await fetch('/api/patients_cache');
+    var j = await r.json();
+    LCV_PATIENTS = j.patients || j || [];
+  } catch (e) { LCV_PATIENTS = []; }
+}
+function lcvFilterPatients() {
+  var q = lcvNorm(document.getElementById('lcv-patient-search').value);
+  var list = document.getElementById('lcv-pick-list');
+  if (!q) { list.style.display='none'; return; }
+  var hits = LCV_PATIENTS.filter(function(p){
+    return lcvNorm(p.user_name).indexOf(q)>=0 ||
+           lcvNorm(p.user_name_kana||p.kana||'').indexOf(q)>=0 ||
+           lcvNorm(p.patient_number||'').indexOf(q)>=0;
+  }).slice(0,30);
+  if (!hits.length) { list.style.display='none'; return; }
+  list.innerHTML = hits.map(function(p){
+    return '<div class="pick-item" data-id="'+p.id+'">'+lcvEsc(p.user_name)+
+      (p.care_level?' <small style="color:#9aa0a6;">（'+lcvEsc(p.care_level)+'）</small>':'')+'</div>';
+  }).join('');
+  list.style.display='block';
+}
+function lcvPickPatient(id) {
+  var p = LCV_PATIENTS.find(function(x){ return String(x.id)===String(id); });
+  if (!p) return;
+  LCV_SELECTED = p;
+  document.getElementById('lcv-patient-search').value = p.user_name;
+  document.getElementById('lcv-pick-list').style.display='none';
+  document.getElementById('lcv-selected').textContent = '選択中: '+p.user_name+' 様'+(p.care_level?'（'+p.care_level+'）':'');
+  document.getElementById('lcv-sheet-card').style.display='none';
+  lcvLoadHistory();
+}
+async function lcvLoadHistory() {
+  if (!LCV_SELECTED) return;
+  var card = document.getElementById('lcv-hist-card');
+  var listEl = document.getElementById('lcv-hist-list');
+  card.style.display='block';
+  document.getElementById('lcv-hist-title').textContent = LCV_SELECTED.user_name + ' 様 の評価履歴（日付をタップで表示）';
+  listEl.innerHTML = '<div class="lcv-hist-empty">読み込み中...</div>';
+  try {
+    var r = await fetch('/api/life_check_history?patient_id=' + encodeURIComponent(LCV_SELECTED.id));
+    var j = await r.json();
+    LCV_CHECKS = j.checks || [];
+    if (!LCV_CHECKS.length) {
+      listEl.innerHTML = '<div class="lcv-hist-empty">まだ評価記録がありません</div>';
+      return;
+    }
+    listEl.innerHTML = LCV_CHECKS.map(function(c){
+      var visit = LCV_VISIT_LABEL[c.visit_type] || '';
+      return '<div class="lcv-hist-item" data-id="'+lcvEsc(c.id)+'">'+
+        '<span class="lcv-hist-date">'+lcvEsc(c.check_date||'(日付なし)')+'</span>'+
+        '<span class="lcv-hist-actions">'+
+          '<span class="lcv-hist-meta">'+lcvEsc(c.evaluator||c.staff_name||'')+(visit?(' / '+lcvEsc(visit)):'')+'</span>'+
+          '<button type="button" class="lcv-hist-edit" data-edit-id="'+lcvEsc(c.id)+'">編集</button>'+
+        '</span></div>';
+    }).join('');
+    // 最新1件を自動表示
+    lcvShowSheet(LCV_CHECKS[0].id);
+  } catch (e) {
+    listEl.innerHTML = '<div class="lcv-hist-empty">履歴の取得に失敗しました</div>';
+  }
+}
+function lcvCell(v){ return (v==null||v==='') ? '<span class="lcv-empty-cell">－</span>' : lcvEsc(v); }
+function lcvShowSheet(id) {
+  var c = LCV_CHECKS.find(function(x){ return String(x.id)===String(id); });
+  if (!c) return;
+  document.querySelectorAll('.lcv-hist-item').forEach(function(el){ el.classList.toggle('active', String(el.dataset.id)===String(id)); });
+
+  var visit = LCV_VISIT_LABEL[c.visit_type] || '';
+  var mode = c.sheet_mode || 'full';
+  var html = '';
+  html += '<div class="lcv-sheet-head"><h2>生活機能チェックシート</h2><div class="sub">様式3-2'+(mode==='bi'?'（BI：要支援・事業対象者向け）':'（要介護向け）')+'</div></div>';
+
+  // メタ情報
+  html += '<div class="lcv-meta-grid">';
+  html += '<div class="m"><span class="k">利用者</span><span class="v">'+lcvCell(c.user_name)+' 様</span></div>';
+  html += '<div class="m"><span class="k">評価日</span><span class="v">'+lcvCell(c.check_date)+'</span></div>';
+  html += '<div class="m"><span class="k">生年月日</span><span class="v">'+lcvCell(c.birth_date)+'</span></div>';
+  html += '<div class="m"><span class="k">性別</span><span class="v">'+lcvCell(c.gender)+'</span></div>';
+  html += '<div class="m"><span class="k">要介護度</span><span class="v">'+lcvCell(c.care_level)+'</span></div>';
+  html += '<div class="m"><span class="k">訪問種別</span><span class="v">'+lcvCell(visit)+'</span></div>';
+  html += '<div class="m"><span class="k">評価者</span><span class="v">'+lcvCell(c.evaluator||c.staff_name)+'</span></div>';
+  html += '<div class="m"><span class="k">職種</span><span class="v">'+lcvCell(c.evaluator_job)+'</span></div>';
+  html += '<div class="m"><span class="k">障害高齢者自立度</span><span class="v">'+lcvCell(c.adl_independence)+'</span></div>';
+  html += '<div class="m"><span class="k">認知症高齢者自立度</span><span class="v">'+lcvCell(c.dementia_independence)+'</span></div>';
+  html += '</div>';
+
+  // ADL (Barthel)
+  html += '<div class="lcv-sec"><div class="lcv-sec-t">ADL（Barthel Index）</div>';
+  html += '<table class="lcv-table"><thead><tr><th>項目</th><th>点数</th><th>課題</th><th>備考・環境</th></tr></thead><tbody>';
+  var total = 0, hasScore = false;
+  LCV_ADL.forEach(function(it){
+    var sc = c[it.key];
+    if (sc != null && sc !== '') { total += Number(sc)||0; hasScore = true; }
+    var issue = (c[it.key+'_issue']===true) ? 'あり' : (c[it.key+'_issue']===false ? 'なし' : '');
+    var extra = [c[it.key+'_env'], c[it.key+'_note']].filter(function(x){return x;}).join(' / ');
+    html += '<tr><td>'+lcvEsc(it.label)+'</td><td class="sc">'+(sc!=null&&sc!==''?lcvEsc(sc)+'点':'<span class="lcv-empty-cell">－</span>')+'</td>'+
+      '<td class="sc">'+lcvCell(issue)+'</td><td class="note">'+lcvCell(extra)+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  if (hasScore) html += '<div class="lcv-total">ADL合計（Barthel）: '+total+' / 100点</div>';
+  html += '</div>';
+
+  // 4段階 (車椅子/IADL/基本動作) ※BIモードでも保存されていれば表示
+  html += '<div class="lcv-sec"><div class="lcv-sec-t">車椅子・IADL・基本動作（4段階）</div>';
+  html += '<table class="lcv-table"><thead><tr><th>項目</th><th>区分</th><th>判定</th><th>課題</th><th>備考・環境</th></tr></thead><tbody>';
+  LCV_LEVEL.forEach(function(it){
+    var lv = c[it.key+'_level'];
+    var issue = (c[it.key+'_issue']===true) ? 'あり' : (c[it.key+'_issue']===false ? 'なし' : '');
+    var extra = [c[it.key+'_env'], c[it.key+'_note']].filter(function(x){return x;}).join(' / ');
+    html += '<tr><td>'+lcvEsc(it.label)+'</td><td class="sc">'+lcvEsc(it.group)+'</td>'+
+      '<td class="sc">'+(lv?lcvEsc(LCV_LEVEL_LABEL[lv]||lv):'<span class="lcv-empty-cell">－</span>')+'</td>'+
+      '<td class="sc">'+lcvCell(issue)+'</td><td class="note">'+lcvCell(extra)+'</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  // 総合所見
+  html += '<div class="lcv-sec"><div class="lcv-sec-t">総合所見・特記事項</div>';
+  html += '<div class="lcv-note-box">'+ (c.note ? lcvEsc(c.note) : '<span class="lcv-empty-cell">記載なし</span>') +'</div></div>';
+
+  var sheet = document.getElementById('lcv-sheet');
+  sheet.innerHTML = html;
+  document.getElementById('lcv-sheet-card').style.display='block';
+  var top = document.getElementById('lcv-sheet-card');
+  if (top) top.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  lcvLoadPatients();
+  var search = document.getElementById('lcv-patient-search');
+  if (search) {
+    search.addEventListener('input', lcvFilterPatients);
+    search.addEventListener('focus', lcvFilterPatients);
+  }
+  var list = document.getElementById('lcv-pick-list');
+  if (list) {
+    list.addEventListener('click', function (e) {
+      var item = e.target.closest('.pick-item');
+      if (item) lcvPickPatient(item.dataset.id);
+    });
+  }
+  var histList = document.getElementById('lcv-hist-list');
+  if (histList) {
+    histList.addEventListener('click', function (e) {
+      var editBtn = e.target.closest('.lcv-hist-edit');
+      if (editBtn) {
+        e.stopPropagation();
+        if (!LCV_SELECTED) return;
+        var url = '/life_check?edit=' + encodeURIComponent(editBtn.dataset.editId) +
+                  '&patient=' + encodeURIComponent(LCV_SELECTED.id);
+        window.location.href = url;
+        return;
+      }
+      var item = e.target.closest('.lcv-hist-item');
+      if (item) lcvShowSheet(item.dataset.id);
+    });
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.patient-pick')) {
+      var pl = document.getElementById('lcv-pick-list');
+      if (pl) pl.style.display='none';
+    }
+  });
+});
+</script>
+{% endblock %}
