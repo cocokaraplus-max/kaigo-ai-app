@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% block title %}勉強会・会議議事録 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* staff-minutes-ui-v1 */
+.sm-wrap { max-width:760px; margin:0 auto; padding-bottom:90px; }
+/* 会議記録 共通タブ(担当者会議と共通の見た目) */
+.mtg-tabs { display:flex; gap:0; max-width:760px; margin:0 auto 14px; border:1.5px solid #2e7d32; border-radius:12px; overflow:hidden; }
+.mtg-tab { flex:1; text-align:center; padding:11px 0; font-size:0.9rem; font-weight:700; color:#2e7d32; background:#fff; text-decoration:none; cursor:pointer; }
+.mtg-tab.active { background:#2e7d32; color:#fff; }
+.mtg-tab + .mtg-tab { border-left:1.5px solid #2e7d32; }
+
+.sm-card { background:#fff; border:1.5px solid #dfe7e0; border-radius:14px; padding:16px; margin-bottom:14px; }
+.sm-card h3 { font-size:0.92rem; font-weight:700; margin:0 0 12px; display:flex; align-items:center; gap:7px; color:#1b5e20; padding-bottom:9px; border-bottom:2px solid #c8e6c9; }
+.sm-card h3 .material-symbols-outlined { font-size:20px; }
+.sm-row { margin-bottom:11px; }
+.sm-row label { font-size:0.78rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.sm-row input, .sm-row textarea, .sm-row select {
+  width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0;
+  font-size:0.92rem; box-sizing:border-box; font-family:inherit;
+}
+.sm-row textarea { min-height:90px; resize:vertical; line-height:1.6; }
+.sm-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.sm-btn { border:none; border-radius:10px; padding:11px 16px; font-size:0.9rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.sm-btn-primary { background:#2e7d32; color:#fff; }
+.sm-btn-primary:hover { background:#1b5e20; }
+.sm-btn-primary:disabled { background:#a5d6a7; cursor:default; }
+.sm-btn-sub { background:#eef4ee; color:#2e7d32; }
+.sm-btn-rec { background:#c62828; color:#fff; }
+.sm-btn-rec.recording { background:#8e0000; }
+.sm-rec-dot { width:9px; height:9px; border-radius:50%; background:#fff; display:inline-block; margin-right:5px; animation:smblink 1s infinite; }
+@keyframes smblink { 50% { opacity:.25; } }
+.sm-chunks { font-size:0.78rem; color:#7a8a7d; margin-top:8px; }
+.sm-hint { font-size:0.78rem; color:#8a958c; margin-top:6px; line-height:1.5; }
+.sm-msg { font-size:0.85rem; margin-top:8px; min-height:1.2em; }
+.sm-msg.ok { color:#2e7d32; } .sm-msg.ng { color:#c62828; }
+.sm-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+
+/* 決定事項・ToDo */
+.sm-dt-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media (max-width:560px){ .sm-dt-grid { grid-template-columns:1fr; } .sm-grid2 { grid-template-columns:1fr; } }
+.sm-dt-box { border:1.5px solid #e0e0e0; border-radius:10px; padding:10px; }
+.sm-dt-box .t { font-size:0.8rem; font-weight:700; margin-bottom:6px; }
+.sm-dt-box.dec .t { color:#1565c0; } .sm-dt-box.todo .t { color:#e65100; }
+.sm-dt-box textarea { min-height:120px; }
+
+/* スタイル選択 */
+.sm-style-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.sm-style-row select { max-width:220px; }
+
+/* 一覧 */
+.sm-list { display:flex; flex-direction:column; gap:8px; }
+.sm-list-item { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fafafa; }
+.sm-list-item:hover { background:#eef7ee; border-color:#2e7d32; }
+.sm-li-main { cursor:pointer; flex:1; }
+.sm-li-title { font-weight:700; font-size:0.92rem; color:#1b5e20; }
+.sm-li-meta { font-size:0.78rem; color:#7a8a7d; margin-top:2px; }
+.sm-li-actions { display:flex; gap:6px; }
+.sm-li-actions button { padding:6px 10px; border-radius:8px; font-size:0.78rem; font-weight:700; border:1.5px solid #ccc; background:#fff; cursor:pointer; }
+.sm-li-del { color:#c62828; border-color:#e0b4b4 !important; }
+.sm-empty { text-align:center; color:#9aa0a6; font-size:0.88rem; padding:16px; }
+
+/* ローディング */
+.sm-loading { display:none; text-align:center; padding:16px; color:#2e7d32; font-size:0.85rem; }
+.sm-loading.show { display:block; }
+.sm-spin { width:26px; height:26px; border:3px solid #c8e6c9; border-top-color:#2e7d32; border-radius:50%; margin:0 auto 8px; animation:smspin 0.8s linear infinite; }
+@keyframes smspin { to { transform:rotate(360deg); } }
+
+.sm-edit-banner { display:none; background:#fff3e0; border:1.5px solid #ffb74d; border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:0.85rem; color:#e65100; align-items:center; justify-content:space-between; gap:10px; }
+.sm-edit-banner.show { display:flex; }
+.sm-edit-banner button { padding:6px 10px; border-radius:8px; border:none; background:#e65100; color:#fff; font-weight:700; cursor:pointer; font-size:0.78rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="sm-wrap">
+  <div class="mtg-tabs">
+    <a class="mtg-tab" href="/admin/meetings">担当者会議・ICF</a>
+    <a class="mtg-tab active" href="/staff_minutes">勉強会・会議議事録</a>
+  </div>
+
+  <div class="sm-edit-banner" id="smEditBanner">
+    <span id="smEditLabel">既存の記録を編集中です。保存すると上書きされます。</span>
+    <button type="button" onclick="smStartNew()">新規作成に戻る</button>
+  </div>
+
+  <!-- 会議情報 -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">groups</span>会議情報</h3>
+    <div class="sm-row"><label>会議名</label><input type="text" id="smTitle" placeholder="例: 6月度全体会議 / 感染症予防勉強会"></div>
+    <div class="sm-grid2">
+      <div class="sm-row"><label>開催日</label><input type="date" id="smDate" value="{{ today }}"></div>
+      <div class="sm-row"><label>参加者</label><input type="text" id="smAttendees" placeholder="例: 職員一同 / ○○、△△ ほか"></div>
+    </div>
+  </div>
+
+  <!-- ステップ1: 録音・文字起こし -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">mic</span>録音して文字起こし</h3>
+    <div class="sm-actions">
+      <button type="button" class="sm-btn sm-btn-rec" id="smRecBtn" onclick="smToggleRec()">
+        <span id="smRecLabel">録音開始</span>
+      </button>
+      <label class="sm-btn sm-btn-sub" style="margin:0;">
+        <span class="material-symbols-outlined" style="font-size:18px;">upload_file</span>音声ファイル
+        <input type="file" id="smAudioFile" accept="audio/*" style="display:none;" onchange="smUploadFile(this.files)">
+      </label>
+      <span id="smRecStatus" style="font-size:0.82rem; color:#c62828;"></span>
+    </div>
+    <div class="sm-chunks" id="smChunks"></div>
+    <div class="sm-hint">その場で録音するか、既にある会議の音声ファイルを選んで文字起こしできます。マイク録音では使用許可を求められたら「許可」してください。</div>
+    <div class="sm-row" style="margin-top:12px;">
+      <label>文字起こし</label>
+      <textarea id="smTranscript" placeholder="録音の文字起こしがここに入ります。直接入力・貼り付けも可能です。"></textarea>
+    </div>
+    <button type="button" class="sm-btn sm-btn-primary" onclick="smSummarize()">
+      <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成
+    </button>
+  </div>
+
+  <!-- ステップ2: 議事録 -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">description</span>議事録</h3>
+    <div class="sm-loading" id="smLoading"><div class="sm-spin"></div>議事録を作成中…</div>
+    <div class="sm-row">
+      <textarea id="smMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。" style="min-height:220px;"></textarea>
+    </div>
+    <div class="sm-dt-grid">
+      <div class="sm-dt-box dec">
+        <div class="t">決定事項（1行に1件）</div>
+        <textarea id="smDecisions" placeholder="決まったことが1行ずつ入ります。"></textarea>
+      </div>
+      <div class="sm-dt-box todo">
+        <div class="t">ToDo（1行に1件）</div>
+        <textarea id="smTodos" placeholder="やることが1行ずつ入ります。"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ステップ3: レイアウト・PDF・保存 -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">picture_as_pdf</span>レイアウトと出力</h3>
+    <div class="sm-style-row">
+      <span style="font-size:0.8rem; color:#5f7a63;">議事録レイアウト:</span>
+      <select id="smStyle">
+        <option value="a">A スッキリ</option>
+        <option value="b">B ビジネス</option>
+        <option value="c">C フォーマル</option>
+        <option value="d">D サイドバー</option>
+        <option value="e">E カード</option>
+        <option value="f">F タイムライン</option>
+        <option value="g">G エグゼクティブ</option>
+        <option value="h">H モダンミニマル</option>
+      </select>
+    </div>
+    <div class="sm-actions" style="margin-top:12px;">
+      <button type="button" class="sm-btn sm-btn-primary" onclick="smSave()">
+        <span class="material-symbols-outlined" style="font-size:20px;">save</span>保存する
+      </button>
+      <button type="button" class="sm-btn sm-btn-sub" onclick="smPdf()">
+        <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録PDF
+      </button>
+    </div>
+    <div class="sm-msg" id="smMsg"></div>
+  </div>
+
+  <!-- 一覧 -->
+  <div class="sm-card">
+    <h3><span class="material-symbols-outlined">history</span>保存した議事録</h3>
+    <div class="sm-list" id="smList"><div class="sm-empty">読み込み中...</div></div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+// staff-minutes-ui-v1
+var SM_CHUNK_MS = 55000;  // 約55秒ごとにチャンク化(担当者会議と同発想)
+function smUuid(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);}); }
+function smEsc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+var smState = {
+  sessionId: null, chunkIndex: 0, recorder: null, recording: false,
+  transcriptParts: {}, _chunkTimer: null, editingId: null
+};
+
+function smMsg(text, ok){ var e=document.getElementById('smMsg'); e.textContent=text||''; e.className='sm-msg '+(ok?'ok':'ng'); }
+
+// ===== 録音(チャンク分割) =====
+async function smToggleRec(){
+  if (smState.recording) { smStopRec(); return; }
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    smState.recording = true;
+    if (!smState.sessionId) smState.sessionId = smUuid();
+    document.getElementById('smRecLabel').textContent = '録音停止';
+    document.getElementById('smRecBtn').classList.add('recording');
+    document.getElementById('smRecStatus').innerHTML = '<span class="sm-rec-dot"></span>録音中...';
+    smStartChunk(stream);
+  } catch(e) {
+    smMsg('マイクにアクセスできませんでした: '+e, false);
+  }
+}
+function smStartChunk(stream){
+  if (!smState.recording) { stream.getTracks().forEach(function(t){t.stop();}); return; }
+  var rec = new MediaRecorder(stream);
+  smState.recorder = rec;
+  var blobs = [];
+  rec.ondataavailable = function(ev){ if (ev.data && ev.data.size>0) blobs.push(ev.data); };
+  rec.onstop = function(){
+    var blob = new Blob(blobs, { type:'audio/webm' });
+    if (blob.size > 2048) smSendChunk(blob);
+    if (smState.recording) { smStartChunk(stream); }  // 次のチャンクへ
+    else { stream.getTracks().forEach(function(t){t.stop();}); }
+  };
+  rec.start();
+  smState._chunkTimer = setTimeout(function(){ if (rec.state==='recording') rec.stop(); }, SM_CHUNK_MS);
+}
+function smStopRec(){
+  smState.recording = false;
+  document.getElementById('smRecLabel').textContent = '録音開始';
+  document.getElementById('smRecBtn').classList.remove('recording');
+  document.getElementById('smRecStatus').textContent = '';
+  clearTimeout(smState._chunkTimer);
+  if (smState.recorder && smState.recorder.state === 'recording') smState.recorder.stop();
+}
+async function smSendChunk(blob){
+  var idx = smState.chunkIndex++;
+  var fd = new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.webm');
+  fd.append('session_id', smState.sessionId);
+  fd.append('chunk_index', idx);
+  var chunksEl = document.getElementById('smChunks');
+  chunksEl.textContent = 'チャンク '+(idx+1)+' を文字起こし中...';
+  try {
+    var r = await fetch('/api/staff_minutes/transcribe', { method:'POST', body: fd });
+    var d = await r.json();
+    if (d.status === 'success') {
+      smState.transcriptParts[d.chunk_index] = d.transcript || '';
+      smRebuildTranscript();
+      chunksEl.textContent = '完了: '+Object.keys(smState.transcriptParts).length+'チャンク';
+    } else {
+      chunksEl.textContent = '文字起こし失敗: '+(d.message||'');
+    }
+  } catch(e) { chunksEl.textContent = '通信エラー: '+e; }
+}
+function smRebuildTranscript(){
+  var keys = Object.keys(smState.transcriptParts).map(Number).sort(function(a,b){return a-b;});
+  var text = keys.map(function(k){ return smState.transcriptParts[k]; }).filter(Boolean).join('\n');
+  document.getElementById('smTranscript').value = text;
+}
+// 音声ファイルアップロード(1ファイル=1チャンク)
+async function smUploadFile(files){
+  if (!files || !files.length) return;
+  if (!smState.sessionId) smState.sessionId = smUuid();
+  var f = files[0];
+  var idx = smState.chunkIndex++;
+  var fd = new FormData();
+  fd.append('audio', f, f.name);
+  fd.append('session_id', smState.sessionId);
+  fd.append('chunk_index', idx);
+  var chunksEl = document.getElementById('smChunks');
+  chunksEl.textContent = 'ファイルを文字起こし中...';
+  try {
+    var r = await fetch('/api/staff_minutes/transcribe', { method:'POST', body: fd });
+    var d = await r.json();
+    if (d.status === 'success') {
+      smState.transcriptParts[d.chunk_index] = d.transcript || '';
+      smRebuildTranscript();
+      chunksEl.textContent = '完了: '+Object.keys(smState.transcriptParts).length+'チャンク';
+    } else { chunksEl.textContent = '文字起こし失敗: '+(d.message||''); }
+  } catch(e) { chunksEl.textContent = '通信エラー: '+e; }
+}
+
+// ===== 議事録生成 =====
+async function smSummarize(){
+  var transcript = document.getElementById('smTranscript').value.trim();
+  if (!transcript) { smMsg('先に文字起こしを入力してください', false); return; }
+  document.getElementById('smLoading').classList.add('show');
+  smMsg('', true);
+  try {
+    var r = await fetch('/api/staff_minutes/summarize', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ transcript: transcript })
+    });
+    var d = await r.json();
+    if (d.status === 'success') {
+      document.getElementById('smMinutes').value = d.minutes || '';
+      smFillDT('smDecisions', d.decisions);
+      smFillDT('smTodos', d.todos);
+      window._smMinutesStruct = d.minutes_struct || null;
+      smMsg('議事録を作成しました。内容を確認・修正してください。', true);
+    } else { smMsg('作成に失敗: '+(d.message||''), false); }
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+  finally { document.getElementById('smLoading').classList.remove('show'); }
+}
+function smFillDT(id, jsonOrArr){
+  var arr = jsonOrArr;
+  if (typeof jsonOrArr === 'string') { try { arr = JSON.parse(jsonOrArr); } catch(e){ arr = [jsonOrArr]; } }
+  if (!Array.isArray(arr)) arr = [];
+  document.getElementById(id).value = arr.join('\n');
+}
+function smDTtoArray(id){
+  return document.getElementById(id).value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+}
+
+// ===== 保存 =====
+async function smSave(){
+  var title = document.getElementById('smTitle').value.trim();
+  var minutes = document.getElementById('smMinutes').value.trim();
+  if (!minutes) { smMsg('議事録が空です', false); return; }
+  var payload = {
+    id: smState.editingId || undefined,
+    title: title || '会議記録',
+    meeting_date: document.getElementById('smDate').value || null,
+    attendees: document.getElementById('smAttendees').value.trim(),
+    transcript: document.getElementById('smTranscript').value,
+    minutes: minutes,
+    minutes_struct: window._smMinutesStruct || null,
+    minutes_style: document.getElementById('smStyle').value,
+    decisions: smDTtoArray('smDecisions'),
+    todos: smDTtoArray('smTodos')
+  };
+  smMsg('保存中...', true);
+  try {
+    var r = await fetch('/api/staff_minutes/save', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    var d = await r.json();
+    if (d.status === 'success') {
+      smState.editingId = d.id;
+      smMsg('保存しました', true);
+      smLoadList();
+      smShowEditBanner();
+    } else { smMsg('保存に失敗: '+(d.message||''), false); }
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+}
+
+// ===== PDF =====
+function smPdf(){
+  if (!smState.editingId) { smMsg('先に保存してからPDFを出力してください', false); return; }
+  var style = document.getElementById('smStyle').value;
+  var url = '/api/staff_minutes/pdf?id='+encodeURIComponent(smState.editingId)+'&style='+style+'&_t='+Date.now();
+  window.open(url, '_blank');
+}
+
+// ===== 一覧・編集・削除 =====
+async function smLoadList(){
+  var el = document.getElementById('smList');
+  try {
+    var r = await fetch('/api/staff_minutes/list');
+    var d = await r.json();
+    var arr = d.meetings || [];
+    if (!arr.length) { el.innerHTML = '<div class="sm-empty">まだ議事録がありません</div>'; return; }
+    window._smListMap = {};
+    el.innerHTML = arr.map(function(m){
+      window._smListMap[m.id] = m;
+      return '<div class="sm-list-item">'+
+        '<div class="sm-li-main" onclick="smOpen(\''+m.id+'\')">'+
+          '<div class="sm-li-title">'+smEsc(m.title||'会議記録')+'</div>'+
+          '<div class="sm-li-meta">'+smEsc(m.meeting_date||'')+(m.attendees?(' / '+smEsc(m.attendees)):'')+'</div>'+
+        '</div>'+
+        '<div class="sm-li-actions">'+
+          '<button onclick="smOpen(\''+m.id+'\')">開く</button>'+
+          '<button class="sm-li-del" onclick="smDelete(\''+m.id+'\')">削除</button>'+
+        '</div></div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="sm-empty">一覧の取得に失敗しました</div>'; }
+}
+async function smOpen(id){
+  try {
+    var r = await fetch('/api/staff_minutes/get?id='+encodeURIComponent(id));
+    var d = await r.json();
+    if (d.status !== 'success') { smMsg('読み込み失敗: '+(d.message||''), false); return; }
+    var m = d.meeting;
+    smState.editingId = m.id;
+    document.getElementById('smTitle').value = m.title || '';
+    document.getElementById('smDate').value = m.meeting_date || '';
+    document.getElementById('smAttendees').value = m.attendees || '';
+    document.getElementById('smTranscript').value = m.transcript || '';
+    document.getElementById('smMinutes').value = m.minutes || '';
+    smFillDT('smDecisions', m.decisions);
+    smFillDT('smTodos', m.todos);
+    document.getElementById('smStyle').value = m.minutes_style || 'a';
+    window._smMinutesStruct = m.minutes_struct || null;
+    smShowEditBanner(m.meeting_date || '');
+    smMsg('', true);
+    window.scrollTo({ top:0, behavior:'smooth' });
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+}
+async function smDelete(id){
+  var m = (window._smListMap||{})[id];
+  if (!confirm((m?m.title:'')+' を削除しますか？この操作は元に戻せません。')) return;
+  try {
+    var r = await fetch('/api/staff_minutes/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id })
+    });
+    var d = await r.json();
+    if (d.status === 'success') {
+      smMsg('削除しました', true);
+      if (smState.editingId === id) smStartNew();
+      smLoadList();
+    } else { smMsg('削除に失敗: '+(d.message||''), false); }
+  } catch(e) { smMsg('通信エラー: '+e, false); }
+}
+function smShowEditBanner(dateLabel){
+  var b = document.getElementById('smEditBanner');
+  document.getElementById('smEditLabel').textContent = (dateLabel? (dateLabel+' の') : '既存の') + '記録を編集中です。保存すると上書きされます。';
+  b.classList.add('show');
+}
+function smStartNew(){
+  smState.editingId = null;
+  smState.sessionId = null; smState.chunkIndex = 0; smState.transcriptParts = {};
+  window._smMinutesStruct = null;
+  ['smTitle','smAttendees','smTranscript','smMinutes','smDecisions','smTodos'].forEach(function(id){ document.getElementById(id).value=''; });
+  document.getElementById('smDate').value = '{{ today }}';
+  document.getElementById('smStyle').value = 'a';
+  document.getElementById('smChunks').textContent = '';
+  document.getElementById('smEditBanner').classList.remove('show');
+  smMsg('', true);
+}
+
+document.addEventListener('DOMContentLoaded', function(){ smLoadList(); });
+</script>
+{% endblock %}

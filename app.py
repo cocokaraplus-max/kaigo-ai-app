@@ -19564,6 +19564,451 @@ def api_meeting_classify_icf():
 # --- /meetings-icf-classify-v1 ---
 
 
+# ============================================================
+# staff-minutes-api-v1 : 勉強会・会議議事録 (社内会議・利用者非依存)
+#   担当者会議(meetings)の同型APIを流用しつつ、ICF/付箋/アセスメントは持たない。
+#   PRO制限: admin_settings.staff_minutes_enabled。ただし判定意図は「未設定=許可」
+#            (今は全施設で使える。明示的に false のときだけ弾く)。
+# ============================================================
+
+def _staff_minutes_gate_ok():
+    """staff_minutes ゲート。未設定は許可(担当者会議と逆)。
+    明示的に false/0/"false" のときだけ弾く。OKなら(True, f_code, my_name)。"""
+    if "f_code" not in session:
+        return (False, None, None)
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        supabase = get_supabase()
+        g = supabase.table("admin_settings").select("value")\
+            .eq("facility_code", f_code).eq("key", "staff_minutes_enabled").execute()
+        enabled = True  # 未設定=許可
+        if g.data:
+            v = g.data[0].get("value")
+            # 明示 false のときだけ無効
+            if (v is False) or (str(v).lower() in ("false", "0", '"false"')):
+                enabled = False
+        return (enabled, f_code, my_name)
+    except Exception:
+        return (True, f_code, my_name)  # 障害時も止めない(未設定=許可の思想)
+
+
+@app.route("/api/staff_minutes/transcribe", methods=["POST"])
+@login_required
+def api_staff_minutes_transcribe():
+    """勉強会・会議録音のチャンク1個を受け取り、Storageに保存しつつGeminiで文字起こし。
+    担当者会議 api_meeting_transcribe と同型。保存パスは staff_minutes 配下に分ける。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        audio = request.files.get("audio")
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or "").lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "音声が短すぎます。もう一度お話しください。"})
+        ext_mime = {
+            ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+            ".wav": "audio/wav",  ".aac": "audio/aac",
+            ".ogg": "audio/ogg",  ".webm": "audio/webm",
+            ".mp4": "audio/mp4",
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), "audio/webm")
+        import re as _re2
+        session_id = (request.form.get("session_id") or "").strip()
+        session_id = _re2.sub(r"[^0-9a-zA-Z\-]", "", session_id)[:64]
+        try:
+            chunk_index = int(request.form.get("chunk_index") or 0)
+        except Exception:
+            chunk_index = 0
+        ext = mime.split("/")[-1]
+        if ext == "mpeg":
+            ext = "mp3"
+        audio_url = ""
+        if session_id:
+            try:
+                supabase = get_supabase()
+                path = f"{f_code}/staff_minutes/{session_id}/{chunk_index:04d}.{ext}"
+                supabase.storage.from_("assessment-audio").upload(
+                    path=path, file=audio_bytes,
+                    file_options={"content-type": mime}
+                )
+                audio_url = supabase.storage.from_("assessment-audio").get_public_url(path)
+            except Exception as _ue:
+                print(f"[staff_minutes] chunk upload failed: {_ue}", flush=True)
+                audio_url = ""
+        prompt = """これは介護施設内の勉強会・職員会議の録音です。
+発話内容を、話し言葉のフィラー(えー・あのー等)を除いて、正確に文字起こししてください。
+・発言者の役割が判別できる場合のみ、発言の先頭に「管理者:」「生活相談員:」「機能訓練指導員:」「看護職員:」「介護職員:」「講師:」等のラベルを付ける。
+・自己紹介や文脈から役割が明らかな場合だけラベルを付け、推測が難しい場合は無理に決めない。
+・役割は不明だが別人だと分かる場合は「発言者A:」「発言者B:」のように仮ラベルで区別する(同一録音内で一貫)。
+・数値・固有名詞(制度名・薬名・手技名等)は聞き取れた通りに残す。
+・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        text = (resp.text or "").strip()
+        return jsonify({"status": "success", "transcript": text,
+                        "chunk_index": chunk_index, "audio_url": audio_url,
+                        "session_id": session_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _staff_minutes_parse_struct(minutes_text):
+    """議事録本文(見出し付き)から構造化dictを作る。担当者会議の構造化と同じ発想。
+    見出し: 会議情報/議題/議論の内容/決定事項/ToDo/その他。
+    決定事項・ToDoは行頭「・」で列挙されている前提で配列に。"""
+    import re as _re_s
+    if not minutes_text:
+        return None
+    lines = minutes_text.split("\n")
+    sec = None
+    buf = {"info": [], "topics": [], "discussion": [], "decisions": [], "todos": [], "other": []}
+    heading_map = [
+        ("会議情報", "info"), ("議題", "topics"), ("議論", "discussion"),
+        ("決定事項", "decisions"), ("ToDo", "todos"), ("やること", "todos"),
+        ("その他", "other"), ("次回", "other"),
+    ]
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        matched = None
+        _h = s.lstrip("■●▼◆　 ").strip()
+        for key, dest in heading_map:
+            if _h.startswith(key):
+                matched = dest
+                break
+        if matched is not None:
+            sec = matched
+            continue
+        if sec is None:
+            continue
+        item = _re_s.sub(r"^[・\-\*\u30fb•●]\s*", "", s).strip()
+        if item:
+            buf[sec].append(item)
+    return buf
+
+
+@app.route("/api/staff_minutes/summarize", methods=["POST"])
+@login_required
+def api_staff_minutes_summarize():
+    """文字起こし→社内会議・勉強会向けの議事録を生成(Gemini)。
+    決定事項・ToDo を分けて抽出する。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        data = request.get_json(silent=True) or {}
+        transcript = (data.get("transcript") or "").strip()
+        if not transcript:
+            return jsonify({"status": "error", "message": "文字起こしテキストがありません"}), 400
+        prompt = f"""あなたは会議の書記です。以下は介護施設内の勉強会・職員会議の文字起こしです。
+これを、読みやすく整理された社内向けの議事録にまとめてください。
+
+【最重要ルール】
+・文字起こしに書かれていない情報を創作・推測で埋めない。読み取れない項目は「（記載なし）」と書く。
+・逐語ではなく要点を整理する。ただし語られた具体的な内容(数値・固有名詞・具体例)は残す。
+・「決定事項」と「ToDo(やること)」は必ず分けて出す。ToDoは行動として実行できる形で書く。
+
+【出力する構成(この見出しで、この順で出力する)】
+■ 会議情報
+　会議名 / 開催日 / 場所 / 参加者。読み取れない項目は（記載なし）。
+■ 議題
+　この会議で扱ったテーマを箇条書き(各行頭「・」)。
+■ 議論の内容
+　各議題についてどんな意見・報告・検討があったか要点整理。
+■ 決定事項
+　会議で決まったことを箇条書き(各行頭「・」)。無ければ「・（記載なし）」。
+■ ToDo
+　誰が/何を/(分かれば)いつまでに、を行動単位で箇条書き(各行頭「・」)。無ければ「・（記載なし）」。
+■ その他・次回に向けて
+　補足や次回予定。語られていなければ（記載なし）。
+
+出力は議事録本文のみ。前置き・説明・マークダウン記号(#等)は不要。
+
+【文字起こし】
+{transcript[:8000]}"""
+        model = get_generative_model()
+        resp = model.generate_content(prompt)
+        minutes = (resp.text or "").strip()
+        if not minutes:
+            return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
+        struct = _staff_minutes_parse_struct(minutes)
+        import json as _json_s
+        decisions = _json_s.dumps((struct or {}).get("decisions", []), ensure_ascii=False)
+        todos = _json_s.dumps((struct or {}).get("todos", []), ensure_ascii=False)
+        return jsonify({"status": "success", "minutes": minutes,
+                        "minutes_struct": _json_s.dumps(struct, ensure_ascii=False),
+                        "decisions": decisions, "todos": todos})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/staff_minutes")
+@login_required
+def staff_minutes_page():
+    """勉強会・会議議事録 画面。staff_minutes_enabled(未設定=許可)の施設のみ。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return redirect(url_for("admin"))
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render("staff_minutes.html", today=today)
+
+
+import re as _re_sm_uuid
+_SM_UUID_RE = _re_sm_uuid.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+@app.route("/api/staff_minutes/save", methods=["POST"])
+@login_required
+def api_staff_minutes_save():
+    """議事録1件を保存(新規insert / 既存はid指定でupdate)。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        import json as _json_sv
+        supabase = get_supabase()
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "").strip() or "会議記録"
+        meeting_date = (data.get("meeting_date") or "").strip() or None
+        attendees = (data.get("attendees") or "").strip() or None
+        transcript = data.get("transcript") or ""
+        minutes = data.get("minutes") or ""
+        audio_session_id = (data.get("audio_session_id") or "").strip() or None
+        minutes_style = (data.get("minutes_style") or "a").strip().lower()
+        if minutes_style not in ("a", "b", "c", "d", "e", "f", "g", "h"):
+            minutes_style = "a"
+
+        def _as_text(v):
+            if v is None:
+                return None
+            return v if isinstance(v, str) else _json_sv.dumps(v, ensure_ascii=False)
+
+        row = {
+            "facility_code": f_code,
+            "title": title,
+            "meeting_date": meeting_date,
+            "attendees": attendees,
+            "transcript": transcript,
+            "minutes": minutes,
+            "minutes_struct": _as_text(data.get("minutes_struct")),
+            "minutes_style": minutes_style,
+            "decisions": _as_text(data.get("decisions")),
+            "todos": _as_text(data.get("todos")),
+            "status": "confirmed",
+            "created_by": my_name,
+        }
+        rec_id = (data.get("id") or "").strip()
+        if rec_id and _SM_UUID_RE.match(rec_id):
+            row["updated_at"] = "now()"
+            supabase.table("staff_meetings").update(row)\
+                .eq("id", rec_id).eq("facility_code", f_code).execute()
+            return jsonify({"status": "success", "id": rec_id})
+        res = supabase.table("staff_meetings").insert(row).execute()
+        new_id = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": new_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/staff_minutes/list", methods=["GET"])
+@login_required
+def api_staff_minutes_list():
+    """施設の議事録一覧(新しい順)。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        r = supabase.table("staff_meetings")\
+            .select("id,title,meeting_date,attendees,status,created_at")\
+            .eq("facility_code", f_code)\
+            .order("meeting_date", desc=True)\
+            .order("created_at", desc=True)\
+            .limit(200).execute()
+        return jsonify({"status": "success", "meetings": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/staff_minutes/get", methods=["GET"])
+@login_required
+def api_staff_minutes_get():
+    """議事録1件を読み込み。他施設IDは弾く。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        rec_id = (request.args.get("id") or "").strip()
+        if not _SM_UUID_RE.match(rec_id):
+            return jsonify({"status": "error", "message": "id が不正です"}), 400
+        r = supabase.table("staff_meetings").select("*")\
+            .eq("id", rec_id).eq("facility_code", f_code).execute()
+        if not r.data:
+            return jsonify({"status": "error", "message": "議事録が見つかりません"}), 404
+        return jsonify({"status": "success", "meeting": r.data[0]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/staff_minutes/delete", methods=["POST"])
+@login_required
+def api_staff_minutes_delete():
+    """議事録1件を削除。他施設IDは弾く。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        data = request.get_json(silent=True) or {}
+        rec_id = (data.get("id") or "").strip()
+        if not _SM_UUID_RE.match(rec_id):
+            return jsonify({"status": "error", "message": "id が不正です"}), 400
+        supabase.table("staff_meetings").delete()\
+            .eq("id", rec_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _staff_minutes_pdf_html(meeting, style="a"):
+    """社内議事録PDFのHTML生成。担当者会議の _MTG_PDF_BASE_CSS と装飾スタイルを
+    流用しつつ、中身は 会議情報/議題/議論/決定事項/ToDo/その他 の構成にする。"""
+    import json as _json_p
+    esc = _mtg_pdf_esc
+    title = esc(meeting.get("title") or "会議記録")
+    date = esc(meeting.get("meeting_date") or "")
+    attendees = esc(meeting.get("attendees") or "（記載なし）")
+    # 構造化
+    st = None
+    raw = meeting.get("minutes_struct")
+    if raw:
+        try:
+            st = _json_p.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            st = None
+
+    def _arr(v):
+        if not v:
+            return []
+        if isinstance(v, str):
+            try:
+                v = _json_p.loads(v)
+            except Exception:
+                return [x.strip() for x in v.split("\n") if x.strip()]
+        return v if isinstance(v, list) else []
+
+    topics = _arr((st or {}).get("topics"))
+    discussion = (st or {}).get("discussion") or []
+    if isinstance(discussion, list):
+        discussion = "\n".join(discussion)
+    decisions = _arr(meeting.get("decisions")) or _arr((st or {}).get("decisions"))
+    todos = _arr(meeting.get("todos")) or _arr((st or {}).get("todos"))
+    other = (st or {}).get("other") or []
+    if isinstance(other, list):
+        other = "\n".join(other)
+
+    # フォールバック: 構造化が無ければ議事録全文をそのまま
+    if not st:
+        minutes = esc(meeting.get("minutes") or "（議事録なし）").replace("\n", "<br>")
+        body_html = f'<div class="box">{minutes}</div>'
+    else:
+        def _ul(items):
+            lis = "".join(f"<li>{esc(x)}</li>" for x in items) or "<li class='unrec'>（記載なし）</li>"
+            return f"<ul>{lis}</ul>"
+        body_html = (
+            f'<div class="sec">議題</div>{_ul(topics)}'
+            f'<div class="sec">議論の内容</div><div class="box">{esc(discussion) or "（記載なし）"}</div>'
+            f'<div class="sec">決定事項</div>{_ul(decisions)}'
+            f'<div class="sec">ToDo</div>{_ul(todos)}'
+            f'<div class="sec">その他・次回に向けて</div><div class="box">{esc(other) or "（記載なし）"}</div>'
+        )
+
+    # スタイル別の追加CSS(担当者会議の装飾テイストを簡易流用)
+    style_css = _staff_minutes_style_css(style)
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>{_MTG_PDF_BASE_CSS}{style_css}</style></head><body>
+<h1>{title}</h1>
+<div class="sub">開催日: {date}</div>
+<table class="grid"><tr><th>参加者</th><td>{attendees}</td></tr></table>
+{body_html}
+<div class="foot">TASUKARU にて作成</div>
+</body></html>"""
+
+
+def _staff_minutes_style_css(style):
+    """8スタイルの装飾。担当者会議のテイストを社内議事録向けに簡易化。"""
+    style = (style or "a").lower()
+    palette = {
+        "a": "#2e7d32", "b": "#1565c0", "c": "#424242", "d": "#00838f",
+        "e": "#6a1b9a", "f": "#ad1457", "g": "#4527a0", "h": "#37474f",
+    }
+    c = palette.get(style, "#2e7d32")
+    base = f".sec {{ border-left-color: {c}; color: {c}; }} h1 {{ color: {c}; }}"
+    if style == "b":  # ビジネス: 見出しに下線
+        base += f" .sec {{ border-bottom: 1px solid {c}33; padding-bottom:2px; }}"
+    elif style == "c":  # フォーマル: 罫線強め
+        base += " table.grid td, table.grid th { border-color:#888; }"
+    elif style == "d":  # サイドバー: 見出し帯
+        base += f" .sec {{ background:{c}12; padding:4px 8px; border-left-width:6px; }}"
+    elif style == "e":  # カード: box影
+        base += " .box { box-shadow:0 1px 3px rgba(0,0,0,.12); border-radius:6px; }"
+    elif style == "f":  # タイムライン: 議題に丸
+        base += f" ul li {{ list-style:none; position:relative; padding-left:14px; }} ul li:before {{ content:'●'; color:{c}; position:absolute; left:0; font-size:8pt; }}"
+    elif style == "g":  # エグゼクティブ: 大見出し
+        base += " .sec { font-size:13pt; }"
+    elif style == "h":  # モダンミニマル: 細字・余白
+        base += " .sec { font-weight:600; border-left-width:3px; } body { line-height:1.7; }"
+    return base
+
+
+@app.route("/api/staff_minutes/pdf", methods=["GET"])
+@login_required
+def api_staff_minutes_pdf():
+    """議事録PDFを出力。style=a〜h で装飾切替。"""
+    ok, f_code, my_name = _staff_minutes_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        rec_id = (request.args.get("id") or "").strip()
+        if not _SM_UUID_RE.match(rec_id):
+            return jsonify({"status": "error", "message": "id が不正です"}), 400
+        style = (request.args.get("style") or "a").strip().lower()
+        if style not in ("a", "b", "c", "d", "e", "f", "g", "h"):
+            style = "a"
+        r = supabase.table("staff_meetings").select("*")\
+            .eq("id", rec_id).eq("facility_code", f_code).execute()
+        if not r.data:
+            return jsonify({"status": "error", "message": "議事録が見つかりません"}), 404
+        meeting = r.data[0]
+        html_str = _staff_minutes_pdf_html(meeting, style)
+        pdf_bytes = _mtg_pdf_render(html_str)
+        from urllib.parse import quote as _quote_p
+        from flask import make_response
+        fname = "議事録_" + (meeting.get("meeting_date") or "") + ".pdf"
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Content-Disposition"] = 'attachment; filename="staff_minutes.pdf"; filename*=UTF-8\'\'' + _quote_p(fname)
+        return response
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /staff-minutes-api-v1 ---
+
+
 @app.route("/admin/jisseki/print")
 @login_required
 def admin_jisseki_print():
