@@ -1247,3 +1247,248 @@ Stripe「セキュリティ対策措置状況申告書」対応として、以�
 4. **AI分類フロー**: 議事録を `icf_codes` に照合してICF分類。**AIに候補を出させ人が確定**する方式（クレカ明細Amazon突合・勘定科目学習と同じ「人が承認」思想）。AIの記憶に頼らずマスタから選ばせるのが精度の鍵。
 5. **画面**: 文章＋ICF図（構成要素b/s/d/e別・章別グルーピング）。空白領域＝次に確認すべき情報として可視化。
 6. **PRO限定ゲート**: 既存プラン判定で機能を出し分け。
+
+---
+
+## ICFフル4桁化の調査メモ（2026-07-05 追記 / 重要・次回の前提）
+
+第3・第4レベル（フル4桁）への拡張を検討し、データ源を調査した結果、以下が判明。**次回この結論から再開すること（同じ調査を繰り返さない）。**
+
+### データ源の現実（調査結果）
+- **日本語のフル4桁データはWeb上に公式公開されていない。** 厚労省HP（および dinf.ne.jp 掲載の厚労省版）は明示的に「HP上では第2レベルまで掲載」と断っている。第3・第4レベルの日本語公式データは**書籍版『ICF国際生活機能分類—国際障害分類改訂版』（中央法規出版）にのみ収録**。
+- **英語のフル4桁はWHOが公開しているが、一括取得は容易でない。** WHO公式 ICF Browser（apps.who.int/classifications/icfbrowser）はJavaScript依存のブラウザアプリで直接取得不可（fetch 404）。CSV/Excelの全項目一括配布は未確認（ICD-11にはあるがICFは別）。1コードずつ辿るのは1,443項目で非現実的。ICF Core Sets等の二次配布は部分的。
+- **ライセンス（重要・確認済み）**: WHO公式に「ICFは、機能・障害の評価を支援する**AIシステムの適法な学習を含め**、WHO加盟国全体での使用が公的に許可されている」と明記。ICFデータをICF分類AIに使うことはWHOが明示的に許可済み。
+
+### 確定した方針（第3・第4レベル）
+- **英語4桁マスタ（WHO由来）＋ AI暫定日本語訳 ＋ 公式フラグで区別**、というハイブリッドで持つ。
+- テーブル `icf_codes` に将来追加想定のカラム: `title_ja_draft`（AI暫定訳）, `is_official`（bool: 第2レベルまで=true=厚労省公式 / 第3・4レベル=false=暫定訳・要監修）。
+- **絶対原則**: AIの丸ごと翻訳を「公式マスタ」として断定しない。公式（is_official=true）と暫定訳（false）をデータ上で明確に区別し、画面でも「※暫定訳」と示す。これを崩すと「厚労省公式準拠の正確なICF」という看板が嘘になる。将来HIROが書籍版で照合して確定分を is_official=true に昇格。
+- **粒度の実用性**: 複数の公式資料が「介護の担当者会議レベルは第2レベルで十分活用でき、第4レベルはリハビリ効果検証など専門用途」と明記。よって第2レベルで機能先行し、4桁は精度が要る場面で追加する方針で問題ない。
+
+### 次回の選択肢（未着手）
+- (A) 会議データモデル（`meetings` 等）＋AI分類フローの設計に進む（第2レベルマスタで機能を形にする）← 前進重視ならこちら
+- (B) 英語4桁データの取得経路を腰を据えて調査（WHO Browserの内部API/データファイル特定、または信頼できる二次配布の発掘）。確実に取れる保証はないため、独立タスクとして計画的に。
+
+---
+
+## 担当者会議 ICF分類機能 サーバ側完成（2026-07-06 追記）
+
+担当者会議を録音→文字起こし→議事録生成→ICF分類し、付箋ボードで可視化する機能（PRO限定予定）。サーバ側が一通り完成。次回は**フロント（録音の時間分割ロジック＋付箋ボード画面）から再開**。
+
+### 完了（DEV投入・push済み。本番未マージ）
+DB（DEV Supabaseに投入済み。本番は機能リリース時に同SQLを流す）:
+- `meetings`（marker: meetings-ddl-v1）: 会議レコード。id/facility_code/patient_id(uuid,nullable)/title/meeting_date/audio_path/transcript/minutes/status/created_by。`audio_session_id`（marker: meetings-audio-session-v1）追加済み。
+- `meeting_icf_links`（meetings-ddl-v1）: 付箋1枚=1行。icf_code(FK,null許容=手動メモ付箋)/source_text/note/confidence(auto|needs_review)/confirmed/board_component(b/s/d/e)/sort_order/qualifier_capacity/qualifier_performance（2軸は将来用・今NULL）。次点候補 `alt_icf_code`/`alt_reason`（meetings-icf-altcand-v1）追加済み。
+- ゲート: `admin_settings` に `meetings_enabled`。DEMO001は`true`投入済み（実質限定運用。将来PROプランで解放）。**admin_settingsに(facility_code,key)のUNIQUE制約は無い**ので on conflict 不可。既存行の有無を見て insert/update を出し分ける。
+
+API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_ok()` = login_required + meetings_enabled）:
+- `/api/meeting/transcribe`（POST, meetings-transcribe-chunk-v1）: 録音チャンク1個を受け取り、`assessment-audio/{f_code}/meetings/{session_id}/{index:04d}.{ext}` に保存しつつGeminiで文字起こし。**長時間会議はフロントで時間分割（方式1）**し順次呼ぶ。保存失敗してもfail-safeで文字起こし続行。無音チャンクは空文字返す。フォーム: audio/session_id/chunk_index。音声はassessment-audioバケット流用（utils無改修）。
+- `/api/meeting/summarize`（POST, meetings-transcribe-summarize-v1）: 文字起こし→ICF分類しやすい議事録生成（Gemini）。
+- `/api/meeting/classify_icf`（POST, meetings-icf-classify-v1）: 議事録→ICF分類。**方式A＋次点候補**（全362件をicf_codesから動的取得しプロンプトに埋め、迷えばalt1件）。マスタ外コードは弾く（創作防止）。入力=minutes_text直POST。model=claude-sonnet-4-5。**テスト議事録で分類精度検証済み・良好**（膝の痛みb280と関節可動性b710を正しく分離、福祉用具e120まで拾う、4構成要素に分布）。ただしテストではneeds_review/altが0件→曖昧議事録での挙動は未検証。
+- `/api/meeting/save`（POST, meetings-save-list-get-v1）: **案X（保存時に一括作成）**。meetings 1件insert→付箋を一括insert。patient_idはUUID検証しng時null。マスタ外コードは握りつぶさずnoteに`[未確定:xxx]`退避。
+- `/api/meeting/list`（GET）: 施設の会議一覧（meeting_date→created_at降順・最大200）。
+- `/api/meeting/get`（GET, meeting_id）: 会議＋付箋を読み込み（ボード復元）。他施設IDは弾く。
+
+### 設計確定事項（次回の前提。再検討不要）
+- 付箋ボードUI: b/s/d/e の4領域に付箋をドラッグ移動＋空白セルから手動追記。AI確定(塗り)と要確認(破線)を色分け。空白領域を明示（＝会議で拾えていないICF上の空白の可視化＝差別化の核心）。次点候補は付箋に「もしかして: d460?」と小さく出しワンタップで移せる想定。
+- 「活動と参加(d)」は**まず1軸で機能化**（分けない）。能力/実行の2軸（ICF公式qualifier）は `qualifier_capacity`/`qualifier_performance` カラムを仕込み済みで**後付け可能**。
+- 権限は施設ユーザゲート＋将来PRO。当面meetings_enabledで実質限定start。
+- 音声は保存する方針（後で聞き直せる）。録音は長時間前提でフロント時間分割（5分チャンク等）→順次transcribe→連結→summarize→classify→save。session_idはフロント発行UUIDでチャンクを束ね、save時にmeetings.audio_session_idに記録。
+
+### 次にやること
+1. **フロント実装**（メイン）: 録音UI（MediaRecorderで時間分割・session_id発行・chunk_index順次送信）→ 文字起こし連結表示 → 議事録編集 → 「ICF分類」→ 付箋ボード（ドラッグ移動・追記・承認）→ 保存。会議一覧・読み込み画面。PRO限定ゲート表示。
+2. 曖昧な議事録で needs_review / 次点候補(alt) の出方を検証。
+3. ICF図の可視化（構成要素別・章別グルーピング、空白領域の見せ方）。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 46786f8（会議API群・DDL・READMEを含む見込み）。本番未マージ。
+- 本番マージ時に必要: 本番Supabaseへ meetings系DDL（meetings_seed.sql / meetings_altcand.sql / meetings_audio_session.sql）を先に流す＋ icf_codes_seed.sql（未投入なら）＋ admin_settingsに本番施設のmeetings_enabled。
+
+---
+
+## 担当者会議 ICF分類機能 フロント骨格＋第4表議事録 完成（2026-07-06 追記その2）
+
+同日その1(サーバ側完成)の続き。フロント骨格が動作確認済み、議事録が第4表準拠に格上げ。すべてDEV。本番未マージ。
+
+### 完了（DEV push済み・動作確認済み）
+- **画面** `/admin/meetings`（route marker: meetings-page-route-v1 / template: templates/admin_meetings.html）。既存admin_*流儀（base.html継承・block content・緑系デザイン・CSRFなし）。単一ページ内ステップ遷移（一覧⇔編集ビュー）。`admin_authenticated` + `_meetings_gate_ok()` の二重ガード。管理者MENUへの導線リンクはまだ未設置（当面は直URLで確認）。
+- **フロントのフロー**（録音以外MCP確認済み）: 一覧(list)→新規→会議情報(タイトル/開催日/対象利用者)→録音UI(MediaRecorderで5分チャンク自動分割・session_id発行・chunk_index順次transcribe・連結)→文字起こし(編集可)→「議事録を作成」(summarize)→「ICF分類する」(classify_icf)→結果表示→「保存」(save一括)。既存会議はget で復元。
+- **動作確認結果**: 新規→議事録貼付→分類13件(次点候補d540→d440も的確に出た)→保存(会議+付箋13件)→一覧反映→get復元(board_component/confidence/次点候補まで完全復元)まで一気通貫でOK。テスト会議 a96d8dad がDEMO001に1件残存(ダミー・無害)。
+- **バグ修正済み**: 一覧生成のonclick属性でシングルクオート過剰エスケープ→SyntaxErrorで全JS未定義だった。data-mid属性＋addEventListener(イベント委譲)に変更して解決。`\\n`(バックスラッシュ2つ)→`\n`も2箇所修正。**教訓: Jinjaテンプレ内のJSは引用符を素直に書く。onclick属性に文字列を埋めるより data-* + イベント委譲が安全。**
+- **議事録を第4表準拠に格上げ**（marker: meetings-summarize-form4-v1 / 方向C）。厚労省標準様式「第4表 サービス担当者会議の要点」の5セクション(開催情報/検討した項目/検討内容/結論(決定事項)/残された課題・次回)＋末尾に「本人の状態整理(ICF分類用)」。**最重要ルール: 正式書類のため文字起こしに無い情報(出席者氏名・開催場所・開催日)は創作せず「（記載なし）」**。MCP確認で第4表構成・創作なし・結論独立・次回開催時期抽出・ICF状態整理まで良好に生成されることを確認済み。
+
+### 設計確定・気づき（次回の前提）
+- OCR拡張の方針を決定: **会議資料(ケアプラン第1〜3表・アセスメント・主治医意見書等)をカメラ/ファイルで撮影→OCR(Gemini画像解析)→テキスト抽出→議事録生成(summarize)の入力に合流**（方向A採用）。口頭で出ない基礎情報(要介護度・既往・長期短期目標・既存サービス)でICF材料を厚くし、空白領域炙り出しの精度を上げる。既存資産 `parse_assessment_file` / `api_ledger_ocr_receipt`(Gemini画像OCR) の流儀を流用可能。まず様式を問わない汎用OCR(1枚撮って本文抽出)から。第2表専用パーサ等は後回し。
+- 開催情報(日付・場所・出席者氏名)は議事録で（記載なし）になりがち→**フロントの会議情報フォームに出席者欄を足し、summarizeプロンプトに渡して実データで埋める**改善余地(後回し可)。
+- 対象利用者selectは現状「選択なし」のみ(患者リスト取得を未実装)。ボード実装前後で患者リスト取得を足す。
+
+### 次にやること（優先順）
+1. **付箋ボードのドラッグUI**（メイン未実装）: b/s/d/e 4領域に付箋ドラッグ移動・空白セルから手動追記・AI確定/要確認の色分け・次点候補ワンタップ移動・承認(confirmed)。保存時に board_component/sort_order を持たせる。get復元でボード描画。
+2. **会議資料OCR**（方向A）: フロントにカメラ/ファイル選択→OCR API(Gemini画像)→抽出テキストを議事録生成の入力に合流。
+3. 会議情報フォームに出席者欄追加＋summarizeへ受け渡し。患者リスト取得。
+4. 曖昧議事録で needs_review/次点候補の出方を検証。
+5. 録音の実機確認(マイクが要る・HIRO操作。MCPでは不可)。長時間(数十分×5分チャンク)の通しテスト。
+6. ICF図の可視化(構成要素別・章別グルーピング・空白領域の見せ方)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = de5e559（会議API群・DDL・フロント・第4表議事録・READMEを含む見込み）。本番未マージ。
+- 本番マージ時に必要(再掲): 本番Supabaseへ meetings系DDL 3本(meetings_seed / meetings_altcand / meetings_audio_session)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中(既存バケット)。
+
+---
+
+## 担当者会議 アセスメントシート＋3成果物PDF出力 完成（2026-07-06 追記その4）
+
+同日その3の続き。現場要望対応: 議事録からアセスメントシート生成、そこからICF分類、3成果物すべてPDF出力。すべてDEV・MCP動作確認済み。本番未マージ。
+
+### 現場要望（達成済み）
+「議事録作成後、そこからアセスメントシートを作成し、さらにその情報からICFを分類。3つの成果物(議事録・アセスメント・ICF分類ボード)を作れて、それぞれ印刷・PDF保存できる機能」＋「ハルシネーション絶対なし」「職員が全項目を修正・削除・追加できる」。
+
+### 完了（DEV push済み・MCP確認済み）
+- **アセスメントシート生成API** `/api/meeting/assessment`(POST, marker: meetings-assessment-api-v1): 議事録+文字起こし→課題分析標準項目23項目(令和5年改定版)をJSON配列で生成(Gemini)。**ハルシネーション対策を多層で担保**: プロンプトで創作厳禁・無い項目は必ず recorded:false / body:「（未記載）」、生成後の正規化でも body が「（未記載）」なら recorded を強制false。MCP確認: 23項目生成・基本情報系(社会保障/認定情報/じょくそう/口腔/コミュニケーション等)が創作されず正しく未記載、語られた内容は該当項目に整理、を確認。
+- **アセスメント編集UI**(admin_meetings.html, meetings-assessment-v1): 23項目を**項目ごとに編集・削除・追加**。未記載項目はグレー破線表示、職員が手入力で補完(未記載↔記載でスタイル即時切替)。「＋項目を追加」で新規、各項目に削除ボタン。MCP確認: 未記載への手入力→記載化、項目追加、項目削除、すべて保存・復元まで確認。
+- **DB**: `meetings.assessment`カラム追加(text, DDL meetings-assessment-v1, DEV投入済み)。項目配列のJSON文字列を保存。
+- **ICF分類の入力元トグル**: 「アセスメントから分類 / 議事録から分類」を選択可(meetings-assessment-wire-v1)。classify_icf の入力を汎用化(minutes_text 無ければ source_text 使用)、プロンプトの「議事録」を「会議情報」に汎用化。saveにassessment追加。MCP確認: アセスメントから分類→11付箋生成OK。
+- **3成果物PDF出力** `/api/meeting/pdf?meeting_id=xxx&type=minutes|assessment|icf`(GET, marker: meetings-pdf-v1 / makeresp-fix: meetings-pdf-makeresp-fix-v1): 方式A(pdfkit/wkhtmltopdf、既存ledger/monitoring流儀準拠)。議事録=第4表体裁、アセスメント=23項目table、ICF=モデル図6スロットをtableで静的再現。**wkhtmltopdf制約対応**: Flexbox不使用tableベース、@page margin避けbody padding。**注意: make_response は関数内で個別import必須**(トップレベルflask importに無い。既存PDF関数も同様)。フロントは各カードにPDFボタン(保存済み会議のみ表示、保存後はその場に留まりPDF可)。MCP確認: 3タイプとも200・正しい%PDF・妥当サイズ(議事録26KB/アセス90KB/ICF25KB)。**レイアウト目視はHIRO実機確認が必要**(MCPはバイナリ生成成功までしか見えない)。
+
+### 設計確定事項
+- アセスメント様式=課題分析標準項目23項目(令和5年改定)。基本情報9項目+課題分析14項目+特記。
+- 編集方式=案A(JSON構造、項目ごと編集/削除/追加)。案B(ベタテキスト)は不採用。
+- ハルシネーション絶対なし=最優先要件。未記載を明示し職員が補完。人が承認思想。
+- PDF=方式A(サーバpdfkit)で3成果物統一。ICFボードはFlexNGなのでtable静的版。
+
+### 次にやること
+1. **アセスメントPDFのレイアウト目視確認**(HIRO実機。文字化け・表崩れ・モデル図配置)。必要なら微調整。
+2. **分類AIの活動/参加自動振り分け**(任意・精度向上、これまで通り保留可)。
+3. **会議資料OCR**(方向A): カメラ/ファイル→Gemini画像OCR→議事録/アセスメント生成の入力に合流。既存 parse_assessment_file / api_ledger_ocr_receipt 流用。
+4. アセスメント項目の振り分け精度微調整(意欲低下/睡眠が「これまでの生活」に入る等の軽微なズレ。プロンプト調整で改善可)。
+5. 会議情報フォームに出席者欄追加。患者リスト取得。管理者MENU導線リンク設置。実機ドラッグ/録音確認。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = bdc0a0e。本番未マージ。
+- 本番マージ時に必要(再掲・更新): 本番Supabaseへ meetings系DDL 5本(meetings_seed / meetings_altcand / meetings_audio_session / meetings_board_slot / meetings_assessment)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設のmeetings_enabled。assessment-audioバケットを会議チャンク保存に流用中。wkhtmltopdf・日本語フォントはイメージ導入済み。
+- テスト会議数件がDEMO001に残存(ダミー・無害)。
+
+---
+
+## 担当者会議 PDF出力・音声・導線 大幅拡張（2026-07-06 追記その5）
+
+同日その4の続き。3成果物PDF出力の実装後、実際の会議音声で通しテストし、多数の改善を実施。すべてDEV・MCP確認済み。本番未マージ。DEV HEAD = 65cd50f。
+
+### 完了（DEV push済み・MCP確認済み）
+
+**PDF makeresp修正（marker: meetings-pdf-makeresp-fix-v1）**: 3成果物PDFが `make_response is not defined` で500。トップレベルflask importに make_response が無く、既存PDF関数は各関数内で個別importしていた。同様に関数内importを追加して解決。
+
+**音声ファイルアップロード（フロントのみ）**: 録音カードに「音声ファイル」ボタン追加。既にある会議音声を選択→Web Audio APIでデコード→5分ごとに時間分割→各チャンクをWAV化→既存 transcribe API へ順次送信（サーバ改修不要）。長時間音声も安全。実際の会議音声で文字起こし成功。
+
+**ICF図PDFリッチ化（marker: meetings-pdf-rich-icf-v1）**: コードのみ表示→icf_codesマスタを引いて名称付き（b114 見当識機能）に。スロット別の色付き付箋（画面ボードと同配色）、分類根拠テキスト表示。あわせて**PDFキャッシュバグ修正**: 別会議のPDFに前の会議の内容が出る問題。フロントでPDF URLにタイムスタンプ `_t=Date.now()` 付与＋サーバでno-cacheヘッダー（Cache-Control: no-store...）。出席者オブジェクト形式 {name,role} 対応（marker: meetings-pdf-attendees-fix-v1、「役職（氏名）」形式、氏名不明は役職のみ）。
+
+**議事録3スタイルPDF（A/B/C）**: 議事録を構造化データ(minutes_struct)で持ち、3レイアウトに流し込む。
+- 案A=ヘッダー表＋見出し区切り(バランス・スッキリ)、案B=決定事項を番号強調(ビジネス)、案C=公的様式風の罫線(フォーマル)。visualizerでモック3案提示しHIROが選択→3スタイル選択式に決定。
+- DB: `meetings.minutes_struct`(text, DDL marker: meetings-minutes-struct-v1, DEV投入済み)。
+- **構造化の作り方(重要)**: 当初 summarize が Gemini で構造化JSONも生成する方式(marker: meetings-minutes-struct-api-v1)だったが、長い会議(20585字)で議事録生成に43-45秒かかりタイムアウト/500発生。→ **コード解析方式に変更**(marker: meetings-minutes-struct-parse-v1): `_mtg_parse_minutes_struct(text)` が第4表議事録本文の「■見出し」をパースして構造化dict生成。Gemini再生成不要で速度は本文生成のみに。
+- **重大バグと修正(教訓)**: パーサ関数定義を `@app.route` と `def api_meeting_summarize` の間に挿入してしまい、デコレータがパーサに付いて全summarizeが500に。→ パーサをデコレータの前へ移動(marker: meetings-minutes-struct-parse-fix-v1)。**教訓: デコレータとdefの間に関数を挿入してはいけない**。
+- save/get で minutes_struct 保存・復元(marker: meetings-minutes-struct-save-v1)。フロントは議事録カードにA/B/C 3ボタン(保存済み+議事録ありで表示)、mtgPdf(type,style)。
+- MCP確認: 20585字で200・items4/conclusions4・構造化OK。3スタイルとも200・正しいPDF。
+
+**3点まとめてPDF（marker: meetings-pdf-all-v1）**: type=all で議事録・アセスメント・ICF図を1つのPDFに(page-break区切り)。各ビルダーの<body>中身を `_mtg_pdf_extract_body()` で抽出し連結。3成果物揃うと緑の「まとめてPDF」ボタン表示。実際の会議音声で3点入りPDF生成成功。
+
+**タスカルくんローディング**: 議事録作成中(43秒)、議事録カードにタスカルくんが左右に走り真ん中に書類が積み上がるアニメ表示(mtgTskOverlay)。既存の `static/tasukaruカラー.png` を影絵処理(filter:brightness(0) opacity(0.5))で流用。ケース記録カテゴリ変更のタスカルくん歩行アニメと同トーン。mtgSummarize 実行中だけ is-active。
+
+**ICF図PDF 1枚化（marker: meetings-pdf-icf-fit-v1）**: 付箋が多い実会議でICF図が崩れた(3列に大量付箋で潰れ)。付箋総数に応じてフォント/padding/根拠長を自動縮小(density: ≤12/≤20/≤30/それ超)、@page A4 landscape(横向き)、列幅固定33.33%＋word-break折り返し、根拠テキストを密度に応じ短縮。**単独ICF図PDFには効くが、まとめPDF(type=all)内のICFには未反映**(まとめは縦向き固定でICFビルダーの@page landscapeが無視される。次回対応)。
+
+**ボトムメニュー修正・導線追加（base.html）**:
+- 連絡帳(/renraku)が並び替え対象から漏れていたのを修正(movableHrefs 3箇所に追加、marker: nav-renraku-movable-v1)。
+- 担当者会議の入り口「記録・ICF分類」をボトムメニューに追加(href=/admin/meetings, groupsアイコン, marker: nav-meetings-v1)。並び替え対象にも追加(movableHrefs 3箇所に /admin/meetings)。**現状は全施設に表示**(PRO制限は次回)。
+
+### 重要な教訓（今回得た）
+- **デコレータとdefの間に関数を挿入禁止**(元関数のデコレータが新関数に付き500)。パーサ挿入で実際に発生。
+- パッチのアンカーに日本語を含めるとエンコード差異でマッチ0件になりやすい→**ASCII行(markerコメント/純英数字行)を小さいアンカーに**。大きな塊は空行有無でも失敗。
+- 冪等パッチを2回実行すると2回目ALREADY_APPLIED。git commitは1回目の変更を拾うので問題なし(HIROが2回貼りがちだが害なし)。
+- **議事録生成が43秒かかるのはモデルでなく処理量**(20585字入力8000字切り+3000字出力)。既にgemini-2.5-flash使用中。構造化をコード化しても本体生成時間は不変。タイムアウト対策/UX(タスカルくん)で緩和。utils.py get_generative_model は全機能共通なので変更は全機能影響。
+- 「できない/変わってない」は手順・未保存・キャッシュ・未実装が原因のことが多い。MCPで実際に叩いて切り分ける(例: 3スタイルボタンは保存済み+議事録ありでのみ表示)。
+
+### 次にやること（PENDING）
+1. **[要対応] PDF出力の使い勝手改善(次回まとめて)**:
+   (a) **まとめPDF内のICF崩れ**: type=all のICFにも1枚化(横向き/自動縮小)を反映。ただしwkhtmltopdfは1PDF内で向き混在が苦手→ICFだけ別PDF化して結合、またはまとめ全体を横向き、等の設計判断が要る。
+   (b) **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→パラメータで反映。
+   (c) **一括印刷時も議事録スタイル(A/B/C)選択**: 現状 type=all は議事録スタイルA固定。選べるようにする。
+2. **[報告済み・未対応] 対象利用者selectが選択できない**: 患者リスト取得が未実装(selectが空)。
+3. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+4. **担当者会議のPRO制限**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard 等のパターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトムの「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡しが必要)。本番マージ前に必須。
+5. アセスメント項目の振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。会議情報フォームに出席者欄追加。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 65cd50f。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(meetings_seed/altcand/audio_session/board_slot/assessment/**minutes_struct**)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設の meetings_enabled。wkhtmltopdf・日本語フォント導入済み。tasukaruカラー.png は static に既存。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。現状は全施設にボトム「記録・ICF分類」が出る。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。
+
+---
+
+## 担当者会議 PDF仕上げ（まとめPDF結合・ICF横向き・議事録8スタイル）（2026-07-06 追記その6）
+
+同日その5の続き。まとめPDFのICF崩れ解消、議事録デザイン拡張。すべてDEV・MCP確認済み。本番未マージ。DEV HEAD = 4dd6778。
+
+### 完了（DEV push済み・MCP確認済み）
+
+**まとめPDF(type=all)を結合方式に変更（marker: meetings-pdf-all-merge-v1）**: 従来は3成果物のbodyを1HTMLに連結して1回のwkhtmltopdfで生成→ICFの横向きが効かず崩れた。→ **議事録+アセスメント(縦) と ICF図(横) を別々にPDF生成し結合**する方式に。
+- `_mtg_pdf_render(html_str, landscape=False)`: pdfkit生成。landscape=Trueで options に orientation:Landscape(marker: meetings-pdf-landscape-opt-v1)。
+- `_mtg_pdf_merge(pdf_bytes_list)`: **堅牢版(marker: meetings-pdf-merge-robust-v1)**。pdfunite(poppler-utils, 依存追加なし) → PyMuPDF(fitz) → 先頭のみ、の順にフォールバック。**重要教訓**: fitz(PyMuPDF)はローカルMacには有るが本番Cloud Runイメージには無い(`No module named 'fitz'`で500)。requirements未記載。pdfuniteは poppler(既存, pdfinfo使用実績あり)に含まれ本番で使える。
+- all分岐: 縦PDF(議事録+アセス, page-break)＋横PDF(ICF)を生成→結合。後段共通pdfkitは `_combined_pdf` 有り時スキップ。MCP確認: type=all 200・約298KB。実機でICFが横向きページで崩れず出ることをHIRO確認済み。
+
+**ICF図PDF 横向き化（marker: meetings-pdf-landscape-opt-v1）**: CSSの @page landscape だけでは wkhtmltopdf は縦のまま。**options に orientation:Landscape が必須**。単独ICF図PDF(type=icf)も共通options に icf判定で Landscape 追加。まとめPDF内ICFも landscape=True。HIRO実機で横向き確認済み。
+
+**議事録8スタイル（A〜H）（marker: meetings-pdf-minutes-styles2-v1 / styles-ah-v1）**: 既存A/B/Cに D/E/F/G/H を追加。
+- A スッキリ(表+見出し) / B ビジネス(決定事項番号強調) / C フォーマル(公的様式罫線) / D サイドバー(左に濃緑情報帯・高級感) / E カード(決定事項強調・ダッシュボード風) / F タイムライン(縦ライン+ドットで議事を追う) / G エグゼクティブ(セリフ体見出し・ローマ数字Ⅰ-Ⅳ・モノトーン・格調) / H モダンミニマル(余白・細アクセント・大きな01-03番号・英語ラベルMEMBERS/AGENDA/DECISIONS/NOTES)。
+- 全スタイル wkhtmltopdf対応(tableベース・Flexbox不使用)。visualizerでモック提示しHIRO選択。
+- style バリデーションを2箇所とも a-h に拡張(marker: meetings-pdf-styles-ah-v1)。
+- フロント: 議事録カードに8スタイルの `<select id="mtgStyleSelect">`。議事録PDFボタン・まとめPDFボタン両方が選択スタイルを使う。MCP確認: a-h 8スタイルとも200、まとめPDFも style指定で200。
+- **HIRO実機のレイアウト目視は要確認**(特に D の濃緑背景ベタ塗りが wkhtmltopdf で出るか、G のセリフ体/ローマ数字、H の大番号)。モックと差異あれば調整。
+
+### 重要な教訓（今回得た）
+- **本番(Cloud Run)とローカルでインストール済みライブラリが違う**。ローカルで `import fitz` が通っても本番に無いことがある。PDF結合等は依存追加不要な poppler コマンド(pdfunite)を第一候補にし、フォールバックを重ねると堅牢。
+- **wkhtmltopdf の用紙向きは CSS @page でなく options の orientation で決まる**。
+- 日本語を含むアンカーはマッチ0になりやすい→ ASCII行(`if style == "c":` 等)を小アンカーに。
+
+### 次にやること（PENDING）
+1. **[着手予定] 対象利用者selectが選択できない**: 患者リスト取得が未実装(selectが空)。次はこれに着手。
+2. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+3. **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→ベースフォントに反映。
+4. **担当者会議のPRO制限**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard パターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトム「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡し要)。**本番マージ前に必須**(現状 全施設にボトム表示)。
+5. 議事録8スタイルの実機レイアウト目視・微調整。アセスメント項目の振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 4dd6778。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。**PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作**。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。
+
+---
+
+## 担当者会議 利用者検索UI・見出し強調（2026-07-06 追記その7）
+
+同日その6の続き。対象利用者の検索UI化、議事録見出しの強調、検索候補の重なり修正。すべてDEV・確認済み。本番未マージ。DEV HEAD = 27c8888。
+
+### 完了（DEV push済み）
+
+**対象利用者を検索UIに（記録入力と同じ操作感）**: 当初selectドロップダウンにしたが、利用者数が多く(DEMO001で52名)選びにくい→ **検索ボックス+候補リスト+選択バッジ**に変更(assessment.htmlの利用者検索UIと同方式)。
+- データは既存API `/api/patients_cache`(get_patients返却: id=patient_profiles.id UUID, user_name, patient_number, user_kana等)を流用。サーバ改修不要。
+- `mtgLoadPatients()` が起動時に配列 `mtgPatientList`(id/name/kana/no) を先読み。`mtgFilterPatients(q)` が名前/ふりがな/番号で絞り込み(50件制限)、`mtgSelectPatient(id)` で hidden input(#mtgPatient) にUUID保持+緑バッジ表示、`mtgClearPatient()` でクリア、`mtgShowPatientById(id)` で保存済み会議を開いた時にバッジ復元。候補外クリックで閉じる。
+- save は従来通り hidden #mtgPatient の値(UUID)を patient_id として送るので変更不要。mtgOpen は `await mtgLoadPatients()` 後に `mtgShowPatientById(m.patient_id)`。startNew は `mtgClearPatient()`。
+
+**検索候補が下のカードに潜る問題を修正(z-index)**: 候補ドロップダウンが次のカード(録音カード等)の下に隠れた。→ 会議情報カードに `id=mtgInfoCard; position:relative; z-index:50`、候補リスト `.mtg-pcands` を z-index:1000 に。会議情報カード全体を後続カード(static)より前面にし、その中の候補を最前面に。**注意: 他画面の検索(記録入力/評価/生活機能check等, eval-candidates等)でも同種の潜り込みが起きている可能性あり。必要なら各画面で同様のz-index対応が要る(未対応)。**
+
+**議事録スタイルの見出しを強調(marker: meetings-pdf-heading-emph-v1)**: 各セクション見出しを太く大きく(D-H)。D `.body .sh` 10.5→12.5pt / E `.ebox .bt` 10.5→12.5pt・`.ecards .cl` 8.5→10pt / F `.tl .h` 10→12.5pt / G `.gsh` 11.5→13.5pt+bold / H `.hdec` 8.5→11pt+bold・`.hlb` 8→9.5pt+bold。数値のみ変更。**A/B/Cは既に見出しが太字+罫線のため未変更**(必要なら追加強調可)。
+
+### 次にやること（PENDING）
+1. **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→ベースフォントに反映。styleと同様に fontsize パラメータをサーバで受けCSSに反映。
+2. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+3. **担当者会議のPRO制限(本番マージ前必須)**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard パターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトム「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡し要)。現状 全施設表示。
+4. **他画面の検索候補z-index**: 記録入力/評価等でも候補が潜るなら対応。
+5. 議事録8スタイル・見出し強調の実機レイアウト目視。A/B/Cの見出し強調(任意)。アセスメント項目振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 27c8888。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。

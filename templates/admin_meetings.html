@@ -1,0 +1,1176 @@
+{% extends "base.html" %}
+{% block title %}担当者会議 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+  .mtg-wrap { max-width: var(--page-max-width, 720px); margin: 0 auto; padding: 16px 14px 90px; }
+  .mtg-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .mtg-head .material-symbols-outlined { color:#2e7d32; font-size:26px; }
+  .mtg-title { font-size:1.15rem; font-weight:800; color:#1e5e26; }
+  .mtg-pro { margin-left:auto; font-size:0.72rem; font-weight:800; color:#7b5cff;
+    background:#efeafe; padding:3px 10px; border-radius:20px; }
+
+  .mtg-card { background:#fff; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    padding:16px 14px; margin-bottom:16px; }
+  .mtg-card h3 { font-size:0.98rem; font-weight:800; color:#1e5e26; margin:0 0 12px;
+    display:flex; align-items:center; gap:7px; }
+  .mtg-card h3 .material-symbols-outlined { font-size:20px; color:#2e7d32; }
+
+  .mtg-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    padding:11px 16px; border:none; border-radius:10px; font-weight:700; font-size:0.95rem;
+    cursor:pointer; background:#2e7d32; color:#fff; }
+  .mtg-btn:active { opacity:0.85; }
+  .mtg-btn[disabled] { opacity:0.45; cursor:default; }
+  .mtg-btn.sec { background:#eaf4ec; color:#1e5e26; }
+  .mtg-btn.rec { background:#d9432f; }
+  .mtg-btn.rec.on { background:#a5271a; animation:mtgpulse 1.3s infinite; }
+  @keyframes mtgpulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .mtg-btn-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  .mtg-field { margin-bottom:12px; }
+  .mtg-field label { display:block; font-size:0.82rem; font-weight:700; color:#4f6b56; margin-bottom:5px; }
+  .mtg-field input, .mtg-field textarea, .mtg-field select {
+    width:100%; padding:10px 11px; border:2px solid #cfe3d4; border-radius:10px;
+    font-size:0.95rem; color:#1e3a24; background:#fff; box-sizing:border-box; font-family:inherit; }
+  .mtg-field textarea { min-height:130px; resize:vertical; line-height:1.6; }
+
+  .mtg-note { font-size:0.78rem; color:#6b7d6f; margin:6px 2px; line-height:1.5; }
+  .mtg-rec-status { font-size:0.85rem; color:#4f6b56; font-weight:600; margin-left:4px; }
+  .mtg-rec-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#d9432f;
+    margin-right:5px; vertical-align:-1px; }
+  .mtg-chunks { font-size:0.78rem; color:#7a8a7d; margin-top:8px; }
+
+  .mtg-empty { text-align:center; color:#8a988c; padding:26px 0; font-size:0.9rem; }
+  .mtg-loading { text-align:center; color:#6b7d6f; padding:18px 0; font-size:0.88rem; }
+  .mtg-spin { display:inline-block; width:16px; height:16px; border:2px solid #cfe3d4;
+    border-top-color:#2e7d32; border-radius:50%; animation:mtgspin 0.8s linear infinite; vertical-align:-3px; margin-right:6px; }
+  @keyframes mtgspin { to { transform:rotate(360deg) } }
+
+  /* 会議一覧 */
+  .mtg-list-item { display:flex; align-items:center; gap:10px; padding:12px 12px;
+    border:2px solid #eef2ee; border-radius:12px; margin-bottom:8px; cursor:pointer; background:#fff; }
+  .mtg-list-item:active { background:#f6faf7; }
+  .mtg-list-item .mi-icon { color:#2e7d32; font-size:22px; }
+  .mtg-list-item .mi-main { flex:1; min-width:0; }
+  .mtg-list-item .mi-title { font-weight:700; color:#1e3a24; font-size:0.92rem;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mtg-list-item .mi-date { font-size:0.76rem; color:#7a8a7d; margin-top:2px; }
+
+  /* ステップ表示切替 */
+  .mtg-step { display:none; }
+  .mtg-step.active { display:block; }
+
+  /* 分類結果 仮表示(次の塊でボードに置き換え) */
+  #mtgClassifyResult { white-space:pre-wrap; font-size:0.8rem; color:#333;
+    background:#f7f9f7; border-radius:10px; padding:12px; max-height:340px; overflow:auto; }
+
+  /* 付箋ボード (meetings-board-v1) */
+  #mtgBoard { min-height:40px; }
+  /* ICF生活機能モデル図レイアウト (meetings-model-v1) */
+  .mtg-model-top { display:grid; grid-template-columns:1fr; max-width:60%; margin:0 auto; }
+  .mtg-model-mid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .mtg-model-bot { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  @media (max-width:520px){
+    .mtg-model-top { max-width:100%; }
+    .mtg-model-mid { grid-template-columns:1fr; }
+    .mtg-model-bot { grid-template-columns:1fr; }
+  }
+  .mtg-model-arrows { text-align:center; color:#9aa89d; font-size:1rem; line-height:1.1; }
+  .mtg-model-arrows.mtg-arrows-3 { display:flex; justify-content:space-around; }
+  .mtg-model-note { margin-top:8px; font-size:0.7rem; color:#7a8a7d; text-align:center; }
+  .mtg-board-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  @media (max-width:520px){ .mtg-board-grid { grid-template-columns:1fr; } }
+  .mtg-zone { background:#f4f7f4; border-radius:10px; padding:8px; min-height:120px; }
+  .mtg-zone.dragover { outline:2px dashed #2e7d32; outline-offset:-2px; background:#eaf4ec; }
+  .mtg-zone-label { font-size:0.78rem; font-weight:700; margin-bottom:6px; }
+  .mtg-sticky { border-radius:8px; padding:7px 8px; margin-bottom:6px; font-size:0.8rem;
+    cursor:grab; touch-action:none; border:1px solid transparent; }
+  .mtg-sticky:active { cursor:grabbing; }
+  .mtg-sticky.dragging { opacity:0.45; }
+  .mtg-sticky .st-code { font-weight:700; }
+  .mtg-sticky .st-src { font-size:0.7rem; opacity:0.8; margin-top:3px; }
+  .mtg-sticky .st-row { margin-top:5px; display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  .mtg-sticky .st-btn { font-size:0.68rem; padding:2px 7px; border-radius:6px;
+    border:0.5px solid #cfd8cf; background:#fff; cursor:pointer; color:#33453a; }
+  .mtg-sticky .st-btn.on { background:#9FE1CB; border-color:#0F6E56; color:#04342C; }
+  .mtg-sticky .st-alt { font-size:0.68rem; padding:2px 7px; border-radius:6px;
+    border:0.5px dashed #BA7517; background:#FAEEDA; color:#412402; cursor:pointer; }
+  .mtg-zone-empty { border:1px dashed #b7c6ba; border-radius:8px; padding:12px 6px;
+    font-size:0.72rem; color:#8a988c; text-align:center; }
+  .mtg-zone-add { width:100%; font-size:0.7rem; padding:5px; border-radius:6px;
+    border:0.5px dashed #b7c6ba; background:transparent; color:#5f7a63; cursor:pointer; margin-top:2px; }
+  /* ICFコード検索モーダル(簡易) */
+  .mtg-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex;
+    align-items:center; justify-content:center; z-index:9999; padding:16px; }
+  .mtg-modal { background:#fff; border-radius:14px; padding:16px; width:100%; max-width:440px;
+    max-height:80vh; display:flex; flex-direction:column; }
+  .mtg-modal h4 { margin:0 0 10px; font-size:0.95rem; color:#1e5e26; }
+  .mtg-modal input { width:100%; padding:9px 11px; border:2px solid #cfe3d4; border-radius:9px;
+    font-size:0.9rem; box-sizing:border-box; margin-bottom:8px; }
+  .mtg-modal-list { overflow:auto; flex:1; }
+  .mtg-modal-item { padding:8px 9px; border-bottom:1px solid #eef2ee; cursor:pointer; font-size:0.82rem; }
+  .mtg-modal-item:active { background:#f0f6f1; }
+  .mtg-modal-close { margin-top:8px; padding:9px; border:none; border-radius:9px;
+    background:#eaf4ec; color:#1e5e26; font-weight:700; cursor:pointer; }
+  /* アセスメントシート 項目編集 (meetings-assessment-v1) */
+  .mtg-asmt-item { border:1px solid #e3eae4; border-radius:10px; padding:9px 10px; margin-bottom:8px; background:#fff; }
+  .mtg-asmt-item.unrec { background:#f6f7f6; border-style:dashed; }
+  .mtg-asmt-head { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+  .mtg-asmt-heading { flex:1; font-size:0.82rem; font-weight:700; color:#1e5e26; border:none;
+    background:transparent; padding:2px 0; }
+  .mtg-asmt-heading:focus { outline:1px solid #cfe3d4; border-radius:4px; }
+  .mtg-asmt-badge { font-size:0.62rem; padding:1px 6px; border-radius:5px; background:#eee; color:#888; }
+  .mtg-asmt-body { width:100%; min-height:44px; border:1px solid #e3eae4; border-radius:8px;
+    padding:7px 8px; font-size:0.83rem; color:#33453a; box-sizing:border-box; font-family:inherit; resize:vertical; line-height:1.5; }
+  .mtg-asmt-del { font-size:0.68rem; padding:2px 7px; border-radius:6px; border:0.5px solid #e0b4b4;
+    background:#fbf1f1; color:#a33; cursor:pointer; }
+  .mtg-asmt-add { width:100%; padding:8px; border-radius:8px; border:0.5px dashed #b7c6ba;
+    background:transparent; color:#5f7a63; cursor:pointer; font-size:0.82rem; margin-top:2px; }
+  /* 分類の入力元トグル */
+  .mtg-src-toggle { display:flex; gap:6px; margin-bottom:10px; }
+  .mtg-src-toggle button { flex:1; padding:7px; border-radius:8px; border:0.5px solid #cfd8cf;
+    background:#fff; font-size:0.8rem; cursor:pointer; color:#33453a; }
+  .mtg-src-toggle button.on { border:2px solid #2e7d32; background:#eaf4ec; color:#1e5e26; font-weight:700; }
+  /* 議事録作成中のタスカルくんローディング */
+  .mtg-tsk-overlay { position:absolute; inset:0; background:rgba(255,255,255,0.94); border-radius:14px;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:6px; overflow:hidden; z-index:20; }
+  .mtg-tsk-overlay.is-active { display:flex; }
+  .mtg-tsk-lane { position:relative; width:100%; height:130px; }
+  .mtg-tsk-runner { position:absolute; bottom:10px; animation:mtgTskRun 3.2s ease-in-out infinite; z-index:3; }
+  .mtg-tsk-flip { animation:mtgTskFlip 3.2s ease-in-out infinite; }
+  .mtg-tsk-bob { animation:mtgTskBob 0.32s ease-in-out infinite; transform-origin:bottom center; }
+  .mtg-tsk-runner img { width:58px; height:58px; object-fit:contain; filter:brightness(0) opacity(0.5); display:block; }
+  .mtg-tsk-doc { position:absolute; left:50%; margin-left:-14px; width:28px; height:9px; background:#fff;
+    border:1.5px solid #7a8a6f; border-radius:2px; }
+  .mtg-tsk-label { font-size:1rem; font-weight:700; color:#202124; }
+  .mtg-tsk-sub { font-size:0.78rem; color:#5f6368; }
+  @keyframes mtgTskRun { 0%{left:8%;} 50%{left:calc(92% - 58px);} 100%{left:8%;} }
+  @keyframes mtgTskFlip { 0%,49%{transform:scaleX(1);} 50%,99%{transform:scaleX(-1);} 100%{transform:scaleX(1);} }
+  @keyframes mtgTskBob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
+  @keyframes mtgTskStack1 { 0%,10%{opacity:0;transform:translateY(-30px) scale(0.6);} 18%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack2 { 0%,32%{opacity:0;transform:translateY(-30px) scale(0.6);} 40%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack3 { 0%,54%{opacity:0;transform:translateY(-30px) scale(0.6);} 62%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes mtgTskStack4 { 0%,76%{opacity:0;transform:translateY(-30px) scale(0.6);} 84%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  /* 対象利用者 検索UI */
+  .mtg-psearch { position:relative; }
+  .mtg-psearch input { width:100%; padding:9px 12px 9px 34px; border:1px solid #cfd8cf; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
+  .mtg-psearch .sicon { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:#80868b; font-size:18px; }
+  .mtg-pbadge { display:none; background:#eaf4ec; border:1.5px solid #2e7d32; border-radius:10px; padding:8px 12px; margin-top:6px; align-items:center; gap:8px; }
+  .mtg-pbadge.show { display:flex; }
+  .mtg-pname { font-weight:700; font-size:0.9rem; flex:1; color:#1e5e26; }
+  .mtg-pclear { background:none; border:none; cursor:pointer; padding:0; color:#80868b; font-size:18px; line-height:1; }
+  .mtg-pcands { position:absolute; z-index:1000; width:100%; display:none; border:1px solid #e0e0e0; border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.15); margin-top:2px; box-sizing:border-box; }
+  .mtg-pcands.show { display:block; }
+  .mtg-pcand { display:block; width:100%; padding:12px 14px; font-size:0.86rem; text-align:left; background:#fff; border:none; border-bottom:1px solid #f0f0f0; cursor:pointer; font-family:inherit; color:#202124; }
+  .mtg-pcand:last-child { border-bottom:none; }
+  .mtg-pcand:active { background:#eaf4ec; }
+  .mtg-pcand .kana { color:#80868b; font-size:0.76rem; margin-left:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mtg-wrap">
+  <div class="mtg-head">
+    <span class="material-symbols-outlined">groups</span>
+    <span class="mtg-title">担当者会議 ICF分類</span>
+    <span class="mtg-pro">PRO</span>
+  </div>
+
+  <!-- ========== 一覧ビュー ========== -->
+  <div id="mtgListView">
+    <div class="mtg-btn-row" style="margin-bottom:14px;">
+      <button class="mtg-btn" onclick="mtgStartNew()">
+        <span class="material-symbols-outlined" style="font-size:20px;">add</span>新規会議
+      </button>
+    </div>
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">history</span>会議の記録</h3>
+      <div id="mtgListBody">
+        <div class="mtg-loading"><span class="mtg-spin"></span>読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 編集ビュー(新規/既存) ========== -->
+  <div id="mtgEditView" style="display:none;">
+    <div class="mtg-btn-row" style="margin-bottom:14px;">
+      <button class="mtg-btn sec" onclick="mtgBackToList()">
+        <span class="material-symbols-outlined" style="font-size:20px;">arrow_back</span>一覧に戻る
+      </button>
+    </div>
+
+    <!-- 会議の基本情報 -->
+    <div class="mtg-card" id="mtgInfoCard" style="position:relative; z-index:50;">
+      <h3><span class="material-symbols-outlined">edit_note</span>会議情報</h3>
+      <div class="mtg-field">
+        <label>タイトル</label>
+        <input type="text" id="mtgTitle" placeholder="担当者会議" />
+      </div>
+      <div class="mtg-field">
+        <label>開催日</label>
+        <input type="date" id="mtgDate" />
+      </div>
+      <div class="mtg-field">
+        <label>対象利用者（任意）</label>
+        <div class="mtg-psearch">
+          <span class="material-symbols-outlined sicon">search</span>
+          <input type="text" id="mtgPatientSearch" placeholder="名前・ふりがな・番号で検索..."
+                 autocomplete="off"
+                 oninput="if(!this._composing)mtgFilterPatients(this.value)"
+                 oncompositionstart="this._composing=true"
+                 oncompositionend="this._composing=false;mtgFilterPatients(this.value)"
+                 onfocus="mtgFilterPatients(this.value)">
+          <div id="mtgPatientCands" class="mtg-pcands"></div>
+        </div>
+        <div id="mtgPatientBadge" class="mtg-pbadge">
+          <span class="material-symbols-outlined" style="color:#2e7d32;font-size:18px;">person</span>
+          <span class="mtg-pname" id="mtgPatientName"></span>
+          <button type="button" class="mtg-pclear" onclick="mtgClearPatient()">
+            <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+          </button>
+        </div>
+        <input type="hidden" id="mtgPatient" value="">
+      </div>
+    </div>
+
+    <!-- ステップ1: 録音 -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">mic</span>録音して文字起こし</h3>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn rec" id="mtgRecBtn" onclick="mtgToggleRec()">
+          <span class="material-symbols-outlined" style="font-size:20px;">mic</span>
+          <span id="mtgRecLabel">録音開始</span>
+        </button>
+        <button class="mtg-btn sec" id="mtgFileBtn" onclick="document.getElementById('mtgAudioFile').click()">
+          <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>音声ファイル
+        </button>
+        <input type="file" id="mtgAudioFile" accept="audio/*" style="display:none;" onchange="mtgUploadAudio(this.files[0])" />
+        <span class="mtg-rec-status" id="mtgRecStatus"></span>
+      </div>
+      <div class="mtg-chunks" id="mtgChunks"></div>
+      <div class="mtg-note">
+        その場で録音するか、既にある会議の音声ファイルを選んで文字起こしできます。
+        長い会議にも対応できるよう、数分ごとに区切って順に処理します。
+        マイク録音では使用許可を求められたら「許可」してください。
+      </div>
+    </div>
+
+    <!-- ステップ2: 文字起こし -->
+    <div class="mtg-card">
+      <h3><span class="material-symbols-outlined">subject</span>文字起こし</h3>
+      <div class="mtg-field">
+        <textarea id="mtgTranscript" placeholder="録音の文字起こしがここに入ります。直接入力・貼り付けも可能です。"></textarea>
+      </div>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn" id="mtgSummarizeBtn" onclick="mtgSummarize()">
+          <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成
+        </button>
+      </div>
+    </div>
+
+    <!-- ステップ3: 議事録 -->
+    <div class="mtg-card" style="position:relative;">
+      <h3><span class="material-symbols-outlined">description</span>議事録</h3>
+      <div class="mtg-tsk-overlay" id="mtgTskOverlay">
+        <div class="mtg-tsk-lane">
+          <div class="mtg-tsk-doc" style="bottom:14px; animation:mtgTskStack1 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:23px; animation:mtgTskStack2 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:32px; animation:mtgTskStack3 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-doc" style="bottom:41px; animation:mtgTskStack4 3.2s ease-in-out infinite;"></div>
+          <div class="mtg-tsk-runner">
+            <div class="mtg-tsk-flip">
+              <div class="mtg-tsk-bob">
+                <img src="{{ url_for('static', filename='tasukaruカラー.png') }}" alt="">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mtg-tsk-label">議事録を作成中…</div>
+        <div class="mtg-tsk-sub">タスカルくんが書類をまとめています</div>
+      </div>
+      <div class="mtg-field">
+        <textarea id="mtgMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。"></textarea>
+      </div>
+      <div class="mtg-btn-row">
+        <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
+          <span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成
+        </button>
+      </div>
+      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
+        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
+            <option value="a">A ｜ スッキリ（表＋見出し）</option>
+            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
+            <option value="c">C ｜ フォーマル（公的様式風）</option>
+            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
+            <option value="e">E ｜ カード（決定事項を強調）</option>
+            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
+            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
+            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
+          </select>
+          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ステップ4: アセスメントシート(課題分析23項目) -->
+    <div class="mtg-card" id="mtgAssessCard" style="display:none;">
+      <h3><span class="material-symbols-outlined">assignment_ind</span>アセスメントシート</h3>
+      <div class="mtg-note" style="margin-top:0;">
+        議事録と文字起こしから自動作成した下書きです。すべての項目を自由に修正・削除・追加できます。
+        会議で語られていない項目は「（未記載）」です。事実に基づき職員が補完してください。
+      </div>
+      <div id="mtgAssessList"></div>
+      <button class="mtg-asmt-add" onclick="mtgAssessAddItem()">＋ 項目を追加</button>
+      <div class="mtg-note" style="margin-bottom:4px;">ICF分類の入力元を選べます:</div>
+      <div class="mtg-src-toggle">
+        <button id="mtgSrcAssess" class="on" onclick="mtgSetSrc('assessment')">アセスメントから分類</button>
+        <button id="mtgSrcMinutes" onclick="mtgSetSrc('minutes')">議事録から分類</button>
+      </div>
+      <div class="mtg-btn-row" style="margin-top:12px;">
+        <button class="mtg-btn" id="mtgClassifyBtn" onclick="mtgClassify()">
+          <span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する
+        </button>
+        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfAssess" style="display:none;" onclick="mtgPdf('assessment')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>アセスメントPDF
+        </button>
+      </div>
+    </div>
+
+    <!-- ステップ4: 分類結果(次の塊で付箋ボードに置換) -->
+    <div class="mtg-card" id="mtgBoardCard" style="display:none;">
+      <h3><span class="material-symbols-outlined">dashboard</span>ICF分類ボード</h3>
+      <div id="mtgBoard">
+        <div id="mtgClassifyResult"></div>
+      </div>
+      <div class="mtg-btn-row" style="margin-top:14px;">
+        <button class="mtg-btn" id="mtgSaveBtn" onclick="mtgSave()">
+          <span class="material-symbols-outlined" style="font-size:20px;">save</span>保存
+        </button>
+        <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfIcf" style="display:none;" onclick="mtgPdf('icf')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>ICF図PDF
+        </button>
+      </div>
+      <div id="mtgPdfAll" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cfd8cf;">
+        <button class="mtg-btn" style="width:100%; background:#2e7d32; color:#fff; border-color:#2e7d32;" onclick="mtgPdf('all', (document.getElementById('mtgStyleSelect')||{}).value || 'a')">
+          <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>議事録・アセスメント・ICF図をまとめてPDF
+        </button>
+        <div style="font-size:0.72rem; color:#5f7a63; margin-top:5px; text-align:center;">3つの記録を1つのPDFにまとめて印刷・保存できます</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 状態 =====
+let mtgState = {
+  sessionId: null,      // 録音セッションUUID(チャンクを束ねる)
+  chunkIndex: 0,
+  recorder: null,
+  recording: false,
+  transcriptParts: {},  // chunk_index -> text (順序保証のため辞書で集約)
+  classifyResults: [],  // 分類API生結果
+  boardCards: [],       // ボード上の付箋状態(ドラッグ/追加/承認を反映。保存の正)
+  cardSeq: 1,           // 付箋のローカル連番
+  assessment: [],       // アセスメント23項目(項目編集の正)
+  asmtSeq: 1,           // アセスメント項目のローカル連番
+  srcType: 'assessment',// ICF分類の入力元 assessment|minutes
+  minutesStruct: null,  // 構造化議事録(3スタイルPDF用)
+  editingMeetingId: null,
+};
+
+// ICFマスタ(手動追加のコード選択用。ページロードで一度取得しJSに保持)
+let mtgIcfMaster = [];
+const MTG_COMP_NAME = { b:'心身機能', s:'身体構造', d:'活動と参加', e:'環境因子' };
+const MTG_COMP_COLOR = {
+  b:{bg:'#EEEDFE', tx:'#26215C', line:'#3C3489'},
+  s:{bg:'#E1F5EE', tx:'#04342C', line:'#0F6E56'},
+  d:{bg:'#FAECE7', tx:'#4A1B0C', line:'#993C1D'},
+  e:{bg:'#E6F1FB', tx:'#042C53', line:'#185FA5'},
+};
+// ICF生活機能モデル図の6スロット定義
+const MTG_SLOTS = {
+  health:        { name:'健康状態', sub:'病気・疾患・けが', bg:'#F1EFE8', tx:'#2C2C2A', line:'#5F5E5A', codeless:true },
+  bs:            { name:'心身機能・身体構造', sub:'b・s', bg:'#EEEDFE', tx:'#26215C', line:'#3C3489' },
+  activity:      { name:'活動', sub:'している/できる', bg:'#FAECE7', tx:'#4A1B0C', line:'#993C1D' },
+  participation: { name:'参加', sub:'役割・社会', bg:'#FBEAF0', tx:'#4B1528', line:'#72243E' },
+  environment:   { name:'環境因子', sub:'e', bg:'#E6F1FB', tx:'#042C53', line:'#185FA5' },
+  personal:      { name:'個人因子', sub:'年齢・性格など', bg:'#E1F5EE', tx:'#04342C', line:'#0F6E56', codeless:true },
+};
+// ICF構成要素(b/s/d/e) → 初期スロット
+function mtgSlotOf(component, savedSlot){
+  if (savedSlot && MTG_SLOTS[savedSlot]) return savedSlot;
+  if (component === 'b' || component === 's') return 'bs';
+  if (component === 'd') return 'activity';   // 初期は活動。人が参加へ動かせる
+  if (component === 'e') return 'environment';
+  return 'bs';
+}
+
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// ===== ビュー切替 =====
+function mtgShow(view) {
+  document.getElementById('mtgListView').style.display = (view === 'list') ? 'block' : 'none';
+  document.getElementById('mtgEditView').style.display = (view === 'edit') ? 'block' : 'none';
+}
+function mtgBackToList() {
+  if (mtgState.recording) { alert('録音中です。停止してから戻ってください。'); return; }
+  mtgShow('list');
+  mtgLoadList();
+}
+
+// ===== 一覧 =====
+async function mtgLoadList() {
+  const body = document.getElementById('mtgListBody');
+  body.innerHTML = '<div class="mtg-loading"><span class="mtg-spin"></span>読み込み中...</div>';
+  try {
+    const r = await fetch('/api/meeting/list');
+    const d = await r.json();
+    if (d.status !== 'success') { body.innerHTML = '<div class="mtg-empty">'+(d.message||'読み込みに失敗しました')+'</div>'; return; }
+    if (!d.meetings.length) { body.innerHTML = '<div class="mtg-empty">まだ会議の記録はありません</div>'; return; }
+    body.innerHTML = d.meetings.map(m => {
+      const dt = m.meeting_date || (m.created_at||'').slice(0,10);
+      const title = (m.title||'担当者会議').replace(/</g,'&lt;');
+      const mid = String(m.id).replace(/"/g,'&quot;');
+      return '<div class="mtg-list-item" data-mid="'+mid+'">'
+        + '<span class="material-symbols-outlined mi-icon">groups</span>'
+        + '<div class="mi-main"><div class="mi-title">'+title+'</div>'
+        + '<div class="mi-date">'+dt+'</div></div>'
+        + '<span class="material-symbols-outlined" style="color:#c3d3c6;">chevron_right</span></div>';
+    }).join('');
+    // イベント委譲: onclick属性を使わず引用符問題を回避
+    body.querySelectorAll('.mtg-list-item').forEach(el => {
+      el.addEventListener('click', () => mtgOpen(el.getAttribute('data-mid')));
+    });
+  } catch(e) {
+    body.innerHTML = '<div class="mtg-empty">読み込みエラー: '+e+'</div>';
+  }
+}
+
+// ===== 新規 =====
+function mtgStartNew() {
+  mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
+               transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
+               assessment: [], asmtSeq: 1, srcType: 'assessment',
+               minutesStruct: null,
+               editingMeetingId: null };
+  document.getElementById('mtgTitle').value = '';
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('mtgDate').value = today;
+  mtgClearPatient();
+  document.getElementById('mtgTranscript').value = '';
+  document.getElementById('mtgMinutes').value = '';
+  document.getElementById('mtgAssessCard').style.display = 'none';
+  document.getElementById('mtgAssessList').innerHTML = '';
+  document.getElementById('mtgBoardCard').style.display = 'none';
+  document.getElementById('mtgBoard').innerHTML = '';
+  document.getElementById('mtgChunks').textContent = '';
+  document.getElementById('mtgRecStatus').textContent = '';
+  ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf','mtgPdfAll'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  mtgShow('edit');
+}
+
+// ===== 既存を開く =====
+async function mtgOpen(meetingId) {
+  try {
+    const r = await fetch('/api/meeting/get?meeting_id='+encodeURIComponent(meetingId));
+    const d = await r.json();
+    if (d.status !== 'success') { alert(d.message||'読み込みに失敗しました'); return; }
+    mtgStartNew();
+    mtgState.editingMeetingId = meetingId;
+    const m = d.meeting;
+    document.getElementById('mtgTitle').value = m.title || '';
+    document.getElementById('mtgDate').value = m.meeting_date || '';
+    await mtgLoadPatients();  // 利用者データを確実に用意してから復元
+    mtgShowPatientById(m.patient_id || '');
+    document.getElementById('mtgTranscript').value = m.transcript || '';
+    document.getElementById('mtgMinutes').value = m.minutes || '';
+    // 構造化議事録の復元(3スタイルPDF用)
+    if (m.minutes_struct) {
+      try { mtgState.minutesStruct = (typeof m.minutes_struct === 'string') ? JSON.parse(m.minutes_struct) : m.minutes_struct; }
+      catch(e) { mtgState.minutesStruct = null; }
+    }
+    // アセスメント復元(JSON文字列 → 項目配列)
+    if (m.assessment) {
+      try {
+        const arr = (typeof m.assessment === 'string') ? JSON.parse(m.assessment) : m.assessment;
+        if (Array.isArray(arr) && arr.length) {
+          mtgState.assessment = arr.map(it => ({
+            id: mtgState.asmtSeq++,
+            heading: it.heading || '',
+            body: it.body || '（未記載）',
+            recorded: !!it.recorded && (it.body||'') !== '（未記載）',
+          }));
+          document.getElementById('mtgAssessCard').style.display = 'block';
+          mtgRenderAssessment();
+        }
+      } catch(e) { /* 壊れたJSONは無視 */ }
+    }
+    // 保存済み付箋を boardCards に復元してボード描画
+    if (d.stickies && d.stickies.length) {
+      mtgState.boardCards = d.stickies.map(s => ({
+        id: mtgState.cardSeq++,
+        icf_code: s.icf_code || '',
+        title_ja: mtgMasterTitle(s.icf_code) || (s.icf_code ? '' : (s.note || 'メモ')),
+        component: s.board_component || mtgCompOf(s.icf_code) || 'b',
+        slot: mtgSlotOf(s.board_component || mtgCompOf(s.icf_code) || 'b', s.board_slot),
+        source_text: s.source_text || '',
+        note: s.note || '',
+        confidence: s.confidence || 'auto',
+        confirmed: !!s.confirmed,
+        alt_icf_code: s.alt_icf_code || null,
+        alt_title_ja: mtgMasterTitle(s.alt_icf_code) || null,
+        alt_reason: s.alt_reason || null,
+        sort_order: s.sort_order || 0,
+      }));
+      document.getElementById('mtgBoardCard').style.display = 'block';
+      mtgRenderBoard();
+    }
+    mtgUpdatePdfButtons();
+    mtgShow('edit');
+  } catch(e) { alert('読み込みエラー: '+e); }
+}
+
+// PDFボタンの表示制御(保存済み会議=editingMeetingIdがある時のみ)
+function mtgUpdatePdfButtons() {
+  const show = !!mtgState.editingMeetingId;
+  const minutesOk = show && !!document.getElementById('mtgMinutes').value.trim();
+  const assessOk = show && mtgState.assessment.length > 0;
+  const icfOk = show && mtgState.boardCards.length > 0;
+  document.getElementById('mtgPdfMinutes').style.display = minutesOk ? '' : 'none';
+  document.getElementById('mtgPdfAssess').style.display = assessOk ? '' : 'none';
+  document.getElementById('mtgPdfIcf').style.display = icfOk ? '' : 'none';
+  const allEl = document.getElementById('mtgPdfAll');
+  if (allEl) allEl.style.display = (minutesOk && assessOk && icfOk) ? '' : 'none';
+}
+
+// PDF出力(保存済みデータからサーバ生成)
+function mtgPdf(type, style) {
+  if (!mtgState.editingMeetingId) {
+    alert('先に保存してください。PDFは保存された内容から作成されます。');
+    return;
+  }
+  let url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type + '&_t=' + Date.now();
+  if (style) url += '&style=' + style;
+  window.open(url, '_blank');
+}
+
+// ===== 録音(チャンク分割) =====
+const MTG_CHUNK_MS = 5 * 60 * 1000; // 5分ごとに区切る
+
+async function mtgToggleRec() {
+  if (mtgState.recording) { mtgStopRec(); return; }
+  await mtgStartRec();
+}
+
+async function mtgStartRec() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mtgState.recording = true;
+    document.getElementById('mtgRecBtn').classList.add('on');
+    document.getElementById('mtgRecLabel').textContent = '録音停止';
+    document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...';
+
+    const startChunkRecorder = () => {
+      if (!mtgState.recording) { stream.getTracks().forEach(t=>t.stop()); return; }
+      const rec = new MediaRecorder(stream);
+      const blobs = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) blobs.push(e.data); };
+      rec.onstop = async () => {
+        if (blobs.length) {
+          const blob = new Blob(blobs, { type: blobs[0].type || 'audio/webm' });
+          await mtgSendChunk(blob);
+        }
+        if (mtgState.recording) startChunkRecorder(); // 次のチャンクへ
+      };
+      mtgState.recorder = rec;
+      rec.start();
+      // 5分後に区切る
+      mtgState._chunkTimer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, MTG_CHUNK_MS);
+    };
+    startChunkRecorder();
+  } catch(e) {
+    alert('マイクを使用できません: '+e);
+    mtgState.recording = false;
+  }
+}
+
+function mtgStopRec() {
+  mtgState.recording = false;
+  document.getElementById('mtgRecBtn').classList.remove('on');
+  document.getElementById('mtgRecLabel').textContent = '録音開始';
+  document.getElementById('mtgRecStatus').textContent = '文字起こし処理中...';
+  clearTimeout(mtgState._chunkTimer);
+  if (mtgState.recorder && mtgState.recorder.state === 'recording') {
+    mtgState.recorder.stop(); // onstopで最後のチャンクを送信
+  }
+}
+
+async function mtgSendChunk(blob) {
+  const idx = mtgState.chunkIndex++;
+  const fd = new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.webm');
+  fd.append('session_id', mtgState.sessionId);
+  fd.append('chunk_index', idx);
+  document.getElementById('mtgChunks').textContent = 'チャンク送信中... ('+(idx+1)+')';
+  try {
+    const r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
+      mtgRebuildTranscript();
+      document.getElementById('mtgChunks').textContent = '文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
+    } else {
+      document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'の文字起こし失敗: '+(d.message||'');
+    }
+  } catch(e) {
+    document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'送信エラー: '+e;
+  }
+  if (!mtgState.recording) document.getElementById('mtgRecStatus').textContent = '文字起こし完了';
+}
+
+// ===== 音声ファイルのアップロード(ブラウザで時間分割→順次文字起こし) =====
+const MTG_FILE_CHUNK_SEC = 300; // 5分ごとに分割
+
+async function mtgUploadAudio(file) {
+  if (!file) return;
+  document.getElementById('mtgAudioFile').value = ''; // 同じファイル再選択できるよう
+  const statusEl = document.getElementById('mtgRecStatus');
+  const chunksEl = document.getElementById('mtgChunks');
+  statusEl.textContent = '音声を読み込み中...';
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    const arrBuf = await file.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(arrBuf);
+    const sr = audioBuf.sampleRate;
+    const totalSec = audioBuf.duration;
+    const numChunks = Math.max(1, Math.ceil(totalSec / MTG_FILE_CHUNK_SEC));
+    statusEl.innerHTML = '<span class="mtg-rec-dot"></span>文字起こし中...';
+    chunksEl.textContent = '全'+numChunks+'チャンクを処理します...';
+    for (let i = 0; i < numChunks; i++) {
+      const startSec = i * MTG_FILE_CHUNK_SEC;
+      const endSec = Math.min(totalSec, startSec + MTG_FILE_CHUNK_SEC);
+      const wavBlob = mtgSliceToWav(audioBuf, startSec, endSec);
+      chunksEl.textContent = 'チャンク '+(i+1)+'/'+numChunks+' を文字起こし中...';
+      await mtgSendFileChunk(wavBlob, i);
+    }
+    statusEl.textContent = '文字起こし完了';
+    chunksEl.textContent = '完了: '+Object.keys(mtgState.transcriptParts).length+'チャンク';
+    ctx.close();
+  } catch(e) {
+    statusEl.textContent = '';
+    alert('音声ファイルの処理に失敗しました: '+e);
+  }
+}
+
+// AudioBufferの一部区間をWAV(16bit PCM mono)に変換
+function mtgSliceToWav(audioBuf, startSec, endSec) {
+  const sr = audioBuf.sampleRate;
+  const startF = Math.floor(startSec * sr);
+  const endF = Math.floor(endSec * sr);
+  const len = endF - startF;
+  // モノラルにミックスダウン
+  const ch = audioBuf.numberOfChannels;
+  const out = new Float32Array(len);
+  for (let c = 0; c < ch; c++) {
+    const data = audioBuf.getChannelData(c);
+    for (let i = 0; i < len; i++) out[i] += data[startF + i] / ch;
+  }
+  // 16bit PCM WAV
+  const buffer = new ArrayBuffer(44 + len * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + len*2, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sr, true); view.setUint32(28, sr*2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, len*2, true);
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    let s = Math.max(-1, Math.min(1, out[i]));
+    view.setInt16(off, s < 0 ? s*0x8000 : s*0x7FFF, true); off += 2;
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+async function mtgSendFileChunk(blob, idx) {
+  const fd = new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.wav');
+  fd.append('session_id', mtgState.sessionId);
+  fd.append('chunk_index', mtgState.chunkIndex++);
+  try {
+    const r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
+      mtgRebuildTranscript();
+    }
+  } catch(e) { /* 1チャンク失敗しても続行 */ }
+}
+
+// チャンクを番号順に連結してtextareaへ(手編集は録音停止後を想定)
+function mtgRebuildTranscript() {
+  const keys = Object.keys(mtgState.transcriptParts).map(Number).sort((a,b)=>a-b);
+  const joined = keys.map(k => mtgState.transcriptParts[k]).filter(Boolean).join('\n');
+  document.getElementById('mtgTranscript').value = joined;
+}
+
+// ===== 議事録生成 =====
+async function mtgSummarize() {
+  const transcript = document.getElementById('mtgTranscript').value.trim();
+  if (!transcript) { alert('先に文字起こしを入力してください'); return; }
+  const btn = document.getElementById('mtgSummarizeBtn');
+  const overlay = document.getElementById('mtgTskOverlay');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
+  if (overlay) overlay.classList.add('is-active');
+  try {
+    const r = await fetch('/api/meeting/summarize', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ transcript })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      document.getElementById('mtgMinutes').value = d.minutes || '';
+      mtgState.minutesStruct = d.minutes_struct || null;
+    } else { alert(d.message || '議事録の作成に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  if (overlay) overlay.classList.remove('is-active');
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成';
+}
+
+// ===== アセスメント生成(議事録+文字起こし) =====
+async function mtgAssess() {
+  const minutes = document.getElementById('mtgMinutes').value.trim();
+  const transcript = document.getElementById('mtgTranscript').value.trim();
+  if (!minutes && !transcript) { alert('先に議事録または文字起こしを作成してください'); return; }
+  const btn = document.getElementById('mtgAssessBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
+  try {
+    const r = await fetch('/api/meeting/assessment', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ minutes, transcript })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.assessment = (d.assessment||[]).map(it => ({
+        id: mtgState.asmtSeq++,
+        heading: it.heading || '',
+        body: it.body || '（未記載）',
+        recorded: !!it.recorded && (it.body||'') !== '（未記載）',
+      }));
+      document.getElementById('mtgAssessCard').style.display = 'block';
+      mtgRenderAssessment();
+    } else { alert(d.message || 'アセスメントの作成に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成';
+}
+
+// アセスメント描画(項目ごとに編集・削除)
+function mtgRenderAssessment() {
+  const wrap = document.getElementById('mtgAssessList');
+  wrap.innerHTML = mtgState.assessment.map(it => {
+    const unrec = !it.recorded;
+    return '<div class="mtg-asmt-item'+(unrec?' unrec':'')+'" data-aid="'+it.id+'">'
+      + '<div class="mtg-asmt-head">'
+      + '<input class="mtg-asmt-heading" data-ah="'+it.id+'" value="'+mtgEsc(it.heading)+'" />'
+      + (unrec ? '<span class="mtg-asmt-badge">未記載</span>' : '')
+      + '<button class="mtg-asmt-del" data-adel="'+it.id+'">削除</button>'
+      + '</div>'
+      + '<textarea class="mtg-asmt-body" data-ab="'+it.id+'" placeholder="（未記載）事実に基づき記入できます">'+mtgEsc(it.body==='（未記載）'?'':it.body)+'</textarea>'
+      + '</div>';
+  }).join('');
+  // 配線
+  wrap.querySelectorAll('[data-ab]').forEach(t=>t.onchange=()=>{
+    const it=mtgState.assessment.find(x=>String(x.id)===t.dataset.ab);
+    if(it){ const v=t.value.trim(); it.body = v || '（未記載）'; it.recorded = !!v;
+      // 未記載↔記載でスタイルが変わるので再描画
+      mtgRenderAssessment(); }
+  });
+  wrap.querySelectorAll('[data-ah]').forEach(h=>h.onchange=()=>{
+    const it=mtgState.assessment.find(x=>String(x.id)===h.dataset.ah);
+    if(it){ it.heading=h.value.trim(); }
+  });
+  wrap.querySelectorAll('[data-adel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('この項目を削除しますか？')) return;
+    mtgState.assessment = mtgState.assessment.filter(x=>String(x.id)!==b.dataset.adel);
+    mtgRenderAssessment();
+  });
+}
+
+function mtgAssessAddItem() {
+  mtgState.assessment.push({ id: mtgState.asmtSeq++, heading:'新しい項目', body:'', recorded:false });
+  mtgRenderAssessment();
+  document.getElementById('mtgAssessCard').style.display = 'block';
+}
+
+// ICF分類の入力元トグル
+function mtgSetSrc(t) {
+  mtgState.srcType = t;
+  document.getElementById('mtgSrcAssess').classList.toggle('on', t==='assessment');
+  document.getElementById('mtgSrcMinutes').classList.toggle('on', t==='minutes');
+}
+
+
+// ===== ICF分類 =====
+async function mtgClassify() {
+  // 入力元: アセスメント(構造化テキスト) or 議事録
+  let sourceText = '';
+  if (mtgState.srcType === 'assessment' && mtgState.assessment.length) {
+    sourceText = mtgState.assessment
+      .filter(it => it.recorded && it.body && it.body !== '（未記載）')
+      .map(it => '■ '+it.heading+'\n'+it.body).join('\n\n');
+    if (!sourceText) { alert('アセスメントに記載された項目がありません。議事録から分類するか、項目を記入してください。'); return; }
+  } else {
+    sourceText = document.getElementById('mtgMinutes').value.trim();
+    if (!sourceText) { alert('先に議事録を作成してください'); return; }
+  }
+  const btn = document.getElementById('mtgClassifyBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>分類中...';
+  try {
+    const r = await fetch('/api/meeting/classify_icf', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ source_text: sourceText })
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      mtgState.classifyResults = d.results || [];
+      // 生結果を boardCards に変換(以降ドラッグ/保存はboardCardsが正)
+      mtgState.boardCards = (d.results||[]).map((x, i) => ({
+        id: mtgState.cardSeq++,
+        icf_code: x.icf_code || '',
+        title_ja: x.title_ja || '',
+        component: x.component || 'b',
+        slot: mtgSlotOf(x.component || 'b', null),
+        source_text: x.source_text || '',
+        note: '',
+        confidence: x.confidence || 'auto',
+        confirmed: false,
+        alt_icf_code: x.alt_icf_code || null,
+        alt_title_ja: x.alt_title_ja || null,
+        alt_reason: x.alt_reason || null,
+        sort_order: i,
+      }));
+      document.getElementById('mtgBoardCard').style.display = 'block';
+      mtgRenderBoard();
+    } else { alert(d.message || 'ICF分類に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">category</span>ICF分類する';
+}
+
+// ===== 保存(案X 一括) =====
+async function mtgSave() {
+  // ボード状態(boardCards)から収集。スロット内の並び順にsort_orderを採番。
+  const bySlot = {};
+  const stickies = (mtgState.boardCards||[]).map((c) => {
+    const slot = c.slot || mtgSlotOf(c.component, null);
+    bySlot[slot] = (bySlot[slot] || 0);
+    const so = bySlot[slot]++;
+    return {
+      icf_code: c.icf_code || null,
+      source_text: c.source_text || null,
+      note: c.note || null,
+      confidence: c.confidence || 'auto',
+      confirmed: !!c.confirmed,
+      board_component: c.component,
+      board_slot: slot,
+      sort_order: so,
+      alt_icf_code: c.alt_icf_code || null,
+      alt_reason: c.alt_reason || null,
+    };
+  });
+  const payload = {
+    title: document.getElementById('mtgTitle').value.trim(),
+    meeting_date: document.getElementById('mtgDate').value,
+    patient_id: document.getElementById('mtgPatient').value,
+    transcript: document.getElementById('mtgTranscript').value,
+    minutes: document.getElementById('mtgMinutes').value,
+    minutes_struct: mtgState.minutesStruct,
+    assessment: mtgState.assessment.map(it => ({ heading: it.heading, body: it.body, recorded: it.recorded })),
+    audio_session_id: mtgState.sessionId,
+    stickies,
+  };
+  const btn = document.getElementById('mtgSaveBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>保存中...';
+  try {
+    const r = await fetch('/api/meeting/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      // 保存後もこの画面に留まり、PDF出力を可能にする
+      if (d.meeting_id) mtgState.editingMeetingId = d.meeting_id;
+      mtgUpdatePdfButtons();
+      alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
+    } else { alert(d.message || '保存に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
+}
+
+// ===== ICFマスタ ヘルパー =====
+function mtgMasterTitle(code){ if(!code) return ''; const m=mtgIcfMaster.find(x=>x.code===code); return m?m.title_ja:''; }
+function mtgCompOf(code){ if(!code) return ''; const m=mtgIcfMaster.find(x=>x.code===code); return m?m.component:''; }
+
+async function mtgLoadIcfMaster(){
+  if(mtgIcfMaster.length) return;
+  try{
+    const r = await fetch('/api/meeting/icf_master');
+    const d = await r.json();
+    if(d.status==='success') mtgIcfMaster = d.codes || [];
+  }catch(e){ /* 失敗しても手動追加以外は動く */ }
+}
+
+// ===== 対象利用者 検索UI =====
+let mtgPatientsLoaded = false;
+let mtgPatientList = [];
+async function mtgLoadPatients(){
+  if(mtgPatientsLoaded) return;
+  try{
+    const r = await fetch('/api/patients_cache');
+    const d = await r.json();
+    mtgPatientList = (d.patients || []).map(p => ({
+      id: p.id || '',
+      name: p.user_name || '',
+      kana: p.user_kana || p.user_name_kana || '',
+      no: String(p.patient_number || p.chart_number || '')
+    }));
+    mtgPatientsLoaded = true;
+  }catch(e){ /* 失敗しても検索は空のまま */ }
+}
+
+function mtgFilterPatients(q){
+  const box = document.getElementById('mtgPatientCands');
+  if(!box) return;
+  q = (q || '').trim().toLowerCase();
+  let list = mtgPatientList;
+  if(q){
+    list = mtgPatientList.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.kana.toLowerCase().includes(q) ||
+      p.no.toLowerCase().includes(q));
+  }
+  list = list.slice(0, 50);  // 表示件数を制限
+  if(!list.length){ box.innerHTML = ''; box.classList.remove('show'); return; }
+  box.innerHTML = list.map(p =>
+    '<button type="button" class="mtg-pcand" onclick="mtgSelectPatient(\''+p.id+'\')">'
+    + (p.no ? '(No.'+mtgEsc(p.no)+') ' : '') + mtgEsc(p.name)
+    + (p.kana ? '<span class="kana">'+mtgEsc(p.kana)+'</span>' : '')
+    + '</button>'
+  ).join('');
+  box.classList.add('show');
+}
+
+function mtgSelectPatient(id){
+  const p = mtgPatientList.find(x => x.id === id);
+  document.getElementById('mtgPatient').value = id;
+  document.getElementById('mtgPatientName').textContent = p ? ((p.no?'(No.'+p.no+') ':'')+p.name) : '';
+  document.getElementById('mtgPatientBadge').classList.add('show');
+  document.getElementById('mtgPatientCands').classList.remove('show');
+  document.getElementById('mtgPatientSearch').value = '';
+}
+
+function mtgClearPatient(){
+  document.getElementById('mtgPatient').value = '';
+  document.getElementById('mtgPatientBadge').classList.remove('show');
+  document.getElementById('mtgPatientSearch').value = '';
+}
+
+// 保存済みpatient_idからバッジ表示を復元
+function mtgShowPatientById(id){
+  if(!id){ mtgClearPatient(); return; }
+  const p = mtgPatientList.find(x => x.id === id);
+  document.getElementById('mtgPatient').value = id;
+  document.getElementById('mtgPatientName').textContent = p ? ((p.no?'(No.'+p.no+') ':'')+p.name) : '(選択済み)';
+  document.getElementById('mtgPatientBadge').classList.add('show');
+}
+
+function mtgEsc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// 候補外クリックで閉じる
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.mtg-psearch');
+  if(wrap && !wrap.contains(e.target)){
+    const box = document.getElementById('mtgPatientCands');
+    if(box) box.classList.remove('show');
+  }
+});
+
+// ===== ボード描画(ICF生活機能モデル図レイアウト) =====
+function mtgZoneHTML(slot){
+  const s = MTG_SLOTS[slot];
+  const list = mtgState.boardCards.filter(c=>(c.slot||mtgSlotOf(c.component,null))===slot);
+  const inner = list.length
+    ? list.map(c=>mtgStickyHTML(c)).join('')
+    : '<div class="mtg-zone-empty">言及なし</div>';
+  const addLabel = s.codeless ? '＋メモを追加' : '＋追加';
+  return '<div class="mtg-zone" data-slot="'+slot+'">'
+    + '<div class="mtg-zone-label" style="color:'+s.line+'">'+s.name
+    + (s.sub?' <span style="font-weight:400; font-size:0.68rem; opacity:0.8;">'+s.sub+'</span>':'')+'</div>'
+    + inner
+    + '<button class="mtg-zone-add" data-add="'+slot+'">'+addLabel+'</button>'
+    + '</div>';
+}
+
+function mtgRenderBoard(){
+  const board = document.getElementById('mtgBoard');
+  board.className = '';
+  board.innerHTML =
+      '<div class="mtg-model">'
+    +   '<div class="mtg-model-top">' + mtgZoneHTML('health') + '</div>'
+    +   '<div class="mtg-model-arrows">↕</div>'
+    +   '<div class="mtg-model-mid">'
+    +     mtgZoneHTML('bs') + mtgZoneHTML('activity') + mtgZoneHTML('participation')
+    +   '</div>'
+    +   '<div class="mtg-model-arrows mtg-arrows-3"><span>↕</span><span>↕</span><span>↕</span></div>'
+    +   '<div class="mtg-model-bot">'
+    +     mtgZoneHTML('environment') + mtgZoneHTML('personal')
+    +   '</div>'
+    +   '<div class="mtg-model-note">↕ 各要素は相互に影響し合う（ICF生活機能モデル）</div>'
+    + '</div>';
+  mtgWireBoard();
+}
+
+function mtgEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function mtgStickyHTML(c){
+  const slot = c.slot || mtgSlotOf(c.component, null);
+  const base = MTG_SLOTS[slot] || MTG_SLOTS.bs;
+  let bg=base.bg, bd='1px solid transparent', tc=base.tx;
+  if(c.confirmed){ bg='#E1F5EE'; bd='2px solid #0F6E56'; tc='#04342C'; }
+  else if(c.confidence==='needs_review'){ bg='#FAEEDA'; bd='1px dashed #BA7517'; tc='#412402'; }
+  const label = c.icf_code ? (mtgEsc(c.icf_code)+' '+mtgEsc(c.title_ja||mtgMasterTitle(c.icf_code))) : mtgEsc(c.note||'メモ');
+  const src = c.source_text ? '<div class="st-src">「'+mtgEsc(c.source_text)+'」</div>' : '';
+  const alt = c.alt_icf_code
+    ? '<button class="st-alt" data-alt="'+c.id+'">もしかして: '+mtgEsc(c.alt_icf_code)+' '+mtgEsc(c.alt_title_ja||mtgMasterTitle(c.alt_icf_code))+'</button>'
+    : '';
+  const codeBtn = MTG_SLOTS[slot] && MTG_SLOTS[slot].codeless
+    ? '<button class="st-btn" data-note="'+c.id+'">編集</button>'
+    : '<button class="st-btn" data-edit="'+c.id+'">コード</button>';
+  return '<div class="mtg-sticky" draggable="true" data-id="'+c.id+'" '
+    + 'style="background:'+bg+'; color:'+tc+'; border:'+bd+'">'
+    + '<div class="st-code">'+label+'</div>'
+    + src
+    + '<div class="st-row">'
+    + '<button class="st-btn'+(c.confirmed?' on':'')+'" data-ok="'+c.id+'">'+(c.confirmed?'✓承認':'承認')+'</button>'
+    + codeBtn
+    + '<button class="st-btn" data-del="'+c.id+'">削除</button>'
+    + '</div>'
+    + alt
+    + '</div>';
+}
+
+// ===== ボード配線(ドラッグ+操作) =====
+function mtgWireBoard(){
+  // 操作ボタン
+  document.querySelectorAll('#mtgBoard [data-ok]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const c=mtgFindCard(b.dataset.ok); if(c){ c.confirmed=!c.confirmed; mtgRenderBoard(); }});
+  document.querySelectorAll('#mtgBoard [data-del]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); mtgState.boardCards = mtgState.boardCards.filter(x=>String(x.id)!==String(b.dataset.del)); mtgRenderBoard(); });
+  document.querySelectorAll('#mtgBoard [data-alt]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const c=mtgFindCard(b.dataset.alt); if(c && c.alt_icf_code){
+      const oc=c.icf_code, ot=c.title_ja; c.icf_code=c.alt_icf_code; c.title_ja=c.alt_title_ja||mtgMasterTitle(c.alt_icf_code);
+      const nc=mtgCompOf(c.icf_code); if(nc) c.component=nc;
+      c.alt_icf_code=oc||null; c.alt_title_ja=ot||null; mtgRenderBoard(); }});
+  // コード付き付箋のコード変更
+  document.querySelectorAll('#mtgBoard [data-edit]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); mtgOpenIcfPicker(c=>{ const card=mtgFindCard(b.dataset.edit); if(card){ card.icf_code=c.code; card.title_ja=c.title_ja; card.component=c.component; mtgRenderBoard(); }}); });
+  // コードなし付箋(健康状態・個人因子)のメモ編集
+  document.querySelectorAll('#mtgBoard [data-note]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const card=mtgFindCard(b.dataset.note); if(!card) return;
+    const v = prompt('メモを入力', card.note||''); if(v!==null){ card.note=v.trim(); mtgRenderBoard(); }});
+  // ＋追加(スロット別。健康状態/個人因子はコードなしメモ、それ以外はICFコード選択)
+  document.querySelectorAll('#mtgBoard [data-add]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const slot=b.dataset.add;
+    if(MTG_SLOTS[slot] && MTG_SLOTS[slot].codeless){
+      const v = prompt(MTG_SLOTS[slot].name+'のメモを入力'); if(v && v.trim()){
+        mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:'', title_ja:'', component:'', slot:slot, source_text:'', note:v.trim(), confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 });
+        mtgRenderBoard(); }
+    } else {
+      const presetComp = (slot==='bs') ? null : (slot==='environment' ? 'e' : 'd');
+      mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, slot:slot, source_text:'', note:'', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, presetComp); }
+  });
+
+  // ドラッグ(PC: HTML5 DnD / タッチ: Pointer Events)。スロット間移動。
+  let dragId=null;
+  const moveTo = (slot)=>{ const c=mtgFindCard(dragId); if(c && slot){ c.slot=slot; mtgRenderBoard(); } };
+  document.querySelectorAll('#mtgBoard .mtg-sticky').forEach(el=>{
+    el.addEventListener('dragstart', e=>{ dragId=el.dataset.id; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    el.addEventListener('dragend', e=>{ el.classList.remove('dragging'); });
+    el.addEventListener('pointerdown', ev=>{
+      if(ev.pointerType==='mouse') return;
+      dragId=el.dataset.id; el.classList.add('dragging');
+      const up=e2=>{
+        el.classList.remove('dragging');
+        const t=document.elementFromPoint(e2.clientX,e2.clientY);
+        const z=t&&t.closest('.mtg-zone');
+        if(z) moveTo(z.dataset.slot);
+        document.removeEventListener('pointerup',up);
+      };
+      document.addEventListener('pointerup',up);
+    });
+  });
+  document.querySelectorAll('#mtgBoard .mtg-zone').forEach(z=>{
+    z.addEventListener('dragover', e=>{ e.preventDefault(); z.classList.add('dragover'); });
+    z.addEventListener('dragleave', e=>{ z.classList.remove('dragover'); });
+    z.addEventListener('drop', e=>{ e.preventDefault(); z.classList.remove('dragover'); moveTo(z.dataset.slot); });
+  });
+}
+
+function mtgFindCard(id){ return mtgState.boardCards.find(x=>String(x.id)===String(id)); }
+
+// ===== ICFコード選択モーダル =====
+async function mtgOpenIcfPicker(onPick, presetComp){
+  await mtgLoadIcfMaster();
+  if(!mtgIcfMaster.length){ alert('ICFマスタを取得できませんでした'); return; }
+  const bg = document.createElement('div');
+  bg.className='mtg-modal-bg';
+  bg.innerHTML = '<div class="mtg-modal">'
+    + '<h4>ICFコードを選択</h4>'
+    + '<input type="text" id="mtgPickSearch" placeholder="コードや名称で検索（例: 歩行, d450）" />'
+    + '<div class="mtg-modal-list" id="mtgPickList"></div>'
+    + '<button class="mtg-modal-close" id="mtgPickClose">閉じる</button>'
+    + '</div>';
+  document.body.appendChild(bg);
+  const listEl = bg.querySelector('#mtgPickList');
+  const searchEl = bg.querySelector('#mtgPickSearch');
+  const draw = (q)=>{
+    q=(q||'').trim().toLowerCase();
+    let arr = mtgIcfMaster;
+    if(presetComp) arr = arr.filter(x=>x.component===presetComp);
+    if(q) arr = arr.filter(x=> (x.code+' '+x.title_ja).toLowerCase().includes(q));
+    listEl.innerHTML = arr.slice(0,80).map(x=>
+      '<div class="mtg-modal-item" data-code="'+x.code+'">'+MTG_COMP_NAME[x.component]+' ｜ <b>'+x.code+'</b> '+mtgEsc(x.title_ja)+'</div>'
+    ).join('') || '<div class="mtg-modal-item">該当なし</div>';
+    listEl.querySelectorAll('[data-code]').forEach(it=>it.onclick=()=>{
+      const c = mtgIcfMaster.find(m=>m.code===it.dataset.code);
+      document.body.removeChild(bg); if(c) onPick(c);
+    });
+  };
+  searchEl.oninput = ()=>draw(searchEl.value);
+  bg.querySelector('#mtgPickClose').onclick = ()=>document.body.removeChild(bg);
+  bg.onclick = e=>{ if(e.target===bg) document.body.removeChild(bg); };
+  draw('');
+  searchEl.focus();
+}
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', () => {
+  mtgLoadList();
+  mtgLoadIcfMaster();  // 手動追加用マスタを先読み
+  mtgLoadPatients();   // 対象利用者リストを先読み
+});
+</script>
+{% endblock %}

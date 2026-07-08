@@ -142,10 +142,19 @@
 .lc-edit-banner button { border:1px solid #8a5a00; background:#fff; color:#8a5a00; border-radius:7px; padding:5px 10px; font-size:0.76rem; cursor:pointer; white-space:nowrap; }
 @keyframes lcEditFlash { 0% { background:#ffe0a3; } 100% { background:#fff4e5; } }
 .lc-edit-banner.flash { animation: lcEditFlash 0.6s ease; }
+/* lc-tabs-and-editparam-v1: 入力/記録一覧 共通タブ */
+.lc-tabs { display:flex; gap:0; max-width:720px; margin:0 auto 14px; border:1.5px solid #1a73e8; border-radius:12px; overflow:hidden; }
+.lc-tab { flex:1; text-align:center; padding:11px 0; font-size:0.9rem; font-weight:700; color:#1a73e8; background:#fff; text-decoration:none; cursor:pointer; }
+.lc-tab.active { background:#1a73e8; color:#fff; }
+.lc-tab + .lc-tab { border-left:1.5px solid #1a73e8; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="lc-wrap">
+  <div class="lc-tabs">  <!-- lc-tabs-and-editparam-v1 -->
+    <a class="lc-tab active" href="/life_check">入力</a>
+    <a class="lc-tab" href="/life_check_view">記録一覧</a>
+  </div>
 
   <div class="lc-card">
     <div class="lc-card-title">
@@ -288,6 +297,8 @@ var LC_LEVEL = [
 var LC_LEVELS = [["independent","自立"],["watch","見守り"],["partial","一部介助"],["full","全介助"]];
 
 var LIFE_SELECTED = null;
+window._lcToday = '{{ today }}';  // lc-reset-on-switch-v1
+window._lcMyName = '{{ my_name }}';  // lc-reset-on-switch-v1
 var LIFE_PATIENTS = [];
 var lcState = {};
 
@@ -317,10 +328,62 @@ function lcFilterPatients() {
   }).join('');
   list.style.display='block';
 }
+async function lcMaybeStartEditFromUrl() {  // lc-edit-via-session-v1: sessionStorageで編集対象を受け取る
+  var raw = null;
+  try { raw = sessionStorage.getItem('lc_edit_target'); } catch(e){ raw = null; }
+  if (!raw) return;
+  try { sessionStorage.removeItem('lc_edit_target'); } catch(e){}
+  var editId, pid;
+  try { var o = JSON.parse(raw); editId = o.editId; pid = o.patientId; } catch(e){ return; }
+  if (!editId || !pid) return;
+  var p = (LIFE_PATIENTS || []).find(function(x){ return String(x.id) === String(pid); });
+  if (!p) return;
+  // 患者を選択(=リセット+マスタ+履歴ロード)
+  lcPickPatient(p.id);
+  // 履歴ロード完了(_lcHistMap 構築)を待ってから編集開始
+  var tries = 0;
+  (function waitHist(){
+    if (window._lcHistMap && window._lcHistMap[editId]) { lcStartEdit(editId); return; }
+    if (tries++ > 50) return;  // 約5秒でタイムアウト
+    setTimeout(waitHist, 100);
+  })();
+}
+function lcResetForm() {  // lc-reset-on-switch-v1: 利用者切替時に画面を初期化
+  // 基本情報 (テキスト/セレクト/日付/hidden)
+  var ids = ['visit_type','birth_date','gender','care_level',
+             'adl_independence','dementia_independence','note',
+             'evaluator_job','evaluator_job_sel'];
+  ids.forEach(function(f){ var el = document.getElementById('lc-'+f); if (el) el.value=''; });
+  var jobInp = document.getElementById('lc-evaluator_job');
+  if (jobInp) { jobInp.style.display='none'; jobInp.value=''; }
+  lcIndepRefresh('adl'); lcIndepRefresh('dem');  // 自立度の表示ラベルを初期化
+  // 評価者は本人名に戻す (画面のデフォルト)
+  var ev = document.getElementById('lc-evaluator');
+  if (ev) ev.value = (window._lcMyName || ev.getAttribute('data-default') || ev.value);
+  // 評価日は今日に戻す (新規入力の既定)
+  var cd = document.getElementById('lc-check-date');
+  if (cd && window._lcToday) cd.value = window._lcToday;
+  // ADL/レベルの選択状態と付随入力をクリア
+  lcState = {};
+  document.querySelectorAll('.lc-opt.selected').forEach(function(b){ b.classList.remove('selected'); });
+  document.querySelectorAll('.lc-issue button.issue-on, .lc-issue button.issue-off').forEach(function(b){ b.classList.remove('issue-on','issue-off'); });
+  document.querySelectorAll('[data-env]').forEach(function(e){ e.value=''; });
+  document.querySelectorAll('[data-note]').forEach(function(e){ e.value=''; });
+  document.querySelectorAll('.lc-score-badge, [id^="sc-"]').forEach(function(s){ if (s.id && s.id.indexOf('sc-')===0) s.textContent=''; });
+  // マスタ埋めフラグと編集モードを解除
+  window._lcMasterFilled = {};
+  window._lcEditMode = false;
+  lcClearEditBanner();
+  var pn = document.getElementById('lc-prefill-note');
+  if (pn) { pn.textContent=''; pn.className='lc-prefill-note'; }
+  lcSetMode('full');
+  lcRecalcTotal();
+}
 function lcPickPatient(id) {
   var p = LIFE_PATIENTS.find(function(x){ return String(x.id)===String(id); });
   if (!p) return;
   LIFE_SELECTED = p;
+  lcResetForm();  // lc-reset-on-switch-v1: 前利用者のデータを消してから反映
   document.getElementById('lc-patient-search').value = p.user_name;
   document.getElementById('lc-pick-list').style.display='none';
   document.getElementById('lc-selected').textContent = '選択中: '+p.user_name+' 様'+(p.care_level?'（'+p.care_level+'）':'');
@@ -777,7 +840,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (dl) { lcDeleteCheck(dl.dataset.id); return; }
     });
   }
-  lcLoadPatients();
+  lcLoadPatients().then(function(){ lcMaybeStartEditFromUrl(); });  // lc-tabs-and-editparam-v1
   var search = document.getElementById('lc-patient-search');
   if (search) {
     search.addEventListener('input', lcFilterPatients);

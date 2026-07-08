@@ -14985,6 +14985,19 @@ def life_check_page():
     )
 
 
+@app.route('/life_check_view')  # lc-view-page-route-v1
+@login_required
+def life_check_view_page():
+    """life function check : read-only viewer page (print/PDF style)."""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    return render(
+        "life_check_view.html",
+        patients=patients,
+    )
+
+
 @app.route('/api/save_body_weight', methods=['POST'])
 @login_required
 def api_save_body_weight():
@@ -18367,6 +18380,1184 @@ def api_jisseki_voverride_range_get():
 # ==========================================
 # jisseki-print-route-v1: 実績集計の印刷専用ページ
 # ==========================================
+# --- meetings-transcribe-summarize-v1 : 会議 録音→文字起こし / 議事録生成 ---
+def _meetings_gate_ok():
+    """meetings_enabled ゲート。OKなら(True, f_code, my_name)。"""
+    if "f_code" not in session:
+        return (False, None, None)
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        supabase = get_supabase()
+        g = supabase.table("admin_settings").select("value")\
+            .eq("facility_code", f_code).eq("key", "meetings_enabled").execute()
+        enabled = False
+        if g.data:
+            v = g.data[0].get("value")
+            enabled = (v is True) or (str(v).lower() in ("true", "1", '"true"'))
+        return (enabled, f_code, my_name)
+    except Exception:
+        return (False, f_code, my_name)
+
+
+# meetings-transcribe-chunk-v1
+@app.route("/api/meeting/transcribe", methods=["POST"])
+@login_required
+def api_meeting_transcribe():
+    """会議録音のチャンク1個を受け取り、Storageに保存しつつGeminiで文字起こし。
+    長時間会議はフロントで時間分割(方式1)し、このAPIを順次呼ぶ。
+    受け取り: audio(file), session_id(録音セッションUUID), chunk_index(0始まり)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        audio = request.files.get("audio")
+        if not audio:
+            return jsonify({"status": "error", "message": "音声なし"})
+        filename = (audio.filename or "").lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"})
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "音声が短すぎます。もう一度お話しください。"})
+        ext_mime = {
+            ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+            ".wav": "audio/wav",  ".aac": "audio/aac",
+            ".ogg": "audio/ogg",  ".webm": "audio/webm",
+            ".mp4": "audio/mp4",
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), "audio/webm")
+
+        # --- チャンク音声を Storage に保存 (assessment-audio バケット流用) ---
+        import re as _re2
+        session_id = (request.form.get("session_id") or "").strip()
+        # session_id はフロント発行のUUID。安全のため英数-のみ許可。
+        session_id = _re2.sub(r"[^0-9a-zA-Z\-]", "", session_id)[:64]
+        try:
+            chunk_index = int(request.form.get("chunk_index") or 0)
+        except Exception:
+            chunk_index = 0
+        ext = mime.split("/")[-1]
+        if ext == "mpeg":
+            ext = "mp3"
+        audio_url = ""
+        if session_id:
+            try:
+                supabase = get_supabase()
+                path = f"{f_code}/meetings/{session_id}/{chunk_index:04d}.{ext}"
+                supabase.storage.from_("assessment-audio").upload(
+                    path=path, file=audio_bytes,
+                    file_options={"content-type": mime}
+                )
+                audio_url = supabase.storage.from_("assessment-audio").get_public_url(path)
+            except Exception as _ue:
+                # 保存失敗しても文字起こしは続行(fail-safe)。
+                print(f"[meeting] chunk upload failed: {_ue}", flush=True)
+                audio_url = ""
+
+        prompt = """これは介護施設の担当者会議(サービス担当者会議)の録音です。
+発話内容を、話し言葉のフィラー(えー・あのー等)を除いて、正確に文字起こししてください。
+・発言者が判別できる場合は「ケアマネ:」「指導員:」等の話者ラベルを付けてよい(不明なら省略)。
+・数値・固有名詞(利用者名・薬名・部位名)は聞き取れた通りに残す。
+・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        text = (resp.text or "").strip()
+        # 無音チャンク等でテキストが空でもエラーにしない(連結時に飛ばせるよう空文字返す)
+        return jsonify({"status": "success", "transcript": text,
+                        "chunk_index": chunk_index, "audio_url": audio_url,
+                        "session_id": session_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1 / fix meetings-minutes-struct-parse-fix-v1
+    """第4表議事録本文(■ 見出し)を構造化dictに分解。Gemini不要・高速。"""
+    import re as _re_p
+    if not text:
+        return None
+    # ■ で始まる見出しごとに分割
+    sections = {}
+    cur = None
+    buf = []
+    for line in text.split("\n"):
+        s = line.strip()
+        m = _re_p.match(r"^[■◆●]\s*(.+)$", s)
+        if m:
+            if cur is not None:
+                sections[cur] = "\n".join(buf).strip()
+            cur = m.group(1).strip()
+            buf = []
+        else:
+            if cur is not None:
+                buf.append(line)
+    if cur is not None:
+        sections[cur] = "\n".join(buf).strip()
+
+    def _find(*keys):
+        for k, v in sections.items():
+            for key in keys:
+                if key in k:
+                    return v
+        return ""
+
+    def _to_list(block):
+        out = []
+        for ln in (block or "").split("\n"):
+            t = ln.strip().lstrip("・.-　 ").strip()
+            if t:
+                out.append(t)
+        return out
+
+    # 開催情報からheaderを抽出
+    kaisai = _find("開催情報")
+    header = {"date": "（記載なし）", "place": "（記載なし）", "attendees": [], "absentees": "（記載なし）"}
+    if kaisai:
+        att_mode = False
+        for ln in kaisai.split("\n"):
+            t = ln.strip()
+            if not t:
+                continue
+            if "開催日" in t:
+                header["date"] = t.split("：", 1)[-1].split(":", 1)[-1].split("/", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "開催場所" in t:
+                header["place"] = t.split("：", 1)[-1].split(":", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "欠席" in t:
+                header["absentees"] = t.split("：", 1)[-1].split(":", 1)[-1].strip() or "（記載なし）"
+                att_mode = False
+            elif "出席者" in t:
+                v = t.split("：", 1)[-1].split(":", 1)[-1].strip()
+                if v:
+                    header["attendees"].append(v)
+                att_mode = True
+            elif att_mode:
+                cand = t.lstrip("・.-　 ").strip()
+                if cand and "（記載なし）" not in cand:
+                    header["attendees"].append(cand)
+
+    return {
+        "header": header,
+        "items": _to_list(_find("検討した項目", "検討項目")),
+        "discussion": _find("検討内容") or "（記載なし）",
+        "conclusions": _to_list(_find("結論", "決定事項")),
+        "issues": _find("残された課題", "次回") or "（記載なし）",
+    }
+
+
+@app.route("/api/meeting/summarize", methods=["POST"])
+@login_required
+def api_meeting_summarize():
+    """文字起こし→担当者会議の議事録を生成(Gemini)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        data = request.get_json(silent=True) or {}
+        transcript = (data.get("transcript") or "").strip()
+        if not transcript:
+            return jsonify({"status": "error", "message": "文字起こしテキストがありません"}), 400
+        prompt = f"""あなたは介護支援専門員(ケアマネジャー)です。以下は担当者会議(サービス担当者会議)の文字起こしです。
+これを、厚生労働省の標準様式「第4表 サービス担当者会議の要点」に準拠した正式な議事録に整えてください。
+末尾には、後からICF(国際生活機能分類)で分類するための「本人の状態整理」を付けます。
+
+【最重要ルール】
+・これは正式な書類です。文字起こしに書かれていない情報を創作・推測で埋めてはいけません。
+・出席者の氏名・所属、開催場所、開催日時など、文字起こしから読み取れない項目は「（記載なし）」と書く。勝手に埋めない。
+・議事録の基本は「誰が・何を・どのように決めたか」を明確に残すこと。逐語ではなく要点を整理する。
+・専門用語に置き換えず、会議で語られた具体的な様子(例:「杖で20m歩ける」)をそのまま残す。
+
+【出力する構成(この見出しで出力する)】
+■ 開催情報
+　開催日 / 開催場所 / 出席者(所属・職種と氏名。本人・家族の出席有無も) / 欠席者と理由。読み取れない項目は（記載なし）。
+■ 検討した項目
+　この会議で検討した議題を箇条書き。
+■ 検討内容
+　各項目についてどう話し合われたか。サービス内容だけでなく、提供方法・留意点・頻度・担当者などが語られていれば具体的に。誰の発言かが分かる場合は職種を添える。
+■ 結論(決定事項)
+　会議で決まったこと。誰が何をいつまでにするか。方針。
+■ 残された課題・次回に向けて
+　解決していない課題(未充足ニーズ)、次回開催時期や次回検討事項。語られていなければ（記載なし）。
+
+■ 本人の状態整理(ICF分類用)
+　本人の状態を以下の区分で箇条書き整理(会議で語られた事実のみ):
+　・心身機能(痛み・可動域・認知・気分・睡眠など)
+　・身体構造(部位の状態)
+　・活動と参加(歩行・移動・入浴・更衣・食事・排泄・レク参加など、できること/介助が必要なこと)
+　・環境因子(家族の支援・住環境・福祉用具・サービスなど)
+
+出力は議事録本文のみ。前置き・説明は不要。
+
+【文字起こし】
+{transcript[:8000]}"""  # meetings-summarize-form4-v1
+        model = get_generative_model()  # meetings-minutes-struct-parse-v1
+        resp = model.generate_content(prompt)
+        minutes = (resp.text or "").strip()
+        if not minutes:
+            return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
+        struct = _mtg_parse_minutes_struct(minutes)  # meetings-minutes-struct-parse-v1
+        return jsonify({"status": "success", "minutes": minutes, "minutes_struct": struct})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-transcribe-summarize-v1 ---
+
+
+# --- meetings-page-route-v1 : 担当者会議 画面(管理者MENU) ---
+@app.route("/admin/meetings")
+@login_required
+def admin_meetings():
+    """担当者会議 ICF分類 画面。meetings_enabled の施設のみ。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return redirect(url_for("admin"))
+    return render("admin_meetings.html")
+# --- /meetings-page-route-v1 ---
+
+
+# --- meetings-save-list-get-v1 : 会議の一括保存 / 一覧 / 読み込み ---
+import re as _re_uuid_mod
+_UUID_RE = _re_uuid_mod.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+@app.route("/api/meeting/save", methods=["POST"])
+@login_required
+def api_meeting_save():
+    """会議1件 + 付箋(meeting_icf_links)を一括保存(案X)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "").strip() or "担当者会議"
+        meeting_date = (data.get("meeting_date") or "").strip() or None
+        patient_id = (data.get("patient_id") or "").strip()
+        patient_id = patient_id if _UUID_RE.match(patient_id) else None
+        transcript = data.get("transcript") or ""
+        minutes = data.get("minutes") or ""
+        audio_session_id = (data.get("audio_session_id") or "").strip() or None
+        stickies = data.get("stickies") or []
+        if not isinstance(stickies, list):
+            return jsonify({"status": "error", "message": "stickies の形式が不正です"}), 400
+
+        # 会議レコードをinsert
+        _assessment = data.get("assessment")  # meetings-assessment-wire-v1
+        if _assessment is not None and not isinstance(_assessment, str):
+            import json as _json_a
+            _assessment = _json_a.dumps(_assessment, ensure_ascii=False)
+        _minutes_struct = data.get("minutes_struct")  # meetings-minutes-struct-save-v1
+        if _minutes_struct is not None and not isinstance(_minutes_struct, str):
+            import json as _json_ms
+            _minutes_struct = _json_ms.dumps(_minutes_struct, ensure_ascii=False)
+        m_row = {
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "title": title,
+            "meeting_date": meeting_date,
+            "transcript": transcript,
+            "minutes": minutes,
+            "minutes_struct": _minutes_struct,
+            "assessment": _assessment,
+            "audio_session_id": audio_session_id,
+            "status": "confirmed",
+            "created_by": my_name,
+        }
+        m_res = supabase.table("meetings").insert(m_row).execute()
+        if not (m_res.data and m_res.data[0].get("id")):
+            return jsonify({"status": "error", "message": "会議の保存に失敗しました"}), 500
+        meeting_id = m_res.data[0]["id"]
+
+        # 付箋を一括insert。icf_codeがマスタに無いものはコードnull(手動メモ付箋)として保存。
+        _valid = set()
+        try:
+            _mc = supabase.table("icf_codes").select("code").eq("level", 2).execute()
+            _valid = {r["code"] for r in (_mc.data or [])}
+        except Exception:
+            _valid = set()
+
+        saved = 0
+        for s in stickies:
+            if not isinstance(s, dict):
+                continue
+            code = (str(s.get("icf_code") or "").strip()) or None
+            if code and code not in _valid:
+                # マスタ外コードは握りつぶさず、コードnull + noteに退避(データ健全性優先)
+                _n = s.get("note") or ""
+                s = dict(s); s["note"] = (f"[未確定:{code}] " + _n).strip()
+                code = None
+            alt = (str(s.get("alt_icf_code") or "").strip()) or None
+            if alt and alt not in _valid:
+                alt = None
+            link = {
+                "meeting_id": meeting_id,
+                "icf_code": code,
+                "source_text": s.get("source_text") or None,
+                "note": s.get("note") or None,
+                "confidence": s.get("confidence") or "auto",
+                "confirmed": bool(s.get("confirmed", False)),
+                "board_component": (str(s.get("board_component") or "").strip() or None),
+                "board_slot": (str(s.get("board_slot") or "").strip() or None),  # meetings-board-slot-api-v1
+                "sort_order": int(s.get("sort_order") or 0),
+                "alt_icf_code": alt,
+                "alt_reason": s.get("alt_reason") or None,
+            }
+            supabase.table("meeting_icf_links").insert(link).execute()
+            saved += 1
+
+        return jsonify({"status": "success", "meeting_id": meeting_id, "saved_stickies": saved})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/list", methods=["GET"])
+@login_required
+def api_meeting_list():
+    """施設の会議一覧(新しい順)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        r = supabase.table("meetings")\
+            .select("id,title,meeting_date,patient_id,status,created_at")\
+            .eq("facility_code", f_code)\
+            .order("meeting_date", desc=True)\
+            .order("created_at", desc=True)\
+            .limit(200).execute()
+        return jsonify({"status": "success", "meetings": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/get", methods=["GET"])
+@login_required
+def api_meeting_get():
+    """会議1件 + 付箋を読み込み(ボード復元)。他施設IDは弾く。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        meeting_id = (request.args.get("meeting_id") or "").strip()
+        if not _UUID_RE.match(meeting_id):
+            return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
+        mr = supabase.table("meetings").select("*")\
+            .eq("id", meeting_id).eq("facility_code", f_code).execute()
+        if not mr.data:
+            return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        meeting = mr.data[0]
+        lr = supabase.table("meeting_icf_links").select("*")\
+            .eq("meeting_id", meeting_id)\
+            .order("board_slot").order("sort_order").execute()  # meetings-board-slot-api-v1
+        return jsonify({"status": "success", "meeting": meeting, "stickies": lr.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-save-list-get-v1 ---
+
+
+# --- meetings-icf-master-v1 : ICF第2レベル全件(手動追加のコード選択用) ---
+@app.route("/api/meeting/icf_master", methods=["GET"])
+@login_required
+def api_meeting_icf_master():
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        r = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
+            .eq("level", 2).order("sort_order").execute()
+        return jsonify({"status": "success", "codes": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-icf-master-v1 ---
+
+
+# --- meetings-assessment-api-v1 : 議事録+文字起こし→課題分析23項目アセスメント ---
+@app.route("/api/meeting/assessment", methods=["POST"])
+@login_required
+def api_meeting_assessment():
+    """課題分析標準項目23項目のアセスメントをJSON配列で生成(Gemini)。
+    ハルシネーション厳禁。語られていない項目は recorded:false / body:「（未記載）」。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        import re as _re, json as _json
+        data = request.get_json(silent=True) or {}
+        minutes = (data.get("minutes") or "").strip()
+        transcript = (data.get("transcript") or "").strip()
+        if not minutes and not transcript:
+            return jsonify({"status": "error", "message": "議事録または文字起こしがありません"}), 400
+
+        # 23項目の見出し(表示順は現場が読みやすい順)
+        items = [
+            "基本情報（氏名・生年月日・住所・連絡先・家族構成等）",
+            "これまでの生活と現在の状況（生活歴・職歴・趣味・価値観等）",
+            "社会保障制度の利用状況（介護保険・医療保険・年金・障害等）",
+            "現在利用している支援や社会資源（フォーマル/インフォーマル）",
+            "日常生活自立度（障害・認知症）",
+            "主訴・意向（本人・家族等の要望）",
+            "認定情報（要介護度・審査会意見・区分支給限度額等）",
+            "今回のアセスメントの理由（初回・更新・区分変更・状態変化等）",
+            "健康状態（既往・服薬・主治医意見・身長体重BMI血圧等）",
+            "ADL（寝返り・起き上がり・移乗・歩行・着衣・入浴・排泄等）",
+            "IADL（調理・掃除・買物・金銭管理・服薬管理・交通機関利用等）",
+            "認知機能や判断能力",
+            "コミュニケーション（視覚・聴覚・言語等の理解と表出）",
+            "生活リズム（1日/1週間・睡眠・活動と休息）",
+            "排泄の状況",
+            "じょくそう・皮膚の問題",
+            "口腔内の状況（歯・義歯・咀嚼・嚥下・口腔衛生）",
+            "食事摂取の状況（栄養・水分・食形態・摂取方法等）",
+            "社会との関わり（社会活動への参加・役割・孤独感等）",
+            "家族等の状況（介護者の有無・介護力・負担感・支援参加意思等）",
+            "居住環境（住宅改修の必要性・危険箇所・生活動線等）",
+            "その他留意すべき事項（虐待・経済的困窮・医療依存度・看取り等）",
+            "特記事項・まとめ",
+        ]
+        items_text = "\n".join([f"{i+1}. {h}" for i, h in enumerate(items)])
+
+        prompt = f"""あなたは介護支援専門員です。以下の担当者会議の【議事録】と【文字起こし】から、
+介護の課題分析標準項目に沿ったアセスメントシートを作成してください。
+
+【絶対厳守のルール(最重要)】
+・議事録と文字起こしに実際に書かれている・語られている事実だけを記載する。
+・推測・一般論・創作は一切禁止。情報が無い項目は、必ず body を「（未記載）」とし recorded を false にする。
+・「たぶん」「思われる」で埋めてはいけない。語られていなければ未記載。これは正式書類であり、事実でない記載は重大な誤りになる。
+・曖昧語(しっかり・適宜・時々)を避け、語られた具体的事実(数量・頻度・条件・介助度)をそのまま書く。
+・ADLは語られた介助度(自立/見守り/一部介助/全介助 等)を残す。
+
+【出力する項目(この23項目すべてを必ず出力)】
+{items_text}
+
+【出力形式】
+JSON配列のみ。前置き・説明・マークダウンの```は一切禁止。
+各要素: {{"id": 連番, "heading": "項目名", "body": "内容 または （未記載）", "recorded": true/false}}
+recorded は body に実際の情報がある場合 true、「（未記載）」の場合 false。
+
+【議事録】
+{minutes[:6000]}
+
+【文字起こし】
+{transcript[:6000]}"""
+
+        model = get_generative_model()
+        resp = model.generate_content(prompt)
+        raw = (resp.text or "").strip()
+        raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+        raw = _re.sub(r"```$", "", raw).strip()
+        m = _re.search(r"\[.*\]", raw, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "アセスメントを生成できませんでした"}), 500
+        parsed = _json.loads(m.group())
+        # 正規化(id採番・型担保)
+        out = []
+        for i, it in enumerate(parsed):
+            if not isinstance(it, dict):
+                continue
+            body = str(it.get("body") or "").strip() or "（未記載）"
+            rec = bool(it.get("recorded", False)) and body != "（未記載）"
+            out.append({
+                "id": i + 1,
+                "heading": str(it.get("heading") or "").strip(),
+                "body": body,
+                "recorded": rec,
+            })
+        return jsonify({"status": "success", "assessment": out})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-assessment-api-v1 ---
+
+
+# --- meetings-pdf-v1 : 会議3成果物のPDF出力(議事録/アセスメント/ICFボード) ---
+def _mtg_pdf_esc(s):
+    s = "" if s is None else str(s)
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+             .replace('"', "&quot;").replace("\n", "<br>"))
+
+_MTG_PDF_BASE_CSS = """
+  * { box-sizing: border-box; }
+  body { font-family: 'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222;
+         padding: 14mm 12mm; font-size: 11pt; line-height: 1.6; }
+  h1 { font-size: 15pt; text-align:center; margin: 0 0 4mm; }
+  .sub { text-align:center; font-size: 10pt; color:#444; margin-bottom: 6mm; }
+  .meta { width:100%; border-collapse:collapse; margin-bottom: 5mm; font-size: 10pt; }
+  .meta td { padding: 2px 6px; }
+  .sec { margin: 4mm 0 1mm; font-weight:bold; font-size: 11.5pt;
+         border-left: 4px solid #2e7d32; padding-left: 6px; }
+  .box { border:1px solid #cfd8cf; border-radius:4px; padding: 6px 8px; margin-bottom: 3mm;
+         white-space: normal; }
+  table.grid { width:100%; border-collapse:collapse; margin-bottom: 3mm; }
+  table.grid td, table.grid th { border:1px solid #b9c7bb; padding:5px 7px; vertical-align:top; font-size:10pt; }
+  table.grid th { background:#eef4ee; text-align:left; width: 34%; }
+  .unrec { color:#999; }
+  .foot { margin-top: 8mm; font-size: 9pt; color:#666; text-align:right; }
+"""
+
+
+def _mtg_pdf_extract_body(html):  # meetings-pdf-all-v1
+    """完全HTMLから<body>...</body>の中身だけ取り出す。"""
+    import re as _re_b
+    m = _re_b.search(r"<body[^>]*>(.*)</body>", html, _re_b.DOTALL | _re_b.IGNORECASE)
+    return m.group(1) if m else html
+
+
+def _mtg_pdf_render(html_str, landscape=False):  # meetings-pdf-all-merge-v1 / meetings-pdf-landscape-opt-v1
+    """HTML文字列をPDFバイトに(pdfkit)。landscape=True で横向き(wkhtmltopdf option)。"""
+    import pdfkit, shutil as _sh_p
+    _opts = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+    if landscape:
+        _opts["orientation"] = "Landscape"  # meetings-pdf-landscape-opt-v1
+    _wk = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+    _cfg = pdfkit.configuration(wkhtmltopdf=_wk)
+    return pdfkit.from_string(html_str, False, options=_opts, configuration=_cfg)
+
+
+def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1 / robust: meetings-pdf-merge-robust-v1
+    """複数PDFバイト列を1つに結合。向き混在OK。
+    pdfunite(poppler) → PyMuPDF(fitz) → 先頭のみ、の順にフォールバック。"""
+    _blobs = [b for b in pdf_bytes_list if b]
+    if not _blobs:
+        return b""
+    if len(_blobs) == 1:
+        return _blobs[0]
+    # 1) pdfunite(poppler-utils, 依存追加なし)
+    import shutil as _sh_m
+    if _sh_m.which("pdfunite"):
+        import tempfile, os, subprocess
+        _tmp = tempfile.mkdtemp()
+        try:
+            _ins = []
+            for _i, _b in enumerate(_blobs):
+                _p = os.path.join(_tmp, f"in_{_i}.pdf")
+                with open(_p, "wb") as _f:
+                    _f.write(_b)
+                _ins.append(_p)
+            _out = os.path.join(_tmp, "out.pdf")
+            _r = subprocess.run(["pdfunite"] + _ins + [_out],
+                                capture_output=True, timeout=30)
+            if _r.returncode == 0 and os.path.exists(_out):
+                with open(_out, "rb") as _f:
+                    return _f.read()
+        except Exception:
+            pass
+        finally:
+            try:
+                _sh_m.rmtree(_tmp, ignore_errors=True)
+            except Exception:
+                pass
+    # 2) PyMuPDF(fitz)
+    try:
+        import fitz
+        _out = fitz.open()
+        for _b in _blobs:
+            _src = fitz.open(stream=_b, filetype="pdf")
+            _out.insert_pdf(_src)
+            _src.close()
+        _data = _out.tobytes()
+        _out.close()
+        return _data
+    except Exception:
+        pass
+    # 3) 最終フォールバック: 先頭PDFのみ返す(結合不可環境)
+    return _blobs[0]
+
+
+def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1 / meetings-pdf-heading-emph-v1
+    import json as _json_m
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+    # 構造化データ
+    st = None
+    raw = meeting.get("minutes_struct")
+    if raw:
+        try:
+            st = _json_m.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            st = None
+    # フォールバック: 構造化が無ければ従来の全文box
+    if not st or not isinstance(st, dict):
+        minutes = _mtg_pdf_esc(meeting.get("minutes") or "（議事録なし）")
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
+        <h1>サービス担当者会議の要点</h1>
+        <div class="sub">{title}　開催日: {date}</div>
+        <div class="box">{minutes}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    header = st.get("header") or {}
+    h_date = _mtg_pdf_esc(header.get("date") or "（記載なし）")
+    h_place = _mtg_pdf_esc(header.get("place") or "（記載なし）")
+    atts = header.get("attendees") or []  # meetings-pdf-attendees-fix-v1
+    def _fmt_att(a):
+        if isinstance(a, dict):
+            role = (a.get("role") or "").strip()
+            name = (a.get("name") or "").strip()
+            if name and name not in ("（氏名なし）", "（記載なし）"):
+                return (role + "（" + name + "）") if role else name
+            return role or name or ""
+        return str(a).strip()
+    _att_list = [x for x in (_fmt_att(a) for a in atts) if x]
+    h_att = _mtg_pdf_esc("、".join(_att_list) if _att_list else "（記載なし）")
+    h_abs = _mtg_pdf_esc(header.get("absentees") or "（記載なし）")
+    items = st.get("items") or []
+    disc = _mtg_pdf_esc(st.get("discussion") or "（記載なし）")
+    concl = st.get("conclusions") or []
+    issues = _mtg_pdf_esc(st.get("issues") or "（記載なし）")
+    care_level = _mtg_pdf_esc(meeting.get("care_level") or "")
+
+    items_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in items) or "<li>（記載なし）</li>"
+    concl_html = "".join(f"<li>{_mtg_pdf_esc(x)}</li>" for x in concl) or "<li>（記載なし）</li>"
+
+    _eff_date = h_date if h_date != "（記載なし）" else date  # meetings-pdf-minutes-styles2-v1
+    _cl = ("（" + care_level + "）") if care_level else ""
+    _concl_num = "".join(
+        f'<div class="num"><span class="n">{i+1}</span><span class="nt">{_mtg_pdf_esc(x)}</span></div>'
+        for i, x in enumerate(concl)
+    ) or '<div class="num"><span class="nt">（記載なし）</span></div>'
+
+    if style == "d":  # サイドバー型
+        css = _MTG_PDF_BASE_CSS + """
+          .wrap { border:1px solid #e5e0d5; border-radius:10px; overflow:hidden; }
+          table.d { width:100%; border-collapse:collapse; }
+          td.side { width:32%; background:#1f4d33; color:#fff; padding:16px 14px; vertical-align:top; }
+          .side .ttl { font-size:13pt; padding-bottom:8px; border-bottom:1px solid #3d6b50; margin-bottom:12px; }
+          .side .lb { font-size:8pt; color:#b8cec0; margin-bottom:1px; }
+          .side .vl { font-size:10.5pt; margin-bottom:9px; }
+          td.body { padding:16px 18px; vertical-align:top; }
+          .body .sh { color:#1f4d33; font-weight:bold; font-size:12.5pt; margin-bottom:5px; margin-top:2px; }
+          .body .sc { font-size:10pt; color:#444; margin-bottom:12px; line-height:1.6; padding-left:2px; }
+          .body ul { margin:2px 0 12px; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="wrap"><table class="d"><tr>
+          <td class="side">
+            <div class="ttl">サービス担当者会議</div>
+            <div class="lb">利用者</div><div class="vl">{title}</div>
+            <div class="lb">開催日</div><div class="vl">{_eff_date}</div>
+            <div class="lb">開催場所</div><div class="vl">{h_place}</div>
+            <div class="lb">出席者</div><div class="vl">{h_att}</div>
+            <div class="lb">欠席者</div><div class="vl">{h_abs}</div>
+          </td>
+          <td class="body">
+            <div class="sh">検討した項目</div><ul>{items_html}</ul>
+            <div class="sh">検討内容</div><div class="sc">{disc}</div>
+            <div class="sh">結論（決定事項）</div><ul>{concl_html}</ul>
+            <div class="sh">残された課題・次回に向けて</div><div class="sc">{issues}</div>
+          </td>
+        </tr></table></div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "e":  # カード型
+        css = _MTG_PDF_BASE_CSS + """
+          .ehead { border-left:4px solid #2e7d5b; padding-left:10px; margin-bottom:14px; }
+          .ehead .t { font-size:14pt; font-weight:bold; }
+          .ehead .s { font-size:9.5pt; color:#777; margin-top:2px; }
+          table.ecards { width:100%; border-collapse:separate; border-spacing:6px 0; margin-bottom:14px; }
+          table.ecards td { background:#fff; border:1px solid #e5e0d5; border-radius:8px; padding:8px 10px; vertical-align:top; width:33%; }
+          .ecards .cl { font-size:10pt; color:#2e7d5b; font-weight:bold; margin-bottom:4px; }
+          .ecards .cv { font-size:9.5pt; color:#555; line-height:1.5; }
+          .ebox { background:#eef6f1; border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+          .ebox .bt { font-size:12.5pt; font-weight:bold; color:#1e6b4a; margin-bottom:8px; }
+          .num { margin-bottom:4px; font-size:10pt; color:#2a4a3a; }
+          .num .n { display:inline-block; min-width:16px; color:#2e7d5b; font-weight:bold; }
+          .esec { font-size:10pt; color:#666; line-height:1.7; margin-bottom:8px; }
+          .esec .k { color:#2e7d5b; font-weight:bold; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="ehead"><div class="t">サービス担当者会議 議事録</div>
+          <div class="s">{title}{_cl}　·　{_eff_date}</div></div>
+        <table class="ecards"><tr>
+          <td><div class="cl">検討項目</div><div class="cv">{_mtg_pdf_esc("／".join(items) if items else "（記載なし）")}</div></td>
+          <td><div class="cl">出席者</div><div class="cv">{h_att}</div></td>
+          <td><div class="cl">開催場所</div><div class="cv">{h_place}</div></td>
+        </tr></table>
+        <div class="ebox"><div class="bt">◆ 決定事項</div>{_concl_num}</div>
+        <div class="esec"><span class="k">検討内容　</span>{disc}</div>
+        <div class="esec"><span class="k">残された課題　</span>{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "f":  # タイムライン型
+        css = _MTG_PDF_BASE_CSS + """
+          .fhead { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a2a2a; margin-bottom:16px; }
+          .fhead .t { font-size:14pt; font-weight:bold; letter-spacing:2px; }
+          .fhead .s { font-size:9.5pt; color:#888; margin-top:3px; letter-spacing:1px; }
+          table.tl { width:100%; border-collapse:collapse; font-size:10pt; }
+          table.tl td.dot { width:18px; vertical-align:top; text-align:center; padding:0; }
+          .dotc { width:9px; height:9px; border-radius:50%; background:#2e7d5b; margin:2px auto 0; }
+          .dotc.end { background:#d85a30; }
+          .line { width:1px; background:#d5ddd6; margin:2px auto; }
+          table.tl td.c { vertical-align:top; padding-bottom:12px; padding-left:4px; }
+          .tl .h { font-weight:bold; color:#1e6b4a; font-size:12.5pt; margin-bottom:4px; }
+          .tl .h.end { color:#b0431f; }
+          .tl .b { color:#555; line-height:1.6; }
+          .tl ul { margin:2px 0; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="fhead"><div class="t">サービス担当者会議 議事録</div>
+          <div class="s">{title}　|　{care_level or '　'}　|　{_eff_date}</div></div>
+        <table class="tl">
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:34px;"></div></td>
+              <td class="c"><div class="h">検討した項目</div><div class="b"><ul>{items_html}</ul></div></td></tr>
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:48px;"></div></td>
+              <td class="c"><div class="h">検討内容</div><div class="b">{disc}</div></td></tr>
+          <tr><td class="dot"><div class="dotc"></div><div class="line" style="height:34px;"></div></td>
+              <td class="c"><div class="h">結論（決定事項）</div><div class="b"><ul>{concl_html}</ul></div></td></tr>
+          <tr><td class="dot"><div class="dotc end"></div></td>
+              <td class="c"><div class="h end">残された課題・次回に向けて</div><div class="b">{issues}</div></td></tr>
+        </table>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "g":  # エグゼクティブ型
+        css = _MTG_PDF_BASE_CSS + """
+          .ghead { border-bottom:2px solid #1a1a1a; padding-bottom:10px; margin-bottom:16px; }
+          .ghead table { width:100%; border-collapse:collapse; }
+          .ghead .t { font-size:15pt; letter-spacing:0.5px; }
+          .ghead .en { font-size:7.5pt; color:#999; letter-spacing:2px; margin-top:3px; }
+          .ghead .meta { text-align:right; font-size:9pt; color:#666; line-height:1.6; }
+          table.ginfo { width:100%; font-size:10pt; margin-bottom:16px; border-collapse:collapse; }
+          table.ginfo td.k { color:#999; letter-spacing:1px; width:14%; padding:2px 0; }
+          table.ginfo td.v { padding:2px 0; }
+          .gsh { font-size:13.5pt; font-weight:bold; color:#1a1a1a; margin-bottom:6px; letter-spacing:0.5px; }
+          .gsc { font-size:10pt; color:#444; line-height:1.75; margin-bottom:14px; padding-left:16px; }
+          .gsc ul { margin:2px 0; padding-left:18px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="ghead"><table><tr>
+          <td><div class="t">サービス担当者会議 議事録</div>
+              <div class="en">SERVICE COORDINATION MEETING MINUTES</div></td>
+          <td class="meta">{_eff_date}<br>TASUKARU</td>
+        </tr></table></div>
+        <table class="ginfo">
+          <tr><td class="k">利用者</td><td class="v">{title}</td><td class="k">認定</td><td class="v">{care_level or '（記載なし）'}</td></tr>
+          <tr><td class="k">出席者</td><td class="v" colspan="3">{h_att}</td></tr>
+        </table>
+        <div class="gsh">Ⅰ.　検討した項目</div><div class="gsc"><ul>{items_html}</ul></div>
+        <div class="gsh">Ⅱ.　検討内容</div><div class="gsc">{disc}</div>
+        <div class="gsh">Ⅲ.　結論（決定事項）</div><div class="gsc"><ul>{concl_html}</ul></div>
+        <div class="gsh">Ⅳ.　残された課題・次回に向けて</div><div class="gsc">{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "h":  # モダンミニマル型
+        css = _MTG_PDF_BASE_CSS + """
+          .hbar { width:34px; height:3px; background:#2e7d5b; margin-bottom:10px; }
+          .htt { font-size:16pt; font-weight:bold; letter-spacing:0.5px; }
+          .hsub { font-size:9.5pt; color:#aaa; margin-top:5px; letter-spacing:1px; margin-bottom:20px; }
+          table.hcol { width:100%; border-collapse:collapse; margin-bottom:18px; }
+          table.hcol td { vertical-align:top; width:50%; padding:0 14px; }
+          table.hcol td.l { border-right:1px solid #eee; padding-left:0; }
+          .hlb { font-size:9.5pt; font-weight:bold; color:#999; letter-spacing:2px; margin-bottom:5px; }
+          .hvl { font-size:10pt; color:#555; line-height:1.6; }
+          .hdec { font-size:11pt; font-weight:bold; color:#2e7d5b; letter-spacing:2px; margin-bottom:10px; }
+          table.hnum { width:100%; border-collapse:collapse; font-size:10.5pt; }
+          table.hnum td.n { width:34px; vertical-align:top; font-size:17pt; font-weight:bold; color:#dcdcdc; padding-bottom:10px; }
+          table.hnum td.t { vertical-align:top; color:#444; line-height:1.5; padding-bottom:10px; }
+          .hnotes { border-top:1px solid #eee; padding-top:12px; font-size:9.5pt; color:#888; line-height:1.7; margin-top:6px; }
+          .hnotes .k { color:#2e7d5b; letter-spacing:1px; }
+        """
+        _hnum = "".join(
+            f'<tr><td class="n">{i+1:02d}</td><td class="t">{_mtg_pdf_esc(x)}</td></tr>'
+            for i, x in enumerate(concl)
+        ) or '<tr><td class="t">（記載なし）</td></tr>'
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="hbar"></div>
+        <div class="htt">サービス担当者会議</div>
+        <div class="hsub">{title}　—　{care_level or ''}　—　{_eff_date}</div>
+        <table class="hcol"><tr>
+          <td class="l"><div class="hlb">MEMBERS</div><div class="hvl">{h_att}</div></td>
+          <td><div class="hlb">AGENDA</div><div class="hvl">{_mtg_pdf_esc(" / ".join(items) if items else "（記載なし）")}</div></td>
+        </tr></table>
+        <div class="hdec">DECISIONS</div>
+        <table class="hnum">{_hnum}</table>
+        <div class="hnotes"><span class="k">NOTES　</span>{disc}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "c":
+        # 案C: 公的様式風の罫線
+        css = _MTG_PDF_BASE_CSS + """
+          .cwrap { border:2px solid #333; }
+          .ctitle { text-align:center; font-size:14pt; font-weight:bold; padding:8px; border-bottom:1px solid #333; }
+          table.ct { width:100%; border-collapse:collapse; }
+          table.ct td { border:1px solid #333; padding:5px 8px; font-size:10pt; vertical-align:top; }
+          table.ct td.lbl { background:#f0f0f0; font-weight:bold; width:20%; }
+          table.ct ul { margin:0; padding-left:16px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="cwrap">
+        <div class="ctitle">サービス担当者会議の要点</div>
+        <table class="ct">
+          <tr><td class="lbl">利用者名</td><td>{title}</td><td class="lbl">開催日</td><td>{h_date if h_date!='（記載なし）' else date}</td></tr>
+          <tr><td class="lbl">開催場所</td><td>{h_place}</td><td class="lbl">欠席者</td><td>{h_abs}</td></tr>
+          <tr><td class="lbl">出席者</td><td colspan="3">{h_att}</td></tr>
+          <tr><td class="lbl">検討した項目</td><td colspan="3"><ul>{items_html}</ul></td></tr>
+          <tr><td class="lbl">検討内容</td><td colspan="3">{disc}</td></tr>
+          <tr><td class="lbl">結論(決定事項)</td><td colspan="3"><ul>{concl_html}</ul></td></tr>
+          <tr><td class="lbl">残された課題</td><td colspan="3">{issues}</td></tr>
+        </table>
+        </div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    if style == "b":
+        # 案B: 決定事項を番号強調(ビジネス)
+        concl_num = "".join(
+            f'<div class="bnum"><span class="bn">{i+1}</span><span>{_mtg_pdf_esc(x)}</span></div>'
+            for i, x in enumerate(concl)
+        ) or '<div class="bnum"><span>（記載なし）</span></div>'
+        css = _MTG_PDF_BASE_CSS + """
+          .bhead { display:flex; justify-content:space-between; border-bottom:1px solid #333; padding-bottom:6px; margin-bottom:10px; }
+          .btitle { font-size:14pt; font-weight:bold; }
+          .bmeta { font-size:9pt; color:#666; }
+          table.bi { width:100%; font-size:10pt; margin-bottom:10px; }
+          table.bi td.l { color:#666; width:18%; }
+          .bbox { background:#f5f8f5; border-radius:5px; padding:8px 10px; margin-bottom:10px; }
+          .bboxt { font-weight:bold; color:#1e5e26; margin-bottom:5px; }
+          .bnum { display:flex; gap:7px; margin-bottom:4px; align-items:flex-start; }
+          .bn { background:#2e7d32; color:#fff; border-radius:50%; width:16px; height:16px;
+                display:inline-block; text-align:center; line-height:16px; font-size:9pt; flex-shrink:0; }
+          .bsec { font-weight:bold; margin:8px 0 3px; }
+          table.bi ul { margin:2px 0; padding-left:16px; }
+        """
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+        <div class="bhead"><div class="btitle">サービス担当者会議 議事録</div><div class="bmeta">作成: {date} ／ TASUKARU</div></div>
+        <table class="bi">
+          <tr><td class="l">利用者</td><td>{title}{('（'+care_level+'）') if care_level else ''}</td></tr>
+          <tr><td class="l">開催場所</td><td>{h_place}</td></tr>
+          <tr><td class="l">出席者</td><td>{h_att}</td></tr>
+        </table>
+        <div class="bbox"><div class="bboxt">◆ 決定事項</div>{concl_num}</div>
+        <div class="bsec">検討した項目</div><ul>{items_html}</ul>
+        <div class="bsec">検討内容</div><div>{disc}</div>
+        <div class="bsec">残された課題・次回に向けて</div><div>{issues}</div>
+        <div class="foot">TASUKARU にて作成</div>
+        </body></html>"""
+
+    # 案A(既定): ヘッダー表＋見出し区切り(バランス)
+    css = _MTG_PDF_BASE_CSS + """
+      .atitle { text-align:center; font-size:14pt; font-weight:bold; letter-spacing:1px;
+                padding-bottom:8px; border-bottom:2px solid #2e7d32; margin-bottom:10px; }
+      table.ah { width:100%; border-collapse:collapse; font-size:10pt; margin-bottom:12px; }
+      table.ah td { border:1px solid #cdd6cf; padding:5px 8px; vertical-align:top; }
+      table.ah td.lbl { background:#f1f6f1; font-weight:bold; color:#2e5e33; width:20%; }
+      .asec { font-weight:bold; color:#2e5e33; border-left:4px solid #2e7d32; padding-left:8px; margin:12px 0 4px; }
+      .asec + ul, .asec + div { padding-left:10px; margin-top:2px; }
+      ul { margin:2px 0; padding-left:20px; }
+    """
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+    <div class="atitle">サービス担当者会議 議事録</div>
+    <table class="ah">
+      <tr><td class="lbl">利用者名</td><td>{title}</td><td class="lbl">開催日</td><td>{h_date if h_date!='（記載なし）' else date}</td></tr>
+      <tr><td class="lbl">開催場所</td><td>{h_place}</td><td class="lbl">欠席者</td><td>{h_abs}</td></tr>
+      <tr><td class="lbl">出席者</td><td colspan="3">{h_att}</td></tr>
+    </table>
+    <div class="asec">1. 検討した項目</div><ul>{items_html}</ul>
+    <div class="asec">2. 検討内容</div><div>{disc}</div>
+    <div class="asec">3. 結論(決定事項)</div><ul>{concl_html}</ul>
+    <div class="asec">4. 残された課題・次回に向けて</div><div>{issues}</div>
+    <div class="foot">TASUKARU にて作成</div>
+    </body></html>"""
+
+
+def _mtg_pdf_html_assessment(meeting):
+    import json as _json_p
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+    items = []
+    raw = meeting.get("assessment")
+    if raw:
+        try:
+            items = _json_p.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            items = []
+    rows = []
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        head = _mtg_pdf_esc(it.get("heading") or "")
+        body = it.get("body") or "（未記載）"
+        cls = ' class="unrec"' if (not it.get("recorded")) or body == "（未記載）" else ""
+        rows.append(f'<tr><th>{head}</th><td{cls}>{_mtg_pdf_esc(body)}</td></tr>')
+    body_html = "".join(rows) or '<tr><td colspan="2">（アセスメント項目なし）</td></tr>'
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_MTG_PDF_BASE_CSS}</style></head><body>
+    <h1>アセスメントシート（課題分析標準項目）</h1>
+    <div class="sub">{title}　作成日: {date}</div>
+    <table class="grid">{body_html}</table>
+    <div class="foot">TASUKARU にて作成／未記載項目は職員が確認・補完してください</div>
+    </body></html>"""
+
+
+def _mtg_pdf_html_icf(meeting, stickies, name_map=None):  # meetings-pdf-rich-icf-v1
+    nm = name_map or {}
+    SLOT_STYLE = {
+        "health": ("#F1EFE8", "#2C2C2A", "#5F5E5A"),
+        "bs": ("#EEEDFE", "#26215C", "#3C3489"),
+        "activity": ("#FAECE7", "#4A1B0C", "#993C1D"),
+        "participation": ("#FBEAF0", "#4B1528", "#72243E"),
+        "environment": ("#E6F1FB", "#042C53", "#185FA5"),
+        "personal": ("#E1F5EE", "#04342C", "#0F6E56"),
+    }
+    title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
+    date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
+
+    _total = len([s for s in stickies if (s.get("board_slot") or "")])  # meetings-pdf-icf-fit-v1
+    if _total <= 12:
+        _dz = {"chip_fs": "9pt", "src_fs": "7.5pt", "pad": "4px 7px", "mb": "4px", "zt": "10pt", "srclen": 60}
+    elif _total <= 20:
+        _dz = {"chip_fs": "8pt", "src_fs": "6.8pt", "pad": "3px 6px", "mb": "3px", "zt": "9.5pt", "srclen": 44}
+    elif _total <= 30:
+        _dz = {"chip_fs": "7pt", "src_fs": "6pt", "pad": "2px 5px", "mb": "2px", "zt": "9pt", "srclen": 32}
+    else:
+        _dz = {"chip_fs": "6.2pt", "src_fs": "5.4pt", "pad": "2px 4px", "mb": "2px", "zt": "8.5pt", "srclen": 24}
+    def chips(slot_key):
+        lst = [s for s in stickies if (s.get("board_slot") or "") == slot_key]
+        inner = []
+        for s in lst:
+            code = s.get("icf_code") or ""
+            note = _mtg_pdf_esc(s.get("note") or "")
+            if code:
+                nm_ja = _mtg_pdf_esc(nm.get(code, ""))
+                label = '<span class="cc">' + _mtg_pdf_esc(code) + '</span> ' + nm_ja
+            else:
+                label = note or "メモ"
+            _bg = SLOT_STYLE.get(slot_key, ("#f4f7f4", "#333", "#2e7d32"))
+            _src = s.get("source_text") or ""
+            _srct = _src[:_dz["srclen"]] + ("…" if len(_src) > _dz["srclen"] else "")  # meetings-pdf-icf-fit-v1
+            _src_html = ('<div class="csrc">' + _mtg_pdf_esc(_srct) + '</div>') if _src else ""
+            inner.append(f'<div class="chip" style="background:{_bg[0]};color:{_bg[1]};">{label}{_src_html}</div>')
+        return "".join(inner) or '<div class="empty">（言及なし）</div>'
+
+    def zone(slot_key, slot_name, colspan=1):
+        cs = f' colspan="{colspan}"' if colspan > 1 else ""
+        _z = SLOT_STYLE.get(slot_key, ("#f4f7f4", "#333", "#2e7d32"))
+        return f'<td class="zone"{cs}><div class="zt" style="color:{_z[2]};">{slot_name}</div>{chips(slot_key)}</td>'
+
+    top = "<tr>" + zone("health", "健康状態", 3) + "</tr>"
+    mid = "<tr>" + zone("bs", "心身機能・身体構造") + zone("activity", "活動") + zone("participation", "参加") + "</tr>"
+    bot = "<tr>" + zone("environment", "環境因子") + zone("personal", "個人因子", 2) + "</tr>"
+
+    css = _MTG_PDF_BASE_CSS + f"""
+      @page {{ size: A4 landscape; margin: 8mm; }}
+      table.icf {{ width:100%; border-collapse:collapse; margin-top:2mm; table-layout:fixed; }}
+      table.icf td.zone {{ border:1.2px solid #9fb3a2; padding:4px; vertical-align:top; width:33.33%;
+                           background:#fbfdfb; word-break:break-word; overflow-wrap:anywhere; }}
+      .zt {{ font-weight:bold; font-size:{_dz['zt']}; margin-bottom:3px; padding-bottom:2px; border-bottom:1px solid #dbe6dd; }}
+      .chip {{ border-radius:5px; padding:{_dz['pad']}; margin-bottom:{_dz['mb']}; font-size:{_dz['chip_fs']};
+               line-height:1.3; word-break:break-word; overflow-wrap:anywhere; }}
+      .chip .cc {{ font-weight:bold; }}
+      .chip .csrc {{ font-size:{_dz['src_fs']}; opacity:0.72; margin-top:1px; }}
+      .empty {{ color:#aaa; font-size:8pt; font-style:italic; }}
+      .arrow {{ text-align:center; color:#7aa17e; font-size:11pt; padding:0.5mm 0; font-weight:bold; }}
+      h1 {{ font-size:14pt; margin:0 0 1mm; }}
+      .sub {{ font-size:9pt; margin-bottom:1mm; }}
+    """
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{css}</style></head><body>
+    <h1>ICF 生活機能モデル図</h1>
+    <div class="sub">{title}　{date}</div>
+    <table class="icf">{top}</table>
+    <div class="arrow">↕</div>
+    <table class="icf">{mid}</table>
+    <div class="arrow">↕</div>
+    <table class="icf">{bot}</table>
+    <div class="foot">TASUKARU にて作成／↕は各要素の相互作用（ICF生活機能モデル）</div>
+    </body></html>"""
+
+
+@app.route("/api/meeting/pdf", methods=["GET"])
+@login_required
+def api_meeting_pdf():
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        import re as _re_p
+        supabase = get_supabase()
+        meeting_id = (request.args.get("meeting_id") or "").strip()
+        ptype = (request.args.get("type") or "minutes").strip()
+        if not _re_p.match(r"^[0-9a-fA-F-]{36}$", meeting_id):
+            return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
+        mr = supabase.table("meetings").select("*")\
+            .eq("id", meeting_id).eq("facility_code", f_code).execute()
+        if not mr.data:
+            return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        meeting = mr.data[0]
+
+        _combined_pdf = None  # meetings-pdf-all-merge-v1
+        if ptype == "all":
+            _style = (request.args.get("style") or "a").strip().lower()
+            if _style not in ("a", "b", "c", "d", "e", "f", "g", "h"):  # meetings-pdf-styles-ah-v1
+                _style = "a"
+            _lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
+            _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
+            _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
+            # meetings-pdf-all-fullcss-v1: 各成果物を完全HTML(スタイル固有CSS込み)で
+            # 個別にPDF生成し結合する。body抜き出しだと議事録の装飾が失われるため。
+            _min_pdf = _mtg_pdf_render(_mtg_pdf_html_minutes(meeting, _style))   # 議事録(選択スタイルのCSS込み・縦)
+            _asm_pdf = _mtg_pdf_render(_mtg_pdf_html_assessment(meeting))        # アセスメント(縦)
+            _icf_html = _mtg_pdf_html_icf(meeting, _lr.data or [], _name_map)
+            _icf_pdf = _mtg_pdf_render(_icf_html, landscape=True)               # ICF図(横)
+            # 結合: 議事録 → アセスメント → ICF
+            _combined_pdf = _mtg_pdf_merge([_min_pdf, _asm_pdf, _icf_pdf])
+            label = "担当者会議一式"
+            html_str = ""
+        elif ptype == "assessment":
+            html_str = _mtg_pdf_html_assessment(meeting)
+            label = "アセスメントシート"
+        elif ptype == "icf":
+            lr = supabase.table("meeting_icf_links").select("*").eq("meeting_id", meeting_id).execute()
+            _mm = supabase.table("icf_codes").select("code,title_ja").eq("level", 2).execute()
+            _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
+            html_str = _mtg_pdf_html_icf(meeting, lr.data or [], _name_map)
+            label = "ICF分類"
+        else:
+            _style = (request.args.get("style") or "a").strip().lower()  # meetings-pdf-minutes-styles-v1
+            if _style not in ("a", "b", "c", "d", "e", "f", "g", "h"):  # meetings-pdf-styles-ah-v1
+                _style = "a"
+            html_str = _mtg_pdf_html_minutes(meeting, _style)
+            label = "議事録"
+
+        import pdfkit, shutil as _sh_p
+        from urllib.parse import quote as _quote_p
+        from flask import make_response  # meetings-pdf-makeresp-fix-v1
+        options = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+        if ptype == "icf":  # meetings-pdf-landscape-opt-v1: 単独ICF図も横向き
+            options["orientation"] = "Landscape"
+        wk_path = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        if _combined_pdf is not None:  # meetings-pdf-all-merge-v1
+            pdf_bytes = _combined_pdf
+        else:
+            pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        fname = label + "_" + (meeting.get("meeting_date") or "") + ".pdf"
+        fname_ascii = "meeting_" + ptype + ".pdf"
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"  # meetings-pdf-rich-icf-v1
+        response.headers["Content-Disposition"] = 'attachment; filename="' + fname_ascii + "\"; filename*=UTF-8''" + _quote_p(fname)
+        return response
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-pdf-v1 ---
+
+
+# --- meetings-icf-classify-v1 : 担当者会議 議事録→ICF分類 (PRO予定) ---
+@app.route("/api/meeting/classify_icf", methods=["POST"])
+def api_meeting_classify_icf():
+    if "f_code" not in session:
+        return jsonify({"status": "error", "message": "ログインが必要です"}), 401
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    # 設定ゲート: admin_settings の meetings_enabled=true の施設のみ。
+    # (当面は自施設のみtrueにして実質限定運用。将来PROプランで解放)
+    try:
+        _g = supabase.table("admin_settings").select("value")\
+            .eq("facility_code", f_code).eq("key", "meetings_enabled").execute()
+        _enabled = False
+        if _g.data:
+            _v = _g.data[0].get("value")
+            _enabled = (_v is True) or (str(_v).lower() in ("true", "1", '"true"'))
+        if not _enabled:
+            return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    except Exception:
+        return jsonify({"status": "error", "message": "設定確認に失敗しました"}), 500
+
+    try:
+        import anthropic as _anthropic, json as _json, re as _re
+        data = request.get_json(silent=True) or {}
+        # meetings-assessment-wire-v1: minutes_text が無ければ source_text(アセスメント等)を使う
+        minutes_text = (data.get("minutes_text") or data.get("source_text") or "").strip()
+        if not minutes_text:
+            return jsonify({"status": "error", "message": "分類する会議情報がありません"}), 400
+
+        # ICFマスタ(第2レベル)を動的取得。マスタ更新に自動追従。
+        _m = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
+            .eq("level", 2).order("sort_order").execute()
+        master = _m.data or []
+        if not master:
+            return jsonify({"status": "error", "message": "ICFマスタが未投入です"}), 500
+        master_list = "\n".join(
+            [f"{r['code']} {r['title_ja']} (component={r['component']}, chapter={r['chapter']})"
+             for r in master]
+        )
+        valid_codes = {r["code"] for r in master}
+
+        prompt = f"""あなたは介護の担当者会議の会議情報(議事録またはアセスメント)をICF(国際生活機能分類)に分類する専門家です。
+以下の【ICFマスタ】に載っているコードの中からのみ選んでください。
+マスタに無いコードや、あなたの記憶にあるコードを創作してはいけません。
+1つの発言が複数コードに該当する場合は複数返して構いません。
+意味が近くて迷うコードがある場合は、次点候補(alt)を1つだけ添えてください。
+該当が曖昧・確信が持てないものは confidence を "needs_review" にしてください。
+
+出力は以下のJSON配列のみ。前置き・説明・マークダウンの```は一切禁止。
+[
+  {{
+    "icf_code": "d450",
+    "source_text": "議事録中の根拠となった箇所を短く引用",
+    "confidence": "auto",
+    "alt_icf_code": "d460",
+    "alt_reason": "移動全般とも取れるため"
+  }}
+]
+次点候補が無ければ alt_icf_code と alt_reason は null。
+該当が1件も無ければ [] を返す。
+
+【ICFマスタ】
+{master_list}
+
+【会議情報】
+{minutes_text[:6000]}"""
+
+        client = _anthropic.Anthropic()
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=3000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = message.content[0].text.strip()
+        raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+        raw = _re.sub(r"```$", "", raw).strip()
+        parsed = _json.loads(raw)
+
+        # マスタに無いコードは弾く(創作防止)。componentも付けて返す。
+        code_to_comp = {r["code"]: r["component"] for r in master}
+        code_to_title = {r["code"]: r["title_ja"] for r in master}
+        results = []
+        for s in parsed:
+            c = str(s.get("icf_code") or "").strip()
+            if c not in valid_codes:
+                continue
+            alt = str(s.get("alt_icf_code") or "").strip()
+            if alt and alt not in valid_codes:
+                alt = ""
+            results.append({
+                "icf_code": c,
+                "title_ja": code_to_title.get(c, ""),
+                "component": code_to_comp.get(c, ""),
+                "source_text": s.get("source_text", ""),
+                "confidence": s.get("confidence", "auto"),
+                "alt_icf_code": alt or None,
+                "alt_title_ja": code_to_title.get(alt, "") if alt else None,
+                "alt_reason": (s.get("alt_reason") if alt else None),
+            })
+        # 保存はフロントの承認後(別API)で。ここでは候補を返すのみ(人が承認思想)。
+        return jsonify({"status": "success", "count": len(results), "results": results})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-icf-classify-v1 ---
+
+
 @app.route("/admin/jisseki/print")
 @login_required
 def admin_jisseki_print():
