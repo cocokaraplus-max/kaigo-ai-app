@@ -18896,10 +18896,12 @@ def _mtg_pdf_extract_body(html):  # meetings-pdf-all-v1
     return m.group(1) if m else html
 
 
-def _mtg_pdf_render(html_str):  # meetings-pdf-all-merge-v1
-    """HTML文字列をPDFバイトに(pdfkit)。ICF等の@pageはHTML側CSSが効く。"""
+def _mtg_pdf_render(html_str, landscape=False):  # meetings-pdf-all-merge-v1 / meetings-pdf-landscape-opt-v1
+    """HTML文字列をPDFバイトに(pdfkit)。landscape=True で横向き(wkhtmltopdf option)。"""
     import pdfkit, shutil as _sh_p
     _opts = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+    if landscape:
+        _opts["orientation"] = "Landscape"  # meetings-pdf-landscape-opt-v1
     _wk = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
     _cfg = pdfkit.configuration(wkhtmltopdf=_wk)
     return pdfkit.from_string(html_str, False, options=_opts, configuration=_cfg)
@@ -19228,7 +19230,7 @@ def api_meeting_pdf():
             _portrait_pdf = _mtg_pdf_render(_portrait_html)
             # 横: ICF図(ビルダーが@page landscape/自動縮小を内包)
             _icf_html = _mtg_pdf_html_icf(meeting, _lr.data or [], _name_map)
-            _icf_pdf = _mtg_pdf_render(_icf_html)
+            _icf_pdf = _mtg_pdf_render(_icf_html, landscape=True)  # meetings-pdf-landscape-opt-v1
             # 結合(縦→横)
             _combined_pdf = _mtg_pdf_merge([_portrait_pdf, _icf_pdf])
             label = "担当者会議一式"
@@ -19253,6 +19255,8 @@ def api_meeting_pdf():
         from urllib.parse import quote as _quote_p
         from flask import make_response  # meetings-pdf-makeresp-fix-v1
         options = {"encoding": "UTF-8", "no-outline": None, "quiet": ""}
+        if ptype == "icf":  # meetings-pdf-landscape-opt-v1: 単独ICF図も横向き
+            options["orientation"] = "Landscape"
         wk_path = _sh_p.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
         if _combined_pdf is not None:  # meetings-pdf-all-merge-v1
