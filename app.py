@@ -18957,7 +18957,7 @@ def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1 / robust: meeti
     return _blobs[0]
 
 
-def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
+def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1 / meetings-pdf-heading-emph-v1
     import json as _json_m
     title = _mtg_pdf_esc(meeting.get("title") or "担当者会議")
     date = _mtg_pdf_esc(meeting.get("meeting_date") or "")
@@ -19019,7 +19019,7 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
           .side .lb { font-size:8pt; color:#b8cec0; margin-bottom:1px; }
           .side .vl { font-size:10.5pt; margin-bottom:9px; }
           td.body { padding:16px 18px; vertical-align:top; }
-          .body .sh { color:#1f4d33; font-weight:bold; font-size:10.5pt; margin-bottom:3px; }
+          .body .sh { color:#1f4d33; font-weight:bold; font-size:12.5pt; margin-bottom:5px; margin-top:2px; }
           .body .sc { font-size:10pt; color:#444; margin-bottom:12px; line-height:1.6; padding-left:2px; }
           .body ul { margin:2px 0 12px; padding-left:18px; }
         """
@@ -19050,10 +19050,10 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
           .ehead .s { font-size:9.5pt; color:#777; margin-top:2px; }
           table.ecards { width:100%; border-collapse:separate; border-spacing:6px 0; margin-bottom:14px; }
           table.ecards td { background:#fff; border:1px solid #e5e0d5; border-radius:8px; padding:8px 10px; vertical-align:top; width:33%; }
-          .ecards .cl { font-size:8.5pt; color:#2e7d5b; font-weight:bold; margin-bottom:3px; }
+          .ecards .cl { font-size:10pt; color:#2e7d5b; font-weight:bold; margin-bottom:4px; }
           .ecards .cv { font-size:9.5pt; color:#555; line-height:1.5; }
           .ebox { background:#eef6f1; border-radius:8px; padding:12px 14px; margin-bottom:12px; }
-          .ebox .bt { font-size:10.5pt; font-weight:bold; color:#1e6b4a; margin-bottom:6px; }
+          .ebox .bt { font-size:12.5pt; font-weight:bold; color:#1e6b4a; margin-bottom:8px; }
           .num { margin-bottom:4px; font-size:10pt; color:#2a4a3a; }
           .num .n { display:inline-block; min-width:16px; color:#2e7d5b; font-weight:bold; }
           .esec { font-size:10pt; color:#666; line-height:1.7; margin-bottom:8px; }
@@ -19084,7 +19084,7 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
           .dotc.end { background:#d85a30; }
           .line { width:1px; background:#d5ddd6; margin:2px auto; }
           table.tl td.c { vertical-align:top; padding-bottom:12px; padding-left:4px; }
-          .tl .h { font-weight:bold; color:#1e6b4a; font-size:10pt; margin-bottom:2px; }
+          .tl .h { font-weight:bold; color:#1e6b4a; font-size:12.5pt; margin-bottom:4px; }
           .tl .h.end { color:#b0431f; }
           .tl .b { color:#555; line-height:1.6; }
           .tl ul { margin:2px 0; padding-left:18px; }
@@ -19115,7 +19115,7 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
           table.ginfo { width:100%; font-size:10pt; margin-bottom:16px; border-collapse:collapse; }
           table.ginfo td.k { color:#999; letter-spacing:1px; width:14%; padding:2px 0; }
           table.ginfo td.v { padding:2px 0; }
-          .gsh { font-size:11.5pt; color:#1a1a1a; margin-bottom:4px; letter-spacing:0.5px; }
+          .gsh { font-size:13.5pt; font-weight:bold; color:#1a1a1a; margin-bottom:6px; letter-spacing:0.5px; }
           .gsc { font-size:10pt; color:#444; line-height:1.75; margin-bottom:14px; padding-left:16px; }
           .gsc ul { margin:2px 0; padding-left:18px; }
         """
@@ -19144,9 +19144,9 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
           table.hcol { width:100%; border-collapse:collapse; margin-bottom:18px; }
           table.hcol td { vertical-align:top; width:50%; padding:0 14px; }
           table.hcol td.l { border-right:1px solid #eee; padding-left:0; }
-          .hlb { font-size:8pt; color:#bbb; letter-spacing:2px; margin-bottom:4px; }
+          .hlb { font-size:9.5pt; font-weight:bold; color:#999; letter-spacing:2px; margin-bottom:5px; }
           .hvl { font-size:10pt; color:#555; line-height:1.6; }
-          .hdec { font-size:8.5pt; color:#2e7d5b; letter-spacing:2px; margin-bottom:8px; }
+          .hdec { font-size:11pt; font-weight:bold; color:#2e7d5b; letter-spacing:2px; margin-bottom:10px; }
           table.hnum { width:100%; border-collapse:collapse; font-size:10.5pt; }
           table.hnum td.n { width:34px; vertical-align:top; font-size:17pt; font-weight:bold; color:#dcdcdc; padding-bottom:10px; }
           table.hnum td.t { vertical-align:top; color:#444; line-height:1.5; padding-bottom:10px; }
