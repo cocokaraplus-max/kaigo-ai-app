@@ -1396,3 +1396,43 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 - 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(meetings_seed/altcand/audio_session/board_slot/assessment/**minutes_struct**)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設の meetings_enabled。wkhtmltopdf・日本語フォント導入済み。tasukaruカラー.png は static に既存。
 - **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。現状は全施設にボトム「記録・ICF分類」が出る。
 - テスト会議が DEMO001 に複数残存(ダミー・無害)。
+
+---
+
+## 担当者会議 PDF仕上げ（まとめPDF結合・ICF横向き・議事録8スタイル）（2026-07-06 追記その6）
+
+同日その5の続き。まとめPDFのICF崩れ解消、議事録デザイン拡張。すべてDEV・MCP確認済み。本番未マージ。DEV HEAD = 4dd6778。
+
+### 完了（DEV push済み・MCP確認済み）
+
+**まとめPDF(type=all)を結合方式に変更（marker: meetings-pdf-all-merge-v1）**: 従来は3成果物のbodyを1HTMLに連結して1回のwkhtmltopdfで生成→ICFの横向きが効かず崩れた。→ **議事録+アセスメント(縦) と ICF図(横) を別々にPDF生成し結合**する方式に。
+- `_mtg_pdf_render(html_str, landscape=False)`: pdfkit生成。landscape=Trueで options に orientation:Landscape(marker: meetings-pdf-landscape-opt-v1)。
+- `_mtg_pdf_merge(pdf_bytes_list)`: **堅牢版(marker: meetings-pdf-merge-robust-v1)**。pdfunite(poppler-utils, 依存追加なし) → PyMuPDF(fitz) → 先頭のみ、の順にフォールバック。**重要教訓**: fitz(PyMuPDF)はローカルMacには有るが本番Cloud Runイメージには無い(`No module named 'fitz'`で500)。requirements未記載。pdfuniteは poppler(既存, pdfinfo使用実績あり)に含まれ本番で使える。
+- all分岐: 縦PDF(議事録+アセス, page-break)＋横PDF(ICF)を生成→結合。後段共通pdfkitは `_combined_pdf` 有り時スキップ。MCP確認: type=all 200・約298KB。実機でICFが横向きページで崩れず出ることをHIRO確認済み。
+
+**ICF図PDF 横向き化（marker: meetings-pdf-landscape-opt-v1）**: CSSの @page landscape だけでは wkhtmltopdf は縦のまま。**options に orientation:Landscape が必須**。単独ICF図PDF(type=icf)も共通options に icf判定で Landscape 追加。まとめPDF内ICFも landscape=True。HIRO実機で横向き確認済み。
+
+**議事録8スタイル（A〜H）（marker: meetings-pdf-minutes-styles2-v1 / styles-ah-v1）**: 既存A/B/Cに D/E/F/G/H を追加。
+- A スッキリ(表+見出し) / B ビジネス(決定事項番号強調) / C フォーマル(公的様式罫線) / D サイドバー(左に濃緑情報帯・高級感) / E カード(決定事項強調・ダッシュボード風) / F タイムライン(縦ライン+ドットで議事を追う) / G エグゼクティブ(セリフ体見出し・ローマ数字Ⅰ-Ⅳ・モノトーン・格調) / H モダンミニマル(余白・細アクセント・大きな01-03番号・英語ラベルMEMBERS/AGENDA/DECISIONS/NOTES)。
+- 全スタイル wkhtmltopdf対応(tableベース・Flexbox不使用)。visualizerでモック提示しHIRO選択。
+- style バリデーションを2箇所とも a-h に拡張(marker: meetings-pdf-styles-ah-v1)。
+- フロント: 議事録カードに8スタイルの `<select id="mtgStyleSelect">`。議事録PDFボタン・まとめPDFボタン両方が選択スタイルを使う。MCP確認: a-h 8スタイルとも200、まとめPDFも style指定で200。
+- **HIRO実機のレイアウト目視は要確認**(特に D の濃緑背景ベタ塗りが wkhtmltopdf で出るか、G のセリフ体/ローマ数字、H の大番号)。モックと差異あれば調整。
+
+### 重要な教訓（今回得た）
+- **本番(Cloud Run)とローカルでインストール済みライブラリが違う**。ローカルで `import fitz` が通っても本番に無いことがある。PDF結合等は依存追加不要な poppler コマンド(pdfunite)を第一候補にし、フォールバックを重ねると堅牢。
+- **wkhtmltopdf の用紙向きは CSS @page でなく options の orientation で決まる**。
+- 日本語を含むアンカーはマッチ0になりやすい→ ASCII行(`if style == "c":` 等)を小アンカーに。
+
+### 次にやること（PENDING）
+1. **[着手予定] 対象利用者selectが選択できない**: 患者リスト取得が未実装(selectが空)。次はこれに着手。
+2. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+3. **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→ベースフォントに反映。
+4. **担当者会議のPRO制限**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard パターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトム「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡し要)。**本番マージ前に必須**(現状 全施設にボトム表示)。
+5. 議事録8スタイルの実機レイアウト目視・微調整。アセスメント項目の振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 4dd6778。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。**PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作**。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。
