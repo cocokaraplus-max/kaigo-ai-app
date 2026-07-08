@@ -195,6 +195,7 @@
 </div>
 {% endblock %}
 {% block extra_script %}
+<script src="/static/rec_keepalive.js"></script><!-- rec-keepalive-v1 -->
 <!-- markmap (mindmap) CDN: d3 + markmap-lib + markmap-view -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18"></script>
@@ -218,6 +219,7 @@ async function smToggleRec(){
   try {
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     smState.recording = true;
+    if (window.recKeepAlive) recKeepAlive.acquire();  // rec-keepalive-v1
     if (!smState.sessionId) smState.sessionId = smUuid();
     document.getElementById('smRecLabel').textContent = '録音停止';
     document.getElementById('smRecBtn').classList.add('recording');
@@ -244,6 +246,7 @@ function smStartChunk(stream){
 }
 function smStopRec(){
   smState.recording = false;
+  if (window.recKeepAlive) recKeepAlive.release();  // rec-keepalive-v1
   document.getElementById('smRecLabel').textContent = '録音開始';
   document.getElementById('smRecBtn').classList.remove('recording');
   document.getElementById('smRecStatus').textContent = '';

@@ -372,6 +372,7 @@
   </div>
 </div>
 
+<script src="/static/rec_keepalive.js"></script><!-- rec-keepalive-v1 -->
 <script>
 // ===== 状態 =====
 let mtgState = {
@@ -584,6 +585,7 @@ async function mtgStartRec() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mtgState.recording = true;
+    if (window.recKeepAlive) recKeepAlive.acquire();  // rec-keepalive-v1
     document.getElementById('mtgRecBtn').classList.add('on');
     document.getElementById('mtgRecLabel').textContent = '録音停止';
     document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...';
@@ -614,6 +616,7 @@ async function mtgStartRec() {
 
 function mtgStopRec() {
   mtgState.recording = false;
+  if (window.recKeepAlive) recKeepAlive.release();  // rec-keepalive-v1
   document.getElementById('mtgRecBtn').classList.remove('on');
   document.getElementById('mtgRecLabel').textContent = '録音開始';
   document.getElementById('mtgRecStatus').textContent = '文字起こし処理中...';
