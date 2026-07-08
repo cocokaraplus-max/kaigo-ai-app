@@ -279,9 +279,14 @@ document.addEventListener('DOMContentLoaded', function () {
       if (editBtn) {
         e.stopPropagation();
         if (!LCV_SELECTED) return;
-        var url = '/life_check?edit=' + encodeURIComponent(editBtn.dataset.editId) +
-                  '&patient=' + encodeURIComponent(LCV_SELECTED.id);
-        window.location.href = url;
+        // base.htmlの共通ナビがURLクエリを落とすため、sessionStorageで受け渡す
+        try {
+          sessionStorage.setItem('lc_edit_target', JSON.stringify({
+            editId: editBtn.dataset.editId,
+            patientId: LCV_SELECTED.id
+          }));
+        } catch(err) {}
+        window.location.href = '/life_check';
         return;
       }
       var item = e.target.closest('.lcv-hist-item');

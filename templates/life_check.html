@@ -328,20 +328,23 @@ function lcFilterPatients() {
   }).join('');
   list.style.display='block';
 }
-async function lcMaybeStartEditFromUrl() {  // lc-tabs-and-editparam-v1
-  var q = new URLSearchParams(window.location.search);
-  var editId = q.get('edit');
-  var pid = q.get('patient');
+async function lcMaybeStartEditFromUrl() {  // lc-edit-via-session-v1: sessionStorageで編集対象を受け取る
+  var raw = null;
+  try { raw = sessionStorage.getItem('lc_edit_target'); } catch(e){ raw = null; }
+  if (!raw) return;
+  try { sessionStorage.removeItem('lc_edit_target'); } catch(e){}
+  var editId, pid;
+  try { var o = JSON.parse(raw); editId = o.editId; pid = o.patientId; } catch(e){ return; }
   if (!editId || !pid) return;
   var p = (LIFE_PATIENTS || []).find(function(x){ return String(x.id) === String(pid); });
   if (!p) return;
-  // 患者を選択(=リセット+マスタ+履歴ロード)。lcLoadHistory は内部で await 可能に。
+  // 患者を選択(=リセット+マスタ+履歴ロード)
   lcPickPatient(p.id);
   // 履歴ロード完了(_lcHistMap 構築)を待ってから編集開始
   var tries = 0;
   (function waitHist(){
     if (window._lcHistMap && window._lcHistMap[editId]) { lcStartEdit(editId); return; }
-    if (tries++ > 40) return;  // 約4秒でタイムアウト
+    if (tries++ > 50) return;  // 約5秒でタイムアウト
     setTimeout(waitHist, 100);
   })();
 }
