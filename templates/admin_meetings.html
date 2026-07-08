@@ -150,6 +150,20 @@
   @keyframes mtgTskStack2 { 0%,32%{opacity:0;transform:translateY(-30px) scale(0.6);} 40%,100%{opacity:1;transform:translateY(0) scale(1);} }
   @keyframes mtgTskStack3 { 0%,54%{opacity:0;transform:translateY(-30px) scale(0.6);} 62%,100%{opacity:1;transform:translateY(0) scale(1);} }
   @keyframes mtgTskStack4 { 0%,76%{opacity:0;transform:translateY(-30px) scale(0.6);} 84%,100%{opacity:1;transform:translateY(0) scale(1);} }
+  /* 対象利用者 検索UI */
+  .mtg-psearch { position:relative; }
+  .mtg-psearch input { width:100%; padding:9px 12px 9px 34px; border:1px solid #cfd8cf; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
+  .mtg-psearch .sicon { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:#80868b; font-size:18px; }
+  .mtg-pbadge { display:none; background:#eaf4ec; border:1.5px solid #2e7d32; border-radius:10px; padding:8px 12px; margin-top:6px; align-items:center; gap:8px; }
+  .mtg-pbadge.show { display:flex; }
+  .mtg-pname { font-weight:700; font-size:0.9rem; flex:1; color:#1e5e26; }
+  .mtg-pclear { background:none; border:none; cursor:pointer; padding:0; color:#80868b; font-size:18px; line-height:1; }
+  .mtg-pcands { position:absolute; z-index:200; width:100%; display:none; border:1px solid #e0e0e0; border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-top:2px; box-sizing:border-box; }
+  .mtg-pcands.show { display:block; }
+  .mtg-pcand { display:block; width:100%; padding:12px 14px; font-size:0.86rem; text-align:left; background:#fff; border:none; border-bottom:1px solid #f0f0f0; cursor:pointer; font-family:inherit; color:#202124; }
+  .mtg-pcand:last-child { border-bottom:none; }
+  .mtg-pcand:active { background:#eaf4ec; }
+  .mtg-pcand .kana { color:#80868b; font-size:0.76rem; margin-left:6px; }
 </style>
 {% endblock %}
 
@@ -197,7 +211,24 @@
       </div>
       <div class="mtg-field">
         <label>対象利用者（任意）</label>
-        <select id="mtgPatient"><option value="">選択なし</option></select>
+        <div class="mtg-psearch">
+          <span class="material-symbols-outlined sicon">search</span>
+          <input type="text" id="mtgPatientSearch" placeholder="名前・ふりがな・番号で検索..."
+                 autocomplete="off"
+                 oninput="if(!this._composing)mtgFilterPatients(this.value)"
+                 oncompositionstart="this._composing=true"
+                 oncompositionend="this._composing=false;mtgFilterPatients(this.value)"
+                 onfocus="mtgFilterPatients(this.value)">
+          <div id="mtgPatientCands" class="mtg-pcands"></div>
+        </div>
+        <div id="mtgPatientBadge" class="mtg-pbadge">
+          <span class="material-symbols-outlined" style="color:#2e7d32;font-size:18px;">person</span>
+          <span class="mtg-pname" id="mtgPatientName"></span>
+          <button type="button" class="mtg-pclear" onclick="mtgClearPatient()">
+            <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+          </button>
+        </div>
+        <input type="hidden" id="mtgPatient" value="">
       </div>
     </div>
 
@@ -434,7 +465,7 @@ function mtgStartNew() {
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('mtgDate').value = today;
-  document.getElementById('mtgPatient').value = '';
+  mtgClearPatient();
   document.getElementById('mtgTranscript').value = '';
   document.getElementById('mtgMinutes').value = '';
   document.getElementById('mtgAssessCard').style.display = 'none';
@@ -458,8 +489,8 @@ async function mtgOpen(meetingId) {
     const m = d.meeting;
     document.getElementById('mtgTitle').value = m.title || '';
     document.getElementById('mtgDate').value = m.meeting_date || '';
-    await mtgLoadPatients();  // options を確実に用意してから選択を復元
-    document.getElementById('mtgPatient').value = m.patient_id || '';
+    await mtgLoadPatients();  // 利用者データを確実に用意してから復元
+    mtgShowPatientById(m.patient_id || '');
     document.getElementById('mtgTranscript').value = m.transcript || '';
     document.getElementById('mtgMinutes').value = m.minutes || '';
     // 構造化議事録の復元(3スタイルPDF用)
@@ -902,30 +933,80 @@ async function mtgLoadIcfMaster(){
   }catch(e){ /* 失敗しても手動追加以外は動く */ }
 }
 
-// ===== 対象利用者リストをselectに読み込む =====
+// ===== 対象利用者 検索UI =====
 let mtgPatientsLoaded = false;
+let mtgPatientList = [];
 async function mtgLoadPatients(){
   if(mtgPatientsLoaded) return;
   try{
     const r = await fetch('/api/patients_cache');
     const d = await r.json();
-    const list = d.patients || [];
-    const sel = document.getElementById('mtgPatient');
-    if(!sel) return;
-    const cur = sel.value;
-    let html = '<option value="">選択なし</option>';
-    for(const p of list){
-      const id = p.id || '';
-      const no = p.patient_number || p.chart_number || '';
-      const name = p.user_name || '';
-      const label = (no ? '(No.'+no+') ' : '') + name;
-      html += '<option value="'+id+'">'+label+'</option>';
-    }
-    sel.innerHTML = html;
-    if(cur) sel.value = cur;  // 既に選択済みなら維持
+    mtgPatientList = (d.patients || []).map(p => ({
+      id: p.id || '',
+      name: p.user_name || '',
+      kana: p.user_kana || p.user_name_kana || '',
+      no: String(p.patient_number || p.chart_number || '')
+    }));
     mtgPatientsLoaded = true;
-  }catch(e){ /* 失敗してもselectは「選択なし」のまま */ }
+  }catch(e){ /* 失敗しても検索は空のまま */ }
 }
+
+function mtgFilterPatients(q){
+  const box = document.getElementById('mtgPatientCands');
+  if(!box) return;
+  q = (q || '').trim().toLowerCase();
+  let list = mtgPatientList;
+  if(q){
+    list = mtgPatientList.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.kana.toLowerCase().includes(q) ||
+      p.no.toLowerCase().includes(q));
+  }
+  list = list.slice(0, 50);  // 表示件数を制限
+  if(!list.length){ box.innerHTML = ''; box.classList.remove('show'); return; }
+  box.innerHTML = list.map(p =>
+    '<button type="button" class="mtg-pcand" onclick="mtgSelectPatient(\''+p.id+'\')">'
+    + (p.no ? '(No.'+mtgEsc(p.no)+') ' : '') + mtgEsc(p.name)
+    + (p.kana ? '<span class="kana">'+mtgEsc(p.kana)+'</span>' : '')
+    + '</button>'
+  ).join('');
+  box.classList.add('show');
+}
+
+function mtgSelectPatient(id){
+  const p = mtgPatientList.find(x => x.id === id);
+  document.getElementById('mtgPatient').value = id;
+  document.getElementById('mtgPatientName').textContent = p ? ((p.no?'(No.'+p.no+') ':'')+p.name) : '';
+  document.getElementById('mtgPatientBadge').classList.add('show');
+  document.getElementById('mtgPatientCands').classList.remove('show');
+  document.getElementById('mtgPatientSearch').value = '';
+}
+
+function mtgClearPatient(){
+  document.getElementById('mtgPatient').value = '';
+  document.getElementById('mtgPatientBadge').classList.remove('show');
+  document.getElementById('mtgPatientSearch').value = '';
+}
+
+// 保存済みpatient_idからバッジ表示を復元
+function mtgShowPatientById(id){
+  if(!id){ mtgClearPatient(); return; }
+  const p = mtgPatientList.find(x => x.id === id);
+  document.getElementById('mtgPatient').value = id;
+  document.getElementById('mtgPatientName').textContent = p ? ((p.no?'(No.'+p.no+') ':'')+p.name) : '(選択済み)';
+  document.getElementById('mtgPatientBadge').classList.add('show');
+}
+
+function mtgEsc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// 候補外クリックで閉じる
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.mtg-psearch');
+  if(wrap && !wrap.contains(e.target)){
+    const box = document.getElementById('mtgPatientCands');
+    if(box) box.classList.remove('show');
+  }
+});
 
 // ===== ボード描画(ICF生活機能モデル図レイアウト) =====
 function mtgZoneHTML(slot){
