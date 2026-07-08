@@ -1436,3 +1436,33 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 - 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。**PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作**。
 - **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
 - テスト会議が DEMO001 に複数残存(ダミー・無害)。
+
+---
+
+## 担当者会議 利用者検索UI・見出し強調（2026-07-06 追記その7）
+
+同日その6の続き。対象利用者の検索UI化、議事録見出しの強調、検索候補の重なり修正。すべてDEV・確認済み。本番未マージ。DEV HEAD = 27c8888。
+
+### 完了（DEV push済み）
+
+**対象利用者を検索UIに（記録入力と同じ操作感）**: 当初selectドロップダウンにしたが、利用者数が多く(DEMO001で52名)選びにくい→ **検索ボックス+候補リスト+選択バッジ**に変更(assessment.htmlの利用者検索UIと同方式)。
+- データは既存API `/api/patients_cache`(get_patients返却: id=patient_profiles.id UUID, user_name, patient_number, user_kana等)を流用。サーバ改修不要。
+- `mtgLoadPatients()` が起動時に配列 `mtgPatientList`(id/name/kana/no) を先読み。`mtgFilterPatients(q)` が名前/ふりがな/番号で絞り込み(50件制限)、`mtgSelectPatient(id)` で hidden input(#mtgPatient) にUUID保持+緑バッジ表示、`mtgClearPatient()` でクリア、`mtgShowPatientById(id)` で保存済み会議を開いた時にバッジ復元。候補外クリックで閉じる。
+- save は従来通り hidden #mtgPatient の値(UUID)を patient_id として送るので変更不要。mtgOpen は `await mtgLoadPatients()` 後に `mtgShowPatientById(m.patient_id)`。startNew は `mtgClearPatient()`。
+
+**検索候補が下のカードに潜る問題を修正(z-index)**: 候補ドロップダウンが次のカード(録音カード等)の下に隠れた。→ 会議情報カードに `id=mtgInfoCard; position:relative; z-index:50`、候補リスト `.mtg-pcands` を z-index:1000 に。会議情報カード全体を後続カード(static)より前面にし、その中の候補を最前面に。**注意: 他画面の検索(記録入力/評価/生活機能check等, eval-candidates等)でも同種の潜り込みが起きている可能性あり。必要なら各画面で同様のz-index対応が要る(未対応)。**
+
+**議事録スタイルの見出しを強調(marker: meetings-pdf-heading-emph-v1)**: 各セクション見出しを太く大きく(D-H)。D `.body .sh` 10.5→12.5pt / E `.ebox .bt` 10.5→12.5pt・`.ecards .cl` 8.5→10pt / F `.tl .h` 10→12.5pt / G `.gsh` 11.5→13.5pt+bold / H `.hdec` 8.5→11pt+bold・`.hlb` 8→9.5pt+bold。数値のみ変更。**A/B/Cは既に見出しが太字+罫線のため未変更**(必要なら追加強調可)。
+
+### 次にやること（PENDING）
+1. **文字サイズ選択(小/標準/大)**: 未実装。「数行だけ次ページに溢れる」対策。PDF生成前にサイズ選択→ベースフォントに反映。styleと同様に fontsize パラメータをサーバで受けCSSに反映。
+2. **[報告済み・未対応] 一覧から会議記録を削除できない**: 削除機能未実装。
+3. **担当者会議のPRO制限(本番マージ前必須)**: 開発者MENU(dev_menu.html)にオン/オフトグル追加(既存 toggleTimecard パターン: /api/dev/toggle_meetings + 一覧に meetings_enabled)。ボトム「記録・ICF分類」を meetings_enabled=true の施設だけ表示(base.htmlに施設フラグのコンテキスト受け渡し要)。現状 全施設表示。
+4. **他画面の検索候補z-index**: 記録入力/評価等でも候補が潜るなら対応。
+5. 議事録8スタイル・見出し強調の実機レイアウト目視。A/B/Cの見出し強調(任意)。アセスメント項目振り分け精度微調整(軽微)。分類AIの活動/参加自動振り分け(任意)。実機ドラッグ/録音確認(MCP不可)。
+
+### ブランチ状態
+- DEV(tasukaru-dev) HEAD = 27c8888。本番未マージ。
+- 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作。
+- **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
+- テスト会議が DEMO001 に複数残存(ダミー・無害)。
