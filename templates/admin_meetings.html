@@ -458,6 +458,7 @@ async function mtgOpen(meetingId) {
     const m = d.meeting;
     document.getElementById('mtgTitle').value = m.title || '';
     document.getElementById('mtgDate').value = m.meeting_date || '';
+    await mtgLoadPatients();  // options を確実に用意してから選択を復元
     document.getElementById('mtgPatient').value = m.patient_id || '';
     document.getElementById('mtgTranscript').value = m.transcript || '';
     document.getElementById('mtgMinutes').value = m.minutes || '';
@@ -901,6 +902,31 @@ async function mtgLoadIcfMaster(){
   }catch(e){ /* 失敗しても手動追加以外は動く */ }
 }
 
+// ===== 対象利用者リストをselectに読み込む =====
+let mtgPatientsLoaded = false;
+async function mtgLoadPatients(){
+  if(mtgPatientsLoaded) return;
+  try{
+    const r = await fetch('/api/patients_cache');
+    const d = await r.json();
+    const list = d.patients || [];
+    const sel = document.getElementById('mtgPatient');
+    if(!sel) return;
+    const cur = sel.value;
+    let html = '<option value="">選択なし</option>';
+    for(const p of list){
+      const id = p.id || '';
+      const no = p.patient_number || p.chart_number || '';
+      const name = p.user_name || '';
+      const label = (no ? '(No.'+no+') ' : '') + name;
+      html += '<option value="'+id+'">'+label+'</option>';
+    }
+    sel.innerHTML = html;
+    if(cur) sel.value = cur;  // 既に選択済みなら維持
+    mtgPatientsLoaded = true;
+  }catch(e){ /* 失敗してもselectは「選択なし」のまま */ }
+}
+
 // ===== ボード描画(ICF生活機能モデル図レイアウト) =====
 function mtgZoneHTML(slot){
   const s = MTG_SLOTS[slot];
@@ -1063,6 +1089,7 @@ async function mtgOpenIcfPicker(onPick, presetComp){
 document.addEventListener('DOMContentLoaded', () => {
   mtgLoadList();
   mtgLoadIcfMaster();  // 手動追加用マスタを先読み
+  mtgLoadPatients();   // 対象利用者リストを先読み
 });
 </script>
 {% endblock %}
