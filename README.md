@@ -1466,3 +1466,34 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 - 本番マージ時に必要(更新): 本番Supabaseへ meetings系DDL(seed/altcand/audio_session/board_slot/assessment/minutes_struct)＋icf_codes_seed(未投入なら)＋admin_settingsに本番施設 meetings_enabled。wkhtmltopdf・日本語フォント・poppler(pdfunite/pdfinfo)導入済み。tasukaruカラー.png は static に既存。PyMuPDF(fitz)は本番未インストールだが pdfunite フォールバックで動作。
 - **本番マージ前に必須**: PRO制限(導線を meetings_enabled 施設のみ表示)。
 - テスト会議が DEMO001 に複数残存(ダミー・無害)。
+
+---
+
+## 【開発ログ】2026-07-09〜10 勤怠フルセット＋前半6件 本番反映
+
+### 前半6件（本番リリース済み）
+生活機能チェック緊急修正3件 / 担当者会議 本番整備 / 勉強会・会議議事録(staff_meetings) / マインドマップ(markmap) / 録音の中断対策(Wake Lock, static/rec_keepalive.js) / タスク編集・削除(管理者・作成者・担当者の3者可, commit fca8369)
+
+### 勤怠フルセット（本番反映済み。commit 7b08771→b4845d6）
+- タイムカードUX (timecard.html, marker timecard-ux-v1): 休憩/退勤に確認ダイアログ、職員一覧30秒自動更新、手動リロード
+- 休暇の記録 (db/staff_leave.sql, staff_leave_days, marker staff-leave-api-v1): 7区分(有給/振替休/忌休/欠勤/休み/半休/時間休)、振替休は振替元日付(substitute_for)保持。API群 /admin/timecard/leave/{types,list,set,delete}。本番Supabase DDL投入済み
+- 休暇の管理UI (admin_timecard_report.html, marker staff-leave-ui-v1): 打刻編集モーダルに休暇区分プルダウン＋振替元日付
+- 事業所設定 (admin_settings key=timecard_config, marker timecard-config-v1/role_splits): 勤務区切時刻(work_split_times)・サービス提供時間(service_times)・枠時間(half/full_slot_hours)・兼務マップ(role_splits)。API /admin/timecard/config
+- 設定UI (marker timecard-config-ui-v1): 「勤務設定」ボタン→モーダル。区切時刻/提供時間可変リスト/枠時間/兼務(職員×役職×割合)入れ子編集
+- 参考様式4 実績出力 (templates/youshiki_kinmu.xlsx同梱, openpyxl, marker youshiki-export-v1): /admin/timecard/youshiki?year=&month= が.xlsx返す。介護保険課の監査用(社労士向けタイムカードCSV出力とは別物)
+- 出力ボタン (marker youshiki-btn-v1): 月次レポートに「様式で出力」
+- 実績表記 (marker youshiki-jisseki-v1): タイトル「勤務予定」→「勤務実績」、月表記を出力年月に自動更新(令和=西暦-2018)
+- フォント色統一 (marker youshiki-color-v1): 数値=黒(FF000000)、休暇文字=赤(FFFF0000)。テンプレの元赤字も打ち消し
+- 勤怠集計PDF (marker timecard-pdf-v1): /admin/timecard/report_pdf をpdfkit/wkhtmltopdfでサーバー生成。window.print()が印刷に飛んでPDF保存できない問題を解消。列幅固定(table-layout:fixed, marker timecard-pdf-colfix-v1)で全職員の列位置を揃える
+
+### 様式4 転記ロジック（確定・検証済み）
+各職員×各日: (1)休暇あれば様式表記文字(打刻より優先) (2)打刻あれば勤務区切時刻(12:30)で午前/午後に二分し、各側の在席時間(休憩差し引かず in→out区間のみ)を上限4で数える(4以上→4、満たなければ0.5刻み実時間) (3)平日(月〜金)→半日型シート、日曜→1日型シート(枠8)、土曜空欄 (4)月1〜28日をD〜AE列。氏名は全角/半角スペース除去で照合。半日型: 午前=1単位目/午後=2単位目。兼務(同名が役職違いで複数行)はrole_splitsのratioで各役職行に配分。管理者行(単位見出し前のR10)への午前午後配分は今後微調整。御社: 平日半日・日曜1日固定、正社員8:30-17:30、区切12:30
+
+### 設定モーダルのボトムナビ対応（教訓の再確認）
+ボトムナビ実測134px。--tc-nav-hにJS実測値をセット→モーダルmax-height:calc(100vh - var(--tc-nav-h) - 32px)で画面内に収め内部スクロール(marker timecard-config-navfix2-v1)。固定値直書きは端末差で破綻するため必ず実測方式。
+
+### 次回の発展タスク（勤怠）
+1. 打刻フロー組込(退勤時に半休/時間休選択、翌出勤日に前休み入力※先に出勤ボタン)
+2. 次月勤務予定入力＋LINE連携(毎月中旬にLINEで休み予定フォーム)
+3. 兼務の管理者行への午前午後配分微調整
+4. タイムカードCSV/Excel出力(社労士向け給与計算、様式とは別物)
