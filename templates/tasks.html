@@ -327,6 +327,8 @@
 
 var MY_NAME = {{ my_name | tojson }};
 var ALL_STAFFS = {{ staffs | tojson }};
+var IS_ADMIN = {{ is_admin | tojson }};  // tasks-edit-ui-v1
+var editingTaskId = null;  // tasks-edit-ui-v1: null=新規, 値=編集中
 
 // ===== 担当者検索フィルター =====
 // 文字列の正規化(カタカナ→ひらがな、空白除去、小文字化)
@@ -492,10 +494,60 @@ window.openDetail = function(taskId) {
             return '<button class="status-btn' + (t.status === s ? ' active-' + s : '') + '" onclick="updateStatus(\'' + s + '\')">' + statusMap[s] + '</button>';
         }).join('') +
         '</div>' +
-        (isMine ? '<button onclick="deleteTask(' + taskId + ')" style="width:100%;padding:10px;border:1px solid #ea4335;border-radius:10px;background:#fff;color:#ea4335;font-size:0.82rem;font-weight:700;cursor:pointer;margin-top:8px;"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">delete</span> このタスクを削除</button>' : '');
+        (function(){
+            var _asg = t.assigned_to || [];
+            var _canEdit = IS_ADMIN || (t.created_by === MY_NAME) || (_asg.indexOf(MY_NAME) >= 0) || (_asg.length === 0);
+            if (!_canEdit) return '';
+            return '<div style="display:flex;gap:8px;margin-top:8px;">' +
+                '<button onclick="openEditTask(' + taskId + ')" style="flex:1;padding:10px;border:1px solid #1a73e8;border-radius:10px;background:#fff;color:#1a73e8;font-size:0.82rem;font-weight:700;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">edit</span> 編集</button>' +
+                '<button onclick="deleteTask(' + taskId + ')" style="flex:1;padding:10px;border:1px solid #ea4335;border-radius:10px;background:#fff;color:#ea4335;font-size:0.82rem;font-weight:700;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">delete</span> 削除</button>' +
+                '</div>';
+        })();
 
     hideBottomNav();
     document.getElementById('detail-task-modal').classList.add('show');
+};
+
+// tasks-edit-ui-v1: 既存タスクを作成モーダルに読み込んで編集モードで開く
+window.openEditTask = function(taskId) {
+    var t = allTasks.find(function(x){ return x.id === taskId; });
+    if (!t) return;
+    editingTaskId = taskId;
+    document.getElementById('detail-task-modal').classList.remove('show');
+    document.getElementById('task-title-input').value = t.title || '';
+    document.getElementById('task-desc-input').value = t.description || '';
+    document.getElementById('task-due-input').value = t.due_date || '';
+    var proj = document.getElementById('task-project-select');
+    if (proj) proj.value = t.project_id || '';
+    selectedPriority = t.priority || 'medium';
+    document.querySelectorAll('.priority-btn').forEach(function(b){ b.className = 'priority-btn'; });
+    var pbtn = document.querySelector('.priority-btn[data-priority="' + selectedPriority + '"]');
+    if (pbtn) pbtn.className = 'priority-btn active-' + selectedPriority;
+    var asg = t.assigned_to || [];
+    selectedAssign = asg.slice();
+    var isAll = (asg.length === 0);
+    document.querySelectorAll('#assign-chips .assign-chip').forEach(function(c){
+        c.style.display = '';
+        var nm = c.getAttribute('data-name');
+        if (nm === 'all') { c.classList.toggle('selected', isAll); }
+        else { c.classList.toggle('selected', asg.indexOf(nm) >= 0); }
+    });
+    if (typeof updateAssignSelectedArea === 'function') updateAssignSelectedArea();
+    var mt = document.querySelector('#create-task-modal .modal-title');
+    if (mt) mt.innerHTML = '<span class="material-symbols-outlined">edit</span> タスクを編集';
+    var sb = document.getElementById('create-task-submit-btn');
+    if (sb) sb.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> 変更を保存';
+    hideBottomNav();
+    document.getElementById('create-task-modal').classList.add('show');
+};
+
+// tasks-edit-ui-v1: 作成モーダルを新規状態に戻す
+window.resetCreateModalToNew = function() {
+    editingTaskId = null;
+    var mt = document.querySelector('#create-task-modal .modal-title');
+    if (mt) mt.innerHTML = '<span class="material-symbols-outlined">add_task</span> 新しいタスク';
+    var sb = document.getElementById('create-task-submit-btn');
+    if (sb) sb.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">save</span> タスクを作成';
 };
 
 window.updateStatus = async function(status) {
@@ -677,19 +729,24 @@ document.getElementById('create-task-submit-btn').addEventListener('click', asyn
     try {
         var allChip = document.querySelector('#assign-chips .all-chip');
         var isAll = allChip && allChip.classList.contains('selected');
-        await fetch('/api/tasks/create', {
+        var _payload = {
+            title: title,
+            description: document.getElementById('task-desc-input').value.trim(),
+            priority: selectedPriority,
+            due_date: document.getElementById('task-due-input').value || null,
+            assigned_to: isAll ? [] : selectedAssign,
+            assign_type: isAll ? 'all' : 'specific',
+            project_id: document.getElementById('task-project-select').value || null,
+        };
+        var _url = '/api/tasks/create';  // tasks-edit-ui-v1
+        if (editingTaskId) { _url = '/api/tasks/update'; _payload.id = editingTaskId; }
+        await fetch(_url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                title: title,
-                description: document.getElementById('task-desc-input').value.trim(),
-                priority: selectedPriority,
-                due_date: document.getElementById('task-due-input').value || null,
-                assigned_to: isAll ? [] : selectedAssign,
-                assign_type: isAll ? 'all' : 'specific',
-                project_id: document.getElementById('task-project-select').value || null,
-            })
+            body: JSON.stringify(_payload)
         });
+        editingTaskId = null;  // tasks-edit-ui-v1
+        if (typeof resetCreateModalToNew === 'function') resetCreateModalToNew();
         document.getElementById('create-task-modal').classList.remove('show');
         showBottomNav();
         // フォームリセット
