@@ -14843,6 +14843,24 @@ def admin_timecard_youshiki():
         import openpyxl as _ys_xl
         wb = _ys_xl.load_workbook(_YS_TEMPLATE)
 
+        # youshiki-jisseki-v1: タイトルを「予定」→「実績」に、月表記を出力年月に更新
+        _ys_wareki = year - 2018  # 令和 = 西暦-2018
+        _ys_month_str = f"（令和{_ys_wareki}年{month}月分）"
+        for _sn in wb.sheetnames:
+            _ws = wb[_sn]
+            for _r in range(1, 4):
+                for _c in range(1, 35):
+                    _cell = _ws.cell(row=_r, column=_c)
+                    _v = _cell.value
+                    if not isinstance(_v, str):
+                        continue
+                    if "予定" in _v:
+                        _v = _v.replace("予定", "実績")
+                    # 月表記「（令和X年Y月分）」を出力年月に置換
+                    import re as _ys_re2
+                    _v = _ys_re2.sub(r"（令和\d+年\d+月分）", _ys_month_str, _v)
+                    _cell.value = _v
+
         # 半日型(平日)と1日型(日曜)の両シートに転記
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
             if sheet_name not in wb.sheetnames:
