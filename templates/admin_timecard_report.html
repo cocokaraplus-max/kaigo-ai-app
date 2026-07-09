@@ -87,6 +87,28 @@
   .tcm-leave-sub{margin-top:10px;display:flex;align-items:center;gap:8px}
   .tcm-leave-sub label{font-size:.82rem;color:#555;white-space:nowrap}
   .tcm-leave-sub input[type=date]{flex:1;padding:8px;border:1px solid #cddbd6;border-radius:9px;font-family:inherit;font-size:.88rem;background:#fff}
+  /* timecard-config-ui-v1 */
+  .cfg-modal{max-height:88vh;overflow-y:auto}
+  .cfg-sec{margin-top:16px;padding-top:14px;border-top:1px solid #f0ede7}
+  .cfg-sec:first-of-type{border-top:0;padding-top:0}
+  .cfg-sec h4{font-size:.92rem;color:#2f6b5e;margin-bottom:4px}
+  .cfg-hint{font-size:.76rem;color:#999;margin-bottom:8px;line-height:1.5}
+  .cfg-inp,.cfg-num{padding:9px;border:1px solid #d8d4cc;border-radius:9px;font-family:inherit;font-size:.9rem}
+  .cfg-num{width:72px}
+  .cfg-row2{display:flex;gap:16px;flex-wrap:wrap}
+  .cfg-row2 label{font-size:.86rem;color:#555;display:flex;align-items:center;gap:6px}
+  .cfg-svc-item,.cfg-role-item{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .cfg-svc-item input[type=time]{flex:1;min-width:90px;padding:8px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit}
+  .cfg-svc-item input.cfg-lbl{width:70px;padding:8px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit}
+  .cfg-role-item input{padding:8px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.85rem}
+  .cfg-role-item .cfg-rname{flex:1;min-width:90px}
+  .cfg-role-roles{width:100%;padding-left:12px}
+  .cfg-role-one{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .cfg-role-one input.cfg-rtitle{flex:1}
+  .cfg-role-one input.cfg-rratio{width:64px}
+  .cfg-del{background:none;border:0;color:#c0392b;cursor:pointer;padding:4px;font-size:.8rem}
+  .cfg-add{background:#f6f4ef;border:1px dashed #c8c3b8;border-radius:9px;padding:8px 12px;font-family:inherit;font-size:.82rem;color:#555;cursor:pointer;margin-top:4px}
+  .cfg-save{width:100%;margin-top:18px;background:#2f6b5e;color:#fff;border:0;border-radius:10px;padding:13px;font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer}
 </style>
 
 <div class="tcr-wrap">
@@ -106,6 +128,7 @@
   <div class="tcr-actions">
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">print</span>印刷 / PDF</button>
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
+    <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
 
   <div id="tcr-body"><div class="tcr-empty">読み込み中…</div></div>
@@ -152,6 +175,45 @@
     </div>
     <input class="tcm-note" id="tcm-note" placeholder="修正メモ（任意・例：本人申告により修正）">
     <button class="tcm-close" id="tcm-close">閉じる</button>
+  </div>
+</div>
+
+<!-- timecard-config-ui-v1: 勤務設定モーダル -->
+<div class="tcm-back" id="cfg-back">
+  <div class="tcm cfg-modal">
+    <h3>勤務設定</h3>
+    <div class="sub">様式出力の午前/午後判定や枠時間に使います</div>
+
+    <div class="cfg-sec">
+      <h4>勤務区切時刻</h4>
+      <p class="cfg-hint">この時刻より前が午前(1単位)、後が午後(2単位)。例: 12:30</p>
+      <input type="time" id="cfg-split" class="cfg-inp">
+    </div>
+
+    <div class="cfg-sec">
+      <h4>サービス提供時間</h4>
+      <p class="cfg-hint">運営している単位の時間帯(参考)</p>
+      <div id="cfg-svc-list"></div>
+      <button class="cfg-add" id="cfg-svc-add">+ 時間帯を追加</button>
+    </div>
+
+    <div class="cfg-sec">
+      <h4>1枠の時間</h4>
+      <div class="cfg-row2">
+        <label>半日型 <input type="number" id="cfg-half" class="cfg-num" min="1" max="12" step="0.5"> 時間</label>
+        <label>1日型 <input type="number" id="cfg-full" class="cfg-num" min="1" max="24" step="0.5"> 時間</label>
+      </div>
+    </div>
+
+    <div class="cfg-sec">
+      <h4>兼務の分割</h4>
+      <p class="cfg-hint">同じ職員が複数役職を兼ねる場合、勤務時間を役職ごとに配分します</p>
+      <div id="cfg-role-list"></div>
+      <button class="cfg-add" id="cfg-role-add">+ 兼務者を追加</button>
+    </div>
+
+    <button class="cfg-save" id="cfg-save">保存する</button>
+    <button class="tcm-close" id="cfg-close">閉じる</button>
   </div>
 </div>
 {% endblock %}
@@ -333,6 +395,94 @@
   });
   $("tcm-add-btn").addEventListener("click", addPunch);
   $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
+
+  // timecard-config-ui-v1: 勤務設定モーダル
+  function cfgSvcRow(s){
+    s=s||{label:"",start:"",end:""};
+    var d=document.createElement("div"); d.className="cfg-svc-item";
+    d.innerHTML='<input class="cfg-lbl" placeholder="名称" value="'+esc(s.label||"")+'">'
+      +'<input type="time" class="cfg-st" value="'+esc(s.start||"")+'">〜'
+      +'<input type="time" class="cfg-en" value="'+esc(s.end||"")+'">'
+      +'<button class="cfg-del">削除</button>';
+    d.querySelector(".cfg-del").addEventListener("click",function(){ d.remove(); });
+    return d;
+  }
+  function cfgRoleRow(item){
+    item=item||{name:"",roles:[{title:"",ratio:0.5}]};
+    var d=document.createElement("div"); d.className="cfg-role-item";
+    var head='<input class="cfg-rname" placeholder="職員名" value="'+esc(item.name||"")+'"><button class="cfg-del cfg-role-del">削除</button>';
+    var rolesWrap='<div class="cfg-role-roles"></div><button class="cfg-add cfg-role-addone" type="button">+ 役職</button>';
+    d.innerHTML=head+rolesWrap;
+    var rw=d.querySelector(".cfg-role-roles");
+    function addRole(r){
+      r=r||{title:"",ratio:0.5};
+      var one=document.createElement("div"); one.className="cfg-role-one";
+      one.innerHTML='<input class="cfg-rtitle" placeholder="役職(様式の職種名)" value="'+esc(r.title||"")+'">'
+        +'<input class="cfg-rratio" type="number" min="0" max="1" step="0.1" value="'+(r.ratio!=null?r.ratio:0.5)+'">'
+        +'<button class="cfg-del">×</button>';
+      one.querySelector(".cfg-del").addEventListener("click",function(){ one.remove(); });
+      rw.appendChild(one);
+    }
+    (item.roles||[]).forEach(addRole);
+    d.querySelector(".cfg-role-addone").addEventListener("click",function(){ addRole(); });
+    d.querySelector(".cfg-role-del").addEventListener("click",function(){ d.remove(); });
+    return d;
+  }
+  async function openConfig(){
+    $("cfg-back").classList.add("show");
+    try{
+      var res=await fetch("/admin/timecard/config"); var j=await res.json();
+      var c=(j&&j.config)||{};
+      $("cfg-split").value=(c.work_split_times&&c.work_split_times[0])||"";
+      $("cfg-half").value=c.half_slot_hours!=null?c.half_slot_hours:4;
+      $("cfg-full").value=c.full_slot_hours!=null?c.full_slot_hours:8;
+      var sl=$("cfg-svc-list"); sl.innerHTML="";
+      (c.service_times||[]).forEach(function(s){ sl.appendChild(cfgSvcRow(s)); });
+      var rl=$("cfg-role-list"); rl.innerHTML="";
+      (c.role_splits||[]).forEach(function(it){ rl.appendChild(cfgRoleRow(it)); });
+    }catch(e){ alert("設定の読み込みに失敗しました"); }
+  }
+  function collectConfig(){
+    var svc=[];
+    document.querySelectorAll("#cfg-svc-list .cfg-svc-item").forEach(function(d){
+      var lb=d.querySelector(".cfg-lbl").value.trim();
+      var st=d.querySelector(".cfg-st").value; var en=d.querySelector(".cfg-en").value;
+      if(st&&en) svc.push({label:lb||"枠",start:st,end:en});
+    });
+    var roles=[];
+    document.querySelectorAll("#cfg-role-list .cfg-role-item").forEach(function(d){
+      var nm=d.querySelector(".cfg-rname").value.trim(); if(!nm) return;
+      var rs=[];
+      d.querySelectorAll(".cfg-role-one").forEach(function(one){
+        var t=one.querySelector(".cfg-rtitle").value.trim();
+        var ratio=parseFloat(one.querySelector(".cfg-rratio").value);
+        if(t&&ratio>0) rs.push({title:t,ratio:ratio});
+      });
+      if(rs.length) roles.push({name:nm,roles:rs});
+    });
+    var split=$("cfg-split").value;
+    return {
+      work_split_times: split?[split]:[],
+      service_times: svc,
+      half_slot_hours: parseFloat($("cfg-half").value)||4,
+      full_slot_hours: parseFloat($("cfg-full").value)||8,
+      role_splits: roles
+    };
+  }
+  $("tcr-config").addEventListener("click", openConfig);
+  $("cfg-close").addEventListener("click",function(){ $("cfg-back").classList.remove("show"); });
+  $("cfg-back").addEventListener("click",function(e){ if(e.target===$("cfg-back")) $("cfg-back").classList.remove("show"); });
+  $("cfg-svc-add").addEventListener("click",function(){ $("cfg-svc-list").appendChild(cfgSvcRow()); });
+  $("cfg-role-add").addEventListener("click",function(){ $("cfg-role-list").appendChild(cfgRoleRow()); });
+  $("cfg-save").addEventListener("click",async function(){
+    var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent="保存中…";
+    try{
+      var res=await fetch("/admin/timecard/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collectConfig())});
+      var j=await res.json();
+      if(j.status==="success"){ btn.textContent="保存しました"; setTimeout(function(){ btn.textContent=old; btn.disabled=false; $("cfg-back").classList.remove("show"); },900); }
+      else{ alert(j.message||"保存に失敗しました"); btn.textContent=old; btn.disabled=false; }
+    }catch(e){ alert("通信エラー"); btn.textContent=old; btn.disabled=false; }
+  });
   // staff-leave-ui-v1: 振替休を選んだら振替元日付欄を表示
   $("tcm-leave-type").addEventListener("change",function(){
     $("tcm-leave-sub-wrap").style.display = (this.value==="substitute") ? "flex" : "none";
