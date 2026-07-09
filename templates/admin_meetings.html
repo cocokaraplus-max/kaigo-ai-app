@@ -585,7 +585,7 @@ async function mtgStartRec() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mtgState.recording = true;
-    if (window.recKeepAlive) recKeepAlive.acquire();  // rec-keepalive-v1
+    if (window.recKeepAlive) recKeepAlive.start({ onResume: mtgResumeRec, label: '担当者会議' });  // rec-keepalive-v2
     document.getElementById('mtgRecBtn').classList.add('on');
     document.getElementById('mtgRecLabel').textContent = '録音停止';
     document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...';
@@ -614,9 +614,38 @@ async function mtgStartRec() {
   }
 }
 
+// rec-keepalive-v2: 中断復帰時に同セッションの続きとして録音を再開する。成功でtrue。
+async function mtgResumeRec() {
+  if (!mtgState.recording) return false;
+  if (mtgState.recorder && mtgState.recorder.state === 'recording') return true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const startChunkRecorder = () => {
+      if (!mtgState.recording) { stream.getTracks().forEach(t=>t.stop()); return; }
+      const rec = new MediaRecorder(stream);
+      const blobs = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) blobs.push(e.data); };
+      rec.onstop = async () => {
+        if (blobs.length) {
+          const blob = new Blob(blobs, { type: blobs[0].type || 'audio/webm' });
+          await mtgSendChunk(blob);
+        }
+        if (mtgState.recording) startChunkRecorder();
+      };
+      mtgState.recorder = rec;
+      rec.start();
+      mtgState._chunkTimer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, MTG_CHUNK_MS);
+    };
+    document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...(再開)';
+    startChunkRecorder();
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
 function mtgStopRec() {
   mtgState.recording = false;
-  if (window.recKeepAlive) recKeepAlive.release();  // rec-keepalive-v1
+  if (window.recKeepAlive) recKeepAlive.stop();  // rec-keepalive-v2
   document.getElementById('mtgRecBtn').classList.remove('on');
   document.getElementById('mtgRecLabel').textContent = '録音開始';
   document.getElementById('mtgRecStatus').textContent = '文字起こし処理中...';

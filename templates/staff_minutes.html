@@ -219,7 +219,7 @@ async function smToggleRec(){
   try {
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     smState.recording = true;
-    if (window.recKeepAlive) recKeepAlive.acquire();  // rec-keepalive-v1
+    if (window.recKeepAlive) recKeepAlive.start({ onResume: smResumeRec, label: '勉強会議事録' });  // rec-keepalive-v2
     if (!smState.sessionId) smState.sessionId = smUuid();
     document.getElementById('smRecLabel').textContent = '録音停止';
     document.getElementById('smRecBtn').classList.add('recording');
@@ -244,9 +244,23 @@ function smStartChunk(stream){
   rec.start();
   smState._chunkTimer = setTimeout(function(){ if (rec.state==='recording') rec.stop(); }, SM_CHUNK_MS);
 }
+// rec-keepalive-v2: 中断復帰時に同セッションの続きとして録音を再開する。成功でtrue。
+async function smResumeRec(){
+  if (!smState.recording) return false;  // 既に停止済みなら再開しない
+  // レコーダーが生きているなら再開不要(継続中)
+  if (smState.recorder && smState.recorder.state === 'recording') return true;
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    document.getElementById('smRecStatus').innerHTML = '<span class="sm-rec-dot"></span>録音中...(再開)';
+    smStartChunk(stream);
+    return true;
+  } catch(e) {
+    return false;  // マイク再取得失敗(iOS等)。呼び出し側が手動再開バナーを出す。
+  }
+}
 function smStopRec(){
   smState.recording = false;
-  if (window.recKeepAlive) recKeepAlive.release();  // rec-keepalive-v1
+  if (window.recKeepAlive) recKeepAlive.stop();  // rec-keepalive-v2
   document.getElementById('smRecLabel').textContent = '録音開始';
   document.getElementById('smRecBtn').classList.remove('recording');
   document.getElementById('smRecStatus').textContent = '';
