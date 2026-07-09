@@ -78,6 +78,15 @@
     .tcr-monthbar button,.tcr-actions,.tcr-edit,.tcr-back{display:none!important}
     .tcr-collapsed .tcr-days{display:block!important}
   }
+  /* staff-leave-ui-v1 */
+  .tcm-leave{margin-top:14px;background:#eef5f3;border:1px solid #d7e6e1;border-radius:12px;padding:12px}
+  .tcm-leave h4{font-size:.86rem;margin-bottom:8px;color:#2f6b5e}
+  .tcm-leave-row{display:flex;gap:8px;align-items:center}
+  .tcm-leave-row select{flex:1;padding:9px;border:1px solid #cddbd6;border-radius:9px;font-family:inherit;font-size:.9rem;background:#fff}
+  .tcm-leave-save{background:#2f6b5e;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-family:inherit;font-weight:700;font-size:.86rem;cursor:pointer}
+  .tcm-leave-sub{margin-top:10px;display:flex;align-items:center;gap:8px}
+  .tcm-leave-sub label{font-size:.82rem;color:#555;white-space:nowrap}
+  .tcm-leave-sub input[type=date]{flex:1;padding:8px;border:1px solid #cddbd6;border-radius:9px;font-family:inherit;font-size:.88rem;background:#fff}
 </style>
 
 <div class="tcr-wrap">
@@ -107,6 +116,26 @@
     <h3 id="tcm-title">打刻の編集</h3>
     <div class="sub" id="tcm-sub"></div>
     <div id="tcm-rows"></div>
+    <div class="tcm-leave"><!-- staff-leave-ui-v1 -->
+      <h4>この日の休暇区分</h4>
+      <div class="tcm-leave-row">
+        <select id="tcm-leave-type">
+          <option value="">なし（通常勤務・休暇なし）</option>
+          <option value="paid">有給</option>
+          <option value="substitute">振替休</option>
+          <option value="condolence">忌休</option>
+          <option value="absence">欠勤</option>
+          <option value="off">休み</option>
+          <option value="half">半休</option>
+          <option value="hourly">時間休</option>
+        </select>
+        <button class="tcm-leave-save" id="tcm-leave-save">保存</button>
+      </div>
+      <div class="tcm-leave-sub" id="tcm-leave-sub-wrap" style="display:none;">
+        <label>振替元の日付</label>
+        <input type="date" id="tcm-leave-sub-date">
+      </div>
+    </div>
     <div class="tcm-add">
       <h4>打刻を追加</h4>
       <div class="tcm-add-row">
@@ -198,6 +227,27 @@
     $("tcm-rows").innerHTML='<div class="tcm-empty">読み込み中…</div>';
     $("tcm-back").classList.add("show");
     await loadDay();
+    await loadLeave();  // staff-leave-ui-v1
+  }
+
+  // staff-leave-ui-v1: この日の休暇区分を読み込んでプルダウンに反映
+  async function loadLeave(){
+    var sel=$("tcm-leave-type"), subWrap=$("tcm-leave-sub-wrap"), subDate=$("tcm-leave-sub-date");
+    if(!sel) return;
+    sel.value=""; subDate.value=""; subWrap.style.display="none";
+    try{
+      var d=new Date(editing.date);
+      var y=d.getFullYear(), m=d.getMonth()+1;
+      var res=await fetch("/admin/timecard/leave/list?year="+y+"&month="+m);
+      var j=await res.json();
+      if(j.status==="success"){
+        var hit=(j.leaves||[]).find(function(x){ return x.staff_name===editing.staff && x.leave_date===editing.date; });
+        if(hit){
+          sel.value=hit.leave_type||"";
+          if(hit.leave_type==="substitute"){ subWrap.style.display="flex"; if(hit.substitute_for) subDate.value=hit.substitute_for; }
+        }
+      }
+    }catch(e){ /* 取得失敗は静かに無視(なし扱い) */ }
   }
 
   async function loadDay(){
@@ -261,6 +311,29 @@
   $("tcr-print").addEventListener("click",function(){ window.print(); });
   $("tcm-add-btn").addEventListener("click", addPunch);
   $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
+  // staff-leave-ui-v1: 振替休を選んだら振替元日付欄を表示
+  $("tcm-leave-type").addEventListener("change",function(){
+    $("tcm-leave-sub-wrap").style.display = (this.value==="substitute") ? "flex" : "none";
+  });
+  // staff-leave-ui-v1: 休暇の保存(なし=削除、区分あり=登録/更新)
+  $("tcm-leave-save").addEventListener("click",async function(){
+    var t=$("tcm-leave-type").value;
+    var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent="保存中…";
+    try{
+      if(!t){
+        await fetch("/admin/timecard/leave/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({staff_name:editing.staff, leave_date:editing.date})});
+      }else{
+        var body={staff_name:editing.staff, leave_date:editing.date, leave_type:t};
+        if(t==="substitute"){ body.substitute_for=$("tcm-leave-sub-date").value||""; }
+        await fetch("/admin/timecard/leave/set",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(body)});
+      }
+      btn.textContent="保存しました";
+      if(typeof load==="function"){ load(); }  // 月次を再読込(あれば)
+      setTimeout(function(){ btn.textContent=old; btn.disabled=false; },1200);
+    }catch(e){ btn.textContent="失敗"; setTimeout(function(){ btn.textContent=old; btn.disabled=false; },1200); }
+  });
   $("tcm-back").addEventListener("click",function(e){ if(e.target===$("tcm-back")) $("tcm-back").classList.remove("show"); });
 
   load();
