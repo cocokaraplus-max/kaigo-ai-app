@@ -14401,6 +14401,156 @@ def admin_timecard_device_delete():
 # ===== /timecard-api-v1 =====
 
 
+# ============================================================
+# staff-leave-api-v1 : 勤怠 休暇区分の記録
+#   打刻とは別に日ごとの休暇(有給/振替休/忌休/欠勤/休み/半休/時間休)を保存。
+#   管理者が日付×職員で登録・修正・削除する(土台)。様式出力・勤怠管理で使う。
+# ============================================================
+
+_LEAVE_TYPES = {
+    "paid":       {"label": "有給",   "form": "有給", "partial": False},
+    "substitute": {"label": "振替休", "form": "振休", "partial": False},
+    "condolence": {"label": "忌休",   "form": "忌休", "partial": False},
+    "absence":    {"label": "欠勤",   "form": "欠勤", "partial": False},
+    "off":        {"label": "休み",   "form": "休",   "partial": False},
+    "half":       {"label": "半休",   "form": "半",   "partial": True},
+    "hourly":     {"label": "時間休", "form": "時",   "partial": True},
+}
+
+import re as _leave_re
+_LEAVE_DATE_RE = _leave_re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.route("/admin/timecard/leave/types", methods=["GET"])
+@login_required
+def admin_timecard_leave_types():
+    """休暇区分の一覧(コード・表示名)を返す。UIのプルダウン用。"""
+    try:
+        types = [{"code": k, "label": v["label"], "partial": v["partial"]}
+                 for k, v in _LEAVE_TYPES.items()]
+        return jsonify({"status": "success", "types": types})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/list", methods=["GET"])
+@login_required
+def admin_timecard_leave_list():
+    """指定月(year,month)の休暇レコード一覧。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+        # 月初〜月末(JST日付)で絞る
+        start = f"{year:04d}-{month:02d}-01"
+        if month == 12:
+            end = f"{year+1:04d}-01-01"
+        else:
+            end = f"{year:04d}-{month+1:02d}-01"
+        res = supabase.table("staff_leave_days").select("*").eq(
+            "facility_code", f_code).gte("leave_date", start).lt(
+            "leave_date", end).order("leave_date", desc=False).execute()
+        rows = res.data or []
+        for r in rows:
+            lt = _LEAVE_TYPES.get(r.get("leave_type"))
+            r["leave_label"] = lt["label"] if lt else r.get("leave_type")
+        return jsonify({"status": "success", "leaves": rows})
+    except Exception as e:
+        print(f"admin_timecard_leave_list error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/set", methods=["POST"])
+@login_required
+def admin_timecard_leave_set():
+    """休暇を登録/更新(施設+職員+日付でupsert)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        leave_type = (data.get("leave_type") or "").strip()
+        note = (data.get("note") or "").strip() or None
+        substitute_for = (data.get("substitute_for") or "").strip()
+        if not staff_name:
+            return jsonify({"status": "error", "message": "職員名が必要です"}), 400
+        if not _LEAVE_DATE_RE.match(leave_date):
+            return jsonify({"status": "error", "message": "日付が不正です(YYYY-MM-DD)"}), 400
+        if leave_type not in _LEAVE_TYPES:
+            return jsonify({"status": "error", "message": "休暇区分が不正です"}), 400
+        # 振替休のときだけ振替元日付を持つ。それ以外は無視。
+        sub_for = None
+        if leave_type == "substitute" and substitute_for:
+            if not _LEAVE_DATE_RE.match(substitute_for):
+                return jsonify({"status": "error", "message": "振替元の日付が不正です(YYYY-MM-DD)"}), 400
+            sub_for = substitute_for
+        # 既存があれば更新、無ければ挿入(施設+職員+日付ユニーク)
+        existing = supabase.table("staff_leave_days").select("id").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "leave_date", leave_date).execute()
+        payload = {
+            "facility_code": f_code, "staff_name": staff_name,
+            "leave_date": leave_date, "leave_type": leave_type,
+            "substitute_for": sub_for,
+            "note": note, "created_by": my_name,
+            "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
+        }
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("staff_leave_days").update(payload).eq("id", rid).execute()
+            return jsonify({"status": "success", "id": rid, "updated": True})
+        res = supabase.table("staff_leave_days").insert(payload).execute()
+        new_id = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": new_id, "updated": False})
+    except Exception as e:
+        print(f"admin_timecard_leave_set error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/delete", methods=["POST"])
+@login_required
+def admin_timecard_leave_delete():
+    """休暇レコードを削除。id指定、または(職員+日付)指定。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rid = (data.get("id") or "").strip()
+        if rid:
+            supabase.table("staff_leave_days").delete().eq(
+                "id", rid).eq("facility_code", f_code).execute()
+            return jsonify({"status": "success"})
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        if staff_name and _LEAVE_DATE_RE.match(leave_date):
+            supabase.table("staff_leave_days").delete().eq(
+                "facility_code", f_code).eq("staff_name", staff_name).eq(
+                "leave_date", leave_date).execute()
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "id または (職員+日付) が必要です"}), 400
+    except Exception as e:
+        print(f"admin_timecard_leave_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /staff-leave-api-v1 -----
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
