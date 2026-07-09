@@ -14351,7 +14351,11 @@ def admin_timecard_report_pdf():
   .staff {{ border:1px solid #d0ccc4; border-radius:6px; margin-bottom:10px; page-break-inside:avoid; }}
   .staff-head {{ background:#f6f4ef; padding:6px 10px; font-weight:bold; border-bottom:1px solid #e5e1d8; display:flex; justify-content:space-between; }}
   .staff-tot {{ color:#2f6b5e; }}
-  table {{ width:100%; border-collapse:collapse; }}
+  table {{ width:100%; border-collapse:collapse; table-layout:fixed; }}  /* timecard-pdf-colfix-v1 */
+  col.c-date {{ width:22%; }}
+  col.c-in,col.c-out {{ width:15%; }}
+  col.c-brk {{ width:20%; }}
+  col.c-work {{ width:28%; }}
   th,td {{ border-bottom:1px solid #efece6; padding:4px 8px; text-align:left; font-size:10.5px; }}
   th {{ background:#faf9f6; color:#666; font-weight:normal; }}
   .num {{ text-align:right; }}
@@ -14374,7 +14378,8 @@ def admin_timecard_report_pdf():
                          + f'（{s["worked_days"]}日勤務'
                          + (f'・要確認{s["incomplete_days"]}日' if s["incomplete_days"] else '')
                          + '）</span></div>')
-            parts.append('<table><tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
+            parts.append('<table><colgroup><col class="c-date"><col class="c-in"><col class="c-out"><col class="c-brk"><col class="c-work"></colgroup>'
+                         '<tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
             for d in s["days"]:
                 if d["incomplete"]:
                     flags = "／".join(d.get("flags") or [])
