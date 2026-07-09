@@ -126,7 +126,7 @@
   </div>
 
   <div class="tcr-actions">
-    <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">print</span>印刷 / PDF</button>
+    <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
     <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
@@ -371,7 +371,27 @@
 
   $("tcr-prev").addEventListener("click",function(){ month--; if(month<1){month=12;year--;} load(); });
   $("tcr-next").addEventListener("click",function(){ month++; if(month>12){month=1;year++;} load(); });
-  $("tcr-print").addEventListener("click",function(){ window.print(); });
+  // timecard-pdf-btn-v1: サーバー生成PDFをダウンロード(window.printの印刷飛び問題を解消)
+  $("tcr-print").addEventListener("click",async function(){
+    var btn=this; btn.disabled=true; var old=btn.innerHTML;
+    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:18px">hourglass_top</span>作成中…';
+    try{
+      var res=await fetch("/admin/timecard/report_pdf?year="+year+"&month="+month);
+      var ct=res.headers.get("content-type")||"";
+      if(ct.indexOf("pdf")<0){
+        var j=await res.json().catch(function(){return {};});
+        alert(j.message||"PDFの作成に失敗しました");
+        return;
+      }
+      var blob=await res.blob();
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url; a.download="kintai_"+year+String(month).padStart(2,"0")+".pdf";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }catch(e){ alert("通信エラーが発生しました"); }
+    finally{ btn.disabled=false; btn.innerHTML=old; }
+  });
   // youshiki-btn-v1: 参考様式4(.xlsx)をダウンロード
   $("tcr-youshiki").addEventListener("click",async function(){
     var btn=this; btn.disabled=true; var old=btn.innerHTML;
