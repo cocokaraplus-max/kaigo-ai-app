@@ -14551,6 +14551,124 @@ def admin_timecard_leave_delete():
 # ----- /staff-leave-api-v1 -----
 
 
+# ============================================================
+# timecard-config-v1 : 勤怠の事業所設定(勤務区切時刻・サービス提供時間)
+#   admin_settings(key='timecard_config') に JSON で保存。
+#   様式(参考様式4)出力で午前/午後の単位振り分けに使う。
+#   まず区切り1つ=2単位(半日型)。将来 splits を複数にして可変単位へ拡張可能。
+# ============================================================
+
+import json as _tcfg_json
+
+_TC_CONFIG_KEY = "timecard_config"
+_TC_CONFIG_DEFAULT = {
+    "work_split_times": ["12:30"],          # 勤務区切時刻(N-1個でN単位)。御社=12:30の1つ=2単位
+    "service_times": [                        # サービス提供時間帯(参考・単位数把握用)
+        {"label": "午前", "start": "09:00", "end": "12:00"},
+        {"label": "午後", "start": "13:00", "end": "16:00"},
+    ],
+    "half_slot_hours": 4,                     # 半日型 1枠の時間
+    "full_slot_hours": 8,                     # 1日型 1枠の時間
+}
+
+
+def _tc_get_config(supabase, f_code):
+    """事業所の勤怠設定を取得(無ければデフォルト)。"""
+    try:
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        if res.data and res.data[0].get("value"):
+            cfg = _tcfg_json.loads(res.data[0]["value"])
+            if isinstance(cfg, dict):
+                # デフォルトにマージ(欠けたキーを補完)
+                merged = dict(_TC_CONFIG_DEFAULT)
+                merged.update(cfg)
+                return merged
+    except Exception as e:
+        print(f"_tc_get_config error: {e}", flush=True)
+    return dict(_TC_CONFIG_DEFAULT)
+
+
+@app.route("/admin/timecard/config", methods=["GET"])
+@login_required
+def admin_timecard_config_get():
+    """勤怠設定を返す。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        return jsonify({"status": "success", "config": _tc_get_config(supabase, f_code)})
+    except Exception as e:
+        print(f"admin_timecard_config_get error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+_TC_TIME_RE = __import__("re").compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+@app.route("/admin/timecard/config", methods=["POST"])
+@login_required
+def admin_timecard_config_save():
+    """勤怠設定を保存。管理者限定。区切時刻・サービス提供時間の妥当性を確認。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        cfg = dict(_TC_CONFIG_DEFAULT)
+
+        # 勤務区切時刻(リスト、HH:MM)
+        splits = data.get("work_split_times")
+        if isinstance(splits, list):
+            clean = []
+            for t in splits:
+                t = str(t).strip()
+                if _TC_TIME_RE.match(t):
+                    clean.append(t)
+            cfg["work_split_times"] = sorted(set(clean))
+
+        # サービス提供時間帯(リスト of {label,start,end})
+        svc = data.get("service_times")
+        if isinstance(svc, list):
+            clean_svc = []
+            for s in svc:
+                if not isinstance(s, dict):
+                    continue
+                st = str(s.get("start", "")).strip()
+                en = str(s.get("end", "")).strip()
+                lb = str(s.get("label", "")).strip() or "枠"
+                if _TC_TIME_RE.match(st) and _TC_TIME_RE.match(en):
+                    clean_svc.append({"label": lb, "start": st, "end": en})
+            if clean_svc:
+                cfg["service_times"] = clean_svc
+
+        # 枠時間
+        for k in ("half_slot_hours", "full_slot_hours"):
+            v = data.get(k)
+            if isinstance(v, (int, float)) and 0 < v <= 24:
+                cfg[k] = v
+
+        value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
+        existing = supabase.table("admin_settings").select("id").eq(
+            "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": value_json}).eq(
+                "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": _TC_CONFIG_KEY, "value": value_json,
+            }).execute()
+        return jsonify({"status": "success", "config": cfg})
+    except Exception as e:
+        print(f"admin_timecard_config_save error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /timecard-config-v1 -----
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
