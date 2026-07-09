@@ -14841,7 +14841,17 @@ def admin_timecard_youshiki():
             leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
 
         import openpyxl as _ys_xl
+        from openpyxl.styles import Font as _YS_Font
+        from copy import copy as _ys_copy
         wb = _ys_xl.load_workbook(_YS_TEMPLATE)
+
+        def _ys_set_cell(cell, value, is_leave):
+            # youshiki-color-v1: 数値は黒、休暇文字は赤。既存フォントを保ちつつ色だけ変える。
+            cell.value = value
+            f = cell.font
+            new_color = "FFFF0000" if is_leave else "FF000000"
+            cell.font = _YS_Font(name=f.name, size=f.size, bold=f.bold,
+                                 italic=f.italic, color=new_color)
 
         # youshiki-jisseki-v1: タイトルを「予定」→「実績」に、月表記を出力年月に更新
         _ys_wareki = year - 2018  # 令和 = 西暦-2018
@@ -14894,7 +14904,7 @@ def admin_timecard_youshiki():
                     sp = split_by_name.get(name)
                     for (unit, row, title) in occurs:
                         if leave:
-                            ws.cell(row=row, column=col).value = _YS_LEAVE_FORM.get(leave, leave)
+                            _ys_set_cell(ws.cell(row=row, column=col), _YS_LEAVE_FORM.get(leave, leave), True)
                             continue
                         if is_full:
                             val = slots[0]
@@ -14905,7 +14915,7 @@ def admin_timecard_youshiki():
                             continue
                         if sp and title in sp:
                             val = round(val * sp[title] * 2) / 2
-                        ws.cell(row=row, column=col).value = val
+                        _ys_set_cell(ws.cell(row=row, column=col), val, False)
 
         import io as _ys_io
         buf = _ys_io.BytesIO()
