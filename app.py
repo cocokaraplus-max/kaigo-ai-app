@@ -15072,6 +15072,18 @@ def admin_timecard_youshiki():
                     _cell.value = _v
 
         # 半日型(平日)と1日型(日曜)の両シートに転記
+        # youshiki-d8-fix-v1: D8(起点日付)を出力対象月の1日で全シート上書き。
+        #   -> E8以降の=D8+1 と D9以降の=TEXT(D8,"aaa") が日付・曜日とも自動追従。
+        #   テンプレ固定値(12月始まり)によるズレを根絶する。
+        _ys_d1 = _ys_date(year, month, 1)
+        for _sn2 in wb.sheetnames:
+            _ws2 = wb[_sn2]
+            _ws2["D8"] = _ys_d1
+            # 1日型はタイトルが M2/Q2 に分裂しているため明示的に統一する
+            if isinstance(_ws2["Q2"].value, str) and "\u5b9f\u7e3e" in _ws2["Q2"].value:
+                _ws2["M2"] = "\u52e4\u52d9\u5b9f\u7e3e" + _ys_month_str
+                _ws2["Q2"] = None
+
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
             if sheet_name not in wb.sheetnames:
                 continue
