@@ -14222,6 +14222,201 @@ def admin_timecard_monthly():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+
+# ============================================================
+# timecard-pdf-v1 : 勤怠集計のサーバー側PDF生成
+#   window.print()が印刷に飛んでPDF保存できない問題を解決。
+#   月次データからPDF用HTMLを組み、pdfkit/wkhtmltopdfでPDF化してダウンロード。
+# ============================================================
+
+def _tc_build_monthly_data(supabase, f_code, year, month):
+    """月次の職員別・日別集計を返す(admin_timecard_monthlyと同じ構造)。PDF/JSON共用。"""
+    start_iso, end_iso = _tc_month_range_jst(year, month)
+    res = supabase.table("timecard_records").select("*").eq(
+        "facility_code", f_code).eq("is_deleted", False).gte(
+        "punched_at", start_iso).lt("punched_at", end_iso).order(
+        "punched_at", desc=False).execute()
+    rows = res.data or []
+    by_staff = {}
+    for r in rows:
+        sn = r.get("staff_name")
+        dk = _tc_day_key(r.get("punched_at"))
+        if not sn or not dk:
+            continue
+        by_staff.setdefault(sn, {}).setdefault(dk, []).append(r)
+    staff_master = _tc_staff_list(supabase, f_code)
+    name_order = [s["name"] for s in staff_master]
+    emoji_map = {s["name"]: s["emoji"] for s in staff_master}
+    for sn in by_staff.keys():
+        if sn not in name_order:
+            name_order.append(sn)
+    result = []
+    for sn in name_order:
+        days_map = by_staff.get(sn, {})
+        days = []
+        total_min = 0
+        worked_days = 0
+        incomplete_days = 0
+        for dk in sorted(days_map.keys()):
+            comp = _tc_compute_day(days_map[dk])
+            if comp["minutes"] is not None:
+                total_min += comp["minutes"]
+                if comp["minutes"] > 0:
+                    worked_days += 1
+            if comp["incomplete"]:
+                incomplete_days += 1
+            days.append({"date": dk, "minutes": comp["minutes"],
+                         "incomplete": comp["incomplete"], "flags": comp["flags"],
+                         "in": comp["in"], "out": comp["out"],
+                         "break_min": comp["break_min"]})
+        result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
+                       "days": days, "total_minutes": total_min,
+                       "worked_days": worked_days,
+                       "incomplete_days": incomplete_days})
+    return result
+
+
+def _tc_fmt_hm(minutes):
+    if minutes is None:
+        return "—"
+    h = minutes // 60
+    m = minutes % 60
+    return f"{h}時間" + (f"{m}分" if m else "")
+
+
+def _tc_fmt_time_jst(iso):
+    if not iso:
+        return "--:--"
+    dt = _tc_parse_iso(iso)
+    if dt is None:
+        return "--:--"
+    dt = dt.astimezone(_TC_JST)
+    return dt.strftime("%H:%M")
+
+
+def _tc_day_label(dk):
+    try:
+        y, m, d = dk.split("-")
+        from datetime import date as _d
+        wd = ["月", "火", "水", "木", "金", "土", "日"][_d(int(y), int(m), int(d)).weekday()]
+        return f"{int(d)}日({wd})"
+    except Exception:
+        return dk
+
+
+@app.route("/admin/timecard/report_pdf", methods=["GET"])
+@login_required
+def admin_timecard_report_pdf():
+    """勤怠集計をPDFで出力(サーバー生成)。管理者限定。query: year, month"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+
+        staff = _tc_build_monthly_data(supabase, f_code, year, month)
+
+        # 施設名
+        fac_name = ""
+        try:
+            fr = supabase.table("facilities").select("name").eq("facility_code", f_code).execute()
+            if fr.data:
+                fac_name = fr.data[0].get("name", "") or ""
+        except Exception:
+            pass
+
+        grand_min = sum(s["total_minutes"] for s in staff)
+        grand_inc = sum(s["incomplete_days"] for s in staff)
+
+        import html as _html
+        parts = []
+        parts.append(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
+<style>
+  @page {{ size: A4; margin: 14mm 12mm; }}
+  * {{ box-sizing: border-box; }}
+  body {{ font-family: 'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222; font-size:11px; }}
+  h1 {{ font-size:16px; margin:0 0 2px; }}
+  .sub {{ color:#666; font-size:10px; margin-bottom:10px; }}
+  .summary {{ background:#eef5f3; border:1px solid #d7e6e1; border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:11px; }}
+  .staff {{ border:1px solid #d0ccc4; border-radius:6px; margin-bottom:10px; page-break-inside:avoid; }}
+  .staff-head {{ background:#f6f4ef; padding:6px 10px; font-weight:bold; border-bottom:1px solid #e5e1d8; display:flex; justify-content:space-between; }}
+  .staff-tot {{ color:#2f6b5e; }}
+  table {{ width:100%; border-collapse:collapse; }}
+  th,td {{ border-bottom:1px solid #efece6; padding:4px 8px; text-align:left; font-size:10.5px; }}
+  th {{ background:#faf9f6; color:#666; font-weight:normal; }}
+  .num {{ text-align:right; }}
+  .bad {{ color:#c0392b; }}
+  .empty {{ color:#aaa; padding:8px; }}
+</style></head><body>""")
+        parts.append(f"<h1>勤怠集計表</h1>")
+        parts.append(f'<div class="sub">{_html.escape(fac_name)}　{year}年{month}月</div>')
+        parts.append(f'<div class="summary">施設合計：<b>{_tc_fmt_hm(grand_min)}</b>'
+                     + (f'　／　要確認の日 <b>{grand_inc}</b>日' if grand_inc else '') + '</div>')
+
+        any_data = False
+        for s in staff:
+            if not s["days"]:
+                continue
+            any_data = True
+            parts.append('<div class="staff"><div class="staff-head"><span>'
+                         + _html.escape(s["emoji"] + " " + s["name"])
+                         + '</span><span class="staff-tot">' + _tc_fmt_hm(s["total_minutes"])
+                         + f'（{s["worked_days"]}日勤務'
+                         + (f'・要確認{s["incomplete_days"]}日' if s["incomplete_days"] else '')
+                         + '）</span></div>')
+            parts.append('<table><tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
+            for d in s["days"]:
+                if d["incomplete"]:
+                    flags = "／".join(d.get("flags") or [])
+                    parts.append(f'<tr class="bad"><td>{_tc_day_label(d["date"])}</td>'
+                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                 f'<td colspan="2">⚠ {_html.escape(flags)}</td></tr>')
+                else:
+                    brk = f'{d["break_min"]}分' if d.get("break_min") else "—"
+                    parts.append(f'<tr><td>{_tc_day_label(d["date"])}</td>'
+                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                 f'<td>{brk}</td><td class="num">{_tc_fmt_hm(d["minutes"])}</td></tr>')
+            parts.append('</table></div>')
+
+        if not any_data:
+            parts.append('<div class="empty">この月の打刻記録はありません。</div>')
+        parts.append("</body></html>")
+        html_str = "".join(parts)
+
+        import pdfkit
+        import shutil as _sh
+        options = {
+            "page-size": "A4", "encoding": "UTF-8",
+            "margin-top": "14mm", "margin-bottom": "14mm",
+            "margin-left": "12mm", "margin-right": "12mm",
+            "quiet": "",
+        }
+        wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+
+        import io as _io
+        from flask import send_file as _send
+        buf = _io.BytesIO(pdf_bytes)
+        buf.seek(0)
+        fname = f"kintai_{year}{month:02d}.pdf"
+        return _send(buf, as_attachment=True, download_name=fname, mimetype="application/pdf")
+    except Exception as e:
+        print(f"admin_timecard_report_pdf error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /timecard-pdf-v1 -----
+
+
 @app.route("/admin/timecard/report", methods=["GET"])
 @login_required
 def admin_timecard_report_page():
