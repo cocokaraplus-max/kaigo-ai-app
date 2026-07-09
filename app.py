@@ -14401,6 +14401,508 @@ def admin_timecard_device_delete():
 # ===== /timecard-api-v1 =====
 
 
+# ============================================================
+# staff-leave-api-v1 : 勤怠 休暇区分の記録
+#   打刻とは別に日ごとの休暇(有給/振替休/忌休/欠勤/休み/半休/時間休)を保存。
+#   管理者が日付×職員で登録・修正・削除する(土台)。様式出力・勤怠管理で使う。
+# ============================================================
+
+_LEAVE_TYPES = {
+    "paid":       {"label": "有給",   "form": "有給", "partial": False},
+    "substitute": {"label": "振替休", "form": "振休", "partial": False},
+    "condolence": {"label": "忌休",   "form": "忌休", "partial": False},
+    "absence":    {"label": "欠勤",   "form": "欠勤", "partial": False},
+    "off":        {"label": "休み",   "form": "休",   "partial": False},
+    "half":       {"label": "半休",   "form": "半",   "partial": True},
+    "hourly":     {"label": "時間休", "form": "時",   "partial": True},
+}
+
+import re as _leave_re
+_LEAVE_DATE_RE = _leave_re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.route("/admin/timecard/leave/types", methods=["GET"])
+@login_required
+def admin_timecard_leave_types():
+    """休暇区分の一覧(コード・表示名)を返す。UIのプルダウン用。"""
+    try:
+        types = [{"code": k, "label": v["label"], "partial": v["partial"]}
+                 for k, v in _LEAVE_TYPES.items()]
+        return jsonify({"status": "success", "types": types})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/list", methods=["GET"])
+@login_required
+def admin_timecard_leave_list():
+    """指定月(year,month)の休暇レコード一覧。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+        # 月初〜月末(JST日付)で絞る
+        start = f"{year:04d}-{month:02d}-01"
+        if month == 12:
+            end = f"{year+1:04d}-01-01"
+        else:
+            end = f"{year:04d}-{month+1:02d}-01"
+        res = supabase.table("staff_leave_days").select("*").eq(
+            "facility_code", f_code).gte("leave_date", start).lt(
+            "leave_date", end).order("leave_date", desc=False).execute()
+        rows = res.data or []
+        for r in rows:
+            lt = _LEAVE_TYPES.get(r.get("leave_type"))
+            r["leave_label"] = lt["label"] if lt else r.get("leave_type")
+        return jsonify({"status": "success", "leaves": rows})
+    except Exception as e:
+        print(f"admin_timecard_leave_list error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/set", methods=["POST"])
+@login_required
+def admin_timecard_leave_set():
+    """休暇を登録/更新(施設+職員+日付でupsert)。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        leave_type = (data.get("leave_type") or "").strip()
+        note = (data.get("note") or "").strip() or None
+        substitute_for = (data.get("substitute_for") or "").strip()
+        if not staff_name:
+            return jsonify({"status": "error", "message": "職員名が必要です"}), 400
+        if not _LEAVE_DATE_RE.match(leave_date):
+            return jsonify({"status": "error", "message": "日付が不正です(YYYY-MM-DD)"}), 400
+        if leave_type not in _LEAVE_TYPES:
+            return jsonify({"status": "error", "message": "休暇区分が不正です"}), 400
+        # 振替休のときだけ振替元日付を持つ。それ以外は無視。
+        sub_for = None
+        if leave_type == "substitute" and substitute_for:
+            if not _LEAVE_DATE_RE.match(substitute_for):
+                return jsonify({"status": "error", "message": "振替元の日付が不正です(YYYY-MM-DD)"}), 400
+            sub_for = substitute_for
+        # 既存があれば更新、無ければ挿入(施設+職員+日付ユニーク)
+        existing = supabase.table("staff_leave_days").select("id").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "leave_date", leave_date).execute()
+        payload = {
+            "facility_code": f_code, "staff_name": staff_name,
+            "leave_date": leave_date, "leave_type": leave_type,
+            "substitute_for": sub_for,
+            "note": note, "created_by": my_name,
+            "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
+        }
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("staff_leave_days").update(payload).eq("id", rid).execute()
+            return jsonify({"status": "success", "id": rid, "updated": True})
+        res = supabase.table("staff_leave_days").insert(payload).execute()
+        new_id = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": new_id, "updated": False})
+    except Exception as e:
+        print(f"admin_timecard_leave_set error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/admin/timecard/leave/delete", methods=["POST"])
+@login_required
+def admin_timecard_leave_delete():
+    """休暇レコードを削除。id指定、または(職員+日付)指定。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        rid = (data.get("id") or "").strip()
+        if rid:
+            supabase.table("staff_leave_days").delete().eq(
+                "id", rid).eq("facility_code", f_code).execute()
+            return jsonify({"status": "success"})
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        if staff_name and _LEAVE_DATE_RE.match(leave_date):
+            supabase.table("staff_leave_days").delete().eq(
+                "facility_code", f_code).eq("staff_name", staff_name).eq(
+                "leave_date", leave_date).execute()
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "id または (職員+日付) が必要です"}), 400
+    except Exception as e:
+        print(f"admin_timecard_leave_delete error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /staff-leave-api-v1 -----
+
+
+# ============================================================
+# timecard-config-v1 : 勤怠の事業所設定(勤務区切時刻・サービス提供時間)
+#   admin_settings(key='timecard_config') に JSON で保存。
+#   様式(参考様式4)出力で午前/午後の単位振り分けに使う。
+#   まず区切り1つ=2単位(半日型)。将来 splits を複数にして可変単位へ拡張可能。
+# ============================================================
+
+import json as _tcfg_json
+
+_TC_CONFIG_KEY = "timecard_config"
+_TC_CONFIG_DEFAULT = {
+    "work_split_times": ["12:30"],          # 勤務区切時刻(N-1個でN単位)。御社=12:30の1つ=2単位
+    "service_times": [                        # サービス提供時間帯(参考・単位数把握用)
+        {"label": "午前", "start": "09:00", "end": "12:00"},
+        {"label": "午後", "start": "13:00", "end": "16:00"},
+    ],
+    "half_slot_hours": 4,                     # 半日型 1枠の時間
+    "full_slot_hours": 8,                     # 1日型 1枠の時間
+    "role_splits": [],                        # 兼務: [{"name":職員名,"roles":[{"title":役職,"ratio":0.5},...]}]
+}
+
+
+def _tc_get_config(supabase, f_code):
+    """事業所の勤怠設定を取得(無ければデフォルト)。"""
+    try:
+        res = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        if res.data and res.data[0].get("value"):
+            cfg = _tcfg_json.loads(res.data[0]["value"])
+            if isinstance(cfg, dict):
+                # デフォルトにマージ(欠けたキーを補完)
+                merged = dict(_TC_CONFIG_DEFAULT)
+                merged.update(cfg)
+                return merged
+    except Exception as e:
+        print(f"_tc_get_config error: {e}", flush=True)
+    return dict(_TC_CONFIG_DEFAULT)
+
+
+@app.route("/admin/timecard/config", methods=["GET"])
+@login_required
+def admin_timecard_config_get():
+    """勤怠設定を返す。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        return jsonify({"status": "success", "config": _tc_get_config(supabase, f_code)})
+    except Exception as e:
+        print(f"admin_timecard_config_get error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+_TC_TIME_RE = __import__("re").compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+@app.route("/admin/timecard/config", methods=["POST"])
+@login_required
+def admin_timecard_config_save():
+    """勤怠設定を保存。管理者限定。区切時刻・サービス提供時間の妥当性を確認。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        cfg = dict(_TC_CONFIG_DEFAULT)
+
+        # 勤務区切時刻(リスト、HH:MM)
+        splits = data.get("work_split_times")
+        if isinstance(splits, list):
+            clean = []
+            for t in splits:
+                t = str(t).strip()
+                if _TC_TIME_RE.match(t):
+                    clean.append(t)
+            cfg["work_split_times"] = sorted(set(clean))
+
+        # サービス提供時間帯(リスト of {label,start,end})
+        svc = data.get("service_times")
+        if isinstance(svc, list):
+            clean_svc = []
+            for s in svc:
+                if not isinstance(s, dict):
+                    continue
+                st = str(s.get("start", "")).strip()
+                en = str(s.get("end", "")).strip()
+                lb = str(s.get("label", "")).strip() or "枠"
+                if _TC_TIME_RE.match(st) and _TC_TIME_RE.match(en):
+                    clean_svc.append({"label": lb, "start": st, "end": en})
+            if clean_svc:
+                cfg["service_times"] = clean_svc
+
+        # 枠時間
+        for k in ("half_slot_hours", "full_slot_hours"):
+            v = data.get(k)
+            if isinstance(v, (int, float)) and 0 < v <= 24:
+                cfg[k] = v
+
+        # 兼務マップ: [{name, roles:[{title, ratio}]}]
+        rs = data.get("role_splits")
+        if isinstance(rs, list):
+            clean_rs = []
+            for item in rs:
+                if not isinstance(item, dict):
+                    continue
+                nm = str(item.get("name", "")).strip()
+                roles = item.get("roles")
+                if not nm or not isinstance(roles, list):
+                    continue
+                clean_roles = []
+                for r in roles:
+                    if not isinstance(r, dict):
+                        continue
+                    title = str(r.get("title", "")).strip()
+                    try:
+                        ratio = float(r.get("ratio", 0))
+                    except (TypeError, ValueError):
+                        ratio = 0
+                    if title and ratio > 0:
+                        clean_roles.append({"title": title, "ratio": ratio})
+                if clean_roles:
+                    clean_rs.append({"name": nm, "roles": clean_roles})
+            cfg["role_splits"] = clean_rs
+
+        value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
+        existing = supabase.table("admin_settings").select("id").eq(
+            "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        if existing.data:
+            supabase.table("admin_settings").update({"value": value_json}).eq(
+                "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": _TC_CONFIG_KEY, "value": value_json,
+            }).execute()
+        return jsonify({"status": "success", "config": cfg})
+    except Exception as e:
+        print(f"admin_timecard_config_save error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /timecard-config-v1 -----
+
+
+# ============================================================
+# youshiki-export-v1 : 参考様式4(勤務の体制及び勤務形態一覧表)への実績転記出力
+#   打刻(timecard_records)+休暇(staff_leave_days)+勤怠設定を、
+#   同梱テンプレート(templates/youshiki_kinmu.xlsx)に転記して .xlsx を返す。
+#   御社運用: 平日=半日型シート, 日曜=1日型シート, 土曜=空欄。月の1〜28日をD〜AE列。
+# ============================================================
+
+import os as _ys_os
+from datetime import date as _ys_date
+
+_YS_TEMPLATE = _ys_os.path.join(_ys_os.path.dirname(__file__), "templates", "youshiki_kinmu.xlsx")
+_YS_SHEET_HALF = "R8.7(半日型）"
+_YS_SHEET_FULL = "R8.7 (1日型)"
+_YS_LEAVE_FORM = {"paid":"有給","substitute":"振休","condolence":"忌休",
+                  "absence":"欠勤","off":"休","half":"半","hourly":"時"}
+
+
+def _ys_norm(s):
+    return str(s or "").replace(" ", "").replace("　", "").strip()
+
+
+def _ys_hm(s):
+    try:
+        h, m = str(s).split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return None
+
+
+def _ys_to_intervals(punches):
+    """打刻[(type, minute)]から在席区間[(in,out)]。休憩は差し引かない。"""
+    iv = []
+    cur = None
+    for t, mn in punches:
+        if t == "in":
+            cur = mn
+        elif t == "out" and cur is not None:
+            iv.append((cur, mn))
+            cur = None
+    return iv
+
+
+def _ys_side_minutes(intervals, lo, hi):
+    tot = 0
+    for a, b in intervals:
+        x = max(a, lo); y = min(b, hi)
+        if y > x:
+            tot += y - x
+    return tot
+
+
+def _ys_slot_value(minutes, cap):
+    h = minutes / 60.0
+    if h <= 0:
+        return None
+    if h >= cap:
+        return cap
+    return round(h * 2) / 2
+
+
+def _ys_build_row_map(ws):
+    """様式シートから 職員名(正規化)->[(unit,row,title)] を作る。"""
+    m = {}
+    unit = 0
+    cur_title = None
+    for row in range(9, 42):
+        a = ws.cell(row=row, column=1).value
+        c = ws.cell(row=row, column=3).value
+        if a and "単位" in str(a):
+            unit += 1
+            continue
+        if a and _ys_norm(a):
+            cur_title = _ys_norm(a)
+        nm = _ys_norm(c)
+        if nm:
+            m.setdefault(nm, []).append((unit, row, cur_title))
+    return m
+
+
+@app.route("/admin/timecard/youshiki", methods=["GET"])
+@login_required
+def admin_timecard_youshiki():
+    """参考様式4に実績を転記した .xlsx をダウンロード。管理者限定。
+    query: year, month"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です。"}), 400
+        if not _ys_os.path.exists(_YS_TEMPLATE):
+            return jsonify({"status": "error", "message": "様式テンプレートが見つかりません。"}), 500
+
+        cfg = _tc_get_config(supabase, f_code)
+        split_min = None
+        if cfg.get("work_split_times"):
+            split_min = _ys_hm(cfg["work_split_times"][0])
+        half_cap = cfg.get("half_slot_hours", 4)
+        full_cap = cfg.get("full_slot_hours", 8)
+        role_splits = cfg.get("role_splits", [])
+        split_by_name = {}
+        for it in role_splits:
+            split_by_name[_ys_norm(it.get("name"))] = {
+                _ys_norm(r.get("title")): r.get("ratio", 0) for r in it.get("roles", [])}
+
+        # 月の打刻を取得(1〜28日)
+        start_iso, end_iso = _tc_month_range_jst(year, month)
+        res = supabase.table("timecard_records").select("*").eq(
+            "facility_code", f_code).eq("is_deleted", False).gte(
+            "punched_at", start_iso).lt("punched_at", end_iso).order(
+            "punched_at", desc=False).execute()
+        rows = res.data or []
+        # (name, 'YYYY-MM-DD') -> [(type, minute)]
+        punches_map = {}
+        for r in rows:
+            at = _tc_parse_iso(r.get("punched_at"))
+            if at is None:
+                continue
+            at_jst = at.astimezone(_TC_JST)
+            ds = at_jst.strftime("%Y-%m-%d")
+            key = (_ys_norm(r.get("staff_name")), ds)
+            punches_map.setdefault(key, []).append(
+                (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
+        for k in punches_map:
+            punches_map[k].sort(key=lambda x: x[1])
+
+        # 休暇を取得
+        lstart = f"{year:04d}-{month:02d}-01"
+        lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+        lres = supabase.table("staff_leave_days").select("*").eq(
+            "facility_code", f_code).gte("leave_date", lstart).lt(
+            "leave_date", lend).execute()
+        leaves_map = {}
+        for r in (lres.data or []):
+            leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
+
+        import openpyxl as _ys_xl
+        wb = _ys_xl.load_workbook(_YS_TEMPLATE)
+
+        # 半日型(平日)と1日型(日曜)の両シートに転記
+        for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            rowmap = _ys_build_row_map(ws)
+            cap = full_cap if is_full else half_cap
+            for day in range(1, 29):
+                try:
+                    d = _ys_date(year, month, day)
+                except ValueError:
+                    break
+                wd = d.weekday()  # 月=0..日=6
+                # 御社運用: 半日型=平日(月〜金), 1日型=日曜。土曜は空欄。
+                if is_full and wd != 6:
+                    continue
+                if (not is_full) and wd >= 5:
+                    continue
+                col = 4 + (day - 1)
+                ds = f"{year:04d}-{month:02d}-{day:02d}"
+                for name, occurs in rowmap.items():
+                    leave = leaves_map.get((name, ds))
+                    punches = punches_map.get((name, ds))
+                    iv = _ys_to_intervals(punches) if punches else []
+                    if is_full:
+                        slots = [_ys_slot_value(_ys_side_minutes(iv, 0, 24 * 60), cap)] if punches else [None]
+                    else:
+                        am = _ys_slot_value(_ys_side_minutes(iv, 0, split_min), cap) if (punches and split_min) else None
+                        pm = _ys_slot_value(_ys_side_minutes(iv, split_min, 24 * 60), cap) if (punches and split_min) else None
+                        slots = [am, pm]
+                    sp = split_by_name.get(name)
+                    for (unit, row, title) in occurs:
+                        if leave:
+                            ws.cell(row=row, column=col).value = _YS_LEAVE_FORM.get(leave, leave)
+                            continue
+                        if is_full:
+                            val = slots[0]
+                        else:
+                            idx = 0 if unit in (0, 1) else 1
+                            val = slots[idx] if idx < len(slots) else None
+                        if val is None:
+                            continue
+                        if sp and title in sp:
+                            val = round(val * sp[title] * 2) / 2
+                        ws.cell(row=row, column=col).value = val
+
+        import io as _ys_io
+        buf = _ys_io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        from flask import send_file as _ys_send
+        fname = f"kinmu_{year}{month:02d}.xlsx"
+        return _ys_send(buf, as_attachment=True, download_name=fname,
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        print(f"admin_timecard_youshiki error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /youshiki-export-v1 -----
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)

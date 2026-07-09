@@ -95,6 +95,15 @@
   .tc-spin{width:34px;height:34px;border:3px solid var(--tc-line);border-top-color:var(--tc-green);
            border-radius:50%;animation:tcspin 1s linear infinite;margin:24px auto}
   @keyframes tcspin{to{transform:rotate(360deg)}}
+  /* timecard-ux-v1 */
+  .tc-staff-reload{display:flex;justify-content:center;margin-bottom:12px}
+  .tc-reload-staff{display:inline-flex;align-items:center;gap:6px;background:#fff;
+    border:1.5px solid #2f6b5e;color:#2f6b5e;border-radius:999px;padding:8px 16px;
+    font-family:inherit;font-weight:700;font-size:.86rem;cursor:pointer}
+  .tc-reload-staff .material-symbols-outlined{font-size:18px}
+  .tc-reload-staff:active{background:#eef5f3}
+  .tc-reload-staff.spinning .material-symbols-outlined{animation:tcspin .8s linear infinite}
+  @keyframes tcspin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -131,6 +140,11 @@
 
   <!-- 職員選択 -->
   <div id="tc-staff-view" class="hidden">
+    <div class="tc-staff-reload"><!-- timecard-ux-v1 -->
+      <button type="button" id="tc-reload-staff-btn" class="tc-reload-staff">
+        <span class="material-symbols-outlined">refresh</span>最新の状態に更新
+      </button>
+    </div>
     <div class="tc-staff-grid" id="tc-staff-grid"></div>
     <div class="tc-device-label" id="tc-dev-label"></div>
   </div>
@@ -194,12 +208,50 @@
     $("tc-date").textContent = now.getFullYear()+"年"+(now.getMonth()+1)+"月"+now.getDate()+"日（"+wd+"）";
   }
   setInterval(tickClock, 1000); tickClock();
+  // timecard-ux-v1: 手動リロードボタン接続 + 自動更新開始
+  (function(){
+    var rb = document.getElementById("tc-reload-staff-btn");
+    if(rb){ rb.addEventListener("click", function(){ refreshStaffStates(true); }); }
+    _tcStartPolling();
+  })();
 
   function show(view){
     ["tc-loading","tc-unreg","tc-pending","tc-staff-view","tc-punch-view"].forEach(function(id){
       $(id).classList.add("hidden");
     });
     if(view) $(view).classList.remove("hidden");
+  }
+
+  // timecard-ux-v1: 職員一覧表示中だけ30秒ごとに状態を静かに再取得(他デバイスの打刻反映)
+  var _tcPollTimer = null;
+  function _tcStartPolling(){
+    _tcStopPolling();
+    _tcPollTimer = setInterval(function(){
+      // 職員一覧が表示されている時だけ更新(打刻操作中は動かさない)
+      var sv = $("tc-staff-view");
+      if(sv && !sv.classList.contains("hidden")){ refreshStaffStates(); }
+    }, 30000);
+  }
+  function _tcStopPolling(){
+    if(_tcPollTimer){ clearInterval(_tcPollTimer); _tcPollTimer = null; }
+  }
+  // ローディング画面に飛ばさず、状態だけ取り直して職員カードを更新する軽量版
+  async function refreshStaffStates(spinBtn){
+    if(!state.token) return;
+    var btn = $("tc-reload-staff-btn");
+    if(spinBtn && btn) btn.classList.add("spinning");
+    try{
+      var res = await fetch("/timecard/bootstrap", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token })
+      });
+      var j = await res.json();
+      if(j && j.status === "ok" && j.registered && j.enabled && Array.isArray(j.staff)){
+        state.staff = j.staff;
+        renderStaff();
+      }
+    }catch(e){ /* 自動更新の失敗は静かに無視 */ }
+    finally{ if(btn) btn.classList.remove("spinning"); }
   }
 
   var STATE_LABEL = { working:"勤務中", break:"休憩中", out:"未出勤／退勤済み" };
@@ -261,6 +313,11 @@
 
   async function punch(pt){
     if(!state.current) return;
+    // timecard-ux-v1: 休憩開始/休憩終了/退勤は確認する(出勤は確認なし)
+    var TC_CONFIRM = { break_start:"休憩開始", break_end:"休憩終了", out:"退勤" };
+    if(TC_CONFIRM[pt]){
+      if(!confirm(state.current.name + " さん\n\n「" + TC_CONFIRM[pt] + "」を記録します。よろしいですか？")) return;
+    }
     try{
       var res = await fetch("/timecard/punch", {
         method:"POST", headers:{"Content-Type":"application/json"},
