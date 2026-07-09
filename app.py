@@ -12643,6 +12643,7 @@ def tasks():
         projects=projects,
         my_color=staff_color(my_name),
         my_initial=staff_initial(my_name),
+        is_admin=bool(session.get("admin_authenticated")),  # tasks-isadmin-render-v1
     )
 
 @app.route("/api/tasks/list")
@@ -12784,7 +12785,8 @@ def api_tasks_update():
         assigned = t.get("assigned_to") or []
         is_creator = (t["created_by"] == my_name)
         is_assignee = (my_name in assigned) or (not assigned)  # task-perm-empty-allowall: 空配列＝全員向けは全員操作可
-        if not (is_creator or is_assignee):  # task-update-no-admin: 管理者も除外(担当/作成者のみ)
+        is_admin = bool(session.get("admin_authenticated"))  # tasks-admin-perm-v1
+        if not (is_admin or is_creator or is_assignee):  # tasks-admin-perm-v1: 管理者・作成者・担当者を許可
             return jsonify({"status": "error", "message": "権限がありません"}), 403
 
         update_data = {"updated_at": datetime.now(tokyo_tz).isoformat()}
@@ -12814,8 +12816,9 @@ def api_tasks_delete():
         _assigned_del = task.data[0].get("assigned_to") or []  # task-del-no-admin
         is_creator = (task.data[0]["created_by"] == my_name)
         is_assignee = (my_name in _assigned_del) or (not _assigned_del)
-        if not (is_creator or is_assignee):
-            return jsonify({"status": "error", "message": "作成者または担当者のみ削除できます"}), 403
+        is_admin = bool(session.get("admin_authenticated"))  # tasks-admin-perm-v1
+        if not (is_admin or is_creator or is_assignee):  # tasks-admin-perm-v1: 管理者・作成者・担当者を許可
+            return jsonify({"status": "error", "message": "管理者・作成者・担当者のみ削除できます"}), 403
 
         supabase.table("tasks").delete().eq("id", task_id).execute()
         return jsonify({"status": "success"})
