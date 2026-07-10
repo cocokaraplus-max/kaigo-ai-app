@@ -1133,25 +1133,26 @@ function soundPico() {
 }
 
 // タスカル音声
-function soundTasukaru() {  // tasukaru-voice-antichoke-v1
+function soundTasukaru() {  // tasukaru-voice-antichoke2-v1
     if (!window.speechSynthesis) return;
-    // 連打でキューが詰まると声が崩れる(低くなる)ので
-    // 先にcancelで先行発話をクリアし、短い遅延後にspeakする。
-    try { window.speechSynthesis.cancel(); } catch (e) {}
+    const ss = window.speechSynthesis;
+    // (1) 既に発話中/待機中なら連打とみなし無視(低音化の根本防止)
+    if (ss.speaking || ss.pending) { return; }
+    try { ss.cancel(); } catch (e) {}
     const _mk = function () {
         const utter = new SpeechSynthesisUtterance('タスコゥ！');
         utter.lang = 'ja-JP';
         utter.rate = 1.6;    // 元気に粒立て
         utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
-        const voices = window.speechSynthesis.getVoices();
+        const voices = ss.getVoices();
         const jpVoices = voices.filter(v => v.lang.includes('ja'));
         const rocko = jpVoices.find(v => v.name.includes('Rocko'));
         const jpVoice = rocko || jpVoices[0];
         if (jpVoice) utter.voice = jpVoice;
-        window.speechSynthesis.speak(utter);
+        ss.speak(utter);
     };
-    // cancelの完了を待ってからspeak(詰まり回避)
-    setTimeout(_mk, 60);
+    // (2) cancelの完了を十分待ってからspeak
+    setTimeout(_mk, 150);
 }
 
 // 通知音を鳴らす
