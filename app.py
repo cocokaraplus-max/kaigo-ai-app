@@ -851,6 +851,113 @@ def line_webhook(facility_code):
         return 'ok', 200
 
 
+# ===== richmenu-autocheck-v1 : 職員リッチメニューの自動復旧 =====
+_RICHMENU_FACILITY = "cocokaraplus-5526"   # アカウント単位の設定保存先
+import os as _rm_os_mod
+_RICHMENU_IMG = _rm_os_mod.path.join(_rm_os_mod.path.dirname(__file__), "static", "richmenu", "staff_menu.png")
+
+
+def _ensure_richmenu(supabase):
+    """職員リッチメニューの存在を確認し、消えていたら再作成する。
+    24時間に1回だけ実行(admin_settingsのrichmenu_last_checkでガード)。
+    失敗しても例外を上げない(webhook本体に影響させない)。"""
+    import os as _rm_os, json as _rm_json, ssl as _rm_ssl
+    import urllib.request as _rm_ur, urllib.error as _rm_ue
+    from datetime import datetime as _rm_dt, timezone as _rm_tz, timedelta as _rm_td
+    try:
+        # 24hガード
+        now = _rm_dt.now(_rm_tz.utc)
+        last = None
+        try:
+            r = supabase.table("admin_settings").select("value").eq(
+                "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            if r.data:
+                last = _rm_dt.fromisoformat(str(r.data[0]["value"]).replace("Z", "+00:00"))
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=_rm_tz.utc)
+        except Exception:
+            last = None
+        if last is not None and (now - last) < _rm_td(hours=24):
+            return  # まだチェック不要
+
+        token = get_secret("LINE_CHANNEL_ACCESS_TOKEN")
+        if not token:
+            return
+        try:
+            ctx = _rm_ssl.create_default_context()
+        except Exception:
+            ctx = None
+        auth = {"Authorization": "Bearer " + token}
+
+        def _rm_req(url, method="GET", headers=None, data=None):
+            h = dict(auth)
+            if headers:
+                h.update(headers)
+            req = _rm_ur.Request(url, data=data, headers=h, method=method)
+            try:
+                with _rm_ur.urlopen(req, context=ctx) as res:
+                    b = res.read().decode("utf-8") if res.length != 0 else ""
+                    return res.status, b
+            except _rm_ue.HTTPError as e:
+                return e.code, e.read().decode("utf-8")
+
+        # デフォルトリッチメニューの有無を確認
+        st, body = _rm_req("https://api.line.me/v2/bot/user/all/richmenu")
+        has_default = (st == 200 and _rm_json.loads(body or "{}").get("richMenuId"))
+
+        if not has_default:
+            # 消えている -> 再作成
+            if not (_RICHMENU_IMG and _rm_os.path.exists(_RICHMENU_IMG)):
+                print("_ensure_richmenu: image not found, skip", flush=True)
+            else:
+                menu = {
+                    "size": {"width": 2500, "height": 843},
+                    "selected": True, "name": "TASUKARU職員メニュー",
+                    "chatBarText": "メニュー",
+                    "areas": [
+                        {"bounds": {"x": 0, "y": 0, "width": 833, "height": 843},
+                         "action": {"type": "uri", "uri": "https://liff.line.me/2010588249-eVxq4tL5"}},
+                        {"bounds": {"x": 833, "y": 0, "width": 833, "height": 843},
+                         "action": {"type": "message", "text": "パスワード"}},
+                        {"bounds": {"x": 1666, "y": 0, "width": 834, "height": 843},
+                         "action": {"type": "message", "text": "アプリ改善依頼"}},
+                    ],
+                }
+                st, body = _rm_req("https://api.line.me/v2/bot/richmenu", method="POST",
+                                   headers={"Content-Type": "application/json"},
+                                   data=_rm_json.dumps(menu).encode("utf-8"))
+                if st == 200:
+                    rid = _rm_json.loads(body).get("richMenuId")
+                    with open(_RICHMENU_IMG, "rb") as f:
+                        img = f.read()
+                    st2, _ = _rm_req("https://api-data.line.me/v2/bot/richmenu/" + rid + "/content",
+                                     method="POST", headers={"Content-Type": "image/png"}, data=img)
+                    if st2 == 200:
+                        _rm_req("https://api.line.me/v2/bot/user/all/richmenu/" + rid, method="POST")
+                        print("_ensure_richmenu: recreated richmenu", flush=True)
+                    else:
+                        _rm_req("https://api.line.me/v2/bot/richmenu/" + rid, method="DELETE")
+                        print("_ensure_richmenu: image upload failed", flush=True)
+                else:
+                    print(f"_ensure_richmenu: create failed {st}", flush=True)
+
+        # チェック時刻を記録(upsert)
+        val = now.isoformat()
+        try:
+            ex = supabase.table("admin_settings").select("id").eq(
+                "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            if ex.data:
+                supabase.table("admin_settings").update({"value": val}).eq(
+                    "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            else:
+                supabase.table("admin_settings").insert({
+                    "facility_code": _RICHMENU_FACILITY, "key": "richmenu_last_check", "value": val}).execute()
+        except Exception as e:
+            print(f"_ensure_richmenu: time record failed: {e}", flush=True)
+    except Exception as e:
+        print(f"_ensure_richmenu error: {e}", flush=True)
+
+
 # staff-line-webhook-v1 : TASUKARUアカウント用webhook(職員LINE紐付け・パスワード再発行)
 @app.route('/line/webhook/tasukaru', methods=['POST'])
 def line_webhook_tasukaru():
@@ -872,6 +979,7 @@ def line_webhook_tasukaru():
         events = payload.get("events", []) or []
         supabase = get_supabase()
         base_url = request.host_url.rstrip("/").replace("http://", "https://")
+        _ensure_richmenu(supabase)  # richmenu-autocheck-v1: リッチメニュー自動復旧(24hに1回)
         for ev in events:
             etype = ev.get("type")
             src = ev.get("source", {}) or {}
