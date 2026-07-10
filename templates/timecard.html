@@ -353,12 +353,39 @@
       var div = document.createElement("div");
       var cls = s.state === "working" ? " is-working" : (s.state === "break" ? " is-break" : "");
       div.className = "tc-staff" + cls;
+      var mini = "";  // timecard-break-list-countdown-v1: 休憩中は残り時間をカードに表示
+      if(s.state === "break" && s.break_info && s.break_info.planned_min && s.break_info.started_at){
+        mini = '<span class="tc-cd-mini" data-start="'+s.break_info.started_at+'" data-min="'+s.break_info.planned_min+'"></span>';
+      }
       div.innerHTML = iconHtml(s, 38)
         + '<span class="nm">'+escapeHtml(s.name)+'</span>'
-        + '<span class="st '+STATE_CLASS[s.state]+'">'+STATE_LABEL[s.state]+'</span>';
+        + '<span class="st '+STATE_CLASS[s.state]+'">'+STATE_LABEL[s.state]+'</span>'
+        + mini;
       div.onclick = function(){ openPunch(s); };
       grid.appendChild(div);
     });
+    _tcListCdTick();       // 即時反映
+    _tcStartListCd();      // 1秒ごと更新開始
+  }
+  // timecard-break-list-countdown-v1: 一覧の休憩残りを更新
+  var _tcListCdTimer = null;
+  function _tcListCdTick(){
+    var minis = document.querySelectorAll(".tc-cd-mini");
+    if(!minis.length) return;
+    minis.forEach(function(el){
+      var startMs = new Date(el.getAttribute("data-start")).getTime();
+      var pm = parseInt(el.getAttribute("data-min"), 10);
+      var remain = Math.round((startMs + pm*60*1000 - Date.now())/1000);
+      var over = remain < 0;
+      el.className = "tc-cd-mini" + (over ? " over" : "");
+      el.textContent = (over ? "超過 " : "残り ") + _tcFmtRemain(remain);
+    });
+  }
+  function _tcStartListCd(){
+    if(_tcListCdTimer) clearInterval(_tcListCdTimer);
+    if(document.querySelector(".tc-cd-mini")){
+      _tcListCdTimer = setInterval(_tcListCdTick, 1000);
+    }
   }
 
   // timecard-hidden-icon-v1: アイコン表示。画像>絵文字>人型 の優先。
