@@ -851,6 +851,113 @@ def line_webhook(facility_code):
         return 'ok', 200
 
 
+# ===== richmenu-autocheck-v1 : 職員リッチメニューの自動復旧 =====
+_RICHMENU_FACILITY = "cocokaraplus-5526"   # アカウント単位の設定保存先
+import os as _rm_os_mod
+_RICHMENU_IMG = _rm_os_mod.path.join(_rm_os_mod.path.dirname(__file__), "static", "richmenu", "staff_menu.png")
+
+
+def _ensure_richmenu(supabase):
+    """職員リッチメニューの存在を確認し、消えていたら再作成する。
+    24時間に1回だけ実行(admin_settingsのrichmenu_last_checkでガード)。
+    失敗しても例外を上げない(webhook本体に影響させない)。"""
+    import os as _rm_os, json as _rm_json, ssl as _rm_ssl
+    import urllib.request as _rm_ur, urllib.error as _rm_ue
+    from datetime import datetime as _rm_dt, timezone as _rm_tz, timedelta as _rm_td
+    try:
+        # 24hガード
+        now = _rm_dt.now(_rm_tz.utc)
+        last = None
+        try:
+            r = supabase.table("admin_settings").select("value").eq(
+                "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            if r.data:
+                last = _rm_dt.fromisoformat(str(r.data[0]["value"]).replace("Z", "+00:00"))
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=_rm_tz.utc)
+        except Exception:
+            last = None
+        if last is not None and (now - last) < _rm_td(hours=24):
+            return  # まだチェック不要
+
+        token = get_secret("LINE_CHANNEL_ACCESS_TOKEN")
+        if not token:
+            return
+        try:
+            ctx = _rm_ssl.create_default_context()
+        except Exception:
+            ctx = None
+        auth = {"Authorization": "Bearer " + token}
+
+        def _rm_req(url, method="GET", headers=None, data=None):
+            h = dict(auth)
+            if headers:
+                h.update(headers)
+            req = _rm_ur.Request(url, data=data, headers=h, method=method)
+            try:
+                with _rm_ur.urlopen(req, context=ctx) as res:
+                    b = res.read().decode("utf-8") if res.length != 0 else ""
+                    return res.status, b
+            except _rm_ue.HTTPError as e:
+                return e.code, e.read().decode("utf-8")
+
+        # デフォルトリッチメニューの有無を確認
+        st, body = _rm_req("https://api.line.me/v2/bot/user/all/richmenu")
+        has_default = (st == 200 and _rm_json.loads(body or "{}").get("richMenuId"))
+
+        if not has_default:
+            # 消えている -> 再作成
+            if not (_RICHMENU_IMG and _rm_os.path.exists(_RICHMENU_IMG)):
+                print("_ensure_richmenu: image not found, skip", flush=True)
+            else:
+                menu = {
+                    "size": {"width": 2500, "height": 843},
+                    "selected": True, "name": "TASUKARU職員メニュー",
+                    "chatBarText": "メニュー",
+                    "areas": [
+                        {"bounds": {"x": 0, "y": 0, "width": 833, "height": 843},
+                         "action": {"type": "uri", "uri": "https://liff.line.me/2010588249-eVxq4tL5"}},
+                        {"bounds": {"x": 833, "y": 0, "width": 833, "height": 843},
+                         "action": {"type": "message", "text": "パスワード"}},
+                        {"bounds": {"x": 1666, "y": 0, "width": 834, "height": 843},
+                         "action": {"type": "message", "text": "アプリ改善依頼"}},
+                    ],
+                }
+                st, body = _rm_req("https://api.line.me/v2/bot/richmenu", method="POST",
+                                   headers={"Content-Type": "application/json"},
+                                   data=_rm_json.dumps(menu).encode("utf-8"))
+                if st == 200:
+                    rid = _rm_json.loads(body).get("richMenuId")
+                    with open(_RICHMENU_IMG, "rb") as f:
+                        img = f.read()
+                    st2, _ = _rm_req("https://api-data.line.me/v2/bot/richmenu/" + rid + "/content",
+                                     method="POST", headers={"Content-Type": "image/png"}, data=img)
+                    if st2 == 200:
+                        _rm_req("https://api.line.me/v2/bot/user/all/richmenu/" + rid, method="POST")
+                        print("_ensure_richmenu: recreated richmenu", flush=True)
+                    else:
+                        _rm_req("https://api.line.me/v2/bot/richmenu/" + rid, method="DELETE")
+                        print("_ensure_richmenu: image upload failed", flush=True)
+                else:
+                    print(f"_ensure_richmenu: create failed {st}", flush=True)
+
+        # チェック時刻を記録(upsert)
+        val = now.isoformat()
+        try:
+            ex = supabase.table("admin_settings").select("id").eq(
+                "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            if ex.data:
+                supabase.table("admin_settings").update({"value": val}).eq(
+                    "facility_code", _RICHMENU_FACILITY).eq("key", "richmenu_last_check").execute()
+            else:
+                supabase.table("admin_settings").insert({
+                    "facility_code": _RICHMENU_FACILITY, "key": "richmenu_last_check", "value": val}).execute()
+        except Exception as e:
+            print(f"_ensure_richmenu: time record failed: {e}", flush=True)
+    except Exception as e:
+        print(f"_ensure_richmenu error: {e}", flush=True)
+
+
 # staff-line-webhook-v1 : TASUKARUアカウント用webhook(職員LINE紐付け・パスワード再発行)
 @app.route('/line/webhook/tasukaru', methods=['POST'])
 def line_webhook_tasukaru():
@@ -872,6 +979,7 @@ def line_webhook_tasukaru():
         events = payload.get("events", []) or []
         supabase = get_supabase()
         base_url = request.host_url.rstrip("/").replace("http://", "https://")
+        _ensure_richmenu(supabase)  # richmenu-autocheck-v1: リッチメニュー自動復旧(24hに1回)
         for ev in events:
             etype = ev.get("type")
             src = ev.get("source", {}) or {}
@@ -13797,6 +13905,23 @@ def _tc_staff_state(punches):
     return state
 
 
+def _tc_active_break(punches):
+    """timecard-break-countdown-api-v1: 進行中の休憩を返す。
+    最後の break_start が break_end されていなければ
+    {started_at, planned_min} を返す。進行中の休憩が無ければ None。"""
+    active = None
+    for p in punches:
+        t = p.get("punch_type")
+        if t == "break_start":
+            active = {"started_at": p.get("punched_at"),
+                      "planned_min": p.get("planned_break_min")}
+        elif t == "break_end":
+            active = None
+        elif t == "out":
+            active = None
+    return active
+
+
 @app.route("/timecard")
 def timecard_page():
     """打刻画面(公開)。実際の可否はクライアントから /timecard/bootstrap で判定。"""
@@ -13841,7 +13966,10 @@ def timecard_bootstrap():
         for p in punches:
             by_staff.setdefault(p.get("staff_name"), []).append(p)
         for s in staff:
-            s["state"] = _tc_staff_state(by_staff.get(s["name"], []))
+            _sp = by_staff.get(s["name"], [])
+            s["state"] = _tc_staff_state(_sp)
+            # timecard-break-countdown-api-v1: 進行中の休憩情報(カウントダウン用)
+            s["break_info"] = _tc_active_break(_sp)
         return jsonify({"status": "ok", "registered": True, "enabled": True,
                         "facility_code": f_code, "facility_name": fac_name,
                         "device_label": dev.get("device_label") or "",
@@ -13889,17 +14017,187 @@ def timecard_punch():
                    "break_end": "休憩中ではありません。"}.get(punch_type, "打刻できません。")
             return jsonify({"status": "error", "message": msg}), 409
         now_iso = _tc_now_jst().astimezone(_tc_tz.utc).isoformat()
-        supabase.table("timecard_records").insert({
+        # timecard-break-countdown-api-v1: break_startは予定分数(10～90,5分刻み)を保存
+        _rec = {
             "facility_code": f_code, "staff_name": staff_name,
             "punch_type": punch_type, "punched_at": now_iso,
             "device_token": token,
-        }).execute()
-        new_state = _tc_staff_state(_tc_today_punches(supabase, f_code, staff_name))
+        }
+        if punch_type == "break_start":
+            try:
+                _pbm = int(data.get("planned_break_min"))
+            except (TypeError, ValueError):
+                _pbm = None
+            if _pbm is not None and 5 <= _pbm <= 180:
+                _rec["planned_break_min"] = _pbm
+        supabase.table("timecard_records").insert(_rec).execute()
+        _new_punches = _tc_today_punches(supabase, f_code, staff_name)
+        new_state = _tc_staff_state(_new_punches)
         return jsonify({"status": "success", "state": new_state,
-                        "punched_at": now_iso})
+                        "punched_at": now_iso,
+                        "break_info": _tc_active_break(_new_punches)})
     except Exception as e:
         print(f"timecard_punch error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ===== timecard-break-countdown-api-v1 : 本人の進行中休憩(TOPカウントダウン用) =====
+@app.route("/timecard/my_break", methods=["GET"])
+@login_required
+def timecard_my_break():
+    """ログイン中の本人(my_name)の当日の進行中休憩を返す。
+    タイムカードのstaff_nameとログイン名は一致する前提。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        if not my_name:
+            return jsonify({"status": "success", "break_info": None})
+        supabase = get_supabase()
+        punches = _tc_today_punches(supabase, f_code, my_name)
+        return jsonify({"status": "success", "break_info": _tc_active_break(punches)})
+    except Exception as e:
+        print(f"timecard_my_break error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ===== timecard-leave-self-api-v1 : 職員本人の休暇登録(token認証・公開) =====
+def _tc_leave_self_guard(supabase, token, staff_name):
+    """token/施設有効/在籍を検証し (f_code) を返す。NGは (None, (resp, code))。"""
+    dev = _tc_device_lookup(supabase, token)
+    if not dev:
+        return None, (jsonify({"status": "error", "message": "このデバイスは登録されていません。"}), 403)
+    f_code = dev.get("facility_code")
+    if not _tc_facility_enabled(supabase, f_code):
+        return None, (jsonify({"status": "error", "message": "タイムカード機能が無効です。"}), 403)
+    names = {s["name"] for s in _tc_staff_list(supabase, f_code)}
+    if not staff_name or staff_name not in names:
+        return None, (jsonify({"status": "error", "message": "職員が見つかりません。"}), 400)
+    return f_code, None
+
+
+@app.route("/timecard/leave/self", methods=["POST"])
+def timecard_leave_self():
+    """職員本人が自分の休暇を登録/更新(upsert)。直近30日以内のみ。"""
+    try:
+        from datetime import date as _ls_date
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        leave_type = (data.get("leave_type") or "").strip()
+        substitute_for = (data.get("substitute_for") or "").strip()
+        supabase = get_supabase()
+        f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
+        if err:
+            return err
+        if not _LEAVE_DATE_RE.match(leave_date):
+            return jsonify({"status": "error", "message": "日付が不正です(YYYY-MM-DD)"}), 400
+        if leave_type not in _LEAVE_TYPES:
+            return jsonify({"status": "error", "message": "休暇区分が不正です"}), 400
+        # 日付範囲: 今日〜30日前のみ(未来日・古すぎる日を拒否)
+        today = _tc_now_jst().date()
+        try:
+            y, m, d = [int(x) for x in leave_date.split("-")]
+            target = _ls_date(y, m, d)
+        except Exception:
+            return jsonify({"status": "error", "message": "日付が不正です"}), 400
+        delta = (today - target).days
+        if delta < 0:
+            return jsonify({"status": "error", "message": "未来の日付は登録できません。"}), 400
+        if delta > 30:
+            return jsonify({"status": "error", "message": "30日より前の日付は登録できません。管理者に依頼してください。"}), 400
+        sub_for = None
+        if leave_type == "substitute" and substitute_for:
+            if not _LEAVE_DATE_RE.match(substitute_for):
+                return jsonify({"status": "error", "message": "振替元の日付が不正です(YYYY-MM-DD)"}), 400
+            sub_for = substitute_for
+        existing = supabase.table("staff_leave_days").select("id").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "leave_date", leave_date).execute()
+        payload = {
+            "facility_code": f_code, "staff_name": staff_name,
+            "leave_date": leave_date, "leave_type": leave_type,
+            "substitute_for": sub_for, "created_by": staff_name,
+            "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
+        }
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("staff_leave_days").update(payload).eq("id", rid).execute()
+            return jsonify({"status": "success", "id": rid, "updated": True})
+        res = supabase.table("staff_leave_days").insert(payload).execute()
+        new_id = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": new_id, "updated": False})
+    except Exception as e:
+        print(f"timecard_leave_self error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/timecard/leave/self_check", methods=["POST"])
+def timecard_leave_self_check():
+    """直近の未打刻日を検出。前回出勤日の翌日〜昨日で、
+    打刻も休暇も無い日を古い順に返す(最大30日)。休み明けモーダルの対象日提示用。"""
+    try:
+        from datetime import date as _lc_date, timedelta as _lc_td
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        supabase = get_supabase()
+        f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
+        if err:
+            return err
+        today = _tc_now_jst().date()
+        window_start = today - _lc_td(days=30)
+        start_iso = window_start.isoformat()
+        end_iso = today.isoformat()
+        # 直近30日の打刻(日付集合)を集める
+        rec = supabase.table("timecard_records").select("punched_at").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).gte(
+            "punched_at", start_iso + "T00:00:00+00:00").execute()
+        punched_days = set()
+        last_punch_day = None
+        for r in (rec.data or []):
+            at = _tc_parse_iso(r.get("punched_at"))
+            if at is None:
+                continue
+            ds = at.astimezone(_TC_JST).date()
+            punched_days.add(ds)
+            if last_punch_day is None or ds > last_punch_day:
+                # 今日の打刻は除く(前回出勤日を見たい)
+                if ds < today:
+                    last_punch_day = ds
+        # 既存の休暇日も集める
+        lv = supabase.table("staff_leave_days").select("leave_date").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).gte(
+            "leave_date", start_iso).lte("leave_date", end_iso).execute()
+        leave_days = set()
+        for r in (lv.data or []):
+            try:
+                y, m, d = [int(x) for x in r.get("leave_date").split("-")]
+                leave_days.add(_lc_date(y, m, d))
+            except Exception:
+                pass
+        # 前回出勤日が無ければ提示しない(初回出勤等)
+        missing = []
+        if last_punch_day is not None:
+            cur = last_punch_day + _lc_td(days=1)
+            while cur < today:
+                if cur not in punched_days and cur not in leave_days:
+                    missing.append(cur.isoformat())
+                cur = cur + _lc_td(days=1)
+        # timecard-leave-selfcheck-today-v1: 当日の休暇登録の有無(退勤モーダルの案A判定用)
+        today_iso = today.isoformat()
+        today_leave = False
+        for r in (lv.data or []):
+            if r.get("leave_date") == today_iso:
+                today_leave = True
+                break
+        return jsonify({"status": "success", "missing_days": missing,
+                        "today_leave": today_leave,
+                        "last_punch_day": last_punch_day.isoformat() if last_punch_day else None})
+    except Exception as e:
+        print(f"timecard_leave_self_check error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /timecard-leave-self-api-v1 =====
 
 
 @app.route("/admin/timecard/devices", methods=["GET"])
