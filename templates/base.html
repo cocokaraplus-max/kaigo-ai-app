@@ -1138,9 +1138,9 @@ function soundTasukaru() {  // sound-tasukaru-mouse-v1
     window.speechSynthesis.cancel();
     // 小さなネズミが素早く高く尻上がりに発声するイメージ。
     // 語尾の「ぅ？」でTTSのピッチが上がり尻上がりになる。
-    const utter = new SpeechSynthesisUtterance('タスカルぅ？');
+    const utter = new SpeechSynthesisUtterance('タスコゥッ！');
     utter.lang = 'ja-JP';
-    utter.rate = 1.9;    // 素早く(0.1～10, 標準1)
+    utter.rate = 2.0;    // 素早く詰まった勢い(sound-tasukaru-squash-v1)
     utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
     // 声質をもっと変えたい場合は上の2値を微調整:
     //   マイルドなネズミ -> rate 1.7 / pitch 1.7
