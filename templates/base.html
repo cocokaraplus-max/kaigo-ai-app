@@ -1133,25 +1133,25 @@ function soundPico() {
 }
 
 // タスカル音声
-function soundTasukaru() {  // sound-tasukaru-mouse-v1
+function soundTasukaru() {  // tasukaru-voice-antichoke-v1
     if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    // 小さなネズミが素早く高く尻上がりに発声するイメージ。
-    // 語尾の「ぅ？」でTTSのピッチが上がり尻上がりになる。
-    const utter = new SpeechSynthesisUtterance('タスコゥ！');
-    utter.lang = 'ja-JP';
-    utter.rate = 1.6;    // 元気に粒立て(sound-preview-order-fix-v1)
-    utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
-    // 声質をもっと変えたい場合は上の2値を微調整:
-    //   マイルドなネズミ -> rate 1.7 / pitch 1.7
-    //   極端なチュー声 -> rate 2.0 / pitch 2.0
-    const voices = window.speechSynthesis.getVoices();
-    // Rocko(元気系)を優先。無ければ他の日本語ボイスにフォールバック。
-    const jpVoices = voices.filter(v => v.lang.includes('ja'));
-    const rocko = jpVoices.find(v => v.name.includes('Rocko'));
-    const jpVoice = rocko || jpVoices[0];
-    if (jpVoice) utter.voice = jpVoice;
-    window.speechSynthesis.speak(utter);
+    // 連打でキューが詰まると声が崩れる(低くなる)ので
+    // 先にcancelで先行発話をクリアし、短い遅延後にspeakする。
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+    const _mk = function () {
+        const utter = new SpeechSynthesisUtterance('タスコゥ！');
+        utter.lang = 'ja-JP';
+        utter.rate = 1.6;    // 元気に粒立て
+        utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
+        const voices = window.speechSynthesis.getVoices();
+        const jpVoices = voices.filter(v => v.lang.includes('ja'));
+        const rocko = jpVoices.find(v => v.name.includes('Rocko'));
+        const jpVoice = rocko || jpVoices[0];
+        if (jpVoice) utter.voice = jpVoice;
+        window.speechSynthesis.speak(utter);
+    };
+    // cancelの完了を待ってからspeak(詰まり回避)
+    setTimeout(_mk, 60);
 }
 
 // 通知音を鳴らす
