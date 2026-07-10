@@ -1518,3 +1518,51 @@ API（app.py。既存流儀準拠。権限は共通ヘルパー `_meetings_gate_
 
 ### 教訓
 openpyxl は数式セルのキャッシュ値を再計算しないが、起点セル(D8)を書き換えれば Excel/LibreOffice側で開いた際に =D8+1 / =TEXT() 連鎖が正しく再計算される。日付シートは「起点1セルをコードで上書き」設計にすればテンプレ固定値によるズレを根絶できる。テンプレ側のD8固定値は直さない(対象月変更で再発するため)。DEV確認時はブラウザキャッシュに注意。
+
+---
+
+## 【開発ログ】2026-07-10 参考様式4修正・タスカル音声・打刻フロー・休憩カウントダウン・リッチメニュー自動復旧
+
+### 参考様式4 D8起点日付ズレ修正 (youshiki-d8-fix-v1, 本番反映済み)
+症状: /admin/timecard/youshiki 出力で日付欄・曜日欄が対象月と無関係に固定(半日型=令和7年12月/1日型=令和8年12月始まり)。1日型タイトルがM2/Q2に分裂。
+原因: タイトル置換ループがD8(起点日付)を書き換えていなかった。テンプレ固定の12月がそのまま出力。
+修正: タイトル置換直後に全シートのD8を_ys_date(year,month,1)で上書き→E8以降(=D8+1)/D9以降(=TEXT)が日付・曜日とも毎月自動追従。1日型タイトルも明示統一。
+教訓: openpyxlは数式セルを再計算しないが、起点セル(D8)を書けばExcel/LibreOffice側で=D8+1連鎖が正しく再計算される。テンプレ固定値は直さない(月変更で再発)。
+
+### タスカル音声のネズミ声化 (本番反映済み)
+- soundTasukaru を「タスクッ！」/Kyoko/rate1.6/pitch2.0 のネズミ声に (mouse→squash→kyoko と調整)
+- 真因バグ修正: 試聴ボタンでポロロン(電子音)が鳴る問題。top.html の playSound(type) に旧「tasukaru=440/554/659Hz」電子音が残存し、各preview-btnに直addEventListenerされてbase.htmlのsoundTasukaruより優先発火していた。oscillator.startのスタックトレースで特定 (top-tasukaru-voice-v1)。
+- 連打で声が低くなる問題対策: ss.speaking/pending中は無視+cancel後150ms待ち (antichoke2)
+- 教訓: 音の発生源特定は AudioContext.createOscillator の start をフックして console.trace が最速。base.htmlだけ見て回り道した。
+
+### 打刻フロー組込 (timecard-leave-self-api-v1, leave-modals-*, in-modal-*, 本番反映済み)
+職員本人がタブレットから休暇を登録する導線。管理者API(/admin/timecard/leave/set)とは別レイヤーで、打刻と同じdevice token認証の公開API /timecard/leave/self (直近30日制限・在籍照合) と /timecard/leave/self_check (未打刻日検出+today_leaveフラグ) を新設。
+- 退勤時: 「通常退勤/半休で退勤/時間休で退勤」3択モーダル。半休/時間休なら退勤打刻+当日休暇登録。
+- 出勤時: 「通常出勤/午前半休/午前の時間休」モーダル。出勤打刻は通常記録し半休/時間休なら当日登録。
+- 休み明け: 出勤打刻後に未打刻日があれば完全必須モーダル(全日一括適用+個別指定, 振替休は振替元日付入力必須)。
+- 退勤スキップ(案A): 当日すでに休暇登録済み(午前半休で出勤等)なら退勤モーダルを出さず通常退勤。
+- Chrome連携でE2E全項目テスト済み(出勤/午前半休/案A/対照/振替休substitute_for保存)。
+
+### 休憩カウントダウン (timecard-break-countdown-*, break-list-countdown-v1, top-break-countdown-v1, 本番反映済み)
+DDL: timecard_records に planned_break_min 列追加。
+- 休憩開始ボタン→10〜90分(5分刻み)選択モーダル→planned_break_min付きで打刻。
+- 打刻画面の休憩中表示に「開始時刻+残り時間」カウントダウン(超過はマイナス赤)。
+- 職員一覧カードにも休憩残りを表示(一覧に戻ると消える問題を解消)。
+- 本人TOPに休憩残りバナー(/timecard/my_break APIをJSで叩く、ログイン名=staff_name前提)。
+- _tc_active_break(punches): 最後のbreak_startがbreak_end前なら{started_at,planned_min}を返す。bootstrap/punch/my_breakで共用。
+- Chrome連携でテスト済み(選択モーダル/カウントダウン毎秒減少/超過ロジック/一覧表示)。
+
+### 職員リッチメニュー消失の復旧+自動復旧 (richmenu-autocheck-v1, 本番反映済み)
+症状: TASUKARUアカウント(@599oxawd)の職員用リッチメニュー(利用開始/パスワード再発行/アプリ改善依頼)が消えた。LINE Official Account ManagerのGUIリストには元々出ない(Messaging API設定のため)。API上もデフォルト0件=完全消失。
+- コードにリッチメニュー操作は元々無い→LINE側で消えた(手動操作等)。今日の作業とは無関係。
+- 手動復旧スクリプト scripts/restore_richmenu.py を常備。LINE_CHANNEL_ACCESS_TOKENを環境変数で渡し(画面非表示)、既存全削除→作成→画像アップロード→デフォルト設定。冪等。certifi対応(Mac Python3.14のSSL証明書問題回避)。
+- 画像を static/richmenu/staff_menu.png としてリポジトリに配置。
+- 自動復旧: webhook(line_webhook_tasukaru)入口で _ensure_richmenu() を呼ぶ。admin_settings(cocokaraplus-5526, key=richmenu_last_check)で24hガード。デフォルトメニューが消えていたら static画像で自動再作成→デフォルト設定。try/exceptでwebhook本体に影響させない。
+- リッチメニュー定義: 2500x843横3分割。左=uri(liff 2010588249-eVxq4tL5), 中=message"パスワード", 右=message"アプリ改善依頼"。
+- 復旧確認済み(LINEアプリで表示OK)。今後消えても職員がLINEを使えば1日以内に自動復旧、または restore_richmenu.py で即復旧可能。
+
+### 次回の発展タスク(勤怠、継続)
+1. 打刻フローの実運用フィードバック反映
+2. 兼務の管理者行への午前午後配分微調整(様式4)
+3. タイムカードCSV/Excel出力(社労士向け給与計算、様式とは別物)
+4. 担当者会議の残タスク(フォントサイズ選択/会議記録削除/PROゲート)
