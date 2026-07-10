@@ -13902,6 +13902,138 @@ def timecard_punch():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== timecard-leave-self-api-v1 : 職員本人の休暇登録(token認証・公開) =====
+def _tc_leave_self_guard(supabase, token, staff_name):
+    """token/施設有効/在籍を検証し (f_code) を返す。NGは (None, (resp, code))。"""
+    dev = _tc_device_lookup(supabase, token)
+    if not dev:
+        return None, (jsonify({"status": "error", "message": "このデバイスは登録されていません。"}), 403)
+    f_code = dev.get("facility_code")
+    if not _tc_facility_enabled(supabase, f_code):
+        return None, (jsonify({"status": "error", "message": "タイムカード機能が無効です。"}), 403)
+    names = {s["name"] for s in _tc_staff_list(supabase, f_code)}
+    if not staff_name or staff_name not in names:
+        return None, (jsonify({"status": "error", "message": "職員が見つかりません。"}), 400)
+    return f_code, None
+
+
+@app.route("/timecard/leave/self", methods=["POST"])
+def timecard_leave_self():
+    """職員本人が自分の休暇を登録/更新(upsert)。直近30日以内のみ。"""
+    try:
+        from datetime import date as _ls_date
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        leave_date = (data.get("leave_date") or "").strip()
+        leave_type = (data.get("leave_type") or "").strip()
+        substitute_for = (data.get("substitute_for") or "").strip()
+        supabase = get_supabase()
+        f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
+        if err:
+            return err
+        if not _LEAVE_DATE_RE.match(leave_date):
+            return jsonify({"status": "error", "message": "日付が不正です(YYYY-MM-DD)"}), 400
+        if leave_type not in _LEAVE_TYPES:
+            return jsonify({"status": "error", "message": "休暇区分が不正です"}), 400
+        # 日付範囲: 今日〜30日前のみ(未来日・古すぎる日を拒否)
+        today = _tc_now_jst().date()
+        try:
+            y, m, d = [int(x) for x in leave_date.split("-")]
+            target = _ls_date(y, m, d)
+        except Exception:
+            return jsonify({"status": "error", "message": "日付が不正です"}), 400
+        delta = (today - target).days
+        if delta < 0:
+            return jsonify({"status": "error", "message": "未来の日付は登録できません。"}), 400
+        if delta > 30:
+            return jsonify({"status": "error", "message": "30日より前の日付は登録できません。管理者に依頼してください。"}), 400
+        sub_for = None
+        if leave_type == "substitute" and substitute_for:
+            if not _LEAVE_DATE_RE.match(substitute_for):
+                return jsonify({"status": "error", "message": "振替元の日付が不正です(YYYY-MM-DD)"}), 400
+            sub_for = substitute_for
+        existing = supabase.table("staff_leave_days").select("id").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).eq(
+            "leave_date", leave_date).execute()
+        payload = {
+            "facility_code": f_code, "staff_name": staff_name,
+            "leave_date": leave_date, "leave_type": leave_type,
+            "substitute_for": sub_for, "created_by": staff_name,
+            "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
+        }
+        if existing.data:
+            rid = existing.data[0]["id"]
+            supabase.table("staff_leave_days").update(payload).eq("id", rid).execute()
+            return jsonify({"status": "success", "id": rid, "updated": True})
+        res = supabase.table("staff_leave_days").insert(payload).execute()
+        new_id = res.data[0]["id"] if res.data else None
+        return jsonify({"status": "success", "id": new_id, "updated": False})
+    except Exception as e:
+        print(f"timecard_leave_self error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/timecard/leave/self_check", methods=["POST"])
+def timecard_leave_self_check():
+    """直近の未打刻日を検出。前回出勤日の翌日〜昨日で、
+    打刻も休暇も無い日を古い順に返す(最大30日)。休み明けモーダルの対象日提示用。"""
+    try:
+        from datetime import date as _lc_date, timedelta as _lc_td
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        supabase = get_supabase()
+        f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
+        if err:
+            return err
+        today = _tc_now_jst().date()
+        window_start = today - _lc_td(days=30)
+        start_iso = window_start.isoformat()
+        end_iso = today.isoformat()
+        # 直近30日の打刻(日付集合)を集める
+        rec = supabase.table("timecard_records").select("punched_at").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).gte(
+            "punched_at", start_iso + "T00:00:00+00:00").execute()
+        punched_days = set()
+        last_punch_day = None
+        for r in (rec.data or []):
+            at = _tc_parse_iso(r.get("punched_at"))
+            if at is None:
+                continue
+            ds = at.astimezone(_TC_JST).date()
+            punched_days.add(ds)
+            if last_punch_day is None or ds > last_punch_day:
+                # 今日の打刻は除く(前回出勤日を見たい)
+                if ds < today:
+                    last_punch_day = ds
+        # 既存の休暇日も集める
+        lv = supabase.table("staff_leave_days").select("leave_date").eq(
+            "facility_code", f_code).eq("staff_name", staff_name).gte(
+            "leave_date", start_iso).lte("leave_date", end_iso).execute()
+        leave_days = set()
+        for r in (lv.data or []):
+            try:
+                y, m, d = [int(x) for x in r.get("leave_date").split("-")]
+                leave_days.add(_lc_date(y, m, d))
+            except Exception:
+                pass
+        # 前回出勤日が無ければ提示しない(初回出勤等)
+        missing = []
+        if last_punch_day is not None:
+            cur = last_punch_day + _lc_td(days=1)
+            while cur < today:
+                if cur not in punched_days and cur not in leave_days:
+                    missing.append(cur.isoformat())
+                cur = cur + _lc_td(days=1)
+        return jsonify({"status": "success", "missing_days": missing,
+                        "last_punch_day": last_punch_day.isoformat() if last_punch_day else None})
+    except Exception as e:
+        print(f"timecard_leave_self_check error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /timecard-leave-self-api-v1 =====
+
+
 @app.route("/admin/timecard/devices", methods=["GET"])
 @login_required
 def admin_timecard_devices():
