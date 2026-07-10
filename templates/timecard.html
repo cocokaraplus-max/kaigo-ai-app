@@ -233,6 +233,27 @@
     <button class="tc-submit" id="tc-leave-submit">登録して閉じる</button>
   </div>
 </div>
+<!-- timecard-break-countdown-tc-v1 : 休憩時間選択モーダル -->
+<style>
+  #tc-break-modal .tc-break-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+  #tc-break-modal .tc-break-opt{border:1px solid var(--tc-line);border-radius:12px;padding:16px 6px;
+    font-size:1.05rem;font-weight:800;background:#fff;color:var(--tc-ink);cursor:pointer;text-align:center}
+  #tc-break-modal .tc-break-opt:active{transform:scale(.97)}
+  #tc-break-modal .tc-break-opt.sel{background:var(--tc-break);color:#fff;border-color:var(--tc-break)}
+  .tc-countdown{margin-top:8px;font-size:1.05rem;font-weight:800}
+  .tc-countdown .tc-cd-time{font-variant-numeric:tabular-nums}
+  .tc-countdown.over{color:#c0392b}
+  .tc-staff .tc-cd-mini{font-size:.78rem;font-weight:700;color:var(--tc-break);margin-top:2px}
+  .tc-staff .tc-cd-mini.over{color:#c0392b}
+</style>
+<div class="tc-ov hidden" id="tc-break-modal">
+  <div class="tc-modal">
+    <h3 id="tc-break-title">休憩時間を選んでください</h3>
+    <p class="tc-modal-sub">選んだ瞬間からカウントダウンを開始します。</p>
+    <div class="tc-break-grid" id="tc-break-grid"></div>
+    <button class="tc-submit" id="tc-break-cancel" style="background:none;color:var(--tc-sub);margin-top:14px">キャンセル</button>
+  </div>
+</div>
 <div class="tc-toast" id="tc-toast"></div>
 
 <script>
@@ -359,12 +380,53 @@
     var holder = $("tc-pn-emoji");
     holder.outerHTML = iconHtml(s, 36).replace('class="emoji"', 'class="emoji" id="tc-pn-emoji"');
     $("tc-pn-name").textContent = s.name;
+    _tcCurBreak = s.break_info || null;  // timecard-break-countdown-tc-v1
     refreshPunchButtons(s.state);
+    if(s.state === "break" && _tcCurBreak){ _tcStartCd(_tcCurBreak); }
     show("tc-punch-view");
   }
 
+  // timecard-break-countdown-tc-v1: 休憩カウントダウン機構
+  var _tcCdTimer = null;
+  var _tcCurBreak = null;  // {started_at, planned_min}
+  function _tcClearCd(){ if(_tcCdTimer){ clearInterval(_tcCdTimer); _tcCdTimer=null; } }
+  function _tcFmtRemain(sec){
+    var neg = sec < 0;
+    var a = Math.abs(sec);
+    var m = Math.floor(a/60), s = a%60;
+    return (neg?"-":"") + m + ":" + ("0"+s).slice(-2);
+  }
+  function _tcRenderCd(){
+    var host = document.getElementById("tc-cd-host");
+    if(!host || !_tcCurBreak || !_tcCurBreak.planned_min || !_tcCurBreak.started_at){
+      if(host) host.innerHTML = "";
+      return;
+    }
+    var startMs = new Date(_tcCurBreak.started_at).getTime();
+    var endMs = startMs + _tcCurBreak.planned_min*60*1000;
+    var remain = Math.round((endMs - Date.now())/1000);
+    var over = remain < 0;
+    var startLocal = new Date(startMs);
+    var hh = ("0"+startLocal.getHours()).slice(-2), mm = ("0"+startLocal.getMinutes()).slice(-2);
+    host.className = "tc-countdown" + (over?" over":"");
+    host.innerHTML = hh+":"+mm+" 開始 / 残り <span class=\"tc-cd-time\">"+_tcFmtRemain(remain)+"</span>"
+      + (over ? " （休憩時間超過）" : "");
+  }
+  function _tcStartCd(breakInfo){
+    _tcClearCd();
+    _tcCurBreak = breakInfo || null;
+    _tcRenderCd();
+    if(_tcCurBreak && _tcCurBreak.planned_min){
+      _tcCdTimer = setInterval(_tcRenderCd, 1000);
+    }
+  }
+
   function refreshPunchButtons(st){
-    $("tc-pn-state").innerHTML = "現在の状態：<b>"+STATE_LABEL[st]+"</b>";
+    $("tc-pn-state").innerHTML = "現在の状態：<b>"+STATE_LABEL[st]+"</b>"
+      + '<div id="tc-cd-host" class="tc-countdown"></div>';
+    // 休憩中でなければカウントダウン停止
+    if(st !== "break"){ _tcClearCd(); _tcCurBreak = null; }
+    else if(_tcCurBreak){ _tcStartCd(_tcCurBreak); }
     var allow = {
       "in": st === "out",
       "out": st === "working" || st === "break",
@@ -406,7 +468,10 @@
     var label = {in:"出勤",out:"退勤",break_start:"休憩開始",break_end:"休憩終了"}[pt];
     toast(state.current.name + " さん " + label + " を記録しました");
     state.current.state = j.state;
+    // timecard-break-countdown-tc-v1: 休憩開始ならbreak_infoでカウントダウン開始
+    _tcCurBreak = (j.break_info) ? j.break_info : null;
     refreshPunchButtons(j.state);
+    if(j.state === "break" && _tcCurBreak){ _tcStartCd(_tcCurBreak); }
     var hit = state.staff.find(function(x){ return x.name === state.current.name; });
     if(hit) hit.state = j.state;
   }
@@ -417,10 +482,11 @@
     if(pt === "in"){ openInModal(); return; }
     // 退勤は専用モーダルへ(当日休暇登録済ならスキップ)
     if(pt === "out"){ openOutModal(); return; }
-    // 休憩は従来通りconfirm
-    var TC_CONFIRM = { break_start:"休憩開始", break_end:"休憩終了" };
-    if(TC_CONFIRM[pt]){
-      if(!confirm(state.current.name + " さん\n\n「" + TC_CONFIRM[pt] + "」を記録します。よろしいですか？")) return;
+    // 休憩開始は時間選択モーダルへ(timecard-break-countdown-tc-v1)
+    if(pt === "break_start"){ openBreakModal(); return; }
+    // 休憩終了は従来通りconfirm
+    if(pt === "break_end"){
+      if(!confirm(state.current.name + " さん\n\n「休憩終了」を記録します。よろしいですか？")) return;
     }
     try{
       var j = await _tcDoPunch(pt);
@@ -605,6 +671,40 @@
     document.querySelectorAll("#tc-leave-days select").forEach(function(s){ s.value = v; });
   });
   $("tc-leave-submit").addEventListener("click", function(){ submitLeaveModal(); });
+
+  // timecard-break-countdown-tc-v1: 休憩時間選択モーダル
+  var _tcBreakChoice = null;
+  function openBreakModal(){
+    $("tc-break-title").textContent = state.current.name + " さん 休憩時間を選んでください";
+    var grid = $("tc-break-grid");
+    grid.innerHTML = "";
+    for(var mn=10; mn<=90; mn+=5){
+      var b = document.createElement("button");
+      b.className = "tc-break-opt";
+      b.setAttribute("data-min", String(mn));
+      b.textContent = mn + "分";
+      grid.appendChild(b);
+    }
+    grid.querySelectorAll(".tc-break-opt").forEach(function(btn){
+      btn.addEventListener("click", function(){ _tcDoBreakStart(parseInt(this.getAttribute("data-min"),10)); });
+    });
+    $("tc-break-modal").classList.remove("hidden");
+  }
+  function closeBreakModal(){ $("tc-break-modal").classList.add("hidden"); }
+  async function _tcDoBreakStart(minutes){
+    closeBreakModal();
+    try{
+      var res = await fetch("/timecard/punch", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token, staff_name: state.current.name,
+                               punch_type: "break_start", planned_break_min: minutes })
+      });
+      var j = await res.json();
+      if(j.status === "success"){ _tcAfterPunchOk("break_start", j); }
+      else{ toast(j.message || "打刻できませんでした", true); }
+    }catch(e){ toast("通信エラーが発生しました", true); }
+  }
+  $("tc-break-cancel").addEventListener("click", function(){ closeBreakModal(); });
 
   function backToStaff(){
     state.current = null;

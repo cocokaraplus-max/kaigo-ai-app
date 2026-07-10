@@ -13797,6 +13797,23 @@ def _tc_staff_state(punches):
     return state
 
 
+def _tc_active_break(punches):
+    """timecard-break-countdown-api-v1: 進行中の休憩を返す。
+    最後の break_start が break_end されていなければ
+    {started_at, planned_min} を返す。進行中の休憩が無ければ None。"""
+    active = None
+    for p in punches:
+        t = p.get("punch_type")
+        if t == "break_start":
+            active = {"started_at": p.get("punched_at"),
+                      "planned_min": p.get("planned_break_min")}
+        elif t == "break_end":
+            active = None
+        elif t == "out":
+            active = None
+    return active
+
+
 @app.route("/timecard")
 def timecard_page():
     """打刻画面(公開)。実際の可否はクライアントから /timecard/bootstrap で判定。"""
@@ -13841,7 +13858,10 @@ def timecard_bootstrap():
         for p in punches:
             by_staff.setdefault(p.get("staff_name"), []).append(p)
         for s in staff:
-            s["state"] = _tc_staff_state(by_staff.get(s["name"], []))
+            _sp = by_staff.get(s["name"], [])
+            s["state"] = _tc_staff_state(_sp)
+            # timecard-break-countdown-api-v1: 進行中の休憩情報(カウントダウン用)
+            s["break_info"] = _tc_active_break(_sp)
         return jsonify({"status": "ok", "registered": True, "enabled": True,
                         "facility_code": f_code, "facility_name": fac_name,
                         "device_label": dev.get("device_label") or "",
@@ -13889,16 +13909,46 @@ def timecard_punch():
                    "break_end": "休憩中ではありません。"}.get(punch_type, "打刻できません。")
             return jsonify({"status": "error", "message": msg}), 409
         now_iso = _tc_now_jst().astimezone(_tc_tz.utc).isoformat()
-        supabase.table("timecard_records").insert({
+        # timecard-break-countdown-api-v1: break_startは予定分数(10～90,5分刻み)を保存
+        _rec = {
             "facility_code": f_code, "staff_name": staff_name,
             "punch_type": punch_type, "punched_at": now_iso,
             "device_token": token,
-        }).execute()
-        new_state = _tc_staff_state(_tc_today_punches(supabase, f_code, staff_name))
+        }
+        if punch_type == "break_start":
+            try:
+                _pbm = int(data.get("planned_break_min"))
+            except (TypeError, ValueError):
+                _pbm = None
+            if _pbm is not None and 5 <= _pbm <= 180:
+                _rec["planned_break_min"] = _pbm
+        supabase.table("timecard_records").insert(_rec).execute()
+        _new_punches = _tc_today_punches(supabase, f_code, staff_name)
+        new_state = _tc_staff_state(_new_punches)
         return jsonify({"status": "success", "state": new_state,
-                        "punched_at": now_iso})
+                        "punched_at": now_iso,
+                        "break_info": _tc_active_break(_new_punches)})
     except Exception as e:
         print(f"timecard_punch error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ===== timecard-break-countdown-api-v1 : 本人の進行中休憩(TOPカウントダウン用) =====
+@app.route("/timecard/my_break", methods=["GET"])
+@login_required
+def timecard_my_break():
+    """ログイン中の本人(my_name)の当日の進行中休憩を返す。
+    タイムカードのstaff_nameとログイン名は一致する前提。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        if not my_name:
+            return jsonify({"status": "success", "break_info": None})
+        supabase = get_supabase()
+        punches = _tc_today_punches(supabase, f_code, my_name)
+        return jsonify({"status": "success", "break_info": _tc_active_break(punches)})
+    except Exception as e:
+        print(f"timecard_my_break error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
