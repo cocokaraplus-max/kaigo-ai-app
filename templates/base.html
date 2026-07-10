@@ -1133,17 +1133,27 @@ function soundPico() {
 }
 
 // タスカル音声
-function soundTasukaru() {
+function soundTasukaru() {  // tasukaru-voice-antichoke2-v1
     if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance('タスカル！');
-    utter.lang = 'ja-JP';
-    utter.rate = 1.8;
-    utter.pitch = 1.3;
-    const voices = window.speechSynthesis.getVoices();
-    const jpVoice = voices.find(v => v.lang.includes('ja'));
-    if (jpVoice) utter.voice = jpVoice;
-    window.speechSynthesis.speak(utter);
+    const ss = window.speechSynthesis;
+    // (1) 既に発話中/待機中なら連打とみなし無視(低音化の根本防止)
+    if (ss.speaking || ss.pending) { return; }
+    try { ss.cancel(); } catch (e) {}
+    const _mk = function () {
+        const utter = new SpeechSynthesisUtterance('タスクッ！');
+        utter.lang = 'ja-JP';
+        utter.rate = 1.6;    // 元気に粒立て
+        utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
+        const voices = ss.getVoices();
+        // tasukaru-voice-kyoko-v1: Kyoko(高め素直)を優先。pitch2.0でネズミ声化。
+        const jpVoices = voices.filter(v => v.lang.includes('ja'));
+        const kyoko = jpVoices.find(v => v.name.includes('Kyoko'));
+        const jpVoice = kyoko || jpVoices[0];
+        if (jpVoice) utter.voice = jpVoice;
+        ss.speak(utter);
+    };
+    // (2) cancelの完了を十分待ってからspeak
+    setTimeout(_mk, 150);
 }
 
 // 通知音を鳴らす
@@ -2160,6 +2170,18 @@ document.addEventListener('click', function(e) {
         if (typeof window.resetNavOrder === 'function') window.resetNavOrder();
         return;
     }
+    // sound-preview-order-fix-v1: 試聴ボタンを最優先で処理(親.sound-optより先)
+    if (e.target.closest('#preview-btn, .preview-btn')) {
+        var pBtn = e.target.closest('.preview-btn');
+        if (pBtn) {
+            var snd = pBtn.dataset.preview;
+            if (snd === 'pop') soundPop();
+            else if (snd === 'chime') soundChime();
+            else if (snd === 'pico') soundPico();
+            else if (snd === 'tasukaru') soundTasukaru();
+        }
+        return;
+    }
     if (e.target.closest('.sound-opt')) {
         var opt = e.target.closest('.sound-opt');
         if (e.target.closest('.preview-btn')) return; // 試聴ボタンはここでは処理しない
@@ -2194,17 +2216,6 @@ document.addEventListener('click', function(e) {
             localStorage.setItem('tasukaru_passcode', btoa(p1));
             alert('✅ パスコードを設定しました');
         }, 300);
-        return;
-    }
-    if (e.target.closest('#preview-btn, .preview-btn')) {
-        var pBtn = e.target.closest('.preview-btn');
-        if (pBtn) {
-            var snd = pBtn.dataset.preview;
-            if (snd === 'pop') soundPop();
-            else if (snd === 'chime') soundChime();
-            else if (snd === 'pico') soundPico();
-            else if (snd === 'tasukaru') soundTasukaru();
-        }
         return;
     }
 });
