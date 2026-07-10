@@ -14026,7 +14026,15 @@ def timecard_leave_self_check():
                 if cur not in punched_days and cur not in leave_days:
                     missing.append(cur.isoformat())
                 cur = cur + _lc_td(days=1)
+        # timecard-leave-selfcheck-today-v1: 当日の休暇登録の有無(退勤モーダルの案A判定用)
+        today_iso = today.isoformat()
+        today_leave = False
+        for r in (lv.data or []):
+            if r.get("leave_date") == today_iso:
+                today_leave = True
+                break
         return jsonify({"status": "success", "missing_days": missing,
+                        "today_leave": today_leave,
                         "last_punch_day": last_punch_day.isoformat() if last_punch_day else None})
     except Exception as e:
         print(f"timecard_leave_self_check error: {e}", flush=True)
