@@ -1138,15 +1138,18 @@ function soundTasukaru() {  // sound-tasukaru-mouse-v1
     window.speechSynthesis.cancel();
     // 小さなネズミが素早く高く尻上がりに発声するイメージ。
     // 語尾の「ぅ？」でTTSのピッチが上がり尻上がりになる。
-    const utter = new SpeechSynthesisUtterance('タスコゥッ！');
+    const utter = new SpeechSynthesisUtterance('タスコゥ！');
     utter.lang = 'ja-JP';
-    utter.rate = 2.0;    // 素早く詰まった勢い(sound-tasukaru-squash-v1)
+    utter.rate = 1.6;    // 元気に粒立て(sound-preview-order-fix-v1)
     utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
     // 声質をもっと変えたい場合は上の2値を微調整:
     //   マイルドなネズミ -> rate 1.7 / pitch 1.7
     //   極端なチュー声 -> rate 2.0 / pitch 2.0
     const voices = window.speechSynthesis.getVoices();
-    const jpVoice = voices.find(v => v.lang.includes('ja'));
+    // Rocko(元気系)を優先。無ければ他の日本語ボイスにフォールバック。
+    const jpVoices = voices.filter(v => v.lang.includes('ja'));
+    const rocko = jpVoices.find(v => v.name.includes('Rocko'));
+    const jpVoice = rocko || jpVoices[0];
     if (jpVoice) utter.voice = jpVoice;
     window.speechSynthesis.speak(utter);
 }
@@ -2165,6 +2168,18 @@ document.addEventListener('click', function(e) {
         if (typeof window.resetNavOrder === 'function') window.resetNavOrder();
         return;
     }
+    // sound-preview-order-fix-v1: 試聴ボタンを最優先で処理(親.sound-optより先)
+    if (e.target.closest('#preview-btn, .preview-btn')) {
+        var pBtn = e.target.closest('.preview-btn');
+        if (pBtn) {
+            var snd = pBtn.dataset.preview;
+            if (snd === 'pop') soundPop();
+            else if (snd === 'chime') soundChime();
+            else if (snd === 'pico') soundPico();
+            else if (snd === 'tasukaru') soundTasukaru();
+        }
+        return;
+    }
     if (e.target.closest('.sound-opt')) {
         var opt = e.target.closest('.sound-opt');
         if (e.target.closest('.preview-btn')) return; // 試聴ボタンはここでは処理しない
@@ -2199,17 +2214,6 @@ document.addEventListener('click', function(e) {
             localStorage.setItem('tasukaru_passcode', btoa(p1));
             alert('✅ パスコードを設定しました');
         }, 300);
-        return;
-    }
-    if (e.target.closest('#preview-btn, .preview-btn')) {
-        var pBtn = e.target.closest('.preview-btn');
-        if (pBtn) {
-            var snd = pBtn.dataset.preview;
-            if (snd === 'pop') soundPop();
-            else if (snd === 'chime') soundChime();
-            else if (snd === 'pico') soundPico();
-            else if (snd === 'tasukaru') soundTasukaru();
-        }
         return;
     }
 });
