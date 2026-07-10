@@ -678,14 +678,9 @@ function playSound(type) {
             g3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
             o3.start(); o3.stop(ctx.currentTime + 0.15);
         } else if (type === 'tasukaru') {
-            var o4 = ctx.createOscillator(); var g4 = ctx.createGain();
-            o4.connect(g4); g4.connect(ctx.destination);
-            o4.frequency.setValueAtTime(440, ctx.currentTime);
-            o4.frequency.setValueAtTime(554, ctx.currentTime + 0.1);
-            o4.frequency.setValueAtTime(659, ctx.currentTime + 0.2);
-            g4.gain.setValueAtTime(0.3, ctx.currentTime);
-            g4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-            o4.start(); o4.stop(ctx.currentTime + 0.4);
+            // top-tasukaru-voice-v1: 旧電子音(440/554/659Hz)を廃止し
+            // base.html の soundTasukaru()(ネズミ声)を呼ぶ。
+            if (typeof soundTasukaru === 'function') { soundTasukaru(); }
         }
     } catch(e) {}
 }
