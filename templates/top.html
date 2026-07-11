@@ -187,6 +187,15 @@
     </div>
 </div>
 
+<!-- timecard-top-break-countdown-v1 : 本人の休憩残りカウントダウン -->
+<div id="top-break-banner" style="display:none;align-items:center;gap:10px;padding:12px 16px;
+  margin:4px 0 12px;background:#fbf0dc;border:1px solid #e6c98a;border-radius:12px;">
+  <span class="material-symbols-outlined" style="font-size:22px;color:#c77d12;">free_breakfast</span>
+  <div style="flex:1;">
+    <div style="font-size:.78rem;color:#8a6d3b;font-weight:700;">休憩中</div>
+    <div id="top-break-text" style="font-size:1.05rem;font-weight:800;color:#c77d12;font-variant-numeric:tabular-nums;"></div>
+  </div>
+</div>
 <!-- timecard-top-btn-v1 : 承認済み打刻デバイスのときだけ表示 -->
 <a id="tc-top-punch-link" href="/timecard"
    style="display:none;align-items:center;justify-content:center;gap:8px;padding:14px;
@@ -857,6 +866,52 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
     });
 });
 
+})();
+</script>
+<script>
+// timecard-top-break-countdown-v1: 本人の休憩残りをTOPに表示
+(function(){
+  var _bTimer = null, _bInfo = null;
+  function _bFmt(sec){
+    var neg = sec < 0, a = Math.abs(sec);
+    var m = Math.floor(a/60), s = a%60;
+    return (neg?"-":"") + m + ":" + ("0"+s).slice(-2);
+  }
+  function _bRender(){
+    var banner = document.getElementById("top-break-banner");
+    var txt = document.getElementById("top-break-text");
+    if(!banner || !txt || !_bInfo || !_bInfo.planned_min || !_bInfo.started_at){
+      if(banner) banner.style.display = "none";
+      return;
+    }
+    var startMs = new Date(_bInfo.started_at).getTime();
+    var remain = Math.round((startMs + _bInfo.planned_min*60*1000 - Date.now())/1000);
+    var over = remain < 0;
+    banner.style.display = "flex";
+    banner.style.background = over ? "#fdecea" : "#fbf0dc";
+    banner.style.borderColor = over ? "#e6a8a2" : "#e6c98a";
+    txt.style.color = over ? "#c0392b" : "#c77d12";
+    txt.textContent = (over ? "休憩時間超過 " : "残り ") + _bFmt(remain);
+  }
+  async function _bLoad(){
+    try{
+      var res = await fetch("/timecard/my_break", { credentials:"include" });
+      var j = await res.json();
+      if(j && j.status === "success" && j.break_info && j.break_info.planned_min){
+        _bInfo = j.break_info;
+        _bRender();
+        if(_bTimer) clearInterval(_bTimer);
+        _bTimer = setInterval(_bRender, 1000);
+      }else{
+        _bInfo = null;
+        var banner = document.getElementById("top-break-banner");
+        if(banner) banner.style.display = "none";
+      }
+    }catch(e){ /* 失敗は無視 */ }
+  }
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", _bLoad);
+  }else{ _bLoad(); }
 })();
 </script>
 {% endblock %}

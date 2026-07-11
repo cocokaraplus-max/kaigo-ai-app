@@ -128,6 +128,7 @@
   <div class="tcr-actions">
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
+    <button id="tcr-payexport"><span class="material-symbols-outlined" style="font-size:18px">download</span>給与出力</button><!-- pay-export-ui-v1 -->
     <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
 
@@ -212,6 +213,67 @@
       <button class="cfg-add" id="cfg-role-add">+ 兼務者を追加</button>
     </div>
 
+    <div class="cfg-sec"><!-- pay-overtime-cfg-ui-v1 -->
+      <h4>残業・給与計算</h4>
+      <p class="cfg-hint">給与出力の残業算出に使います。就業規則に合わせて設定してください。通常のデイサービス運営なら初期値のままで大丈夫です。</p>
+      <div class="cfg-row2">
+        <label>労働時間制
+          <select id="cfg-worksys" class="cfg-inp">
+            <option value="standard">通常(1日8時間・週40時間)</option>
+            <option value="monthly_variable">1ヶ月単位の変形労働(将来対応)</option>
+            <option value="yearly_variable">1年単位の変形労働(将来対応)</option>
+          </select>
+        </label>
+      </div>
+      <div class="cfg-row2">
+        <label>締日
+          <select id="cfg-closing" class="cfg-inp">
+            <option value="0">月末</option>
+            <option value="20">20日</option>
+            <option value="15">15日</option>
+            <option value="25">25日</option>
+            <option value="10">10日</option>
+            <option value="5">5日</option>
+          </select>
+        </label>
+        <label>週の起算日
+          <select id="cfg-weekstart" class="cfg-inp">
+            <option value="6">日曜</option>
+            <option value="0">月曜</option>
+          </select>
+        </label>
+      </div>
+      <div class="cfg-row2">
+        <label>法定休日の判定
+          <select id="cfg-holmode" class="cfg-inp">
+            <option value="weekly_rest">週休で判定(週1日も休みが無い週の労働を法定休日扱い)</option>
+            <option value="fixed_weekday">曜日固定</option>
+            <option value="calendar">カレンダー個別指定</option>
+          </select>
+        </label>
+      </div>
+      <div class="cfg-row2" id="cfg-holwd-wrap" style="display:none">
+        <label>法定休日の曜日
+          <select id="cfg-holwd" class="cfg-inp">
+            <option value="6">日曜</option><option value="5">土曜</option>
+            <option value="0">月曜</option><option value="1">火曜</option>
+            <option value="2">水曜</option><option value="3">木曜</option><option value="4">金曜</option>
+          </select>
+        </label>
+      </div>
+      <div class="cfg-row2">
+        <label>深夜帯 開始 <input type="time" id="cfg-nightstart" class="cfg-inp"></label>
+        <label>深夜帯 終了 <input type="time" id="cfg-nightend" class="cfg-inp"></label>
+      </div>
+      <div class="cfg-row2">
+        <label>時間外 割増率 <input type="number" id="cfg-rate-ot" class="cfg-num" min="1" max="3" step="0.05"></label>
+        <label>深夜 割増(加算) <input type="number" id="cfg-rate-night" class="cfg-num" min="0" max="2" step="0.05"></label>
+      </div>
+      <div class="cfg-row2">
+        <label>法定休日 割増率 <input type="number" id="cfg-rate-hol" class="cfg-num" min="1" max="3" step="0.05"></label>
+      </div>
+    </div>
+
     <button class="cfg-save" id="cfg-save">保存する</button>
     <button class="tcm-close" id="cfg-close">閉じる</button>
   </div>
@@ -248,6 +310,7 @@
 
   function render(j){
     var staff=j.staff||[];
+    window._tcrStaff=staff;  // pay-export-ui-v1
     if(!staff.some(function(s){return s.days.length>0;})){ $("tcr-body").innerHTML='<div class="tcr-empty">この月の打刻記録はありません。</div>'; return; }
     var grandMin=0,grandInc=0;
     staff.forEach(function(s){ grandMin+=s.total_minutes; grandInc+=s.incomplete_days; });
@@ -413,6 +476,111 @@
     }catch(e){ alert("通信エラーが発生しました"); }
     finally{ btn.disabled=false; btn.innerHTML=old; }
   });
+
+  // ===== pay-export-ui-v1: 給与/勤怠 出力モーダル =====
+  (function(){
+    function esc2(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+    // モーダルDOMを一度だけ生成
+    var wrap=document.createElement("div");
+    wrap.id="pex-back";
+    wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px";
+    wrap.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2)">'
+      +'<div style="font-weight:800;font-size:1.1rem;margin-bottom:14px;display:flex;align-items:center;gap:8px">'
+      +'<span class="material-symbols-outlined">download</span>勤怠データの出力</div>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">出力の種類</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:14px">'
+      +'<label style="flex:1"><input type="radio" name="pex-kind" value="payroll" checked> 給与計算用<br><span style="font-size:.7rem;color:#999">残業・深夜・法定休日つき</span></label>'
+      +'<label style="flex:1"><input type="radio" name="pex-kind" value="simple"> 勤怠実績<br><span style="font-size:.7rem;color:#999">打刻そのまま</span></label>'
+      +'</div>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">出力する範囲</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+      +'<label style="flex:1"><input type="radio" name="pex-scope" value="all" checked> 施設全体</label>'
+      +'<label style="flex:1"><input type="radio" name="pex-scope" value="staff"> 職員ごと</label>'
+      +'</div>'
+      +'<select id="pex-staff" style="width:100%;padding:9px;border:1px solid #d8d4cc;border-radius:9px;font-family:inherit;font-size:.9rem;margin-bottom:14px;display:none"></select>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">形式</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:18px">'
+      +'<button class="pex-fmt" data-fmt="csv" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">CSV</button>'
+      +'<button class="pex-fmt" data-fmt="excel" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">Excel</button>'
+      +'<button class="pex-fmt" data-fmt="pdf" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">PDF</button>'
+      +'</div>'
+      +'<div id="pex-msg" style="font-size:.78rem;color:#c0392b;margin-bottom:10px;min-height:1em"></div>'
+      +'<button id="pex-close" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:10px;background:#f6f4ef;font-family:inherit;font-weight:700;cursor:pointer">閉じる</button>'
+      +'</div>';
+    document.body.appendChild(wrap);
+
+    function openModal(){
+      // 職員セレクトを最新のstaffで再構築
+      var sel=document.getElementById("pex-staff");
+      var names=(window._tcrStaff||[]).map(function(s){return s.name;});
+      sel.innerHTML=names.map(function(n){return '<option value="'+esc2(n)+'">'+esc2(n)+'</option>';}).join("");
+      document.getElementById("pex-msg").textContent="";
+      wrap.style.display="flex";
+    }
+    function closeModal(){ wrap.style.display="none"; }
+
+    // scope切替で職員セレクトの表示ON/OFF
+    wrap.addEventListener("change",function(e){
+      if(e.target.name==="pex-scope"){
+        document.getElementById("pex-staff").style.display=(e.target.value==="staff")?"block":"none";
+      }
+    });
+
+    // PDFはsimpleでは未提供 -> kind=simple選択時にPDFボタンを無効化
+    function syncFmtButtons(){
+      var kind=(wrap.querySelector('input[name="pex-kind"]:checked')||{}).value;
+      var pdfBtn=wrap.querySelector('.pex-fmt[data-fmt="pdf"]');
+      if(kind==="simple"){ pdfBtn.disabled=true; pdfBtn.style.opacity=.4; pdfBtn.title="勤怠実績のPDFはPDFで保存ボタンをご利用ください"; }
+      else { pdfBtn.disabled=false; pdfBtn.style.opacity=1; pdfBtn.title=""; }
+    }
+    wrap.addEventListener("change",function(e){ if(e.target.name==="pex-kind") syncFmtButtons(); });
+
+    async function doExport(fmt){
+      var kind=(wrap.querySelector('input[name="pex-kind"]:checked')||{}).value||"payroll";
+      var scope=(wrap.querySelector('input[name="pex-scope"]:checked')||{}).value||"all";
+      var staffName=document.getElementById("pex-staff").value||"";
+      var msg=document.getElementById("pex-msg");
+      if(scope==="staff" && !staffName){ msg.textContent="職員を選んでください"; return; }
+      var qs="year="+year+"&month="+month+"&scope="+scope+(scope==="staff"?("&staff_name="+encodeURIComponent(staffName)):"");
+      var url="/admin/timecard/export/"+kind+"/"+fmt+"?"+qs;
+      var btns=wrap.querySelectorAll(".pex-fmt");
+      btns.forEach(function(b){b.disabled=true;});
+      msg.style.color="#666"; msg.textContent="作成中…";
+      try{
+        var res=await fetch(url);
+        var ct=res.headers.get("content-type")||"";
+        if(ct.indexOf("csv")<0 && ct.indexOf("spreadsheet")<0 && ct.indexOf("pdf")<0){
+          var j=await res.json().catch(function(){return {};});
+          msg.style.color="#c0392b"; msg.textContent=j.message||"出力に失敗しました";
+          return;
+        }
+        var blob=await res.blob();
+        var ext=(fmt==="excel")?"xlsx":fmt;
+        var pre=(kind==="payroll")?"kyuyo":"kintai";
+        var suf=(scope==="staff")?("_"+staffName):"";
+        var fname=pre+"_"+year+String(month).padStart(2,"0")+suf+"."+ext;
+        var durl=URL.createObjectURL(blob);
+        var a=document.createElement("a");
+        a.href=durl; a.download=fname;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(durl);
+        msg.style.color="#2f6b5e"; msg.textContent="ダウンロードしました";
+      }catch(e){ msg.style.color="#c0392b"; msg.textContent="通信エラーが発生しました"; }
+      finally{ btns.forEach(function(b){b.disabled=false;}); syncFmtButtons(); }
+    }
+
+    wrap.querySelectorAll(".pex-fmt").forEach(function(b){
+      b.addEventListener("click",function(){ if(!b.disabled) doExport(b.getAttribute("data-fmt")); });
+    });
+    document.getElementById("pex-close").addEventListener("click",closeModal);
+    wrap.addEventListener("click",function(e){ if(e.target===wrap) closeModal(); });
+
+    var openBtn=document.getElementById("tcr-payexport");
+    if(openBtn){ openBtn.addEventListener("click",function(){ openModal(); syncFmtButtons(); }); }
+  })();
+  // ===== /pay-export-ui-v1 =====
+
   $("tcm-add-btn").addEventListener("click", addPunch);
   $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
 
@@ -466,6 +634,18 @@
       (c.service_times||[]).forEach(function(s){ sl.appendChild(cfgSvcRow(s)); });
       var rl=$("cfg-role-list"); rl.innerHTML="";
       (c.role_splits||[]).forEach(function(it){ rl.appendChild(cfgRoleRow(it)); });
+      // pay-overtime-cfg-ui-v1: 残業設定の反映
+      $("cfg-worksys").value=c.work_system||"standard";
+      $("cfg-closing").value=String(c.closing_day==null?0:c.closing_day);
+      $("cfg-weekstart").value=String(c.week_start==null?6:c.week_start);
+      $("cfg-holmode").value=c.holiday_mode||"weekly_rest";
+      $("cfg-holwd").value=String(c.legal_holiday_weekday==null?6:c.legal_holiday_weekday);
+      $("cfg-holwd-wrap").style.display=(c.holiday_mode==="fixed_weekday")?"flex":"none";
+      $("cfg-nightstart").value=c.night_start||"22:00";
+      $("cfg-nightend").value=c.night_end||"05:00";
+      $("cfg-rate-ot").value=(c.rate_overtime==null?1.25:c.rate_overtime);
+      $("cfg-rate-night").value=(c.rate_night==null?0.25:c.rate_night);
+      $("cfg-rate-hol").value=(c.rate_holiday==null?1.35:c.rate_holiday);
     }catch(e){ alert("設定の読み込みに失敗しました"); }
   }
   function collectConfig(){
@@ -492,9 +672,24 @@
       service_times: svc,
       half_slot_hours: parseFloat($("cfg-half").value)||4,
       full_slot_hours: parseFloat($("cfg-full").value)||8,
-      role_splits: roles
+      role_splits: roles,
+      // pay-overtime-cfg-ui-v1: 残業設定
+      work_system: $("cfg-worksys").value,
+      closing_day: parseInt($("cfg-closing").value,10),
+      week_start: parseInt($("cfg-weekstart").value,10),
+      holiday_mode: $("cfg-holmode").value,
+      legal_holiday_weekday: ($("cfg-holmode").value==="fixed_weekday")?parseInt($("cfg-holwd").value,10):null,
+      night_start: $("cfg-nightstart").value||"22:00",
+      night_end: $("cfg-nightend").value||"05:00",
+      rate_overtime: parseFloat($("cfg-rate-ot").value)||1.25,
+      rate_night: parseFloat($("cfg-rate-night").value)||0.25,
+      rate_holiday: parseFloat($("cfg-rate-hol").value)||1.35
     };
   }
+  // pay-overtime-cfg-ui-v1: 法定休日モードで曜日欄トグル
+  $("cfg-holmode").addEventListener("change",function(){
+    $("cfg-holwd-wrap").style.display=(this.value==="fixed_weekday")?"flex":"none";
+  });
   $("tcr-config").addEventListener("click", openConfig);
   $("cfg-close").addEventListener("click",function(){ $("cfg-back").classList.remove("show"); });
   $("cfg-back").addEventListener("click",function(e){ if(e.target===$("cfg-back")) $("cfg-back").classList.remove("show"); });

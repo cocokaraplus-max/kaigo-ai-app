@@ -15068,6 +15068,20 @@ _TC_CONFIG_DEFAULT = {
     "half_slot_hours": 4,                     # 半日型 1枠の時間
     "full_slot_hours": 8,                     # 1日型 1枠の時間
     "role_splits": [],                        # 兼務: [{"name":職員名,"roles":[{"title":役職,"ratio":0.5},...]}]
+    # pay-config-default-v1: 給与/残業計算用(社労士向け出力)。施設別に上書き可。
+    "work_system": "standard",                # standard=通常制 / monthly_variable / yearly_variable(後者は将来枠)
+    "daily_legal_min": 480,                   # 1日法定労働=8時間
+    "weekly_legal_min": 2400,                 # 週法定労働=40時間
+    "week_start": 6,                          # 週起算曜日 0=月..6=日(御社=日曜起算=6)
+    "night_start": "22:00",                   # 深夜割増開始
+    "night_end": "05:00",                     # 深夜割増終了(翻日)
+    "holiday_mode": "weekly_rest",            # weekly_rest=週休判定 / fixed_weekday / calendar
+    "legal_holiday_weekday": None,            # fixed_weekday時の曜日(0=月..6=日)。weekly_restならNone
+    "legal_holiday_dates": [],                # calendar時の法定休日(YYYY-MM-DDのリスト)
+    "rate_overtime": 1.25,                    # 時間外割増率
+    "rate_night": 0.25,                       # 深夜割増(加算分)
+    "rate_holiday": 1.35,                     # 法定休日割増率
+    "closing_day": 0,                         # 締日 0=月末 / 20 / 15 等(可変)
 }
 
 
@@ -15176,6 +15190,39 @@ def admin_timecard_config_save():
                 if clean_roles:
                     clean_rs.append({"name": nm, "roles": clean_roles})
             cfg["role_splits"] = clean_rs
+
+        # pay-config-save-v1: 残業/給与設定の検証と取り込み。
+        _pay_ws = str(data.get("work_system", "")).strip()
+        if _pay_ws in ("standard", "monthly_variable", "yearly_variable"):
+            cfg["work_system"] = _pay_ws
+        for _pk in ("daily_legal_min", "weekly_legal_min"):
+            _pv = data.get(_pk)
+            if isinstance(_pv, (int, float)) and 0 < _pv <= 100000:
+                cfg[_pk] = int(_pv)
+        _pw = data.get("week_start")
+        if isinstance(_pw, int) and 0 <= _pw <= 6:
+            cfg["week_start"] = _pw
+        for _pk in ("night_start", "night_end"):
+            _pv = str(data.get(_pk, "")).strip()
+            if _TC_TIME_RE.match(_pv):
+                cfg[_pk] = _pv
+        _pm = str(data.get("holiday_mode", "")).strip()
+        if _pm in ("weekly_rest", "fixed_weekday", "calendar"):
+            cfg["holiday_mode"] = _pm
+        _plw = data.get("legal_holiday_weekday")
+        if _plw is None or (isinstance(_plw, int) and 0 <= _plw <= 6):
+            cfg["legal_holiday_weekday"] = _plw
+        _pld = data.get("legal_holiday_dates")
+        if isinstance(_pld, list):
+            cfg["legal_holiday_dates"] = [str(x).strip() for x in _pld
+                                          if _LEAVE_DATE_RE.match(str(x).strip())]
+        for _pk in ("rate_overtime", "rate_night", "rate_holiday"):
+            _pv = data.get(_pk)
+            if isinstance(_pv, (int, float)) and 0 <= _pv <= 10:
+                cfg[_pk] = float(_pv)
+        _pc = data.get("closing_day")
+        if isinstance(_pc, int) and (_pc == 0 or 1 <= _pc <= 28):
+            cfg["closing_day"] = _pc
 
         value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
         existing = supabase.table("admin_settings").select("id").eq(
@@ -15439,6 +15486,661 @@ def admin_timecard_youshiki():
         print(f"admin_timecard_youshiki error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 # ----- /youshiki-export-v1 -----
+
+
+# ============================================================
+# pay-export-v1 : 勤怠出力(シンプル勤怠 / 社労士向け給与計算)
+#   出力形式: CSV(cp932) / Excel(openpyxl) / PDF(pdfkit)
+#   出力単位: 施設全体(scope=all) / 職員個別(scope=staff&staff_name=..)
+#   期間: 締日可変(timecard_config.closing_day)。0=月末, 20=前月21〜当月20 等。
+#   残業算出: 通常制(standard)。日次8h超/深夜割増/週40h超(二重計上防止)/法定休日。
+#   設定は timecard_config(admin_settings) を _tc_get_config で読む。DDL不要。
+# ============================================================
+import csv as _pay_csv
+import io as _pay_io
+from datetime import date as _pay_date, timedelta as _pay_td
+
+
+def _pay_hm(s):
+    try:
+        h, m = str(s).split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return None
+
+
+def _pay_period_range_jst(year, month, closing_day):
+    """締日から集計期間[start_iso, end_iso)(UTC)と表示ラベルを返す。
+    closing_day=0: 当月1日〜翌月1日(月末締め)。
+    closing_day=N(1..28): 前月(N+1)日〜当月N日翌日。対象月=末日が属する月。"""
+    if not closing_day or closing_day <= 0:
+        s_start, s_end = _tc_month_range_jst(year, month)
+        label = f"{year}\u5e74{month}\u6708"
+        d_start = _pay_date(year, month, 1)
+        # 当月末日
+        if month == 12:
+            d_end = _pay_date(year + 1, 1, 1) - _pay_td(days=1)
+        else:
+            d_end = _pay_date(year, month + 1, 1) - _pay_td(days=1)
+        return s_start, s_end, label, d_start, d_end
+    # 締日あり: 対象は「当月 closing_day 締め」。期間=前月(cd+1)〜当月cd。
+    end_d = _pay_date(year, month, closing_day)
+    # 前月の closing_day+1
+    if month == 1:
+        pm_y, pm_m = year - 1, 12
+    else:
+        pm_y, pm_m = year, month - 1
+    start_d = _pay_date(pm_y, pm_m, closing_day) + _pay_td(days=1)
+    # iso範囲(JST 0:00基準 -> UTC)
+    s_start = _tc_dt(start_d.year, start_d.month, start_d.day, 0, 0, 0,
+                     tzinfo=_TC_JST).astimezone(_tc_tz.utc).isoformat()
+    end_plus = end_d + _pay_td(days=1)
+    s_end = _tc_dt(end_plus.year, end_plus.month, end_plus.day, 0, 0, 0,
+                   tzinfo=_TC_JST).astimezone(_tc_tz.utc).isoformat()
+    label = f"{year}\u5e74{month}\u6708(\u7de0\u65e5{closing_day}\u65e5)"
+    return s_start, s_end, label, start_d, end_d
+
+
+def _pay_build_monthly_range(supabase, f_code, start_iso, end_iso):
+    """任意期間[start_iso,end_iso)の職員別・日別集計(構造は_tc_build_monthly_dataと同一)。
+    締日可変対応のため月境界に依存しない版。"""
+    res = supabase.table("timecard_records").select("*").eq(
+        "facility_code", f_code).eq("is_deleted", False).gte(
+        "punched_at", start_iso).lt("punched_at", end_iso).order(
+        "punched_at", desc=False).execute()
+    rows = res.data or []
+    by_staff = {}
+    for r in rows:
+        sn = r.get("staff_name")
+        dk = _tc_day_key(r.get("punched_at"))
+        if not sn or not dk:
+            continue
+        by_staff.setdefault(sn, {}).setdefault(dk, []).append(r)
+    staff_master = _tc_staff_list(supabase, f_code)
+    name_order = [s["name"] for s in staff_master]
+    emoji_map = {s["name"]: s["emoji"] for s in staff_master}
+    for sn in by_staff.keys():
+        if sn not in name_order:
+            name_order.append(sn)
+    result = []
+    for sn in name_order:
+        days_map = by_staff.get(sn, {})
+        days = []
+        total_min = 0
+        worked_days = 0
+        incomplete_days = 0
+        for dk in sorted(days_map.keys()):
+            comp = _tc_compute_day(days_map[dk])
+            if comp["minutes"] is not None:
+                total_min += comp["minutes"]
+                if comp["minutes"] > 0:
+                    worked_days += 1
+            if comp["incomplete"]:
+                incomplete_days += 1
+            days.append({"date": dk, "minutes": comp["minutes"],
+                         "incomplete": comp["incomplete"], "flags": comp["flags"],
+                         "in": comp["in"], "out": comp["out"],
+                         "break_min": comp["break_min"]})
+        result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
+                       "days": days, "total_minutes": total_min,
+                       "worked_days": worked_days,
+                       "incomplete_days": incomplete_days})
+    return result
+
+
+def _pay_night_minutes(in_iso, out_iso, ns, ne):
+    """在席[in,out]のうち深夜帯(ns,ne分)の重なり(分)。日跨ぎ対応。"""
+    din = _tc_parse_iso(in_iso)
+    dout = _tc_parse_iso(out_iso)
+    if din is None or dout is None:
+        return 0
+    din = din.astimezone(_TC_JST)
+    dout = dout.astimezone(_TC_JST)
+    a = din.hour * 60 + din.minute
+    b = dout.hour * 60 + dout.minute
+    if b < a:
+        b += 1440
+    bands = []
+    if ns < ne:
+        bands.append((ns, ne))
+        bands.append((ns + 1440, ne + 1440))
+    else:
+        bands.append((ns - 1440, ne))
+        bands.append((ns, ne + 1440))
+        bands.append((ns + 1440, ne + 1440))
+    tot = 0
+    for bs, be in bands:
+        x = max(a, bs)
+        y = min(b, be)
+        if y > x:
+            tot += y - x
+    return tot
+
+
+def _pay_week_key(d, week_start):
+    delta = (d.weekday() - week_start) % 7
+    return d - _pay_td(days=delta)
+
+
+def _pay_legal_holiday_flag(d, cfg):
+    mode = cfg.get("holiday_mode", "weekly_rest")
+    if mode == "fixed_weekday":
+        wd = cfg.get("legal_holiday_weekday")
+        return wd is not None and d.weekday() == wd
+    if mode == "calendar":
+        return d.isoformat() in set(cfg.get("legal_holiday_dates") or [])
+    return False
+
+
+def _pay_compute_staff(days, cfg):
+    """1職員の日次リストから残業集計。返り値は work/ot/night/holiday と日次付与。"""
+    daily_legal = cfg.get("daily_legal_min", 480)
+    weekly_legal = cfg.get("weekly_legal_min", 2400)
+    week_start = cfg.get("week_start", 6)
+    holiday_mode = cfg.get("holiday_mode", "weekly_rest")
+    ns = _pay_hm(cfg.get("night_start", "22:00"))
+    ne = _pay_hm(cfg.get("night_end", "05:00"))
+    if ns is None:
+        ns = 1320
+    if ne is None:
+        ne = 300
+
+    out_days = []
+    weeks = {}
+    for idx, dd in enumerate(days):
+        ds = dd.get("date")
+        try:
+            y, mo, dy = [int(x) for x in ds.split("-")]
+            d = _pay_date(y, mo, dy)
+        except Exception:
+            out_days.append(dict(dd, ot_min=0, night_min=0, holiday_min=0, is_legal_holiday=False))
+            continue
+        mn = dd.get("minutes")
+        worked = (mn is not None and mn > 0)
+        night = _pay_night_minutes(dd.get("in"), dd.get("out"), ns, ne) if worked else 0
+        is_lh = _pay_legal_holiday_flag(d, cfg) if worked else False
+        rec = dict(dd, ot_min=0, night_min=night, holiday_min=0, is_legal_holiday=is_lh)
+        out_days.append(rec)
+        wk = _pay_week_key(d, week_start)
+        w = weeks.setdefault(wk, {"worked_dates": set(), "indices": []})
+        w["indices"].append(idx)
+        if worked:
+            w["worked_dates"].add(d)
+
+    if holiday_mode == "weekly_rest":
+        for wk, w in weeks.items():
+            if len(w["worked_dates"]) >= 7:
+                last_worked = max(w["worked_dates"])
+                for idx in w["indices"]:
+                    if out_days[idx].get("date") == last_worked.isoformat():
+                        out_days[idx]["is_legal_holiday"] = True
+
+    total_work = 0
+    worked_days = 0
+    ot_daily = 0
+    night_total = 0
+    holiday_total = 0
+    week_normal = {}
+    for rec in out_days:
+        mn = rec.get("minutes")
+        if mn is None or mn <= 0:
+            continue
+        total_work += mn
+        worked_days += 1
+        night_total += rec.get("night_min", 0)
+        y, mo, dy = [int(x) for x in rec.get("date").split("-")]
+        wk = _pay_week_key(_pay_date(y, mo, dy), week_start)
+        if rec.get("is_legal_holiday"):
+            rec["holiday_min"] = mn
+            holiday_total += mn
+            continue
+        od = max(0, mn - daily_legal)
+        rec["ot_min"] = od
+        ot_daily += od
+        week_normal[wk] = week_normal.get(wk, 0) + mn
+
+    week_daily_ot = {}
+    for rec in out_days:
+        mn = rec.get("minutes")
+        if mn is None or mn <= 0 or rec.get("is_legal_holiday"):
+            continue
+        y, mo, dy = [int(x) for x in rec.get("date").split("-")]
+        wk = _pay_week_key(_pay_date(y, mo, dy), week_start)
+        week_daily_ot[wk] = week_daily_ot.get(wk, 0) + rec.get("ot_min", 0)
+    ot_weekly = 0
+    for wk, wmin in week_normal.items():
+        over = max(0, wmin - weekly_legal)
+        add = max(0, over - week_daily_ot.get(wk, 0))
+        ot_weekly += add
+
+    return {
+        "work_min": total_work, "worked_days": worked_days,
+        "ot_daily_min": ot_daily, "ot_weekly_min": ot_weekly,
+        "overtime_min": ot_daily + ot_weekly,
+        "night_min": night_total, "holiday_min": holiday_total,
+        "days": out_days,
+    }
+
+
+def _pay_leaves_map(supabase, f_code, start_d, end_d):
+    """期間の休暇を (staff_name, 'YYYY-MM-DD') -> leave_type で返す。"""
+    lstart = start_d.isoformat()
+    lend = (end_d + _pay_td(days=1)).isoformat()
+    m = {}
+    try:
+        lres = supabase.table("staff_leave_days").select("*").eq(
+            "facility_code", f_code).gte("leave_date", lstart).lt(
+            "leave_date", lend).execute()
+        for r in (lres.data or []):
+            m[(r.get("staff_name"), r.get("leave_date"))] = r.get("leave_type")
+    except Exception as e:
+        print(f"_pay_leaves_map error: {e}", flush=True)
+    return m
+
+
+def _pay_wd_label(dk):
+    try:
+        y, m, d = [int(x) for x in dk.split("-")]
+        return ["\u6708", "\u706b", "\u6c34", "\u6728", "\u91d1", "\u571f", "\u65e5"][_pay_date(y, m, d).weekday()]
+    except Exception:
+        return ""
+
+
+def _pay_facility_name(supabase, f_code):
+    try:
+        fr = supabase.table("facilities").select("name").eq("facility_code", f_code).execute()
+        if fr.data:
+            return fr.data[0].get("name", "") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _pay_resolve_params():
+    """共通: year/month/scope/staff_name を解決。返り値 (year,month,scope,staff_name) or None。"""
+    now = _tc_now_jst()
+    try:
+        year = int(request.args.get("year", now.year))
+        month = int(request.args.get("month", now.month))
+    except (TypeError, ValueError):
+        year, month = now.year, now.month
+    if not (1 <= month <= 12):
+        return None
+    scope = (request.args.get("scope", "all") or "all").strip()
+    staff_name = (request.args.get("staff_name", "") or "").strip()
+    return year, month, scope, staff_name
+
+
+def _pay_filter_scope(staff_list, scope, staff_name):
+    if scope == "staff" and staff_name:
+        return [s for s in staff_list if s["name"] == staff_name]
+    return staff_list
+
+
+# ---------- シンプル勤怠 CSV ----------
+@app.route("/admin/timecard/export/simple/csv", methods=["GET"])
+@login_required
+def pay_export_simple_csv():
+    """打刻実績そのままのCSV(cp932)。職員×日ごと1行+職員合計行。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "\u7ba1\u7406\u8005\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
+        year, month, scope, staff_name = pr
+        cfg = _tc_get_config(supabase, f_code)
+        s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
+        staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+
+        sio = _pay_io.StringIO()
+        w = _pay_csv.writer(sio)
+        w.writerow(["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4",
+                    "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd(\u5206)", "\u5b9f\u50cd(\u6642\u9593)", "\u6253\u523b\u7570\u5e38"])
+        for s in staff:
+            for d in s["days"]:
+                if d["incomplete"]:
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
+                                "", "", "", "/".join(d.get("flags") or [])])
+                else:
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
+                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]), ""])
+            w.writerow([s["name"], "\u3010\u5408\u8a08\u3011", "", "", "", "",
+                        s["total_minutes"], _tc_fmt_hm(s["total_minutes"]),
+                        f'{s["worked_days"]}\u65e5\u52e4\u52d9'])
+        data = sio.getvalue().encode("cp932", errors="replace")
+        from flask import send_file as _send
+        buf = _pay_io.BytesIO(data)
+        buf.seek(0)
+        fname = f"kintai_simple_{year}{month:02d}.csv"
+        return _send(buf, as_attachment=True, download_name=fname, mimetype="text/csv")
+    except Exception as e:
+        print(f"pay_export_simple_csv error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------- シンプル勤怠 Excel ----------
+@app.route("/admin/timecard/export/simple/excel", methods=["GET"])
+@login_required
+def pay_export_simple_excel():
+    """打刻実績そのままのExcel(openpyxl)。職員ごとにブロック。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "\u7ba1\u7406\u8005\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
+        year, month, scope, staff_name = pr
+        cfg = _tc_get_config(supabase, f_code)
+        s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
+        staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+        fac_name = _pay_facility_name(supabase, f_code)
+
+        import openpyxl as _xl
+        from openpyxl.styles import Font as _F, PatternFill as _PF, Alignment as _AL
+        wb = _xl.Workbook()
+        ws = wb.active
+        ws.title = "\u52e4\u6020"
+        hdr_fill = _PF(start_color="EEF5F3", end_color="EEF5F3", fill_type="solid")
+        bold = _F(bold=True)
+        row = 1
+        ws.cell(row=row, column=1, value=f"\u52e4\u6020\u96c6\u8a08\u8868\u3000{fac_name}\u3000{label}").font = _F(bold=True, size=14)
+        row += 2
+        cols = ["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4", "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd", "\u6253\u523b\u7570\u5e38"]
+        for s in staff:
+            ws.cell(row=row, column=1, value=f'{s["name"]}').font = bold
+            ws.cell(row=row, column=7, value=f'\u5408\u8a08 {_tc_fmt_hm(s["total_minutes"])}').font = bold
+            row += 1
+            for ci, cn in enumerate(cols, start=1):
+                c = ws.cell(row=row, column=ci, value=cn)
+                c.font = _F(bold=True, size=9, color="666666")
+                c.fill = hdr_fill
+            row += 1
+            for d in s["days"]:
+                ws.cell(row=row, column=1, value=s["name"])
+                ws.cell(row=row, column=2, value=d["date"])
+                ws.cell(row=row, column=3, value=_pay_wd_label(d["date"]))
+                ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
+                ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
+                if d["incomplete"]:
+                    cc = ws.cell(row=row, column=8, value="\u26a0 " + "/".join(d.get("flags") or []))
+                    cc.font = _F(color="C0392B")
+                else:
+                    ws.cell(row=row, column=6, value=d.get("break_min", 0))
+                    ws.cell(row=row, column=7, value=_tc_fmt_hm(d["minutes"]))
+                row += 1
+            row += 1
+        for col, wd in zip("ABCDEFGH", [16, 12, 6, 8, 8, 10, 12, 24]):
+            ws.column_dimensions[col].width = wd
+        buf = _pay_io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        from flask import send_file as _send
+        fname = f"kintai_simple_{year}{month:02d}.xlsx"
+        return _send(buf, as_attachment=True, download_name=fname,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        print(f"pay_export_simple_excel error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------- 給与(社労士向け) CSV ----------
+@app.route("/admin/timecard/export/payroll/csv", methods=["GET"])
+@login_required
+def pay_export_payroll_csv():
+    """残業算出込みの日次明細CSV(cp932)+職員月次合計行。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "\u7ba1\u7406\u8005\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
+        year, month, scope, staff_name = pr
+        cfg = _tc_get_config(supabase, f_code)
+        s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
+        staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+        leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        lt = _LEAVE_TYPES
+
+        sio = _pay_io.StringIO()
+        w = _pay_csv.writer(sio)
+        w.writerow(["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4",
+                    "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd(\u5206)", "\u5b9f\u50cd(\u6642\u9593)",
+                    "\u6642\u9593\u5916(\u5206)", "\u6df1\u591c(\u5206)", "\u6cd5\u5b9a\u4f11\u65e5(\u5206)",
+                    "\u4f11\u6687\u533a\u5206", "\u6253\u523b\u7570\u5e38"])
+        for s in staff:
+            comp = _pay_compute_staff(s["days"], cfg)
+            for d in comp["days"]:
+                lv = leaves.get((s["name"], d["date"]))
+                lv_label = (lt.get(lv, {}) or {}).get("label", lv) if lv else ""
+                if d["incomplete"]:
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
+                                "", "", "", "", "", "", lv_label, "/".join(d.get("flags") or [])])
+                else:
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
+                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]),
+                                d.get("ot_min", 0), d.get("night_min", 0), d.get("holiday_min", 0),
+                                lv_label, ""])
+            w.writerow([s["name"], "\u3010\u5408\u8a08\u3011", "", "", "", "",
+                        comp["work_min"], _tc_fmt_hm(comp["work_min"]),
+                        comp["overtime_min"], comp["night_min"], comp["holiday_min"],
+                        f'{comp["worked_days"]}\u65e5', ""])
+        data = sio.getvalue().encode("cp932", errors="replace")
+        from flask import send_file as _send
+        buf = _pay_io.BytesIO(data)
+        buf.seek(0)
+        fname = f"kyuyo_{year}{month:02d}.csv"
+        return _send(buf, as_attachment=True, download_name=fname, mimetype="text/csv")
+    except Exception as e:
+        print(f"pay_export_payroll_csv error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------- 給与(社労士向け) Excel ----------
+@app.route("/admin/timecard/export/payroll/excel", methods=["GET"])
+@login_required
+def pay_export_payroll_excel():
+    """残業算出込みの日次明細Excel。職員ごとブロック+合計。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "\u7ba1\u7406\u8005\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
+        year, month, scope, staff_name = pr
+        cfg = _tc_get_config(supabase, f_code)
+        s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
+        staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+        leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        lt = _LEAVE_TYPES
+        fac_name = _pay_facility_name(supabase, f_code)
+
+        import openpyxl as _xl
+        from openpyxl.styles import Font as _F, PatternFill as _PF
+        wb = _xl.Workbook()
+        ws = wb.active
+        ws.title = "\u7d66\u4e0e\u96c6\u8a08"
+        hdr_fill = _PF(start_color="EEF5F3", end_color="EEF5F3", fill_type="solid")
+        bold = _F(bold=True)
+        row = 1
+        ws.cell(row=row, column=1, value=f"\u7d66\u4e0e\u8a08\u7b97\u7528\u52e4\u6020\u3000{fac_name}\u3000{label}").font = _F(bold=True, size=14)
+        row += 2
+        cols = ["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc", "\u51fa\u52e4", "\u9000\u52e4", "\u4f11\u61a9",
+                "\u5b9f\u50cd", "\u6642\u9593\u5916", "\u6df1\u591c", "\u6cd5\u5b9a\u4f11\u65e5", "\u4f11\u6687", "\u7570\u5e38"]
+        for s in staff:
+            comp = _pay_compute_staff(s["days"], cfg)
+            ws.cell(row=row, column=1, value=s["name"]).font = bold
+            ws.cell(row=row, column=7,
+                    value=f'\u5b9f\u50cd{_tc_fmt_hm(comp["work_min"])} / \u6642\u5916{_tc_fmt_hm(comp["overtime_min"])} / \u6df1\u591c{_tc_fmt_hm(comp["night_min"])} / \u6cd5\u4f11{_tc_fmt_hm(comp["holiday_min"])}').font = bold
+            row += 1
+            for ci, cn in enumerate(cols, start=1):
+                c = ws.cell(row=row, column=ci, value=cn)
+                c.font = _F(bold=True, size=9, color="666666")
+                c.fill = hdr_fill
+            row += 1
+            for d in comp["days"]:
+                lv = leaves.get((s["name"], d["date"]))
+                lv_label = (lt.get(lv, {}) or {}).get("label", lv) if lv else ""
+                ws.cell(row=row, column=1, value=s["name"])
+                ws.cell(row=row, column=2, value=d["date"])
+                ws.cell(row=row, column=3, value=_pay_wd_label(d["date"]))
+                ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
+                ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
+                if d["incomplete"]:
+                    cc = ws.cell(row=row, column=12, value="\u26a0 " + "/".join(d.get("flags") or []))
+                    cc.font = _F(color="C0392B")
+                else:
+                    ws.cell(row=row, column=6, value=d.get("break_min", 0))
+                    ws.cell(row=row, column=7, value=_tc_fmt_hm(d["minutes"]))
+                    if d.get("ot_min"):
+                        ws.cell(row=row, column=8, value=_tc_fmt_hm(d["ot_min"]))
+                    if d.get("night_min"):
+                        ws.cell(row=row, column=9, value=_tc_fmt_hm(d["night_min"]))
+                    if d.get("holiday_min"):
+                        ws.cell(row=row, column=10, value=_tc_fmt_hm(d["holiday_min"]))
+                if lv_label:
+                    ws.cell(row=row, column=11, value=lv_label).font = _F(color="C0392B")
+                row += 1
+            row += 1
+        for col, wd in zip("ABCDEFGHIJKL", [14, 11, 4, 7, 7, 7, 9, 9, 9, 11, 8, 20]):
+            ws.column_dimensions[col].width = wd
+        buf = _pay_io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        from flask import send_file as _send
+        fname = f"kyuyo_{year}{month:02d}.xlsx"
+        return _send(buf, as_attachment=True, download_name=fname,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        print(f"pay_export_payroll_excel error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------- 給与(社労士向け) PDF ----------
+@app.route("/admin/timecard/export/payroll/pdf", methods=["GET"])
+@login_required
+def pay_export_payroll_pdf():
+    """残業算出込みのPDF(pdfkit)。既存report_pdfのwkhtmltopdfパターン踏襲。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "\u7ba1\u7406\u8005\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
+        year, month, scope, staff_name = pr
+        cfg = _tc_get_config(supabase, f_code)
+        s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
+        staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+        leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        lt = _LEAVE_TYPES
+        fac_name = _pay_facility_name(supabase, f_code)
+
+        import html as _html
+        parts = []
+        parts.append("""<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>
+  @page { size: A4 landscape; margin: 10mm 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222; font-size:10px; }
+  h1 { font-size:15px; margin:0 0 2px; }
+  .sub { color:#666; font-size:9px; margin-bottom:8px; }
+  .staff { margin-bottom:12px; page-break-inside:avoid; }
+  .staff-head { background:#f6f4ef; padding:5px 8px; font-weight:bold; border:1px solid #e5e1d8; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  th,td { border:1px solid #e6e2da; padding:3px 5px; text-align:center; font-size:9px; }
+  th { background:#faf9f6; color:#666; font-weight:normal; }
+  .lv { color:#c0392b; }
+  .bad { color:#c0392b; }
+</style></head><body>""")
+        parts.append(f"<h1>\u7d66\u4e0e\u8a08\u7b97\u7528\u52e4\u6020\u96c6\u8a08\u8868</h1>")
+        parts.append(f'<div class="sub">{_html.escape(fac_name)}\u3000{_html.escape(label)}</div>')
+        any_data = False
+        for s in staff:
+            if not s["days"]:
+                continue
+            any_data = True
+            comp = _pay_compute_staff(s["days"], cfg)
+            parts.append('<div class="staff"><div class="staff-head">'
+                         + _html.escape(s["name"])
+                         + f'\u3000\u5b9f\u50cd{_tc_fmt_hm(comp["work_min"])}'
+                         + f'\u3000\u6642\u9593\u5916{_tc_fmt_hm(comp["overtime_min"])}'
+                         + f'\u3000\u6df1\u591c{_tc_fmt_hm(comp["night_min"])}'
+                         + f'\u3000\u6cd5\u5b9a\u4f11\u65e5{_tc_fmt_hm(comp["holiday_min"])}'
+                         + f'\u3000({comp["worked_days"]}\u65e5\u52e4\u52d9)</div>')
+            parts.append('<table><colgroup>'
+                         '<col style="width:9%"><col style="width:5%"><col style="width:9%"><col style="width:9%">'
+                         '<col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:9%">'
+                         '<col style="width:11%"><col style="width:8%"><col style="width:14%"></colgroup>'
+                         '<tr><th>\u65e5\u4ed8</th><th>\u66dc</th><th>\u51fa\u52e4</th><th>\u9000\u52e4</th>'
+                         '<th>\u4f11\u61a9</th><th>\u5b9f\u50cd</th><th>\u6642\u9593\u5916</th><th>\u6df1\u591c</th>'
+                         '<th>\u6cd5\u5b9a\u4f11\u65e5</th><th>\u4f11\u6687</th><th>\u7570\u5e38</th></tr>')
+            for d in comp["days"]:
+                lv = leaves.get((s["name"], d["date"]))
+                lv_label = (lt.get(lv, {}) or {}).get("label", lv) if lv else ""
+                dl = d["date"][8:10] + "\u65e5"
+                wl = _pay_wd_label(d["date"])
+                if d["incomplete"]:
+                    flags = "/".join(d.get("flags") or [])
+                    parts.append(f'<tr class="bad"><td>{dl}</td><td>{wl}</td>'
+                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                 f'<td colspan="6">\u26a0 {_html.escape(flags)}</td>'
+                                 f'<td class="lv">{_html.escape(lv_label)}</td></tr>')
+                else:
+                    def _z(v):
+                        return _tc_fmt_hm(v) if v else ""
+                    parts.append(f'<tr><td>{dl}</td><td>{wl}</td>'
+                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                 f'<td>{d.get("break_min",0)}\u5206</td><td>{_tc_fmt_hm(d["minutes"])}</td>'
+                                 f'<td>{_z(d.get("ot_min"))}</td><td>{_z(d.get("night_min"))}</td>'
+                                 f'<td>{_z(d.get("holiday_min"))}</td>'
+                                 f'<td class="lv">{_html.escape(lv_label)}</td><td></td></tr>')
+            parts.append('</table></div>')
+        if not any_data:
+            parts.append('<div class="sub">\u3053\u306e\u671f\u9593\u306e\u6253\u523b\u8a18\u9332\u306f\u3042\u308a\u307e\u305b\u3093\u3002</div>')
+        parts.append("</body></html>")
+        html_str = "".join(parts)
+
+        import pdfkit
+        import shutil as _sh
+        options = {"page-size": "A4", "orientation": "Landscape", "encoding": "UTF-8",
+                   "margin-top": "10mm", "margin-bottom": "10mm",
+                   "margin-left": "8mm", "margin-right": "8mm", "quiet": ""}
+        wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+        config = pdfkit.configuration(wkhtmltopdf=wk_path)
+        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+        buf = _pay_io.BytesIO(pdf_bytes)
+        buf.seek(0)
+        from flask import send_file as _send
+        fname = f"kyuyo_{year}{month:02d}.pdf"
+        return _send(buf, as_attachment=True, download_name=fname, mimetype="application/pdf")
+    except Exception as e:
+        print(f"pay_export_payroll_pdf error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /pay-export-v1 -----
+
 
 
 if __name__ == '__main__':
