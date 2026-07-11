@@ -128,6 +128,7 @@
   <div class="tcr-actions">
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
+    <button id="tcr-payexport"><span class="material-symbols-outlined" style="font-size:18px">download</span>給与出力</button><!-- pay-export-ui-v1 -->
     <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
 
@@ -248,6 +249,7 @@
 
   function render(j){
     var staff=j.staff||[];
+    window._tcrStaff=staff;  // pay-export-ui-v1
     if(!staff.some(function(s){return s.days.length>0;})){ $("tcr-body").innerHTML='<div class="tcr-empty">この月の打刻記録はありません。</div>'; return; }
     var grandMin=0,grandInc=0;
     staff.forEach(function(s){ grandMin+=s.total_minutes; grandInc+=s.incomplete_days; });
@@ -413,6 +415,111 @@
     }catch(e){ alert("通信エラーが発生しました"); }
     finally{ btn.disabled=false; btn.innerHTML=old; }
   });
+
+  // ===== pay-export-ui-v1: 給与/勤怠 出力モーダル =====
+  (function(){
+    function esc2(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+    // モーダルDOMを一度だけ生成
+    var wrap=document.createElement("div");
+    wrap.id="pex-back";
+    wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px";
+    wrap.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2)">'
+      +'<div style="font-weight:800;font-size:1.1rem;margin-bottom:14px;display:flex;align-items:center;gap:8px">'
+      +'<span class="material-symbols-outlined">download</span>勤怠データの出力</div>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">出力の種類</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:14px">'
+      +'<label style="flex:1"><input type="radio" name="pex-kind" value="payroll" checked> 給与計算用<br><span style="font-size:.7rem;color:#999">残業・深夜・法定休日つき</span></label>'
+      +'<label style="flex:1"><input type="radio" name="pex-kind" value="simple"> 勤怠実績<br><span style="font-size:.7rem;color:#999">打刻そのまま</span></label>'
+      +'</div>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">出力する範囲</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+      +'<label style="flex:1"><input type="radio" name="pex-scope" value="all" checked> 施設全体</label>'
+      +'<label style="flex:1"><input type="radio" name="pex-scope" value="staff"> 職員ごと</label>'
+      +'</div>'
+      +'<select id="pex-staff" style="width:100%;padding:9px;border:1px solid #d8d4cc;border-radius:9px;font-family:inherit;font-size:.9rem;margin-bottom:14px;display:none"></select>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">形式</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:18px">'
+      +'<button class="pex-fmt" data-fmt="csv" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">CSV</button>'
+      +'<button class="pex-fmt" data-fmt="excel" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">Excel</button>'
+      +'<button class="pex-fmt" data-fmt="pdf" style="flex:1;padding:11px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;font-family:inherit;font-weight:700;cursor:pointer">PDF</button>'
+      +'</div>'
+      +'<div id="pex-msg" style="font-size:.78rem;color:#c0392b;margin-bottom:10px;min-height:1em"></div>'
+      +'<button id="pex-close" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:10px;background:#f6f4ef;font-family:inherit;font-weight:700;cursor:pointer">閉じる</button>'
+      +'</div>';
+    document.body.appendChild(wrap);
+
+    function openModal(){
+      // 職員セレクトを最新のstaffで再構築
+      var sel=document.getElementById("pex-staff");
+      var names=(window._tcrStaff||[]).map(function(s){return s.name;});
+      sel.innerHTML=names.map(function(n){return '<option value="'+esc2(n)+'">'+esc2(n)+'</option>';}).join("");
+      document.getElementById("pex-msg").textContent="";
+      wrap.style.display="flex";
+    }
+    function closeModal(){ wrap.style.display="none"; }
+
+    // scope切替で職員セレクトの表示ON/OFF
+    wrap.addEventListener("change",function(e){
+      if(e.target.name==="pex-scope"){
+        document.getElementById("pex-staff").style.display=(e.target.value==="staff")?"block":"none";
+      }
+    });
+
+    // PDFはsimpleでは未提供 -> kind=simple選択時にPDFボタンを無効化
+    function syncFmtButtons(){
+      var kind=(wrap.querySelector('input[name="pex-kind"]:checked')||{}).value;
+      var pdfBtn=wrap.querySelector('.pex-fmt[data-fmt="pdf"]');
+      if(kind==="simple"){ pdfBtn.disabled=true; pdfBtn.style.opacity=.4; pdfBtn.title="勤怠実績のPDFはPDFで保存ボタンをご利用ください"; }
+      else { pdfBtn.disabled=false; pdfBtn.style.opacity=1; pdfBtn.title=""; }
+    }
+    wrap.addEventListener("change",function(e){ if(e.target.name==="pex-kind") syncFmtButtons(); });
+
+    async function doExport(fmt){
+      var kind=(wrap.querySelector('input[name="pex-kind"]:checked')||{}).value||"payroll";
+      var scope=(wrap.querySelector('input[name="pex-scope"]:checked')||{}).value||"all";
+      var staffName=document.getElementById("pex-staff").value||"";
+      var msg=document.getElementById("pex-msg");
+      if(scope==="staff" && !staffName){ msg.textContent="職員を選んでください"; return; }
+      var qs="year="+year+"&month="+month+"&scope="+scope+(scope==="staff"?("&staff_name="+encodeURIComponent(staffName)):"");
+      var url="/admin/timecard/export/"+kind+"/"+fmt+"?"+qs;
+      var btns=wrap.querySelectorAll(".pex-fmt");
+      btns.forEach(function(b){b.disabled=true;});
+      msg.style.color="#666"; msg.textContent="作成中…";
+      try{
+        var res=await fetch(url);
+        var ct=res.headers.get("content-type")||"";
+        if(ct.indexOf("csv")<0 && ct.indexOf("spreadsheet")<0 && ct.indexOf("pdf")<0){
+          var j=await res.json().catch(function(){return {};});
+          msg.style.color="#c0392b"; msg.textContent=j.message||"出力に失敗しました";
+          return;
+        }
+        var blob=await res.blob();
+        var ext=(fmt==="excel")?"xlsx":fmt;
+        var pre=(kind==="payroll")?"kyuyo":"kintai";
+        var suf=(scope==="staff")?("_"+staffName):"";
+        var fname=pre+"_"+year+String(month).padStart(2,"0")+suf+"."+ext;
+        var durl=URL.createObjectURL(blob);
+        var a=document.createElement("a");
+        a.href=durl; a.download=fname;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(durl);
+        msg.style.color="#2f6b5e"; msg.textContent="ダウンロードしました";
+      }catch(e){ msg.style.color="#c0392b"; msg.textContent="通信エラーが発生しました"; }
+      finally{ btns.forEach(function(b){b.disabled=false;}); syncFmtButtons(); }
+    }
+
+    wrap.querySelectorAll(".pex-fmt").forEach(function(b){
+      b.addEventListener("click",function(){ if(!b.disabled) doExport(b.getAttribute("data-fmt")); });
+    });
+    document.getElementById("pex-close").addEventListener("click",closeModal);
+    wrap.addEventListener("click",function(e){ if(e.target===wrap) closeModal(); });
+
+    var openBtn=document.getElementById("tcr-payexport");
+    if(openBtn){ openBtn.addEventListener("click",function(){ openModal(); syncFmtButtons(); }); }
+  })();
+  // ===== /pay-export-ui-v1 =====
+
   $("tcm-add-btn").addEventListener("click", addPunch);
   $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
 
