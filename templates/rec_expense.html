@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}レク費精算 - TASUKARU{% endblock %}
+{% block nav_rec_expense %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* rec-expense-ui-v1 */
+.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
+.rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.rec-title { font-size:1.15rem; font-weight:800; }
+.rec-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem; }
+.rec-btn-primary { background:#1a73e8; color:#fff; }
+.rec-btn-ghost { background:#eef2f7; color:#334; }
+.rec-btn-danger { background:#fdecea; color:#c5221f; }
+.rec-btn-sm { padding:5px 10px; font-size:0.8rem; }
+
+.rec-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
+.rec-list-row { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
+.rec-list-row:hover { background:#f7faff; }
+.rec-list-date { font-weight:700; min-width:100px; }
+.rec-list-title { flex:1; }
+.rec-list-meta { color:#6b7280; font-size:0.82rem; }
+.rec-empty { color:#8a94a6; text-align:center; padding:28px 0; }
+
+.rec-field { margin-bottom:10px; }
+.rec-field label { display:block; font-size:0.8rem; font-weight:700; color:#4b5563; margin-bottom:4px; }
+.rec-input, .rec-select { width:100%; box-sizing:border-box; border:1px solid #d6dbe3; border-radius:8px; padding:8px 10px; font-size:0.92rem; }
+.rec-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+.rec-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.rec-chip { display:inline-flex; align-items:center; gap:5px; background:#eef2ff; color:#3730a3; border-radius:999px; padding:4px 10px; font-size:0.82rem; }
+.rec-chip button { border:none; background:none; color:#6366f1; cursor:pointer; font-size:0.95rem; line-height:1; padding:0; }
+
+.rec-place { border:1px solid #dbe3ee; border-radius:10px; padding:12px; margin-bottom:10px; background:#fafcff; }
+.rec-place-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
+.rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
+.rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
+.rec-excl-title { font-size:0.75rem; color:#6b7280; font-weight:700; margin-bottom:5px; }
+.rec-excl-list { display:flex; flex-wrap:wrap; gap:10px; }
+.rec-excl-list label { font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; }
+
+.rec-sum { position:sticky; top:8px; }
+.rec-sum table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.rec-sum th, .rec-sum td { padding:6px 4px; border-bottom:1px solid #eef1f5; text-align:left; }
+.rec-sum td.num, .rec-sum th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.rec-sum .bill { font-weight:800; }
+.rec-note { font-size:0.75rem; color:#6b7280; margin-top:6px; }
+.rec-total { display:flex; justify-content:space-between; padding:5px 4px; font-size:0.9rem; }
+.rec-total.diff { color:#b45309; font-weight:800; }
+.rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
+
+.rec-edit-grid { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
+@media (max-width: 900px) {
+  .rec-edit-grid { grid-template-columns:1fr; }
+  .rec-exp-row { grid-template-columns:1fr 1fr; }
+  .rec-sum { position:static; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rec-wrap">
+
+  <!-- ========== 一覧 ========== -->
+  <div id="recListView">
+    <div class="rec-head">
+      <div class="rec-title">レク費精算</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="month" id="recMonth" class="rec-input" style="width:auto;">
+        <button class="rec-btn rec-btn-primary" onclick="recNew()">＋ 新規</button>
+      </div>
+    </div>
+    <div class="rec-card">
+      <div id="recList"><div class="rec-empty">読み込み中…</div></div>
+    </div>
+  </div>
+
+  <!-- ========== 編集 ========== -->
+  <div id="recEditView" style="display:none;">
+    <div class="rec-head">
+      <button class="rec-btn rec-btn-ghost" onclick="recBackToList()">← 一覧</button>
+      <div style="display:flex;gap:8px;">
+        <button class="rec-btn rec-btn-danger rec-btn-sm" onclick="recDelete()">削除</button>
+        <button class="rec-btn rec-btn-primary" onclick="recSave()">保存</button>
+      </div>
+    </div>
+
+    <div class="rec-edit-grid">
+      <div>
+        <!-- 基本情報 -->
+        <div class="rec-card">
+          <div class="rec-grid2">
+            <div class="rec-field">
+              <label>日付</label>
+              <input type="date" id="recDate" class="rec-input" onchange="recOnDateChange()">
+            </div>
+            <div class="rec-field">
+              <label>タイトル</label>
+              <input type="text" id="recTitle" class="rec-input" placeholder="例: 春の水族館おでかけ">
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>出勤スタッフ</label>
+            <div class="rec-chips" id="recStaffChips"></div>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <input type="text" id="recStaffInput" class="rec-input" placeholder="スタッフ名を入力して Enter"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddStaff();}">
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddStaff()">追加</button>
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>参加者（その日のバイタルから自動取込）</label>
+            <div class="rec-chips" id="recPartChips"></div>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <input type="text" id="recPartSearch" class="rec-input" list="recPatientList"
+                     placeholder="利用者を検索して追加（名前・カナ・番号）"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddPart();}">
+              <datalist id="recPatientList"></datalist>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddPart()">追加</button>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadParticipants()">当日再取込</button>
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>メモ</label>
+            <textarea id="recMemo" class="rec-input" rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- 場所ブロック -->
+        <div id="recPlaces"></div>
+        <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
+      </div>
+
+      <!-- 請求額（ライブ更新） -->
+      <div>
+        <div class="rec-card rec-sum">
+          <div style="font-weight:800;margin-bottom:8px;">請求額</div>
+          <table>
+            <thead>
+              <tr><th>利用者</th><th class="num">実額</th><th class="num">請求</th></tr>
+            </thead>
+            <tbody id="recSumBody"></tbody>
+          </table>
+          <div class="rec-note" id="recNote">※100円未満は繰り上げ</div>
+          <hr style="border:none;border-top:1px solid #eef1f5;margin:10px 0;">
+          <div class="rec-total"><span>実費合計</span><span id="recTotalActual">0円</span></div>
+          <div class="rec-total"><span>請求合計</span><span id="recTotalBilled">0円</span></div>
+          <div class="rec-total diff"><span>差額（集めすぎ）</span><span id="recDiff">0円</span></div>
+          <div id="recWarnings"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== rec-expense-ui-v1 =====
+(function () {
+  var TODAY = "{{ today }}";
+  var state = { id: null, participants: [], staff: [], places: [], patients: [] };
+  var calcTimer = null;
+
+  function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+  function $(id) { return document.getElementById(id); }
+
+  // ---------- 一覧 ----------
+  async function loadList() {
+    var m = $('recMonth').value;
+    var r = await fetch('/api/rec/events' + (m ? '?month=' + m : ''));
+    var j = await r.json();
+    var box = $('recList');
+    if (j.status !== 'success') { box.innerHTML = '<div class="rec-empty">' + esc(j.message) + '</div>'; return; }
+    if (!j.events.length) { box.innerHTML = '<div class="rec-empty">この月のおでかけはまだありません</div>'; return; }
+    box.innerHTML = j.events.map(function (e) {
+      return '<div class="rec-list-row" data-id="' + e.id + '">' +
+        '<div class="rec-list-date">' + esc(e.event_date) + '</div>' +
+        '<div class="rec-list-title">' + esc(e.title || '(無題)') +
+          '<div class="rec-list-meta">参加 ' + e.participant_count + '名 ／ 実費 ' + yen(e.total_actual) +
+          ' ／ 請求 ' + yen(e.total_billed) + '（差額 ' + yen(e.diff) + '）</div>' +
+        '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.rec-list-row'), function (row) {
+      row.onclick = function () { openEvent(row.dataset.id); };
+    });
+  }
+
+  window.recNew = async function () {
+    var r = await fetch('/api/rec/events', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_date: TODAY, title: '' })
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    await openEvent(j.id);
+    await recReloadParticipants();
+  };
+
+  window.recBackToList = function () {
+    $('recEditView').style.display = 'none';
+    $('recListView').style.display = '';
+    loadList();
+  };
+
+  // ---------- 編集 ----------
+  async function loadPatients() {
+    var r = await fetch('/api/rec/patients');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.patients = j.patients;
+    $('recPatientList').innerHTML = j.patients.map(function (p) {
+      return '<option value="' + esc(p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '')) + '">';
+    }).join('');
+  }
+
+  async function openEvent(id) {
+    var r = await fetch('/api/rec/event/' + id);
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    state.id = j.event.id;
+    state.participants = j.event.participants || [];
+    state.staff = j.event.staff_names || [];
+    state.places = (j.places || []).map(function (p) {
+      return { place_name: p.place_name, expenses: p.expenses || [] };
+    });
+    if (!state.places.length) state.places = [{ place_name: '', expenses: [] }];
+
+    $('recDate').value = j.event.event_date;
+    $('recTitle').value = j.event.title || '';
+    $('recMemo').value = j.event.memo || '';
+
+    if (!state.patients.length) await loadPatients();
+    renderStaff(); renderParts(); renderPlaces(); recalc();
+
+    $('recListView').style.display = 'none';
+    $('recEditView').style.display = '';
+  }
+
+  // ---------- スタッフ ----------
+  function renderStaff() {
+    $('recStaffChips').innerHTML = state.staff.map(function (s, i) {
+      return '<span class="rec-chip">' + esc(s) + '<button data-i="' + i + '">×</button></span>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.82rem;">未設定</span>';
+    Array.prototype.forEach.call($('recStaffChips').querySelectorAll('button'), function (b) {
+      b.onclick = function () { state.staff.splice(Number(b.dataset.i), 1); renderStaff(); };
+    });
+  }
+  window.recAddStaff = function () {
+    var v = $('recStaffInput').value.trim();
+    if (!v || state.staff.indexOf(v) !== -1) { $('recStaffInput').value = ''; return; }
+    state.staff.push(v); $('recStaffInput').value = ''; renderStaff();
+  };
+
+  // ---------- 参加者 ----------
+  function renderParts() {
+    $('recPartChips').innerHTML = state.participants.map(function (p, i) {
+      return '<span class="rec-chip">' + esc(p.user_name || p.patient_id) + '<button data-i="' + i + '">×</button></span>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.82rem;">参加者なし</span>';
+    Array.prototype.forEach.call($('recPartChips').querySelectorAll('button'), function (b) {
+      b.onclick = function () {
+        var p = state.participants[Number(b.dataset.i)];
+        state.participants.splice(Number(b.dataset.i), 1);
+        // 除外リスト・個別対象からも掃除する
+        state.places.forEach(function (pl) {
+          pl.expenses.forEach(function (x) {
+            x.excluded = (x.excluded || []).filter(function (id) { return id !== p.patient_id; });
+            if (x.target_id === p.patient_id) { x.target_id = null; x.target_name = ''; }
+          });
+        });
+        renderParts(); renderPlaces(); recalc();
+      };
+    });
+  }
+
+  window.recAddPart = function () {
+    var v = $('recPartSearch').value.trim();
+    if (!v) return;
+    var hit = state.patients.find(function (p) {
+      var label = p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '');
+      return label === v || p.user_name === v || p.patient_number === v || (p.user_kana || '') === v;
+    });
+    if (!hit) { alert('該当する利用者が見つかりません'); return; }
+    if (state.participants.some(function (p) { return p.patient_id === hit.patient_id; })) {
+      $('recPartSearch').value = ''; return;
+    }
+    state.participants.push({ patient_id: hit.patient_id, user_name: hit.user_name });
+    $('recPartSearch').value = '';
+    renderParts(); renderPlaces(); recalc();
+  };
+
+  window.recReloadParticipants = async function () {
+    var d = $('recDate').value || TODAY;
+    var r = await fetch('/api/rec/participants?date=' + encodeURIComponent(d));
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    var added = 0;
+    j.participants.forEach(function (p) {
+      if (!state.participants.some(function (q) { return q.patient_id === p.patient_id; })) {
+        state.participants.push({ patient_id: p.patient_id, user_name: p.user_name });
+        added++;
+      }
+    });
+    renderParts(); renderPlaces(); recalc();
+    if (!added && !state.participants.length) alert('その日のバイタル記録が見つかりませんでした');
+  };
+
+  window.recOnDateChange = function () { recalc(); };
+
+  // ---------- 場所ブロック / 費用 ----------
+  function renderPlaces() {
+    $('recPlaces').innerHTML = state.places.map(function (p, pi) {
+      var exps = (p.expenses || []).map(function (x, xi) { return expHtml(x, pi, xi); }).join('');
+      return '<div class="rec-place">' +
+        '<div class="rec-place-head">' +
+          '<input type="text" class="rec-input" placeholder="場所名（例: 水族館）" value="' + esc(p.place_name) + '" data-pn="' + pi + '">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delp="' + pi + '">場所削除</button>' +
+        '</div>' + exps +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addx="' + pi + '">＋ 費用を追加</button>' +
+      '</div>';
+    }).join('');
+    bindPlaces();
+  }
+
+  function expHtml(x, pi, xi) {
+    var kind = x.kind || 'split';
+    var opt = function (v, l) { return '<option value="' + v + '"' + (kind === v ? ' selected' : '') + '>' + l + '</option>'; };
+    var body = '<div class="rec-exp-row">' +
+      '<select class="rec-select" data-k="' + pi + '_' + xi + '">' +
+        opt('split', '割り勘') + opt('flat', '一律加算') + opt('individual', '個別') +
+      '</select>' +
+      '<input type="text" class="rec-input" placeholder="項目名（例: 入館料）" value="' + esc(x.label || '') + '" data-l="' + pi + '_' + xi + '">' +
+      '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + pi + '_' + xi + '" style="text-align:right;">' +
+      '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delx="' + pi + '_' + xi + '">×</button>' +
+    '</div>';
+
+    if (kind === 'individual') {
+      var opts = state.participants.map(function (p) {
+        return '<option value="' + p.patient_id + '"' + (x.target_id === p.patient_id ? ' selected' : '') + '>' + esc(p.user_name) + '</option>';
+      }).join('');
+      body += '<div class="rec-excl">' +
+        '<div class="rec-excl-title">対象者</div>' +
+        '<select class="rec-select" data-t="' + pi + '_' + xi + '"><option value="">選択してください</option>' + opts + '</select>' +
+      '</div>';
+    } else {
+      var excl = x.excluded || [];
+      var boxes = state.participants.map(function (p) {
+        var checked = excl.indexOf(p.patient_id) !== -1 ? ' checked' : '';
+        return '<label><input type="checkbox" data-x="' + pi + '_' + xi + '" value="' + p.patient_id + '"' + checked + '>' + esc(p.user_name) + '</label>';
+      }).join('') || '<span style="color:#9aa3b2;font-size:0.8rem;">参加者を追加してください</span>';
+      var n = state.participants.length - excl.filter(function (id) {
+        return state.participants.some(function (p) { return p.patient_id === id; });
+      }).length;
+      body += '<div class="rec-excl">' +
+        '<div class="rec-excl-title">この項目から除外する人（対象 ' + n + '名）</div>' +
+        '<div class="rec-excl-list">' + boxes + '</div>' +
+      '</div>';
+    }
+    return '<div class="rec-exp">' + body + '</div>';
+  }
+
+  function bindPlaces() {
+    var root = $('recPlaces');
+    root.querySelectorAll('[data-pn]').forEach(function (el) {
+      el.oninput = function () { state.places[Number(el.dataset.pn)].place_name = el.value; };
+    });
+    root.querySelectorAll('[data-delp]').forEach(function (el) {
+      el.onclick = function () {
+        if (state.places.length === 1) { alert('場所は最低1つ必要です'); return; }
+        state.places.splice(Number(el.dataset.delp), 1); renderPlaces(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-addx]').forEach(function (el) {
+      el.onclick = function () {
+        state.places[Number(el.dataset.addx)].expenses.push(
+          { kind: 'split', label: '', amount: 0, excluded: [], target_id: null, target_name: '' });
+        renderPlaces(); recalc();
+      };
+    });
+    var pick = function (key) { var a = key.split('_'); return state.places[Number(a[0])].expenses[Number(a[1])]; };
+    root.querySelectorAll('[data-k]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.k);
+        x.kind = el.value;
+        if (x.kind === 'individual') { x.excluded = []; } else { x.target_id = null; x.target_name = ''; }
+        renderPlaces(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-l]').forEach(function (el) {
+      el.oninput = function () { pick(el.dataset.l).label = el.value; };
+    });
+    root.querySelectorAll('[data-a]').forEach(function (el) {
+      el.oninput = function () { pick(el.dataset.a).amount = parseInt(el.value || '0', 10) || 0; recalc(); };
+    });
+    root.querySelectorAll('[data-t]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.t);
+        x.target_id = el.value || null;
+        var p = state.participants.find(function (q) { return q.patient_id === el.value; });
+        x.target_name = p ? p.user_name : '';
+        recalc();
+      };
+    });
+    root.querySelectorAll('[data-x]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.x);
+        x.excluded = x.excluded || [];
+        var i = x.excluded.indexOf(el.value);
+        if (el.checked && i === -1) x.excluded.push(el.value);
+        if (!el.checked && i !== -1) x.excluded.splice(i, 1);
+        renderPlaces(); recalc();
+      };
+    });
+  }
+
+  window.recAddPlace = function () {
+    state.places.push({ place_name: '', expenses: [] });
+    renderPlaces(); recalc();
+  };
+
+  // ---------- 計算（ライブ更新） ----------
+  function payload() {
+    return {
+      event_date: $('recDate').value,
+      title: $('recTitle').value,
+      memo: $('recMemo').value,
+      staff_names: state.staff,
+      participants: state.participants,
+      places: state.places
+    };
+  }
+
+  function recalc() {
+    clearTimeout(calcTimer);
+    calcTimer = setTimeout(async function () {
+      var r = await fetch('/api/rec/calc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      var j = await r.json();
+      if (j.status !== 'success') return;
+      renderCalc(j.calc);
+    }, 250);
+  }
+
+  function renderCalc(c) {
+    $('recSumBody').innerHTML = c.per_person.map(function (p) {
+      return '<tr><td>' + esc(p.user_name) + '</td>' +
+        '<td class="num">' + Math.round(p.raw_amount).toLocaleString('ja-JP') + '</td>' +
+        '<td class="num bill">' + p.billed_amount.toLocaleString('ja-JP') + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="color:#9aa3b2;">参加者を追加してください</td></tr>';
+    $('recNote').textContent = c.note;
+    $('recTotalActual').textContent = yen(c.total_actual);
+    $('recTotalBilled').textContent = yen(c.total_billed);
+    $('recDiff').textContent = yen(c.diff);
+    $('recWarnings').innerHTML = (c.warnings || []).length
+      ? '<div class="rec-warn">' + c.warnings.map(esc).join('<br>') + '</div>' : '';
+  }
+
+  // ---------- 保存 / 削除 ----------
+  window.recSave = async function () {
+    var r = await fetch('/api/rec/event/' + state.id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload())
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    renderCalc(j.calc);
+    alert('保存しました');
+  };
+
+  window.recDelete = async function () {
+    if (!confirm('このおでかけを削除しますか？')) return;
+    var r = await fetch('/api/rec/event/' + state.id, { method: 'DELETE' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    recBackToList();
+  };
+
+  // ---------- init ----------
+  $('recMonth').value = TODAY.slice(0, 7);
+  $('recMonth').onchange = loadList;
+  loadPatients();
+  loadList();
+})();
+</script>
+{% endblock %}
