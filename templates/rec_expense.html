@@ -4,7 +4,7 @@
 
 {% block extra_style %}
 <style>
-/* rec-expense-ui-v1 */
+/* rec-expense-ui-v2 */
 .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
 .rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .rec-title { font-size:1.15rem; font-weight:800; }
@@ -15,6 +15,7 @@
 .rec-btn-sm { padding:5px 10px; font-size:0.8rem; }
 
 .rec-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
+.rec-sec-title { font-weight:800; font-size:0.95rem; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
 .rec-list-row { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
 .rec-list-row:hover { background:#f7faff; }
 .rec-list-date { font-weight:700; min-width:100px; }
@@ -33,6 +34,12 @@
 
 .rec-place { border:1px solid #dbe3ee; border-radius:10px; padding:12px; margin-bottom:10px; background:#fafcff; }
 .rec-place-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rec-car { border:1px solid #e2dcf0; border-radius:10px; padding:12px; margin-bottom:10px; background:#fbfaff; }
+.rec-car-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rec-car-nums { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
+.rec-gas { background:#f3f0ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:0.82rem; color:#4c1d95; margin-bottom:8px; }
+.rec-gas b { font-size:0.95rem; }
+
 .rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
 .rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
 .rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
@@ -48,12 +55,14 @@
 .rec-note { font-size:0.75rem; color:#6b7280; margin-top:6px; }
 .rec-total { display:flex; justify-content:space-between; padding:5px 4px; font-size:0.9rem; }
 .rec-total.diff { color:#b45309; font-weight:800; }
+.rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
 .rec-edit-grid { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
 @media (max-width: 900px) {
   .rec-edit-grid { grid-template-columns:1fr; }
   .rec-exp-row { grid-template-columns:1fr 1fr; }
+  .rec-car-nums { grid-template-columns:1fr 1fr; }
   .rec-sum { position:static; }
 }
 </style>
@@ -131,8 +140,19 @@
         </div>
 
         <!-- 場所ブロック -->
+        <div class="rec-sec-title"><span class="material-symbols-outlined">place</span>場所ごとの費用</div>
         <div id="recPlaces"></div>
         <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
+
+        <!-- 車 -->
+        <div class="rec-sec-title" style="margin-top:18px;"><span class="material-symbols-outlined">directions_car</span>車（台数分）</div>
+        <div id="recCars"></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="recCarMaster" class="rec-select" style="max-width:260px;">
+            <option value="">車マスタから選択…</option>
+          </select>
+          <button class="rec-btn rec-btn-ghost" onclick="recAddCar()">＋ 車を追加</button>
+        </div>
       </div>
 
       <!-- 請求額（ライブ更新） -->
@@ -148,6 +168,7 @@
           <div class="rec-note" id="recNote">※100円未満は繰り上げ</div>
           <hr style="border:none;border-top:1px solid #eef1f5;margin:10px 0;">
           <div class="rec-total"><span>実費合計</span><span id="recTotalActual">0円</span></div>
+          <div class="rec-total sub"><span>うち車両費</span><span id="recCarTotal">0円</span></div>
           <div class="rec-total"><span>請求合計</span><span id="recTotalBilled">0円</span></div>
           <div class="rec-total diff"><span>差額（集めすぎ）</span><span id="recDiff">0円</span></div>
           <div id="recWarnings"></div>
@@ -160,15 +181,26 @@
 
 {% block extra_script %}
 <script>
-// ===== rec-expense-ui-v1 =====
+// ===== rec-expense-ui-v2 =====
 (function () {
   var TODAY = "{{ today }}";
-  var state = { id: null, participants: [], staff: [], places: [], patients: [] };
+  var FUEL_PRICE_DEFAULT = 175;
+  var CAR_TYPE_LABEL = { gas: 'ガソリン代', parking: '駐車場代', highway: '高速代' };
+
+  var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [], patients: [], carMaster: [] };
   var calcTimer = null;
 
   function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
   function $(id) { return document.getElementById(id); }
+  function num(v, d) { var f = parseFloat(v); return isNaN(f) ? (d || 0) : f; }
+
+  // サーバと同じ式。表示用の即時計算（保存時はサーバ値が正）
+  function gasAmount(car) {
+    var d = num(car.distance_km), f = num(car.fuel_km_per_l), p = num(car.fuel_price_per_l, FUEL_PRICE_DEFAULT);
+    if (d <= 0 || f <= 0 || p <= 0) return 0;
+    return Math.floor(d / f * p + 0.5);
+  }
 
   // ---------- 一覧 ----------
   async function loadList() {
@@ -179,11 +211,12 @@
     if (j.status !== 'success') { box.innerHTML = '<div class="rec-empty">' + esc(j.message) + '</div>'; return; }
     if (!j.events.length) { box.innerHTML = '<div class="rec-empty">この月のおでかけはまだありません</div>'; return; }
     box.innerHTML = j.events.map(function (e) {
+      var car = e.car_count ? ' ／ 車' + e.car_count + '台(' + yen(e.car_total) + ')' : '';
       return '<div class="rec-list-row" data-id="' + e.id + '">' +
         '<div class="rec-list-date">' + esc(e.event_date) + '</div>' +
         '<div class="rec-list-title">' + esc(e.title || '(無題)') +
           '<div class="rec-list-meta">参加 ' + e.participant_count + '名 ／ 実費 ' + yen(e.total_actual) +
-          ' ／ 請求 ' + yen(e.total_billed) + '（差額 ' + yen(e.diff) + '）</div>' +
+          ' ／ 請求 ' + yen(e.total_billed) + '（差額 ' + yen(e.diff) + '）' + car + '</div>' +
         '</div></div>';
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('.rec-list-row'), function (row) {
@@ -208,7 +241,7 @@
     loadList();
   };
 
-  // ---------- 編集 ----------
+  // ---------- マスタ ----------
   async function loadPatients() {
     var r = await fetch('/api/rec/patients');
     var j = await r.json();
@@ -219,6 +252,19 @@
     }).join('');
   }
 
+  async function loadCarMaster() {
+    var r = await fetch('/api/rec/cars');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.carMaster = j.cars;
+    FUEL_PRICE_DEFAULT = j.fuel_price_default || FUEL_PRICE_DEFAULT;
+    $('recCarMaster').innerHTML = '<option value="">車マスタから選択…（空欄なら自由入力）</option>' +
+      j.cars.map(function (c) {
+        return '<option value="' + c.id + '">' + esc(c.name) + (c.fuel_km_per_l ? '（' + c.fuel_km_per_l + ' km/L）' : '') + '</option>';
+      }).join('');
+  }
+
+  // ---------- 編集 ----------
   async function openEvent(id) {
     var r = await fetch('/api/rec/event/' + id);
     var j = await r.json();
@@ -226,6 +272,8 @@
     state.id = j.event.id;
     state.participants = j.event.participants || [];
     state.staff = j.event.staff_names || [];
+    state.cars = j.event.cars || [];
+    state.carExpenses = j.car_expenses || [];
     state.places = (j.places || []).map(function (p) {
       return { place_name: p.place_name, expenses: p.expenses || [] };
     });
@@ -236,7 +284,8 @@
     $('recMemo').value = j.event.memo || '';
 
     if (!state.patients.length) await loadPatients();
-    renderStaff(); renderParts(); renderPlaces(); recalc();
+    if (!state.carMaster.length) await loadCarMaster();
+    renderStaff(); renderParts(); renderPlaces(); renderCars(); recalc();
 
     $('recListView').style.display = 'none';
     $('recEditView').style.display = '';
@@ -266,14 +315,11 @@
       b.onclick = function () {
         var p = state.participants[Number(b.dataset.i)];
         state.participants.splice(Number(b.dataset.i), 1);
-        // 除外リスト・個別対象からも掃除する
-        state.places.forEach(function (pl) {
-          pl.expenses.forEach(function (x) {
-            x.excluded = (x.excluded || []).filter(function (id) { return id !== p.patient_id; });
-            if (x.target_id === p.patient_id) { x.target_id = null; x.target_name = ''; }
-          });
+        allExpenses().forEach(function (x) {
+          x.excluded = (x.excluded || []).filter(function (id) { return id !== p.patient_id; });
+          if (x.target_id === p.patient_id) { x.target_id = null; x.target_name = ''; }
         });
-        renderParts(); renderPlaces(); recalc();
+        renderParts(); renderPlaces(); renderCars(); recalc();
       };
     });
   }
@@ -291,7 +337,7 @@
     }
     state.participants.push({ patient_id: hit.patient_id, user_name: hit.user_name });
     $('recPartSearch').value = '';
-    renderParts(); renderPlaces(); recalc();
+    renderParts(); renderPlaces(); renderCars(); recalc();
   };
 
   window.recReloadParticipants = async function () {
@@ -306,16 +352,55 @@
         added++;
       }
     });
-    renderParts(); renderPlaces(); recalc();
+    renderParts(); renderPlaces(); renderCars(); recalc();
     if (!added && !state.participants.length) alert('その日のバイタル記録が見つかりませんでした');
   };
 
   window.recOnDateChange = function () { recalc(); };
 
-  // ---------- 場所ブロック / 費用 ----------
+  // ---------- 費用項目の共通描画 ----------
+  function allExpenses() {
+    var out = [];
+    state.places.forEach(function (p) { out = out.concat(p.expenses || []); });
+    return out.concat(state.carExpenses || []);
+  }
+
+  function kindSelect(x, key) {
+    var opt = function (v, l) { return '<option value="' + v + '"' + (x.kind === v ? ' selected' : '') + '>' + l + '</option>'; };
+    return '<select class="rec-select" data-k="' + key + '">' +
+      opt('split', '割り勘') + opt('flat', '一律加算') + opt('individual', '個別') + '</select>';
+  }
+
+  function targetBlock(x, key) {
+    if (x.kind === 'individual') {
+      var opts = state.participants.map(function (p) {
+        return '<option value="' + p.patient_id + '"' + (x.target_id === p.patient_id ? ' selected' : '') + '>' + esc(p.user_name) + '</option>';
+      }).join('');
+      return '<div class="rec-excl"><div class="rec-excl-title">対象者</div>' +
+        '<select class="rec-select" data-t="' + key + '"><option value="">選択してください</option>' + opts + '</select></div>';
+    }
+    var excl = x.excluded || [];
+    var boxes = state.participants.map(function (p) {
+      var checked = excl.indexOf(p.patient_id) !== -1 ? ' checked' : '';
+      return '<label><input type="checkbox" data-x="' + key + '" value="' + p.patient_id + '"' + checked + '>' + esc(p.user_name) + '</label>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.8rem;">参加者を追加してください</span>';
+    var n = state.participants.filter(function (p) { return excl.indexOf(p.patient_id) === -1; }).length;
+    return '<div class="rec-excl"><div class="rec-excl-title">この項目から除外する人（対象 ' + n + '名）</div>' +
+      '<div class="rec-excl-list">' + boxes + '</div></div>';
+  }
+
+  // ---------- 場所ブロック ----------
   function renderPlaces() {
     $('recPlaces').innerHTML = state.places.map(function (p, pi) {
-      var exps = (p.expenses || []).map(function (x, xi) { return expHtml(x, pi, xi); }).join('');
+      var exps = (p.expenses || []).map(function (x, xi) {
+        var key = 'p_' + pi + '_' + xi;
+        return '<div class="rec-exp"><div class="rec-exp-row">' +
+          kindSelect(x, key) +
+          '<input type="text" class="rec-input" placeholder="項目名（例: 入館料）" value="' + esc(x.label || '') + '" data-l="' + key + '">' +
+          '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>' +
+          '</div>' + targetBlock(x, key) + '</div>';
+      }).join('');
       return '<div class="rec-place">' +
         '<div class="rec-place-head">' +
           '<input type="text" class="rec-input" placeholder="場所名（例: 水族館）" value="' + esc(p.place_name) + '" data-pn="' + pi + '">' +
@@ -324,71 +409,154 @@
         '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addx="' + pi + '">＋ 費用を追加</button>' +
       '</div>';
     }).join('');
-    bindPlaces();
-  }
-
-  function expHtml(x, pi, xi) {
-    var kind = x.kind || 'split';
-    var opt = function (v, l) { return '<option value="' + v + '"' + (kind === v ? ' selected' : '') + '>' + l + '</option>'; };
-    var body = '<div class="rec-exp-row">' +
-      '<select class="rec-select" data-k="' + pi + '_' + xi + '">' +
-        opt('split', '割り勘') + opt('flat', '一律加算') + opt('individual', '個別') +
-      '</select>' +
-      '<input type="text" class="rec-input" placeholder="項目名（例: 入館料）" value="' + esc(x.label || '') + '" data-l="' + pi + '_' + xi + '">' +
-      '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + pi + '_' + xi + '" style="text-align:right;">' +
-      '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delx="' + pi + '_' + xi + '">×</button>' +
-    '</div>';
-
-    if (kind === 'individual') {
-      var opts = state.participants.map(function (p) {
-        return '<option value="' + p.patient_id + '"' + (x.target_id === p.patient_id ? ' selected' : '') + '>' + esc(p.user_name) + '</option>';
-      }).join('');
-      body += '<div class="rec-excl">' +
-        '<div class="rec-excl-title">対象者</div>' +
-        '<select class="rec-select" data-t="' + pi + '_' + xi + '"><option value="">選択してください</option>' + opts + '</select>' +
-      '</div>';
-    } else {
-      var excl = x.excluded || [];
-      var boxes = state.participants.map(function (p) {
-        var checked = excl.indexOf(p.patient_id) !== -1 ? ' checked' : '';
-        return '<label><input type="checkbox" data-x="' + pi + '_' + xi + '" value="' + p.patient_id + '"' + checked + '>' + esc(p.user_name) + '</label>';
-      }).join('') || '<span style="color:#9aa3b2;font-size:0.8rem;">参加者を追加してください</span>';
-      var n = state.participants.length - excl.filter(function (id) {
-        return state.participants.some(function (p) { return p.patient_id === id; });
-      }).length;
-      body += '<div class="rec-excl">' +
-        '<div class="rec-excl-title">この項目から除外する人（対象 ' + n + '名）</div>' +
-        '<div class="rec-excl-list">' + boxes + '</div>' +
-      '</div>';
-    }
-    return '<div class="rec-exp">' + body + '</div>';
-  }
-
-  function bindPlaces() {
-    var root = $('recPlaces');
-    root.querySelectorAll('[data-pn]').forEach(function (el) {
+    bindCommon($('recPlaces'));
+    $('recPlaces').querySelectorAll('[data-pn]').forEach(function (el) {
       el.oninput = function () { state.places[Number(el.dataset.pn)].place_name = el.value; };
     });
-    root.querySelectorAll('[data-delp]').forEach(function (el) {
+    $('recPlaces').querySelectorAll('[data-delp]').forEach(function (el) {
       el.onclick = function () {
         if (state.places.length === 1) { alert('場所は最低1つ必要です'); return; }
         state.places.splice(Number(el.dataset.delp), 1); renderPlaces(); recalc();
       };
     });
-    root.querySelectorAll('[data-addx]').forEach(function (el) {
+    $('recPlaces').querySelectorAll('[data-addx]').forEach(function (el) {
       el.onclick = function () {
         state.places[Number(el.dataset.addx)].expenses.push(
           { kind: 'split', label: '', amount: 0, excluded: [], target_id: null, target_name: '' });
         renderPlaces(); recalc();
       };
     });
-    var pick = function (key) { var a = key.split('_'); return state.places[Number(a[0])].expenses[Number(a[1])]; };
+  }
+
+  window.recAddPlace = function () {
+    state.places.push({ place_name: '', expenses: [] });
+    renderPlaces(); recalc();
+  };
+
+  // ---------- 車 ----------
+  function carExpensesOf(ci) {
+    return state.carExpenses.filter(function (x) { return x.car_meta && Number(x.car_meta.car_index) === ci; });
+  }
+
+  function renderCars() {
+    if (!state.cars.length) {
+      $('recCars').innerHTML = '<div style="color:#9aa3b2;font-size:0.85rem;margin-bottom:8px;">車の利用なし</div>';
+      return;
+    }
+    $('recCars').innerHTML = state.cars.map(function (c, ci) {
+      var gas = gasAmount(c);
+      var rows = carExpensesOf(ci).map(function (x) {
+        var xi = state.carExpenses.indexOf(x);
+        var key = 'c_' + xi;
+        var t = (x.car_meta || {}).type;
+        var amountCell = (t === 'gas')
+          ? '<input type="number" class="rec-input" value="' + gas + '" style="text-align:right;background:#f3f0ff;" readonly title="距離÷燃費×単価で自動計算">'
+          : '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">';
+        return '<div class="rec-exp"><div class="rec-exp-row">' +
+          kindSelect(x, key) +
+          '<input type="text" class="rec-input" value="' + esc(x.label || CAR_TYPE_LABEL[t] || '') + '" data-l="' + key + '">' +
+          amountCell +
+          (t === 'gas' ? '<span style="width:28px;"></span>'
+                       : '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>') +
+          '</div>' + targetBlock(x, key) + '</div>';
+      }).join('');
+
+      return '<div class="rec-car">' +
+        '<div class="rec-car-head">' +
+          '<input type="text" class="rec-input" placeholder="車名（自由入力可）" value="' + esc(c.name || '') + '" data-cn="' + ci + '">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delc="' + ci + '">車を削除</button>' +
+        '</div>' +
+        '<div class="rec-car-nums">' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">燃費 km/L</label>' +
+            '<input type="number" step="0.1" class="rec-input" value="' + (c.fuel_km_per_l || '') + '" data-cf="' + ci + '"></div>' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">走行距離 km</label>' +
+            '<input type="number" step="0.1" class="rec-input" value="' + (c.distance_km || '') + '" data-cd="' + ci + '"></div>' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">ガソリン単価 円/L</label>' +
+            '<input type="number" class="rec-input" value="' + (c.fuel_price_per_l || FUEL_PRICE_DEFAULT) + '" data-cp="' + ci + '"></div>' +
+        '</div>' +
+        '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
+          '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
+          (num(c.fuel_price_per_l, FUEL_PRICE_DEFAULT)) + ' 円/L（自動計算）</span></div>' +
+        rows +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_parking">＋ 駐車場代</button> ' +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_highway">＋ 高速代</button>' +
+      '</div>';
+    }).join('');
+
+    bindCommon($('recCars'));
+    var root = $('recCars');
+    root.querySelectorAll('[data-cn]').forEach(function (el) {
+      el.oninput = function () { state.cars[Number(el.dataset.cn)].name = el.value; };
+    });
+    ['cf', 'cd', 'cp'].forEach(function (k) {
+      var field = { cf: 'fuel_km_per_l', cd: 'distance_km', cp: 'fuel_price_per_l' }[k];
+      root.querySelectorAll('[data-' + k + ']').forEach(function (el) {
+        el.oninput = function () {
+          state.cars[Number(el.dataset[k])][field] = num(el.value);
+          renderCars(); recalc();
+        };
+      });
+    });
+    root.querySelectorAll('[data-delc]').forEach(function (el) {
+      el.onclick = function () {
+        var ci = Number(el.dataset.delc);
+        state.cars.splice(ci, 1);
+        // この車の費用を削除し、以降の car_index を詰める
+        state.carExpenses = state.carExpenses.filter(function (x) {
+          return !(x.car_meta && Number(x.car_meta.car_index) === ci);
+        });
+        state.carExpenses.forEach(function (x) {
+          if (x.car_meta && Number(x.car_meta.car_index) > ci) x.car_meta.car_index -= 1;
+        });
+        renderCars(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-addc]').forEach(function (el) {
+      el.onclick = function () {
+        var a = el.dataset.addc.split('_');
+        addCarExpense(Number(a[0]), a[1]);
+      };
+    });
+  }
+
+  function addCarExpense(ci, type) {
+    state.carExpenses.push({
+      kind: 'split', label: CAR_TYPE_LABEL[type], amount: 0, excluded: [],
+      target_id: null, target_name: '', is_car: true,
+      car_meta: { type: type, car_index: ci }
+    });
+    renderCars(); recalc();
+  }
+
+  window.recAddCar = function () {
+    var sel = $('recCarMaster');
+    var master = state.carMaster.find(function (c) { return c.id === sel.value; });
+    state.cars.push({
+      car_id: master ? master.id : null,
+      name: master ? master.name : '',
+      fuel_km_per_l: master ? (master.fuel_km_per_l || 0) : 0,
+      distance_km: 0,
+      fuel_price_per_l: FUEL_PRICE_DEFAULT
+    });
+    sel.value = '';
+    addCarExpense(state.cars.length - 1, 'gas');   // ガソリン行を自動で1本
+  };
+
+  // ---------- 共通バインド ----------
+  function pick(key) {
+    var a = key.split('_');
+    if (a[0] === 'c') return state.carExpenses[Number(a[1])];
+    return state.places[Number(a[1])].expenses[Number(a[2])];
+  }
+  function rerender() { renderPlaces(); renderCars(); }
+
+  function bindCommon(root) {
     root.querySelectorAll('[data-k]').forEach(function (el) {
       el.onchange = function () {
         var x = pick(el.dataset.k);
         x.kind = el.value;
         if (x.kind === 'individual') { x.excluded = []; } else { x.target_id = null; x.target_name = ''; }
-        renderPlaces(); recalc();
+        rerender(); recalc();
       };
     });
     root.querySelectorAll('[data-l]').forEach(function (el) {
@@ -413,15 +581,18 @@
         var i = x.excluded.indexOf(el.value);
         if (el.checked && i === -1) x.excluded.push(el.value);
         if (!el.checked && i !== -1) x.excluded.splice(i, 1);
-        renderPlaces(); recalc();
+        rerender(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-del]').forEach(function (el) {
+      el.onclick = function () {
+        var a = el.dataset.del.split('_');
+        if (a[0] === 'c') state.carExpenses.splice(Number(a[1]), 1);
+        else state.places[Number(a[1])].expenses.splice(Number(a[2]), 1);
+        rerender(); recalc();
       };
     });
   }
-
-  window.recAddPlace = function () {
-    state.places.push({ place_name: '', expenses: [] });
-    renderPlaces(); recalc();
-  };
 
   // ---------- 計算（ライブ更新） ----------
   function payload() {
@@ -431,7 +602,9 @@
       memo: $('recMemo').value,
       staff_names: state.staff,
       participants: state.participants,
-      places: state.places
+      places: state.places,
+      cars: state.cars,
+      car_expenses: state.carExpenses
     };
   }
 
@@ -456,6 +629,7 @@
     }).join('') || '<tr><td colspan="3" style="color:#9aa3b2;">参加者を追加してください</td></tr>';
     $('recNote').textContent = c.note;
     $('recTotalActual').textContent = yen(c.total_actual);
+    $('recCarTotal').textContent = yen(c.car_total);
     $('recTotalBilled').textContent = yen(c.total_billed);
     $('recDiff').textContent = yen(c.diff);
     $('recWarnings').innerHTML = (c.warnings || []).length
@@ -486,6 +660,7 @@
   $('recMonth').value = TODAY.slice(0, 7);
   $('recMonth').onchange = loadList;
   loadPatients();
+  loadCarMaster();
   loadList();
 })();
 </script>
