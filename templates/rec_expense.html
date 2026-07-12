@@ -227,12 +227,13 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
           </div>
 
           <div class="rec-field">
-            <label>出勤スタッフ</label>
+            <label>出勤スタッフ（その日のタイムカードから自動取込）</label>
             <div class="rec-chips" id="recStaffChips"></div>
             <div style="display:flex;gap:6px;margin-top:6px;">
               <input type="text" id="recStaffInput" class="rec-input" placeholder="スタッフ名を入力して Enter"
                      onkeydown="if(event.key==='Enter'){event.preventDefault();recAddStaff();}">
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddStaff()">追加</button>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadStaff()">当日再取込</button>
             </div>
           </div>
 
@@ -412,6 +413,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     if (j.status !== 'success') { toast(j.message); return; }
     await openEvent(j.id);
     await recReloadParticipants();
+    await recReloadStaff(true);   // 出勤スタッフもタイムカードから自動で入れる
   };
 
   window.recBackToList = function () {
@@ -560,7 +562,23 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   window.recAddStaff = function () {
     var v = $('recStaffInput').value.trim();
     if (!v || state.staff.indexOf(v) !== -1) { $('recStaffInput').value = ''; return; }
-    state.staff.push(v); $('recStaffInput').value = ''; renderStaff();
+    state.staff.push(v); $('recStaffInput').value = ''; renderStaff(); renderAccSummary();
+  };
+
+  // その日に打刻のあるスタッフ = 出勤スタッフ
+  window.recReloadStaff = async function (silent) {
+    var d = $('recDate').value || TODAY;
+    var r = await fetch('/api/rec/staff?date=' + encodeURIComponent(d));
+    var j = await r.json();
+    if (j.status !== 'success') { if (!silent) toast(j.message); return; }
+    var added = 0;
+    (j.staff || []).forEach(function (name) {
+      if (state.staff.indexOf(name) === -1) { state.staff.push(name); added++; }
+    });
+    renderStaff(); renderAccSummary();
+    if (!silent && !added && !state.staff.length) {
+      toast('その日のタイムカードの打刻が見つかりませんでした');
+    }
   };
 
   // ---------- 参加者 ----------
@@ -1118,8 +1136,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 
       var head = '<thead><tr><th class="mx-name">利用者</th>' +
         cols.map(function (col) {
-          var sub = col.kind === 'roundup' ? '繰上げ'
-            : col.kind_label + (col.kind === 'split' ? ' / 総額 ' + yen(col.expense_amount) : '');
+          var sub = col.kind_label + (col.kind === 'split' ? ' / 総額 ' + yen(col.expense_amount) : '');
           var tip = (col.details || []).map(function (d) {
             return (d.name || '(品名なし)') + ' ' + d.unit_price + '円 × ' + d.qty + ' = ' + (d.unit_price * d.qty) + '円';
           }).join('\n');
@@ -1129,10 +1146,11 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
         }).join('') +
         '<th class="mx-total">請求合計</th></tr></thead>';
 
+      // 表示は「その項目でその人に請求する額」= 丸め済み(share_billed)。行の合計が請求合計に一致する
       var body = '<tbody>' + c.per_person.map(function (p) {
         var vals = cols.map(function () { return 0; });
         (p.breakdown || []).forEach(function (l) {
-          vals[colIndex[l.kind + '|' + l.place + '|' + l.label]] += l.share;
+          vals[colIndex[l.kind + '|' + l.place + '|' + l.label]] += (l.share_billed != null ? l.share_billed : l.share);
         });
         return '<tr><td class="mx-name">' + esc(p.user_name) + '</td>' +
           vals.map(function (v) {
@@ -1147,7 +1165,9 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
         var s = 0;
         c.per_person.forEach(function (p) {
           (p.breakdown || []).forEach(function (l) {
-            if (colIndex[l.kind + '|' + l.place + '|' + l.label] === ci) s += l.share;
+            if (colIndex[l.kind + '|' + l.place + '|' + l.label] === ci) {
+              s += (l.share_billed != null ? l.share_billed : l.share);
+            }
           });
         });
         return s;
