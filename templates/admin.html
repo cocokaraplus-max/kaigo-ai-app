@@ -947,6 +947,36 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </button>
   </div>
 
+  {# ---- 送迎設定 (soge-settings-v1) ---- #}
+  <div class="section-box" id="soge-settings-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">airport_shuttle</span>送迎設定
+    </div>
+    <div style="font-size:0.78rem;color:#5f6368;margin-bottom:10px;">
+      運営単位と、1日の便を設定します。2単位運営では、中間便で「1単位目を送りながら2単位目を迎えに行く」形になります。
+    </div>
+
+    <div class="form-group">
+      <label style="font-size:0.78rem;font-weight:700;color:#5f6368;">運営単位</label>
+      <select id="soge-units" class="form-control" onchange="onSogeUnitChange()">
+        <option value="1">1単位（午前のみ／通し）</option>
+        <option value="2">2単位（午前・午後の入れ替えあり）</option>
+      </select>
+    </div>
+
+    <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:12px 0 6px;">便と出発時刻</div>
+    <div id="soge-trips"></div>
+
+    <label id="soge-mid-wrap" style="display:none;font-size:0.8rem;align-items:center;gap:6px;margin:10px 0;">
+      <input type="checkbox" id="soge-mid-first" checked>
+      中間便は「送りを先に、迎えを後に」回る（外すと最短順で混在）
+    </label>
+
+    <button class="btn btn-primary" onclick="saveSogeSettings()">
+      <span class="material-symbols-outlined">save</span>保存
+    </button>
+  </div>
+
   {# ---- 車両マスタ (vehicles-admin-v1) ---- #}
   <div class="section-box" id="vehicles-box">
     <div class="section-box-title">
@@ -1899,5 +1929,86 @@ async function createVehicle() {
 
 document.addEventListener('DOMContentLoaded', loadVehicles);
 if (document.readyState !== 'loading') loadVehicles();
+
+// ===== soge-settings-v1 : 送迎設定 =====
+let sogeTrips = [];
+
+const SOGE_DEFAULTS = {
+  1: [
+    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [] },
+    { key: 't2', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [1] }
+  ],
+  2: [
+    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [] },
+    { key: 't2', name: '中間便', depart: '12:00', pickup_units: [2], dropoff_units: [1] },
+    { key: 't3', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [2] }
+  ]
+};
+
+function sogeTripRole(t) {
+  const p = (t.pickup_units || []).length, d = (t.dropoff_units || []).length;
+  if (p && d) return '送り' + t.dropoff_units.join('・') + '単位目 ＋ 迎え' + t.pickup_units.join('・') + '単位目';
+  if (p) return '迎え（' + t.pickup_units.join('・') + '単位目）';
+  if (d) return '送り（' + t.dropoff_units.join('・') + '単位目）';
+  return '未設定';
+}
+
+function renderSogeTrips() {
+  const box = document.getElementById('soge-trips');
+  if (!box) return;
+  box.innerHTML = sogeTrips.map(function (t, i) {
+    return '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;">' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<input type="text" class="form-control" style="flex:1;" value="' + escHtml(t.name) + '" data-tn="' + i + '" placeholder="便の名前">' +
+        '<input type="time" class="form-control" style="width:130px;" value="' + escHtml(t.depart) + '" data-td="' + i + '">' +
+      '</div>' +
+      '<div style="font-size:0.72rem;color:#5f6368;margin-top:6px;">' + escHtml(sogeTripRole(t)) + '</div>' +
+    '</div>';
+  }).join('');
+  box.querySelectorAll('[data-tn]').forEach(function (el) {
+    el.oninput = function () { sogeTrips[Number(el.dataset.tn)].name = el.value; };
+  });
+  box.querySelectorAll('[data-td]').forEach(function (el) {
+    el.oninput = function () { sogeTrips[Number(el.dataset.td)].depart = el.value; };
+  });
+  document.getElementById('soge-mid-wrap').style.display =
+    (Number(document.getElementById('soge-units').value) === 2) ? 'flex' : 'none';
+}
+
+function onSogeUnitChange() {
+  const uc = Number(document.getElementById('soge-units').value);
+  sogeTrips = JSON.parse(JSON.stringify(SOGE_DEFAULTS[uc]));
+  renderSogeTrips();
+}
+
+async function loadSogeSettings() {
+  if (!document.getElementById('soge-settings-box')) return;
+  const r = await fetch('/api/soge/settings');
+  const j = await r.json();
+  if (j.status !== 'success') return;
+  document.getElementById('soge-units').value = String(j.unit_count);
+  document.getElementById('soge-mid-first').checked = !!j.mid_dropoff_first;
+  sogeTrips = j.trips;
+  renderSogeTrips();
+}
+
+async function saveSogeSettings() {
+  const r = await fetch('/api/soge/settings', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      unit_count: Number(document.getElementById('soge-units').value),
+      trips: sogeTrips,
+      mid_dropoff_first: document.getElementById('soge-mid-first').checked
+    })
+  });
+  const j = await r.json();
+  if (j.status !== 'success') { alert(j.message); return; }
+  sogeTrips = j.trips;
+  renderSogeTrips();
+  alert('保存しました');
+}
+
+document.addEventListener('DOMContentLoaded', loadSogeSettings);
+if (document.readyState !== 'loading') loadSogeSettings();
 </script>
 {% endblock %}
