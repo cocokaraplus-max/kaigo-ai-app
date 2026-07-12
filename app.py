@@ -3946,9 +3946,10 @@ def vitals():
     visit_days = {}
     ampm_data = {}
     ampm_per_day_data = {}
+    nth_per_day_data = {}   # visit-nth-v1
     try:
         int_id_map = {str(p["patient_int_id"]): p for p in patients if p.get("patient_int_id")}
-        res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm,ampm_per_day").eq("facility_code", f_code).execute()
+        res = supabase.table("patient_visit_days").select("patient_id,weekdays,ampm,ampm_per_day,nth_per_day").eq("facility_code", f_code).execute()
         for r in (res.data or []):
             pid = str(r["patient_id"])
             if pid not in int_id_map:
@@ -3957,17 +3958,20 @@ def vitals():
             ampm_data[pid] = r.get("ampm") or "BOTH"
             apd = r.get("ampm_per_day")
             ampm_per_day_data[pid] = apd if isinstance(apd, dict) else {}
+            nth_per_day_data[pid] = _visit_norm_nth(r.get("nth_per_day"))   # visit-nth-v1
         for p in patients:
             int_id = str(p["patient_int_id"]) if p.get("patient_int_id") else ""
             p["weekdays"] = visit_days.get(int_id, "")
             p["ampm"] = ampm_data.get(int_id, "BOTH")
             p["ampm_per_day"] = ampm_per_day_data.get(int_id, {})
+            p["nth_per_day"] = nth_per_day_data.get(int_id, {})   # visit-nth-v1
     except Exception as e:
         print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
             p["weekdays"] = ""
             p["ampm"] = "BOTH"
             p["ampm_per_day"] = {}
+            p["nth_per_day"] = {}
 
     # 今日のバイタルデータ取得
     vitals_data = {}
@@ -4205,14 +4209,15 @@ def api_get_all_visit_days():
     try:
         f_code = session['f_code']
         supabase = get_supabase()
-        vd_res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day').eq('facility_code', f_code).execute()
+        vd_res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day,nth_per_day').eq('facility_code', f_code).execute()  # visit-nth-v1
         pt_res = supabase.table('patients').select('id').eq('facility_code', f_code).execute()
         int_ids = {str(p['id']) for p in (pt_res.data or [])}
         result = {}
         for r in (vd_res.data or []):
             pid = str(r['patient_id'])
             if pid in int_ids:
-                result[pid] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {}}
+                result[pid] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {},
+                               'nth_per_day': _visit_norm_nth(r.get('nth_per_day'))}  # visit-nth-v1
         return jsonify({'status': 'success', 'data': result})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -10395,7 +10400,7 @@ def patient_profile():
             pr = supabase.table('patients').select('id').eq('facility_code', f_code).eq('user_name', selected['user_name']).execute()
             if pr.data:
                 patient_id = pr.data[0]['id']
-                vr = supabase.table('patient_visit_days').select('weekdays,ampm_per_day').eq('facility_code', f_code).eq('patient_id', patient_id).execute()
+                vr = supabase.table('patient_visit_days').select('weekdays,ampm_per_day,nth_per_day').eq('facility_code', f_code).eq('patient_id', patient_id).execute()  # visit-nth-v1
                 if vr.data:
                     visit_day_data = vr.data[0]
         except Exception:
@@ -17479,6 +17484,122 @@ def api_soge_settings_save():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ===== /soge-settings-v1 =====
+
+
+
+# ===== visit-nth-v1 : 利用曜日の「第N週のみ」 =====
+# 「第2火曜だけ利用」のような月N回の利用者に対応する。
+# patient_visit_days.nth_per_day = {"2": 2} なら 火曜は第2週のみ。
+# キーが無い曜日は「毎週」。既存データは {} なので挙動は変わらない。
+
+
+def visit_week_of_month(date_str):  # visit-nth-v1
+    """その日が「第何週」か。曜日基準（1日〜7日=第1週, 8〜14日=第2週 …）。
+    介護現場の「第2火曜」はこの数え方。"""
+    try:
+        d = int(str(date_str)[8:10])
+    except (TypeError, ValueError, IndexError):
+        return 0
+    if d < 1:
+        return 0
+    return (d - 1) // 7 + 1
+
+
+def visit_nth_ok(nth_per_day, weekday, date_str):  # visit-nth-v1
+    """その曜日の第N週指定に、その日付が該当するか。
+    指定が無ければ常に True（毎週）。"""
+    if not isinstance(nth_per_day, dict):
+        return True
+    v = nth_per_day.get(str(weekday))
+    if v in (None, "", 0):
+        return True
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return True
+    if v < 1 or v > 5:
+        return True
+    return visit_week_of_month(date_str) == v
+
+
+def _visit_norm_nth(raw):  # visit-nth-v1
+    """nth_per_day を正規化。1..5 以外は捨てる（= 毎週）。"""
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        k = str(k)
+        if k not in "0123456" or len(k) != 1:
+            continue
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= v <= 5:
+            out[k] = v
+    return out
+
+
+@app.route('/api/save_weekday_nth', methods=['POST'])  # visit-nth-v1
+@login_required
+def api_save_weekday_nth():
+    """単一曜日の第N週指定を保存。
+    payload: {patient_id, weekday("0"-"6"), nth(0=毎週 / 1..5)}
+    patient_id は patients.id（整数ID）。ampm_per_day と同じ持ち方。
+    """
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        patient_id = str(data.get("patient_id") or "")
+        weekday = str(data.get("weekday") or "")
+        if not patient_id:
+            return jsonify({"status": "error", "message": "patient_id が必要です"}), 400
+        if weekday not in "0123456" or len(weekday) != 1:
+            return jsonify({"status": "error", "message": "invalid weekday"}), 400
+        try:
+            nth = int(data.get("nth") or 0)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid nth"}), 400
+        if nth < 0 or nth > 5:
+            return jsonify({"status": "error", "message": "第N週は1〜5です"}), 400
+
+        supabase = get_supabase()
+        existing = (supabase.table("patient_visit_days")
+                    .select("id,nth_per_day")
+                    .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
+
+        if existing.data:
+            row = existing.data[0]
+            cur = _visit_norm_nth(row.get("nth_per_day"))
+            if nth == 0:
+                cur.pop(weekday, None)   # 毎週に戻す
+            else:
+                cur[weekday] = nth
+            supabase.table("patient_visit_days").update({"nth_per_day": cur}).eq("id", row["id"]).execute()
+            return jsonify({"status": "success", "nth_per_day": cur})
+
+        # 曜日設定がまだ無い利用者。行だけ作る（weekdays は曜日トグル側が入れる）
+        user_name = (data.get("user_name") or "").strip()
+        if not user_name:
+            p_res = (supabase.table("patients").select("user_name")
+                     .eq("facility_code", f_code).eq("id", patient_id).execute())
+            if p_res.data:
+                user_name = p_res.data[0].get("user_name", "")
+        initial = {} if nth == 0 else {weekday: nth}
+        supabase.table("patient_visit_days").insert({
+            "facility_code": f_code,
+            "patient_id": patient_id,
+            "user_name": user_name,
+            "weekdays": "",
+            "ampm_per_day": {},
+            "nth_per_day": initial,
+        }).execute()
+        return jsonify({"status": "success", "nth_per_day": initial})
+    except Exception as e:
+        print("save_weekday_nth error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /visit-nth-v1 =====
 
 
 if __name__ == '__main__':

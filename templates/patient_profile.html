@@ -584,12 +584,20 @@
         .pp-wd-btn[data-state="ALL"]  { color:#3B6D11; border-color:#3B6D11; background:#EAF3DE; }
         .pp-jihi-btn { font-size:0.68rem; font-weight:700; padding:4px 0; border-radius:8px; border:1.5px solid #dadce0; background:#fff; color:#9aa0a6; cursor:pointer; text-align:center; width:100%; transition:all 0.15s; }
         .pp-jihi-btn[data-jihi="1"] { color:#b85c00; border-color:#e8a33d; background:#fff3e0; }
+        /* visit-nth-v1 */
+        .pp-nth-btn { font-size:0.68rem; font-weight:700; padding:4px 0; border-radius:8px; border:1.5px solid #dadce0; background:#fff; color:#9aa0a6; cursor:pointer; text-align:center; width:100%; transition:all 0.15s; }
+        .pp-nth-btn[data-nth="1"], .pp-nth-btn[data-nth="2"], .pp-nth-btn[data-nth="3"],
+        .pp-nth-btn[data-nth="4"], .pp-nth-btn[data-nth="5"] { color:#5b2ea6; border-color:#a78bfa; background:#f3f0ff; }
         </style>
         <div style="margin-bottom:8px;font-size:0.75rem;color:#5f6368;">
           <span style="background:#E6F1FB;color:#185FA5;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">AM</span>午前のみ　
           <span style="background:#FAEEDA;color:#BA7517;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">PM</span>午後のみ　
           <span style="background:#EAF3DE;color:#3B6D11;padding:2px 7px;border-radius:6px;margin-right:4px;font-weight:700;">ALL</span>終日　
           <span style="background:#fff;color:#9aa0a6;padding:2px 7px;border-radius:6px;border:1px solid #dadce0;margin-right:4px;font-weight:700;">×</span>利用なし
+        </div>
+        <!-- visit-nth-v1 -->
+        <div style="margin-bottom:8px;font-size:0.75rem;color:#5f6368;">
+          <span style="background:#f3f0ff;color:#5b2ea6;padding:2px 7px;border-radius:6px;border:1px solid #a78bfa;margin-right:4px;font-weight:700;">第2</span>その週だけ利用（例: 第2火曜だけ）。タップで 毎週→第1→…→第5→毎週
         </div>
         <div style="display:flex;gap:6px;">
           {% for day_num, label in [('1','月'),('2','火'),('3','水'),('4','木'),('5','金'),('6','土'),('0','日')] %}
@@ -598,6 +606,8 @@
             <button type="button" class="pp-wd-btn" data-day="{{ day_num }}" data-state="NONE" onclick="togglePPWeekday(this)">×</button>
             <!-- jihi-weekday-ui-v1 -->
             <button type="button" class="pp-jihi-btn" data-day="{{ day_num }}" data-jihi="0" onclick="togglePPJihi(this)">自費</button>
+            <!-- visit-nth-v1 -->
+            <button type="button" class="pp-nth-btn" data-day="{{ day_num }}" data-nth="0" onclick="togglePPNth(this)">毎週</button>
           </div>
           {% endfor %}
         </div>
@@ -1005,6 +1015,40 @@ async function togglePPWeekday(btn) {
     }
   } catch(e) {}
 }
+
+// visit-nth-v1: 曜日ごとの「第N週のみ」トグル
+async function togglePPNth(btn) {
+  const cur = Number(btn.dataset.nth || 0);
+  const next = (cur + 1) % 6;   // 0(毎週) -> 1 -> ... -> 5 -> 0
+  btn.dataset.nth = String(next);
+  btn.textContent = next === 0 ? '毎週' : ('第' + next);
+  if (!PATIENT_ID) return;
+  const user_name = document.getElementById('user_name')?.value || '';
+  try {
+    const res = await fetch('/api/save_weekday_nth', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: btn.dataset.day, nth: next})
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      const st = document.getElementById('pp-weekday-save-status');
+      if (st) { st.style.display = 'block'; setTimeout(() => { st.style.display = 'none'; }, 2000); }
+    } else {
+      alert(data.message || '保存に失敗しました');
+    }
+  } catch(e) {}
+}
+
+// 初期表示: 保存済みの第N週をボタンに反映
+(function initPPNth() {
+  const npd = (VISIT_DAY_DATA && VISIT_DAY_DATA.nth_per_day) || {};
+  document.querySelectorAll('.pp-nth-btn').forEach(function (b) {
+    const n = Number(npd[b.dataset.day] || 0);
+    b.dataset.nth = String(n);
+    b.textContent = n === 0 ? '毎週' : ('第' + n);
+  });
+})();
 
 async function saveVisitDayProfile(){
   // 後方互換用（旧API呼び出しが残っている場合のフォールバック）
