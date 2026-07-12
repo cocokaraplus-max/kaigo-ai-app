@@ -39,6 +39,7 @@
 .rec-car-nums { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
 .rec-gas { background:#f3f0ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:0.82rem; color:#4c1d95; margin-bottom:8px; }
 .rec-gas b { font-size:0.95rem; }
+.rec-route { background:#fff; border:1px dashed #d6dbe3; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
 
 .rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
 .rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
@@ -213,7 +214,8 @@
   var FUEL_PRICE_DEFAULT = 175;
   var CAR_TYPE_LABEL = { gas: 'ガソリン代', parking: '駐車場代', highway: '高速代' };
 
-  var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [], patients: [], carMaster: [] };
+  var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [],
+                patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
   var calcTimer = null;
 
   function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
@@ -381,6 +383,7 @@
 
     if (!state.patients.length) await loadPatients();
     if (!state.carMaster.length) await loadCarMaster();
+    if (!state.config.facility_address && !state.config.maps_enabled) await loadConfig();
     renderStaff(); renderParts(); renderPlaces(); renderCars(); recalc();
 
     $('recListView').style.display = 'none';
@@ -570,6 +573,18 @@
           '<div><label style="font-size:0.72rem;color:#6b7280;">ガソリン単価 円/L</label>' +
             '<input type="number" class="rec-input" value="' + (c.fuel_price_per_l || FUEL_PRICE_DEFAULT) + '" data-cp="' + ci + '"></div>' +
         '</div>' +
+        '<div class="rec-route">' +
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
+            '<input type="text" class="rec-input" style="flex:1;min-width:200px;" placeholder="出発地（住所）" value="' +
+              esc(c.origin || '') + '" data-co="' + ci + '">' +
+            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
+              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>往復</label>' +
+            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cdist="' + ci + '"' +
+              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です"') + '>距離を自動取得</button>' +
+          '</div>' +
+          '<div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">経由地は場所ブロックの場所名を使います：' +
+            esc(placeNames().join(' → ') || '（場所名が未入力）') + '</div>' +
+        '</div>' +
         '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
           '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
           (num(c.fuel_price_per_l, FUEL_PRICE_DEFAULT)) + ' 円/L（自動計算）</span></div>' +
@@ -592,6 +607,15 @@
           renderCars(); recalc();
         };
       });
+    });
+    root.querySelectorAll('[data-co]').forEach(function (el) {
+      el.oninput = function () { state.cars[Number(el.dataset.co)].origin = el.value; };
+    });
+    root.querySelectorAll('[data-cr]').forEach(function (el) {
+      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; };
+    });
+    root.querySelectorAll('[data-cdist]').forEach(function (el) {
+      el.onclick = function () { fetchDistance(Number(el.dataset.cdist), el); };
     });
     root.querySelectorAll('[data-delc]').forEach(function (el) {
       el.onclick = function () {
@@ -632,11 +656,45 @@
       name: master ? master.name : '',
       fuel_km_per_l: master ? (master.fuel_km_per_l || 0) : 0,
       distance_km: 0,
-      fuel_price_per_l: FUEL_PRICE_DEFAULT
+      fuel_price_per_l: FUEL_PRICE_DEFAULT,
+      origin: state.config.facility_address || '',
+      round_trip: true
     });
     sel.value = '';
     addCarExpense(state.cars.length - 1, 'gas');   // ガソリン行を自動で1本
   };
+
+  // ---------- 距離の自動取得 (Google Routes API) ----------
+  function placeNames() {
+    return state.places.map(function (p) { return (p.place_name || '').trim(); })
+      .filter(function (s) { return s; });
+  }
+
+  async function fetchDistance(ci, btn) {
+    var c = state.cars[ci];
+    var waypoints = placeNames();
+    if (!c.origin) { alert('出発地を入力してください'); return; }
+    if (!waypoints.length) { alert('場所ブロックに場所名を入力してください（経由地に使います）'); return; }
+
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = '取得中…';
+    try {
+      var r = await fetch('/api/rec/distance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: c.origin,
+          waypoints: waypoints,
+          round_trip: c.round_trip !== false
+        })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { alert(j.message); return; }
+      c.distance_km = j.distance_km;
+      renderCars(); recalc();
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
 
   // ---------- 共通バインド ----------
   function pick(key) {
@@ -752,9 +810,18 @@
     recBackToList();
   };
 
+  async function loadConfig() {
+    var r = await fetch('/api/rec/config');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.config = { facility_address: j.facility_address || '', maps_enabled: !!j.maps_enabled };
+    FUEL_PRICE_DEFAULT = j.fuel_price_default || FUEL_PRICE_DEFAULT;
+  }
+
   // ---------- init ----------
   $('recMonth').value = TODAY.slice(0, 7);
   $('recMonth').onchange = loadList;
+  loadConfig();
   loadPatients();
   loadCarMaster();
   loadList();

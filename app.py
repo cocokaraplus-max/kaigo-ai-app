@@ -16221,8 +16221,9 @@ def _rec_norm_participants(raw):  # rec-expense-api-v1
     return out
 
 
-def _rec_norm_cars(raw):  # rec-expense-api-v2
-    """cars を正規化。マスタ選択(car_id あり)でも自由入力(car_id なし)でも同じ形にする。"""
+def _rec_norm_cars(raw):  # rec-expense-maps-v3
+    """cars を正規化。マスタ選択(car_id あり)でも自由入力(car_id なし)でも同じ形にする。
+    origin / round_trip は距離の再計算を後から辿れるように保存しておく。"""
     out = []
     for c in (raw or []):
         if not isinstance(c, dict):
@@ -16233,8 +16234,152 @@ def _rec_norm_cars(raw):  # rec-expense-api-v2
             "fuel_km_per_l": _rec_num(c.get("fuel_km_per_l"), 0.0),
             "distance_km": _rec_num(c.get("distance_km"), 0.0),
             "fuel_price_per_l": _rec_num(c.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT),
+            "origin": (c.get("origin") or "").strip(),
+            "round_trip": bool(c.get("round_trip", True)),
         })
     return out
+
+
+# ===== rec-expense-maps-v3 : 距離の自動取得 (Google Routes API) =====
+# Directions API はレガシーのため後継の Routes API を使う。
+# キーは Secret Manager -> 環境変数 GOOGLE_MAPS_API_KEY。フロントには出さない。
+
+REC_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+REC_ROUTES_TIMEOUT = 15
+
+
+def _rec_routes_distance_m(origin, waypoints, destination):
+    """Routes API で走行距離(メートル)を取得する。
+
+    戻り値: (distance_m, error_message)
+    住所文字列をそのまま渡す (Routes API 側でジオコーディングされる)。
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    key = get_secret("GOOGLE_MAPS_API_KEY")
+    if not key:
+        return None, "GOOGLE_MAPS_API_KEY が設定されていません"
+    if not origin or not destination:
+        return None, "出発地と目的地が必要です"
+
+    body = {
+        "origin": {"address": origin},
+        "destination": {"address": destination},
+        "travelMode": "DRIVE",
+        "units": "METRIC",
+        "languageCode": "ja",
+        "regionCode": "JP",
+    }
+    inter = [{"address": w} for w in (waypoints or []) if w]
+    if inter:
+        body["intermediates"] = inter
+
+    req = urllib.request.Request(
+        REC_ROUTES_URL,
+        data=_json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REC_ROUTES_TIMEOUT) as res:
+            data = _json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = _json.loads(e.read().decode("utf-8")).get("error", {}).get("message", "")
+        except Exception:
+            pass
+        print("rec routes http error: %s %s" % (e.code, detail), flush=True)
+        return None, "経路検索に失敗しました (%s)" % (detail or e.code)
+    except Exception as e:
+        print("rec routes error: %s" % e, flush=True)
+        return None, "経路検索に失敗しました"
+
+    routes = data.get("routes") or []
+    if not routes:
+        return None, "経路が見つかりませんでした。住所や場所名を具体的にしてください"
+    return int(routes[0].get("distanceMeters") or 0), None
+
+
+@app.route("/api/rec/config", methods=["GET"])  # rec-expense-maps-v3
+@login_required
+def api_rec_config():
+    """出発地の既定値(施設住所)と、距離自動取得が使えるかどうか。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        address = ""
+        try:
+            r = (supabase.table("facilities").select("facility_address")
+                 .eq("facility_code", f_code).execute())
+            address = (r.data[0].get("facility_address") or "") if r.data else ""
+        except Exception:
+            address = ""
+        return jsonify({
+            "status": "success",
+            "facility_address": address,
+            "fuel_price_default": REC_FUEL_PRICE_DEFAULT,
+            "maps_enabled": bool(get_secret("GOOGLE_MAPS_API_KEY")),
+        })
+    except Exception as e:
+        print("rec config error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/distance", methods=["POST"])  # rec-expense-maps-v3
+@login_required
+def api_rec_distance():
+    """出発地 + 経由地(場所ブロック) から走行距離を自動取得する。
+
+    body: {origin, waypoints: [..], destination?, round_trip: bool}
+    round_trip=True (既定) なら出発地に戻る往復として計算する。
+    """
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        origin = (data.get("origin") or "").strip()
+        if not origin:
+            return jsonify({"status": "error", "message": "出発地を入力してください"}), 400
+        waypoints = [str(w).strip() for w in (data.get("waypoints") or []) if str(w).strip()]
+        round_trip = bool(data.get("round_trip", True))
+        destination = (data.get("destination") or "").strip()
+
+        if not destination:
+            if round_trip:
+                destination = origin
+            elif waypoints:
+                destination = waypoints.pop()   # 片道: 最後の場所を目的地にする
+            else:
+                return jsonify({"status": "error", "message": "行き先を1つ以上入力してください"}), 400
+
+        meters, msg = _rec_routes_distance_m(origin, waypoints, destination)
+        if msg:
+            return jsonify({"status": "error", "message": msg}), 400
+
+        km = round(meters / 1000.0, 1)
+        return jsonify({
+            "status": "success",
+            "distance_km": km,
+            "distance_m": meters,
+            "origin": origin,
+            "waypoints": waypoints,
+            "destination": destination,
+            "round_trip": round_trip,
+        })
+    except Exception as e:
+        print("rec distance error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /rec-expense-maps-v3 =====
 
 
 def _rec_gas_amount(car):  # rec-expense-api-v2
