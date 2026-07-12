@@ -586,16 +586,30 @@
             '<input type="number" class="rec-input" value="' + (c.fuel_price_per_l || FUEL_PRICE_DEFAULT) + '" data-cp="' + ci + '"></div>' +
         '</div>' +
         '<div class="rec-route">' +
-          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
-            '<input type="text" class="rec-input" style="flex:1;min-width:200px;" placeholder="出発地（住所）" value="' +
-              esc(c.origin || '') + '" data-co="' + ci + '">' +
-            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
-              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>往復</label>' +
-            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cdist="' + ci + '"' +
-              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です"') + '>距離を自動取得</button>' +
+          '<div style="font-size:0.75rem;font-weight:700;color:#4b5563;margin-bottom:6px;">走行ルート（距離の自動計算に使います）</div>' +
+
+          '<label style="font-size:0.72rem;color:#6b7280;">① 出発地</label>' +
+          '<input type="text" class="rec-input" placeholder="例: 大阪市北区梅田1-1-1" value="' +
+            esc(c.origin || '') + '" data-co="' + ci + '" style="margin-bottom:8px;">' +
+
+          '<label style="font-size:0.72rem;color:#6b7280;">② 立ち寄り先（1行に1か所・行く順に）</label>' +
+          '<textarea class="rec-input" rows="' + Math.max(2, (c.waypoints || []).length + 1) + '" data-cw="' + ci + '" ' +
+            'placeholder="海遊館&#10;なんばパークス">' + esc((c.waypoints || []).join('\n')) + '</textarea>' +
+          '<div style="display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap;">' +
+            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cwfill="' + ci + '">場所名から取り込む</button>' +
+            '<span style="font-size:0.72rem;color:#9aa3b2;align-self:center;">' +
+              '「水族館」より「海遊館」のように固有名詞か住所だと正確です</span>' +
           '</div>' +
-          '<div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">経由地は場所ブロックの場所名を使います：' +
-            esc(placeNames().join(' → ') || '（場所名が未入力）') + '</div>' +
+
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
+              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>' +
+              '③ 出発地に戻る（往復）</label>' +
+            '<button class="rec-btn rec-btn-primary rec-btn-sm" data-cdist="' + ci + '"' +
+              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です（管理者に確認してください）"') +
+              '>距離を計算</button>' +
+          '</div>' +
+          '<div style="font-size:0.72rem;color:#6b7280;margin-top:6px;">' + esc(routeLabel(c)) + '</div>' +
         '</div>' +
         '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
           '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
@@ -623,8 +637,22 @@
     root.querySelectorAll('[data-co]').forEach(function (el) {
       el.oninput = function () { state.cars[Number(el.dataset.co)].origin = el.value; };
     });
+    root.querySelectorAll('[data-cw]').forEach(function (el) {
+      el.oninput = function () {
+        state.cars[Number(el.dataset.cw)].waypoints =
+          el.value.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+      };
+    });
+    root.querySelectorAll('[data-cwfill]').forEach(function (el) {
+      el.onclick = function () {
+        var names = placeNames();
+        if (!names.length) { alert('場所ブロックに場所名が入力されていません'); return; }
+        state.cars[Number(el.dataset.cwfill)].waypoints = names;
+        renderCars();
+      };
+    });
     root.querySelectorAll('[data-cr]').forEach(function (el) {
-      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; };
+      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; renderCars(); };
     });
     root.querySelectorAll('[data-cdist]').forEach(function (el) {
       el.onclick = function () { fetchDistance(Number(el.dataset.cdist), el); };
@@ -670,7 +698,8 @@
       distance_km: 0,
       fuel_price_per_l: FUEL_PRICE_DEFAULT,
       origin: state.config.facility_address || '',
-      round_trip: true
+      round_trip: true,
+      waypoints: placeNames()          // 場所名があれば初期値として入れておく
     });
     sel.value = '';
     addCarExpense(state.cars.length - 1, 'gas');   // ガソリン行を自動で1本
@@ -682,14 +711,26 @@
       .filter(function (s) { return s; });
   }
 
+  // ルートを日本語で1行に。何が計算されるか目で確認できるようにする
+  function routeLabel(c) {
+    var wp = c.waypoints || [];
+    if (!c.origin && !wp.length) return 'ルート: 未入力';
+    var parts = [c.origin || '（出発地なし）'].concat(wp);
+    if (c.round_trip !== false) parts.push(c.origin || '（出発地なし）');
+    return 'ルート: ' + parts.join(' → ');
+  }
+
   async function fetchDistance(ci, btn) {
     var c = state.cars[ci];
-    var waypoints = placeNames();
+    var waypoints = c.waypoints || [];
     if (!c.origin) { alert('出発地を入力してください'); return; }
-    if (!waypoints.length) { alert('場所ブロックに場所名を入力してください（経由地に使います）'); return; }
+    if (!waypoints.length) { alert('立ち寄り先を1行に1か所ずつ入力してください'); return; }
+    if (c.round_trip === false && waypoints.length < 1) {
+      alert('片道の場合、立ち寄り先が1か所以上必要です'); return;
+    }
 
     var label = btn.textContent;
-    btn.disabled = true; btn.textContent = '取得中…';
+    btn.disabled = true; btn.textContent = '計算中…';
     try {
       var r = await fetch('/api/rec/distance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

@@ -16236,6 +16236,9 @@ def _rec_norm_cars(raw):  # rec-expense-maps-v3
             "fuel_price_per_l": _rec_num(c.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT),
             "origin": (c.get("origin") or "").strip(),
             "round_trip": bool(c.get("round_trip", True)),
+            # rec-expense-waypoints-v31: 経由地を明示的に保持する
+            "waypoints": [str(w).strip() for w in (c.get("waypoints") or [])
+                          if w and str(w).strip()],
         })
     return out
 
