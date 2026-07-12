@@ -62,6 +62,21 @@
 .rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
+/* 明細（単価 × 個数） */
+.rec-dt-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+.rec-dt-row input[type=text] { flex:1 1 auto; min-width:0; }
+.rec-dt-row input[type=number] { width:74px; flex:0 0 auto; }
+.rec-dt-x { color:#9aa3b2; font-size:0.8rem; }
+.rec-dt-sub { font-size:0.8rem; font-weight:700; color:#334; white-space:nowrap; min-width:64px; text-align:right; }
+
+/* 請求内訳 */
+.rec-sum-row { cursor:pointer; }
+.rec-sum-row:hover { background:#f7faff; }
+.rec-caret { color:#9aa3b2; font-size:0.75rem; }
+tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px 4px 5px 16px; }
+.rec-bd-kind { color:#94a3b8; margin-left:6px; font-size:0.72rem; }
+.rec-bd-det { color:#64748b; font-size:0.72rem; margin-top:2px; padding-left:8px; border-left:2px solid #e2e8f0; }
+
 .rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
@@ -238,6 +253,8 @@
   var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [],
                 patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
   var calcTimer = null;
+  var openBreakdown = {};   // 請求内訳の開閉状態（利用者ごと）
+  var lastCalc = null;
 
   // alert() はブラウザを止めてしまうので、画面内のトーストで知らせる
   var toastTimer = null;
@@ -504,6 +521,40 @@
       opt('split', '割り勘') + opt('flat', '一律加算') + opt('individual', '個別') + '</select>';
   }
 
+  // ---------- 明細（単価 × 個数） ----------
+  function detailTotal(x) {
+    return (x.details || []).reduce(function (s, d) {
+      return s + (parseInt(d.unit_price || 0, 10) || 0) * (parseInt(d.qty || 0, 10) || 0);
+    }, 0);
+  }
+
+  function detailBlock(x, key) {
+    var ds = x.details || [];
+    if (!ds.length) {
+      return '<div class="rec-excl"><button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">' +
+        '＋ 明細を入力（単価 × 個数）</button></div>';
+    }
+    var rows = ds.map(function (d, di) {
+      var k = key + '_' + di;
+      var sub = (parseInt(d.unit_price || 0, 10) || 0) * (parseInt(d.qty || 0, 10) || 0);
+      return '<div class="rec-dt-row">' +
+        '<input type="text" class="rec-input" placeholder="品名（例: お茶）" value="' + esc(d.name || '') + '" data-dn="' + k + '">' +
+        '<input type="number" class="rec-input" placeholder="単価" value="' + (d.unit_price || 0) + '" data-du="' + k + '" style="text-align:right;">' +
+        '<span class="rec-dt-x">×</span>' +
+        '<input type="number" class="rec-input" placeholder="個数" value="' + (d.qty || 0) + '" data-dq="' + k + '" style="text-align:right;">' +
+        '<span class="rec-dt-sub" data-dsub="' + k + '">' + yen(sub) + '</span>' +
+        '<button class="rec-btn rec-btn-danger rec-btn-sm" data-ddel="' + k + '">×</button>' +
+      '</div>';
+    }).join('');
+    return '<div class="rec-excl">' +
+      '<div class="rec-excl-title">明細（単価 × 個数）</div>' + rows +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">' +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">＋ 品目を追加</button>' +
+        '<span style="font-size:0.85rem;font-weight:800;" data-dtot="' + key + '">合計 ' + yen(detailTotal(x)) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
   function targetBlock(x, key) {
     if (x.kind === 'individual') {
       var opts = state.participants.map(function (p) {
@@ -527,12 +578,17 @@
     $('recPlaces').innerHTML = state.places.map(function (p, pi) {
       var exps = (p.expenses || []).map(function (x, xi) {
         var key = 'p_' + pi + '_' + xi;
+        var hasD = (x.details || []).length > 0;
+        var amountCell = hasD
+          ? '<input type="number" class="rec-input" value="' + detailTotal(x) + '" readonly data-atot="' + key + '" ' +
+            'title="明細の合計（単価×個数）" style="text-align:right;background:#f1f5f9;">'
+          : '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">';
         return '<div class="rec-exp"><div class="rec-exp-row">' +
           kindSelect(x, key) +
-          '<input type="text" class="rec-input" placeholder="項目名（例: 入館料）" value="' + esc(x.label || '') + '" data-l="' + key + '">' +
-          '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">' +
+          '<input type="text" class="rec-input" placeholder="項目名（例: 入館料、昼食代）" value="' + esc(x.label || '') + '" data-l="' + key + '">' +
+          amountCell +
           '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>' +
-          '</div>' + targetBlock(x, key) + '</div>';
+          '</div>' + detailBlock(x, key) + targetBlock(x, key) + '</div>';
       }).join('');
       return '<div class="rec-place">' +
         '<div class="rec-place-head">' +
@@ -555,7 +611,7 @@
     $('recPlaces').querySelectorAll('[data-addx]').forEach(function (el) {
       el.onclick = function () {
         state.places[Number(el.dataset.addx)].expenses.push(
-          { kind: 'split', label: '', amount: 0, excluded: [], target_id: null, target_name: '' });
+          { kind: 'split', label: '', amount: 0, details: [], excluded: [], target_id: null, target_name: '' });
         renderPlaces(); recalc();
       };
     });
@@ -821,6 +877,60 @@
         rerender(); recalc();
       };
     });
+
+    // ---- 明細 ----
+    var pickD = function (k) {   // 'p_pi_xi_di'
+      var a = k.split('_');
+      return pick(a.slice(0, 3).join('_')).details[Number(a[3])];
+    };
+    root.querySelectorAll('[data-dadd]').forEach(function (el) {
+      el.onclick = function () {
+        var x = pick(el.dataset.dadd);
+        x.details = x.details || [];
+        x.details.push({ name: '', unit_price: 0, qty: 1 });
+        rerender(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-dn]').forEach(function (el) {
+      el.oninput = function () { pickD(el.dataset.dn).name = el.value; };
+    });
+    root.querySelectorAll('[data-du]').forEach(function (el) {
+      el.oninput = function () {
+        pickD(el.dataset.du).unit_price = parseInt(el.value || '0', 10) || 0;
+        syncDetailAmount(el.dataset.du); recalc();
+      };
+    });
+    root.querySelectorAll('[data-dq]').forEach(function (el) {
+      el.oninput = function () {
+        pickD(el.dataset.dq).qty = parseInt(el.value || '0', 10) || 0;
+        syncDetailAmount(el.dataset.dq); recalc();
+      };
+    });
+    root.querySelectorAll('[data-ddel]').forEach(function (el) {
+      el.onclick = function () {
+        var a = el.dataset.ddel.split('_');
+        var x = pick(a.slice(0, 3).join('_'));
+        x.details.splice(Number(a[3]), 1);
+        x.amount = detailTotal(x);
+        rerender(); recalc();
+      };
+    });
+  }
+
+  // 明細の合計を金額に反映。再描画するとフォーカスが飛ぶので、該当箇所だけ書き換える
+  function syncDetailAmount(k) {
+    var a = k.split('_');
+    var key = a.slice(0, 3).join('_');
+    var x = pick(key);
+    x.amount = detailTotal(x);
+
+    var d = x.details[Number(a[3])] || {};
+    var sub = document.querySelector('[data-dsub="' + k + '"]');
+    if (sub) sub.textContent = yen((d.unit_price || 0) * (d.qty || 0));
+    var tot = document.querySelector('[data-dtot="' + key + '"]');
+    if (tot) tot.textContent = '合計 ' + yen(x.amount);
+    var amt = document.querySelector('[data-atot="' + key + '"]');
+    if (amt) amt.value = x.amount;
   }
 
   // ---------- 計算（ライブ更新） ----------
@@ -851,11 +961,35 @@
   }
 
   function renderCalc(c) {
-    $('recSumBody').innerHTML = c.per_person.map(function (p) {
-      return '<tr><td>' + esc(p.user_name) + '</td>' +
-        '<td class="num">' + Math.round(p.raw_amount).toLocaleString('ja-JP') + '</td>' +
-        '<td class="num bill">' + p.billed_amount.toLocaleString('ja-JP') + '</td></tr>';
+    $('recSumBody').innerHTML = c.per_person.map(function (p, i) {
+      var open = openBreakdown[p.patient_id];
+      var rows = (p.breakdown || []).map(function (l) {
+        var det = (l.details || []).length
+          ? '<div class="rec-bd-det">' + l.details.map(function (d) {
+              return esc(d.name || '(品名なし)') + ' ' + yen(d.unit_price) + ' × ' + d.qty + ' = ' + yen(d.unit_price * d.qty);
+            }).join('<br>') + '</div>'
+          : '';
+        var head = (l.place ? esc(l.place) + ' / ' : '') + esc(l.label) +
+          (l.kind === 'roundup' ? '' : '<span class="rec-bd-kind">' + esc(l.kind_label) +
+            (l.kind === 'split' ? '（総額 ' + yen(l.expense_amount) + '）' : '') + '</span>');
+        return '<tr class="rec-bd"><td colspan="2">' + head + det + '</td>' +
+          '<td class="num">' + Math.round(l.share).toLocaleString('ja-JP') + '</td></tr>';
+      }).join('');
+      return '<tr class="rec-sum-row" data-pid="' + p.patient_id + '">' +
+          '<td><span class="rec-caret">' + (open ? '▾' : '▸') + '</span> ' + esc(p.user_name) + '</td>' +
+          '<td class="num">' + Math.round(p.raw_amount).toLocaleString('ja-JP') + '</td>' +
+          '<td class="num bill">' + p.billed_amount.toLocaleString('ja-JP') + '</td>' +
+        '</tr>' + (open ? rows : '');
     }).join('') || '<tr><td colspan="3" style="color:#9aa3b2;">参加者を追加してください</td></tr>';
+
+    $('recSumBody').querySelectorAll('.rec-sum-row').forEach(function (tr) {
+      tr.onclick = function () {
+        var pid = tr.dataset.pid;
+        openBreakdown[pid] = !openBreakdown[pid];
+        renderCalc(lastCalc);
+      };
+    });
+    lastCalc = c;
     $('recNote').textContent = c.note;
     $('recTotalActual').textContent = yen(c.total_actual);
     $('recCarTotal').textContent = yen(c.car_total);
