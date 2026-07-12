@@ -18586,10 +18586,11 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0, "km": 0.0}
             planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"], settings)
 
-            if tm["total"] > settings["max_minutes"]:
+            _tgt, _max = _soge_trip_target(trip, settings)   # soge-trip-target-v1
+            if tm["total"] > _max:
                 warnings.append("%s の %s は %d分かかる見込みです（上限 %d分）。分担を見直してください。"
                                 % (trip["name"], (v.get("name") if v else "車%d" % (i + 1)),
-                                   tm["total"], settings["max_minutes"]))
+                                   tm["total"], _max))
 
             cars_out.append({
                 "vehicle_no": i + 1,
@@ -18605,7 +18606,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                 "drive_minutes": tm["drive"],
                 "stop_minutes": tm["stop"],
                 "distance_km": tm["km"],
-                "over_target": tm["total"] > settings["target_minutes"],
+                "over_target": tm["total"] > _tgt,   # soge-trip-target-v1
                 "stops": [{
                     "patient_id": s["patient_id"], "user_name": s["user_name"],
                     "type": s["type"], "nth": s.get("nth") or 0,
@@ -18964,13 +18965,36 @@ def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
     return minutes, dist_km, None
 
 
+def _soge_trip_legs(trip):  # soge-trip-target-v1
+    """その便が何本ぶんの仕事か。
+
+    迎えだけ / 送りだけ → 1本
+    送り + 迎えの混在（2単位運営の中間便）→ 2本
+
+    中間便は「1単位目を送りながら2単位目を迎える」ので、
+    立ち寄り件数が他の便の2倍になる。時間もそのぶん要る。
+    """
+    legs = 0
+    if trip.get("dropoff_units"):
+        legs += 1
+    if trip.get("pickup_units"):
+        legs += 1
+    return max(1, legs)
+
+
+def _soge_trip_target(trip, settings):  # soge-trip-target-v1
+    """その便の目標時間・上限時間（分）。仕事量に応じて掛ける。"""
+    legs = _soge_trip_legs(trip)
+    return settings["target_minutes"] * legs, settings["max_minutes"] * legs
+
+
 def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings):  # soge-time-v1
     """席数で割り当てたあと、所要時間が目標を超える車があれば台数を増やして割り直す。
 
     戻り値: (groups, overflow, times)
         times[i] = {"drive": 分, "stop": 分, "total": 分, "km": 距離}
     """
-    target = settings["target_minutes"]
+    target, _max_m = _soge_trip_target(trip, settings)   # soge-trip-target-v1
     max_v = len(vehicles) if vehicles else 1
 
     best = None
