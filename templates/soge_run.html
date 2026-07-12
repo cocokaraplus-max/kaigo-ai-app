@@ -121,6 +121,37 @@
     render();
   }
 
+  // 打刻するたびに画面が先頭まで飛ばないように、見ていた位置を保つ
+  function keepScroll(fn) {
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    fn();
+    window.scrollTo(0, y);
+  }
+
+  // state の中から立ち寄り1件を探す（打刻のあと、その行だけ直すため）
+  function findStop(id) {
+    var vs = (state.data && state.data.vehicles) || [];
+    for (var i = 0; i < vs.length; i++) {
+      for (var k = 0; k < (vs[i].trips || []).length; k++) {
+        var ss = vs[i].trips[k].stops || [];
+        for (var m = 0; m < ss.length; m++) {
+          if (ss[m].id === id) return ss[m];
+        }
+      }
+    }
+    return null;
+  }
+
+  function findTrip(dayId) {
+    var vs = (state.data && state.data.vehicles) || [];
+    for (var i = 0; i < vs.length; i++) {
+      for (var k = 0; k < (vs[i].trips || []).length; k++) {
+        if (vs[i].trips[k].day_id === dayId) return vs[i].trips[k];
+      }
+    }
+    return null;
+  }
+
   function render() {
     var vs = (state.data && state.data.vehicles) || [];
     if (!vs.length) {
@@ -194,10 +225,17 @@
             body: JSON.stringify({ stop_id: id })
           });
           var j = await r.json();
-          if (j.status !== 'success') { toast(j.message || '打刻できませんでした', 'err'); return; }
+          if (j.status !== 'success') {
+            toast(j.message || '打刻できませんでした', 'err');
+            el.disabled = false; el.textContent = '到着';
+            return;
+          }
           if (j.already) toast('すでに ' + j.arrived_at + ' で記録済みです');
           else toast(j.arrived_at + ' で記録しました');
-          await load();
+          // 全部読み直すと画面が先頭に飛ぶので、その行だけ直す
+          var s = findStop(id);
+          if (s) { s.arrived_at = j.arrived_at; s.is_absent = false; }
+          keepScroll(render);
         } finally {
           state.busy[id] = false;
         }
@@ -219,15 +257,20 @@
           if (done) return;
           done = true;
           var t = inp.value;
-          if (!t) { await load(); return; }
+          if (!t) { keepScroll(render); return; }
           var r = await fetch('/api/soge/run/stop', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ stop_id: id, time: t })
           });
           var j = await r.json();
-          if (j.status !== 'success') toast(j.message || '直せませんでした', 'err');
-          else toast(t + ' に直しました');
-          await load();
+          if (j.status !== 'success') {
+            toast(j.message || '直せませんでした', 'err');
+          } else {
+            toast(t + ' に直しました');
+            var s = findStop(id);
+            if (s) { s.arrived_at = t; s.is_absent = false; }
+          }
+          keepScroll(render);
         }
         inp.onchange = commit;
         inp.onblur = commit;
@@ -250,7 +293,9 @@
           var j = await r.json();
           if (j.status !== 'success') { toast(j.message || '変更できませんでした', 'err'); return; }
           toast(on ? '休みを取り消しました' : '休みにしました');
-          await load();
+          var s = findStop(id);
+          if (s) { s.is_absent = !on; if (!on) s.arrived_at = ''; }
+          keepScroll(render);
         } finally {
           state.busy[id] = false;
         }
@@ -270,9 +315,15 @@
             body: JSON.stringify({ day_id: id })
           });
           var j = await r.json();
-          if (j.status !== 'success') { toast(j.message || '記録できませんでした', 'err'); return; }
+          if (j.status !== 'success') {
+            toast(j.message || '記録できませんでした', 'err');
+            el.disabled = false;
+            return;
+          }
           toast('帰着 ' + j.returned_at);
-          await load();
+          var t = findTrip(id);
+          if (t) t.returned_at = j.returned_at;
+          keepScroll(render);
         } finally {
           state.busy[id] = false;
         }
