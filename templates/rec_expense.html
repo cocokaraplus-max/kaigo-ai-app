@@ -84,13 +84,30 @@
 .rec-dt-x { color:#9aa3b2; font-size:0.8rem; }
 .rec-dt-sub { font-size:0.8rem; font-weight:700; color:#334; white-space:nowrap; min-width:64px; text-align:right; }
 
-/* 請求内訳 */
-.rec-sum-row { cursor:pointer; }
-.rec-sum-row:hover { background:#f7faff; }
-.rec-caret { color:#9aa3b2; font-size:0.75rem; }
-tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px 4px 5px 16px; }
-.rec-bd-kind { color:#94a3b8; margin-left:6px; font-size:0.72rem; }
-.rec-bd-det { color:#64748b; font-size:0.72rem; margin-top:2px; padding-left:8px; border-left:2px solid #e2e8f0; }
+/* 請求内訳マトリクス（横スクロール・利用者名は左固定・請求合計は右固定） */
+.rec-mx-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6ebf2; border-radius:8px; }
+table.rec-mx { border-collapse:separate; border-spacing:0; font-size:0.82rem; white-space:nowrap; }
+table.rec-mx th, table.rec-mx td { padding:7px 10px; border-bottom:1px solid #eef1f5; background:#fff; }
+table.rec-mx thead th { background:#f8fafc; font-size:0.72rem; color:#475569; font-weight:700;
+  border-bottom:2px solid #e2e8f0; vertical-align:bottom; text-align:right; }
+table.rec-mx .mx-item-place { display:block; color:#94a3b8; font-size:0.66rem; font-weight:600; }
+table.rec-mx .mx-item-sub { display:block; color:#94a3b8; font-size:0.66rem; font-weight:600; }
+table.rec-mx td.mx-num { text-align:right; font-variant-numeric:tabular-nums; color:#334; }
+table.rec-mx td.mx-zero { color:#cbd5e1; }
+table.rec-mx tfoot td { background:#f8fafc; font-weight:800; border-top:2px solid #e2e8f0; }
+
+/* 左端: 利用者名 */
+table.rec-mx .mx-name { position:sticky; left:0; z-index:2; text-align:left; font-weight:700;
+  box-shadow:1px 0 0 #e2e8f0; min-width:96px; }
+table.rec-mx thead .mx-name { z-index:3; }
+table.rec-mx tfoot .mx-name { background:#f8fafc; }
+
+/* 右端: 請求合計 */
+table.rec-mx .mx-total { position:sticky; right:0; z-index:2; text-align:right; font-weight:800;
+  background:#f0f7ff; box-shadow:-1px 0 0 #d6e4f5; }
+table.rec-mx thead .mx-total { z-index:3; background:#e6f0fb; }
+table.rec-mx tfoot .mx-total { background:#dbeafe; }
+.rec-mx-hint { font-size:0.7rem; color:#9aa3b2; margin-top:4px; }
 
 .rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
@@ -237,12 +254,8 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
       <div class="rec-sum-col">
         <div class="rec-card rec-sum">
           <div style="font-weight:800;margin-bottom:8px;">請求額</div>
-          <table>
-            <thead>
-              <tr><th>利用者</th><th class="num">実額</th><th class="num">請求</th></tr>
-            </thead>
-            <tbody id="recSumBody"></tbody>
-          </table>
+          <div class="rec-mx-wrap"><table class="rec-mx" id="recMatrix"></table></div>
+          <div class="rec-mx-hint">← 横にスクロールすると各項目の内訳が見られます</div>
           <div class="rec-note" id="recNote">※100円未満は繰り上げ</div>
           <hr style="border:none;border-top:1px solid #eef1f5;margin:10px 0;">
           <div class="rec-total"><span>実費合計</span><span id="recTotalActual">0円</span></div>
@@ -1004,35 +1017,69 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
     }, 250);
   }
 
+  // 行=利用者 / 列=費用項目 のマトリクス。左端に利用者名、右端に請求合計を固定し、間は横スクロール
   function renderCalc(c) {
-    $('recSumBody').innerHTML = c.per_person.map(function (p, i) {
-      var open = openBreakdown[p.patient_id];
-      var rows = (p.breakdown || []).map(function (l) {
-        var det = (l.details || []).length
-          ? '<div class="rec-bd-det">' + l.details.map(function (d) {
-              return esc(d.name || '(品名なし)') + ' ' + yen(d.unit_price) + ' × ' + d.qty + ' = ' + yen(d.unit_price * d.qty);
-            }).join('<br>') + '</div>'
-          : '';
-        var head = (l.place ? esc(l.place) + ' / ' : '') + esc(l.label) +
-          (l.kind === 'roundup' ? '' : '<span class="rec-bd-kind">' + esc(l.kind_label) +
-            (l.kind === 'split' ? '（総額 ' + yen(l.expense_amount) + '）' : '') + '</span>');
-        return '<tr class="rec-bd"><td colspan="2">' + head + det + '</td>' +
-          '<td class="num">' + Math.round(l.share).toLocaleString('ja-JP') + '</td></tr>';
-      }).join('');
-      return '<tr class="rec-sum-row" data-pid="' + p.patient_id + '">' +
-          '<td><span class="rec-caret">' + (open ? '▾' : '▸') + '</span> ' + esc(p.user_name) + '</td>' +
-          '<td class="num">' + Math.round(p.raw_amount).toLocaleString('ja-JP') + '</td>' +
-          '<td class="num bill">' + p.billed_amount.toLocaleString('ja-JP') + '</td>' +
-        '</tr>' + (open ? rows : '');
-    }).join('') || '<tr><td colspan="3" style="color:#9aa3b2;">参加者を追加してください</td></tr>';
+    var mx = $('recMatrix');
+    if (!c.per_person.length) {
+      mx.innerHTML = '<tbody><tr><td style="color:#9aa3b2;">参加者を追加してください</td></tr></tbody>';
+    } else {
+      // 列を作る（サーバは費用の並び順どおりに breakdown を返すので、初出順で揃う）
+      var cols = [], colIndex = {};
+      c.per_person.forEach(function (p) {
+        (p.breakdown || []).forEach(function (l) {
+          var k = l.kind + '|' + l.place + '|' + l.label;
+          if (!(k in colIndex)) {
+            colIndex[k] = cols.length;
+            cols.push({ key: k, place: l.place, label: l.label, kind: l.kind,
+                        kind_label: l.kind_label, expense_amount: l.expense_amount,
+                        details: l.details || [] });
+          }
+        });
+      });
 
-    $('recSumBody').querySelectorAll('.rec-sum-row').forEach(function (tr) {
-      tr.onclick = function () {
-        var pid = tr.dataset.pid;
-        openBreakdown[pid] = !openBreakdown[pid];
-        renderCalc(lastCalc);
-      };
-    });
+      var head = '<thead><tr><th class="mx-name">利用者</th>' +
+        cols.map(function (col) {
+          var sub = col.kind === 'roundup' ? '繰上げ'
+            : col.kind_label + (col.kind === 'split' ? ' / 総額 ' + yen(col.expense_amount) : '');
+          var tip = (col.details || []).map(function (d) {
+            return (d.name || '(品名なし)') + ' ' + d.unit_price + '円 × ' + d.qty + ' = ' + (d.unit_price * d.qty) + '円';
+          }).join('\n');
+          return '<th' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' +
+            (col.place ? '<span class="mx-item-place">' + esc(col.place) + '</span>' : '') +
+            esc(col.label) + '<span class="mx-item-sub">' + esc(sub) + '</span></th>';
+        }).join('') +
+        '<th class="mx-total">請求合計</th></tr></thead>';
+
+      var body = '<tbody>' + c.per_person.map(function (p) {
+        var vals = cols.map(function () { return 0; });
+        (p.breakdown || []).forEach(function (l) {
+          vals[colIndex[l.kind + '|' + l.place + '|' + l.label]] += l.share;
+        });
+        return '<tr><td class="mx-name">' + esc(p.user_name) + '</td>' +
+          vals.map(function (v) {
+            var n = Math.round(v);
+            return '<td class="mx-num' + (n === 0 ? ' mx-zero' : '') + '">' +
+              (n === 0 ? '—' : n.toLocaleString('ja-JP')) + '</td>';
+          }).join('') +
+          '<td class="mx-num mx-total">' + p.billed_amount.toLocaleString('ja-JP') + '</td></tr>';
+      }).join('') + '</tbody>';
+
+      var sums = cols.map(function (col, ci) {
+        var s = 0;
+        c.per_person.forEach(function (p) {
+          (p.breakdown || []).forEach(function (l) {
+            if (colIndex[l.kind + '|' + l.place + '|' + l.label] === ci) s += l.share;
+          });
+        });
+        return s;
+      });
+      var foot = '<tfoot><tr><td class="mx-name">合計</td>' +
+        sums.map(function (s) { return '<td class="mx-num">' + Math.round(s).toLocaleString('ja-JP') + '</td>'; }).join('') +
+        '<td class="mx-num mx-total">' + c.total_billed.toLocaleString('ja-JP') + '</td></tr></tfoot>';
+
+      mx.innerHTML = head + body + foot;
+    }
+
     lastCalc = c;
     $('recNote').textContent = c.note;
     $('recTotalActual').textContent = yen(c.total_actual);
