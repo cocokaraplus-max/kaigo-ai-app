@@ -611,6 +611,20 @@
           </div>
           {% endfor %}
         </div>
+        <!-- jihi-validfrom-v1 -->
+        <div style="margin-top:10px;padding:8px 10px;background:#fff8e1;border:1px solid #ffe0a3;border-radius:8px;">
+          <div style="font-size:0.75rem;font-weight:700;color:#8a6d1f;margin-bottom:5px;">
+            自費設定の適用開始日
+          </div>
+          <select id="pp-jihi-apply" class="form-control" style="font-size:0.82rem;">
+            <option value="today">今日から（過去の実績は変わりません）</option>
+            <option value="month">今月1日から</option>
+            <option value="date">日付を指定</option>
+            <option value="all">過去にさかのぼって全部変更</option>
+          </select>
+          <input type="date" id="pp-jihi-date" class="form-control" style="display:none;margin-top:6px;font-size:0.82rem;">
+          <div style="font-size:0.7rem;color:#8a6d1f;margin-top:5px;" id="pp-jihi-apply-hint"></div>
+        </div>
         <div id="pp-weekday-save-status" style="margin-top:8px;font-size:0.75rem;color:#34a853;display:none;">✓ 保存しました</div>
       </div>
     </div>
@@ -958,10 +972,42 @@ const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
     btn.textContent = STATE_LABELS[state] || '×';
   });
 })();
-// jihi-weekday-ui-v1: jihi weekday toggle (profile.id=UUID base)
+// jihi-validfrom-v1: 適用開始日つきで自費曜日を保存する（過去の実績を壊さない）
+function ppJihiApplyFrom() {
+  var mode = document.getElementById('pp-jihi-apply').value;
+  var now = new Date();
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  if (mode === 'all') return 'all';
+  if (mode === 'month') return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-01';
+  if (mode === 'date') {
+    var v = document.getElementById('pp-jihi-date').value;
+    return v || null;
+  }
+  return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+}
+
+function ppJihiApplyHint() {
+  var mode = document.getElementById('pp-jihi-apply').value;
+  document.getElementById('pp-jihi-date').style.display = (mode === 'date') ? 'block' : 'none';
+  var hint = document.getElementById('pp-jihi-apply-hint');
+  if (mode === 'all') {
+    hint.textContent = '過去の実績も自費として集計し直されます。訂正のときだけ使ってください。';
+  } else {
+    var d = ppJihiApplyFrom();
+    hint.textContent = d ? (d + ' 以降の来所が新しい設定になります。それより前は今までのままです。') : '日付を選んでください。';
+  }
+}
+
 (function initPPJihi(){
   if (!PROFILE_UUID) return;
-  fetch('/api/jisseki/patient_jihi_weekdays?patient_id=' + encodeURIComponent(PROFILE_UUID))
+  var sel = document.getElementById('pp-jihi-apply');
+  if (sel) {
+    sel.onchange = ppJihiApplyHint;
+    document.getElementById('pp-jihi-date').onchange = ppJihiApplyHint;
+    ppJihiApplyHint();
+  }
+  // 今日時点で有効なルールを表示する
+  fetch('/api/jisseki/patient_jihi_weekdays_v2?patient_id=' + encodeURIComponent(PROFILE_UUID))
     .then(function(r){ return r.json(); })
     .then(function(j){
       var wds = (j && j.weekdays) ? j.weekdays : [];
@@ -981,9 +1027,9 @@ async function togglePPJihi(btn){
     wds.push(parseInt(b.dataset.day, 10));
   });
   try {
-    var res = await fetch('/api/jisseki/patient_jihi_weekdays', {
+    var res = await fetch('/api/jisseki/patient_jihi_weekdays_v2', {  // jihi-validfrom-v1
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({patient_id: PROFILE_UUID, weekdays: wds})
+      body: JSON.stringify({patient_id: PROFILE_UUID, weekdays: wds, apply_from: ppJihiApplyFrom()})  // jihi-validfrom-v1
     });
     var data = await res.json();
     if (data.status === 'success') {
