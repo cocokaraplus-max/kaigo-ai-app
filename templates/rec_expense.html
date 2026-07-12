@@ -411,12 +411,28 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     });
     var j = await r.json();
     if (j.status !== 'success') { toast(j.message); return; }
+    resetState();          // 前に開いていたおでかけの入力が残らないようにする
     await openEvent(j.id);
-    await recReloadParticipants();
+    await recReloadParticipants(true);
     await recReloadStaff(true);   // 出勤スタッフもタイムカードから自動で入れる
   };
 
+  // 編集中の内容を完全に捨てる（マスタとconfigは使い回す）
+  function resetState() {
+    state.id = null;
+    state.participants = [];
+    state.staff = [];
+    state.places = [{ place_name: '', expenses: [] }];
+    state.cars = [];
+    state.carExpenses = [];
+    lastCalc = null;
+    ['recTitle', 'recMemo', 'recStaffInput', 'recPartSearch'].forEach(function (id) {
+      if ($(id)) $(id).value = '';
+    });
+  }
+
   window.recBackToList = function () {
+    resetState();
     $('recEditView').style.display = 'none';
     $('recListView').style.display = '';
     loadList();
@@ -565,18 +581,17 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     state.staff.push(v); $('recStaffInput').value = ''; renderStaff(); renderAccSummary();
   };
 
-  // その日に打刻のあるスタッフ = 出勤スタッフ
+  // その日に打刻のあるスタッフ = 出勤スタッフ。こちらも「置き換え」
   window.recReloadStaff = async function (silent) {
     var d = $('recDate').value || TODAY;
     var r = await fetch('/api/rec/staff?date=' + encodeURIComponent(d));
     var j = await r.json();
     if (j.status !== 'success') { if (!silent) toast(j.message); return; }
-    var added = 0;
-    (j.staff || []).forEach(function (name) {
-      if (state.staff.indexOf(name) === -1) { state.staff.push(name); added++; }
-    });
+
+    state.staff = (j.staff || []).slice();
     renderStaff(); renderAccSummary();
-    if (!silent && !added && !state.staff.length) {
+
+    if (!state.staff.length && !silent) {
       toast('その日のタイムカードの打刻が見つかりませんでした');
     }
   };
@@ -615,23 +630,51 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     renderParts(); renderPlaces(); renderCars(); recalc();
   };
 
-  window.recReloadParticipants = async function () {
+  // その日のバイタルの人で「置き換える」。追加ではないので、日付を変えても前日の人が残らない
+  window.recReloadParticipants = async function (silent) {
     var d = $('recDate').value || TODAY;
     var r = await fetch('/api/rec/participants?date=' + encodeURIComponent(d));
     var j = await r.json();
-    if (j.status !== 'success') { toast(j.message); return; }
-    var added = 0;
-    j.participants.forEach(function (p) {
-      if (!state.participants.some(function (q) { return q.patient_id === p.patient_id; })) {
-        state.participants.push({ patient_id: p.patient_id, user_name: p.user_name });
-        added++;
-      }
+    if (j.status !== 'success') { if (!silent) toast(j.message); return; }
+
+    state.participants = (j.participants || []).map(function (p) {
+      return { patient_id: p.patient_id, user_name: p.user_name };
     });
-    renderParts(); renderPlaces(); renderCars(); recalc();
-    if (!added && !state.participants.length) toast('その日のバイタル記録が見つかりませんでした');
+    pruneExpensesByParticipants();
+    renderParts(); renderPlaces(); renderCars(); renderAccSummary(); recalc();
+
+    if (!state.participants.length && !silent) {
+      toast('その日のバイタル記録が見つかりませんでした');
+    }
   };
 
-  window.recOnDateChange = function () { renderAccSummary(); recalc(); };
+  // 参加者から外れた人を、費用の除外指定・個別の対象者からも消す
+  function pruneExpensesByParticipants() {
+    var ids = state.participants.map(function (p) { return p.patient_id; });
+    allExpenses().forEach(function (x) {
+      x.excluded = (x.excluded || []).filter(function (id) { return ids.indexOf(id) !== -1; });
+      if (x.target_id && ids.indexOf(x.target_id) === -1) { x.target_id = null; x.target_name = ''; }
+    });
+  }
+
+  // 日付を変えたら、その日の参加者・出勤スタッフを読み込み直す
+  window.recOnDateChange = async function () {
+    renderAccSummary();
+    var dirty = state.participants.length || state.staff.length ||
+      state.places.some(function (p) { return (p.expenses || []).length; });
+    if (dirty && !confirm('日付を変更しました。参加者と出勤スタッフを、その日のデータで読み込み直しますか？\n（手で追加した人は消えます。費用の入力は残ります）')) {
+      recalc();
+      return;
+    }
+    await recReloadParticipants(true);
+    await recReloadStaff(true);
+    var np = state.participants.length, ns = state.staff.length;
+    if (np || ns) {
+      toast('参加者 ' + np + '名 / 出勤スタッフ ' + ns + '名 を読み込みました', 'ok');
+    } else {
+      toast('その日のバイタル・タイムカードの記録が見つかりませんでした');
+    }
+  };
 
   // ---------- 費用項目の共通描画 ----------
   function allExpenses() {
