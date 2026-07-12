@@ -34,3 +34,24 @@ create index if not exists idx_pjw_lookup
 --   from patient_jihi_weekdays
 --  where facility_code = 'cocokaraplus-5526'
 --  order by patient_id, weekday, valid_from;
+
+-- ============================================================
+-- 【重要・追記】ユニーク制約の張り替え
+-- marker: jihi-validfrom-ddl-v2
+--
+-- 元の制約 (facility_code, patient_id, weekday) は「曜日ごとに1行」を強制する。
+-- 有効期間を持たせると、同じ曜日で期間ごとに複数行が必要になるため、
+-- この制約があると履歴を作れず、保存が duplicate key で失敗する。
+--
+-- 代わりに「同じ期間の重複だけ」を禁止する。
+-- ============================================================
+
+alter table patient_jihi_weekdays
+  drop constraint if exists patient_jihi_weekdays_facility_code_patient_id_weekday_key;
+
+create unique index if not exists uq_pjw_period
+  on patient_jihi_weekdays (facility_code, patient_id, weekday, valid_from);
+
+-- ---------- 確認用 ----------
+-- select conname from pg_constraint
+--  where conrelid = 'patient_jihi_weekdays'::regclass;
