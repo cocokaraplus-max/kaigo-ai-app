@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}運行 - TASUKARU{% endblock %}
+{% block nav_soge %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* soge-run-v1 */
+.sr-wrap { max-width:1100px; margin:0 auto; padding:12px 12px 90px; container-type:inline-size; }
+.sr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.sr-title { font-size:1.15rem; font-weight:800; }
+.sr-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
+  background:#eef2f7; color:#334; text-decoration:none; display:inline-block; }
+.sr-date { border:1px solid #d6dbe3; border-radius:8px; padding:7px 9px; font-size:0.9rem; background:#fff; }
+
+/* 車両タブ（運転手は自分の車だけ見ればいい） */
+.sr-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; }
+.sr-tab { flex:0 0 auto; padding:9px 14px; border-radius:10px; border:1.5px solid #dadce0; background:#fff;
+  color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; white-space:nowrap; }
+.sr-tab.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+
+.sr-driver { font-size:0.8rem; color:#5f6368; font-weight:700; margin-bottom:10px; }
+
+.sr-trip { border:1px solid #dbe3ee; border-radius:12px; margin-bottom:14px; background:#fafcff; overflow:hidden; }
+.sr-trip-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#eef2f7;
+  border-bottom:1px solid #e3e8ef; font-weight:800; }
+.sr-trip-time { font-size:0.78rem; color:#6b7280; font-weight:600; }
+.sr-trip-body { padding:8px 10px 10px; }
+
+.sr-stop { display:flex; align-items:center; gap:8px; padding:9px 8px; margin-bottom:6px;
+  background:#fff; border:1px solid #e3e8ef; border-radius:10px; box-shadow:0 1px 2px rgba(16,24,40,.05); }
+.sr-stop:last-child { margin-bottom:0; }
+.sr-stop.done { background:#f2fbf5; border-color:#cdeed8; }
+.sr-stop.absent { background:#f6f7f9; border-color:#e6e8ec; }
+.sr-stop.absent .sr-name { color:#9aa0a6; text-decoration:line-through; }
+
+.sr-seq { width:18px; text-align:center; font-weight:800; color:#9aa0a6; font-size:0.8rem; flex:0 0 auto; }
+.sr-type { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px; white-space:nowrap; flex:0 0 auto; }
+.sr-type.pickup  { background:#E6F1FB; color:#185FA5; }
+.sr-type.dropoff { background:#EAF3DE; color:#3B6D11; }
+.sr-name { flex:1; min-width:0; font-weight:700; font-size:0.92rem; overflow-wrap:anywhere; }
+.sr-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap;
+  background:#f3e8ff; color:#6b21a8; }
+.sr-plan { font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+
+/* 打刻ボタン。指で押しやすい大きさにする */
+.sr-tap { flex:0 0 auto; border:none; border-radius:10px; padding:9px 14px; font-weight:800; font-size:0.9rem;
+  background:#1a73e8; color:#fff; cursor:pointer; min-width:74px; }
+.sr-tap:disabled { opacity:0.6; cursor:default; }
+.sr-time { flex:0 0 auto; border:1px solid #cdeed8; background:#e6f4ea; color:#137333; border-radius:10px;
+  padding:8px 10px; font-weight:800; font-size:0.95rem; font-variant-numeric:tabular-nums; cursor:pointer;
+  min-width:74px; text-align:center; }
+.sr-timeedit { flex:0 0 auto; border:1px solid #1a73e8; border-radius:10px; padding:7px 8px; font-size:0.95rem;
+  font-variant-numeric:tabular-nums; }
+.sr-x { flex:0 0 auto; border:1px solid #dadce0; background:#fff; border-radius:10px; width:38px; height:38px;
+  cursor:pointer; color:#9aa0a6; font-size:0.95rem; font-weight:800; line-height:1; padding:0; }
+.sr-x.on { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
+
+.sr-return { display:flex; justify-content:flex-end; margin-top:8px; }
+.sr-ret-btn { border:none; border-radius:10px; padding:9px 16px; font-weight:800; font-size:0.88rem;
+  background:#eef2f7; color:#334; cursor:pointer; }
+.sr-ret-btn.done { background:#e6f4ea; color:#137333; }
+
+.sr-empty { color:#9aa3b2; font-size:0.88rem; padding:20px 6px; text-align:center; line-height:1.7; }
+.sr-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+  background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
+  transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; max-width:min(90vw,420px);
+  text-align:center; }
+.sr-toast.show { transform:translate(-50%,0); opacity:1; }
+.sr-toast.err { background:#c5221f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sr-wrap">
+  <div id="srToast" class="sr-toast"></div>
+
+  <div class="sr-head">
+    <div class="sr-title">運行</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="date" class="sr-date" id="srDate">
+      <a class="sr-btn" href="/soge" onclick="spaNav(event,'/soge')">配車</a>
+    </div>
+  </div>
+
+  <div class="sr-tabs" id="srTabs"></div>
+  <div class="sr-driver" id="srDriver"></div>
+  <div id="srBody"><div class="sr-empty">読み込み中…</div></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== soge-run-v1 =====
+(function () {
+  var state = { date: '', data: null, tab: 0, busy: {} };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var el = $('srToast');
+    el.textContent = msg;
+    el.className = 'sr-toast show' + (kind === 'err' ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'sr-toast' + (kind === 'err' ? ' err' : ''); }, 2400);
+  }
+
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  async function load() {
+    $('srBody').innerHTML = '<div class="sr-empty">読み込み中…</div>';
+    var r = await fetch('/api/soge/run?date=' + state.date);
+    var j = await r.json();
+    if (j.status !== 'success') { $('srBody').innerHTML = '<div class="sr-empty">' + esc(j.message) + '</div>'; return; }
+    state.data = j;
+    if (state.tab >= (j.vehicles || []).length) state.tab = 0;
+    render();
+  }
+
+  function render() {
+    var vs = (state.data && state.data.vehicles) || [];
+    if (!vs.length) {
+      $('srTabs').innerHTML = '';
+      $('srDriver').textContent = '';
+      $('srBody').innerHTML = '<div class="sr-empty">この日の送迎はありません。<br>配車画面で曜日の送迎表を保存すると、ここに出ます。</div>';
+      return;
+    }
+
+    $('srTabs').innerHTML = vs.map(function (v, i) {
+      return '<div class="sr-tab' + (i === state.tab ? ' on' : '') + '" data-tab="' + i + '">' + esc(v.vehicle_name) + '</div>';
+    }).join('');
+    $('srTabs').querySelectorAll('[data-tab]').forEach(function (el) {
+      el.onclick = function () { state.tab = Number(el.dataset.tab); render(); };
+    });
+
+    var v = vs[state.tab];
+    $('srDriver').textContent = v.driver_name ? ('運転手 ' + v.driver_name) : '運転手 未設定';
+
+    $('srBody').innerHTML = (v.trips || []).map(tripHtml).join('');
+    bind();
+  }
+
+  function tripHtml(t) {
+    var stops = (t.stops || []).map(function (s, i) {
+      var cls = 'sr-stop' + (s.is_absent ? ' absent' : (s.arrived_at ? ' done' : ''));
+      var right = s.is_absent
+        ? '<span class="sr-time" style="background:#f6f7f9;border-color:#e6e8ec;color:#9aa0a6;">休み</span>'
+        : (s.arrived_at
+            ? '<span class="sr-time" data-edit="' + s.id + '" title="タップで時刻を直す">' + esc(s.arrived_at) + '</span>'
+            : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>');
+
+      return '<div class="sr-stop ' + cls + '">' +
+        '<span class="sr-seq">' + (i + 1) + '</span>' +
+        '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
+        '<span class="sr-name">' + esc(s.user_name) +
+          (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') + '</span>' +
+        (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
+        right +
+        '<button class="sr-x' + (s.is_absent ? ' on' : '') + '" data-abs="' + s.id + '" title="休み">✕</button>' +
+      '</div>';
+    }).join('');
+
+    var ret = t.returned_at
+      ? '<button class="sr-ret-btn done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
+      : '<button class="sr-ret-btn" data-ret="' + t.day_id + '">事業所に戻った</button>';
+
+    return '<div class="sr-trip">' +
+      '<div class="sr-trip-head">' + esc(t.trip_name) +
+        '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' +
+      '<div class="sr-trip-body">' + (stops || '<div class="sr-empty">立ち寄りなし</div>') +
+        '<div class="sr-return">' + ret + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function bind() {
+    var root = $('srBody');
+
+    // 到着の打刻。押した瞬間にボタンを止めるので、2度押ししても2回飛ばない。
+    // サーバ側でも「すでに時刻が入っていたら上書きしない」を守っている。
+    root.querySelectorAll('[data-tap]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.tap;
+        if (state.busy[id]) return;
+        state.busy[id] = true;
+        el.disabled = true; el.textContent = '…';
+        try {
+          var r = await fetch('/api/soge/run/arrive', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stop_id: id })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') { toast(j.message || '打刻できませんでした', 'err'); return; }
+          if (j.already) toast('すでに ' + j.arrived_at + ' で記録済みです');
+          else toast(j.arrived_at + ' で記録しました');
+          await load();
+        } finally {
+          state.busy[id] = false;
+        }
+      };
+    });
+
+    // 記録した時刻をタップすると直せる
+    root.querySelectorAll('[data-edit]').forEach(function (el) {
+      el.onclick = function () {
+        var id = el.dataset.edit;
+        var inp = document.createElement('input');
+        inp.type = 'time';
+        inp.className = 'sr-timeedit';
+        inp.value = el.textContent.trim();
+        el.replaceWith(inp);
+        inp.focus();
+        var done = false;
+        async function commit() {
+          if (done) return;
+          done = true;
+          var t = inp.value;
+          if (!t) { await load(); return; }
+          var r = await fetch('/api/soge/run/stop', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stop_id: id, time: t })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') toast(j.message || '直せませんでした', 'err');
+          else toast(t + ' に直しました');
+          await load();
+        }
+        inp.onchange = commit;
+        inp.onblur = commit;
+      };
+    });
+
+    // 休み（その日の送迎から外すだけ。実績や請求には触らない）
+    root.querySelectorAll('[data-abs]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.abs;
+        if (state.busy[id]) return;
+        var on = el.classList.contains('on');
+        if (!on && !confirm('この方を休みにしますか？（その日の送迎から外します）')) return;
+        state.busy[id] = true;
+        try {
+          var r = await fetch('/api/soge/run/stop', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stop_id: id, absent: !on })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') { toast(j.message || '変更できませんでした', 'err'); return; }
+          toast(on ? '休みを取り消しました' : '休みにしました');
+          await load();
+        } finally {
+          state.busy[id] = false;
+        }
+      };
+    });
+
+    // 帰着
+    root.querySelectorAll('[data-ret]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.ret;
+        if (state.busy[id]) return;
+        state.busy[id] = true;
+        el.disabled = true;
+        try {
+          var r = await fetch('/api/soge/run/return', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ day_id: id })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') { toast(j.message || '記録できませんでした', 'err'); return; }
+          toast('帰着 ' + j.returned_at);
+          await load();
+        } finally {
+          state.busy[id] = false;
+        }
+      };
+    });
+  }
+
+  (function init() {
+    state.date = todayStr();
+    $('srDate').value = state.date;
+    $('srDate').onchange = function () {
+      state.date = $('srDate').value || todayStr();
+      state.tab = 0;
+      load();
+    };
+    load();
+  })();
+})();
+</script>
+{% endblock %}

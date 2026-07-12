@@ -19053,6 +19053,328 @@ def soge_week_page():
 # ===== /soge-week-ui-v1 =====
 
 
+
+# ===== soge-run-v1 : 当日の運行画面（打刻） =====
+# 配車を組むのは /soge。実際に走る日に使うのがこの画面。
+# 運転手は自分の車のタブを開いて、着いた順にボタンを押すだけ。
+# 押した時刻は上書きしない（2度押し防止をサーバ側でも守る）。
+
+
+def _soge_jst():  # soge-run-v1
+    return timezone(timedelta(hours=9))
+
+
+def _soge_hhmm(ts):  # soge-run-v1
+    """timestamptz(文字列) -> "HH:MM"（日本時間）。無ければ空文字。"""
+    if not ts:
+        return ""
+    try:
+        s = str(ts).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_soge_jst()).strftime("%H:%M")
+    except Exception:
+        return ""
+
+
+def _soge_at_iso(date_str, hhmm):  # soge-run-v1
+    """その日の "HH:MM"(日本時間) -> UTC の ISO 文字列。"""
+    y, m, d = [int(x) for x in date_str.split("-")]
+    h, mi = int(hhmm[:2]), int(hhmm[3:5])
+    dt = datetime(y, m, d, h, mi, 0, tzinfo=_soge_jst())
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
+    """その日の運行（soge_days / soge_stops）を作る。すでにあれば何もしない。
+
+    元になるのは確定済みの週次表。無ければ自動生成案から作る。
+    一度作ったら、あとから週次表を直しても当日には反映しない。
+    走り出したあとに表が変わると現場が事故になるため。
+    """
+    try:
+        ex = (supabase.table("soge_days").select("id")
+              .eq("facility_code", f_code).eq("service_date", date_str)
+              .limit(1).execute())
+        if ex.data:
+            return 0
+    except Exception as e:
+        print("soge_materialize_day check error: %s" % e, flush=True)
+        return 0
+
+    y, m, d = [int(x) for x in date_str.split("-")]
+    weekday = (datetime(y, m, d).weekday() + 1) % 7      # Python: 月=0 → アプリ: 日=0
+
+    settings = get_soge_settings(supabase, f_code)
+    week = _soge_saved_week(supabase, f_code, weekday, settings)
+    if not week:
+        week = soge_build_week(supabase, f_code, weekday, settings)
+    if not week:
+        return 0
+
+    geo = soge_geo_map(supabase, f_code)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for trip in (week.get("trips") or []):
+        for v in (trip.get("vehicles") or []):
+            stops = v.get("stops") or []
+            if not stops:
+                continue
+
+            # 到着予定。保存済みの週次表には予定時刻が入っていないので、ここで出す。
+            planned = [s.get("planned_at") for s in stops]
+            if not any(planned):
+                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
+                planned = _soge_planned_times(trip.get("depart") or "",
+                                              stops, drive or 0, settings)
+
+            try:
+                dr = supabase.table("soge_days").insert({
+                    "facility_code": f_code,
+                    "service_date": date_str,
+                    "trip_key": trip.get("trip_key"),
+                    "trip_name": trip.get("trip_name"),
+                    "vehicle_no": int(v.get("vehicle_no") or 1),
+                    "vehicle_id": v.get("vehicle_id") or None,
+                    "vehicle_name": v.get("vehicle_name") or "",
+                    "plate_no": v.get("plate_no") or "",
+                    "driver_name": v.get("driver_name") or "",
+                    "depart_at": (trip.get("depart") or None),
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }).execute()
+                day_id = dr.data[0]["id"]
+            except Exception as e:
+                print("soge_materialize_day insert day error: %s" % e, flush=True)
+                continue
+
+            rows = []
+            for i, s in enumerate(stops):
+                rows.append({
+                    "day_id": day_id,
+                    "facility_code": f_code,
+                    "service_date": date_str,
+                    "patient_id": str(s.get("patient_id")),
+                    "user_name": s.get("user_name") or "",
+                    "stop_type": s.get("type") or "pickup",
+                    "seq": i,
+                    "planned_at": (planned[i] if i < len(planned) else None) or None,
+                    "created_at": now_iso,
+                })
+            if rows:
+                try:
+                    supabase.table("soge_stops").insert(rows).execute()
+                except Exception as e:
+                    print("soge_materialize_day insert stops error: %s" % e, flush=True)
+    return 1
+
+
+def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
+    """運行画面のデータ。車ごとにまとめる（運転手は自分の車だけ見ればいい）。"""
+    dr = (supabase.table("soge_days").select("*")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+    days = dr.data or []
+    if not days:
+        return {"date": date_str, "vehicles": []}
+
+    ids = [d["id"] for d in days]
+    sr = (supabase.table("soge_stops").select("*")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+    stops = [s for s in (sr.data or []) if s.get("day_id") in ids]
+
+    wc = {}
+    try:
+        wr = (supabase.table("patient_profiles").select("id,is_wheelchair")
+              .eq("facility_code", f_code).execute())
+        for x in (wr.data or []):
+            wc[str(x["id"])] = bool(x.get("is_wheelchair"))
+    except Exception:
+        pass
+
+    by_day = {}
+    for s in stops:
+        by_day.setdefault(s["day_id"], []).append(s)
+
+    # 便の並び（迎え便 → 中間便 → 送り便）
+    settings = get_soge_settings(supabase, f_code)
+    order = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
+    days.sort(key=lambda d: (order.get(d.get("trip_key"), 99), d.get("vehicle_no") or 1))
+
+    vehicles = {}
+    for d in days:
+        key = str(d.get("vehicle_id") or ("no%s" % d.get("vehicle_no")))
+        v = vehicles.setdefault(key, {
+            "key": key,
+            "vehicle_id": d.get("vehicle_id"),
+            "vehicle_name": d.get("vehicle_name") or ("車 %s" % (d.get("vehicle_no") or 1)),
+            "plate_no": d.get("plate_no") or "",
+            "driver_name": d.get("driver_name") or "",
+            "trips": [],
+        })
+        ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
+        v["trips"].append({
+            "day_id": d["id"],
+            "trip_key": d.get("trip_key"),
+            "trip_name": d.get("trip_name") or "",
+            "depart": (str(d.get("depart_at") or ""))[:5],
+            "returned_at": _soge_hhmm(d.get("returned_at")),
+            "stops": [{
+                "id": s["id"],
+                "patient_id": str(s.get("patient_id")),
+                "user_name": s.get("user_name") or "",
+                "type": s.get("stop_type") or "pickup",
+                "seq": s.get("seq") or 0,
+                "planned_at": (str(s.get("planned_at") or ""))[:5],
+                "arrived_at": _soge_hhmm(s.get("arrived_at")),
+                "is_absent": bool(s.get("is_absent")),
+                "is_wheelchair": wc.get(str(s.get("patient_id")), False),
+            } for s in ss],
+        })
+
+    return {"date": date_str, "vehicles": list(vehicles.values())}
+
+
+@app.route("/soge/run")  # soge-run-v1
+@login_required
+def soge_run_page():
+    """当日の運行画面（打刻）。"""
+    return render("soge_run.html")
+
+
+@app.route("/api/soge/run", methods=["GET"])  # soge-run-v1
+@login_required
+def api_soge_run_get():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        date_str = (request.args.get("date") or "").strip()
+        if not date_str:
+            date_str = datetime.now(_soge_jst()).strftime("%Y-%m-%d")
+        soge_materialize_day(supabase, f_code, date_str)
+        out = _soge_run_payload(supabase, f_code, date_str)
+        out["status"] = "success"
+        return jsonify(out)
+    except Exception as e:
+        print("api_soge_run_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/arrive", methods=["POST"])  # soge-run-v1
+@login_required
+def api_soge_run_arrive():
+    """到着の打刻。すでに時刻が入っていたら上書きしない（2度押し防止）。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        stop_id = str((request.json or {}).get("stop_id") or "").strip()
+        if not stop_id:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        r = (supabase.table("soge_stops").select("id,arrived_at,is_absent")
+             .eq("facility_code", f_code).eq("id", stop_id).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        cur = r.data[0]
+        if cur.get("arrived_at"):
+            # 2度押し。最初の時刻を正とする。
+            return jsonify({"status": "success", "already": True,
+                            "arrived_at": _soge_hhmm(cur["arrived_at"])})
+
+        now = datetime.now(timezone.utc)
+        supabase.table("soge_stops").update({
+            "arrived_at": now.isoformat(), "arrived_by": my_name,
+        }).eq("facility_code", f_code).eq("id", stop_id).execute()
+        return jsonify({"status": "success", "already": False,
+                        "arrived_at": _soge_hhmm(now.isoformat())})
+    except Exception as e:
+        print("api_soge_run_arrive error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/stop", methods=["PUT"])  # soge-run-v1
+@login_required
+def api_soge_run_stop_edit():
+    """時刻の手修正 / 休み（欠席）の切り替え / 打刻の取り消し。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        data = request.json or {}
+        stop_id = str(data.get("stop_id") or "").strip()
+        if not stop_id:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        r = (supabase.table("soge_stops").select("id,service_date")
+             .eq("facility_code", f_code).eq("id", stop_id).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        date_str = str(r.data[0]["service_date"])[:10]
+
+        upd = {"edited_at": datetime.now(timezone.utc).isoformat(), "edited_by": my_name}
+
+        if "absent" in data:
+            upd["is_absent"] = bool(data.get("absent"))
+            if upd["is_absent"]:
+                upd["arrived_at"] = None      # 休みなら打刻は消す
+                upd["arrived_by"] = None
+
+        if "time" in data:
+            t = (data.get("time") or "").strip()
+            if not t:
+                upd["arrived_at"] = None
+                upd["arrived_by"] = None
+            else:
+                if len(t) != 5 or t[2] != ":":
+                    return jsonify({"status": "error", "message": "時刻は HH:MM で入れてください"}), 400
+                try:
+                    upd["arrived_at"] = _soge_at_iso(date_str, t)
+                except Exception:
+                    return jsonify({"status": "error", "message": "時刻は HH:MM で入れてください"}), 400
+                upd["is_absent"] = False
+
+        supabase.table("soge_stops").update(upd) \
+            .eq("facility_code", f_code).eq("id", stop_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_stop_edit error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/return", methods=["POST"])  # soge-run-v1
+@login_required
+def api_soge_run_return():
+    """事業所に戻った時刻。これで1便が終わる。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+        day_id = str(data.get("day_id") or "").strip()
+        if not day_id:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        r = (supabase.table("soge_days").select("id,returned_at")
+             .eq("facility_code", f_code).eq("id", day_id).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        if r.data[0].get("returned_at"):
+            return jsonify({"status": "success", "already": True,
+                            "returned_at": _soge_hhmm(r.data[0]["returned_at"])})
+
+        now = datetime.now(timezone.utc)
+        supabase.table("soge_days").update({
+            "returned_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }).eq("facility_code", f_code).eq("id", day_id).execute()
+        return jsonify({"status": "success", "already": False,
+                        "returned_at": _soge_hhmm(now.isoformat())})
+    except Exception as e:
+        print("api_soge_run_return error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /soge-run-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
