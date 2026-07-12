@@ -599,6 +599,11 @@
         <div style="margin-bottom:8px;font-size:0.75rem;color:#5f6368;">
           <span style="background:#f3f0ff;color:#5b2ea6;padding:2px 7px;border-radius:6px;border:1px solid #a78bfa;margin-right:4px;font-weight:700;">第2</span>その週だけ利用（例: 第2火曜だけ）。タップで 毎週→第1→…→第5→毎週
         </div>
+        <!-- soge-seats-ui-v1 -->
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:#eef7f0;border:1px solid #cde6d3;border-radius:8px;font-size:0.82rem;font-weight:700;color:#2e7d32;">
+          <input type="checkbox" id="pp-wheelchair" onchange="togglePPWheelchair(this)">
+          送迎は車いす（送迎の車両割当で座席数を多く使います）
+        </label>
         <div style="display:flex;gap:6px;">
           {% for day_num, label in [('1','月'),('2','火'),('3','水'),('4','木'),('5','金'),('6','土'),('0','日')] %}
           <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
@@ -960,6 +965,7 @@ function showToast(msg) {
 const PATIENT_ID = {{ patient_id | tojson }};
 const PROFILE_UUID = {{ (selected.id if selected else None) | tojson }};  // jihi-weekday-ui-v1
 const VISIT_DAY_DATA = {{ visit_day_data | tojson }};
+const IS_WHEELCHAIR = {{ (selected.is_wheelchair if selected else False) | tojson }};  // soge-seats-ui-v1
 const DAY_KEYS = ['1','2','3','4','5','6','0'];
 const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
 (function initVisitDays(){
@@ -1094,6 +1100,26 @@ async function togglePPNth(btn) {
     b.dataset.nth = String(n);
     b.textContent = n === 0 ? '毎週' : ('第' + n);
   });
+})();
+
+// soge-seats-ui-v1: 車いすフラグ
+async function togglePPWheelchair(el) {
+  if (!PROFILE_UUID) { el.checked = !el.checked; alert('利用者を保存してから設定してください'); return; }
+  try {
+    const res = await fetch('/api/patient/wheelchair', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({patient_id: PROFILE_UUID, is_wheelchair: el.checked})
+    });
+    const j = await res.json();
+    if (j.status !== 'success') { el.checked = !el.checked; alert(j.message || '保存に失敗しました'); return; }
+    const st = document.getElementById('pp-weekday-save-status');
+    if (st) { st.style.display = 'block'; setTimeout(() => { st.style.display = 'none'; }, 2000); }
+  } catch(e) { el.checked = !el.checked; }
+}
+
+(function initPPWheelchair(){
+  const el = document.getElementById('pp-wheelchair');
+  if (el && typeof IS_WHEELCHAIR !== 'undefined') el.checked = !!IS_WHEELCHAIR;
 })();
 
 async function saveVisitDayProfile(){
