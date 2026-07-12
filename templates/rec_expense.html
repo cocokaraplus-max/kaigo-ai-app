@@ -5,7 +5,9 @@
 {% block extra_style %}
 <style>
 /* rec-expense-ui-v2 */
-.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
+/* TASUKARU は --page-max-width(既定480px)の固定幅カラム。ビューポート幅ではなく
+   コンテナ幅で切り替える必要があるため @container を使う。既定は1カラム。 */
+.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; container-type: inline-size; }
 .rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .rec-title { font-size:1.15rem; font-weight:800; }
 .rec-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem; }
@@ -42,7 +44,8 @@
 .rec-route { background:#fff; border:1px dashed #d6dbe3; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
 
 .rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
-.rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
+.rec-exp-row { display:grid; gap:8px; align-items:center; }
+.rec-exp-row > button { justify-self:end; }
 .rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
 .rec-excl-title { font-size:0.75rem; color:#6b7280; font-weight:700; margin-bottom:5px; }
 .rec-excl-list { display:flex; flex-wrap:wrap; gap:10px; }
@@ -59,23 +62,41 @@
 .rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
-.rec-edit-grid { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
-@media (max-width: 900px) {
-  .rec-edit-grid { grid-template-columns:1fr; }
-  .rec-exp-row { grid-template-columns:1fr 1fr; }
-  .rec-car-nums { grid-template-columns:1fr 1fr; }
-  .rec-sum { position:static; }
-}
-@media (max-width: 600px) {
-  .rec-list-row { flex-wrap:wrap; gap:4px 10px; }
-  .rec-list-title { flex:1 0 100%; }
-  .rec-grid2 { grid-template-columns:1fr; }
+.rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+  background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
+  box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
+  transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; }
+.rec-toast.show { transform:translate(-50%,0); opacity:1; }
+.rec-toast.ok { background:#137333; }
+
+/* --- 既定(狭い): 1カラム。請求額を上に出して常に見えるようにする --- */
+.rec-edit-grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+.rec-sum-col { order:-1; }
+.rec-sum { position:sticky; top:0; z-index:5; }
+.rec-exp-row { grid-template-columns:1fr; }
+.rec-car-nums { grid-template-columns:1fr 1fr; }
+.rec-grid2 { grid-template-columns:1fr; }
+.rec-list-row { flex-wrap:wrap; gap:4px 10px; }
+.rec-list-title { flex:1 0 100%; }
+
+/* --- 広い(コンテナ860px超): 2カラム。幅ハンドルで広げたとき用 --- */
+@container (min-width: 860px) {
+  .rec-edit-grid { grid-template-columns:1fr 340px; }
+  .rec-sum-col { order:0; }
+  .rec-sum { top:8px; }
+  .rec-exp-row { grid-template-columns:120px 1fr 110px auto; }
+  .rec-car-nums { grid-template-columns:1fr 1fr 1fr; }
+  .rec-grid2 { grid-template-columns:1fr 1fr; }
+  .rec-list-row { flex-wrap:nowrap; gap:12px; }
+  .rec-list-title { flex:1 1 auto; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="rec-wrap">
+  <div id="recToast" class="rec-toast"></div>
+
 
   <!-- ========== 一覧 ========== -->
   <div id="recListView">
@@ -183,7 +204,7 @@
       </div>
 
       <!-- 請求額（ライブ更新） -->
-      <div>
+      <div class="rec-sum-col">
         <div class="rec-card rec-sum">
           <div style="font-weight:800;margin-bottom:8px;">請求額</div>
           <table>
@@ -197,7 +218,7 @@
           <div class="rec-total"><span>実費合計</span><span id="recTotalActual">0円</span></div>
           <div class="rec-total sub"><span>うち車両費</span><span id="recCarTotal">0円</span></div>
           <div class="rec-total"><span>請求合計</span><span id="recTotalBilled">0円</span></div>
-          <div class="rec-total diff"><span>差額（集めすぎ）</span><span id="recDiff">0円</span></div>
+          <div class="rec-total diff"><span>差額徴収額（繰上げ分）</span><span id="recDiff">0円</span></div>
           <div id="recWarnings"></div>
         </div>
       </div>
@@ -218,16 +239,29 @@
                 patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
   var calcTimer = null;
 
+  // alert() はブラウザを止めてしまうので、画面内のトーストで知らせる
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var el = document.getElementById('recToast');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'rec-toast show' + (kind === 'ok' ? ' ok' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'rec-toast'; }, kind === 'ok' ? 2000 : 4000);
+  }
+
   function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
   function $(id) { return document.getElementById(id); }
   function num(v, d) { var f = parseFloat(v); return isNaN(f) ? (d || 0) : f; }
 
   // サーバと同じ式。表示用の即時計算（保存時はサーバ値が正）
+  // 23/10*175 が 402.49999999999994 になる浮動小数点誤差を toFixed で吸収し、
+  // サーバ側の Decimal(ROUND_HALF_UP) と同じ 403 を返す
   function gasAmount(car) {
     var d = num(car.distance_km), f = num(car.fuel_km_per_l), p = num(car.fuel_price_per_l, FUEL_PRICE_DEFAULT);
     if (d <= 0 || f <= 0 || p <= 0) return 0;
-    return Math.floor(d / f * p + 0.5);
+    return Math.round(Number((d / f * p).toFixed(6)));
   }
 
   // ---------- 一覧 ----------
@@ -258,7 +292,7 @@
       body: JSON.stringify({ event_date: TODAY, title: '' })
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     await openEvent(j.id);
     await recReloadParticipants();
   };
@@ -331,9 +365,9 @@
           body: JSON.stringify({ name: c.name, fuel_km_per_l: c.fuel_km_per_l })
         });
         var j = await r.json();
-        if (j.status !== 'success') { alert(j.message); return; }
+        if (j.status !== 'success') { toast(j.message); return; }
         await loadCarMaster();
-        alert('保存しました');
+        toast('保存しました', 'ok');
       };
     });
     box.querySelectorAll('[data-mdel]').forEach(function (el) {
@@ -342,7 +376,7 @@
         if (!confirm('「' + c.name + '」をマスタから削除しますか？（過去のおでかけの記録は残ります）')) return;
         var r = await fetch('/api/rec/car/' + c.id, { method: 'DELETE' });
         var j = await r.json();
-        if (j.status !== 'success') { alert(j.message); return; }
+        if (j.status !== 'success') { toast(j.message); return; }
         await loadCarMaster();
       };
     });
@@ -350,13 +384,13 @@
 
   window.recCreateCar = async function () {
     var name = $('recNewCarName').value.trim();
-    if (!name) { alert('車名を入力してください'); return; }
+    if (!name) { toast('車名を入力してください'); return; }
     var r = await fetch('/api/rec/cars', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name, fuel_km_per_l: num($('recNewCarFuel').value) })
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     $('recNewCarName').value = '';
     $('recNewCarFuel').value = '';
     await loadCarMaster();
@@ -366,7 +400,7 @@
   async function openEvent(id) {
     var r = await fetch('/api/rec/event/' + id);
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     state.id = j.event.id;
     state.participants = j.event.participants || [];
     state.staff = j.event.staff_names || [];
@@ -430,7 +464,7 @@
       var label = p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '');
       return label === v || p.user_name === v || p.patient_number === v || (p.user_kana || '') === v;
     });
-    if (!hit) { alert('該当する利用者が見つかりません'); return; }
+    if (!hit) { toast('該当する利用者が見つかりません'); return; }
     if (state.participants.some(function (p) { return p.patient_id === hit.patient_id; })) {
       $('recPartSearch').value = ''; return;
     }
@@ -443,7 +477,7 @@
     var d = $('recDate').value || TODAY;
     var r = await fetch('/api/rec/participants?date=' + encodeURIComponent(d));
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     var added = 0;
     j.participants.forEach(function (p) {
       if (!state.participants.some(function (q) { return q.patient_id === p.patient_id; })) {
@@ -452,7 +486,7 @@
       }
     });
     renderParts(); renderPlaces(); renderCars(); recalc();
-    if (!added && !state.participants.length) alert('その日のバイタル記録が見つかりませんでした');
+    if (!added && !state.participants.length) toast('その日のバイタル記録が見つかりませんでした');
   };
 
   window.recOnDateChange = function () { recalc(); };
@@ -514,7 +548,7 @@
     });
     $('recPlaces').querySelectorAll('[data-delp]').forEach(function (el) {
       el.onclick = function () {
-        if (state.places.length === 1) { alert('場所は最低1つ必要です'); return; }
+        if (state.places.length === 1) { toast('場所は最低1つ必要です'); return; }
         state.places.splice(Number(el.dataset.delp), 1); renderPlaces(); recalc();
       };
     });
@@ -574,16 +608,30 @@
             '<input type="number" class="rec-input" value="' + (c.fuel_price_per_l || FUEL_PRICE_DEFAULT) + '" data-cp="' + ci + '"></div>' +
         '</div>' +
         '<div class="rec-route">' +
-          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
-            '<input type="text" class="rec-input" style="flex:1;min-width:200px;" placeholder="出発地（住所）" value="' +
-              esc(c.origin || '') + '" data-co="' + ci + '">' +
-            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
-              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>往復</label>' +
-            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cdist="' + ci + '"' +
-              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です"') + '>距離を自動取得</button>' +
+          '<div style="font-size:0.75rem;font-weight:700;color:#4b5563;margin-bottom:6px;">走行ルート（距離の自動計算に使います）</div>' +
+
+          '<label style="font-size:0.72rem;color:#6b7280;">① 出発地</label>' +
+          '<input type="text" class="rec-input" placeholder="例: 大阪市北区梅田1-1-1" value="' +
+            esc(c.origin || '') + '" data-co="' + ci + '" style="margin-bottom:8px;">' +
+
+          '<label style="font-size:0.72rem;color:#6b7280;">② 立ち寄り先（1行に1か所・行く順に）</label>' +
+          '<textarea class="rec-input" rows="' + Math.max(2, (c.waypoints || []).length + 1) + '" data-cw="' + ci + '" ' +
+            'placeholder="海遊館&#10;なんばパークス">' + esc((c.waypoints || []).join('\n')) + '</textarea>' +
+          '<div style="display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap;">' +
+            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cwfill="' + ci + '">場所名から取り込む</button>' +
+            '<span style="font-size:0.72rem;color:#9aa3b2;align-self:center;">' +
+              '「水族館」より「海遊館」のように固有名詞か住所だと正確です</span>' +
           '</div>' +
-          '<div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">経由地は場所ブロックの場所名を使います：' +
-            esc(placeNames().join(' → ') || '（場所名が未入力）') + '</div>' +
+
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
+              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>' +
+              '③ 出発地に戻る（往復）</label>' +
+            '<button class="rec-btn rec-btn-primary rec-btn-sm" data-cdist="' + ci + '"' +
+              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です（管理者に確認してください）"') +
+              '>距離を計算</button>' +
+          '</div>' +
+          '<div style="font-size:0.72rem;color:#6b7280;margin-top:6px;">' + esc(routeLabel(c)) + '</div>' +
         '</div>' +
         '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
           '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
@@ -611,8 +659,22 @@
     root.querySelectorAll('[data-co]').forEach(function (el) {
       el.oninput = function () { state.cars[Number(el.dataset.co)].origin = el.value; };
     });
+    root.querySelectorAll('[data-cw]').forEach(function (el) {
+      el.oninput = function () {
+        state.cars[Number(el.dataset.cw)].waypoints =
+          el.value.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+      };
+    });
+    root.querySelectorAll('[data-cwfill]').forEach(function (el) {
+      el.onclick = function () {
+        var names = placeNames();
+        if (!names.length) { toast('場所ブロックに場所名が入力されていません'); return; }
+        state.cars[Number(el.dataset.cwfill)].waypoints = names;
+        renderCars();
+      };
+    });
     root.querySelectorAll('[data-cr]').forEach(function (el) {
-      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; };
+      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; renderCars(); };
     });
     root.querySelectorAll('[data-cdist]').forEach(function (el) {
       el.onclick = function () { fetchDistance(Number(el.dataset.cdist), el); };
@@ -658,7 +720,8 @@
       distance_km: 0,
       fuel_price_per_l: FUEL_PRICE_DEFAULT,
       origin: state.config.facility_address || '',
-      round_trip: true
+      round_trip: true,
+      waypoints: placeNames()          // 場所名があれば初期値として入れておく
     });
     sel.value = '';
     addCarExpense(state.cars.length - 1, 'gas');   // ガソリン行を自動で1本
@@ -670,14 +733,26 @@
       .filter(function (s) { return s; });
   }
 
+  // ルートを日本語で1行に。何が計算されるか目で確認できるようにする
+  function routeLabel(c) {
+    var wp = c.waypoints || [];
+    if (!c.origin && !wp.length) return 'ルート: 未入力';
+    var parts = [c.origin || '（出発地なし）'].concat(wp);
+    if (c.round_trip !== false) parts.push(c.origin || '（出発地なし）');
+    return 'ルート: ' + parts.join(' → ');
+  }
+
   async function fetchDistance(ci, btn) {
     var c = state.cars[ci];
-    var waypoints = placeNames();
-    if (!c.origin) { alert('出発地を入力してください'); return; }
-    if (!waypoints.length) { alert('場所ブロックに場所名を入力してください（経由地に使います）'); return; }
+    var waypoints = c.waypoints || [];
+    if (!c.origin) { toast('出発地を入力してください'); return; }
+    if (!waypoints.length) { toast('立ち寄り先を1行に1か所ずつ入力してください'); return; }
+    if (c.round_trip === false && waypoints.length < 1) {
+      toast('片道の場合、立ち寄り先が1か所以上必要です'); return;
+    }
 
     var label = btn.textContent;
-    btn.disabled = true; btn.textContent = '取得中…';
+    btn.disabled = true; btn.textContent = '計算中…';
     try {
       var r = await fetch('/api/rec/distance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -688,7 +763,7 @@
         })
       });
       var j = await r.json();
-      if (j.status !== 'success') { alert(j.message); return; }
+      if (j.status !== 'success') { toast(j.message); return; }
       c.distance_km = j.distance_km;
       renderCars(); recalc();
     } finally {
@@ -797,16 +872,16 @@
       body: JSON.stringify(payload())
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     renderCalc(j.calc);
-    alert('保存しました');
+    toast('保存しました', 'ok');
   };
 
   window.recDelete = async function () {
     if (!confirm('このおでかけを削除しますか？')) return;
     var r = await fetch('/api/rec/event/' + state.id, { method: 'DELETE' });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     recBackToList();
   };
 

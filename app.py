@@ -16236,6 +16236,9 @@ def _rec_norm_cars(raw):  # rec-expense-maps-v3
             "fuel_price_per_l": _rec_num(c.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT),
             "origin": (c.get("origin") or "").strip(),
             "round_trip": bool(c.get("round_trip", True)),
+            # rec-expense-waypoints-v31: 経由地を明示的に保持する
+            "waypoints": [str(w).strip() for w in (c.get("waypoints") or [])
+                          if w and str(w).strip()],
         })
     return out
 
@@ -16382,8 +16385,14 @@ def api_rec_distance():
 # ===== /rec-expense-maps-v3 =====
 
 
-def _rec_gas_amount(car):  # rec-expense-api-v2
-    """ガソリン代 = 距離 ÷ 燃費 × 単価。円未満は四捨五入。燃費/距離が未入力なら0。"""
+def _rec_gas_amount(car):  # rec-expense-gasround-v1
+    """ガソリン代 = 距離 ÷ 燃費 × 単価。円未満は四捨五入(ROUND_HALF_UP)。
+    燃費/距離が未入力なら0。
+
+    float だと 23.0/10*175 が 402.49999999999994 になり 402 に落ちてしまうため、
+    Decimal で正確に計算する (期待値 403)。
+    """
+    from decimal import Decimal, ROUND_HALF_UP
     if not car:
         return 0
     dist = _rec_num(car.get("distance_km"), 0.0)
@@ -16391,7 +16400,11 @@ def _rec_gas_amount(car):  # rec-expense-api-v2
     price = _rec_num(car.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT)
     if dist <= 0 or fuel <= 0 or price <= 0:
         return 0
-    return int(dist / fuel * price + 0.5)
+    try:
+        v = (Decimal(str(dist)) / Decimal(str(fuel))) * Decimal(str(price))
+        return int(v.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return int(dist / fuel * price + 0.5)
 
 
 def _rec_apply_cars(cars, expenses):  # rec-expense-api-v2
