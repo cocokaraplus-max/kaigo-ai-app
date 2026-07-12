@@ -227,12 +227,13 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
           </div>
 
           <div class="rec-field">
-            <label>出勤スタッフ</label>
+            <label>出勤スタッフ（その日のタイムカードから自動取込）</label>
             <div class="rec-chips" id="recStaffChips"></div>
             <div style="display:flex;gap:6px;margin-top:6px;">
               <input type="text" id="recStaffInput" class="rec-input" placeholder="スタッフ名を入力して Enter"
                      onkeydown="if(event.key==='Enter'){event.preventDefault();recAddStaff();}">
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddStaff()">追加</button>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadStaff()">当日再取込</button>
             </div>
           </div>
 
@@ -412,6 +413,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     if (j.status !== 'success') { toast(j.message); return; }
     await openEvent(j.id);
     await recReloadParticipants();
+    await recReloadStaff(true);   // 出勤スタッフもタイムカードから自動で入れる
   };
 
   window.recBackToList = function () {
@@ -560,7 +562,23 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   window.recAddStaff = function () {
     var v = $('recStaffInput').value.trim();
     if (!v || state.staff.indexOf(v) !== -1) { $('recStaffInput').value = ''; return; }
-    state.staff.push(v); $('recStaffInput').value = ''; renderStaff();
+    state.staff.push(v); $('recStaffInput').value = ''; renderStaff(); renderAccSummary();
+  };
+
+  // その日に打刻のあるスタッフ = 出勤スタッフ
+  window.recReloadStaff = async function (silent) {
+    var d = $('recDate').value || TODAY;
+    var r = await fetch('/api/rec/staff?date=' + encodeURIComponent(d));
+    var j = await r.json();
+    if (j.status !== 'success') { if (!silent) toast(j.message); return; }
+    var added = 0;
+    (j.staff || []).forEach(function (name) {
+      if (state.staff.indexOf(name) === -1) { state.staff.push(name); added++; }
+    });
+    renderStaff(); renderAccSummary();
+    if (!silent && !added && !state.staff.length) {
+      toast('その日のタイムカードの打刻が見つかりませんでした');
+    }
   };
 
   // ---------- 参加者 ----------

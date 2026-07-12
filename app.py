@@ -17151,6 +17151,52 @@ def rec_expense_page():
 # ===== /rec-expense-page-v1 =====
 
 
+
+# ===== rec-expense-staff-timecard-v1 : 出勤スタッフをタイムカードから取得 =====
+
+def _rec_tc_day_range(date_str):  # rec-expense-staff-timecard-v1
+    """JSTの YYYY-MM-DD から [その日00:00, 翌日00:00) を UTC ISO で返す。
+    タイムカード側の _tc_month_range_jst と同じ考え方。"""
+    y, m, d = int(date_str[0:4]), int(date_str[5:7]), int(date_str[8:10])
+    start = _tc_dt(y, m, d, 0, 0, 0, tzinfo=_TC_JST)
+    end = start + _tc_td(days=1)
+    return start.astimezone(_tc_tz.utc).isoformat(), end.astimezone(_tc_tz.utc).isoformat()
+
+
+@app.route("/api/rec/staff", methods=["GET"])  # rec-expense-staff-timecard-v1
+@login_required
+def api_rec_staff():
+    """指定日にタイムカードの打刻があるスタッフ = その日の出勤スタッフ。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        date = request.args.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        try:
+            start_iso, end_iso = _rec_tc_day_range(date)
+        except (ValueError, IndexError):
+            return jsonify({"status": "error", "message": "日付が不正です"}), 400
+
+        res = (supabase.table("timecard_records").select("staff_name,punched_at")
+               .eq("facility_code", f_code).eq("is_deleted", False)
+               .gte("punched_at", start_iso).lt("punched_at", end_iso)
+               .order("punched_at", desc=False).execute())
+
+        names, seen = [], set()
+        for r in (res.data or []):
+            sn = (r.get("staff_name") or "").strip()
+            if sn and sn not in seen:
+                seen.add(sn)
+                names.append(sn)   # 初回打刻の早い順
+
+        return jsonify({"status": "success", "date": date, "staff": names})
+    except Exception as e:
+        print("rec staff error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /rec-expense-staff-timecard-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
