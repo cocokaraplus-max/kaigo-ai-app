@@ -17,7 +17,22 @@
 .rec-btn-sm { padding:5px 10px; font-size:0.8rem; }
 
 .rec-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
-.rec-sec-title { font-weight:800; font-size:0.95rem; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.rec-sec-title { font-weight:800; font-size:0.95rem; margin:20px 0 10px; display:flex; align-items:center; gap:6px;
+  padding:6px 0 6px 10px; border-left:4px solid #1a73e8; }
+.rec-sec-title.car { border-left-color:#7c3aed; }
+
+/* ブロックのヘッダー帯（どこからどこまでが1つの塊か分かるように） */
+.rec-blk-head { display:flex; align-items:center; gap:8px; background:#eef2f7;
+  margin:-12px -12px 12px; padding:9px 12px; border-radius:9px 9px 0 0; border-bottom:1px solid #e3e8ef; }
+.rec-blk-head.car { background:#f1ecfe; border-bottom-color:#e2dcf0; }
+.rec-badge { background:#1a73e8; color:#fff; font-size:0.7rem; font-weight:800; border-radius:999px;
+  padding:3px 9px; white-space:nowrap; flex:0 0 auto; }
+.rec-badge.car { background:#7c3aed; }
+.rec-exp-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;
+  padding-bottom:6px; border-bottom:1px solid #eef1f5; }
+.rec-exp-no { font-size:0.75rem; font-weight:800; color:#64748b; }
+.rec-fld > label { display:block; font-size:0.7rem; font-weight:700; color:#6b7280; margin-bottom:3px; }
+.rec-subtotal { text-align:right; font-size:0.82rem; font-weight:800; color:#334; margin:2px 0 10px; }
 .rec-list-row { display:flex; align-items:flex-start; gap:12px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
 .rec-list-row:hover { background:#f7faff; }
 .rec-list-date { flex:0 0 auto; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -43,9 +58,9 @@
 .rec-gas b { font-size:0.95rem; }
 .rec-route { background:#fff; border:1px dashed #d6dbe3; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
 
-.rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
-.rec-exp-row { display:grid; gap:8px; align-items:center; }
-.rec-exp-row > button { justify-self:end; }
+.rec-exp { border:1px solid #e6ebf2; border-left:3px solid #cbd5e1; border-radius:8px;
+  padding:10px; margin-bottom:10px; background:#fff; }
+.rec-exp-row { display:grid; gap:8px; align-items:end; }
 .rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
 .rec-excl-title { font-size:0.75rem; color:#6b7280; font-weight:700; margin-bottom:5px; }
 .rec-excl-list { display:flex; flex-wrap:wrap; gap:10px; }
@@ -99,7 +114,7 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
   .rec-edit-grid { grid-template-columns:1fr 340px; }
   .rec-sum-col { order:0; }
   .rec-sum { top:8px; }
-  .rec-exp-row { grid-template-columns:120px 1fr 110px auto; }
+  .rec-exp-row { grid-template-columns:130px 1fr 120px; }
   .rec-car-nums { grid-template-columns:1fr 1fr 1fr; }
   .rec-grid2 { grid-template-columns:1fr 1fr; }
   .rec-list-row { flex-wrap:nowrap; gap:12px; }
@@ -208,7 +223,7 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
         <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
 
         <!-- 車 -->
-        <div class="rec-sec-title" style="margin-top:18px;"><span class="material-symbols-outlined">directions_car</span>車（台数分）</div>
+        <div class="rec-sec-title car"><span class="material-symbols-outlined">directions_car</span>車（台数分）</div>
         <div id="recCars"></div>
         <div style="display:flex;gap:6px;align-items:center;">
           <select id="recCarMaster" class="rec-select" style="max-width:260px;">
@@ -576,25 +591,38 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
   // ---------- 場所ブロック ----------
   function renderPlaces() {
     $('recPlaces').innerHTML = state.places.map(function (p, pi) {
+      var subtotal = 0;
       var exps = (p.expenses || []).map(function (x, xi) {
         var key = 'p_' + pi + '_' + xi;
         var hasD = (x.details || []).length > 0;
+        var amt = hasD ? detailTotal(x) : (x.amount || 0);
+        subtotal += amt;
         var amountCell = hasD
-          ? '<input type="number" class="rec-input" value="' + detailTotal(x) + '" readonly data-atot="' + key + '" ' +
-            'title="明細の合計（単価×個数）" style="text-align:right;background:#f1f5f9;">'
-          : '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">';
-        return '<div class="rec-exp"><div class="rec-exp-row">' +
-          kindSelect(x, key) +
-          '<input type="text" class="rec-input" placeholder="項目名（例: 入館料、昼食代）" value="' + esc(x.label || '') + '" data-l="' + key + '">' +
-          amountCell +
-          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>' +
+          ? '<div class="rec-fld"><label>金額（明細の合計）</label>' +
+            '<input type="number" class="rec-input" value="' + amt + '" readonly data-atot="' + key + '" ' +
+            'title="明細の合計（単価×個数）" style="text-align:right;background:#f1f5f9;"></div>'
+          : '<div class="rec-fld"><label>金額</label>' +
+            '<input type="number" class="rec-input" placeholder="0" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;"></div>';
+        return '<div class="rec-exp">' +
+          '<div class="rec-exp-head">' +
+            '<span class="rec-exp-no">費用 ' + (xi + 1) + '</span>' +
+            '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">削除</button>' +
+          '</div>' +
+          '<div class="rec-exp-row">' +
+            '<div class="rec-fld"><label>費用タイプ</label>' + kindSelect(x, key) + '</div>' +
+            '<div class="rec-fld"><label>項目名</label>' +
+              '<input type="text" class="rec-input" placeholder="例: 入館料、昼食代" value="' + esc(x.label || '') + '" data-l="' + key + '"></div>' +
+            amountCell +
           '</div>' + detailBlock(x, key) + targetBlock(x, key) + '</div>';
       }).join('');
+
       return '<div class="rec-place">' +
-        '<div class="rec-place-head">' +
-          '<input type="text" class="rec-input" placeholder="場所名（例: 水族館）" value="' + esc(p.place_name) + '" data-pn="' + pi + '">' +
-          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delp="' + pi + '">場所削除</button>' +
+        '<div class="rec-blk-head">' +
+          '<span class="rec-badge">場所 ' + (pi + 1) + '</span>' +
+          '<input type="text" class="rec-input" placeholder="場所名（例: 海遊館）" value="' + esc(p.place_name) + '" data-pn="' + pi + '">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delp="' + pi + '">削除</button>' +
         '</div>' + exps +
+        (subtotal ? '<div class="rec-subtotal">この場所の小計 ' + yen(subtotal) + '</div>' : '') +
         '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addx="' + pi + '">＋ 費用を追加</button>' +
       '</div>';
     }).join('');
@@ -639,21 +667,29 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
         var key = 'c_' + xi;
         var t = (x.car_meta || {}).type;
         var amountCell = (t === 'gas')
-          ? '<input type="number" class="rec-input" value="' + gas + '" style="text-align:right;background:#f3f0ff;" readonly title="距離÷燃費×単価で自動計算">'
-          : '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">';
-        return '<div class="rec-exp"><div class="rec-exp-row">' +
-          kindSelect(x, key) +
-          '<input type="text" class="rec-input" value="' + esc(x.label || CAR_TYPE_LABEL[t] || '') + '" data-l="' + key + '">' +
-          amountCell +
-          (t === 'gas' ? '<span style="width:28px;"></span>'
-                       : '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>') +
+          ? '<div class="rec-fld"><label>金額（自動計算）</label>' +
+            '<input type="number" class="rec-input" value="' + gas + '" style="text-align:right;background:#f3f0ff;" readonly title="距離÷燃費×単価で自動計算"></div>'
+          : '<div class="rec-fld"><label>金額</label>' +
+            '<input type="number" class="rec-input" placeholder="0" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;"></div>';
+        return '<div class="rec-exp">' +
+          '<div class="rec-exp-head">' +
+            '<span class="rec-exp-no">' + esc(CAR_TYPE_LABEL[t] || '費用') + '</span>' +
+            (t === 'gas' ? '<span style="font-size:0.7rem;color:#9aa3b2;">自動計算のため削除不可</span>'
+                         : '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">削除</button>') +
+          '</div>' +
+          '<div class="rec-exp-row">' +
+            '<div class="rec-fld"><label>費用タイプ</label>' + kindSelect(x, key) + '</div>' +
+            '<div class="rec-fld"><label>項目名</label>' +
+              '<input type="text" class="rec-input" value="' + esc(x.label || CAR_TYPE_LABEL[t] || '') + '" data-l="' + key + '"></div>' +
+            amountCell +
           '</div>' + targetBlock(x, key) + '</div>';
       }).join('');
 
       return '<div class="rec-car">' +
-        '<div class="rec-car-head">' +
+        '<div class="rec-blk-head car">' +
+          '<span class="rec-badge car">車 ' + (ci + 1) + '</span>' +
           '<input type="text" class="rec-input" placeholder="車名（自由入力可）" value="' + esc(c.name || '') + '" data-cn="' + ci + '">' +
-          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delc="' + ci + '">車を削除</button>' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delc="' + ci + '">削除</button>' +
         '</div>' +
         '<div class="rec-car-nums">' +
           '<div><label style="font-size:0.72rem;color:#6b7280;">燃費 km/L</label>' +
