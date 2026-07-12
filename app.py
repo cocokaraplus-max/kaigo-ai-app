@@ -18171,14 +18171,46 @@ def _soge_vehicle_spec(v):  # soge-week-v1
 
 
 def _soge_seats_needed(people, spec):  # soge-week-v1
-    """その人たちを乗せるのに要る席数。"""
+    """その人たちを「同時に」乗せるのに要る席数。"""
     n_wc = sum(1 for m in people if m.get("is_wheelchair"))
     n_walk = len(people) - n_wc
     return n_walk + n_wc * spec["wc_seats"], n_wc
 
 
-def _soge_fits(people, spec):  # soge-week-v1
-    need, n_wc = _soge_seats_needed(people, spec)
+def _soge_peak_seats(people, spec, trip):  # soge-peak-seats-v1
+    """1台の便で必要な席数（同時乗車のピーク）。
+
+    中間便は「1単位目を送りながら2単位目を迎える」ので、
+    送りで降ろすと席が空き、その席に迎えの人を乗せられる。
+    延べ人数ではなく、同時に乗っている人数のピークで判定する。
+
+    送りを先に全部済ませてから迎えに回るため:
+        ピーク = max(送る人たち, 迎える人たち)
+    （出発時は送りの人だけが乗車。全員降ろしてから迎え始める。）
+
+    戻り値: (必要席数, 車いすの同時最大数)
+    """
+    if not trip:
+        return _soge_seats_needed(people, spec)
+
+    pu = set(trip.get("pickup_units") or [])
+    du = set(trip.get("dropoff_units") or [])
+
+    drop_people = [m for m in people if m.get("unit") in du]
+    pick_people = [m for m in people if m.get("unit") in pu]
+
+    # 便の単位に当てはまらない人が混ざっていたら、黙って0席と数えない。
+    # （そういう人がいる時点で呼び出し側の間違いなので、安全側に全員分で数える）
+    if people and not drop_people and not pick_people:
+        return _soge_seats_needed(people, spec)
+
+    d_seats, d_wc = _soge_seats_needed(drop_people, spec)
+    p_seats, p_wc = _soge_seats_needed(pick_people, spec)
+    return max(d_seats, p_seats), max(d_wc, p_wc)
+
+
+def _soge_fits(people, spec, trip=None):  # soge-peak-seats-v1
+    need, n_wc = _soge_peak_seats(people, spec, trip)
     return need <= spec["seats"] and n_wc <= spec["wc_max"]
 
 
@@ -18260,7 +18292,7 @@ def _soge_bearing_order(members, geo):  # soge-week-v1
     return known[cut + 1:] + known[:cut + 1], unknown
 
 
-def _soge_assign(members, geo, vehicles):  # soge-week-v1
+def _soge_assign(members, geo, vehicles, trip=None):  # soge-peak-seats-v1
     """方面順に並べた人を、席数を守りながら車へ順に詰める。
 
     方位角順に並べてから前から詰めるので、同じ方面の人が自然と同じ車になる。
@@ -18284,7 +18316,7 @@ def _soge_assign(members, geo, vehicles):  # soge-week-v1
         placed = False
         # 今の車から後ろの車へ順に試す（前の車には戻らない＝方面の連続性を保つ）
         for idx in range(cur, len(specs)):
-            if _soge_fits(groups[idx] + [m], specs[idx]):
+            if _soge_fits(groups[idx] + [m], specs[idx], trip):
                 groups[idx].append(m)
                 cur = idx
                 placed = True
@@ -18293,7 +18325,7 @@ def _soge_assign(members, geo, vehicles):  # soge-week-v1
             continue
         # 車いすが上限で今の車に乗れないだけ、というケースを救う
         for idx in range(0, cur):
-            if _soge_fits(groups[idx] + [m], specs[idx]):
+            if _soge_fits(groups[idx] + [m], specs[idx], trip):
                 groups[idx].append(m)
                 placed = True
                 break
@@ -18351,7 +18383,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                               "depart": trip.get("depart") or "", "vehicles": []})
             continue
 
-        groups, overflow = _soge_assign(people, geo, vehicles)
+        groups, overflow = _soge_assign(people, geo, vehicles, trip)  # soge-peak-seats-v1
         if overflow:
             warnings.append("%s: %d名が席に収まりません（%s）。車両の席数を確認してください。"
                             % (trip["name"], len(overflow),
@@ -18374,7 +18406,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                     gstops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
                                    "type": "pickup", "nth": m["nth"], "is_wheelchair": m["is_wheelchair"]})
             gstops = _soge_order_stops(gstops, geo, mid_first)
-            used, n_wc = _soge_seats_needed(grp, spec)
+            used, n_wc = _soge_peak_seats(grp, spec, trip)   # soge-peak-seats-v1
 
             cars_out.append({
                 "vehicle_no": i + 1,
@@ -18475,8 +18507,19 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
                 })
                 if pid not in seen:
                     seen.append(pid)
-            people = [{"is_wheelchair": wc.get(pid, False)} for pid in seen]
-            used, n_wc = _soge_seats_needed(people, spec)
+            # soge-peak-seats-v1: 表示も同時乗車のピークで数える
+            unit_of = {}
+            for s in (c.get("stop_order") or []):
+                pid2 = str(s.get("patient_id") or "")
+                if s.get("type") == "dropoff":
+                    unit_of.setdefault(pid2, set()).add("d")
+                else:
+                    unit_of.setdefault(pid2, set()).add("p")
+            drop_p = [{"is_wheelchair": wc.get(pid, False)} for pid in seen if "d" in unit_of.get(pid, set())]
+            pick_p = [{"is_wheelchair": wc.get(pid, False)} for pid in seen if "p" in unit_of.get(pid, set())]
+            d_used, d_wc = _soge_seats_needed(drop_p, spec)
+            p_used, p_wc = _soge_seats_needed(pick_p, spec)
+            used, n_wc = max(d_used, p_used), max(d_wc, p_wc)
 
             cars_out.append({
                 "vehicle_no": c.get("vehicle_no") or 1,
