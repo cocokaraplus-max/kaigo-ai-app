@@ -18366,6 +18366,69 @@ def _soge_assign(members, geo, vehicles, trip=None):  # soge-peak-seats-v1
     return groups, overflow
 
 
+def _soge_assign_balanced(members, geo, vehicles, trip):  # soge-balance-v1
+    """指定された台数に、席数の比で均等に配分する。
+
+    貪欲に詰めると先頭の車が満席になり、台数を増やしても時間が減らない。
+    そこで「その車の席数 ÷ 全体の席数」の比率で人数の枠(quota)を決め、
+    方位角の並び順を保ったまま、前から順にその枠だけ入れていく。
+
+    例) キャラバン8席 / タント3席 / セレナ7席 = 18席 に 11名
+        → 5名 / 2名 / 4名
+
+    戻り値: (groups, overflow)
+    """
+    specs = [_soge_vehicle_spec(v) for v in vehicles]
+    if not specs:
+        specs = [{"seats": SOGE_DEFAULT_SEATS, "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}]
+
+    ordered, unknown = _soge_bearing_order(members, geo)
+    queue = ordered + unknown
+    n = len(queue)
+    if not n:
+        return [[] for _ in specs], []
+
+    # 席数の比で枠を決める。端数は「小数点以下が大きい車」から配る（最大剰余方式）。
+    #   例) 8席/3席/7席 = 18席 に 11名
+    #       4.89 / 1.83 / 4.28 -> 整数部 4/1/4 (計9)、残り2名を .89 と .83 の車へ -> 5/2/4
+    total_seats = sum(s["seats"] for s in specs) or 1
+    exact = [n * s["seats"] / float(total_seats) for s in specs]
+    quotas = [int(x) for x in exact]
+    rest = n - sum(quotas)
+    by_frac = sorted(range(len(specs)), key=lambda i: -(exact[i] - quotas[i]))
+    for i in range(rest):
+        quotas[by_frac[i % len(specs)]] += 1
+
+    groups = [[] for _ in specs]
+    overflow = []
+
+    ci = 0
+    for m in queue:
+        placed = False
+        # 枠が空いていて、席にも収まる車を、今の車から順に探す
+        for step in range(len(specs)):
+            idx = (ci + step) % len(specs)
+            if len(groups[idx]) >= quotas[idx]:
+                continue
+            if _soge_fits(groups[idx] + [m], specs[idx], trip):
+                groups[idx].append(m)
+                ci = idx
+                placed = True
+                break
+        if placed:
+            continue
+        # 枠を無視してでも、乗れる車があるなら乗せる（あふれさせない）
+        for idx in range(len(specs)):
+            if _soge_fits(groups[idx] + [m], specs[idx], trip):
+                groups[idx].append(m)
+                placed = True
+                break
+        if not placed:
+            overflow.append(m)
+
+    return groups, overflow
+
+
 def _soge_order_stops(stops, geo, dropoff_first):  # soge-week-v1
     """1台分の立ち寄り順。
       迎え(pickup)  … 施設から遠い順（遠くから拾って施設に近づく）
@@ -18822,7 +18885,9 @@ def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings)
     best = None
     for n_cars in range(1, max_v + 1):
         vs = vehicles[:n_cars] if vehicles else []
-        groups, overflow = _soge_assign(people, geo, vs, trip)
+        # soge-balance-v1: 台数を増やしたら、その台数で均等に配分し直す。
+        # 貪欲に詰めると先頭の車が満席のままで、台数を増やしても時間が減らない。
+        groups, overflow = _soge_assign_balanced(people, geo, vs, trip)
 
         times = []
         over_target = False
