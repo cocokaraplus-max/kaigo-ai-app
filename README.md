@@ -1566,3 +1566,91 @@ DDL: timecard_records に planned_break_min 列追加。
 2. 兼務の管理者行への午前午後配分微調整(様式4)
 3. タイムカードCSV/Excel出力(社労士向け給与計算、様式とは別物)
 4. 担当者会議の残タスク(フォントサイズ選択/会議記録削除/PROゲート)
+
+---
+
+## 【開発ログ】2026-07-12 請求額計算モジュール（レク費精算）新規実装 <!-- session-2026-07-12-rec-expense -->
+
+おでかけ（レクリエーション）の費用を利用者ごとに割り勘・精算するモジュール。完全独立。
+フラグ `admin_settings.rec_expense_enabled = 'true'` の施設のみ表示（cocokaraplus-5526 / DEMO001 に seed 済み）。
+DEV・本番とも反映済み。
+
+### 画面 / ルート
+- `GET /rec_expense` → `templates/rec_expense.html`（一覧 → 1画面編集、請求額はライブ更新）
+- ナビは `can_rec_expense`（context_processor）で制御。フラグ無効の施設は `/top` へリダイレクト。
+
+### API（すべて `_rec_guard()` でフラグ判定、403）
+| メソッド | パス | 用途 |
+|---|---|---|
+| GET | `/api/rec/events?month=YYYY-MM` | 一覧（請求合計・差額つき） |
+| POST | `/api/rec/events` | 新規作成（空の場所ブロックを1つ自動生成） |
+| GET/PUT/DELETE | `/api/rec/event/<id>` | 取得 / 全置換保存 / 論理削除 |
+| GET | `/api/rec/participants?date=` | **その日のバイタルにいる利用者**（`api_renraku_list` と同ロジック） |
+| GET | `/api/rec/staff?date=` | **その日のタイムカードに打刻のある職員**（出勤スタッフ） |
+| GET | `/api/rec/patients` | 利用者一覧（参加者の手動追加用。検索はクライアント側） |
+| POST | `/api/rec/calc` | 保存前プレビュー計算（DBに触らない） |
+| GET/POST | `/api/rec/cars`, PUT/DELETE `/api/rec/car/<id>` | 車マスタCRUD |
+| GET | `/api/rec/config` | 施設住所（出発地の既定値）/ maps_enabled |
+| POST | `/api/rec/distance` | Google Routes API で走行距離を自動取得 |
+
+### DDL（`db/rec_outing_all.sql` が本番投入用の統合版・冪等）
+- `rec_events` … facility_code, event_date, **title**, staff_names(jsonb), participants(jsonb), **cars(jsonb)**, memo, is_deleted
+  - `cars` = `[{car_id, name, fuel_km_per_l, distance_km, fuel_price_per_l, origin, round_trip, waypoints}]`
+- `rec_places` … event_id, place_name, sort_order
+- `rec_expenses` … **place_id は nullable**（車費用は場所に紐づかない）, event_id, kind, label, amount,
+  **details(jsonb)**, excluded(jsonb), **target_id(uuid)**, target_name, is_car, car_meta(jsonb), sort_order
+  - `details` = `[{name, unit_price, qty}]`（明細。あれば amount = Σ(単価×個数) をサーバが上書き）
+  - `car_meta` = `{car_index, type: gas|parking|highway}`
+- `rec_cars` … 車マスタ（facility_code, name, fuel_km_per_l, is_active）
+- 追補DDL: `db/rec_outing.sql`(v3.1) / `db/rec_outing_cars.sql`(v4) / `db/rec_outing_details.sql`(v5)
+
+### 計算仕様（`_rec_calc`）
+- 費用3タイプ: `split`(割り勘) / `flat`(一律加算) / `individual`(個別、`target_id`で対象者指定)
+- 割り勘・一律は参加者全員が既定。項目ごとに `excluded` で除外指定。
+- **丸めは「費用ごと」に10円単位で切り上げ**（`REC_ROUND_UNIT = 10`）。
+  - 内訳の各行(`share_billed`)の合計 = その人の請求額。**繰上げ行は無い**。
+  - 例: 1,000円を3人 → 各340円（実費1,000 / 請求1,020 / 差額20円）
+  - 単位を変えるなら `REC_ROUND_UNIT` の1箇所のみ。
+- 差額（＝集めすぎ）= 請求合計 − 実費合計。画面では「差額徴収額（繰上げ分）」と表示。
+- `calc.per_person[].breakdown` に「誰に・どの場所の・どの項目を・いくら」を返す（請求内訳マトリクスの元データ）。
+
+### 車・距離
+- 複数台対応。車1台につき ガソリン/駐車/高速 の費用行がぶら下がる（＝台数分）。
+- **ガソリン代はサーバが常に再計算**（距離 ÷ 燃費 × 単価）。手入力は採用しない。
+  - `_rec_gas_amount` は **Decimal + ROUND_HALF_UP**。float だと `23.0/10*175 = 402.49999999999994` で402円になり、電卓と1円ずれた（gasround-v1で修正、正しくは403円）。
+- 距離は **Google Routes API**（`directions/v2:computeRoutes`）。Directions APIはレガシーのため不使用。
+  - キーは Secret Manager `GOOGLE_MAPS_API_KEY` → Cloud Run 環境変数。フロントには出さない。標準ライブラリ urllib で叩く（requestsは requirements.txt に無いため）。
+  - 出発地の既定値は `facilities.facility_address`。立ち寄り先は1行1か所で入力（空なら場所ブロックの場所名を使う）。往復/片道の切替あり。
+  - 距離0のままだとガソリン代が黙って0円になるため、警告を出す（gaswarn-v1）。
+
+### 自動取込
+- **参加者** … その日の `vitals`（`measured_date`）にいる利用者。`patient_profiles.id` で突合。
+- **出勤スタッフ** … その日の `timecard_records` に打刻がある `staff_name`（JST日境界＝UTC前日15:00〜当日15:00）。出勤/退勤の別は問わない。
+- どちらも **「追加」ではなく「置換」**。日付を変えると自動で読み込み直す（新規は確認なし、保存済みは confirm）。参加者から外れた人は費用の `excluded` / `target_id` からも掃除する。
+
+### UI
+- 請求額は **利用者 × 費用項目のマトリクス**。横スクロール、利用者名を左固定・請求合計を右固定。
+  - ハマり: **CSS Grid の子は既定 `min-width:auto`** のため中の表が広いと列ごと膨らみ、`overflow-x` が効かず右固定列が画面外に見切れた。`.rec-edit-grid > * { min-width:0 }` で解決。
+  - ハマり: TASUKARU は `--page-max-width`(既定480px)の固定幅カラム。**ビューポート幅のメディアクエリは効かない**ので `@container` を使う。
+- 保存すると入力欄（おでかけの情報 / 場所ごとの費用 / 車）が**アコーディオンで畳まれる**。見出しに要約を表示。
+- `alert()` は拡張機能の操作をブロックし体験も悪いので、画面内トーストに置換（削除確認の `confirm` のみ残す）。
+
+### パッチ（適用順。すべて冪等・`app.py.bak_*` 自動バックアップ）
+1. `patch_rec_expense_api_v1.py` … コアAPI
+2. `patch_rec_expense_ui_v1.py` … ページルート + base.html ナビ（movableHrefs 3箇所含む）
+3. `patch_rec_expense_car_v2.py` … 車（v1ブロックをv2に丸ごと置換）
+4. `patch_rec_maps_v3.py` … 距離自動取得
+5. `patch_rec_waypoints_v31.py` … 経由地を明示保存
+6. `patch_rec_gas_round_v1.py` … ガソリン代の丸め（Decimal）
+7. `patch_rec_details_v4.py` … 明細 + 請求内訳
+8. `patch_rec_savecalc_place_v1.py` … 保存直後の内訳に場所名
+9. `patch_rec_gas_warn_v1.py` … 距離未入力の警告
+10. `patch_rec_staff_timecard_v1.py` … 出勤スタッフ自動取込
+11. `patch_rec_round_item_v5.py` … 丸めを費用ごと10円単位に
+12. `patch_rec_rename_v1.py` … 表示名「レク費精算」→「請求額計算」
+
+### 次回の発展タスク
+1. **レシート読み込み**（撮影 → OCR → 明細（品名・単価・個数）に自動入力）
+2. 個別/一律も10円切り上げしている点の運用確認（実費ぴったり請求したい場合は割り勘のみ丸める設計に変更可）
+3. 立替者（どの職員が払ったか）の記録と、職員ごとの立替精算
+4. 請求書・集金リストのPDF/Excel出力
