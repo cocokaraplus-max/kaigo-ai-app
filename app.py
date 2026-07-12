@@ -18429,24 +18429,107 @@ def _soge_assign_balanced(members, geo, vehicles, trip):  # soge-balance-v1
     return groups, overflow
 
 
-def _soge_order_stops(stops, geo, dropoff_first):  # soge-week-v1
+def _soge_km(a, b):  # soge-routeopt-v1
+    """2点間の直線距離(km)。a, b = (lat, lng)"""
+    return _soge_dist_bearing(a[0], a[1], b[0], b[1])[0]
+
+
+def _soge_tsp_path(pts, start, end):  # soge-routeopt-v1
+    """start から出て pts を全部回り end に着く、短い順番を返す。
+
+    立ち寄り先はせいぜい10件前後なので、最近傍法 + 2-opt で十分。
+      最近傍法 … 今いる場所から一番近い人へ、を繰り返してたたき台を作る
+      2-opt   … 途中の区間をひっくり返して短くなるなら採用（交差をほどく）
+
+    pts: [(lat, lng, payload), ...]
+    戻り値: payload を並べ替えたリスト
+    """
+    n = len(pts)
+    if n <= 1:
+        return [p[2] for p in pts]
+
+    xy = [(p[0], p[1]) for p in pts]
+
+    remaining = list(range(n))
+    seq = []
+    cur = start
+    while remaining:
+        i = min(remaining, key=lambda k: _soge_km(cur, xy[k]))
+        seq.append(i)
+        remaining.remove(i)
+        cur = xy[i]
+
+    def cost(order):
+        c = 0.0
+        prev = start
+        for k in order:
+            c += _soge_km(prev, xy[k])
+            prev = xy[k]
+        return c + _soge_km(prev, end)
+
+    best = cost(seq)
+    for _ in range(60):                      # 念のため回数を切る（無限ループ防止）
+        improved = False
+        for i in range(n - 1):
+            for j in range(i + 1, n):
+                cand = seq[:i] + seq[i:j + 1][::-1] + seq[j + 1:]
+                c = cost(cand)
+                if c < best - 1e-9:
+                    seq, best, improved = cand, c, True
+        if not improved:
+            break
+
+    return [pts[k][2] for k in seq]
+
+
+def _soge_order_stops(stops, geo, dropoff_first, fac=None):  # soge-routeopt-v1
     """1台分の立ち寄り順。
-      迎え(pickup)  … 施設から遠い順（遠くから拾って施設に近づく）
-      送り(dropoff) … 施設から近い順（近い人から降ろして遠くへ）"""
+
+    座標がそろっていれば、実際に短く回れる順番を計算する（最近傍 + 2-opt）。
+    座標が無い人が混ざっている便では、今まで通りの距離順にする。
+
+      迎え(pickup)  … 遠くから拾って施設に近づく
+      送り(dropoff) … 近い人から降ろして遠くへ
+    送り→迎えの順序（1単位目を降ろしてから2単位目を迎えに行く）は必ず守る。
+    """
     def dist(s):
         g = geo.get(str(s["patient_id"]))
         return g["dist_km"] if g else 0.0
 
+    def xy(s):
+        g = geo.get(str(s["patient_id"])) or {}
+        if g.get("lat") is None or g.get("lng") is None:
+            return None
+        return (float(g["lat"]), float(g["lng"]), s)
+
     pick = [s for s in stops if s["type"] == "pickup"]
     drop = [s for s in stops if s["type"] == "dropoff"]
-    pick.sort(key=dist, reverse=True)
-    drop.sort(key=dist)
 
-    if not pick or not drop:
+    pick_xy = [xy(s) for s in pick]
+    drop_xy = [xy(s) for s in drop]
+    ok = fac and all(p is not None for p in pick_xy) and all(d is not None for d in drop_xy)
+
+    if not ok:
+        # 従来どおり（施設からの距離順）。座標が無い人がいるときの逃げ道。
+        pick.sort(key=dist, reverse=True)
+        drop.sort(key=dist)
         return drop + pick
-    # 送りで外へ向かい、迎えで戻ってくる。dropoff_first でなくても
-    # 距離の並びとしてはこれが一筆書きになる。
-    return drop + pick
+
+    fac = (float(fac[0]), float(fac[1]))
+
+    if drop and pick:
+        # 送りで外へ出て、そのまま迎えに回って施設へ戻る。
+        # 送りの終点は「一番遠い迎え先」に寄せておくと、乗り継ぎが自然になる。
+        far = max(pick_xy, key=lambda p: _soge_km(fac, (p[0], p[1])))
+        drop_sorted = _soge_tsp_path(drop_xy, fac, (far[0], far[1]))
+        last_s = drop_sorted[-1]
+        lg = geo[str(last_s["patient_id"])]
+        pick_sorted = _soge_tsp_path(pick_xy, (float(lg["lat"]), float(lg["lng"])), fac)
+        return drop_sorted + pick_sorted
+
+    if drop:
+        return _soge_tsp_path(drop_xy, fac, fac)
+    return _soge_tsp_path(pick_xy, fac, fac)
 
 
 def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
@@ -18454,6 +18537,10 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
     settings = settings or get_soge_settings(supabase, f_code)
     geo = soge_geo_map(supabase, f_code)
     targets = _soge_targets(supabase, f_code, weekday)
+
+    # soge-routeopt-v1: 立ち寄り順の最適化に施設の座標が要る（取れなければ従来の距離順）
+    _flat, _flng, _ferr = _soge_facility_latlng(supabase, f_code)
+    settings["_fac"] = (_flat, _flng) if _flat is not None else None
 
     try:
         vr = (supabase.table("rec_cars")
@@ -18749,8 +18836,12 @@ def api_soge_staff():
         supabase = get_supabase()
         r = (supabase.table("staffs").select("staff_name")
              .eq("facility_code", f_code).eq("is_active", True).execute())
+        # soge-driver-filter-v1: 「PC」など人でない共有アカウントは運転手候補に出さない
+        SOGE_NON_DRIVER = {"pc", "PC", "ＰＣ", "共有", "管理者"}
         names = sorted(set((x.get("staff_name") or "").strip()
-                           for x in (r.data or []) if (x.get("staff_name") or "").strip()))
+                           for x in (r.data or [])
+                           if (x.get("staff_name") or "").strip()
+                           and (x.get("staff_name") or "").strip() not in SOGE_NON_DRIVER))
         return jsonify({"status": "success", "staff": names})
     except Exception as e:
         print("api_soge_staff error: %s" % e, flush=True)
@@ -18926,7 +19017,8 @@ def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
             stops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
                           "type": "pickup", "nth": m.get("nth") or 0,
                           "is_wheelchair": m.get("is_wheelchair", False)})
-    return _soge_order_stops(stops, geo, bool(settings.get("mid_dropoff_first", True)))
+    return _soge_order_stops(stops, geo, bool(settings.get("mid_dropoff_first", True)),
+                             settings.get("_fac"))  # soge-routeopt-v1
 
 
 def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1

@@ -4,15 +4,20 @@
 
 {% block extra_style %}
 <style>
-/* soge-week-ui-v1 */
+/* soge-week-ui-v1 / soge-dnd-v1 */
 .sg-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; container-type: inline-size; }
 .sg-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
-.sg-title { font-size:1.15rem; font-weight:800; }
+.sg-title { font-size:1.15rem; font-weight:800; display:flex; align-items:center; gap:8px; }
 .sg-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
   background:#eef2f7; color:#334; }
 .sg-btn-primary { background:#1a73e8; color:#fff; }
 .sg-btn-sm { padding:5px 10px; font-size:0.78rem; }
 .sg-btn:disabled { opacity:0.5; cursor:default; }
+
+/* 未保存バッジ（上の説明文の代わり。場所を取らない） */
+.sg-chip { font-size:0.68rem; font-weight:800; border-radius:999px; padding:3px 8px; white-space:nowrap; }
+.sg-chip.unsaved { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
+.sg-chip.saved   { background:#e6f4ea; color:#137333; border:1px solid #ceead6; }
 
 /* 曜日タブ */
 .sg-days { display:flex; gap:6px; margin-bottom:12px; }
@@ -20,14 +25,9 @@
   background:#fff; color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; }
 .sg-day.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
 
-.sg-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
-.sg-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px;
-  padding:10px; font-size:0.8rem; line-height:1.6; margin-bottom:12px; }
-.sg-info { font-size:0.78rem; color:#6b7280; line-height:1.6; margin-bottom:10px; }
-
 /* 便 */
 .sg-trip-head { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1rem;
-  padding:8px 0 8px 10px; border-left:4px solid #1a73e8; margin:16px 0 10px; }
+  padding:8px 0 8px 10px; border-left:4px solid #1a73e8; margin:14px 0 10px; }
 .sg-trip-time { font-size:0.8rem; color:#6b7280; font-weight:600; }
 
 /* 車 */
@@ -40,11 +40,21 @@
 .sg-car-meta { flex:1; text-align:right; font-size:0.75rem; color:#5f6368; font-weight:600; }
 .sg-min { font-weight:800; }
 .sg-min.over { color:#c5221f; }
+.sg-min.stale { color:#9aa0a6; }
+.sg-seats.over { color:#c5221f; font-weight:800; }
 
-.sg-stops { padding:8px 12px 12px; }
-.sg-stop { display:flex; align-items:center; gap:8px; padding:8px 6px; border-bottom:1px solid #eef1f5; }
-.sg-stop:last-child { border-bottom:none; }
-.sg-seq { width:22px; text-align:center; font-weight:800; color:#9aa0a6; font-size:0.8rem; flex:0 0 auto; }
+.sg-stops { padding:8px 10px 12px; min-height:44px; }
+.sg-stops.drop-on { background:#eef6ff; box-shadow: inset 0 0 0 2px #1a73e8; border-radius:8px; }
+
+/* 立ち寄り＝付箋 */
+.sg-stop { display:flex; align-items:center; gap:8px; padding:9px 8px; margin-bottom:6px;
+  background:#fff; border:1px solid #e3e8ef; border-radius:10px;
+  box-shadow:0 1px 2px rgba(16,24,40,.05); }
+.sg-stop:last-child { margin-bottom:0; }
+.sg-grip { flex:0 0 auto; width:26px; height:30px; display:flex; align-items:center; justify-content:center;
+  color:#b0b6bf; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; font-size:1rem; }
+.sg-grip:active { cursor:grabbing; }
+.sg-seq { width:18px; text-align:center; font-weight:800; color:#9aa0a6; font-size:0.8rem; flex:0 0 auto; }
 .sg-type { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px; white-space:nowrap; flex:0 0 auto; }
 .sg-type.pickup  { background:#E6F1FB; color:#185FA5; }
 .sg-type.dropoff { background:#EAF3DE; color:#3B6D11; }
@@ -53,12 +63,20 @@
 .sg-tag.wc  { background:#f3e8ff; color:#6b21a8; }
 .sg-tag.nth { background:#f3f0ff; color:#5b2ea6; }
 .sg-plan { font-size:0.78rem; color:#5f6368; font-variant-numeric:tabular-nums; flex:0 0 auto; }
-.sg-move { display:flex; gap:2px; flex:0 0 auto; }
-.sg-move button { border:1px solid #dadce0; background:#fff; border-radius:6px; width:26px; height:26px;
-  cursor:pointer; color:#5f6368; font-size:0.8rem; line-height:1; padding:0; }
-.sg-move button:disabled { opacity:0.3; cursor:default; }
 
-.sg-empty { color:#9aa3b2; font-size:0.85rem; padding:12px 6px; }
+.sg-stop.dragging { display:none; }
+.sg-ghost { position:fixed; z-index:9998; pointer-events:none; margin:0;
+  box-shadow:0 10px 24px rgba(16,24,40,.22); transform:rotate(-1.2deg); opacity:.97; }
+.sg-ph { height:44px; border:2px dashed #1a73e8; border-radius:10px; background:#eef6ff; margin-bottom:6px; }
+
+.sg-empty { color:#9aa3b2; font-size:0.85rem; padding:10px 6px; }
+
+/* 案内・警告はいちばん下（上に置くと表が押し下げられて邪魔になる） */
+.sg-foot { margin-top:18px; }
+.sg-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px;
+  padding:10px; font-size:0.8rem; line-height:1.6; margin-bottom:8px; }
+.sg-info { font-size:0.75rem; color:#8a93a0; line-height:1.6; }
+
 .sg-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; max-width:min(90vw,420px);
@@ -73,7 +91,7 @@
   <div id="sgToast" class="sg-toast"></div>
 
   <div class="sg-head">
-    <div class="sg-title">送迎表</div>
+    <div class="sg-title">送迎表 <span id="sgState"></span></div>
     <div style="display:flex;gap:8px;">
       <button class="sg-btn" id="sgAuto" onclick="sgAutoBuild()">自動で組み直す</button>
       <button class="sg-btn sg-btn-primary" id="sgSave" onclick="sgSave()">保存</button>
@@ -82,18 +100,18 @@
 
   <div class="sg-days" id="sgDays"></div>
 
-  <div class="sg-card">
-    <div class="sg-info" id="sgInfo">読み込み中…</div>
-    <div id="sgWarnings"></div>
-  </div>
-
   <div id="sgTrips"></div>
+
+  <div class="sg-foot">
+    <div id="sgWarnings"></div>
+    <div class="sg-info" id="sgInfo">読み込み中…</div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_script %}
 <script>
-// ===== soge-week-ui-v1 =====
+// ===== soge-week-ui-v1 / soge-dnd-v1 =====
 (function () {
   var WD = [
     { n: 1, label: '月' }, { n: 2, label: '火' }, { n: 3, label: '水' },
@@ -160,18 +178,21 @@
     }
   };
 
+  // 車1台の席の使用数。中間便は「送りの人を降ろしてから迎えに行く」ので、
+  // 車内にいる人数のピークは max(送りの人数, 迎えの人数)。
+  function seatsUsed(v) {
+    var dp = 0, pk = 0;
+    (v.stops || []).forEach(function (s) { if (s.type === 'dropoff') dp++; else pk++; });
+    return Math.max(dp, pk);
+  }
+
   // ---------- 描画 ----------
   function render() {
     var d = state.data;
-    var saved = d.saved
-      ? '保存済みの送迎表です。直した順番は次週にも引き継がれます。'
-      : 'まだ保存されていません（自動生成した案）。確認して保存してください。';
-    $('sgInfo').innerHTML = esc(saved) +
-      '<br>対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
-      (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '');
 
-    $('sgWarnings').innerHTML = (d.warnings || []).length
-      ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+    $('sgState').innerHTML = state.dirty || !d.saved
+      ? '<span class="sg-chip unsaved">未保存</span>'
+      : '<span class="sg-chip saved">保存済</span>';
 
     $('sgTrips').innerHTML = (d.trips || []).map(function (t, ti) {
       var cars = (t.vehicles || []).map(function (v, vi) { return carHtml(t, ti, v, vi); }).join('');
@@ -179,6 +200,13 @@
       return '<div class="sg-trip-head">' + esc(t.trip_name) +
           '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars;
     }).join('');
+
+    $('sgWarnings').innerHTML = (d.warnings || []).length
+      ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+    $('sgInfo').innerHTML =
+      '対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
+      (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '') +
+      '<br>名前の左の⠿をつまむと、順番の入れ替えも、車から車への移動もできます。直した内容は保存すると次週に引き継がれます。';
 
     bind();
   }
@@ -191,13 +219,19 @@
       return '<option value="' + esc(n) + '"' + (n === v.driver_name ? ' selected' : '') + '>' + esc(n) + '</option>';
     }).join('');
 
-    var mins = (v.minutes != null)
-      ? '<span class="sg-min' + (v.over_target ? ' over' : '') + '">' + v.minutes + '分</span>' +
-        (v.distance_km ? ' / ' + v.distance_km + 'km' : '')
-      : '';
+    var mins = (v.stale)
+      ? '<span class="sg-min stale">保存すると再計算</span>'
+      : ((v.minutes != null)
+          ? '<span class="sg-min' + (v.over_target ? ' over' : '') + '">' + v.minutes + '分</span>' +
+            (v.distance_km ? ' / ' + v.distance_km + 'km' : '')
+          : '');
+
+    var used = seatsUsed(v);
+    var seatsOver = (v.seats != null && used > v.seats);
 
     var stops = (v.stops || []).map(function (s, si) {
-      return '<div class="sg-stop">' +
+      return '<div class="sg-stop" data-key="' + ti + '_' + vi + '_' + si + '">' +
+        '<span class="sg-grip" data-grip="' + ti + '_' + vi + '_' + si + '">⠿</span>' +
         '<span class="sg-seq">' + (si + 1) + '</span>' +
         '<span class="sg-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
         '<span class="sg-name">' + esc(s.user_name) +
@@ -205,10 +239,6 @@
           (s.nth ? '<span class="sg-tag nth">第' + s.nth + '</span>' : '') +
         '</span>' +
         '<span class="sg-plan">' + (s.planned_at || '') + '</span>' +
-        '<span class="sg-move">' +
-          '<button data-up="' + ti + '_' + vi + '_' + si + '"' + (si === 0 ? ' disabled' : '') + '>↑</button>' +
-          '<button data-dn="' + ti + '_' + vi + '_' + si + '"' + (si === v.stops.length - 1 ? ' disabled' : '') + '>↓</button>' +
-        '</span>' +
       '</div>';
     }).join('');
 
@@ -218,10 +248,12 @@
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
         '<span class="sg-car-meta">' + mins +
-          ' ／ 席 ' + (v.seats_used || 0) + '/' + (v.seats || '-') +
+          ' ／ <span class="sg-seats' + (seatsOver ? ' over' : '') + '">席 ' + used + '/' + (v.seats || '-') + '</span>' +
         '</span>' +
       '</div>' +
-      '<div class="sg-stops">' + (stops || '<div class="sg-empty">立ち寄りなし</div>') + '</div>' +
+      '<div class="sg-stops" data-drop="' + ti + '_' + vi + '">' +
+        (stops || '<div class="sg-empty">ここに付箋を置けます</div>') +
+      '</div>' +
     '</div>';
   }
 
@@ -244,25 +276,132 @@
         var a = el.dataset.drv.split('_');
         state.data.trips[a[0]].vehicles[a[1]].driver_name = el.value;
         state.dirty = true;
+        render();
       };
     });
-    root.querySelectorAll('[data-up]').forEach(function (el) {
-      el.onclick = function () { move(el.dataset.up, -1); };
-    });
-    root.querySelectorAll('[data-dn]').forEach(function (el) {
-      el.onclick = function () { move(el.dataset.dn, 1); };
+    root.querySelectorAll('[data-grip]').forEach(function (el) {
+      el.addEventListener('pointerdown', gripDown);
     });
   }
 
-  // 周り順の入れ替え（職員が直した順が次週の初期値になる）
-  function move(key, delta) {
-    var a = key.split('_');
-    var stops = state.data.trips[a[0]].vehicles[a[1]].stops;
-    var i = Number(a[2]), j = i + delta;
-    if (j < 0 || j >= stops.length) return;
-    var tmp = stops[i]; stops[i] = stops[j]; stops[j] = tmp;
-    // 順番を変えたら到着予定時刻は当てにならないので消す（保存後に再計算される）
-    stops.forEach(function (s) { s.planned_at = null; });
+  // ---------- 付箋のドラッグ ----------
+  // 同じ車の中の順番入れ替えと、車から車への移動の両方。
+  // 便（迎え便・中間便・送り便）をまたぐ移動はしない。
+  var drag = null;
+  var ph = null;
+
+  function gripDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    var row = e.currentTarget.closest('.sg-stop');
+    if (!row) return;
+    var a = e.currentTarget.dataset.grip.split('_').map(Number);
+
+    var rect = row.getBoundingClientRect();
+    var ghost = row.cloneNode(true);
+    ghost.classList.add('sg-ghost');
+    ghost.classList.remove('dragging');
+    ghost.style.width = rect.width + 'px';
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    document.body.appendChild(ghost);
+
+    ph = document.createElement('div');
+    ph.className = 'sg-ph';
+    row.parentNode.insertBefore(ph, row.nextSibling);
+    row.classList.add('dragging');
+
+    drag = {
+      ti: a[0], vi: a[1], si: a[2], row: row, ghost: ghost,
+      dx: e.clientX - rect.left, dy: e.clientY - rect.top,
+      handle: e.currentTarget, pid: e.pointerId
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_e) {}
+    e.preventDefault();
+
+    e.currentTarget.addEventListener('pointermove', gripMove);
+    e.currentTarget.addEventListener('pointerup', gripUp);
+    e.currentTarget.addEventListener('pointercancel', gripUp);
+  }
+
+  function gripMove(e) {
+    if (!drag) return;
+    drag.ghost.style.left = (e.clientX - drag.dx) + 'px';
+    drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
+
+    drag.ghost.style.display = 'none';
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    drag.ghost.style.display = '';
+    if (!el || !el.closest) return;
+
+    var box = el.closest('.sg-stops');
+    if (!box) return;
+    var key = box.dataset.drop.split('_').map(Number);
+    if (key[0] !== drag.ti) return;      // 別の便には移せない
+
+    document.querySelectorAll('.sg-stops.drop-on').forEach(function (x) { x.classList.remove('drop-on'); });
+    box.classList.add('drop-on');
+
+    var rows = Array.prototype.slice.call(box.querySelectorAll('.sg-stop'))
+      .filter(function (r) { return r !== drag.row; });
+    var before = null;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) { before = rows[i]; break; }
+    }
+    if (before) box.insertBefore(ph, before);
+    else box.appendChild(ph);
+  }
+
+  function gripUp(e) {
+    if (!drag) return;
+    var h = drag.handle;
+    h.removeEventListener('pointermove', gripMove);
+    h.removeEventListener('pointerup', gripUp);
+    h.removeEventListener('pointercancel', gripUp);
+    try { h.releasePointerCapture(drag.pid); } catch (_e) {}
+
+    var box = ph.parentNode && ph.parentNode.classList.contains('sg-stops') ? ph.parentNode : null;
+    var dstKey = box ? box.dataset.drop.split('_').map(Number) : null;
+
+    // 置いた位置＝手前にある付箋の数（ドラッグ中の付箋は数えない）
+    var idx = 0;
+    if (box) {
+      var n = ph.previousElementSibling;
+      while (n) {
+        if (n.classList.contains('sg-stop') && n !== drag.row) idx++;
+        n = n.previousElementSibling;
+      }
+    }
+
+    drag.ghost.remove();
+    if (ph.parentNode) ph.parentNode.removeChild(ph);
+    drag.row.classList.remove('dragging');
+    document.querySelectorAll('.sg-stops.drop-on').forEach(function (x) { x.classList.remove('drop-on'); });
+
+    var d = drag;
+    drag = null; ph = null;
+
+    if (!dstKey || dstKey[0] !== d.ti) { render(); return; }
+
+    var trip = state.data.trips[d.ti];
+    var src = trip.vehicles[d.vi];
+    var dst = trip.vehicles[dstKey[1]];
+    var item = src.stops.splice(d.si, 1)[0];
+    if (!item) { render(); return; }
+    dst.stops.splice(idx, 0, item);
+
+    // 順番も乗る車も変わったら、到着予定時刻と所要時間は当てにならない。
+    // 保存すると Google の経路で再計算される。
+    [src, dst].forEach(function (v) {
+      (v.stops || []).forEach(function (s) { s.planned_at = null; });
+      v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
+      v.seats_used = seatsUsed(v);
+    });
+
+    if (dst.seats != null && seatsUsed(dst) > dst.seats) {
+      toast('席数を超えています（席 ' + seatsUsed(dst) + '/' + dst.seats + '）', 'err');
+    }
+
     state.dirty = true;
     render();
   }
