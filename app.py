@@ -16438,6 +16438,16 @@ def _rec_apply_cars(cars, expenses):  # rec-expense-api-v2
                 "fuel_price_per_l": car.get("fuel_price_per_l"),
             }
             e["car_meta"] = meta
+
+            # rec-expense-gaswarn-v1: 0円のまま黙って通さない。理由を出す。
+            if e["amount"] == 0:
+                cname = (car.get("name") or "車")
+                if _rec_num(car.get("distance_km"), 0.0) <= 0:
+                    warnings.append(
+                        "「%s」の走行距離が未入力のため、ガソリン代が0円です"
+                        "（立ち寄り先を入れて「距離を計算」を押すか、走行距離を直接入力してください）" % cname)
+                elif _rec_num(car.get("fuel_km_per_l"), 0.0) <= 0:
+                    warnings.append("「%s」の燃費が未入力のため、ガソリン代が0円です" % cname)
     return warnings
 
 
