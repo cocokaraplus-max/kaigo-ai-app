@@ -1003,6 +1003,21 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           <input type="number" id="veh-cap" class="form-control" placeholder="定員（人）">
         </div>
       </div>
+      <!-- soge-seats-ui-v1 -->
+      <div style="font-size:0.72rem;color:#5f6368;margin:2px 0 6px;">
+        送迎の座席数は「運転手を除いて何人乗せられるか」。定員とは別に登録します。
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <input type="number" id="veh-seats" class="form-control" placeholder="送迎の座席数">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <input type="number" id="veh-wcseats" class="form-control" placeholder="車いす1台=何席">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <input type="number" id="veh-wcmax" class="form-control" placeholder="車いす最大台数">
+        </div>
+      </div>
       <button class="btn btn-primary" onclick="createVehicle()">
         <span class="material-symbols-outlined">add</span>車両を追加
       </button>
@@ -1855,9 +1870,14 @@ async function loadVehicles() {
       '<div class="form-group" style="margin-bottom:6px;">' +
         '<input type="text" class="form-control" value="' + escHtml(v.plate_no) + '" data-vp="' + i + '" placeholder="ナンバー">' +
       '</div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+      '<div style="display:flex;gap:8px;margin-bottom:6px;">' +
         '<input type="number" step="0.1" class="form-control" style="flex:1;" value="' + (v.fuel_km_per_l || '') + '" data-vf="' + i + '" placeholder="燃費 km/L">' +
         '<input type="number" class="form-control" style="flex:1;" value="' + (v.capacity || '') + '" data-vc="' + i + '" placeholder="定員">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+        '<input type="number" class="form-control" style="flex:1;" value="' + (v.soge_seats || '') + '" data-vs="' + i + '" placeholder="送迎の座席数" title="運転手を除いて何人乗せられるか">' +
+        '<input type="number" class="form-control" style="flex:1;" value="' + (v.wheelchair_seats == null ? '' : v.wheelchair_seats) + '" data-vws="' + i + '" placeholder="車いす1台=何席">' +
+        '<input type="number" class="form-control" style="flex:1;" value="' + (v.wheelchair_max == null ? '' : v.wheelchair_max) + '" data-vwm="' + i + '" placeholder="車いす最大台数">' +
       '</div>' +
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn btn-primary" style="flex:1;" data-vsave="' + i + '">保存</button>' +
@@ -1878,11 +1898,15 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = (
 
 function vehicleFormFrom(i) {
   const box = document.getElementById('vehicles-list');
+  const val = (k) => { const el = box.querySelector('[data-' + k + '="' + i + '"]'); return el ? el.value : ''; };
   return {
-    name: box.querySelector('[data-vn="' + i + '"]').value,
-    plate_no: box.querySelector('[data-vp="' + i + '"]').value,
-    fuel_km_per_l: box.querySelector('[data-vf="' + i + '"]').value,
-    capacity: box.querySelector('[data-vc="' + i + '"]').value
+    name: val('vn'),
+    plate_no: val('vp'),
+    fuel_km_per_l: val('vf'),
+    capacity: val('vc'),
+    soge_seats: val('vs'),          // soge-seats-ui-v1
+    wheelchair_seats: val('vws'),
+    wheelchair_max: val('vwm')
   };
 }
 
@@ -1916,13 +1940,17 @@ async function createVehicle() {
       name: name,
       plate_no: document.getElementById('veh-plate').value,
       fuel_km_per_l: document.getElementById('veh-fuel').value,
-      capacity: document.getElementById('veh-cap').value
+      capacity: document.getElementById('veh-cap').value,
+      soge_seats: document.getElementById('veh-seats').value,          // soge-seats-ui-v1
+      wheelchair_seats: document.getElementById('veh-wcseats').value,
+      wheelchair_max: document.getElementById('veh-wcmax').value
     })
   });
   const j = await r.json();
   if (j.status !== 'success') { alert(j.message); return; }
-  ['veh-name', 'veh-plate', 'veh-fuel', 'veh-cap'].forEach(function (id) {
-    document.getElementById(id).value = '';
+  ['veh-name', 'veh-plate', 'veh-fuel', 'veh-cap',
+   'veh-seats', 'veh-wcseats', 'veh-wcmax'].forEach(function (id) {
+    const el = document.getElementById(id); if (el) el.value = '';
   });
   await loadVehicles();
 }

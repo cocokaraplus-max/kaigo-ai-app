@@ -17206,13 +17206,20 @@ def api_rec_staff():
 # 参照は全職員、更新は管理者のみ。削除は is_active=False の論理削除（過去の記録を壊さない）。
 
 
-def _vehicle_out(c):  # vehicles-admin-v1
+def _vehicle_out(c):  # soge-seats-ui-v1
+    def _i(k):
+        v = c.get(k)
+        return int(v) if v is not None else None
     return {
         "id": c["id"],
         "name": c.get("name") or "",
         "plate_no": c.get("plate_no") or "",
         "fuel_km_per_l": float(c["fuel_km_per_l"]) if c.get("fuel_km_per_l") is not None else None,
-        "capacity": int(c["capacity"]) if c.get("capacity") is not None else None,
+        "capacity": _i("capacity"),
+        # 送迎で実際に乗せられる席数（運転手を除く）。定員とは別物。
+        "soge_seats": _i("soge_seats"),
+        "wheelchair_seats": _i("wheelchair_seats"),
+        "wheelchair_max": _i("wheelchair_max"),
         "note": c.get("note") or "",
         "sort_order": c.get("sort_order") or 0,
     }
@@ -17263,6 +17270,22 @@ def _vehicle_payload(data):  # vehicles-admin-v1
         if cap < 0:
             return None, "定員が不正です"
         payload["capacity"] = cap or None
+
+    # soge-seats-ui-v1: 送迎の席数・車いす対応
+    for key, label in (("soge_seats", "送迎の座席数"),
+                       ("wheelchair_seats", "車いす1台が使う席数"),
+                       ("wheelchair_max", "車いすの最大台数")):
+        v = data.get(key)
+        if v in (None, ""):
+            payload[key] = None
+            continue
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return None, "%sは整数で入力してください" % label
+        if v < 0:
+            return None, "%sが不正です" % label
+        payload[key] = v
 
     try:
         payload["sort_order"] = int(data.get("sort_order") or 0)
@@ -18096,6 +18119,499 @@ def api_soge_geocode_status():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ===== /soge-geocode-v1 =====
+
+
+
+# ===== soge-seats-ui-v1 : 車いすフラグ =====
+
+@app.route("/api/patient/wheelchair", methods=["POST"])  # soge-seats-ui-v1
+@login_required
+def api_patient_wheelchair():
+    """送迎で車いすを使うかどうか。送迎の車両割当（席数計算）に効く。
+    body: {patient_id(uuid), is_wheelchair: bool}"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+        pid = (data.get("patient_id") or "").strip()
+        if not pid:
+            return jsonify({"status": "error", "message": "patient_id必須"}), 400
+        val = bool(data.get("is_wheelchair"))
+        r = (supabase.table("patient_profiles").update({"is_wheelchair": val})
+             .eq("id", pid).eq("facility_code", f_code).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({"status": "success", "is_wheelchair": val})
+    except Exception as e:
+        print("api_patient_wheelchair error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /soge-seats-ui-v1 =====
+
+
+
+# ===== soge-week-v1 : 週次の送迎表（曜日別テンプレート） =====
+
+SOGE_DEFAULT_SEATS = 7          # soge_seats 未登録の車で使う既定値
+SOGE_DEFAULT_WC_SEATS = 2       # 車いす1台が使う席数の既定値
+
+
+def _soge_vehicle_spec(v):  # soge-week-v1
+    """車1台の席数仕様。定員(capacity)ではなく送迎の席数を使う。"""
+    seats = v.get("soge_seats")
+    if not seats:
+        cap = v.get("capacity")
+        # 定員しか無い場合は運転手の1席を引く
+        seats = (int(cap) - 1) if cap else SOGE_DEFAULT_SEATS
+    wc_seats = v.get("wheelchair_seats")
+    wc_seats = int(wc_seats) if wc_seats else SOGE_DEFAULT_WC_SEATS
+    wc_max = v.get("wheelchair_max")
+    wc_max = int(wc_max) if wc_max is not None else 0
+    return {"seats": max(1, int(seats)), "wc_seats": max(1, wc_seats), "wc_max": max(0, wc_max)}
+
+
+def _soge_seats_needed(people, spec):  # soge-week-v1
+    """その人たちを乗せるのに要る席数。"""
+    n_wc = sum(1 for m in people if m.get("is_wheelchair"))
+    n_walk = len(people) - n_wc
+    return n_walk + n_wc * spec["wc_seats"], n_wc
+
+
+def _soge_fits(people, spec):  # soge-week-v1
+    need, n_wc = _soge_seats_needed(people, spec)
+    return need <= spec["seats"] and n_wc <= spec["wc_max"]
+
+
+def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
+    """その曜日に来る利用者。
+    [{patient_id, user_name, unit(1|2), nth(0=毎週/1..5), is_wheelchair}]"""
+    plist = get_patients(supabase, f_code)
+    by_int = {}
+    for p in plist:
+        if p.get("patient_int_id"):
+            by_int[str(p["patient_int_id"])] = p
+
+    # 車いすフラグ（get_patients は返さないので直接引く）
+    wc = {}
+    try:
+        wr = (supabase.table("patient_profiles").select("id,is_wheelchair")
+              .eq("facility_code", f_code).execute())
+        for r in (wr.data or []):
+            wc[str(r["id"])] = bool(r.get("is_wheelchair"))
+    except Exception as e:
+        print("soge wheelchair fetch error: %s" % e, flush=True)
+
+    try:
+        r = (supabase.table("patient_visit_days")
+             .select("patient_id,weekdays,ampm_per_day,nth_per_day")
+             .eq("facility_code", f_code).execute())
+        rows = r.data or []
+    except Exception as e:
+        print("soge targets error: %s" % e, flush=True)
+        return []
+
+    wd = str(weekday)
+    out = []
+    for row in rows:
+        p = by_int.get(str(row.get("patient_id")))
+        if not p or p.get("is_discontinued"):
+            continue
+        apd = row.get("ampm_per_day")
+        apd = apd if isinstance(apd, dict) else {}
+        state = apd.get(wd)
+        if not state:
+            if wd not in (row.get("weekdays") or ""):
+                continue
+            state = "ALL"
+        if state == "NONE":
+            continue
+
+        pid = str(p["id"])
+        out.append({
+            "patient_id": pid,
+            "user_name": p.get("user_name") or "",
+            "user_kana": p.get("user_kana") or "",
+            "unit": 2 if state == "PM" else 1,
+            "nth": int(_visit_norm_nth(row.get("nth_per_day")).get(wd) or 0),
+            "is_wheelchair": wc.get(pid, False),
+        })
+    return out
+
+
+def _soge_bearing_order(members, geo):  # soge-week-v1
+    """方位角で並べ、円環のいちばん空いているところを切れ目にする。
+    座標が無い人は末尾。"""
+    known = [m for m in members if str(m["patient_id"]) in geo]
+    unknown = [m for m in members if str(m["patient_id"]) not in geo]
+    if not known:
+        return [], unknown
+
+    known.sort(key=lambda m: geo[str(m["patient_id"])]["bearing"])
+    n = len(known)
+    if n == 1:
+        return known, unknown
+
+    gaps = []
+    for i in range(n):
+        a = geo[str(known[i]["patient_id"])]["bearing"]
+        b = geo[str(known[(i + 1) % n]["patient_id"])]["bearing"]
+        gaps.append(((b - a) % 360.0, i))
+    _, cut = max(gaps)
+    return known[cut + 1:] + known[:cut + 1], unknown
+
+
+def _soge_assign(members, geo, vehicles):  # soge-week-v1
+    """方面順に並べた人を、席数を守りながら車へ順に詰める。
+
+    方位角順に並べてから前から詰めるので、同じ方面の人が自然と同じ車になる。
+    席が余っていれば1台で回す（無駄に車を増やさない）。
+    車いすは wheelchair_max を超えられないので、その場合だけ次の車へ送る。
+
+    戻り値: (groups, overflow)  overflow = どの車にも乗らなかった人
+    """
+    specs = [_soge_vehicle_spec(v) for v in vehicles]
+    if not specs:
+        specs = [{"seats": SOGE_DEFAULT_SEATS, "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}]
+
+    ordered, unknown = _soge_bearing_order(members, geo)
+    queue = ordered + unknown
+
+    groups = [[] for _ in specs]
+    overflow = []
+
+    cur = 0
+    for m in queue:
+        placed = False
+        # 今の車から後ろの車へ順に試す（前の車には戻らない＝方面の連続性を保つ）
+        for idx in range(cur, len(specs)):
+            if _soge_fits(groups[idx] + [m], specs[idx]):
+                groups[idx].append(m)
+                cur = idx
+                placed = True
+                break
+        if placed:
+            continue
+        # 車いすが上限で今の車に乗れないだけ、というケースを救う
+        for idx in range(0, cur):
+            if _soge_fits(groups[idx] + [m], specs[idx]):
+                groups[idx].append(m)
+                placed = True
+                break
+        if not placed:
+            overflow.append(m)
+    return groups, overflow
+
+
+def _soge_order_stops(stops, geo, dropoff_first):  # soge-week-v1
+    """1台分の立ち寄り順。
+      迎え(pickup)  … 施設から遠い順（遠くから拾って施設に近づく）
+      送り(dropoff) … 施設から近い順（近い人から降ろして遠くへ）"""
+    def dist(s):
+        g = geo.get(str(s["patient_id"]))
+        return g["dist_km"] if g else 0.0
+
+    pick = [s for s in stops if s["type"] == "pickup"]
+    drop = [s for s in stops if s["type"] == "dropoff"]
+    pick.sort(key=dist, reverse=True)
+    drop.sort(key=dist)
+
+    if not pick or not drop:
+        return drop + pick
+    # 送りで外へ向かい、迎えで戻ってくる。dropoff_first でなくても
+    # 距離の並びとしてはこれが一筆書きになる。
+    return drop + pick
+
+
+def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
+    """その曜日の送迎表を自動生成する（保存はしない）。"""
+    settings = settings or get_soge_settings(supabase, f_code)
+    geo = soge_geo_map(supabase, f_code)
+    targets = _soge_targets(supabase, f_code, weekday)
+
+    try:
+        vr = (supabase.table("rec_cars")
+              .select("id,name,plate_no,capacity,soge_seats,wheelchair_seats,wheelchair_max")
+              .eq("facility_code", f_code).eq("is_active", True)
+              .order("sort_order").execute())
+        vehicles = vr.data or []
+    except Exception:
+        vehicles = []
+
+    by_id = dict((str(t["patient_id"]), t) for t in targets)
+    trips_out = []
+    warnings = []
+
+    for trip in settings["trips"]:
+        pu = set(trip.get("pickup_units") or [])
+        du = set(trip.get("dropoff_units") or [])
+
+        people = [t for t in targets if t["unit"] in pu or t["unit"] in du]
+        if not people:
+            trips_out.append({"trip_key": trip["key"], "trip_name": trip["name"],
+                              "depart": trip.get("depart") or "", "vehicles": []})
+            continue
+
+        groups, overflow = _soge_assign(people, geo, vehicles)
+        if overflow:
+            warnings.append("%s: %d名が席に収まりません（%s）。車両の席数を確認してください。"
+                            % (trip["name"], len(overflow),
+                               "・".join(m["user_name"] for m in overflow[:5])))
+
+        mid_first = bool(settings.get("mid_dropoff_first", True))
+        cars_out = []
+        for i, grp in enumerate(groups):
+            if not grp:
+                continue
+            v = vehicles[i] if i < len(vehicles) else {}
+            spec = _soge_vehicle_spec(v) if v else {"seats": SOGE_DEFAULT_SEATS,
+                                                    "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
+            gstops = []
+            for m in grp:
+                if m["unit"] in du:
+                    gstops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
+                                   "type": "dropoff", "nth": m["nth"], "is_wheelchair": m["is_wheelchair"]})
+                if m["unit"] in pu:
+                    gstops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
+                                   "type": "pickup", "nth": m["nth"], "is_wheelchair": m["is_wheelchair"]})
+            gstops = _soge_order_stops(gstops, geo, mid_first)
+            used, n_wc = _soge_seats_needed(grp, spec)
+
+            cars_out.append({
+                "vehicle_no": i + 1,
+                "vehicle_id": (str(v["id"]) if v else None),
+                "vehicle_name": (v.get("name") if v else ""),
+                "plate_no": (v.get("plate_no") if v else ""),
+                "seats": spec["seats"],
+                "seats_used": used,
+                "wheelchair_count": n_wc,
+                "wheelchair_max": spec["wc_max"],
+                "driver_name": "",
+                "stops": [{
+                    "patient_id": s["patient_id"], "user_name": s["user_name"],
+                    "type": s["type"], "nth": s.get("nth") or 0,
+                    "is_wheelchair": bool(s.get("is_wheelchair")),
+                    "dist_km": round((geo.get(str(s["patient_id"])) or {}).get("dist_km", 0.0), 2),
+                    "no_geo": str(s["patient_id"]) not in geo,
+                } for s in gstops],
+            })
+
+        trips_out.append({
+            "trip_key": trip["key"], "trip_name": trip["name"],
+            "depart": trip.get("depart") or "",
+            "vehicles": cars_out,
+        })
+
+    no_geo = [t["user_name"] for t in targets if str(t["patient_id"]) not in geo]
+    if no_geo:
+        warnings.append("座標が無い利用者が %d名います（住所の登録・変換を確認してください）。" % len(no_geo))
+
+    return {
+        "weekday": weekday,
+        "unit_count": settings["unit_count"],
+        "trips": trips_out,
+        "target_count": len(targets),
+        "wheelchair_count": sum(1 for t in targets if t["is_wheelchair"]),
+        "warnings": warnings,
+    }
+
+
+def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
+    """保存済み（soge_routes）を画面用に組み立てる。無ければ None。"""
+    try:
+        r = (supabase.table("soge_routes").select("*")
+             .eq("facility_code", f_code).eq("weekday", weekday).execute())
+        rows = r.data or []
+    except Exception as e:
+        print("soge saved week error: %s" % e, flush=True)
+        return None
+    if not rows:
+        return None
+
+    geo = soge_geo_map(supabase, f_code)
+    plist = get_patients(supabase, f_code)
+    pmap = dict((str(p["id"]), p) for p in plist)
+
+    wc = {}
+    try:
+        wr = (supabase.table("patient_profiles").select("id,is_wheelchair")
+              .eq("facility_code", f_code).execute())
+        for x in (wr.data or []):
+            wc[str(x["id"])] = bool(x.get("is_wheelchair"))
+    except Exception:
+        pass
+
+    try:
+        vr = (supabase.table("rec_cars")
+              .select("id,name,plate_no,capacity,soge_seats,wheelchair_seats,wheelchair_max")
+              .eq("facility_code", f_code).execute())
+        vmap = dict((str(v["id"]), v) for v in (vr.data or []))
+    except Exception:
+        vmap = {}
+
+    by_trip = {}
+    for row in rows:
+        by_trip.setdefault(row.get("trip_key"), []).append(row)
+
+    trips_out = []
+    for trip in settings["trips"]:
+        cars = sorted(by_trip.get(trip["key"], []), key=lambda x: x.get("vehicle_no") or 1)
+        cars_out = []
+        for c in cars:
+            v = vmap.get(str(c.get("vehicle_id"))) or {}
+            spec = _soge_vehicle_spec(v) if v else {"seats": SOGE_DEFAULT_SEATS,
+                                                    "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
+            stops, seen = [], []
+            for s in (c.get("stop_order") or []):
+                pid = str(s.get("patient_id") or "")
+                prof = pmap.get(pid) or {}
+                stops.append({
+                    "patient_id": pid,
+                    "user_name": prof.get("user_name") or "",
+                    "type": s.get("type") or "pickup",
+                    "nth": int(s.get("nth") or 0),
+                    "is_wheelchair": wc.get(pid, False),
+                    "dist_km": round((geo.get(pid) or {}).get("dist_km", 0.0), 2),
+                    "no_geo": pid not in geo,
+                })
+                if pid not in seen:
+                    seen.append(pid)
+            people = [{"is_wheelchair": wc.get(pid, False)} for pid in seen]
+            used, n_wc = _soge_seats_needed(people, spec)
+
+            cars_out.append({
+                "vehicle_no": c.get("vehicle_no") or 1,
+                "vehicle_id": (str(c["vehicle_id"]) if c.get("vehicle_id") else None),
+                "vehicle_name": v.get("name") or "",
+                "plate_no": v.get("plate_no") or "",
+                "seats": spec["seats"],
+                "seats_used": used,
+                "wheelchair_count": n_wc,
+                "wheelchair_max": spec["wc_max"],
+                "driver_name": c.get("driver_name") or "",
+                "stops": stops,
+            })
+        trips_out.append({
+            "trip_key": trip["key"], "trip_name": trip["name"],
+            "depart": trip.get("depart") or "",
+            "vehicles": cars_out,
+        })
+
+    return {"weekday": weekday, "unit_count": settings["unit_count"],
+            "trips": trips_out, "saved": True, "warnings": []}
+
+
+@app.route("/api/soge/week", methods=["GET"])  # soge-week-v1
+@login_required
+def api_soge_week_get():
+    """その曜日の送迎表。保存済みがあればそれを、無ければ自動生成案。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        weekday = int(request.args.get("weekday") or 1)
+        if not (0 <= weekday <= 6):
+            return jsonify({"status": "error", "message": "曜日が不正です"}), 400
+
+        settings = get_soge_settings(supabase, f_code)
+        saved = _soge_saved_week(supabase, f_code, weekday, settings)
+        if saved:
+            saved["status"] = "success"
+            return jsonify(saved)
+
+        out = soge_build_week(supabase, f_code, weekday, settings)
+        out["status"] = "success"
+        out["saved"] = False
+        return jsonify(out)
+    except Exception as e:
+        print("api_soge_week_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/week/auto", methods=["POST"])  # soge-week-v1
+@login_required
+def api_soge_week_auto():
+    """自動生成し直す。保存はしない（画面で確認してから保存）。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        weekday = int((request.json or {}).get("weekday") or 1)
+        if not (0 <= weekday <= 6):
+            return jsonify({"status": "error", "message": "曜日が不正です"}), 400
+        out = soge_build_week(supabase, f_code, weekday)
+        out["status"] = "success"
+        out["saved"] = False
+        return jsonify(out)
+    except Exception as e:
+        print("api_soge_week_auto error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/week", methods=["PUT"])  # soge-week-v1
+@login_required
+def api_soge_week_save():
+    """車両・運転手・周り順を保存（＝次週の初期値。これが学習）。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        data = request.json or {}
+        weekday = int(data.get("weekday"))
+        if not (0 <= weekday <= 6):
+            return jsonify({"status": "error", "message": "曜日が不正です"}), 400
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table("soge_routes").delete() \
+            .eq("facility_code", f_code).eq("weekday", weekday).execute()
+
+        rows = []
+        for trip in (data.get("trips") or []):
+            tkey = (trip.get("trip_key") or "").strip()
+            if not tkey:
+                continue
+            for v in (trip.get("vehicles") or []):
+                stops = []
+                for s in (v.get("stops") or []):
+                    pid = str(s.get("patient_id") or "").strip()
+                    stype = (s.get("type") or "").strip()
+                    if not pid or stype not in ("pickup", "dropoff"):
+                        continue
+                    stops.append({"patient_id": pid, "type": stype, "nth": int(s.get("nth") or 0)})
+                rows.append({
+                    "facility_code": f_code,
+                    "weekday": weekday,
+                    "trip_key": tkey,
+                    "vehicle_no": int(v.get("vehicle_no") or 1),
+                    "vehicle_id": (str(v["vehicle_id"]) if v.get("vehicle_id") else None),
+                    "driver_name": (v.get("driver_name") or "").strip() or None,
+                    "stop_order": stops,
+                    "updated_at": now_iso,
+                    "updated_by": my_name,
+                })
+
+        if rows:
+            supabase.table("soge_routes").insert(rows).execute()
+        return jsonify({"status": "success", "saved": len(rows)})
+    except Exception as e:
+        print("api_soge_week_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/staff", methods=["GET"])  # soge-week-v1
+@login_required
+def api_soge_staff():
+    """運転手の候補（在籍職員）。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        r = (supabase.table("staffs").select("staff_name")
+             .eq("facility_code", f_code).eq("is_active", True).execute())
+        names = sorted(set((x.get("staff_name") or "").strip()
+                           for x in (r.data or []) if (x.get("staff_name") or "").strip()))
+        return jsonify({"status": "success", "staff": names})
+    except Exception as e:
+        print("api_soge_staff error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /soge-week-v1 =====
 
 
 if __name__ == '__main__':
