@@ -5,7 +5,9 @@
 {% block extra_style %}
 <style>
 /* rec-expense-ui-v2 */
-.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
+/* TASUKARU は --page-max-width(既定480px)の固定幅カラム。ビューポート幅ではなく
+   コンテナ幅で切り替える必要があるため @container を使う。既定は1カラム。 */
+.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; container-type: inline-size; }
 .rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .rec-title { font-size:1.15rem; font-weight:800; }
 .rec-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem; }
@@ -42,7 +44,8 @@
 .rec-route { background:#fff; border:1px dashed #d6dbe3; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
 
 .rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
-.rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
+.rec-exp-row { display:grid; gap:8px; align-items:center; }
+.rec-exp-row > button { justify-self:end; }
 .rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
 .rec-excl-title { font-size:0.75rem; color:#6b7280; font-weight:700; margin-bottom:5px; }
 .rec-excl-list { display:flex; flex-wrap:wrap; gap:10px; }
@@ -59,17 +62,26 @@
 .rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
-.rec-edit-grid { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
-@media (max-width: 900px) {
-  .rec-edit-grid { grid-template-columns:1fr; }
-  .rec-exp-row { grid-template-columns:1fr 1fr; }
-  .rec-car-nums { grid-template-columns:1fr 1fr; }
-  .rec-sum { position:static; }
-}
-@media (max-width: 600px) {
-  .rec-list-row { flex-wrap:wrap; gap:4px 10px; }
-  .rec-list-title { flex:1 0 100%; }
-  .rec-grid2 { grid-template-columns:1fr; }
+/* --- 既定(狭い): 1カラム。請求額を上に出して常に見えるようにする --- */
+.rec-edit-grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+.rec-sum-col { order:-1; }
+.rec-sum { position:sticky; top:0; z-index:5; }
+.rec-exp-row { grid-template-columns:1fr; }
+.rec-car-nums { grid-template-columns:1fr 1fr; }
+.rec-grid2 { grid-template-columns:1fr; }
+.rec-list-row { flex-wrap:wrap; gap:4px 10px; }
+.rec-list-title { flex:1 0 100%; }
+
+/* --- 広い(コンテナ860px超): 2カラム。幅ハンドルで広げたとき用 --- */
+@container (min-width: 860px) {
+  .rec-edit-grid { grid-template-columns:1fr 340px; }
+  .rec-sum-col { order:0; }
+  .rec-sum { top:8px; }
+  .rec-exp-row { grid-template-columns:120px 1fr 110px auto; }
+  .rec-car-nums { grid-template-columns:1fr 1fr 1fr; }
+  .rec-grid2 { grid-template-columns:1fr 1fr; }
+  .rec-list-row { flex-wrap:nowrap; gap:12px; }
+  .rec-list-title { flex:1 1 auto; }
 }
 </style>
 {% endblock %}
@@ -183,7 +195,7 @@
       </div>
 
       <!-- 請求額（ライブ更新） -->
-      <div>
+      <div class="rec-sum-col">
         <div class="rec-card rec-sum">
           <div style="font-weight:800;margin-bottom:8px;">請求額</div>
           <table>
