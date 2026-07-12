@@ -1136,8 +1136,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 
       var head = '<thead><tr><th class="mx-name">利用者</th>' +
         cols.map(function (col) {
-          var sub = col.kind === 'roundup' ? '繰上げ'
-            : col.kind_label + (col.kind === 'split' ? ' / 総額 ' + yen(col.expense_amount) : '');
+          var sub = col.kind_label + (col.kind === 'split' ? ' / 総額 ' + yen(col.expense_amount) : '');
           var tip = (col.details || []).map(function (d) {
             return (d.name || '(品名なし)') + ' ' + d.unit_price + '円 × ' + d.qty + ' = ' + (d.unit_price * d.qty) + '円';
           }).join('\n');
@@ -1147,10 +1146,11 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
         }).join('') +
         '<th class="mx-total">請求合計</th></tr></thead>';
 
+      // 表示は「その項目でその人に請求する額」= 丸め済み(share_billed)。行の合計が請求合計に一致する
       var body = '<tbody>' + c.per_person.map(function (p) {
         var vals = cols.map(function () { return 0; });
         (p.breakdown || []).forEach(function (l) {
-          vals[colIndex[l.kind + '|' + l.place + '|' + l.label]] += l.share;
+          vals[colIndex[l.kind + '|' + l.place + '|' + l.label]] += (l.share_billed != null ? l.share_billed : l.share);
         });
         return '<tr><td class="mx-name">' + esc(p.user_name) + '</td>' +
           vals.map(function (v) {
@@ -1165,7 +1165,9 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
         var s = 0;
         c.per_person.forEach(function (p) {
           (p.breakdown || []).forEach(function (l) {
-            if (colIndex[l.kind + '|' + l.place + '|' + l.label] === ci) s += l.share;
+            if (colIndex[l.kind + '|' + l.place + '|' + l.label] === ci) {
+              s += (l.share_billed != null ? l.share_billed : l.share);
+            }
           });
         });
         return s;

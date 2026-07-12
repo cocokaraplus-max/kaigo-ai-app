@@ -16148,8 +16148,8 @@ def pay_export_payroll_pdf():
 # 独立モジュール。フラグ admin_settings.rec_expense_enabled == 'true' の施設のみ有効。
 # 距離の Google Maps 自動取得は Phase3。現状 distance_km は手入力。
 
-REC_ROUND_UNIT = 100                      # 丸め単位(円)
-REC_ROUND_NOTE = "※100円未満は繰り上げ"
+REC_ROUND_UNIT = 10                       # 丸め単位(円) rec-expense-rounditem-v5
+REC_ROUND_NOTE = "※費用ごとに10円未満を繰り上げ"
 REC_KINDS = ("split", "flat", "individual")   # 割り勘 / 一律加算 / 個別
 REC_CAR_TYPES = ("gas", "parking", "highway")  # ガソリン / 駐車 / 高速
 REC_FUEL_PRICE_DEFAULT = 175              # ガソリン単価の既定値(円/L)
@@ -16476,6 +16476,7 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
     car_total = 0
 
     lines = dict((pid, []) for pid in pids)   # rec-expense-details-v4: 利用者ごとの請求内訳
+    billed = dict((pid, 0) for pid in pids)   # rec-expense-rounditem-v5: 項目ごとに丸めた請求額
 
     for e in expenses:
         kind = str((e.get("kind") or "")).strip()
@@ -16496,6 +16497,9 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
         kind_label = {"split": "割り勘", "flat": "一律", "individual": "個別"}.get(kind, kind)
 
         def _add_line(pid, share):
+            # rec-expense-rounditem-v5: 項目ごとに切り上げる。内訳の合計が請求合計に一致する。
+            billed_share = _rec_round_up(share)
+            billed[pid] += billed_share
             lines[pid].append({
                 "place": place,
                 "label": label,
@@ -16503,6 +16507,7 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
                 "kind_label": kind_label,
                 "expense_amount": amount,
                 "share": round(share, 2),
+                "share_billed": billed_share,
                 "details": details,
             })
 
@@ -16539,22 +16544,15 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
     per_person, total_billed = [], 0
     for pid in pids:
         r = raw[pid]
-        billed = _rec_round_up(r)
-        total_billed += billed
-        breakdown = list(lines[pid])
-        up = round(billed - r, 2)
-        if up > 0:
-            breakdown.append({
-                "place": "", "label": "100円未満の繰上げ", "kind": "roundup",
-                "kind_label": "繰上げ", "expense_amount": 0, "share": up, "details": [],
-            })
+        b = billed[pid]           # rec-expense-rounditem-v5: 項目ごとに丸めた額の合計
+        total_billed += b
         per_person.append({
             "patient_id": pid,
             "user_name": name_of.get(pid, ""),
             "raw_amount": round(r, 2),
-            "billed_amount": billed,
-            "round_up": up,
-            "breakdown": breakdown,   # rec-expense-details-v4
+            "billed_amount": b,
+            "round_up": round(b - r, 2),
+            "breakdown": list(lines[pid]),   # 各行の share_billed の合計 = billed_amount
         })
 
     return {
