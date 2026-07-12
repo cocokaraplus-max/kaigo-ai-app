@@ -129,6 +129,10 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 
 /* --- 既定(狭い): 1カラム。請求額を上に出して常に見えるようにする --- */
 .rec-edit-grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+/* grid/flex の子は既定が min-width:auto のため、中の表が広いと列ごと膨らんで
+   overflow-x が効かない（右固定の請求合計が画面外に見切れる）。0 を明示する。 */
+.rec-edit-grid > * { min-width:0; }
+.rec-mx-wrap { max-width:100%; }
 .rec-sum-col { order:-1; }
 .rec-sum { position:sticky; top:0; z-index:5; }
 .rec-exp-row { grid-template-columns:1fr; }
