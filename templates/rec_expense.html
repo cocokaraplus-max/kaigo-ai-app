@@ -176,26 +176,6 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
       <div id="recList"><div class="rec-empty">読み込み中…</div></div>
     </div>
 
-    <!-- 車マスタ -->
-    <div class="rec-card">
-      <div class="rec-sec-title" style="cursor:pointer;justify-content:space-between;" onclick="recToggleMaster()">
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span class="material-symbols-outlined">directions_car</span>車マスタ
-        </span>
-        <span id="recMasterCaret" class="material-symbols-outlined">expand_more</span>
-      </div>
-      <div id="recMasterBody" style="display:none;">
-        <div style="font-size:0.8rem;color:#6b7280;margin-bottom:8px;">
-          よく使う車を登録しておくと、おでかけ編集で選ぶだけで燃費が入ります。登録しなくても自由入力できます。
-        </div>
-        <div id="recMasterList"></div>
-        <div style="display:flex;gap:6px;margin-top:8px;">
-          <input type="text" id="recNewCarName" class="rec-input" placeholder="車名（例: ハイエース）">
-          <input type="number" step="0.1" id="recNewCarFuel" class="rec-input" placeholder="燃費 km/L" style="max-width:140px;">
-          <button class="rec-btn rec-btn-primary rec-btn-sm" onclick="recCreateCar()">登録</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- ========== 編集 ========== -->
@@ -455,87 +435,17 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     }).join('');
   }
 
+  // 車両マスタは管理者MENUで登録する（施設共通。送迎の運行記録表とも共用）
   async function loadCarMaster() {
-    var r = await fetch('/api/rec/cars');
+    var r = await fetch('/api/vehicles');
     var j = await r.json();
     if (j.status !== 'success') return;
-    state.carMaster = j.cars;
-    FUEL_PRICE_DEFAULT = j.fuel_price_default || FUEL_PRICE_DEFAULT;
-    $('recCarMaster').innerHTML = '<option value="">車マスタから選択…（空欄なら自由入力）</option>' +
-      j.cars.map(function (c) {
+    state.carMaster = j.vehicles || [];
+    $('recCarMaster').innerHTML = '<option value="">車両を選択…（登録は管理者MENU／空欄なら自由入力）</option>' +
+      state.carMaster.map(function (c) {
         return '<option value="' + c.id + '">' + esc(c.name) + (c.fuel_km_per_l ? '（' + c.fuel_km_per_l + ' km/L）' : '') + '</option>';
       }).join('');
-    renderMaster();
   }
-
-  // ---------- 車マスタ管理 ----------
-  window.recToggleMaster = function () {
-    var b = $('recMasterBody');
-    var open = b.style.display === 'none';
-    b.style.display = open ? '' : 'none';
-    $('recMasterCaret').textContent = open ? 'expand_less' : 'expand_more';
-  };
-
-  function renderMaster() {
-    var box = $('recMasterList');
-    if (!box) return;
-    if (!state.carMaster.length) {
-      box.innerHTML = '<div style="color:#9aa3b2;font-size:0.85rem;">まだ登録がありません</div>';
-      return;
-    }
-    box.innerHTML = state.carMaster.map(function (c, i) {
-      return '<div class="rec-exp" style="display:flex;gap:8px;align-items:center;">' +
-        '<input type="text" class="rec-input" value="' + esc(c.name) + '" data-mn="' + i + '">' +
-        '<input type="number" step="0.1" class="rec-input" style="max-width:130px;" placeholder="燃費 km/L" value="' +
-          (c.fuel_km_per_l || '') + '" data-mf="' + i + '">' +
-        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-msave="' + i + '">保存</button>' +
-        '<button class="rec-btn rec-btn-danger rec-btn-sm" data-mdel="' + i + '">削除</button>' +
-      '</div>';
-    }).join('');
-    box.querySelectorAll('[data-mn]').forEach(function (el) {
-      el.oninput = function () { state.carMaster[Number(el.dataset.mn)].name = el.value; };
-    });
-    box.querySelectorAll('[data-mf]').forEach(function (el) {
-      el.oninput = function () { state.carMaster[Number(el.dataset.mf)].fuel_km_per_l = num(el.value); };
-    });
-    box.querySelectorAll('[data-msave]').forEach(function (el) {
-      el.onclick = async function () {
-        var c = state.carMaster[Number(el.dataset.msave)];
-        var r = await fetch('/api/rec/car/' + c.id, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: c.name, fuel_km_per_l: c.fuel_km_per_l })
-        });
-        var j = await r.json();
-        if (j.status !== 'success') { toast(j.message); return; }
-        await loadCarMaster();
-        toast('保存しました', 'ok');
-      };
-    });
-    box.querySelectorAll('[data-mdel]').forEach(function (el) {
-      el.onclick = async function () {
-        var c = state.carMaster[Number(el.dataset.mdel)];
-        if (!confirm('「' + c.name + '」をマスタから削除しますか？（過去のおでかけの記録は残ります）')) return;
-        var r = await fetch('/api/rec/car/' + c.id, { method: 'DELETE' });
-        var j = await r.json();
-        if (j.status !== 'success') { toast(j.message); return; }
-        await loadCarMaster();
-      };
-    });
-  }
-
-  window.recCreateCar = async function () {
-    var name = $('recNewCarName').value.trim();
-    if (!name) { toast('車名を入力してください'); return; }
-    var r = await fetch('/api/rec/cars', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name, fuel_km_per_l: num($('recNewCarFuel').value) })
-    });
-    var j = await r.json();
-    if (j.status !== 'success') { toast(j.message); return; }
-    $('recNewCarName').value = '';
-    $('recNewCarFuel').value = '';
-    await loadCarMaster();
-  };
 
   // ---------- 編集 ----------
   async function openEvent(id) {
