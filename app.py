@@ -17870,6 +17870,234 @@ def jisseki_payment_page():
 # ===== /jisseki-payment-list-v1 =====
 
 
+
+# ===== soge-geocode-v1 : 住所→座標（送迎の車両割当・周り順に使う） =====
+# 住所は soge_geocode に保存しない。ハッシュと座標だけ。
+
+SOGE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+SOGE_GEOCODE_TIMEOUT = 15
+
+
+def _soge_addr_hash(addr):  # soge-geocode-v1
+    """住所が変わったかを検知するためのハッシュ。住所そのものは保存しない。"""
+    import hashlib
+    s = (addr or "").strip()
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:32]
+
+
+def _soge_geocode_one(address):  # soge-geocode-v1
+    """住所を座標に変換する。(lat, lng, error)"""
+    import json as _json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    key = get_secret("GOOGLE_MAPS_API_KEY")
+    if not key:
+        return None, None, "GOOGLE_MAPS_API_KEY が設定されていません"
+    addr = (address or "").strip()
+    if not addr:
+        return None, None, "住所が空です"
+
+    url = SOGE_GEOCODE_URL + "?" + urllib.parse.urlencode({
+        "address": addr, "key": key, "language": "ja", "region": "jp",
+    })
+    try:
+        with urllib.request.urlopen(url, timeout=SOGE_GEOCODE_TIMEOUT) as res:
+            data = _json.loads(res.read().decode("utf-8"))
+    except Exception as e:
+        # 住所はログに出さない
+        print("soge geocode error: %s" % type(e).__name__, flush=True)
+        return None, None, "住所の変換に失敗しました"
+
+    status = data.get("status")
+    if status == "ZERO_RESULTS":
+        return None, None, "住所から場所を特定できませんでした"
+    if status != "OK" or not data.get("results"):
+        return None, None, "住所の変換に失敗しました (%s)" % status
+
+    loc = data["results"][0].get("geometry", {}).get("location", {})
+    lat, lng = loc.get("lat"), loc.get("lng")
+    if lat is None or lng is None:
+        return None, None, "座標を取得できませんでした"
+    return float(lat), float(lng), None
+
+
+def _soge_dist_bearing(lat1, lng1, lat2, lng2):  # soge-geocode-v1
+    """施設(1)から見た 距離(km) と 方位角(度, 0=北/90=東) を返す。"""
+    import math
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    dist = 2 * R * math.asin(min(1.0, math.sqrt(a)))
+
+    y = math.sin(dl) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    brg = (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+    return dist, brg
+
+
+def _soge_facility_latlng(supabase, f_code):  # soge-geocode-v1
+    """施設の座標。facilities.facility_address を変換して soge_geocode に
+    patient_id = 施設用の固定UUID で保存する（毎回変換しないため）。"""
+    FAC_ID = "00000000-0000-0000-0000-000000000000"
+    try:
+        fr = (supabase.table("facilities").select("facility_address")
+              .eq("facility_code", f_code).execute())
+        addr = (fr.data[0].get("facility_address") or "").strip() if fr.data else ""
+    except Exception:
+        addr = ""
+    if not addr:
+        return None, None, "施設の住所が未登録です（管理者MENUの施設情報）"
+
+    h = _soge_addr_hash(addr)
+    try:
+        cr = (supabase.table("soge_geocode").select("lat,lng,address_hash")
+              .eq("facility_code", f_code).eq("patient_id", FAC_ID).execute())
+        if cr.data and cr.data[0].get("address_hash") == h:
+            return float(cr.data[0]["lat"]), float(cr.data[0]["lng"]), None
+    except Exception:
+        pass
+
+    lat, lng, err = _soge_geocode_one(addr)
+    if err:
+        return None, None, "施設の住所を座標に変換できません: %s" % err
+    try:
+        supabase.table("soge_geocode").upsert({
+            "facility_code": f_code, "patient_id": FAC_ID, "address_hash": h,
+            "lat": lat, "lng": lng, "dist_km": 0, "bearing": 0,
+            "geocoded_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="facility_code,patient_id").execute()
+    except Exception as e:
+        print("soge facility geocode save error: %s" % e, flush=True)
+    return lat, lng, None
+
+
+def soge_geocode_sync(supabase, f_code, force=False):  # soge-geocode-v1
+    """利用者の住所を座標にする。キャッシュ済み・住所が変わっていない人は飛ばす。
+    戻り値: {"geocoded": n, "cached": n, "failed": [user_name...], "no_address": [user_name...]}"""
+    flat, flng, err = _soge_facility_latlng(supabase, f_code)
+    if err:
+        return {"error": err}
+
+    pres = (supabase.table("patient_profiles")
+            .select("id,user_name,address,is_discontinued")
+            .eq("facility_code", f_code).execute())
+    patients = [p for p in (pres.data or []) if not p.get("is_discontinued")]
+
+    cres = (supabase.table("soge_geocode").select("patient_id,address_hash")
+            .eq("facility_code", f_code).execute())
+    cached = dict((str(r["patient_id"]), r.get("address_hash")) for r in (cres.data or []))
+
+    n_geo = n_cache = 0
+    failed, no_addr = [], []
+
+    for p in patients:
+        pid = str(p["id"])
+        addr = (p.get("address") or "").strip()
+        if not addr:
+            no_addr.append(p.get("user_name") or "")
+            continue
+        h = _soge_addr_hash(addr)
+        if not force and cached.get(pid) == h:
+            n_cache += 1
+            continue
+
+        lat, lng, e = _soge_geocode_one(addr)
+        if e:
+            failed.append(p.get("user_name") or "")
+            continue
+        dist, brg = _soge_dist_bearing(flat, flng, lat, lng)
+        try:
+            supabase.table("soge_geocode").upsert({
+                "facility_code": f_code, "patient_id": pid, "address_hash": h,
+                "lat": lat, "lng": lng, "dist_km": round(dist, 4), "bearing": round(brg, 2),
+                "geocoded_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="facility_code,patient_id").execute()
+            n_geo += 1
+        except Exception as ex:
+            print("soge geocode save error: %s" % ex, flush=True)
+            failed.append(p.get("user_name") or "")
+
+    return {"geocoded": n_geo, "cached": n_cache, "failed": failed, "no_address": no_addr}
+
+
+def soge_geo_map(supabase, f_code):  # soge-geocode-v1
+    """{patient_id: {dist_km, bearing, lat, lng}} を返す。"""
+    try:
+        r = (supabase.table("soge_geocode")
+             .select("patient_id,lat,lng,dist_km,bearing")
+             .eq("facility_code", f_code).execute())
+        out = {}
+        for x in (r.data or []):
+            out[str(x["patient_id"])] = {
+                "lat": x.get("lat"), "lng": x.get("lng"),
+                "dist_km": x.get("dist_km") or 0.0,
+                "bearing": x.get("bearing") or 0.0,
+            }
+        return out
+    except Exception as e:
+        print("soge geo map error: %s" % e, flush=True)
+        return {}
+
+
+@app.route("/api/soge/geocode", methods=["POST"])  # soge-geocode-v1
+@login_required
+def api_soge_geocode():
+    """住所→座標の同期（管理者のみ）。住所が変わった人だけ変換する。
+    body: {force: bool}  force=true なら全員やり直す。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        force = bool((request.json or {}).get("force"))
+        res = soge_geocode_sync(supabase, f_code, force=force)
+        if res.get("error"):
+            return jsonify({"status": "error", "message": res["error"]}), 400
+        return jsonify({"status": "success", **res})
+    except Exception as e:
+        print("api_soge_geocode error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/geocode_status", methods=["GET"])  # soge-geocode-v1
+@login_required
+def api_soge_geocode_status():
+    """座標がそろっているか。住所そのものは返さない。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        pres = (supabase.table("patient_profiles")
+                .select("id,address,is_discontinued")
+                .eq("facility_code", f_code).execute())
+        patients = [p for p in (pres.data or []) if not p.get("is_discontinued")]
+        total = len(patients)
+        with_addr = sum(1 for p in patients if (p.get("address") or "").strip())
+
+        gmap = soge_geo_map(supabase, f_code)
+        done = sum(1 for p in patients if str(p["id"]) in gmap)
+
+        return jsonify({
+            "status": "success",
+            "total": total,
+            "with_address": with_addr,
+            "geocoded": done,
+            "missing": max(0, with_addr - done),
+            "maps_enabled": bool(get_secret("GOOGLE_MAPS_API_KEY")),
+        })
+    except Exception as e:
+        print("api_soge_geocode_status error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /soge-geocode-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
