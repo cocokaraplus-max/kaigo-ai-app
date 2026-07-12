@@ -17609,6 +17609,20 @@ def api_save_weekday_nth():
 # 既存行は valid_from='1900-01-01' なので、導入しても過去の集計は変わらない。
 
 
+def is_uuid_like(v):  # jisseki-uuid-guard-v1
+    """UUID形式か。vitals.patient_id に整数IDが混ざっている行があり、
+    uuid列への照会で Postgres がエラーを返して集計が丸ごと落ちるのを防ぐ。"""
+    s = str(v or "")
+    if len(s) != 36:
+        return False
+    if s[8] != "-" or s[13] != "-" or s[18] != "-" or s[23] != "-":
+        return False
+    hexs = s.replace("-", "")
+    if len(hexs) != 32:
+        return False
+    return all(c in "0123456789abcdefABCDEF" for c in hexs)
+
+
 def jihi_active_on(rules, weekday, date_str):  # jihi-validfrom-v1
     """その日付・その曜日が自費かどうか。rules は
     [{'weekday':int, 'valid_from':'YYYY-MM-DD', 'valid_to':'YYYY-MM-DD'|None}, ...]"""
@@ -17771,7 +17785,7 @@ def api_jisseki_payment_list():
         for r in (vit.data or []):
             pid = str(r.get("patient_id") or "")
             md = (r.get("measured_date") or "")[:10]
-            if pid and md:
+            if pid and md and is_uuid_like(pid):   # jisseki-uuid-guard-v1
                 visit_days.setdefault(pid, set()).add(md)
 
         if not visit_days:
@@ -21535,7 +21549,9 @@ def api_jisseki_svctime_summary():
         visit_days = {}  # patient_id -> set(date_iso)
         for r in (vit.data or []):
             pid = r.get("patient_id"); md = (r.get("measured_date") or "")[:10]
-            if pid and md:
+            # jisseki-uuid-guard-v1: UUIDでない patient_id(整数IDの混入)は集計対象外にする。
+            # 1件でも混ざると uuid 列への照会でエラーになり、月の集計が丸ごと落ちるため。
+            if pid and md and is_uuid_like(pid):
                 visit_days.setdefault(pid, set()).add(md)
         patient_ids = list(visit_days.keys())
 
