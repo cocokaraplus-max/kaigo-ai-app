@@ -947,6 +947,38 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </button>
   </div>
 
+  {# ---- 車両マスタ (vehicles-admin-v1) ---- #}
+  <div class="section-box" id="vehicles-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">directions_car</span>車両マスタ
+    </div>
+    <div style="font-size:0.78rem;color:#5f6368;margin-bottom:10px;">
+      施設の車を登録します。送迎の運行記録表と、請求額計算のガソリン代計算で使います。
+    </div>
+
+    <div id="vehicles-list"></div>
+
+    <div style="border-top:1px solid #e0e0e0;margin-top:12px;padding-top:12px;">
+      <div class="form-group">
+        <input type="text" id="veh-name" class="form-control" placeholder="車両名（例: ハイエース1号）">
+      </div>
+      <div class="form-group">
+        <input type="text" id="veh-plate" class="form-control" placeholder="ナンバー（例: 豊田 300 あ 12-34）">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <input type="number" step="0.1" id="veh-fuel" class="form-control" placeholder="燃費 km/L">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <input type="number" id="veh-cap" class="form-control" placeholder="定員（人）">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="createVehicle()">
+        <span class="material-symbols-outlined">add</span>車両を追加
+      </button>
+    </div>
+  </div>
+
   {# ---- 表示件数 ---- #}
   <div class="section-box">
     <div class="section-box-title">
@@ -1770,5 +1802,102 @@ async function lfUnlink(uid, pname){
   }catch(e){ if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; } console.error('lfUnlink', e); }
 }
 
+
+// ===== vehicles-admin-v1 : 車両マスタ =====
+let vehiclesCache = [];
+
+async function loadVehicles() {
+  const box = document.getElementById('vehicles-list');
+  if (!box) return;
+  const r = await fetch('/api/vehicles');
+  const j = await r.json();
+  if (j.status !== 'success') { box.innerHTML = '<div style="color:#d93025;font-size:0.8rem;">' + j.message + '</div>'; return; }
+  vehiclesCache = j.vehicles;
+  if (!vehiclesCache.length) {
+    box.innerHTML = '<div style="color:#9aa0a6;font-size:0.85rem;">まだ登録がありません</div>';
+    return;
+  }
+  box.innerHTML = vehiclesCache.map(function (v, i) {
+    return '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;">' +
+      '<div class="form-group" style="margin-bottom:6px;">' +
+        '<input type="text" class="form-control" value="' + escHtml(v.name) + '" data-vn="' + i + '" placeholder="車両名">' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:6px;">' +
+        '<input type="text" class="form-control" value="' + escHtml(v.plate_no) + '" data-vp="' + i + '" placeholder="ナンバー">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+        '<input type="number" step="0.1" class="form-control" style="flex:1;" value="' + (v.fuel_km_per_l || '') + '" data-vf="' + i + '" placeholder="燃費 km/L">' +
+        '<input type="number" class="form-control" style="flex:1;" value="' + (v.capacity || '') + '" data-vc="' + i + '" placeholder="定員">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-primary" style="flex:1;" data-vsave="' + i + '">保存</button>' +
+        '<button class="btn" style="flex:1;background:#fdecea;color:#c5221f;" data-vdel="' + i + '">削除</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  box.querySelectorAll('[data-vsave]').forEach(function (b) {
+    b.onclick = function () { saveVehicle(Number(b.dataset.vsave)); };
+  });
+  box.querySelectorAll('[data-vdel]').forEach(function (b) {
+    b.onclick = function () { deleteVehicle(Number(b.dataset.vdel)); };
+  });
+}
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+function vehicleFormFrom(i) {
+  const box = document.getElementById('vehicles-list');
+  return {
+    name: box.querySelector('[data-vn="' + i + '"]').value,
+    plate_no: box.querySelector('[data-vp="' + i + '"]').value,
+    fuel_km_per_l: box.querySelector('[data-vf="' + i + '"]').value,
+    capacity: box.querySelector('[data-vc="' + i + '"]').value
+  };
+}
+
+async function saveVehicle(i) {
+  const v = vehiclesCache[i];
+  const r = await fetch('/api/vehicles/' + v.id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(vehicleFormFrom(i))
+  });
+  const j = await r.json();
+  if (j.status !== 'success') { alert(j.message); return; }
+  await loadVehicles();
+  alert('保存しました');
+}
+
+async function deleteVehicle(i) {
+  const v = vehiclesCache[i];
+  if (!confirm('「' + v.name + '」を削除しますか？（過去の記録は残ります）')) return;
+  const r = await fetch('/api/vehicles/' + v.id, { method: 'DELETE' });
+  const j = await r.json();
+  if (j.status !== 'success') { alert(j.message); return; }
+  await loadVehicles();
+}
+
+async function createVehicle() {
+  const name = document.getElementById('veh-name').value.trim();
+  if (!name) { alert('車両名を入力してください'); return; }
+  const r = await fetch('/api/vehicles', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: name,
+      plate_no: document.getElementById('veh-plate').value,
+      fuel_km_per_l: document.getElementById('veh-fuel').value,
+      capacity: document.getElementById('veh-cap').value
+    })
+  });
+  const j = await r.json();
+  if (j.status !== 'success') { alert(j.message); return; }
+  ['veh-name', 'veh-plate', 'veh-fuel', 'veh-cap'].forEach(function (id) {
+    document.getElementById(id).value = '';
+  });
+  await loadVehicles();
+}
+
+document.addEventListener('DOMContentLoaded', loadVehicles);
+if (document.readyState !== 'loading') loadVehicles();
 </script>
 {% endblock %}

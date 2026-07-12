@@ -17195,6 +17195,156 @@ def api_rec_staff():
 # ===== /rec-expense-staff-timecard-v1 =====
 
 
+
+# ===== vehicles-admin-v1 : 車両マスタ（施設共通・管理者MENUで登録） =====
+# テーブルは rec_cars。送迎（運行記録表）と請求額計算が同じマスタを見る。
+# 参照は全職員、更新は管理者のみ。削除は is_active=False の論理削除（過去の記録を壊さない）。
+
+
+def _vehicle_out(c):  # vehicles-admin-v1
+    return {
+        "id": c["id"],
+        "name": c.get("name") or "",
+        "plate_no": c.get("plate_no") or "",
+        "fuel_km_per_l": float(c["fuel_km_per_l"]) if c.get("fuel_km_per_l") is not None else None,
+        "capacity": int(c["capacity"]) if c.get("capacity") is not None else None,
+        "note": c.get("note") or "",
+        "sort_order": c.get("sort_order") or 0,
+    }
+
+
+def _vehicle_admin_guard():  # vehicles-admin-v1
+    """(supabase, f_code, error) を返す。管理者以外は 403。"""
+    f_code = session.get("f_code")
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return supabase, f_code, (jsonify({"status": "error", "message": "管理者権限がありません"}), 403)
+    return supabase, f_code, None
+
+
+def _vehicle_payload(data):  # vehicles-admin-v1
+    """入力を検証して payload を作る。(payload, error_message)"""
+    name = (data.get("name") or "").strip()
+    if not name:
+        return None, "車両名は必須です"
+
+    payload = {
+        "name": name,
+        "plate_no": (data.get("plate_no") or "").strip() or None,
+        "note": (data.get("note") or "").strip() or None,
+    }
+
+    fuel = data.get("fuel_km_per_l")
+    if fuel in (None, ""):
+        payload["fuel_km_per_l"] = None
+    else:
+        try:
+            fuel = float(fuel)
+        except (TypeError, ValueError):
+            return None, "燃費は数値で入力してください"
+        if fuel < 0:
+            return None, "燃費が不正です"
+        payload["fuel_km_per_l"] = fuel or None
+
+    cap = data.get("capacity")
+    if cap in (None, ""):
+        payload["capacity"] = None
+    else:
+        try:
+            cap = int(cap)
+        except (TypeError, ValueError):
+            return None, "定員は整数で入力してください"
+        if cap < 0:
+            return None, "定員が不正です"
+        payload["capacity"] = cap or None
+
+    try:
+        payload["sort_order"] = int(data.get("sort_order") or 0)
+    except (TypeError, ValueError):
+        payload["sort_order"] = 0
+
+    return payload, None
+
+
+@app.route("/api/vehicles", methods=["GET"])  # vehicles-admin-v1
+@login_required
+def api_vehicles_list():
+    """車両マスタ一覧。参照は全職員（送迎・請求額計算の入力補助で使うため）。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        r = (supabase.table("rec_cars").select("*")
+             .eq("facility_code", f_code).eq("is_active", True)
+             .order("sort_order").execute())
+        return jsonify({"status": "success",
+                        "vehicles": [_vehicle_out(c) for c in (r.data or [])]})
+    except Exception as e:
+        print("vehicles list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/vehicles", methods=["POST"])  # vehicles-admin-v1
+@login_required
+def api_vehicles_create():
+    """車両を追加（管理者のみ）。"""
+    supabase, f_code, err = _vehicle_admin_guard()
+    if err:
+        return err
+    try:
+        payload, msg = _vehicle_payload(request.json or {})
+        if msg:
+            return jsonify({"status": "error", "message": msg}), 400
+        payload["facility_code"] = f_code
+        payload["is_active"] = True
+        r = supabase.table("rec_cars").insert(payload).execute()
+        return jsonify({"status": "success", "id": (r.data[0]["id"] if r.data else None)})
+    except Exception as e:
+        print("vehicles create error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/vehicles/<vehicle_id>", methods=["PUT"])  # vehicles-admin-v1
+@login_required
+def api_vehicles_update(vehicle_id):
+    """車両を更新（管理者のみ）。"""
+    supabase, f_code, err = _vehicle_admin_guard()
+    if err:
+        return err
+    try:
+        payload, msg = _vehicle_payload(request.json or {})
+        if msg:
+            return jsonify({"status": "error", "message": msg}), 400
+        r = (supabase.table("rec_cars").update(payload)
+             .eq("id", vehicle_id).eq("facility_code", f_code).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("vehicles update error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/vehicles/<vehicle_id>", methods=["DELETE"])  # vehicles-admin-v1
+@login_required
+def api_vehicles_delete(vehicle_id):
+    """車両を無効化（管理者のみ）。過去のおでかけ・送迎の記録は残る。"""
+    supabase, f_code, err = _vehicle_admin_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("rec_cars").update({"is_active": False})
+             .eq("id", vehicle_id).eq("facility_code", f_code).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("vehicles delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /vehicles-admin-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
