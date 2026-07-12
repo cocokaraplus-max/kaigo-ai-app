@@ -62,6 +62,13 @@
 .rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
+.rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+  background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
+  box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
+  transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; }
+.rec-toast.show { transform:translate(-50%,0); opacity:1; }
+.rec-toast.ok { background:#137333; }
+
 /* --- 既定(狭い): 1カラム。請求額を上に出して常に見えるようにする --- */
 .rec-edit-grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
 .rec-sum-col { order:-1; }
@@ -88,6 +95,8 @@
 
 {% block content %}
 <div class="rec-wrap">
+  <div id="recToast" class="rec-toast"></div>
+
 
   <!-- ========== 一覧 ========== -->
   <div id="recListView">
@@ -230,6 +239,17 @@
                 patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
   var calcTimer = null;
 
+  // alert() はブラウザを止めてしまうので、画面内のトーストで知らせる
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var el = document.getElementById('recToast');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'rec-toast show' + (kind === 'ok' ? ' ok' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'rec-toast'; }, kind === 'ok' ? 2000 : 4000);
+  }
+
   function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
   function $(id) { return document.getElementById(id); }
@@ -272,7 +292,7 @@
       body: JSON.stringify({ event_date: TODAY, title: '' })
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     await openEvent(j.id);
     await recReloadParticipants();
   };
@@ -345,9 +365,9 @@
           body: JSON.stringify({ name: c.name, fuel_km_per_l: c.fuel_km_per_l })
         });
         var j = await r.json();
-        if (j.status !== 'success') { alert(j.message); return; }
+        if (j.status !== 'success') { toast(j.message); return; }
         await loadCarMaster();
-        alert('保存しました');
+        toast('保存しました', 'ok');
       };
     });
     box.querySelectorAll('[data-mdel]').forEach(function (el) {
@@ -356,7 +376,7 @@
         if (!confirm('「' + c.name + '」をマスタから削除しますか？（過去のおでかけの記録は残ります）')) return;
         var r = await fetch('/api/rec/car/' + c.id, { method: 'DELETE' });
         var j = await r.json();
-        if (j.status !== 'success') { alert(j.message); return; }
+        if (j.status !== 'success') { toast(j.message); return; }
         await loadCarMaster();
       };
     });
@@ -364,13 +384,13 @@
 
   window.recCreateCar = async function () {
     var name = $('recNewCarName').value.trim();
-    if (!name) { alert('車名を入力してください'); return; }
+    if (!name) { toast('車名を入力してください'); return; }
     var r = await fetch('/api/rec/cars', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name, fuel_km_per_l: num($('recNewCarFuel').value) })
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     $('recNewCarName').value = '';
     $('recNewCarFuel').value = '';
     await loadCarMaster();
@@ -380,7 +400,7 @@
   async function openEvent(id) {
     var r = await fetch('/api/rec/event/' + id);
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     state.id = j.event.id;
     state.participants = j.event.participants || [];
     state.staff = j.event.staff_names || [];
@@ -444,7 +464,7 @@
       var label = p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '');
       return label === v || p.user_name === v || p.patient_number === v || (p.user_kana || '') === v;
     });
-    if (!hit) { alert('該当する利用者が見つかりません'); return; }
+    if (!hit) { toast('該当する利用者が見つかりません'); return; }
     if (state.participants.some(function (p) { return p.patient_id === hit.patient_id; })) {
       $('recPartSearch').value = ''; return;
     }
@@ -457,7 +477,7 @@
     var d = $('recDate').value || TODAY;
     var r = await fetch('/api/rec/participants?date=' + encodeURIComponent(d));
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     var added = 0;
     j.participants.forEach(function (p) {
       if (!state.participants.some(function (q) { return q.patient_id === p.patient_id; })) {
@@ -466,7 +486,7 @@
       }
     });
     renderParts(); renderPlaces(); renderCars(); recalc();
-    if (!added && !state.participants.length) alert('その日のバイタル記録が見つかりませんでした');
+    if (!added && !state.participants.length) toast('その日のバイタル記録が見つかりませんでした');
   };
 
   window.recOnDateChange = function () { recalc(); };
@@ -528,7 +548,7 @@
     });
     $('recPlaces').querySelectorAll('[data-delp]').forEach(function (el) {
       el.onclick = function () {
-        if (state.places.length === 1) { alert('場所は最低1つ必要です'); return; }
+        if (state.places.length === 1) { toast('場所は最低1つ必要です'); return; }
         state.places.splice(Number(el.dataset.delp), 1); renderPlaces(); recalc();
       };
     });
@@ -648,7 +668,7 @@
     root.querySelectorAll('[data-cwfill]').forEach(function (el) {
       el.onclick = function () {
         var names = placeNames();
-        if (!names.length) { alert('場所ブロックに場所名が入力されていません'); return; }
+        if (!names.length) { toast('場所ブロックに場所名が入力されていません'); return; }
         state.cars[Number(el.dataset.cwfill)].waypoints = names;
         renderCars();
       };
@@ -725,10 +745,10 @@
   async function fetchDistance(ci, btn) {
     var c = state.cars[ci];
     var waypoints = c.waypoints || [];
-    if (!c.origin) { alert('出発地を入力してください'); return; }
-    if (!waypoints.length) { alert('立ち寄り先を1行に1か所ずつ入力してください'); return; }
+    if (!c.origin) { toast('出発地を入力してください'); return; }
+    if (!waypoints.length) { toast('立ち寄り先を1行に1か所ずつ入力してください'); return; }
     if (c.round_trip === false && waypoints.length < 1) {
-      alert('片道の場合、立ち寄り先が1か所以上必要です'); return;
+      toast('片道の場合、立ち寄り先が1か所以上必要です'); return;
     }
 
     var label = btn.textContent;
@@ -743,7 +763,7 @@
         })
       });
       var j = await r.json();
-      if (j.status !== 'success') { alert(j.message); return; }
+      if (j.status !== 'success') { toast(j.message); return; }
       c.distance_km = j.distance_km;
       renderCars(); recalc();
     } finally {
@@ -852,16 +872,16 @@
       body: JSON.stringify(payload())
     });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     renderCalc(j.calc);
-    alert('保存しました');
+    toast('保存しました', 'ok');
   };
 
   window.recDelete = async function () {
     if (!confirm('このおでかけを削除しますか？')) return;
     var r = await fetch('/api/rec/event/' + state.id, { method: 'DELETE' });
     var j = await r.json();
-    if (j.status !== 'success') { alert(j.message); return; }
+    if (j.status !== 'success') { toast(j.message); return; }
     recBackToList();
   };
 
