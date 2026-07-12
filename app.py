@@ -18886,6 +18886,16 @@ def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
 # ===== /soge-time-v1 =====
 
 
+
+# ===== soge-week-ui-v1 : 送迎表のページ =====
+@app.route("/soge")  # soge-week-ui-v1
+@login_required
+def soge_week_page():
+    """送迎表（曜日別テンプレート）。"""
+    return render("soge_week.html")
+# ===== /soge-week-ui-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)

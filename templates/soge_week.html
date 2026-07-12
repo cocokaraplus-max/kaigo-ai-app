@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}送迎表 - TASUKARU{% endblock %}
+{% block nav_soge %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* soge-week-ui-v1 */
+.sg-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; container-type: inline-size; }
+.sg-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.sg-title { font-size:1.15rem; font-weight:800; }
+.sg-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
+  background:#eef2f7; color:#334; }
+.sg-btn-primary { background:#1a73e8; color:#fff; }
+.sg-btn-sm { padding:5px 10px; font-size:0.78rem; }
+.sg-btn:disabled { opacity:0.5; cursor:default; }
+
+/* 曜日タブ */
+.sg-days { display:flex; gap:6px; margin-bottom:12px; }
+.sg-day { flex:1; text-align:center; padding:8px 0; border-radius:10px; border:1.5px solid #dadce0;
+  background:#fff; color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; }
+.sg-day.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+
+.sg-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
+.sg-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px;
+  padding:10px; font-size:0.8rem; line-height:1.6; margin-bottom:12px; }
+.sg-info { font-size:0.78rem; color:#6b7280; line-height:1.6; margin-bottom:10px; }
+
+/* 便 */
+.sg-trip-head { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1rem;
+  padding:8px 0 8px 10px; border-left:4px solid #1a73e8; margin:16px 0 10px; }
+.sg-trip-time { font-size:0.8rem; color:#6b7280; font-weight:600; }
+
+/* 車 */
+.sg-car { border:1px solid #dbe3ee; border-radius:10px; margin-bottom:12px; background:#fafcff; overflow:hidden; }
+.sg-car-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#eef2f7;
+  border-bottom:1px solid #e3e8ef; flex-wrap:wrap; }
+.sg-car-badge { background:#1a73e8; color:#fff; font-size:0.7rem; font-weight:800; border-radius:999px;
+  padding:3px 9px; white-space:nowrap; }
+.sg-sel { border:1px solid #d6dbe3; border-radius:8px; padding:6px 8px; font-size:0.85rem; background:#fff; }
+.sg-car-meta { flex:1; text-align:right; font-size:0.75rem; color:#5f6368; font-weight:600; }
+.sg-min { font-weight:800; }
+.sg-min.over { color:#c5221f; }
+
+.sg-stops { padding:8px 12px 12px; }
+.sg-stop { display:flex; align-items:center; gap:8px; padding:8px 6px; border-bottom:1px solid #eef1f5; }
+.sg-stop:last-child { border-bottom:none; }
+.sg-seq { width:22px; text-align:center; font-weight:800; color:#9aa0a6; font-size:0.8rem; flex:0 0 auto; }
+.sg-type { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px; white-space:nowrap; flex:0 0 auto; }
+.sg-type.pickup  { background:#E6F1FB; color:#185FA5; }
+.sg-type.dropoff { background:#EAF3DE; color:#3B6D11; }
+.sg-name { flex:1; min-width:0; font-weight:700; font-size:0.9rem; overflow-wrap:anywhere; }
+.sg-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap; }
+.sg-tag.wc  { background:#f3e8ff; color:#6b21a8; }
+.sg-tag.nth { background:#f3f0ff; color:#5b2ea6; }
+.sg-plan { font-size:0.78rem; color:#5f6368; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.sg-move { display:flex; gap:2px; flex:0 0 auto; }
+.sg-move button { border:1px solid #dadce0; background:#fff; border-radius:6px; width:26px; height:26px;
+  cursor:pointer; color:#5f6368; font-size:0.8rem; line-height:1; padding:0; }
+.sg-move button:disabled { opacity:0.3; cursor:default; }
+
+.sg-empty { color:#9aa3b2; font-size:0.85rem; padding:12px 6px; }
+.sg-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+  background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
+  transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; max-width:min(90vw,420px);
+  text-align:center; }
+.sg-toast.show { transform:translate(-50%,0); opacity:1; }
+.sg-toast.err { background:#c5221f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sg-wrap">
+  <div id="sgToast" class="sg-toast"></div>
+
+  <div class="sg-head">
+    <div class="sg-title">送迎表</div>
+    <div style="display:flex;gap:8px;">
+      <button class="sg-btn" id="sgAuto" onclick="sgAutoBuild()">自動で組み直す</button>
+      <button class="sg-btn sg-btn-primary" id="sgSave" onclick="sgSave()">保存</button>
+    </div>
+  </div>
+
+  <div class="sg-days" id="sgDays"></div>
+
+  <div class="sg-card">
+    <div class="sg-info" id="sgInfo">読み込み中…</div>
+    <div id="sgWarnings"></div>
+  </div>
+
+  <div id="sgTrips"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== soge-week-ui-v1 =====
+(function () {
+  var WD = [
+    { n: 1, label: '月' }, { n: 2, label: '火' }, { n: 3, label: '水' },
+    { n: 4, label: '木' }, { n: 5, label: '金' }, { n: 6, label: '土' }, { n: 0, label: '日' }
+  ];
+  var state = { weekday: 1, data: null, staff: [], vehicles: [], dirty: false };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var el = $('sgToast');
+    el.textContent = msg;
+    el.className = 'sg-toast show' + (kind === 'err' ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'sg-toast' + (kind === 'err' ? ' err' : ''); }, 2600);
+  }
+
+  // ---------- 曜日タブ ----------
+  function renderDays() {
+    $('sgDays').innerHTML = WD.map(function (d) {
+      return '<div class="sg-day' + (d.n === state.weekday ? ' on' : '') + '" data-wd="' + d.n + '">' + d.label + '</div>';
+    }).join('');
+    $('sgDays').querySelectorAll('[data-wd]').forEach(function (el) {
+      el.onclick = function () {
+        if (state.dirty && !confirm('保存していない変更があります。破棄して切り替えますか？')) return;
+        state.weekday = Number(el.dataset.wd);
+        state.dirty = false;
+        renderDays();
+        load();
+      };
+    });
+  }
+
+  // ---------- 読み込み ----------
+  async function load() {
+    $('sgInfo').textContent = '読み込み中…';
+    $('sgTrips').innerHTML = '';
+    var r = await fetch('/api/soge/week?weekday=' + state.weekday);
+    var j = await r.json();
+    if (j.status !== 'success') { $('sgInfo').textContent = j.message; return; }
+    state.data = j;
+    render();
+  }
+
+  window.sgAutoBuild = async function () {
+    if (state.dirty && !confirm('保存していない変更があります。自動で組み直しますか？')) return;
+    var btn = $('sgAuto');
+    btn.disabled = true; btn.textContent = '計算中…';
+    try {
+      var r = await fetch('/api/soge/week/auto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weekday: state.weekday })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message, 'err'); return; }
+      state.data = j;
+      state.dirty = true;      // 自動生成しただけでは保存されていない
+      render();
+      toast('組み直しました。内容を確認して保存してください。');
+    } finally {
+      btn.disabled = false; btn.textContent = '自動で組み直す';
+    }
+  };
+
+  // ---------- 描画 ----------
+  function render() {
+    var d = state.data;
+    var saved = d.saved
+      ? '保存済みの送迎表です。直した順番は次週にも引き継がれます。'
+      : 'まだ保存されていません（自動生成した案）。確認して保存してください。';
+    $('sgInfo').innerHTML = esc(saved) +
+      '<br>対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
+      (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '');
+
+    $('sgWarnings').innerHTML = (d.warnings || []).length
+      ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+
+    $('sgTrips').innerHTML = (d.trips || []).map(function (t, ti) {
+      var cars = (t.vehicles || []).map(function (v, vi) { return carHtml(t, ti, v, vi); }).join('');
+      if (!cars) cars = '<div class="sg-empty">この便の対象者はいません</div>';
+      return '<div class="sg-trip-head">' + esc(t.trip_name) +
+          '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars;
+    }).join('');
+
+    bind();
+  }
+
+  function carHtml(t, ti, v, vi) {
+    var vopts = state.vehicles.map(function (x) {
+      return '<option value="' + x.id + '"' + (x.id === v.vehicle_id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+    }).join('');
+    var sopts = state.staff.map(function (n) {
+      return '<option value="' + esc(n) + '"' + (n === v.driver_name ? ' selected' : '') + '>' + esc(n) + '</option>';
+    }).join('');
+
+    var mins = (v.minutes != null)
+      ? '<span class="sg-min' + (v.over_target ? ' over' : '') + '">' + v.minutes + '分</span>' +
+        (v.distance_km ? ' / ' + v.distance_km + 'km' : '')
+      : '';
+
+    var stops = (v.stops || []).map(function (s, si) {
+      return '<div class="sg-stop">' +
+        '<span class="sg-seq">' + (si + 1) + '</span>' +
+        '<span class="sg-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
+        '<span class="sg-name">' + esc(s.user_name) +
+          (s.is_wheelchair ? '<span class="sg-tag wc">車いす</span>' : '') +
+          (s.nth ? '<span class="sg-tag nth">第' + s.nth + '</span>' : '') +
+        '</span>' +
+        '<span class="sg-plan">' + (s.planned_at || '') + '</span>' +
+        '<span class="sg-move">' +
+          '<button data-up="' + ti + '_' + vi + '_' + si + '"' + (si === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<button data-dn="' + ti + '_' + vi + '_' + si + '"' + (si === v.stops.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="sg-car">' +
+      '<div class="sg-car-head">' +
+        '<span class="sg-car-badge">車 ' + (vi + 1) + '</span>' +
+        '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
+        '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
+        '<span class="sg-car-meta">' + mins +
+          ' ／ 席 ' + (v.seats_used || 0) + '/' + (v.seats || '-') +
+        '</span>' +
+      '</div>' +
+      '<div class="sg-stops">' + (stops || '<div class="sg-empty">立ち寄りなし</div>') + '</div>' +
+    '</div>';
+  }
+
+  function bind() {
+    var root = $('sgTrips');
+    root.querySelectorAll('[data-veh]').forEach(function (el) {
+      el.onchange = function () {
+        var a = el.dataset.veh.split('_');
+        var v = state.data.trips[a[0]].vehicles[a[1]];
+        v.vehicle_id = el.value || null;
+        var m = state.vehicles.find(function (x) { return x.id === el.value; });
+        v.vehicle_name = m ? m.name : '';
+        v.seats = m ? (m.soge_seats || m.capacity || 7) : v.seats;
+        state.dirty = true;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-drv]').forEach(function (el) {
+      el.onchange = function () {
+        var a = el.dataset.drv.split('_');
+        state.data.trips[a[0]].vehicles[a[1]].driver_name = el.value;
+        state.dirty = true;
+      };
+    });
+    root.querySelectorAll('[data-up]').forEach(function (el) {
+      el.onclick = function () { move(el.dataset.up, -1); };
+    });
+    root.querySelectorAll('[data-dn]').forEach(function (el) {
+      el.onclick = function () { move(el.dataset.dn, 1); };
+    });
+  }
+
+  // 周り順の入れ替え（職員が直した順が次週の初期値になる）
+  function move(key, delta) {
+    var a = key.split('_');
+    var stops = state.data.trips[a[0]].vehicles[a[1]].stops;
+    var i = Number(a[2]), j = i + delta;
+    if (j < 0 || j >= stops.length) return;
+    var tmp = stops[i]; stops[i] = stops[j]; stops[j] = tmp;
+    // 順番を変えたら到着予定時刻は当てにならないので消す（保存後に再計算される）
+    stops.forEach(function (s) { s.planned_at = null; });
+    state.dirty = true;
+    render();
+  }
+
+  // ---------- 保存 ----------
+  window.sgSave = async function () {
+    var btn = $('sgSave');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      var r = await fetch('/api/soge/week', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weekday: state.weekday,
+          trips: (state.data.trips || []).map(function (t) {
+            return {
+              trip_key: t.trip_key,
+              vehicles: (t.vehicles || []).map(function (v) {
+                return {
+                  vehicle_no: v.vehicle_no,
+                  vehicle_id: v.vehicle_id,
+                  driver_name: v.driver_name,
+                  stops: (v.stops || []).map(function (s) {
+                    return { patient_id: s.patient_id, type: s.type, nth: s.nth || 0 };
+                  })
+                };
+              })
+            };
+          })
+        })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '保存に失敗しました', 'err'); return; }
+      state.dirty = false;
+      toast('保存しました。この順番が次週にも引き継がれます。');
+      await load();
+    } finally {
+      btn.disabled = false; btn.textContent = '保存';
+    }
+  };
+
+  // ---------- init ----------
+  (async function init() {
+    var today = new Date().getDay();
+    state.weekday = today;
+    renderDays();
+
+    var s = await fetch('/api/soge/staff').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.staff = (s && s.staff) ? s.staff : [];
+    var v = await fetch('/api/vehicles').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.vehicles = (v && v.vehicles) ? v.vehicles : [];
+
+    await load();
+  })();
+
+  window.addEventListener('beforeunload', function (e) {
+    if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+})();
+</script>
+{% endblock %}

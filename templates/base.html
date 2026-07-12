@@ -720,6 +720,10 @@ body.nav-editing {
             <span class="material-symbols-outlined">menu_book</span>
             連絡帳
         </a>
+        <a href="/soge" class="bottom-nav-item {% block nav_soge %}{% endblock %}" onclick="spaNav(event,'/soge')"><!-- nav-soge-v1 -->
+            <span class="material-symbols-outlined">airport_shuttle</span>
+            送迎表
+        </a>
         <a href="/fitness" class="bottom-nav-item {% block nav_fitness %}{% endblock %}" onclick="spaNav(event,'/fitness')">
             <span class="material-symbols-outlined">fitness_center</span>
             体力・体重
@@ -1548,7 +1552,7 @@ function loadNavOrder() {
     // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
     // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
     var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     // 各 movable item の現在の参照を取得
     var byHref = {};
     items.forEach(function(el) {
@@ -1619,7 +1623,7 @@ window.startNavEditMode = function() {
     nav.classList.add('edit-mode');
     document.body.classList.add('nav-editing');
     // 各項目を「並び替え可」「固定」に分類
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
     items.forEach(function(el) {
         var h = el.getAttribute('href');
@@ -1667,7 +1671,7 @@ window.stopNavEditMode = function() {
     nav.removeEventListener('click', navEditClickBlocker, true);
     nav.removeEventListener('contextmenu', navEditContextMenuBlocker, true);
     // 現在の DOM 順序を保存(href 配列、movable のみ)
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
         .map(function(el) { return el.getAttribute('href'); })
         .filter(function(h) { return movableHrefs.indexOf(h) !== -1; });
