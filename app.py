@@ -17426,6 +17426,14 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
     return out
 
 
+SOGE_TIME_DEFAULTS = {          # soge-time-v1
+    "target_minutes": 30,       # これを超えたら車を増やす
+    "max_minutes": 40,          # これを超えたら警告
+    "stop_minutes": 2,          # 1人あたりの乗降時間
+    "stop_minutes_wc": 5,       # 車いす1名あたりの乗降時間
+}
+
+
 def get_soge_settings(supabase, f_code):  # soge-settings-v1
     """送迎設定。未登録なら1単位の既定値を返す（DBには書かない）。"""
     try:
@@ -17434,20 +17442,29 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
             s = r.data[0]
             uc = int(s.get("unit_count") or 1)
             uc = 2 if uc == 2 else 1
-            return {
+            out = {
                 "unit_count": uc,
                 "trips": _soge_norm_trips(s.get("trips"), uc),
                 "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
                 "configured": True,
             }
+            for k, dv in SOGE_TIME_DEFAULTS.items():   # soge-time-v1
+                v = s.get(k)
+                try:
+                    out[k] = int(v) if v is not None else dv
+                except (TypeError, ValueError):
+                    out[k] = dv
+            return out
     except Exception as e:
         print("soge settings get error: %s" % e, flush=True)
-    return {
+    out = {
         "unit_count": 1,
         "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
         "mid_dropoff_first": True,
         "configured": False,
     }
+    out.update(SOGE_TIME_DEFAULTS)
+    return out
 
 
 @app.route("/api/soge/settings", methods=["GET"])  # soge-settings-v1
@@ -17495,6 +17512,21 @@ def api_soge_settings_save():
             "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        # soge-time-v1: 目標時間・上限時間・乗降時間
+        for k, dv in SOGE_TIME_DEFAULTS.items():
+            v = data.get(k)
+            if v in (None, ""):
+                payload[k] = dv
+                continue
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "時間の設定が不正です"}), 400
+            if v < 0 or v > 240:
+                return jsonify({"status": "error", "message": "時間の設定が不正です"}), 400
+            payload[k] = v
+        if payload["max_minutes"] < payload["target_minutes"]:
+            return jsonify({"status": "error", "message": "上限時間は目標時間以上にしてください"}), 400
         existing = supabase.table("soge_settings").select("facility_code").eq("facility_code", f_code).execute()
         if existing.data:
             supabase.table("soge_settings").update(payload).eq("facility_code", f_code).execute()
@@ -18383,13 +18415,15 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                               "depart": trip.get("depart") or "", "vehicles": []})
             continue
 
-        groups, overflow = _soge_assign(people, geo, vehicles, trip)  # soge-peak-seats-v1
+        # soge-time-v1: 席数だけでなく「事業所に戻るまでの時間」で台数を決める
+        groups, overflow, times = _soge_split_by_time(
+            supabase, f_code, geo, people, vehicles, trip, settings)
+
         if overflow:
-            warnings.append("%s: %d名が席に収まりません（%s）。車両の席数を確認してください。"
+            warnings.append("%s: %d名が乗れません（%s）。車両を増やすか席数を確認してください。"
                             % (trip["name"], len(overflow),
                                "・".join(m["user_name"] for m in overflow[:5])))
 
-        mid_first = bool(settings.get("mid_dropoff_first", True))
         cars_out = []
         for i, grp in enumerate(groups):
             if not grp:
@@ -18397,16 +18431,15 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             v = vehicles[i] if i < len(vehicles) else {}
             spec = _soge_vehicle_spec(v) if v else {"seats": SOGE_DEFAULT_SEATS,
                                                     "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
-            gstops = []
-            for m in grp:
-                if m["unit"] in du:
-                    gstops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
-                                   "type": "dropoff", "nth": m["nth"], "is_wheelchair": m["is_wheelchair"]})
-                if m["unit"] in pu:
-                    gstops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
-                                   "type": "pickup", "nth": m["nth"], "is_wheelchair": m["is_wheelchair"]})
-            gstops = _soge_order_stops(gstops, geo, mid_first)
-            used, n_wc = _soge_peak_seats(grp, spec, trip)   # soge-peak-seats-v1
+            gstops = _soge_stops_of(grp, trip, geo, settings)
+            used, n_wc = _soge_peak_seats(grp, spec, trip)
+            tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0, "km": 0.0}
+            planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"], settings)
+
+            if tm["total"] > settings["max_minutes"]:
+                warnings.append("%s の %s は %d分かかる見込みです（上限 %d分）。分担を見直してください。"
+                                % (trip["name"], (v.get("name") if v else "車%d" % (i + 1)),
+                                   tm["total"], settings["max_minutes"]))
 
             cars_out.append({
                 "vehicle_no": i + 1,
@@ -18418,13 +18451,19 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                 "wheelchair_count": n_wc,
                 "wheelchair_max": spec["wc_max"],
                 "driver_name": "",
+                "minutes": tm["total"],          # soge-time-v1
+                "drive_minutes": tm["drive"],
+                "stop_minutes": tm["stop"],
+                "distance_km": tm["km"],
+                "over_target": tm["total"] > settings["target_minutes"],
                 "stops": [{
                     "patient_id": s["patient_id"], "user_name": s["user_name"],
                     "type": s["type"], "nth": s.get("nth") or 0,
                     "is_wheelchair": bool(s.get("is_wheelchair")),
+                    "planned_at": (planned[j] if j < len(planned) else None),
                     "dist_km": round((geo.get(str(s["patient_id"])) or {}).get("dist_km", 0.0), 2),
                     "no_geo": str(s["patient_id"]) not in geo,
-                } for s in gstops],
+                } for j, s in enumerate(gstops)],
             })
 
         trips_out.append({
@@ -18655,6 +18694,196 @@ def api_soge_staff():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ===== /soge-week-v1 =====
+
+
+
+# ===== soge-time-v1 : 所要時間で車両を割り当てる =====
+# 現場の本当の制約は席数ではなく「事業所に戻ってくるまでの時間」。
+# 席が空いていても1台で16か所回るのは現実的でない。
+
+
+def _soge_route_hash(origin, stops):  # soge-time-v1
+    """立ち寄り順のハッシュ。同じ順なら所要時間は変わらないのでキャッシュに使う。"""
+    import hashlib
+    key = (origin or "") + "|" + "|".join(str(s.get("patient_id")) for s in (stops or []))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def _soge_stop_minutes(stops, settings):  # soge-time-v1
+    """乗降にかかる時間。車いすは時間がかかる。"""
+    m = 0
+    for s in (stops or []):
+        m += settings["stop_minutes_wc"] if s.get("is_wheelchair") else settings["stop_minutes"]
+    return m
+
+
+def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
+    """施設 → 各立ち寄り → 施設 の走行時間（分）。Routes API。結果はキャッシュ。
+    戻り値: (分, 距離km, error)"""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    if not stops:
+        return 0, 0.0, None
+
+    # 施設の住所
+    try:
+        fr = (supabase.table("facilities").select("facility_address")
+              .eq("facility_code", f_code).execute())
+        origin = (fr.data[0].get("facility_address") or "").strip() if fr.data else ""
+    except Exception:
+        origin = ""
+    if not origin:
+        return None, None, "施設の住所が未登録です"
+
+    h = _soge_route_hash(origin, stops)
+    try:
+        cr = (supabase.table("soge_route_time").select("drive_minutes,distance_km")
+              .eq("facility_code", f_code).eq("route_hash", h).execute())
+        if cr.data:
+            return int(cr.data[0]["drive_minutes"]), cr.data[0].get("distance_km"), None
+    except Exception:
+        pass
+
+    key = get_secret("GOOGLE_MAPS_API_KEY")
+    if not key:
+        return None, None, "GOOGLE_MAPS_API_KEY が設定されていません"
+
+    # 座標で投げる（住所文字列より速く、確実）
+    inter = []
+    for s in stops:
+        g = geo.get(str(s.get("patient_id")))
+        if not g:
+            continue
+        inter.append({"location": {"latLng": {"latitude": g["lat"], "longitude": g["lng"]}}})
+    if not inter:
+        return 0, 0.0, None
+
+    body = {
+        "origin": {"address": origin},
+        "destination": {"address": origin},   # 施設に戻る
+        "intermediates": inter,
+        "travelMode": "DRIVE",
+        "units": "METRIC",
+        "languageCode": "ja",
+        "regionCode": "JP",
+    }
+    req = urllib.request.Request(
+        REC_ROUTES_URL,
+        data=_json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REC_ROUTES_TIMEOUT) as res:
+            data = _json.loads(res.read().decode("utf-8"))
+    except Exception as e:
+        print("soge route time error: %s" % type(e).__name__, flush=True)
+        return None, None, "経路の所要時間を取得できませんでした"
+
+    routes = data.get("routes") or []
+    if not routes:
+        return None, None, "経路が見つかりませんでした"
+
+    dur = routes[0].get("duration") or "0s"
+    try:
+        secs = int(str(dur).rstrip("s"))
+    except (TypeError, ValueError):
+        secs = 0
+    minutes = int(round(secs / 60.0))
+    dist_km = round((routes[0].get("distanceMeters") or 0) / 1000.0, 1)
+
+    try:
+        supabase.table("soge_route_time").upsert({
+            "facility_code": f_code, "route_hash": h,
+            "drive_minutes": minutes, "distance_km": dist_km,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="facility_code,route_hash").execute()
+    except Exception as e:
+        print("soge route time save error: %s" % e, flush=True)
+
+    return minutes, dist_km, None
+
+
+def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings):  # soge-time-v1
+    """席数で割り当てたあと、所要時間が目標を超える車があれば台数を増やして割り直す。
+
+    戻り値: (groups, overflow, times)
+        times[i] = {"drive": 分, "stop": 分, "total": 分, "km": 距離}
+    """
+    target = settings["target_minutes"]
+    max_v = len(vehicles) if vehicles else 1
+
+    best = None
+    for n_cars in range(1, max_v + 1):
+        vs = vehicles[:n_cars] if vehicles else []
+        groups, overflow = _soge_assign(people, geo, vs, trip)
+
+        times = []
+        over_target = False
+        for grp in groups:
+            if not grp:
+                times.append({"drive": 0, "stop": 0, "total": 0, "km": 0.0})
+                continue
+            stops = _soge_stops_of(grp, trip, geo, settings)
+            drive, km, err = _soge_drive_minutes(supabase, f_code, geo, stops)
+            if drive is None:
+                drive, km = 0, 0.0          # 取れなかったら時間制約は効かせない
+            stop_m = _soge_stop_minutes(stops, settings)
+            total = drive + stop_m
+            times.append({"drive": drive, "stop": stop_m, "total": total, "km": km})
+            if total > target:
+                over_target = True
+
+        best = (groups, overflow, times)
+        if not overflow and not over_target:
+            break                            # 目標時間に収まった。これ以上車を増やさない
+
+    return best
+
+
+def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
+    """1台分の立ち寄り（送り→迎えの順）。"""
+    pu = set(trip.get("pickup_units") or [])
+    du = set(trip.get("dropoff_units") or [])
+    stops = []
+    for m in grp:
+        if m.get("unit") in du:
+            stops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
+                          "type": "dropoff", "nth": m.get("nth") or 0,
+                          "is_wheelchair": m.get("is_wheelchair", False)})
+        if m.get("unit") in pu:
+            stops.append({"patient_id": m["patient_id"], "user_name": m["user_name"],
+                          "type": "pickup", "nth": m.get("nth") or 0,
+                          "is_wheelchair": m.get("is_wheelchair", False)})
+    return _soge_order_stops(stops, geo, bool(settings.get("mid_dropoff_first", True)))
+
+
+def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
+    """各立ち寄りの到着予定時刻。走行時間を距離比で按分し、乗降時間を足していく。"""
+    if not depart or len(depart) != 5 or not stops:
+        return [None] * len(stops or [])
+    try:
+        h, mm = int(depart[:2]), int(depart[3:5])
+    except (TypeError, ValueError):
+        return [None] * len(stops)
+
+    n = len(stops)
+    per_leg = (drive_minutes / float(n + 1)) if n else 0   # 施設→…→施設 で n+1 区間
+    out, acc = [], 0.0
+    for s in stops:
+        acc += per_leg
+        t = h * 60 + mm + int(round(acc))
+        out.append("%02d:%02d" % ((t // 60) % 24, t % 60))
+        acc += settings["stop_minutes_wc"] if s.get("is_wheelchair") else settings["stop_minutes"]
+    return out
+
+# ===== /soge-time-v1 =====
 
 
 if __name__ == '__main__':
