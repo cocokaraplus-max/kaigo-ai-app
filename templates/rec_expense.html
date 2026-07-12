@@ -676,7 +676,7 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
           '<div style="display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap;">' +
             '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cwfill="' + ci + '">場所名から取り込む</button>' +
             '<span style="font-size:0.72rem;color:#9aa3b2;align-self:center;">' +
-              '「水族館」より「海遊館」のように固有名詞か住所だと正確です</span>' +
+              '空のまま計算すると場所名を使います。「水族館」より「海遊館」のように固有名詞か住所だと正確です</span>' +
           '</div>' +
 
           '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
@@ -689,9 +689,13 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
           '</div>' +
           '<div style="font-size:0.72rem;color:#6b7280;margin-top:6px;">' + esc(routeLabel(c)) + '</div>' +
         '</div>' +
-        '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
-          '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
-          (num(c.fuel_price_per_l, FUEL_PRICE_DEFAULT)) + ' 円/L（自動計算）</span></div>' +
+        (gas === 0
+          ? '<div class="rec-warn" style="margin-top:0;margin-bottom:8px;">ガソリン代が <b>0円</b> です。' +
+              (num(c.distance_km) <= 0 ? '走行距離が未入力です。下の「距離を計算」を押すか、走行距離を直接入力してください。'
+                                       : '燃費が未入力です。') + '</div>'
+          : '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
+              '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
+              (num(c.fuel_price_per_l, FUEL_PRICE_DEFAULT)) + ' 円/L（自動計算）</span></div>') +
         rows +
         '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_parking">＋ 駐車場代</button> ' +
         '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_highway">＋ 高速代</button>' +
@@ -800,11 +804,15 @@ tr.rec-bd td { background:#f8fafc; font-size:0.78rem; color:#475569; padding:5px
 
   async function fetchDistance(ci, btn) {
     var c = state.cars[ci];
+    // 立ち寄り先が空なら場所ブロックの場所名を使う（車を先に追加した場合に空のままになるため）
+    if (!(c.waypoints || []).length) {
+      c.waypoints = placeNames();
+      if (c.waypoints.length) renderCars();
+    }
     var waypoints = c.waypoints || [];
     if (!c.origin) { toast('出発地を入力してください'); return; }
-    if (!waypoints.length) { toast('立ち寄り先を1行に1か所ずつ入力してください'); return; }
-    if (c.round_trip === false && waypoints.length < 1) {
-      toast('片道の場合、立ち寄り先が1か所以上必要です'); return;
+    if (!waypoints.length) {
+      toast('立ち寄り先を入力してください（場所ブロックに場所名を入れると自動で使えます）'); return;
     }
 
     var label = btn.textContent;
