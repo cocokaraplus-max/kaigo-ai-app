@@ -1,0 +1,830 @@
+{% extends "base.html" %}
+{% block title %}請求額計算 - TASUKARU{% endblock %}
+{% block nav_rec_expense %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+/* rec-expense-ui-v2 */
+.rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
+.rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.rec-title { font-size:1.15rem; font-weight:800; }
+.rec-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem; }
+.rec-btn-primary { background:#1a73e8; color:#fff; }
+.rec-btn-ghost { background:#eef2f7; color:#334; }
+.rec-btn-danger { background:#fdecea; color:#c5221f; }
+.rec-btn-sm { padding:5px 10px; font-size:0.8rem; }
+
+.rec-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
+.rec-sec-title { font-weight:800; font-size:0.95rem; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.rec-list-row { display:flex; align-items:flex-start; gap:12px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
+.rec-list-row:hover { background:#f7faff; }
+.rec-list-date { flex:0 0 auto; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.rec-list-title { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.rec-list-meta { color:#6b7280; font-size:0.82rem; margin-top:2px; }
+.rec-empty { color:#8a94a6; text-align:center; padding:28px 0; }
+
+.rec-field { margin-bottom:10px; }
+.rec-field label { display:block; font-size:0.8rem; font-weight:700; color:#4b5563; margin-bottom:4px; }
+.rec-input, .rec-select { width:100%; box-sizing:border-box; border:1px solid #d6dbe3; border-radius:8px; padding:8px 10px; font-size:0.92rem; }
+.rec-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+.rec-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.rec-chip { display:inline-flex; align-items:center; gap:5px; background:#eef2ff; color:#3730a3; border-radius:999px; padding:4px 10px; font-size:0.82rem; }
+.rec-chip button { border:none; background:none; color:#6366f1; cursor:pointer; font-size:0.95rem; line-height:1; padding:0; }
+
+.rec-place { border:1px solid #dbe3ee; border-radius:10px; padding:12px; margin-bottom:10px; background:#fafcff; }
+.rec-place-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rec-car { border:1px solid #e2dcf0; border-radius:10px; padding:12px; margin-bottom:10px; background:#fbfaff; }
+.rec-car-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.rec-car-nums { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
+.rec-gas { background:#f3f0ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:0.82rem; color:#4c1d95; margin-bottom:8px; }
+.rec-gas b { font-size:0.95rem; }
+.rec-route { background:#fff; border:1px dashed #d6dbe3; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+
+.rec-exp { border:1px solid #e6ebf2; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
+.rec-exp-row { display:grid; grid-template-columns:120px 1fr 110px auto; gap:8px; align-items:center; }
+.rec-excl { margin-top:8px; padding-top:8px; border-top:1px dashed #e6ebf2; }
+.rec-excl-title { font-size:0.75rem; color:#6b7280; font-weight:700; margin-bottom:5px; }
+.rec-excl-list { display:flex; flex-wrap:wrap; gap:10px; }
+.rec-excl-list label { font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; }
+
+.rec-sum { position:sticky; top:8px; }
+.rec-sum table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.rec-sum th, .rec-sum td { padding:6px 4px; border-bottom:1px solid #eef1f5; text-align:left; }
+.rec-sum td.num, .rec-sum th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.rec-sum .bill { font-weight:800; }
+.rec-note { font-size:0.75rem; color:#6b7280; margin-top:6px; }
+.rec-total { display:flex; justify-content:space-between; padding:5px 4px; font-size:0.9rem; }
+.rec-total.diff { color:#b45309; font-weight:800; }
+.rec-total.sub { color:#6b7280; font-size:0.82rem; }
+.rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
+
+.rec-edit-grid { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
+@media (max-width: 900px) {
+  .rec-edit-grid { grid-template-columns:1fr; }
+  .rec-exp-row { grid-template-columns:1fr 1fr; }
+  .rec-car-nums { grid-template-columns:1fr 1fr; }
+  .rec-sum { position:static; }
+}
+@media (max-width: 600px) {
+  .rec-list-row { flex-wrap:wrap; gap:4px 10px; }
+  .rec-list-title { flex:1 0 100%; }
+  .rec-grid2 { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rec-wrap">
+
+  <!-- ========== 一覧 ========== -->
+  <div id="recListView">
+    <div class="rec-head">
+      <div class="rec-title">請求額計算</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="month" id="recMonth" class="rec-input" style="width:auto;">
+        <button class="rec-btn rec-btn-primary" onclick="recNew()">＋ 新規</button>
+      </div>
+    </div>
+    <div class="rec-card">
+      <div id="recList"><div class="rec-empty">読み込み中…</div></div>
+    </div>
+
+    <!-- 車マスタ -->
+    <div class="rec-card">
+      <div class="rec-sec-title" style="cursor:pointer;justify-content:space-between;" onclick="recToggleMaster()">
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="material-symbols-outlined">directions_car</span>車マスタ
+        </span>
+        <span id="recMasterCaret" class="material-symbols-outlined">expand_more</span>
+      </div>
+      <div id="recMasterBody" style="display:none;">
+        <div style="font-size:0.8rem;color:#6b7280;margin-bottom:8px;">
+          よく使う車を登録しておくと、おでかけ編集で選ぶだけで燃費が入ります。登録しなくても自由入力できます。
+        </div>
+        <div id="recMasterList"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input type="text" id="recNewCarName" class="rec-input" placeholder="車名（例: ハイエース）">
+          <input type="number" step="0.1" id="recNewCarFuel" class="rec-input" placeholder="燃費 km/L" style="max-width:140px;">
+          <button class="rec-btn rec-btn-primary rec-btn-sm" onclick="recCreateCar()">登録</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 編集 ========== -->
+  <div id="recEditView" style="display:none;">
+    <div class="rec-head">
+      <button class="rec-btn rec-btn-ghost" onclick="recBackToList()">← 一覧</button>
+      <div style="display:flex;gap:8px;">
+        <button class="rec-btn rec-btn-danger rec-btn-sm" onclick="recDelete()">削除</button>
+        <button class="rec-btn rec-btn-primary" onclick="recSave()">保存</button>
+      </div>
+    </div>
+
+    <div class="rec-edit-grid">
+      <div>
+        <!-- 基本情報 -->
+        <div class="rec-card">
+          <div class="rec-grid2">
+            <div class="rec-field">
+              <label>日付</label>
+              <input type="date" id="recDate" class="rec-input" onchange="recOnDateChange()">
+            </div>
+            <div class="rec-field">
+              <label>タイトル</label>
+              <input type="text" id="recTitle" class="rec-input" placeholder="例: 春の水族館おでかけ">
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>出勤スタッフ</label>
+            <div class="rec-chips" id="recStaffChips"></div>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <input type="text" id="recStaffInput" class="rec-input" placeholder="スタッフ名を入力して Enter"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddStaff();}">
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddStaff()">追加</button>
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>参加者（その日のバイタルから自動取込）</label>
+            <div class="rec-chips" id="recPartChips"></div>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <input type="text" id="recPartSearch" class="rec-input" list="recPatientList"
+                     placeholder="利用者を検索して追加（名前・カナ・番号）"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddPart();}">
+              <datalist id="recPatientList"></datalist>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddPart()">追加</button>
+              <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadParticipants()">当日再取込</button>
+            </div>
+          </div>
+
+          <div class="rec-field">
+            <label>メモ</label>
+            <textarea id="recMemo" class="rec-input" rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- 場所ブロック -->
+        <div class="rec-sec-title"><span class="material-symbols-outlined">place</span>場所ごとの費用</div>
+        <div id="recPlaces"></div>
+        <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
+
+        <!-- 車 -->
+        <div class="rec-sec-title" style="margin-top:18px;"><span class="material-symbols-outlined">directions_car</span>車（台数分）</div>
+        <div id="recCars"></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="recCarMaster" class="rec-select" style="max-width:260px;">
+            <option value="">車マスタから選択…</option>
+          </select>
+          <button class="rec-btn rec-btn-ghost" onclick="recAddCar()">＋ 車を追加</button>
+        </div>
+      </div>
+
+      <!-- 請求額（ライブ更新） -->
+      <div>
+        <div class="rec-card rec-sum">
+          <div style="font-weight:800;margin-bottom:8px;">請求額</div>
+          <table>
+            <thead>
+              <tr><th>利用者</th><th class="num">実額</th><th class="num">請求</th></tr>
+            </thead>
+            <tbody id="recSumBody"></tbody>
+          </table>
+          <div class="rec-note" id="recNote">※100円未満は繰り上げ</div>
+          <hr style="border:none;border-top:1px solid #eef1f5;margin:10px 0;">
+          <div class="rec-total"><span>実費合計</span><span id="recTotalActual">0円</span></div>
+          <div class="rec-total sub"><span>うち車両費</span><span id="recCarTotal">0円</span></div>
+          <div class="rec-total"><span>請求合計</span><span id="recTotalBilled">0円</span></div>
+          <div class="rec-total diff"><span>差額（集めすぎ）</span><span id="recDiff">0円</span></div>
+          <div id="recWarnings"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== rec-expense-ui-v2 (請求額計算) =====
+(function () {
+  var TODAY = "{{ today }}";
+  var FUEL_PRICE_DEFAULT = 175;
+  var CAR_TYPE_LABEL = { gas: 'ガソリン代', parking: '駐車場代', highway: '高速代' };
+
+  var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [],
+                patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
+  var calcTimer = null;
+
+  function yen(n) { return (Number(n) || 0).toLocaleString('ja-JP') + '円'; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+  function $(id) { return document.getElementById(id); }
+  function num(v, d) { var f = parseFloat(v); return isNaN(f) ? (d || 0) : f; }
+
+  // サーバと同じ式。表示用の即時計算（保存時はサーバ値が正）
+  function gasAmount(car) {
+    var d = num(car.distance_km), f = num(car.fuel_km_per_l), p = num(car.fuel_price_per_l, FUEL_PRICE_DEFAULT);
+    if (d <= 0 || f <= 0 || p <= 0) return 0;
+    return Math.floor(d / f * p + 0.5);
+  }
+
+  // ---------- 一覧 ----------
+  async function loadList() {
+    var m = $('recMonth').value;
+    var r = await fetch('/api/rec/events' + (m ? '?month=' + m : ''));
+    var j = await r.json();
+    var box = $('recList');
+    if (j.status !== 'success') { box.innerHTML = '<div class="rec-empty">' + esc(j.message) + '</div>'; return; }
+    if (!j.events.length) { box.innerHTML = '<div class="rec-empty">この月のおでかけはまだありません</div>'; return; }
+    box.innerHTML = j.events.map(function (e) {
+      var car = e.car_count ? ' ／ 車' + e.car_count + '台(' + yen(e.car_total) + ')' : '';
+      return '<div class="rec-list-row" data-id="' + e.id + '">' +
+        '<div class="rec-list-date">' + esc(e.event_date) + '</div>' +
+        '<div class="rec-list-title">' + esc(e.title || '(無題)') +
+          '<div class="rec-list-meta">参加 ' + e.participant_count + '名 ／ 実費 ' + yen(e.total_actual) +
+          ' ／ 請求 ' + yen(e.total_billed) + '（差額 ' + yen(e.diff) + '）' + car + '</div>' +
+        '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.rec-list-row'), function (row) {
+      row.onclick = function () { openEvent(row.dataset.id); };
+    });
+  }
+
+  window.recNew = async function () {
+    var r = await fetch('/api/rec/events', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_date: TODAY, title: '' })
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    await openEvent(j.id);
+    await recReloadParticipants();
+  };
+
+  window.recBackToList = function () {
+    $('recEditView').style.display = 'none';
+    $('recListView').style.display = '';
+    loadList();
+  };
+
+  // ---------- マスタ ----------
+  async function loadPatients() {
+    var r = await fetch('/api/rec/patients');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.patients = j.patients;
+    $('recPatientList').innerHTML = j.patients.map(function (p) {
+      return '<option value="' + esc(p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '')) + '">';
+    }).join('');
+  }
+
+  async function loadCarMaster() {
+    var r = await fetch('/api/rec/cars');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.carMaster = j.cars;
+    FUEL_PRICE_DEFAULT = j.fuel_price_default || FUEL_PRICE_DEFAULT;
+    $('recCarMaster').innerHTML = '<option value="">車マスタから選択…（空欄なら自由入力）</option>' +
+      j.cars.map(function (c) {
+        return '<option value="' + c.id + '">' + esc(c.name) + (c.fuel_km_per_l ? '（' + c.fuel_km_per_l + ' km/L）' : '') + '</option>';
+      }).join('');
+    renderMaster();
+  }
+
+  // ---------- 車マスタ管理 ----------
+  window.recToggleMaster = function () {
+    var b = $('recMasterBody');
+    var open = b.style.display === 'none';
+    b.style.display = open ? '' : 'none';
+    $('recMasterCaret').textContent = open ? 'expand_less' : 'expand_more';
+  };
+
+  function renderMaster() {
+    var box = $('recMasterList');
+    if (!box) return;
+    if (!state.carMaster.length) {
+      box.innerHTML = '<div style="color:#9aa3b2;font-size:0.85rem;">まだ登録がありません</div>';
+      return;
+    }
+    box.innerHTML = state.carMaster.map(function (c, i) {
+      return '<div class="rec-exp" style="display:flex;gap:8px;align-items:center;">' +
+        '<input type="text" class="rec-input" value="' + esc(c.name) + '" data-mn="' + i + '">' +
+        '<input type="number" step="0.1" class="rec-input" style="max-width:130px;" placeholder="燃費 km/L" value="' +
+          (c.fuel_km_per_l || '') + '" data-mf="' + i + '">' +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-msave="' + i + '">保存</button>' +
+        '<button class="rec-btn rec-btn-danger rec-btn-sm" data-mdel="' + i + '">削除</button>' +
+      '</div>';
+    }).join('');
+    box.querySelectorAll('[data-mn]').forEach(function (el) {
+      el.oninput = function () { state.carMaster[Number(el.dataset.mn)].name = el.value; };
+    });
+    box.querySelectorAll('[data-mf]').forEach(function (el) {
+      el.oninput = function () { state.carMaster[Number(el.dataset.mf)].fuel_km_per_l = num(el.value); };
+    });
+    box.querySelectorAll('[data-msave]').forEach(function (el) {
+      el.onclick = async function () {
+        var c = state.carMaster[Number(el.dataset.msave)];
+        var r = await fetch('/api/rec/car/' + c.id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: c.name, fuel_km_per_l: c.fuel_km_per_l })
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { alert(j.message); return; }
+        await loadCarMaster();
+        alert('保存しました');
+      };
+    });
+    box.querySelectorAll('[data-mdel]').forEach(function (el) {
+      el.onclick = async function () {
+        var c = state.carMaster[Number(el.dataset.mdel)];
+        if (!confirm('「' + c.name + '」をマスタから削除しますか？（過去のおでかけの記録は残ります）')) return;
+        var r = await fetch('/api/rec/car/' + c.id, { method: 'DELETE' });
+        var j = await r.json();
+        if (j.status !== 'success') { alert(j.message); return; }
+        await loadCarMaster();
+      };
+    });
+  }
+
+  window.recCreateCar = async function () {
+    var name = $('recNewCarName').value.trim();
+    if (!name) { alert('車名を入力してください'); return; }
+    var r = await fetch('/api/rec/cars', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, fuel_km_per_l: num($('recNewCarFuel').value) })
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    $('recNewCarName').value = '';
+    $('recNewCarFuel').value = '';
+    await loadCarMaster();
+  };
+
+  // ---------- 編集 ----------
+  async function openEvent(id) {
+    var r = await fetch('/api/rec/event/' + id);
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    state.id = j.event.id;
+    state.participants = j.event.participants || [];
+    state.staff = j.event.staff_names || [];
+    state.cars = j.event.cars || [];
+    state.carExpenses = j.car_expenses || [];
+    state.places = (j.places || []).map(function (p) {
+      return { place_name: p.place_name, expenses: p.expenses || [] };
+    });
+    if (!state.places.length) state.places = [{ place_name: '', expenses: [] }];
+
+    $('recDate').value = j.event.event_date;
+    $('recTitle').value = j.event.title || '';
+    $('recMemo').value = j.event.memo || '';
+
+    if (!state.patients.length) await loadPatients();
+    if (!state.carMaster.length) await loadCarMaster();
+    if (!state.config.facility_address && !state.config.maps_enabled) await loadConfig();
+    renderStaff(); renderParts(); renderPlaces(); renderCars(); recalc();
+
+    $('recListView').style.display = 'none';
+    $('recEditView').style.display = '';
+  }
+
+  // ---------- スタッフ ----------
+  function renderStaff() {
+    $('recStaffChips').innerHTML = state.staff.map(function (s, i) {
+      return '<span class="rec-chip">' + esc(s) + '<button data-i="' + i + '">×</button></span>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.82rem;">未設定</span>';
+    Array.prototype.forEach.call($('recStaffChips').querySelectorAll('button'), function (b) {
+      b.onclick = function () { state.staff.splice(Number(b.dataset.i), 1); renderStaff(); };
+    });
+  }
+  window.recAddStaff = function () {
+    var v = $('recStaffInput').value.trim();
+    if (!v || state.staff.indexOf(v) !== -1) { $('recStaffInput').value = ''; return; }
+    state.staff.push(v); $('recStaffInput').value = ''; renderStaff();
+  };
+
+  // ---------- 参加者 ----------
+  function renderParts() {
+    $('recPartChips').innerHTML = state.participants.map(function (p, i) {
+      return '<span class="rec-chip">' + esc(p.user_name || p.patient_id) + '<button data-i="' + i + '">×</button></span>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.82rem;">参加者なし</span>';
+    Array.prototype.forEach.call($('recPartChips').querySelectorAll('button'), function (b) {
+      b.onclick = function () {
+        var p = state.participants[Number(b.dataset.i)];
+        state.participants.splice(Number(b.dataset.i), 1);
+        allExpenses().forEach(function (x) {
+          x.excluded = (x.excluded || []).filter(function (id) { return id !== p.patient_id; });
+          if (x.target_id === p.patient_id) { x.target_id = null; x.target_name = ''; }
+        });
+        renderParts(); renderPlaces(); renderCars(); recalc();
+      };
+    });
+  }
+
+  window.recAddPart = function () {
+    var v = $('recPartSearch').value.trim();
+    if (!v) return;
+    var hit = state.patients.find(function (p) {
+      var label = p.user_name + (p.patient_number ? ' (No.' + p.patient_number + ')' : '');
+      return label === v || p.user_name === v || p.patient_number === v || (p.user_kana || '') === v;
+    });
+    if (!hit) { alert('該当する利用者が見つかりません'); return; }
+    if (state.participants.some(function (p) { return p.patient_id === hit.patient_id; })) {
+      $('recPartSearch').value = ''; return;
+    }
+    state.participants.push({ patient_id: hit.patient_id, user_name: hit.user_name });
+    $('recPartSearch').value = '';
+    renderParts(); renderPlaces(); renderCars(); recalc();
+  };
+
+  window.recReloadParticipants = async function () {
+    var d = $('recDate').value || TODAY;
+    var r = await fetch('/api/rec/participants?date=' + encodeURIComponent(d));
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    var added = 0;
+    j.participants.forEach(function (p) {
+      if (!state.participants.some(function (q) { return q.patient_id === p.patient_id; })) {
+        state.participants.push({ patient_id: p.patient_id, user_name: p.user_name });
+        added++;
+      }
+    });
+    renderParts(); renderPlaces(); renderCars(); recalc();
+    if (!added && !state.participants.length) alert('その日のバイタル記録が見つかりませんでした');
+  };
+
+  window.recOnDateChange = function () { recalc(); };
+
+  // ---------- 費用項目の共通描画 ----------
+  function allExpenses() {
+    var out = [];
+    state.places.forEach(function (p) { out = out.concat(p.expenses || []); });
+    return out.concat(state.carExpenses || []);
+  }
+
+  function kindSelect(x, key) {
+    var opt = function (v, l) { return '<option value="' + v + '"' + (x.kind === v ? ' selected' : '') + '>' + l + '</option>'; };
+    return '<select class="rec-select" data-k="' + key + '">' +
+      opt('split', '割り勘') + opt('flat', '一律加算') + opt('individual', '個別') + '</select>';
+  }
+
+  function targetBlock(x, key) {
+    if (x.kind === 'individual') {
+      var opts = state.participants.map(function (p) {
+        return '<option value="' + p.patient_id + '"' + (x.target_id === p.patient_id ? ' selected' : '') + '>' + esc(p.user_name) + '</option>';
+      }).join('');
+      return '<div class="rec-excl"><div class="rec-excl-title">対象者</div>' +
+        '<select class="rec-select" data-t="' + key + '"><option value="">選択してください</option>' + opts + '</select></div>';
+    }
+    var excl = x.excluded || [];
+    var boxes = state.participants.map(function (p) {
+      var checked = excl.indexOf(p.patient_id) !== -1 ? ' checked' : '';
+      return '<label><input type="checkbox" data-x="' + key + '" value="' + p.patient_id + '"' + checked + '>' + esc(p.user_name) + '</label>';
+    }).join('') || '<span style="color:#9aa3b2;font-size:0.8rem;">参加者を追加してください</span>';
+    var n = state.participants.filter(function (p) { return excl.indexOf(p.patient_id) === -1; }).length;
+    return '<div class="rec-excl"><div class="rec-excl-title">この項目から除外する人（対象 ' + n + '名）</div>' +
+      '<div class="rec-excl-list">' + boxes + '</div></div>';
+  }
+
+  // ---------- 場所ブロック ----------
+  function renderPlaces() {
+    $('recPlaces').innerHTML = state.places.map(function (p, pi) {
+      var exps = (p.expenses || []).map(function (x, xi) {
+        var key = 'p_' + pi + '_' + xi;
+        return '<div class="rec-exp"><div class="rec-exp-row">' +
+          kindSelect(x, key) +
+          '<input type="text" class="rec-input" placeholder="項目名（例: 入館料）" value="' + esc(x.label || '') + '" data-l="' + key + '">' +
+          '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>' +
+          '</div>' + targetBlock(x, key) + '</div>';
+      }).join('');
+      return '<div class="rec-place">' +
+        '<div class="rec-place-head">' +
+          '<input type="text" class="rec-input" placeholder="場所名（例: 水族館）" value="' + esc(p.place_name) + '" data-pn="' + pi + '">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delp="' + pi + '">場所削除</button>' +
+        '</div>' + exps +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addx="' + pi + '">＋ 費用を追加</button>' +
+      '</div>';
+    }).join('');
+    bindCommon($('recPlaces'));
+    $('recPlaces').querySelectorAll('[data-pn]').forEach(function (el) {
+      el.oninput = function () { state.places[Number(el.dataset.pn)].place_name = el.value; };
+    });
+    $('recPlaces').querySelectorAll('[data-delp]').forEach(function (el) {
+      el.onclick = function () {
+        if (state.places.length === 1) { alert('場所は最低1つ必要です'); return; }
+        state.places.splice(Number(el.dataset.delp), 1); renderPlaces(); recalc();
+      };
+    });
+    $('recPlaces').querySelectorAll('[data-addx]').forEach(function (el) {
+      el.onclick = function () {
+        state.places[Number(el.dataset.addx)].expenses.push(
+          { kind: 'split', label: '', amount: 0, excluded: [], target_id: null, target_name: '' });
+        renderPlaces(); recalc();
+      };
+    });
+  }
+
+  window.recAddPlace = function () {
+    state.places.push({ place_name: '', expenses: [] });
+    renderPlaces(); recalc();
+  };
+
+  // ---------- 車 ----------
+  function carExpensesOf(ci) {
+    return state.carExpenses.filter(function (x) { return x.car_meta && Number(x.car_meta.car_index) === ci; });
+  }
+
+  function renderCars() {
+    if (!state.cars.length) {
+      $('recCars').innerHTML = '<div style="color:#9aa3b2;font-size:0.85rem;margin-bottom:8px;">車の利用なし</div>';
+      return;
+    }
+    $('recCars').innerHTML = state.cars.map(function (c, ci) {
+      var gas = gasAmount(c);
+      var rows = carExpensesOf(ci).map(function (x) {
+        var xi = state.carExpenses.indexOf(x);
+        var key = 'c_' + xi;
+        var t = (x.car_meta || {}).type;
+        var amountCell = (t === 'gas')
+          ? '<input type="number" class="rec-input" value="' + gas + '" style="text-align:right;background:#f3f0ff;" readonly title="距離÷燃費×単価で自動計算">'
+          : '<input type="number" class="rec-input" placeholder="金額" value="' + (x.amount || 0) + '" data-a="' + key + '" style="text-align:right;">';
+        return '<div class="rec-exp"><div class="rec-exp-row">' +
+          kindSelect(x, key) +
+          '<input type="text" class="rec-input" value="' + esc(x.label || CAR_TYPE_LABEL[t] || '') + '" data-l="' + key + '">' +
+          amountCell +
+          (t === 'gas' ? '<span style="width:28px;"></span>'
+                       : '<button class="rec-btn rec-btn-danger rec-btn-sm" data-del="' + key + '">×</button>') +
+          '</div>' + targetBlock(x, key) + '</div>';
+      }).join('');
+
+      return '<div class="rec-car">' +
+        '<div class="rec-car-head">' +
+          '<input type="text" class="rec-input" placeholder="車名（自由入力可）" value="' + esc(c.name || '') + '" data-cn="' + ci + '">' +
+          '<button class="rec-btn rec-btn-danger rec-btn-sm" data-delc="' + ci + '">車を削除</button>' +
+        '</div>' +
+        '<div class="rec-car-nums">' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">燃費 km/L</label>' +
+            '<input type="number" step="0.1" class="rec-input" value="' + (c.fuel_km_per_l || '') + '" data-cf="' + ci + '"></div>' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">走行距離 km</label>' +
+            '<input type="number" step="0.1" class="rec-input" value="' + (c.distance_km || '') + '" data-cd="' + ci + '"></div>' +
+          '<div><label style="font-size:0.72rem;color:#6b7280;">ガソリン単価 円/L</label>' +
+            '<input type="number" class="rec-input" value="' + (c.fuel_price_per_l || FUEL_PRICE_DEFAULT) + '" data-cp="' + ci + '"></div>' +
+        '</div>' +
+        '<div class="rec-route">' +
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
+            '<input type="text" class="rec-input" style="flex:1;min-width:200px;" placeholder="出発地（住所）" value="' +
+              esc(c.origin || '') + '" data-co="' + ci + '">' +
+            '<label style="font-size:0.78rem;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
+              '<input type="checkbox" data-cr="' + ci + '"' + (c.round_trip === false ? '' : ' checked') + '>往復</label>' +
+            '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-cdist="' + ci + '"' +
+              (state.config.maps_enabled ? '' : ' disabled title="距離の自動取得が未設定です"') + '>距離を自動取得</button>' +
+          '</div>' +
+          '<div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">経由地は場所ブロックの場所名を使います：' +
+            esc(placeNames().join(' → ') || '（場所名が未入力）') + '</div>' +
+        '</div>' +
+        '<div class="rec-gas">ガソリン代 <b>' + yen(gas) + '</b>　' +
+          '<span style="opacity:0.8;">' + (num(c.distance_km)) + ' km ÷ ' + (num(c.fuel_km_per_l)) + ' km/L × ' +
+          (num(c.fuel_price_per_l, FUEL_PRICE_DEFAULT)) + ' 円/L（自動計算）</span></div>' +
+        rows +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_parking">＋ 駐車場代</button> ' +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-addc="' + ci + '_highway">＋ 高速代</button>' +
+      '</div>';
+    }).join('');
+
+    bindCommon($('recCars'));
+    var root = $('recCars');
+    root.querySelectorAll('[data-cn]').forEach(function (el) {
+      el.oninput = function () { state.cars[Number(el.dataset.cn)].name = el.value; };
+    });
+    ['cf', 'cd', 'cp'].forEach(function (k) {
+      var field = { cf: 'fuel_km_per_l', cd: 'distance_km', cp: 'fuel_price_per_l' }[k];
+      root.querySelectorAll('[data-' + k + ']').forEach(function (el) {
+        el.oninput = function () {
+          state.cars[Number(el.dataset[k])][field] = num(el.value);
+          renderCars(); recalc();
+        };
+      });
+    });
+    root.querySelectorAll('[data-co]').forEach(function (el) {
+      el.oninput = function () { state.cars[Number(el.dataset.co)].origin = el.value; };
+    });
+    root.querySelectorAll('[data-cr]').forEach(function (el) {
+      el.onchange = function () { state.cars[Number(el.dataset.cr)].round_trip = el.checked; };
+    });
+    root.querySelectorAll('[data-cdist]').forEach(function (el) {
+      el.onclick = function () { fetchDistance(Number(el.dataset.cdist), el); };
+    });
+    root.querySelectorAll('[data-delc]').forEach(function (el) {
+      el.onclick = function () {
+        var ci = Number(el.dataset.delc);
+        state.cars.splice(ci, 1);
+        // この車の費用を削除し、以降の car_index を詰める
+        state.carExpenses = state.carExpenses.filter(function (x) {
+          return !(x.car_meta && Number(x.car_meta.car_index) === ci);
+        });
+        state.carExpenses.forEach(function (x) {
+          if (x.car_meta && Number(x.car_meta.car_index) > ci) x.car_meta.car_index -= 1;
+        });
+        renderCars(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-addc]').forEach(function (el) {
+      el.onclick = function () {
+        var a = el.dataset.addc.split('_');
+        addCarExpense(Number(a[0]), a[1]);
+      };
+    });
+  }
+
+  function addCarExpense(ci, type) {
+    state.carExpenses.push({
+      kind: 'split', label: CAR_TYPE_LABEL[type], amount: 0, excluded: [],
+      target_id: null, target_name: '', is_car: true,
+      car_meta: { type: type, car_index: ci }
+    });
+    renderCars(); recalc();
+  }
+
+  window.recAddCar = function () {
+    var sel = $('recCarMaster');
+    var master = state.carMaster.find(function (c) { return c.id === sel.value; });
+    state.cars.push({
+      car_id: master ? master.id : null,
+      name: master ? master.name : '',
+      fuel_km_per_l: master ? (master.fuel_km_per_l || 0) : 0,
+      distance_km: 0,
+      fuel_price_per_l: FUEL_PRICE_DEFAULT,
+      origin: state.config.facility_address || '',
+      round_trip: true
+    });
+    sel.value = '';
+    addCarExpense(state.cars.length - 1, 'gas');   // ガソリン行を自動で1本
+  };
+
+  // ---------- 距離の自動取得 (Google Routes API) ----------
+  function placeNames() {
+    return state.places.map(function (p) { return (p.place_name || '').trim(); })
+      .filter(function (s) { return s; });
+  }
+
+  async function fetchDistance(ci, btn) {
+    var c = state.cars[ci];
+    var waypoints = placeNames();
+    if (!c.origin) { alert('出発地を入力してください'); return; }
+    if (!waypoints.length) { alert('場所ブロックに場所名を入力してください（経由地に使います）'); return; }
+
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = '取得中…';
+    try {
+      var r = await fetch('/api/rec/distance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: c.origin,
+          waypoints: waypoints,
+          round_trip: c.round_trip !== false
+        })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { alert(j.message); return; }
+      c.distance_km = j.distance_km;
+      renderCars(); recalc();
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+
+  // ---------- 共通バインド ----------
+  function pick(key) {
+    var a = key.split('_');
+    if (a[0] === 'c') return state.carExpenses[Number(a[1])];
+    return state.places[Number(a[1])].expenses[Number(a[2])];
+  }
+  function rerender() { renderPlaces(); renderCars(); }
+
+  function bindCommon(root) {
+    root.querySelectorAll('[data-k]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.k);
+        x.kind = el.value;
+        if (x.kind === 'individual') { x.excluded = []; } else { x.target_id = null; x.target_name = ''; }
+        rerender(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-l]').forEach(function (el) {
+      el.oninput = function () { pick(el.dataset.l).label = el.value; };
+    });
+    root.querySelectorAll('[data-a]').forEach(function (el) {
+      el.oninput = function () { pick(el.dataset.a).amount = parseInt(el.value || '0', 10) || 0; recalc(); };
+    });
+    root.querySelectorAll('[data-t]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.t);
+        x.target_id = el.value || null;
+        var p = state.participants.find(function (q) { return q.patient_id === el.value; });
+        x.target_name = p ? p.user_name : '';
+        recalc();
+      };
+    });
+    root.querySelectorAll('[data-x]').forEach(function (el) {
+      el.onchange = function () {
+        var x = pick(el.dataset.x);
+        x.excluded = x.excluded || [];
+        var i = x.excluded.indexOf(el.value);
+        if (el.checked && i === -1) x.excluded.push(el.value);
+        if (!el.checked && i !== -1) x.excluded.splice(i, 1);
+        rerender(); recalc();
+      };
+    });
+    root.querySelectorAll('[data-del]').forEach(function (el) {
+      el.onclick = function () {
+        var a = el.dataset.del.split('_');
+        if (a[0] === 'c') state.carExpenses.splice(Number(a[1]), 1);
+        else state.places[Number(a[1])].expenses.splice(Number(a[2]), 1);
+        rerender(); recalc();
+      };
+    });
+  }
+
+  // ---------- 計算（ライブ更新） ----------
+  function payload() {
+    return {
+      event_date: $('recDate').value,
+      title: $('recTitle').value,
+      memo: $('recMemo').value,
+      staff_names: state.staff,
+      participants: state.participants,
+      places: state.places,
+      cars: state.cars,
+      car_expenses: state.carExpenses
+    };
+  }
+
+  function recalc() {
+    clearTimeout(calcTimer);
+    calcTimer = setTimeout(async function () {
+      var r = await fetch('/api/rec/calc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      var j = await r.json();
+      if (j.status !== 'success') return;
+      renderCalc(j.calc);
+    }, 250);
+  }
+
+  function renderCalc(c) {
+    $('recSumBody').innerHTML = c.per_person.map(function (p) {
+      return '<tr><td>' + esc(p.user_name) + '</td>' +
+        '<td class="num">' + Math.round(p.raw_amount).toLocaleString('ja-JP') + '</td>' +
+        '<td class="num bill">' + p.billed_amount.toLocaleString('ja-JP') + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" style="color:#9aa3b2;">参加者を追加してください</td></tr>';
+    $('recNote').textContent = c.note;
+    $('recTotalActual').textContent = yen(c.total_actual);
+    $('recCarTotal').textContent = yen(c.car_total);
+    $('recTotalBilled').textContent = yen(c.total_billed);
+    $('recDiff').textContent = yen(c.diff);
+    $('recWarnings').innerHTML = (c.warnings || []).length
+      ? '<div class="rec-warn">' + c.warnings.map(esc).join('<br>') + '</div>' : '';
+  }
+
+  // ---------- 保存 / 削除 ----------
+  window.recSave = async function () {
+    var r = await fetch('/api/rec/event/' + state.id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload())
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    renderCalc(j.calc);
+    alert('保存しました');
+  };
+
+  window.recDelete = async function () {
+    if (!confirm('このおでかけを削除しますか？')) return;
+    var r = await fetch('/api/rec/event/' + state.id, { method: 'DELETE' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message); return; }
+    recBackToList();
+  };
+
+  async function loadConfig() {
+    var r = await fetch('/api/rec/config');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    state.config = { facility_address: j.facility_address || '', maps_enabled: !!j.maps_enabled };
+    FUEL_PRICE_DEFAULT = j.fuel_price_default || FUEL_PRICE_DEFAULT;
+  }
+
+  // ---------- init ----------
+  $('recMonth').value = TODAY.slice(0, 7);
+  $('recMonth').onchange = loadList;
+  loadConfig();
+  loadPatients();
+  loadCarMaster();
+  loadList();
+})();
+</script>
+{% endblock %}

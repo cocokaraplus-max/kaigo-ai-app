@@ -16143,6 +16143,899 @@ def pay_export_payroll_pdf():
 
 
 
+
+# ===== rec-expense-api-v2 : 請求額計算モジュール (コア + 車) =====
+# 独立モジュール。フラグ admin_settings.rec_expense_enabled == 'true' の施設のみ有効。
+# 距離の Google Maps 自動取得は Phase3。現状 distance_km は手入力。
+
+REC_ROUND_UNIT = 100                      # 丸め単位(円)
+REC_ROUND_NOTE = "※100円未満は繰り上げ"
+REC_KINDS = ("split", "flat", "individual")   # 割り勘 / 一律加算 / 個別
+REC_CAR_TYPES = ("gas", "parking", "highway")  # ガソリン / 駐車 / 高速
+REC_FUEL_PRICE_DEFAULT = 175              # ガソリン単価の既定値(円/L)
+
+
+def is_rec_expense_enabled(supabase, f_code):  # rec-expense-api-v1
+    """請求額計算モジュールが有効か。admin_settings の key/value フラグ方式。"""
+    try:
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", "rec_expense_enabled").execute())
+        return bool(r.data and r.data[0].get("value") == "true")
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_can_rec_expense():  # rec-expense-api-v1
+    """ナビ表示用。1リクエスト内では g にキャッシュして Supabase 往復を1回に抑える。"""
+    from flask import g as _g
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"can_rec_expense": False}
+        if not hasattr(_g, "_can_rec_expense"):
+            _g._can_rec_expense = is_rec_expense_enabled(get_supabase(), f_code)
+        return {"can_rec_expense": bool(_g._can_rec_expense)}
+    except Exception:
+        return {"can_rec_expense": False}
+
+
+def _rec_guard():  # rec-expense-api-v1
+    """(supabase, f_code, error_response) を返す。error_response が None でなければ即 return する。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    if not is_rec_expense_enabled(supabase, f_code):
+        return supabase, f_code, (jsonify({"status": "error", "message": "請求額計算が有効ではありません"}), 403)
+    return supabase, f_code, None
+
+
+def _rec_round_up(v, unit=REC_ROUND_UNIT):  # rec-expense-api-v1
+    """100円単位で切り上げ。"""
+    import math
+    if v is None or v <= 0:
+        return 0
+    return int(math.ceil(float(v) / unit) * unit)
+
+
+def _rec_num(v, default=0.0):  # rec-expense-api-v2
+    try:
+        f = float(v)
+        return f if f == f else default   # NaN 除け
+    except (TypeError, ValueError):
+        return default
+
+
+def _rec_norm_participants(raw):  # rec-expense-api-v1
+    """participants を [{'patient_id','user_name'}] に正規化。patient_id 重複は先勝ちで排除。"""
+    out, seen = [], set()
+    for p in (raw or []):
+        if isinstance(p, dict):
+            pid = str(p.get("patient_id") or "").strip()
+            name = (p.get("user_name") or "").strip()
+        else:
+            pid, name = str(p or "").strip(), ""
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        out.append({"patient_id": pid, "user_name": name})
+    return out
+
+
+def _rec_norm_cars(raw):  # rec-expense-maps-v3
+    """cars を正規化。マスタ選択(car_id あり)でも自由入力(car_id なし)でも同じ形にする。
+    origin / round_trip は距離の再計算を後から辿れるように保存しておく。"""
+    out = []
+    for c in (raw or []):
+        if not isinstance(c, dict):
+            continue
+        out.append({
+            "car_id": (str(c.get("car_id")).strip() or None) if c.get("car_id") else None,
+            "name": (c.get("name") or "").strip() or "車",
+            "fuel_km_per_l": _rec_num(c.get("fuel_km_per_l"), 0.0),
+            "distance_km": _rec_num(c.get("distance_km"), 0.0),
+            "fuel_price_per_l": _rec_num(c.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT),
+            "origin": (c.get("origin") or "").strip(),
+            "round_trip": bool(c.get("round_trip", True)),
+        })
+    return out
+
+
+# ===== rec-expense-maps-v3 : 距離の自動取得 (Google Routes API) =====
+# Directions API はレガシーのため後継の Routes API を使う。
+# キーは Secret Manager -> 環境変数 GOOGLE_MAPS_API_KEY。フロントには出さない。
+
+REC_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+REC_ROUTES_TIMEOUT = 15
+
+
+def _rec_routes_distance_m(origin, waypoints, destination):
+    """Routes API で走行距離(メートル)を取得する。
+
+    戻り値: (distance_m, error_message)
+    住所文字列をそのまま渡す (Routes API 側でジオコーディングされる)。
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    key = get_secret("GOOGLE_MAPS_API_KEY")
+    if not key:
+        return None, "GOOGLE_MAPS_API_KEY が設定されていません"
+    if not origin or not destination:
+        return None, "出発地と目的地が必要です"
+
+    body = {
+        "origin": {"address": origin},
+        "destination": {"address": destination},
+        "travelMode": "DRIVE",
+        "units": "METRIC",
+        "languageCode": "ja",
+        "regionCode": "JP",
+    }
+    inter = [{"address": w} for w in (waypoints or []) if w]
+    if inter:
+        body["intermediates"] = inter
+
+    req = urllib.request.Request(
+        REC_ROUTES_URL,
+        data=_json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REC_ROUTES_TIMEOUT) as res:
+            data = _json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = _json.loads(e.read().decode("utf-8")).get("error", {}).get("message", "")
+        except Exception:
+            pass
+        print("rec routes http error: %s %s" % (e.code, detail), flush=True)
+        return None, "経路検索に失敗しました (%s)" % (detail or e.code)
+    except Exception as e:
+        print("rec routes error: %s" % e, flush=True)
+        return None, "経路検索に失敗しました"
+
+    routes = data.get("routes") or []
+    if not routes:
+        return None, "経路が見つかりませんでした。住所や場所名を具体的にしてください"
+    return int(routes[0].get("distanceMeters") or 0), None
+
+
+@app.route("/api/rec/config", methods=["GET"])  # rec-expense-maps-v3
+@login_required
+def api_rec_config():
+    """出発地の既定値(施設住所)と、距離自動取得が使えるかどうか。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        address = ""
+        try:
+            r = (supabase.table("facilities").select("facility_address")
+                 .eq("facility_code", f_code).execute())
+            address = (r.data[0].get("facility_address") or "") if r.data else ""
+        except Exception:
+            address = ""
+        return jsonify({
+            "status": "success",
+            "facility_address": address,
+            "fuel_price_default": REC_FUEL_PRICE_DEFAULT,
+            "maps_enabled": bool(get_secret("GOOGLE_MAPS_API_KEY")),
+        })
+    except Exception as e:
+        print("rec config error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/distance", methods=["POST"])  # rec-expense-maps-v3
+@login_required
+def api_rec_distance():
+    """出発地 + 経由地(場所ブロック) から走行距離を自動取得する。
+
+    body: {origin, waypoints: [..], destination?, round_trip: bool}
+    round_trip=True (既定) なら出発地に戻る往復として計算する。
+    """
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        origin = (data.get("origin") or "").strip()
+        if not origin:
+            return jsonify({"status": "error", "message": "出発地を入力してください"}), 400
+        waypoints = [str(w).strip() for w in (data.get("waypoints") or []) if str(w).strip()]
+        round_trip = bool(data.get("round_trip", True))
+        destination = (data.get("destination") or "").strip()
+
+        if not destination:
+            if round_trip:
+                destination = origin
+            elif waypoints:
+                destination = waypoints.pop()   # 片道: 最後の場所を目的地にする
+            else:
+                return jsonify({"status": "error", "message": "行き先を1つ以上入力してください"}), 400
+
+        meters, msg = _rec_routes_distance_m(origin, waypoints, destination)
+        if msg:
+            return jsonify({"status": "error", "message": msg}), 400
+
+        km = round(meters / 1000.0, 1)
+        return jsonify({
+            "status": "success",
+            "distance_km": km,
+            "distance_m": meters,
+            "origin": origin,
+            "waypoints": waypoints,
+            "destination": destination,
+            "round_trip": round_trip,
+        })
+    except Exception as e:
+        print("rec distance error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /rec-expense-maps-v3 =====
+
+
+def _rec_gas_amount(car):  # rec-expense-api-v2
+    """ガソリン代 = 距離 ÷ 燃費 × 単価。円未満は四捨五入。燃費/距離が未入力なら0。"""
+    if not car:
+        return 0
+    dist = _rec_num(car.get("distance_km"), 0.0)
+    fuel = _rec_num(car.get("fuel_km_per_l"), 0.0)
+    price = _rec_num(car.get("fuel_price_per_l"), REC_FUEL_PRICE_DEFAULT)
+    if dist <= 0 or fuel <= 0 or price <= 0:
+        return 0
+    return int(dist / fuel * price + 0.5)
+
+
+def _rec_apply_cars(cars, expenses):  # rec-expense-api-v2
+    """車費用のうち type='gas' の amount をサーバ側で再計算して上書きする。
+
+    ガソリン代を手入力に任せると距離/燃費と食い違うため、常に導出値を正とする。
+    駐車・高速は入力値をそのまま使う。台数分は「車ごとに費用行を持つ」ことで表現される。
+    """
+    warnings = []
+    for e in (expenses or []):
+        if not e.get("is_car"):
+            continue
+        meta = e.get("car_meta") or {}
+        ctype = str(meta.get("type") or "").strip()
+        if ctype not in REC_CAR_TYPES:
+            warnings.append("車費用のタイプが不正です (%s)" % ctype)
+            continue
+        try:
+            idx = int(meta.get("car_index"))
+        except (TypeError, ValueError):
+            idx = -1
+        if idx < 0 or idx >= len(cars or []):
+            warnings.append("車費用の対象車両が見つかりません")
+            continue
+        car = cars[idx]
+        if ctype == "gas":
+            e["amount"] = _rec_gas_amount(car)
+            meta["computed"] = {
+                "distance_km": car.get("distance_km"),
+                "fuel_km_per_l": car.get("fuel_km_per_l"),
+                "fuel_price_per_l": car.get("fuel_price_per_l"),
+            }
+            e["car_meta"] = meta
+    return warnings
+
+
+def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
+    """割り勘の計算コア。
+
+    kind:
+      split      … amount を対象者で均等割り (対象者 = 参加者 - excluded)
+      flat       … amount を対象者 1人ずつに加算 (対象者 = 参加者 - excluded)
+      individual … target_id の1人にのみ amount を加算
+
+    車費用も同じ kind に乗る。ガソリン代のみ amount を距離/燃費/単価から再計算する。
+    丸めは「個人ごとの合計額」に対して 100円単位切り上げ。
+    差額 = 請求合計 - 実費合計 (集めすぎ分)。
+    """
+    parts = _rec_norm_participants(participants)
+    pids = [p["patient_id"] for p in parts]
+    name_of = {p["patient_id"]: p["user_name"] for p in parts}
+
+    cars = _rec_norm_cars(cars)
+    expenses = list(expenses or [])
+    warnings = _rec_apply_cars(cars, expenses)
+
+    raw = dict((pid, 0.0) for pid in pids)
+    total_actual = 0
+    car_total = 0
+
+    for e in expenses:
+        kind = str((e.get("kind") or "")).strip()
+        label = (e.get("label") or "").strip() or "(名称なし)"
+        try:
+            amount = int(e.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        excluded = set(str(x) for x in (e.get("excluded") or []))
+
+        if kind not in REC_KINDS:
+            warnings.append("「%s」の費用タイプが不正です (%s)" % (label, kind))
+            continue
+        if amount == 0:
+            continue
+
+        spent = 0
+        if kind in ("split", "flat"):
+            targets = [pid for pid in pids if pid not in excluded]
+            if not targets:
+                warnings.append("「%s」は対象者が0人のため計算から除外しました" % label)
+                continue
+            if kind == "split":
+                spent = amount
+                share = float(amount) / len(targets)
+                for pid in targets:
+                    raw[pid] += share
+            else:  # flat
+                spent = amount * len(targets)
+                for pid in targets:
+                    raw[pid] += float(amount)
+        else:  # individual
+            tid = str(e.get("target_id") or "").strip()
+            if tid not in raw:
+                warnings.append("「%s」の対象者が参加者に含まれていません" % label)
+                continue
+            spent = amount
+            raw[tid] += float(amount)
+
+        total_actual += spent
+        if e.get("is_car"):
+            car_total += spent
+
+    per_person, total_billed = [], 0
+    for pid in pids:
+        r = raw[pid]
+        billed = _rec_round_up(r)
+        total_billed += billed
+        per_person.append({
+            "patient_id": pid,
+            "user_name": name_of.get(pid, ""),
+            "raw_amount": round(r, 2),
+            "billed_amount": billed,
+            "round_up": round(billed - r, 2),
+        })
+
+    return {
+        "per_person": per_person,
+        "total_actual": total_actual,
+        "total_billed": total_billed,
+        "car_total": car_total,
+        "diff": total_billed - total_actual,
+        "round_unit": REC_ROUND_UNIT,
+        "note": REC_ROUND_NOTE,
+        "cars": cars,
+        "warnings": warnings,
+    }
+
+
+def _rec_load_event(supabase, f_code, event_id):  # rec-expense-api-v1
+    """facility_code スコープ込みでイベントを取得。他施設の id を叩かれても None。"""
+    r = (supabase.table("rec_events").select("*")
+         .eq("id", event_id).eq("facility_code", f_code).eq("is_deleted", False).execute())
+    return r.data[0] if r.data else None
+
+
+def _rec_expense_out(x):  # rec-expense-api-v2
+    return {
+        "id": x["id"],
+        "kind": x.get("kind"),
+        "label": x.get("label") or "",
+        "amount": int(x.get("amount") or 0),
+        "excluded": x.get("excluded") or [],
+        "target_id": (str(x["target_id"]) if x.get("target_id") else None),
+        "target_name": x.get("target_name") or "",
+        "is_car": bool(x.get("is_car")),
+        "car_meta": x.get("car_meta") or None,
+        "sort_order": x.get("sort_order") or 0,
+    }
+
+
+def _rec_load_tree(supabase, event):  # rec-expense-api-v2
+    """イベント配下の場所ブロック(+費用)と、車費用(place_id なし)を返す。"""
+    eid = event["id"]
+    pres = (supabase.table("rec_places").select("*")
+            .eq("event_id", eid).order("sort_order").execute())
+    xres = (supabase.table("rec_expenses").select("*")
+            .eq("event_id", eid).order("sort_order").execute())
+
+    by_place = {}
+    car_expenses = []
+    for x in (xres.data or []):
+        if x.get("is_car") or not x.get("place_id"):
+            car_expenses.append(_rec_expense_out(x))
+        else:
+            by_place.setdefault(str(x.get("place_id")), []).append(_rec_expense_out(x))
+
+    places = []
+    for p in (pres.data or []):
+        places.append({
+            "id": p["id"],
+            "place_name": p.get("place_name") or "",
+            "sort_order": p.get("sort_order") or 0,
+            "expenses": by_place.get(str(p["id"]), []),
+        })
+    return places, car_expenses
+
+
+def _rec_all_expenses(places, car_expenses=None):  # rec-expense-api-v2
+    out = []
+    for p in (places or []):
+        out.extend(p.get("expenses") or [])
+    out.extend(car_expenses or [])
+    return out
+
+
+# ---------- 車マスタ ----------
+
+@app.route("/api/rec/cars", methods=["GET"])  # rec-expense-api-v2
+@login_required
+def api_rec_cars_list():
+    """車マスタ一覧。自由入力もできるので、あくまで入力補助。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("rec_cars").select("*")
+             .eq("facility_code", f_code).eq("is_active", True)
+             .order("sort_order").execute())
+        cars = [{
+            "id": c["id"],
+            "name": c.get("name") or "",
+            "fuel_km_per_l": _rec_num(c.get("fuel_km_per_l"), 0.0),
+            "sort_order": c.get("sort_order") or 0,
+        } for c in (r.data or [])]
+        return jsonify({"status": "success", "cars": cars,
+                        "fuel_price_default": REC_FUEL_PRICE_DEFAULT})
+    except Exception as e:
+        print("rec cars list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/cars", methods=["POST"])  # rec-expense-api-v2
+@login_required
+def api_rec_car_create():
+    """車マスタ追加。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "車名は必須です"}), 400
+        fuel = _rec_num(data.get("fuel_km_per_l"), 0.0)
+        if fuel < 0:
+            return jsonify({"status": "error", "message": "燃費が不正です"}), 400
+        r = supabase.table("rec_cars").insert({
+            "facility_code": f_code,
+            "name": name,
+            "fuel_km_per_l": fuel or None,
+            "is_active": True,
+            "sort_order": int(data.get("sort_order") or 0),
+        }).execute()
+        return jsonify({"status": "success", "id": (r.data[0]["id"] if r.data else None)})
+    except Exception as e:
+        print("rec car create error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/car/<car_id>", methods=["PUT"])  # rec-expense-api-v2
+@login_required
+def api_rec_car_update(car_id):
+    """車マスタ更新。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        payload = {}
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"status": "error", "message": "車名は必須です"}), 400
+            payload["name"] = name
+        if "fuel_km_per_l" in data:
+            payload["fuel_km_per_l"] = _rec_num(data.get("fuel_km_per_l"), 0.0) or None
+        if "sort_order" in data:
+            payload["sort_order"] = int(data.get("sort_order") or 0)
+        if not payload:
+            return jsonify({"status": "error", "message": "更新項目がありません"}), 400
+        r = (supabase.table("rec_cars").update(payload)
+             .eq("id", car_id).eq("facility_code", f_code).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("rec car update error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/car/<car_id>", methods=["DELETE"])  # rec-expense-api-v2
+@login_required
+def api_rec_car_delete(car_id):
+    """車マスタを無効化(論理削除)。過去イベントの car_meta は残る。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("rec_cars").update({"is_active": False})
+             .eq("id", car_id).eq("facility_code", f_code).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("rec car delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------- おでかけ ----------
+
+@app.route("/api/rec/events", methods=["GET"])  # rec-expense-api-v1
+@login_required
+def api_rec_events_list():
+    """おでかけ一覧。month=YYYY-MM で絞り込み(省略時は直近200件)。各件に請求合計・差額つき。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        month = (request.args.get("month") or "").strip()
+        q = (supabase.table("rec_events").select("*")
+             .eq("facility_code", f_code).eq("is_deleted", False))
+        if month:
+            from calendar import monthrange
+            y, m = int(month[:4]), int(month[5:7])
+            last = monthrange(y, m)[1]
+            q = q.gte("event_date", "%04d-%02d-01" % (y, m)).lte("event_date", "%04d-%02d-%02d" % (y, m, last))
+        res = q.order("event_date", desc=True).limit(200).execute()
+        events = res.data or []
+        if not events:
+            return jsonify({"status": "success", "events": []})
+
+        eids = [e["id"] for e in events]
+        xres = supabase.table("rec_expenses").select("*").in_("event_id", eids).execute()
+        by_event = {}
+        for x in (xres.data or []):
+            by_event.setdefault(str(x.get("event_id")), []).append(_rec_expense_out(x))
+
+        items = []
+        for e in events:
+            calc = _rec_calc(e.get("participants") or [], by_event.get(str(e["id"]), []), e.get("cars") or [])
+            items.append({
+                "id": e["id"],
+                "event_date": e.get("event_date"),
+                "title": e.get("title") or e.get("place") or "",
+                "staff_names": e.get("staff_names") or [],
+                "participant_count": len(_rec_norm_participants(e.get("participants") or [])),
+                "car_count": len(_rec_norm_cars(e.get("cars") or [])),
+                "memo": e.get("memo") or "",
+                "total_actual": calc["total_actual"],
+                "total_billed": calc["total_billed"],
+                "car_total": calc["car_total"],
+                "diff": calc["diff"],
+            })
+        return jsonify({"status": "success", "events": items})
+    except Exception as e:
+        print("rec events list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/events", methods=["POST"])  # rec-expense-api-v1
+@login_required
+def api_rec_event_create():
+    """おでかけを新規作成。作成直後は場所ブロック1つを空で用意する。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        event_date = (data.get("event_date") or "").strip()
+        if not event_date:
+            event_date = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "facility_code": f_code,
+            "event_date": event_date,
+            "title": (data.get("title") or "").strip(),
+            "staff_names": data.get("staff_names") or [],
+            "participants": _rec_norm_participants(data.get("participants")),
+            "cars": _rec_norm_cars(data.get("cars")),
+            "memo": (data.get("memo") or "").strip(),
+            "updated_at": now_iso,
+        }
+        res = supabase.table("rec_events").insert(payload).execute()
+        if not res.data:
+            return jsonify({"status": "error", "message": "作成に失敗しました"}), 500
+        eid = res.data[0]["id"]
+        supabase.table("rec_places").insert({
+            "event_id": eid, "place_name": "", "sort_order": 0,
+        }).execute()
+        return jsonify({"status": "success", "id": eid})
+    except Exception as e:
+        print("rec event create error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/event/<event_id>", methods=["GET"])  # rec-expense-api-v1
+@login_required
+def api_rec_event_get(event_id):
+    """おでかけ1件 + 場所ブロック + 車 + 費用項目 + 計算結果。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        ev = _rec_load_event(supabase, f_code, event_id)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        places, car_expenses = _rec_load_tree(supabase, ev)
+        participants = _rec_norm_participants(ev.get("participants") or [])
+        cars = _rec_norm_cars(ev.get("cars") or [])
+        calc = _rec_calc(participants, _rec_all_expenses(places, car_expenses), cars)
+        return jsonify({
+            "status": "success",
+            "event": {
+                "id": ev["id"],
+                "event_date": ev.get("event_date"),
+                "title": ev.get("title") or ev.get("place") or "",
+                "staff_names": ev.get("staff_names") or [],
+                "participants": participants,
+                "cars": cars,
+                "memo": ev.get("memo") or "",
+            },
+            "places": places,
+            "car_expenses": car_expenses,
+            "calc": calc,
+        })
+    except Exception as e:
+        print("rec event get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _rec_build_expense_rows(event_id, data):  # rec-expense-api-v2
+    """places[] と car_expenses[] から rec_expenses 行を組み立てる。
+    戻り値: (place_rows, expense_rows, error_message)"""
+    import uuid as _uuid
+    place_rows, expense_rows = [], []
+    order = 0
+
+    def norm_expense(x, place_id, is_car):
+        kind = str(x.get("kind") or "").strip()
+        if kind not in REC_KINDS:
+            return None, "費用タイプが不正です: %s" % kind
+        try:
+            amount = int(x.get("amount") or 0)
+        except (TypeError, ValueError):
+            return None, "金額は整数で入力してください"
+        target_id = str(x.get("target_id") or "").strip() or None
+        if kind == "individual" and not target_id:
+            return None, "個別費用には対象者が必要です"
+        car_meta = None
+        if is_car:
+            meta = x.get("car_meta") or {}
+            ctype = str(meta.get("type") or "").strip()
+            if ctype not in REC_CAR_TYPES:
+                return None, "車費用のタイプが不正です: %s" % ctype
+            try:
+                car_index = int(meta.get("car_index"))
+            except (TypeError, ValueError):
+                return None, "車費用に対象車両が指定されていません"
+            car_meta = {"type": ctype, "car_index": car_index}
+        return {
+            "place_id": place_id,
+            "event_id": event_id,
+            "kind": kind,
+            "label": (x.get("label") or "").strip(),
+            "amount": amount,
+            "excluded": [str(v) for v in (x.get("excluded") or [])],
+            "target_id": target_id,
+            "target_name": (x.get("target_name") or "").strip(),
+            "is_car": bool(is_car),
+            "car_meta": car_meta,
+            "sort_order": 0,
+        }, None
+
+    for pi, p in enumerate(data.get("places") or []):
+        pid = str(_uuid.uuid4())
+        place_rows.append({
+            "id": pid,
+            "event_id": event_id,
+            "place_name": (p.get("place_name") or "").strip(),
+            "sort_order": pi,
+        })
+        for x in (p.get("expenses") or []):
+            row, msg = norm_expense(x, pid, False)
+            if msg:
+                return None, None, msg
+            row["sort_order"] = order
+            order += 1
+            expense_rows.append(row)
+
+    for x in (data.get("car_expenses") or []):
+        row, msg = norm_expense(x, None, True)
+        if msg:
+            return None, None, msg
+        row["sort_order"] = order
+        order += 1
+        expense_rows.append(row)
+
+    return place_rows, expense_rows, None
+
+
+@app.route("/api/rec/event/<event_id>", methods=["PUT"])  # rec-expense-api-v1
+@login_required
+def api_rec_event_save(event_id):
+    """1画面編集の全置換保存。places/car_expenses は delete → insert で作り直す。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        ev = _rec_load_event(supabase, f_code, event_id)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+
+        data = request.json or {}
+        event_date = (data.get("event_date") or ev.get("event_date") or "").strip()
+        if not event_date:
+            return jsonify({"status": "error", "message": "日付は必須です"}), 400
+        participants = _rec_norm_participants(data.get("participants"))
+        cars = _rec_norm_cars(data.get("cars"))
+
+        place_rows, expense_rows, msg = _rec_build_expense_rows(event_id, data)
+        if msg:
+            return jsonify({"status": "error", "message": msg}), 400
+
+        # ガソリン代を確定させてから保存する (手入力値は採用しない)
+        _rec_apply_cars(cars, expense_rows)
+
+        supabase.table("rec_events").update({
+            "event_date": event_date,
+            "title": (data.get("title") or "").strip(),
+            "staff_names": data.get("staff_names") or [],
+            "participants": participants,
+            "cars": cars,
+            "memo": (data.get("memo") or "").strip(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", event_id).eq("facility_code", f_code).execute()
+
+        # 子を全消しして入れ直す (1画面編集なので差分管理はしない)
+        supabase.table("rec_expenses").delete().eq("event_id", event_id).execute()
+        supabase.table("rec_places").delete().eq("event_id", event_id).execute()
+        if place_rows:
+            supabase.table("rec_places").insert(place_rows).execute()
+        if expense_rows:
+            supabase.table("rec_expenses").insert(expense_rows).execute()
+
+        calc = _rec_calc(participants, expense_rows, cars)
+        return jsonify({"status": "success", "id": event_id, "calc": calc})
+    except Exception as e:
+        print("rec event save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/event/<event_id>", methods=["DELETE"])  # rec-expense-api-v1
+@login_required
+def api_rec_event_delete(event_id):
+    """論理削除。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        ev = _rec_load_event(supabase, f_code, event_id)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        supabase.table("rec_events").update({
+            "is_deleted": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", event_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("rec event delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/participants", methods=["GET"])  # rec-expense-api-v1
+@login_required
+def api_rec_participants():
+    """指定日にバイタルがある利用者 = その日の参加者候補。api_renraku_list と同じロジック。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        date = request.args.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        vres = (supabase.table("vitals").select("patient_id,user_name")
+                .eq("facility_code", f_code).eq("measured_date", date).execute())
+        pids, seen = [], set()
+        for v in (vres.data or []):
+            pid = str(v.get("patient_id") or "")
+            if pid and pid not in seen:
+                seen.add(pid)
+                pids.append(pid)
+
+        plist = get_patients(supabase, f_code)
+        pmap = dict((str(p["id"]), p) for p in plist)
+
+        items = []
+        for pid in pids:
+            prof = pmap.get(pid) or {}
+            items.append({
+                "patient_id": pid,
+                "user_name": prof.get("user_name") or "",
+                "user_kana": prof.get("user_kana") or "",
+                "patient_number": prof.get("patient_number") or "",
+            })
+        items.sort(key=lambda x: (x.get("user_kana") or x.get("user_name") or ""))
+        return jsonify({"status": "success", "date": date, "participants": items})
+    except Exception as e:
+        print("rec participants error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/patients", methods=["GET"])  # rec-expense-api-v1
+@login_required
+def api_rec_patients():
+    """参加者の手動追加用。利用者一覧(検索はクライアント側で絞り込む)。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        plist = get_patients(supabase, f_code)
+        items = [{
+            "patient_id": str(p["id"]),
+            "user_name": p.get("user_name") or "",
+            "user_kana": p.get("user_kana") or "",
+            "patient_number": p.get("patient_number") or "",
+        } for p in plist if not p.get("is_discontinued")]
+        return jsonify({"status": "success", "patients": items})
+    except Exception as e:
+        print("rec patients error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/rec/calc", methods=["POST"])  # rec-expense-api-v1
+@login_required
+def api_rec_calc():
+    """保存前プレビュー計算。画面の請求額ライブ更新用。DBは触らない。"""
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        expenses = _rec_all_expenses(data.get("places") or [], data.get("car_expenses") or [])
+        calc = _rec_calc(data.get("participants") or [], expenses, data.get("cars") or [])
+        return jsonify({"status": "success", "calc": calc})
+    except Exception as e:
+        print("rec calc error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /rec-expense-api-v2 =====
+
+
+
+# ===== rec-expense-page-v1 : 請求額計算 ページルート =====
+@app.route("/rec_expense")  # rec-expense-page-v1
+@login_required
+def rec_expense_page():
+    """請求額計算 (一覧 → 1画面編集)。フラグ無効の施設は /top へ戻す。"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_rec_expense_enabled(supabase, f_code):
+        return redirect("/top")
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render("rec_expense.html", today=today)
+# ===== /rec-expense-page-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
