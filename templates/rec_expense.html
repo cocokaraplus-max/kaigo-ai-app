@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}レク費精算 - TASUKARU{% endblock %}
+{% block title %}請求額計算 - TASUKARU{% endblock %}
 {% block nav_rec_expense %}active{% endblock %}
 
 {% block extra_style %}
@@ -16,11 +16,11 @@
 
 .rec-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
 .rec-sec-title { font-weight:800; font-size:0.95rem; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
-.rec-list-row { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
+.rec-list-row { display:flex; align-items:flex-start; gap:12px; padding:10px 6px; border-bottom:1px solid #eef1f5; cursor:pointer; }
 .rec-list-row:hover { background:#f7faff; }
-.rec-list-date { font-weight:700; min-width:100px; }
-.rec-list-title { flex:1; }
-.rec-list-meta { color:#6b7280; font-size:0.82rem; }
+.rec-list-date { flex:0 0 auto; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.rec-list-title { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.rec-list-meta { color:#6b7280; font-size:0.82rem; margin-top:2px; }
 .rec-empty { color:#8a94a6; text-align:center; padding:28px 0; }
 
 .rec-field { margin-bottom:10px; }
@@ -65,6 +65,11 @@
   .rec-car-nums { grid-template-columns:1fr 1fr; }
   .rec-sum { position:static; }
 }
+@media (max-width: 600px) {
+  .rec-list-row { flex-wrap:wrap; gap:4px 10px; }
+  .rec-list-title { flex:1 0 100%; }
+  .rec-grid2 { grid-template-columns:1fr; }
+}
 </style>
 {% endblock %}
 
@@ -74,7 +79,7 @@
   <!-- ========== 一覧 ========== -->
   <div id="recListView">
     <div class="rec-head">
-      <div class="rec-title">レク費精算</div>
+      <div class="rec-title">請求額計算</div>
       <div style="display:flex;gap:8px;align-items:center;">
         <input type="month" id="recMonth" class="rec-input" style="width:auto;">
         <button class="rec-btn rec-btn-primary" onclick="recNew()">＋ 新規</button>
@@ -181,7 +186,7 @@
 
 {% block extra_script %}
 <script>
-// ===== rec-expense-ui-v2 =====
+// ===== rec-expense-ui-v2 (請求額計算) =====
 (function () {
   var TODAY = "{{ today }}";
   var FUEL_PRICE_DEFAULT = 175;

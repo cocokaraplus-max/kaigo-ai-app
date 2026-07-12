@@ -16144,7 +16144,7 @@ def pay_export_payroll_pdf():
 
 
 
-# ===== rec-expense-api-v2 : レク費精算モジュール (コア + 車) =====
+# ===== rec-expense-api-v2 : 請求額計算モジュール (コア + 車) =====
 # 独立モジュール。フラグ admin_settings.rec_expense_enabled == 'true' の施設のみ有効。
 # 距離の Google Maps 自動取得は Phase3。現状 distance_km は手入力。
 
@@ -16156,7 +16156,7 @@ REC_FUEL_PRICE_DEFAULT = 175              # ガソリン単価の既定値(円/L
 
 
 def is_rec_expense_enabled(supabase, f_code):  # rec-expense-api-v1
-    """レク費精算モジュールが有効か。admin_settings の key/value フラグ方式。"""
+    """請求額計算モジュールが有効か。admin_settings の key/value フラグ方式。"""
     try:
         r = (supabase.table("admin_settings").select("value")
              .eq("facility_code", f_code).eq("key", "rec_expense_enabled").execute())
@@ -16185,7 +16185,7 @@ def _rec_guard():  # rec-expense-api-v1
     f_code = session.get("f_code")
     supabase = get_supabase()
     if not is_rec_expense_enabled(supabase, f_code):
-        return supabase, f_code, (jsonify({"status": "error", "message": "レク費精算が有効ではありません"}), 403)
+        return supabase, f_code, (jsonify({"status": "error", "message": "請求額計算が有効ではありません"}), 403)
     return supabase, f_code, None
 
 
@@ -16877,11 +16877,11 @@ def api_rec_calc():
 
 
 
-# ===== rec-expense-page-v1 : レク費精算 ページルート =====
+# ===== rec-expense-page-v1 : 請求額計算 ページルート =====
 @app.route("/rec_expense")  # rec-expense-page-v1
 @login_required
 def rec_expense_page():
-    """レク費精算 (一覧 → 1画面編集)。フラグ無効の施設は /top へ戻す。"""
+    """請求額計算 (一覧 → 1画面編集)。フラグ無効の施設は /top へ戻す。"""
     f_code = session["f_code"]
     supabase = get_supabase()
     if not is_rec_expense_enabled(supabase, f_code):
