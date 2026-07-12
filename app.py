@@ -17023,7 +17023,15 @@ def api_rec_event_save(event_id):
         if expense_rows:
             supabase.table("rec_expenses").insert(expense_rows).execute()
 
-        calc = _rec_calc(participants, expense_rows, cars)
+        # rec-expense-savecalc-place-v1: 内訳の列見出しに場所名を出すため、place_id から場所名を引いて添える
+        pname_of = dict((p["id"], p.get("place_name") or "") for p in place_rows)
+        calc_rows = []
+        for row in expense_rows:
+            row = dict(row)
+            row["_place_name"] = "車" if row.get("is_car") else pname_of.get(row.get("place_id"), "")
+            calc_rows.append(row)
+
+        calc = _rec_calc(participants, calc_rows, cars)
         return jsonify({"status": "success", "id": event_id, "calc": calc})
     except Exception as e:
         print("rec event save error: %s" % e, flush=True)
