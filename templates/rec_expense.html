@@ -236,10 +236,12 @@
   function num(v, d) { var f = parseFloat(v); return isNaN(f) ? (d || 0) : f; }
 
   // サーバと同じ式。表示用の即時計算（保存時はサーバ値が正）
+  // 23/10*175 が 402.49999999999994 になる浮動小数点誤差を toFixed で吸収し、
+  // サーバ側の Decimal(ROUND_HALF_UP) と同じ 403 を返す
   function gasAmount(car) {
     var d = num(car.distance_km), f = num(car.fuel_km_per_l), p = num(car.fuel_price_per_l, FUEL_PRICE_DEFAULT);
     if (d <= 0 || f <= 0 || p <= 0) return 0;
-    return Math.floor(d / f * p + 0.5);
+    return Math.round(Number((d / f * p).toFixed(6)));
   }
 
   // ---------- 一覧 ----------
