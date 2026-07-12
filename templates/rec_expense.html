@@ -314,7 +314,8 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   var CAR_TYPE_LABEL = { gas: 'ガソリン代', parking: '駐車場代', highway: '高速代' };
 
   var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [],
-                patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false } };
+                patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false },
+                isNew: false };
   var calcTimer = null;
   var openBreakdown = {};   // 請求内訳の開閉状態（利用者ごと）
   var lastCalc = null;
@@ -413,6 +414,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     if (j.status !== 'success') { toast(j.message); return; }
     resetState();          // 前に開いていたおでかけの入力が残らないようにする
     await openEvent(j.id);
+    state.isNew = true;    // 新規のうちは日付変更で確認なしに再読込する
     await recReloadParticipants(true);
     await recReloadStaff(true);   // 出勤スタッフもタイムカードから自動で入れる
   };
@@ -420,6 +422,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   // 編集中の内容を完全に捨てる（マスタとconfigは使い回す）
   function resetState() {
     state.id = null;
+    state.isNew = false;
     state.participants = [];
     state.staff = [];
     state.places = [{ place_name: '', expenses: [] }];
@@ -660,12 +663,20 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   // 日付を変えたら、その日の参加者・出勤スタッフを読み込み直す
   window.recOnDateChange = async function () {
     renderAccSummary();
-    var dirty = state.participants.length || state.staff.length ||
-      state.places.some(function (p) { return (p.expenses || []).length; });
-    if (dirty && !confirm('日付を変更しました。参加者と出勤スタッフを、その日のデータで読み込み直しますか？\n（手で追加した人は消えます。費用の入力は残ります）')) {
-      recalc();
-      return;
+    // 新規(未保存)なら問答無用で入れ替える。保存済みのおでかけだけ確認する。
+    if (!state.isNew) {
+      var dirty = state.participants.length || state.staff.length ||
+        state.places.some(function (p) { return (p.expenses || []).length; });
+      if (dirty && !confirm('日付を変更しました。参加者と出勤スタッフを、その日のデータで読み込み直しますか？\n（手で追加した人は消えます。費用の入力は残ります）')) {
+        recalc();
+        return;
+      }
     }
+    // 一旦きれいに消してから読み込み直す
+    state.participants = [];
+    state.staff = [];
+    pruneExpensesByParticipants();
+    renderParts(); renderStaff();
     await recReloadParticipants(true);
     await recReloadStaff(true);
     var np = state.participants.length, ns = state.staff.length;
@@ -1241,6 +1252,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     var j = await r.json();
     if (j.status !== 'success') { toast(j.message); return; }
     renderCalc(j.calc);
+    state.isNew = false;   // 保存済みなので、以後の日付変更は確認してから再読込する
     // 保存できたら入力欄を畳んで、請求額だけが見える状態にする
     accOpen = { basic: false, places: false, cars: false };
     applyAcc();
