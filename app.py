@@ -17737,6 +17737,125 @@ def api_jisseki_jihi_wd_save_v2():
 # ===== /jihi-validfrom-v1 =====
 
 
+
+# ===== jisseki-payment-list-v1 : 利用区分一覧（誰がいつ 自費/保険 か） =====
+# 判定の優先順位は集計と同じ:
+#   1. visit_day_overrides（その日付だけの上書き）
+#   2. 自費曜日ルール（有効期間つき / jihi_active_on）
+
+
+@app.route("/api/jisseki/payment_list", methods=["GET"])  # jisseki-payment-list-v1
+@login_required
+def api_jisseki_payment_list():
+    """指定月の来所日を利用者ごとに並べ、各日の 自費/保険 と根拠を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        import calendar as _c
+        from datetime import date as _d
+        now = datetime.now(tokyo_tz)
+        year = int(request.args.get("year") or now.year)
+        month = int(request.args.get("month") or now.month)
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です"}), 400
+
+        ndays = _c.monthrange(year, month)[1]
+        first = "%04d-%02d-01" % (year, month)
+        last = "%04d-%02d-%02d" % (year, month, ndays)
+
+        # 来所日 = vitals（集計と同じ基準）
+        vit = (supabase.table("vitals").select("patient_id, measured_date")
+               .eq("facility_code", f_code)
+               .gte("measured_date", first).lte("measured_date", last).execute())
+        visit_days = {}
+        for r in (vit.data or []):
+            pid = str(r.get("patient_id") or "")
+            md = (r.get("measured_date") or "")[:10]
+            if pid and md:
+                visit_days.setdefault(pid, set()).add(md)
+
+        if not visit_days:
+            return jsonify({"status": "success", "year": year, "month": month,
+                            "patients": [], "totals": {"jihi": 0, "hoken": 0}})
+
+        pids = list(visit_days.keys())
+        CHUNK = 100
+
+        # 自費曜日ルール（有効期間つき）
+        rules = {}
+        for i in range(0, len(pids), CHUNK):
+            chunk = pids[i:i + CHUNK]
+            pres = (supabase.table("patient_jihi_weekdays")
+                    .select("patient_id, weekday, valid_from, valid_to")
+                    .eq("facility_code", f_code).in_("patient_id", chunk).execute())
+            for r in (pres.data or []):
+                rules.setdefault(str(r.get("patient_id")), []).append({
+                    "weekday": int(r.get("weekday")),
+                    "valid_from": (r.get("valid_from") or "1900-01-01")[:10],
+                    "valid_to": ((r.get("valid_to") or "")[:10] or None),
+                })
+
+        # 日付ごとの上書き
+        ovr = {}
+        for i in range(0, len(pids), CHUNK):
+            chunk = pids[i:i + CHUNK]
+            ores = (supabase.table("visit_day_overrides")
+                    .select("patient_id, visit_date, payment_type")
+                    .eq("facility_code", f_code).in_("patient_id", chunk)
+                    .gte("visit_date", first).lte("visit_date", last).execute())
+            for r in (ores.data or []):
+                ovr[(str(r.get("patient_id")), (r.get("visit_date") or "")[:10])] = r.get("payment_type")
+
+        # 氏名
+        plist = get_patients(supabase, f_code)
+        pmap = dict((str(p["id"]), p) for p in plist)
+
+        out = []
+        t_jihi = t_hoken = 0
+        for pid in pids:
+            prof = pmap.get(pid) or {}
+            days = []
+            for ds in sorted(visit_days[pid]):
+                js_wd = (_d.fromisoformat(ds).weekday() + 1) % 7   # 0=日..6=土
+                ptype = ovr.get((pid, ds))
+                if ptype in ("jihi", "hoken"):
+                    source = "override"
+                else:
+                    ptype = "jihi" if jihi_active_on(rules.get(pid, []), js_wd, ds) else "hoken"
+                    source = "rule"
+                if ptype == "jihi":
+                    t_jihi += 1
+                else:
+                    t_hoken += 1
+                days.append({"date": ds, "weekday": js_wd, "payment_type": ptype, "source": source})
+
+            out.append({
+                "patient_id": pid,
+                "user_name": prof.get("user_name") or "",
+                "user_kana": prof.get("user_kana") or "",
+                "care_level": prof.get("care_level") or "",
+                "days": days,
+                "jihi_count": sum(1 for d in days if d["payment_type"] == "jihi"),
+                "hoken_count": sum(1 for d in days if d["payment_type"] == "hoken"),
+            })
+
+        out.sort(key=lambda x: (x.get("user_kana") or x.get("user_name") or ""))
+        return jsonify({"status": "success", "year": year, "month": month,
+                        "patients": out, "totals": {"jihi": t_jihi, "hoken": t_hoken}})
+    except Exception as e:
+        print("api_jisseki_payment_list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/jisseki/payment")  # jisseki-payment-list-v1
+@login_required
+def jisseki_payment_page():
+    """利用区分一覧のページ。"""
+    return render("jisseki_payment.html")
+
+# ===== /jisseki-payment-list-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
