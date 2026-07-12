@@ -972,6 +972,32 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
       中間便は「送りを先に、迎えを後に」回る（外すと最短順で混在）
     </label>
 
+    <!-- soge-time-v1 -->
+    <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:14px 0 6px;">所要時間の目安</div>
+    <div style="font-size:0.72rem;color:#5f6368;margin-bottom:8px;">
+      事業所に戻ってくるまでの時間です。目標を超えると車を増やして分担し、上限を超えると警告が出ます。
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="form-group" style="flex:1;">
+        <label style="font-size:0.7rem;color:#5f6368;">目標（分）</label>
+        <input type="number" id="soge-target" class="form-control" value="30">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label style="font-size:0.7rem;color:#5f6368;">上限（分）</label>
+        <input type="number" id="soge-max" class="form-control" value="40">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="form-group" style="flex:1;">
+        <label style="font-size:0.7rem;color:#5f6368;">乗降 1人（分）</label>
+        <input type="number" id="soge-stop" class="form-control" value="2">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label style="font-size:0.7rem;color:#5f6368;">乗降 車いす（分）</label>
+        <input type="number" id="soge-stopwc" class="form-control" value="5">
+      </div>
+    </div>
+
     <button class="btn btn-primary" onclick="saveSogeSettings()">
       <span class="material-symbols-outlined">save</span>保存
     </button>
@@ -2016,6 +2042,12 @@ async function loadSogeSettings() {
   if (j.status !== 'success') return;
   document.getElementById('soge-units').value = String(j.unit_count);
   document.getElementById('soge-mid-first').checked = !!j.mid_dropoff_first;
+  // soge-time-v1
+  const setv = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  setv('soge-target', j.target_minutes);
+  setv('soge-max', j.max_minutes);
+  setv('soge-stop', j.stop_minutes);
+  setv('soge-stopwc', j.stop_minutes_wc);
   sogeTrips = j.trips;
   renderSogeTrips();
 }
@@ -2026,7 +2058,11 @@ async function saveSogeSettings() {
     body: JSON.stringify({
       unit_count: Number(document.getElementById('soge-units').value),
       trips: sogeTrips,
-      mid_dropoff_first: document.getElementById('soge-mid-first').checked
+      mid_dropoff_first: document.getElementById('soge-mid-first').checked,
+      target_minutes: document.getElementById('soge-target').value,      // soge-time-v1
+      max_minutes: document.getElementById('soge-max').value,
+      stop_minutes: document.getElementById('soge-stop').value,
+      stop_minutes_wc: document.getElementById('soge-stopwc').value
     })
   });
   const j = await r.json();
