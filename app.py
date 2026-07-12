@@ -16465,13 +16465,16 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
     total_actual = 0
     car_total = 0
 
+    lines = dict((pid, []) for pid in pids)   # rec-expense-details-v4: 利用者ごとの請求内訳
+
     for e in expenses:
         kind = str((e.get("kind") or "")).strip()
         label = (e.get("label") or "").strip() or "(名称なし)"
-        try:
-            amount = int(e.get("amount") or 0)
-        except (TypeError, ValueError):
-            amount = 0
+        # rec-expense-details-v4: 明細があれば明細の合計が金額。amount も揃えておく
+        amount = _rec_expense_amount(e)
+        e["amount"] = amount
+        details = e.get("details") or []
+        place = (e.get("_place_name") or "").strip()
         excluded = set(str(x) for x in (e.get("excluded") or []))
 
         if kind not in REC_KINDS:
@@ -16479,6 +16482,19 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
             continue
         if amount == 0:
             continue
+
+        kind_label = {"split": "割り勘", "flat": "一律", "individual": "個別"}.get(kind, kind)
+
+        def _add_line(pid, share):
+            lines[pid].append({
+                "place": place,
+                "label": label,
+                "kind": kind,
+                "kind_label": kind_label,
+                "expense_amount": amount,
+                "share": round(share, 2),
+                "details": details,
+            })
 
         spent = 0
         if kind in ("split", "flat"):
@@ -16491,10 +16507,12 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
                 share = float(amount) / len(targets)
                 for pid in targets:
                     raw[pid] += share
+                    _add_line(pid, share)
             else:  # flat
                 spent = amount * len(targets)
                 for pid in targets:
                     raw[pid] += float(amount)
+                    _add_line(pid, float(amount))
         else:  # individual
             tid = str(e.get("target_id") or "").strip()
             if tid not in raw:
@@ -16502,6 +16520,7 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
                 continue
             spent = amount
             raw[tid] += float(amount)
+            _add_line(tid, float(amount))
 
         total_actual += spent
         if e.get("is_car"):
@@ -16512,12 +16531,20 @@ def _rec_calc(participants, expenses, cars=None):  # rec-expense-api-v2
         r = raw[pid]
         billed = _rec_round_up(r)
         total_billed += billed
+        breakdown = list(lines[pid])
+        up = round(billed - r, 2)
+        if up > 0:
+            breakdown.append({
+                "place": "", "label": "100円未満の繰上げ", "kind": "roundup",
+                "kind_label": "繰上げ", "expense_amount": 0, "share": up, "details": [],
+            })
         per_person.append({
             "patient_id": pid,
             "user_name": name_of.get(pid, ""),
             "raw_amount": round(r, 2),
             "billed_amount": billed,
-            "round_up": round(billed - r, 2),
+            "round_up": up,
+            "breakdown": breakdown,   # rec-expense-details-v4
         })
 
     return {
@@ -16540,12 +16567,55 @@ def _rec_load_event(supabase, f_code, event_id):  # rec-expense-api-v1
     return r.data[0] if r.data else None
 
 
-def _rec_expense_out(x):  # rec-expense-api-v2
+# ===== rec-expense-details-v4 : 費用の明細 =====
+
+def _rec_norm_details(raw):  # rec-expense-details-v4
+    """明細を正規化。[{"name","unit_price","qty"}]。数量0/単価0の行も残す(入力途中のため)。"""
+    out = []
+    for d in (raw or []):
+        if not isinstance(d, dict):
+            continue
+        name = (d.get("name") or "").strip()
+        try:
+            unit_price = int(d.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            unit_price = 0
+        try:
+            qty = int(d.get("qty") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        if not name and unit_price == 0 and qty == 0:
+            continue
+        out.append({"name": name, "unit_price": unit_price, "qty": qty})
+    return out
+
+
+def _rec_details_total(details):  # rec-expense-details-v4
+    """明細の合計 = Σ(単価 × 個数)。"""
+    total = 0
+    for d in (details or []):
+        total += int(d.get("unit_price") or 0) * int(d.get("qty") or 0)
+    return total
+
+
+def _rec_expense_amount(e):  # rec-expense-details-v4
+    """費用項目の金額。明細があれば明細の合計が正。無ければ amount を使う。"""
+    details = e.get("details") or []
+    if details:
+        return _rec_details_total(details)
+    try:
+        return int(e.get("amount") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _rec_expense_out(x):  # rec-expense-details-v4
     return {
         "id": x["id"],
         "kind": x.get("kind"),
         "label": x.get("label") or "",
         "amount": int(x.get("amount") or 0),
+        "details": _rec_norm_details(x.get("details")),
         "excluded": x.get("excluded") or [],
         "target_id": (str(x["target_id"]) if x.get("target_id") else None),
         "target_name": x.get("target_name") or "",
@@ -16582,11 +16652,20 @@ def _rec_load_tree(supabase, event):  # rec-expense-api-v2
     return places, car_expenses
 
 
-def _rec_all_expenses(places, car_expenses=None):  # rec-expense-api-v2
+def _rec_all_expenses(places, car_expenses=None):  # rec-expense-details-v4
+    """場所ブロックと車の費用を平坦化する。
+    内訳表示のため、どの場所の費用かを _place_name として添えておく(DBには保存しない)。"""
     out = []
     for p in (places or []):
-        out.extend(p.get("expenses") or [])
-    out.extend(car_expenses or [])
+        pname = (p.get("place_name") or "").strip()
+        for x in (p.get("expenses") or []):
+            x = dict(x)
+            x["_place_name"] = pname
+            out.append(x)
+    for x in (car_expenses or []):
+        x = dict(x)
+        x["_place_name"] = "車"
+        out.append(x)
     return out
 
 
@@ -16844,12 +16923,17 @@ def _rec_build_expense_rows(event_id, data):  # rec-expense-api-v2
             except (TypeError, ValueError):
                 return None, "車費用に対象車両が指定されていません"
             car_meta = {"type": ctype, "car_index": car_index}
+        # rec-expense-details-v4: 明細があれば金額は明細の合計が正
+        details = _rec_norm_details(x.get("details"))
+        if details:
+            amount = _rec_details_total(details)
         return {
             "place_id": place_id,
             "event_id": event_id,
             "kind": kind,
             "label": (x.get("label") or "").strip(),
             "amount": amount,
+            "details": details,
             "excluded": [str(v) for v in (x.get("excluded") or [])],
             "target_id": target_id,
             "target_name": (x.get("target_name") or "").strip(),
