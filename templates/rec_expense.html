@@ -109,6 +109,17 @@ table.rec-mx thead .mx-total { z-index:3; background:#e6f0fb; }
 table.rec-mx tfoot .mx-total { background:#dbeafe; }
 .rec-mx-hint { font-size:0.7rem; color:#9aa3b2; margin-top:4px; }
 
+/* アコーディオン（保存後は入力欄を閉じる） */
+.rec-acc-head { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+.rec-card > .rec-acc-head { margin:-14px -14px 12px; padding:11px 14px; background:#f8fafc;
+  border-bottom:1px solid #eef1f5; border-radius:11px 11px 0 0; font-weight:800; font-size:0.95rem; }
+.rec-card > .rec-acc-head.closed { margin-bottom:-14px; border-bottom:none; border-radius:11px; }
+.rec-acc-title { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+.rec-acc-sum { flex:1 1 auto; text-align:right; font-size:0.75rem; font-weight:600; color:#94a3b8;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rec-acc-caret { flex:0 0 auto; color:#94a3b8; font-size:0.8rem; transition:transform .15s ease; }
+.rec-acc-caret.closed { transform:rotate(-90deg); }
+
 .rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
@@ -194,6 +205,12 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
       <div>
         <!-- 基本情報 -->
         <div class="rec-card">
+          <div class="rec-acc-head" data-acc="basic">
+            <span class="rec-acc-title"><span class="material-symbols-outlined">event</span>おでかけの情報</span>
+            <span class="rec-acc-sum" id="recAccSumBasic"></span>
+            <span class="rec-acc-caret" data-caret="basic">▾</span>
+          </div>
+          <div data-accbody="basic">
           <div class="rec-grid2">
             <div class="rec-field">
               <label>日付</label>
@@ -232,21 +249,34 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
             <label>メモ</label>
             <textarea id="recMemo" class="rec-input" rows="2"></textarea>
           </div>
+          </div>
         </div>
 
         <!-- 場所ブロック -->
-        <div class="rec-sec-title"><span class="material-symbols-outlined">place</span>場所ごとの費用</div>
-        <div id="recPlaces"></div>
-        <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
+        <div class="rec-sec-title rec-acc-head" data-acc="places">
+          <span class="rec-acc-title"><span class="material-symbols-outlined">place</span>場所ごとの費用</span>
+          <span class="rec-acc-sum" id="recAccSumPlaces"></span>
+          <span class="rec-acc-caret" data-caret="places">▾</span>
+        </div>
+        <div data-accbody="places">
+          <div id="recPlaces"></div>
+          <button class="rec-btn rec-btn-ghost" onclick="recAddPlace()">＋ 場所を追加</button>
+        </div>
 
         <!-- 車 -->
-        <div class="rec-sec-title car"><span class="material-symbols-outlined">directions_car</span>車（台数分）</div>
-        <div id="recCars"></div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select id="recCarMaster" class="rec-select" style="max-width:260px;">
-            <option value="">車マスタから選択…</option>
-          </select>
-          <button class="rec-btn rec-btn-ghost" onclick="recAddCar()">＋ 車を追加</button>
+        <div class="rec-sec-title car rec-acc-head" data-acc="cars">
+          <span class="rec-acc-title"><span class="material-symbols-outlined">directions_car</span>車（台数分）</span>
+          <span class="rec-acc-sum" id="recAccSumCars"></span>
+          <span class="rec-acc-caret" data-caret="cars">▾</span>
+        </div>
+        <div data-accbody="cars">
+          <div id="recCars"></div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="recCarMaster" class="rec-select" style="max-width:260px;">
+              <option value="">車マスタから選択…</option>
+            </select>
+            <button class="rec-btn rec-btn-ghost" onclick="recAddCar()">＋ 車を追加</button>
+          </div>
         </div>
       </div>
 
@@ -283,6 +313,44 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   var calcTimer = null;
   var openBreakdown = {};   // 請求内訳の開閉状態（利用者ごと）
   var lastCalc = null;
+
+  // ---------- アコーディオン（保存後は入力欄を閉じる） ----------
+  var accOpen = { basic: true, places: true, cars: true };
+
+  function applyAcc() {
+    ['basic', 'places', 'cars'].forEach(function (name) {
+      var body = document.querySelector('[data-accbody="' + name + '"]');
+      var caret = document.querySelector('[data-caret="' + name + '"]');
+      var head = document.querySelector('.rec-acc-head[data-acc="' + name + '"]');
+      if (!body) return;
+      body.style.display = accOpen[name] ? '' : 'none';
+      if (caret) caret.className = 'rec-acc-caret' + (accOpen[name] ? '' : ' closed');
+      if (head) head.classList.toggle('closed', !accOpen[name]);
+    });
+    renderAccSummary();
+  }
+
+  // 閉じているときに中身が分かるよう、見出しに要約を出す
+  function renderAccSummary() {
+    var d = $('recDate').value || '';
+    var t = ($('recTitle').value || '').trim();
+    $('recAccSumBasic').textContent =
+      [d, t || '(無題)', '参加 ' + state.participants.length + '名'].filter(Boolean).join(' ／ ');
+
+    var nExp = state.places.reduce(function (s, p) { return s + (p.expenses || []).length; }, 0);
+    var names = state.places.map(function (p) { return (p.place_name || '').trim(); }).filter(Boolean);
+    $('recAccSumPlaces').textContent =
+      (names.length ? names.join('・') + ' ' : '') + '場所 ' + state.places.length + ' / 費用 ' + nExp + '件';
+
+    $('recAccSumCars').textContent = state.cars.length
+      ? state.cars.map(function (c) { return (c.name || '車') + (c.distance_km ? ' ' + c.distance_km + 'km' : ''); }).join('・')
+      : '利用なし';
+  }
+
+  window.recToggleAcc = function (name) {
+    accOpen[name] = !accOpen[name];
+    applyAcc();
+  };
 
   // alert() はブラウザを止めてしまうので、画面内のトーストで知らせる
   var toastTimer = null;
@@ -465,6 +533,13 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     if (!state.config.facility_address && !state.config.maps_enabled) await loadConfig();
     renderStaff(); renderParts(); renderPlaces(); renderCars(); recalc();
 
+    // 保存済みのものを開いたときは、入力欄は畳んでおく（新規は開いたまま）
+    var saved = !!(j.event.title || j.event.participants.length || (j.places || []).some(function (p) {
+      return (p.expenses || []).length;
+    }));
+    accOpen = { basic: !saved, places: !saved, cars: !saved };
+    applyAcc();
+
     $('recListView').style.display = 'none';
     $('recEditView').style.display = '';
   }
@@ -534,7 +609,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     if (!added && !state.participants.length) toast('その日のバイタル記録が見つかりませんでした');
   };
 
-  window.recOnDateChange = function () { recalc(); };
+  window.recOnDateChange = function () { renderAccSummary(); recalc(); };
 
   // ---------- 費用項目の共通描画 ----------
   function allExpenses() {
@@ -1099,6 +1174,10 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     var j = await r.json();
     if (j.status !== 'success') { toast(j.message); return; }
     renderCalc(j.calc);
+    // 保存できたら入力欄を畳んで、請求額だけが見える状態にする
+    accOpen = { basic: false, places: false, cars: false };
+    applyAcc();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     toast('保存しました', 'ok');
   };
 
@@ -1119,6 +1198,9 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   }
 
   // ---------- init ----------
+  document.querySelectorAll('.rec-acc-head[data-acc]').forEach(function (el) {
+    el.onclick = function () { recToggleAcc(el.dataset.acc); };
+  });
   $('recMonth').value = TODAY.slice(0, 7);
   $('recMonth').onchange = loadList;
   loadConfig();
