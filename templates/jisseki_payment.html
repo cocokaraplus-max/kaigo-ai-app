@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}利用区分一覧 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* jisseki-payment-list-v1 */
+.jp-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
+.jp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.jp-title { font-size:1.15rem; font-weight:800; }
+.jp-input { border:1px solid #d6dbe3; border-radius:8px; padding:8px 10px; font-size:0.92rem; }
+.jp-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
+  background:#eef2f7; color:#334; }
+
+.jp-card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:14px; margin-bottom:12px; }
+.jp-totals { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.jp-total { background:#f8fafc; border-radius:10px; padding:10px 14px; font-size:0.85rem; }
+.jp-total b { font-size:1.05rem; margin-left:6px; }
+
+.jp-hint { font-size:0.75rem; color:#6b7280; line-height:1.6; margin-bottom:10px; }
+.jp-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:0.75rem; color:#6b7280; margin-bottom:10px; }
+.jp-legend span.sw { display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:-2px; margin-right:4px; }
+
+.jp-row { border-bottom:1px solid #eef1f5; padding:12px 4px; }
+.jp-row:last-child { border-bottom:none; }
+.jp-name { font-weight:800; font-size:0.95rem; border-left:4px solid #1a73e8; padding-left:10px; margin-bottom:8px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.jp-count { font-size:0.75rem; font-weight:600; color:#6b7280; }
+.jp-days { display:flex; flex-wrap:wrap; gap:6px; }
+
+.jp-day { border:1.5px solid #dadce0; background:#fff; border-radius:8px; padding:5px 8px; font-size:0.78rem;
+  font-weight:700; cursor:pointer; min-width:64px; text-align:center; line-height:1.35; }
+.jp-day small { display:block; font-weight:600; font-size:0.66rem; opacity:0.85; }
+.jp-day[data-p="hoken"] { color:#185FA5; border-color:#B5D4F4; background:#E6F1FB; }
+.jp-day[data-p="jihi"]  { color:#BA7517; border-color:#FAC775; background:#FAEEDA; }
+.jp-day[data-src="override"] { box-shadow:0 0 0 2px #94a3b8 inset; }
+
+.jp-empty { color:#8a94a6; text-align:center; padding:28px 0; }
+.jp-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+  background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
+  transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; }
+.jp-toast.show { transform:translate(-50%,0); opacity:1; }
+.jp-toast.err { background:#c5221f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jp-wrap">
+  <div id="jpToast" class="jp-toast"></div>
+
+  <div class="jp-head">
+    <div class="jp-title">利用区分一覧</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="month" id="jpMonth" class="jp-input">
+      <button class="jp-btn" onclick="jpLoad()">表示</button>
+    </div>
+  </div>
+
+  <div class="jp-card">
+    <div class="jp-hint">
+      その月に来所した日を、利用者ごとに並べています。日付をタップすると
+      <b>保険 → 自費 → 自動（曜日ルールに戻す）</b> の順で切り替わります。<br>
+      手で切り替えた日は<b>その日付だけ固定</b>されるので、あとで曜日ルールを変えても動きません。
+    </div>
+    <div class="jp-legend">
+      <span><span class="sw" style="background:#E6F1FB;border:1.5px solid #B5D4F4;"></span>保険</span>
+      <span><span class="sw" style="background:#FAEEDA;border:1.5px solid #FAC775;"></span>自費</span>
+      <span><span class="sw" style="background:#fff;border:1.5px solid #dadce0;box-shadow:0 0 0 2px #94a3b8 inset;"></span>手動で固定した日</span>
+    </div>
+
+    <div class="jp-totals" id="jpTotals"></div>
+    <div id="jpList"><div class="jp-empty">読み込み中…</div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== jisseki-payment-list-v1 =====
+(function () {
+  var WD = ['日', '月', '火', '水', '木', '金', '土'];
+  var data = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var el = $('jpToast');
+    el.textContent = msg;
+    el.className = 'jp-toast show' + (kind === 'err' ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'jp-toast' + (kind === 'err' ? ' err' : ''); }, 2200);
+  }
+
+  window.jpLoad = async function () {
+    var m = $('jpMonth').value;
+    if (!m) return;
+    var y = m.slice(0, 4), mo = m.slice(5, 7);
+    var r = await fetch('/api/jisseki/payment_list?year=' + y + '&month=' + Number(mo));
+    var j = await r.json();
+    if (j.status !== 'success') { toast(j.message, 'err'); return; }
+    data = j;
+    render();
+  };
+
+  function render() {
+    $('jpTotals').innerHTML =
+      '<div class="jp-total">保険<b>' + data.totals.hoken + '</b> 件</div>' +
+      '<div class="jp-total">自費<b>' + data.totals.jihi + '</b> 件</div>' +
+      '<div class="jp-total">合計<b>' + (data.totals.hoken + data.totals.jihi) + '</b> 件</div>';
+
+    if (!data.patients.length) {
+      $('jpList').innerHTML = '<div class="jp-empty">この月の来所記録がありません</div>';
+      return;
+    }
+
+    $('jpList').innerHTML = data.patients.map(function (p, pi) {
+      var days = p.days.map(function (d, di) {
+        var dd = d.date.slice(8, 10);
+        return '<button class="jp-day" data-p="' + d.payment_type + '" data-src="' + d.source + '"' +
+          ' data-pi="' + pi + '" data-di="' + di + '"' +
+          ' title="' + d.date + '（' + WD[d.weekday] + '）' + (d.source === 'override' ? ' / 手動で固定' : ' / 曜日ルール') + '">' +
+          Number(dd) + '日<small>' + WD[d.weekday] + '・' + (d.payment_type === 'jihi' ? '自費' : '保険') + '</small>' +
+        '</button>';
+      }).join('');
+      return '<div class="jp-row">' +
+        '<div class="jp-name">' + esc(p.user_name) +
+          '<span class="jp-count">保険 ' + p.hoken_count + ' ／ 自費 ' + p.jihi_count + '</span></div>' +
+        '<div class="jp-days">' + days + '</div>' +
+      '</div>';
+    }).join('');
+
+    $('jpList').querySelectorAll('.jp-day').forEach(function (b) {
+      b.onclick = function () { cycle(Number(b.dataset.pi), Number(b.dataset.di), b); };
+    });
+  }
+
+  // 保険 → 自費 → 自動（曜日ルールに戻す）
+  async function cycle(pi, di, btn) {
+    var p = data.patients[pi];
+    var d = p.days[di];
+
+    var next;
+    if (d.source === 'rule') next = (d.payment_type === 'hoken') ? 'jihi' : 'hoken';
+    else if (d.payment_type === 'hoken') next = 'jihi';
+    else next = '';   // 自動に戻す
+
+    btn.disabled = true;
+    try {
+      var r = await fetch('/api/jisseki/visit_override', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: p.patient_id, visit_date: d.date, payment_type: next })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '保存に失敗しました', 'err'); return; }
+      // 保存できたら読み直す（自動に戻したとき、ルール判定の結果を正しく出すため）
+      await jpLoad();
+      toast(next === '' ? '曜日ルールに戻しました' : (next === 'jihi' ? '自費に固定しました' : '保険に固定しました'));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // init
+  var now = new Date();
+  $('jpMonth').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  jpLoad();
+})();
+</script>
+{% endblock %}

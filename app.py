@@ -17602,6 +17602,274 @@ def api_save_weekday_nth():
 # ===== /visit-nth-v1 =====
 
 
+
+# ===== jihi-validfrom-v1 : 自費曜日ルールの有効期間 =====
+# ルールに valid_from / valid_to を持たせ、「その来所日に有効だったルール」で判定する。
+# これが無いと、今日ルールを変えたときに過去の月の実績まで遡って変わってしまう。
+# 既存行は valid_from='1900-01-01' なので、導入しても過去の集計は変わらない。
+
+
+def is_uuid_like(v):  # jisseki-uuid-guard-v1
+    """UUID形式か。vitals.patient_id に整数IDが混ざっている行があり、
+    uuid列への照会で Postgres がエラーを返して集計が丸ごと落ちるのを防ぐ。"""
+    s = str(v or "")
+    if len(s) != 36:
+        return False
+    if s[8] != "-" or s[13] != "-" or s[18] != "-" or s[23] != "-":
+        return False
+    hexs = s.replace("-", "")
+    if len(hexs) != 32:
+        return False
+    return all(c in "0123456789abcdefABCDEF" for c in hexs)
+
+
+def jihi_active_on(rules, weekday, date_str):  # jihi-validfrom-v1
+    """その日付・その曜日が自費かどうか。rules は
+    [{'weekday':int, 'valid_from':'YYYY-MM-DD', 'valid_to':'YYYY-MM-DD'|None}, ...]"""
+    ds = str(date_str)[:10]
+    for r in (rules or []):
+        if int(r.get("weekday", -1)) != int(weekday):
+            continue
+        vf = (r.get("valid_from") or "1900-01-01")[:10]
+        vt = r.get("valid_to")
+        vt = (vt or "")[:10] or None
+        if ds < vf:
+            continue
+        if vt and ds >= vt:   # valid_to はその日を含まない
+            continue
+        return True
+    return False
+
+
+def _jihi_rules_for(supabase, f_code, pid):  # jihi-validfrom-v1
+    res = (supabase.table("patient_jihi_weekdays")
+           .select("id, weekday, valid_from, valid_to")
+           .eq("facility_code", f_code).eq("patient_id", pid).execute())
+    return res.data or []
+
+
+@app.route("/api/jisseki/patient_jihi_weekdays_v2", methods=["GET"])  # jihi-validfrom-v1
+@login_required
+def api_jisseki_jihi_wd_get_v2():
+    """指定日時点の自費曜日を返す。as_of 省略時は今日。
+    履歴も返すので、いつから自費になったかを画面で出せる。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    pid = (request.args.get("patient_id") or "").strip()
+    if not pid:
+        return jsonify({"status": "error", "message": "patient_id必須"}), 400
+    try:
+        as_of = (request.args.get("as_of") or "").strip() or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        rows = _jihi_rules_for(supabase, f_code, pid)
+        rules = [{
+            "weekday": int(r.get("weekday")),
+            "valid_from": (r.get("valid_from") or "1900-01-01")[:10],
+            "valid_to": ((r.get("valid_to") or "")[:10] or None),
+        } for r in rows]
+        weekdays = sorted([wd for wd in range(0, 7) if jihi_active_on(rules, wd, as_of)])
+        return jsonify({"status": "success", "as_of": as_of,
+                        "weekdays": weekdays, "history": rules})
+    except Exception as e:
+        print("api_jisseki_jihi_wd_get_v2 error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jisseki/patient_jihi_weekdays_v2", methods=["POST"])  # jihi-validfrom-v1
+@login_required
+def api_jisseki_jihi_wd_save_v2():
+    """自費曜日を保存する。過去を壊さない。
+
+    body: {patient_id, weekdays: [1,5], apply_from: "YYYY-MM-DD" | "all"}
+
+      apply_from = "YYYY-MM-DD"
+          その日から新しいルールを適用する。
+          それまで有効だったルールは valid_to = その日 で閉じる（過去はそのまま残る）。
+      apply_from = "all"
+          過去にさかのぼって全部書き換える（意図的な訂正）。既存行は削除。
+    """
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        data = request.json or {}
+        pid = (data.get("patient_id") or "").strip()
+        if not pid:
+            return jsonify({"status": "error", "message": "patient_id必須"}), 400
+
+        wds, seen = [], set()
+        for w in (data.get("weekdays") or []):
+            try:
+                wi = int(w)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= wi <= 6 and wi not in seen:
+                seen.add(wi)
+                wds.append(wi)
+
+        apply_from = (data.get("apply_from") or "").strip()
+        retroactive = (apply_from == "all")
+        if not retroactive:
+            if not apply_from:
+                apply_from = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+            if len(apply_from) != 10 or apply_from[4] != "-" or apply_from[7] != "-":
+                return jsonify({"status": "error", "message": "適用開始日が不正です"}), 400
+
+        if retroactive:
+            # 意図的な訂正: 過去も含めて全部このルールにする
+            supabase.table("patient_jihi_weekdays").delete() \
+                .eq("facility_code", f_code).eq("patient_id", pid).execute()
+            rows = [{"facility_code": f_code, "patient_id": pid, "weekday": w,
+                     "valid_from": "1900-01-01", "valid_to": None} for w in wds]
+            if rows:
+                supabase.table("patient_jihi_weekdays").insert(rows).execute()
+            return jsonify({"status": "success", "mode": "all", "weekdays": wds})
+
+        # 通常: apply_from から適用。過去のルールは閉じて残す。
+        existing = _jihi_rules_for(supabase, f_code, pid)
+        for r in existing:
+            vf = (r.get("valid_from") or "1900-01-01")[:10]
+            vt = ((r.get("valid_to") or "")[:10] or None)
+            if vt and vt <= apply_from:
+                continue                      # すでに閉じている過去の行はそのまま
+            if vf >= apply_from:
+                # 適用開始日以降に始まる行 = まだ実績に効いていない。作り直すので消す
+                supabase.table("patient_jihi_weekdays").delete().eq("id", r["id"]).execute()
+            else:
+                # 適用開始日より前から有効な行 = その日で閉じる（過去は保持）
+                supabase.table("patient_jihi_weekdays").update({"valid_to": apply_from}) \
+                    .eq("id", r["id"]).execute()
+
+        rows = [{"facility_code": f_code, "patient_id": pid, "weekday": w,
+                 "valid_from": apply_from, "valid_to": None} for w in wds]
+        if rows:
+            supabase.table("patient_jihi_weekdays").insert(rows).execute()
+
+        return jsonify({"status": "success", "mode": "from", "apply_from": apply_from, "weekdays": wds})
+    except Exception as e:
+        print("api_jisseki_jihi_wd_save_v2 error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /jihi-validfrom-v1 =====
+
+
+
+# ===== jisseki-payment-list-v1 : 利用区分一覧（誰がいつ 自費/保険 か） =====
+# 判定の優先順位は集計と同じ:
+#   1. visit_day_overrides（その日付だけの上書き）
+#   2. 自費曜日ルール（有効期間つき / jihi_active_on）
+
+
+@app.route("/api/jisseki/payment_list", methods=["GET"])  # jisseki-payment-list-v1
+@login_required
+def api_jisseki_payment_list():
+    """指定月の来所日を利用者ごとに並べ、各日の 自費/保険 と根拠を返す。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        import calendar as _c
+        from datetime import date as _d
+        now = datetime.now(tokyo_tz)
+        year = int(request.args.get("year") or now.year)
+        month = int(request.args.get("month") or now.month)
+        if not (1 <= month <= 12):
+            return jsonify({"status": "error", "message": "月が不正です"}), 400
+
+        ndays = _c.monthrange(year, month)[1]
+        first = "%04d-%02d-01" % (year, month)
+        last = "%04d-%02d-%02d" % (year, month, ndays)
+
+        # 来所日 = vitals（集計と同じ基準）
+        vit = (supabase.table("vitals").select("patient_id, measured_date")
+               .eq("facility_code", f_code)
+               .gte("measured_date", first).lte("measured_date", last).execute())
+        visit_days = {}
+        for r in (vit.data or []):
+            pid = str(r.get("patient_id") or "")
+            md = (r.get("measured_date") or "")[:10]
+            if pid and md and is_uuid_like(pid):   # jisseki-uuid-guard-v1
+                visit_days.setdefault(pid, set()).add(md)
+
+        if not visit_days:
+            return jsonify({"status": "success", "year": year, "month": month,
+                            "patients": [], "totals": {"jihi": 0, "hoken": 0}})
+
+        pids = list(visit_days.keys())
+        CHUNK = 100
+
+        # 自費曜日ルール（有効期間つき）
+        rules = {}
+        for i in range(0, len(pids), CHUNK):
+            chunk = pids[i:i + CHUNK]
+            pres = (supabase.table("patient_jihi_weekdays")
+                    .select("patient_id, weekday, valid_from, valid_to")
+                    .eq("facility_code", f_code).in_("patient_id", chunk).execute())
+            for r in (pres.data or []):
+                rules.setdefault(str(r.get("patient_id")), []).append({
+                    "weekday": int(r.get("weekday")),
+                    "valid_from": (r.get("valid_from") or "1900-01-01")[:10],
+                    "valid_to": ((r.get("valid_to") or "")[:10] or None),
+                })
+
+        # 日付ごとの上書き
+        ovr = {}
+        for i in range(0, len(pids), CHUNK):
+            chunk = pids[i:i + CHUNK]
+            ores = (supabase.table("visit_day_overrides")
+                    .select("patient_id, visit_date, payment_type")
+                    .eq("facility_code", f_code).in_("patient_id", chunk)
+                    .gte("visit_date", first).lte("visit_date", last).execute())
+            for r in (ores.data or []):
+                ovr[(str(r.get("patient_id")), (r.get("visit_date") or "")[:10])] = r.get("payment_type")
+
+        # 氏名
+        plist = get_patients(supabase, f_code)
+        pmap = dict((str(p["id"]), p) for p in plist)
+
+        out = []
+        t_jihi = t_hoken = 0
+        for pid in pids:
+            prof = pmap.get(pid) or {}
+            days = []
+            for ds in sorted(visit_days[pid]):
+                js_wd = (_d.fromisoformat(ds).weekday() + 1) % 7   # 0=日..6=土
+                ptype = ovr.get((pid, ds))
+                if ptype in ("jihi", "hoken"):
+                    source = "override"
+                else:
+                    ptype = "jihi" if jihi_active_on(rules.get(pid, []), js_wd, ds) else "hoken"
+                    source = "rule"
+                if ptype == "jihi":
+                    t_jihi += 1
+                else:
+                    t_hoken += 1
+                days.append({"date": ds, "weekday": js_wd, "payment_type": ptype, "source": source})
+
+            out.append({
+                "patient_id": pid,
+                "user_name": prof.get("user_name") or "",
+                "user_kana": prof.get("user_kana") or "",
+                "care_level": prof.get("care_level") or "",
+                "days": days,
+                "jihi_count": sum(1 for d in days if d["payment_type"] == "jihi"),
+                "hoken_count": sum(1 for d in days if d["payment_type"] == "hoken"),
+            })
+
+        out.sort(key=lambda x: (x.get("user_kana") or x.get("user_name") or ""))
+        return jsonify({"status": "success", "year": year, "month": month,
+                        "patients": out, "totals": {"jihi": t_jihi, "hoken": t_hoken}})
+    except Exception as e:
+        print("api_jisseki_payment_list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/jisseki/payment")  # jisseki-payment-list-v1
+@login_required
+def jisseki_payment_page():
+    """利用区分一覧のページ。"""
+    return render("jisseki_payment.html")
+
+# ===== /jisseki-payment-list-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
@@ -21281,7 +21549,9 @@ def api_jisseki_svctime_summary():
         visit_days = {}  # patient_id -> set(date_iso)
         for r in (vit.data or []):
             pid = r.get("patient_id"); md = (r.get("measured_date") or "")[:10]
-            if pid and md:
+            # jisseki-uuid-guard-v1: UUIDでない patient_id(整数IDの混入)は集計対象外にする。
+            # 1件でも混ざると uuid 列への照会でエラーになり、月の集計が丸ごと落ちるため。
+            if pid and md and is_uuid_like(pid):
                 visit_days.setdefault(pid, set()).add(md)
         patient_ids = list(visit_days.keys())
 
@@ -21331,13 +21601,19 @@ def api_jisseki_svctime_summary():
             wd_cat[int(r.get("weekday"))] = r.get("time_category")
 
         # 4) patient_jihi_weekdays(利用者×曜日の自費)
-        pjw = {}  # patient_id -> set(weekday)
+        # jihi-validfrom-v1: 有効期間つき。その来所日に有効だったルールだけを見る。
+        pjw = {}  # patient_id -> [ {weekday, valid_from, valid_to}, ... ]
         for i in range(0, len(patient_ids), CHUNK):
             chunk = patient_ids[i:i+CHUNK]
-            pres = supabase.table("patient_jihi_weekdays").select("patient_id, weekday") \
+            pres = supabase.table("patient_jihi_weekdays") \
+                .select("patient_id, weekday, valid_from, valid_to") \
                 .eq("facility_code", f_code).in_("patient_id", chunk).execute()
             for r in (pres.data or []):
-                pjw.setdefault(str(r.get("patient_id")), set()).add(int(r.get("weekday")))
+                pjw.setdefault(str(r.get("patient_id")), []).append({
+                    "weekday": int(r.get("weekday")),
+                    "valid_from": (r.get("valid_from") or "1900-01-01")[:10],
+                    "valid_to": ((r.get("valid_to") or "")[:10] or None),
+                })
 
         # 5) visit_day_overrides(来所日ごとの上書き)
         ovr = {}  # (patient_id, date_iso) -> {time_category, payment_type}
@@ -21361,7 +21637,7 @@ def api_jisseki_svctime_summary():
             lv = level_at(pid)
             is_kaigo = lv in _JIS_KAIGO_LEVELS
             is_sogo = lv in _JIS_SOGO_LEVELS
-            jihi_wds = pjw.get(str(pid), set())
+            jihi_rules = pjw.get(str(pid), [])   # jihi-validfrom-v1
             for ds in dates:
                 o = ovr.get((str(pid), ds), {})
                 # 提供時間区分
@@ -21376,7 +21652,8 @@ def api_jisseki_svctime_summary():
                 if not ptype:
                     wd = _d.fromisoformat(ds).weekday()
                     js_wd = (wd + 1) % 7
-                    ptype = "jihi" if js_wd in jihi_wds else "hoken"
+                    # jihi-validfrom-v1: その来所日(ds)に有効だったルールだけで判定する
+                    ptype = "jihi" if jihi_active_on(jihi_rules, js_wd, ds) else "hoken"
                 # 集計
                 if ptype == "jihi":
                     if is_kaigo: jihi_kaigo += 1
