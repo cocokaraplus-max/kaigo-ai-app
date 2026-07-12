@@ -17345,6 +17345,142 @@ def api_vehicles_delete(vehicle_id):
 # ===== /vehicles-admin-v1 =====
 
 
+
+# ===== soge-settings-v1 : 送迎設定（単位数・便の定義） =====
+# 便は「迎え専用/送り専用」ではない。2単位運営の中間便は
+# 「1単位目を送る + 2単位目を迎える」が同一車両で混在する。
+# 単位は既存の patient_visit_days.ampm_per_day（AM=1単位目 / PM=2単位目）に対応。
+
+SOGE_DEFAULT_TRIPS = {
+    1: [
+        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": []},
+        {"key": "t2", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [1]},
+    ],
+    2: [
+        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": []},
+        {"key": "t2", "name": "中間便", "depart": "12:00", "pickup_units": [2], "dropoff_units": [1]},
+        {"key": "t3", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [2]},
+    ],
+}
+
+
+def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
+    """便の定義を正規化。空なら単位数に応じた既定値。"""
+    out = []
+    for i, t in enumerate(raw or []):
+        if not isinstance(t, dict):
+            continue
+        name = (t.get("name") or "").strip()
+        if not name:
+            continue
+        depart = (t.get("depart") or "").strip()
+        if depart and not (len(depart) == 5 and depart[2] == ":"):
+            depart = ""
+        def _units(v):
+            out2 = []
+            for u in (v or []):
+                try:
+                    u = int(u)
+                except (TypeError, ValueError):
+                    continue
+                if u in (1, 2) and u <= unit_count and u not in out2:
+                    out2.append(u)
+            return out2
+        out.append({
+            "key": (t.get("key") or "t%d" % (i + 1)),
+            "name": name,
+            "depart": depart,
+            "pickup_units": _units(t.get("pickup_units")),
+            "dropoff_units": _units(t.get("dropoff_units")),
+        })
+    if not out:
+        out = [dict(t) for t in SOGE_DEFAULT_TRIPS.get(unit_count, SOGE_DEFAULT_TRIPS[1])]
+    return out
+
+
+def get_soge_settings(supabase, f_code):  # soge-settings-v1
+    """送迎設定。未登録なら1単位の既定値を返す（DBには書かない）。"""
+    try:
+        r = supabase.table("soge_settings").select("*").eq("facility_code", f_code).execute()
+        if r.data:
+            s = r.data[0]
+            uc = int(s.get("unit_count") or 1)
+            uc = 2 if uc == 2 else 1
+            return {
+                "unit_count": uc,
+                "trips": _soge_norm_trips(s.get("trips"), uc),
+                "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
+                "configured": True,
+            }
+    except Exception as e:
+        print("soge settings get error: %s" % e, flush=True)
+    return {
+        "unit_count": 1,
+        "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
+        "mid_dropoff_first": True,
+        "configured": False,
+    }
+
+
+@app.route("/api/soge/settings", methods=["GET"])  # soge-settings-v1
+@login_required
+def api_soge_settings_get():
+    """送迎設定の参照。送迎表を組むのに全職員が使うので参照は制限しない。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        s = get_soge_settings(supabase, f_code)
+        s["status"] = "success"
+        return jsonify(s)
+    except Exception as e:
+        print("soge settings error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/settings", methods=["PUT"])  # soge-settings-v1
+@login_required
+def api_soge_settings_save():
+    """送迎設定の更新（管理者のみ）。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+
+        data = request.json or {}
+        try:
+            uc = int(data.get("unit_count") or 1)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "単位数が不正です"}), 400
+        if uc not in (1, 2):
+            return jsonify({"status": "error", "message": "単位数は1か2です"}), 400
+
+        trips = _soge_norm_trips(data.get("trips"), uc)
+        if not trips:
+            return jsonify({"status": "error", "message": "便が1つも設定されていません"}), 400
+
+        payload = {
+            "facility_code": f_code,
+            "unit_count": uc,
+            "trips": trips,
+            "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        existing = supabase.table("soge_settings").select("facility_code").eq("facility_code", f_code).execute()
+        if existing.data:
+            supabase.table("soge_settings").update(payload).eq("facility_code", f_code).execute()
+        else:
+            supabase.table("soge_settings").insert(payload).execute()
+
+        return jsonify({"status": "success", "trips": trips})
+    except Exception as e:
+        print("soge settings save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /soge-settings-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
