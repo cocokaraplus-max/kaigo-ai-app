@@ -223,6 +223,48 @@
 })();
 </script>
 
+{% if top_style == 'grid' %}
+<!-- top-grid-v1: アイコン一覧（iPhoneのホーム画面のような並び）
+     ボトムナビは今までどおり残る。歯車から「従来のTOP」に戻せる。 -->
+<style>
+  .tg-wrap { margin: 6px 0 18px; }
+  .tg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 8px; }
+  /* 480px 固定カラムなので4列。字が長いラベルもあるので折り返しは2行まで。 */
+  .tg-app { display: flex; flex-direction: column; align-items: center; gap: 6px;
+            text-decoration: none; color: #202124; -webkit-tap-highlight-color: transparent; }
+  .tg-ic { width: 58px; height: 58px; border-radius: 16px; display: flex; align-items: center;
+           justify-content: center; background: #1a73e8; color: #fff;
+           box-shadow: 0 2px 6px rgba(16,24,40,.14); }
+  .tg-ic .material-symbols-outlined { font-size: 30px; }
+  .tg-app:active .tg-ic { transform: scale(0.93); }
+  .tg-ic { transition: transform .08s ease; }
+  .tg-label { font-size: 0.68rem; font-weight: 700; line-height: 1.25; text-align: center;
+              max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical;
+              -webkit-line-clamp: 2; overflow: hidden; }
+  /* 色は導線の性格ごとに変える（記録＝青、集計＝緑、管理＝グレー） */
+  .tg-app[data-href="/tasks"] .tg-ic,
+  .tg-app[data-href="/board"] .tg-ic { background: #7c4dff; }
+  .tg-app[data-href="/ledger"] .tg-ic,
+  .tg-app[data-href="/rec_expense"] .tg-ic { background: #2f6b5e; }
+  .tg-app[data-href="/admin"] .tg-ic,
+  .tg-app[data-href="/dev"] .tg-ic,
+  .tg-app[data-href="/manual"] .tg-ic { background: #5f6368; }
+  .tg-app[data-href="/birthday"] .tg-ic,
+  .tg-app[data-href="/numerology"] .tg-ic { background: #e8710a; }
+</style>
+<div class="tg-wrap">
+  <div class="tg-grid" id="tgGrid">
+    {% for m in menu_items %}
+    <a class="tg-app" data-href="{{ m.href }}" href="{{ m.href }}"
+       onclick="spaNav(event, '{{ m.href }}')">
+      <span class="tg-ic"><span class="material-symbols-outlined">{{ m.icon }}</span></span>
+      <span class="tg-label">{{ m.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <!-- ★ ユーザー設定モーダル -->
 
 

@@ -638,6 +638,24 @@ body.nav-editing {
                     <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
                 </button>
             </div>
+            <!-- top-grid-v1: TOPの表示スタイル。個人ごとにDBへ保存する（端末を変えても残る） -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">grid_view</span>TOPの表示
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <button class="tg-style-btn" data-style="grid" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        アイコン一覧
+                    </button>
+                    <button class="tg-style-btn" data-style="classic" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        従来のTOP
+                    </button>
+                </div>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:8px;">
+                    アイコン一覧にすると、TOPにメニューがアイコンで並びます。下のメニューバーはそのままです。
+                </div>
+            </div>
+
             <!-- ナビカラー -->
             <div class="setting-section">
                 <div class="setting-section-label">
@@ -666,6 +684,42 @@ body.nav-editing {
             </div>
         </div>
     </div>
+    <script>
+    // top-grid-v1: TOPの表示スタイル。保存は個人設定（DB）。切り替えたらTOPを読み直す。
+    (function () {
+      var btns = document.querySelectorAll('.tg-style-btn');
+      if (!btns.length) return;
+
+      function paint(cur) {
+        btns.forEach(function (b) {
+          var on = (b.dataset.style === cur);
+          b.style.background = on ? '#1a73e8' : '#fff';
+          b.style.color = on ? '#fff' : '#202124';
+          b.style.borderColor = on ? '#1a73e8' : '#e0e0e0';
+        });
+      }
+
+      fetch('/api/me/setting?key=top_style')
+        .then(function (r) { return r.json(); })
+        .then(function (j) { paint((j && j.value) || 'classic'); })
+        .catch(function () { paint('classic'); });
+
+      btns.forEach(function (b) {
+        b.onclick = async function () {
+          var v = b.dataset.style;
+          paint(v);
+          var r = await fetch('/api/me/setting', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'top_style', value: v })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') return;
+          location.href = '/top';   // 同じタブで開く（PWAで外部ブラウザに飛ばさない）
+        };
+      });
+    })();
+    </script>
+
     <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
         <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
             <span class="material-symbols-outlined">assignment_late</span>
