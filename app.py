@@ -1976,7 +1976,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/manual",         "icon": "menu_book",              "label": "ガイド",         "need": None},
 ]
 
-STAFF_SETTING_KEYS = ("top_style", "top_layout")   # top-grid-v1: 受け付けるキーはこれだけ
+STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side")   # 受け付けるキーはこれだけ
 
 
 def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
@@ -2038,6 +2038,33 @@ def set_staff_setting(supabase, f_code, staff_name, key, value):  # staff-settin
     except Exception as e:
         print("set_staff_setting error: %s" % e, flush=True)
         return False
+
+
+@app.context_processor
+def inject_app_drawer():  # app-drawer-v1
+    """引き出しメニュー（全画面）。メニュー項目と、出る端（利き手）を渡す。
+
+    毎リクエスト DB を叩くので flask.g に1回だけキャッシュする
+    （can_rec_expense が同じ作りなので、それに合わせた）。"""
+    from flask import g as _g   # 既存コードに合わせてローカルで import する
+    try:
+        f_code = session.get("f_code")
+        my_name = session.get("my_name")
+        if not f_code or not my_name:
+            return {"drawer_items": [], "drawer_side": "right"}
+        if not hasattr(_g, "_drawer_cache"):
+            supabase = get_supabase()
+            side = get_staff_setting(supabase, f_code, my_name, "drawer_side", "right")
+            if side not in ("left", "right"):
+                side = "right"
+            _g._drawer_cache = {
+                "drawer_items": _menu_items_visible(supabase, f_code, my_name),
+                "drawer_side": side,
+            }
+        return _g._drawer_cache
+    except Exception as e:
+        print("inject_app_drawer error: %s" % e, flush=True)
+        return {"drawer_items": [], "drawer_side": "right"}
 
 
 @app.route("/api/me/setting", methods=["GET"])  # staff-settings-v1
@@ -2138,11 +2165,7 @@ def top():
                 my_tasks.append(t)
     except:
         pass
-    # top-grid-v1: 表示スタイル。既定は従来のTOP（勝手に変わると現場が混乱するため）
-    top_style = get_staff_setting(supabase, f_code, my_name, "top_style", "classic")
-    if top_style not in ("grid", "classic"):
-        top_style = "classic"
-
+    # app-drawer-v1: TOP は従来どおり。アイコン一覧は全画面の引き出し（base.html）へ移した。
     return render("top.html", f_code=f_code, my_name=my_name, records=records,
         birthday_users=get_birthday_users(supabase, f_code),
         my_tasks=my_tasks,
@@ -2150,8 +2173,6 @@ def top():
         my_icon_image_url=my_icon_image_url,
         my_color=staff_color(my_name),
         my_initial=staff_initial(my_name),
-        top_style=top_style,                                        # top-grid-v1
-        menu_items=_menu_items_visible(supabase, f_code, my_name),  # top-grid-v1
     )
 
 @app.route('/input', methods=['GET', 'POST'])

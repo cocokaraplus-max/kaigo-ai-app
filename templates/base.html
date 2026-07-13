@@ -638,21 +638,21 @@ body.nav-editing {
                     <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
                 </button>
             </div>
-            <!-- top-grid-v1: TOPの表示スタイル。個人ごとにDBへ保存する（端末を変えても残る） -->
+            <!-- app-drawer-v1: 引き出しメニューの向き（利き手）。個人ごとにDBへ保存する -->
             <div class="setting-section">
                 <div class="setting-section-label">
-                    <span class="material-symbols-outlined">grid_view</span>TOPの表示
+                    <span class="material-symbols-outlined">apps</span>メニューの引き出し
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <button class="tg-style-btn" data-style="grid" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
-                        アイコン一覧
+                    <button class="dw-side-btn" data-side="left" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        左から出す
                     </button>
-                    <button class="tg-style-btn" data-style="classic" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
-                        従来のTOP
+                    <button class="dw-side-btn" data-side="right" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        右から出す
                     </button>
                 </div>
                 <div style="font-size:0.72rem;color:#5f6368;margin-top:8px;">
-                    アイコン一覧にすると、TOPにメニューがアイコンで並びます。下のメニューバーはそのままです。
+                    画面の端をなぞるか、端の取っ手をタップするとアイコン一覧が開きます。利き手に合わせて選んでください。
                 </div>
             </div>
 
@@ -685,36 +685,34 @@ body.nav-editing {
         </div>
     </div>
     <script>
-    // top-grid-v1: TOPの表示スタイル。保存は個人設定（DB）。切り替えたらTOPを読み直す。
+    // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。
     (function () {
-      var btns = document.querySelectorAll('.tg-style-btn');
+      var btns = document.querySelectorAll('.dw-side-btn');
       if (!btns.length) return;
 
       function paint(cur) {
         btns.forEach(function (b) {
-          var on = (b.dataset.style === cur);
+          var on = (b.dataset.side === cur);
           b.style.background = on ? '#1a73e8' : '#fff';
           b.style.color = on ? '#fff' : '#202124';
           b.style.borderColor = on ? '#1a73e8' : '#e0e0e0';
         });
       }
-
-      fetch('/api/me/setting?key=top_style')
-        .then(function (r) { return r.json(); })
-        .then(function (j) { paint((j && j.value) || 'classic'); })
-        .catch(function () { paint('classic'); });
+      paint(document.body.dataset.drawerSide || 'right');
 
       btns.forEach(function (b) {
         b.onclick = async function () {
-          var v = b.dataset.style;
+          var v = b.dataset.side;
           paint(v);
-          var r = await fetch('/api/me/setting', {
+          document.body.dataset.drawerSide = v;      // 再読み込みせずに向きを変える
+          var dw = document.getElementById('appDrawer');
+          var hd = document.getElementById('appDrawerHandle');
+          if (dw) dw.dataset.side = v;
+          if (hd) hd.dataset.side = v;
+          await fetch('/api/me/setting', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: 'top_style', value: v })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') return;
-          location.href = '/top';   // 同じタブで開く（PWAで外部ブラウザに飛ばさない）
+            body: JSON.stringify({ key: 'drawer_side', value: v })
+          }).catch(function () {});
         };
       });
     })();
@@ -744,7 +742,235 @@ body.nav-editing {
     </div>
     {% block above_nav %}{% endblock %}
 
-    {% block bottom_nav %}
+    {% if session.get('f_code') %}
+<!-- ===== app-drawer-v1 : アイコン一覧の引き出し（全画面） =====
+     ボトムナビに入り切らない導線の受け皿。端のスワイプ、または取っ手のタップで開く。
+     出る端は個人設定（利き手）。 -->
+<style>
+  /* 取っ手。細いピル。触れる範囲は見た目より広くする（指は太い） */
+  #appDrawerHandle { position: fixed; top: 46%; width: 26px; height: 64px; z-index: 2400;
+    background: rgba(32,33,36,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(16,24,40,.22); opacity: .55;
+    transition: opacity .2s ease, transform .2s cubic-bezier(.22,.9,.3,1); }
+  #appDrawerHandle:hover, #appDrawerHandle:active { opacity: 1; }
+  #appDrawerHandle[data-side="right"] { right: 0; border-radius: 14px 0 0 14px; }
+  #appDrawerHandle[data-side="left"]  { left: 0;  border-radius: 0 14px 14px 0; }
+  #appDrawerHandle[data-side="right"]:active { transform: translateX(-3px); }
+  #appDrawerHandle[data-side="left"]:active  { transform: translateX(3px); }
+  #appDrawerHandle .material-symbols-outlined { font-size: 18px; }
+  #appDrawerHandle.hide { opacity: 0; pointer-events: none; }
+
+  /* 背景はぼかす。黒ベタより奥行きが出る */
+  #appDrawerMask { position: fixed; inset: 0; z-index: 2500;
+    background: rgba(16,24,40,.28); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity .24s ease; }
+  #appDrawerMask.on { opacity: 1; pointer-events: auto; }
+
+  /* 引き出し本体。指で引っぱっている間は transition を切って指に追従させる（.drag） */
+  #appDrawer { position: fixed; top: 0; bottom: 0; width: min(86vw, 380px); z-index: 2600;
+    background: rgba(255,255,255,.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(16,24,40,.28); display: flex; flex-direction: column;
+    transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform; }
+  #appDrawer[data-side="right"] { right: 0; transform: translateX(102%); border-radius: 22px 0 0 22px; }
+  #appDrawer[data-side="left"]  { left: 0;  transform: translateX(-102%); border-radius: 0 22px 22px 0; }
+  #appDrawer.on { transform: translateX(0); }
+  #appDrawer.drag { transition: none; }
+
+  .dw-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px;
+    border-bottom: 1px solid #eceff3; font-weight: 800; }
+  .dw-close { margin-left: auto; border: none; background: #f1f3f4; color: #5f6368;
+    border-radius: 999px; width: 32px; height: 32px; cursor: pointer; line-height: 1; }
+  .dw-body { padding: 16px 12px 28px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .dw-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 6px; }
+  .dw-app { display: flex; flex-direction: column; align-items: center; gap: 5px;
+    text-decoration: none; color: #202124; -webkit-tap-highlight-color: transparent; }
+  .dw-ic { width: 52px; height: 52px; border-radius: 15px; display: flex; align-items: center;
+    justify-content: center; background: #1a73e8; color: #fff;
+    transition: transform .12s cubic-bezier(.22,.9,.3,1), box-shadow .12s ease;
+    box-shadow: 0 3px 8px rgba(16,24,40,.16); }
+  .dw-ic .material-symbols-outlined { font-size: 27px; }
+  .dw-app:active .dw-ic { transform: scale(.88); box-shadow: 0 1px 3px rgba(16,24,40,.18); }
+  .dw-label { font-size: .66rem; font-weight: 700; line-height: 1.2; text-align: center;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+  /* 開いたときにアイコンが少しずつ立ち上がる。奥から手前に出てくる感じ。
+     開くたびに再生したいので、.on が付いた時に animation を当て直す。 */
+  #appDrawer.on .dw-app { animation: dwPop .34s cubic-bezier(.22,1.2,.36,1) both; }
+  @keyframes dwPop {
+    from { opacity: 0; transform: translateY(10px) scale(.86); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #appDrawer, #appDrawerMask, #appDrawerHandle { transition: none; }
+    #appDrawer.on .dw-app { animation: none; }
+  }
+  /* 性格ごとに色を分ける（記録＝青／やりとり＝紫／お金＝緑／管理＝グレー／その他＝橙） */
+  .dw-app[data-href="/tasks"] .dw-ic, .dw-app[data-href="/board"] .dw-ic,
+  .dw-app[data-href="/admin/meetings"] .dw-ic { background: #7c4dff; }
+  .dw-app[data-href="/ledger"] .dw-ic, .dw-app[data-href="/rec_expense"] .dw-ic { background: #2f6b5e; }
+  .dw-app[data-href="/admin"] .dw-ic, .dw-app[data-href="/dev"] .dw-ic,
+  .dw-app[data-href="/manual"] .dw-ic { background: #5f6368; }
+  .dw-app[data-href="/birthday"] .dw-ic, .dw-app[data-href="/numerology"] .dw-ic { background: #e8710a; }
+</style>
+
+<div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
+  <span class="material-symbols-outlined">apps</span>
+</div>
+<div id="appDrawerMask"></div>
+<div id="appDrawer" data-side="{{ drawer_side }}">
+  <div class="dw-head">
+    <span class="material-symbols-outlined" style="font-size:20px;color:#1a73e8;">apps</span>
+    メニュー
+    <button class="dw-close" id="appDrawerClose">✕</button>
+  </div>
+  <div class="dw-body">
+    <div class="dw-grid">
+      <a class="dw-app" data-href="/top" href="/top" onclick="spaNav(event, '/top')">
+        <span class="dw-ic"><span class="material-symbols-outlined">home</span></span>
+        <span class="dw-label">TOP</span>
+      </a>
+      {% for m in drawer_items %}
+      <a class="dw-app" data-href="{{ m.href }}" href="{{ m.href }}" onclick="spaNav(event, '{{ m.href }}')">
+        <span class="dw-ic"><span class="material-symbols-outlined">{{ m.icon }}</span></span>
+        <span class="dw-label">{{ m.label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+// app-drawer-v1
+(function () {
+  var dw = document.getElementById('appDrawer'),
+      mask = document.getElementById('appDrawerMask'),
+      handle = document.getElementById('appDrawerHandle'),
+      closeBtn = document.getElementById('appDrawerClose');
+  if (!dw) return;
+
+  document.body.dataset.drawerSide = dw.dataset.side;
+
+  function side() { return dw.dataset.side || 'right'; }
+  function W() { return dw.getBoundingClientRect().width || 320; }
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  // アイコンを1つずつ遅らせて立ち上げる（開くたびに再生されるよう毎回入れ直す）
+  var apps = dw.querySelectorAll('.dw-app');
+  function stagger() {
+    apps.forEach(function (a, i) {
+      a.style.animation = 'none';
+      void a.offsetWidth;                       // 再生し直すためのリフロー
+      a.style.animation = '';
+      a.style.animationDelay = (18 * i) + 'ms';
+    });
+  }
+
+  function open() {
+    endDrag();
+    stagger();
+    dw.classList.add('on');
+    mask.classList.add('on');
+    handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
+    buzz(12);
+  }
+  function close() {
+    endDrag();
+    dw.classList.remove('on');
+    mask.classList.remove('on');
+    handle.classList.remove('hide');
+  }
+  function endDrag() { dw.classList.remove('drag'); dw.style.transform = ''; mask.style.opacity = ''; }
+
+  // 指の位置に追従させる。0=閉じ、1=開き。
+  function follow(p) {
+    p = Math.max(0, Math.min(1, p));
+    var off = (1 - p) * W() * (side() === 'right' ? 1 : -1);
+    dw.style.transform = 'translateX(' + off + 'px)';
+    mask.style.opacity = String(p);
+  }
+
+  handle.onclick = open;
+  closeBtn.onclick = close;
+  mask.onclick = close;
+  // 中の導線を押したら閉じる（SPA遷移でも画面に引き出しが残らないように）
+  apps.forEach(function (a) { a.addEventListener('click', close); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  // ---- 端から引き出す。指に追従し、離した位置で開くか戻るかを決める ----
+  // 端 26px 以内で始まったときだけ拾う。縦に動いたらスクロールに譲る。
+  var EDGE = 26, SNAP = 0.35;
+  var sx = 0, sy = 0, watching = false, dragging = false;
+
+  window.addEventListener('touchstart', function (e) {
+    if (dw.classList.contains('on')) return;
+    var t = e.touches[0];
+    sx = t.clientX; sy = t.clientY; dragging = false;
+    watching = (side() === 'right') ? (sx >= window.innerWidth - EDGE) : (sx <= EDGE);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (!watching || dw.classList.contains('on')) return;
+    var t = e.touches[0];
+    var dx = t.clientX - sx, dy = Math.abs(t.clientY - sy);
+    var inward = (side() === 'right') ? -dx : dx;
+    if (!dragging) {
+      if (dy > 18 && dy > inward) { watching = false; return; }   // 縦スクロール優先
+      if (inward < 8) return;
+      dragging = true;
+      dw.classList.add('drag');
+      mask.classList.add('on');
+      mask.style.opacity = '0';
+      stagger();
+    }
+    follow(inward / W());
+  }, { passive: true });
+
+  window.addEventListener('touchend', function (e) {
+    if (!dragging) { watching = false; return; }
+    var t = (e.changedTouches && e.changedTouches[0]) || null;
+    var inward = t ? ((side() === 'right') ? (sx - t.clientX) : (t.clientX - sx)) : 0;
+    dw.classList.remove('drag');
+    dw.style.transform = '';
+    mask.style.opacity = '';
+    if (inward / W() > SNAP) { open(); } else { close(); }
+    watching = false; dragging = false;
+  }, { passive: true });
+
+  // ---- 開いているとき、外向きに払うと閉じる（こちらも指に追従） ----
+  var cx = 0, cy = 0, cdrag = false, cwatch = false;
+  dw.addEventListener('touchstart', function (e) {
+    if (!dw.classList.contains('on')) return;
+    cx = e.touches[0].clientX; cy = e.touches[0].clientY; cwatch = true; cdrag = false;
+  }, { passive: true });
+  dw.addEventListener('touchmove', function (e) {
+    if (!cwatch) return;
+    var dx = e.touches[0].clientX - cx, dy = Math.abs(e.touches[0].clientY - cy);
+    var outward = (side() === 'right') ? dx : -dx;
+    if (!cdrag) {
+      if (dy > 18 && dy > outward) { cwatch = false; return; }    // 中の縦スクロール優先
+      if (outward < 8) return;
+      cdrag = true;
+      dw.classList.add('drag');
+    }
+    follow(1 - outward / W());
+  }, { passive: true });
+  dw.addEventListener('touchend', function (e) {
+    if (!cdrag) { cwatch = false; return; }
+    var t = (e.changedTouches && e.changedTouches[0]) || null;
+    var outward = t ? ((side() === 'right') ? (t.clientX - cx) : (cx - t.clientX)) : 0;
+    dw.classList.remove('drag');
+    dw.style.transform = '';
+    mask.style.opacity = '';
+    if (outward / W() > SNAP) { close(); } else { open(); }
+    cwatch = false; cdrag = false;
+  }, { passive: true });
+})();
+</script>
+{% endif %}
+<!-- ===== /app-drawer-v1 ===== -->
+
+{% block bottom_nav %}
     {% if session.get('f_code') %}
     <nav class="bottom-nav">
         <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
