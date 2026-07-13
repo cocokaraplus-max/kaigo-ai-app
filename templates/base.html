@@ -896,7 +896,9 @@ body.nav-editing {
   #appDrawer.half[data-side="top"]    { transform: translateY(-50%); }
 
   /* 頭のスイッチ（もう1段ひらく / 半分に戻す） */
-  .dw-expand { border: none; background: #e8f0fe; color: #1a73e8; border-radius: 999px;
+  /* app-drawer-2stage-off-v1: 2段階は廃止。頭のスイッチは出さない。 */
+  .dw-expand { display: none !important; }
+  .dw-expand-off { border: none; background: #e8f0fe; color: #1a73e8; border-radius: 999px;
     width: 34px; height: 34px; font-size: 1rem; font-weight: 900; cursor: pointer; line-height: 1;
     display: flex; align-items: center; justify-content: center;
     transition: transform .2s cubic-bezier(.22,.9,.3,1); }
@@ -1047,7 +1049,7 @@ body.nav-editing {
     <button class="done" id="dwDone">完了</button>
     <button class="reset" id="dwReset">並びをリセット</button>
   </div>
-  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。右上の丸で色を変えられます。左上の「く」で全部ひらきます。</div>
+  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。右上の丸で色を変えられます。</div>
   <div class="dw-body">
     <div class="dw-grid" id="dwGrid"></div>
   </div>
@@ -1131,11 +1133,12 @@ body.nav-editing {
   // app-drawer-2stage-v1: 閉 / 半開き / 全開 の3段階。
   //   half … 見せる量だけ半分（手前の2列が押せる）
   //   full … 全部出る
-  function open(mode) {                          // mode: 'half'(既定) | 'full'
+  // app-drawer-2stage-off-v1: 半開きは廃止。開くときは常に全開。
+  function open() {
     endDrag();
     stagger();
     dw.classList.add('on');
-    dw.classList.toggle('half', mode !== 'full');
+    dw.classList.remove('half');
     mask.classList.add('on');
     handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
     buzz(12);
@@ -1304,18 +1307,13 @@ body.nav-editing {
       savePos();
       return;
     }
-    if (!hdrag) { open('half'); return; }      // 動かさず離した＝タップ → まず半開き
+    if (!hdrag) { open(); return; }            // 動かさず離した＝タップ → そのまま全開
     hdrag = false;
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
-
-    // app-drawer-2stage-v1: 離した位置を 0 / 0.5 / 1 の近い方に吸着させる。
-    // 少しだけ引いた → 閉じる。半分あたり → 半開き。深く引いた → 全開。
-    var p = inward / W();
-    if (p < 0.18) close();
-    else if (p < 0.72) open('half');
-    else open('full');
+    // app-drawer-2stage-off-v1: 閉じる / 全開 の2択（しきい値 35%）
+    if (inward / W() > SNAP) open(); else close();
   }
   handle.addEventListener('pointerup', handleUp);
   handle.addEventListener('pointercancel', handleUp);
@@ -1351,12 +1349,8 @@ body.nav-editing {
     dw.style.transform = '';
     mask.style.opacity = '';
 
-    // app-drawer-2stage-v1: 払った量で 全開 → 半開き → 閉じる と1段ずつ下りる
-    var q = outward / W();
-    var wasHalf = isHalf();
-    if (q < 0.18) { open(wasHalf ? 'half' : 'full'); }
-    else if (!wasHalf && q < 0.6) { open('half'); }
-    else { close(); }
+    // app-drawer-2stage-off-v1: 払ったら閉じる（戻したら開いたまま）
+    if (outward / W() > SNAP) { close(); } else { open(); }
     cwatch = false; cdrag = false;
   }, { passive: true });
 
