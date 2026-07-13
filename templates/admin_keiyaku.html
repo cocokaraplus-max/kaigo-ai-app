@@ -637,11 +637,14 @@
   /* ---- 起動 ---- */
   // keiyaku-navh-v1: ボトムナビ(.bottom-nav)の高さを実測し --kk-nav-h にセット。
   // 固定アクションバーをボトムナビの真上に正確配置（連絡帳 --rk-nav-h と同方式）。
-  function kkSyncNavHeight(){   // nav-hide-v2: 隠しているときは 0px
+  function kkSyncNavHeight(){   // nav-hide-v4: 隠しているときは値を消す（0を入れない）
     var nav=document.querySelector('.bottom-nav');
     var off=document.body.classList.contains('nav-off');
-    var h=(nav && !off)?Math.round(nav.getBoundingClientRect().height):0;
-    document.documentElement.style.setProperty('--kk-nav-h', h+'px');
+    if(nav && !off){
+      document.documentElement.style.setProperty('--kk-nav-h', Math.round(nav.getBoundingClientRect().height)+'px');
+    } else {
+      document.documentElement.style.removeProperty('--kk-nav-h');
+    }
   }
   kkSyncNavHeight();
   window.addEventListener('resize', kkSyncNavHeight);

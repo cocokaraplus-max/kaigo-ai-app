@@ -862,13 +862,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
-function lcAdjustTotalBar() {  // lc-ui-fix-v1 / nav-hide-v2
-  // nav-hide-v2: ナビを隠せるようになったので、高さ0を「90px」に読み替えてはいけない。
-  // 読み替えていたせいで、ナビ非表示のとき合計バーが画面の途中に浮いていた。
+function lcAdjustTotalBar() {  // lc-ui-fix-v1 / nav-hide-v4
+  // nav-hide-v4: 隠しているときは **0px を入れず、プロパティを消す**。
+  // 0 を入れると :root の `--lc-nav-h: var(--nav-h)`（セーフエリア下限つき）が
+  // 上書きされて効かなくなり、合計バーがホームインジケータ帯に沈んでいた。
+  // 「0」と「未設定」は別物。
   var nav = document.querySelector('.bottom-nav');
   var off = document.body.classList.contains('nav-off');
-  var navH = (nav && !off) ? Math.round(nav.getBoundingClientRect().height) : 0;
-  document.documentElement.style.setProperty('--lc-nav-h', navH + 'px');
+  var root = document.documentElement;
+  if (nav && !off) {
+    root.style.setProperty('--lc-nav-h', Math.round(nav.getBoundingClientRect().height) + 'px');
+  } else {
+    root.style.removeProperty('--lc-nav-h');   // → :root の var(--nav-h) が効く
+  }
+  // 余白は「計算後の値」を読む（実測0ではなく、下限を噛ませたあとの値）
+  var navH = parseInt(getComputedStyle(root).getPropertyValue('--nav-h'), 10);
+  if (!isFinite(navH)) navH = 0;
   var total = document.querySelector('.lc-total');
   var totalH = total ? Math.round(total.getBoundingClientRect().height) : 56;
   var wrap = document.querySelector('.lc-wrap');
