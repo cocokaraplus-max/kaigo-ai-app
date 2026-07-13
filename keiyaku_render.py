@@ -66,19 +66,52 @@ def _ceil_yen(v):
     return int(math.ceil(float(v) - 1e-9))
 
 
+def _yobo_units_total(F, st, base_units, add_units):  # keiyaku-yobo-adds-v2
+    """予防の総単位。
+
+    介護の加算マスタは**使わない**。個別機能訓練Ⅰ/Ⅱは予防（総合事業）では算定できず、
+    予防は 運動器機能向上225 / 科学的介護推進40 …（豊田市 単位数表マスタ A6）の体系のため。
+    予防で算定する加算の合計単位は、その種別に持たせて入力してもらう。
+
+    **処遇改善だけは介護と同じ率**を使う（介護側で選んだ区分がそのまま効く）。
+
+      総単位 = round((基本単位 + 加算単位) × (1 + 処遇改善率))
+    """
+    adds = F.get("adds", {}) or {}
+    units = int(base_units or 0) + int(add_units or 0)
+    rate = _shoguu_rate(adds)
+    if rate:
+        units = int(round(units * (1.0 + rate)))
+    return units
+
+
 def _yobo_rows(F, st):
-    """予防の料金行。[(ラベル, 単位数, 加算込み総額(円)), ...]"""
+    """予防の料金行。[(ラベル, 総単位, 加算込み総額(円)), ...]
+
+    総額は「総単位 × 単価（級地）」で出す。ただし **手入力の総額があればそれが勝つ**。
+    総合事業は市町村ごとに単価・加算体系が違い、国の表どおりにならないことがあるため
+    （現物の重説と1円まで合わせたいときは、画面で総額を入れる）。
+    """
     svc = (F.get("service") or {}).get(st) or {}
+    area = int(F.get("area_level", 3) or 3)
+    tanka = _tanka(area)
+    try:
+        add_units = int(svc.get("y_add_units") or 0)     # keiyaku-yobo-adds-v2: 予防の加算合計（月）
+    except (TypeError, ValueError):
+        add_units = 0
     out = []
     for key, label in (("y1", "要支援1"), ("y2", "要支援2")):
         try:
-            units = int(svc.get("%s_units" % key) or 0)
+            base = int(svc.get("%s_units" % key) or 0)
         except (TypeError, ValueError):
-            units = 0
+            base = 0
+        units = _yobo_units_total(F, st, base, add_units)
         try:
-            total = int(svc.get("%s_total" % key) or 0)
+            total = int(svc.get("%s_total" % key) or 0)   # 手入力の上書き
         except (TypeError, ValueError):
             total = 0
+        if total <= 0:
+            total = int(round(units * tanka))
         out.append((label, units, total))
     return out
 
