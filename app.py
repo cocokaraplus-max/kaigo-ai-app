@@ -13997,6 +13997,20 @@ _KK_SERVICE_DEFAULT_LABEL = {"han": "半日型（3時間）", "ichi": "1日型�
 _KK_SERVICE_DEFAULT_TC = {"han": "3-4h", "ichi": "7-8h"}
 
 
+_KK_CATEGORIES = ("chiiki", "yobo", "seikatsu", "hokengai")   # keiyaku-yobo-v1
+
+
+def _kk_fill_category(svc):   # keiyaku-yobo-v2
+    """種別の系統を補完する。**未設定は chiiki**（既存施設は無改修で今までどおり）。"""
+    for k, v in list((svc or {}).items()):
+        if k.startswith("_") or not isinstance(v, dict):
+            continue
+        c = str(v.get("category") or "")
+        if c not in _KK_CATEGORIES:
+            v["category"] = "chiiki"
+    return svc
+
+
 def _kk_ensure_service_order(facility):
     """facility["service"] に _order/label/time_class を補完したコピーを返す（非破壊）。
     旧 han/ichi のみのデータでも種別構造として扱えるようにする。"""

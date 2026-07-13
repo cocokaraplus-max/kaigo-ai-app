@@ -335,18 +335,53 @@
     ['svc_keiyaku','サービス内容（契約書用）'],
     ['kanran_time','記録閲覧の開始時刻'],
   ];
-  function renderTypeEditor(){
+  // keiyaku-yobo-v2: 系統。未設定は chiiki（＝今までの地域密着型通所介護）。
+const KK_CATEGORIES = [
+  ['chiiki', '介護保険（地域密着型通所介護）'],
+  ['yobo',   '介護予防通所サービス'],
+];
+// 予防のときに入れてもらう料金。総額は自治体の総合事業単価・加算体系で決まるので、
+// 単位×単価では出せない（現物の重説どおり、加算込みの円を入れてもらう）。
+const KK_YOBO_FIELDS = [
+  ['y1_units', '要支援1 単位数（月）'],
+  ['y1_total', '要支援1 月額総額（加算込み・円）'],
+  ['y2_units', '要支援2 単位数（月）'],
+  ['y2_total', '要支援2 月額総額（加算込み・円）'],
+];
+
+function kkCategoryOf(t){ return (t && t.category) || 'chiiki'; }
+
+function renderTypeEditor(){
     const box = $('#kk-type-editor'); if(!box) return;
     const key = state.type;
     const node = state.service[key] || (state.service[key] = {});
+    const cat = kkCategoryOf(node);        // keiyaku-yobo-v2
     let h = '<div class="kk-edit-card">';
     // label
     h += `<label class="kk-fld"><span>種別の名称（自由）</span>
       <input type="text" data-svc="label" value="${escAttr(node.label||'')}" placeholder="例：午前コース／半日型（3時間）"></label>`;
-    // time_class
-    h += `<label class="kk-fld"><span>料金計算の時間区分（国の区分）</span><select data-svc="time_class">`;
-    TIME_CLASSES.forEach(([v,l])=>{ h+=`<option value="${v}"${(node.time_class||'3-4h')===v?' selected':''}>${l}</option>`; });
+    // keiyaku-yobo-v2: 系統。ここで条文・重説の文面と料金表の作りが変わる。
+    h += `<label class="kk-fld"><span>サービスの系統（契約書・重説の文面が変わります）</span><select data-svc="category">`;
+    KK_CATEGORIES.forEach(([v,l])=>{ h+=`<option value="${v}"${cat===v?' selected':''}>${l}</option>`; });
     h += `</select></label>`;
+
+    if(cat === 'chiiki'){
+      // time_class（介護保険＝地域密着型のときだけ。予防は月額包括なので時間区分を使わない）
+      h += `<label class="kk-fld"><span>料金計算の時間区分（国の区分）</span><select data-svc="time_class">`;
+      TIME_CLASSES.forEach(([v,l])=>{ h+=`<option value="${v}"${(node.time_class||'3-4h')===v?' selected':''}>${l}</option>`; });
+      h += `</select></label>`;
+    } else if(cat === 'yobo'){
+      h += `<div class="kk-fld"><span>料金（介護予防通所サービス）</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          総合事業の単価・加算体系は市町村ごとに違うため、単位×単価では出せません。
+          重要事項説明書に載せる<b>月額総額（加算込み・円）</b>をそのまま入れてください。
+          給付額・自己負担額（1〜3割）は自動計算します。
+        </div></div>`;
+      KK_YOBO_FIELDS.forEach(([k,lab])=>{
+        h += `<label class="kk-fld"><span>${lab}</span>
+          <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
+      });
+    }
     // 8 fields
     SVC_FIELDS.forEach(([k,lab])=>{
       const val = node[k]||'';
@@ -359,11 +394,12 @@
     h += '</div>';
     box.innerHTML = h;
     box.querySelectorAll('[data-svc]').forEach(el=>{
-      el.oninput = ()=>{
+      el.oninput = el.onchange = ()=>{
         const f = el.dataset.svc;
         state.service[key][f] = el.value;
         state.dirty = true;
         if(f==='label'){ buildTypeSeg(); }
+        if(f==='category'){ renderTypeEditor(); refreshFee(); }   // keiyaku-yobo-v2: 入力欄ごと切り替わる
         if(f==='time_class'){ refreshFee(); }
       };
     });
@@ -377,7 +413,7 @@
   }
   function addType(){
     const key = newTypeKey();
-    state.service[key] = {label:'新しい種別', time_class:'3-4h'};
+    state.service[key] = {label:'新しい種別', time_class:'3-4h', category:'chiiki'};   // keiyaku-yobo-v2
     state.order.push(key);
     state.type = key;
     state.dirty = true;

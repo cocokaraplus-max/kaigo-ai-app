@@ -29,6 +29,83 @@ _BASE = {
 }
 # 旧種別キー(han/ichi)→time_class の後方互換マッピング。
 _LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
+
+# ===== keiyaku-yobo-v1: サービス系統 =====
+# category を持たない既存データは chiiki（指定地域密着型通所介護）とみなす。
+CAT_CHIIKI = "chiiki"
+CAT_YOBO = "yobo"
+
+_CAT_NAME = {
+    CAT_CHIIKI: "指定地域密着型通所介護",
+    CAT_YOBO: "介護予防通所サービス",
+}
+# 計画書の呼び方（条文中で使う）
+_CAT_PLAN = {
+    CAT_CHIIKI: "地域密着型通所介護計画",
+    CAT_YOBO: "介護予防通所サービス計画",
+}
+
+
+def _cat(F, st):  # keiyaku-yobo-v1
+    """その種別の系統。未設定は chiiki（後方互換）。"""
+    svc = (F.get("service") or {}).get(st) or {}
+    c = str(svc.get("category") or CAT_CHIIKI)
+    return c if c in _CAT_NAME else CAT_CHIIKI
+
+
+def _svc_name(F, st):
+    return _CAT_NAME[_cat(F, st)]
+
+
+def _plan_name(F, st):
+    return _CAT_PLAN[_cat(F, st)]
+
+
+def _ceil_yen(v):
+    """自己負担は切り上げ（様式の数値と一致する。例 21,392円の1割 → 2,140円）。"""
+    return int(math.ceil(float(v) - 1e-9))
+
+
+def _yobo_rows(F, st):
+    """予防の料金行。[(ラベル, 単位数, 加算込み総額(円)), ...]"""
+    svc = (F.get("service") or {}).get(st) or {}
+    out = []
+    for key, label in (("y1", "要支援1"), ("y2", "要支援2")):
+        try:
+            units = int(svc.get("%s_units" % key) or 0)
+        except (TypeError, ValueError):
+            units = 0
+        try:
+            total = int(svc.get("%s_total" % key) or 0)
+        except (TypeError, ValueError):
+            total = 0
+        out.append((label, units, total))
+    return out
+
+
+def _fee_table_yobo(F, st):  # keiyaku-yobo-v1
+    """予防の料金表。負担割合ごとに「単位数 / 総額 / 給付 / 自己負担」。
+
+    自己負担 = ceil(総額 × 割 / 10)、給付 = 総額 − 自己負担。
+    総額は自治体の総合事業単価・加算体系で決まるので、単位×単価では出せない（入力値を使う）。
+    """
+    rows = _yobo_rows(F, st)
+    out = []
+    for w in (1, 2, 3):
+        head = ('<tr><th class="hh">利用回数別のサービス単位数</th>'
+                + "".join(f'<th>{lb}<br><span class="u">{u:,}単位</span></th>'
+                          for lb, u, _t in rows) + "</tr>")
+        r1 = ('<tr><td class="kai">1. サービス利用料金（各種加算を含む）</td>'
+              + "".join(f"<td>{_yen(t)}</td>" for _lb, _u, t in rows) + "</tr>")
+        r2 = ('<tr><td class="kai">2. うち、介護保険から給付される金額</td>'
+              + "".join(f"<td>{_yen(t - _ceil_yen(t * w / 10.0))}</td>" for _lb, _u, t in rows)
+              + "</tr>")
+        r3 = ('<tr><td class="kai">3. 自己負担額</td>'
+              + "".join(f"<td>{_yen(_ceil_yen(t * w / 10.0))}</td>" for _lb, _u, t in rows)
+              + "</tr>")
+        out.append(f'<div class="sub-h">{w}割負担</div>'
+                   f'<table class="ptab fee">{head}{r1}{r2}{r3}</table>')
+    return "".join(out)
 _AREA_UP = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.0}
 _KUNREN1 = 56
 _KUNREN2 = 20
@@ -274,7 +351,32 @@ def _g(d, *keys, default=""):
 
 
 # ===== 料金表（コンパクト1表・rowspanなし） =====
+def _localize(F, st, html):  # keiyaku-yobo-v2
+    """系統に合わせて呼び方を差し替える。
+
+    docx を突き合わせた結果、地域密着型と予防の違いは**呼び方だけ**だった
+    （22条・七章の構成は同じ。第15条(2) の終了事由も予防版の現物は同文のまま）。
+    条文をもう1セット持つより、ここで差し替えるほうが docx との差分が見えやすい。
+    置換は長い語から先に当てる（「地域密着型通所介護計画」が「地域密着型通所介護」に
+    食われないようにするため）。
+    """
+    cat = _cat(F, st)
+    if cat == CAT_CHIIKI:
+        return html
+    name = _CAT_NAME[cat]
+    plan = _CAT_PLAN[cat]
+    for a, b in (
+        ("地域密着型通所介護計画", plan),
+        ("指定地域密着型通所介護", name),
+        ("地域密着型通所介護", name),
+    ):
+        html = html.replace(a, b)
+    return html
+
+
 def _fee_table(F, st):
+    if _cat(F, st) == CAT_YOBO:       # keiyaku-yobo-v1
+        return _fee_table_yobo(F, st)
     adds = F.get("adds", {})
     area = int(F.get("area_level", 3))
     vpm = int(F.get("visits_per_month", 4))
@@ -523,10 +625,10 @@ def render_juyo(F, st):
 <p class="center note">当事業所は介護保険の指定を受けています。（指定　第{_esc(j.get("shitei_no"))}号）</p>
 <p>当事業所はご契約者に対して指定地域密着型通所介護を提供します。事業所の概要や提供されるサービスの内容、契約上ご注意いただきたいことを次のとおり説明します。</p>'''
 
-    return ("<div class=\"paper\">" + head + sec_houjin + sec_jigyosho + sec_staff +
-            sec_hyoka + sec_tokucho + sec_ryokin + sec_kasan + sec_jihi +
-            sec_shiharai + sec_kinkyu + sec_shuryo + sec_kujo + sec_saigai +
-            sec_souchou + _tokki_section(F) + sign + "</div>")
+    return _localize(F, st, "<div class=\"paper\">" + head + sec_houjin + sec_jigyosho + sec_staff +
+                     sec_hyoka + sec_tokucho + sec_ryokin + sec_kasan + sec_jihi +
+                     sec_shiharai + sec_kinkyu + sec_shuryo + sec_kujo + sec_saigai +
+                     sec_souchou + _tokki_section(F) + sign + "</div>")   # keiyaku-yobo-v2
 
 
 # ===== 利用契約書 本文（全22条） =====
@@ -645,7 +747,7 @@ def render_keiyaku(F, st):
     head = f'''<div class="doc-title">{jname} 利用契約書</div>
 <div class="doc-sub">地域密着型通所介護</div>'''
 
-    return '<div class="paper">' + head + chapters + sign + '</div>'
+    return _localize(F, st, '<div class="paper">' + head + chapters + sign + '</div>')   # keiyaku-yobo-v2
 
 
 # ===== 印刷用CSS（wkhtmltopdf向け: @page margin 0、余白は .page-pad で実寸） =====
@@ -721,8 +823,12 @@ def render_print_html(F, doc, st, blank_between=False):
         重説が奇数ページで終わったとき、両面印刷で契約書が重説の裏に
         刷られてしまうのを防ぐため。呼び出し側がページ数を見て決める。
     """
-    if st not in ("han", "ichi"):
-        st = "han"
+    # keiyaku-yobo-v1: 以前は han/ichi 以外を握りつぶして "han" にしていた。
+    # 画面から追加した種別（t3, t4…）で印刷すると、黙って半日型の内容が出るバグだった。
+    svc = F.get("service") or {}
+    if st not in svc:
+        order = [k for k in (svc.get("_order") or []) if k in svc]
+        st = order[0] if order else ("han" if "han" in svc else st)
     blocks = []
     if doc in ("juyo", "both"):
         blocks.append('<div class="page-pad">' + render_juyo(F, st) + '</div>')
