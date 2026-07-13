@@ -7,6 +7,11 @@
 <style>
   /* soge-print-v3 : 車両ごとの月間運行記録表（横スクロール） */
   * { box-sizing: border-box; }
+
+  /* 表が画面より横に広いと、iOS/Safari が「読みやすくしてあげよう」と
+     勝手に文字を拡大する（text autosizing）。見出しだけ極端に大きくなるのはこれ。
+     横スクロールさせる表では邪魔なので切る。 */
+  html { -webkit-text-size-adjust: 100%; -moz-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
          margin: 0; padding: 0; color: #202124; background: #f5f5f5; }
 
@@ -50,9 +55,12 @@
 
   .sp-day-first td { border-top: 2px solid #5f6368; }
 
-  /* 立ち寄り = ①氏名 08:35 → ②氏名 08:43 → … */
-  .sp-stops { min-width: 380px; }
-  .sp-s { display: inline-block; white-space: nowrap; }
+  /* 立ち寄り = ①氏名 08:35 → ②氏名 08:43 → …
+     1行に4人まで。5人目からは下の段に折り返す（横に伸びすぎないように）。 */
+  .sp-stops { min-width: 330px; }
+  .sp-stops .grid { display: grid; grid-template-columns: repeat(4, max-content);
+                    align-items: center; row-gap: 3px; }
+  .sp-s { display: inline-flex; align-items: center; white-space: nowrap; padding-right: 2px; }
   .sp-s .n { display: inline-block; min-width: 15px; height: 15px; line-height: 15px; text-align: center;
              border-radius: 999px; background: #E6F1FB; color: #185FA5; font-size: 0.62rem; font-weight: 800;
              margin-right: 3px; }
