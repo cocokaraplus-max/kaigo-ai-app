@@ -44,13 +44,15 @@
 
 /* 打刻ボタン。指で押しやすい大きさにする */
 .sr-tap { flex:0 0 auto; border:none; border-radius:10px; padding:9px 14px; font-weight:800; font-size:0.9rem;
-  background:#1a73e8; color:#fff; cursor:pointer; min-width:74px; }
+  background:#1a73e8; color:#fff; cursor:pointer; min-width:62px; }
 .sr-tap:disabled { opacity:0.6; cursor:default; }
 .sr-time { flex:0 0 auto; border:1px solid #cdeed8; background:#e6f4ea; color:#137333; border-radius:10px;
   padding:8px 10px; font-weight:800; font-size:0.95rem; font-variant-numeric:tabular-nums; cursor:pointer;
   min-width:74px; text-align:center; }
 .sr-timeedit { flex:0 0 auto; border:1px solid #1a73e8; border-radius:10px; padding:7px 8px; font-size:0.95rem;
   font-variant-numeric:tabular-nums; }
+.sr-pen { flex:0 0 auto; border:1px solid #dadce0; background:#fff; border-radius:10px; width:38px; height:38px;
+  cursor:pointer; color:#5f6368; font-size:0.95rem; line-height:1; padding:0; }
 .sr-x { flex:0 0 auto; border:1px solid #dadce0; background:#fff; border-radius:10px; width:38px; height:38px;
   cursor:pointer; color:#9aa0a6; font-size:0.95rem; font-weight:800; line-height:1; padding:0; }
 .sr-x.on { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
@@ -178,11 +180,14 @@
   function tripHtml(t) {
     var stops = (t.stops || []).map(function (s, i) {
       var cls = 'sr-stop' + (s.is_absent ? ' absent' : (s.arrived_at ? ' done' : ''));
+      // 打刻がまだの人にも、あとから時刻を手で入れられるように ✎ を出す
+      // （運転手が走り終わってからまとめて入力する場合がある）
       var right = s.is_absent
         ? '<span class="sr-time" style="background:#f6f7f9;border-color:#e6e8ec;color:#9aa0a6;">休み</span>'
         : (s.arrived_at
             ? '<span class="sr-time" data-edit="' + s.id + '" title="タップで時刻を直す">' + esc(s.arrived_at) + '</span>'
-            : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>');
+            : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>' +
+              '<button class="sr-pen" data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '" title="時刻を手で入れる">✎</button>');
 
       return '<div class="sr-stop ' + cls + '">' +
         '<span class="sr-seq">' + (i + 1) + '</span>' +
@@ -242,38 +247,51 @@
       };
     });
 
+    // 時刻を手で入れる／直す。押した要素をその場で時刻入力に差し替える。
+    function openTimeEditor(el, id, initial) {
+      var inp = document.createElement('input');
+      inp.type = 'time';
+      inp.className = 'sr-timeedit';
+      inp.value = initial || '';
+      el.replaceWith(inp);
+      inp.focus();
+      var done = false;
+      async function commit() {
+        if (done) return;
+        done = true;
+        var t = inp.value;
+        if (!t) { keepScroll(render); return; }
+        var r = await fetch('/api/soge/run/stop', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stop_id: id, time: t })
+        });
+        var j = await r.json();
+        if (j.status !== 'success') {
+          toast(j.message || '記録できませんでした', 'err');
+        } else {
+          toast(t + ' で記録しました');
+          var s = findStop(id);
+          if (s) { s.arrived_at = t; s.is_absent = false; }
+        }
+        keepScroll(render);
+      }
+      inp.onchange = commit;
+      inp.onblur = commit;
+    }
+
     // 記録した時刻をタップすると直せる
     root.querySelectorAll('[data-edit]').forEach(function (el) {
+      el.onclick = function () { openTimeEditor(el, el.dataset.edit, el.textContent.trim()); };
+    });
+
+    // まだ打刻していない人に、時刻を手で入れる（初期値は到着予定）
+    root.querySelectorAll('[data-pen]').forEach(function (el) {
       el.onclick = function () {
-        var id = el.dataset.edit;
-        var inp = document.createElement('input');
-        inp.type = 'time';
-        inp.className = 'sr-timeedit';
-        inp.value = el.textContent.trim();
-        el.replaceWith(inp);
-        inp.focus();
-        var done = false;
-        async function commit() {
-          if (done) return;
-          done = true;
-          var t = inp.value;
-          if (!t) { keepScroll(render); return; }
-          var r = await fetch('/api/soge/run/stop', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stop_id: id, time: t })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') {
-            toast(j.message || '直せませんでした', 'err');
-          } else {
-            toast(t + ' に直しました');
-            var s = findStop(id);
-            if (s) { s.arrived_at = t; s.is_absent = false; }
-          }
-          keepScroll(render);
-        }
-        inp.onchange = commit;
-        inp.onblur = commit;
+        var id = el.dataset.pen;
+        var init = el.dataset.init || '';
+        var tap = el.parentNode.querySelector('[data-tap="' + id + '"]');
+        if (tap) tap.remove();
+        openTimeEditor(el, id, init);
       };
     });
 
