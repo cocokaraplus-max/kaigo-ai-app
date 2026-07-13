@@ -6,6 +6,8 @@
 <title>運行記録表 - TASUKARU</title>
 <style>
   /* soge-print-v3 : 車両ごとの月間運行記録表（横スクロール） */
+  /* soge-print-noaddr-v1 : 住所は載せない（住所は運行画面 /soge/run のみ）。
+     氏名の縦積み対策（nowrap）だけ残している。 */
   * { box-sizing: border-box; }
 
   /* 表が画面より横に広いと、iOS/Safari が「読みやすくしてあげよう」と
@@ -55,32 +57,16 @@
 
   .sp-day-first td { border-top: 2px solid #5f6368; }
 
-  /* 立ち寄り = ①氏名(住所) 08:35 → ②氏名(住所) 08:43 → …
-     1行に3人まで。4人目からは下の段に折り返す（横に伸びすぎないように）。
-     soge-print-addr-v1: 氏名の下に住所を小さく入れたぶん、1段を4人→3人に減らした。 */
-  .sp-stops { min-width: 360px; }
-  .sp-stops .grid { display: grid; grid-template-columns: repeat(3, max-content);
-                    align-items: center; row-gap: 5px; }
+  /* 立ち寄り = ①氏名 08:35 → ②氏名 08:43 → …
+     1行に4人まで。5人目からは下の段に折り返す（横に伸びすぎないように）。
+     soge-print-noaddr-v1: 住所は載せない（見るのは運行画面）。 */
+  .sp-stops { min-width: 330px; }
+  .sp-stops .grid { display: grid; grid-template-columns: repeat(4, max-content);
+                    align-items: center; row-gap: 3px; }
   /* 氏名は絶対に途中で折り返さない。折り返して良いのは「人と人の間」だけ。
-     ここを normal にすると、印刷時に列が細って日本語名が1文字ずつ縦積みになる。 */
+     ここを normal にすると、印刷時に列が細って日本語名が1文字ずつ縦積みになる（今回の不具合）。 */
   .sp-s { display: inline-flex; align-items: center; white-space: nowrap; padding-right: 2px; }
-  /* soge-print-adw-v1: 住所の見える幅は --sp-ad-w で決める。
-     ツールバーのスライダーで変えられ、画面にも印刷にも同じ値が効く。 */
-  :root { --sp-ad-w: 13em; }
-  .sp-s .nm { display: inline-block; white-space: nowrap; max-width: var(--sp-ad-w); }
-  /* 住所は氏名の下に小さく。既定は … で切る（紙面が伸びないように）。
-     「住所を全部表示」を入れると折り返して全文出す。 */
-  .sp-s .ad { display: block; font-size: 0.62rem; font-weight: 400; color: #9aa0a6;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-              max-width: var(--sp-ad-w); line-height: 1.25; }
-  body.ad-wrap .sp-s .ad { white-space: normal; overflow: visible; text-overflow: clip; }
-  body.ad-off .sp-s .ad { display: none; }
-
-  /* つまみ本体 */
-  .sp-adw { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #5f6368; }
-  .sp-adw input[type=range] { width: 110px; }
-  .sp-adw b { font-variant-numeric: tabular-nums; color: #202124; min-width: 1.6em; text-align: right; }
-  .sp-adw label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+  .sp-s .nm { display: inline-block; white-space: nowrap; }
   .sp-s .n { display: inline-block; min-width: 15px; height: 15px; line-height: 15px; text-align: center;
              border-radius: 999px; background: #E6F1FB; color: #185FA5; font-size: 0.62rem; font-weight: 800;
              margin-right: 3px; }
@@ -94,7 +80,7 @@
   /* 矢印は各人の後ろに付ける。ただし最後の人と、各段の右端には出さない。 */
   .sp-s::after { content: '→'; color: #b0b6bf; font-size: 0.72rem; margin: 0 4px 0 5px; }
   .sp-s:last-child::after { content: ''; margin: 0; }
-  .sp-s:nth-child(3n)::after { content: ''; margin: 0; }
+  .sp-s:nth-child(4n)::after { content: ''; margin: 0; }
 
   .sp-note { min-width: 180px; }
   .sp-note input { width: 100%; min-width: 170px; border: 1px solid #dadce0; border-radius: 6px;
@@ -129,13 +115,8 @@
     /* soge-print-addr-v1: 折り返して良いのは「人と人の間」だけ。
        セルの中（氏名・時刻・住所）は nowrap のままにして縦積みを防ぐ。 */
     .sp-stops { min-width: 0; white-space: normal; }
-    .sp-stops .grid { grid-template-columns: repeat(3, max-content); }
+    .sp-stops .grid { grid-template-columns: repeat(4, max-content); }
     .sp-s, .sp-s .nm { white-space: nowrap; }
-    /* soge-print-adw-v1: 紙でも画面と同じ --sp-ad-w を使う。
-       切れていたらスライダーを広げてから印刷すればよい。 */
-    .sp-s .nm, .sp-s .ad { max-width: var(--sp-ad-w); }
-    .sp-s .ad { white-space: nowrap; font-size: 0.55rem; color: #666; }
-    body.ad-wrap .sp-s .ad { white-space: normal; overflow: visible; text-overflow: clip; }
     .sp-note { min-width: 0; }
     .sp-note input { border: none; padding: 0; min-width: 0; font-size: 0.62rem; }
     .sp-tap { display: none; }
@@ -152,12 +133,6 @@
   <input type="month" class="sp-month" id="spMonth" value="{{ month }}">
   <button class="sp-btn" onclick="window.print()">印刷 / PDF保存</button>
   <a class="sp-btn sub" href="/soge/run">運行画面へ戻る</a>
-  <span class="sp-adw">
-    住所
-    <input type="range" id="spAdW" min="0" max="30" step="1" value="13" title="住所の幅（0で非表示）">
-    <b id="spAdWv">13</b>
-    <label><input type="checkbox" id="spAdWrap"> 全部表示</label>
-  </span>
   <span class="sp-hint">時刻と備考はこの画面で直せます／印刷ダイアログで「PDFとして保存」</span>
 </div>
 
@@ -209,7 +184,7 @@
             <td class="sp-stops">
               <div class="grid">
               {%- for s in row.stops -%}
-                <span class="sp-s {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}{% if s.address %}<span class="ad" title="{{ s.address }}">{{ s.address }}</span>{% endif %}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+                <span class="sp-s {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
               {%- endfor -%}
               </div>
             </td>
@@ -239,37 +214,6 @@
     clearTimeout(tm);
     tm = setTimeout(function () { t.className = 'sp-toast' + (err ? ' err' : ''); }, 2000);
   }
-
-  // soge-print-adw-v1: 住所の幅つまみ。画面と印刷で同じ --sp-ad-w が効く。
-  // 0 にすると住所を消す（従来どおりの記録表に戻せる）。設定は端末に覚えさせる。
-  (function () {
-    var sl = document.getElementById('spAdW'),
-        lb = document.getElementById('spAdWv'),
-        cb = document.getElementById('spAdWrap');
-
-    function apply(w, wrap) {
-      document.documentElement.style.setProperty('--sp-ad-w', w + 'em');
-      lb.textContent = w;
-      document.body.classList.toggle('ad-off', Number(w) === 0);
-      document.body.classList.toggle('ad-wrap', !!wrap);
-    }
-
-    var w = parseInt(localStorage.getItem('sogePrintAdW') || '13', 10);
-    if (isNaN(w) || w < 0 || w > 30) w = 13;
-    var wrap = localStorage.getItem('sogePrintAdWrap') === '1';
-    sl.value = w;
-    cb.checked = wrap;
-    apply(w, wrap);
-
-    sl.oninput = function () {
-      apply(parseInt(sl.value, 10), cb.checked);
-      localStorage.setItem('sogePrintAdW', sl.value);
-    };
-    cb.onchange = function () {
-      apply(parseInt(sl.value, 10), cb.checked);
-      localStorage.setItem('sogePrintAdWrap', cb.checked ? '1' : '0');
-    };
-  })();
 
   document.getElementById('spMonth').onchange = function () {
     if (this.value) location.href = '/soge/print?month=' + this.value;

@@ -19912,19 +19912,8 @@ def api_soge_run_return():
 # 車1台につき1か月ぶんを詰めて並べる。走行距離と到着予定は載せない（現場で不要）。
 
 
-def _soge_addr_short(a):  # soge-print-addr-v1
-    """記録表に載せる用の短い住所。
-
-    紙面が狭いので都道府県は落とす（同一市内の利用者ばかりなので情報量は落ちない）。
-    末尾の建物名などはCSS側で … に切る。
-    """
-    a = (a or "").strip()
-    if not a:
-        return ""
-    for i, ch in enumerate(a[:5]):
-        if ch in "都道府県":
-            return a[i + 1:].strip() or a
-    return a
+# soge-print-noaddr-v1: 運行記録表に住所は載せない（住所は /soge/run だけ）。
+# 以前ここにあった _soge_addr_short は撤去した。
 
 
 def _soge_month_range(ym):  # soge-print-v2
@@ -19955,16 +19944,6 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
     by_day = {}
     for s in (sr.data or []):
         by_day.setdefault(s.get("day_id"), []).append(s)
-
-    # soge-print-addr-v1: 氏名の下に住所を小さく出す。1回だけまとめて引く。
-    addr = {}
-    try:
-        pr = (supabase.table("patient_profiles").select("id,address")
-              .eq("facility_code", f_code).execute())
-        for x in (pr.data or []):
-            addr[str(x["id"])] = _soge_addr_short(x.get("address"))
-    except Exception:
-        pass
 
     settings = get_soge_settings(supabase, f_code)
     torder = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
@@ -20011,7 +19990,6 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                 "type": s.get("stop_type") or "pickup",
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),
                 "is_absent": bool(s.get("is_absent")),
-                "address": addr.get(str(s.get("patient_id")), ""),   # soge-print-addr-v1
             } for s in stops],
         })
         last_date = ds
