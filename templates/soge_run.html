@@ -80,7 +80,9 @@
     <div class="sr-title">運行</div>
     <div style="display:flex;gap:8px;align-items:center;">
       <input type="date" class="sr-date" id="srDate">
-      <a class="sr-btn" id="srPrint" href="/soge/print" target="_blank">記録表</a>
+      <!-- soge-print-v3: target=_blank にすると、ホーム画面から起動したアプリでは
+           外部ブラウザが開いてログインが切れる。同じタブで開く。 -->
+      <a class="sr-btn" id="srPrint" href="/soge/print">記録表</a>
       <a class="sr-btn" href="/soge" onclick="spaNav(event,'/soge')">配車</a>
     </div>
   </div>
@@ -201,14 +203,20 @@
       '</div>';
     }).join('');
 
+    // soge-note-v1: 出発と帰着。記録表の「出発時刻／到着時刻」はこれが入る。
+    var dep = t.departed_at
+      ? '<button class="sr-ret-btn done" disabled>出発 ' + esc(t.departed_at) + '</button>'
+      : '<button class="sr-ret-btn" data-dep="' + t.day_id + '">事業所を出発</button>';
     var ret = t.returned_at
       ? '<button class="sr-ret-btn done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
       : '<button class="sr-ret-btn" data-ret="' + t.day_id + '">事業所に戻った</button>';
 
     return '<div class="sr-trip">' +
       '<div class="sr-trip-head">' + esc(t.trip_name) +
-        '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' +
-      '<div class="sr-trip-body">' + (stops || '<div class="sr-empty">立ち寄りなし</div>') +
+        '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発予定</span></div>' +
+      '<div class="sr-trip-body">' +
+        '<div class="sr-return" style="justify-content:flex-start;margin:0 0 8px;">' + dep + '</div>' +
+        (stops || '<div class="sr-empty">立ち寄りなし</div>') +
         '<div class="sr-return">' + ret + '</div>' +
       '</div>' +
     '</div>';
@@ -317,6 +325,34 @@
           keepScroll(render);
         } finally {
           state.busy[id] = false;
+        }
+      };
+    });
+
+    // 出発（soge-note-v1）
+    root.querySelectorAll('[data-dep]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.dep;
+        if (state.busy['d' + id]) return;
+        state.busy['d' + id] = true;
+        el.disabled = true;
+        try {
+          var r = await fetch('/api/soge/run/depart', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ day_id: id })
+          });
+          var j = await r.json();
+          if (j.status !== 'success') {
+            toast(j.message || '記録できませんでした', 'err');
+            el.disabled = false;
+            return;
+          }
+          toast('出発 ' + j.departed_at);
+          var t = findTrip(id);
+          if (t) t.departed_at = j.departed_at;
+          keepScroll(render);
+        } finally {
+          state.busy['d' + id] = false;
         }
       };
     });

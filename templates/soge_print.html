@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>運行記録表 - TASUKARU</title>
 <style>
-  /* soge-print-v2 : 車両ごとの月間運行記録表 */
+  /* soge-print-v3 : 車両ごとの月間運行記録表（横スクロール） */
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
          margin: 0; padding: 0; color: #202124; background: #f5f5f5; }
 
-  .sp-toolbar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid #e0e0e0;
+  .sp-toolbar { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #e0e0e0;
                 padding: 10px 16px; display: flex; gap: 10px; align-items: center; justify-content: center;
                 flex-wrap: wrap; }
   .sp-btn { font-size: 0.9rem; font-weight: 700; color: #fff; background: #1a73e8; border: none;
@@ -19,41 +19,85 @@
   .sp-month { border: 1px solid #d6dbe3; border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
   .sp-hint { font-size: 0.78rem; color: #5f6368; }
 
-  .sp-pages { max-width: 860px; margin: 16px auto; }
-  .sp-page { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 22px 26px; margin-bottom: 16px; }
+  .sp-pages { margin: 16px auto; padding: 0 16px; }
+  .sp-page { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
 
-  .sp-title { font-size: 1.2rem; font-weight: 800; text-align: center; letter-spacing: 0.18em; margin: 0 0 3px; }
-  .sp-sub { text-align: center; font-size: 0.85rem; color: #5f6368; margin-bottom: 12px; }
+  .sp-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+             border-bottom: 2px solid #185FA5; padding-bottom: 8px; margin-bottom: 10px; }
+  .sp-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.1em; }
+  .sp-car { font-size: 1rem; font-weight: 800; color: #185FA5; }
+  .sp-fac { font-size: 0.82rem; color: #5f6368; margin-left: auto; }
 
-  .sp-meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 0.88rem; }
-  .sp-meta th, .sp-meta td { border: 1px solid #9aa0a6; padding: 6px 8px; }
-  .sp-meta th { background: #f1f3f4; font-weight: 700; width: 14%; white-space: nowrap; text-align: left; }
+  /* 横スクロール。日付・出発・帰着は左に固定して、立ち寄りだけ流す。 */
+  .sp-scroll { overflow-x: auto; }
+  .sp-tbl { border-collapse: separate; border-spacing: 0; font-size: 0.78rem; white-space: nowrap; }
+  .sp-tbl th, .sp-tbl td { border-right: 1px solid #c8cdd3; border-bottom: 1px solid #c8cdd3;
+                           padding: 5px 8px; background: #fff; }
+  .sp-tbl thead th { background: #f1f3f4; font-weight: 700; border-top: 1px solid #c8cdd3;
+                     position: sticky; top: 0; z-index: 5; }
+  .sp-tbl th:first-child, .sp-tbl td:first-child { border-left: 1px solid #c8cdd3; }
 
-  .sp-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; table-layout: fixed; }
-  .sp-tbl th, .sp-tbl td { border: 1px solid #9aa0a6; padding: 4px 5px; vertical-align: top; }
-  .sp-tbl th { background: #f1f3f4; font-weight: 700; }
-  .sp-tbl td.c { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .sp-tbl td.d { text-align: center; font-weight: 700; white-space: nowrap; }
+  .sp-tbl .fix1 { position: sticky; left: 0;   z-index: 6; min-width: 78px; font-weight: 700; text-align: center; }
+  .sp-tbl .fix2 { position: sticky; left: 78px;  z-index: 6; min-width: 74px; text-align: center; }
+  .sp-tbl .fix3 { position: sticky; left: 152px; z-index: 6; min-width: 66px; text-align: center;
+                  box-shadow: 2px 0 0 #9aa0a6; }
+  .sp-tbl .fix4 { position: sticky; left: 218px; z-index: 6; min-width: 66px; text-align: center;
+                  box-shadow: 2px 0 0 #9aa0a6; }
+  .sp-tbl thead .fix1, .sp-tbl thead .fix2, .sp-tbl thead .fix3, .sp-tbl thead .fix4 { z-index: 8; }
+  .sp-tbl .fix1, .sp-tbl .fix2, .sp-tbl .fix3, .sp-tbl .fix4 { background: #fff; }
+  .sp-tbl thead .fix1, .sp-tbl thead .fix2, .sp-tbl thead .fix3, .sp-tbl thead .fix4 { background: #f1f3f4; }
+
   .sp-day-first td { border-top: 2px solid #5f6368; }
 
-  /* 利用者は「氏名 時刻」を並べて詰める。1便1行に収める。 */
-  .sp-riders { line-height: 1.55; }
-  .sp-r { white-space: nowrap; margin-right: 10px; display: inline-block; }
-  .sp-r .t { font-variant-numeric: tabular-nums; color: #185FA5; font-weight: 700; margin-left: 2px; }
-  .sp-r.dropoff .t { color: #3B6D11; }
-  .sp-r.absent { color: #9aa0a6; text-decoration: line-through; }
-  .sp-r.none .t { color: #c5221f; }
+  /* 立ち寄り = ①氏名 08:35 → ②氏名 08:43 → … */
+  .sp-stops { min-width: 380px; }
+  .sp-s { display: inline-block; white-space: nowrap; }
+  .sp-s .n { display: inline-block; min-width: 15px; height: 15px; line-height: 15px; text-align: center;
+             border-radius: 999px; background: #E6F1FB; color: #185FA5; font-size: 0.62rem; font-weight: 800;
+             margin-right: 3px; }
+  .sp-s.dropoff .n { background: #EAF3DE; color: #3B6D11; }
+  .sp-s .t { font-variant-numeric: tabular-nums; font-weight: 700; color: #185FA5; margin-left: 3px; }
+  .sp-s.dropoff .t { color: #3B6D11; }
+  .sp-s.absent { color: #9aa0a6; }
+  .sp-s.absent .nm { text-decoration: line-through; }
+  .sp-s.absent .t, .sp-s.absent .n { color: #9aa0a6; background: #eceff1; }
+  .sp-s.none .t { color: #c5221f; }
+  .sp-arw { color: #b0b6bf; margin: 0 5px; font-size: 0.75rem; }
+
+  .sp-note { min-width: 180px; }
+  .sp-note input { width: 100%; min-width: 170px; border: 1px solid #dadce0; border-radius: 6px;
+                   padding: 4px 6px; font-size: 0.78rem; font-family: inherit; }
+  .sp-note input:focus { outline: 2px solid #1a73e8; border-color: #1a73e8; }
+
+  .sp-tap { border: 1px dashed #c8cdd3; border-radius: 6px; background: #fafbfc; color: #9aa0a6;
+            font-size: 0.72rem; padding: 3px 6px; cursor: pointer; font-family: inherit; }
+  .sp-time { font-variant-numeric: tabular-nums; font-weight: 700; cursor: pointer; }
 
   .sp-legend { font-size: 0.72rem; color: #5f6368; margin-top: 8px; }
   .sp-empty { text-align: center; color: #80868b; padding: 40px 0; }
 
+  .sp-toast { position: fixed; left: 50%; top: 12px; transform: translate(-50%,-140%); z-index: 99;
+    background: #137333; color: #fff; padding: 9px 16px; border-radius: 10px; font-size: 0.84rem; font-weight: 700;
+    transition: transform .2s ease, opacity .2s ease; opacity: 0; pointer-events: none; }
+  .sp-toast.show { transform: translate(-50%,0); opacity: 1; }
+  .sp-toast.err { background: #c5221f; }
+
   @media print {
-    @page { size: A4 portrait; margin: 11mm; }
+    @page { size: A4 landscape; margin: 8mm; }
     body { background: #fff; }
-    .sp-toolbar { display: none !important; }
-    .sp-pages { max-width: none; margin: 0; }
+    .sp-toolbar, .sp-toast { display: none !important; }
+    .sp-pages { padding: 0; margin: 0; }
     .sp-page { border: none; border-radius: 0; margin: 0; padding: 0; page-break-after: always; }
     .sp-page:last-child { page-break-after: auto; }
+    /* 紙は横に流せないので、印刷のときだけ折り返して全部出す */
+    .sp-scroll { overflow: visible; }
+    .sp-tbl { width: 100%; font-size: 0.62rem; white-space: normal; }
+    .sp-tbl .fix1, .sp-tbl .fix2, .sp-tbl .fix3, .sp-tbl .fix4 { position: static; box-shadow: none; }
+    .sp-tbl thead th { position: static; }
+    .sp-stops { min-width: 0; white-space: normal; }
+    .sp-note { min-width: 0; }
+    .sp-note input { border: none; padding: 0; min-width: 0; font-size: 0.62rem; }
+    .sp-tap { display: none; }
     .sp-tbl tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
   }
@@ -61,11 +105,13 @@
 </head>
 <body>
 
+<div id="spToast" class="sp-toast"></div>
+
 <div class="sp-toolbar">
   <input type="month" class="sp-month" id="spMonth" value="{{ month }}">
   <button class="sp-btn" onclick="window.print()">印刷 / PDF保存</button>
   <a class="sp-btn sub" href="/soge/run">運行画面へ戻る</a>
-  <span class="sp-hint">印刷ダイアログで「PDFとして保存」を選ぶとPDFになります</span>
+  <span class="sp-hint">時刻と備考はこの画面で直せます／印刷ダイアログで「PDFとして保存」</span>
 </div>
 
 <div class="sp-pages">
@@ -75,54 +121,135 @@
 
 {% for v in vehicles %}
   <div class="sp-page">
-    <h1 class="sp-title">運行記録表</h1>
-    <div class="sp-sub">{{ facility_name }}</div>
+    <div class="sp-head">
+      <span class="sp-title">運行記録表</span>
+      <span class="sp-car">{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
+      <span class="sp-fac">{{ facility_name }}</span>
+    </div>
 
-    <table class="sp-meta">
-      <tr>
-        <th>年月</th><td>{{ month_label }}</td>
-        <th>車両</th><td>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</td>
-      </tr>
-    </table>
-
-    <table class="sp-tbl">
-      <thead>
-        <tr>
-          <th style="width:8%">日</th>
-          <th style="width:11%">便</th>
-          <th style="width:12%">運転者</th>
-          <th>利用者と乗降時刻</th>
-          <th style="width:9%">帰着</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for row in v.rows %}
-        <tr {% if row.day_first %}class="sp-day-first"{% endif %}>
-          <td class="d">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
-          <td class="c">{{ row.trip_name }}</td>
-          <td class="c">{{ row.driver_name }}</td>
-          <td class="sp-riders">
-            {%- for s in row.stops -%}
-              <span class="sp-r {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}">{{ s.user_name }}<span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
-            {%- endfor -%}
-          </td>
-          <td class="c">{{ row.returned_at or '' }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+    <div class="sp-scroll">
+      <table class="sp-tbl">
+        <thead>
+          <tr>
+            <th class="fix1">日付</th>
+            <th class="fix2">便</th>
+            <th class="fix3">出発</th>
+            <th class="fix4">帰着</th>
+            <th class="sp-stops">各利用者宅 到着時刻</th>
+            <th class="sp-note">備考</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in v.rows %}
+          <tr {% if row.day_first %}class="sp-day-first"{% endif %}>
+            <td class="fix1">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
+            <td class="fix2">{{ row.trip_name }}</td>
+            <td class="fix3">
+              {%- if row.departed_at -%}
+                <span class="sp-time" data-day="{{ row.day_id }}" data-fld="departed">{{ row.departed_at }}</span>
+              {%- else -%}
+                <button class="sp-tap" data-day="{{ row.day_id }}" data-fld="departed">入力</button>
+              {%- endif -%}
+            </td>
+            <td class="fix4">
+              {%- if row.returned_at -%}
+                <span class="sp-time" data-day="{{ row.day_id }}" data-fld="returned">{{ row.returned_at }}</span>
+              {%- else -%}
+                <button class="sp-tap" data-day="{{ row.day_id }}" data-fld="returned">入力</button>
+              {%- endif -%}
+            </td>
+            <td class="sp-stops">
+              {%- for s in row.stops -%}
+                {%- if not loop.first %}<span class="sp-arw">→</span>{% endif -%}
+                <span class="sp-s {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+              {%- endfor -%}
+            </td>
+            <td class="sp-note">
+              <input type="text" value="{{ row.note }}" data-note="{{ row.day_id }}" placeholder="">
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
     <div class="sp-legend">
-      青字＝迎えの到着時刻／緑字＝送りの到着時刻／「欠」＝当日欠席／「—」＝打刻なし
+      丸数字＝周った順番／青＝迎え、緑＝送り／「欠」＝当日欠席、「—」＝打刻なし
     </div>
   </div>
 {% endfor %}
 </div>
 
 <script>
+// soge-print-v3
+(function () {
+  var t = document.getElementById('spToast'), tm = null;
+  function toast(msg, err) {
+    t.textContent = msg;
+    t.className = 'sp-toast show' + (err ? ' err' : '');
+    clearTimeout(tm);
+    tm = setTimeout(function () { t.className = 'sp-toast' + (err ? ' err' : ''); }, 2000);
+  }
+
   document.getElementById('spMonth').onchange = function () {
     if (this.value) location.href = '/soge/print?month=' + this.value;
   };
+
+  async function saveDay(dayId, body) {
+    body.day_id = dayId;
+    var r = await fetch('/api/soge/run/day', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { toast(j.message || '保存できませんでした', true); return false; }
+    return true;
+  }
+
+  // 出発 / 帰着 … その場で時刻入力に変わる
+  function bindTime(el) {
+    el.onclick = function () {
+      var dayId = el.dataset.day, fld = el.dataset.fld;
+      var cell = el.parentNode;
+      var cur = (el.tagName === 'SPAN') ? el.textContent.trim() : '';
+      var inp = document.createElement('input');
+      inp.type = 'time';
+      inp.value = cur;
+      inp.style.cssText = 'width:64px;border:1px solid #1a73e8;border-radius:6px;padding:2px 3px;font-size:0.75rem;';
+      cell.innerHTML = '';
+      cell.appendChild(inp);
+      inp.focus();
+      var done = false;
+      inp.onblur = inp.onchange = async function () {
+        if (done) return;
+        done = true;
+        var body = {};
+        body[fld] = inp.value || '';
+        var ok = await saveDay(dayId, body);
+        if (ok) toast(inp.value ? (inp.value + ' に記録しました') : '時刻を消しました');
+        if (inp.value) {
+          cell.innerHTML = '<span class="sp-time" data-day="' + dayId + '" data-fld="' + fld + '">' + inp.value + '</span>';
+        } else {
+          cell.innerHTML = '<button class="sp-tap" data-day="' + dayId + '" data-fld="' + fld + '">入力</button>';
+        }
+        bindTime(cell.firstElementChild);
+      };
+    };
+  }
+  document.querySelectorAll('[data-fld]').forEach(bindTime);
+
+  // 備考 … 打ち終わって離れたら保存
+  document.querySelectorAll('[data-note]').forEach(function (inp) {
+    var last = inp.value;
+    inp.onblur = async function () {
+      if (inp.value === last) return;
+      var ok = await saveDay(inp.dataset.note, { note: inp.value });
+      if (ok) { last = inp.value; toast('備考を保存しました'); }
+    };
+    inp.onkeydown = function (e) { if (e.key === 'Enter') inp.blur(); };
+  });
+})();
 </script>
 </body>
 </html>
