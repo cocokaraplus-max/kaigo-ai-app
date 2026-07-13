@@ -18828,6 +18828,26 @@ def api_soge_week_save():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/soge/patients", methods=["GET"])  # soge-patients-v1
+@login_required
+def api_soge_patients():
+    """配車に臨時で足す人の候補（在籍中の利用者）。絞り込みは画面側でやる。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        plist = get_patients(supabase, f_code)
+        items = [{
+            "patient_id": str(p["id"]),
+            "user_name": p.get("user_name") or "",
+            "user_kana": p.get("user_kana") or "",
+        } for p in plist if not p.get("is_discontinued")]
+        items.sort(key=lambda x: (x["user_kana"] or x["user_name"]))
+        return jsonify({"status": "success", "patients": items})
+    except Exception as e:
+        print("api_soge_patients error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/soge/staff", methods=["GET"])  # soge-week-v1
 @login_required
 def api_soge_staff():
