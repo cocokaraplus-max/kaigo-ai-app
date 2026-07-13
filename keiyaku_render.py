@@ -485,7 +485,7 @@ def render_juyo(F, st):
 
     sec_kinkyu = '''<div class="sec"><div class="sec-h">緊急時の対応方法と健康上の理由による利用中止について</div>
 <p>①ご契約者に容体の変化等があった場合は、医師または歯科医師など医療機関に連絡をとるなど必要な措置を講じるほか、緊急連絡先に速やかに連絡いたします。②風邪・病気の場合および当日の健康チェックの結果体調が不調の場合は、サービス内容の変更またはサービスを中止することがあります。</p>
-<table class="ptab fill"><tr><td class="k">主治医</td><td class="L">氏名／連絡先</td></tr><tr><td class="k">緊急時の病院</td><td class="L">病院名</td></tr><tr><td class="k">ご家族</td><td class="L">氏名／連絡先</td></tr></table></div>'''
+<table class="ptab fill"><tr><td class="k">主治医</td><td class="hint">氏名／連絡先</td><td class="wr"></td></tr><tr><td class="k">緊急時の病院</td><td class="hint">病院名</td><td class="wr"></td></tr><tr><td class="k">ご家族</td><td class="hint">氏名／連絡先</td><td class="wr"></td></tr></table></div>'''
 
     sec_shuryo = '''<div class="sec"><div class="sec-h">契約の終了について（契約書第15条参照）</div>
 <p>当事業所との契約では契約が終了する期日は特に定めていません。以下のような事由がない限り継続してサービスを利用できますが、該当するに至った場合には書面による契約解除を交わすことなく契約は終了します。①ご契約者が死亡した場合　②要介護認定により自立または要支援1・要支援2と判定された場合　③やむを得ない事由により事業所を閉鎖した場合　④事業所の重大な毀損により提供が不可能になった場合　⑤介護保険の指定を取り消された場合または辞退した場合　⑥ご契約者から中途解約・契約解除の申し出があった場合　⑦事業所から退所の申し出を行った場合</p></div>'''
@@ -493,8 +493,8 @@ def render_juyo(F, st):
     # keiyaku-fix-v1: 電話番号が担当者の間に挟まって読みにくかったので、行を分ける
     sec_kujo = f'''<div class="sec"><div class="sec-h">サービス内容に関する苦情と相談</div>
 <table class="ptab kujo"><tr><td class="k">受付時間</td><td class="L">{_esc(ku.get("time"))}</td></tr>
-<tr><td class="k">苦情受付担当者</td><td class="L">{_esc(ku.get("uketsuke"))}　（TEL {_esc(ku.get("uketsuke_tel"))}）</td></tr>
-<tr><td class="k">苦情対応担当者</td><td class="L">{_esc(ku.get("taio"))}</td></tr>
+<tr><td class="k">苦情受付電話番号</td><td class="L">TEL {_esc(ku.get("uketsuke_tel"))}</td></tr>
+<tr><td class="k">苦情受付・対応担当者</td><td class="L">{_esc(ku.get("uketsuke"))}　／　{_esc(ku.get("taio"))}</td></tr>
 <tr><td class="k">苦情解決責任者</td><td class="L">{_esc(ku.get("sekinin"))}</td></tr></table>
 <p class="note">下記の窓口でも受け付けております。{_esc(ho.get("name"))}　介護保険課　TEL {_esc(ho.get("kaigo_tel"))}　FAX {_esc(ho.get("kaigo_fax"))}／{_esc(ho.get("kokuho_name"))}　TEL {_esc(ho.get("kokuho_tel"))}　FAX {_esc(ho.get("kokuho_fax"))}</p></div>'''
 
@@ -502,12 +502,21 @@ def render_juyo(F, st):
 
     sec_souchou = '''<div class="sec"><div class="sec-h">早朝ご連絡時の注意点</div><p>当日のキャンセル連絡を早朝にされる場合には、8:00〜8:15の時間でご連絡いただけるようお願いいたします。それ以外の時間ですと送迎等でスタッフが不在の場合がございます。</p></div>'''
 
+    # keiyaku-sign-v1: 記入する欄の下だけに線を引き、全体を右寄せにする。
+    # 「様」は上の氏名欄の右端にそろえる。
     sign = f'''<div class="sign">
 <p>指定地域密着型通所介護の提供の開始に際し、本書面に基づき重要事項の説明を行いました。</p>
 <p class="center">令和　　年　　月　　日</p>
-<div class="sign-block"><p>{_esc(j.get("name"))}</p><div class="r"><span>説明者　職名　　　　　　氏名</span><span></span></div></div>
+<div class="sign-block"><p>{_esc(j.get("name"))}</p>
+<table class="sigtab">
+<tr><td class="lbl">説明者　職名</td><td class="fill w2"></td><td class="lbl">氏名</td><td class="fill"></td><td class="sama"></td></tr>
+</table></div>
 <p>私は、本書面に基づいて事業所から重要事項の説明を受け、指定地域密着型通所介護の開始に同意しました。</p>
-<div class="sign-block"><div class="r"><span>ご契約者　　　　　　　　　　様</span><span></span></div><div class="r"><span>代理人</span><span></span></div></div></div>'''
+<div class="sign-block">
+<table class="sigtab">
+<tr><td class="lbl">ご契約者</td><td class="fill" colspan="3"></td><td class="sama">様</td></tr>
+<tr><td class="lbl">代理人</td><td class="fill" colspan="3"></td><td class="sama">様</td></tr>
+</table></div></div>'''
 
     head = f'''<div class="doc-title">{_esc(j.get("name"))}</div>
 <div class="doc-sub">地域密着型通所介護 重要事項説明書</div>
@@ -614,15 +623,24 @@ def render_keiyaku(F, st):
         '<div class="ch">第七章　その他</div>' + art["19"] + art["20"] + art["21"] + art["22"]
     )
 
+    # keiyaku-sign-v1: 押印は廃止したので「署名押印」→「署名」。
     sign = f'''<div class="sign">
-<p>上記の契約を証するため、本書2通を作成し、ご契約者、代理人及び事業所が署名押印の上、各1通を保有するものとします。</p>
+<p>上記の契約を証するため、本書2通を作成し、ご契約者、代理人及び事業所が署名の上、各1通を保有するものとします。</p>
 <p class="center">令和　　年　　月　　日</p>
 <div class="sign-block"><p>【事業所】　事業所名　　　{jname}</p>
 <p>　　　　　　事業所所在地　〒{_esc(j.get("zip"))}　{_esc(j.get("address"))}</p>
 <p>　　　　　　事業者名　　　{_esc(h.get("name"))}</p>
-<div class="r"><span>　　　　　　代表者名　　　{_esc(h.get("daihyo"))}</span><span></span></div></div>
-<div class="sign-block"><div class="r"><span>【ご契約者】　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span></span></div></div>
-<div class="sign-block"><div class="r"><span>【代理人】　　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span></span></div></div></div>'''
+<p>　　　　　　代表者名　　　{_esc(h.get("daihyo"))}</p></div>
+<div class="sign-block">
+<table class="sigtab">
+<tr><td class="lbl">【ご契約者】</td><td class="lbl2">住所</td><td class="fill">〒</td><td class="sama"></td></tr>
+<tr><td class="lbl"></td><td class="lbl2">氏名</td><td class="fill"></td><td class="sama">様</td></tr>
+</table></div>
+<div class="sign-block">
+<table class="sigtab">
+<tr><td class="lbl">【代理人】</td><td class="lbl2">住所</td><td class="fill">〒</td><td class="sama"></td></tr>
+<tr><td class="lbl"></td><td class="lbl2">氏名</td><td class="fill"></td><td class="sama">様</td></tr>
+</table></div></div>'''
 
     head = f'''<div class="doc-title">{jname} 利用契約書</div>
 <div class="doc-sub">地域密着型通所介護</div>'''
@@ -638,6 +656,8 @@ html,body{margin:0;padding:0}
 body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#000;line-height:1.55}
 .page-pad{padding:13mm}
 .page-break{page-break-before:always}
+/* keiyaku-duplex-v1: 重説と契約書の間に入れる白紙。両面印刷で裏写りさせないため。 */
+.blank-page{height:100%;color:#fff}
 .doc-title{text-align:center;font-weight:700;font-size:15pt;margin:0 0 2mm}
 .doc-sub{text-align:center;font-size:10.5pt;margin:0 0 5mm}
 .ch{font-weight:700;font-size:11.5pt;text-align:center;background:#eef3f1;padding:2mm 0;margin:3.5mm 0 2.5mm;letter-spacing:1px;page-break-after:avoid}
@@ -652,11 +672,27 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .sub{font-size:7.5pt;color:#555}
 .ptab{border-collapse:collapse;width:100%;font-size:8.5pt;margin:1.5mm 0;page-break-inside:avoid}
 .ptab th,.ptab td{border:1px solid #555;padding:2px 4px;text-align:center;line-height:1.35}
-/* keiyaku-fix-v1: 手書きする欄は窮屈だと書けない。記入用の表だけ高さを持たせる。
-   （.L 全部に高さを付けると料金表まで間延びするので、.fill を付けた表に限定する） */
-.ptab.fill td{height:10mm;vertical-align:bottom}
-.ptab.fill td.L{color:#777;font-size:7.5pt}
-.ptab.kujo td.k{width:34mm;white-space:nowrap}
+/* keiyaku-fix-v1 / keiyaku-sign-v1: 手書きする欄は窮屈だと書けない。
+   記入用の表だけ高さを持たせる（.L 全部に高さを付けると料金表まで間延びする）。
+   案内文字（氏名／連絡先 など）は文字幅ぶんだけ取り、残りを全部「書く枠」にする。 */
+.ptab.fill td{height:12mm;vertical-align:bottom}
+/* ラベルと案内文字は文字幅ぶんだけ。残りは全部「書く枠」にする。 */
+.ptab.fill td.k{width:30mm;white-space:nowrap;vertical-align:middle}
+.ptab.fill td.hint{width:1%;white-space:nowrap;color:#999;font-size:7pt;
+  text-align:left;vertical-align:bottom;padding:0 1mm 1mm 3px;border-right:none}
+.ptab.fill td.wr{border-left:none}
+.ptab.kujo td.k{width:38mm;white-space:nowrap}
+
+/* 署名欄。ページ幅いっぱいの下線はやめ、書く欄の下だけに線を引く。
+   ラベルは文字幅ぶんに詰め、書く欄をできるだけ広く取る。 */
+.sigtab{width:100%;border-collapse:collapse;margin:3mm 0 1mm;font-size:9pt}
+.sigtab td{padding:1mm 1.5mm;vertical-align:bottom;height:13mm}
+.sigtab td.lbl{white-space:nowrap;width:1%;text-align:left;padding-right:3mm}
+/* 「住所」「氏名」を同じ列にそろえるための2つ目のラベル列 */
+.sigtab td.lbl2{white-space:nowrap;width:1%;text-align:left;padding-right:3mm}
+.sigtab td.fill{border-bottom:1px solid #333;color:#555}
+.sigtab td.w2{width:30mm}
+.sigtab td.sama{white-space:nowrap;padding-left:2.5mm;width:1%}
 .ptab th{background:#eef3f1;font-weight:700}
 .ptab td.k{text-align:left;white-space:nowrap;background:#f7f6f3}
 .ptab .L,.ptab td.L,.ptab th.L{text-align:left}
@@ -676,16 +712,23 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 '''
 
 
-def render_print_html(F, doc, st):
+def render_print_html(F, doc, st, blank_between=False):
     """印刷用の完全HTMLを返す。
     doc: 'juyo' | 'keiyaku' | 'both'
     st : 'han' | 'ichi'
+    blank_between: keiyaku-duplex-v1
+        True にすると、重説と契約書の間に白紙を1枚挟む。
+        重説が奇数ページで終わったとき、両面印刷で契約書が重説の裏に
+        刷られてしまうのを防ぐため。呼び出し側がページ数を見て決める。
     """
     if st not in ("han", "ichi"):
         st = "han"
     blocks = []
     if doc in ("juyo", "both"):
         blocks.append('<div class="page-pad">' + render_juyo(F, st) + '</div>')
+    if doc == "both" and blank_between:
+        # 白紙。中身が空だとページとして数えられないので、見えない文字を1つ置く。
+        blocks.append('<div class="page-pad page-break blank-page">&nbsp;</div>')
     if doc in ("keiyaku", "both"):
         cls = "page-pad page-break" if doc == "both" else "page-pad"
         blocks.append(f'<div class="{cls}">' + render_keiyaku(F, st) + '</div>')
