@@ -12986,6 +12986,34 @@ def tasks():
         is_admin=bool(session.get("admin_authenticated")),  # tasks-isadmin-render-v1
     )
 
+@app.route("/api/tasks/open_count")   # drawer-badge-v1
+@login_required
+def api_tasks_open_count():
+    """自分に関係する未完了タスクの件数。引き出し／ナビのバッジ用。
+
+    「自分あて」の定義は /api/tasks/list の既定フィルタに合わせる
+    （自分がアサイン、または誰にも割り当てられていない全体タスク）。
+    作成者だけのものは数えない（自分で作って自分に割り当てていないものは通知するほどではない）。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session["my_name"]
+        supabase = get_supabase()
+        res = (supabase.table("tasks").select("status,assigned_to")
+               .eq("facility_code", f_code).execute())
+        n = 0
+        for t in (res.data or []):
+            if (t.get("status") or "todo") == "done":
+                continue
+            who = t.get("assigned_to") or []
+            if my_name in who or not who:
+                n += 1
+        return jsonify({"status": "success", "count": n})
+    except Exception as e:
+        print("api_tasks_open_count error: %s" % e, flush=True)
+        return jsonify({"status": "error", "count": 0}), 200
+
+
 @app.route("/api/tasks/list")
 @login_required
 def api_tasks_list():
