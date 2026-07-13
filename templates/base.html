@@ -805,11 +805,18 @@ body.nav-editing {
     outline: 1px dashed rgba(26,115,232,.35); outline-offset: -3px; }
   #appDrawer.edit .dw-cell.hot { background: rgba(26,115,232,.18); }
 
-  .dw-folder .dw-ic { background: rgba(95,99,104,.14); padding: 5px; }
+  /* app-drawer-folder-v1: フォルダの中身が見えるように、実アイコンを最大4つ並べる */
+  .dw-folder .dw-ic { background: rgba(95,99,104,.16); padding: 4px; }
   .dw-fold-mini { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-    gap: 2px; width: 100%; height: 100%; }
-  .dw-fold-mini i { border-radius: 4px; background: #1a73e8; display: block; }
-  .dw-fold-mini i.none { background: transparent; }
+    gap: 3px; width: 100%; height: 100%; }
+  .dw-fold-mini i { border-radius: 5px; display: flex; align-items: center; justify-content: center;
+    color: #fff; overflow: hidden; }
+  .dw-fold-mini i.none { background: rgba(255,255,255,.45); }
+  .dw-fold-mini .material-symbols-outlined { font-size: 13px; line-height: 1; }
+  .dw-fold-more { position: absolute; right: -2px; top: -2px; background: #202124; color: #fff;
+    font-size: .56rem; font-weight: 800; border-radius: 999px; padding: 1px 5px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.3); }
+  .dw-app .dw-ic { position: relative; }
 
   /* app-drawer-edit-v2: iOS は長押しで選択・拡大鏡・コンテキストメニューを出し、
      そのまま指をOSが握ってしまう（pointermove の preventDefault では止まらない）。
@@ -850,8 +857,13 @@ body.nav-editing {
   .dw-fold-head input { flex: 1; min-width: 0; border: 1px solid #e0e0e0; border-radius: 10px;
     padding: 8px 10px; font-size: .92rem; font-weight: 800; font-family: inherit; }
   .dw-fold-body { padding: 16px 12px; overflow-y: auto; }
-  .dw-out { margin-top: 4px; font-size: .62rem; color: #c5221f; font-weight: 700;
-    background: #fce8e6; border: none; border-radius: 8px; padding: 3px 6px; cursor: pointer; }
+  /* app-drawer-folder-v2: フォルダから外に戻す動線。常に出す。 */
+  .dw-out { margin-top: 5px; font-size: .62rem; color: #1a73e8; font-weight: 800;
+    background: #e8f0fe; border: none; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+  .dw-fold-note { font-size: .68rem; color: #9aa3b2; padding: 10px 14px 0; }
+  .dw-fold-foot { padding: 10px 14px 18px; }
+  .dw-fold-foot button { width: 100%; padding: 11px; border: none; border-radius: 10px;
+    background: #f1f3f4; color: #5f6368; font-weight: 800; font-size: .82rem; cursor: pointer; }
 
   /* 開いたときにアイコンが少しずつ立ち上がる。奥から手前に出てくる感じ。
      開くたびに再生したいので、.on が付いた時に animation を当て直す。 */
@@ -898,7 +910,9 @@ body.nav-editing {
       <button class="dw-close" id="dwFoldBack" style="margin:0;">←</button>
       <input id="dwFoldName" maxlength="20" placeholder="フォルダ名">
     </div>
+    <div class="dw-fold-note">タップで開きます。「取り出す」でフォルダの外（空いたマス）に戻せます。</div>
     <div class="dw-fold-body"><div class="dw-grid" id="dwFoldGrid"></div></div>
+    <div class="dw-fold-foot"><button id="dwFoldUndo">フォルダを解除（中身を全部そとに出す）</button></div>
   </div>
 </div>
 
@@ -1146,14 +1160,31 @@ body.nav-editing {
       '</div>';
   }
 
+  // app-drawer-folder-v1: アイコンの色。CSS の data-href セレクタと同じ規則をここに1つ持つ。
+  function colorOf(href) {
+    if (href === '/tasks' || href === '/board' || href === '/admin/meetings') return '#7c4dff';
+    if (href === '/ledger' || href === '/rec_expense') return '#2f6b5e';
+    if (href === '/admin' || href === '/dev' || href === '/manual') return '#5f6368';
+    if (href === '/birthday' || href === '/numerology') return '#e8710a';
+    return '#1a73e8';
+  }
+
   function folderHtml(f, idx) {
     var mini = '';
     for (var i = 0; i < 4; i++) {
-      mini += '<i class="' + (f.items[i] ? '' : 'none') + '"></i>';
+      var h = f.items[i], m = h ? byHref[h] : null;
+      if (m) {
+        mini += '<i style="background:' + colorOf(h) + '">' +
+                  '<span class="material-symbols-outlined">' + m.icon + '</span></i>';
+      } else {
+        mini += '<i class="none"></i>';
+      }
     }
+    var more = (f.items.length > 4)
+      ? '<span class="dw-fold-more">+' + (f.items.length - 4) + '</span>' : '';
     return '<div class="dw-app dw-folder" role="button" tabindex="0" draggable="false"' +
       ' data-idx="' + idx + '" data-folder="1">' +
-        '<span class="dw-ic"><span class="dw-fold-mini">' + mini + '</span></span>' +
+        '<span class="dw-ic"><span class="dw-fold-mini">' + mini + '</span>' + more + '</span>' +
         '<span class="dw-label">' + esc(f.name || 'フォルダ') + '</span>' +
       '</div>';
   }
@@ -1173,11 +1204,14 @@ body.nav-editing {
     var f = layout.slots[openFolder];
     if (!f || f.t !== 'folder') { closeFolder(); return; }
     foldName.value = f.name || '';
+    // app-drawer-folder-v2: 「取り出す」は常に出す。
+    // フォルダの中身は引き出しの上に重ねて出しているので、下のマス目は見えない。
+    // つまりドラッグで外に出す動線は成立しない。ボタンで戻す。
     foldGrid.innerHTML = f.items.map(function (h, i) {
       var m = byHref[h];
       if (!m) return '';
       return '<div class="dw-cell" data-fcell="' + i + '">' + appHtml(m, i, true) +
-        (dw.classList.contains('edit') ? '<button class="dw-out" data-out="' + i + '">出す</button>' : '') +
+        '<button class="dw-out" data-out="' + i + '">取り出す</button>' +
         '</div>';
     }).join('');
     bind(foldGrid);
@@ -1275,13 +1309,16 @@ body.nav-editing {
     var el = e.currentTarget;
     var editing = dw.classList.contains('edit');
 
+    // app-drawer-folder-v2: フォルダの中はドラッグしない（下のマス目が隠れていて落とせないため）。
+    // 外に戻すのは「取り出す」ボタン。
+    if (el.dataset.inFolder) return;
+
     if (editing) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       beginDrag(el, e.clientX, e.clientY);
       return;
     }
-    if (el.dataset.inFolder) return;      // フォルダの中は編集中だけ動かす
 
     var sx = e.clientX, sy = e.clientY;
     clearTimeout(holdTimer);
@@ -1365,7 +1402,7 @@ body.nav-editing {
 
     if (!cell || cell.dataset.cell === undefined) { render(); return; }   // 枠の外 → 元に戻す
     var to = Number(cell.dataset.cell);
-    if (inFolder) { moveOutOfFolder(from, to); return; }
+    if (inFolder) { renderFolder(); return; }     // app-drawer-folder-v2: 中からは動かさない
     if (to === from) { render(); return; }
     dropOn(from, to);
   }
@@ -1403,15 +1440,24 @@ body.nav-editing {
     var f = layout.slots[openFolder];
     if (!f || f.t !== 'folder') return;
     var href = f.items.splice(i, 1)[0];
-    var slot = firstEmpty();
-    layout.slots[slot] = { t: 'app', href: href };
+    layout.slots[firstEmpty()] = { t: 'app', href: href };
     if (f.items.length === 0) { layout.slots[openFolder] = null; closeFolder(); }
     else if (f.items.length === 1) {             // 1つだけになったフォルダは畳む（iPhoneと同じ）
       layout.slots[openFolder] = { t: 'app', href: f.items[0] };
       closeFolder();
-    } else renderFolder();
+    } else renderFolder();                        // 続けて出せるよう開いたまま
     save();
   }
+
+  // app-drawer-folder-v2: フォルダごと解除（中身を全部そとへ）
+  document.getElementById('dwFoldUndo').onclick = function () {
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    f.items.forEach(function (h) { layout.slots[firstEmpty()] = { t: 'app', href: h }; });
+    layout.slots[openFolder] = null;
+    closeFolder();
+    save();
+  };
 
   function moveOutOfFolder(i, to) {              // フォルダの中からドラッグして外に出す
     var f = layout.slots[openFolder];
