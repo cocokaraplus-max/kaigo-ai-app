@@ -18686,14 +18686,18 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
             for s in (c.get("stop_order") or []):
                 pid = str(s.get("patient_id") or "")
                 prof = pmap.get(pid) or {}
+                is_guest = bool(s.get("guest"))
                 stops.append({
                     "patient_id": pid,
-                    "user_name": prof.get("user_name") or "",
+                    # soge-guest-v1: マスタに居なければ、保存しておいた名前を使う
+                    "user_name": prof.get("user_name") or (s.get("name") or ""),
+                    "guest": is_guest,
                     "type": s.get("type") or "pickup",
                     "nth": int(s.get("nth") or 0),
                     "is_wheelchair": wc.get(pid, False),
                     "dist_km": round((geo.get(pid) or {}).get("dist_km", 0.0), 2),
-                    "no_geo": pid not in geo,
+                    # 登録の無い方は住所が無いので、座標が無いのは当たり前。警告に混ぜない。
+                    "no_geo": (pid not in geo) and not is_guest,
                 })
                 if pid not in seen:
                     seen.append(pid)
@@ -18807,7 +18811,13 @@ def api_soge_week_save():
                     stype = (s.get("type") or "").strip()
                     if not pid or stype not in ("pickup", "dropoff"):
                         continue
-                    stops.append({"patient_id": pid, "type": stype, "nth": int(s.get("nth") or 0)})
+                    row = {"patient_id": pid, "type": stype, "nth": int(s.get("nth") or 0)}
+                    # soge-guest-v1: 登録の無い方（見学など）は名前も一緒に残す。
+                    # 利用者マスタには書き込まない。送迎の中だけで完結させる。
+                    if s.get("guest"):
+                        row["guest"] = True
+                        row["name"] = (s.get("user_name") or "").strip()[:40]
+                    stops.append(row)
                 rows.append({
                     "facility_code": f_code,
                     "weekday": weekday,
@@ -18840,6 +18850,7 @@ def api_soge_patients():
             "patient_id": str(p["id"]),
             "user_name": p.get("user_name") or "",
             "user_kana": p.get("user_kana") or "",
+            "patient_number": p.get("patient_number") or "",   # soge-guest-v1: カルテ番号でも探せる
         } for p in plist if not p.get("is_discontinued")]
         items.sort(key=lambda x: (x["user_kana"] or x["user_name"]))
         return jsonify({"status": "success", "patients": items})
