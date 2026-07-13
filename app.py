@@ -19445,7 +19445,7 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
               .eq("facility_code", f_code).execute())
         for x in (wr.data or []):
             wc[str(x["id"])] = bool(x.get("is_wheelchair"))
-            addr[str(x["id"])] = (x.get("address") or "").strip()
+            addr[str(x["id"])] = _soge_addr_short(x.get("address"))   # soge-run-addr2-v1
     except Exception:
         pass
 
@@ -19912,8 +19912,23 @@ def api_soge_run_return():
 # 車1台につき1か月ぶんを詰めて並べる。走行距離と到着予定は載せない（現場で不要）。
 
 
-# soge-print-noaddr-v1: 運行記録表に住所は載せない（住所は /soge/run だけ）。
-# 以前ここにあった _soge_addr_short は撤去した。
+# soge-print-noaddr-v1: 運行記録表（印刷）に住所は載せない。住所は運行画面だけ。
+
+
+def _soge_addr_short(a):  # soge-run-addr2-v1
+    """運行画面に出す住所。都道府県を落として市から始める。
+
+    運転手が見るのは市以下だけ（同一県内の利用者しかいない）。
+    先頭の「◯◯県」を削るだけで、狭い画面でも1行に収まりやすくなる。
+    削ったあと空になるようなら、元の文字列をそのまま返す（壊さない）。
+    """
+    a = (a or "").strip()
+    if not a:
+        return ""
+    for i, ch in enumerate(a[:5]):
+        if ch in "都道府県":
+            return a[i + 1:].strip() or a
+    return a
 
 
 def _soge_month_range(ym):  # soge-print-v2

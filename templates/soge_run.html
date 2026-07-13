@@ -38,9 +38,13 @@
 .sr-type.pickup  { background:#E6F1FB; color:#185FA5; }
 .sr-type.dropoff { background:#EAF3DE; color:#3B6D11; }
 .sr-name { flex:1; min-width:0; font-weight:700; font-size:0.92rem; overflow-wrap:anywhere; }
-/* 住所は名前の下に小さく。行が伸びすぎないよう1行で切る（長い住所は…になる） */
-.sr-addr { display:block; font-weight:400; font-size:0.7rem; color:#9aa0a6; margin-top:1px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 住所は名前の下に小さく。
+   soge-run-addr2-v1: 1行で切ると読めないので、入らないぶんは2段目に回す（最大2行）。
+   行が伸びすぎないよう、文字は少し小さく・行間は詰める。3行目からは … で切る。
+   都道府県はサーバ側(_soge_addr_short)で落としてあるので、市から始まる。 */
+.sr-addr { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+  font-weight:400; font-size:0.66rem; line-height:1.2; color:#9aa0a6; margin-top:2px;
+  white-space:normal; overflow:hidden; overflow-wrap:anywhere; }
 .sr-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap;
   background:#f3e8ff; color:#6b21a8; }
 .sr-plan { font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; flex:0 0 auto; }
