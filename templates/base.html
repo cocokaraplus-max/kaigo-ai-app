@@ -1012,13 +1012,18 @@ body.nav-editing {
   handle.addEventListener('pointercancel', handleUp);
 
   // ---- 開いているとき、外向きに払うと閉じる（こちらも指に追従） ----
+  // app-drawer-edit-v4: ただし **編集モード中／アイコンをドラッグ中は働かせない**。
+  // アイコンを横に動かすと、この判定が「閉じるスワイプ」と誤解して引き出しごと動いていた。
   var cx = 0, cy = 0, cdrag = false, cwatch = false;
+  function closeSwipeBlocked() {
+    return dw.classList.contains('edit') || window.dwDragActive === true;
+  }
   dw.addEventListener('touchstart', function (e) {
-    if (!dw.classList.contains('on')) return;
+    if (!dw.classList.contains('on') || closeSwipeBlocked()) return;
     cx = e.touches[0].clientX; cy = e.touches[0].clientY; cwatch = true; cdrag = false;
   }, { passive: true });
   dw.addEventListener('touchmove', function (e) {
-    if (!cwatch) return;
+    if (!cwatch || closeSwipeBlocked()) { cwatch = false; cdrag = false; return; }
     var dx = e.touches[0].clientX - cx, dy = Math.abs(e.touches[0].clientY - cy);
     var outward = (side() === 'right') ? dx : -dx;
     if (!cdrag) {
@@ -1252,9 +1257,13 @@ body.nav-editing {
     if (el.dataset.folder) { openFolderAt(Number(el.dataset.idx)); return; }
 
     var href = el.dataset.href;
-    if (window.dwClose) window.dwClose();                                  // 引き出しを閉じる
-    if (typeof spaNav === 'function') { spaNav(e, href); }                 // 同じタブで遷移
-    else { location.href = href; }
+    if (!href) return;
+    if (window.dwClose) window.dwClose();          // 引き出しを閉じる
+    // app-drawer-edit-v4: spaNav() は中身が空で、実際の遷移は <a href> 任せだった。
+    // href を外した（iOSのリンクプレビュー対策）ので、ここで自分で飛ぶ。
+    // 同じタブで開く（PWAで target=_blank にすると外部ブラウザになりログインが切れる）。
+    try { document.body.style.overflow = ''; } catch (err) {}
+    location.href = href;
   }
 
   // app-drawer-edit-v2
@@ -1311,6 +1320,7 @@ body.nav-editing {
       inFolder: !!el.dataset.inFolder,
       hot: null
     };
+    window.dwDragActive = true;   // app-drawer-edit-v4: 閉じるスワイプを止める
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -1351,6 +1361,7 @@ body.nav-editing {
 
     var from = drag.from, inFolder = drag.inFolder;
     drag = null;
+    window.dwDragActive = false;   // app-drawer-edit-v4
 
     if (!cell || cell.dataset.cell === undefined) { render(); return; }   // 枠の外 → 元に戻す
     var to = Number(cell.dataset.cell);
