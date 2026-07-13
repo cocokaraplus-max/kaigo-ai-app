@@ -88,7 +88,19 @@
   .tcm-leave-sub label{font-size:.82rem;color:#555;white-space:nowrap}
   .tcm-leave-sub input[type=date]{flex:1;padding:8px;border:1px solid #cddbd6;border-radius:9px;font-family:inherit;font-size:.88rem;background:#fff}
   /* timecard-config-ui-v1 */
-  .cfg-modal{max-height:calc(100vh - var(--tc-nav-h,140px) - 32px);overflow-y:auto;padding-bottom:24px}  /* timecard-config-navfix2-v1 */
+  /* tc-cfg-width-v1: 中身（横並びの時刻入力など）に押し広げられて、モーダルが画面より広くなり
+     左右にブレていた。横は切って縦だけスクロールさせる。Flex の子は既定 min-width:auto なので、
+     min-width:0 を入れないと縮まずに膨らむ（請求額計算のマトリクスでも踏んだ罠）。 */
+  .cfg-modal{max-height:calc(100vh - var(--tc-nav-h,140px) - 32px);overflow-y:auto;overflow-x:hidden;
+    padding-bottom:24px;max-width:100%;box-sizing:border-box}  /* timecard-config-navfix2-v1 / tc-cfg-width-v1 */
+  .cfg-modal *{max-width:100%}
+  .cfg-modal .cfg-row2,
+  .cfg-modal .cfg-svc-item,
+  .cfg-modal .cfg-role-item{flex-wrap:wrap;min-width:0}
+  .cfg-modal .cfg-row2>*,
+  .cfg-modal .cfg-svc-item>*,
+  .cfg-modal .cfg-role-item>*{min-width:0}
+  .cfg-modal input,.cfg-modal select{max-width:100%;box-sizing:border-box}
   .cfg-sec{margin-top:16px;padding-top:14px;border-top:1px solid #f0ede7}
   .cfg-sec:first-of-type{border-top:0;padding-top:0}
   .cfg-sec h4{font-size:.92rem;color:#2f6b5e;margin-bottom:4px}
@@ -616,10 +628,14 @@
     d.querySelector(".cfg-role-del").addEventListener("click",function(){ d.remove(); });
     return d;
   }
-  function _tcMeasureNav(){  // timecard-config-navfix-v1
+  function _tcMeasureNav(){  // timecard-config-navfix-v1 / nav-hide-v4
     var nav=document.querySelector(".bottom-nav");
-    var h=nav?Math.round(nav.getBoundingClientRect().height):0;
-    if(h>0) document.documentElement.style.setProperty("--tc-nav-h", h+"px");
+    var off=document.body.classList.contains("nav-off");
+    if(nav && !off){
+      document.documentElement.style.setProperty("--tc-nav-h", Math.round(nav.getBoundingClientRect().height)+"px");
+    } else {
+      document.documentElement.style.removeProperty("--tc-nav-h");   // :root の var(--nav-h) が効く
+    }
   }
   async function openConfig(){
     _tcMeasureNav();

@@ -38,6 +38,27 @@
         }
 
         :root { --page-max-width: 480px; }
+
+        /* nav-hide-v1: ボトムナビの高さは、これまで各画面に固定値で直書きされていた
+           （131 / 136 / 140 / 152 / 200 / 220px …）。ナビを隠すと下部UIが「跡地」に浮くので、
+           **共通の --nav-h に寄せる**。実測は measureNav() の1か所だけ。隠すと 0px が入る。
+           既存の画面別変数（--rk-nav-h 等）は、値が入っていなければこれを既定にする。 */
+        /* nav-hide-v3: ナビを隠すと bottom:0 がホームインジケータ帯に食い込み、
+           下部の固定バーが「下すぎて」指が届かない・隠れる。
+           JS は実測値を --nav-raw に入れ、ここで安全な下限（セーフエリア + 10px）を噛ませる。
+           env() は JS の setProperty では書けないので、この二段構えにしている。 */
+        :root {
+          --nav-raw: 134px;
+          --nav-h: max(var(--nav-raw), calc(env(safe-area-inset-bottom, 0px) + 10px));
+          --rk-nav-h: var(--nav-h);
+          --kk-nav-h: var(--nav-h);
+          --tc-nav-h: var(--nav-h);
+          --lc-nav-h: var(--nav-h);
+          --dw-nav-h: var(--nav-h);
+        }
+        /* 隠すのは CSS で。インラインの style.display='' でナビを復活させる箇所が
+           あちこちにある（設定モーダル・ベル・掲示板・タスク）ので、!important で勝つ。 */
+        body.nav-off .bottom-nav { display: none !important; }
         .page-wrapper {
             max-width: var(--page-max-width);
             width: 100%;
@@ -48,7 +69,8 @@
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem max(12rem, calc(env(safe-area-inset-bottom) + 9rem));
+            /* nav-hide-v1: ナビの高さ + 指がかかる余白。ナビを隠すと自動で詰まる。 */
+            padding: 1.5rem 1.2rem calc(var(--nav-h) + max(58px, env(safe-area-inset-bottom) + 40px));
             position: relative;
             z-index: 0;
         }
@@ -638,6 +660,23 @@ body.nav-editing {
                     <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
                 </button>
             </div>
+            <!-- nav-hide-v1: 下のメニューバーを隠す（引き出しだけで使う） -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">bottom_navigation</span>下のメニューバー
+                </div>
+                <div class="setting-row-toggle">
+                    <div class="setting-row-info">
+                        <div class="setting-row-name">メニューバーを隠す</div>
+                        <div class="setting-row-desc">引き出し（端の取っ手）だけで操作します</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="nav-hide-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
             <!-- app-drawer-v1: 引き出しメニューの向き（利き手）。個人ごとにDBへ保存する -->
             <div class="setting-section">
                 <div class="setting-section-label">
@@ -658,7 +697,9 @@ body.nav-editing {
                     </button>
                 </div>
                 <div style="font-size:0.72rem;color:#5f6368;margin-top:8px;">
-                    画面の端をなぞるか、端の取っ手をタップするとアイコン一覧が開きます。利き手に合わせて選んでください。
+                    端の取っ手を引く／タップするとアイコン一覧が開きます。利き手に合わせて選んでください。
+                    <b>取っ手は長押しすると、端に沿って好きな位置に動かせます</b>（保存ボタンなどと重なるときに逃がしてください）。
+                    アイコンの配置と取っ手の位置は<b>向きごとに別々に覚えます</b>。
                 </div>
             </div>
 
@@ -691,6 +732,27 @@ body.nav-editing {
         </div>
     </div>
     <script>
+    // nav-hide-v1: メニューバーを隠す。CSS クラスで隠す（インライン style は他所に戻されるため）。
+    (function () {
+      var hidden = {{ 'true' if nav_hidden else 'false' }};
+      if (hidden) document.body.classList.add('nav-off');
+
+      var t = document.getElementById('nav-hide-toggle');
+      if (!t) return;
+      t.checked = hidden;
+      t.onchange = async function () {
+        var on = t.checked;
+        document.body.classList.toggle('nav-off', on);
+        if (window.dwMeasureNav) window.dwMeasureNav();     // 下部UIの位置を測り直す
+        await fetch('/api/me/setting', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'nav_hidden', value: on ? 'true' : 'false' })
+        }).catch(function () {});
+      };
+    })();
+    </script>
+
+    <script>
     // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。
     (function () {
       var btns = document.querySelectorAll('.dw-side-btn');
@@ -715,6 +777,9 @@ body.nav-editing {
           var hd = document.getElementById('appDrawerHandle');
           if (dw) dw.dataset.side = v;
           if (hd) hd.dataset.side = v;
+          if (window.dwSetSide) window.dwSetSide(v);                 // app-drawer-perside-v1: 配置を切替
+          if (window.dwReloadHandlePos) window.dwReloadHandlePos();  // 取っ手の位置もその向きのもの
+          if (window.dwMeasureNav) window.dwMeasureNav();
           await fetch('/api/me/setting', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ key: 'drawer_side', value: v })
@@ -754,7 +819,10 @@ body.nav-editing {
      出る端は個人設定（利き手）。 -->
 <style>
   /* 取っ手。細いピル。触れる範囲は見た目より広くする（指は太い） */
-  #appDrawerHandle { position: fixed; top: 46%; width: 26px; height: 64px; z-index: 2400;
+  /* nav-hide-v3: 取っ手の位置は --dw-pos（端に沿った 0〜100%）。長押しでずらせる。
+     下から出す設定だと、画面下中央は各画面の操作バー（保存・印刷・LINE送信・合計）の指定席で、
+     取っ手がそこに重なっていた。ずらせるようにして逃がす。 */
+  #appDrawerHandle { position: fixed; top: var(--dw-pos, 46%); width: 26px; height: 64px; z-index: 2400;
     background: rgba(32,33,36,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
     box-shadow: 0 6px 18px rgba(16,24,40,.22); opacity: .55;
@@ -775,8 +843,12 @@ body.nav-editing {
   /* 上下は横向きの取っ手。上は通知センター、下はボトムナビとホームバーを避ける
      （--dw-nav-h は JS の実測値。端末差があるので固定値は使わない）。 */
   #appDrawerHandle[data-side="top"], #appDrawerHandle[data-side="bottom"] {
-    top: auto; left: 50%; transform: translateX(-50%);   /* カラムは中央寄せなので 50% でよい */
+    top: auto; left: calc(var(--dw-gap) + (100% - var(--dw-gap) * 2) * 0);   /* 下で JS が left を入れる */
+    transform: translateX(-50%);
     width: 64px; height: 26px; border-radius: 14px; }
+  #appDrawerHandle.moving { opacity: 1; transform: scale(1.08); box-shadow: 0 10px 26px rgba(16,24,40,.35); }
+  #appDrawerHandle[data-side="top"].moving, #appDrawerHandle[data-side="bottom"].moving {
+    transform: translateX(-50%) scale(1.08); }
   #appDrawerHandle[data-side="top"]    { top: 18px; }
   #appDrawerHandle[data-side="bottom"] { bottom: calc(var(--dw-nav-h, 0px) + 14px); }
   #appDrawerHandle[data-side="top"]:active    { transform: translateX(-50%) translateY(3px); }
@@ -815,6 +887,26 @@ body.nav-editing {
     border-radius: 22px 22px 0 0; }
   #appDrawer.on { transform: translate(0, 0); }
   #appDrawer.drag { transition: none; }
+
+  /* app-drawer-2stage-v1: 半開き。引き出しの大きさは変えず、見せる量だけを半分にする。
+     右から出すなら右半分を画面外に逃がす → 手前の2列が画面に入る。 */
+  #appDrawer.half[data-side="right"]  { transform: translateX(50%); }
+  #appDrawer.half[data-side="left"]   { transform: translateX(-50%); }
+  #appDrawer.half[data-side="bottom"] { transform: translateY(50%); }
+  #appDrawer.half[data-side="top"]    { transform: translateY(-50%); }
+
+  /* 頭のスイッチ（もう1段ひらく / 半分に戻す） */
+  /* app-drawer-2stage-off-v1: 2段階は廃止。頭のスイッチは出さない。 */
+  .dw-expand { display: none !important; }
+  .dw-expand-off { border: none; background: #e8f0fe; color: #1a73e8; border-radius: 999px;
+    width: 34px; height: 34px; font-size: 1rem; font-weight: 900; cursor: pointer; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .2s cubic-bezier(.22,.9,.3,1); }
+  #appDrawer.half .dw-expand .material-symbols-outlined { transform: rotate(180deg); }
+  .dw-expand .material-symbols-outlined { font-size: 20px; transition: transform .2s ease; }
+
+  /* 半開きのときは、隠れている側の列を薄くしておく（続きがあることが分かる） */
+  #appDrawer.half .dw-body { opacity: 1; }
 
   .dw-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px;
     border-bottom: 1px solid #eceff3; font-weight: 800; }
@@ -945,6 +1037,10 @@ body.nav-editing {
 <div id="appDrawerMask"></div>
 <div id="appDrawer" data-side="{{ drawer_side }}">
   <div class="dw-head">
+    <!-- app-drawer-2stage-v1: 頭のスイッチ。半開き ⇔ 全開 -->
+    <button class="dw-expand" id="dwExpand" title="もう1段ひらく">
+      <span class="material-symbols-outlined">chevron_left</span>
+    </button>
     <span class="material-symbols-outlined" style="font-size:20px;color:#1a73e8;">apps</span>
     メニュー
     <button class="dw-close" id="appDrawerClose">✕</button>
@@ -1005,11 +1101,19 @@ body.nav-editing {
     return (vertical() ? r.height : r.width) || 320;
   }
   // ボトムナビの高さを実測して CSS 変数に入れる（端末差があるので固定値は使わない）
+  // nav-hide-v1: ここが --nav-h の唯一の実測点。
+  //  ・隠している / DOMに無い → 0px（下部UIが跡地に浮かない）
+  //  ・画面別の変数（--rk-nav-h 等）は :root で --nav-h を既定にしてあるので、
+  //    各画面のJSが値を入れなければ、これがそのまま効く。
   function measureNav() {
     var nav = document.querySelector('.bottom-nav');
-    var h = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+    var hidden = document.body.classList.contains('nav-off');
+    var h = (nav && !hidden) ? Math.round(nav.getBoundingClientRect().height) : 0;
+    // nav-hide-v3: 生の実測値だけ入れる。安全な下限（セーフエリア）は CSS 側で噛ませる。
+    document.documentElement.style.setProperty('--nav-raw', h + 'px');
     document.documentElement.style.setProperty('--dw-nav-h', h + 'px');
   }
+  window.dwMeasureNav = measureNav;
   measureNav();
   window.addEventListener('resize', measureNav);
   window.addEventListener('orientationchange', function () { setTimeout(measureNav, 200); });
@@ -1026,10 +1130,15 @@ body.nav-editing {
     });
   }
 
+  // app-drawer-2stage-v1: 閉 / 半開き / 全開 の3段階。
+  //   half … 見せる量だけ半分（手前の2列が押せる）
+  //   full … 全部出る
+  // app-drawer-2stage-off-v1: 半開きは廃止。開くときは常に全開。
   function open() {
     endDrag();
     stagger();
     dw.classList.add('on');
+    dw.classList.remove('half');
     mask.classList.add('on');
     handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
     buzz(12);
@@ -1037,14 +1146,28 @@ body.nav-editing {
   function close() {
     endDrag();
     dw.classList.remove('on');
+    dw.classList.remove('half');
     mask.classList.remove('on');
     handle.classList.remove('hide');
+  }
+  function isHalf() { return dw.classList.contains('half'); }
+
+  // 頭のスイッチ: 半開き ⇔ 全開
+  var expandBtn = document.getElementById('dwExpand');
+  if (expandBtn) {
+    expandBtn.onclick = function () {
+      dw.classList.toggle('half');
+      if (!isHalf()) stagger();                 // 全開にしたときは並びを立ち上げ直す
+      buzz(10);
+    };
   }
   function endDrag() { dw.classList.remove('drag'); dw.style.transform = ''; mask.style.opacity = ''; }
 
   // 指の位置に追従させる。0=閉じ、1=開き。
+  // p は 0(閉) 〜 1(全開)。半開き(0.5)はこの途中の位置そのもの。
   function follow(p) {
     p = Math.max(0, Math.min(1, p));
+    dw.classList.remove('half');   // 指で引いている間は inline transform が正
     var s = side();
     var sign = (s === 'right' || s === 'bottom') ? 1 : -1;   // 画面の外へ逃げる向き
     var off = (1 - p) * W() * sign;
@@ -1077,19 +1200,87 @@ body.nav-editing {
   var SNAP = 0.35;
   var hx = 0, hy = 0, hdrag = false, hid = null;
 
+  // ---- nav-hide-v3 / app-drawer-perside-v1 ----
+  // 取っ手の位置（端に沿った 0〜100%）。**向きごと**に覚える。長押しでつまんで動かせる。
+  var POS_DEF = { left: 46, right: 46, top: 50, bottom: 50 };
+  var posBySide = (function () {
+    var raw = {{ drawer_pos | tojson }};
+    var o = {};
+    try { o = raw ? JSON.parse(raw) : {}; } catch (e) { o = {}; }
+    if (typeof o === 'number') {                    // 旧形式（数値1つ）は今の向きに引き継ぐ
+      var one = o; o = {}; o[side()] = one;
+    }
+    if (!o || typeof o !== 'object') o = {};
+    return o;
+  })();
+  function posOf(s) {
+    var v = Number(posBySide[s]);
+    if (!isFinite(v)) v = POS_DEF[s] || 46;
+    return Math.max(6, Math.min(94, v));
+  }
+  var pos = posOf(side());
+  var moveTimer = null, moving = false;
+
+  function applyPos() {
+    var vert = vertical();
+    if (vert) {
+      // 上下の引き出し → 取っ手は左右に動く。カラムの中に収める。
+      handle.style.top = '';
+      handle.style.left = 'calc(var(--dw-gap) + (100vw - var(--dw-gap) * 2) * ' + (pos / 100) + ')';
+      document.documentElement.style.setProperty('--dw-pos', '');
+    } else {
+      handle.style.left = '';
+      handle.style.top = pos + '%';
+    }
+  }
+  function savePos() {
+    posBySide[side()] = Math.round(pos);           // app-drawer-perside-v1: 向きごとに覚える
+    fetch('/api/me/setting', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'drawer_pos', value: JSON.stringify(posBySide) })
+    }).catch(function () {});
+  }
+  // 向きが変わったら、その向きの位置を読み直す
+  window.dwReloadHandlePos = function () { pos = posOf(side()); applyPos(); };
+  applyPos();
+  window.dwApplyHandlePos = applyPos;
+
   handle.addEventListener('pointerdown', function (e) {
     if (dw.classList.contains('on')) return;
     e.preventDefault();
     hx = e.clientX; hy = e.clientY; hdrag = false; hid = e.pointerId;
     try { handle.setPointerCapture(hid); } catch (err) {}
+
+    // 長押し → 取っ手そのものを動かすモード（引き出しは開かない）
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(function () {
+      moving = true;
+      handle.classList.add('moving');
+      try { if (navigator.vibrate) navigator.vibrate(16); } catch (err) {}
+    }, 400);
   });
 
   handle.addEventListener('pointermove', function (e) {
     if (hid === null || e.pointerId !== hid || dw.classList.contains('on')) return;
     e.preventDefault();
     var dx = e.clientX - hx, dy = e.clientY - hy;
+
+    // nav-hide-v3: 移動モード中は、端に沿って取っ手だけを動かす
+    if (moving) {
+      if (vertical()) {
+        var w = window.innerWidth || 1;
+        pos = Math.max(6, Math.min(94, (e.clientX / w) * 100));
+      } else {
+        var h = window.innerHeight || 1;
+        pos = Math.max(6, Math.min(94, (e.clientY / h) * 100));
+      }
+      applyPos();
+      return;
+    }
+
     var inward = inwardOf(dx, dy), cross = crossOf(dx, dy);
     if (!hdrag) {
+      clearTimeout(moveTimer);      // 動かし始めたら「長押し」は成立させない
       if (cross > 24 && cross > inward) return;   // 引き出す向きと違う方へ動いている
       if (inward < 6) return;
       hdrag = true;
@@ -1103,16 +1294,25 @@ body.nav-editing {
 
   function handleUp(e) {
     if (hid === null) return;
+    clearTimeout(moveTimer);
     var dx = (e && e.clientX != null) ? (e.clientX - hx) : 0;
     var dy = (e && e.clientY != null) ? (e.clientY - hy) : 0;
     var inward = inwardOf(dx, dy);
     try { handle.releasePointerCapture(hid); } catch (err) {}
     hid = null;
-    if (!hdrag) { open(); return; }            // 動かさず離した＝タップ
+
+    if (moving) {                              // nav-hide-v3: 位置を決めて離した
+      moving = false;
+      handle.classList.remove('moving');
+      savePos();
+      return;
+    }
+    if (!hdrag) { open(); return; }            // 動かさず離した＝タップ → そのまま全開
     hdrag = false;
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
+    // app-drawer-2stage-off-v1: 閉じる / 全開 の2択（しきい値 35%）
     if (inward / W() > SNAP) open(); else close();
   }
   handle.addEventListener('pointerup', handleUp);
@@ -1148,6 +1348,8 @@ body.nav-editing {
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
+
+    // app-drawer-2stage-off-v1: 払ったら閉じる（戻したら開いたまま）
     if (outward / W() > SNAP) { close(); } else { open(); }
     cwatch = false; cdrag = false;
   }, { passive: true });
@@ -1191,8 +1393,13 @@ body.nav-editing {
   ITEMS.forEach(function (m) { byHref[m.href] = m; });
   byHref['/top'] = { href: '/top', icon: 'home', label: 'TOP' };
 
-  var layout = parse(window.DW_LAYOUT_RAW);
-  var openFolder = -1;                    // 開いているフォルダのスロット番号
+  // app-drawer-perside-v1: 配置は **向きごと**。色は向き共通。
+  //   { v:2, sides:{ right:{slots:[...]}, left:{...}, top:{...}, bottom:{...} }, colors:{href:色} }
+  var SIDES = ['left', 'right', 'top', 'bottom'];
+  var store = loadStore(window.DW_LAYOUT_RAW);
+  var curSide = document.getElementById('appDrawer').dataset.side || 'right';
+  var layout = sideLayout(curSide);
+  var openFolder = -1;                    // 開いているフォルダのスロット番号（フォルダは廃止済み）
 
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
 
@@ -1243,16 +1450,53 @@ body.nav-editing {
     while (layout.slots.length % COLS !== 0) layout.slots.push(null);
   }
 
+  // ---- 保存の形（向きごと） ----
+  function loadStore(raw) {
+    var o = null;
+    try { o = raw ? JSON.parse(raw) : null; } catch (e) { o = null; }
+    if (!o || typeof o !== 'object') return { v: 2, sides: {}, colors: {} };
+
+    if (o.v === 2 && o.sides) {
+      o.colors = o.colors || {};
+      return o;
+    }
+    // 旧形式（v1: 全向き共通の1つ）→ 今の向きの配置として引き継ぐ（消さない）
+    var s = document.getElementById('appDrawer').dataset.side || 'right';
+    var st = { v: 2, sides: {}, colors: o.colors || {} };
+    if (o.slots) st.sides[s] = { slots: o.slots };
+    return st;
+  }
+
+  function sideLayout(s) {
+    var raw = (store.sides && store.sides[s]) ? store.sides[s] : null;
+    var L = parse(raw ? JSON.stringify({ v: 1, slots: raw.slots, colors: store.colors }) : '');
+    L.colors = store.colors;              // 色は向き共通（同じアプリが向きで色違いだと混乱する）
+    return L;
+  }
+
   var saveTimer = null;
   function save() {
+    store.sides = store.sides || {};
+    store.sides[curSide] = { slots: layout.slots };
+    store.colors = layout.colors || {};
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       fetch('/api/me/setting', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'top_layout', value: JSON.stringify(layout) })
+        body: JSON.stringify({ key: 'top_layout', value: JSON.stringify(store) })
       }).catch(function () {});
     }, 400);
   }
+
+  // 向きが変わったら、その向きの配置に描き替える（再読み込み不要）
+  window.dwSetSide = function (s) {
+    if (SIDES.indexOf(s) < 0) return;
+    store.sides = store.sides || {};
+    store.sides[curSide] = { slots: layout.slots };   // 今の向きの配置を確定させてから
+    curSide = s;
+    layout = sideLayout(s);
+    render();
+  };
 
   // ---------- 描画 ----------
   // app-drawer-edit-v3: href を付けない。
@@ -1365,9 +1609,10 @@ body.nav-editing {
   }
   document.getElementById('dwDone').onclick = endEdit;
   document.getElementById('dwReset').onclick = function () {
-    if (!confirm('並びを既定に戻します。よろしいですか？')) return;
+    if (!confirm('この向きの並びを既定に戻します。よろしいですか？')) return;   // app-drawer-perside-v1
+    var keep = layout.colors || {};
     layout = defaults();
-    closeFolder();
+    layout.colors = keep;                 // 色は残す（並びだけ戻す）
     render();
     save();
   };

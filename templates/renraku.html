@@ -556,7 +556,16 @@ async function rkSaveBulk(){
   }catch(e){ alert('保存に失敗しました：'+e); }
 }
 
-function rkSyncNavHeight(){ var nav=document.querySelector('.bottom-nav'); var h=nav?Math.round(nav.getBoundingClientRect().height):137; if(h>0) document.documentElement.style.setProperty('--rk-nav-h', h+'px'); }
+// nav-hide-v2: ナビを隠しているときは 0px を入れる（if(h>0) だと前の137pxが残り、保存バーが浮く）
+function rkSyncNavHeight(){   // nav-hide-v4: 隠しているときは値を消す（0を入れない）
+  var nav=document.querySelector('.bottom-nav');
+  var off=document.body.classList.contains('nav-off');
+  if(nav && !off){
+    document.documentElement.style.setProperty('--rk-nav-h', Math.round(nav.getBoundingClientRect().height)+'px');
+  } else {
+    document.documentElement.style.removeProperty('--rk-nav-h');   // :root の var(--nav-h) が効く
+  }
+}
 async function rkLoadFacilityAi(){
   try{ const res=await fetch('/api/renraku/settings'); const data=await res.json(); if(data.status==='success'&&data.visible){ RK_AI_ENABLED=(data.visible._ai_family===true); } }catch(e){}
 }
