@@ -814,7 +814,9 @@ body.nav-editing {
   /* app-drawer-edit-v2: iOS は長押しで選択・拡大鏡・コンテキストメニューを出し、
      そのまま指をOSが握ってしまう（pointermove の preventDefault では止まらない）。
      編集中のアイコンは、ブラウザのジェスチャーを一切受け付けないようにする。 */
-  .dw-app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .dw-app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    -webkit-user-drag: none; cursor: pointer; }
+  .dw-app img, .dw-app span { -webkit-user-drag: none; }
   #appDrawer.edit .dw-app, #appDrawer.edit .dw-cell { touch-action: none; }
   #appDrawer.edit .dw-body { overscroll-behavior: contain; }
 
@@ -1126,13 +1128,17 @@ body.nav-editing {
   }
 
   // ---------- 描画 ----------
+  // app-drawer-edit-v3: href を付けない。
+  // iOS は「リンク」を長押しするとプレビュー（共有シート）を出し、そこで指を持っていくため、
+  // ドラッグがスムーズにできなかった。href が無ければ iOS はリンクと見なさない。
+  // 遷移はもともと JS 側（spaNav / location.href）でやっているので機能は変わらない。
   function appHtml(m, idx, inFolder) {
-    return '<a class="dw-app" data-idx="' + idx + '" data-href="' + m.href + '"' +
-      (inFolder ? ' data-in-folder="1"' : '') +
-      ' href="' + m.href + '">' +
+    return '<div class="dw-app" role="button" tabindex="0" draggable="false"' +
+      ' data-idx="' + idx + '" data-href="' + m.href + '"' +
+      (inFolder ? ' data-in-folder="1"' : '') + '>' +
         '<span class="dw-ic"><span class="material-symbols-outlined">' + m.icon + '</span></span>' +
         '<span class="dw-label">' + esc(m.label) + '</span>' +
-      '</a>';
+      '</div>';
   }
 
   function folderHtml(f, idx) {
@@ -1140,10 +1146,11 @@ body.nav-editing {
     for (var i = 0; i < 4; i++) {
       mini += '<i class="' + (f.items[i] ? '' : 'none') + '"></i>';
     }
-    return '<a class="dw-app dw-folder" data-idx="' + idx + '" data-folder="1" href="#">' +
+    return '<div class="dw-app dw-folder" role="button" tabindex="0" draggable="false"' +
+      ' data-idx="' + idx + '" data-folder="1">' +
         '<span class="dw-ic"><span class="dw-fold-mini">' + mini + '</span></span>' +
         '<span class="dw-label">' + esc(f.name || 'フォルダ') + '</span>' +
-      '</a>';
+      '</div>';
   }
 
   function render() {
@@ -1219,6 +1226,10 @@ body.nav-editing {
     root.querySelectorAll('.dw-app').forEach(function (el) {
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('click', onClick);
+      // div にしたので、キーボード操作は自前で拾う
+      el.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
+      });
       // app-drawer-edit-v2: 長押しメニュー（画像/リンクの共有シート）を出させない
       el.addEventListener('contextmenu', function (ev) {
         if (dw.classList.contains('edit')) ev.preventDefault();
