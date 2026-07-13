@@ -38,6 +38,9 @@
 .sr-type.pickup  { background:#E6F1FB; color:#185FA5; }
 .sr-type.dropoff { background:#EAF3DE; color:#3B6D11; }
 .sr-name { flex:1; min-width:0; font-weight:700; font-size:0.92rem; overflow-wrap:anywhere; }
+/* 住所は名前の下に小さく。行が伸びすぎないよう1行で切る（長い住所は…になる） */
+.sr-addr { display:block; font-weight:400; font-size:0.7rem; color:#9aa0a6; margin-top:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sr-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap;
   background:#f3e8ff; color:#6b21a8; }
 .sr-plan { font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; flex:0 0 auto; }
@@ -195,8 +198,11 @@
       return '<div class="sr-stop ' + cls + '">' +
         '<span class="sr-seq">' + (i + 1) + '</span>' +
         '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
+        // soge-addr-v1: 運転手が現地で見るので、名前の下に住所を小さく出す
         '<span class="sr-name">' + esc(s.user_name) +
-          (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') + '</span>' +
+          (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
+          (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
+        '</span>' +
         (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
         right +
         '<button class="sr-x' + (s.is_absent ? ' on' : '') + '" data-abs="' + s.id + '" title="休み">✕</button>' +
