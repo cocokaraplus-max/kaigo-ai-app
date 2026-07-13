@@ -2042,3 +2042,16 @@ create unique index if not exists uq_staff_settings on staff_settings (facility_
 2. `movableHrefs`（ボトムナビ並び替えのホワイトリスト）が3箇所コピペのまま。`MENU_ITEMS` に寄せたい。
 3. ナビを隠した状態での全画面チェック（今回は TOP / 記録入力 / バイタル / 出納帳 / 連絡帳 /
    生活機能CHECK / 契約書 / 勤怠 を確認済み）。
+
+### 追記: 引き出しのバッジ（`drawer-badge-v1`、本番反映済み）
+
+ナビを隠すと未読に気づけないので、引き出しのアイコンにもバッジを出す。
+
+- 掲示板 … 既存 `/api/board/unread_count`
+- ケース記録 … 既存 `/api/records/unread_count`
+- タスク … **新設** `/api/tasks/open_count`（自分あて＋全体タスクの未完了。作成しただけのものは数えない）
+
+**件数は既存のポーリング（`checkUnreadMessages`）に相乗りする**。別々に数えるとナビと引き出しで数字がズレる。
+引き出しのグリッドは JS で作り直すので、`window.DW_BADGES` に件数を覚えておき、
+`render()` のたびに `applyBadges()` で当て直す（DOMに書いた数字は再描画で消えるため）。
+DDL 不要。
