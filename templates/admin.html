@@ -2062,6 +2062,29 @@ async function loadSogeSettings() {
   renderSogeTrips();
 }
 
+// soge-settings-toast-v1: alert() は拡張機能の自動操作をブロックし、体験も悪い。
+// 送迎設定の保存だけ、画面内トーストに置き換える。
+function sogeToast(msg, err) {
+  let t = document.getElementById('soge-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'soge-toast';
+    t.style.cssText = 'position:fixed;left:50%;top:12px;transform:translate(-50%,-140%);z-index:9999;' +
+      'padding:9px 16px;border-radius:10px;font-size:0.86rem;font-weight:700;color:#fff;' +
+      'transition:transform .2s ease,opacity .2s ease;opacity:0;pointer-events:none;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = err ? '#c5221f' : '#137333';
+  t.style.transform = 'translate(-50%,0)';
+  t.style.opacity = '1';
+  clearTimeout(sogeToast._t);
+  sogeToast._t = setTimeout(function () {
+    t.style.transform = 'translate(-50%,-140%)';
+    t.style.opacity = '0';
+  }, 2000);
+}
+
 async function saveSogeSettings() {
   const r = await fetch('/api/soge/settings', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -2077,10 +2100,10 @@ async function saveSogeSettings() {
     })
   });
   const j = await r.json();
-  if (j.status !== 'success') { alert(j.message); return; }
+  if (j.status !== 'success') { sogeToast(j.message || '保存できませんでした', true); return; }
   sogeTrips = j.trips;
   renderSogeTrips();
-  alert('保存しました');
+  sogeToast('保存しました');
 }
 
 document.addEventListener('DOMContentLoaded', loadSogeSettings);
