@@ -811,6 +811,13 @@ body.nav-editing {
   .dw-fold-mini i { border-radius: 4px; background: #1a73e8; display: block; }
   .dw-fold-mini i.none { background: transparent; }
 
+  /* app-drawer-edit-v2: iOS は長押しで選択・拡大鏡・コンテキストメニューを出し、
+     そのまま指をOSが握ってしまう（pointermove の preventDefault では止まらない）。
+     編集中のアイコンは、ブラウザのジェスチャーを一切受け付けないようにする。 */
+  .dw-app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #appDrawer.edit .dw-app, #appDrawer.edit .dw-cell { touch-action: none; }
+  #appDrawer.edit .dw-body { overscroll-behavior: contain; }
+
   /* プルプル。iPhoneのホーム画面の「編集中」と同じ気分 */
   #appDrawer.edit .dw-app { animation: dwWig .28s ease-in-out infinite alternate; }
   #appDrawer.edit .dw-app:nth-child(2n) { animation-delay: .09s; }
@@ -951,8 +958,8 @@ body.nav-editing {
 
   closeBtn.onclick = close;
   mask.onclick = close;
-  // 中の導線を押したら閉じる（SPA遷移でも画面に引き出しが残らないように）
-  apps.forEach(function (a) { a.addEventListener('click', close); });
+  // 中の導線を押したら閉じる処理は、グリッドを描き直す側（app-drawer-edit-v2）が持つ。
+  // ここで付けても、描き直した瞬間にリスナごと消えてしまう。
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
 
   // ---- app-drawer-edgefix-v1: 取っ手を引いて開く ----
@@ -1033,6 +1040,7 @@ body.nav-editing {
 
   // 編集中は引き出しごとスワイプで閉じない（ドラッグと喧嘩するため）
   window.dwIsEditing = function () { return dw.classList.contains('edit'); };
+  window.dwClose = close;   // app-drawer-edit-v2: グリッド側から閉じる
 })();
 </script>
 
@@ -1211,6 +1219,10 @@ body.nav-editing {
     root.querySelectorAll('.dw-app').forEach(function (el) {
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('click', onClick);
+      // app-drawer-edit-v2: 長押しメニュー（画像/リンクの共有シート）を出させない
+      el.addEventListener('contextmenu', function (ev) {
+        if (dw.classList.contains('edit')) ev.preventDefault();
+      });
     });
     root.querySelectorAll('[data-out]').forEach(function (b) {
       b.onclick = function (e) {
@@ -1220,37 +1232,58 @@ body.nav-editing {
     });
   }
 
+  // app-drawer-edit-v2: グリッドは描き直すので、閉じる処理もここで面倒を見る
+  // （最初に1回だけ付けたリスナは、描き直した瞬間に消えていた＝タップが効かないの真因）
   function onClick(e) {
     var el = e.currentTarget;
-    if (dw.classList.contains('edit')) { e.preventDefault(); return; }   // 編集中は開かない
-    if (el.dataset.folder) { e.preventDefault(); openFolderAt(Number(el.dataset.idx)); return; }
-    // 通常タップ: 同じタブで遷移（PWAで外部ブラウザに飛ばさない）
     e.preventDefault();
+    if (dw.classList.contains('edit')) return;                            // 編集中は開かない
+    if (el.dataset.folder) { openFolderAt(Number(el.dataset.idx)); return; }
+
     var href = el.dataset.href;
-    if (typeof spaNav === 'function') { spaNav(e, href); } else { location.href = href; }
+    if (window.dwClose) window.dwClose();                                  // 引き出しを閉じる
+    if (typeof spaNav === 'function') { spaNav(e, href); }                 // 同じタブで遷移
+    else { location.href = href; }
   }
 
+  // app-drawer-edit-v2
+  //  ・編集モードでないとき  … 長押し(450ms)で「プルプル」に入るだけ。動かさない。
+  //    （長押しの瞬間、iOS はもう選択ジェスチャーを始めているので、そのままドラッグさせようとしても
+  //      指をOSに持っていかれる。iPhone のホーム画面も「長押し→プルプル→指を置き直して移動」。）
+  //  ・編集モード中 … 触ってすぐドラッグできる。touch-action:none なので指はこちらが握れる。
   function onDown(e) {
     var el = e.currentTarget;
-    if (el.dataset.inFolder && !dw.classList.contains('edit')) return;   // フォルダ内は編集中だけ動かす
-    var sx = e.clientX, sy = e.clientY;
+    var editing = dw.classList.contains('edit');
 
+    if (editing) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      beginDrag(el, e.clientX, e.clientY);
+      return;
+    }
+    if (el.dataset.inFolder) return;      // フォルダの中は編集中だけ動かす
+
+    var sx = e.clientX, sy = e.clientY;
     clearTimeout(holdTimer);
     holdTimer = setTimeout(function () {
-      startEdit();
-      beginDrag(el, sx, sy);
-    }, dw.classList.contains('edit') ? 90 : 450);   // 編集中なら即ドラッグ
+      startEdit();                        // プルプルまで。移動は指を置き直してから
+      cleanup();
+    }, 450);
 
     function cancel(ev) {
-      if (ev && ev.type === 'pointermove') {
-        if (Math.abs(ev.clientX - sx) < 8 && Math.abs(ev.clientY - sy) < 8) return;
-      }
+      if (ev && ev.type === 'pointermove' &&
+          Math.abs(ev.clientX - sx) < 8 && Math.abs(ev.clientY - sy) < 8) return;
       clearTimeout(holdTimer);
+      cleanup();
+    }
+    function cleanup() {
       window.removeEventListener('pointermove', cancel);
       window.removeEventListener('pointerup', cancel);
+      window.removeEventListener('pointercancel', cancel);
     }
     window.addEventListener('pointermove', cancel);
     window.addEventListener('pointerup', cancel);
+    window.addEventListener('pointercancel', cancel);
   }
 
   function beginDrag(el, x, y) {
