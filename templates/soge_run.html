@@ -64,6 +64,15 @@
   cursor:pointer; color:#9aa0a6; font-size:0.95rem; font-weight:800; line-height:1; padding:0; }
 .sr-x.on { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
 
+/* soge-odo-v1: メーター。便ごとに1行。狭いので数字だけ大きく、単位は小さく。 */
+.sr-odo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;
+  padding:7px 9px; background:#f7f9fc; border:1px solid #e3e8ef; border-radius:10px;
+  font-size:0.74rem; color:#5f6368; }
+.sr-odo label { display:inline-flex; align-items:center; gap:4px; }
+.sr-odo input { width:82px; border:1px solid #dadce0; border-radius:8px; padding:6px 7px;
+  font-size:0.9rem; font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+.sr-odo b { margin-left:auto; color:#185FA5; font-size:0.8rem; }
+
 .sr-return { display:flex; justify-content:flex-end; margin-top:8px; }
 .sr-ret-btn { border:none; border-radius:10px; padding:9px 16px; font-weight:800; font-size:0.88rem;
   background:#eef2f7; color:#334; cursor:pointer; }
@@ -217,11 +226,31 @@
     var v = vs[state.tab];
     $('srDriver').textContent = v.driver_name ? ('運転手 ' + v.driver_name) : '運転手 未設定';
 
-    $('srBody').innerHTML = (v.trips || []).map(tripHtml).join('') + addExtra;
+    // soge-odo-v1: 出発㎞の目安として、前の便の帰着㎞を薄字で見せる
+    $('srBody').innerHTML = (v.trips || []).map(function (t, i) {
+      return tripHtml(t, ((v.trips[i - 1] || {}).odo_end));
+    }).join('') + addExtra;
     bind();
   }
 
-  function tripHtml(t) {
+  // soge-odo-v1: メーター入力。odo_enabled の施設だけ出す。
+  function odoHtml(t, prevEnd) {
+    var s = (t.odo_start == null ? '' : t.odo_start);
+    var e = (t.odo_end == null ? '' : t.odo_end);
+    var km = (t.odo_start != null && t.odo_end != null && t.odo_end >= t.odo_start)
+      ? ('走行 ' + (t.odo_end - t.odo_start) + ' km') : '';
+    var ph = (prevEnd == null ? '' : String(prevEnd));   // 前の便の帰着＝この便の出発の目安
+    return '<div class="sr-odo">' +
+      '<span>メーター</span>' +
+      '<label>出発 <input type="number" inputmode="numeric" data-odo="odo_start" data-day="' + t.day_id +
+        '" value="' + s + '" placeholder="' + ph + '"> km</label>' +
+      '<label>帰着 <input type="number" inputmode="numeric" data-odo="odo_end" data-day="' + t.day_id +
+        '" value="' + e + '"> km</label>' +
+      '<b>' + km + '</b>' +
+    '</div>';
+  }
+
+  function tripHtml(t, prevEnd) {
     var stops = (t.stops || []).map(function (s, i) {
       var cls = 'sr-stop' + (s.is_absent ? ' absent' : (s.arrived_at ? ' done' : ''));
       // 打刻がまだの人にも、あとから時刻を手で入れられるように ✎ を出す
@@ -268,9 +297,12 @@
         : '') +
       '</div>';
 
+    var odo = (state.data && state.data.odo_enabled) ? odoHtml(t, prevEnd) : '';   // soge-odo-v1
+
     return '<div class="sr-trip' + (t.is_extra ? ' extra' : '') + '">' + head +
       '<div class="sr-trip-body">' +
         '<div class="sr-return" style="justify-content:flex-start;margin:0 0 8px;">' + dep + '</div>' +
+        odo +
         (stops || '<div class="sr-empty">立ち寄りなし</div>') +
         '<div class="sr-return">' + ret + '</div>' +
       '</div>' +
@@ -279,6 +311,27 @@
 
   function bind() {
     var root = $('srBody');
+
+    // soge-odo-v1: メーター。打ち終わって離れたら保存。走行距離の表示だけ描き直す。
+    root.querySelectorAll('[data-odo]').forEach(function (inp) {
+      var last = inp.value;
+      inp.onchange = inp.onblur = async function () {
+        if (inp.value === last) return;
+        var body = { day_id: inp.dataset.day };
+        body[inp.dataset.odo] = inp.value;
+        var r = await fetch('/api/soge/run/day', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { toast(j.message || '保存できませんでした', 'err'); inp.value = last; return; }
+        last = inp.value;
+        var t = findTrip(inp.dataset.day);
+        if (t) t[inp.dataset.odo] = (inp.value === '' ? null : Number(inp.value));
+        toast('メーターを記録しました');
+        keepScroll(render);
+      };
+    });
 
     // 到着の打刻。押した瞬間にボタンを止めるので、2度押ししても2回飛ばない。
     // サーバ側でも「すでに時刻が入っていたら上書きしない」を守っている。
