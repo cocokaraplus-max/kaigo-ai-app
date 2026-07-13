@@ -1904,3 +1904,76 @@ DEVで、ページ内の canvas にレシートを描いて `/api/rec/ocr` に�
   固定幅の入力欄を横に並べると可変幅の欄が潰れる。
 - Cloud Build が「ビルドを実行できませんでした: INTERNAL / 0個のステップ」で落ちることがある。
   **これはGCP側の一時障害**でコードは無関係。空コミットで再トリガーすれば通る。
+
+---
+
+## 【開発ログ】2026-07-13(5) 引き出しメニュー（全画面のアイコン一覧） <!-- session-2026-07-13-drawer -->
+
+ボトムナビの導線が増えすぎたので、**どの画面からも出せるアイコンの引き出し**を作った。
+ボトムナビは残したまま（消すと各画面のレイアウトが崩れる。下記「次タスク」参照）。
+
+### 個人設定の土台（`staff-settings-v1`）
+
+これまで個人設定は全部 localStorage で、端末を変えると消えていた。
+`staff_settings(facility_code, staff_name, key, value)` を新設（`db/staff_settings.sql`）。
+API は `GET/PUT /api/me/setting`。受け付けるキーは `STAFF_SETTING_KEYS` のホワイトリストのみ。
+
+### メニュー定義の一元化（`top-grid-v1`）
+
+`app.py` の `MENU_ITEMS`（href / icon / label / 表示条件）。表示条件は既存の判定
+（`inject_can_ledger` / `is_rec_expense_enabled` / `inject_is_dev_user`）をそのまま呼ぶので、
+ボトムナビと食い違わない。**ボトムナビ（base.html のハードコード）は今回いじっていない**
+（現在地のハイライトが各画面の `{% block nav_xxx %}` に依存していて、作り替えると壊れる範囲が広い）。
+新しい導線を足すときは MENU_ITEMS にも1行足すこと。
+
+### 引き出し（`app-drawer-v1` 〜 `app-drawer-width-v1`）
+
+- 取っ手をドラッグ、またはタップで開く。**指に追従**し、離した位置（35%）でスナップ。
+  背景はブラー、アイコンは1つずつ立ち上がる。
+- **出る向きは4方向**（左 / 右 / 上 / 下）。歯車 > メニューの引き出し で選ぶ（個人設定 `drawer_side`）。
+  下から出すときはボトムナビの高さを**JSで実測**して CSS 変数 `--dw-nav-h` に入れる（固定値は端末差で破綻する）。
+- **自由配置**。4列のマス目で、空きマスに好きに置ける（上詰めにならない）。長押し450msでプルプル → ドラッグ。
+  アイコンの上に落とすと入れ替え。配置は個人設定 `top_layout`（JSON）。
+- **アイコンの色**を1つずつ変更（パレット12色＋自由色＋既定に戻す）。`top_layout.colors` に保存。
+- PCでは**アプリの列幅（`--page-max-width`）の中に収める**（`--dw-gap` で計算）。
+
+### ハマったところ（全部 iOS）
+
+1. **画面端のスワイプで開く → OSの「戻る」が発動**。端の数十pxは OS が先に取り、Web からは奪えない。
+   → 端スワイプは**廃止**。取っ手を**端から18px内側**に置き、その上の指の動きだけを
+   `touch-action:none` + `preventDefault` で捕まえる。8px では指が OS の帯に入り、当たり外れが出た。
+2. **長押しすると URL のプレビューが出てドラッグできない**。アイコンが `<a href>` だったため。
+   → **href を持たせない**（`<div role="button">`）。iOS は「リンクではない」と判断してプレビューを出さない。
+   ボトムナビの並び替えも同じ手を使っていた。
+3. **タップしても画面が開かない**。真因は `spaNav()` が**中身が空の関数**で、実際の遷移は `<a href>` 任せだったこと。
+   href を外した瞬間に遷移する人がいなくなった。→ `location.href` で自分で飛ぶ。
+4. **長押しと同時にドラッグ開始は無理**。その瞬間 iOS はもう選択ジェスチャーを始めている。
+   → iPhone と同じく **長押し＝プルプルに入るだけ**。移動は指を置き直してから。
+5. **アイコンを動かすと引き出しごと閉じる**。引き出しの「外向きに払って閉じる」判定が横取りしていた。
+   → 編集中／ドラッグ中は閉じる判定を止める。
+6. **遷移先が下端までスクロールされる**。引き出しは body 末尾にあり、その中のボタンを押したまま遷移すると
+   ブラウザが最後に触った位置を復元しようとする。→ 遷移前に印を付け、次のページで先頭に戻す。
+7. **フォルダは廃止**（`app-drawer-simplify-v1`）。中身を重ねて表示するしかなく、下のマス目が隠れて
+   出し入れが直感に反した。作ってしまったフォルダは読み込み時にほどいてアイコンに戻す。
+
+### DDL（`db/staff_settings.sql`）
+
+```sql
+create table if not exists staff_settings (
+  id uuid primary key default gen_random_uuid(),
+  facility_code text not null, staff_name text not null,
+  key text not null, value text,
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists uq_staff_settings on staff_settings (facility_code, staff_name, key);
+```
+
+### 次タスク
+
+1. **ボトムナビを隠せるようにする**（個人設定）。ただし今のボトムナビは
+   `base.html` の `padding-bottom: max(74px, safe-area + 50px)` や、各画面の固定要素
+   （保存バー・FAB・`--tc-nav-h` の実測モーダル）、`manual.html` / `patient_profile.html` /
+   `vitals.html` の `padding-bottom` の前提になっている。**消すとそれらが崩れる**ので、
+   「ナビの高さを見ている箇所を変数（`--nav-h`）に置き換える」→「隠す設定を個人単位で足す」の順で進める。
+2. 管理者が施設共通の既定レイアウトを作る（`admin_settings.top_layout`）。
+3. `movableHrefs`（ボトムナビ並び替えのホワイトリスト）が3箇所コピペのまま。MENU_ITEMS に寄せたい。

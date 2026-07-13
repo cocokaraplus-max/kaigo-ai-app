@@ -1948,6 +1948,158 @@ def register():
                 error = f"登録エラー: {e}"
     return render_template("register.html", error=error, success=success)
 
+# ===== top-grid-v1 : TOPのアイコン一覧 =====
+# メニューの定義。ボトムナビ(base.html)は当面ハードコードのままなので、
+# 新しい導線を足したらここにも1行足すこと（いずれ base.html をここから描く）。
+#   need: 表示条件。None=全員 / 'ledger' / 'rec_expense' / 'dev'
+MENU_ITEMS = [   # top-grid-v1
+    {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
+    {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
+    {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
+    {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
+    {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
+    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None},
+    {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
+    {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
+    {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
+    {"href": "/assessment",     "icon": "assignment",             "label": "評価",           "need": None},
+    {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
+    {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None},
+    {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
+    {"href": "/board",          "icon": "campaign",               "label": "掲示板",         "need": None},
+    {"href": "/ledger",         "icon": "account_balance",        "label": "出納帳",         "need": "ledger"},
+    {"href": "/rec_expense",    "icon": "payments",               "label": "請求額計算",     "need": "rec_expense"},
+    {"href": "/birthday",       "icon": "cake",                   "label": "誕生日",         "need": None},
+    {"href": "/numerology",     "icon": "auto_awesome",           "label": "数秘",           "need": None},
+    {"href": "/admin",          "icon": "admin_panel_settings",   "label": "管理者MENU",     "need": None},
+    {"href": "/dev",            "icon": "code",                   "label": "開発者",         "need": "dev"},
+    {"href": "/manual",         "icon": "menu_book",              "label": "ガイド",         "need": None},
+]
+
+STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side")   # 受け付けるキーはこれだけ
+
+
+def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
+    """その職員に見せてよいメニューだけを返す。判定は既存の関数を使い回す。"""
+    # 判定は既存の context_processor をそのまま呼ぶ（同じ条件がボトムナビにも効いているので、
+    # ここで別の判定を書くと「ナビには出るのにグリッドに出ない」がいずれ起きる）。
+    try:
+        can_ledger = bool(inject_can_ledger().get("can_ledger"))
+    except Exception:
+        can_ledger = False
+    try:
+        is_dev = bool(inject_is_dev_user().get("is_dev_user"))
+    except Exception:
+        is_dev = False
+    try:
+        can_rec = bool(is_rec_expense_enabled(supabase, f_code))
+    except Exception:
+        can_rec = False
+
+    out = []
+    for it in MENU_ITEMS:
+        need = it.get("need")
+        if need == "ledger" and not can_ledger:
+            continue
+        if need == "rec_expense" and not can_rec:
+            continue
+        if need == "dev" and not is_dev:
+            continue
+        out.append({"href": it["href"], "icon": it["icon"], "label": it["label"]})
+    return out
+
+
+def get_staff_setting(supabase, f_code, staff_name, key, default=None):  # staff-settings-v1
+    """職員の個人設定。無ければ default。"""
+    try:
+        r = (supabase.table("staff_settings").select("value")
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("key", key).execute())
+        if r.data and r.data[0].get("value") is not None:
+            return r.data[0]["value"]
+    except Exception as e:
+        print("get_staff_setting error: %s" % e, flush=True)
+    return default
+
+
+def set_staff_setting(supabase, f_code, staff_name, key, value):  # staff-settings-v1
+    """職員の個人設定を書く（既存パターンに合わせた手書き upsert）。"""
+    row = {"facility_code": f_code, "staff_name": staff_name, "key": key,
+           "value": value, "updated_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        r = (supabase.table("staff_settings").select("id")
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("key", key).execute())
+        if r.data:
+            supabase.table("staff_settings").update(row).eq("id", r.data[0]["id"]).execute()
+        else:
+            supabase.table("staff_settings").insert(row).execute()
+        return True
+    except Exception as e:
+        print("set_staff_setting error: %s" % e, flush=True)
+        return False
+
+
+@app.context_processor
+def inject_app_drawer():  # app-drawer-v1
+    """引き出しメニュー（全画面）。メニュー項目と、出る端（利き手）を渡す。
+
+    毎リクエスト DB を叩くので flask.g に1回だけキャッシュする
+    （can_rec_expense が同じ作りなので、それに合わせた）。"""
+    from flask import g as _g   # 既存コードに合わせてローカルで import する
+    try:
+        f_code = session.get("f_code")
+        my_name = session.get("my_name")
+        if not f_code or not my_name:
+            return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
+        if not hasattr(_g, "_drawer_cache"):
+            supabase = get_supabase()
+            # app-drawer-4way-v1: 左右に加えて上下も
+            side = get_staff_setting(supabase, f_code, my_name, "drawer_side", "right")
+            if side not in ("left", "right", "top", "bottom"):
+                side = "right"
+            # app-drawer-edit-v1: 配置（自由配置・フォルダ）。中身の解釈は画面側でやる。
+            layout = get_staff_setting(supabase, f_code, my_name, "top_layout", "") or ""
+            _g._drawer_cache = {
+                "drawer_items": _menu_items_visible(supabase, f_code, my_name),
+                "drawer_side": side,
+                "drawer_layout": layout,
+            }
+        return _g._drawer_cache
+    except Exception as e:
+        print("inject_app_drawer error: %s" % e, flush=True)
+        return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
+
+
+@app.route("/api/me/setting", methods=["GET"])  # staff-settings-v1
+@login_required
+def api_me_setting_get():
+    key = (request.args.get("key") or "").strip()
+    if key not in STAFF_SETTING_KEYS:
+        return jsonify({"status": "error", "message": "不正なキーです"}), 400
+    v = get_staff_setting(get_supabase(), session["f_code"], session["my_name"], key)
+    return jsonify({"status": "success", "key": key, "value": v})
+
+
+@app.route("/api/me/setting", methods=["PUT"])  # staff-settings-v1
+@login_required
+def api_me_setting_put():
+    data = request.json or {}
+    key = str(data.get("key") or "").strip()
+    if key not in STAFF_SETTING_KEYS:
+        return jsonify({"status": "error", "message": "不正なキーです"}), 400
+    val = data.get("value")
+    val = "" if val is None else str(val)
+    if len(val) > 20000:
+        return jsonify({"status": "error", "message": "設定が大きすぎます"}), 400
+    ok = set_staff_setting(get_supabase(), session["f_code"], session["my_name"], key, val)
+    if not ok:
+        return jsonify({"status": "error", "message": "保存できませんでした"}), 500
+    return jsonify({"status": "success"})
+
+# ===== /top-grid-v1 =====
+
+
 @app.route('/top')
 @login_required
 def top():
@@ -2017,6 +2169,7 @@ def top():
                 my_tasks.append(t)
     except:
         pass
+    # app-drawer-v1: TOP は従来どおり。アイコン一覧は全画面の引き出し（base.html）へ移した。
     return render("top.html", f_code=f_code, my_name=my_name, records=records,
         birthday_users=get_birthday_users(supabase, f_code),
         my_tasks=my_tasks,
