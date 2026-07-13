@@ -485,13 +485,17 @@ def render_juyo(F, st):
 
     sec_kinkyu = '''<div class="sec"><div class="sec-h">緊急時の対応方法と健康上の理由による利用中止について</div>
 <p>①ご契約者に容体の変化等があった場合は、医師または歯科医師など医療機関に連絡をとるなど必要な措置を講じるほか、緊急連絡先に速やかに連絡いたします。②風邪・病気の場合および当日の健康チェックの結果体調が不調の場合は、サービス内容の変更またはサービスを中止することがあります。</p>
-<table class="ptab"><tr><td class="k">主治医</td><td class="L">氏名／連絡先</td></tr><tr><td class="k">緊急時の病院</td><td class="L">病院名</td></tr><tr><td class="k">ご家族</td><td class="L">氏名／連絡先</td></tr></table></div>'''
+<table class="ptab fill"><tr><td class="k">主治医</td><td class="L">氏名／連絡先</td></tr><tr><td class="k">緊急時の病院</td><td class="L">病院名</td></tr><tr><td class="k">ご家族</td><td class="L">氏名／連絡先</td></tr></table></div>'''
 
     sec_shuryo = '''<div class="sec"><div class="sec-h">契約の終了について（契約書第15条参照）</div>
 <p>当事業所との契約では契約が終了する期日は特に定めていません。以下のような事由がない限り継続してサービスを利用できますが、該当するに至った場合には書面による契約解除を交わすことなく契約は終了します。①ご契約者が死亡した場合　②要介護認定により自立または要支援1・要支援2と判定された場合　③やむを得ない事由により事業所を閉鎖した場合　④事業所の重大な毀損により提供が不可能になった場合　⑤介護保険の指定を取り消された場合または辞退した場合　⑥ご契約者から中途解約・契約解除の申し出があった場合　⑦事業所から退所の申し出を行った場合</p></div>'''
 
+    # keiyaku-fix-v1: 電話番号が担当者の間に挟まって読みにくかったので、行を分ける
     sec_kujo = f'''<div class="sec"><div class="sec-h">サービス内容に関する苦情と相談</div>
-<p>当事業所ご利用相談・苦情担当　【受付時間】{_esc(ku.get("time"))}<br>苦情受付担当者　{_esc(ku.get("uketsuke"))}　TEL{_esc(ku.get("uketsuke_tel"))}／苦情対応担当者　{_esc(ku.get("taio"))}／苦情解決責任者　{_esc(ku.get("sekinin"))}</p>
+<table class="ptab kujo"><tr><td class="k">受付時間</td><td class="L">{_esc(ku.get("time"))}</td></tr>
+<tr><td class="k">苦情受付担当者</td><td class="L">{_esc(ku.get("uketsuke"))}　（TEL {_esc(ku.get("uketsuke_tel"))}）</td></tr>
+<tr><td class="k">苦情対応担当者</td><td class="L">{_esc(ku.get("taio"))}</td></tr>
+<tr><td class="k">苦情解決責任者</td><td class="L">{_esc(ku.get("sekinin"))}</td></tr></table>
 <p class="note">下記の窓口でも受け付けております。{_esc(ho.get("name"))}　介護保険課　TEL {_esc(ho.get("kaigo_tel"))}　FAX {_esc(ho.get("kaigo_fax"))}／{_esc(ho.get("kokuho_name"))}　TEL {_esc(ho.get("kokuho_tel"))}　FAX {_esc(ho.get("kokuho_fax"))}</p></div>'''
 
     sec_saigai = '''<div class="sec"><div class="sec-h">非常災害時の対応方法</div><p>災害発生時にはスタッフが速やかに最寄りの避難所まで誘導いたします。スタッフの指示に従って行動をお願いいたします。</p></div>'''
@@ -501,9 +505,9 @@ def render_juyo(F, st):
     sign = f'''<div class="sign">
 <p>指定地域密着型通所介護の提供の開始に際し、本書面に基づき重要事項の説明を行いました。</p>
 <p class="center">令和　　年　　月　　日</p>
-<div class="sign-block"><p>{_esc(j.get("name"))}</p><div class="r"><span>説明者　職名　　　　　　氏名</span><span>㊞</span></div></div>
+<div class="sign-block"><p>{_esc(j.get("name"))}</p><div class="r"><span>説明者　職名　　　　　　氏名</span><span></span></div></div>
 <p>私は、本書面に基づいて事業所から重要事項の説明を受け、指定地域密着型通所介護の開始に同意しました。</p>
-<div class="sign-block"><div class="r"><span>ご契約者　　　　　　　　　　様</span><span>㊞</span></div><div class="r"><span>代理人</span><span>㊞</span></div></div></div>'''
+<div class="sign-block"><div class="r"><span>ご契約者　　　　　　　　　　様</span><span></span></div><div class="r"><span>代理人</span><span></span></div></div></div>'''
 
     head = f'''<div class="doc-title">{_esc(j.get("name"))}</div>
 <div class="doc-sub">地域密着型通所介護 重要事項説明書</div>
@@ -616,9 +620,9 @@ def render_keiyaku(F, st):
 <div class="sign-block"><p>【事業所】　事業所名　　　{jname}</p>
 <p>　　　　　　事業所所在地　〒{_esc(j.get("zip"))}　{_esc(j.get("address"))}</p>
 <p>　　　　　　事業者名　　　{_esc(h.get("name"))}</p>
-<div class="r"><span>　　　　　　代表者名　　　{_esc(h.get("daihyo"))}</span><span>㊞</span></div></div>
-<div class="sign-block"><div class="r"><span>【ご契約者】　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span>㊞</span></div></div>
-<div class="sign-block"><div class="r"><span>【代理人】　　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span>㊞</span></div></div></div>'''
+<div class="r"><span>　　　　　　代表者名　　　{_esc(h.get("daihyo"))}</span><span></span></div></div>
+<div class="sign-block"><div class="r"><span>【ご契約者】　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span></span></div></div>
+<div class="sign-block"><div class="r"><span>【代理人】　　住所　〒</span><span></span></div><div class="r"><span>　　　　　　　氏名</span><span></span></div></div></div>'''
 
     head = f'''<div class="doc-title">{jname} 利用契約書</div>
 <div class="doc-sub">地域密着型通所介護</div>'''
@@ -648,6 +652,11 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .sub{font-size:7.5pt;color:#555}
 .ptab{border-collapse:collapse;width:100%;font-size:8.5pt;margin:1.5mm 0;page-break-inside:avoid}
 .ptab th,.ptab td{border:1px solid #555;padding:2px 4px;text-align:center;line-height:1.35}
+/* keiyaku-fix-v1: 手書きする欄は窮屈だと書けない。記入用の表だけ高さを持たせる。
+   （.L 全部に高さを付けると料金表まで間延びするので、.fill を付けた表に限定する） */
+.ptab.fill td{height:10mm;vertical-align:bottom}
+.ptab.fill td.L{color:#777;font-size:7.5pt}
+.ptab.kujo td.k{width:34mm;white-space:nowrap}
 .ptab th{background:#eef3f1;font-weight:700}
 .ptab td.k{text-align:left;white-space:nowrap;background:#f7f6f3}
 .ptab .L,.ptab td.L,.ptab th.L{text-align:left}
@@ -658,9 +667,12 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .ptab.fee .kai{white-space:nowrap;background:#f7f6f3}
 .ptab.fee td:not(.wari):not(.kai){text-align:right;white-space:nowrap}
 .sign{margin-top:5mm;font-size:9pt}
-.sign-block{margin:2.5mm 0;padding:2mm 0;border-top:1px dashed #ccc;page-break-inside:avoid}
+
 .sign-block p{margin:0 0 1.5mm}
-.sign .r{display:flex;justify-content:space-between;border-bottom:1px solid #999;padding:2.5mm 0 1mm;margin-bottom:1mm}
+/* keiyaku-fix-v1: 署名欄は手書きするので、行の高さに余裕を持たせる */
+.sign .r{display:flex;justify-content:space-between;align-items:flex-end;
+  border-bottom:1px solid #999;padding:7mm 0 1.5mm;margin-bottom:2mm;min-height:11mm}
+.sign-block{margin:3.5mm 0;padding:2.5mm 0;border-top:1px dashed #ccc;page-break-inside:avoid}
 '''
 
 

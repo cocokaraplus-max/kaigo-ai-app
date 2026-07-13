@@ -172,7 +172,9 @@
 
   <div class="kk-actionbar">
     <button class="kk-btn-save" id="kk-save">設定を保存</button>
-    <button class="kk-btn-print" id="kk-print">印刷 / PDF</button>
+    <button class="kk-btn-print" id="kk-print-juyo">重説を印刷</button>
+    <button class="kk-btn-print" id="kk-print-keiyaku">契約書を印刷</button>
+    <button class="kk-btn-print" id="kk-print">一式を印刷</button>
   </div>
   <div class="kk-toast" id="kk-toast"></div>
 </div>
@@ -622,11 +624,15 @@
   $('#kk-add-jihi').onclick=()=>{ state.jihi.push({name:'',price:'',unit:'1回',note:''}); state.dirty=true; renderJihi(); };
   $('#kk-add-staff').onclick=()=>{ state.staff.push({role:'',work:'',count:''}); state.dirty=true; renderStaff(); };
   $('#kk-save').onclick=()=> saveSettings(false);
-  $('#kk-print').onclick=async()=>{
+  // keiyaku-fix-v1: 重説・契約書を単独でも出せるようにする（サーバは元から doc に対応）
+  async function kkPrint(doc){
     if(state.dirty){ await saveSettings(true); }
-    const url = `/admin/keiyaku/print?type=${encodeURIComponent(state.type)}&wari=${state.wari}`;
+    const url = `/admin/keiyaku/print?doc=${doc}&type=${encodeURIComponent(state.type)}&wari=${state.wari}`;
     window.open(url, '_blank');
-  };
+  }
+  $('#kk-print-juyo').onclick    = ()=> kkPrint('juyo');
+  $('#kk-print-keiyaku').onclick = ()=> kkPrint('keiyaku');
+  $('#kk-print').onclick         = ()=> kkPrint('both');
 
   /* ---- 起動 ---- */
   // keiyaku-navh-v1: ボトムナビ(.bottom-nav)の高さを実測し --kk-nav-h にセット。
