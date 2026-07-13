@@ -19453,10 +19453,17 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     for s in stops:
         by_day.setdefault(s["day_id"], []).append(s)
 
-    # 便の並び（迎え便 → 中間便 → 送り便）
+    # 便の並び（迎え便 → 中間便 → 送り便 → 臨時便）
+    # soge-extra-v1: 臨時便は出発時刻の順で、定期便のあとに並べる。
     settings = get_soge_settings(supabase, f_code)
     order = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
-    days.sort(key=lambda d: (order.get(d.get("trip_key"), 99), d.get("vehicle_no") or 1))
+
+    def _order_key(d):
+        if d.get("is_extra"):
+            return (90, str(d.get("depart_at") or ""), d.get("vehicle_no") or 1)
+        return (order.get(d.get("trip_key"), 89), "", d.get("vehicle_no") or 1)
+
+    days.sort(key=_order_key)
 
     vehicles = {}
     for d in days:
@@ -19474,6 +19481,8 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "day_id": d["id"],
             "trip_key": d.get("trip_key"),
             "trip_name": d.get("trip_name") or "",
+            "is_extra": bool(d.get("is_extra")),                 # soge-extra-v1
+            "extra_reason": d.get("extra_reason") or "",         # soge-extra-v1
             "depart": (str(d.get("depart_at") or ""))[:5],       # 予定の出発
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1 実際の出発
             "returned_at": _soge_hhmm(d.get("returned_at")),
@@ -19674,6 +19683,193 @@ def api_soge_run_day_edit():
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_day_edit error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _soge_drop_elsewhere(supabase, f_code, date_str, day_id, pid, stype):  # soge-extra-v1
+    """同じ日の他の便から、その人のその立ち寄りを外す。
+
+    早退の人が送り便にも残っていると、迎えに行って誰もいない、という事故になる。
+    ただし、すでに打刻されたものは実際に運んだ記録なので消さない。
+    """
+    try:
+        r = (supabase.table("soge_stops").select("id,day_id,arrived_at")
+             .eq("facility_code", f_code).eq("service_date", date_str)
+             .eq("patient_id", pid).eq("stop_type", stype).execute())
+        for row in (r.data or []):
+            if row.get("day_id") == day_id:
+                continue
+            if row.get("arrived_at"):
+                continue              # 打刻済み。触らない。
+            supabase.table("soge_stops").delete().eq("id", row["id"]).execute()
+    except Exception as e:
+        print("soge drop elsewhere error: %s" % e, flush=True)
+
+
+@app.route("/api/soge/run/extra", methods=["POST"])  # soge-extra-v1
+@login_required
+def api_soge_run_extra_create():
+    """臨時便を作る。早退・遅刻・通院など、その日かぎりの便。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+
+        date_str = (data.get("date") or "").strip()
+        if len(date_str) != 10:
+            return jsonify({"status": "error", "message": "日付が不正です"}), 400
+        reason = (data.get("reason") or "その他").strip()[:20]
+        depart = (data.get("depart") or "").strip()
+        if depart and (len(depart) != 5 or depart[2] != ":"):
+            return jsonify({"status": "error", "message": "出発時刻は HH:MM で入れてください"}), 400
+        stops = data.get("stops") or []
+        if not stops:
+            return jsonify({"status": "error", "message": "利用者を1名以上入れてください"}), 400
+
+        # 臨時便の通し番号。既存の一意制約(facility_code,date,trip_key,vehicle_no)と衝突させない。
+        try:
+            ex = (supabase.table("soge_days").select("trip_key")
+                  .eq("facility_code", f_code).eq("service_date", date_str)
+                  .eq("is_extra", True).execute())
+            used = set(str(x.get("trip_key") or "") for x in (ex.data or []))
+        except Exception:
+            used = set()
+        n = 1
+        while ("extra%d" % n) in used:
+            n += 1
+        trip_key = "extra%d" % n
+
+        vid = (data.get("vehicle_id") or "").strip() or None
+        vname, plate = "", ""
+        if vid:
+            try:
+                vr = (supabase.table("rec_cars").select("name,plate_no")
+                      .eq("facility_code", f_code).eq("id", vid).execute())
+                if vr.data:
+                    vname = vr.data[0].get("name") or ""
+                    plate = vr.data[0].get("plate_no") or ""
+            except Exception:
+                pass
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        dr = supabase.table("soge_days").insert({
+            "facility_code": f_code,
+            "service_date": date_str,
+            "trip_key": trip_key,
+            "trip_name": "臨時便（%s）" % reason,
+            "vehicle_no": 90 + n,        # 定期便の車番と衝突させない
+            "vehicle_id": vid,
+            "vehicle_name": vname,
+            "plate_no": plate,
+            "driver_name": (data.get("driver_name") or "").strip(),
+            "depart_at": depart or None,
+            "is_extra": True,
+            "extra_reason": reason,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }).execute()
+        day_id = dr.data[0]["id"]
+
+        rows = []
+        for i, s in enumerate(stops):
+            pid = str(s.get("patient_id") or "").strip()
+            stype = (s.get("type") or "pickup").strip()
+            if not pid or stype not in ("pickup", "dropoff"):
+                continue
+            rows.append({
+                "day_id": day_id,
+                "facility_code": f_code,
+                "service_date": date_str,
+                "patient_id": pid,
+                "user_name": (s.get("user_name") or "").strip()[:40],
+                "stop_type": stype,
+                "seq": i,
+                "created_at": now_iso,
+            })
+        if not rows:
+            supabase.table("soge_days").delete().eq("id", day_id).execute()
+            return jsonify({"status": "error", "message": "利用者を1名以上入れてください"}), 400
+
+        supabase.table("soge_stops").insert(rows).execute()
+
+        # 二重送迎の防止。臨時便に入れた人は、同じ日の他の便から外す。
+        for r0 in rows:
+            _soge_drop_elsewhere(supabase, f_code, date_str, day_id,
+                                 r0["patient_id"], r0["stop_type"])
+
+        return jsonify({"status": "success", "day_id": day_id})
+    except Exception as e:
+        print("api_soge_run_extra_create error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/extra/stop", methods=["POST"])  # soge-extra-v1
+@login_required
+def api_soge_run_extra_add_stop():
+    """すでにある臨時便に、あとから1名足す。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        data = request.json or {}
+        day_id = str(data.get("day_id") or "").strip()
+        pid = str(data.get("patient_id") or "").strip()
+        stype = (data.get("type") or "pickup").strip()
+        if not day_id or not pid or stype not in ("pickup", "dropoff"):
+            return jsonify({"status": "error", "message": "入力が不正です"}), 400
+
+        dr = (supabase.table("soge_days").select("id,service_date,is_extra")
+              .eq("facility_code", f_code).eq("id", day_id).execute())
+        if not dr.data or not dr.data[0].get("is_extra"):
+            return jsonify({"status": "error", "message": "臨時便が見つかりません"}), 404
+        date_str = str(dr.data[0]["service_date"])[:10]
+
+        sr = (supabase.table("soge_stops").select("seq")
+              .eq("day_id", day_id).execute())
+        seq = max([int(x.get("seq") or 0) for x in (sr.data or [])] + [-1]) + 1
+
+        supabase.table("soge_stops").insert({
+            "day_id": day_id,
+            "facility_code": f_code,
+            "service_date": date_str,
+            "patient_id": pid,
+            "user_name": (data.get("user_name") or "").strip()[:40],
+            "stop_type": stype,
+            "seq": seq,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+
+        _soge_drop_elsewhere(supabase, f_code, date_str, day_id, pid, stype)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_extra_add_stop error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/extra", methods=["DELETE"])  # soge-extra-v1
+@login_required
+def api_soge_run_extra_delete():
+    """臨時便を取り消す。定期便は消せない。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        day_id = str((request.json or {}).get("day_id") or "").strip()
+        if not day_id:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        dr = (supabase.table("soge_days").select("id,is_extra")
+              .eq("facility_code", f_code).eq("id", day_id).execute())
+        if not dr.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        if not dr.data[0].get("is_extra"):
+            return jsonify({"status": "error", "message": "定期便は取り消せません"}), 400
+
+        supabase.table("soge_stops").delete() \
+            .eq("facility_code", f_code).eq("day_id", day_id).execute()
+        supabase.table("soge_days").delete() \
+            .eq("facility_code", f_code).eq("id", day_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_extra_delete error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

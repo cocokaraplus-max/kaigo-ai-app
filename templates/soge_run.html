@@ -65,6 +65,35 @@
   background:#eef2f7; color:#334; cursor:pointer; }
 .sr-ret-btn.done { background:#e6f4ea; color:#137333; }
 
+/* 臨時便（早退・遅刻・通院など）。定期便と見分けが付くように色を変える。 */
+.sr-trip.extra { border-color:#fed7aa; background:#fffaf5; }
+.sr-trip.extra .sr-trip-head { background:#fff2e5; }
+.sr-badge-extra { background:#9a3412; color:#fff; font-size:0.66rem; font-weight:800; border-radius:999px;
+  padding:2px 8px; margin-right:2px; }
+.sr-mini { border:1px solid #dadce0; background:#fff; border-radius:8px; padding:4px 9px;
+  font-size:0.72rem; font-weight:700; color:#5f6368; cursor:pointer; }
+.sr-mini.del { border-color:#f5c6c2; background:#fce8e6; color:#c5221f; }
+.sr-extra-add { display:flex; justify-content:center; margin:14px 0 4px; }
+
+/* 臨時便の入力パネル */
+.sr-panel { border:1px dashed #fed7aa; background:#fffaf5; border-radius:12px; padding:12px; margin:10px 0; }
+.sr-panel .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+.sr-panel select, .sr-panel input[type=text], .sr-panel input[type=time] {
+  border:1px solid #d6dbe3; border-radius:8px; padding:8px; font-size:0.9rem; background:#fff; }
+.sr-panel select { flex:1; min-width:90px; }
+.sr-lbl { font-size:0.75rem; color:#6b7280; font-weight:700; }
+.sr-search { position:relative; }
+.sr-search input { width:100%; }
+.sr-cands { display:none; position:absolute; left:0; right:0; top:100%; z-index:50; background:#fff;
+  border:1px solid #d6dbe3; border-radius:8px; margin-top:2px; max-height:190px; overflow-y:auto;
+  box-shadow:0 6px 18px rgba(16,24,40,.12); }
+.sr-cands.show { display:block; }
+.sr-cand { padding:9px 10px; font-size:0.9rem; cursor:pointer; border-bottom:1px solid #f1f3f4; }
+.sr-cand:last-child { border-bottom:none; }
+.sr-picked { display:flex; align-items:center; gap:6px; background:#e6f4ea; border:1px solid #ceead6;
+  color:#137333; border-radius:8px; padding:8px 10px; font-size:0.9rem; font-weight:700; }
+.sr-picked .chg { margin-left:auto; color:#5f6368; font-size:0.75rem; font-weight:600; cursor:pointer; }
+
 .sr-empty { color:#9aa3b2; font-size:0.88rem; padding:20px 6px; text-align:center; line-height:1.7; }
 .sr-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
@@ -100,7 +129,7 @@
 <script>
 // ===== soge-run-v1 =====
 (function () {
-  var state = { date: '', data: null, tab: 0, busy: {} };
+  var state = { date: '', data: null, tab: 0, busy: {}, staff: [], vehicles: [], patients: [] };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
@@ -162,10 +191,15 @@
 
   function render() {
     var vs = (state.data && state.data.vehicles) || [];
+    // soge-extra-v1: 送迎がまだ無い日でも、臨時便だけは作れるようにする
+    var addExtra = '<div class="sr-extra-add"><button class="sr-btn" id="srAddExtra">＋ 臨時便</button></div>';
+
     if (!vs.length) {
       $('srTabs').innerHTML = '';
       $('srDriver').textContent = '';
-      $('srBody').innerHTML = '<div class="sr-empty">この日の送迎はありません。<br>配車画面で曜日の送迎表を保存すると、ここに出ます。</div>';
+      $('srBody').innerHTML =
+        '<div class="sr-empty">この日の送迎はありません。<br>配車画面で曜日の送迎表を保存すると、ここに出ます。</div>' + addExtra;
+      bind();
       return;
     }
 
@@ -179,7 +213,7 @@
     var v = vs[state.tab];
     $('srDriver').textContent = v.driver_name ? ('運転手 ' + v.driver_name) : '運転手 未設定';
 
-    $('srBody').innerHTML = (v.trips || []).map(tripHtml).join('');
+    $('srBody').innerHTML = (v.trips || []).map(tripHtml).join('') + addExtra;
     bind();
   }
 
@@ -217,9 +251,20 @@
       ? '<button class="sr-ret-btn done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
       : '<button class="sr-ret-btn" data-ret="' + t.day_id + '">事業所に戻った</button>';
 
-    return '<div class="sr-trip">' +
-      '<div class="sr-trip-head">' + esc(t.trip_name) +
-        '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発予定</span></div>' +
+    // soge-extra-v1: 臨時便は色を変え、取り消しと利用者追加を付ける
+    var head = '<div class="sr-trip-head">' +
+      (t.is_extra ? '<span class="sr-badge-extra">臨時</span>' : '') +
+      esc(t.trip_name) +
+      '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発予定</span>' +
+      (t.is_extra
+        ? '<span style="margin-left:auto;display:flex;gap:6px;">' +
+            '<button class="sr-mini" data-exadd="' + t.day_id + '">＋ 利用者</button>' +
+            '<button class="sr-mini del" data-exdel="' + t.day_id + '">取消</button>' +
+          '</span>'
+        : '') +
+      '</div>';
+
+    return '<div class="sr-trip' + (t.is_extra ? ' extra' : '') + '">' + head +
       '<div class="sr-trip-body">' +
         '<div class="sr-return" style="justify-content:flex-start;margin:0 0 8px;">' + dep + '</div>' +
         (stops || '<div class="sr-empty">立ち寄りなし</div>') +
@@ -390,9 +435,226 @@
         }
       };
     });
+
+    // ---- soge-extra-v1: 臨時便 ----
+    var addBtn = document.getElementById('srAddExtra');
+    if (addBtn) addBtn.onclick = function () { openExtraPanel(addBtn); };
+
+    root.querySelectorAll('[data-exdel]').forEach(function (el) {
+      el.onclick = async function () {
+        if (!confirm('この臨時便を取り消しますか？（打刻も消えます）')) return;
+        var r = await fetch('/api/soge/run/extra', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ day_id: el.dataset.exdel })
+        });
+        var j = await r.json();
+        if (j.status !== 'success') { toast(j.message || '取り消せませんでした', 'err'); return; }
+        toast('臨時便を取り消しました');
+        await load();
+      };
+    });
+
+    root.querySelectorAll('[data-exadd]').forEach(function (el) {
+      el.onclick = function () { openAddToExtra(el, el.dataset.exadd); };
+    });
   }
 
-  (function init() {
+  // ---------- soge-extra-v1: 利用者の検索（記録入力と同じやり方） ----------
+  function toKata(s) { return s.replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); }); }
+  function toHira(s) { return s.replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); }); }
+
+  function searchPatients(q) {
+    q = (q || '').trim();
+    if (!q) return [];
+    var ql = q.toLowerCase(), qk = toKata(q), qh = toHira(q);
+    return state.patients.filter(function (p) {
+      var n = p.user_name || '', k = p.user_kana || '', no = String(p.patient_number || '');
+      return n.indexOf(q) >= 0 || n.toLowerCase().indexOf(ql) >= 0 ||
+             k.indexOf(q) >= 0 || k.indexOf(qk) >= 0 || k.indexOf(qh) >= 0 ||
+             no.indexOf(q) >= 0;
+    }).slice(0, 30);
+  }
+
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // 検索欄＋「登録のない方」を1つの部品にまとめる。臨時便の新規でも追加でも使う。
+  function personPicker(box) {
+    box.insertAdjacentHTML('beforeend',
+      '<div class="sr-lbl" style="margin-top:8px;">利用者（ひらがな・漢字・カルテ番号で検索）</div>' +
+      '<div class="sr-search" style="margin-top:5px;">' +
+        '<input type="text" class="q" placeholder="例：やまだ / 山田 / 001" autocomplete="off">' +
+        '<div class="sr-cands"></div>' +
+      '</div>' +
+      '<div class="picked" style="display:none;margin-top:6px;"></div>' +
+      '<div class="row"><label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;">' +
+        '<input type="checkbox" class="guest"> 登録のない方（名前を直接入力）</label></div>');
+
+    var q = box.querySelector('.q');
+    var cands = box.querySelector('.sr-cands');
+    var picked = box.querySelector('.picked');
+    var guest = box.querySelector('.guest');
+    var chosen = null;
+
+    function clearPick() {
+      chosen = null;
+      picked.style.display = 'none';
+      box.querySelector('.sr-search').style.display = '';
+      q.value = '';
+      q.focus();
+    }
+    function pick(p) {
+      chosen = p;
+      cands.classList.remove('show');
+      box.querySelector('.sr-search').style.display = 'none';
+      picked.style.display = '';
+      picked.innerHTML = '<div class="sr-picked">' + esc(p.user_name) + '<span class="chg">変更</span></div>';
+      picked.querySelector('.chg').onclick = clearPick;
+    }
+
+    q.oninput = q.onkeyup = q.oncompositionend = function () {
+      if (guest.checked || !q.value.trim()) { cands.classList.remove('show'); return; }
+      var list = searchPatients(q.value);
+      if (!list.length) {
+        cands.innerHTML = '<div class="sr-cand" style="color:#9aa0a6;">該当なし（登録のない方はチェックを入れてください）</div>';
+      } else {
+        cands.innerHTML = list.map(function (p, i) {
+          return '<div class="sr-cand" data-i="' + i + '">' + esc(p.user_name) +
+            (p.user_kana ? '<span style="color:#9aa0a6;font-size:0.78rem;margin-left:6px;">' + esc(p.user_kana) + '</span>' : '') +
+            '</div>';
+        }).join('');
+        cands.querySelectorAll('[data-i]').forEach(function (el) {
+          el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          el.addEventListener('click', function () { pick(list[Number(el.dataset.i)]); });
+          el.addEventListener('touchstart', function (e) { e.preventDefault(); pick(list[Number(el.dataset.i)]); });
+        });
+      }
+      cands.classList.add('show');
+    };
+    guest.onchange = function () {
+      clearPick();
+      cands.classList.remove('show');
+      q.placeholder = guest.checked ? '名前を入力（例：見学 太郎）' : '例：やまだ / 山田 / 001';
+    };
+
+    // 選ばれた人を返す。未選択なら null。
+    return function () {
+      if (guest.checked) {
+        var nm = (q.value || '').trim();
+        if (!nm) { toast('名前を入れてください', 'err'); q.focus(); return null; }
+        return { patient_id: uuid(), user_name: nm, guest: true };
+      }
+      if (!chosen) { toast('利用者を選んでください', 'err'); q.focus(); return null; }
+      return { patient_id: chosen.patient_id, user_name: chosen.user_name, guest: false };
+    };
+  }
+
+  // 臨時便を新しく作る
+  function openExtraPanel(btn) {
+    if (document.querySelector('.sr-panel')) return;
+
+    var vopts = state.vehicles.map(function (x) {
+      return '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>';
+    }).join('');
+    var sopts = state.staff.map(function (n) {
+      return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+    }).join('');
+
+    var box = document.createElement('div');
+    box.className = 'sr-panel';
+    box.innerHTML =
+      '<div style="font-weight:800;font-size:0.95rem;">臨時便を作る</div>' +
+      '<div class="row">' +
+        '<select class="reason">' +
+          '<option value="早退">早退</option><option value="遅刻">遅刻</option>' +
+          '<option value="通院">通院</option><option value="その他">その他</option>' +
+        '</select>' +
+        '<select class="ty"><option value="dropoff">送り</option><option value="pickup">迎え</option></select>' +
+        '<input type="time" class="dep">' +
+      '</div>' +
+      '<div class="row">' +
+        '<select class="veh"><option value="">車両…</option>' + vopts + '</select>' +
+        '<select class="drv"><option value="">運転手…</option>' + sopts + '</select>' +
+      '</div>';
+    btn.parentNode.insertBefore(box, btn);
+
+    var getPerson = personPicker(box);
+
+    box.insertAdjacentHTML('beforeend',
+      '<div class="row" style="margin-top:10px;">' +
+        '<button class="sr-tap ok" style="min-width:80px;">作成</button>' +
+        '<button class="sr-mini no">やめる</button>' +
+      '</div>');
+
+    box.querySelector('.no').onclick = function () { box.remove(); };
+    box.querySelector('.ok').onclick = async function () {
+      var p = getPerson();
+      if (!p) return;
+      var body = {
+        date: state.date,
+        reason: box.querySelector('.reason').value,
+        depart: box.querySelector('.dep').value || '',
+        vehicle_id: box.querySelector('.veh').value || '',
+        driver_name: box.querySelector('.drv').value || '',
+        stops: [{ patient_id: p.patient_id, user_name: p.user_name,
+                  type: box.querySelector('.ty').value }]
+      };
+      var r = await fetch('/api/soge/run/extra', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '作れませんでした', 'err'); return; }
+      box.remove();
+      toast('臨時便を作りました（他の便からは自動で外しました）');
+      await load();
+    };
+  }
+
+  // すでにある臨時便に、あとから1名足す
+  function openAddToExtra(btn, dayId) {
+    if (document.querySelector('.sr-panel')) return;
+    var trip = btn.closest('.sr-trip');
+
+    var box = document.createElement('div');
+    box.className = 'sr-panel';
+    box.innerHTML =
+      '<div style="font-weight:800;font-size:0.95rem;">臨時便に利用者を追加</div>' +
+      '<div class="row"><select class="ty"><option value="dropoff">送り</option><option value="pickup">迎え</option></select></div>';
+    trip.appendChild(box);
+
+    var getPerson = personPicker(box);
+    box.insertAdjacentHTML('beforeend',
+      '<div class="row" style="margin-top:10px;">' +
+        '<button class="sr-tap ok" style="min-width:80px;">追加</button>' +
+        '<button class="sr-mini no">やめる</button>' +
+      '</div>');
+
+    box.querySelector('.no').onclick = function () { box.remove(); };
+    box.querySelector('.ok').onclick = async function () {
+      var p = getPerson();
+      if (!p) return;
+      var r = await fetch('/api/soge/run/extra/stop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_id: dayId, patient_id: p.patient_id, user_name: p.user_name,
+          type: box.querySelector('.ty').value
+        })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '追加できませんでした', 'err'); return; }
+      box.remove();
+      toast(p.user_name + ' さんを追加しました');
+      await load();
+    };
+  }
+
+  (async function init() {
     state.date = todayStr();
     $('srDate').value = state.date;
     $('srDate').onchange = function () {
@@ -402,6 +664,15 @@
       load();
     };
     $('srPrint').href = '/soge/print?month=' + state.date.slice(0, 7);      // soge-print-v2
+
+    // soge-extra-v1: 臨時便で使う候補
+    var s = await fetch('/api/soge/staff').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.staff = (s && s.staff) ? s.staff : [];
+    var v = await fetch('/api/vehicles').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.vehicles = (v && v.vehicles) ? v.vehicles : [];
+    var p = await fetch('/api/soge/patients').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.patients = (p && p.patients) ? p.patients : [];
+
     load();
   })();
 })();
