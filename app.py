@@ -19505,19 +19505,99 @@ def api_soge_run_return():
 
 
 
-# ===== soge-print-v1 : 運行記録表 =====
-@app.route("/soge/print")  # soge-print-v1
+# ===== soge-print-v2 : 運行記録表（車両ごとの月間） =====
+# 運行記録表は車両単位で綴じるもの。日毎に1枚ずつ出すと1か月で数十枚になるので、
+# 車1台につき1か月ぶんを詰めて並べる。走行距離と到着予定は載せない（現場で不要）。
+
+
+def _soge_month_range(ym):  # soge-print-v2
+    """'YYYY-MM' -> (月初, 翌月初) の 'YYYY-MM-DD'。"""
+    y, m = int(ym[:4]), int(ym[5:7])
+    ny, nm = (y + 1, 1) if m == 12 else (y, m + 1)
+    return "%04d-%02d-01" % (y, m), "%04d-%02d-01" % (ny, nm)
+
+
+def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
+    """その月の運行を車両ごとにまとめる。
+
+    戻り値: [{vehicle_name, plate_no, rows: [{day_label, day_first, trip_name,
+                                              driver_name, returned_at, stops}]}]
+    """
+    start, end = _soge_month_range(ym)
+
+    dr = (supabase.table("soge_days").select("*")
+          .eq("facility_code", f_code)
+          .gte("service_date", start).lt("service_date", end).execute())
+    days = dr.data or []
+    if not days:
+        return []
+
+    sr = (supabase.table("soge_stops").select("*")
+          .eq("facility_code", f_code)
+          .gte("service_date", start).lt("service_date", end).execute())
+    by_day = {}
+    for s in (sr.data or []):
+        by_day.setdefault(s.get("day_id"), []).append(s)
+
+    settings = get_soge_settings(supabase, f_code)
+    torder = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
+
+    # 車 → 日付 → 便 の順に並べる
+    days.sort(key=lambda d: (str(d.get("vehicle_name") or ""),
+                             str(d.get("service_date")),
+                             torder.get(d.get("trip_key"), 99),
+                             d.get("vehicle_no") or 1))
+
+    out, cur, last_date = [], None, None
+    for d in days:
+        key = str(d.get("vehicle_id") or d.get("vehicle_name") or d.get("vehicle_no"))
+        if not cur or cur["key"] != key:
+            cur = {"key": key,
+                   "vehicle_name": d.get("vehicle_name") or ("車 %s" % (d.get("vehicle_no") or 1)),
+                   "plate_no": d.get("plate_no") or "",
+                   "rows": []}
+            out.append(cur)
+            last_date = None
+
+        ds = str(d.get("service_date"))[:10]
+        try:
+            y, m, dd = [int(x) for x in ds.split("-")]
+            wd = "月火水木金土日"[datetime(y, m, dd).weekday()]
+            day_label = "%d/%d(%s)" % (m, dd, wd)
+        except Exception:
+            day_label = ds
+
+        stops = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
+        cur["rows"].append({
+            "day_label": day_label,
+            "day_first": (ds != last_date),
+            "trip_name": d.get("trip_name") or "",
+            "driver_name": d.get("driver_name") or "",
+            "returned_at": _soge_hhmm(d.get("returned_at")),
+            "stops": [{
+                "user_name": s.get("user_name") or "",
+                "type": s.get("stop_type") or "pickup",
+                "arrived_at": _soge_hhmm(s.get("arrived_at")),
+                "is_absent": bool(s.get("is_absent")),
+            } for s in stops],
+        })
+        last_date = ds
+
+    return out
+
+
+@app.route("/soge/print")  # soge-print-v2
 @login_required
 def soge_print_page():
-    """運行記録表。車1台につきA4を1枚。打刻がそのまま入る。"""
+    """運行記録表。車1台につき1か月ぶん。"""
     f_code = session["f_code"]
     supabase = get_supabase()
-    date_str = (request.args.get("date") or "").strip()
-    if not date_str:
-        date_str = datetime.now(_soge_jst()).strftime("%Y-%m-%d")
 
-    soge_materialize_day(supabase, f_code, date_str)
-    data = _soge_run_payload(supabase, f_code, date_str)
+    ym = (request.args.get("month") or "").strip()
+    if len(ym) != 7 or ym[4] != "-":
+        ym = datetime.now(_soge_jst()).strftime("%Y-%m")
+
+    vehicles = _soge_month_payload(supabase, f_code, ym)
 
     try:
         fr = (supabase.table("facilities").select("facility_name")
@@ -19526,19 +19606,12 @@ def soge_print_page():
     except Exception:
         fname = ""
 
-    try:
-        y, m, d = [int(x) for x in date_str.split("-")]
-        wd = "月火水木金土日"[datetime(y, m, d).weekday()]
-        date_label = "%d年%d月%d日（%s）" % (y, m, d, wd)
-    except Exception:
-        date_label = date_str
-
     return render_template("soge_print.html",
-                           vehicles=data.get("vehicles") or [],
+                           vehicles=vehicles,
                            facility_name=fname,
-                           date_label=date_label,
-                           date=date_str)
-# ===== /soge-print-v1 =====
+                           month=ym,
+                           month_label="%d年%d月" % (int(ym[:4]), int(ym[5:7])))
+# ===== /soge-print-v2 =====
 
 
 if __name__ == '__main__':

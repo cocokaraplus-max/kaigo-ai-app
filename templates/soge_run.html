@@ -356,10 +356,10 @@
     $('srDate').onchange = function () {
       state.date = $('srDate').value || todayStr();
       state.tab = 0;
-      $('srPrint').href = '/soge/print?date=' + state.date;   // soge-print-v1
+      $('srPrint').href = '/soge/print?month=' + state.date.slice(0, 7);   // soge-print-v2
       load();
     };
-    $('srPrint').href = '/soge/print?date=' + state.date;      // soge-print-v1
+    $('srPrint').href = '/soge/print?month=' + state.date.slice(0, 7);      // soge-print-v2
     load();
   })();
 })();
