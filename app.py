@@ -1236,6 +1236,26 @@ def birth_to_wareki_text(birth_date_str):
     except:
         return ""
 
+def patient_active_on(p, date_str=None):  # patient-active-v1
+    """その日に在籍している利用者か。
+
+    利用終了日が入っていて、その日を過ぎていたら在籍していない。
+    終了日“当日”までは在籍しているものとして扱う（最終利用日まで送迎するため）。
+
+    中止フラグだけ立っていて終了日が無い場合は、その場で中止したものとみなす。
+
+    過去をさかのぼって見るときは date_str にその日付を渡す。
+    """
+    if not p:
+        return False
+    dd = str(p.get("discontinued_date") or "").strip()
+    if not date_str:
+        date_str = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    if dd:
+        return date_str <= dd
+    return not p.get("is_discontinued")
+
+
 def get_patients(supabase, f_code):
     try:
         res = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).order("user_name_kana").execute()
@@ -17113,7 +17133,7 @@ def api_rec_patients():
             "user_name": p.get("user_name") or "",
             "user_kana": p.get("user_kana") or "",
             "patient_number": p.get("patient_number") or "",
-        } for p in plist if not p.get("is_discontinued")]
+        } for p in plist if patient_active_on(p)]                # patient-active-v1
         return jsonify({"status": "success", "patients": items})
     except Exception as e:
         print("rec patients error: %s" % e, flush=True)
@@ -18039,9 +18059,9 @@ def soge_geocode_sync(supabase, f_code, force=False):  # soge-geocode-v1
         return {"error": err}
 
     pres = (supabase.table("patient_profiles")
-            .select("id,user_name,address,is_discontinued")
+            .select("id,user_name,address,is_discontinued,discontinued_date")
             .eq("facility_code", f_code).execute())
-    patients = [p for p in (pres.data or []) if not p.get("is_discontinued")]
+    patients = [p for p in (pres.data or []) if patient_active_on(p)]  # patient-active-v1
 
     cres = (supabase.table("soge_geocode").select("patient_id,address_hash")
             .eq("facility_code", f_code).execute())
@@ -18129,9 +18149,9 @@ def api_soge_geocode_status():
         f_code = session["f_code"]
         supabase = get_supabase()
         pres = (supabase.table("patient_profiles")
-                .select("id,address,is_discontinued")
+                .select("id,address,is_discontinued,discontinued_date")
                 .eq("facility_code", f_code).execute())
-        patients = [p for p in (pres.data or []) if not p.get("is_discontinued")]
+        patients = [p for p in (pres.data or []) if patient_active_on(p)]  # patient-active-v1
         total = len(patients)
         with_addr = sum(1 for p in patients if (p.get("address") or "").strip())
 
@@ -18278,7 +18298,7 @@ def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
     out = []
     for row in rows:
         p = by_int.get(str(row.get("patient_id")))
-        if not p or p.get("is_discontinued"):
+        if not p or not patient_active_on(p):   # patient-active-v1: 利用終了した人は出さない
             continue
         apd = row.get("ampm_per_day")
         apd = apd if isinstance(apd, dict) else {}
@@ -18851,7 +18871,7 @@ def api_soge_patients():
             "user_name": p.get("user_name") or "",
             "user_kana": p.get("user_kana") or "",
             "patient_number": p.get("patient_number") or "",   # soge-guest-v1: カルテ番号でも探せる
-        } for p in plist if not p.get("is_discontinued")]
+        } for p in plist if patient_active_on(p)]                # patient-active-v1
         items.sort(key=lambda x: (x["user_kana"] or x["user_name"]))
         return jsonify({"status": "success", "patients": items})
     except Exception as e:
