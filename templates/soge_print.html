@@ -82,6 +82,14 @@
   .sp-s:last-child::after { content: ''; margin: 0; }
   .sp-s:nth-child(4n)::after { content: ''; margin: 0; }
 
+  /* soge-odo-v1: メーターの列。数字は右そろえ・等幅。 */
+  .sp-odo { min-width: 62px; text-align: right; }
+  .sp-odo input { width: 58px; border: 1px solid #dadce0; border-radius: 6px; padding: 3px 4px;
+                  font-size: 0.76rem; font-family: inherit; text-align: right;
+                  font-variant-numeric: tabular-nums; }
+  .sp-odo input:focus { outline: 2px solid #1a73e8; border-color: #1a73e8; }
+  .sp-km { min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+
   .sp-note { min-width: 180px; }
   .sp-note input { width: 100%; min-width: 170px; border: 1px solid #dadce0; border-radius: 6px;
                    padding: 4px 6px; font-size: 0.78rem; font-family: inherit; }
@@ -119,6 +127,7 @@
     .sp-s, .sp-s .nm { white-space: nowrap; }
     .sp-note { min-width: 0; }
     .sp-note input { border: none; padding: 0; min-width: 0; font-size: 0.62rem; }
+    .sp-odo input { border: none; padding: 0; width: 100%; font-size: 0.62rem; }   /* soge-odo-v1 */
     .sp-tap { display: none; }
     .sp-tbl tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
@@ -159,6 +168,11 @@
             <th class="tm">出発</th>
             <th class="tm">帰着</th>
             <th class="sp-stops">各利用者宅 到着時刻</th>
+            {% if odo_enabled %}
+            <th class="sp-odo">出発㎞</th>
+            <th class="sp-odo">帰着㎞</th>
+            <th class="sp-km">走行㎞</th>
+            {% endif %}
             <th class="sp-note">備考</th>
           </tr>
         </thead>
@@ -188,6 +202,17 @@
               {%- endfor -%}
               </div>
             </td>
+            {% if odo_enabled %}
+            <td class="sp-odo">
+              <input type="number" value="{{ row.odo_start if row.odo_start is not none else '' }}"
+                     data-odo="odo_start" data-day="{{ row.day_id }}">
+            </td>
+            <td class="sp-odo">
+              <input type="number" value="{{ row.odo_end if row.odo_end is not none else '' }}"
+                     data-odo="odo_end" data-day="{{ row.day_id }}">
+            </td>
+            <td class="sp-km">{{ row.odo_km if row.odo_km is not none else '' }}</td>
+            {% endif %}
             <td class="sp-note">
               <input type="text" value="{{ row.note }}" data-note="{{ row.day_id }}" placeholder="">
             </td>
@@ -261,6 +286,29 @@
     };
   }
   document.querySelectorAll('[data-fld]').forEach(bindTime);
+
+  // soge-odo-v1: メーター … 打ち終わって離れたら保存。走行㎞ はその場で出し直す。
+  document.querySelectorAll('[data-odo]').forEach(function (inp) {
+    var last = inp.value;
+    inp.onblur = async function () {
+      if (inp.value === last) return;
+      var body = {};
+      body[inp.dataset.odo] = inp.value;
+      var ok = await saveDay(inp.dataset.day, body);
+      if (!ok) { inp.value = last; return; }
+      last = inp.value;
+      toast('メーターを保存しました');
+      var tr = inp.closest('tr');
+      var s = tr.querySelector('[data-odo="odo_start"]'),
+          e = tr.querySelector('[data-odo="odo_end"]'),
+          km = tr.querySelector('.sp-km');
+      if (s && e && km) {
+        var a = parseInt(s.value, 10), b = parseInt(e.value, 10);
+        km.textContent = (!isNaN(a) && !isNaN(b) && b >= a) ? String(b - a) : '';
+      }
+    };
+    inp.onkeydown = function (e) { if (e.key === 'Enter') inp.blur(); };
+  });
 
   // 備考 … 打ち終わって離れたら保存
   document.querySelectorAll('[data-note]').forEach(function (inp) {

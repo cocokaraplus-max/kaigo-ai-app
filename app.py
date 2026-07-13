@@ -17532,6 +17532,7 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
                 "unit_count": uc,
                 "trips": _soge_norm_trips(s.get("trips"), uc),
                 "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
+                "odo_enabled": bool(s.get("odo_enabled", False)),   # soge-odo-v1
                 "configured": True,
             }
             for k, dv in SOGE_TIME_DEFAULTS.items():   # soge-time-v1
@@ -17547,6 +17548,7 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
         "unit_count": 1,
         "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
         "mid_dropoff_first": True,
+        "odo_enabled": False,          # soge-odo-v1: 既定は記録しない
         "configured": False,
     }
     out.update(SOGE_TIME_DEFAULTS)
@@ -17596,6 +17598,7 @@ def api_soge_settings_save():
             "unit_count": uc,
             "trips": trips,
             "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
+            "odo_enabled": bool(data.get("odo_enabled", False)),   # soge-odo-v1
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         # soge-time-v1: 目標時間・上限時間・乗降時間
@@ -19487,6 +19490,8 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1 実際の出発
             "returned_at": _soge_hhmm(d.get("returned_at")),
             "note": d.get("note") or "",                          # soge-note-v1
+            "odo_start": d.get("odo_start"),                       # soge-odo-v1
+            "odo_end": d.get("odo_end"),                           # soge-odo-v1
             "stops": [{
                 "id": s["id"],
                 "patient_id": str(s.get("patient_id")),
@@ -19501,7 +19506,9 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             } for s in ss],
         })
 
-    return {"date": date_str, "vehicles": list(vehicles.values())}
+    # soge-odo-v1: 走行距離を記録する施設かどうか。画面はこれを見て入力欄を出す。
+    return {"date": date_str, "vehicles": list(vehicles.values()),
+            "odo_enabled": bool(settings.get("odo_enabled"))}
 
 
 @app.route("/soge/run")  # soge-run-v1
@@ -19677,6 +19684,23 @@ def api_soge_run_day_edit():
 
         if "note" in data:
             upd["note"] = (data.get("note") or "").strip()[:500] or None
+
+        # soge-odo-v1: メーター（整数km）。空文字で消せる。
+        # 桁を打ち間違えると走行距離が跳ねるので、範囲だけ見ておく。
+        for key in ("odo_start", "odo_end"):
+            if key not in data:
+                continue
+            v = data.get(key)
+            if v in (None, ""):
+                upd[key] = None
+                continue
+            try:
+                v = int(str(v).replace(",", "").strip())
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "メーターは数字で入れてください"}), 400
+            if v < 0 or v > 9999999:
+                return jsonify({"status": "error", "message": "メーターの桁が多すぎます"}), 400
+            upd[key] = v
 
         supabase.table("soge_days").update(upd) \
             .eq("facility_code", f_code).eq("id", day_id).execute()
@@ -20000,6 +20024,11 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1
             "returned_at": _soge_hhmm(d.get("returned_at")),
             "note": d.get("note") or "",                         # soge-note-v1
+            "odo_start": d.get("odo_start"),                      # soge-odo-v1
+            "odo_end": d.get("odo_end"),                          # soge-odo-v1
+            "odo_km": (d.get("odo_end") - d.get("odo_start"))
+                      if (d.get("odo_start") is not None and d.get("odo_end") is not None
+                          and d.get("odo_end") >= d.get("odo_start")) else None,
             "stops": [{
                 "user_name": s.get("user_name") or "",
                 "type": s.get("stop_type") or "pickup",
@@ -20032,10 +20061,13 @@ def soge_print_page():
     except Exception:
         fname = ""
 
+    odo_on = bool(get_soge_settings(supabase, f_code).get("odo_enabled"))   # soge-odo-v1
+
     return render_template("soge_print.html",
                            vehicles=vehicles,
                            facility_name=fname,
                            month=ym,
+                           odo_enabled=odo_on,
                            month_label="%d年%d月" % (int(ym[:4]), int(ym[5:7])))
 # ===== /soge-print-v2 =====
 

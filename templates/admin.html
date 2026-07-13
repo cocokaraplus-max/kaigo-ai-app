@@ -973,6 +973,15 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </label>
 
     <!-- soge-time-v1 -->
+    <!-- soge-odo-v1: 事業所によって要る・要らないが分かれるのでトグルにする -->
+    <label style="display:flex;font-size:0.8rem;align-items:center;gap:6px;margin:10px 0;">
+      <input type="checkbox" id="soge-odo">
+      走行距離（メーター）を記録する
+    </label>
+    <div style="font-size:0.72rem;color:#5f6368;margin:-4px 0 8px;">
+      オンにすると、運行画面の便ごとに「出発㎞／帰着㎞」の入力欄が出て、運行記録表に距離の列が付きます。
+    </div>
+
     <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:14px 0 6px;">所要時間の目安</div>
     <div style="font-size:0.72rem;color:#5f6368;margin-bottom:8px;">
       事業所に戻ってくるまでの時間です。目標を超えると車を増やして分担し、上限を超えると警告が出ます。
@@ -2042,6 +2051,7 @@ async function loadSogeSettings() {
   if (j.status !== 'success') return;
   document.getElementById('soge-units').value = String(j.unit_count);
   document.getElementById('soge-mid-first').checked = !!j.mid_dropoff_first;
+  document.getElementById('soge-odo').checked = !!j.odo_enabled;   // soge-odo-v1
   // soge-time-v1
   const setv = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
   setv('soge-target', j.target_minutes);
@@ -2059,6 +2069,7 @@ async function saveSogeSettings() {
       unit_count: Number(document.getElementById('soge-units').value),
       trips: sogeTrips,
       mid_dropoff_first: document.getElementById('soge-mid-first').checked,
+      odo_enabled: document.getElementById('soge-odo').checked,      // soge-odo-v1
       target_minutes: document.getElementById('soge-target').value,      // soge-time-v1
       max_minutes: document.getElementById('soge-max').value,
       stop_minutes: document.getElementById('soge-stop').value,
