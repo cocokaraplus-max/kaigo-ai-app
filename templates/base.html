@@ -864,6 +864,24 @@ body.nav-editing {
   .dw-ghost { position: fixed; z-index: 3200; pointer-events: none; opacity: .95;
     transform: translate(-50%, -50%) scale(1.12); filter: drop-shadow(0 8px 18px rgba(16,24,40,.35)); }
 
+  /* app-drawer-color-v1: 編集中だけ出る「色」ボタンと、その場に出るパレット */
+  .dw-paint { position: absolute; top: -6px; right: 2px; width: 20px; height: 20px;
+    border-radius: 999px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(16,24,40,.35);
+    display: none; cursor: pointer; padding: 0; z-index: 3; }
+  #appDrawer.edit .dw-paint { display: block; }
+  .dw-cell { }
+  .dw-pal { position: fixed; z-index: 3300; background: #fff; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(16,24,40,.28); padding: 10px; display: none; }
+  .dw-pal.on { display: block; }
+  .dw-pal-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .dw-pal-grid button { width: 26px; height: 26px; border-radius: 999px; border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(16,24,40,.25); cursor: pointer; padding: 0; }
+  .dw-pal-foot { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .dw-pal-foot input[type=color] { width: 34px; height: 30px; border: none; padding: 0;
+    border-radius: 8px; cursor: pointer; background: none; }
+  .dw-pal-foot button { flex: 1; border: none; border-radius: 8px; background: #f1f3f4;
+    color: #5f6368; font-weight: 800; font-size: .74rem; padding: 8px; cursor: pointer; }
+
   .dw-editbar { display: none; gap: 8px; padding: 10px 12px 0; }
   #appDrawer.edit .dw-editbar { display: flex; }
   .dw-editbar button { flex: 1; padding: 10px; border: none; border-radius: 10px;
@@ -925,9 +943,18 @@ body.nav-editing {
     <button class="done" id="dwDone">完了</button>
     <button class="reset" id="dwReset">並びをリセット</button>
   </div>
-  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。</div>
+  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。右上の丸で色を変えられます。</div>
   <div class="dw-body">
     <div class="dw-grid" id="dwGrid"></div>
+  </div>
+
+  <!-- app-drawer-color-v1: 色パレット -->
+  <div class="dw-pal" id="dwPal">
+    <div class="dw-pal-grid" id="dwPalGrid"></div>
+    <div class="dw-pal-foot">
+      <input type="color" id="dwPalCustom" title="自由な色">
+      <button id="dwPalReset">既定に戻す</button>
+    </div>
   </div>
 
   <!-- フォルダは app-drawer-simplify-v1 で廃止（重ね表示で出し入れが直感に反したため）。
@@ -1162,7 +1189,7 @@ body.nav-editing {
   function defaults() {
     var slots = [{ t: 'app', href: '/top' }];
     ITEMS.forEach(function (m) { slots.push({ t: 'app', href: m.href }); });
-    return { v: 1, slots: slots };
+    return { v: 1, slots: slots, colors: {} };   // app-drawer-color-v1
   }
 
   function parse(raw) {
@@ -1187,6 +1214,13 @@ body.nav-editing {
     // 新しく増えたメニューは末尾に足す（勝手に消さない・迷子にしない）
     var all = ['/top'].concat(ITEMS.map(function (m) { return m.href; }));
     all.forEach(function (h) { if (!seen[h]) L.slots.push({ t: 'app', href: h }); });
+
+    // app-drawer-color-v1: 個人が付けた色。使えない href のぶんは落とす。
+    var cols = {};
+    Object.keys(L.colors || {}).forEach(function (h) {
+      if (byHref[h] && /^#[0-9a-fA-F]{3,8}$/.test(String(L.colors[h]))) cols[h] = L.colors[h];
+    });
+    L.colors = cols;
 
     return L;
   }
@@ -1215,22 +1249,32 @@ body.nav-editing {
   // iOS は「リンク」を長押しするとプレビュー（共有シート）を出し、そこで指を持っていくため、
   // ドラッグがスムーズにできなかった。href が無ければ iOS はリンクと見なさない。
   // 遷移はもともと JS 側（spaNav / location.href）でやっているので機能は変わらない。
+  // app-drawer-color-v1: 色はインラインで当てる（CSS の data-href 規則は既定色の定義には使わない）
   function appHtml(m, idx, inFolder) {
+    var c = colorOf(m.href);
     return '<div class="dw-app" role="button" tabindex="0" draggable="false"' +
       ' data-idx="' + idx + '" data-href="' + m.href + '"' +
       (inFolder ? ' data-in-folder="1"' : '') + '>' +
-        '<span class="dw-ic"><span class="material-symbols-outlined">' + m.icon + '</span></span>' +
+        '<span class="dw-ic" style="background:' + c + '">' +
+          '<span class="material-symbols-outlined">' + m.icon + '</span>' +
+          '<button class="dw-paint" data-paint="' + m.href + '" style="background:' + c + '"></button>' +
+        '</span>' +
         '<span class="dw-label">' + esc(m.label) + '</span>' +
       '</div>';
   }
 
-  // app-drawer-folder-v1: アイコンの色。CSS の data-href セレクタと同じ規則をここに1つ持つ。
-  function colorOf(href) {
+  // アイコンの既定色（性格ごとの色分け）。
+  function defaultColorOf(href) {
     if (href === '/tasks' || href === '/board' || href === '/admin/meetings') return '#7c4dff';
     if (href === '/ledger' || href === '/rec_expense') return '#2f6b5e';
     if (href === '/admin' || href === '/dev' || href === '/manual') return '#5f6368';
     if (href === '/birthday' || href === '/numerology') return '#e8710a';
     return '#1a73e8';
+  }
+  // app-drawer-color-v1: 個人が指定した色があればそれが勝つ。
+  function colorOf(href) {
+    var c = layout.colors && layout.colors[href];
+    return c || defaultColorOf(href);
   }
 
   function folderHtml(f, idx) {
@@ -1323,7 +1367,59 @@ body.nav-editing {
   // 監視は window に付ける（要素ごと消えると pointerup が届かないため）。
   var drag = null, holdTimer = null;
 
+  // app-drawer-color-v1: パレット
+  var pal = document.getElementById('dwPal');
+  var palGrid = document.getElementById('dwPalGrid');
+  var palCustom = document.getElementById('dwPalCustom');
+  var palTarget = null;
+  var PALETTE = ['#1a73e8', '#4285f4', '#7c4dff', '#a142f4', '#d93025', '#e8710a',
+                 '#f9ab00', '#2f6b5e', '#137333', '#00838f', '#5f6368', '#202124'];
+
+  palGrid.innerHTML = PALETTE.map(function (c) {
+    return '<button data-c="' + c + '" style="background:' + c + '"></button>';
+  }).join('');
+
+  function setColor(href, c) {
+    layout.colors = layout.colors || {};
+    if (c) layout.colors[href] = c; else delete layout.colors[href];
+    render();
+    save();
+  }
+
+  palGrid.querySelectorAll('[data-c]').forEach(function (b) {
+    b.onclick = function () { if (palTarget) setColor(palTarget, b.dataset.c); closePal(); };
+  });
+  palCustom.oninput = function () { if (palTarget) setColor(palTarget, palCustom.value); };
+  document.getElementById('dwPalReset').onclick = function () {
+    if (palTarget) setColor(palTarget, null);
+    closePal();
+  };
+  function openPal(href, x, y) {
+    palTarget = href;
+    palCustom.value = colorOf(href);
+    pal.classList.add('on');
+    var r = pal.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8);
+    var top = Math.min(Math.max(8, y + 12), window.innerHeight - r.height - 8);
+    pal.style.left = left + 'px';
+    pal.style.top = top + 'px';
+  }
+  function closePal() { pal.classList.remove('on'); palTarget = null; }
+  document.addEventListener('pointerdown', function (e) {
+    if (!pal.classList.contains('on')) return;
+    if (pal.contains(e.target) || (e.target.closest && e.target.closest('.dw-paint'))) return;
+    closePal();
+  }, true);
+
   function bind(root) {
+    root.querySelectorAll('[data-paint]').forEach(function (b) {
+      b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });   // ドラッグにしない
+      b.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var r = b.getBoundingClientRect();
+        openPal(b.dataset.paint, r.left + r.width / 2, r.bottom);
+      });
+    });
     root.querySelectorAll('.dw-app').forEach(function (el) {
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('click', onClick);
