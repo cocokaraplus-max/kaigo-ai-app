@@ -73,10 +73,27 @@
   cursor:pointer; color:#b0b6bf; font-size:0.75rem; font-weight:800; line-height:1; padding:0; }
 .sg-del:hover { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
 .sg-tools { display:flex; gap:8px; margin:-4px 0 4px; flex-wrap:wrap; }
-.sg-add { border:1px dashed #c8cdd3; border-radius:10px; padding:10px; margin-bottom:12px; background:#fafbfc;
-  display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-.sg-add select { flex:1; min-width:120px; border:1px solid #d6dbe3; border-radius:8px; padding:7px 8px;
-  font-size:0.85rem; background:#fff; }
+.sg-add { border:1px dashed #c8cdd3; border-radius:10px; padding:10px; margin-bottom:12px; background:#fafbfc; }
+.sg-add-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+.sg-add select, .sg-add input[type=text] { border:1px solid #d6dbe3; border-radius:8px; padding:7px 8px;
+  font-size:0.9rem; background:#fff; }
+.sg-add select { flex:1; min-width:90px; }
+.sg-add-lbl { font-size:0.75rem; color:#6b7280; font-weight:700; }
+
+/* 検索（記録入力と同じやり方：ひらがな・漢字・カルテ番号） */
+.sg-search { position:relative; }
+.sg-search input { width:100%; }
+.sg-cands { display:none; position:absolute; left:0; right:0; top:100%; z-index:50;
+  background:#fff; border:1px solid #d6dbe3; border-radius:8px; margin-top:2px;
+  max-height:200px; overflow-y:auto; box-shadow:0 6px 18px rgba(16,24,40,.12); }
+.sg-cands.show { display:block; }
+.sg-cand { padding:9px 10px; font-size:0.9rem; cursor:pointer; border-bottom:1px solid #f1f3f4; }
+.sg-cand:last-child { border-bottom:none; }
+.sg-cand:hover, .sg-cand.on { background:#eef6ff; }
+.sg-picked { display:flex; align-items:center; gap:6px; background:#e6f4ea; border:1px solid #ceead6;
+  color:#137333; border-radius:8px; padding:7px 10px; font-size:0.9rem; font-weight:700; }
+.sg-picked .chg { margin-left:auto; color:#5f6368; font-size:0.75rem; font-weight:600; cursor:pointer; }
+.sg-tag.guest { background:#fff7ed; color:#9a3412; }
 .sg-ghost { position:fixed; z-index:9998; pointer-events:none; margin:0;
   box-shadow:0 10px 24px rgba(16,24,40,.22); transform:rotate(-1.2deg); opacity:.97; }
 .sg-ph { height:44px; border:2px dashed #1a73e8; border-radius:10px; background:#eef6ff; margin-bottom:6px; }
@@ -253,6 +270,7 @@
         '<span class="sg-seq">' + (si + 1) + '</span>' +
         '<span class="sg-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
         '<span class="sg-name">' + esc(s.user_name) +
+          (s.guest ? '<span class="sg-tag guest">臨時</span>' : '') +
           (s.is_wheelchair ? '<span class="sg-tag wc">車いす</span>' : '') +
           (s.nth ? '<span class="sg-tag nth">第' + s.nth + '</span>' : '') +
         '</span>' +
@@ -377,14 +395,34 @@
     keepScroll(render);
   }
 
-  // 見学の方などを臨時で足す
+  // ひらがな↔カタカナをまたいで探せるようにする（記録入力と同じ）
+  function toKata(s) { return s.replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); }); }
+  function toHira(s) { return s.replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); }); }
+
+  function searchPatients(q) {
+    q = (q || '').trim();
+    if (!q) return [];
+    var ql = q.toLowerCase(), qk = toKata(q), qh = toHira(q);
+    return state.patients.filter(function (p) {
+      var name = p.user_name || '', kana = p.user_kana || '', no = String(p.patient_number || '');
+      return name.indexOf(q) >= 0 || name.toLowerCase().indexOf(ql) >= 0 ||
+             kana.indexOf(q) >= 0 || kana.indexOf(qk) >= 0 || kana.indexOf(qh) >= 0 ||
+             no.indexOf(q) >= 0;
+    }).slice(0, 30);
+  }
+
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // 見学の方などを臨時で足す。登録のある人は検索、無い人は名前を直接入力。
   function openAddPerson(ti, btn) {
     if (btn.parentNode.querySelector('.sg-add')) return;   // 二重に開かない
     var trip = state.data.trips[ti];
-    var opts = state.patients.map(function (p) {
-      return '<option value="' + esc(p.patient_id) + '">' + esc(p.user_name) + '</option>';
-    }).join('');
-    if (!opts) { toast('利用者の一覧を取得できませんでした', 'err'); return; }
 
     // 中間便は「送り」と「迎え」が混ざるので、どちらか選んでもらう
     var hasPick = (trip.vehicles || []).some(function (v) {
@@ -394,46 +432,122 @@
       return (v.stops || []).some(function (s) { return s.type === 'dropoff'; });
     });
     var typeSel = (hasPick && hasDrop)
-      ? '<select id="sgAddType"><option value="pickup">迎え</option><option value="dropoff">送り</option></select>'
-      : '<input type="hidden" id="sgAddType" value="' + (hasDrop && !hasPick ? 'dropoff' : 'pickup') + '">';
+      ? '<select class="ty"><option value="pickup">迎え</option><option value="dropoff">送り</option></select>'
+      : '<input type="hidden" class="ty" value="' + (hasDrop && !hasPick ? 'dropoff' : 'pickup') + '">';
 
-    var carSel = '<select id="sgAddCar">' + (trip.vehicles || []).map(function (v, i) {
+    var carSel = '<select class="car">' + (trip.vehicles || []).map(function (v, i) {
       return '<option value="' + i + '">' + esc(v.vehicle_name || ('車 ' + (i + 1))) + '</option>';
     }).join('') + '</select>';
 
     var box = document.createElement('div');
     box.className = 'sg-add';
-    box.innerHTML = '<select id="sgAddWho">' + opts + '</select>' + typeSel + carSel +
-      '<button class="sg-btn sg-btn-sm sg-btn-primary" id="sgAddOk">追加</button>' +
-      '<button class="sg-btn sg-btn-sm" id="sgAddNo">やめる</button>';
+    box.innerHTML =
+      '<div class="sg-add-lbl">利用者（ひらがな・漢字・カルテ番号で検索）</div>' +
+      '<div class="sg-search" style="margin-top:5px;">' +
+        '<input type="text" class="q" placeholder="例：やまだ / 山田 / 001" autocomplete="off">' +
+        '<div class="sg-cands"></div>' +
+      '</div>' +
+      '<div class="picked" style="display:none;margin-top:6px;"></div>' +
+      '<div class="sg-add-row">' +
+        '<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;">' +
+          '<input type="checkbox" class="guest"> 登録のない方（名前を直接入力）' +
+        '</label>' +
+      '</div>' +
+      '<div class="sg-add-row">' + typeSel + carSel +
+        '<button class="sg-btn sg-btn-sm sg-btn-primary ok">追加</button>' +
+        '<button class="sg-btn sg-btn-sm no">やめる</button>' +
+      '</div>';
     btn.parentNode.insertBefore(box, btn.parentNode.firstChild);
 
-    box.querySelector('#sgAddNo').onclick = function () { box.remove(); };
-    box.querySelector('#sgAddOk').onclick = function () {
-      var pid = box.querySelector('#sgAddWho').value;
-      var p = state.patients.find(function (x) { return x.patient_id === pid; });
-      var vi = Number(box.querySelector('#sgAddCar').value) || 0;
-      var v = trip.vehicles[vi];
-      if (!p || !v) { box.remove(); return; }
+    var q = box.querySelector('.q');
+    var cands = box.querySelector('.sg-cands');
+    var picked = box.querySelector('.picked');
+    var guestCb = box.querySelector('.guest');
+    var chosen = null;      // 登録のある人を選んだとき
 
-      var type = box.querySelector('#sgAddType').value || 'pickup';
-      var dup = (trip.vehicles || []).some(function (x) {
-        return (x.stops || []).some(function (s) {
-          return String(s.patient_id) === String(pid) && s.type === type;
+    function clearPick() {
+      chosen = null;
+      picked.style.display = 'none';
+      q.parentNode.parentNode.querySelector('.sg-search').style.display = '';
+      q.value = '';
+      q.focus();
+    }
+
+    function pick(p) {
+      chosen = p;
+      cands.classList.remove('show');
+      box.querySelector('.sg-search').style.display = 'none';
+      picked.style.display = '';
+      picked.innerHTML = '<div class="sg-picked">' + esc(p.user_name) +
+        '<span class="chg">変更</span></div>';
+      picked.querySelector('.chg').onclick = clearPick;
+    }
+
+    q.oninput = q.onkeyup = q.oncompositionend = function () {
+      if (guestCb.checked) { cands.classList.remove('show'); return; }
+      var list = searchPatients(q.value);
+      if (!q.value.trim()) { cands.classList.remove('show'); return; }
+      if (!list.length) {
+        cands.innerHTML = '<div class="sg-cand" style="color:#9aa0a6;">該当なし（登録のない方はチェックを入れてください）</div>';
+      } else {
+        cands.innerHTML = list.map(function (p, i) {
+          return '<div class="sg-cand" data-i="' + i + '">' + esc(p.user_name) +
+            (p.user_kana ? '<span style="color:#9aa0a6;font-size:0.78rem;margin-left:6px;">' + esc(p.user_kana) + '</span>' : '') +
+            '</div>';
+        }).join('');
+        cands.querySelectorAll('[data-i]').forEach(function (el) {
+          el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          el.addEventListener('click', function () { pick(list[Number(el.dataset.i)]); });
+          el.addEventListener('touchstart', function (e) { e.preventDefault(); pick(list[Number(el.dataset.i)]); });
         });
-      });
-      if (dup) { toast('この方はすでにこの便に入っています', 'err'); return; }
+      }
+      cands.classList.add('show');
+    };
+
+    guestCb.onchange = function () {
+      clearPick();
+      cands.classList.remove('show');
+      q.placeholder = guestCb.checked ? '名前を入力（例：見学 太郎）' : '例：やまだ / 山田 / 001';
+    };
+
+    box.querySelector('.no').onclick = function () { box.remove(); };
+
+    box.querySelector('.ok').onclick = function () {
+      var vi = Number(box.querySelector('.car').value) || 0;
+      var v = trip.vehicles[vi];
+      var type = box.querySelector('.ty').value || 'pickup';
+      if (!v) { toast('先に車を追加してください', 'err'); return; }
+
+      var pid, nm, isGuest = false;
+      if (guestCb.checked) {
+        nm = (q.value || '').trim();
+        if (!nm) { toast('名前を入れてください', 'err'); q.focus(); return; }
+        pid = uuid();          // 送迎の中だけで使う。利用者マスタには登録しない。
+        isGuest = true;
+      } else {
+        if (!chosen) { toast('利用者を選んでください', 'err'); q.focus(); return; }
+        pid = chosen.patient_id;
+        nm = chosen.user_name;
+        var dup = (trip.vehicles || []).some(function (x) {
+          return (x.stops || []).some(function (s) {
+            return String(s.patient_id) === String(pid) && s.type === type;
+          });
+        });
+        if (dup) { toast('この方はすでにこの便に入っています', 'err'); return; }
+      }
 
       v.stops.push({
-        patient_id: pid, user_name: p.user_name, type: type, nth: 0,
-        is_wheelchair: false, planned_at: null
+        patient_id: pid, user_name: nm, type: type, nth: 0,
+        is_wheelchair: false, guest: isGuest, planned_at: null
       });
       v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
       state.dirty = true;
       box.remove();
       keepScroll(render);
-      toast(p.user_name + ' さんを追加しました');
+      toast(nm + ' さんを追加しました' + (isGuest ? '（住所が無いので周り順は手で直してください）' : ''));
     };
+
+    q.focus();
   }
 
   // 画面を作り直しても、見ていた位置にとどまる
@@ -589,7 +703,11 @@
                   vehicle_id: v.vehicle_id,
                   driver_name: v.driver_name,
                   stops: (v.stops || []).map(function (s) {
-                    return { patient_id: s.patient_id, type: s.type, nth: s.nth || 0 };
+                    return {
+                      patient_id: s.patient_id, type: s.type, nth: s.nth || 0,
+                      // soge-guest-v1: 登録のない方は名前も一緒に保存する
+                      guest: !!s.guest, user_name: s.user_name || ''
+                    };
                   })
                 };
               })
