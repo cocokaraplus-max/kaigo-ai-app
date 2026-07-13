@@ -19650,6 +19650,8 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
             "day_label": day_label,
             "day_first": (ds != last_date),
             "trip_name": d.get("trip_name") or "",
+            # soge-print-v3: 便の列は幅を取らせない（迎え便→迎 / 中間便→中 / 送り便→送）
+            "trip_short": (d.get("trip_name") or "")[:1] or "",
             "driver_name": d.get("driver_name") or "",
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1
             "returned_at": _soge_hhmm(d.get("returned_at")),
