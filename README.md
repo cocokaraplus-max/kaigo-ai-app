@@ -1942,6 +1942,8 @@ create table if not exists staff_settings (
 create unique index if not exists uq_staff_settings on staff_settings (facility_code, staff_name, key);
 ```
 
+### 追記（同日）: 下記「ボトムナビを隠す」は実装済み。次タスク1は完了。
+
 ### 次タスク
 
 1. **ボトムナビを隠せるようにする**（個人設定）。ただし今のボトムナビは
@@ -1951,3 +1953,66 @@ create unique index if not exists uq_staff_settings on staff_settings (facility_
    「ナビの高さを見ている箇所を変数（`--nav-h`）に置き換える」→「隠す設定を個人単位で足す」の順で進める。
 2. 管理者が施設共通の既定レイアウトを作る（`admin_settings.top_layout`）。
 3. `movableHrefs`（ボトムナビ並び替えのホワイトリスト）が3箇所コピペのまま。MENU_ITEMS に寄せたい。
+
+---
+
+## 【開発ログ】2026-07-13(6) ボトムナビを隠せるように／引き出しの仕上げ <!-- session-2026-07-13-navhide -->
+
+### ボトムナビを隠す（`nav-hide-v1` 〜 `v4`）
+
+歯車 >「下のメニューバー」>「メニューバーを隠す」。個人設定（`staff_settings.nav_hidden`）。
+隠すと引き出し（端の取っ手）が唯一の導線になる。
+
+**設計の核心: ナビの高さを共通変数 `--nav-h` に寄せた**
+
+これまでナビの高さは各画面に固定値で直書きされていた（131 / 136 / 140 / 152 / 200 / 220px …）。
+そのまま消すと、下部の保存バー・FAB・トースト・余白が「ナビ跡地」に浮く。
+
+- `:root` に `--nav-raw`（JSの実測値）と
+  `--nav-h: max(var(--nav-raw), calc(env(safe-area-inset-bottom) + 10px))` を置く。
+  **セーフエリアの下限**を CSS 側で噛ませるのがポイント（`env()` は JS の setProperty では書けない）。
+- 実測は `measureNav()` の**1か所だけ**。画面別変数（`--rk-nav-h` / `--kk-nav-h` / `--tc-nav-h` /
+  `--lc-nav-h` / `--dw-nav-h`）は `:root` で `var(--nav-h)` を既定にした。
+- 隠すのは **CSS**（`body.nav-off .bottom-nav { display:none !important }`）。
+  既存コードに `nav.style.display = ''` でナビを復活させる箇所が複数ある
+  （設定モーダル・ベル・掲示板・タスク）ため、インラインで隠すと戻されてしまう。
+
+**ハマったところ（これが一番の教訓）**
+
+`0` と「未設定」は別物。
+各画面の実測関数を「隠しているときは 0px を入れる」に直したら（v2）、
+**0px が :root の安全な既定（`--lc-nav-h: var(--nav-h)`）を上書きしてしまい**、
+合計バーがホームインジケータ帯に沈んだ。
+→ v4 で「隠しているときは **値を入れず removeProperty する**」に修正。
+元々あった `if (h > 0)` ガードや `if (!navH) navH = 90;` も同種のバグ源だった
+（0 を捨てる → 前の 137px が残る／0 を 90px に読み替える）。
+
+対象: `life_check.html` / `renraku.html` / `admin_keiyaku.html` / `admin_timecard_report.html`。
+固定値を変数化した画面: `patient_profile.html` / `vitals.html` / `daily_view.html` /
+`ledger.html` / `manual.html` / `base.html`(page-wrapper)。
+
+### 引き出しの仕上げ
+
+- `app-drawer-color-v1` … アイコンの色を1つずつ変更（パレット12色＋自由色＋既定に戻す）。`top_layout.colors`。
+- `app-drawer-width-v1` … PC で引き出しがブラウザ幅いっぱいに出ていた。
+  アプリは `--page-max-width` の中央カラムなので、`--dw-gap` を計算して**カラムの中に収める**。
+- `app-drawer-perside-v1` … **向き（左/右/上/下）ごとに配置と取っ手の位置を別々に記憶**。
+  `top_layout` は `{ v:2, sides:{...}, colors:{...} }`。旧形式は今の向きの配置として引き継ぐ。色は向き共通。
+- `nav-hide-v3` … 取っ手を**長押しで端に沿って移動**できる（下部の保存バー・LINE送信・合計バーと衝突するため）。
+  位置は向きごとに `drawer_pos`（JSON）。
+- `app-drawer-2stage-v1` → **`app-drawer-2stage-off-v1` で撤回**。半開き→全開の2段階は使いにくかった。
+  取っ手を引く／タップで**一発で全開**に戻した（半開きのCSSは死んだまま残してある）。
+- `tc-cfg-width-v1` … 勤怠の勤務設定モーダルが中身に押し広げられて左右にブレていた。
+  横は切って縦だけスクロール、Flex の子に `min-width:0`（請求額計算のマトリクスと同じ罠）。
+
+### 個人設定のキー（`staff_settings`）
+
+`nav_hidden`（true/false） / `drawer_side`（left/right/top/bottom） / `drawer_pos`（向きごとのJSON） /
+`top_layout`（配置＋色のJSON） / `top_style`（未使用・TOPグリッド時代の名残）
+
+### 次タスク
+
+1. 管理者が施設共通の既定レイアウトを作る（`admin_settings.top_layout`）。
+2. `movableHrefs`（ボトムナビ並び替えのホワイトリスト）が3箇所コピペのまま。`MENU_ITEMS` に寄せたい。
+3. ナビを隠した状態での全画面チェック（今回は TOP / 記録入力 / バイタル / 出納帳 / 連絡帳 /
+   生活機能CHECK / 契約書 / 勤怠 を確認済み）。
