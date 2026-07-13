@@ -80,12 +80,17 @@
 .rec-total.sub { color:#6b7280; font-size:0.82rem; }
 .rec-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:8px; font-size:0.8rem; margin-top:8px; }
 
-/* 明細（単価 × 個数） */
-.rec-dt-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
-.rec-dt-row input[type=text] { flex:1 1 auto; min-width:0; }
-.rec-dt-row input[type=number] { width:74px; flex:0 0 auto; }
+/* 明細（単価 × 個数）
+   rec-detail-row2-v1: 1行に全部入れると、480px幅では単価/個数/小計/×に押されて
+   品名がほぼ0幅まで潰れ、レシートから入った品名が読めなかった。
+   品名は上の段にフル幅、単価×個数は下の段。 */
+.rec-dt-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px;
+  padding-bottom:8px; border-bottom:1px dashed #e6ebf2; }
+.rec-dt-row input[type=text] { flex:1 1 100%; min-width:0; }
+.rec-dt-row input[type=number] { width:78px; flex:0 0 auto; }
 .rec-dt-x { color:#9aa3b2; font-size:0.8rem; }
-.rec-dt-sub { font-size:0.8rem; font-weight:700; color:#334; white-space:nowrap; min-width:64px; text-align:right; }
+.rec-dt-sub { font-size:0.8rem; font-weight:700; color:#334; white-space:nowrap;
+  margin-left:auto; text-align:right; }
 
 /* 請求内訳マトリクス（横スクロール・利用者名は左固定・請求合計は右固定） */
 .rec-mx-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6ebf2; border-radius:8px; }
