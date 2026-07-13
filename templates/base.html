@@ -925,6 +925,13 @@ body.nav-editing {
   .dw-label { font-size: .66rem; font-weight: 700; line-height: 1.2; text-align: center;
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 
+  /* drawer-badge-v1: 未読・未完了の件数。ナビを隠していても気づけるように。 */
+  .dw-badge { position: absolute; top: -5px; right: -5px; display: none;
+    background: #ea4335; color: #fff; font-size: .58rem; font-weight: 800;
+    border-radius: 999px; min-width: 16px; padding: 1px 4px; text-align: center;
+    line-height: 1.4; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(16,24,40,.3); }
+  .dw-badge.on { display: block; }
+
   /* --- app-drawer-edit-v1: 自由配置・フォルダ・編集モード --- */
   .dw-cell { position: relative; min-height: 76px; border-radius: 14px; }
   .dw-cell.empty { }
@@ -1512,6 +1519,8 @@ body.nav-editing {
         '<span class="dw-ic" style="background:' + c + '">' +
           '<span class="material-symbols-outlined">' + m.icon + '</span>' +
           '<button class="dw-paint" data-paint="' + m.href + '" style="background:' + c + '"></button>' +
+          // drawer-badge-v1: 件数の器。中身は dwSetBadge() が入れる。
+          '<span class="dw-badge" data-badge="' + m.href + '"></span>' +
         '</span>' +
         '<span class="dw-label">' + esc(m.label) + '</span>' +
       '</div>';
@@ -1551,6 +1560,21 @@ body.nav-editing {
       '</div>';
   }
 
+  // drawer-badge-v1: 直近の件数を覚えておき、描き直したあとも当て直す
+  //（グリッドは JS で作り直すので、DOM に直接書いた数字は消えてしまう）
+  window.DW_BADGES = window.DW_BADGES || {};
+  window.dwSetBadge = function (href, count) {
+    window.DW_BADGES[href] = count || 0;
+    applyBadges();
+  };
+  function applyBadges() {
+    document.querySelectorAll('#appDrawer [data-badge]').forEach(function (b) {
+      var n = window.DW_BADGES[b.dataset.badge] || 0;
+      b.textContent = n > 99 ? '99+' : String(n);
+      b.classList.toggle('on', n > 0);
+    });
+  }
+
   function render() {
     pad();
     grid.innerHTML = layout.slots.map(function (s, i) {
@@ -1560,6 +1584,7 @@ body.nav-editing {
       return '<div class="dw-cell' + (inner ? '' : ' empty') + '" data-cell="' + i + '">' + inner + '</div>';
     }).join('');
     bind(grid);
+    applyBadges();          // drawer-badge-v1: 描き直したら件数を当て直す
   }
 
   function renderFolder() {
@@ -2382,7 +2407,18 @@ window.playNotificationSound = function() {
 let lastUnreadCount = 0;
 let chatPollingTimer = null;
 
+// drawer-badge-v1: タスク（自分あての未完了）。引き出しのバッジ用。
+async function checkTaskCount() {
+    try {
+        const r = await fetch('/api/tasks/open_count');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (window.dwSetBadge) window.dwSetBadge('/tasks', d.count || 0);
+    } catch (e) {}
+}
+
 async function checkUnreadMessages() {
+    checkTaskCount();      // drawer-badge-v1: 同じ周期でタスクも数える
     // Session 32: 掲示板ページでも未読バッジを更新(上タブと下メニューを一致させる)
     try {
         const res = await fetch('/api/board/unread_count');
@@ -2398,6 +2434,7 @@ async function checkUnreadMessages() {
                     badge.style.display = 'none';
                 }
             }
+            if (window.dwSetBadge) window.dwSetBadge('/board', count);   // drawer-badge-v1
             // 新着があったら通知音(掲示板ページ・チャットページ以外で)
             if (count > lastUnreadCount && lastUnreadCount >= 0) {
                 const isOnBoard = location.pathname === '/board';
@@ -2422,6 +2459,7 @@ async function checkUnreadMessages() {
                     db.style.display = 'none';
                 }
             }
+            if (window.dwSetBadge) window.dwSetBadge('/daily_view', c2);   // drawer-badge-v1
             setTimeout(updateMarkAllReadBar, 100);
         }
     } catch(e) {}
