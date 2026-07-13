@@ -6,6 +6,8 @@
 <title>運行記録表 - TASUKARU</title>
 <style>
   /* soge-print-v3 : 車両ごとの月間運行記録表（横スクロール） */
+  /* soge-print-noaddr-v1 : 住所は載せない（住所は運行画面 /soge/run のみ）。
+     氏名の縦積み対策（nowrap）だけ残している。 */
   * { box-sizing: border-box; }
 
   /* 表が画面より横に広いと、iOS/Safari が「読みやすくしてあげよう」と
@@ -56,11 +58,15 @@
   .sp-day-first td { border-top: 2px solid #5f6368; }
 
   /* 立ち寄り = ①氏名 08:35 → ②氏名 08:43 → …
-     1行に4人まで。5人目からは下の段に折り返す（横に伸びすぎないように）。 */
+     1行に4人まで。5人目からは下の段に折り返す（横に伸びすぎないように）。
+     soge-print-noaddr-v1: 住所は載せない（見るのは運行画面）。 */
   .sp-stops { min-width: 330px; }
   .sp-stops .grid { display: grid; grid-template-columns: repeat(4, max-content);
                     align-items: center; row-gap: 3px; }
+  /* 氏名は絶対に途中で折り返さない。折り返して良いのは「人と人の間」だけ。
+     ここを normal にすると、印刷時に列が細って日本語名が1文字ずつ縦積みになる（今回の不具合）。 */
   .sp-s { display: inline-flex; align-items: center; white-space: nowrap; padding-right: 2px; }
+  .sp-s .nm { display: inline-block; white-space: nowrap; }
   .sp-s .n { display: inline-block; min-width: 15px; height: 15px; line-height: 15px; text-align: center;
              border-radius: 999px; background: #E6F1FB; color: #185FA5; font-size: 0.62rem; font-weight: 800;
              margin-right: 3px; }
@@ -106,8 +112,11 @@
     .sp-tbl { width: 100%; font-size: 0.62rem; white-space: normal; }
     .sp-tbl .fix1, .sp-tbl .fix2 { position: static; box-shadow: none; }
     .sp-tbl thead th { position: static; }
+    /* soge-print-addr-v1: 折り返して良いのは「人と人の間」だけ。
+       セルの中（氏名・時刻・住所）は nowrap のままにして縦積みを防ぐ。 */
     .sp-stops { min-width: 0; white-space: normal; }
-    .sp-stops .grid { grid-template-columns: repeat(4, auto); }
+    .sp-stops .grid { grid-template-columns: repeat(4, max-content); }
+    .sp-s, .sp-s .nm { white-space: nowrap; }
     .sp-note { min-width: 0; }
     .sp-note input { border: none; padding: 0; min-width: 0; font-size: 0.62rem; }
     .sp-tap { display: none; }

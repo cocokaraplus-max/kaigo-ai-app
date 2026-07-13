@@ -19912,6 +19912,10 @@ def api_soge_run_return():
 # 車1台につき1か月ぶんを詰めて並べる。走行距離と到着予定は載せない（現場で不要）。
 
 
+# soge-print-noaddr-v1: 運行記録表に住所は載せない（住所は /soge/run だけ）。
+# 以前ここにあった _soge_addr_short は撤去した。
+
+
 def _soge_month_range(ym):  # soge-print-v2
     """'YYYY-MM' -> (月初, 翌月初) の 'YYYY-MM-DD'。"""
     y, m = int(ym[:4]), int(ym[5:7])
