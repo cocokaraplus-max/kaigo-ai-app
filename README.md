@@ -1796,3 +1796,42 @@ DEV・本番とも反映済み。
 2. `patch_soge_print_adw_v1.py` … 住所幅つまみ（※2で撤去）
 3. `patch_soge_print_noaddr_v1.py` … 記録表から住所とつまみを撤去（**縦積み対策は維持**）
 4. `patch_soge_run_addr2_v1.py` … 運行画面の住所を市から・2行クランプ
+
+---
+
+## 【開発ログ】2026-07-13(3) 走行距離（メーター）のアプリ入力 <!-- session-2026-07-13-soge-odo -->
+
+**本番反映済み。ただし既定はオフ**（`odo_enabled=false`）なので、本番の見た目は今までどおり。
+
+### 施設ごとのトグル（`soge-odo-v1`）
+
+走行距離を記録するかは事業所で分かれるので、機能ごと オン/オフ できるようにした。
+
+- 設定: 管理者MENU >「送迎設定」>「走行距離（メーター）を記録する」（`soge_settings.odo_enabled`、既定 false）
+- 入力: 運行画面（`/soge/run`）の **便ごと**に「出発㎞ / 帰着㎞」。走行㎞は差で表示。
+  **次の便の出発㎞には前の便の帰着㎞が薄字（placeholder）で出る**（打ち直しを減らす）
+- 記録表: `/soge/print` に「出発㎞ / 帰着㎞ / 走行㎞」の列。ここでも直せる
+- 保存は既存の `PUT /api/soge/run/day` に `odo_start` / `odo_end` を足しただけ（桁ミス防止に範囲チェック）
+- 走行距離は列に持たず、`odo_end - odo_start` をその都度計算する
+
+### DDL（`db/soge_odo.sql`。DEV / 本番とも投入済み）
+
+```sql
+alter table soge_settings add column if not exists odo_enabled boolean not null default false;
+alter table soge_days add column if not exists odo_start integer;
+alter table soge_days add column if not exists odo_end integer;
+```
+
+（`soge_days.odo_start/odo_end` は元のDDLに含まれていたが、コードからは一切使っていなかった）
+
+### 送迎設定の保存を alert → トーストに（`soge-settings-toast-v1`）
+
+`saveSogeSettings()` が `alert()` を使っており、**Chrome拡張の自動操作がそこで止まって動作確認ができなかった**。
+admin.html にトーストが無かったので、この画面用に小さいものを1つ足して置換。
+admin.html には他にも alert が残っている（今回は影響範囲を広げないため触っていない）。
+
+### 次タスク
+
+1. レシート読み込み（OCR → 請求額計算の明細に自動入力）
+2. 送迎の実運用フィードバック
+3. admin.html に残る alert の掃除（自動確認が止まるため、見つけ次第トーストへ）
