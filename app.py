@@ -19364,11 +19364,13 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     stops = [s for s in (sr.data or []) if s.get("day_id") in ids]
 
     wc = {}
+    addr = {}    # soge-addr-v1: 運転手が現地で見るので、住所も出す
     try:
-        wr = (supabase.table("patient_profiles").select("id,is_wheelchair")
+        wr = (supabase.table("patient_profiles").select("id,is_wheelchair,address")
               .eq("facility_code", f_code).execute())
         for x in (wr.data or []):
             wc[str(x["id"])] = bool(x.get("is_wheelchair"))
+            addr[str(x["id"])] = (x.get("address") or "").strip()
     except Exception:
         pass
 
@@ -19411,6 +19413,7 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),
                 "is_absent": bool(s.get("is_absent")),
                 "is_wheelchair": wc.get(str(s.get("patient_id")), False),
+                "address": addr.get(str(s.get("patient_id")), ""),   # soge-addr-v1
             } for s in ss],
         })
 
