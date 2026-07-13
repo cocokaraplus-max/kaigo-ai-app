@@ -3457,11 +3457,20 @@ def _visit_weekday_of(date_str):
     d = _dt.strptime(date_str, "%Y-%m-%d")
     return (d.weekday() + 1) % 7  # Python月=0..日=6 → 日=0..土=6
 
-def _visit_is_planned_weekday(weekdays, date_str):
-    """weekdays(例 '135', 日曜=0基準の数字並び)に その日の曜日が含まれるか。"""
+def _visit_is_planned_weekday(weekdays, date_str, nth_per_day=None):
+    """weekdays(例 '135', 日曜=0基準の数字並び)に その日の曜日が含まれるか。
+
+    visit-nth-apply-v1: 「第N週のみ」の指定があれば、その週でないと予定日ではない。
+    （例: 火曜が第2週のみ → 第1・3・4火曜は予定日でない）
+    """
     if not weekdays:
         return False
-    return str(_visit_weekday_of(date_str)) in str(weekdays)
+    wd = _visit_weekday_of(date_str)
+    if str(wd) not in str(weekdays):
+        return False
+    if nth_per_day and not visit_nth_ok(nth_per_day, wd, date_str):
+        return False
+    return True
 
 def _visit_planned_weekdays_for(supabase, f_code, patient_int_id):
     """指定患者(patients.id=patient_int_id)の weekdays 文字列を返す。"""
@@ -3473,6 +3482,17 @@ def _visit_planned_weekdays_for(supabase, f_code, patient_int_id):
         print(f"visit planned weekdays error: {e}", flush=True)
     return ""
 
+def _visit_nth_for(supabase, f_code, patient_int_id):  # visit-nth-apply-v1
+    """指定患者の「第N週のみ」設定。無ければ {}（＝毎週）。"""
+    try:
+        res = (supabase.table("patient_visit_days").select("nth_per_day")
+               .eq("facility_code", f_code).eq("patient_id", patient_int_id).execute())
+        if res.data:
+            return _visit_norm_nth(res.data[0].get("nth_per_day"))
+    except Exception as e:
+        print(f"visit nth fetch error: {e}", flush=True)
+    return {}
+
 def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, patient_int_id):
     """バイタル保存時の自動実績。予定曜日なら present、予定外なら transfer。
     手動(source=manual)レコードは上書きしない。"""
@@ -3480,7 +3500,8 @@ def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, pati
         from datetime import datetime as _dt, timezone as _tz
         now_iso = _dt.now(_tz.utc).isoformat()
         weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
-        status = 'present' if _visit_is_planned_weekday(weekdays, date_str) else 'transfer'
+        nth = _visit_nth_for(supabase, f_code, patient_int_id) if patient_int_id else {}  # visit-nth-apply-v1
+        status = 'present' if _visit_is_planned_weekday(weekdays, date_str, nth) else 'transfer'
         existing = supabase.table('visit_records').select('id,status,source').eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).execute()
         if existing.data:
             row = existing.data[0]
@@ -3901,6 +3922,7 @@ def api_visit_month():
             return jsonify({'status': 'error', 'message': '利用者が見つかりません'}), 404
         patient_int_id = pobj.get('patient_int_id')
         weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
+        nth = _visit_nth_for(supabase, f_code, patient_int_id) if patient_int_id else {}  # visit-nth-apply-v1
         # 月の日数
         ndays = _cal.monthrange(year, month)[1]
         first = '%04d-%02d-01' % (year, month)
@@ -3933,7 +3955,7 @@ def api_visit_month():
         for d in range(1, ndays + 1):
             ds = '%04d-%02d-%02d' % (year, month, d)
             wd = _visit_weekday_of(ds)
-            planned = _visit_is_planned_weekday(weekdays, ds)
+            planned = _visit_is_planned_weekday(weekdays, ds, nth)   # visit-nth-apply-v1
             leave_id = leave_days.get(ds)
             rec = rec_map.get(ds)
             days.append({
@@ -3979,12 +4001,22 @@ def vitals():
             apd = r.get("ampm_per_day")
             ampm_per_day_data[pid] = apd if isinstance(apd, dict) else {}
             nth_per_day_data[pid] = _visit_norm_nth(r.get("nth_per_day"))   # visit-nth-v1
+        _today_wd = _visit_weekday_of(today)   # visit-nth-apply-v1
         for p in patients:
             int_id = str(p["patient_int_id"]) if p.get("patient_int_id") else ""
             p["weekdays"] = visit_days.get(int_id, "")
             p["ampm"] = ampm_data.get(int_id, "BOTH")
             p["ampm_per_day"] = ampm_per_day_data.get(int_id, {})
             p["nth_per_day"] = nth_per_day_data.get(int_id, {})   # visit-nth-v1
+
+            # visit-nth-apply-v1: 「第2火曜だけ」の人は、第1・3・4火曜には来ない。
+            # 今日が該当しない週なら、その曜日を「来ない」ことにして下流へ渡す。
+            # こうすれば画面側のコードを触らずに反映される。
+            if not visit_nth_ok(p["nth_per_day"], _today_wd, today):
+                p["weekdays"] = str(p["weekdays"]).replace(str(_today_wd), "")
+                apd = dict(p["ampm_per_day"] or {})
+                apd[str(_today_wd)] = "NONE"
+                p["ampm_per_day"] = apd
     except Exception as e:
         print(f"vitals visit_days fetch error: {e}", flush=True)
         for p in patients:
@@ -4232,12 +4264,24 @@ def api_get_all_visit_days():
         vd_res = supabase.table('patient_visit_days').select('patient_id,weekdays,ampm_per_day,nth_per_day').eq('facility_code', f_code).execute()  # visit-nth-v1
         pt_res = supabase.table('patients').select('id').eq('facility_code', f_code).execute()
         int_ids = {str(p['id']) for p in (pt_res.data or [])}
+
+        # visit-nth-apply-v1: この API は「今日の画面」が使う。
+        # 第N週に当たらない曜日は「NONE（来ない）」にして返す。
+        _today = datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        _today_wd = _visit_weekday_of(_today)
+
         result = {}
         for r in (vd_res.data or []):
             pid = str(r['patient_id'])
             if pid in int_ids:
-                result[pid] = {'weekdays': r.get('weekdays',''), 'ampm_per_day': r.get('ampm_per_day') or {},
-                               'nth_per_day': _visit_norm_nth(r.get('nth_per_day'))}  # visit-nth-v1
+                _nth = _visit_norm_nth(r.get('nth_per_day'))
+                _wd = r.get('weekdays', '') or ''
+                _apd = dict(r.get('ampm_per_day') or {})
+                if not visit_nth_ok(_nth, _today_wd, _today):
+                    _wd = _wd.replace(str(_today_wd), '')
+                    _apd[str(_today_wd)] = 'NONE'
+                result[pid] = {'weekdays': _wd, 'ampm_per_day': _apd,
+                               'nth_per_day': _nth}  # visit-nth-v1
         return jsonify({'status': 'success', 'data': result})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -19318,9 +19362,18 @@ def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
     geo = soge_geo_map(supabase, f_code)
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    # visit-nth-apply-v1: 週次テンプレートは日付を持たないので「第2火曜だけ」の人も
+    # 常に入っている。その日に当たらない人は、当日データを作るときに落とす。
+    _y, _m, _d = [int(x) for x in date_str.split("-")]
+    _wk = visit_week_of_month(date_str)
+
+    def _nth_ok_today(s):
+        n = int(s.get("nth") or 0)
+        return (n < 1) or (n == _wk)
+
     for trip in (week.get("trips") or []):
         for v in (trip.get("vehicles") or []):
-            stops = v.get("stops") or []
+            stops = [s for s in (v.get("stops") or []) if _nth_ok_today(s)]
             if not stops:
                 continue
 
