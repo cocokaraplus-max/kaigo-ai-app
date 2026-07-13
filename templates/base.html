@@ -762,15 +762,20 @@ body.nav-editing {
   #appDrawerHandle:hover, #appDrawerHandle:active { opacity: 1; }
   /* app-drawer-edgefix-v1: 端ぴったりに置くと OS の「戻る」帯と重なる。8px 内側に逃がす。
      touch-action:none で、この上の指の動きはブラウザに渡さない（戻る・スクロールを起こさない）。 */
+  /* app-drawer-width-v1: アプリは --page-max-width の中央カラム。
+     PCでブラウザ幅いっぱいに出ないよう、引き出し・背景・取っ手をカラムの中に収める。
+     --dw-gap = カラムの外側の余白（スマホでは 0 になる）。 */
+  :root { --dw-gap: max(0px, calc((100vw - var(--page-max-width, 480px)) / 2)); }
+
   /* app-drawer-4way-v1: 8px では、指が OS の端ジェスチャー帯（およそ端から20px）に
      かかることがあり「戻る」が出た。指の置き所で当たり外れが出るので、帯の外まで逃がす。 */
   #appDrawerHandle { touch-action: none; }
-  #appDrawerHandle[data-side="right"] { right: 18px; border-radius: 14px; }
-  #appDrawerHandle[data-side="left"]  { left: 18px;  border-radius: 14px; }
+  #appDrawerHandle[data-side="right"] { right: calc(var(--dw-gap) + 18px); border-radius: 14px; }
+  #appDrawerHandle[data-side="left"]  { left:  calc(var(--dw-gap) + 18px); border-radius: 14px; }
   /* 上下は横向きの取っ手。上は通知センター、下はボトムナビとホームバーを避ける
      （--dw-nav-h は JS の実測値。端末差があるので固定値は使わない）。 */
   #appDrawerHandle[data-side="top"], #appDrawerHandle[data-side="bottom"] {
-    top: auto; left: 50%; transform: translateX(-50%);
+    top: auto; left: 50%; transform: translateX(-50%);   /* カラムは中央寄せなので 50% でよい */
     width: 64px; height: 26px; border-radius: 14px; }
   #appDrawerHandle[data-side="top"]    { top: 18px; }
   #appDrawerHandle[data-side="bottom"] { bottom: calc(var(--dw-nav-h, 0px) + 14px); }
@@ -782,7 +787,8 @@ body.nav-editing {
   #appDrawerHandle.hide { opacity: 0; pointer-events: none; }
 
   /* 背景はぼかす。黒ベタより奥行きが出る */
-  #appDrawerMask { position: fixed; inset: 0; z-index: 2500;
+  #appDrawerMask { position: fixed; top: 0; bottom: 0;
+    left: var(--dw-gap); right: var(--dw-gap); z-index: 2500;   /* app-drawer-width-v1 */
     background: rgba(16,24,40,.28); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
     opacity: 0; pointer-events: none; transition: opacity .24s ease; }
   #appDrawerMask.on { opacity: 1; pointer-events: auto; }
@@ -792,12 +798,16 @@ body.nav-editing {
     background: rgba(255,255,255,.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     box-shadow: 0 0 40px rgba(16,24,40,.28); display: flex; flex-direction: column;
     transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform; }
-  #appDrawer[data-side="right"] { right: 0; transform: translateX(102%); border-radius: 22px 0 0 22px; }
-  #appDrawer[data-side="left"]  { left: 0;  transform: translateX(-102%); border-radius: 0 22px 22px 0; }
+  /* app-drawer-width-v1: カラムの端に貼り付く。幅もカラムを超えない。 */
+  #appDrawer { width: min(86vw, 380px, calc(var(--page-max-width, 480px) - 24px)); }
+  #appDrawer[data-side="right"] { right: var(--dw-gap); transform: translateX(102%);
+    border-radius: 22px 0 0 22px; }
+  #appDrawer[data-side="left"]  { left: var(--dw-gap);  transform: translateX(-102%);
+    border-radius: 0 22px 22px 0; }
   /* app-drawer-4way-v1: 上下から出すときは横幅いっぱい（ボトムシート風）。
      下はボトムナビの上に着地させる。 */
   #appDrawer[data-side="top"], #appDrawer[data-side="bottom"] {
-    left: 0; right: 0; width: auto; top: auto; bottom: auto;
+    left: var(--dw-gap); right: var(--dw-gap); width: auto; top: auto; bottom: auto;
     height: min(72vh, 620px); }
   #appDrawer[data-side="top"] { top: 0; transform: translateY(-102%);
     border-radius: 0 0 22px 22px; }
