@@ -862,10 +862,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
-function lcAdjustTotalBar() {  // lc-ui-fix-v1
+function lcAdjustTotalBar() {  // lc-ui-fix-v1 / nav-hide-v2
+  // nav-hide-v2: ナビを隠せるようになったので、高さ0を「90px」に読み替えてはいけない。
+  // 読み替えていたせいで、ナビ非表示のとき合計バーが画面の途中に浮いていた。
   var nav = document.querySelector('.bottom-nav');
-  var navH = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
-  if (!navH) navH = 90;
+  var off = document.body.classList.contains('nav-off');
+  var navH = (nav && !off) ? Math.round(nav.getBoundingClientRect().height) : 0;
   document.documentElement.style.setProperty('--lc-nav-h', navH + 'px');
   var total = document.querySelector('.lc-total');
   var totalH = total ? Math.round(total.getBoundingClientRect().height) : 56;

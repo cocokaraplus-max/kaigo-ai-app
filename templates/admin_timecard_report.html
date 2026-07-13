@@ -616,10 +616,11 @@
     d.querySelector(".cfg-role-del").addEventListener("click",function(){ d.remove(); });
     return d;
   }
-  function _tcMeasureNav(){  // timecard-config-navfix-v1
+  function _tcMeasureNav(){  // timecard-config-navfix-v1 / nav-hide-v2
     var nav=document.querySelector(".bottom-nav");
-    var h=nav?Math.round(nav.getBoundingClientRect().height):0;
-    if(h>0) document.documentElement.style.setProperty("--tc-nav-h", h+"px");
+    var off=document.body.classList.contains("nav-off");
+    var h=(nav && !off)?Math.round(nav.getBoundingClientRect().height):0;
+    document.documentElement.style.setProperty("--tc-nav-h", h+"px");   // 0 も入れる
   }
   async function openConfig(){
     _tcMeasureNav();
