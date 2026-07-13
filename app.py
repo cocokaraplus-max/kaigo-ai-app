@@ -13531,6 +13531,13 @@ def admin_keiyaku():
 
 
 # ===== keiyaku-print-v1 : 契約書・重要事項説明書 印刷ルート（PDF生成） =====
+def _kk_pdf_pages(pdf_bytes):  # keiyaku-duplex-v1
+    """PDFのページ数。pdfminer.six は requirements.txt に既にあるので追加依存なし。"""
+    import io
+    from pdfminer.pdfpage import PDFPage
+    return sum(1 for _ in PDFPage.get_pages(io.BytesIO(pdf_bytes)))
+
+
 @app.route("/admin/keiyaku/print")
 @login_required
 def admin_keiyaku_print():
@@ -13584,10 +13591,9 @@ def admin_keiyaku_print():
             st = _order[0]
 
         import keiyaku_render as _kr
-        html_str = _kr.render_print_html(F, doc, st)
 
         if out_format == "html":
-            return html_str
+            return _kr.render_print_html(F, doc, st)
 
         # PDF生成（既存作法: pdfkit + wkhtmltopdf。日本語フォントはイメージに導入済み）
         import pdfkit
@@ -13604,7 +13610,23 @@ def admin_keiyaku_print():
         }
         wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
-        pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
+
+        def _mk(html):
+            return pdfkit.from_string(html, False, options=options, configuration=config)
+
+        # keiyaku-duplex-v1: 一式のとき、重説が奇数ページで終わると
+        # 両面印刷で契約書が重説の裏に刷られてしまう。先に重説だけ数えて、
+        # 奇数なら白紙を1枚挟み、契約書が必ず紙の表から始まるようにする。
+        blank = False
+        if doc == "both":
+            try:
+                juyo_pdf = _mk(_kr.render_print_html(F, "juyo", st))
+                blank = (_kk_pdf_pages(juyo_pdf) % 2 == 1)
+            except Exception as e:
+                print("keiyaku duplex page count error: %s" % e, flush=True)
+                blank = False
+
+        pdf_bytes = _mk(_kr.render_print_html(F, doc, st, blank_between=blank))
 
         from flask import make_response  # keiyaku-print-makeresp-fix-v1
         from urllib.parse import quote
