@@ -18988,6 +18988,97 @@ def _soge_trip_target(trip, settings):  # soge-trip-target-v1
     return settings["target_minutes"] * legs, settings["max_minutes"] * legs
 
 
+def _soge_path_km(grp, trip, geo, settings):  # soge-refine-v1
+    """その車の周り順を直線距離でつないだ長さ（施設 → 各所 → 施設）。
+
+    Routes API を呼ばずに「どっちが長いか」を比べるための目安。
+    実際の道路距離ではないが、比べるぶんには十分。
+    """
+    fac = settings.get("_fac")
+    if not fac or not grp:
+        return 0.0
+    stops = _soge_stops_of(grp, trip, geo, settings)
+    if not stops:
+        return 0.0
+
+    start = (float(fac[0]), float(fac[1]))
+    total, prev = 0.0, start
+    for s in stops:
+        g = geo.get(str(s["patient_id"]))
+        if not g or g.get("lat") is None:
+            return 0.0                       # 座標が欠けている便では概算しない
+        p = (float(g["lat"]), float(g["lng"]))
+        total += _soge_km(prev, p)
+        prev = p
+    total += _soge_km(prev, start)
+    return total
+
+
+def _soge_refine_by_time(supabase, f_code, geo, groups, vehicles, trip, settings, times):
+    """時間のかかる車から空いている車へ、人を1人ずつ移してならす。  # soge-refine-v1
+
+    席の比で割っただけだと、遠方を担当した車だけ時間が伸びる。
+    席が空いていても時間が超えていたら移す。
+
+    戻り値: (groups, changed)
+    """
+    target, _max_m = _soge_trip_target(trip, settings)
+    n = len(groups)
+    if n < 2:
+        return groups, False
+
+    specs = [_soge_vehicle_spec(v) for v in vehicles]
+    if len(specs) < n:
+        specs += [{"seats": SOGE_DEFAULT_SEATS, "wc_seats": SOGE_DEFAULT_WC_SEATS,
+                   "wc_max": 1}] * (n - len(specs))
+
+    # 実測から「直線距離1kmあたり何分か」を出す。以後はこれで概算する。
+    tot_km = sum(_soge_path_km(g, trip, geo, settings) for g in groups)
+    tot_drive = sum((t or {}).get("drive", 0) for t in times)
+    if tot_km <= 0.3 or tot_drive <= 0:
+        return groups, False                 # 概算の土台が無い（座標欠けなど）。触らない。
+    min_per_km = tot_drive / tot_km
+
+    def est(grp):
+        if not grp:
+            return 0.0
+        stops = _soge_stops_of(grp, trip, geo, settings)
+        return _soge_path_km(grp, trip, geo, settings) * min_per_km + \
+            _soge_stop_minutes(stops, settings)
+
+    cur = [est(g) for g in groups]
+    changed = False
+
+    for _ in range(12):                      # 念のため回数を切る
+        if max(cur) <= target:
+            break
+        i = max(range(n), key=lambda k: cur[k])   # いちばん時間のかかる車
+        j = min(range(n), key=lambda k: cur[k])   # いちばん空いている車
+        if i == j or len(groups[i]) <= 1:
+            break
+
+        moved = False
+        # 端の人（方面の並びの先頭か末尾）だけ試す。真ん中を抜くと経路が裂ける。
+        for pos in ([0] if len(groups[i]) == 1 else [0, len(groups[i]) - 1]):
+            m = groups[i][pos]
+            cand_j = groups[j] + [m]
+            if not _soge_fits(cand_j, specs[j], trip):
+                continue
+            cand_i = groups[i][:pos] + groups[i][pos + 1:]
+            before = max(cur[i], cur[j])
+            ei, ej = est(cand_i), est(cand_j)
+            if max(ei, ej) < before - 0.5:   # 0.5分以上よくなるときだけ動かす
+                groups[i], groups[j] = cand_i, cand_j
+                cur[i], cur[j] = ei, ej
+                moved = True
+                changed = True
+                break
+        if not moved:
+            break                            # これ以上よくならない
+
+    return groups, changed
+
+
 def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings):  # soge-time-v1
     """席数で割り当てたあと、所要時間が目標を超える車があれば台数を増やして割り直す。
 
@@ -19004,27 +19095,41 @@ def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings)
         # 貪欲に詰めると先頭の車が満席のままで、台数を増やしても時間が減らない。
         groups, overflow = _soge_assign_balanced(people, geo, vs, trip)
 
-        times = []
-        over_target = False
-        for grp in groups:
-            if not grp:
-                times.append({"drive": 0, "stop": 0, "total": 0, "km": 0.0})
-                continue
-            stops = _soge_stops_of(grp, trip, geo, settings)
-            drive, km, err = _soge_drive_minutes(supabase, f_code, geo, stops)
-            if drive is None:
-                drive, km = 0, 0.0          # 取れなかったら時間制約は効かせない
-            stop_m = _soge_stop_minutes(stops, settings)
-            total = drive + stop_m
-            times.append({"drive": drive, "stop": stop_m, "total": total, "km": km})
-            if total > target:
-                over_target = True
+        times = _soge_measure(supabase, f_code, geo, groups, trip, settings)  # soge-refine-v1
+        over_target = any(t["total"] > target for t in times)
 
         best = (groups, overflow, times)
         if not overflow and not over_target:
             break                            # 目標時間に収まった。これ以上車を増やさない
 
+    # soge-refine-v1: 席の比で割っただけだと時間が偏る。
+    # 時間のかかる車から空いている車へ人を移してならす（ここでは Google を呼ばない）。
+    groups, overflow, times = best
+    if any(t["total"] > target for t in times):
+        groups, changed = _soge_refine_by_time(
+            supabase, f_code, geo, groups, vehicles, trip, settings, times)
+        if changed:
+            times = _soge_measure(supabase, f_code, geo, groups, trip, settings)
+        best = (groups, overflow, times)
+
     return best
+
+
+def _soge_measure(supabase, f_code, geo, groups, trip, settings):  # soge-refine-v1
+    """各車の所要時間を実測する（Routes API。同じ周り順ならキャッシュが効く）。"""
+    times = []
+    for grp in groups:
+        if not grp:
+            times.append({"drive": 0, "stop": 0, "total": 0, "km": 0.0})
+            continue
+        stops = _soge_stops_of(grp, trip, geo, settings)
+        drive, km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
+        if drive is None:
+            drive, km = 0, 0.0              # 取れなかったら時間制約は効かせない
+        stop_m = _soge_stop_minutes(stops, settings)
+        times.append({"drive": drive, "stop": stop_m,
+                      "total": drive + stop_m, "km": km})
+    return times
 
 
 def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
