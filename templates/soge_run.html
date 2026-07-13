@@ -80,6 +80,7 @@
     <div class="sr-title">運行</div>
     <div style="display:flex;gap:8px;align-items:center;">
       <input type="date" class="sr-date" id="srDate">
+      <a class="sr-btn" id="srPrint" href="/soge/print" target="_blank">記録表</a>
       <a class="sr-btn" href="/soge" onclick="spaNav(event,'/soge')">配車</a>
     </div>
   </div>
@@ -355,8 +356,10 @@
     $('srDate').onchange = function () {
       state.date = $('srDate').value || todayStr();
       state.tab = 0;
+      $('srPrint').href = '/soge/print?date=' + state.date;   // soge-print-v1
       load();
     };
+    $('srPrint').href = '/soge/print?date=' + state.date;      // soge-print-v1
     load();
   })();
 })();
