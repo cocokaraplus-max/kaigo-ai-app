@@ -19504,6 +19504,43 @@ def api_soge_run_return():
 # ===== /soge-run-v1 =====
 
 
+
+# ===== soge-print-v1 : 運行記録表 =====
+@app.route("/soge/print")  # soge-print-v1
+@login_required
+def soge_print_page():
+    """運行記録表。車1台につきA4を1枚。打刻がそのまま入る。"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    date_str = (request.args.get("date") or "").strip()
+    if not date_str:
+        date_str = datetime.now(_soge_jst()).strftime("%Y-%m-%d")
+
+    soge_materialize_day(supabase, f_code, date_str)
+    data = _soge_run_payload(supabase, f_code, date_str)
+
+    try:
+        fr = (supabase.table("facilities").select("facility_name")
+              .eq("facility_code", f_code).execute())
+        fname = (fr.data[0].get("facility_name") or "") if fr.data else ""
+    except Exception:
+        fname = ""
+
+    try:
+        y, m, d = [int(x) for x in date_str.split("-")]
+        wd = "月火水木金土日"[datetime(y, m, d).weekday()]
+        date_label = "%d年%d月%d日（%s）" % (y, m, d, wd)
+    except Exception:
+        date_label = date_str
+
+    return render_template("soge_print.html",
+                           vehicles=data.get("vehicles") or [],
+                           facility_name=fname,
+                           date_label=date_label,
+                           date=date_str)
+# ===== /soge-print-v1 =====
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
     app.run(host='0.0.0.0', port=8080, debug=False)
