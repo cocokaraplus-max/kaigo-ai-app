@@ -453,11 +453,22 @@
           </div>
 
           <div class="form-group">
-            <label style="color:#c62828;">利用終了日（入力すると利用中止扱い）</label>
-            <input type="date" id="discontinued_date" name="discontinued_date"
-              value="{{ selected.discontinued_date if selected else '' }}">
-            <div style="font-size:0.72rem;color:#5f6368;margin-top:4px;">
-              ※終了日を入れて保存すると、翌月以降は印刷・バイタルの対象候補から外れます（過去データ・検索には残ります）。空にして保存すると利用再開。
+            <label style="color:#c62828;">利用終了日</label>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <input type="date" id="discontinued_date" name="discontinued_date" style="flex:1;min-width:150px;"
+                value="{{ selected.discontinued_date if selected else '' }}">
+              <!-- patient-active-v1 -->
+              <input type="hidden" id="is_discontinued"
+                value="{{ 'true' if (selected and selected.is_discontinued) else 'false' }}">
+              <button type="button" id="btn-stop" onclick="toggleStop()"
+                style="border:1px solid #f5c6c2;background:#fce8e6;color:#c5221f;border-radius:8px;
+                       padding:9px 14px;font-weight:700;font-size:0.85rem;cursor:pointer;white-space:nowrap;">
+                利用中止にする
+              </button>
+            </div>
+            <div id="stop-note" style="font-size:0.72rem;color:#5f6368;margin-top:4px;">
+              ※「利用中止にする」を押して保存すると、<b>終了日の翌日から</b>送迎表・バイタル・印刷などの対象から外れます。
+              終了日が空のときは今日が入ります。過去の記録・検索には残ります。
             </div>
           </div>
 
@@ -778,6 +789,9 @@ async function saveProfile(e) {
       if (el) data[f] = el.value || null;
     });
   }
+  // patient-active-v1: 中止フラグも一緒に保存する
+  data.is_discontinued = (document.getElementById('is_discontinued') || {}).value === 'true';
+
   data.updated_at = new Date().toISOString();
 
   try {
@@ -1135,6 +1149,49 @@ async function saveVisitDayProfile(){
     var bar = document.getElementById('profile-save-bar');
     if (bar && bar.parentNode !== document.body) document.body.appendChild(bar);
   })();
+
+// ===== patient-active-v1 : 利用中止 / 再開 =====
+function stopUi() {
+  var on = document.getElementById('is_discontinued').value === 'true';
+  var b = document.getElementById('btn-stop');
+  var n = document.getElementById('stop-note');
+  if (on) {
+    b.textContent = '利用を再開する';
+    b.style.background = '#e6f4ea';
+    b.style.borderColor = '#ceead6';
+    b.style.color = '#137333';
+    n.innerHTML = '<b style="color:#c5221f;">利用中止</b>。保存すると、終了日の翌日から送迎表・バイタル・印刷などの対象から外れます。過去の記録・検索には残ります。';
+  } else {
+    b.textContent = '利用中止にする';
+    b.style.background = '#fce8e6';
+    b.style.borderColor = '#f5c6c2';
+    b.style.color = '#c5221f';
+    n.innerHTML = '※「利用中止にする」を押して保存すると、<b>終了日の翌日から</b>送迎表・バイタル・印刷などの対象から外れます。終了日が空のときは今日が入ります。過去の記録・検索には残ります。';
+  }
+}
+
+function toggleStop() {
+  var h = document.getElementById('is_discontinued');
+  var d = document.getElementById('discontinued_date');
+  if (h.value === 'true') {
+    if (!confirm('利用を再開しますか？（終了日も消えます）')) return;
+    h.value = 'false';
+    d.value = '';
+  } else {
+    if (!d.value) {
+      var t = new Date();
+      d.value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    }
+    if (!confirm(d.value + ' で利用中止にします。保存すると、この日の翌日から各画面に出なくなります。よろしいですか？')) return;
+    h.value = 'true';
+  }
+  stopUi();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (document.getElementById('btn-stop')) stopUi();
+});
+// ===== /patient-active-v1 =====
 </script>
 {% endblock %}
 {% block above_nav %}
