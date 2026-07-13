@@ -64,7 +64,19 @@
 .sg-tag.nth { background:#f3f0ff; color:#5b2ea6; }
 .sg-plan { font-size:0.78rem; color:#5f6368; font-variant-numeric:tabular-nums; flex:0 0 auto; }
 
-.sg-stop.dragging { display:none; }
+/* ドラッグ中は元の付箋を薄くするだけ。display:none にすると、つまんでいる
+   ⠿ ごと消えてしまい、ポインターの追跡が切れてドラッグが固まる。 */
+.sg-stop.dragging { opacity:0.28; }
+
+/* 車・利用者の増減 */
+.sg-del { flex:0 0 auto; border:1px solid #dadce0; background:#fff; border-radius:8px; width:26px; height:26px;
+  cursor:pointer; color:#b0b6bf; font-size:0.75rem; font-weight:800; line-height:1; padding:0; }
+.sg-del:hover { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
+.sg-tools { display:flex; gap:8px; margin:-4px 0 4px; flex-wrap:wrap; }
+.sg-add { border:1px dashed #c8cdd3; border-radius:10px; padding:10px; margin-bottom:12px; background:#fafbfc;
+  display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.sg-add select { flex:1; min-width:120px; border:1px solid #d6dbe3; border-radius:8px; padding:7px 8px;
+  font-size:0.85rem; background:#fff; }
 .sg-ghost { position:fixed; z-index:9998; pointer-events:none; margin:0;
   box-shadow:0 10px 24px rgba(16,24,40,.22); transform:rotate(-1.2deg); opacity:.97; }
 .sg-ph { height:44px; border:2px dashed #1a73e8; border-radius:10px; background:#eef6ff; margin-bottom:6px; }
@@ -118,7 +130,7 @@
     { n: 1, label: '月' }, { n: 2, label: '火' }, { n: 3, label: '水' },
     { n: 4, label: '木' }, { n: 5, label: '金' }, { n: 6, label: '土' }, { n: 0, label: '日' }
   ];
-  var state = { weekday: 1, data: null, staff: [], vehicles: [], dirty: false };
+  var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
@@ -198,8 +210,13 @@
     $('sgTrips').innerHTML = (d.trips || []).map(function (t, ti) {
       var cars = (t.vehicles || []).map(function (v, vi) { return carHtml(t, ti, v, vi); }).join('');
       if (!cars) cars = '<div class="sg-empty">この便の対象者はいません</div>';
+      // soge-edit-v1: 台数と人の増減は手でもできるようにする
+      var tools = '<div class="sg-tools">' +
+        '<button class="sg-btn sg-btn-sm" data-addcar="' + ti + '">＋ 車を追加</button>' +
+        '<button class="sg-btn sg-btn-sm" data-addppl="' + ti + '">＋ 利用者を追加</button>' +
+        '</div>';
       return '<div class="sg-trip-head">' + esc(t.trip_name) +
-          '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars;
+          '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars + tools;
     }).join('');
 
     $('sgWarnings').innerHTML = (d.warnings || []).length
@@ -240,6 +257,7 @@
           (s.nth ? '<span class="sg-tag nth">第' + s.nth + '</span>' : '') +
         '</span>' +
         '<span class="sg-plan">' + (s.planned_at || '') + '</span>' +
+        '<button class="sg-del" data-delstop="' + ti + '_' + vi + '_' + si + '" title="この便から外す">✕</button>' +
       '</div>';
     }).join('');
 
@@ -251,6 +269,7 @@
         '<span class="sg-car-meta">' + mins +
           ' ／ <span class="sg-seats' + (seatsOver ? ' over' : '') + '">席 ' + used + '/' + (v.seats || '-') + '</span>' +
         '</span>' +
+        '<button class="sg-del" data-delcar="' + ti + '_' + vi + '" title="この車を使わない">✕</button>' +
       '</div>' +
       '<div class="sg-stops" data-drop="' + ti + '_' + vi + '">' +
         (stops || '<div class="sg-empty">ここに付箋を置けます</div>') +
@@ -283,6 +302,145 @@
     root.querySelectorAll('[data-grip]').forEach(function (el) {
       el.addEventListener('pointerdown', gripDown);
     });
+
+    // ---- soge-edit-v1: 車と利用者の増減 ----
+    root.querySelectorAll('[data-delcar]').forEach(function (el) {
+      el.onclick = function () { delCar(el.dataset.delcar); };
+    });
+    root.querySelectorAll('[data-delstop]').forEach(function (el) {
+      el.onclick = function () { delStop(el.dataset.delstop); };
+    });
+    root.querySelectorAll('[data-addcar]').forEach(function (el) {
+      el.onclick = function () { addCar(Number(el.dataset.addcar)); };
+    });
+    root.querySelectorAll('[data-addppl]').forEach(function (el) {
+      el.onclick = function () { openAddPerson(Number(el.dataset.addppl), el); };
+    });
+  }
+
+  // 便の中の車をまるごと外す。乗っていた人は残りの車の先頭へ移す（消さない）。
+  function delCar(key) {
+    var a = key.split('_').map(Number);
+    var trip = state.data.trips[a[0]];
+    if ((trip.vehicles || []).length <= 1) { toast('最後の1台は外せません', 'err'); return; }
+    var v = trip.vehicles[a[1]];
+    var n = (v.stops || []).length;
+    if (n && !confirm(v.stops.length + '名が乗っています。他の車へ移して、この車を外しますか？')) return;
+
+    trip.vehicles.splice(a[1], 1);
+    if (n) {
+      var dst = trip.vehicles[0];
+      dst.stops = (dst.stops || []).concat(v.stops);
+    }
+    trip.vehicles.forEach(function (x, i) {
+      x.vehicle_no = i + 1;
+      x.stale = true; x.minutes = null; x.distance_km = null; x.over_target = false;
+      (x.stops || []).forEach(function (s) { s.planned_at = null; });
+    });
+    state.dirty = true;
+    keepScroll(render);
+    toast(n ? '車を外し、' + n + '名を他の車へ移しました' : '車を外しました');
+  }
+
+  // 車を増やす。まだ使っていない車両を初期値に入れる。
+  function addCar(ti) {
+    var trip = state.data.trips[ti];
+    trip.vehicles = trip.vehicles || [];
+    var used = trip.vehicles.map(function (v) { return v.vehicle_id; });
+    var free = state.vehicles.find(function (x) { return used.indexOf(x.id) < 0; });
+    trip.vehicles.push({
+      vehicle_no: trip.vehicles.length + 1,
+      vehicle_id: free ? free.id : null,
+      vehicle_name: free ? free.name : '',
+      seats: free ? (free.soge_seats || free.capacity || 7) : 7,
+      seats_used: 0,
+      driver_name: '',
+      stops: [],
+      stale: true, minutes: null, distance_km: null, over_target: false
+    });
+    state.dirty = true;
+    keepScroll(render);
+    toast('車を追加しました。付箋を移してください。');
+  }
+
+  // その便から1人外す（見学の方の取り消しなど）
+  function delStop(key) {
+    var a = key.split('_').map(Number);
+    var v = state.data.trips[a[0]].vehicles[a[1]];
+    var s = v.stops[a[2]];
+    if (!s) return;
+    if (!confirm(s.user_name + ' さんをこの便から外しますか？')) return;
+    v.stops.splice(a[2], 1);
+    v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
+    (v.stops || []).forEach(function (x) { x.planned_at = null; });
+    state.dirty = true;
+    keepScroll(render);
+  }
+
+  // 見学の方などを臨時で足す
+  function openAddPerson(ti, btn) {
+    if (btn.parentNode.querySelector('.sg-add')) return;   // 二重に開かない
+    var trip = state.data.trips[ti];
+    var opts = state.patients.map(function (p) {
+      return '<option value="' + esc(p.patient_id) + '">' + esc(p.user_name) + '</option>';
+    }).join('');
+    if (!opts) { toast('利用者の一覧を取得できませんでした', 'err'); return; }
+
+    // 中間便は「送り」と「迎え」が混ざるので、どちらか選んでもらう
+    var hasPick = (trip.vehicles || []).some(function (v) {
+      return (v.stops || []).some(function (s) { return s.type === 'pickup'; });
+    });
+    var hasDrop = (trip.vehicles || []).some(function (v) {
+      return (v.stops || []).some(function (s) { return s.type === 'dropoff'; });
+    });
+    var typeSel = (hasPick && hasDrop)
+      ? '<select id="sgAddType"><option value="pickup">迎え</option><option value="dropoff">送り</option></select>'
+      : '<input type="hidden" id="sgAddType" value="' + (hasDrop && !hasPick ? 'dropoff' : 'pickup') + '">';
+
+    var carSel = '<select id="sgAddCar">' + (trip.vehicles || []).map(function (v, i) {
+      return '<option value="' + i + '">' + esc(v.vehicle_name || ('車 ' + (i + 1))) + '</option>';
+    }).join('') + '</select>';
+
+    var box = document.createElement('div');
+    box.className = 'sg-add';
+    box.innerHTML = '<select id="sgAddWho">' + opts + '</select>' + typeSel + carSel +
+      '<button class="sg-btn sg-btn-sm sg-btn-primary" id="sgAddOk">追加</button>' +
+      '<button class="sg-btn sg-btn-sm" id="sgAddNo">やめる</button>';
+    btn.parentNode.insertBefore(box, btn.parentNode.firstChild);
+
+    box.querySelector('#sgAddNo').onclick = function () { box.remove(); };
+    box.querySelector('#sgAddOk').onclick = function () {
+      var pid = box.querySelector('#sgAddWho').value;
+      var p = state.patients.find(function (x) { return x.patient_id === pid; });
+      var vi = Number(box.querySelector('#sgAddCar').value) || 0;
+      var v = trip.vehicles[vi];
+      if (!p || !v) { box.remove(); return; }
+
+      var type = box.querySelector('#sgAddType').value || 'pickup';
+      var dup = (trip.vehicles || []).some(function (x) {
+        return (x.stops || []).some(function (s) {
+          return String(s.patient_id) === String(pid) && s.type === type;
+        });
+      });
+      if (dup) { toast('この方はすでにこの便に入っています', 'err'); return; }
+
+      v.stops.push({
+        patient_id: pid, user_name: p.user_name, type: type, nth: 0,
+        is_wheelchair: false, planned_at: null
+      });
+      v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
+      state.dirty = true;
+      box.remove();
+      keepScroll(render);
+      toast(p.user_name + ' さんを追加しました');
+    };
+  }
+
+  // 画面を作り直しても、見ていた位置にとどまる
+  function keepScroll(fn) {
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    fn();
+    window.scrollTo(0, y);
   }
 
   // ---------- 付箋のドラッグ ----------
@@ -314,14 +472,18 @@
     drag = {
       ti: a[0], vi: a[1], si: a[2], row: row, ghost: ghost,
       dx: e.clientX - rect.left, dy: e.clientY - rect.top,
-      handle: e.currentTarget, pid: e.pointerId
+      pid: e.pointerId
     };
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_e) {}
     e.preventDefault();
 
-    e.currentTarget.addEventListener('pointermove', gripMove);
-    e.currentTarget.addEventListener('pointerup', gripUp);
-    e.currentTarget.addEventListener('pointercancel', gripUp);
+    // 監視は window に付ける。つまんでいる ⠿ は付箋の中にあるので、
+    // 付箋を隠したり作り直したりすると、その要素に付けたリスナーごと消える。
+    // それがドラッグの固まりの原因だった。window なら必ず pointerup が届く。
+    window.addEventListener('pointermove', gripMove);
+    window.addEventListener('pointerup', gripUp);
+    window.addEventListener('pointercancel', gripUp);
+    // 画面外に出ても、指を離したのを取りこぼさないための保険
+    window.addEventListener('blur', gripUp);
   }
 
   function gripMove(e) {
@@ -355,13 +517,12 @@
 
   function gripUp(e) {
     if (!drag) return;
-    var h = drag.handle;
-    h.removeEventListener('pointermove', gripMove);
-    h.removeEventListener('pointerup', gripUp);
-    h.removeEventListener('pointercancel', gripUp);
-    try { h.releasePointerCapture(drag.pid); } catch (_e) {}
+    window.removeEventListener('pointermove', gripMove);
+    window.removeEventListener('pointerup', gripUp);
+    window.removeEventListener('pointercancel', gripUp);
+    window.removeEventListener('blur', gripUp);
 
-    var box = ph.parentNode && ph.parentNode.classList.contains('sg-stops') ? ph.parentNode : null;
+    var box = (ph && ph.parentNode && ph.parentNode.classList.contains('sg-stops')) ? ph.parentNode : null;
     var dstKey = box ? box.dataset.drop.split('_').map(Number) : null;
 
     // 置いた位置＝手前にある付箋の数（ドラッグ中の付箋は数えない）
@@ -374,9 +535,12 @@
       }
     }
 
-    drag.ghost.remove();
-    if (ph.parentNode) ph.parentNode.removeChild(ph);
-    drag.row.classList.remove('dragging');
+    // 何があってもゴーストと目印は必ず片づける（固まりの後始末）
+    if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
+    if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
+    if (drag.row) drag.row.classList.remove('dragging');
+    document.querySelectorAll('.sg-ghost').forEach(function (x) { x.remove(); });
+    document.querySelectorAll('.sg-ph').forEach(function (x) { x.remove(); });
     document.querySelectorAll('.sg-stops.drop-on').forEach(function (x) { x.classList.remove('drop-on'); });
 
     var d = drag;
@@ -453,6 +617,9 @@
     state.staff = (s && s.staff) ? s.staff : [];
     var v = await fetch('/api/vehicles').then(function (r) { return r.json(); }).catch(function () { return {}; });
     state.vehicles = (v && v.vehicles) ? v.vehicles : [];
+    // soge-edit-v1: 見学の方などを臨時で足すための候補
+    var p = await fetch('/api/soge/patients').then(function (r) { return r.json(); }).catch(function () { return {}; });
+    state.patients = (p && p.patients) ? p.patients : [];
 
     await load();
   })();
