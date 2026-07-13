@@ -1,3 +1,4 @@
+{# nav-hide-v1: ナビ高さの固定値を --nav-h に寄せた #}
 {% extends "base.html" %}
 {% block title %}出納帳 - TASUKARU{% endblock %}
 {% block extra_style %}
@@ -43,12 +44,12 @@
 .trial-balance-table tr:hover td { background:#f8f9fa; }
 .trial-section-header { background:#f1f3f4; font-weight:800; color:#202124; padding:8px; border-radius:6px; margin:10px 0 4px; font-size:0.82rem; }
 
-.fab-add { position:fixed; bottom:140px; right:16px; width:52px; height:52px; border-radius:50%; background:#1a73e8; color:#fff; border:none; box-shadow:0 4px 12px rgba(26,115,232,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:900; }
+.fab-add { position:fixed; bottom:calc(var(--nav-h, 134px) + 6px); right:16px; width:52px; height:52px; border-radius:50%; background:#1a73e8; color:#fff; border:none; box-shadow:0 4px 12px rgba(26,115,232,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:900; }
 /* ledger-backtotop-v1: TOPへ戻るボタン(スマホのみ) */
 .ledger-backtotop {
   position: fixed;
   right: 16px;
-  bottom: calc(140px + 60px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--nav-h, 134px) + 66px + env(safe-area-inset-bottom, 0px));
   width: 44px; height: 44px; border-radius: 50%;
   background: #fff; color: #1a73e8; border: 1.5px solid #d2e3fc;
   box-shadow: 0 3px 10px rgba(60,64,67,0.28);

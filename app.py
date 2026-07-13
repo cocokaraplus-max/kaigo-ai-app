@@ -1976,7 +1976,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/manual",         "icon": "menu_book",              "label": "ガイド",         "need": None},
 ]
 
-STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side")   # 受け付けるキーはこれだけ
+STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden")   # 受け付けるキーはこれだけ
 
 
 def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
@@ -2051,7 +2051,8 @@ def inject_app_drawer():  # app-drawer-v1
         f_code = session.get("f_code")
         my_name = session.get("my_name")
         if not f_code or not my_name:
-            return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
+            return {"drawer_items": [], "drawer_side": "right", "drawer_layout": "",
+                    "nav_hidden": False}
         if not hasattr(_g, "_drawer_cache"):
             supabase = get_supabase()
             # app-drawer-4way-v1: 左右に加えて上下も
@@ -2060,15 +2061,19 @@ def inject_app_drawer():  # app-drawer-v1
                 side = "right"
             # app-drawer-edit-v1: 配置（自由配置・フォルダ）。中身の解釈は画面側でやる。
             layout = get_staff_setting(supabase, f_code, my_name, "top_layout", "") or ""
+            # nav-hide-v1: ボトムナビを隠しているか（個人設定）
+            nav_hidden = (get_staff_setting(supabase, f_code, my_name, "nav_hidden", "false") == "true")
             _g._drawer_cache = {
                 "drawer_items": _menu_items_visible(supabase, f_code, my_name),
                 "drawer_side": side,
                 "drawer_layout": layout,
+                "nav_hidden": nav_hidden,
             }
         return _g._drawer_cache
     except Exception as e:
         print("inject_app_drawer error: %s" % e, flush=True)
-        return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
+        return {"drawer_items": [], "drawer_side": "right", "drawer_layout": "",
+                "nav_hidden": False}
 
 
 @app.route("/api/me/setting", methods=["GET"])  # staff-settings-v1

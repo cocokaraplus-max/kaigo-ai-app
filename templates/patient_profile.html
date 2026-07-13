@@ -1,10 +1,11 @@
+{# nav-hide-v1: ナビ高さの固定値を --nav-h に寄せた #}
 {% extends "base.html" %}
 {% block title %}利用者情報 - TASUKARU{% endblock %}
 {% block nav_patient_profile %}active{% endblock %}
 
 {% block extra_style %}
 <style>
-.page-wrapper { padding-bottom: 220px; }
+.page-wrapper { padding-bottom: calc(var(--nav-h, 134px) + 86px); }
 /* ========================================
    利用者基本情報ページ - patient_profile.html
    Session 43
@@ -168,7 +169,7 @@
 /* 保存ボタン */
 .save-bar {
   position: fixed;
-  bottom: 131px;
+  bottom: var(--nav-h, 134px);
   /* profile-savebar-navwidth-v1: ボトムナビと同じ var(--page-max-width) 方式で幅・位置を揃える */
   left: 50%;
   transform: translateX(-50%);
@@ -287,7 +288,7 @@
 /* トースト */
 .toast {
   position: fixed;
-  bottom: 140px;
+  bottom: calc(var(--nav-h, 134px) + 6px);
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: #202124;

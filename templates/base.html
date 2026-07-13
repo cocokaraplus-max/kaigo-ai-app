@@ -38,6 +38,22 @@
         }
 
         :root { --page-max-width: 480px; }
+
+        /* nav-hide-v1: ボトムナビの高さは、これまで各画面に固定値で直書きされていた
+           （131 / 136 / 140 / 152 / 200 / 220px …）。ナビを隠すと下部UIが「跡地」に浮くので、
+           **共通の --nav-h に寄せる**。実測は measureNav() の1か所だけ。隠すと 0px が入る。
+           既存の画面別変数（--rk-nav-h 等）は、値が入っていなければこれを既定にする。 */
+        :root {
+          --nav-h: 134px;
+          --rk-nav-h: var(--nav-h);
+          --kk-nav-h: var(--nav-h);
+          --tc-nav-h: var(--nav-h);
+          --lc-nav-h: var(--nav-h);
+          --dw-nav-h: var(--nav-h);
+        }
+        /* 隠すのは CSS で。インラインの style.display='' でナビを復活させる箇所が
+           あちこちにある（設定モーダル・ベル・掲示板・タスク）ので、!important で勝つ。 */
+        body.nav-off .bottom-nav { display: none !important; }
         .page-wrapper {
             max-width: var(--page-max-width);
             width: 100%;
@@ -48,7 +64,8 @@
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem max(12rem, calc(env(safe-area-inset-bottom) + 9rem));
+            /* nav-hide-v1: ナビの高さ + 指がかかる余白。ナビを隠すと自動で詰まる。 */
+            padding: 1.5rem 1.2rem calc(var(--nav-h) + max(58px, env(safe-area-inset-bottom) + 40px));
             position: relative;
             z-index: 0;
         }
@@ -638,6 +655,23 @@ body.nav-editing {
                     <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
                 </button>
             </div>
+            <!-- nav-hide-v1: 下のメニューバーを隠す（引き出しだけで使う） -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">bottom_navigation</span>下のメニューバー
+                </div>
+                <div class="setting-row-toggle">
+                    <div class="setting-row-info">
+                        <div class="setting-row-name">メニューバーを隠す</div>
+                        <div class="setting-row-desc">引き出し（端の取っ手）だけで操作します</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="nav-hide-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
             <!-- app-drawer-v1: 引き出しメニューの向き（利き手）。個人ごとにDBへ保存する -->
             <div class="setting-section">
                 <div class="setting-section-label">
@@ -690,6 +724,27 @@ body.nav-editing {
             </div>
         </div>
     </div>
+    <script>
+    // nav-hide-v1: メニューバーを隠す。CSS クラスで隠す（インライン style は他所に戻されるため）。
+    (function () {
+      var hidden = {{ 'true' if nav_hidden else 'false' }};
+      if (hidden) document.body.classList.add('nav-off');
+
+      var t = document.getElementById('nav-hide-toggle');
+      if (!t) return;
+      t.checked = hidden;
+      t.onchange = async function () {
+        var on = t.checked;
+        document.body.classList.toggle('nav-off', on);
+        if (window.dwMeasureNav) window.dwMeasureNav();     // 下部UIの位置を測り直す
+        await fetch('/api/me/setting', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'nav_hidden', value: on ? 'true' : 'false' })
+        }).catch(function () {});
+      };
+    })();
+    </script>
+
     <script>
     // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。
     (function () {
@@ -1005,11 +1060,18 @@ body.nav-editing {
     return (vertical() ? r.height : r.width) || 320;
   }
   // ボトムナビの高さを実測して CSS 変数に入れる（端末差があるので固定値は使わない）
+  // nav-hide-v1: ここが --nav-h の唯一の実測点。
+  //  ・隠している / DOMに無い → 0px（下部UIが跡地に浮かない）
+  //  ・画面別の変数（--rk-nav-h 等）は :root で --nav-h を既定にしてあるので、
+  //    各画面のJSが値を入れなければ、これがそのまま効く。
   function measureNav() {
     var nav = document.querySelector('.bottom-nav');
-    var h = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+    var hidden = document.body.classList.contains('nav-off');
+    var h = (nav && !hidden) ? Math.round(nav.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--nav-h', h + 'px');
     document.documentElement.style.setProperty('--dw-nav-h', h + 'px');
   }
+  window.dwMeasureNav = measureNav;
   measureNav();
   window.addEventListener('resize', measureNav);
   window.addEventListener('orientationchange', function () { setTimeout(measureNav, 200); });
