@@ -754,8 +754,11 @@ body.nav-editing {
     box-shadow: 0 6px 18px rgba(16,24,40,.22); opacity: .55;
     transition: opacity .2s ease, transform .2s cubic-bezier(.22,.9,.3,1); }
   #appDrawerHandle:hover, #appDrawerHandle:active { opacity: 1; }
-  #appDrawerHandle[data-side="right"] { right: 0; border-radius: 14px 0 0 14px; }
-  #appDrawerHandle[data-side="left"]  { left: 0;  border-radius: 0 14px 14px 0; }
+  /* app-drawer-edgefix-v1: 端ぴったりに置くと OS の「戻る」帯と重なる。8px 内側に逃がす。
+     touch-action:none で、この上の指の動きはブラウザに渡さない（戻る・スクロールを起こさない）。 */
+  #appDrawerHandle { touch-action: none; }
+  #appDrawerHandle[data-side="right"] { right: 8px; border-radius: 14px; }
+  #appDrawerHandle[data-side="left"]  { left: 8px;  border-radius: 14px; }
   #appDrawerHandle[data-side="right"]:active { transform: translateX(-3px); }
   #appDrawerHandle[data-side="left"]:active  { transform: translateX(3px); }
   #appDrawerHandle .material-symbols-outlined { font-size: 18px; }
@@ -794,9 +797,56 @@ body.nav-editing {
   .dw-label { font-size: .66rem; font-weight: 700; line-height: 1.2; text-align: center;
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 
+  /* --- app-drawer-edit-v1: 自由配置・フォルダ・編集モード --- */
+  .dw-cell { position: relative; min-height: 76px; border-radius: 14px; }
+  .dw-cell.empty { }
+  /* 編集中は空きマスが薄く見える（どこに置けるか分かるように） */
+  #appDrawer.edit .dw-cell.empty { background: rgba(26,115,232,.06);
+    outline: 1px dashed rgba(26,115,232,.35); outline-offset: -3px; }
+  #appDrawer.edit .dw-cell.hot { background: rgba(26,115,232,.18); }
+
+  .dw-folder .dw-ic { background: rgba(95,99,104,.14); padding: 5px; }
+  .dw-fold-mini { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 2px; width: 100%; height: 100%; }
+  .dw-fold-mini i { border-radius: 4px; background: #1a73e8; display: block; }
+  .dw-fold-mini i.none { background: transparent; }
+
+  /* プルプル。iPhoneのホーム画面の「編集中」と同じ気分 */
+  #appDrawer.edit .dw-app { animation: dwWig .28s ease-in-out infinite alternate; }
+  #appDrawer.edit .dw-app:nth-child(2n) { animation-delay: .09s; }
+  @keyframes dwWig {
+    from { transform: rotate(-1.1deg); }
+    to   { transform: rotate(1.1deg); }
+  }
+  #appDrawer.edit .dw-app.dragging { opacity: .35; animation: none; }
+  .dw-ghost { position: fixed; z-index: 3200; pointer-events: none; opacity: .95;
+    transform: translate(-50%, -50%) scale(1.12); filter: drop-shadow(0 8px 18px rgba(16,24,40,.35)); }
+
+  .dw-editbar { display: none; gap: 8px; padding: 10px 12px 0; }
+  #appDrawer.edit .dw-editbar { display: flex; }
+  .dw-editbar button { flex: 1; padding: 10px; border: none; border-radius: 10px;
+    font-weight: 800; font-size: .82rem; cursor: pointer; }
+  .dw-editbar .done { background: #1a73e8; color: #fff; }
+  .dw-editbar .reset { background: #f1f3f4; color: #5f6368; }
+  .dw-hint { font-size: .68rem; color: #9aa3b2; padding: 8px 12px 0; display: none; }
+  #appDrawer.edit .dw-hint { display: block; }
+
+  /* フォルダの中身 */
+  .dw-fold-view { position: absolute; inset: 0; z-index: 5; background: rgba(255,255,255,.98);
+    backdrop-filter: blur(10px); display: none; flex-direction: column; }
+  .dw-fold-view.on { display: flex; animation: dwFold .22s cubic-bezier(.22,.9,.3,1) both; }
+  @keyframes dwFold { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+  .dw-fold-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px;
+    border-bottom: 1px solid #eceff3; }
+  .dw-fold-head input { flex: 1; min-width: 0; border: 1px solid #e0e0e0; border-radius: 10px;
+    padding: 8px 10px; font-size: .92rem; font-weight: 800; font-family: inherit; }
+  .dw-fold-body { padding: 16px 12px; overflow-y: auto; }
+  .dw-out { margin-top: 4px; font-size: .62rem; color: #c5221f; font-weight: 700;
+    background: #fce8e6; border: none; border-radius: 8px; padding: 3px 6px; cursor: pointer; }
+
   /* 開いたときにアイコンが少しずつ立ち上がる。奥から手前に出てくる感じ。
      開くたびに再生したいので、.on が付いた時に animation を当て直す。 */
-  #appDrawer.on .dw-app { animation: dwPop .34s cubic-bezier(.22,1.2,.36,1) both; }
+  #appDrawer.on:not(.edit) .dw-app { animation: dwPop .34s cubic-bezier(.22,1.2,.36,1) both; }
   @keyframes dwPop {
     from { opacity: 0; transform: translateY(10px) scale(.86); }
     to   { opacity: 1; transform: none; }
@@ -824,21 +874,30 @@ body.nav-editing {
     メニュー
     <button class="dw-close" id="appDrawerClose">✕</button>
   </div>
+  <div class="dw-editbar">
+    <button class="done" id="dwDone">完了</button>
+    <button class="reset" id="dwReset">並びをリセット</button>
+  </div>
+  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンに重ねるとフォルダになります。</div>
   <div class="dw-body">
-    <div class="dw-grid">
-      <a class="dw-app" data-href="/top" href="/top" onclick="spaNav(event, '/top')">
-        <span class="dw-ic"><span class="material-symbols-outlined">home</span></span>
-        <span class="dw-label">TOP</span>
-      </a>
-      {% for m in drawer_items %}
-      <a class="dw-app" data-href="{{ m.href }}" href="{{ m.href }}" onclick="spaNav(event, '{{ m.href }}')">
-        <span class="dw-ic"><span class="material-symbols-outlined">{{ m.icon }}</span></span>
-        <span class="dw-label">{{ m.label }}</span>
-      </a>
-      {% endfor %}
+    <div class="dw-grid" id="dwGrid"></div>
+  </div>
+
+  <!-- フォルダの中 -->
+  <div class="dw-fold-view" id="dwFoldView">
+    <div class="dw-fold-head">
+      <button class="dw-close" id="dwFoldBack" style="margin:0;">←</button>
+      <input id="dwFoldName" maxlength="20" placeholder="フォルダ名">
     </div>
+    <div class="dw-fold-body"><div class="dw-grid" id="dwFoldGrid"></div></div>
   </div>
 </div>
+
+<script>
+  // app-drawer-edit-v1: メニュー定義（サーバが「その人に見せてよいもの」だけ渡している）
+  window.DW_ITEMS = {{ drawer_items | tojson }};
+  window.DW_LAYOUT_RAW = {{ drawer_layout | tojson }};
+</script>
 
 <script>
 // app-drawer-v1
@@ -890,52 +949,58 @@ body.nav-editing {
     mask.style.opacity = String(p);
   }
 
-  handle.onclick = open;
   closeBtn.onclick = close;
   mask.onclick = close;
   // 中の導線を押したら閉じる（SPA遷移でも画面に引き出しが残らないように）
   apps.forEach(function (a) { a.addEventListener('click', close); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
 
-  // ---- 端から引き出す。指に追従し、離した位置で開くか戻るかを決める ----
-  // 端 26px 以内で始まったときだけ拾う。縦に動いたらスクロールに譲る。
-  var EDGE = 26, SNAP = 0.35;
-  var sx = 0, sy = 0, watching = false, dragging = false;
+  // ---- app-drawer-edgefix-v1: 取っ手を引いて開く ----
+  // 画面の端からのスワイプは OS の「戻る」に取られる（Webからは止められない）。
+  // そこで、取っ手の上で始まった指の動きだけを拾う。touch-action:none と preventDefault で
+  // ブラウザのジェスチャーには渡さない。タップだけでも開く。
+  var SNAP = 0.35;
+  var hx = 0, hy = 0, hdrag = false, hid = null;
 
-  window.addEventListener('touchstart', function (e) {
+  handle.addEventListener('pointerdown', function (e) {
     if (dw.classList.contains('on')) return;
-    var t = e.touches[0];
-    sx = t.clientX; sy = t.clientY; dragging = false;
-    watching = (side() === 'right') ? (sx >= window.innerWidth - EDGE) : (sx <= EDGE);
-  }, { passive: true });
+    e.preventDefault();
+    hx = e.clientX; hy = e.clientY; hdrag = false; hid = e.pointerId;
+    try { handle.setPointerCapture(hid); } catch (err) {}
+  });
 
-  window.addEventListener('touchmove', function (e) {
-    if (!watching || dw.classList.contains('on')) return;
-    var t = e.touches[0];
-    var dx = t.clientX - sx, dy = Math.abs(t.clientY - sy);
+  handle.addEventListener('pointermove', function (e) {
+    if (hid === null || e.pointerId !== hid || dw.classList.contains('on')) return;
+    e.preventDefault();
+    var dx = e.clientX - hx, dy = Math.abs(e.clientY - hy);
     var inward = (side() === 'right') ? -dx : dx;
-    if (!dragging) {
-      if (dy > 18 && dy > inward) { watching = false; return; }   // 縦スクロール優先
-      if (inward < 8) return;
-      dragging = true;
+    if (!hdrag) {
+      if (dy > 24 && dy > inward) return;      // 縦に動いている間は開かない
+      if (inward < 6) return;
+      hdrag = true;
       dw.classList.add('drag');
       mask.classList.add('on');
       mask.style.opacity = '0';
       stagger();
     }
     follow(inward / W());
-  }, { passive: true });
+  });
 
-  window.addEventListener('touchend', function (e) {
-    if (!dragging) { watching = false; return; }
-    var t = (e.changedTouches && e.changedTouches[0]) || null;
-    var inward = t ? ((side() === 'right') ? (sx - t.clientX) : (t.clientX - sx)) : 0;
+  function handleUp(e) {
+    if (hid === null) return;
+    var dx = (e && e.clientX != null) ? (e.clientX - hx) : 0;
+    var inward = (side() === 'right') ? -dx : dx;
+    try { handle.releasePointerCapture(hid); } catch (err) {}
+    hid = null;
+    if (!hdrag) { open(); return; }            // 動かさず離した＝タップ
+    hdrag = false;
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
-    if (inward / W() > SNAP) { open(); } else { close(); }
-    watching = false; dragging = false;
-  }, { passive: true });
+    if (inward / W() > SNAP) open(); else close();
+  }
+  handle.addEventListener('pointerup', handleUp);
+  handle.addEventListener('pointercancel', handleUp);
 
   // ---- 開いているとき、外向きに払うと閉じる（こちらも指に追従） ----
   var cx = 0, cy = 0, cdrag = false, cwatch = false;
@@ -965,6 +1030,351 @@ body.nav-editing {
     if (outward / W() > SNAP) { close(); } else { open(); }
     cwatch = false; cdrag = false;
   }, { passive: true });
+
+  // 編集中は引き出しごとスワイプで閉じない（ドラッグと喧嘩するため）
+  window.dwIsEditing = function () { return dw.classList.contains('edit'); };
+})();
+</script>
+
+<script>
+// ===== app-drawer-edit-v1 : 自由配置とフォルダ =====
+// レイアウトの形:
+//   { v:1, slots: [ null | {t:'app', href} | {t:'folder', name, items:[href,...]} , ... ] }
+// slots の位置がそのまま画面のマス。null = 空きマス（＝好きな位置に置ける）。
+(function () {
+  var dw = document.getElementById('appDrawer');
+  if (!dw) return;
+  var grid = document.getElementById('dwGrid');
+  var foldView = document.getElementById('dwFoldView');
+  var foldGrid = document.getElementById('dwFoldGrid');
+  var foldName = document.getElementById('dwFoldName');
+  var COLS = 4, TAIL = 4;                 // 末尾に必ず空きマスを4つ残す（置き場所が無くならないように）
+
+  var ITEMS = window.DW_ITEMS || [];
+  var byHref = {};
+  ITEMS.forEach(function (m) { byHref[m.href] = m; });
+  byHref['/top'] = { href: '/top', icon: 'home', label: 'TOP' };
+
+  var layout = parse(window.DW_LAYOUT_RAW);
+  var openFolder = -1;                    // 開いているフォルダのスロット番号
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  function defaults() {
+    var slots = [{ t: 'app', href: '/top' }];
+    ITEMS.forEach(function (m) { slots.push({ t: 'app', href: m.href }); });
+    return { v: 1, slots: slots };
+  }
+
+  function parse(raw) {
+    var L = null;
+    try { L = raw ? JSON.parse(raw) : null; } catch (e) { L = null; }
+    if (!L || !L.slots || !L.slots.length) L = defaults();
+
+    // 使える href だけ残す（権限が変わって消えたメニューは落とす）
+    var seen = {};
+    L.slots = L.slots.map(function (s) {
+      if (!s) return null;
+      if (s.t === 'app') {
+        if (!byHref[s.href] || seen[s.href]) return null;
+        seen[s.href] = 1;
+        return { t: 'app', href: s.href };
+      }
+      if (s.t === 'folder') {
+        var items = (s.items || []).filter(function (h) {
+          if (!byHref[h] || seen[h]) return false;
+          seen[h] = 1; return true;
+        });
+        if (!items.length) return null;
+        return { t: 'folder', name: s.name || 'フォルダ', items: items };
+      }
+      return null;
+    });
+
+    // 新しく増えたメニューは末尾に足す（勝手に消さない・迷子にしない）
+    var all = ['/top'].concat(ITEMS.map(function (m) { return m.href; }));
+    all.forEach(function (h) { if (!seen[h]) L.slots.push({ t: 'app', href: h }); });
+
+    return L;
+  }
+
+  function pad() {
+    while (layout.slots.length % COLS !== 0) layout.slots.push(null);
+    var tail = 0;
+    for (var i = layout.slots.length - 1; i >= 0 && !layout.slots[i]; i--) tail++;
+    while (tail < TAIL) { layout.slots.push(null); tail++; }
+    while (layout.slots.length % COLS !== 0) layout.slots.push(null);
+  }
+
+  var saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      fetch('/api/me/setting', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'top_layout', value: JSON.stringify(layout) })
+      }).catch(function () {});
+    }, 400);
+  }
+
+  // ---------- 描画 ----------
+  function appHtml(m, idx, inFolder) {
+    return '<a class="dw-app" data-idx="' + idx + '" data-href="' + m.href + '"' +
+      (inFolder ? ' data-in-folder="1"' : '') +
+      ' href="' + m.href + '">' +
+        '<span class="dw-ic"><span class="material-symbols-outlined">' + m.icon + '</span></span>' +
+        '<span class="dw-label">' + esc(m.label) + '</span>' +
+      '</a>';
+  }
+
+  function folderHtml(f, idx) {
+    var mini = '';
+    for (var i = 0; i < 4; i++) {
+      mini += '<i class="' + (f.items[i] ? '' : 'none') + '"></i>';
+    }
+    return '<a class="dw-app dw-folder" data-idx="' + idx + '" data-folder="1" href="#">' +
+        '<span class="dw-ic"><span class="dw-fold-mini">' + mini + '</span></span>' +
+        '<span class="dw-label">' + esc(f.name || 'フォルダ') + '</span>' +
+      '</a>';
+  }
+
+  function render() {
+    pad();
+    grid.innerHTML = layout.slots.map(function (s, i) {
+      var inner = '';
+      if (s && s.t === 'app' && byHref[s.href]) inner = appHtml(byHref[s.href], i, false);
+      else if (s && s.t === 'folder') inner = folderHtml(s, i);
+      return '<div class="dw-cell' + (inner ? '' : ' empty') + '" data-cell="' + i + '">' + inner + '</div>';
+    }).join('');
+    bind(grid);
+  }
+
+  function renderFolder() {
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') { closeFolder(); return; }
+    foldName.value = f.name || '';
+    foldGrid.innerHTML = f.items.map(function (h, i) {
+      var m = byHref[h];
+      if (!m) return '';
+      return '<div class="dw-cell" data-fcell="' + i + '">' + appHtml(m, i, true) +
+        (dw.classList.contains('edit') ? '<button class="dw-out" data-out="' + i + '">出す</button>' : '') +
+        '</div>';
+    }).join('');
+    bind(foldGrid);
+  }
+
+  function openFolderAt(i) {
+    openFolder = i;
+    renderFolder();
+    foldView.classList.add('on');
+  }
+  function closeFolder() {
+    openFolder = -1;
+    foldView.classList.remove('on');
+    render();
+  }
+  document.getElementById('dwFoldBack').onclick = closeFolder;
+  foldName.oninput = function () {
+    var f = layout.slots[openFolder];
+    if (!f) return;
+    f.name = foldName.value.slice(0, 20) || 'フォルダ';
+    save();
+  };
+
+  // ---------- 編集モード ----------
+  function startEdit() {
+    if (dw.classList.contains('edit')) return;
+    dw.classList.add('edit');
+    try { if (navigator.vibrate) navigator.vibrate(18); } catch (e) {}
+    if (openFolder >= 0) renderFolder();
+  }
+  function endEdit() {
+    dw.classList.remove('edit');
+    save();
+    if (openFolder >= 0) renderFolder(); else render();
+  }
+  document.getElementById('dwDone').onclick = endEdit;
+  document.getElementById('dwReset').onclick = function () {
+    if (!confirm('並びを既定に戻します。よろしいですか？')) return;
+    layout = defaults();
+    closeFolder();
+    render();
+    save();
+  };
+
+  // ---------- ドラッグ ----------
+  // soge_week.html と同じ作法。元の要素は消さずに薄くする。追従はクローンのゴースト。
+  // 監視は window に付ける（要素ごと消えると pointerup が届かないため）。
+  var drag = null, holdTimer = null;
+
+  function bind(root) {
+    root.querySelectorAll('.dw-app').forEach(function (el) {
+      el.addEventListener('pointerdown', onDown);
+      el.addEventListener('click', onClick);
+    });
+    root.querySelectorAll('[data-out]').forEach(function (b) {
+      b.onclick = function (e) {
+        e.preventDefault(); e.stopPropagation();
+        takeOut(Number(b.dataset.out));
+      };
+    });
+  }
+
+  function onClick(e) {
+    var el = e.currentTarget;
+    if (dw.classList.contains('edit')) { e.preventDefault(); return; }   // 編集中は開かない
+    if (el.dataset.folder) { e.preventDefault(); openFolderAt(Number(el.dataset.idx)); return; }
+    // 通常タップ: 同じタブで遷移（PWAで外部ブラウザに飛ばさない）
+    e.preventDefault();
+    var href = el.dataset.href;
+    if (typeof spaNav === 'function') { spaNav(e, href); } else { location.href = href; }
+  }
+
+  function onDown(e) {
+    var el = e.currentTarget;
+    if (el.dataset.inFolder && !dw.classList.contains('edit')) return;   // フォルダ内は編集中だけ動かす
+    var sx = e.clientX, sy = e.clientY;
+
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function () {
+      startEdit();
+      beginDrag(el, sx, sy);
+    }, dw.classList.contains('edit') ? 90 : 450);   // 編集中なら即ドラッグ
+
+    function cancel(ev) {
+      if (ev && ev.type === 'pointermove') {
+        if (Math.abs(ev.clientX - sx) < 8 && Math.abs(ev.clientY - sy) < 8) return;
+      }
+      clearTimeout(holdTimer);
+      window.removeEventListener('pointermove', cancel);
+      window.removeEventListener('pointerup', cancel);
+    }
+    window.addEventListener('pointermove', cancel);
+    window.addEventListener('pointerup', cancel);
+  }
+
+  function beginDrag(el, x, y) {
+    var ghost = el.cloneNode(true);
+    ghost.className = 'dw-app dw-ghost';
+    ghost.style.left = x + 'px';
+    ghost.style.top = y + 'px';
+    document.body.appendChild(ghost);
+    el.classList.add('dragging');
+
+    drag = {
+      el: el, ghost: ghost,
+      from: Number(el.dataset.idx),
+      inFolder: !!el.dataset.inFolder,
+      hot: null
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', onUp);     // 保険。指が外れても固まらない
+  }
+
+  function cellUnder(x, y) {
+    drag.ghost.style.display = 'none';                 // 隠すのはゴーストだけ
+    var t = document.elementFromPoint(x, y);
+    drag.ghost.style.display = '';
+    return t ? t.closest('.dw-cell') : null;
+  }
+
+  function onMove(e) {
+    if (!drag) return;
+    e.preventDefault();
+    drag.ghost.style.left = e.clientX + 'px';
+    drag.ghost.style.top = e.clientY + 'px';
+
+    var cell = cellUnder(e.clientX, e.clientY);
+    if (drag.hot && drag.hot !== cell) drag.hot.classList.remove('hot');
+    if (cell && cell.dataset.cell !== undefined) { cell.classList.add('hot'); drag.hot = cell; }
+    else drag.hot = null;
+  }
+
+  function onUp(e) {
+    if (!drag) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+
+    var cell = (e && e.clientX != null) ? cellUnder(e.clientX, e.clientY) : null;
+    if (drag.hot) drag.hot.classList.remove('hot');
+    drag.ghost.remove();
+    drag.el.classList.remove('dragging');
+
+    var from = drag.from, inFolder = drag.inFolder;
+    drag = null;
+
+    if (!cell || cell.dataset.cell === undefined) { render(); return; }   // 枠の外 → 元に戻す
+    var to = Number(cell.dataset.cell);
+    if (inFolder) { moveOutOfFolder(from, to); return; }
+    if (to === from) { render(); return; }
+    dropOn(from, to);
+  }
+
+  // ---------- 置いたときの決まり ----------
+  function dropOn(from, to) {
+    var a = layout.slots[from], b = layout.slots[to];
+    if (!a) { render(); return; }
+
+    if (!b) {                                   // 空きマス → そのまま移動
+      layout.slots[to] = a;
+      layout.slots[from] = null;
+    } else if (b.t === 'folder' && a.t === 'app') {   // フォルダに入れる
+      b.items.push(a.href);
+      layout.slots[from] = null;
+    } else if (b.t === 'app' && a.t === 'app') {      // アイコン同士 → フォルダを作る
+      layout.slots[to] = { t: 'folder', name: 'フォルダ', items: [b.href, a.href] };
+      layout.slots[from] = null;
+      try { if (navigator.vibrate) navigator.vibrate([10, 40, 14]); } catch (e) {}
+    } else {                                    // それ以外（フォルダ同士など）は入れ替え
+      layout.slots[to] = a;
+      layout.slots[from] = b;
+    }
+    render();
+    save();
+  }
+
+  function firstEmpty() {
+    for (var i = 0; i < layout.slots.length; i++) if (!layout.slots[i]) return i;
+    layout.slots.push(null);
+    return layout.slots.length - 1;
+  }
+
+  function takeOut(i) {                          // フォルダの中 → 外の空きマスへ
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    var href = f.items.splice(i, 1)[0];
+    var slot = firstEmpty();
+    layout.slots[slot] = { t: 'app', href: href };
+    if (f.items.length === 0) { layout.slots[openFolder] = null; closeFolder(); }
+    else if (f.items.length === 1) {             // 1つだけになったフォルダは畳む（iPhoneと同じ）
+      layout.slots[openFolder] = { t: 'app', href: f.items[0] };
+      closeFolder();
+    } else renderFolder();
+    save();
+  }
+
+  function moveOutOfFolder(i, to) {              // フォルダの中からドラッグして外に出す
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    if (!layout.slots[to]) {
+      var href = f.items.splice(i, 1)[0];
+      layout.slots[to] = { t: 'app', href: href };
+      if (f.items.length <= 1) {
+        layout.slots[openFolder] = f.items.length ? { t: 'app', href: f.items[0] } : null;
+        closeFolder();
+      } else renderFolder();
+      save();
+    } else {
+      renderFolder();                            // 空きマス以外には出せない
+    }
+  }
+
+  render();
 })();
 </script>
 {% endif %}

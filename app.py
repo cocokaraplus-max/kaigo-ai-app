@@ -2051,20 +2051,23 @@ def inject_app_drawer():  # app-drawer-v1
         f_code = session.get("f_code")
         my_name = session.get("my_name")
         if not f_code or not my_name:
-            return {"drawer_items": [], "drawer_side": "right"}
+            return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
         if not hasattr(_g, "_drawer_cache"):
             supabase = get_supabase()
             side = get_staff_setting(supabase, f_code, my_name, "drawer_side", "right")
             if side not in ("left", "right"):
                 side = "right"
+            # app-drawer-edit-v1: 配置（自由配置・フォルダ）。中身の解釈は画面側でやる。
+            layout = get_staff_setting(supabase, f_code, my_name, "top_layout", "") or ""
             _g._drawer_cache = {
                 "drawer_items": _menu_items_visible(supabase, f_code, my_name),
                 "drawer_side": side,
+                "drawer_layout": layout,
             }
         return _g._drawer_cache
     except Exception as e:
         print("inject_app_drawer error: %s" % e, flush=True)
-        return {"drawer_items": [], "drawer_side": "right"}
+        return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
 
 
 @app.route("/api/me/setting", methods=["GET"])  # staff-settings-v1
