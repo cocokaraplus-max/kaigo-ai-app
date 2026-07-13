@@ -620,11 +620,21 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     }, 0);
   }
 
+  // rec-receipt-ocr-v1: レシートを撮って明細に入れる。
+  // 同じタブで開く（ホーム画面起動のPWAで target="_blank" にすると外部ブラウザになりログインが切れる）
+  function receiptBtn(x, key) {
+    var link = x.receipt_url
+      ? '<a class="rec-btn rec-btn-ghost rec-btn-sm" href="' + esc(x.receipt_url) + '">レシートを見る</a>'
+      : '';
+    return '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-rocr="' + key + '">レシート読取</button>' + link;
+  }
+
   function detailBlock(x, key) {
     var ds = x.details || [];
     if (!ds.length) {
-      return '<div class="rec-excl"><button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">' +
-        '＋ 明細を入力（単価 × 個数）</button></div>';
+      return '<div class="rec-excl" style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">' +
+        '＋ 明細を入力（単価 × 個数）</button>' + receiptBtn(x, key) + '</div>';
     }
     var rows = ds.map(function (d, di) {
       var k = key + '_' + di;
@@ -640,8 +650,11 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     }).join('');
     return '<div class="rec-excl">' +
       '<div class="rec-excl-title">明細（単価 × 個数）</div>' + rows +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">' +
-        '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">＋ 品目を追加</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px;flex-wrap:wrap;">' +
+        '<span style="display:flex;gap:6px;flex-wrap:wrap;">' +
+          '<button class="rec-btn rec-btn-ghost rec-btn-sm" data-dadd="' + key + '">＋ 品目を追加</button>' +
+          receiptBtn(x, key) +        // rec-receipt-ocr-v1
+        '</span>' +
         '<span style="font-size:0.85rem;font-weight:800;" data-dtot="' + key + '">合計 ' + yen(detailTotal(x)) + '</span>' +
       '</div>' +
     '</div>';
@@ -1027,6 +1040,48 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
         syncDetailAmount(el.dataset.dq); recalc();
       };
     });
+    // rec-receipt-ocr-v1: 撮る → 読む → その費用行の明細に入れる
+    root.querySelectorAll('[data-rocr]').forEach(function (el) {
+      el.onclick = function () {
+        var key = el.dataset.rocr;
+        var inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = 'image/*';
+        inp.capture = 'environment';   // スマホならカメラが開く
+        inp.onchange = async function () {
+          var file = inp.files && inp.files[0];
+          if (!file) return;
+          var old = el.textContent;
+          el.disabled = true; el.textContent = '読み取り中…';
+          try {
+            var fd = new FormData();
+            fd.append('file', file);
+            var r = await fetch('/api/rec/ocr', { method: 'POST', body: fd });
+            var j = await r.json();
+            if (j.status !== 'success') { toast(j.message || '読み取れませんでした', 'err'); return; }
+            if (!(j.items || []).length) { toast('品目を読み取れませんでした。手で入力してください', 'err'); return; }
+
+            var x = pick(key);
+            x.details = (x.details || []).filter(function (d) {   // 空行は捨てる
+              return (d.name || '').trim() || (d.unit_price || 0) || 0;
+            });
+            j.items.forEach(function (it) { x.details.push(it); });
+            if (!(x.label || '').trim() && j.vendor) x.label = j.vendor;   // 項目名が空なら店名を入れる
+            if (j.image_url) x.receipt_url = j.image_url;
+            x.amount = detailTotal(x);
+
+            rerender(); recalc();
+            toast(j.items.length + '件を明細に入れました（金額は要確認）');
+          } catch (e) {
+            toast('読み取りに失敗しました', 'err');
+          } finally {
+            el.disabled = false; el.textContent = old;
+          }
+        };
+        inp.click();
+      };
+    });
+
     root.querySelectorAll('[data-ddel]').forEach(function (el) {
       el.onclick = function () {
         var a = el.dataset.ddel.split('_');

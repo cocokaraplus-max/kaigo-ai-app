@@ -16720,8 +16720,109 @@ def _rec_expense_out(x):  # rec-expense-details-v4
         "target_name": x.get("target_name") or "",
         "is_car": bool(x.get("is_car")),
         "car_meta": x.get("car_meta") or None,
+        "receipt_url": x.get("receipt_url") or "",     # rec-receipt-ocr-v1
         "sort_order": x.get("sort_order") or 0,
     }
+
+
+# ===== rec-receipt-ocr-v1 : レシート読み取り =====
+# 出納帳の領収書OCR（/api/ledger/ocr_receipt）と同じ Gemini を使うが、
+# 欲しいものが違う（あちらは合計・税・支払方法、こちらは「品名・単価・個数」の明細）。
+# receipts テーブルには入れない。画像URLは費用行(rec_expenses.receipt_url)に持たせる。
+
+
+def _rec_ocr_int(v):  # rec-receipt-ocr-v1
+    """"1,200円" → 1200。読めなければ 0。"""
+    try:
+        s = str(v).replace(",", "").replace("円", "").replace("¥", "").strip()
+        return int(float(s))
+    except (TypeError, ValueError):
+        return 0
+
+
+@app.route("/api/rec/ocr", methods=["POST"])  # rec-receipt-ocr-v1
+@login_required
+def api_rec_ocr():
+    """レシート1枚 → {vendor, date, total, items[], image_url}。
+
+    items = [{"name": 品名, "unit_price": 単価, "qty": 個数}]
+    小計・合計・税・お預り・お釣り・値引きは品目ではないので入れさせない。
+    """
+    supabase, f_code, err = _rec_guard()
+    if err:
+        return err
+    try:
+        from utils import get_generative_model, upload_images_to_supabase
+        import json as _json
+        import re as _re
+
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"status": "error", "message": "画像がありません"}), 400
+
+        img_bytes = f.read()
+        f.seek(0)
+        name = (f.filename or "").lower()
+        mime = "image/png" if name.endswith(".png") else "image/jpeg"
+
+        prompt = (
+            "このレシート・領収書から、買った品目をJSONで抽出してください。\n"
+            '{"vendor":"店名","date":"YYYY-MM-DD","total":0,'
+            '"items":[{"name":"品名","unit_price":0,"qty":1}]}\n'
+            "【厳守】\n"
+            "・items には「実際に買った品目」だけを入れる。\n"
+            "・小計 / 合計 / 消費税 / 内税 / お預り / お釣り / 値引き / ポイント は品目ではないので items に入れない。\n"
+            "・unit_price は1個あたりの税込価格。行に個数が無ければ qty は 1。\n"
+            "・「品名 ×3 900」のように行合計しか書かれていない場合は、unit_price = 行合計 ÷ 個数 にする。\n"
+            "・読み取れない項目は null。推測や創作をしない。\n"
+            "・JSONのみを返す。"
+        )
+
+        model = get_generative_model()
+        resp = model.generate_content([{"mime_type": mime, "data": img_bytes}, prompt])
+        raw = (resp.text or "").strip()
+        raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
+        raw = _re.sub(r"```$", "", raw).strip()
+        try:
+            ocr = _json.loads(raw)
+        except Exception:
+            return jsonify({"status": "error", "message": "レシートを読み取れませんでした"}), 200
+
+        items = []
+        for it in (ocr.get("items") or [])[:50]:
+            nm = str(it.get("name") or "").strip()[:60]
+            up = _rec_ocr_int(it.get("unit_price"))
+            qty = _rec_ocr_int(it.get("qty")) or 1
+            if not nm and up <= 0:
+                continue
+            items.append({"name": nm, "unit_price": up, "qty": qty})
+
+        date = ""
+        m = _re.search(r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", str(ocr.get("date") or ""))
+        if m:
+            date = "%s-%s-%s" % (m.group(1), m.group(2).zfill(2), m.group(3).zfill(2))
+
+        # 画像は証憑として残す（費用行に紐づける）
+        image_url = ""
+        try:
+            urls = upload_images_to_supabase(supabase, [f], f_code)
+            image_url = urls[0] if urls else ""
+        except Exception as e:
+            print("rec ocr upload error: %s" % e, flush=True)
+
+        return jsonify({
+            "status": "success",
+            "vendor": str(ocr.get("vendor") or "").strip()[:60],
+            "date": date,
+            "total": _rec_ocr_int(ocr.get("total")),
+            "items": items,
+            "image_url": image_url,
+        })
+    except Exception as e:
+        print("api_rec_ocr error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===== /rec-receipt-ocr-v1 =====
 
 
 def _rec_load_tree(supabase, event):  # rec-expense-api-v2
@@ -17038,6 +17139,7 @@ def _rec_build_expense_rows(event_id, data):  # rec-expense-api-v2
             "target_name": (x.get("target_name") or "").strip(),
             "is_car": bool(is_car),
             "car_meta": car_meta,
+            "receipt_url": (x.get("receipt_url") or "").strip() or None,   # rec-receipt-ocr-v1
             "sort_order": 0,
         }, None
 
