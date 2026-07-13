@@ -5,56 +5,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>運行記録表 - TASUKARU</title>
 <style>
-  /* soge-print-v1 */
+  /* soge-print-v2 : 車両ごとの月間運行記録表 */
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
          margin: 0; padding: 0; color: #202124; background: #f5f5f5; }
 
   .sp-toolbar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid #e0e0e0;
-                padding: 10px 16px; display: flex; gap: 10px; align-items: center; justify-content: center; }
+                padding: 10px 16px; display: flex; gap: 10px; align-items: center; justify-content: center;
+                flex-wrap: wrap; }
   .sp-btn { font-size: 0.9rem; font-weight: 700; color: #fff; background: #1a73e8; border: none;
             border-radius: 8px; padding: 9px 18px; cursor: pointer; }
   .sp-btn.sub { color: #1a73e8; background: #e8f0fe; text-decoration: none; display: inline-block; }
+  .sp-month { border: 1px solid #d6dbe3; border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
   .sp-hint { font-size: 0.78rem; color: #5f6368; }
 
-  .sp-pages { max-width: 820px; margin: 16px auto; }
+  .sp-pages { max-width: 860px; margin: 16px auto; }
   .sp-page { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 22px 26px; margin-bottom: 16px; }
 
-  .sp-title { font-size: 1.25rem; font-weight: 800; text-align: center; letter-spacing: 0.2em; margin: 0 0 4px; }
-  .sp-sub { text-align: center; font-size: 0.85rem; color: #5f6368; margin-bottom: 14px; }
+  .sp-title { font-size: 1.2rem; font-weight: 800; text-align: center; letter-spacing: 0.18em; margin: 0 0 3px; }
+  .sp-sub { text-align: center; font-size: 0.85rem; color: #5f6368; margin-bottom: 12px; }
 
-  .sp-meta { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 0.88rem; }
+  .sp-meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 0.88rem; }
   .sp-meta th, .sp-meta td { border: 1px solid #9aa0a6; padding: 6px 8px; }
-  .sp-meta th { background: #f1f3f4; font-weight: 700; width: 15%; white-space: nowrap; text-align: left; }
+  .sp-meta th { background: #f1f3f4; font-weight: 700; width: 14%; white-space: nowrap; text-align: left; }
 
-  .sp-tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  .sp-tbl th, .sp-tbl td { border: 1px solid #9aa0a6; padding: 5px 6px; }
+  .sp-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; table-layout: fixed; }
+  .sp-tbl th, .sp-tbl td { border: 1px solid #9aa0a6; padding: 4px 5px; vertical-align: top; }
   .sp-tbl th { background: #f1f3f4; font-weight: 700; }
-  .sp-tbl td.c { text-align: center; font-variant-numeric: tabular-nums; }
-  .sp-trip td { background: #eef2f7; font-weight: 700; }
-  .sp-absent td { color: #80868b; }
-  .sp-absent .nm { text-decoration: line-through; }
+  .sp-tbl td.c { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sp-tbl td.d { text-align: center; font-weight: 700; white-space: nowrap; }
+  .sp-day-first td { border-top: 2px solid #5f6368; }
 
-  .sp-sign { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
-  .sp-sign div { border: 1px solid #9aa0a6; width: 90px; height: 56px; font-size: 0.7rem; color: #5f6368;
-                 text-align: center; padding-top: 3px; }
+  /* 利用者は「氏名 時刻」を並べて詰める。1便1行に収める。 */
+  .sp-riders { line-height: 1.55; }
+  .sp-r { white-space: nowrap; margin-right: 10px; display: inline-block; }
+  .sp-r .t { font-variant-numeric: tabular-nums; color: #185FA5; font-weight: 700; margin-left: 2px; }
+  .sp-r.dropoff .t { color: #3B6D11; }
+  .sp-r.absent { color: #9aa0a6; text-decoration: line-through; }
+  .sp-r.none .t { color: #c5221f; }
 
+  .sp-legend { font-size: 0.72rem; color: #5f6368; margin-top: 8px; }
   .sp-empty { text-align: center; color: #80868b; padding: 40px 0; }
 
   @media print {
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 11mm; }
     body { background: #fff; }
     .sp-toolbar { display: none !important; }
     .sp-pages { max-width: none; margin: 0; }
-    .sp-page { border: none; border-radius: 0; margin: 0; padding: 0;
-               page-break-after: always; }
+    .sp-page { border: none; border-radius: 0; margin: 0; padding: 0; page-break-after: always; }
     .sp-page:last-child { page-break-after: auto; }
+    .sp-tbl tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
   }
 </style>
 </head>
 <body>
 
 <div class="sp-toolbar">
+  <input type="month" class="sp-month" id="spMonth" value="{{ month }}">
   <button class="sp-btn" onclick="window.print()">印刷 / PDF保存</button>
   <a class="sp-btn sub" href="/soge/run">運行画面へ戻る</a>
   <span class="sp-hint">印刷ダイアログで「PDFとして保存」を選ぶとPDFになります</span>
@@ -62,7 +70,7 @@
 
 <div class="sp-pages">
 {% if not vehicles %}
-  <div class="sp-page"><div class="sp-empty">この日の運行記録はありません。</div></div>
+  <div class="sp-page"><div class="sp-empty">{{ month_label }} の運行記録はありません。</div></div>
 {% endif %}
 
 {% for v in vehicles %}
@@ -72,55 +80,49 @@
 
     <table class="sp-meta">
       <tr>
-        <th>日付</th><td>{{ date_label }}</td>
+        <th>年月</th><td>{{ month_label }}</td>
         <th>車両</th><td>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</td>
-      </tr>
-      <tr>
-        <th>運転手</th><td>{{ v.driver_name or '' }}</td>
-        <th>走行距離</th><td>　　　　　km　（出発 　　　　　　　→　帰着 　　　　　　　）</td>
       </tr>
     </table>
 
     <table class="sp-tbl">
       <thead>
         <tr>
-          <th style="width:8%">番号</th>
-          <th style="width:10%">区分</th>
-          <th>利用者氏名</th>
-          <th style="width:14%">予定</th>
-          <th style="width:14%">実績</th>
-          <th style="width:16%">備考</th>
+          <th style="width:8%">日</th>
+          <th style="width:11%">便</th>
+          <th style="width:12%">運転者</th>
+          <th>利用者と乗降時刻</th>
+          <th style="width:9%">帰着</th>
         </tr>
       </thead>
       <tbody>
-      {% for t in v.trips %}
-        <tr class="sp-trip">
-          <td colspan="3">{{ t.trip_name }}</td>
-          <td class="c">{{ t.depart }} 出発</td>
-          <td class="c">{{ t.returned_at or '' }}</td>
-          <td class="c">{% if t.returned_at %}帰着{% endif %}</td>
+      {% for row in v.rows %}
+        <tr {% if row.day_first %}class="sp-day-first"{% endif %}>
+          <td class="d">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
+          <td class="c">{{ row.trip_name }}</td>
+          <td class="c">{{ row.driver_name }}</td>
+          <td class="sp-riders">
+            {%- for s in row.stops -%}
+              <span class="sp-r {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}">{{ s.user_name }}<span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+            {%- endfor -%}
+          </td>
+          <td class="c">{{ row.returned_at or '' }}</td>
         </tr>
-        {% for s in t.stops %}
-        <tr {% if s.is_absent %}class="sp-absent"{% endif %}>
-          <td class="c">{{ loop.index }}</td>
-          <td class="c">{{ '迎え' if s.type == 'pickup' else '送り' }}</td>
-          <td class="nm">{{ s.user_name }}{% if s.is_wheelchair %}（車いす）{% endif %}</td>
-          <td class="c">{{ s.planned_at or '' }}</td>
-          <td class="c">{{ '—' if s.is_absent else s.arrived_at }}</td>
-          <td class="c">{{ '欠席' if s.is_absent else '' }}</td>
-        </tr>
-        {% endfor %}
       {% endfor %}
       </tbody>
     </table>
 
-    <div class="sp-sign">
-      <div>運転者</div>
-      <div>管理者</div>
+    <div class="sp-legend">
+      青字＝迎えの到着時刻／緑字＝送りの到着時刻／「欠」＝当日欠席／「—」＝打刻なし
     </div>
   </div>
 {% endfor %}
 </div>
 
+<script>
+  document.getElementById('spMonth').onchange = function () {
+    if (this.value) location.href = '/soge/print?month=' + this.value;
+  };
+</script>
 </body>
 </html>
