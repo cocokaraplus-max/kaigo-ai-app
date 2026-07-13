@@ -645,10 +645,16 @@ body.nav-editing {
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     <button class="dw-side-btn" data-side="left" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
-                        左から出す
+                        左から
                     </button>
                     <button class="dw-side-btn" data-side="right" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
-                        右から出す
+                        右から
+                    </button>
+                    <button class="dw-side-btn" data-side="top" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        上から
+                    </button>
+                    <button class="dw-side-btn" data-side="bottom" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        下から
                     </button>
                 </div>
                 <div style="font-size:0.72rem;color:#5f6368;margin-top:8px;">
@@ -756,9 +762,20 @@ body.nav-editing {
   #appDrawerHandle:hover, #appDrawerHandle:active { opacity: 1; }
   /* app-drawer-edgefix-v1: 端ぴったりに置くと OS の「戻る」帯と重なる。8px 内側に逃がす。
      touch-action:none で、この上の指の動きはブラウザに渡さない（戻る・スクロールを起こさない）。 */
+  /* app-drawer-4way-v1: 8px では、指が OS の端ジェスチャー帯（およそ端から20px）に
+     かかることがあり「戻る」が出た。指の置き所で当たり外れが出るので、帯の外まで逃がす。 */
   #appDrawerHandle { touch-action: none; }
-  #appDrawerHandle[data-side="right"] { right: 8px; border-radius: 14px; }
-  #appDrawerHandle[data-side="left"]  { left: 8px;  border-radius: 14px; }
+  #appDrawerHandle[data-side="right"] { right: 18px; border-radius: 14px; }
+  #appDrawerHandle[data-side="left"]  { left: 18px;  border-radius: 14px; }
+  /* 上下は横向きの取っ手。上は通知センター、下はボトムナビとホームバーを避ける
+     （--dw-nav-h は JS の実測値。端末差があるので固定値は使わない）。 */
+  #appDrawerHandle[data-side="top"], #appDrawerHandle[data-side="bottom"] {
+    top: auto; left: 50%; transform: translateX(-50%);
+    width: 64px; height: 26px; border-radius: 14px; }
+  #appDrawerHandle[data-side="top"]    { top: 18px; }
+  #appDrawerHandle[data-side="bottom"] { bottom: calc(var(--dw-nav-h, 0px) + 14px); }
+  #appDrawerHandle[data-side="top"]:active    { transform: translateX(-50%) translateY(3px); }
+  #appDrawerHandle[data-side="bottom"]:active { transform: translateX(-50%) translateY(-3px); }
   #appDrawerHandle[data-side="right"]:active { transform: translateX(-3px); }
   #appDrawerHandle[data-side="left"]:active  { transform: translateX(3px); }
   #appDrawerHandle .material-symbols-outlined { font-size: 18px; }
@@ -777,7 +794,16 @@ body.nav-editing {
     transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform; }
   #appDrawer[data-side="right"] { right: 0; transform: translateX(102%); border-radius: 22px 0 0 22px; }
   #appDrawer[data-side="left"]  { left: 0;  transform: translateX(-102%); border-radius: 0 22px 22px 0; }
-  #appDrawer.on { transform: translateX(0); }
+  /* app-drawer-4way-v1: 上下から出すときは横幅いっぱい（ボトムシート風）。
+     下はボトムナビの上に着地させる。 */
+  #appDrawer[data-side="top"], #appDrawer[data-side="bottom"] {
+    left: 0; right: 0; width: auto; top: auto; bottom: auto;
+    height: min(72vh, 620px); }
+  #appDrawer[data-side="top"] { top: 0; transform: translateY(-102%);
+    border-radius: 0 0 22px 22px; }
+  #appDrawer[data-side="bottom"] { bottom: var(--dw-nav-h, 0px); transform: translateY(102%);
+    border-radius: 22px 22px 0 0; }
+  #appDrawer.on { transform: translate(0, 0); }
   #appDrawer.drag { transition: none; }
 
   .dw-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px;
@@ -899,13 +925,14 @@ body.nav-editing {
     <button class="done" id="dwDone">完了</button>
     <button class="reset" id="dwReset">並びをリセット</button>
   </div>
-  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンに重ねるとフォルダになります。</div>
+  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。</div>
   <div class="dw-body">
     <div class="dw-grid" id="dwGrid"></div>
   </div>
 
-  <!-- フォルダの中 -->
-  <div class="dw-fold-view" id="dwFoldView">
+  <!-- フォルダは app-drawer-simplify-v1 で廃止（重ね表示で出し入れが直感に反したため）。
+       JS から参照しているので DOM は残すが、開くことはない。 -->
+  <div class="dw-fold-view" id="dwFoldView" hidden style="display:none !important;">
     <div class="dw-fold-head">
       <button class="dw-close" id="dwFoldBack" style="margin:0;">←</button>
       <input id="dwFoldName" maxlength="20" placeholder="フォルダ名">
@@ -934,7 +961,21 @@ body.nav-editing {
   document.body.dataset.drawerSide = dw.dataset.side;
 
   function side() { return dw.dataset.side || 'right'; }
-  function W() { return dw.getBoundingClientRect().width || 320; }
+  // app-drawer-4way-v1: 左右は x 軸、上下は y 軸。「開く量」を測る長さも切り替わる。
+  function vertical() { var s = side(); return s === 'top' || s === 'bottom'; }
+  function W() {
+    var r = dw.getBoundingClientRect();
+    return (vertical() ? r.height : r.width) || 320;
+  }
+  // ボトムナビの高さを実測して CSS 変数に入れる（端末差があるので固定値は使わない）
+  function measureNav() {
+    var nav = document.querySelector('.bottom-nav');
+    var h = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--dw-nav-h', h + 'px');
+  }
+  measureNav();
+  window.addEventListener('resize', measureNav);
+  window.addEventListener('orientationchange', function () { setTimeout(measureNav, 200); });
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 
   // アイコンを1つずつ遅らせて立ち上げる（開くたびに再生されるよう毎回入れ直す）
@@ -967,10 +1008,24 @@ body.nav-editing {
   // 指の位置に追従させる。0=閉じ、1=開き。
   function follow(p) {
     p = Math.max(0, Math.min(1, p));
-    var off = (1 - p) * W() * (side() === 'right' ? 1 : -1);
-    dw.style.transform = 'translateX(' + off + 'px)';
+    var s = side();
+    var sign = (s === 'right' || s === 'bottom') ? 1 : -1;   // 画面の外へ逃げる向き
+    var off = (1 - p) * W() * sign;
+    dw.style.transform = vertical()
+      ? ('translateY(' + off + 'px)')
+      : ('translateX(' + off + 'px)');
     mask.style.opacity = String(p);
   }
+
+  // 指の移動量を「引き出しを開く向き」の量に直す
+  function inwardOf(dx, dy) {
+    var s = side();
+    if (s === 'right')  return -dx;
+    if (s === 'left')   return dx;
+    if (s === 'bottom') return -dy;
+    return dy;                       // top
+  }
+  function crossOf(dx, dy) { return vertical() ? Math.abs(dx) : Math.abs(dy); }
 
   closeBtn.onclick = close;
   mask.onclick = close;
@@ -995,10 +1050,10 @@ body.nav-editing {
   handle.addEventListener('pointermove', function (e) {
     if (hid === null || e.pointerId !== hid || dw.classList.contains('on')) return;
     e.preventDefault();
-    var dx = e.clientX - hx, dy = Math.abs(e.clientY - hy);
-    var inward = (side() === 'right') ? -dx : dx;
+    var dx = e.clientX - hx, dy = e.clientY - hy;
+    var inward = inwardOf(dx, dy), cross = crossOf(dx, dy);
     if (!hdrag) {
-      if (dy > 24 && dy > inward) return;      // 縦に動いている間は開かない
+      if (cross > 24 && cross > inward) return;   // 引き出す向きと違う方へ動いている
       if (inward < 6) return;
       hdrag = true;
       dw.classList.add('drag');
@@ -1012,7 +1067,8 @@ body.nav-editing {
   function handleUp(e) {
     if (hid === null) return;
     var dx = (e && e.clientX != null) ? (e.clientX - hx) : 0;
-    var inward = (side() === 'right') ? -dx : dx;
+    var dy = (e && e.clientY != null) ? (e.clientY - hy) : 0;
+    var inward = inwardOf(dx, dy);
     try { handle.releasePointerCapture(hid); } catch (err) {}
     hid = null;
     if (!hdrag) { open(); return; }            // 動かさず離した＝タップ
@@ -1038,10 +1094,10 @@ body.nav-editing {
   }, { passive: true });
   dw.addEventListener('touchmove', function (e) {
     if (!cwatch || closeSwipeBlocked()) { cwatch = false; cdrag = false; return; }
-    var dx = e.touches[0].clientX - cx, dy = Math.abs(e.touches[0].clientY - cy);
-    var outward = (side() === 'right') ? dx : -dx;
+    var dx = e.touches[0].clientX - cx, dy = e.touches[0].clientY - cy;
+    var outward = -inwardOf(dx, dy), cross = crossOf(dx, dy);
     if (!cdrag) {
-      if (dy > 18 && dy > outward) { cwatch = false; return; }    // 中の縦スクロール優先
+      if (cross > 18 && cross > outward) { cwatch = false; return; }   // 中のスクロール優先
       if (outward < 8) return;
       cdrag = true;
       dw.classList.add('drag');
@@ -1051,7 +1107,7 @@ body.nav-editing {
   dw.addEventListener('touchend', function (e) {
     if (!cdrag) { cwatch = false; return; }
     var t = (e.changedTouches && e.changedTouches[0]) || null;
-    var outward = t ? ((side() === 'right') ? (t.clientX - cx) : (cx - t.clientX)) : 0;
+    var outward = t ? -inwardOf(t.clientX - cx, t.clientY - cy) : 0;
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
@@ -1066,7 +1122,21 @@ body.nav-editing {
 </script>
 
 <script>
-// ===== app-drawer-edit-v1 : 自由配置とフォルダ =====
+// app-drawer-simplify-v1: 引き出しから開いたページは、必ず先頭から見せる。
+(function () {
+  try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
+  var flag = null;
+  try { flag = sessionStorage.getItem('dw_scroll_top'); } catch (e) {}
+  if (!flag) return;
+  try { sessionStorage.removeItem('dw_scroll_top'); } catch (e) {}
+  function toTop() { window.scrollTo(0, 0); }
+  toTop();
+  window.addEventListener('load', function () { toTop(); setTimeout(toTop, 0); });
+})();
+</script>
+
+<script>
+// ===== app-drawer-edit-v1 : 自由配置（フォルダは app-drawer-simplify-v1 で廃止） =====
 // レイアウトの形:
 //   { v:1, slots: [ null | {t:'app', href} | {t:'folder', name, items:[href,...]} , ... ] }
 // slots の位置がそのまま画面のマス。null = 空きマス（＝好きな位置に置ける）。
@@ -1109,14 +1179,8 @@ body.nav-editing {
         seen[s.href] = 1;
         return { t: 'app', href: s.href };
       }
-      if (s.t === 'folder') {
-        var items = (s.items || []).filter(function (h) {
-          if (!byHref[h] || seen[h]) return false;
-          seen[h] = 1; return true;
-        });
-        if (!items.length) return null;
-        return { t: 'folder', name: s.name || 'フォルダ', items: items };
-      }
+      // app-drawer-simplify-v1: フォルダは廃止。作ってしまったものは中身をほどいて
+      // 普通のアイコンに戻す（消さない）。ほどいた中身は下の「増えた分」で末尾に付く。
       return null;
     });
 
@@ -1218,9 +1282,7 @@ body.nav-editing {
   }
 
   function openFolderAt(i) {
-    openFolder = i;
-    renderFolder();
-    foldView.classList.add('on');
+    return;   // app-drawer-simplify-v1: フォルダは廃止
   }
   function closeFolder() {
     openFolder = -1;
@@ -1297,6 +1359,11 @@ body.nav-editing {
     // href を外した（iOSのリンクプレビュー対策）ので、ここで自分で飛ぶ。
     // 同じタブで開く（PWAで target=_blank にすると外部ブラウザになりログインが切れる）。
     try { document.body.style.overflow = ''; } catch (err) {}
+    // app-drawer-simplify-v1: 引き出しは body の末尾にある。その中のボタンを押したまま遷移すると、
+    // ブラウザが「最後に触っていた位置」を復元しようとして、遷移先が下端まで飛ぶ。
+    // 印を付けておき、次のページで先頭に戻す。
+    try { sessionStorage.setItem('dw_scroll_top', '1'); } catch (err) {}
+    try { el.blur(); } catch (err) {}
     location.href = href;
   }
 
@@ -1412,17 +1479,11 @@ body.nav-editing {
     var a = layout.slots[from], b = layout.slots[to];
     if (!a) { render(); return; }
 
-    if (!b) {                                   // 空きマス → そのまま移動
+    // app-drawer-simplify-v1: 空きマスなら移動、アイコンの上なら入れ替え。それだけ。
+    if (!b) {
       layout.slots[to] = a;
       layout.slots[from] = null;
-    } else if (b.t === 'folder' && a.t === 'app') {   // フォルダに入れる
-      b.items.push(a.href);
-      layout.slots[from] = null;
-    } else if (b.t === 'app' && a.t === 'app') {      // アイコン同士 → フォルダを作る
-      layout.slots[to] = { t: 'folder', name: 'フォルダ', items: [b.href, a.href] };
-      layout.slots[from] = null;
-      try { if (navigator.vibrate) navigator.vibrate([10, 40, 14]); } catch (e) {}
-    } else {                                    // それ以外（フォルダ同士など）は入れ替え
+    } else {
       layout.slots[to] = a;
       layout.slots[from] = b;
     }

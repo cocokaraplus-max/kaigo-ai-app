@@ -2054,8 +2054,9 @@ def inject_app_drawer():  # app-drawer-v1
             return {"drawer_items": [], "drawer_side": "right", "drawer_layout": ""}
         if not hasattr(_g, "_drawer_cache"):
             supabase = get_supabase()
+            # app-drawer-4way-v1: 左右に加えて上下も
             side = get_staff_setting(supabase, f_code, my_name, "drawer_side", "right")
-            if side not in ("left", "right"):
+            if side not in ("left", "right", "top", "bottom"):
                 side = "right"
             # app-drawer-edit-v1: 配置（自由配置・フォルダ）。中身の解釈は画面側でやる。
             layout = get_staff_setting(supabase, f_code, my_name, "top_layout", "") or ""
