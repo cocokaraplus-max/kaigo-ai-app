@@ -981,10 +981,18 @@ body.nav-editing {
     transform: translate(-50%, -50%) scale(1.12); filter: drop-shadow(0 8px 18px rgba(16,24,40,.35)); }
 
   /* app-drawer-color-v1: 編集中だけ出る「色」ボタンと、その場に出るパレット */
+  /* app-drawer-paint-hit-v1: 見た目は小さいまま、当たり判定だけ 44px に広げる。
+     20px は指の接地面より小さく、しかも編集中はアイコンごと揺れているので外しやすかった。 */
   .dw-paint { position: absolute; top: -6px; right: 2px; width: 20px; height: 20px;
     border-radius: 999px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(16,24,40,.35);
-    display: none; cursor: pointer; padding: 0; z-index: 3; }
+    display: none; cursor: pointer; padding: 0; z-index: 6; touch-action: none; }
+  .dw-paint::after {                    /* 透明な当たり枠（iOS の目安 44px） */
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+    border-radius: 999px; }
   #appDrawer.edit .dw-paint { display: block; }
+  /* 色ボタンを触っている間はプルプルを止める（狙いがぶれるため） */
+  #appDrawer.edit .dw-app.painting { animation: none; }
   .dw-cell { }
   .dw-pal { position: fixed; z-index: 3300; background: #fff; border-radius: 14px;
     box-shadow: 0 10px 30px rgba(16,24,40,.28); padding: 10px; display: none; }
@@ -1700,9 +1708,20 @@ body.nav-editing {
 
   function bind(root) {
     root.querySelectorAll('[data-paint]').forEach(function (b) {
-      b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });   // ドラッグにしない
+      // app-drawer-paint-hit-v1: ボタンの上ではドラッグを始めない。
+      // 外して下のアイコンを掴んでしまうと「押したのに色が出ず、アイコンが動く」になる。
+      var app = b.closest('.dw-app');
+      b.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (app) app.classList.add('painting');      // 触っている間は揺れを止める
+      });
+      var stop = function () { if (app) app.classList.remove('painting'); };
+      b.addEventListener('pointerup', stop);
+      b.addEventListener('pointercancel', stop);
       b.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
+        stop();
         var r = b.getBoundingClientRect();
         openPal(b.dataset.paint, r.left + r.width / 2, r.bottom);
       });
