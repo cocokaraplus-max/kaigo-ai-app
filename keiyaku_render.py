@@ -461,6 +461,48 @@ def _fee_table_seikatsu(F, st):
     return "".join(out)
 
 
+def _kasan_section(F, st):  # keiyaku-kasan-cat-v1
+    """加算の概要。系統ごとに出し分ける。
+
+    予防（総合事業）では介護の加算（個別機能訓練Ⅰ/Ⅱ・中重度者ケア体制など）は算定できない。
+    以前は介護のマスタをそのまま出していたので、予防の重説に要介護の加算が載っていた。
+    """
+    cat = _cat(F, st)
+
+    if cat == CAT_SEIKATSU:
+        return ""                      # 生活支援通所は加算なし
+
+    if cat == CAT_YOBO:
+        svc = (F.get("service") or {}).get(st) or {}
+        try:
+            add_units = int(svc.get("y_add_units") or 0)
+        except (TypeError, ValueError):
+            add_units = 0
+        rate = _shoguu_rate(F.get("adds", {}) or {})
+        rows = ('<tr><th class="hh">加算</th><th>単位</th><th>算定</th></tr>'
+                '<tr><td class="kai">科学的介護推進体制加算</td><td>40単位／月</td>'
+                '<td>すべてのご契約者に加算</td></tr>')
+        other = add_units - 40
+        if other > 0:
+            rows += (f'<tr><td class="kai">その他の加算（合計）</td><td>{other:,}単位／月</td>'
+                     '<td>算定要件を満たす月に加算</td></tr>')
+        if rate:
+            rows += (f'<tr><td class="kai">介護職員等処遇改善加算</td>'
+                     f'<td>月の総単位数 × {rate * 100:.1f}％</td>'
+                     '<td>すべてのご契約者に加算</td></tr>')
+        return ('<div class="sec"><div class="sec-h">各種加算の概要</div>'
+                f'<table class="ptab fee">{rows}</table>'
+                '<p class="note">上記の加算は、料金表の月額自己負担額に含まれています'
+                '（一単位未満の端数は四捨五入）。いずれも区分支給限度基準額の算定対象外です。</p></div>')
+
+    # chiiki（地域密着型通所介護）: 従来どおり
+    return (f'<div class="sec"><div class="sec-h">各種加算の概要</div>\n{_adds_table(F)}\n'
+            '<p class="note">「料金表に反映済み」の加算は、上記の月額自己負担額に含まれています。'
+            '「※実施月のみ算定／料金表とは別に加算」の加算は、サービスを実施した月に限り、'
+            '上記単位数・限度回数に基づき別途加算されます（一単位未満の端数四捨五入）。'
+            'いずれも区分支給限度基準額の算定対象外です。</p></div>')
+
+
 def _fee_table(F, st):
     cat = _cat(F, st)
     if cat == CAT_YOBO:               # keiyaku-yobo-v1
@@ -664,9 +706,7 @@ def render_juyo(F, st):
 {_fee_table(F, st)}
 <p class="note">※週1回＝月{int(F.get("visits_per_month",4))}回換算で算出。利用回数により金額は変わります。</p></div>'''
 
-    sec_kasan = f'''<div class="sec"><div class="sec-h">各種加算の概要</div>
-{_adds_table(F)}
-<p class="note">「料金表に反映済み」の加算は、上記の月額自己負担額に含まれています。「※実施月のみ算定／料金表とは別に加算」の加算は、サービスを実施した月に限り、上記単位数・限度回数に基づき別途加算されます（一単位未満の端数四捨五入）。いずれも区分支給限度基準額の算定対象外です。</p></div>'''
+    sec_kasan = _kasan_section(F, st)   # keiyaku-kasan-cat-v1: 系統ごとに出し分け
 
     sec_jihi = f'''<div class="sec"><div class="sec-h">自費料金・その他の費用</div>
 {_jihi_table(F)}
