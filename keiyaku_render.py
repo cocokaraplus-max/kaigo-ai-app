@@ -34,15 +34,18 @@ _LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
 # category を持たない既存データは chiiki（指定地域密着型通所介護）とみなす。
 CAT_CHIIKI = "chiiki"
 CAT_YOBO = "yobo"
+CAT_SEIKATSU = "seikatsu"          # keiyaku-seikatsu-v1
 
 _CAT_NAME = {
     CAT_CHIIKI: "指定地域密着型通所介護",
     CAT_YOBO: "介護予防通所サービス",
+    CAT_SEIKATSU: "生活支援通所サービス",
 }
 # 計画書の呼び方（条文中で使う）
 _CAT_PLAN = {
     CAT_CHIIKI: "地域密着型通所介護計画",
     CAT_YOBO: "介護予防通所サービス計画",
+    CAT_SEIKATSU: "生活支援通所サービス計画",
 }
 
 
@@ -407,9 +410,63 @@ def _localize(F, st, html):  # keiyaku-yobo-v2
     return html
 
 
+# ===== keiyaku-seikatsu-v1: 生活支援通所サービスの料金 =====
+# 豊田市 単位数表マスタ A7（令和6年4月〜）。御社の重説と12マス一致することを検算済み。
+_SEIKATSU_DEFAULT_UNITS = {
+    "w1_soge": 1530, "w1_nosoge": 1202,     # 週1回程度（送迎あり / なし）
+    "w2_soge": 3002, "w2_nosoge": 2359,     # 週2回程度（要支援2のみ）
+}
+
+
+def _seikatsu_units(F, st):
+    svc = (F.get("service") or {}).get(st) or {}
+    out = {}
+    for k, dv in _SEIKATSU_DEFAULT_UNITS.items():
+        try:
+            out[k] = int(svc.get("s_%s" % k) or dv)
+        except (TypeError, ValueError):
+            out[k] = dv
+    return out
+
+
+def _fee_table_seikatsu(F, st):
+    """生活支援通所の料金表。負担割合ごとに「週1/週2 × 送迎あり/なし」の月額自己負担。
+
+    総額 = floor(単位 × 単価)、1割 = ceil(総額 × 0.1)、**2割・3割は1割額の2倍・3倍**。
+    （総額×0.2 で出すと現物と1円ずれる。現物は1割額を切り上げてから倍にしている。）
+    """
+    u = _seikatsu_units(F, st)
+    area = int(F.get("area_level", 3) or 3)
+    tanka = _tanka(area)
+
+    def ichiwari(units):
+        total = int(math.floor(units * tanka))
+        return _ceil_yen(total * 0.1)
+
+    out = []
+    for w in (1, 2, 3):
+        head = ('<tr><th class="hh">利用回数</th>'
+                '<th>送迎あり</th><th>送迎なし</th></tr>')
+        rows = ""
+        for kai, key in ((1, "w1"), (2, "w2")):
+            a_ = ichiwari(u["%s_soge" % key]) * w
+            b_ = ichiwari(u["%s_nosoge" % key]) * w
+            note = "<br><span class=\"u\">要支援2のみ</span>" if kai == 2 else ""
+            rows += (f'<tr><td class="kai">週{kai}回程度{note}</td>'
+                     f'<td>{_yen(a_)}／月</td><td>{_yen(b_)}／月</td></tr>')
+        out.append(f'<div class="sub-h">{w}割負担</div>'
+                   f'<table class="ptab fee">{head}{rows}</table>')
+    out.append('<p class="note">※ 週2回程度のご利用は要支援2の方のみです'
+               '（事業対象者・要支援1の方は週1回程度まで）。</p>')
+    return "".join(out)
+
+
 def _fee_table(F, st):
-    if _cat(F, st) == CAT_YOBO:       # keiyaku-yobo-v1
+    cat = _cat(F, st)
+    if cat == CAT_YOBO:               # keiyaku-yobo-v1
         return _fee_table_yobo(F, st)
+    if cat == CAT_SEIKATSU:           # keiyaku-seikatsu-v1
+        return _fee_table_seikatsu(F, st)
     adds = F.get("adds", {})
     area = int(F.get("area_level", 3))
     vpm = int(F.get("visits_per_month", 4))

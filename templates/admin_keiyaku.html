@@ -337,9 +337,27 @@
   ];
   // keiyaku-yobo-v2: 系統。未設定は chiiki（＝今までの地域密着型通所介護）。
 const KK_CATEGORIES = [
-  ['chiiki', '介護保険（地域密着型通所介護）'],
-  ['yobo',   '介護予防通所サービス'],
+  ['chiiki',   '介護保険（地域密着型通所介護）'],
+  ['yobo',     '介護予防通所サービス'],
+  ['seikatsu', '生活支援通所サービス'],   // keiyaku-seikatsu-v1
 ];
+
+// keiyaku-seikatsu-v1: 生活支援通所の単位（豊田市 単位数表マスタ A7・令和6年4月〜）
+const KK_SEIKATSU_FIELDS = [
+  ['s_w1_soge',   '週1回程度・送迎あり 単位（月）　※豊田市: 1530'],
+  ['s_w1_nosoge', '週1回程度・送迎なし 単位（月）　※豊田市: 1202'],
+  ['s_w2_soge',   '週2回程度・送迎あり 単位（月）　※豊田市: 3002'],
+  ['s_w2_nosoge', '週2回程度・送迎なし 単位（月）　※豊田市: 2359'],
+];
+const KK_SEIKATSU_DEFAULTS = { s_w1_soge:1530, s_w1_nosoge:1202, s_w2_soge:3002, s_w2_nosoge:2359 };
+
+function kkFillSeikatsuDefaults(node){
+  Object.keys(KK_SEIKATSU_DEFAULTS).forEach(k=>{
+    if(node[k] === undefined || node[k] === '' || node[k] === null){
+      node[k] = KK_SEIKATSU_DEFAULTS[k];
+    }
+  });
+}
 // 予防のときに入れてもらう料金。総額は自治体の総合事業単価・加算体系で決まるので、
 // 単位×単価では出せない（現物の重説どおり、加算込みの円を入れてもらう）。
 const KK_YOBO_FIELDS = [
@@ -371,7 +389,8 @@ function renderTypeEditor(){
     const key = state.type;
     const node = state.service[key] || (state.service[key] = {});
     const cat = kkCategoryOf(node);        // keiyaku-yobo-v2
-    if(cat === 'yobo') kkFillYoboDefaults(node);   // keiyaku-yobo-default-v1
+    if(cat === 'yobo') kkFillYoboDefaults(node);           // keiyaku-yobo-default-v1
+    if(cat === 'seikatsu') kkFillSeikatsuDefaults(node);   // keiyaku-seikatsu-v1
     let h = '<div class="kk-edit-card">';
     // label
     h += `<label class="kk-fld"><span>種別の名称（自由）</span>
@@ -396,6 +415,18 @@ function renderTypeEditor(){
           現物の重説と1円まで合わせたいときは <b>月額総額（円）</b> に直接入れてください（そちらが優先）。
         </div></div>`;
       KK_YOBO_FIELDS.forEach(([k,lab])=>{
+        h += `<label class="kk-fld"><span>${lab}</span>
+          <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
+      });
+    } else if(cat === 'seikatsu'){
+      // keiyaku-seikatsu-v1
+      h += `<div class="kk-fld"><span>料金（生活支援通所サービス）</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          単位 × 単価（級地）で総額を出し、<b>1割額を切り上げてから2倍・3倍</b>して
+          2割・3割を出します（現物の重説がこの作りです。総額×0.2 だと1円ずれます）。<br>
+          加算はありません。<b>週2回程度は要支援2の方のみ</b>（表に注記が入ります）。
+        </div></div>`;
+      KK_SEIKATSU_FIELDS.forEach(([k,lab])=>{
         h += `<label class="kk-fld"><span>${lab}</span>
           <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
       });
