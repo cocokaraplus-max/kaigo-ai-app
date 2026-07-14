@@ -26,38 +26,46 @@
    ・見出しは縦スクロールで画面上部に貼り付く（sticky top）
    ・利用者名の列は左に固定（sticky left）
    ・表は列固定（table-layout:fixed）。可変にすると中身の長さで列が膨らむ。 */
+/* record-check-vhead-v2: 縦書きの帯が列幅（30px）に収まらず、隣の列と重なっていた。
+   列幅を 34px にし、帯の幅もその中に収める。カテゴリが多くて収まらないときは、
+   重ねるより横スクロールさせる（min-width を効かせる）。 */
 .rc-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6ebf2;
   border-radius:10px; min-width:0; background:#fff; }
 table.rc { border-collapse:separate; border-spacing:0; font-size:0.86rem; width:100%;
   table-layout:fixed; }
 table.rc th, table.rc td { border-bottom:1px solid #eef1f5; background:#fff; }
-table.rc td { padding:9px 4px; }
+table.rc td { padding:9px 2px; }
 
-/* 見出し（縦書き） */
+/* 見出し（縦書き）。帯は列幅ぴったりに収める。 */
 table.rc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
-  position:sticky; top:0; z-index:2; padding:6px 2px; vertical-align:bottom; }
-table.rc thead th.cat { width:30px; }
+  position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom;
+  text-align:center; }
+table.rc col.cat, table.rc thead th.cat { width:34px; min-width:34px; }
 table.rc .vt { writing-mode:vertical-rl; text-orientation:upright; display:inline-block;
-  height:86px; font-size:0.72rem; font-weight:800; letter-spacing:1px;
-  border-radius:6px; padding:7px 3px; }
-table.rc thead th.tot-h { width:34px; font-size:0.7rem; color:#5f6368; font-weight:800; }
+  width:26px; height:88px; font-size:0.72rem; font-weight:800; letter-spacing:1px;
+  border-radius:6px; padding:6px 0; box-sizing:border-box; overflow:hidden; }
+table.rc col.tot, table.rc thead th.tot-h { width:36px; min-width:36px; }
+table.rc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 
 /* 利用者名（左に固定） */
 table.rc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
   box-shadow:2px 0 0 #eef1f5; width:104px; padding-left:10px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 table.rc thead .nm { z-index:4; font-size:0.7rem; color:#5f6368; }
-/* record-check-link-v1: 数字を押すとその人の記録へ飛ぶ。押せることが分かるようにする。 */
-table.rc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:700;
+/* record-check-link-v1: 数字を押すとその人の記録へ飛ぶ。押せることが分かるようにする。
+   record-check-vhead-v2: 列ごとにカテゴリ色の帯を敷いて、縦の並びを目で追えるようにする。
+   背景色は各セルにインラインで入る（カテゴリ色は施設ごとに違うため）。 */
+table.rc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:800;
   cursor:pointer; }
-table.rc td.num:hover { background:#eef4ff; }
-table.rc td.num:active { background:#e2ebff; }
-table.rc td.zero { color:#dadce0; font-weight:400; }
-table.rc td.zero:hover { background:#fff1f0; }        /* 0件はここから書き始められる */
+table.rc td.num:hover { filter:brightness(0.96); }
+table.rc td.num:active { filter:brightness(0.92); }
+table.rc td.zero { color:#c3c8cf; font-weight:400; }
 table.rc .nm { cursor:pointer; }
 table.rc td.tot { text-align:center; font-weight:800; background:#f8fafc; }
-table.rc tr.none td { background:#fff6f5; }         /* 記録が1件も無い人 */
-table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
+/* 記録が1件も無い人。列の色帯より赤の下地を勝たせる（!important） */
+table.rc tr.none td { background:#fff1f0 !important; }
+table.rc tr.none .nm { color:#c5221f; }
+table.rc tr.none td.num { color:#c5221f; }
 
 .rc-empty { text-align:center; color:#9aa3b2; padding:36px 0; font-size:0.9rem; }
 .rc-note { font-size:0.72rem; color:#9aa3b2; margin-top:10px; line-height:1.6; }
@@ -100,6 +108,12 @@ table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
 {% else %}
 <div class="rc-wrap">
   <table class="rc">
+    {# record-check-vhead-v2: 列幅は colgroup で決める。fixed レイアウトはここが基準になる #}
+    <colgroup>
+      <col style="width:104px">
+      {% for c in cats %}<col class="cat">{% endfor %}
+      <col class="tot">
+    </colgroup>
     <thead>
       <tr>
         <th class="nm">利用者</th>
@@ -117,7 +131,9 @@ table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
       <tr {% if r.total == 0 %}class="none"{% endif %}>
         <td class="nm" data-user="{{ r.user_name }}" title="この人のケース記録を開く">{{ r.user_name }}</td>
         {% for v in r.cells %}
+        {# record-check-vhead-v2: 列ごとにカテゴリ色の帯。0件は薄く（08）、1件以上はやや濃く（1c） #}
         <td class="num {% if v == 0 %}zero{% endif %}"
+            style="background:{{ cats[loop.index0].color }}{% if v == 0 %}08{% else %}1c{% endif %};"
             data-user="{{ r.user_name }}" data-cat="{{ cats[loop.index0].name }}" data-n="{{ v }}"
             title="{% if v == 0 %}記録入力へ（利用者を選んだ状態で開きます）{% else %}この人のケース記録を開く{% endif %}">{{ v }}</td>
         {% endfor %}
