@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}記録チェック - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* record-check-v1: その日に来ている利用者 × カテゴリ別の記録件数 */
+.rc-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+.rc-title { font-size:1.05rem; font-weight:800; display:flex; align-items:center; gap:6px; }
+.rc-date { border:1px solid #d6dbe3; border-radius:10px; padding:8px 10px; font-size:0.9rem;
+  font-family:inherit; }
+
+.rc-sum { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.rc-chip { border-radius:999px; padding:6px 12px; font-size:0.8rem; font-weight:800; }
+.rc-chip.ok { background:#e6f4ea; color:#137333; }
+.rc-chip.ng { background:#fce8e6; color:#c5221f; }
+.rc-chip.mut { background:#f1f3f4; color:#5f6368; }
+
+/* 表は横に広い。利用者名を左に固定して、カテゴリだけ流す。
+   請求額計算のマトリクスと同じ作り（Grid の子は min-width:0 が要る）。 */
+.rc-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6ebf2;
+  border-radius:10px; min-width:0; }
+table.rc { border-collapse:separate; border-spacing:0; font-size:0.84rem; white-space:nowrap;
+  width:100%; }
+table.rc th, table.rc td { padding:8px 10px; border-bottom:1px solid #eef1f5; background:#fff; }
+table.rc thead th { background:#f8fafc; font-size:0.72rem; color:#475569; font-weight:800;
+  border-bottom:2px solid #e2e8f0; position:sticky; top:0; z-index:2; }
+table.rc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
+  box-shadow:2px 0 0 #eef1f5; min-width:110px; }
+table.rc thead .nm { z-index:4; }
+table.rc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:700; }
+table.rc td.zero { color:#dadce0; font-weight:400; }
+table.rc td.tot { text-align:center; font-weight:800; background:#f8fafc; }
+table.rc tr.none td { background:#fff6f5; }         /* 記録が1件も無い人 */
+table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
+.rc-dot { display:inline-block; width:8px; height:8px; border-radius:999px; margin-right:5px;
+  vertical-align:middle; }
+.rc-empty { text-align:center; color:#9aa3b2; padding:36px 0; font-size:0.9rem; }
+.rc-note { font-size:0.72rem; color:#9aa3b2; margin-top:10px; line-height:1.6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rc-head">
+  <div class="rc-title">
+    <span class="material-symbols-outlined" style="color:#1a73e8;">fact_check</span>記録チェック
+  </div>
+  <input type="date" class="rc-date" id="rcDate" value="{{ date }}">
+</div>
+
+<div class="rc-sum">
+  <span class="rc-chip mut">{{ date_label }}・来所 {{ n_people }}名</span>
+  {% if n_zero > 0 %}
+  <span class="rc-chip ng">記録なし {{ n_zero }}名</span>
+  {% else %}
+  <span class="rc-chip ok">全員に記録あり</span>
+  {% endif %}
+  <span class="rc-chip mut">記録 {{ n_records }}件</span>
+</div>
+
+{% if not rows %}
+  <div class="rc-empty">{{ date_label }} に来所した利用者がいません。<br>
+    （バイタルの測定がある人を「来ている人」としています）</div>
+{% else %}
+<div class="rc-wrap">
+  <table class="rc">
+    <thead>
+      <tr>
+        <th class="nm">利用者</th>
+        {% for c in cats %}
+        <th><span class="rc-dot" style="background:{{ c.color }}"></span>{{ c.name }}</th>
+        {% endfor %}
+        <th>合計</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr {% if r.total == 0 %}class="none"{% endif %}>
+        <td class="nm">{{ r.user_name }}</td>
+        {% for v in r.cells %}
+        <td class="num {% if v == 0 %}zero{% endif %}">{{ v }}</td>
+        {% endfor %}
+        <td class="tot">{{ r.total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="rc-note">
+  「来ている人」＝その日にバイタルの測定がある利用者（連絡帳・請求額計算と同じ判定）。<br>
+  カテゴリは管理者MENUで設定したもの。登録に無いカテゴリの記録は「その他」に数えています。
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// record-check-v1: 日付を変えたら同じタブで開き直す（PWAで外部ブラウザに飛ばさない）
+document.getElementById('rcDate').onchange = function () {
+  if (this.value) location.href = '/record_check?date=' + this.value;
+};
+</script>
+{% endblock %}

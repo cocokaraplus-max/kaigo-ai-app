@@ -1955,6 +1955,7 @@ def register():
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
+    {"href": "/record_check",   "icon": "fact_check",             "label": "記録チェック",   "need": None},   # record-check-v1
     {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
@@ -2188,6 +2189,116 @@ def top():
         my_color=staff_color(my_name),
         my_initial=staff_initial(my_name),
     )
+
+# ===== record-check-v1 : 記録の充足チェック =====
+# その日に来ている利用者 × カテゴリ別の記録件数。「来ているのに記録が無い」を見つける。
+
+
+@app.route("/record_check")   # record-check-v1
+@login_required
+def record_check():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+
+    date_str = (request.args.get("date") or "").strip()
+    try:
+        sel = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        sel = datetime.now(tokyo_tz).date()
+    date_str = sel.strftime("%Y-%m-%d")
+
+    # --- 来ている人（その日のバイタル）。連絡帳・請求額計算と同じ判定にする ---
+    try:
+        vres = (supabase.table("vitals").select("patient_id")
+                .eq("facility_code", f_code).eq("measured_date", date_str).execute())
+    except Exception as e:
+        print("record_check vitals error: %s" % e, flush=True)
+        vres = None
+    pids, seen = [], set()
+    for v in ((vres.data if vres else None) or []):
+        pid = str(v.get("patient_id") or "")
+        if pid and pid not in seen:
+            seen.add(pid)
+            pids.append(pid)
+
+    plist = get_patients(supabase, f_code)
+    pmap = dict((str(p["id"]), p) for p in plist)
+    people = []
+    for pid in pids:
+        prof = pmap.get(pid) or {}
+        nm = prof.get("user_name") or ""
+        if not nm:
+            continue
+        people.append({
+            "user_name": nm,
+            "user_kana": prof.get("user_kana") or "",
+            "patient_number": prof.get("patient_number") or "",
+        })
+    people.sort(key=lambda x: (x.get("user_kana") or x.get("user_name") or ""))
+
+    # --- カテゴリ（施設ごと。色と並び順つき） ---
+    cats = []
+    try:
+        cres = (supabase.table("record_categories").select("name,color,sort_order")
+                .eq("facility_code", f_code).order("sort_order").order("id").execute())
+        cats = [{"name": c.get("name") or "", "color": c.get("color") or "#5f6368"}
+                for c in (cres.data or []) if (c.get("name") or "").strip()]
+    except Exception as e:
+        print("record_check categories error: %s" % e, flush=True)
+    if not cats:
+        cats = [{"name": n, "color": "#5f6368"} for n in ("入浴", "食事", "排泄", "その他")]
+    cat_names = [c["name"] for c in cats]
+    has_other = "その他" in cat_names
+    if not has_other:
+        cats.append({"name": "その他", "color": "#9aa0a6"})   # 登録に無いカテゴリの受け皿
+        cat_names.append("その他")
+
+    # --- その日の記録（JSTの日境界。records は patient_id を持たず user_name で突合） ---
+    t_start = tokyo_tz.localize(datetime.combine(sel, dt_time.min))
+    counts = {}     # user_name -> {category -> 件数}
+    total_records = 0
+    try:
+        rres = (supabase.table("records").select("user_name,category")
+                .eq("facility_code", f_code)
+                .gte("created_at", t_start.isoformat())
+                .lt("created_at", (t_start + timedelta(days=1)).isoformat())
+                .execute())
+        for r in (rres.data or []):
+            nm = (r.get("user_name") or "").strip()
+            if not nm:
+                continue
+            cat = (r.get("category") or "その他").strip() or "その他"
+            if cat not in cat_names:
+                cat = "その他"      # 登録に無いカテゴリはその他にまとめる
+            counts.setdefault(nm, {})
+            counts[nm][cat] = counts[nm].get(cat, 0) + 1
+            total_records += 1
+    except Exception as e:
+        print("record_check records error: %s" % e, flush=True)
+
+    rows = []
+    zero = 0
+    for p in people:
+        c = counts.get(p["user_name"], {})
+        tot = sum(c.values())
+        if tot == 0:
+            zero += 1
+        rows.append({
+            "user_name": p["user_name"],
+            "patient_number": p["patient_number"],
+            "cells": [c.get(cn, 0) for cn in cat_names],
+            "total": tot,
+        })
+
+    return render("record_check.html", f_code=f_code, my_name=my_name,
+                  date=date_str,
+                  date_label=sel.strftime("%-m月%-d日"),
+                  cats=cats, rows=rows,
+                  n_people=len(rows), n_zero=zero, n_records=total_records)
+
+# ===== /record-check-v1 =====
+
 
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
