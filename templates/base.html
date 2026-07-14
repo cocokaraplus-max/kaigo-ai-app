@@ -872,18 +872,25 @@ body.nav-editing {
     transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform; }
   /* app-drawer-width-v1: カラムの端に貼り付く。幅もカラムを超えない。 */
   #appDrawer { width: min(86vw, 380px, calc(var(--page-max-width, 480px) - 24px)); }
-  #appDrawer[data-side="right"] { right: var(--dw-gap); transform: translateX(102%);
+  /* app-drawer-offscreen-v1: 閉じる位置は「自分の幅 + カラム外の余白 + 少し」。
+     102% だけだと、PC のようにカラム外の余白（--dw-gap）が引き出しより広い画面で、
+     閉じた引き出しが余白に居座って見えていた（スマホは gap=0 なので出なかった）。 */
+  #appDrawer[data-side="right"] { right: var(--dw-gap);
+    transform: translateX(calc(100% + var(--dw-gap) + 24px));
     border-radius: 22px 0 0 22px; }
-  #appDrawer[data-side="left"]  { left: var(--dw-gap);  transform: translateX(-102%);
+  #appDrawer[data-side="left"]  { left: var(--dw-gap);
+    transform: translateX(calc(-100% - var(--dw-gap) - 24px));
     border-radius: 0 22px 22px 0; }
   /* app-drawer-4way-v1: 上下から出すときは横幅いっぱい（ボトムシート風）。
      下はボトムナビの上に着地させる。 */
   #appDrawer[data-side="top"], #appDrawer[data-side="bottom"] {
     left: var(--dw-gap); right: var(--dw-gap); width: auto; top: auto; bottom: auto;
     height: min(72vh, 620px); }
+  /* 上下は縦方向に余白が無いので自分の幅ぶんでよいが、下はボトムナビの高さぶん余分に逃がす */
   #appDrawer[data-side="top"] { top: 0; transform: translateY(-102%);
     border-radius: 0 0 22px 22px; }
-  #appDrawer[data-side="bottom"] { bottom: var(--dw-nav-h, 0px); transform: translateY(102%);
+  #appDrawer[data-side="bottom"] { bottom: var(--dw-nav-h, 0px);
+    transform: translateY(calc(100% + var(--dw-nav-h, 0px) + 24px));
     border-radius: 22px 22px 0 0; }
   #appDrawer.on { transform: translate(0, 0); }
   #appDrawer.drag { transition: none; }
