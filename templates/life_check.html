@@ -95,6 +95,13 @@
 .lc-mode-btn small { display:block; font-size:0.68rem; font-weight:600; opacity:0.8; margin-top:2px; }
 .lc-mode-btn.active { background:#0C447C; border-color:#0C447C; color:#fff; }
 
+/* lc-bi-simple-v1: BI(要支援・事業対象者)は紙のBIシートと同じく「点数だけ」にする。
+   要介護向けの様式3-2で必要な課題有無/環境/状況メモ/AI相談は、要支援では過剰で手が止まるため。
+   要素を削除せずCSSで隠すのは、保存・編集復元のJSが同じDOMを直接探しているから。 */
+body.lc-bi #lc-adl-area .lc-sub,
+body.lc-bi #lc-adl-area .lc-textfields,
+body.lc-bi #lc-adl-area .lc-assist { display:none !important; }
+
 .lc-indep-btn { width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff; font-size:0.92rem; cursor:pointer; box-sizing:border-box; color:#202124; }  /* lc-indep-picker-v1 */
 .lc-indep-btn .material-symbols-outlined { font-size:20px; color:#5f6368; }
 .lc-indep-val { color:#9aa0a6; }
@@ -397,6 +404,10 @@ function lcSetMode(mode) {  // lc-bi-mode-v1: 様式3-2(full)/BI(bi) 切替
   document.querySelectorAll('.lc-mode-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-mode')===mode); });
   var lvCard = document.getElementById('lc-card-level');
   if (lvCard) lvCard.style.display = (mode==='bi') ? 'none' : '';
+  // lc-bi-simple-v1: BIのときADL各項目の付属欄(課題/AI相談/環境/状況メモ)をCSSで隠す。
+  // 個々の要素にstyleを当てず body のクラスにしているのは、ADL項目がJSで後から描画されるため
+  // (再描画のたびに当て直す方式は当て忘れが必ず出る)。
+  try { document.body.classList.toggle('lc-bi', mode === 'bi'); } catch (e) {}
 }
 document.addEventListener('DOMContentLoaded', function(){ try { lcSetMode('full'); } catch(e){} });  // lc-bi-mode-save-v1: 初期表示は様式3-2をactive
 function lcModeFromCareLevel(cl) {  // lc-bi-mode-v1: 介護度→初期モード
