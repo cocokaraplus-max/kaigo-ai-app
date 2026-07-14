@@ -29,6 +29,122 @@ _BASE = {
 }
 # 旧種別キー(han/ichi)→time_class の後方互換マッピング。
 _LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
+
+# ===== keiyaku-yobo-v1: サービス系統 =====
+# category を持たない既存データは chiiki（指定地域密着型通所介護）とみなす。
+CAT_CHIIKI = "chiiki"
+CAT_YOBO = "yobo"
+CAT_SEIKATSU = "seikatsu"          # keiyaku-seikatsu-v1
+CAT_HOKENGAI = "hokengai"          # keiyaku-hokengai-v1（介護保険の枠外。構造が別物）
+
+_CAT_NAME = {
+    CAT_CHIIKI: "指定地域密着型通所介護",
+    CAT_YOBO: "介護予防通所サービス",
+    CAT_SEIKATSU: "生活支援通所サービス",
+    CAT_HOKENGAI: "介護保険外サービス",
+}
+# 計画書の呼び方（条文中で使う）
+_CAT_PLAN = {
+    CAT_CHIIKI: "地域密着型通所介護計画",
+    CAT_YOBO: "介護予防通所サービス計画",
+    CAT_SEIKATSU: "生活支援通所サービス計画",
+    CAT_HOKENGAI: "サービス計画",
+}
+
+
+def _cat(F, st):  # keiyaku-yobo-v1
+    """その種別の系統。未設定は chiiki（後方互換）。"""
+    svc = (F.get("service") or {}).get(st) or {}
+    c = str(svc.get("category") or CAT_CHIIKI)
+    return c if c in _CAT_NAME else CAT_CHIIKI
+
+
+def _svc_name(F, st):
+    return _CAT_NAME[_cat(F, st)]
+
+
+def _plan_name(F, st):
+    return _CAT_PLAN[_cat(F, st)]
+
+
+def _ceil_yen(v):
+    """自己負担は切り上げ（様式の数値と一致する。例 21,392円の1割 → 2,140円）。"""
+    return int(math.ceil(float(v) - 1e-9))
+
+
+def _yobo_units_total(F, st, base_units, add_units):  # keiyaku-yobo-adds-v2
+    """予防の総単位。
+
+    介護の加算マスタは**使わない**。個別機能訓練Ⅰ/Ⅱは予防（総合事業）では算定できず、
+    予防は 運動器機能向上225 / 科学的介護推進40 …（豊田市 単位数表マスタ A6）の体系のため。
+    予防で算定する加算の合計単位は、その種別に持たせて入力してもらう。
+
+    **処遇改善だけは介護と同じ率**を使う（介護側で選んだ区分がそのまま効く）。
+
+      総単位 = round((基本単位 + 加算単位) × (1 + 処遇改善率))
+    """
+    adds = F.get("adds", {}) or {}
+    units = int(base_units or 0) + int(add_units or 0)
+    rate = _shoguu_rate(adds)
+    if rate:
+        units = int(round(units * (1.0 + rate)))
+    return units
+
+
+def _yobo_rows(F, st):
+    """予防の料金行。[(ラベル, 総単位, 加算込み総額(円)), ...]
+
+    総額は「総単位 × 単価（級地）」で出す。ただし **手入力の総額があればそれが勝つ**。
+    総合事業は市町村ごとに単価・加算体系が違い、国の表どおりにならないことがあるため
+    （現物の重説と1円まで合わせたいときは、画面で総額を入れる）。
+    """
+    svc = (F.get("service") or {}).get(st) or {}
+    area = int(F.get("area_level", 3) or 3)
+    tanka = _tanka(area)
+    try:
+        add_units = int(svc.get("y_add_units") or 0)     # keiyaku-yobo-adds-v2: 予防の加算合計（月）
+    except (TypeError, ValueError):
+        add_units = 0
+    out = []
+    for key, label in (("y1", "要支援1"), ("y2", "要支援2")):
+        try:
+            base = int(svc.get("%s_units" % key) or 0)
+        except (TypeError, ValueError):
+            base = 0
+        units = _yobo_units_total(F, st, base, add_units)
+        try:
+            total = int(svc.get("%s_total" % key) or 0)   # 手入力の上書き
+        except (TypeError, ValueError):
+            total = 0
+        if total <= 0:
+            total = int(round(units * tanka))
+        out.append((label, units, total))
+    return out
+
+
+def _fee_table_yobo(F, st):  # keiyaku-yobo-v1
+    """予防の料金表。負担割合ごとに「単位数 / 総額 / 給付 / 自己負担」。
+
+    自己負担 = ceil(総額 × 割 / 10)、給付 = 総額 − 自己負担。
+    総額は自治体の総合事業単価・加算体系で決まるので、単位×単価では出せない（入力値を使う）。
+    """
+    rows = _yobo_rows(F, st)
+    out = []
+    for w in (1, 2, 3):
+        head = ('<tr><th class="hh">利用回数別のサービス単位数</th>'
+                + "".join(f'<th>{lb}<br><span class="u">{u:,}単位</span></th>'
+                          for lb, u, _t in rows) + "</tr>")
+        r1 = ('<tr><td class="kai">1. サービス利用料金（各種加算を含む）</td>'
+              + "".join(f"<td>{_yen(t)}</td>" for _lb, _u, t in rows) + "</tr>")
+        r2 = ('<tr><td class="kai">2. うち、介護保険から給付される金額</td>'
+              + "".join(f"<td>{_yen(t - _ceil_yen(t * w / 10.0))}</td>" for _lb, _u, t in rows)
+              + "</tr>")
+        r3 = ('<tr><td class="kai">3. 自己負担額</td>'
+              + "".join(f"<td>{_yen(_ceil_yen(t * w / 10.0))}</td>" for _lb, _u, t in rows)
+              + "</tr>")
+        out.append(f'<div class="sub-h">{w}割負担</div>'
+                   f'<table class="ptab fee">{head}{r1}{r2}{r3}</table>')
+    return "".join(out)
 _AREA_UP = {1: 0.20, 2: 0.16, 3: 0.15, 4: 0.12, 5: 0.10, 6: 0.06, 7: 0.03, 0: 0.0}
 _KUNREN1 = 56
 _KUNREN2 = 20
@@ -274,7 +390,128 @@ def _g(d, *keys, default=""):
 
 
 # ===== 料金表（コンパクト1表・rowspanなし） =====
+def _localize(F, st, html):  # keiyaku-yobo-v2
+    """系統に合わせて呼び方を差し替える。
+
+    docx を突き合わせた結果、地域密着型と予防の違いは**呼び方だけ**だった
+    （22条・七章の構成は同じ。第15条(2) の終了事由も予防版の現物は同文のまま）。
+    条文をもう1セット持つより、ここで差し替えるほうが docx との差分が見えやすい。
+    置換は長い語から先に当てる（「地域密着型通所介護計画」が「地域密着型通所介護」に
+    食われないようにするため）。
+    """
+    cat = _cat(F, st)
+    if cat == CAT_CHIIKI:
+        return html
+    name = _CAT_NAME[cat]
+    plan = _CAT_PLAN[cat]
+    for a, b in (
+        ("地域密着型通所介護計画", plan),
+        ("指定地域密着型通所介護", name),
+        ("地域密着型通所介護", name),
+    ):
+        html = html.replace(a, b)
+    return html
+
+
+# ===== keiyaku-seikatsu-v1: 生活支援通所サービスの料金 =====
+# 豊田市 単位数表マスタ A7（令和6年4月〜）。御社の重説と12マス一致することを検算済み。
+_SEIKATSU_DEFAULT_UNITS = {
+    "w1_soge": 1530, "w1_nosoge": 1202,     # 週1回程度（送迎あり / なし）
+    "w2_soge": 3002, "w2_nosoge": 2359,     # 週2回程度（要支援2のみ）
+}
+
+
+def _seikatsu_units(F, st):
+    svc = (F.get("service") or {}).get(st) or {}
+    out = {}
+    for k, dv in _SEIKATSU_DEFAULT_UNITS.items():
+        try:
+            out[k] = int(svc.get("s_%s" % k) or dv)
+        except (TypeError, ValueError):
+            out[k] = dv
+    return out
+
+
+def _fee_table_seikatsu(F, st):
+    """生活支援通所の料金表。負担割合ごとに「週1/週2 × 送迎あり/なし」の月額自己負担。
+
+    総額 = floor(単位 × 単価)、1割 = ceil(総額 × 0.1)、**2割・3割は1割額の2倍・3倍**。
+    （総額×0.2 で出すと現物と1円ずれる。現物は1割額を切り上げてから倍にしている。）
+    """
+    u = _seikatsu_units(F, st)
+    area = int(F.get("area_level", 3) or 3)
+    tanka = _tanka(area)
+
+    def ichiwari(units):
+        total = int(math.floor(units * tanka))
+        return _ceil_yen(total * 0.1)
+
+    out = []
+    for w in (1, 2, 3):
+        head = ('<tr><th class="hh">利用回数</th>'
+                '<th>送迎あり</th><th>送迎なし</th></tr>')
+        rows = ""
+        for kai, key in ((1, "w1"), (2, "w2")):
+            a_ = ichiwari(u["%s_soge" % key]) * w
+            b_ = ichiwari(u["%s_nosoge" % key]) * w
+            note = "<br><span class=\"u\">要支援2のみ</span>" if kai == 2 else ""
+            rows += (f'<tr><td class="kai">週{kai}回程度{note}</td>'
+                     f'<td>{_yen(a_)}／月</td><td>{_yen(b_)}／月</td></tr>')
+        out.append(f'<div class="sub-h">{w}割負担</div>'
+                   f'<table class="ptab fee">{head}{rows}</table>')
+    out.append('<p class="note">※ 週2回程度のご利用は要支援2の方のみです'
+               '（事業対象者・要支援1の方は週1回程度まで）。</p>')
+    return "".join(out)
+
+
+def _kasan_section(F, st):  # keiyaku-kasan-cat-v1
+    """加算の概要。系統ごとに出し分ける。
+
+    予防（総合事業）では介護の加算（個別機能訓練Ⅰ/Ⅱ・中重度者ケア体制など）は算定できない。
+    以前は介護のマスタをそのまま出していたので、予防の重説に要介護の加算が載っていた。
+    """
+    cat = _cat(F, st)
+
+    if cat == CAT_SEIKATSU:
+        return ""                      # 生活支援通所は加算なし
+
+    if cat == CAT_YOBO:
+        svc = (F.get("service") or {}).get(st) or {}
+        try:
+            add_units = int(svc.get("y_add_units") or 0)
+        except (TypeError, ValueError):
+            add_units = 0
+        rate = _shoguu_rate(F.get("adds", {}) or {})
+        rows = ('<tr><th class="hh">加算</th><th>単位</th><th>算定</th></tr>'
+                '<tr><td class="kai">科学的介護推進体制加算</td><td>40単位／月</td>'
+                '<td>すべてのご契約者に加算</td></tr>')
+        other = add_units - 40
+        if other > 0:
+            rows += (f'<tr><td class="kai">その他の加算（合計）</td><td>{other:,}単位／月</td>'
+                     '<td>算定要件を満たす月に加算</td></tr>')
+        if rate:
+            rows += (f'<tr><td class="kai">介護職員等処遇改善加算</td>'
+                     f'<td>月の総単位数 × {rate * 100:.1f}％</td>'
+                     '<td>すべてのご契約者に加算</td></tr>')
+        return ('<div class="sec"><div class="sec-h">各種加算の概要</div>'
+                f'<table class="ptab fee">{rows}</table>'
+                '<p class="note">上記の加算は、料金表の月額自己負担額に含まれています'
+                '（一単位未満の端数は四捨五入）。いずれも区分支給限度基準額の算定対象外です。</p></div>')
+
+    # chiiki（地域密着型通所介護）: 従来どおり
+    return (f'<div class="sec"><div class="sec-h">各種加算の概要</div>\n{_adds_table(F)}\n'
+            '<p class="note">「料金表に反映済み」の加算は、上記の月額自己負担額に含まれています。'
+            '「※実施月のみ算定／料金表とは別に加算」の加算は、サービスを実施した月に限り、'
+            '上記単位数・限度回数に基づき別途加算されます（一単位未満の端数四捨五入）。'
+            'いずれも区分支給限度基準額の算定対象外です。</p></div>')
+
+
 def _fee_table(F, st):
+    cat = _cat(F, st)
+    if cat == CAT_YOBO:               # keiyaku-yobo-v1
+        return _fee_table_yobo(F, st)
+    if cat == CAT_SEIKATSU:           # keiyaku-seikatsu-v1
+        return _fee_table_seikatsu(F, st)
     adds = F.get("adds", {})
     area = int(F.get("area_level", 3))
     vpm = int(F.get("visits_per_month", 4))
@@ -472,9 +709,7 @@ def render_juyo(F, st):
 {_fee_table(F, st)}
 <p class="note">※週1回＝月{int(F.get("visits_per_month",4))}回換算で算出。利用回数により金額は変わります。</p></div>'''
 
-    sec_kasan = f'''<div class="sec"><div class="sec-h">各種加算の概要</div>
-{_adds_table(F)}
-<p class="note">「料金表に反映済み」の加算は、上記の月額自己負担額に含まれています。「※実施月のみ算定／料金表とは別に加算」の加算は、サービスを実施した月に限り、上記単位数・限度回数に基づき別途加算されます（一単位未満の端数四捨五入）。いずれも区分支給限度基準額の算定対象外です。</p></div>'''
+    sec_kasan = _kasan_section(F, st)   # keiyaku-kasan-cat-v1: 系統ごとに出し分け
 
     sec_jihi = f'''<div class="sec"><div class="sec-h">自費料金・その他の費用</div>
 {_jihi_table(F)}
@@ -523,10 +758,10 @@ def render_juyo(F, st):
 <p class="center note">当事業所は介護保険の指定を受けています。（指定　第{_esc(j.get("shitei_no"))}号）</p>
 <p>当事業所はご契約者に対して指定地域密着型通所介護を提供します。事業所の概要や提供されるサービスの内容、契約上ご注意いただきたいことを次のとおり説明します。</p>'''
 
-    return ("<div class=\"paper\">" + head + sec_houjin + sec_jigyosho + sec_staff +
-            sec_hyoka + sec_tokucho + sec_ryokin + sec_kasan + sec_jihi +
-            sec_shiharai + sec_kinkyu + sec_shuryo + sec_kujo + sec_saigai +
-            sec_souchou + _tokki_section(F) + sign + "</div>")
+    return _localize(F, st, "<div class=\"paper\">" + head + sec_houjin + sec_jigyosho + sec_staff +
+                     sec_hyoka + sec_tokucho + sec_ryokin + sec_kasan + sec_jihi +
+                     sec_shiharai + sec_kinkyu + sec_shuryo + sec_kujo + sec_saigai +
+                     sec_souchou + _tokki_section(F) + sign + "</div>")   # keiyaku-yobo-v2
 
 
 # ===== 利用契約書 本文（全22条） =====
@@ -645,7 +880,7 @@ def render_keiyaku(F, st):
     head = f'''<div class="doc-title">{jname} 利用契約書</div>
 <div class="doc-sub">地域密着型通所介護</div>'''
 
-    return '<div class="paper">' + head + chapters + sign + '</div>'
+    return _localize(F, st, '<div class="paper">' + head + chapters + sign + '</div>')   # keiyaku-yobo-v2
 
 
 # ===== 印刷用CSS（wkhtmltopdf向け: @page margin 0、余白は .page-pad で実寸） =====
@@ -712,6 +947,138 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 '''
 
 
+# ===== keiyaku-hokengai-v1: 介護保険外（自費）サービス =====
+# 保険外は介護保険の枠外。契約書と重要事項説明書が1枚にまとまった現物に合わせる。
+# 給付・負担割合・法定代理受領・区分支給限度額の条文はすべて出さない。
+
+_HOKENGAI_DEFAULTS = {
+    "h_service": "買い物の付き添いや、受診の付き添い、介護保険サービスで適応できないもののサービスなどを行ないます。",
+    "h_fees": "10分以内のお手伝い|1000\n外出等の長時間のお手伝い（1時間）|4000",
+    "h_fee_note": "※ サービスが1時間を超過し、2時間に満たない場合も時間割等は致しません。2時間分の料金をいただきます。",
+    "h_time": "土曜、日曜　10時00分から17時00分",
+    "h_cancel": "1　ご利用者の都合でサービスを中止する場合は、1週間前までにご申告ください。\n"
+                "2　ご利用中止の際は、電話もしくはスタッフに直接ご連絡ください。",
+    "h_pay": "当月1日から末日までの合計額を翌月26日に、ご指定の金融機関の預金口座より自動引き落しによりお支払いください。",
+}
+
+
+def _hokengai_val(F, st, key):
+    svc = (F.get("service") or {}).get(st) or {}
+    v = str(svc.get(key) or "").strip()
+    return v or _HOKENGAI_DEFAULTS.get(key, "")
+
+
+def _hokengai_fee_table(F, st):
+    """料金表。1行1項目「名称|金額」。金額は税込の円。"""
+    rows = ""
+    for line in _hokengai_val(F, st, "h_fees").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            name, price = line.split("|", 1)
+        else:
+            name, price = line, ""
+        price = price.strip()
+        try:
+            # _yen() は数字だけを返す（「円」は付かない）。ここで単位を付ける。
+            price = _yen(int(price)) + "円（税込）"
+        except (TypeError, ValueError):
+            pass
+        rows += f'<tr><td class="kai">{_esc(name.strip())}</td><td>{_esc(price)}</td></tr>'
+    return f'<table class="ptab fee"><tr><th class="hh">サービス</th><th>ご利用料金</th></tr>{rows}</table>'
+
+
+def render_hokengai(F, st):
+    """介護保険外サービス 利用契約書 兼 重要事項説明書（1枚もの）。"""
+    j = F.get("jigyosho", {}) or {}
+    h = F.get("houjin", {}) or {}
+    k = F.get("kujo", {}) or {}
+
+    head = f"""<div class="doc-title">{_esc(j.get("name"))}</div>
+<div class="doc-sub">介護保険外サービス　利用契約書　重要事項説明書</div>
+<p>（　　　　　　　　　　　　　）（以下「利用者」といいます）と{_esc(j.get("name"))}（以下「事業所」といいます）は、
+事業所が利用者に提供する介護保険外サービスについて、各々対等の立場で内容を確認し、次のとおり契約を行います。</p>"""
+
+    sec_houjin = f"""<div class="sec"><div class="sec-h">運営会社の概要</div>
+<table class="ptab"><tr><td class="kai">会社の名称</td><td>{_esc(h.get("name"))}</td></tr>
+<tr><td class="kai">主たる事業所の所在地</td><td>{_esc(h.get("addr"))}</td></tr>
+<tr><td class="kai">代表者</td><td>{_esc(h.get("rep"))}</td></tr>
+<tr><td class="kai">設立年月日</td><td>{_esc(h.get("founded"))}</td></tr>
+<tr><td class="kai">電話番号</td><td>{_esc(h.get("tel"))}</td></tr></table></div>"""
+
+    sec_jigyosho = f"""<div class="sec"><div class="sec-h">ご利用事業所の概要</div>
+<table class="ptab"><tr><td class="kai">ご利用事業所の名称</td><td>{_esc(j.get("name"))}</td></tr>
+<tr><td class="kai">サービス種類</td><td>介護保険外サービス</td></tr>
+<tr><td class="kai">事業所の所在地</td><td>{_esc(j.get("addr"))}</td></tr>
+<tr><td class="kai">電話番号</td><td>{_esc(j.get("tel"))}</td></tr>
+<tr><td class="kai">管理者の氏名</td><td>{_esc(j.get("kanri"))}</td></tr>
+<tr><td class="kai">サービス提供時間</td><td>{_esc(_hokengai_val(F, st, "h_time"))}</td></tr></table></div>"""
+
+    sec_mokuteki = """<div class="sec"><div class="sec-h">事業の目的と運営の方針</div>
+<p>利用者がその有する能力に応じ、可能な限り居宅において自立した日常生活を営むことができるよう、
+生活の質の確保及び向上を図るとともに、安心して日常生活を過ごすことができるよう、
+介護保険外サービスを提供することを目的とします。</p>
+<p>事業者は、利用者の心身の状況や家庭環境等を踏まえ、関係する市町村や事業者、地域の保健・医療・福祉サービス等と
+綿密な連携を図りながら、利用者の介護状態の軽減や悪化の防止のため、適切なサービス提供に努めます。</p></div>"""
+
+    sec_naiyo = f"""<div class="sec"><div class="sec-h">提供するサービス内容</div>
+<p>{_esc(_hokengai_val(F, st, "h_service"))}</p></div>"""
+
+    sec_onegai = """<div class="sec"><div class="sec-h">サービスに関わるお願い</div>
+<p>【職員等の個人情報】個人情報保護法上、職員の住所、電話番号などの個人情報につきましては、
+ご利用者にお知らせしておりませんので、あらかじめご了承ください。</p>
+<p>【贈答等の禁止】職員に贈答等は制度上禁止されておりますので、ご遠慮ください。</p>
+<p>体調や容体の急変などによりサービスを利用できなくなったときは、できる限り早めに担当者へご連絡ください。</p>
+<p>地震、台風、大雪等の自然災害発生時において、職員の交通手段及び生命に危険が及ぶ事態が予測される場合は、
+サービスを中止させていただきます。</p>
+<p>感染症の発生を予防または感染リスクを防ぐため、入出時の手洗い、マスク等を使用させていただくことがあります。</p>
+<p>訪問途中の事故等により訪問困難な場合、事務所より利用者宅へ連絡し、最善の処置をとります。
+その場合、別の職員がお伺いする場合があります。</p>
+<p>女性職員に対し性的な行為を強要するなどのセクシャルハラスメントや迷惑行為が確認された際には、
+法的措置を取ると共に損害賠償を請求することがあります。</p>
+<p>サービスの申し込みに関しては、デイサービスの利用中にお願いします。</p>
+<p>このサービスの利用は当事業所の利用者様に限らせていただきます。</p>
+<p>送迎時にサービスの利用も可能とします。</p></div>"""
+
+    note = _hokengai_val(F, st, "h_fee_note")
+    sec_ryokin = f"""<div class="sec"><div class="sec-h">利用料</div>
+<div class="sub-h">(1) 利用料金</div>
+{_hokengai_fee_table(F, st)}
+{f'<p class="note">{_esc(note)}</p>' if note else ''}
+<div class="sub-h">(2) 利用中止のご連絡と注意点</div>
+<p>{_esc(_hokengai_val(F, st, "h_cancel")).replace(chr(10), "<br>")}</p>
+<div class="sub-h">(3) 支払い方法</div>
+<p>利用料は1か月ごとにまとめて請求しますので、次の方法によりお支払いください。</p>
+<p>{_esc(_hokengai_val(F, st, "h_pay"))}</p></div>"""
+
+    sec_kujo = f"""<div class="sec"><div class="sec-h">苦情相談窓口</div>
+<p>サービス提供に関する苦情や相談は、当事業所の下記の窓口でお受けいたします。</p>
+<table class="ptab"><tr><td class="kai">電話番号</td><td>{_esc(k.get("tel") or j.get("tel"))}</td></tr>
+<tr><td class="kai">苦情相談担当</td><td>{_esc(k.get("uketsuke"))}</td></tr>
+<tr><td class="kai">苦情対応担当</td><td>{_esc(k.get("taio"))}</td></tr></table></div>"""
+
+    sign = f"""<div class="sec sign-sec"><p class="center">　　　　　年　　　月　　　日</p>
+<p>事業者は、利用者へのサービス提供開始にあたり、上記のとおり重要事項を説明しました。</p>
+<table class="sigtab">
+<tr><td class="hint">事業者</td><td class="wr">所在地　{_esc(j.get("addr"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">事業者　{_esc(h.get("name"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">管理者・氏名　{_esc(j.get("kanri"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">説明者・氏名　　　　　　　　　　　　　　　　　　　　</td></tr>
+</table>
+<p>私は、事業者より上記の重要事項について説明を受け、同意しました。</p>
+<table class="sigtab">
+<tr><td class="hint">利用者</td><td class="wr">住　所　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">氏　名　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint">代筆者</td><td class="wr">住　所　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">氏　名　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">続　柄　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+</table></div>"""
+
+    return ('<div class="paper">' + head + sec_houjin + sec_jigyosho + sec_mokuteki +
+            sec_naiyo + sec_onegai + sec_ryokin + sec_kujo + _tokki_section(F) + sign + '</div>')
+
+
 def render_print_html(F, doc, st, blank_between=False):
     """印刷用の完全HTMLを返す。
     doc: 'juyo' | 'keiyaku' | 'both'
@@ -721,8 +1088,19 @@ def render_print_html(F, doc, st, blank_between=False):
         重説が奇数ページで終わったとき、両面印刷で契約書が重説の裏に
         刷られてしまうのを防ぐため。呼び出し側がページ数を見て決める。
     """
-    if st not in ("han", "ichi"):
-        st = "han"
+    # keiyaku-yobo-v1: 以前は han/ichi 以外を握りつぶして "han" にしていた。
+    # 画面から追加した種別（t3, t4…）で印刷すると、黙って半日型の内容が出るバグだった。
+    svc = F.get("service") or {}
+    if st not in svc:
+        order = [k for k in (svc.get("_order") or []) if k in svc]
+        st = order[0] if order else ("han" if "han" in svc else st)
+    # keiyaku-hokengai-v1: 保険外は「契約書 兼 重要事項説明書」の1枚もの。
+    # どのボタン（重説／契約書／一式）から来ても同じ文書を出す。
+    if _cat(F, st) == CAT_HOKENGAI:
+        body = '<div class="page-pad">' + render_hokengai(F, st) + '</div>'
+        return ('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">'
+                f'<style>{_PRINT_CSS}</style></head><body>{body}</body></html>')
+
     blocks = []
     if doc in ("juyo", "both"):
         blocks.append('<div class="page-pad">' + render_juyo(F, st) + '</div>')

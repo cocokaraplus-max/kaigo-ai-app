@@ -335,18 +335,130 @@
     ['svc_keiyaku','サービス内容（契約書用）'],
     ['kanran_time','記録閲覧の開始時刻'],
   ];
-  function renderTypeEditor(){
+  // keiyaku-yobo-v2: 系統。未設定は chiiki（＝今までの地域密着型通所介護）。
+const KK_CATEGORIES = [
+  ['chiiki',   '介護保険（地域密着型通所介護）'],
+  ['yobo',     '介護予防通所サービス'],
+  ['seikatsu', '生活支援通所サービス'],   // keiyaku-seikatsu-v1
+  ['hokengai', '介護保険外（自費）サービス'],  // keiyaku-hokengai-v1
+];
+
+// keiyaku-hokengai-v1: 保険外は介護保険の枠外。契約書と重説が1枚にまとまる。
+// 料金は単位ではなく自由な単価行（1行1項目「名称|金額」）。
+const KK_HOKENGAI_FIELDS = [
+  ['h_service',  '提供するサービス内容', 'textarea'],
+  ['h_fees',     '利用料金（1行1項目「名称|金額」。例: 10分以内のお手伝い|1000）', 'textarea'],
+  ['h_fee_note', '料金の注記（時間割をしない旨など）', 'textarea'],
+  ['h_time',     'サービス提供時間', 'text'],
+  ['h_cancel',   '利用中止のご連絡と注意点', 'textarea'],
+  ['h_pay',      '支払い方法', 'textarea'],
+];
+
+// keiyaku-seikatsu-v1: 生活支援通所の単位（豊田市 単位数表マスタ A7・令和6年4月〜）
+const KK_SEIKATSU_FIELDS = [
+  ['s_w1_soge',   '週1回程度・送迎あり 単位（月）　※豊田市: 1530'],
+  ['s_w1_nosoge', '週1回程度・送迎なし 単位（月）　※豊田市: 1202'],
+  ['s_w2_soge',   '週2回程度・送迎あり 単位（月）　※豊田市: 3002'],
+  ['s_w2_nosoge', '週2回程度・送迎なし 単位（月）　※豊田市: 2359'],
+];
+const KK_SEIKATSU_DEFAULTS = { s_w1_soge:1530, s_w1_nosoge:1202, s_w2_soge:3002, s_w2_nosoge:2359 };
+
+function kkFillSeikatsuDefaults(node){
+  Object.keys(KK_SEIKATSU_DEFAULTS).forEach(k=>{
+    if(node[k] === undefined || node[k] === '' || node[k] === null){
+      node[k] = KK_SEIKATSU_DEFAULTS[k];
+    }
+  });
+}
+// 予防のときに入れてもらう料金。総額は自治体の総合事業単価・加算体系で決まるので、
+// 単位×単価では出せない（現物の重説どおり、加算込みの円を入れてもらう）。
+const KK_YOBO_FIELDS = [
+  ['y1_units',    '要支援1 基本単位（月）　※豊田市: 1798'],
+  ['y2_units',    '要支援2 基本単位（月）　※豊田市: 3621'],
+  ['y_add_units', '加算の合計単位（月）　※科学的介護推進40 / 運動器機能向上225 など'],
+  ['y1_total',    '要支援1 月額総額（円・空なら自動計算）'],
+  ['y2_total',    '要支援2 月額総額（円・空なら自動計算）'],
+];
+
+function kkCategoryOf(t){ return (t && t.category) || 'chiiki'; }
+
+// keiyaku-yobo-default-v1: 予防の既定値（豊田市 単位数表マスタ A6・令和6年4月〜）
+//   基本単位 1,798 / 3,621、加算は科学的介護推進体制 40 のみ。
+//   運動器機能向上(225)・事業所評価(120)は令和6年3月末で終了しており算定できない。
+//   処遇改善は介護と同じ区分（Ⅱロ=12.5%）が自動で乗る。
+const KK_YOBO_DEFAULTS = { y1_units: 1798, y2_units: 3621, y_add_units: 40 };
+
+function kkFillYoboDefaults(node){
+  Object.keys(KK_YOBO_DEFAULTS).forEach(k=>{
+    if(node[k] === undefined || node[k] === '' || node[k] === null){
+      node[k] = KK_YOBO_DEFAULTS[k];     // 空のときだけ。入っている値は触らない
+    }
+  });
+}
+
+function renderTypeEditor(){
     const box = $('#kk-type-editor'); if(!box) return;
     const key = state.type;
     const node = state.service[key] || (state.service[key] = {});
+    const cat = kkCategoryOf(node);        // keiyaku-yobo-v2
+    if(cat === 'yobo') kkFillYoboDefaults(node);           // keiyaku-yobo-default-v1
+    if(cat === 'seikatsu') kkFillSeikatsuDefaults(node);   // keiyaku-seikatsu-v1
     let h = '<div class="kk-edit-card">';
     // label
     h += `<label class="kk-fld"><span>種別の名称（自由）</span>
       <input type="text" data-svc="label" value="${escAttr(node.label||'')}" placeholder="例：午前コース／半日型（3時間）"></label>`;
-    // time_class
-    h += `<label class="kk-fld"><span>料金計算の時間区分（国の区分）</span><select data-svc="time_class">`;
-    TIME_CLASSES.forEach(([v,l])=>{ h+=`<option value="${v}"${(node.time_class||'3-4h')===v?' selected':''}>${l}</option>`; });
+    // keiyaku-yobo-v2: 系統。ここで条文・重説の文面と料金表の作りが変わる。
+    h += `<label class="kk-fld"><span>サービスの系統（契約書・重説の文面が変わります）</span><select data-svc="category">`;
+    KK_CATEGORIES.forEach(([v,l])=>{ h+=`<option value="${v}"${cat===v?' selected':''}>${l}</option>`; });
     h += `</select></label>`;
+
+    if(cat === 'chiiki'){
+      // time_class（介護保険＝地域密着型のときだけ。予防は月額包括なので時間区分を使わない）
+      h += `<label class="kk-fld"><span>料金計算の時間区分（国の区分）</span><select data-svc="time_class">`;
+      TIME_CLASSES.forEach(([v,l])=>{ h+=`<option value="${v}"${(node.time_class||'3-4h')===v?' selected':''}>${l}</option>`; });
+      h += `</select></label>`;
+    } else if(cat === 'yobo'){
+      h += `<div class="kk-fld"><span>料金（介護予防通所サービス）</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          <b>処遇改善は介護と同じ率</b>で乗ります（下で選んだ区分がそのまま効きます）。<br>
+          それ以外の加算は<b>予防の体系が別</b>なので（個別機能訓練Ⅰ/Ⅱは算定できず、
+          運動器機能向上225・科学的介護推進40 など）、合計単位をここに入れてください。<br>
+          総単位 =（基本単位 ＋ 加算単位）×（1＋処遇改善率）／ 総額 = 総単位 × 単価（級地）。<br>
+          現物の重説と1円まで合わせたいときは <b>月額総額（円）</b> に直接入れてください（そちらが優先）。
+        </div></div>`;
+      KK_YOBO_FIELDS.forEach(([k,lab])=>{
+        h += `<label class="kk-fld"><span>${lab}</span>
+          <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
+      });
+    } else if(cat === 'hokengai'){
+      // keiyaku-hokengai-v1
+      h += `<div class="kk-fld"><span>介護保険外（自費）サービス</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          介護保険の枠外なので、<b>契約書と重要事項説明書が1枚</b>になります（給付・負担割合・
+          法定代理受領の条文は出ません）。印刷ボタンはどれを押しても同じ文書が出ます。<br>
+          空欄の項目は現行の文面が既定で入ります。
+        </div></div>`;
+      KK_HOKENGAI_FIELDS.forEach(([k,lab,type])=>{
+        const val = node[k]||'';
+        if(type === 'textarea'){
+          h += `<label class="kk-fld"><span>${lab}</span><textarea data-svc="${k}" rows="3">${escHtml(val)}</textarea></label>`;
+        } else {
+          h += `<label class="kk-fld"><span>${lab}</span><input type="text" data-svc="${k}" value="${escAttr(val)}"></label>`;
+        }
+      });
+    } else if(cat === 'seikatsu'){
+      // keiyaku-seikatsu-v1
+      h += `<div class="kk-fld"><span>料金（生活支援通所サービス）</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          単位 × 単価（級地）で総額を出し、<b>1割額を切り上げてから2倍・3倍</b>して
+          2割・3割を出します（現物の重説がこの作りです。総額×0.2 だと1円ずれます）。<br>
+          加算はありません。<b>週2回程度は要支援2の方のみ</b>（表に注記が入ります）。
+        </div></div>`;
+      KK_SEIKATSU_FIELDS.forEach(([k,lab])=>{
+        h += `<label class="kk-fld"><span>${lab}</span>
+          <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
+      });
+    }
     // 8 fields
     SVC_FIELDS.forEach(([k,lab])=>{
       const val = node[k]||'';
@@ -359,11 +471,12 @@
     h += '</div>';
     box.innerHTML = h;
     box.querySelectorAll('[data-svc]').forEach(el=>{
-      el.oninput = ()=>{
+      el.oninput = el.onchange = ()=>{
         const f = el.dataset.svc;
         state.service[key][f] = el.value;
         state.dirty = true;
         if(f==='label'){ buildTypeSeg(); }
+        if(f==='category'){ renderTypeEditor(); refreshFee(); }   // keiyaku-yobo-v2: 入力欄ごと切り替わる
         if(f==='time_class'){ refreshFee(); }
       };
     });
@@ -377,7 +490,7 @@
   }
   function addType(){
     const key = newTypeKey();
-    state.service[key] = {label:'新しい種別', time_class:'3-4h'};
+    state.service[key] = {label:'新しい種別', time_class:'3-4h', category:'chiiki'};   // keiyaku-yobo-v2
     state.order.push(key);
     state.type = key;
     state.dirty = true;
