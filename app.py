@@ -1955,7 +1955,8 @@ def register():
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
-    {"href": "/record_check",   "icon": "fact_check",             "label": "記録チェック",   "need": None},   # record-check-v1
+    # record-check-v1: 記録充足チェックは「ケース記録」の上のタブから入る導線に一本化した。
+    # アイコンを別に立てると入口が2つになり、メニューも増える。タブだけ残す。
     {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
