@@ -2189,3 +2189,31 @@ git checkout tasukaru-dev
 
 教訓: **PC の Chrome で sticky が効いていても、iOS で効いているとは限らない。
 ただし「iOS の sticky が壊れている」と決めつける前に、まず“枠が本当にスクロールしているか”を疑う。**
+
+---
+
+## 【開発ログ】2026-07-14(3) 生活機能CHECK：BIシートを「点数だけ」に簡素化 <!-- session-2026-07-14-lc-bi-simple -->
+
+**本番反映済み**（`fae993f`）。DDL 不要。変更は `templates/life_check.html` のみ。
+
+### なぜ
+
+`/life_check` は要介護向けの **様式3-2** を基準に作ったので、ADL10項目それぞれに
+「課題(有/無)」「AI相談」「環境」「状況・生活課題」が付いている。
+要支援・事業対象者に使う **紙のBIシート** は 評価項目 / 点数 / 得点 / 合計 だけ。
+現場では詳しすぎて手が止まるので、BIモードでは付属欄を出さないことにした。
+
+### 実装（`lc-bi-simple-v1`）
+
+- シート種別トグル（`sheet_mode` = full / bi）は 2026-06 に実装済み。BIでは
+  「車椅子・IADL・基本動作（4段階）」カードを隠していた。今回そこに **ADL各項目の付属欄** を足した。
+- `body.lc-bi` を `lcSetMode()` で付け外し。CSS で
+  `#lc-adl-area` 内の `.lc-sub` / `.lc-textfields` / `.lc-assist` を `display:none`。
+- **DOM からは消さない。** 保存(`lcCollect`)・編集復元(`lcPrefill`)・リセット(`lcResetForm`)が
+  `[data-env]` / `[data-note]` / `.lc-issue button` を直接 querySelector しているため、
+  消すと周辺のJSを全部直すことになる。隠すだけなら値は空のまま保存されるだけで済む。
+- **個々の要素に style を当てず body のクラスにした理由**: ADL項目は `lcBuildInputs()` が
+  JSで後から描画する。再描画のたびに当て直す方式は当て忘れが必ず出る。
+- 介護度が 事業対象者 / 要支援1 / 要支援2 なら自動でBIモード（既存 `lcModeFromCareLevel`）。
+- 基本情報カードと「総合所見・特記事項」はBIでも残す（記録として持っておきたいため）。
+- 過去に full で保存した記録を開けば `sheet_mode` が復元されるので、従来どおり全項目が出る。
