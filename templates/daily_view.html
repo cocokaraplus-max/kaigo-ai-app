@@ -1175,6 +1175,11 @@
         未読
         <span id="dv-tab-unread-count" style="display:none;background:#ea4335;color:#fff;font-size:0.65rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:4px;">0</span>
     </button>
+    <!-- record-check-tab-v1: 充足チェック。他のタブと違い別ページなので、その日の日付を引き継いで飛ぶ。 -->
+    <button id="dv-tab-check" class="dv-tab" onclick="goRecordCheck()">
+        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">fact_check</span>
+        充足
+    </button>
 </div>
 <!-- 利用者検索(利用者タブ時のみ表示) -->
 <div id="dv-user-search" class="dv-user-search" style="display:none;">
@@ -1877,6 +1882,11 @@ window.selectPatient = function(id, user_name, user_kana) {
 // 起動時、もし利用者モードが選ばれていればUIを復元(今は使わないが将来用)
 (function(){
 const selectedDate = "{{ selected_date }}";
+
+// record-check-tab-v1: 充足チェックへ（同じ日付のまま。同じタブで開く＝PWAでログインが切れない）
+function goRecordCheck() {
+    location.href = '/record_check?date=' + encodeURIComponent(selectedDate);
+}
 const targetUser = "{{ target_user }}";
 const recordDates = new Set({{ record_dates | tojson }});
 const photoDates = new Set({{ photo_dates | tojson }});

@@ -4,6 +4,12 @@
 {% block extra_style %}
 <style>
 /* record-check-v1: その日に来ている利用者 × カテゴリ別の記録件数 */
+/* record-check-tab-v1: ケース記録と行き来するタブ（daily_view の .dv-tabs と同じ見た目） */
+.rc-tabs { display:flex; gap:6px; margin-bottom:12px; }
+.rc-tab { flex:1; text-align:center; padding:10px 8px; border-radius:10px; font-size:0.86rem;
+  font-weight:700; color:#5f6368; background:#f1f3f4; text-decoration:none; cursor:pointer; }
+.rc-tab.active { background:#1a73e8; color:#fff; }
+
 .rc-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
 .rc-title { font-size:1.05rem; font-weight:800; display:flex; align-items:center; gap:6px; }
 .rc-date { border:1px solid #d6dbe3; border-radius:10px; padding:8px 10px; font-size:0.9rem;
@@ -40,6 +46,18 @@ table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
 {% endblock %}
 
 {% block content %}
+<!-- record-check-tab-v1: ケース記録のタブから来る。戻り導線が無いと迷子になるので必ず出す。 -->
+<div class="rc-tabs">
+  <a class="rc-tab" href="/daily_view?date={{ date }}">
+    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">calendar_month</span>
+    ケース記録
+  </a>
+  <span class="rc-tab active">
+    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">fact_check</span>
+    充足
+  </span>
+</div>
+
 <div class="rc-head">
   <div class="rc-title">
     <span class="material-symbols-outlined" style="color:#1a73e8;">fact_check</span>記録チェック
