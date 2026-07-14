@@ -1883,10 +1883,12 @@ window.selectPatient = function(id, user_name, user_kana) {
 (function(){
 const selectedDate = "{{ selected_date }}";
 
-// record-check-tab-v1: 充足チェックへ（同じ日付のまま。同じタブで開く＝PWAでログインが切れない）
-function goRecordCheck() {
+// record-check-tab-v1 / fix: この中は IIFE（即時関数）なので、ここに function を書いても
+// onclick から呼べない（グローバルに居ない）。だから「充足」タブが無反応だった。
+// window に付けて、どこからでも呼べるようにする。
+window.goRecordCheck = function () {
     location.href = '/record_check?date=' + encodeURIComponent(selectedDate);
-}
+};
 const targetUser = "{{ target_user }}";
 const recordDates = new Set({{ record_dates | tojson }});
 const photoDates = new Set({{ photo_dates | tojson }});
