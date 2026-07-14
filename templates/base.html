@@ -48,7 +48,9 @@
            JS は実測値を --nav-raw に入れ、ここで安全な下限（セーフエリア + 10px）を噛ませる。
            env() は JS の setProperty では書けないので、この二段構えにしている。 */
         :root {
-          --nav-raw: 134px;
+          /* nav-remove-v1: バーを廃止したので既定は 0。JS が測っても 0 になる。
+             下限（セーフエリア + 10px）は下の max() が担保する。 */
+          --nav-raw: 0px;
           --nav-h: max(var(--nav-raw), calc(env(safe-area-inset-bottom, 0px) + 10px));
           --rk-nav-h: var(--nav-h);
           --kk-nav-h: var(--nav-h);
@@ -497,15 +499,7 @@ body.nav-editing {
 </div>
 
     {% if session.get('f_code') %}
-    <!-- ナビ編集完了バー -->
-    <div class="nav-edit-bar" id="nav-edit-bar">
-        <span class="nav-edit-bar-label">✏️ メニューを並び替え</span>
-        <div class="nav-edit-bar-actions">
-            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">初期状態</button>
-            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">完了</button>
-        </div>
-    </div>
-    <!-- ナビ編集完了バー -->
+    <!-- nav-remove-v1: 「ナビ編集完了バー」は下のメニューバーの並び替え用だった。バーごと廃止。 -->
     <!-- 設定モーダル -->
     <!-- 設定モーダル -->
     <!-- ★ 設定モーダル -->
@@ -635,47 +629,8 @@ body.nav-editing {
                 </div>
             </div>
 
-            <!-- メニュータップ時のスクロール設定 -->
-            <div class="setting-section">
-                <div class="setting-section-label">
-                    <span class="material-symbols-outlined">swap_vert</span>メニュータップ時の動作
-                </div>
-                <div class="setting-row-toggle">
-                    <div class="setting-row-info">
-                        <div class="setting-row-name">ページトップへ移動</div>
-                        <div class="setting-row-desc">メニューをタップした時に画面を先頭に戻す</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="nav-scroll-top-toggle">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
-            <!-- メニュー並び順 -->
-            <div class="setting-section">
-                <div class="setting-section-label">
-                    <span class="material-symbols-outlined">menu</span>メニュー並び順
-                </div>
-                <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
-                    <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
-                </button>
-            </div>
-            <!-- nav-hide-v1: 下のメニューバーを隠す（引き出しだけで使う） -->
-            <div class="setting-section">
-                <div class="setting-section-label">
-                    <span class="material-symbols-outlined">bottom_navigation</span>下のメニューバー
-                </div>
-                <div class="setting-row-toggle">
-                    <div class="setting-row-info">
-                        <div class="setting-row-name">メニューバーを隠す</div>
-                        <div class="setting-row-desc">引き出し（端の取っ手）だけで操作します</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="nav-hide-toggle">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
+            <!-- nav-remove-v1: 下のメニューバーを廃止したので、その設定（タップ時の動作・並び順・
+                 バーを隠す）も一緒に外した。メニューの操作は引き出しに一本化。 -->
 
             <!-- app-drawer-v1: 引き出しメニューの向き（利き手）。個人ごとにDBへ保存する -->
             <div class="setting-section">
@@ -703,54 +658,23 @@ body.nav-editing {
                 </div>
             </div>
 
-            <!-- ナビカラー -->
+            <!-- nav-remove-v1: 「ナビカラー」は下のメニューバーの配色設定だったので廃止。
+                 代わりに、バーにしか無かった **ログアウト** をここへ移す。
+                 引き出しは MENU_ITEMS から作るが、そこにログアウトは入っていない。 -->
             <div class="setting-section">
                 <div class="setting-section-label">
-                    <span class="material-symbols-outlined">palette</span>ナビカラー
+                    <span class="material-symbols-outlined">logout</span>ログアウト
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div>
-                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">通常時の色</div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <input type="color" id="nav-color-normal" value="#5f6368" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
-                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-normal-label">#5f6368</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">選択時の色</div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <input type="color" id="nav-color-active" value="#1a73e8" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
-                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-active-label">#1a73e8</span>
-                        </div>
-                    </div>
-                </div>
-                <div style="margin-top:10px;display:flex;gap:8px;">
-                    <button onclick="applyNavColors()" style="flex:1;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">適用</button>
-                    <button onclick="resetNavColors()" style="flex:1;padding:10px;background:#f1f3f4;color:#5f6368;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">リセット</button>
-                </div>
+                <form method="POST" action="/logout">
+                    <button type="submit" style="width:100%;padding:14px;background:#fce8e6;color:#ea4335;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">logout</span>ログアウトする
+                    </button>
+                </form>
             </div>
         </div>
     </div>
-    <script>
-    // nav-hide-v1: メニューバーを隠す。CSS クラスで隠す（インライン style は他所に戻されるため）。
-    (function () {
-      var hidden = {{ 'true' if nav_hidden else 'false' }};
-      if (hidden) document.body.classList.add('nav-off');
-
-      var t = document.getElementById('nav-hide-toggle');
-      if (!t) return;
-      t.checked = hidden;
-      t.onchange = async function () {
-        var on = t.checked;
-        document.body.classList.toggle('nav-off', on);
-        if (window.dwMeasureNav) window.dwMeasureNav();     // 下部UIの位置を測り直す
-        await fetch('/api/me/setting', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'nav_hidden', value: on ? 'true' : 'false' })
-        }).catch(function () {});
-      };
-    })();
-    </script>
+    <!-- nav-remove-v1: 「メニューバーを隠す」トグルの JS は、バーごと廃止したので削除。
+         個人設定 nav_hidden は読まなくなった（DB に残っていても無害）。 -->
 
     <script>
     // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。
@@ -1945,119 +1869,12 @@ body.nav-editing {
 <!-- ===== /app-drawer-v1 ===== -->
 
 {% block bottom_nav %}
-    {% if session.get('f_code') %}
-    <nav class="bottom-nav">
-        <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
-            <span class="material-symbols-outlined">home</span>
-            TOP
-        </a>
-        <a href="/input" class="bottom-nav-item {% block nav_input %}{% endblock %}" onclick="spaNav(event,'/input')">
-            <span class="material-symbols-outlined">edit_note</span>
-            記録入力
-        </a>
-        <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}" onclick="spaNav(event,'/daily_view')">
-            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined">calendar_month</span>
-                <span id="daily-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
-            </div>
-            ケース記録
-        </a>
-        <a href="/monitoring" class="bottom-nav-item {% block nav_monitoring %}{% endblock %}" onclick="spaNav(event,'/monitoring')">
-            <span class="material-symbols-outlined">monitoring</span>
-            モニタリング
-        </a>
-        <a href="/vitals" class="bottom-nav-item {% block nav_vitals %}{% endblock %}" onclick="spaNav(event,'/vitals')">
-            <span class="material-symbols-outlined">monitor_heart</span>
-            バイタル
-        </a>
-        <a href="/renraku" class="bottom-nav-item {% block nav_renraku %}{% endblock %}" onclick="spaNav(event,'/renraku')"><!-- nav-renraku-v1 -->
-            <span class="material-symbols-outlined">menu_book</span>
-            連絡帳
-        </a>
-        <a href="/soge" class="bottom-nav-item {% block nav_soge %}{% endblock %}" onclick="spaNav(event,'/soge')"><!-- nav-soge-v1 -->
-            <span class="material-symbols-outlined">airport_shuttle</span>
-            送迎表
-        </a>
-        <a href="/fitness" class="bottom-nav-item {% block nav_fitness %}{% endblock %}" onclick="spaNav(event,'/fitness')">
-            <span class="material-symbols-outlined">fitness_center</span>
-            体力・体重
-        </a>
-        <a href="/life_check" class="bottom-nav-item {% block nav_life_check %}{% endblock %}" onclick="spaNav(event,'/life_check')">
-            <span class="material-symbols-outlined">checklist</span>
-            生活機能<br>CHECK
-        </a>
-        <!-- nav-life-check-v1 -->
-        <a href="/calendar" class="bottom-nav-item {% block nav_calendar %}{% endblock %}" onclick="spaNav(event,'/calendar')">
-            <span class="material-symbols-outlined">calendar_month</span>
-            カレンダー
-        </a>
-
-        <a href="/assessment" class="bottom-nav-item {% block nav_assessment %}{% endblock %}" onclick="spaNav(event,'/assessment')">
-            <span class="material-symbols-outlined">assignment</span>
-            評価
-        </a>
-        <a href="/print_output" class="bottom-nav-item {% block nav_print_output %}{% endblock %}" onclick="spaNav(event,'/print_output')">
-            <span class="material-symbols-outlined">print</span>
-            書類出力
-        </a>
-        <a href="/admin/meetings" class="bottom-nav-item {% block nav_meetings %}{% endblock %}"><!-- nav-meetings-v1 / nav-meetings-label-kaigikiroku-v1 -->
-            <span class="material-symbols-outlined">groups</span>
-            会議<br>記録
-        </a>
-        <a href="/tasks" class="bottom-nav-item {% block nav_tasks %}{% endblock %}" onclick="spaNav(event,'/tasks')">
-            <span class="material-symbols-outlined">task_alt</span>
-            タスク
-        </a>
-        <a href="/board" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/board')">
-            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined">campaign</span>
-                <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
-            </div>
-            掲示板
-        </a>
-        {% if can_ledger %}
-        <a href="/ledger" class="bottom-nav-item" onclick="spaNav(event,'/ledger')">
-            <span class="material-symbols-outlined">account_balance</span>
-            出納帳
-        </a>
-        {% endif %}
-        {% if can_rec_expense %}
-        <a href="/rec_expense" class="bottom-nav-item {% block nav_rec_expense %}{% endblock %}" onclick="spaNav(event,'/rec_expense')"><!-- nav-rec-expense-v1 -->
-            <span class="material-symbols-outlined">payments</span>
-            請求額<br>計算
-        </a>
-        {% endif %}
-        <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
-            <span class="material-symbols-outlined">cake</span>
-            誕生日
-        </a>
-        <a href="/numerology" class="bottom-nav-item {% block nav_numerology %}{% endblock %}" onclick="spaNav(event,'/numerology')">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            数秘
-        </a>
-        <a href="/admin" class="bottom-nav-item {% block nav_admin %}{% endblock %}" onclick="spaNav(event,'/admin')">
-            <span class="material-symbols-outlined">admin_panel_settings</span>
-            管理者<br>MENU
-        </a>
-        {% if is_dev_user %}
-        <a href="/dev" class="bottom-nav-item">
-            <span class="material-symbols-outlined">code</span>
-            開発者
-        </a>
-        {% endif %}
-        <a href="/manual" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/manual')">
-            <span class="material-symbols-outlined">menu_book</span>
-            ガイド
-        </a>
-        <form method="POST" action="/logout" style="display:contents;">
-            <button type="submit" class="bottom-nav-item logout-item">
-                <span class="material-symbols-outlined">logout</span>
-                ログアウト
-            </button>
-        </form>
-    </nav>
-    {% endif %}
-    {% endblock %}
+{# nav-remove-v1: 下のメニューバーを廃止。メニューは引き出し（画面端の取っ手）に一本化した。
+   ・ブロック自体は残す（login.html / register.html が空で上書きしているため）
+   ・ログアウトはユーザー設定の中へ移した
+   ・JS 側のナビ関数（hideBottomNav 等）は tasks.html などから呼ばれているので残してある。
+     どれも .bottom-nav が無ければ何もしない作りになっている。 #}
+{% endblock %}
 
 <script>
 // ========== SPAルーター ==========
