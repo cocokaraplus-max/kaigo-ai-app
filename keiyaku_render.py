@@ -35,17 +35,20 @@ _LEGACY_TC = {"han": "3-4h", "ichi": "7-8h"}
 CAT_CHIIKI = "chiiki"
 CAT_YOBO = "yobo"
 CAT_SEIKATSU = "seikatsu"          # keiyaku-seikatsu-v1
+CAT_HOKENGAI = "hokengai"          # keiyaku-hokengai-v1（介護保険の枠外。構造が別物）
 
 _CAT_NAME = {
     CAT_CHIIKI: "指定地域密着型通所介護",
     CAT_YOBO: "介護予防通所サービス",
     CAT_SEIKATSU: "生活支援通所サービス",
+    CAT_HOKENGAI: "介護保険外サービス",
 }
 # 計画書の呼び方（条文中で使う）
 _CAT_PLAN = {
     CAT_CHIIKI: "地域密着型通所介護計画",
     CAT_YOBO: "介護予防通所サービス計画",
     CAT_SEIKATSU: "生活支援通所サービス計画",
+    CAT_HOKENGAI: "サービス計画",
 }
 
 
@@ -944,6 +947,138 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 '''
 
 
+# ===== keiyaku-hokengai-v1: 介護保険外（自費）サービス =====
+# 保険外は介護保険の枠外。契約書と重要事項説明書が1枚にまとまった現物に合わせる。
+# 給付・負担割合・法定代理受領・区分支給限度額の条文はすべて出さない。
+
+_HOKENGAI_DEFAULTS = {
+    "h_service": "買い物の付き添いや、受診の付き添い、介護保険サービスで適応できないもののサービスなどを行ないます。",
+    "h_fees": "10分以内のお手伝い|1000\n外出等の長時間のお手伝い（1時間）|4000",
+    "h_fee_note": "※ サービスが1時間を超過し、2時間に満たない場合も時間割等は致しません。2時間分の料金をいただきます。",
+    "h_time": "土曜、日曜　10時00分から17時00分",
+    "h_cancel": "1　ご利用者の都合でサービスを中止する場合は、1週間前までにご申告ください。\n"
+                "2　ご利用中止の際は、電話もしくはスタッフに直接ご連絡ください。",
+    "h_pay": "当月1日から末日までの合計額を翌月26日に、ご指定の金融機関の預金口座より自動引き落しによりお支払いください。",
+}
+
+
+def _hokengai_val(F, st, key):
+    svc = (F.get("service") or {}).get(st) or {}
+    v = str(svc.get(key) or "").strip()
+    return v or _HOKENGAI_DEFAULTS.get(key, "")
+
+
+def _hokengai_fee_table(F, st):
+    """料金表。1行1項目「名称|金額」。金額は税込の円。"""
+    rows = ""
+    for line in _hokengai_val(F, st, "h_fees").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            name, price = line.split("|", 1)
+        else:
+            name, price = line, ""
+        price = price.strip()
+        try:
+            # _yen() は数字だけを返す（「円」は付かない）。ここで単位を付ける。
+            price = _yen(int(price)) + "円（税込）"
+        except (TypeError, ValueError):
+            pass
+        rows += f'<tr><td class="kai">{_esc(name.strip())}</td><td>{_esc(price)}</td></tr>'
+    return f'<table class="ptab fee"><tr><th class="hh">サービス</th><th>ご利用料金</th></tr>{rows}</table>'
+
+
+def render_hokengai(F, st):
+    """介護保険外サービス 利用契約書 兼 重要事項説明書（1枚もの）。"""
+    j = F.get("jigyosho", {}) or {}
+    h = F.get("houjin", {}) or {}
+    k = F.get("kujo", {}) or {}
+
+    head = f"""<div class="doc-title">{_esc(j.get("name"))}</div>
+<div class="doc-sub">介護保険外サービス　利用契約書　重要事項説明書</div>
+<p>（　　　　　　　　　　　　　）（以下「利用者」といいます）と{_esc(j.get("name"))}（以下「事業所」といいます）は、
+事業所が利用者に提供する介護保険外サービスについて、各々対等の立場で内容を確認し、次のとおり契約を行います。</p>"""
+
+    sec_houjin = f"""<div class="sec"><div class="sec-h">運営会社の概要</div>
+<table class="ptab"><tr><td class="kai">会社の名称</td><td>{_esc(h.get("name"))}</td></tr>
+<tr><td class="kai">主たる事業所の所在地</td><td>{_esc(h.get("addr"))}</td></tr>
+<tr><td class="kai">代表者</td><td>{_esc(h.get("rep"))}</td></tr>
+<tr><td class="kai">設立年月日</td><td>{_esc(h.get("founded"))}</td></tr>
+<tr><td class="kai">電話番号</td><td>{_esc(h.get("tel"))}</td></tr></table></div>"""
+
+    sec_jigyosho = f"""<div class="sec"><div class="sec-h">ご利用事業所の概要</div>
+<table class="ptab"><tr><td class="kai">ご利用事業所の名称</td><td>{_esc(j.get("name"))}</td></tr>
+<tr><td class="kai">サービス種類</td><td>介護保険外サービス</td></tr>
+<tr><td class="kai">事業所の所在地</td><td>{_esc(j.get("addr"))}</td></tr>
+<tr><td class="kai">電話番号</td><td>{_esc(j.get("tel"))}</td></tr>
+<tr><td class="kai">管理者の氏名</td><td>{_esc(j.get("kanri"))}</td></tr>
+<tr><td class="kai">サービス提供時間</td><td>{_esc(_hokengai_val(F, st, "h_time"))}</td></tr></table></div>"""
+
+    sec_mokuteki = """<div class="sec"><div class="sec-h">事業の目的と運営の方針</div>
+<p>利用者がその有する能力に応じ、可能な限り居宅において自立した日常生活を営むことができるよう、
+生活の質の確保及び向上を図るとともに、安心して日常生活を過ごすことができるよう、
+介護保険外サービスを提供することを目的とします。</p>
+<p>事業者は、利用者の心身の状況や家庭環境等を踏まえ、関係する市町村や事業者、地域の保健・医療・福祉サービス等と
+綿密な連携を図りながら、利用者の介護状態の軽減や悪化の防止のため、適切なサービス提供に努めます。</p></div>"""
+
+    sec_naiyo = f"""<div class="sec"><div class="sec-h">提供するサービス内容</div>
+<p>{_esc(_hokengai_val(F, st, "h_service"))}</p></div>"""
+
+    sec_onegai = """<div class="sec"><div class="sec-h">サービスに関わるお願い</div>
+<p>【職員等の個人情報】個人情報保護法上、職員の住所、電話番号などの個人情報につきましては、
+ご利用者にお知らせしておりませんので、あらかじめご了承ください。</p>
+<p>【贈答等の禁止】職員に贈答等は制度上禁止されておりますので、ご遠慮ください。</p>
+<p>体調や容体の急変などによりサービスを利用できなくなったときは、できる限り早めに担当者へご連絡ください。</p>
+<p>地震、台風、大雪等の自然災害発生時において、職員の交通手段及び生命に危険が及ぶ事態が予測される場合は、
+サービスを中止させていただきます。</p>
+<p>感染症の発生を予防または感染リスクを防ぐため、入出時の手洗い、マスク等を使用させていただくことがあります。</p>
+<p>訪問途中の事故等により訪問困難な場合、事務所より利用者宅へ連絡し、最善の処置をとります。
+その場合、別の職員がお伺いする場合があります。</p>
+<p>女性職員に対し性的な行為を強要するなどのセクシャルハラスメントや迷惑行為が確認された際には、
+法的措置を取ると共に損害賠償を請求することがあります。</p>
+<p>サービスの申し込みに関しては、デイサービスの利用中にお願いします。</p>
+<p>このサービスの利用は当事業所の利用者様に限らせていただきます。</p>
+<p>送迎時にサービスの利用も可能とします。</p></div>"""
+
+    note = _hokengai_val(F, st, "h_fee_note")
+    sec_ryokin = f"""<div class="sec"><div class="sec-h">利用料</div>
+<div class="sub-h">(1) 利用料金</div>
+{_hokengai_fee_table(F, st)}
+{f'<p class="note">{_esc(note)}</p>' if note else ''}
+<div class="sub-h">(2) 利用中止のご連絡と注意点</div>
+<p>{_esc(_hokengai_val(F, st, "h_cancel")).replace(chr(10), "<br>")}</p>
+<div class="sub-h">(3) 支払い方法</div>
+<p>利用料は1か月ごとにまとめて請求しますので、次の方法によりお支払いください。</p>
+<p>{_esc(_hokengai_val(F, st, "h_pay"))}</p></div>"""
+
+    sec_kujo = f"""<div class="sec"><div class="sec-h">苦情相談窓口</div>
+<p>サービス提供に関する苦情や相談は、当事業所の下記の窓口でお受けいたします。</p>
+<table class="ptab"><tr><td class="kai">電話番号</td><td>{_esc(k.get("tel") or j.get("tel"))}</td></tr>
+<tr><td class="kai">苦情相談担当</td><td>{_esc(k.get("uketsuke"))}</td></tr>
+<tr><td class="kai">苦情対応担当</td><td>{_esc(k.get("taio"))}</td></tr></table></div>"""
+
+    sign = f"""<div class="sec sign-sec"><p class="center">　　　　　年　　　月　　　日</p>
+<p>事業者は、利用者へのサービス提供開始にあたり、上記のとおり重要事項を説明しました。</p>
+<table class="sigtab">
+<tr><td class="hint">事業者</td><td class="wr">所在地　{_esc(j.get("addr"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">事業者　{_esc(h.get("name"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">管理者・氏名　{_esc(j.get("kanri"))}</td></tr>
+<tr><td class="hint"></td><td class="wr">説明者・氏名　　　　　　　　　　　　　　　　　　　　</td></tr>
+</table>
+<p>私は、事業者より上記の重要事項について説明を受け、同意しました。</p>
+<table class="sigtab">
+<tr><td class="hint">利用者</td><td class="wr">住　所　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">氏　名　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint">代筆者</td><td class="wr">住　所　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">氏　名　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+<tr><td class="hint"></td><td class="wr">続　柄　　　　　　　　　　　　　　　　　　　　　　　</td></tr>
+</table></div>"""
+
+    return ('<div class="paper">' + head + sec_houjin + sec_jigyosho + sec_mokuteki +
+            sec_naiyo + sec_onegai + sec_ryokin + sec_kujo + _tokki_section(F) + sign + '</div>')
+
+
 def render_print_html(F, doc, st, blank_between=False):
     """印刷用の完全HTMLを返す。
     doc: 'juyo' | 'keiyaku' | 'both'
@@ -959,6 +1094,13 @@ def render_print_html(F, doc, st, blank_between=False):
     if st not in svc:
         order = [k for k in (svc.get("_order") or []) if k in svc]
         st = order[0] if order else ("han" if "han" in svc else st)
+    # keiyaku-hokengai-v1: 保険外は「契約書 兼 重要事項説明書」の1枚もの。
+    # どのボタン（重説／契約書／一式）から来ても同じ文書を出す。
+    if _cat(F, st) == CAT_HOKENGAI:
+        body = '<div class="page-pad">' + render_hokengai(F, st) + '</div>'
+        return ('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">'
+                f'<style>{_PRINT_CSS}</style></head><body>{body}</body></html>')
+
     blocks = []
     if doc in ("juyo", "both"):
         blocks.append('<div class="page-pad">' + render_juyo(F, st) + '</div>')

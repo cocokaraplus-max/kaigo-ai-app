@@ -340,6 +340,18 @@ const KK_CATEGORIES = [
   ['chiiki',   '介護保険（地域密着型通所介護）'],
   ['yobo',     '介護予防通所サービス'],
   ['seikatsu', '生活支援通所サービス'],   // keiyaku-seikatsu-v1
+  ['hokengai', '介護保険外（自費）サービス'],  // keiyaku-hokengai-v1
+];
+
+// keiyaku-hokengai-v1: 保険外は介護保険の枠外。契約書と重説が1枚にまとまる。
+// 料金は単位ではなく自由な単価行（1行1項目「名称|金額」）。
+const KK_HOKENGAI_FIELDS = [
+  ['h_service',  '提供するサービス内容', 'textarea'],
+  ['h_fees',     '利用料金（1行1項目「名称|金額」。例: 10分以内のお手伝い|1000）', 'textarea'],
+  ['h_fee_note', '料金の注記（時間割をしない旨など）', 'textarea'],
+  ['h_time',     'サービス提供時間', 'text'],
+  ['h_cancel',   '利用中止のご連絡と注意点', 'textarea'],
+  ['h_pay',      '支払い方法', 'textarea'],
 ];
 
 // keiyaku-seikatsu-v1: 生活支援通所の単位（豊田市 単位数表マスタ A7・令和6年4月〜）
@@ -417,6 +429,22 @@ function renderTypeEditor(){
       KK_YOBO_FIELDS.forEach(([k,lab])=>{
         h += `<label class="kk-fld"><span>${lab}</span>
           <input type="number" data-svc="${k}" value="${escAttr(node[k]||'')}" style="text-align:right;"></label>`;
+      });
+    } else if(cat === 'hokengai'){
+      // keiyaku-hokengai-v1
+      h += `<div class="kk-fld"><span>介護保険外（自費）サービス</span>
+        <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
+          介護保険の枠外なので、<b>契約書と重要事項説明書が1枚</b>になります（給付・負担割合・
+          法定代理受領の条文は出ません）。印刷ボタンはどれを押しても同じ文書が出ます。<br>
+          空欄の項目は現行の文面が既定で入ります。
+        </div></div>`;
+      KK_HOKENGAI_FIELDS.forEach(([k,lab,type])=>{
+        const val = node[k]||'';
+        if(type === 'textarea'){
+          h += `<label class="kk-fld"><span>${lab}</span><textarea data-svc="${k}" rows="3">${escHtml(val)}</textarea></label>`;
+        } else {
+          h += `<label class="kk-fld"><span>${lab}</span><input type="text" data-svc="${k}" value="${escAttr(val)}"></label>`;
+        }
       });
     } else if(cat === 'seikatsu'){
       // keiyaku-seikatsu-v1
