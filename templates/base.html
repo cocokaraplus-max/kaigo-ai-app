@@ -690,7 +690,20 @@ body.nav-editing {
           b.style.borderColor = on ? '#1a73e8' : '#e0e0e0';
         });
       }
-      paint(document.body.dataset.drawerSide || 'right');
+      // drawer-side-paint-v1: ここは body.dataset.drawerSide を読んでいたが、そこに値を書くのは
+      // ページ下部の引き出し JS。この時点ではまだ空で、必ず 'right' に落ちていた（表示だけのウソ）。
+      // 真の値はサーバが持っているので、そこを起点にする。
+      var SIDE_FROM_SERVER = '{{ drawer_side or "right" }}';
+
+      function currentSide() {
+        var dw = document.getElementById('appDrawer');       // DOM が出来ていればこれが最も確か
+        return (dw && dw.dataset.side) || document.body.dataset.drawerSide || SIDE_FROM_SERVER;
+      }
+      // 向きを変えたときなど、外からも塗り直せるようにしておく
+      window.dwPaintSideBtns = function () { paint(currentSide()); };
+
+      paint(SIDE_FROM_SERVER);                                // まず、いま分かっている値で塗る
+      document.addEventListener('DOMContentLoaded', window.dwPaintSideBtns);   // 出来上がったら塗り直す
 
       btns.forEach(function (b) {
         b.onclick = async function () {
