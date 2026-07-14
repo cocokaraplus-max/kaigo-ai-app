@@ -2117,3 +2117,76 @@ docx を突き合わせたところ、地域密着型・予防・生活支援は
 1. 予防・生活支援の職員配置／提供サービスの文が系統固有（予防「運動器の機能向上」、生活支援「軽体操や趣味活動等」）。
    現状は種別の「サービス内容」欄で調整。必要なら系統別の既定文を持たせる。
 2. 事業所種類・指定番号が facility 直下の単一値。系統ごとに別番号が要るなら service 側へ移す。
+
+---
+
+## 【開発ログ】2026-07-14(2) 記録充足チェック／ボトムナビ廃止 <!-- session-2026-07-14-record-check -->
+
+### 1. 記録充足チェック（`/record_check`）
+
+**やりたかったこと**: その日に来ている利用者について、カテゴリごとの記録が何件入っているかを数字で見て、
+「書き忘れ」をその場で見つけて、その場で書き始められるようにする。
+
+- **来ている人の判定** … その日に `vitals` がある利用者。連絡帳・請求額計算と同じ判定（判定を増やすと必ずズレる）。
+- **カテゴリ** … `record_categories`（施設ごと）。登録に無いカテゴリの記録は「その他」に寄せる。
+- **`records` に patient_id は無い**。`user_name`（テキスト）で突き合わせる。日付は `created_at` の JST 日境界。
+- **導線は「ケース記録」の上のタブ 1 本だけ**。ドロワーにもアイコンを置いたが、入口が 2 つになるので削除した。
+- 数字クリック → その人のケース記録（`/daily_view?date&user`）。**0 件クリック → `/input?user=`**（利用者を検索欄に入れた状態で開く。
+  候補の確定まではやらない。誤爆すると別人の記録になる）。
+
+**表の作り（ここで何度もやり直した）**
+
+- 横が広い → 見出しを**縦書き**（`writing-mode: vertical-rl`）にして列幅を 34px に。番号＋凡例方式は「いちいち確認しないと分からない」と却下。
+- 縦書きの帯が隣の列と重なった → `table-layout: fixed` + `colgroup` で列幅を決める。収まらないときは**重ねずに横スクロール**。
+- 列ごとに**カテゴリ色の帯**（0件 `08` / 1件以上 `1c` のアルファ）。記録ゼロの人の行は赤下地が勝つ（`!important`）。
+- **文字が右に寄る** → 縦書きは行が右→左に流れるので、1行だけの短い名前は帯の右端に貼りつく。
+  帯を flex にして水平センター、揃えは上（`align-items: flex-start`）。
+- **固定（sticky）が効かない** → `overflow-x:auto` を付けた時点でそこがスクロールの箱になり、`sticky top` の基準が画面ではなくその箱になる。
+  箱に高さが無いと貼りつく先が無い。**箱に `max-height` を与えて縦横ともその中でスクロール**させたら上（カテゴリ）も左（氏名）も固定できた。
+  `-webkit-overflow-scrolling:touch` は iOS で sticky を壊すので外した。
+
+**ハマり**: 「充足」タブが無反応。`goRecordCheck()` を IIFE の中に書いていて `onclick` から見えなかった。`window.goRecordCheck` に公開して解決。
+
+マーカー: `record-check-v1` / `record-check-tab-v1` / `record-check-link-v1` / `record-check-vhead-v1..v3`
+DDL: **不要**（既存テーブルの読み取りのみ）
+
+### 2. ボトムナビ（下のメニューバー）を廃止 <!-- nav-remove-v1 -->
+
+引き出し（ドロワー）に一本化。`<nav class="bottom-nav">` と、その設定（メニュータップ時の動作／メニュー並び順／
+バーを隠すトグル／ナビカラー）を削除した。
+
+- **ログアウトはバーの中にしか無かった** → ユーザー設定（歯車）の中へ移設。ドロワーは `MENU_ITEMS` から作るが、そこにログアウトは無い。
+- **ナビ関連の JS 関数は残してある**（`hideBottomNav` / `showBottomNav` / `loadNavOrder` / `startNavEditMode` …）。
+  tasks.html などが呼んでいるので消すと落ちる。どれも `.bottom-nav` が無ければ何もしない作り。
+- `--nav-raw` の既定値を `134px` → `0px` に。下端の余白は `:root` の下限（セーフエリア + 10px）が担保する。
+  **ここで `0` を入れる場所を間違えると、バーがホームインジケータに沈む**（nav-hide-v4 の教訓）。
+
+### 3. 引き出しの向きボタンの表示バグ <!-- drawer-side-paint-v1 -->
+
+歯車の「上下左右」が、読み込み直後だけ「右から」に戻って見えた（動きは正しい）。
+設定モーダルの JS が `document.body.dataset.drawerSide` を読むが、**そこに書き込むのはページ下部の引き出し JS**。
+設定側が先に走るので必ず空 → `|| 'right'` に落ちていた。サーバの `drawer_side` を起点にし、`DOMContentLoaded` で塗り直す。
+
+### 4. ブランチについての注意（重要・事故りかけた）
+
+**本番ブランチは `tasukaru`。`main` は 2026-04 で止まった残骸**（app.py 101行）。
+`main` にマージしようとして app.py / utils.py / README.md が全面コンフリクトした。`git merge --abort` で復旧。
+
+```bash
+# 本番マージ（正）
+git checkout tasukaru && git pull origin tasukaru
+git merge tasukaru-dev && git push origin tasukaru
+git checkout tasukaru-dev
+```
+
+### 本番反映
+
+`ca1aa0c`（tasukaru）。DDL は `staff_settings` / `rec_expenses.receipt_url` /
+`soge_settings.odo_enabled` / `soge_days.odo_start` すべて適用済みを確認。
+
+### 次タスク
+
+1. レシート OCR の実運用での精度確認（**レシートを取っておく**）、送迎の走行距離入力の使用感。
+2. DEV のダミー利用者データ削除（`db/soge_dummy_dev*.sql`）。
+3. 管理者が施設の既定ドロワー配置を決められるように（今は個人設定のみ）。
+4. admin.html に残る `alert()` の掃除（Chrome 拡張の自動操作をブロックするため）。

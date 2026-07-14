@@ -35,14 +35,20 @@
   background:#fff; max-height:calc(100vh - 280px); min-height:240px;
   overscroll-behavior:contain; }
 @supports (height: 100dvh) { .rc-wrap { max-height:calc(100dvh - 280px); } }
-table.rc { border-collapse:separate; border-spacing:0; font-size:0.86rem; width:100%;
-  table-layout:fixed; }
+/* record-check-stick-v4: width:100% だと、列の合計幅が画面より広いとき table-layout:fixed は
+   「箱は広げず中身だけはみ出す」。すると枠は溢れていないと判断して横スクロールを作らない。
+   中身なりに広がる指定にして、初めて枠が横スクロールの箱になる。 */
+table.rc { border-collapse:separate; border-spacing:0; font-size:0.86rem;
+  width:max-content; min-width:100%; table-layout:fixed; }
 table.rc th, table.rc td { border-bottom:1px solid #eef1f5; background:#fff; }
 table.rc td { padding:9px 2px; }
 
-/* 見出し（縦書き）。上に貼りつく。 */
+/* 見出し（縦書き）。上に貼りつく。
+   record-check-stick-v4: position:sticky は iOS Safari で表のセルに効かないことがある
+   （PC の Chrome では効いていた）。ブラウザ任せをやめ、JS でスクロール量ぶん動かす。
+   ここは「浮かせる下地」だけ用意する（relative + z-index）。 */
 table.rc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
-  position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom;
+  position:relative; z-index:2; padding:6px 2px 8px; vertical-align:bottom;
   text-align:center; }
 table.rc col.cat, table.rc thead th.cat { width:34px; min-width:34px; }
 
@@ -57,7 +63,7 @@ table.rc col.tot, table.rc thead th.tot-h { width:36px; min-width:36px; }
 table.rc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 
 /* 利用者名（左に貼りつく）。見出しの氏名は「上かつ左」なので z-index をいちばん上に。 */
-table.rc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
+table.rc .nm { position:relative; z-index:3; font-weight:700; text-align:left;
   box-shadow:1px 0 0 #eef1f5; width:104px; padding-left:10px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 table.rc thead .nm { z-index:4; font-size:0.7rem; color:#5f6368; }
@@ -173,6 +179,33 @@ table.rc tr.none td.num { color:#c5221f; }
 document.getElementById('rcDate').onchange = function () {
   if (this.value) location.href = '/record_check?date=' + this.value;
 };
+
+// record-check-stick-v4: 見出し（上）と氏名（左）を、自分で固定する。
+//   CSS の position:sticky は iOS Safari だと表のセルで効かないことがあり、
+//   「横に引っぱると氏名まで付いてくる」状態になっていた（PC の Chrome では効いていた）。
+//   ブラウザ任せをやめ、**スクロールした量だけセルを動かし返す**。transform はどこでも同じに効く。
+(function () {
+  var wrap = document.querySelector('.rc-wrap');
+  if (!wrap) return;                       // その日に来所者がいなければ表は無い
+  var heads = wrap.querySelectorAll('thead th');
+  var names = wrap.querySelectorAll('tbody td.nm');
+  var corner = wrap.querySelector('thead th.nm');
+  var ticking = false;
+
+  function paint() {
+    ticking = false;
+    var x = wrap.scrollLeft, y = wrap.scrollTop;
+    for (var i = 0; i < heads.length; i++) heads[i].style.transform = 'translateY(' + y + 'px)';
+    for (var j = 0; j < names.length; j++) names[j].style.transform = 'translateX(' + x + 'px)';
+    if (corner) corner.style.transform = 'translate(' + x + 'px,' + y + 'px)';   // 左上の角は両方
+  }
+  wrap.addEventListener('scroll', function () {
+    if (ticking) return;                   // 1フレームに1回でよい（指で速く払っても重くならない）
+    ticking = true;
+    requestAnimationFrame(paint);
+  }, { passive: true });
+  paint();
+})();
 
 // record-check-link-v1: 数字（と名前）を押したら、その人の記録へ飛ぶ。
 //  ・1件以上 … その日・その人のケース記録
