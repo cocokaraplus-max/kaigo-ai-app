@@ -26343,9 +26343,29 @@ def _photo_album(supabase, f_code, album_id):  # photo-sales-v1
     return r.data[0] if r.data else None
 
 
-def _photo_no(code, seq):  # photo-sales-v1
-    """管理番号の組み立てはここ1箇所だけ。表示もファイル名もCSVも必ずこれを通す。"""
-    return "%s-%03d" % (code, int(seq))
+def _photo_no(code, seq):  # photo-sales-no-v2
+    """管理番号の組み立てはここ1箇所だけ。表示もファイル名もCSVも必ずこれを通す。
+
+    半角英数字のみ（記号を入れない）理由:
+      しまうまプリントは銀塩プリントの裏面に「注文番号 / 通し番号 / お客様のファイル名」を印字するが、
+      印字されるのは半角英数字だけで、記号（ハイフン等）は落ちる。
+      届いた写真の裏に管理番号がそのまま出ることが、この仕組みの生命線なので、
+      最初から英数字だけで番号を作る。   例: A001 + 5 → A001005
+    """
+    return "%s%03d" % (code, int(seq))
+
+
+def _photo_copy_name(photo_no, i, qty):  # photo-sales-zip-v3
+    """入稿ZIPのファイル名。枚数ぶん複製するので、2枚目以降は末尾に a/b/c… を足す。
+
+    数字を足すと（A001005_2）裏印字では記号が落ちて "A0010052" となり、
+    管理番号の一部と見分けが付かなくなる。英字なら "A001005b" と一目で分かる。
+    1枚だけの写真は素の管理番号のまま（余計な文字を足さない）。
+    """
+    if qty <= 1:
+        return "%s.jpg" % photo_no
+    suffix = chr(ord('a') + i) if i < 26 else ('z%d' % (i - 25))
+    return "%s%s.jpg" % (photo_no, suffix)
 
 
 @app.route("/photo")  # photo-sales-page-v1
@@ -26660,7 +26680,7 @@ def api_photo_order():
 
 def _photo_summary(supabase, f_code, album):  # photo-sales-api-v1
     """集計の計算はここ1箇所。画面・請求タブ・ZIPの一覧が必ず同じ数字になるようにする。"""
-    ph = (supabase.table("photos").select("id,photo_no,seq,url")
+    ph = (supabase.table("photos").select("id,photo_no,seq,url,storage_path")
           .eq("album_id", album["id"]).eq("is_deleted", False).order("seq").execute())
     photos = {x["id"]: x for x in (ph.data or [])}
     od = (supabase.table("photo_orders").select("photo_id,patient_id,user_name,qty,unit_price")
@@ -26711,16 +26731,26 @@ def api_photo_summary():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/photo/export")  # photo-sales-zip-v1
+@app.route("/photo/export")  # photo-sales-zip-v3
 @login_required
 def photo_export_zip():
-    """キタムラ入稿用の ZIP。
+    """入稿用の ZIP（しまうまプリント前提）。
 
     中身（フォルダ1つ = アルバム）:
-      A012/A012-001.jpg …       注文のあった写真だけ。ファイル名は管理番号
-      A012/注文一覧_写真別.csv    管理番号 / 枚数   ← 店の注文画面に打ち込む用
-      A012/注文一覧_利用者別.csv  利用者 / 管理番号 / 枚数 / 金額
-    CSV は Excel が文字化けしないように BOM 付き UTF-8。
+      A001/A001005.jpg          1枚だけの注文はそのまま
+      A001/A001008a.jpg …c.jpg  3枚の注文は「同じ写真を3ファイル」
+      A001/注文一覧_写真別.csv    管理番号 / 枚数（答え合わせ用）
+      A001/注文一覧_利用者別.csv  利用者 / 管理番号 / 枚数 / 金額（仕分け用）
+
+    なぜ枚数分を複製するのか（photo-sales-zip-v3）:
+      注文サイトの画面には向こうが振った番号とサムネイルしか出ないので、
+      「どのサムネイルが何番か」を人が照合して枚数を打つ工程が生まれる。ここが一番間違える。
+      枚数ぶん複製して入稿すれば、サイト側は全部「1枚」で注文するだけになり、
+      照合も枚数入力も工程ごと消える（しまうまは「一括設定」で全画像を1枚にできる）。
+
+      さらに しまうまは銀塩プリントの裏に「お客様のファイル名（半角英数）」を印字するので、
+      届いた写真の裏に管理番号がそのまま出る。仕分けも突き合わせずに済む。
+      ※ NEWデジタルプリントは裏印字なし。銀塩プリントを選ぶこと。
     """
     import csv as _csv
     import io as _io
@@ -26754,9 +26784,12 @@ def photo_export_zip():
             if not p:
                 continue
             try:
-                data = supabase.storage.from_(PHOTO_BUCKET).download(
-                    "%s/photos/%s/%s.jpg" % (f_code, code, r["photo_no"]))
-                z.writestr("%s/%s.jpg" % (code, r["photo_no"]), data)
+                # storage_path は DB に持っている値を使う（番号の付け方を変えても壊れないように、
+                # ここでパスを組み立て直さない）
+                data = supabase.storage.from_(PHOTO_BUCKET).download(p["storage_path"])
+                # 枚数ぶん複製して入れる。サイト側は全部「1枚」で注文するだけになる
+                for i in range(int(r["qty"])):
+                    z.writestr("%s/%s" % (code, _photo_copy_name(r["photo_no"], i, int(r["qty"]))), data)
             except Exception as e:
                 print("photo zip download error %s: %s" % (r["photo_no"], e), flush=True)
 
@@ -26772,4 +26805,41 @@ def photo_export_zip():
     buf.seek(0)
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name="%s_%s.zip" % (code, album["title"]))
+
+
+@app.route("/photo/sheet")  # photo-sales-sheet-v1
+@login_required
+def photo_sheet_page():
+    """仕分けリスト（印刷用）。
+
+    プリントが届いたら、裏に印字された管理番号（例 A001005）を見て、この表を引くだけで
+    「誰の封筒に何枚入れるか」が分かる。**管理番号順に並べる**のが肝で、
+    届く写真も管理番号順に積まれているため、上から順に処理していける。
+    利用者別の集計も一緒に出して、封入後の枚数確認に使う。
+    """
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    if not is_photo_sales_enabled(supabase, f_code):
+        return redirect("/top")
+    album = _photo_album(supabase, f_code, request.args.get("album_id", ""))
+    if not album:
+        return redirect("/photo/admin")
+
+    photos, photo_rows, patient_rows = _photo_summary(supabase, f_code, album)
+
+    # 管理番号 → その番号を誰が何枚頼んだか（1枚の写真を複数人が頼むことがある）
+    by_no = {}
+    for b in patient_rows:
+        for it in b["items"]:
+            by_no.setdefault(it["photo_no"], []).append(
+                {"user_name": b["user_name"], "qty": it["qty"]})
+    sheet_rows = []
+    for r in photo_rows:
+        sheet_rows.append({"photo_no": r["photo_no"], "qty": r["qty"],
+                           "who": by_no.get(r["photo_no"], [])})
+
+    return render("photo_sheet.html", album=album, rows=sheet_rows,
+                  patients=patient_rows,
+                  total_qty=sum(r["qty"] for r in photo_rows),
+                  total_amount=sum(b["amount"] for b in patient_rows))
 # ===== /photo-sales-v1 =====

@@ -98,11 +98,16 @@
   </div>
 
   <div class="pa-card">
-    <div class="pa-title"><span class="material-symbols-outlined">local_shipping</span>キタムラへの注文</div>
+    <div class="pa-title"><span class="material-symbols-outlined">local_shipping</span>プリント注文（しまうまプリント）</div>
     <button class="pa-btn" type="button" onclick="paExport()">注文ぶんの写真をZIPでダウンロード</button>
+    <button class="pa-btn sub" type="button" onclick="paSheet()">仕分けリストを開く（印刷）</button>
     <div class="pa-note">
-      ZIP の中は「行事コードのフォルダ」1つ。注文のあった写真だけを <b>管理番号のファイル名</b> で入れ、
-      注文一覧（写真別・利用者別）のCSVも同梱します。
+      <b>注文の手順</b><br>
+      ① ZIP を解凍 → 中の写真を <b>しまうまプリント</b> に全部アップロード<br>
+      ② プリント一括設定で <b>「L判・1枚」</b> にする（枚数は写真の数で調整済み。1枚ずつ打つ必要はありません）<br>
+      ③ <b>銀塩プリント</b>を選ぶ（NEWデジタルプリントは裏印字が入りません）<br><br>
+      3枚注文の写真は同じ写真が3ファイル入っています（<b>A001005a / b / c</b>）。
+      届いた写真の<b>裏に管理番号が印字</b>されるので、仕分けリストと突き合わせるだけで封筒に分けられます。
     </div>
     <div style="margin-top:14px;">
       <div style="font-size:0.8rem;font-weight:700;color:#5f6368;margin-bottom:6px;">写真別（店に出す枚数）</div>
@@ -322,6 +327,12 @@ function paExport() {
   location.href = '/photo/export?album_id=' + encodeURIComponent(aid);
 }
 
+function paSheet() {  // photo-sales-sheet-v1: 届いた写真を封筒に分けるための紙
+  var aid = document.getElementById('pa-album').value;
+  if (!aid) { paToast('行事を選んでください'); return; }
+  location.href = '/photo/sheet?album_id=' + encodeURIComponent(aid);
+}
+
 window.paLoad = paLoad;
 window.paCreate = paCreate;
 window.paClose = paClose;
@@ -330,6 +341,7 @@ window.paDelete = paDelete;
 window.paUploadFiles = paUploadFiles;
 window.paSavePrice = paSavePrice;
 window.paExport = paExport;
+window.paSheet = paSheet;
 document.addEventListener('DOMContentLoaded', paInit);
 </script>
 {% endblock %}
