@@ -128,6 +128,17 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 .rec-acc-caret { flex:0 0 auto; color:#94a3b8; font-size:0.8rem; transition:transform .15s ease; }
 .rec-acc-caret.closed { transform:rotate(-90deg); }
 
+/* photo-sales-rec-tab-v1: 上のタブ（おでかけ / 写真） */
+.rec-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.rec-tab { flex:1; min-width:0; padding:10px 8px; border:1.5px solid #e2e8f0; border-radius:10px;
+  background:#fff; color:#64748b; font-size:0.88rem; font-weight:700; cursor:pointer; }
+.rec-tab.active { background:#0C447C; border-color:#0C447C; color:#fff; }
+.rec-ph-tbl { width:100%; border-collapse:collapse; font-size:0.84rem; }
+.rec-ph-tbl th, .rec-ph-tbl td { border:1px solid #eef1f5; padding:7px 8px; vertical-align:top; }
+.rec-ph-tbl th { background:#f8fafc; color:#475569; font-weight:700; }
+.rec-ph-tbl td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rec-ph-nos { color:#64748b; font-size:0.74rem; line-height:1.6; word-break:break-all; }
+
 .rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
   background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
@@ -167,6 +178,25 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 <div class="rec-wrap">
   <div id="recToast" class="rec-toast"></div>
 
+  {% if can_photo %}
+  <!-- photo-sales-rec-tab-v1: 写真の請求は「注文の集計を見るだけ」なので、
+       おでかけの請求(recListView/recEditView)とは別のタブに分けている。データは触らない読み取り専用。 -->
+  <div class="rec-tabs" id="recTabs">
+    <button type="button" class="rec-tab active" data-tab="list" onclick="recTab('list')">おでかけ</button>
+    <button type="button" class="rec-tab" data-tab="photo" onclick="recTab('photo')">写真</button>
+  </div>
+  {% endif %}
+
+  <!-- ========== 写真（注文の集計・読み取り専用） ========== -->
+  <div id="recPhotoView" style="display:none;">
+    <div class="rec-head">
+      <div class="rec-title">写真代</div>
+      <select id="recPhotoAlbum" class="rec-input" style="width:auto;" onchange="recPhotoLoad()"></select>
+    </div>
+    <div class="rec-card">
+      <div id="recPhotoBody"><div class="rec-empty">読み込み中…</div></div>
+    </div>
+  </div>
 
   <!-- ========== 一覧 ========== -->
   <div id="recListView">
@@ -1260,5 +1290,71 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   loadCarMaster();
   loadList();
 })();
+
+// ===== photo-sales-rec-tab-v1: 写真タブ（注文の集計を見るだけ・読み取り専用） =====
+// 上の IIFE の外に置いている。中に書くと onclick から呼べない（既知の地雷）。
+var REC_PH_ALBUMS = [];
+
+window.recTab = function (tab) {
+  document.querySelectorAll('.rec-tab').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+  });
+  var photo = (tab === 'photo');
+  document.getElementById('recPhotoView').style.display = photo ? '' : 'none';
+  document.getElementById('recListView').style.display = photo ? 'none' : '';
+  var ed = document.getElementById('recEditView');
+  if (photo && ed) ed.style.display = 'none';   // 編集中に写真タブへ来たら編集は閉じる
+  if (photo && !REC_PH_ALBUMS.length) recPhotoInit();
+};
+
+async function recPhotoInit() {
+  try {
+    var r = await fetch('/api/photo/albums');
+    var j = await r.json();
+    REC_PH_ALBUMS = j.albums || [];
+    var sel = document.getElementById('recPhotoAlbum');
+    if (!REC_PH_ALBUMS.length) {
+      sel.innerHTML = '<option value="">行事がありません</option>';
+      document.getElementById('recPhotoBody').innerHTML = '<div class="rec-empty">行事がありません</div>';
+      return;
+    }
+    sel.innerHTML = REC_PH_ALBUMS.map(function (a) {
+      return '<option value="' + a.id + '">' + a.code + '　' + a.title + '</option>';
+    }).join('');
+    window.recPhotoLoad();
+  } catch (e) {
+    document.getElementById('recPhotoBody').innerHTML = '<div class="rec-empty">読み込めませんでした</div>';
+  }
+}
+
+window.recPhotoLoad = async function () {
+  var aid = document.getElementById('recPhotoAlbum').value;
+  var body = document.getElementById('recPhotoBody');
+  if (!aid) { body.innerHTML = '<div class="rec-empty">行事を選んでください</div>'; return; }
+  body.innerHTML = '<div class="rec-empty">読み込み中…</div>';
+  try {
+    var r = await fetch('/api/photo/summary?album_id=' + encodeURIComponent(aid));
+    var j = await r.json();
+    if (j.status !== 'success') { body.innerHTML = '<div class="rec-empty">読み込めませんでした</div>'; return; }
+    var rows = j.by_patient || [];
+    if (!rows.length) { body.innerHTML = '<div class="rec-empty">注文はまだありません</div>'; return; }
+    body.innerHTML =
+      '<table class="rec-ph-tbl"><thead><tr><th>利用者</th><th>注文番号</th><th>枚数</th><th>請求額</th></tr></thead><tbody>' +
+      rows.map(function (b) {
+        var nos = b.items.map(function (it) {
+          return it.photo_no + (it.qty > 1 ? '×' + it.qty : '');
+        }).join('  ');
+        return '<tr><td>' + b.user_name + '</td>' +
+               '<td><span class="rec-ph-nos">' + nos + '</span></td>' +
+               '<td class="num">' + b.qty + '</td>' +
+               '<td class="num">' + (b.amount || 0).toLocaleString() + '円</td></tr>';
+      }).join('') +
+      '<tr><th>合計</th><th></th><th class="num">' + (j.total_qty || 0) + '</th>' +
+      '<th class="num">' + (j.total_amount || 0).toLocaleString() + '円</th></tr>' +
+      '</tbody></table>';
+  } catch (e) {
+    body.innerHTML = '<div class="rec-empty">読み込めませんでした</div>';
+  }
+};
 </script>
 {% endblock %}

@@ -2215,3 +2215,93 @@ git checkout tasukaru-dev
 
 教訓: **PC の Chrome で sticky が効いていても、iOS で効いているとは限らない。
 ただし「iOS の sticky が壊れている」と決めつける前に、まず“枠が本当にスクロールしているか”を疑う。**
+
+---
+
+## 【開発ログ】2026-07-14(3) 生活機能CHECK：BIシートを「点数だけ」に簡素化 <!-- session-2026-07-14-lc-bi-simple -->
+
+**本番反映済み**（`fae993f`）。DDL 不要。変更は `templates/life_check.html` のみ。
+
+### なぜ
+
+`/life_check` は要介護向けの **様式3-2** を基準に作ったので、ADL10項目それぞれに
+「課題(有/無)」「AI相談」「環境」「状況・生活課題」が付いている。
+要支援・事業対象者に使う **紙のBIシート** は 評価項目 / 点数 / 得点 / 合計 だけ。
+現場では詳しすぎて手が止まるので、BIモードでは付属欄を出さないことにした。
+
+### 実装（`lc-bi-simple-v1`）
+
+- シート種別トグル（`sheet_mode` = full / bi）は 2026-06 に実装済み。BIでは
+  「車椅子・IADL・基本動作（4段階）」カードを隠していた。今回そこに **ADL各項目の付属欄** を足した。
+- `body.lc-bi` を `lcSetMode()` で付け外し。CSS で
+  `#lc-adl-area` 内の `.lc-sub` / `.lc-textfields` / `.lc-assist` を `display:none`。
+- **DOM からは消さない。** 保存(`lcCollect`)・編集復元(`lcPrefill`)・リセット(`lcResetForm`)が
+  `[data-env]` / `[data-note]` / `.lc-issue button` を直接 querySelector しているため、
+  消すと周辺のJSを全部直すことになる。隠すだけなら値は空のまま保存されるだけで済む。
+- **個々の要素に style を当てず body のクラスにした理由**: ADL項目は `lcBuildInputs()` が
+  JSで後から描画する。再描画のたびに当て直す方式は当て忘れが必ず出る。
+- 介護度が 事業対象者 / 要支援1 / 要支援2 なら自動でBIモード（既存 `lcModeFromCareLevel`）。
+- 基本情報カードと「総合所見・特記事項」はBIでも残す（記録として持っておきたいため）。
+- 過去に full で保存した記録を開けば `sheet_mode` が復元されるので、従来どおり全項目が出る。
+
+---
+
+## 【開発ログ】2026-07-14(4) 写真販売モジュール（管理番号・注文・請求・入稿ZIP） <!-- session-2026-07-14-photo-sales -->
+
+行事写真を利用者に販売する仕組み。撮影→注文→請求→プリント入稿→仕分けまでを通す。
+**既定OFF。開発者MENUのトグルで施設ごとに許可**（弊社のみON。タイムカードと同じ二段構え）。
+
+### 画面 / API（マーカー `photo-sales-*`）
+
+- `/photo` … タブレット注文。行事を選び、利用者を選び、写真タップで枚数±。タップのたびに保存。
+  選択中の利用者を上部に sticky で貼る（誰の注文か見失わない）。
+- `/photo/admin` … 行事作成・**ドラッグ&ドロップ取り込み**（スマホはタップでカメラロール）・単価・一覧・集計・入稿ZIP・仕分けリスト。
+- 請求額計算に「写真」タブ（`photo-sales-rec-tab-v1`）… 利用者ごとに 注文番号・枚数・請求額。読み取り専用。
+- `/photo/sheet`（`photo-sales-sheet-v1`）… 仕分けリスト（印刷）。管理番号順＋利用者別。
+- API: `/api/photo/albums`(GET/POST) `/album_close` `/price` `/upload` `/list` `/delete` `/order` `/summary`、`/photo/export`(ZIP)。
+- 開発者MENUトグル `/api/dev/toggle_photo_sales`（`photo-sales-devtoggle-v1`、`facilities.photo_sales_enabled`）。
+
+### 管理番号を絶対に間違えない設計（ここが肝）
+
+- 番号は**サーバだけが採番**。クライアントから番号を受け取る口を作らない。
+- 採番手順: ①DBに行を作って番号を確保 → ②Storageへ上げる → ③URLを書き戻す。
+  `unique(album_id, seq)` で同時アップの衝突を物理的に防ぎ、落ちたら seq+1 で再試行。上げ損ねた番号は捨てる。
+- **番号は再利用しない**。写真の削除は論理削除（`is_deleted`、欠番のまま）。使い回すと別人の写真が届く事故になる。
+- Storageのファイル名も管理番号と同じ。画面・DB・ZIP・CSVで同じ文字列。
+- 集計は `_photo_summary()` の1箇所だけ。画面・請求タブ・ZIP・仕分けが必ず同じ数字になる。
+
+### 入稿はしまうまプリント前提（`photo-sales-no-v2` / `zip-v3`）
+
+- キタムラのネット注文はアップ後にサイト独自番号を振り、元ファイル名も出ないので、
+  「どのサムネが何番か」を人が照合して枚数を打つ工程が生まれる（一番間違える）。これを避ける。
+- **しまうまは銀塩プリントの裏に「お客様のファイル名（半角英数）」を印字する** → 届いた写真の裏に管理番号が出る。
+  そこで **管理番号を英数字のみ**（`A001005`。ハイフン等の記号は裏印字で落ちる）に変更。
+- ZIPは**枚数ぶん複製**（3枚なら `A001005a/b/c.jpg`、1枚は素の `A001005.jpg`）。
+  サイトでは「L判・1枚」で一括設定するだけ＝枚数入力も照合も工程ごと消える。複製の連番は英字suffix
+  （数字だと裏印字で番号と一体化して読めない）。
+- 届いたら裏の番号で `/photo/sheet`（管理番号順）を引いて封筒へ。番号順に積まれて届くので上から処理できる。
+- **注意: 銀塩プリントを選ぶ（NEWデジタルプリントは裏印字なし）。配送受取（店頭受取は裏印字仕様が変わる）。**
+
+### DDL（`db/photo_sales.sql`。DEV適用済 / 本番は要適用）
+
+`facilities.photo_sales_enabled`（既定false）＋ `photo_albums` / `photos` / `photo_orders`。
+単価は `admin_settings.photo_unit_price`（手動upsert）。単価は注文行に写し取る（後で変えても確定請求は動かない）。
+
+### 検証（Chrome/DEV, DEMO001）
+
+採番連番・注文・集計・ZIP（複製とファイル名）・仕分けリスト・請求タブ、すべて数字一致を確認。
+テストデータは削除済み（空アルバム「A001 花見」のみ残置）。
+
+### ハマり
+
+- 仕分けリストが500（`photo-sales-sheet-v2`）。Jinjaで `b.items` は dict の `.items()` メソッドを拾う → `b["items"]` で回避。
+
+### 本番手順
+
+1. 本番Supabaseで `db/photo_sales.sql` を実行。
+2. `tasukaru` へマージ・デプロイ。
+3. 開発者MENUで `cocokaraplus-5526` の「写真販売」をON（または `update facilities set photo_sales_enabled=true where facility_code='cocokaraplus-5526';`）。
+
+### 次タスク（将来）
+
+- 顔認証で「その人が写っている写真だけ」抽出。`photos` に `photo_faces`（写真×人物）を足して注文画面にフィルタを足す形で今の作りに乗る。実運用が回ってから着手。

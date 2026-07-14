@@ -198,6 +198,7 @@
                     <th>出納帳</th>
                     <th>接骨院</th>  <!-- dev-sekkotsu-toggle-v1 -->
                     <th>タイムカード</th>  <!-- timecard-devtoggle-html-v1 -->
+                    <th>写真販売</th>  <!-- photo-sales-devtoggle-v1 -->
                 </tr>
             </thead>
             <tbody>
@@ -275,6 +276,12 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="toggleTimecard('{{ s.facility_code }}', this.checked)"
                                 {% if s.timecard_enabled %}checked{% endif %}>
+                        </label>
+                    </td>
+                    <td style="text-align:center;">  <!-- photo-sales-devtoggle-v1: 既定OFF。弊社だけON -->
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="togglePhotoSales('{{ s.facility_code }}', this.checked)"
+                                {% if s.photo_sales_enabled %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
@@ -464,6 +471,36 @@ async function toggleTimecard(facilityCode, enabled) {  // timecard-devtoggle-ht
         const j = await res.json();
         if (!j.success) { alert('タイムカード設定の更新に失敗しました: ' + (j.message || '')); }
     } catch (e) { alert('通信エラー: ' + e); }
+}
+
+function devToast(msg) {  // photo-sales-devtoggle-v1: alert() は Chrome拡張の自動操作を止めるので使わない
+    var t = document.getElementById('dev-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'dev-toast';
+        t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;' +
+            'background:#202124;color:#fff;padding:10px 16px;border-radius:10px;font-size:0.85rem;' +
+            'box-shadow:0 4px 16px rgba(0,0,0,0.25);opacity:0;transition:opacity .2s;';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(window._devToastT);
+    window._devToastT = setTimeout(function(){ t.style.opacity = '0'; }, 2200);
+}
+
+async function togglePhotoSales(facilityCode, enabled) {  // photo-sales-devtoggle-v1
+    // 写真販売は既定OFF。ここでONにした施設だけメニューに「写真注文」が出る。
+    try {
+        const res = await fetch('/api/dev/toggle_photo_sales', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ facility_code: facilityCode, enabled: enabled })
+        });
+        const j = await res.json();
+        devToast(j.success ? ('写真販売: ' + facilityCode + ' を ' + (enabled ? 'ON' : 'OFF') + ' にしました')
+                           : ('更新に失敗しました: ' + (j.message || '')));
+    } catch (e) { devToast('通信エラー: ' + e); }
 }
 
 async function toggleSekkotsuAllowed(facilityCode, allowed) {  // dev-sekkotsu-toggle-v1

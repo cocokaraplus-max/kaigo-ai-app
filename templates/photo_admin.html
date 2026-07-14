@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}写真販売 管理 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* photo-sales-v1: 管理画面（行事の作成・写真の取り込み・単価・集計・キタムラ入稿ZIP） */
+.pa-wrap { padding-bottom:80px; }
+.pa-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:14px; margin-bottom:12px; }
+.pa-title { font-size:0.92rem; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:7px;
+  padding-bottom:9px; border-bottom:2px solid #B5D4F4; color:#0C447C; }
+.pa-title .material-symbols-outlined { font-size:20px; }
+.pa-row { margin-bottom:10px; }
+.pa-row label { font-size:0.78rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.pa-row input, .pa-row select {
+  width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0;
+  font-size:0.95rem; box-sizing:border-box; background:#fff; }
+.pa-btn { width:100%; padding:12px; border-radius:10px; border:none; background:#0C447C; color:#fff;
+  font-size:0.92rem; font-weight:700; cursor:pointer; }
+.pa-btn.sub { background:#fff; color:#0C447C; border:1.5px solid #0C447C; }
+.pa-btn.warn { background:#fff; color:#c5221f; border:1.5px solid #c5221f; }
+.pa-btn + .pa-btn { margin-top:8px; }
+.pa-2 { display:flex; gap:8px; }
+.pa-2 > * { flex:1; min-width:0; }  /* Flexの子には min-width:0（既知の地雷） */
+
+/* ドロップ枠。PCは写真をドラッグ&ドロップ、タブレット/スマホはタップでカメラロール */
+.pa-drop { border:2px dashed #B5D4F4; border-radius:12px; padding:22px 12px; text-align:center;
+  color:#5f6368; font-size:0.86rem; cursor:pointer; background:#f8fbff; transition:all .15s; }
+.pa-drop.hot { border-color:#0C447C; background:#eef4fb; color:#0C447C; }
+.pa-drop .material-symbols-outlined { font-size:34px; display:block; margin:0 auto 6px; color:#0C447C; }
+.pa-prog { margin-top:10px; font-size:0.82rem; color:#0C447C; font-weight:700; display:none; }
+
+.pa-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px,1fr)); gap:9px; }
+.pa-ph { position:relative; border:1.5px solid #e8eaed; border-radius:10px; overflow:hidden; background:#fff; }
+.pa-ph img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#f1f3f4; }
+.pa-ph .no { position:absolute; top:5px; left:5px; background:rgba(0,0,0,0.72); color:#fff; font-size:0.68rem;
+  font-weight:800; padding:2px 6px; border-radius:6px; font-variant-numeric:tabular-nums; }
+.pa-ph .del { position:absolute; top:5px; right:5px; width:22px; height:22px; border-radius:11px; border:none;
+  background:rgba(197,34,31,0.9); color:#fff; font-size:0.8rem; line-height:1; cursor:pointer; }
+.pa-tbl { width:100%; border-collapse:collapse; font-size:0.84rem; }
+.pa-tbl th, .pa-tbl td { border:1px solid #e8eaed; padding:6px 8px; }
+.pa-tbl th { background:#f8f9fb; color:#5f6368; font-weight:700; }
+.pa-tbl td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.pa-note { font-size:0.74rem; color:#9aa0a6; margin-top:6px; line-height:1.5; }
+.pa-empty { color:#9aa0a6; font-size:0.86rem; text-align:center; padding:16px 0; }
+.pa-badge { display:inline-block; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:8px;
+  background:#fde8e6; color:#c5221f; margin-left:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pa-wrap">
+
+  <div class="pa-card">
+    <div class="pa-title"><span class="material-symbols-outlined">add_a_photo</span>行事（アルバム）</div>
+    <div class="pa-row">
+      <label>選択中の行事</label>
+      <select id="pa-album" onchange="paLoad()"><option value="">読み込み中…</option></select>
+    </div>
+    <div class="pa-2">
+      <button class="pa-btn sub" type="button" onclick="paToggleNew()">＋ 新しい行事</button>
+      <button class="pa-btn warn" type="button" onclick="paClose()" id="pa-close-btn">この行事を締める</button>
+    </div>
+    <div id="pa-new" style="display:none;margin-top:12px;">
+      <div class="pa-row"><label>行事名</label><input type="text" id="pa-new-title" placeholder="例：2026年7月 夏祭り"></div>
+      <div class="pa-row"><label>実施日</label><input type="date" id="pa-new-date"></div>
+      <div class="pa-row">
+        <label>コード（空欄なら自動：A001, A002…）</label>
+        <input type="text" id="pa-new-code" placeholder="自動採番のままを推奨" maxlength="8">
+      </div>
+      <button class="pa-btn" type="button" onclick="paCreate()">この行事を作る</button>
+      <div class="pa-note">管理番号は「コード-連番」（例 A001-001）。番号はサーバが振るので、手で決める必要はありません。</div>
+    </div>
+  </div>
+
+  <div class="pa-card">
+    <div class="pa-title"><span class="material-symbols-outlined">upload</span>写真の取り込み</div>
+    <div class="pa-drop" id="pa-drop" onclick="document.getElementById('pa-file').click()">
+      <span class="material-symbols-outlined">cloud_upload</span>
+      ここに写真をドラッグ＆ドロップ<br>
+      <small>またはタップして選択（スマホ・タブレットはカメラロールから）</small>
+    </div>
+    <input type="file" id="pa-file" accept="image/*" multiple style="display:none;" onchange="paUploadFiles(this.files)">
+    <div class="pa-prog" id="pa-prog"></div>
+    <div class="pa-note">取り込んだ順に管理番号が振られます。番号は再利用しません（写真を消しても欠番のまま）。</div>
+  </div>
+
+  <div class="pa-card">
+    <div class="pa-title"><span class="material-symbols-outlined">collections</span>写真一覧 <span id="pa-count" style="margin-left:auto;font-size:0.78rem;color:#5f6368;"></span></div>
+    <div id="pa-photos"><div class="pa-empty">行事を選んでください</div></div>
+  </div>
+
+  <div class="pa-card">
+    <div class="pa-title"><span class="material-symbols-outlined">sell</span>写真1枚の金額</div>
+    <div class="pa-2">
+      <input type="number" id="pa-price" min="0" step="10" style="padding:10px 12px;border-radius:10px;border:1.5px solid #e0e0e0;font-size:0.95rem;box-sizing:border-box;">
+      <button class="pa-btn" type="button" onclick="paSavePrice()" style="max-width:120px;">保存</button>
+    </div>
+    <div class="pa-note">金額は注文したときの値を1件ずつ写し取ります。あとで値上げしても、済んだ注文の請求額は動きません。</div>
+  </div>
+
+  <div class="pa-card">
+    <div class="pa-title"><span class="material-symbols-outlined">local_shipping</span>プリント注文（しまうまプリント）</div>
+    <button class="pa-btn" type="button" onclick="paExport()">注文ぶんの写真をZIPでダウンロード</button>
+    <button class="pa-btn sub" type="button" onclick="paSheet()">仕分けリストを開く（印刷）</button>
+    <div class="pa-note">
+      <b>注文の手順</b><br>
+      ① ZIP を解凍 → 中の写真を <b>しまうまプリント</b> に全部アップロード<br>
+      ② プリント一括設定で <b>「L判・1枚」</b> にする（枚数は写真の数で調整済み。1枚ずつ打つ必要はありません）<br>
+      ③ <b>銀塩プリント</b>を選ぶ（NEWデジタルプリントは裏印字が入りません）<br><br>
+      3枚注文の写真は同じ写真が3ファイル入っています（<b>A001005a / b / c</b>）。
+      届いた写真の<b>裏に管理番号が印字</b>されるので、仕分けリストと突き合わせるだけで封筒に分けられます。
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:0.8rem;font-weight:700;color:#5f6368;margin-bottom:6px;">写真別（店に出す枚数）</div>
+      <div id="pa-sum-photo"><div class="pa-empty">—</div></div>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:0.8rem;font-weight:700;color:#5f6368;margin-bottom:6px;">利用者別（請求）</div>
+      <div id="pa-sum-patient"><div class="pa-empty">—</div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// photo-sales-v1: 管理画面。関数は window に出す（IIFEに隠すと onclick から呼べない）
+var PA_ALBUMS = [];
+var PA_ALBUM = null;
+
+function paToast(m){ if (window.showToastMsg) window.showToastMsg(m); }
+function paEsc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function paInit() {
+  await paLoadAlbums();
+  paDropSetup();
+}
+
+async function paLoadAlbums() {
+  try {
+    var r = await fetch('/api/photo/albums');
+    var j = await r.json();
+    PA_ALBUMS = j.albums || [];
+    document.getElementById('pa-price').value = j.unit_price || 0;
+    var sel = document.getElementById('pa-album');
+    if (!PA_ALBUMS.length) { sel.innerHTML = '<option value="">行事がありません</option>'; return; }
+    sel.innerHTML = PA_ALBUMS.map(function(a){
+      return '<option value="'+a.id+'">'+paEsc(a.code)+'　'+paEsc(a.title)+(a.is_closed?'（締）':'')+'</option>';
+    }).join('');
+    paLoad();
+  } catch(e) { paToast('行事を読み込めませんでした'); }
+}
+
+function paToggleNew() {
+  var n = document.getElementById('pa-new');
+  n.style.display = (n.style.display === 'none') ? '' : 'none';
+}
+
+async function paCreate() {
+  var title = document.getElementById('pa-new-title').value.trim();
+  if (!title) { paToast('行事名を入れてください'); return; }
+  var body = { title: title,
+               event_date: document.getElementById('pa-new-date').value || null,
+               code: document.getElementById('pa-new-code').value.trim().toUpperCase() };
+  try {
+    var r = await fetch('/api/photo/albums', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    var j = await r.json();
+    if (j.status !== 'success') { paToast(j.message || '作れませんでした'); return; }
+    paToast('作成しました（コード ' + j.album.code + '）');
+    document.getElementById('pa-new-title').value = '';
+    document.getElementById('pa-new-code').value = '';
+    document.getElementById('pa-new').style.display = 'none';
+    await paLoadAlbums();
+    document.getElementById('pa-album').value = j.album.id;
+    paLoad();
+  } catch(e) { paToast('通信に失敗しました'); }
+}
+
+async function paClose() {
+  if (!PA_ALBUM) return;
+  var closing = !PA_ALBUM.is_closed;
+  try {
+    var r = await fetch('/api/photo/album_close', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ album_id: PA_ALBUM.id, closed: closing }) });
+    var j = await r.json();
+    if (j.status !== 'success') { paToast(j.message || '変更できませんでした'); return; }
+    paToast(closing ? '締めました（注文・追加ができなくなります）' : '締めを解除しました');
+    await paLoadAlbums();
+  } catch(e) { paToast('通信に失敗しました'); }
+}
+
+async function paLoad() {
+  var aid = document.getElementById('pa-album').value;
+  PA_ALBUM = PA_ALBUMS.find(function(a){ return String(a.id) === String(aid); }) || null;
+  var btn = document.getElementById('pa-close-btn');
+  if (PA_ALBUM) btn.textContent = PA_ALBUM.is_closed ? 'この行事の締めを解除' : 'この行事を締める';
+  if (!aid) { document.getElementById('pa-photos').innerHTML = '<div class="pa-empty">行事を選んでください</div>'; return; }
+
+  try {
+    var r = await fetch('/api/photo/list?album_id=' + encodeURIComponent(aid));
+    var j = await r.json();
+    var area = document.getElementById('pa-photos');
+    var photos = j.photos || [];
+    document.getElementById('pa-count').textContent = photos.length ? (photos.length + '枚') : '';
+    if (!photos.length) { area.innerHTML = '<div class="pa-empty">まだ写真がありません</div>'; }
+    else {
+      area.innerHTML = '<div class="pa-list">' + photos.map(function(p){
+        var t = (j.totals || {})[p.id] || 0;
+        return '<div class="pa-ph">' +
+          '<img src="'+paEsc(p.url)+'" loading="lazy" alt="'+paEsc(p.photo_no)+'">' +
+          '<div class="no">'+paEsc(p.photo_no)+(t?('　注'+t):'')+'</div>' +
+          '<button class="del" type="button" onclick="paDelete(\''+p.id+'\',\''+paEsc(p.photo_no)+'\')">×</button>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+  } catch(e) {}
+  paSummary();
+}
+
+async function paDelete(id, no) {
+  // 番号は欠番のまま残る（再利用しない）。注文も一緒に消える
+  if (!window.confirm(no + ' を削除します。この番号は欠番になり、注文も取り消されます。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/photo/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ photo_id: id }) });
+    var j = await r.json();
+    if (j.status !== 'success') { paToast(j.message || '削除できませんでした'); return; }
+    paToast(no + ' を削除しました');
+    paLoad();
+  } catch(e) { paToast('通信に失敗しました'); }
+}
+
+// ---- ドラッグ&ドロップ ----
+function paDropSetup() {
+  var d = document.getElementById('pa-drop');
+  ['dragenter','dragover'].forEach(function(ev){
+    d.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); d.classList.add('hot'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    d.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); d.classList.remove('hot'); });
+  });
+  d.addEventListener('drop', function(e){
+    var files = (e.dataTransfer && e.dataTransfer.files) ? e.dataTransfer.files : null;
+    if (files && files.length) paUploadFiles(files);
+  });
+  // ページの他の場所にこぼしたときにブラウザが画像を開いてしまうのを防ぐ
+  ['dragover','drop'].forEach(function(ev){
+    window.addEventListener(ev, function(e){ e.preventDefault(); }, false);
+  });
+}
+
+async function paUploadFiles(fileList) {
+  var aid = document.getElementById('pa-album').value;
+  if (!aid) { paToast('先に行事を選んでください'); return; }
+  if (PA_ALBUM && PA_ALBUM.is_closed) { paToast('締めた行事には追加できません'); return; }
+
+  var files = Array.prototype.slice.call(fileList).filter(function(f){ return /^image\//.test(f.type); });
+  if (!files.length) { paToast('画像がありません'); return; }
+  // 撮った順＝番号順にしたいのでファイル名で並べ替える（カメラは連番のファイル名を付けるため）
+  files.sort(function(a,b){ return a.name.localeCompare(b.name, 'ja', {numeric:true}); });
+
+  var prog = document.getElementById('pa-prog');
+  prog.style.display = 'block';
+  var done = 0, fail = 0;
+  var CHUNK = 5;   // 1リクエストが大きすぎると Cloud Run のタイムアウトに当たるので小分けにする
+  for (var i = 0; i < files.length; i += CHUNK) {
+    var part = files.slice(i, i + CHUNK);
+    var fd = new FormData();
+    fd.append('album_id', aid);
+    part.forEach(function(f){ fd.append('photos', f); });
+    prog.textContent = 'アップロード中… ' + done + ' / ' + files.length;
+    try {
+      var r = await fetch('/api/photo/upload', { method:'POST', body: fd });
+      var j = await r.json();
+      if (j.status === 'success') { done += (j.added || []).length; fail += (j.failed || 0); }
+      else { fail += part.length; }
+    } catch(e) { fail += part.length; }
+  }
+  prog.textContent = '取り込み完了：' + done + '枚' + (fail ? '（失敗 ' + fail + '枚）' : '');
+  setTimeout(function(){ prog.style.display = 'none'; }, 4000);
+  document.getElementById('pa-file').value = '';
+  paToast(done + '枚を取り込みました' + (fail ? '（失敗 ' + fail + '枚）' : ''));
+  paLoad();
+}
+
+async function paSavePrice() {
+  var v = parseInt(document.getElementById('pa-price').value || '0', 10);
+  try {
+    var r = await fetch('/api/photo/price', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ unit_price: v }) });
+    var j = await r.json();
+    paToast(j.status === 'success' ? ('1枚 ' + v + '円 で保存しました') : (j.message || '保存できませんでした'));
+  } catch(e) { paToast('通信に失敗しました'); }
+}
+
+async function paSummary() {
+  var aid = document.getElementById('pa-album').value;
+  if (!aid) return;
+  try {
+    var r = await fetch('/api/photo/summary?album_id=' + encodeURIComponent(aid));
+    var j = await r.json();
+    if (j.status !== 'success') return;
+
+    var ph = j.by_photo || [];
+    document.getElementById('pa-sum-photo').innerHTML = ph.length
+      ? '<table class="pa-tbl"><thead><tr><th>管理番号</th><th>枚数</th></tr></thead><tbody>' +
+        ph.map(function(x){ return '<tr><td>'+paEsc(x.photo_no)+'</td><td class="num">'+x.qty+'</td></tr>'; }).join('') +
+        '<tr><th>合計</th><th class="num">'+ (j.total_qty||0) +'</th></tr></tbody></table>'
+      : '<div class="pa-empty">注文はまだありません</div>';
+
+    var pt = j.by_patient || [];
+    document.getElementById('pa-sum-patient').innerHTML = pt.length
+      ? '<table class="pa-tbl"><thead><tr><th>利用者</th><th>枚数</th><th>金額</th></tr></thead><tbody>' +
+        pt.map(function(x){
+          return '<tr><td>'+paEsc(x.user_name)+'</td><td class="num">'+x.qty+'</td><td class="num">'+(x.amount||0).toLocaleString()+'円</td></tr>';
+        }).join('') +
+        '<tr><th>合計</th><th class="num">'+(j.total_qty||0)+'</th><th class="num">'+(j.total_amount||0).toLocaleString()+'円</th></tr></tbody></table>'
+      : '<div class="pa-empty">注文はまだありません</div>';
+  } catch(e) {}
+}
+
+function paExport() {
+  var aid = document.getElementById('pa-album').value;
+  if (!aid) { paToast('行事を選んでください'); return; }
+  // PWA で target="_blank" を使うとログインが壊れるので同一タブで開く（既知の地雷）
+  location.href = '/photo/export?album_id=' + encodeURIComponent(aid);
+}
+
+function paSheet() {  // photo-sales-sheet-v1: 届いた写真を封筒に分けるための紙
+  var aid = document.getElementById('pa-album').value;
+  if (!aid) { paToast('行事を選んでください'); return; }
+  location.href = '/photo/sheet?album_id=' + encodeURIComponent(aid);
+}
+
+window.paLoad = paLoad;
+window.paCreate = paCreate;
+window.paClose = paClose;
+window.paToggleNew = paToggleNew;
+window.paDelete = paDelete;
+window.paUploadFiles = paUploadFiles;
+window.paSavePrice = paSavePrice;
+window.paExport = paExport;
+window.paSheet = paSheet;
+document.addEventListener('DOMContentLoaded', paInit);
+</script>
+{% endblock %}

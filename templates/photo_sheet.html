@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}仕分けリスト - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* photo-sales-sheet-v1: 届いたプリントを封筒に分けるための紙。
+   しまうまは写真の裏に管理番号（ファイル名）を印字し、管理番号順に積んで送ってくる。
+   だからこの表も管理番号順にする。上から順に、裏の番号を見て、その行の人の封筒へ入れるだけ。 */
+.ps-wrap { padding-bottom:60px; }
+.ps-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.ps-head h2 { font-size:1.02rem; font-weight:800; color:#0C447C; margin:0; }
+.ps-head .ps-print { margin-left:auto; padding:7px 12px; border:1.5px solid #0C447C; border-radius:9px;
+  background:#fff; color:#0C447C; font-size:0.8rem; font-weight:700; cursor:pointer; }
+.ps-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:14px; margin-bottom:14px; }
+.ps-card h3 { font-size:0.86rem; font-weight:800; color:#0C447C; margin:0 0 10px; }
+.ps-tbl { width:100%; border-collapse:collapse; font-size:0.86rem; }
+.ps-tbl th, .ps-tbl td { border:1px solid #e8eaed; padding:7px 9px; text-align:left; vertical-align:top; }
+.ps-tbl th { background:#f8f9fb; color:#5f6368; font-weight:700; }
+.ps-tbl td.no { font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:0.04em; white-space:nowrap; }
+.ps-tbl td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.ps-chk { width:26px; }
+.ps-note { font-size:0.74rem; color:#9aa0a6; margin-top:8px; line-height:1.6; }
+.ps-empty { color:#9aa0a6; font-size:0.86rem; text-align:center; padding:20px 0; }
+
+@media print {
+  /* 紙に出すのは表だけ。アプリの枠は消す */
+  .ps-head .ps-print, .bottom-nav, .app-drawer, .drawer-handle { display:none !important; }
+  .ps-card { border:none; padding:0; margin-bottom:18px; }
+  .ps-tbl { font-size:11pt; }
+  .ps-tbl th, .ps-tbl td { padding:4px 6px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ps-wrap">
+  <div class="ps-head">
+    <h2>{{ album.code }}　{{ album.title }}　仕分けリスト</h2>
+    <button type="button" class="ps-print" onclick="window.print()">印刷</button>
+  </div>
+
+  <div class="ps-card">
+    <h3>管理番号順（届いた写真の裏を見て、この順に分ける）</h3>
+    {% if rows %}
+    <table class="ps-tbl">
+      <thead>
+        <tr><th class="ps-chk">✓</th><th>管理番号</th><th>渡す人</th><th>枚数</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="ps-chk">□</td>
+          <td class="no">{{ r.photo_no }}</td>
+          <td>
+            {% for w in r.who %}{{ w.user_name }}{% if w.qty > 1 %}（{{ w.qty }}枚）{% endif %}{% if not loop.last %}／{% endif %}{% endfor %}
+          </td>
+          <td class="num">{{ r.qty }}</td>
+        </tr>
+        {% endfor %}
+        <tr><th></th><th>合計</th><th></th><th class="num">{{ total_qty }}</th></tr>
+      </tbody>
+    </table>
+    <div class="ps-note">
+      写真の裏に印字された番号（例 {{ rows[0].photo_no }}）が、この表の管理番号です。
+      同じ番号を複数の方が頼んでいる場合は「渡す人」に並びます。
+    </div>
+    {% else %}
+    <div class="ps-empty">注文がありません</div>
+    {% endif %}
+  </div>
+
+  <div class="ps-card">
+    <h3>利用者別（封入後の確認・請求）</h3>
+    {% if patients %}
+    <table class="ps-tbl">
+      <thead><tr><th class="ps-chk">✓</th><th>利用者</th><th>管理番号</th><th>枚数</th><th>金額</th></tr></thead>
+      <tbody>
+        {% for b in patients %}
+        <tr>
+          <td class="ps-chk">□</td>
+          <td>{{ b.user_name }}</td>
+          <td style="font-size:0.76rem;color:#5f6368;">
+            {# b.items と書くと dict の .items() メソッドを拾ってしまう（Jinjaの罠）。必ず b["items"] で引く #}
+            {% for it in b["items"] %}{{ it.photo_no }}{% if it.qty > 1 %}×{{ it.qty }}{% endif %}{% if not loop.last %}　{% endif %}{% endfor %}
+          </td>
+          <td class="num">{{ b.qty }}</td>
+          <td class="num">{{ "{:,}".format(b.amount) }}円</td>
+        </tr>
+        {% endfor %}
+        <tr><th></th><th>合計</th><th></th><th class="num">{{ total_qty }}</th><th class="num">{{ "{:,}".format(total_amount) }}円</th></tr>
+      </tbody>
+    </table>
+    {% else %}
+    <div class="ps-empty">注文がありません</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

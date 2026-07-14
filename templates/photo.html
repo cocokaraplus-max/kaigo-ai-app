@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}写真注文 - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+/* photo-sales-v1: タブレットで「利用者を選ぶ → 写真をタップ」だけで注文が終わる画面。
+   間違いの元は「誰の注文か分からなくなること」なので、選択中の利用者を常に画面上部に貼りつける。 */
+.ph-wrap { padding-bottom:80px; }
+.ph-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:14px; margin-bottom:12px; }
+.ph-card-title { font-size:0.92rem; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:7px;
+  padding-bottom:9px; border-bottom:2px solid #B5D4F4; color:#0C447C; }
+.ph-card-title .material-symbols-outlined { font-size:20px; }
+.ph-row { margin-bottom:10px; }
+.ph-row label { font-size:0.78rem; font-weight:700; color:#5f6368; display:block; margin-bottom:4px; }
+.ph-row select, .ph-row input {
+  width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e0e0e0;
+  font-size:0.95rem; box-sizing:border-box; background:#fff; }
+
+/* 選択中の利用者は sticky。スクロールしても誰の注文かを見失わない */
+.ph-who { position:sticky; top:0; z-index:20; margin:-4px -4px 12px; padding:10px 12px;
+  border-radius:12px; background:#0C447C; color:#fff; display:flex; align-items:center; gap:8px;
+  box-shadow:0 2px 10px rgba(12,68,124,0.25); }
+.ph-who.none { background:#c5221f; }
+.ph-who .material-symbols-outlined { font-size:20px; }
+.ph-who b { font-size:1.02rem; }
+.ph-who .ph-who-sub { margin-left:auto; font-size:0.74rem; opacity:0.9; }
+
+.pick-list { border:1.5px solid #e0e0e0; border-radius:10px; max-height:220px; overflow-y:auto; display:none; margin-top:6px; }
+.pick-item { padding:10px 12px; border-bottom:1px solid #f1f3f4; cursor:pointer; font-size:0.92rem; }
+.pick-item:last-child { border-bottom:none; }
+.pick-item:active { background:#eef4fb; }
+
+/* 写真グリッド。列幅は箱の幅で決める（480pxカラムなので @container 側の話にしない） */
+.ph-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; }
+.ph-item { border:2px solid #e8eaed; border-radius:12px; overflow:hidden; background:#fff; position:relative; }
+.ph-item.on { border-color:#0F6E56; box-shadow:0 0 0 3px rgba(15,110,86,0.12); }
+.ph-thumb { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#f1f3f4; cursor:pointer; }
+/* 管理番号は必ず写真の上に大きく出す。番号を見ながら注文するのが唯一の照合手段なので隠さない */
+.ph-no { position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.72); color:#fff;
+  font-size:0.72rem; font-weight:800; letter-spacing:0.04em; padding:3px 7px; border-radius:7px;
+  font-variant-numeric:tabular-nums; }
+.ph-qty-badge { position:absolute; top:6px; right:6px; min-width:22px; height:22px; border-radius:11px;
+  background:#0F6E56; color:#fff; font-size:0.76rem; font-weight:800; display:none;
+  align-items:center; justify-content:center; padding:0 6px; }
+.ph-item.on .ph-qty-badge { display:flex; }
+.ph-ctrl { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; gap:6px; }
+.ph-ctrl button { width:34px; height:34px; border-radius:9px; border:1.5px solid #e0e0e0; background:#fff;
+  font-size:1.1rem; font-weight:800; color:#0C447C; cursor:pointer; line-height:1; }
+.ph-ctrl button:active { background:#eef4fb; }
+.ph-ctrl .ph-n { font-size:0.9rem; font-weight:800; color:#202124; font-variant-numeric:tabular-nums; }
+.ph-total-bar { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(var(--nav-h, 10px) + 10px);
+  width:min(var(--page-max-width, 480px), 100%); box-sizing:border-box; padding:0 10px; z-index:30; }
+.ph-total-in { background:#0C447C; color:#fff; border-radius:12px; padding:10px 14px; display:flex;
+  align-items:center; justify-content:space-between; font-size:0.88rem; font-weight:700;
+  box-shadow:0 4px 14px rgba(0,0,0,0.2); }
+.ph-empty { color:#9aa0a6; font-size:0.86rem; text-align:center; padding:24px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ph-wrap">
+
+  <div class="ph-who none" id="ph-who">
+    <span class="material-symbols-outlined">person</span>
+    <b id="ph-who-name">利用者が選ばれていません</b>
+    <span class="ph-who-sub" id="ph-who-sub"></span>
+  </div>
+
+  <div class="ph-card">
+    <div class="ph-card-title">
+      <span class="material-symbols-outlined">photo_camera</span>写真注文
+      <!-- 管理（取り込み・単価・ZIP）はこの奥。導線を1本にして、注文画面には注文だけを置く -->
+      <button type="button" onclick="location.href='/photo/admin'"
+        style="margin-left:auto;padding:5px 10px;border:1.5px solid #0C447C;border-radius:8px;background:#fff;color:#0C447C;font-size:0.74rem;font-weight:700;cursor:pointer;">管理</button>
+    </div>
+    <div class="ph-row">
+      <label>行事（アルバム）</label>
+      <select id="ph-album" onchange="phLoadPhotos()"><option value="">読み込み中…</option></select>
+    </div>
+    <div class="ph-row">
+      <label>利用者</label>
+      <input type="text" id="ph-search" placeholder="氏名で検索" oninput="phFilter()" autocomplete="off">
+      <div class="pick-list" id="ph-pick"></div>
+    </div>
+  </div>
+
+  <div class="ph-card">
+    <div class="ph-card-title"><span class="material-symbols-outlined">collections</span>写真を選ぶ</div>
+    <div id="ph-grid-area"><div class="ph-empty">行事と利用者を選んでください</div></div>
+  </div>
+</div>
+
+<div class="ph-total-bar" id="ph-total-bar" style="display:none;">
+  <div class="ph-total-in">
+    <span id="ph-total-l">選択中 0枚</span>
+    <span id="ph-total-r">0円</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// photo-sales-v1
+// 注文はタップのたびにサーバへ保存する（「保存ボタンを押し忘れて消えた」を無くすため）。
+// 関数は window に出す。IIFE の中に隠すと onclick から呼べない（既知の地雷）。
+var PH_PATIENTS = [];
+var PH_SELECTED = null;      // 利用者
+var PH_PHOTOS = [];          // 表示中アルバムの写真
+var PH_MINE = {};            // photo_id -> 枚数（選択中の利用者ぶん）
+var PH_PRICE = 0;
+
+function phToast(m){ if (window.showToastMsg) window.showToastMsg(m); }
+function phEsc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function phNorm(s){ return (s||'').replace(/\s/g,'').toLowerCase(); }
+
+async function phInit() {
+  try {
+    var r = await fetch('/api/patients_cache');
+    var j = await r.json();
+    PH_PATIENTS = j.patients || j || [];
+  } catch(e) { PH_PATIENTS = []; }
+
+  try {
+    var r2 = await fetch('/api/photo/albums');
+    var j2 = await r2.json();
+    PH_PRICE = j2.unit_price || 0;
+    var sel = document.getElementById('ph-album');
+    var open = (j2.albums || []).filter(function(a){ return !a.is_closed; });
+    if (!open.length) {
+      sel.innerHTML = '<option value="">行事がありません</option>';
+      return;
+    }
+    sel.innerHTML = open.map(function(a){
+      return '<option value="'+a.id+'">'+phEsc(a.code)+'　'+phEsc(a.title)+'</option>';
+    }).join('');
+    phLoadPhotos();
+  } catch(e) {}
+}
+
+function phFilter() {
+  var q = phNorm(document.getElementById('ph-search').value);
+  var list = document.getElementById('ph-pick');
+  if (!q) { list.style.display='none'; return; }
+  var hits = PH_PATIENTS.filter(function(p){
+    return phNorm(p.user_name).indexOf(q)>=0 || phNorm(p.user_name_kana||p.kana||'').indexOf(q)>=0;
+  }).slice(0,30);
+  if (!hits.length) { list.style.display='none'; return; }
+  list.innerHTML = hits.map(function(p){
+    return '<div class="pick-item" onclick="phPick(\''+p.id+'\')">'+phEsc(p.user_name)+'</div>';
+  }).join('');
+  list.style.display='block';
+}
+
+function phPick(id) {
+  var p = PH_PATIENTS.find(function(x){ return String(x.id)===String(id); });
+  if (!p) return;
+  PH_SELECTED = p;
+  document.getElementById('ph-search').value = p.user_name;
+  document.getElementById('ph-pick').style.display='none';
+  var who = document.getElementById('ph-who');
+  who.classList.remove('none');
+  document.getElementById('ph-who-name').textContent = p.user_name + ' 様';
+  phLoadPhotos();
+}
+
+async function phLoadPhotos() {
+  var aid = document.getElementById('ph-album').value;
+  var area = document.getElementById('ph-grid-area');
+  if (!aid) { area.innerHTML = '<div class="ph-empty">行事を選んでください</div>'; return; }
+  area.innerHTML = '<div class="ph-empty">読み込み中…</div>';
+  var url = '/api/photo/list?album_id=' + encodeURIComponent(aid);
+  if (PH_SELECTED) url += '&patient_id=' + encodeURIComponent(PH_SELECTED.id);
+  try {
+    var r = await fetch(url);
+    var j = await r.json();
+    if (j.status !== 'success') { area.innerHTML = '<div class="ph-empty">'+phEsc(j.message||'読み込めません')+'</div>'; return; }
+    PH_PHOTOS = j.photos || [];
+    PH_MINE = j.mine || {};
+    PH_PRICE = j.unit_price || 0;
+    phRender();
+  } catch(e) {
+    area.innerHTML = '<div class="ph-empty">読み込めませんでした</div>';
+  }
+}
+
+function phRender() {
+  var area = document.getElementById('ph-grid-area');
+  if (!PH_PHOTOS.length) { area.innerHTML = '<div class="ph-empty">この行事の写真はまだありません</div>'; return; }
+  area.innerHTML = '<div class="ph-grid">' + PH_PHOTOS.map(function(p){
+    var q = PH_MINE[p.id] || 0;
+    return '<div class="ph-item'+(q>0?' on':'')+'" id="pi-'+p.id+'">'+
+      '<img class="ph-thumb" src="'+phEsc(p.url)+'" alt="'+phEsc(p.photo_no)+'" loading="lazy" onclick="phTap(\''+p.id+'\')">'+
+      '<div class="ph-no">'+phEsc(p.photo_no)+'</div>'+
+      '<div class="ph-qty-badge" id="pb-'+p.id+'">'+q+'</div>'+
+      '<div class="ph-ctrl">'+
+        '<button type="button" onclick="phAdd(\''+p.id+'\',-1)">−</button>'+
+        '<span class="ph-n" id="pn-'+p.id+'">'+q+'</span>'+
+        '<button type="button" onclick="phAdd(\''+p.id+'\',1)">＋</button>'+
+      '</div>'+
+    '</div>';
+  }).join('') + '</div>';
+  phTotal();
+}
+
+function phTap(id) {  // 写真をタップ = 1枚 / もう一度タップで取消（一番よく使う操作を最短に）
+  var q = PH_MINE[id] || 0;
+  phSet(id, q > 0 ? 0 : 1);
+}
+function phAdd(id, d) {
+  var q = (PH_MINE[id] || 0) + d;
+  if (q < 0) q = 0;
+  if (q > 99) q = 99;
+  phSet(id, q);
+}
+
+async function phSet(id, qty) {
+  if (!PH_SELECTED) { phToast('先に利用者を選んでください'); return; }
+  var prev = PH_MINE[id] || 0;
+  PH_MINE[id] = qty;              // 先に画面を更新（タップの反応を待たせない）
+  phPaint(id);
+  try {
+    var r = await fetch('/api/photo/order', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ photo_id:id, patient_id:PH_SELECTED.id,
+                             user_name:PH_SELECTED.user_name, qty:qty })
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { PH_MINE[id] = prev; phPaint(id); phToast(j.message || '保存できませんでした'); }
+  } catch(e) {
+    PH_MINE[id] = prev; phPaint(id);   // 通信に失敗したら画面を元に戻す（DBと画面がズレたままにしない）
+    phToast('通信に失敗しました');
+  }
+}
+
+function phPaint(id) {
+  var q = PH_MINE[id] || 0;
+  var item = document.getElementById('pi-'+id);
+  if (item) item.classList.toggle('on', q > 0);
+  var n = document.getElementById('pn-'+id); if (n) n.textContent = q;
+  var b = document.getElementById('pb-'+id); if (b) b.textContent = q;
+  phTotal();
+}
+
+function phTotal() {
+  var qty = 0;
+  Object.keys(PH_MINE).forEach(function(k){ qty += (PH_MINE[k] || 0); });
+  var bar = document.getElementById('ph-total-bar');
+  if (!PH_SELECTED || !qty) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  document.getElementById('ph-total-l').textContent = PH_SELECTED.user_name + ' 様　' + qty + '枚';
+  document.getElementById('ph-total-r').textContent = (qty * PH_PRICE).toLocaleString() + '円';
+}
+
+window.phLoadPhotos = phLoadPhotos;
+window.phFilter = phFilter;
+window.phPick = phPick;
+window.phTap = phTap;
+window.phAdd = phAdd;
+document.addEventListener('DOMContentLoaded', phInit);
+</script>
+{% endblock %}

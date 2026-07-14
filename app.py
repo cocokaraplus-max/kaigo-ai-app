@@ -1971,6 +1971,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/board",          "icon": "campaign",               "label": "掲示板",         "need": None},
     {"href": "/ledger",         "icon": "account_balance",        "label": "出納帳",         "need": "ledger"},
     {"href": "/rec_expense",    "icon": "payments",               "label": "請求額計算",     "need": "rec_expense"},
+    {"href": "/photo",          "icon": "photo_camera",           "label": "写真注文",       "need": "photo"},  # photo-sales-v1
     {"href": "/birthday",       "icon": "cake",                   "label": "誕生日",         "need": None},
     {"href": "/numerology",     "icon": "auto_awesome",           "label": "数秘",           "need": None},
     {"href": "/admin",          "icon": "admin_panel_settings",   "label": "管理者MENU",     "need": None},
@@ -1998,6 +1999,10 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         can_rec = bool(is_rec_expense_enabled(supabase, f_code))
     except Exception:
         can_rec = False
+    try:
+        can_photo = bool(is_photo_sales_enabled(supabase, f_code))  # photo-sales-v1
+    except Exception:
+        can_photo = False
 
     out = []
     for it in MENU_ITEMS:
@@ -2005,6 +2010,8 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         if need == "ledger" and not can_ledger:
             continue
         if need == "rec_expense" and not can_rec:
+            continue
+        if need == "photo" and not can_photo:  # photo-sales-v1: 既定OFF。開発者MENUで許可した施設のみ
             continue
         if need == "dev" and not is_dev:
             continue
@@ -11700,7 +11707,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled,photo_sales_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1 / photo-sales-devtoggle-v1
         facilities = res.data or []
     except: pass
 
@@ -11735,6 +11742,7 @@ def dev_menu():
                 "discount_until": fac.get("discount_until", "")[:10] if fac.get("discount_until") else "",
                 "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
                 "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
+                "photo_sales_enabled": fac.get("photo_sales_enabled", False),  # photo-sales-devtoggle-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -11866,6 +11874,25 @@ def api_dev_toggle_timecard():
     try:
         supabase = get_supabase()
         supabase.table('facilities').update({'timecard_enabled': enabled}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/dev/toggle_photo_sales', methods=['POST'])  # photo-sales-devtoggle-v1
+def api_dev_toggle_photo_sales():
+    """施設ごとの写真販売ON/OFF。既定OFF＝弊社だけで使う想定。開発者認証必須。
+    タイムカードのトグル(timecard-devtoggle-v1)と同じ作り。"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'photo_sales_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -26227,3 +26254,592 @@ def admin_jisseki_print():
     return render_template("admin_jisseki_print.html",
                            facility_name=facility_name,
                            year=year, month=month, scope=scope)
+
+
+# ============================================================
+# photo-sales-v1 : 写真販売（行事写真の管理番号・注文・請求・キタムラ入稿）
+#
+# なぜこの作りにしたか（半年後の自分へ）
+#  * 事故の元は「管理番号の取り違え」なので、番号はサーバだけが採番する。
+#    クライアントから番号を受け取る口は1つも作らない。
+#  * 採番の手順: ①DBに行を作って番号を先に確保する → ②Storageに上げる → ③URLを書き戻す。
+#    先に画像を上げてから番号を採ると、上げ直しのたびに番号が飛ぶ／重複する。
+#    上げるのに失敗したら is_deleted=true にして、その番号は捨てる（再利用しない）。
+#  * 番号は絶対に再利用しない。写真の削除は論理削除（欠番のまま残す）。
+#    番号を使い回すと「前に注文した番号で別人の写真が届く」事故になる。
+#  * Storage のファイル名も管理番号と同じにする（A012-001.jpg）。
+#    画面・DB・ZIP・注文一覧のどこを見ても同じ文字列が出るようにするため。
+#  * 機能は既定OFF。開発者MENUのトグルで施設ごとに許可する（タイムカードと同じ作法）。
+# ============================================================
+
+PHOTO_BUCKET = "case-photos"        # 既存バケットを流用（新設するとバケットの権限設定をもう一度やることになる）
+PHOTO_MAX_UPLOAD = 60               # 1回のアップロードで受ける最大枚数（Cloud Run のメモリと時間の都合）
+PHOTO_CODE_RE = re.compile(r"^[A-Z0-9]{2,8}$")
+
+
+def is_photo_sales_enabled(supabase, f_code):  # photo-sales-v1
+    """写真販売が有効な施設か。既定OFF、開発者MENUのトグルで許可する。"""
+    try:
+        r = (supabase.table("facilities").select("photo_sales_enabled")
+             .eq("facility_code", f_code).execute())
+        return bool(r.data and r.data[0].get("photo_sales_enabled"))
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_can_photo():  # photo-sales-v1
+    """メニュー表示用。1リクエスト内は g にキャッシュして Supabase 往復を1回に抑える。"""
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"can_photo": False}
+        if not hasattr(_g, "_can_photo"):
+            _g._can_photo = is_photo_sales_enabled(get_supabase(), f_code)
+        return {"can_photo": bool(_g._can_photo)}
+    except Exception:
+        return {"can_photo": False}
+
+
+def _photo_guard():  # photo-sales-v1
+    """(supabase, f_code, error_response)。error_response が None でなければ即 return する。"""
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    if not is_photo_sales_enabled(supabase, f_code):
+        return supabase, f_code, (jsonify({"status": "error",
+                                           "message": "写真販売が有効ではありません"}), 403)
+    return supabase, f_code, None
+
+
+def _photo_get_price(supabase, f_code):  # photo-sales-v1
+    """写真1枚の金額（円）。未設定は0。admin_settings の key/value 方式（既存作法）。"""
+    try:
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", "photo_unit_price").execute())
+        if r.data and r.data[0].get("value") is not None:
+            return int(str(r.data[0]["value"]).strip() or 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _photo_set_price(supabase, f_code, price):  # photo-sales-v1
+    """admin_settings は UNIQUE が無いので手動 upsert（既存の全モジュールと同じ）。"""
+    r = (supabase.table("admin_settings").select("id")
+         .eq("facility_code", f_code).eq("key", "photo_unit_price").execute())
+    if r.data:
+        (supabase.table("admin_settings").update({"value": str(int(price))})
+         .eq("id", r.data[0]["id"]).execute())
+    else:
+        supabase.table("admin_settings").insert({
+            "facility_code": f_code, "key": "photo_unit_price", "value": str(int(price))
+        }).execute()
+
+
+def _photo_album(supabase, f_code, album_id):  # photo-sales-v1
+    """自施設のアルバムだけを返す（他施設のIDを投げられても取れないようにする）。"""
+    r = (supabase.table("photo_albums").select("*")
+         .eq("facility_code", f_code).eq("id", album_id).execute())
+    return r.data[0] if r.data else None
+
+
+def _photo_no(code, seq):  # photo-sales-no-v2
+    """管理番号の組み立てはここ1箇所だけ。表示もファイル名もCSVも必ずこれを通す。
+
+    半角英数字のみ（記号を入れない）理由:
+      しまうまプリントは銀塩プリントの裏面に「注文番号 / 通し番号 / お客様のファイル名」を印字するが、
+      印字されるのは半角英数字だけで、記号（ハイフン等）は落ちる。
+      届いた写真の裏に管理番号がそのまま出ることが、この仕組みの生命線なので、
+      最初から英数字だけで番号を作る。   例: A001 + 5 → A001005
+    """
+    return "%s%03d" % (code, int(seq))
+
+
+def _photo_copy_name(photo_no, i, qty):  # photo-sales-zip-v3
+    """入稿ZIPのファイル名。枚数ぶん複製するので、2枚目以降は末尾に a/b/c… を足す。
+
+    数字を足すと（A001005_2）裏印字では記号が落ちて "A0010052" となり、
+    管理番号の一部と見分けが付かなくなる。英字なら "A001005b" と一目で分かる。
+    1枚だけの写真は素の管理番号のまま（余計な文字を足さない）。
+    """
+    if qty <= 1:
+        return "%s.jpg" % photo_no
+    suffix = chr(ord('a') + i) if i < 26 else ('z%d' % (i - 25))
+    return "%s%s.jpg" % (photo_no, suffix)
+
+
+@app.route("/photo")  # photo-sales-page-v1
+@login_required
+def photo_page():
+    """タブレットの注文画面（利用者を選んで写真をタップ）。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    if not is_photo_sales_enabled(supabase, f_code):
+        return redirect("/top")
+    return render("photo.html")
+
+
+@app.route("/photo/admin")  # photo-sales-page-v1
+@login_required
+def photo_admin_page():
+    """管理画面（アルバム作成・写真アップロード・単価・集計・ZIP出力）。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    if not is_photo_sales_enabled(supabase, f_code):
+        return redirect("/top")
+    return render("photo_admin.html")
+
+
+@app.route("/api/photo/albums", methods=["GET"])  # photo-sales-api-v1
+@login_required
+def api_photo_albums():
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("photo_albums").select("*")
+             .eq("facility_code", f_code)
+             .order("event_date", desc=True).order("created_at", desc=True).execute())
+        return jsonify({"status": "success", "albums": r.data or [],
+                        "unit_price": _photo_get_price(supabase, f_code)})
+    except Exception as e:
+        print("photo albums error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/albums", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_album_create():
+    """アルバム（行事）を作る。コードは既定で自動採番（A001…）。
+    人が打つと必ず重複や打ち間違いが出るので、自動を既定にしている。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"status": "error", "message": "行事名を入れてください"}), 400
+        event_date = (data.get("event_date") or "").strip() or None
+        code = (data.get("code") or "").strip().upper()
+
+        exist = (supabase.table("photo_albums").select("code")
+                 .eq("facility_code", f_code).execute())
+        used = set((x.get("code") or "") for x in (exist.data or []))
+
+        if code:
+            if not PHOTO_CODE_RE.match(code):
+                return jsonify({"status": "error",
+                                "message": "コードは英大文字と数字2〜8文字にしてください"}), 400
+            if code in used:
+                return jsonify({"status": "error", "message": "そのコードは既に使われています"}), 400
+        else:
+            n = 1
+            while ("A%03d" % n) in used:
+                n += 1
+            code = "A%03d" % n
+
+        row = {"facility_code": f_code, "code": code, "title": title,
+               "event_date": event_date, "created_by": session.get("my_name", "")}
+        r = supabase.table("photo_albums").insert(row).execute()
+        return jsonify({"status": "success", "album": (r.data or [None])[0]})
+    except Exception as e:
+        print("photo album create error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/album_close", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_album_close():
+    """締める/開ける。締めたアルバムは注文もアップロードもできない（キタムラへ出した後の追記防止）。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        album = _photo_album(supabase, f_code, str(data.get("album_id") or ""))
+        if not album:
+            return jsonify({"status": "error", "message": "アルバムが見つかりません"}), 404
+        (supabase.table("photo_albums").update({"is_closed": bool(data.get("closed", True))})
+         .eq("id", album["id"]).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/price", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_price():
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        price = int((request.json or {}).get("unit_price") or 0)
+        if price < 0 or price > 100000:
+            return jsonify({"status": "error", "message": "金額が不正です"}), 400
+        _photo_set_price(supabase, f_code, price)
+        return jsonify({"status": "success", "unit_price": price})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/upload", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_upload():
+    """写真を1枚ずつ「番号を確保してから」上げる。
+
+    手順（順番が肝）:
+      1. アルバム内の次の seq を決めて photos に insert（= 番号の予約）。
+         unique(album_id, seq) があるので、同時アップロードで衝突したら insert が落ちる。
+         落ちたら seq+1 で最大20回まで再試行する。
+      2. Storage に photo_no.jpg で上げる。
+      3. url を書き戻す。
+      2 か 3 で失敗したら is_deleted=true にして番号を捨てる（再利用はしない）。
+    """
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        from utils import _normalize_image_to_jpeg
+        album_id = (request.form.get("album_id") or "").strip()
+        album = _photo_album(supabase, f_code, album_id)
+        if not album:
+            return jsonify({"status": "error", "message": "アルバムが見つかりません"}), 404
+        if album.get("is_closed"):
+            return jsonify({"status": "error", "message": "締めたアルバムには追加できません"}), 400
+
+        files = request.files.getlist("photos")
+        if not files:
+            return jsonify({"status": "error", "message": "写真がありません"}), 400
+        if len(files) > PHOTO_MAX_UPLOAD:
+            return jsonify({"status": "error",
+                            "message": "一度に送れるのは%d枚までです" % PHOTO_MAX_UPLOAD}), 400
+
+        # 現在の最大 seq（論理削除した行も含める。番号を再利用しないため）
+        last = (supabase.table("photos").select("seq")
+                .eq("album_id", album["id"]).order("seq", desc=True).limit(1).execute())
+        next_seq = int(last.data[0]["seq"]) + 1 if last.data else 1
+
+        added, failed = [], 0
+        for f in files:
+            raw = f.read()
+            jpeg = _normalize_image_to_jpeg(raw)   # HEIC・回転を JPEG に正規化（既存の共通処理）
+            body = jpeg if jpeg is not None else raw
+            ctype = "image/jpeg"
+
+            # --- 1) 番号の予約（衝突したら次の番号で再試行） ---
+            row = None
+            for _ in range(20):
+                photo_no = _photo_no(album["code"], next_seq)
+                path = "%s/photos/%s/%s.jpg" % (f_code, album["code"], photo_no)
+                try:
+                    r = supabase.table("photos").insert({
+                        "facility_code": f_code, "album_id": album["id"],
+                        "seq": next_seq, "photo_no": photo_no,
+                        "storage_path": path, "url": "",
+                        "uploaded_by": session.get("my_name", ""),
+                    }).execute()
+                    row = (r.data or [None])[0]
+                    next_seq += 1
+                    break
+                except Exception:
+                    next_seq += 1   # 誰かに先に取られた番号。次へ
+            if not row:
+                failed += 1
+                continue
+
+            # --- 2) Storage へ。ファイル名は管理番号そのもの ---
+            try:
+                supabase.storage.from_(PHOTO_BUCKET).upload(
+                    path=row["storage_path"], file=body,
+                    file_options={"content-type": ctype})
+                url = supabase.storage.from_(PHOTO_BUCKET).get_public_url(row["storage_path"])
+                supabase.table("photos").update({"url": url}).eq("id", row["id"]).execute()
+                row["url"] = url
+                added.append({"id": row["id"], "photo_no": row["photo_no"],
+                              "seq": row["seq"], "url": url})
+            except Exception as e:
+                # 上げられなかった番号は捨てる（欠番。再利用しない）
+                print("photo upload storage error: %s" % e, flush=True)
+                supabase.table("photos").update({"is_deleted": True}).eq("id", row["id"]).execute()
+                failed += 1
+
+        return jsonify({"status": "success", "added": added, "failed": failed})
+    except Exception as e:
+        print("photo upload error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/list", methods=["GET"])  # photo-sales-api-v1
+@login_required
+def api_photo_list():
+    """アルバムの写真一覧。patient_id を付けるとその人の注文枚数も返す（注文画面用）。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        album = _photo_album(supabase, f_code, request.args.get("album_id", ""))
+        if not album:
+            return jsonify({"status": "error", "message": "アルバムが見つかりません"}), 404
+        r = (supabase.table("photos").select("id,photo_no,seq,url")
+             .eq("album_id", album["id"]).eq("is_deleted", False)
+             .order("seq").execute())
+        photos = r.data or []
+
+        mine, totals = {}, {}
+        o = (supabase.table("photo_orders").select("photo_id,qty,patient_id")
+             .eq("facility_code", f_code).eq("album_id", album["id"]).execute())
+        pid = (request.args.get("patient_id") or "").strip()
+        for x in (o.data or []):
+            totals[x["photo_id"]] = totals.get(x["photo_id"], 0) + int(x["qty"] or 0)
+            if pid and str(x["patient_id"]) == pid:
+                mine[x["photo_id"]] = int(x["qty"] or 0)
+
+        return jsonify({"status": "success", "album": album, "photos": photos,
+                        "mine": mine, "totals": totals,
+                        "unit_price": _photo_get_price(supabase, f_code)})
+    except Exception as e:
+        print("photo list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/delete", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_delete():
+    """写真の削除は論理削除。番号は欠番のまま残す（再利用しない）。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        photo_id = str((request.json or {}).get("photo_id") or "")
+        r = (supabase.table("photos").select("id")
+             .eq("facility_code", f_code).eq("id", photo_id).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "写真が見つかりません"}), 404
+        supabase.table("photos").update({"is_deleted": True}).eq("id", photo_id).execute()
+        # 注文も一緒に消す（消した写真の請求が残ると事故になる）
+        supabase.table("photo_orders").delete().eq("photo_id", photo_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/photo/order", methods=["POST"])  # photo-sales-api-v1
+@login_required
+def api_photo_order():
+    """注文の登録・枚数変更・取消（qty=0 で取消）。1人×1写真=1行の手動 upsert。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        data = request.json or {}
+        photo_id = str(data.get("photo_id") or "")
+        patient_id = str(data.get("patient_id") or "")
+        user_name = (data.get("user_name") or "").strip()
+        qty = int(data.get("qty") or 0)
+        if not photo_id or not patient_id or not user_name:
+            return jsonify({"status": "error", "message": "利用者と写真が必要です"}), 400
+        if qty < 0 or qty > 99:
+            return jsonify({"status": "error", "message": "枚数が不正です"}), 400
+
+        p = (supabase.table("photos").select("id,album_id,is_deleted")
+             .eq("facility_code", f_code).eq("id", photo_id).execute())
+        if not p.data or p.data[0].get("is_deleted"):
+            return jsonify({"status": "error", "message": "写真が見つかりません"}), 404
+        album = _photo_album(supabase, f_code, p.data[0]["album_id"])
+        if album and album.get("is_closed"):
+            return jsonify({"status": "error", "message": "締めたアルバムは注文できません"}), 400
+
+        ex = (supabase.table("photo_orders").select("id")
+              .eq("facility_code", f_code).eq("patient_id", patient_id)
+              .eq("photo_id", photo_id).execute())
+
+        if qty == 0:
+            if ex.data:
+                supabase.table("photo_orders").delete().eq("id", ex.data[0]["id"]).execute()
+            return jsonify({"status": "success", "qty": 0})
+
+        now = datetime.now(timezone.utc).isoformat()
+        if ex.data:
+            (supabase.table("photo_orders")
+             .update({"qty": qty, "updated_at": now}).eq("id", ex.data[0]["id"]).execute())
+        else:
+            supabase.table("photo_orders").insert({
+                "facility_code": f_code, "photo_id": photo_id,
+                "album_id": p.data[0]["album_id"], "patient_id": patient_id,
+                "user_name": user_name, "qty": qty,
+                # 単価は注文した時点の値を写し取る。あとで単価を変えても過去の請求額が動かない
+                "unit_price": _photo_get_price(supabase, f_code),
+                "ordered_by": session.get("my_name", ""),
+            }).execute()
+        return jsonify({"status": "success", "qty": qty})
+    except Exception as e:
+        print("photo order error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _photo_summary(supabase, f_code, album):  # photo-sales-api-v1
+    """集計の計算はここ1箇所。画面・請求タブ・ZIPの一覧が必ず同じ数字になるようにする。"""
+    ph = (supabase.table("photos").select("id,photo_no,seq,url,storage_path")
+          .eq("album_id", album["id"]).eq("is_deleted", False).order("seq").execute())
+    photos = {x["id"]: x for x in (ph.data or [])}
+    od = (supabase.table("photo_orders").select("photo_id,patient_id,user_name,qty,unit_price")
+          .eq("facility_code", f_code).eq("album_id", album["id"]).execute())
+
+    by_photo, by_patient = {}, {}
+    for o in (od.data or []):
+        p = photos.get(o["photo_id"])
+        if not p:
+            continue   # 論理削除された写真の注文は数えない
+        qty = int(o["qty"] or 0)
+        price = int(o["unit_price"] or 0)
+        by_photo[p["photo_no"]] = by_photo.get(p["photo_no"], 0) + qty
+        key = str(o["patient_id"])
+        b = by_patient.setdefault(key, {"patient_id": key, "user_name": o["user_name"],
+                                        "items": [], "qty": 0, "amount": 0})
+        b["items"].append({"photo_no": p["photo_no"], "qty": qty,
+                           "unit_price": price, "amount": qty * price})
+        b["qty"] += qty
+        b["amount"] += qty * price
+
+    for b in by_patient.values():
+        b["items"].sort(key=lambda x: x["photo_no"])
+    photo_rows = [{"photo_no": k, "qty": v} for k, v in sorted(by_photo.items())]
+    patient_rows = sorted(by_patient.values(), key=lambda x: x["user_name"])
+    return photos, photo_rows, patient_rows
+
+
+@app.route("/api/photo/summary", methods=["GET"])  # photo-sales-api-v1
+@login_required
+def api_photo_summary():
+    """写真別の合計枚数（キタムラ注文用）と、利用者別の枚数・金額（請求用）。"""
+    supabase, f_code, err = _photo_guard()
+    if err:
+        return err
+    try:
+        album = _photo_album(supabase, f_code, request.args.get("album_id", ""))
+        if not album:
+            return jsonify({"status": "error", "message": "アルバムが見つかりません"}), 404
+        _, photo_rows, patient_rows = _photo_summary(supabase, f_code, album)
+        return jsonify({"status": "success", "album": album,
+                        "by_photo": photo_rows, "by_patient": patient_rows,
+                        "total_qty": sum(r["qty"] for r in photo_rows),
+                        "total_amount": sum(r["amount"] for r in patient_rows),
+                        "unit_price": _photo_get_price(supabase, f_code)})
+    except Exception as e:
+        print("photo summary error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/photo/export")  # photo-sales-zip-v3
+@login_required
+def photo_export_zip():
+    """入稿用の ZIP（しまうまプリント前提）。
+
+    中身（フォルダ1つ = アルバム）:
+      A001/A001005.jpg          1枚だけの注文はそのまま
+      A001/A001008a.jpg …c.jpg  3枚の注文は「同じ写真を3ファイル」
+      A001/注文一覧_写真別.csv    管理番号 / 枚数（答え合わせ用）
+      A001/注文一覧_利用者別.csv  利用者 / 管理番号 / 枚数 / 金額（仕分け用）
+
+    なぜ枚数分を複製するのか（photo-sales-zip-v3）:
+      注文サイトの画面には向こうが振った番号とサムネイルしか出ないので、
+      「どのサムネイルが何番か」を人が照合して枚数を打つ工程が生まれる。ここが一番間違える。
+      枚数ぶん複製して入稿すれば、サイト側は全部「1枚」で注文するだけになり、
+      照合も枚数入力も工程ごと消える（しまうまは「一括設定」で全画像を1枚にできる）。
+
+      さらに しまうまは銀塩プリントの裏に「お客様のファイル名（半角英数）」を印字するので、
+      届いた写真の裏に管理番号がそのまま出る。仕分けも突き合わせずに済む。
+      ※ NEWデジタルプリントは裏印字なし。銀塩プリントを選ぶこと。
+    """
+    import csv as _csv
+    import io as _io
+    import zipfile as _zip
+    from flask import send_file
+
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    if not is_photo_sales_enabled(supabase, f_code):
+        return redirect("/top")
+    album = _photo_album(supabase, f_code, request.args.get("album_id", ""))
+    if not album:
+        return redirect("/photo/admin")
+
+    photos, photo_rows, patient_rows = _photo_summary(supabase, f_code, album)
+    by_no = {p["photo_no"]: p for p in photos.values()}
+    code = album["code"]
+
+    def _csv_bytes(header, rows):
+        s = _io.StringIO()
+        w = _csv.writer(s)
+        w.writerow(header)
+        for r in rows:
+            w.writerow(r)
+        return s.getvalue().encode("utf-8-sig")
+
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as z:
+        for r in photo_rows:
+            p = by_no.get(r["photo_no"])
+            if not p:
+                continue
+            try:
+                # storage_path は DB に持っている値を使う（番号の付け方を変えても壊れないように、
+                # ここでパスを組み立て直さない）
+                data = supabase.storage.from_(PHOTO_BUCKET).download(p["storage_path"])
+                # 枚数ぶん複製して入れる。サイト側は全部「1枚」で注文するだけになる
+                for i in range(int(r["qty"])):
+                    z.writestr("%s/%s" % (code, _photo_copy_name(r["photo_no"], i, int(r["qty"]))), data)
+            except Exception as e:
+                print("photo zip download error %s: %s" % (r["photo_no"], e), flush=True)
+
+        z.writestr("%s/注文一覧_写真別.csv" % code,
+                   _csv_bytes(["管理番号", "枚数"], [[r["photo_no"], r["qty"]] for r in photo_rows]))
+        rows = []
+        for b in patient_rows:
+            for it in b["items"]:
+                rows.append([b["user_name"], it["photo_no"], it["qty"],
+                             it["unit_price"], it["amount"]])
+        z.writestr("%s/注文一覧_利用者別.csv" % code,
+                   _csv_bytes(["利用者", "管理番号", "枚数", "単価", "金額"], rows))
+    buf.seek(0)
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name="%s_%s.zip" % (code, album["title"]))
+
+
+@app.route("/photo/sheet")  # photo-sales-sheet-v1
+@login_required
+def photo_sheet_page():
+    """仕分けリスト（印刷用）。
+
+    プリントが届いたら、裏に印字された管理番号（例 A001005）を見て、この表を引くだけで
+    「誰の封筒に何枚入れるか」が分かる。**管理番号順に並べる**のが肝で、
+    届く写真も管理番号順に積まれているため、上から順に処理していける。
+    利用者別の集計も一緒に出して、封入後の枚数確認に使う。
+    """
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    if not is_photo_sales_enabled(supabase, f_code):
+        return redirect("/top")
+    album = _photo_album(supabase, f_code, request.args.get("album_id", ""))
+    if not album:
+        return redirect("/photo/admin")
+
+    photos, photo_rows, patient_rows = _photo_summary(supabase, f_code, album)
+
+    # 管理番号 → その番号を誰が何枚頼んだか（1枚の写真を複数人が頼むことがある）
+    by_no = {}
+    for b in patient_rows:
+        for it in b["items"]:
+            by_no.setdefault(it["photo_no"], []).append(
+                {"user_name": b["user_name"], "qty": it["qty"]})
+    sheet_rows = []
+    for r in photo_rows:
+        sheet_rows.append({"photo_no": r["photo_no"], "qty": r["qty"],
+                           "who": by_no.get(r["photo_no"], [])})
+
+    return render("photo_sheet.html", album=album, rows=sheet_rows,
+                  patients=patient_rows,
+                  total_qty=sum(r["qty"] for r in photo_rows),
+                  total_amount=sum(b["amount"] for b in patient_rows))
+# ===== /photo-sales-v1 =====
