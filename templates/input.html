@@ -393,6 +393,7 @@
             利用者を選択（ひらがな・漢字・カルテ番号で検索）
         </label>
         <div class="search-wrapper">
+            <!-- record-check-link-v1: /input?user=氏名 で来たら、その利用者を検索欄に入れて候補を出す -->
             <input type="text" id="patient-search" class="form-control"
                 placeholder="例：やまだ / 山田 / 001"
                 autocomplete="off"
@@ -1581,4 +1582,27 @@ function escapeAic(s) {
         .replace(/'/g, '&#39;');
 }
 </script>
+
+<script>
+// record-check-link-v1: 充足チェックの「0件」から来たとき、利用者の検索欄を埋めて候補を出す。
+// 候補の DOM は画面によって作りが違うので、**自動で確定はしない**（誤爆すると別人の記録になる）。
+// 名前を入れて候補を開くところまでやり、最後のひと押しは職員に任せる。
+(function () {
+  var user = new URLSearchParams(location.search).get('user');
+  if (!user) return;
+  function fill() {
+    var el = document.getElementById('patient-search');
+    if (!el) return;
+    el.value = user;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(fill, 300); });
+  } else {
+    setTimeout(fill, 300);
+  }
+})();
+</script>
+
 {% endblock %}
