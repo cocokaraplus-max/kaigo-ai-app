@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}記録チェック - TASUKARU{% endblock %}
+{% block title %}記録充足チェック - TASUKARU{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -26,30 +26,39 @@
    ・見出しは縦スクロールで画面上部に貼り付く（sticky top）
    ・利用者名の列は左に固定（sticky left）
    ・表は列固定（table-layout:fixed）。可変にすると中身の長さで列が膨らむ。 */
-/* record-check-vhead-v2: 縦書きの帯が列幅（30px）に収まらず、隣の列と重なっていた。
-   列幅を 34px にし、帯の幅もその中に収める。カテゴリが多くて収まらないときは、
-   重ねるより横スクロールさせる（min-width を効かせる）。 */
-.rc-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6ebf2;
-  border-radius:10px; min-width:0; background:#fff; }
+/* record-check-vhead-v3: 固定（sticky）が効くように、表そのものを「スクロールする箱」にする。
+   sticky の top/left は **画面ではなく、いちばん近いスクロールの箱** を基準にする。
+   v2 では箱（.rc-wrap）に高さが無く、縦は画面ごと動いていたので、上の見出しが貼りつく先を
+   持っていなかった＝固定されなかった。箱に高さの上限を与えて、縦も横も箱の中で動かす。
+   （-webkit-overflow-scrolling:touch は iOS で sticky を壊すことがあるので外した） */
+.rc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
+  background:#fff; max-height:calc(100vh - 280px); min-height:240px;
+  overscroll-behavior:contain; }
+@supports (height: 100dvh) { .rc-wrap { max-height:calc(100dvh - 280px); } }
 table.rc { border-collapse:separate; border-spacing:0; font-size:0.86rem; width:100%;
   table-layout:fixed; }
 table.rc th, table.rc td { border-bottom:1px solid #eef1f5; background:#fff; }
 table.rc td { padding:9px 2px; }
 
-/* 見出し（縦書き）。帯は列幅ぴったりに収める。 */
+/* 見出し（縦書き）。上に貼りつく。 */
 table.rc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
   position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom;
   text-align:center; }
 table.rc col.cat, table.rc thead th.cat { width:34px; min-width:34px; }
-table.rc .vt { writing-mode:vertical-rl; text-orientation:upright; display:inline-block;
-  width:26px; height:88px; font-size:0.72rem; font-weight:800; letter-spacing:1px;
-  border-radius:6px; padding:6px 0; box-sizing:border-box; overflow:hidden; }
+
+/* record-check-vhead-v3: 縦書きは行が右→左に流れるので、短い名前は帯の右端に寄ってしまう。
+   帯を flex の箱にして、中の文字を水平方向センターに置く。揃えは上（align-items:flex-start）。 */
+table.rc .vt { display:flex; justify-content:center; align-items:flex-start;
+  width:100%; height:96px; border-radius:6px; padding:5px 0; box-sizing:border-box;
+  overflow:hidden; }
+table.rc .vt span { writing-mode:vertical-rl; text-orientation:upright;
+  font-size:0.72rem; font-weight:800; letter-spacing:1px; line-height:1.05; }
 table.rc col.tot, table.rc thead th.tot-h { width:36px; min-width:36px; }
 table.rc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 
-/* 利用者名（左に固定） */
+/* 利用者名（左に貼りつく）。見出しの氏名は「上かつ左」なので z-index をいちばん上に。 */
 table.rc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
-  box-shadow:2px 0 0 #eef1f5; width:104px; padding-left:10px;
+  box-shadow:1px 0 0 #eef1f5; width:104px; padding-left:10px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 table.rc thead .nm { z-index:4; font-size:0.7rem; color:#5f6368; }
 /* record-check-link-v1: 数字を押すとその人の記録へ飛ぶ。押せることが分かるようにする。
@@ -67,6 +76,7 @@ table.rc tr.none td { background:#fff1f0 !important; }
 table.rc tr.none .nm { color:#c5221f; }
 table.rc tr.none td.num { color:#c5221f; }
 
+.rc-lead { font-size:0.8rem; color:#5f6368; line-height:1.6; margin:0 0 12px; }
 .rc-empty { text-align:center; color:#9aa3b2; padding:36px 0; font-size:0.9rem; }
 .rc-note { font-size:0.72rem; color:#9aa3b2; margin-top:10px; line-height:1.6; }
 </style>
@@ -87,7 +97,7 @@ table.rc tr.none td.num { color:#c5221f; }
 
 <div class="rc-head">
   <div class="rc-title">
-    <span class="material-symbols-outlined" style="color:#1a73e8;">fact_check</span>記録チェック
+    <span class="material-symbols-outlined" style="color:#1a73e8;">fact_check</span>記録充足チェック
   </div>
   <input type="date" class="rc-date" id="rcDate" value="{{ date }}">
 </div>
@@ -101,6 +111,9 @@ table.rc tr.none td.num { color:#c5221f; }
   {% endif %}
   <span class="rc-chip mut">記録 {{ n_records }}件</span>
 </div>
+
+{# record-check-vhead-v3: 何のための画面かを1行で。数字の意味が分からないまま眺めることが無いように #}
+<div class="rc-lead">この記録充足チェックで、本日の書かれていないカテゴリを確認できます。</div>
 
 {% if not rows %}
   <div class="rc-empty">{{ date_label }} に来所した利用者がいません。<br>
@@ -119,8 +132,11 @@ table.rc tr.none td.num { color:#c5221f; }
         <th class="nm">利用者</th>
         {% for c in cats %}
         {# record-check-vhead-v1: 縦書き。長い名前はヘッダが高くなりすぎるので6文字で切る #}
+        {# record-check-vhead-v3: 外側が帯（色）、内側が縦書きの文字。文字は帯の中央に来る #}
         <th class="cat" title="{{ c.name }}">
-          <span class="vt" style="background:{{ c.color }}20; color:{{ c.color }};">{{ c.name[:6] }}</span>
+          <div class="vt" style="background:{{ c.color }}20;">
+            <span style="color:{{ c.color }};">{{ c.name[:6] }}</span>
+          </div>
         </th>
         {% endfor %}
         <th class="tot-h">計</th>
