@@ -33,8 +33,14 @@ table.rc thead th { background:#f8fafc; font-size:0.72rem; color:#475569; font-w
 table.rc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
   box-shadow:2px 0 0 #eef1f5; min-width:110px; }
 table.rc thead .nm { z-index:4; }
-table.rc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:700; }
+/* record-check-link-v1: 数字を押すとその人の記録へ飛ぶ。押せることが分かるようにする。 */
+table.rc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:700;
+  cursor:pointer; }
+table.rc td.num:hover { background:#eef4ff; }
+table.rc td.num:active { background:#e2ebff; }
 table.rc td.zero { color:#dadce0; font-weight:400; }
+table.rc td.zero:hover { background:#fff1f0; }        /* 0件はここから書き始められる */
+table.rc .nm { cursor:pointer; }
 table.rc td.tot { text-align:center; font-weight:800; background:#f8fafc; }
 table.rc tr.none td { background:#fff6f5; }         /* 記録が1件も無い人 */
 table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
@@ -93,9 +99,11 @@ table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
     <tbody>
       {% for r in rows %}
       <tr {% if r.total == 0 %}class="none"{% endif %}>
-        <td class="nm">{{ r.user_name }}</td>
+        <td class="nm" data-user="{{ r.user_name }}" title="この人のケース記録を開く">{{ r.user_name }}</td>
         {% for v in r.cells %}
-        <td class="num {% if v == 0 %}zero{% endif %}">{{ v }}</td>
+        <td class="num {% if v == 0 %}zero{% endif %}"
+            data-user="{{ r.user_name }}" data-cat="{{ cats[loop.index0].name }}" data-n="{{ v }}"
+            title="{% if v == 0 %}記録入力へ（利用者を選んだ状態で開きます）{% else %}この人のケース記録を開く{% endif %}">{{ v }}</td>
         {% endfor %}
         <td class="tot">{{ r.total }}</td>
       </tr>
@@ -117,5 +125,32 @@ table.rc tr.none .nm { background:#fff6f5; color:#c5221f; }
 document.getElementById('rcDate').onchange = function () {
   if (this.value) location.href = '/record_check?date=' + this.value;
 };
+
+// record-check-link-v1: 数字（と名前）を押したら、その人の記録へ飛ぶ。
+//  ・1件以上 … その日・その人のケース記録
+//  ・0件     … 記録入力（利用者を選んだ状態で開く）。見つけたその場で書き始められるように。
+(function () {
+  var date = '{{ date }}';
+
+  function toRecords(user) {
+    location.href = '/daily_view?date=' + encodeURIComponent(date) +
+                    '&user=' + encodeURIComponent(user);
+  }
+  function toInput(user) {
+    location.href = '/input?user=' + encodeURIComponent(user);
+  }
+
+  document.querySelectorAll('td.num').forEach(function (td) {
+    td.onclick = function () {
+      var user = td.dataset.user;
+      if (!user) return;
+      if (Number(td.dataset.n) > 0) toRecords(user);
+      else toInput(user);
+    };
+  });
+  document.querySelectorAll('td.nm').forEach(function (td) {
+    td.onclick = function () { if (td.dataset.user) toRecords(td.dataset.user); };
+  });
+})();
 </script>
 {% endblock %}
