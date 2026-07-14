@@ -79,7 +79,8 @@
           <td class="ps-chk">□</td>
           <td>{{ b.user_name }}</td>
           <td style="font-size:0.76rem;color:#5f6368;">
-            {% for it in b.items %}{{ it.photo_no }}{% if it.qty > 1 %}×{{ it.qty }}{% endif %}{% if not loop.last %}　{% endif %}{% endfor %}
+            {# b.items と書くと dict の .items() メソッドを拾ってしまう（Jinjaの罠）。必ず b["items"] で引く #}
+            {% for it in b["items"] %}{{ it.photo_no }}{% if it.qty > 1 %}×{{ it.qty }}{% endif %}{% if not loop.last %}　{% endif %}{% endfor %}
           </td>
           <td class="num">{{ b.qty }}</td>
           <td class="num">{{ "{:,}".format(b.amount) }}円</td>
