@@ -31,9 +31,12 @@
    v2 では箱（.rc-wrap）に高さが無く、縦は画面ごと動いていたので、上の見出しが貼りつく先を
    持っていなかった＝固定されなかった。箱に高さの上限を与えて、縦も横も箱の中で動かす。
    （-webkit-overflow-scrolling:touch は iOS で sticky を壊すことがあるので外した） */
+/* record-check-bounce-v6: 強く払ったときの「バウンド」（ラバーバンド）で、貼りついた見出し・氏名が
+   一緒に動いて見えていた。バウンド中はスクロール位置が範囲の外に出るので、sticky では止められない。
+   `contain` は親へスクロールを伝えないだけで、自分のバウンドは止まらない。`none` で消す。 */
 .rc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
   background:#fff; max-height:calc(100vh - 280px); min-height:240px;
-  overscroll-behavior:contain; }
+  overscroll-behavior:none; }
 @supports (height: 100dvh) { .rc-wrap { max-height:calc(100dvh - 280px); } }
 /* record-check-stick-v4: width:100% だと、列の合計幅が画面より広いとき table-layout:fixed は
    「箱は広げず中身だけはみ出す」。すると枠は溢れていないと判断して横スクロールを作らない。
