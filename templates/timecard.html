@@ -164,6 +164,8 @@
         <button class="tc-btn tc-btn-out" data-pt="out"><span class="material-symbols-outlined">logout</span>退勤</button>
       </div>
     </div>
+    <!-- timecard-leave-note-v1: 打刻モーダルが出なかった日を後から登録・修正（振替休＋経緯メモ） -->
+    <button class="tc-back" id="tc-leave-edit-btn" style="margin-top:4px"><span class="material-symbols-outlined">edit_calendar</span>休暇・備考の登録／修正</button>
     <button class="tc-back" id="tc-back-btn"><span class="material-symbols-outlined">arrow_back</span>職員選択に戻る</button>
   </div>
 </div>
@@ -231,6 +233,32 @@
     </div>
     <div id="tc-leave-days"></div>
     <button class="tc-submit" id="tc-leave-submit">登録して閉じる</button>
+  </div>
+</div>
+<!-- timecard-leave-note-v1: 休暇・備考の登録／修正モーダル（打刻画面から後で入れる） -->
+<div class="tc-ov hidden" id="tc-leavenote-modal">
+  <div class="tc-modal">
+    <h3 id="tc-lne-title">休暇・備考の登録／修正</h3>
+    <p class="tc-modal-sub">打刻時にモーダルが出なかった日や、経緯（例：振替休だが勉強会のため夕方参加）を後から記録できます。過去30日以内。</p>
+    <div style="margin-bottom:12px">
+      <label style="font-size:.82rem;color:var(--tc-sub);display:block;margin-bottom:4px">日付</label>
+      <input type="date" id="tc-lne-date" style="width:100%;padding:11px;border:1px solid var(--tc-line);border-radius:10px;font-size:1rem">
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:.82rem;color:var(--tc-sub);display:block;margin-bottom:4px">区分</label>
+      <select id="tc-lne-type" style="width:100%;padding:11px;border:1px solid var(--tc-line);border-radius:10px;font-size:1rem;background:#fff"></select>
+    </div>
+    <div id="tc-lne-subfor-wrap" class="hidden" style="margin-bottom:12px">
+      <label style="font-size:.82rem;color:var(--tc-sub);display:block;margin-bottom:4px">振替元の日付（何日の勤務の振替か）</label>
+      <input type="date" id="tc-lne-subfor" style="width:100%;padding:11px;border:1px solid var(--tc-line);border-radius:10px;font-size:1rem">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:.82rem;color:var(--tc-sub);display:block;margin-bottom:4px">備考（経緯メモ・任意）</label>
+      <textarea id="tc-lne-note" rows="2" placeholder="例：振替休だが勉強会のため17時から参加" style="width:100%;padding:11px;border:1px solid var(--tc-line);border-radius:10px;font-size:1rem;box-sizing:border-box"></textarea>
+    </div>
+    <div id="tc-lne-recent" style="margin-bottom:14px"></div>
+    <button class="tc-submit" id="tc-lne-submit">保存する</button>
+    <button class="tc-mbtn-cancel" id="tc-lne-cancel" style="width:100%">閉じる</button>
   </div>
 </div>
 <!-- timecard-break-countdown-tc-v1 : 休憩時間選択モーダル -->
@@ -481,10 +509,11 @@
     var y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), da=("0"+d.getDate()).slice(-2);
     return y+"-"+m+"-"+da;
   }
-  async function _tcLeaveSelf(dateStr, leaveType, substituteFor){
+  async function _tcLeaveSelf(dateStr, leaveType, substituteFor, note){
     var body = { token: state.token, staff_name: state.current.name,
                  leave_date: dateStr, leave_type: leaveType };
     if(substituteFor){ body.substitute_for = substituteFor; }
+    if(note){ body.note = note; }  // timecard-leave-note-v1
     var res = await fetch("/timecard/leave/self", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(body)
@@ -693,6 +722,73 @@
       btn.disabled = false; btn.textContent = "登録して閉じる";
     }
   }
+
+  // timecard-leave-note-v1: 休暇・備考の登録／修正モーダル
+  function _tcLneClamp(){
+    var el = $("tc-lne-date");
+    var t = new Date(), min = new Date(); min.setDate(min.getDate()-30);
+    function s(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+    el.max = s(t); el.min = s(min);
+  }
+  async function openLeaveNoteModal(){
+    _tcLneClamp();
+    $("tc-lne-title").textContent = state.current.name + " さん 休暇・備考の登録／修正";
+    $("tc-lne-type").innerHTML = '<option value="">-- 区分を選択 --</option>' + _tcLeaveOptionsHtml(false);
+    $("tc-lne-date").value = _tcTodayStr();
+    $("tc-lne-note").value = "";
+    $("tc-lne-subfor").value = "";
+    $("tc-lne-subfor-wrap").classList.add("hidden");
+    $("tc-leavenote-modal").classList.remove("hidden");
+    _tcLneLoadRecent();
+  }
+  async function _tcLneLoadRecent(){
+    var box = $("tc-lne-recent"); box.innerHTML = "";
+    try{
+      var res = await fetch("/timecard/leave/self_list", {method:"POST",headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token: state.token, staff_name: state.current.name })});
+      var j = await res.json();
+      if(j.status==="success" && (j.items||[]).length){
+        box.innerHTML = '<div style="font-size:.8rem;color:var(--tc-sub);margin-bottom:6px">最近30日の登録（タップで読み込み）</div>' +
+          j.items.map(function(it){
+            var lbl = TC_LEAVE_LABELS[it.leave_type] || it.leave_type;
+            var nt = it.note ? ('　'+escapeHtml(it.note)) : '';
+            return '<div class="tc-lne-item" data-d="'+it.leave_date+'" data-t="'+it.leave_type+'" data-n="'+encodeURIComponent(it.note||"")+'" data-s="'+(it.substitute_for||"")+'" '+
+              'style="border:1px solid var(--tc-line);border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;font-size:.9rem">'+
+              '<b>'+_tcFmtDate(it.leave_date)+'</b>　'+escapeHtml(lbl)+nt+'</div>';
+          }).join("");
+        box.querySelectorAll(".tc-lne-item").forEach(function(el){
+          el.addEventListener("click", function(){
+            $("tc-lne-date").value = el.getAttribute("data-d");
+            $("tc-lne-type").value = el.getAttribute("data-t");
+            $("tc-lne-note").value = decodeURIComponent(el.getAttribute("data-n")||"");
+            var sf = el.getAttribute("data-s")||"";
+            $("tc-lne-subfor").value = sf;
+            $("tc-lne-subfor-wrap").classList.toggle("hidden", el.getAttribute("data-t")!=="substitute");
+          });
+        });
+      }
+    }catch(e){}
+  }
+  async function submitLeaveNote(){
+    var d = $("tc-lne-date").value, t = $("tc-lne-type").value, nt = $("tc-lne-note").value.trim();
+    if(!d){ toast("日付を選んでください", true); return; }
+    if(!t){ toast("区分を選んでください", true); return; }
+    var sf = null;
+    if(t==="substitute"){ sf = $("tc-lne-subfor").value; if(!sf){ toast("振替休は振替元の日付を入れてください", true); return; } }
+    var btn = $("tc-lne-submit"); btn.disabled = true; btn.textContent = "保存中...";
+    try{
+      var lj = await _tcLeaveSelf(d, t, sf, nt);
+      if(lj.status==="success"){ toast("休暇・備考を記録しました"); $("tc-leavenote-modal").classList.add("hidden"); }
+      else{ toast(lj.message || "保存に失敗しました", true); }
+    }catch(e){ toast("通信エラーが発生しました", true); }
+    btn.disabled = false; btn.textContent = "保存する";
+  }
+  $("tc-lne-type").addEventListener("change", function(){
+    $("tc-lne-subfor-wrap").classList.toggle("hidden", this.value!=="substitute");
+  });
+  $("tc-leave-edit-btn").addEventListener("click", openLeaveNoteModal);
+  $("tc-lne-submit").addEventListener("click", submitLeaveNote);
+  $("tc-lne-cancel").addEventListener("click", function(){ $("tc-leavenote-modal").classList.add("hidden"); });
 
   // モーダルのボタン接続
   $("tc-in-normal").addEventListener("click", function(){ _tcInWith(null); });

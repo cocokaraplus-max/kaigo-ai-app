@@ -14629,6 +14629,7 @@ def timecard_leave_self():
         leave_date = (data.get("leave_date") or "").strip()
         leave_type = (data.get("leave_type") or "").strip()
         substitute_for = (data.get("substitute_for") or "").strip()
+        note = (data.get("note") or "").strip()[:200]  # timecard-leave-note-v1: 経緯メモ（例: 勉強会のため夕方参加）
         supabase = get_supabase()
         f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
         if err:
@@ -14661,6 +14662,7 @@ def timecard_leave_self():
             "facility_code": f_code, "staff_name": staff_name,
             "leave_date": leave_date, "leave_type": leave_type,
             "substitute_for": sub_for, "created_by": staff_name,
+            "note": note or None,  # timecard-leave-note-v1
             "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
         }
         if existing.data:
@@ -14672,6 +14674,32 @@ def timecard_leave_self():
         return jsonify({"status": "success", "id": new_id, "updated": False})
     except Exception as e:
         print(f"timecard_leave_self error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/timecard/leave/self_list", methods=["POST"])  # timecard-leave-note-v1
+def timecard_leave_self_list():
+    """本人の直近30日の休暇＋備考を返す（打刻画面の登録/修正モーダル用）。"""
+    try:
+        from datetime import timedelta as _ll_td
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        staff_name = (data.get("staff_name") or "").strip()
+        supabase = get_supabase()
+        f_code, err = _tc_leave_self_guard(supabase, token, staff_name)
+        if err:
+            return err
+        today = _tc_now_jst().date()
+        start = (today - _ll_td(days=30)).isoformat()
+        end = today.isoformat()
+        r = (supabase.table("staff_leave_days")
+             .select("leave_date,leave_type,substitute_for,note")
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .gte("leave_date", start).lte("leave_date", end)
+             .order("leave_date", desc=True).execute())
+        return jsonify({"status": "success", "items": r.data or []})
+    except Exception as e:
+        print(f"timecard_leave_self_list error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
