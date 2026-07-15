@@ -2440,3 +2440,8 @@ git checkout tasukaru-dev
 - **月次タイムカード出力（様式4）**: 表の下に「■ 備考一覧（日付・職員・区分・備考＋振替元）」を追記。半日型・1日型の両シートに出る。印刷にも残る。
   様式本体のセルは崩さず、`ws.max_row + 2` から下に追記。
 - Chrome/DEVで 管理者登録→様式Excel生成→sheet2/3に備考一覧が入ることを openpyxl(zip)で確認。テストデータは削除済み。
+- 追記(`prominent-v2`): 様式Excelの備考一覧は説明文の下（49行目付近）で見落としやすかったので、**赤字・太字・下地色・区切り**で目立たせた。位置=`max_row+3`。
+- 追記(`timecard-leave-note-report-v1`): **社労士向けの勤怠集計PDF（`/admin/timecard/report_pdf`）にも職員ごとの「備考」欄**を追加。
+  各職員の打刻表の下に赤字「備考」→「日付　区分：備考（振替元:○/○）」。`_tc_build_monthly_data` は打刻の無い職員も含むので、
+  **打刻ゼロで備考だけの職員も表示**（skip条件を `not days and not notes` に変更）。Chrome/DEVでPDFテキスト抽出で確認。
+  → 備考は「様式4Excel末尾の備考一覧」と「勤怠集計PDFの職員ごと備考」の2箇所に出る。
