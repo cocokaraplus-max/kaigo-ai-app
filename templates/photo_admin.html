@@ -43,11 +43,37 @@
 .pa-empty { color:#9aa0a6; font-size:0.86rem; text-align:center; padding:16px 0; }
 .pa-badge { display:inline-block; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:8px;
   background:#fde8e6; color:#c5221f; margin-left:6px; }
+
+/* photo-sales-guide-v1: 使い方ボタン＋モーダル */
+.pa-guide-open { display:flex; align-items:center; gap:6px; margin:0 0 12px; padding:9px 14px;
+  border:1.5px solid #0C447C; border-radius:10px; background:#eef4fb; color:#0C447C;
+  font-size:0.86rem; font-weight:700; cursor:pointer; }
+.pa-guide-open .material-symbols-outlined { font-size:19px; }
+.pa-guide-back { position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.45);
+  display:none; align-items:flex-end; justify-content:center; }
+.pa-guide-back.open { display:flex; }
+.pa-guide-box { background:#fff; width:100%; max-width:var(--page-max-width,480px);
+  max-height:88vh; border-radius:16px 16px 0 0; display:flex; flex-direction:column; }
+.pa-guide-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1.5px solid #eef1f5; font-size:0.98rem; font-weight:800; color:#0C447C; }
+.pa-guide-head button { border:none; background:none; font-size:1.1rem; color:#5f6368; cursor:pointer; }
+.pa-guide-body { padding:14px 16px; overflow-y:auto; }
+.pa-g-step { font-size:0.86rem; line-height:1.7; color:#3c4043; margin-bottom:14px;
+  padding-bottom:14px; border-bottom:1px dashed #e8eaed; }
+.pa-g-step:last-of-type { border-bottom:none; }
+.pa-g-step b { color:#0C447C; }
+.pa-g-note { font-size:0.78rem; line-height:1.6; color:#5f6368; background:#f8fafc;
+  border-radius:10px; padding:10px 12px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="pa-wrap">
+
+  <!-- photo-sales-guide-v1: 使い方の手順書はこの機能の中で読めるようにする（別ページに飛ばさない） -->
+  <button class="pa-guide-open" type="button" onclick="paGuideOpen()">
+    <span class="material-symbols-outlined">help</span>写真注文の使い方
+  </button>
 
   <div class="pa-card">
     <div class="pa-title"><span class="material-symbols-outlined">add_a_photo</span>行事（アルバム）</div>
@@ -67,7 +93,7 @@
         <input type="text" id="pa-new-code" placeholder="自動採番のままを推奨" maxlength="8">
       </div>
       <button class="pa-btn" type="button" onclick="paCreate()">この行事を作る</button>
-      <div class="pa-note">管理番号は「コード-連番」（例 A001-001）。番号はサーバが振るので、手で決める必要はありません。</div>
+      <div class="pa-note">管理番号は「コード＋連番」（例 A001001）。番号はサーバが振るので、手で決める必要はありません。</div>
     </div>
   </div>
 
@@ -119,6 +145,51 @@
     </div>
   </div>
 </div>
+
+<!-- photo-sales-guide-v1: 使い方モーダル。alert() は使わない（Chrome拡張の自動操作を止めるため） -->
+<div class="pa-guide-back" id="pa-guide" onclick="if(event.target===this)paGuideClose()">
+  <div class="pa-guide-box">
+    <div class="pa-guide-head">
+      <span>写真注文の使い方</span>
+      <button type="button" onclick="paGuideClose()" aria-label="閉じる">✕</button>
+    </div>
+    <div class="pa-guide-body">
+      <div class="pa-g-step"><b>① 行事を作る</b>
+        「＋ 新しい行事」で行事名を入れて作成。コードは空欄でOK（自動で A001, A002…）。
+        管理番号はこのコード＋連番（例 <b>A001001</b>）で、システムが自動で振ります。
+      </div>
+      <div class="pa-g-step"><b>② 写真を取り込む</b>
+        パソコンなら枠に写真をドラッグ＆ドロップ。スマホ・タブレットは枠をタップしてカメラロールから選びます。
+        取り込んだ順に番号が振られます（<b>番号は再利用されません</b>。写真を消しても欠番のまま）。
+      </div>
+      <div class="pa-g-step"><b>③ 1枚の金額を決める</b>
+        「写真1枚の金額」に単価を入れて保存。注文したときの金額が控えられるので、あとで値上げしても過去の請求は変わりません。
+      </div>
+      <div class="pa-g-step"><b>④ 注文をとる（タブレット）</b>
+        「写真注文」画面で <b>行事を選び、利用者を選んでから</b> 写真をタップ。もう一度タップで取り消し、＋−で枚数を増減。
+        タップするたびに自動で保存されます。利用者を選び忘れると注文できません。
+      </div>
+      <div class="pa-g-step"><b>⑤ プリントを注文する（しまうまプリント）</b>
+        「注文ぶんの写真をZIPでダウンロード」→ 解凍 → 中の写真を全部しまうまプリントにアップロード。<br>
+        ・プリント一括設定で <b>「L判・1枚」</b> にする（枚数は写真の数で調整済み）。<br>
+        ・<b>銀塩プリント</b>を選ぶ（NEWデジタルプリントは裏に番号が印字されません）。<br>
+        ・受け取りは <b>配送</b>にする（店頭受取だと裏の印字が変わります）。<br>
+        3枚注文の写真は同じ写真が3ファイル（A001005a / b / c）入っているので、1枚ずつ枚数を打つ必要はありません。
+      </div>
+      <div class="pa-g-step"><b>⑥ 届いたら仕分ける</b>
+        「仕分けリストを開く」で印刷。届いた写真の<b>裏に管理番号が印字</b>されているので、
+        リスト（管理番号順）と照らし合わせて封筒に分けます。届く写真も番号順に積まれています。
+      </div>
+      <div class="pa-g-step"><b>⑦ 請求</b>
+        請求額計算の「写真」タブに、利用者ごとの注文番号・枚数・請求額が出ます。
+      </div>
+      <div class="pa-g-note">
+        ※ 管理番号は「絶対に取り違えない」ことを最優先に作っています。番号はシステムだけが振り、削除しても使い回しません。
+        写真の裏・画面・注文一覧・仕分けリスト、どこを見ても同じ番号が並びます。
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -129,6 +200,12 @@ var PA_ALBUM = null;
 
 function paToast(m){ if (window.showToastMsg) window.showToastMsg(m); }
 function paEsc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// photo-sales-guide-v1: 使い方モーダルの開閉
+function paGuideOpen(){ document.getElementById('pa-guide').classList.add('open'); }
+function paGuideClose(){ document.getElementById('pa-guide').classList.remove('open'); }
+window.paGuideOpen = paGuideOpen;
+window.paGuideClose = paGuideClose;
 
 async function paInit() {
   await paLoadAlbums();
