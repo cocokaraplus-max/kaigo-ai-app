@@ -187,14 +187,14 @@
     </div>
 </div>
 
-<!-- timecard-top-break-countdown-v1 : 本人の休憩残りカウントダウン -->
-<div id="top-break-banner" style="display:none;align-items:center;gap:10px;padding:12px 16px;
-  margin:4px 0 12px;background:#fbf0dc;border:1px solid #e6c98a;border-radius:12px;">
-  <span class="material-symbols-outlined" style="font-size:22px;color:#c77d12;">free_breakfast</span>
-  <div style="flex:1;">
-    <div style="font-size:.78rem;color:#8a6d3b;font-weight:700;">休憩中</div>
-    <div id="top-break-text" style="font-size:1.05rem;font-weight:800;color:#c77d12;font-variant-numeric:tabular-nums;"></div>
-  </div>
+<!-- timecard-top-break-countdown-v1 / big-v3 : 本人の休憩残り（全部横並び・老眼でも読める大きさ） -->
+<div id="top-break-banner" style="display:none;align-items:center;gap:12px;padding:16px 18px;
+  margin:4px 0 12px;background:#fbf0dc;border:2px solid #e6c98a;border-radius:16px;">
+  <span id="top-break-pill" style="display:inline-block;font-size:16px;font-weight:800;
+    padding:6px 14px;border-radius:12px;background:#c77d12;color:#fff;white-space:nowrap;">休憩中</span>
+  <span id="top-break-started" style="font-size:17px;font-weight:700;color:#8a6d3b;white-space:nowrap;"></span>
+  <span id="top-break-text" style="font-size:2.5rem;font-weight:800;color:#c77d12;
+    font-variant-numeric:tabular-nums;line-height:1;margin-left:auto;white-space:nowrap;"></span>
 </div>
 <!-- timecard-top-btn-v1 : 承認済み打刻デバイスのときだけ表示 -->
 <a id="tc-top-punch-link" href="/timecard"
@@ -882,18 +882,25 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
   function _bRender(){
     var banner = document.getElementById("top-break-banner");
     var txt = document.getElementById("top-break-text");
+    var pill = document.getElementById("top-break-pill");
+    var started = document.getElementById("top-break-started");
     if(!banner || !txt || !_bInfo || !_bInfo.planned_min || !_bInfo.started_at){
       if(banner) banner.style.display = "none";
       return;
     }
-    var startMs = new Date(_bInfo.started_at).getTime();
+    var startD = new Date(_bInfo.started_at);
+    var startMs = startD.getTime();
     var remain = Math.round((startMs + _bInfo.planned_min*60*1000 - Date.now())/1000);
     var over = remain < 0;
     banner.style.display = "flex";
     banner.style.background = over ? "#fdecea" : "#fbf0dc";
     banner.style.borderColor = over ? "#e6a8a2" : "#e6c98a";
+    // 入った時間（小）＋残り時間（大）。超過は赤に。
+    var hh = ("0"+startD.getHours()).slice(-2), mm = ("0"+startD.getMinutes()).slice(-2);
+    if(started){ started.textContent = hh+":"+mm+"〜"; started.style.color = over ? "#a5453b" : "#8a6d3b"; }
+    if(pill){ pill.style.background = over ? "#c0392b" : "#c77d12"; }
     txt.style.color = over ? "#c0392b" : "#c77d12";
-    txt.textContent = (over ? "休憩時間超過 " : "残り ") + _bFmt(remain);
+    txt.textContent = (over ? "超過 " : "残り ") + _bFmt(remain);
   }
   async function _bLoad(){
     try{
@@ -914,6 +921,13 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
   if(document.readyState === "loading"){
     document.addEventListener("DOMContentLoaded", _bLoad);
   }else{ _bLoad(); }
+  // timecard-top-break-refresh-v1: 「しばらく出ない」対策。
+  // TOPを開き直した/タブに戻ってきた/BFキャッシュ復帰のたびに休憩情報を取り直す。
+  // さらに保険として60秒ごとにも取り直す（休憩開始をTOP側から検知するため）。
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) _bLoad(); });
+  window.addEventListener("pageshow", function(){ _bLoad(); });
+  window.addEventListener("focus", _bLoad);
+  setInterval(_bLoad, 60000);
 })();
 </script>
 {% endblock %}

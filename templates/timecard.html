@@ -243,8 +243,12 @@
   .tc-countdown{margin-top:8px;font-size:1.05rem;font-weight:800}
   .tc-countdown .tc-cd-time{font-variant-numeric:tabular-nums}
   .tc-countdown.over{color:#c0392b}
-  .tc-staff .tc-cd-mini{font-size:.78rem;font-weight:700;color:var(--tc-break);margin-top:2px}
-  .tc-staff .tc-cd-mini.over{color:#c0392b}
+  /* timecard-break-list-countdown-fix-v1: 開始時間と残り時間を横並び・老眼でも読める大きさに */
+  .tc-staff .tc-cd-mini{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:6px}
+  .tc-staff .tc-cd-mini .cd-start{font-size:14px;font-weight:700;color:#8a6d3b}
+  .tc-staff .tc-cd-mini .cd-remain{font-size:1.45rem;font-weight:800;color:var(--tc-break);font-variant-numeric:tabular-nums}
+  .tc-staff .tc-cd-mini.over .cd-start{color:#a5453b}
+  .tc-staff .tc-cd-mini.over .cd-remain{color:#c0392b}
 </style>
 <div class="tc-ov hidden" id="tc-break-modal">
   <div class="tc-modal">
@@ -373,12 +377,16 @@
     var minis = document.querySelectorAll(".tc-cd-mini");
     if(!minis.length) return;
     minis.forEach(function(el){
-      var startMs = new Date(el.getAttribute("data-start")).getTime();
+      var startD = new Date(el.getAttribute("data-start"));
+      var startMs = startD.getTime();
       var pm = parseInt(el.getAttribute("data-min"), 10);
       var remain = Math.round((startMs + pm*60*1000 - Date.now())/1000);
       var over = remain < 0;
       el.className = "tc-cd-mini" + (over ? " over" : "");
-      el.textContent = (over ? "超過 " : "残り ") + _tcFmtRemain(remain);
+      // 入った時間は小さく、残り時間を大きく（timecard-break-list-countdown-fix-v1）
+      var hh = ("0"+startD.getHours()).slice(-2), mm = ("0"+startD.getMinutes()).slice(-2);
+      el.innerHTML = '<span class="cd-start">'+hh+':'+mm+'〜</span>'
+        + '<span class="cd-remain">'+(over?"超過 ":"残り ")+_tcFmtRemain(remain)+'</span>';
     });
   }
   function _tcStartListCd(){
@@ -500,7 +508,9 @@
     refreshPunchButtons(j.state);
     if(j.state === "break" && _tcCurBreak){ _tcStartCd(_tcCurBreak); }
     var hit = state.staff.find(function(x){ return x.name === state.current.name; });
-    if(hit) hit.state = j.state;
+    // timecard-break-list-countdown-fix-v1: 一覧カードのカウントダウンは s.break_info を見るので、
+    // 打刻直後に state だけ更新して break_info を更新しないと、一覧に戻ってもカードに残り時間が出ない。
+    if(hit){ hit.state = j.state; hit.break_info = j.break_info || null; }
   }
 
   async function punch(pt){
