@@ -15195,6 +15195,28 @@ def admin_timecard_report_pdf():
 
         staff = _tc_build_monthly_data(supabase, f_code, year, month)
 
+        # timecard-leave-note-report-v1: 社労士向けの打刻記録にも備考を載せる。
+        # 休暇（振替休等）は打刻の無い日もあるので、職員ごとに 日付/区分/備考 を別欄で出す。
+        _lstart = f"{year:04d}-{month:02d}-01"
+        _lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+        notes_by_staff = {}
+        try:
+            _lr = (supabase.table("staff_leave_days").select("*")
+                   .eq("facility_code", f_code).gte("leave_date", _lstart)
+                   .lt("leave_date", _lend).execute())
+            for _r in (_lr.data or []):
+                _nt = (_r.get("note") or "").strip()
+                if not _nt:
+                    continue
+                _lt = _LEAVE_TYPES.get(_r.get("leave_type"))
+                _lbl = _lt["label"] if _lt else (_r.get("leave_type") or "")
+                notes_by_staff.setdefault(_r.get("staff_name"), []).append(
+                    (_r.get("leave_date"), _lbl, _nt, _r.get("substitute_for")))
+            for _k in notes_by_staff:
+                notes_by_staff[_k].sort(key=lambda x: x[0] or "")
+        except Exception as _ne:
+            print(f"report_pdf notes error: {_ne}", flush=True)
+
         # 施設名
         fac_name = ""
         try:
@@ -15230,6 +15252,9 @@ def admin_timecard_report_pdf():
   .num {{ text-align:right; }}
   .bad {{ color:#c0392b; }}
   .empty {{ color:#aaa; padding:8px; }}
+  .notes {{ border-top:1px dashed #d8b48a; margin:0; padding:6px 10px; background:#fff8ef; }}
+  .notes-h {{ font-weight:bold; color:#c0392b; font-size:10.5px; margin-bottom:3px; }}
+  .note-row {{ font-size:10px; color:#333; line-height:1.5; }}
 </style></head><body>""")
         parts.append(f"<h1>勤怠集計表</h1>")
         parts.append(f'<div class="sub">{_html.escape(fac_name)}　{year}年{month}月</div>')
@@ -15238,7 +15263,9 @@ def admin_timecard_report_pdf():
 
         any_data = False
         for s in staff:
-            if not s["days"]:
+            _s_notes = notes_by_staff.get(s["name"]) or []
+            # 打刻が無くても備考（振替休のメモ等）がある職員は表示する
+            if not s["days"] and not _s_notes:
                 continue
             any_data = True
             parts.append('<div class="staff"><div class="staff-head"><span>'
@@ -15247,20 +15274,30 @@ def admin_timecard_report_pdf():
                          + f'（{s["worked_days"]}日勤務'
                          + (f'・要確認{s["incomplete_days"]}日' if s["incomplete_days"] else '')
                          + '）</span></div>')
-            parts.append('<table><colgroup><col class="c-date"><col class="c-in"><col class="c-out"><col class="c-brk"><col class="c-work"></colgroup>'
-                         '<tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
-            for d in s["days"]:
-                if d["incomplete"]:
-                    flags = "／".join(d.get("flags") or [])
-                    parts.append(f'<tr class="bad"><td>{_tc_day_label(d["date"])}</td>'
-                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
-                                 f'<td colspan="2">⚠ {_html.escape(flags)}</td></tr>')
-                else:
-                    brk = f'{d["break_min"]}分' if d.get("break_min") else "—"
-                    parts.append(f'<tr><td>{_tc_day_label(d["date"])}</td>'
-                                 f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
-                                 f'<td>{brk}</td><td class="num">{_tc_fmt_hm(d["minutes"])}</td></tr>')
-            parts.append('</table></div>')
+            if s["days"]:
+                parts.append('<table><colgroup><col class="c-date"><col class="c-in"><col class="c-out"><col class="c-brk"><col class="c-work"></colgroup>'
+                             '<tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
+                for d in s["days"]:
+                    if d["incomplete"]:
+                        flags = "／".join(d.get("flags") or [])
+                        parts.append(f'<tr class="bad"><td>{_tc_day_label(d["date"])}</td>'
+                                     f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                     f'<td colspan="2">⚠ {_html.escape(flags)}</td></tr>')
+                    else:
+                        brk = f'{d["break_min"]}分' if d.get("break_min") else "—"
+                        parts.append(f'<tr><td>{_tc_day_label(d["date"])}</td>'
+                                     f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
+                                     f'<td>{brk}</td><td class="num">{_tc_fmt_hm(d["minutes"])}</td></tr>')
+                parts.append('</table>')
+            # timecard-leave-note-report-v1: 職員ごとの備考（日付・区分・備考）
+            if _s_notes:
+                parts.append('<div class="notes"><div class="notes-h">備考</div>')
+                for (_nd, _nl, _nt, _nsf) in _s_notes:
+                    _sfx = f'（振替元:{_tc_day_label(_nsf)}）' if _nsf else ''
+                    parts.append(f'<div class="note-row">{_tc_day_label(_nd)}　'
+                                 f'{_html.escape(_nl)}：{_html.escape(_nt)}{_sfx}</div>')
+                parts.append('</div>')
+            parts.append('</div>')
 
         if not any_data:
             parts.append('<div class="empty">この月の打刻記録はありません。</div>')
