@@ -987,8 +987,8 @@ body.modal-open .bottom-nav {
     </div>
 </div>
 </div><!-- /board-sticky-stack -->
-<!-- 全既読ボタン（sticky外に配置してz-index問題回避） -->
-<div id="board-mark-all-read-wrap" style="display:none;"></div>
+<!-- board-markallread-fix-v1: 空の重複 wrap を撤去。ID が2つあると getElementById が
+     先頭(ヘッダー内の実ボタン)を返すのは正しいが、重複IDは事故の元なので削除した。 -->
 
 
 <!-- 投稿一覧 -->
@@ -1649,6 +1649,10 @@ window.updateUnreadCount = async function() {
         var data = await res.json();
         var count = (data && typeof data.count === 'number') ? data.count : 0;
         badge.textContent = count;
+        // board-markallread-fix-v1: メニュー刷新で失われた「全既読」ボタンの表示制御を復活。
+        // 未読が1件以上あるときだけヘッダーの全既読ボタンを出す（0件なら隠す）。
+        var mawWrap = document.getElementById('board-mark-all-read-wrap');
+        if (mawWrap) mawWrap.style.display = count > 0 ? '' : 'none';
         // chat-badge（ナビバッジ）も同期
         var chatBadge = document.getElementById('chat-badge');
         if (chatBadge) {
