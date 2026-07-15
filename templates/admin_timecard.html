@@ -63,6 +63,7 @@
   <div class="tca-tabs">
     <button data-tab="today" class="on">本日の打刻</button>
     <button data-tab="devices">デバイス承認</button>
+    <button data-tab="order">並び順</button>
   </div>
 
   <div id="tca-today">
@@ -78,6 +79,17 @@
       <div id="tca-dev-list"><div class="tca-empty">読み込み中…</div></div>
     </div>
     <p style="font-size:.78rem;color:#999;line-height:1.6">打刻用タブレットで <b>/timecard</b> を開くと、未登録のデバイスはここに「承認待ち」で表示されます。承認するとそのデバイスで打刻できるようになります。</p>
+  </div>
+
+  <!-- timecard-staff-order-v1: 打刻画面の職員カードの並び順 -->
+  <div id="tca-order" class="hidden">
+    <div class="tca-group">
+      <div class="tca-date">打刻画面の並び順</div>
+      <p style="font-size:.78rem;color:#999;line-height:1.6;margin:0 0 10px">↑↓ で順番を入れ替えて「保存」を押してください。この順番で打刻画面の職員カードが並びます。</p>
+      <div id="tca-order-list"><div class="tca-empty">読み込み中…</div></div>
+      <button id="tca-order-save" style="width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#2f6b5e;color:#fff;font-weight:700;font-size:.92rem;cursor:pointer;">この順番で保存</button>
+      <div id="tca-order-msg" style="text-align:center;font-size:.82rem;font-weight:700;margin-top:8px;min-height:1.2em"></div>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -104,7 +116,60 @@
     });
     $("tca-today").classList.toggle("hidden", tab!=="today");
     $("tca-devices").classList.toggle("hidden", tab!=="devices");
-    if(tab==="today") loadToday(); else loadDevices();
+    $("tca-order").classList.toggle("hidden", tab!=="order");
+    if(tab==="today") loadToday();
+    else if(tab==="devices") loadDevices();
+    else if(tab==="order") loadOrder();
+  }
+
+  // timecard-staff-order-v1: 並び順タブ
+  var _tcOrder = [];  // 現在編集中の並び（氏名＋アイコン）
+  async function loadOrder(){
+    try{
+      var res=await fetch("/api/admin/timecard_staff_order");
+      var j=await res.json();
+      if(!j.success){ $("tca-order-list").innerHTML='<div class="tca-empty">'+esc(j.msg||"取得失敗")+'</div>'; return; }
+      _tcOrder = (j.staff||[]).map(function(s){ return {name:s.name, emoji:s.emoji||"", image:s.image||""}; });
+      renderOrder();
+    }catch(e){ $("tca-order-list").innerHTML='<div class="tca-empty">通信エラー</div>'; }
+  }
+  function orderIcon(s){
+    if(s.image) return '<img src="'+esc(s.image)+'" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover">';
+    return '<span class="emoji">'+(s.emoji||"👤")+'</span>';
+  }
+  function renderOrder(){
+    if(!_tcOrder.length){ $("tca-order-list").innerHTML='<div class="tca-empty">職員が登録されていません。</div>'; return; }
+    $("tca-order-list").innerHTML=_tcOrder.map(function(s,i){
+      var up = i===0 ? 'style="opacity:.3;pointer-events:none"' : '';
+      var dn = i===_tcOrder.length-1 ? 'style="opacity:.3;pointer-events:none"' : '';
+      return '<div class="tca-row" style="gap:8px">'
+        + '<span style="width:22px;text-align:right;color:#999;font-weight:700">'+(i+1)+'</span>'
+        + orderIcon(s)
+        + '<div class="nm" style="flex:1">'+esc(s.name)+'</div>'
+        + '<button class="tca-ord-btn" data-dir="up" data-i="'+i+'" '+up+'>↑</button>'
+        + '<button class="tca-ord-btn" data-dir="down" data-i="'+i+'" '+dn+'>↓</button>'
+        + '</div>';
+    }).join("");
+    $("tca-order-list").querySelectorAll(".tca-ord-btn").forEach(function(b){
+      b.style.cssText += ";border:1px solid #d8d4cc;background:#fff;border-radius:8px;width:40px;height:36px;font-size:1.1rem;font-weight:800;color:#2f6b5e;cursor:pointer";
+      b.addEventListener("click", function(){ moveOrder(parseInt(b.getAttribute("data-i"),10), b.getAttribute("data-dir")); });
+    });
+  }
+  function moveOrder(i, dir){
+    var j = dir==="up" ? i-1 : i+1;
+    if(j<0 || j>=_tcOrder.length) return;
+    var t=_tcOrder[i]; _tcOrder[i]=_tcOrder[j]; _tcOrder[j]=t;
+    renderOrder();
+  }
+  async function saveOrder(){
+    var msg=$("tca-order-msg"); msg.textContent="保存中…"; msg.style.color="#999";
+    try{
+      var res=await fetch("/api/admin/timecard_staff_order",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({order:_tcOrder.map(function(s){return s.name;})})});
+      var j=await res.json();
+      if(j.success){ msg.textContent="保存しました。打刻画面はこの順番になります。"; msg.style.color="#2f6b5e"; }
+      else{ msg.textContent=j.msg||"保存に失敗しました"; msg.style.color="#c0392b"; }
+    }catch(e){ msg.textContent="通信エラー"; msg.style.color="#c0392b"; }
   }
 
   async function loadToday(){
@@ -181,6 +246,7 @@
   document.querySelectorAll(".tca-tabs button").forEach(function(b){
     b.addEventListener("click", function(){ switchTab(b.getAttribute("data-tab")); });
   });
+  $("tca-order-save").addEventListener("click", saveOrder);  // timecard-staff-order-v1
   $("tca-refresh").addEventListener("click", function(){
     var btn=$("tca-refresh");
     btn.classList.add("spinning");

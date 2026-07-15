@@ -1535,6 +1535,53 @@ def api_toggle_ledger_access():
         return jsonify({"success": False, "msg": str(e)}), 500
 
 
+@app.route('/api/admin/timecard_staff_order', methods=['GET'])  # timecard-staff-order-v1
+def api_get_timecard_staff_order():
+    """並び順設定用: 現在の並び（保存順を適用済み）で職員一覧と、保存済み順を返す。管理者のみ。"""
+    if not session.get("admin_authenticated"):
+        return jsonify({"success": False, "msg": "権限がありません"}), 403
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        staff = _tc_staff_list(supabase, f_code)  # 既に確定済みの並びで返る
+        return jsonify({"success": True,
+                        "staff": [{"name": s["name"], "emoji": s.get("emoji", ""),
+                                   "image": s.get("image", "")} for s in staff],
+                        "order": _tc_staff_order_names(supabase, f_code)})
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@app.route('/api/admin/timecard_staff_order', methods=['POST'])  # timecard-staff-order-v1
+def api_save_timecard_staff_order():
+    """打刻画面の職員の並び順を保存。管理者のみ。body: {order: [氏名,...]}。
+    admin_settings(timecard_staff_order) に手動 upsert（表示/非表示と同じ作法）。"""
+    if not session.get("admin_authenticated"):
+        return jsonify({"success": False, "msg": "権限がありません"}), 403
+    import json as _json
+    f_code = session["f_code"]
+    data = request.get_json() or {}
+    order = data.get("order")
+    if not isinstance(order, list):
+        return jsonify({"success": False, "msg": "order は配列が必要です"}), 400
+    order = [str(x) for x in order if str(x).strip()]
+    try:
+        supabase = get_supabase()
+        new_value = _json.dumps(order, ensure_ascii=False)
+        res = (supabase.table("admin_settings").select("value")
+               .eq("facility_code", f_code).eq("key", "timecard_staff_order").execute())
+        if res.data:
+            supabase.table("admin_settings").update({"value": new_value}).eq(
+                "facility_code", f_code).eq("key", "timecard_staff_order").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": "timecard_staff_order", "value": new_value
+            }).execute()
+        return jsonify({"success": True, "msg": "並び順を保存しました"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
 @app.route('/api/admin/toggle_timecard_hidden', methods=['POST'])  # timecard-hidden-icon-v1
 def api_toggle_timecard_hidden():
     """職員を打刻画面に表示する/しないを切り替え。admin_settings(timecard_hidden)の名前リスト。"""
@@ -14322,9 +14369,27 @@ def _tc_hidden_names(supabase, f_code):
         return set()
 
 
+def _tc_staff_order_names(supabase, f_code):  # timecard-staff-order-v1
+    """管理者が保存した打刻画面の並び順（職員名の配列）。未設定なら空。
+    保存先は admin_settings(key='timecard_staff_order')。表示/非表示と同じ作法。"""
+    try:
+        import json as _json_o
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", "timecard_staff_order").execute())
+        if r.data and r.data[0].get("value"):
+            v = _json_o.loads(r.data[0]["value"])
+            if isinstance(v, list):
+                return [str(x) for x in v]
+    except Exception as e:
+        print(f"_tc_staff_order_names error: {e}", flush=True)
+    return []
+
+
 def _tc_staff_list(supabase, f_code):
     """timecard-hidden-icon-v1: 在籍職員(is_active)から timecard_hidden を除外。
-    アイコンは icon_image_url(画像) を優先、無ければ icon_emoji。"""
+    アイコンは icon_image_url(画像) を優先、無ければ icon_emoji。
+    timecard-staff-order-v1: 並び順を安定させる。DBの取得順は不定で「時々変わる」ので、
+    ①管理者が保存した順（timecard_staff_order）を先頭に、②それ以外は名前順、で必ず同じ並びにする。"""
     try:
         hidden = _tc_hidden_names(supabase, f_code)
         res = supabase.table("staffs").select(
@@ -14338,6 +14403,10 @@ def _tc_staff_list(supabase, f_code):
             out.append({"name": nm,
                         "emoji": r.get("icon_emoji") or "",
                         "image": r.get("icon_image_url") or ""})
+        # 並び順の確定（保存順→名前順）。保存順に無い人は末尾に名前順で付く。
+        order = _tc_staff_order_names(supabase, f_code)
+        idx = {nm: i for i, nm in enumerate(order)}
+        out.sort(key=lambda s: (idx.get(s["name"], len(idx)), s["name"]))
         return out
     except Exception as e:
         print(f"_tc_staff_list error: {e}", flush=True)
