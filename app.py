@@ -11051,7 +11051,8 @@ def api_delete_record():
         is_admin = session.get("admin_authenticated", False)
         supabase = get_supabase()
         # 権限チェック：自分の記録か管理者のみ削除可能
-        rec = supabase.table("records").select("staff_name,facility_code").eq("id", data["id"]).execute()
+        rec = supabase.table("records").select(
+            "staff_name,facility_code,calendar_event_id,category").eq("id", data["id"]).execute()
         if not rec.data:
             return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
         r = rec.data[0]
@@ -11059,6 +11060,23 @@ def api_delete_record():
             return jsonify({"status": "error", "message": "権限がありません"}), 403
         if not is_admin and r["staff_name"] != my_name:
             return jsonify({"status": "error", "message": "この記録を削除する権限がありません"}), 403
+
+        # record-cal-delete-sync-v1: 休み連絡・追加利用連絡はカレンダーにイベントを自動生成する。
+        # 記録を消したらカレンダー側も消さないと、消したはずの「お休み」が残る（双方向同期の片方向漏れ）。
+        # 複数日の休みは複数イベントになるが、全イベントが record_id で紐づくのでまとめて消せる。
+        # 念のため旧データ対策として records.calendar_event_id 経由でも1件消す（record_id 未設定の古いイベント用）。
+        # ※ カレンダーの delete API 経由ではなく直接 delete するので、記録側を巻き込む再帰は起きない。
+        try:
+            supabase.table("calendar_events").delete().eq(
+                "facility_code", f_code).eq("record_id", data["id"]).execute()
+            _legacy_eid = r.get("calendar_event_id")
+            if _legacy_eid:
+                supabase.table("calendar_events").delete().eq(
+                    "facility_code", f_code).eq("id", _legacy_eid).execute()
+        except Exception as _cal_del_err:
+            # カレンダー削除に失敗しても記録削除は続行（孤児イベントは残るが記録は消える）
+            print(f"[record delete] calendar sync failed for record {data['id']}: {_cal_del_err}", flush=True)
+
         supabase.table("records").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
