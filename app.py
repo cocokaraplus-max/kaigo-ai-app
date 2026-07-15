@@ -24677,9 +24677,16 @@ def _mtg_parse_minutes_struct(text):  # meetings-minutes-struct-parse-v1 / fix m
     return {
         "header": header,
         "items": _to_list(_find("検討した項目", "検討項目")),
+        # meetings-speaker-sections-v1: 立場ごとの希望・意向・提案を分けて持つ
+        "wish": _find("本人の希望") or "（記載なし）",
+        "family": _find("家族の意向", "家族の希望") or "（記載なし）",
+        "cm_proposal": _find("ケアマネの提案", "ケアマネジャーの提案") or "（記載なし）",
+        "facility_proposal": _find("施設の提案", "事業所の提案") or "（記載なし）",
         "discussion": _find("検討内容") or "（記載なし）",
         "conclusions": _to_list(_find("結論", "決定事項")),
         "issues": _find("残された課題", "次回") or "（記載なし）",
+        # meetings-speaker-sections-v1: ICF状態整理も持っておく（PDFの末尾に1行で出す）
+        "state_icf": _find("本人の状態整理", "ICF") or "",
     }
 
 
@@ -24697,38 +24704,52 @@ def api_meeting_summarize():
         if not transcript:
             return jsonify({"status": "error", "message": "文字起こしテキストがありません"}), 400
         prompt = f"""あなたは介護支援専門員(ケアマネジャー)です。以下は担当者会議(サービス担当者会議)の文字起こしです。
-これを、厚生労働省の標準様式「第4表 サービス担当者会議の要点」に準拠した正式な議事録に整えてください。
+これを、厚生労働省の標準様式「第4表 サービス担当者会議の要点」に準拠した議事録に整えてください。
 末尾には、後からICF(国際生活機能分類)で分類するための「本人の状態整理」を付けます。
 
 【最重要ルール】
 ・これは正式な書類です。文字起こしに書かれていない情報を創作・推測で埋めてはいけません。
-・出席者の氏名・所属、開催場所、開催日時など、文字起こしから読み取れない項目は「（記載なし）」と書く。勝手に埋めない。
-・議事録の基本は「誰が・何を・どのように決めたか」を明確に残すこと。逐語ではなく要点を整理する。
-・専門用語に置き換えず、会議で語られた具体的な様子(例:「杖で20m歩ける」)をそのまま残す。
+・読み取れない項目(出席者・開催場所・開催日時など)は「（記載なし）」と書く。勝手に埋めない。
+・専門用語に置き換えず、語られた具体的な様子(例:「杖で20m歩ける」)や数値・固有名詞はそのまま残す。
 
-【出力する構成(この見出しで出力する)】
+【書き方＝ここが最重要。読みやすさを最優先する】
+・立場ごと(本人・家族・ケアマネ・施設)に発言を1つにまとめてから短くする。会話の流れ(誰がいつ何を言った)は並べない。
+・各項目は1〜2文、または短い箇条書き。同じ内容を言い換えて繰り返さない。前置き・接続の言葉・修飾は削る。雑談・脱線は入れない。
+・語られていない立場は無理に埋めず「（記載なし）」とする。
+・「網羅は保ちつつ最短で」。全体でA4・1枚に収まる分量に抑える。
+
+【出力する構成(この見出しで、この順で出力する)】
 ■ 開催情報
 　開催日 / 開催場所 / 出席者(所属・職種と氏名。本人・家族の出席有無も) / 欠席者と理由。読み取れない項目は（記載なし）。
 ■ 検討した項目
-　この会議で検討した議題を箇条書き。
+　検討した議題を箇条書き(各行頭「・」)。1議題1行。
+■ 本人の希望
+　本人が語った希望・意向を1〜2文にまとめる。語られていなければ（記載なし）。
+■ 家族の意向
+　家族が語った希望・心配・要望を1〜2文にまとめる。語られていなければ（記載なし）。
+■ ケアマネの提案
+　ケアマネジャーが示した方針・提案を1〜2文にまとめる。語られていなければ（記載なし）。
+■ 施設の提案
+　サービス提供側(デイ・訪問看護・機能訓練など)が示した対応・提案を1〜2文にまとめる。語られていなければ（記載なし）。
 ■ 検討内容
-　各項目についてどう話し合われたか。サービス内容だけでなく、提供方法・留意点・頻度・担当者などが語られていれば具体的に。誰の発言かが分かる場合は職種を添える。
+　上の希望・意向・提案をどう擦り合わせ、どこに向かったかを2〜3文の短い要約文で書く(箇条書きにしない)。
+　各立場をもう一度並べ直さない。結論(決定事項)とは一字一句同じにしない(こちらは"検討の流れと合意点")。
 ■ 結論(決定事項)
-　会議で決まったこと。誰が何をいつまでにするか。方針。
+　決まったことを箇条書き。『・誰が何をいつまでに/方針』。1決定1行。
 ■ 残された課題・次回に向けて
-　解決していない課題(未充足ニーズ)、次回開催時期や次回検討事項。語られていなければ（記載なし）。
+　未充足ニーズ・次回時期・次回検討事項を箇条書き。語られていなければ「・（記載なし）」。
 
 ■ 本人の状態整理(ICF分類用)
-　本人の状態を以下の区分で箇条書き整理(会議で語られた事実のみ):
+　会議で語られた事実のみ、区分ごとに短い箇条書き:
 　・心身機能(痛み・可動域・認知・気分・睡眠など)
 　・身体構造(部位の状態)
 　・活動と参加(歩行・移動・入浴・更衣・食事・排泄・レク参加など、できること/介助が必要なこと)
 　・環境因子(家族の支援・住環境・福祉用具・サービスなど)
 
-出力は議事録本文のみ。前置き・説明は不要。
+出力は議事録本文のみ。前置き・説明・マークダウン記号(#等)は不要。
 
 【文字起こし】
-{transcript[:8000]}"""  # meetings-summarize-form4-v1
+{transcript[:8000]}"""  # meetings-summarize-form4-v1 / concise: meetings-summarize-concise-v1
         model = get_generative_model()  # meetings-minutes-struct-parse-v1
         resp = model.generate_content(prompt)
         minutes = (resp.text or "").strip()
@@ -25055,6 +25076,51 @@ def _mtg_pdf_render(html_str, landscape=False):  # meetings-pdf-all-merge-v1 / m
     return pdfkit.from_string(html_str, False, options=_opts, configuration=_cfg)
 
 
+def _mtg_pdf_render_fit(html_str, min_zoom=0.60):  # meetings-pdf-onepage-v1
+    """議事録を必ず1ページに収める。zoom=1.0 で描き、2ページ以上なら zoom を段階的に
+    下げて描き直す（下限 min_zoom）。中身は削らず縮尺だけで収めるので、網羅性は保たれる。
+    ページ数の判定は fitz→pypdf の順でフォールバック。"""
+    import pdfkit
+    import shutil as _sh
+    _wk = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+    _cfg = pdfkit.configuration(wkhtmltopdf=_wk)
+
+    def _render(zoom):
+        opts = {"encoding": "UTF-8", "no-outline": None, "quiet": "",
+                "zoom": ("%.2f" % zoom),
+                "margin-top": "8mm", "margin-bottom": "6mm",
+                "margin-left": "8mm", "margin-right": "8mm"}
+        return pdfkit.from_string(html_str, False, options=opts, configuration=_cfg)
+
+    def _pages(pdf_bytes):
+        try:
+            import fitz
+            _d = fitz.open(stream=pdf_bytes, filetype="pdf")
+            _n = _d.page_count
+            _d.close()
+            return _n
+        except Exception:
+            try:
+                import io
+                from pypdf import PdfReader
+                return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+            except Exception:
+                return 1  # 数えられない環境では縮小せず1回だけ
+
+    zoom = 1.0
+    pdf = _render(zoom)
+    for _ in range(8):
+        if _pages(pdf) <= 1:
+            break
+        zoom = round(zoom - 0.06, 2)
+        if zoom < min_zoom:
+            zoom = min_zoom
+            pdf = _render(zoom)
+            break
+        pdf = _render(zoom)
+    return pdf
+
+
 def _mtg_pdf_merge(pdf_bytes_list):  # meetings-pdf-all-merge-v1 / robust: meetings-pdf-merge-robust-v1
     """複数PDFバイト列を1つに結合。向き混在OK。
     pdfunite(poppler) → PyMuPDF(fitz) → 先頭のみ、の順にフォールバック。"""
@@ -25157,6 +25223,85 @@ def _mtg_pdf_html_minutes(meeting, style="a"):  # meetings-pdf-minutes-styles-v1
         f'<div class="num"><span class="n">{i+1}</span><span class="nt">{_mtg_pdf_esc(x)}</span></div>'
         for i, x in enumerate(concl)
     ) or '<div class="num"><span class="nt">（記載なし）</span></div>'
+
+    # meetings-minutes-unified-v1: 8スタイルを承認済みの新デザインに統一する。
+    # style 引数は残す（セレクタ互換）が、どれを選んでも同じ「本人の希望/家族の意向/
+    # ケアマネ・施設の提案 → 検討内容 → 結論 → 課題 → ICF」の1枚レイアウトを返す。
+    # 縮尺での1ページ化は _mtg_pdf_render_fit が担う。
+    sp_wish = _mtg_pdf_esc(st.get("wish") or "（記載なし）")
+    sp_family = _mtg_pdf_esc(st.get("family") or "（記載なし）")
+    sp_cm = _mtg_pdf_esc(st.get("cm_proposal") or "（記載なし）")
+    sp_fac = _mtg_pdf_esc(st.get("facility_proposal") or "（記載なし）")
+    _items_inline = "　".join("・" + _mtg_pdf_esc(x) for x in items) if items else "（記載なし）"
+    _concl_ol = "".join(
+        f'<div class="u-cn"><span class="u-cn-n">{i+1}</span><span>{_mtg_pdf_esc(x)}</span></div>'
+        for i, x in enumerate(concl)
+    ) or '<div class="u-cn"><span>（記載なし）</span></div>'
+    _badge = f'<span class="u-badge">{care_level}</span>' if care_level else ""
+    # ICF状態整理：改行を「／」に畳んで1行の帯にする（1枚に収めるため）
+    _icf_raw = (st.get("state_icf") or "").strip()
+    _icf_inline = "／".join(
+        _mtg_pdf_esc(ln.strip().lstrip("・.-　 ").strip())
+        for ln in _icf_raw.split("\n") if ln.strip()
+    ) or "（記載なし）"
+    _u_css = """
+      * { box-sizing:border-box; }
+      body { font-family:'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#202124;
+             font-size:10.5pt; line-height:1.5; margin:0; padding:0; }
+      .u-ttl { display:flex; align-items:center; gap:6px; color:#0C447C; font-size:12pt; font-weight:bold; }
+      .u-tag { font-size:8pt; color:#888; border:0.5pt solid #bbb; border-radius:4px; padding:0 5px; font-weight:normal; }
+      .u-name-row { border-bottom:1.5pt solid #b8c2cc; padding:2px 0 5px; margin:5px 0 8px; }
+      .u-name-row td { vertical-align:baseline; }
+      .u-name { font-size:16pt; font-weight:bold; }
+      .u-sama { font-size:10pt; color:#5f6368; }
+      .u-badge { font-size:9pt; background:#E6F1FB; color:#0C447C; padding:1px 7px; border-radius:4px; margin-left:6px; }
+      .u-date { text-align:right; font-size:10pt; color:#5f6368; }
+      .u-date b { color:#202124; font-size:11pt; }
+      .u-info td { font-size:9.5pt; padding:1px 0; }
+      .u-info .k { color:#5f6368; }
+      .u-h { color:#0C447C; font-weight:bold; border-left:3pt solid #185FA5; padding-left:6px; margin:9px 0 3px; font-size:10.5pt; }
+      .u-box { border:0.5pt solid #b8c2cc; border-radius:6px; padding:5px 10px; margin-bottom:4px; }
+      .u-box .lb1 { color:#085041; font-weight:bold; }
+      .u-box .lb2 { color:#0C447C; font-weight:bold; }
+      .u-cn { margin:1px 0; padding-left:2px; }
+      .u-cn-n { display:inline-block; min-width:15px; color:#185FA5; font-weight:bold; }
+      .u-icf { margin-top:9px; padding:6px 10px; background:#f4f6f8; border-radius:6px; font-size:9pt; color:#5f6368; }
+      .u-icf b { color:#444; }
+      .u-body { padding-left:2px; }
+    """
+    _u_date = _eff_date
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_u_css}</style></head><body>
+    <div class="u-ttl">サービス担当者会議の記録　<span class="u-tag">第4表</span></div>
+    <table width="100%" class="u-name-row"><tr>
+      <td><span class="u-name">{title}</span><span class="u-sama"> 様</span>{_badge}</td>
+      <td class="u-date">開催日　<b>{_u_date}</b></td>
+    </tr></table>
+    <table width="100%" class="u-info">
+      <tr><td class="k" width="50%">開催場所：{h_place}</td><td class="k">欠席者：{h_abs}</td></tr>
+      <tr><td class="k" colspan="2">出席者：{h_att}</td></tr>
+    </table>
+
+    <div class="u-h">検討した項目</div>
+    <div class="u-body">{_items_inline}</div>
+
+    <div style="margin:6px 0;">
+      <div class="u-box"><span class="lb1">本人の希望：</span>{sp_wish}</div>
+      <div class="u-box"><span class="lb1">家族の意向：</span>{sp_family}</div>
+      <div class="u-box"><span class="lb2">ケアマネの提案：</span>{sp_cm}</div>
+      <div class="u-box"><span class="lb2">施設の提案：</span>{sp_fac}</div>
+    </div>
+
+    <div class="u-h">検討内容</div>
+    <div class="u-body">{disc}</div>
+
+    <div class="u-h">結論（決定事項）</div>
+    <div class="u-body">{_concl_ol}</div>
+
+    <div class="u-h">残された課題・次回に向けて</div>
+    <div class="u-body">{issues}</div>
+
+    <div class="u-icf"><b>本人の状態整理（ICF分類用）：</b>{_icf_inline}</div>
+    </body></html>"""
 
     if style == "d":  # サイドバー型
         css = _MTG_PDF_BASE_CSS + """
@@ -25538,7 +25683,7 @@ def api_meeting_pdf():
             _name_map = {r["code"]: r["title_ja"] for r in (_mm.data or [])}
             # meetings-pdf-all-fullcss-v1: 各成果物を完全HTML(スタイル固有CSS込み)で
             # 個別にPDF生成し結合する。body抜き出しだと議事録の装飾が失われるため。
-            _min_pdf = _mtg_pdf_render(_mtg_pdf_html_minutes(meeting, _style))   # 議事録(選択スタイルのCSS込み・縦)
+            _min_pdf = _mtg_pdf_render_fit(_mtg_pdf_html_minutes(meeting, _style))   # 議事録(新デザイン・必ず1ページ)
             _asm_pdf = _mtg_pdf_render(_mtg_pdf_html_assessment(meeting))        # アセスメント(縦)
             _icf_html = _mtg_pdf_html_icf(meeting, _lr.data or [], _name_map)
             _icf_pdf = _mtg_pdf_render(_icf_html, landscape=True)               # ICF図(横)
@@ -25572,6 +25717,8 @@ def api_meeting_pdf():
         config = pdfkit.configuration(wkhtmltopdf=wk_path)
         if _combined_pdf is not None:  # meetings-pdf-all-merge-v1
             pdf_bytes = _combined_pdf
+        elif ptype == "minutes":  # meetings-minutes-unified-v1: 議事録は必ず1ページに収める
+            pdf_bytes = _mtg_pdf_render_fit(html_str)
         else:
             pdf_bytes = pdfkit.from_string(html_str, False, options=options, configuration=config)
         fname = label + "_" + (meeting.get("meeting_date") or "") + ".pdf"
@@ -25840,31 +25987,40 @@ def api_staff_minutes_summarize():
         if not transcript:
             return jsonify({"status": "error", "message": "文字起こしテキストがありません"}), 400
         prompt = f"""あなたは会議の書記です。以下は介護施設内の勉強会・職員会議の文字起こしです。
-これを、読みやすく整理された社内向けの議事録にまとめてください。
+これを、ひと目で要点がつかめる社内向けの議事録にまとめてください。
 
 【最重要ルール】
 ・文字起こしに書かれていない情報を創作・推測で埋めない。読み取れない項目は「（記載なし）」と書く。
-・逐語ではなく要点を整理する。ただし語られた具体的な内容(数値・固有名詞・具体例)は残す。
+・語られた具体的な内容(数値・固有名詞・具体例)は残す。ただし雑談・脱線は入れない。
 ・「決定事項」と「ToDo(やること)」は必ず分けて出す。ToDoは行動として実行できる形で書く。
+
+【書き方＝ここが最重要。読みやすさを最優先する】
+・箇条書きにする項目と、要約文にする項目を使い分ける(下記の構成に従う)。
+・箇条書きは1論点＝1行。短い言い切り・体言止めでよい。
+・同じ内容を言い換えて繰り返さない。前置き・接続の言葉・修飾は削る。雑談・脱線は入れない。
+・議題を機械的になぞらない。会話の流れ(誰が何を言った)を並べない。要点だけを残す。
+・「網羅は保ちつつ最短で」。冗長な文は削る。
 
 【出力する構成(この見出しで、この順で出力する)】
 ■ 会議情報
 　会議名 / 開催日 / 場所 / 参加者。読み取れない項目は（記載なし）。
 ■ 議題
-　この会議で扱ったテーマを箇条書き(各行頭「・」)。
+　扱ったテーマを箇条書き(各行頭「・」)。1テーマ1行。
 ■ 議論の内容
-　各議題についてどんな意見・報告・検討があったか要点整理。
+　会議全体で出た意見・報告・検討を、2〜4文の短い要約文で書く(箇条書きにしない)。
+　議題を1行ずつ並べ直さない。何が問題で・どう議論され・どこに向かったかを、つながった文章で簡潔にまとめる。
+　決定事項と一字一句同じにはしない(こちらは"流れと背景"、決定事項は"決まったこと")。
 ■ 決定事項
-　会議で決まったことを箇条書き(各行頭「・」)。無ければ「・（記載なし）」。
+　決まったことを箇条書き(各行頭「・」)。1決定1行。無ければ「・（記載なし）」。
 ■ ToDo
 　誰が/何を/(分かれば)いつまでに、を行動単位で箇条書き(各行頭「・」)。無ければ「・（記載なし）」。
 ■ その他・次回に向けて
-　補足や次回予定。語られていなければ（記載なし）。
+　補足や次回予定を箇条書き。語られていなければ「・（記載なし）」。
 
 出力は議事録本文のみ。前置き・説明・マークダウン記号(#等)は不要。
 
 【文字起こし】
-{transcript[:8000]}"""
+{transcript[:8000]}"""  # staff-minutes-concise-v1
         model = get_generative_model()
         resp = model.generate_content(prompt)
         minutes = (resp.text or "").strip()
@@ -26050,32 +26206,56 @@ def _staff_minutes_pdf_html(meeting, style="a"):
     if isinstance(other, list):
         other = "\n".join(other)
 
-    # フォールバック: 構造化が無ければ議事録全文をそのまま
-    if not st:
-        minutes = esc(meeting.get("minutes") or "（議事録なし）").replace("\n", "<br>")
-        body_html = f'<div class="box">{minutes}</div>'
-    else:
-        def _ul(items):
-            lis = "".join(f"<li>{esc(x)}</li>" for x in items) or "<li class='unrec'>（記載なし）</li>"
-            return f"<ul>{lis}</ul>"
-        body_html = (
-            f'<div class="sec">議題</div>{_ul(topics)}'
-            f'<div class="sec">議論の内容</div><div class="box">{esc(discussion) or "（記載なし）"}</div>'
-            f'<div class="sec">決定事項</div>{_ul(decisions)}'
-            f'<div class="sec">ToDo</div>{_ul(todos)}'
-            f'<div class="sec">その他・次回に向けて</div><div class="box">{esc(other) or "（記載なし）"}</div>'
-        )
+    # staff-minutes-unified-v1: 担当者会議と同じデザイン言語で、勉強会・職員会議も
+    # 1枚に収める。構成は 議題／議論の内容／決定事項／ToDo／その他。style は互換のため残すが同一レイアウト。
+    _u_css = """
+      * { box-sizing:border-box; }
+      body { font-family:'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#202124;
+             font-size:10.5pt; line-height:1.5; margin:0; padding:0; }
+      .u-ttl { display:flex; align-items:center; gap:6px; color:#0C447C; font-size:12pt; font-weight:bold; }
+      .u-tag { font-size:8pt; color:#888; border:0.5pt solid #bbb; border-radius:4px; padding:0 5px; font-weight:normal; }
+      .u-name-row { border-bottom:1.5pt solid #b8c2cc; padding:2px 0 5px; margin:5px 0 8px; }
+      .u-name { font-size:15pt; font-weight:bold; }
+      .u-date { text-align:right; font-size:10pt; color:#5f6368; }
+      .u-date b { color:#202124; font-size:11pt; }
+      .u-info td { font-size:9.5pt; padding:1px 0; color:#5f6368; }
+      .u-h { color:#0C447C; font-weight:bold; border-left:3pt solid #185FA5; padding-left:6px; margin:9px 0 3px; font-size:10.5pt; }
+      .u-body { padding-left:2px; }
+      .u-cn { margin:1px 0; padding-left:2px; }
+      .u-cn-n { display:inline-block; min-width:15px; color:#185FA5; font-weight:bold; }
+      .u-todo { border:0.5pt solid #b8c2cc; border-radius:6px; padding:4px 10px; margin-bottom:3px; }
+    """
+    def _items_line(arr):
+        return "　".join("・" + esc(x) for x in arr) if arr else "（記載なし）"
+    _dec = "".join(
+        f'<div class="u-cn"><span class="u-cn-n">{i+1}</span><span>{esc(x)}</span></div>'
+        for i, x in enumerate(decisions)
+    ) or '<div class="u-cn"><span>（記載なし）</span></div>'
+    _todo = "".join(f'<div class="u-todo">{esc(x)}</div>' for x in todos) or '<div class="u-body">（記載なし）</div>'
+    _other = (esc(other).replace("\n", "／") if other else "（記載なし）")
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>{_u_css}</style></head><body>
+    <div class="u-ttl">勉強会・会議の記録　<span class="u-tag">社内</span></div>
+    <table width="100%" class="u-name-row"><tr>
+      <td><span class="u-name">{title}</span></td>
+      <td class="u-date">開催日　<b>{date or "（記載なし）"}</b></td>
+    </tr></table>
+    <table width="100%" class="u-info"><tr><td>参加者：{attendees}</td></tr></table>
 
-    # スタイル別の追加CSS(担当者会議の装飾テイストを簡易流用)
-    style_css = _staff_minutes_style_css(style)
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>{_MTG_PDF_BASE_CSS}{style_css}</style></head><body>
-<h1>{title}</h1>
-<div class="sub">開催日: {date}</div>
-<table class="grid"><tr><th>参加者</th><td>{attendees}</td></tr></table>
-{body_html}
-<div class="foot">TASUKARU にて作成</div>
-</body></html>"""
+    <div class="u-h">議題</div>
+    <div class="u-body">{_items_line(topics)}</div>
+
+    <div class="u-h">議論の内容</div>
+    <div class="u-body">{esc(discussion) or "（記載なし）"}</div>
+
+    <div class="u-h">決定事項</div>
+    <div class="u-body">{_dec}</div>
+
+    <div class="u-h">ToDo</div>
+    <div class="u-body">{_todo}</div>
+
+    <div class="u-h">その他・次回に向けて</div>
+    <div class="u-body">{_other}</div>
+    </body></html>"""
 
 
 def _staff_minutes_style_css(style):
@@ -26125,7 +26305,7 @@ def api_staff_minutes_pdf():
             return jsonify({"status": "error", "message": "議事録が見つかりません"}), 404
         meeting = r.data[0]
         html_str = _staff_minutes_pdf_html(meeting, style)
-        pdf_bytes = _mtg_pdf_render(html_str)
+        pdf_bytes = _mtg_pdf_render_fit(html_str)  # staff-minutes-unified-v1: 必ず1ページ
         from urllib.parse import quote as _quote_p
         from flask import make_response
         fname = "議事録_" + (meeting.get("meeting_date") or "") + ".pdf"
