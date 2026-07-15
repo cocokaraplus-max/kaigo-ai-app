@@ -16052,26 +16052,35 @@ def admin_timecard_youshiki():
                             val = round(val * sp[title] * 2) / 2
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
 
-        # timecard-leave-note-v1: 表の下に「備考一覧」を追記（様式本体は崩さない）。
-        # 振替や「勉強会のため夕方参加」等の経緯を、月内でまとめて印刷にも残す。
+        # timecard-leave-note-v1 / prominent-v2: 表の下に「備考一覧」を追記（様式本体は崩さない）。
+        # 様式の下部には長い説明文があり見落としやすいので、赤字・太字・区切り線で目立たせる。
         if note_rows:
+            from openpyxl.styles import Font as _NoteFont, PatternFill as _NoteFill, Border as _NoteBorder, Side as _NoteSide
+            _red = _NoteFont(name="MS PGothic", size=12, bold=True, color="FFCC0000")
+            _hdrf = _NoteFont(name="MS PGothic", size=10, bold=True, color="FF000000")
+            _bodyf = _NoteFont(name="MS PGothic", size=10, color="FF000000")
+            _fill = _NoteFill(fill_type="solid", fgColor="FFFDE9D9")
+            _thin = _NoteBorder(bottom=_NoteSide(style="thin", color="FFBBBBBB"))
             for _ns in (_YS_SHEET_HALF, _YS_SHEET_FULL):
                 if _ns not in wb.sheetnames:
                     continue
                 _wsn = wb[_ns]
-                _r0 = _wsn.max_row + 2
-                _wsn.cell(row=_r0, column=1,
-                          value="■ 備考一覧（振替・経緯など）")
+                _r0 = _wsn.max_row + 3  # 説明文との間を1行以上あけて分離
+                _tc = _wsn.cell(row=_r0, column=1, value="■ 備考一覧（振替・経緯など）　※打刻時に入力できなかった経緯はここに記載")
+                _tc.font = _red
+                for _cc in range(1, 6):
+                    _wsn.cell(row=_r0, column=_cc).fill = _fill
                 _r0 += 1
                 for _ci, _hd in enumerate(("日付", "職員", "区分", "備考"), start=1):
-                    _wsn.cell(row=_r0, column=_ci, value=_hd)
+                    _hc = _wsn.cell(row=_r0, column=_ci, value=_hd)
+                    _hc.font = _hdrf
+                    _hc.border = _thin
                 for (_ds2, _nm2, _lbl2, _nt2, _sf2) in note_rows:
                     _r0 += 1
                     _dnote = _nt2 + (f"（振替元:{_sf2}）" if _sf2 else "")
-                    _wsn.cell(row=_r0, column=1, value=_ds2)
-                    _wsn.cell(row=_r0, column=2, value=_nm2)
-                    _wsn.cell(row=_r0, column=3, value=_lbl2)
-                    _wsn.cell(row=_r0, column=4, value=_dnote)
+                    for _ci2, _vv in enumerate((_ds2, _nm2, _lbl2, _dnote), start=1):
+                        _bc = _wsn.cell(row=_r0, column=_ci2, value=_vv)
+                        _bc.font = _bodyf
 
         import io as _ys_io
         buf = _ys_io.BytesIO()
