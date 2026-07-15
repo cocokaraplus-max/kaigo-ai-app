@@ -12054,23 +12054,44 @@ def api_goal_check():
             else:
                 target_months = [today.strftime('%Y-%m')]
 
+            # goal-alert-peraxis-fix-v1: 集約列(short_goal_new/long_goal_new)だけでなく
+            # 軸別の新目標(機能/活動/参加)と「変更」フラグも見る。
+            # 要介護の評価は軸別列に目標を保存するため、集約列だけ見ると軸別変更が漏れていた。
+            _GOAL_NEW_FIELDS = [
+                "training_goal", "short_goal_new", "long_goal_new",
+                "short_goal_function_new", "short_goal_activity_new", "short_goal_participation_new",
+                "long_goal_function_new", "long_goal_activity_new", "long_goal_participation_new",
+            ]
+            _GOAL_CONT_FIELDS = [
+                "short_goal_cont", "long_goal_cont",
+                "short_goal_function_cont", "short_goal_activity_cont", "short_goal_participation_cont",
+                "long_goal_function_cont", "long_goal_activity_cont", "long_goal_participation_cont",
+            ]
+            _sel = "user_name, year_month, " + ", ".join(_GOAL_NEW_FIELDS + _GOAL_CONT_FIELDS)
             for ym in target_months:
                 ev_res = supabase.table("patient_evaluations").select(
-                    "user_name, year_month, training_goal, short_goal_new, long_goal_new"
+                    _sel
                 ).eq("facility_code", f_code).eq("year_month", ym).execute()
                 for ev in (ev_res.data or []):
-                    # goal-minlen-fix: 前後空白を除いて評価。1文字や空白のみのゴミ入力は除外
-                    tg = (ev.get("training_goal") or "").strip()
-                    sg = (ev.get("short_goal_new") or "").strip()
-                    lg = (ev.get("long_goal_new") or "").strip()
-                    new_goal = tg or sg or lg
-                    if new_goal and len(new_goal) >= 2:
+                    # 「変更」フラグが立っている軸があれば変更扱い（継続はカウントしない）
+                    changed_flag = any(
+                        (ev.get(c) or "").strip() == "変更" for c in _GOAL_CONT_FIELDS
+                    )
+                    # 表示用の新目標テキスト（最初に見つかった2文字以上のもの）。
+                    # goal-minlen-fix: 前後空白を除去。1文字や空白のみのゴミ入力は無視。
+                    new_goal = ""
+                    for f in _GOAL_NEW_FIELDS:
+                        v = (ev.get(f) or "").strip()
+                        if len(v) >= 2:
+                            new_goal = v
+                            break
+                    if changed_flag or new_goal:
                         # 重複チェック
                         if not any(g["user_name"] == ev["user_name"] for g in goal_changes):
                             goal_changes.append({
                                 "user_name": ev["user_name"],
                                 "year_month": ym,
-                                "new_goal": new_goal,
+                                "new_goal": new_goal or "（目標を変更）",
                             })
             goal_changes.sort(key=lambda x: x["user_name"])
         except Exception:
