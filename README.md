@@ -2429,3 +2429,40 @@ git checkout tasukaru-dev
 - 単日: 休み連絡作成→カレンダー1件→記録削除→**0件**。
 - 複数日(飛び日3日): 作成→カレンダー3件(全て同一 record_id)→記録削除→**0件**。
 - 逆方向（カレンダー編集・削除→記録同期）は既存のまま維持。
+
+---
+
+## 【開発ログ】2026-07-15(5) タイムカード各種：休憩カウントダウン復旧・並び順・休暇備考 <!-- session-2026-07-15-timecard -->
+
+タイムカード機能で複数の不具合・要望をまとめて対応。**すべて本番反映済み**。
+
+### 1. 休憩カウントダウンが出ない（本番DDL未適用）
+
+- 原因: 本番 `timecard_records` に **`planned_break_min` 列が無かった**（DEVのみ適用されていた）。
+  列が無いと休憩開始の insert が失敗し、カウントダウンも出ない。`select("*")` 側は壊れず insert だけ落ちていた。
+- 対処: 本番で `alter table timecard_records add column if not exists planned_break_min integer;` を実行。
+- あわせて **有給の staff_leave_days テーブルは本番に存在**（information_schema で確認）＝有給側はDB問題ではなかった。
+
+### 2. 休憩カウントダウンの表示改善（`break-countdown-display-v2`）
+
+- 職員カードに残り時間が出ない → `_tcAfterPunchOk` が打刻直後に `state`だけ更新し `break_info` を更新していなかった。
+  一覧カードは `s.break_info` を見るので出なかった。→ `hit.break_info = j.break_info` を追加。
+- 表示: **入った時間は小さく・残り時間を大きく**（老眼対応）。TOPバナーは全部横並び（「休憩中」角丸＋開始時刻＋残り特大）。
+  職員カードは開始時刻〜残り時間を横並び・大きめ。超過は赤。
+- TOPバナーの「しばらく出ない」対策（`timecard-top-break-refresh-v1`）: visibilitychange / pageshow / focus / 60秒間隔で `/timecard/my_break` を取り直す。
+
+### 3. 職員カードの並び順が毎回変わる → 手動並べ替え（`timecard-staff-order-v1`）
+
+- 原因: `_tc_staff_list` が `staffs` を **order 無し**で取得していたため並びが不定。
+- 対処: 「保存した順→名前順」で必ず同じ並びに。保存順は `admin_settings(timecard_staff_order)`（JSON配列）。
+  管理者MENU→タイムカード管理→**「並び順」タブ**で↑↓して保存。API `GET/POST /api/admin/timecard_staff_order`（管理者のみ）。
+- Chrome/DEVで 逆順保存→反映→名前順に戻す まで検証。
+
+### 4. 振替休なのに夕方の勉強会に出た等の経緯を記録できない（`timecard-leave-note-v1`）
+
+- 打刻時にモーダルが出なかった日や経緯を、**本人が打刻画面から後から登録・修正**できるようにした。
+  打刻画面に「休暇・備考の登録／修正」ボタン→モーダル（日付=過去30日 / 区分 / 振替元 / 備考）。最近30日の登録一覧をタップで読込・修正。
+- API: `/timecard/leave/self` に `note` を追加保存（`staff_leave_days.note` は既存列）。一覧取得 `/timecard/leave/self_list` を新設。
+- **月次タイムカード出力（様式4）**: 表の下に「■ 備考一覧（日付・職員・区分・備考＋振替元）」を追記。半日型・1日型の両シートに出る。印刷にも残る。
+  様式本体のセルは崩さず、`ws.max_row + 2` から下に追記。
+- Chrome/DEVで 管理者登録→様式Excel生成→sheet2/3に備考一覧が入ることを openpyxl(zip)で確認。テストデータは削除済み。
