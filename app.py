@@ -4263,20 +4263,44 @@ def api_visit_month():
             rec_map[str(r['visit_date'])] = r
         # 休み連絡(records, category=休み連絡): user_name で引く。期間 leave_date_start〜end。
         leave_days = {}  # date_str -> record_id
+        # leave-scattered-fix-v1: 飛び飛びの休み連絡は、記録の start〜end を機械展開すると
+        #   間の休みでない日まで休みになる。実際の休み日はカレンダー(calendar_events)が正
+        #   (飛び日=各日単独イベント / 連続=期間イベント)なのでそれを使う。既存データもこれで是正される。
         try:
+            from datetime import timedelta as _td
             lv = supabase.table('records').select('id,leave_date_start,leave_date_end').eq('facility_code', f_code).eq('user_name', pobj.get('user_name')).eq('category', '休み連絡').execute()
-            for r in (lv.data or []):
-                ds = r.get('leave_date_start'); de = r.get('leave_date_end') or ds
+            _lv_rows = lv.data or []
+            _rec_ids = [r.get('id') for r in _lv_rows if r.get('id') is not None]
+            _ev_by_rec = {}
+            if _rec_ids:
+                try:
+                    _ce = supabase.table('calendar_events').select('record_id,event_date,end_date') \
+                        .eq('facility_code', f_code).in_('record_id', _rec_ids).execute()
+                    for e in (_ce.data or []):
+                        _ev_by_rec.setdefault(e.get('record_id'), []).append(e)
+                except Exception as _cee:
+                    print(f"visit month leave cal fetch error: {_cee}", flush=True)
+
+            def _mark_leave(ds, de, rid):
                 if not ds:
-                    continue
+                    return
                 d0 = _dt.strptime(str(ds)[:10], '%Y-%m-%d').date()
-                d1 = _dt.strptime(str(de)[:10], '%Y-%m-%d').date()
+                d1 = _dt.strptime(str(de or ds)[:10], '%Y-%m-%d').date()
                 cur = d0
-                from datetime import timedelta as _td
                 while cur <= d1:
                     if cur.year == year and cur.month == month:
-                        leave_days[cur.isoformat()] = r.get('id')
+                        leave_days[cur.isoformat()] = rid
                     cur = cur + _td(days=1)
+
+            for r in _lv_rows:
+                _evs = _ev_by_rec.get(r.get('id'))
+                if _evs:
+                    # カレンダー連携済み: 各イベント(単日 or 期間)を展開＝飛び日は各日だけ休みになる
+                    for e in _evs:
+                        _mark_leave(e.get('event_date'), e.get('end_date'), r.get('id'))
+                else:
+                    # 旧データ(カレンダー未連携)のみ従来通り記録の start〜end を展開
+                    _mark_leave(r.get('leave_date_start'), r.get('leave_date_end'), r.get('id'))
         except Exception as _le:
             print(f"visit month leave fetch error: {_le}", flush=True)
         # 日ごとに組み立て
