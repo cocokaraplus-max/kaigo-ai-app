@@ -4250,8 +4250,37 @@ def api_visit_month():
         if not pobj:
             return jsonify({'status': 'error', 'message': '利用者が見つかりません'}), 404
         patient_int_id = pobj.get('patient_int_id')
-        weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
-        nth = _visit_nth_for(supabase, f_code, patient_int_id) if patient_int_id else {}  # visit-nth-apply-v1
+        # visit-type-start-v1: 保険の曜日/型/第N週/型別開始日をまとめて取得
+        weekdays = ""
+        ampm_per_day = {}
+        nth = {}
+        half_start = ""
+        full_start = ""
+        if patient_int_id:
+            try:
+                _vdres = (supabase.table('patient_visit_days')
+                          .select('weekdays,ampm_per_day,nth_per_day,half_start_date,full_start_date')
+                          .eq('facility_code', f_code).eq('patient_id', patient_int_id).execute())
+                if _vdres.data:
+                    _vd = _vdres.data[0]
+                    weekdays = _vd.get('weekdays') or ""
+                    ampm_per_day = _vd.get('ampm_per_day') if isinstance(_vd.get('ampm_per_day'), dict) else {}
+                    nth = _visit_norm_nth(_vd.get('nth_per_day'))
+                    half_start = (str(_vd.get('half_start_date') or ''))[:10]
+                    full_start = (str(_vd.get('full_start_date') or ''))[:10]
+            except Exception as _vde:
+                print(f"visit month visit_days fetch error: {_vde}", flush=True)
+        # visit-type-start-v1: 自費曜日ルール(有効期間つき)。patient_jihi_weekdays は profile UUID(pid) 基準。
+        jihi_rules = []
+        try:
+            for _r in _jihi_rules_for(supabase, f_code, str(pid)):
+                jihi_rules.append({
+                    'weekday': int(_r.get('weekday')),
+                    'valid_from': (_r.get('valid_from') or '1900-01-01')[:10],
+                    'valid_to': ((_r.get('valid_to') or '')[:10] or None),
+                })
+        except Exception as _jre:
+            print(f"visit month jihi fetch error: {_jre}", flush=True)
         # 月の日数
         ndays = _cal.monthrange(year, month)[1]
         first = '%04d-%02d-01' % (year, month)
@@ -4308,12 +4337,34 @@ def api_visit_month():
         for d in range(1, ndays + 1):
             ds = '%04d-%02d-%02d' % (year, month, d)
             wd = _visit_weekday_of(ds)
-            planned = _visit_is_planned_weekday(weekdays, ds, nth)   # visit-nth-apply-v1
+            # visit-type-start-v1: 予定＝自費(有効期間内) or 保険予定日(型別開始日を満たす)
+            is_jihi = jihi_active_on(jihi_rules, wd, ds)
+            planned = False
+            visit_type = None   # 'jihi' / 'full'(1日) / 'half'(半日) / None(不明・旧データ)
+            if is_jihi:
+                planned = True
+                visit_type = 'jihi'
+            elif _visit_is_planned_weekday(weekdays, ds, nth):
+                _t = str(ampm_per_day.get(str(wd)) or '').upper()
+                if _t == 'ALL':
+                    if (not full_start) or ds >= full_start:   # 1日型開始日以降のみ
+                        planned = True
+                        visit_type = 'full'
+                elif _t in ('AM', 'PM'):
+                    if (not half_start) or ds >= half_start:   # 半日型開始日以降のみ
+                        planned = True
+                        visit_type = 'half'
+                else:
+                    # 型未設定(旧データ)は開始日ゲート無し＝従来どおり予定
+                    planned = True
+                    visit_type = None
             leave_id = leave_days.get(ds)
             rec = rec_map.get(ds)
             days.append({
                 'date': ds, 'day': d, 'weekday': wd,
                 'planned': planned,
+                'jihi': is_jihi,
+                'visit_type': visit_type,
                 'leave': bool(leave_id),
                 'leave_record_id': leave_id,
                 'actual': (rec.get('status') if rec else None),
@@ -4669,6 +4720,36 @@ def api_save_visit_day():
     except Exception as e:
         print(f"save_visit_day error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/save_visit_type_start', methods=['POST'])
+@login_required
+def api_save_visit_type_start():
+    """visit-type-start-v1: 半日型/1日型の利用開始日を patient_visit_days に保存。
+    payload: {patient_id(=patients.id), user_name?, half_start_date?, full_start_date?}
+    空文字は None(未設定=従来どおり)にする。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        patient_id = str(data.get("patient_id") or "").strip()
+        if not patient_id:
+            return jsonify({"status": "error", "message": "patient_id必須"}), 400
+        half = (str(data.get("half_start_date") or "").strip() or None)
+        full = (str(data.get("full_start_date") or "").strip() or None)
+        supabase = get_supabase()
+        payload = {"half_start_date": half, "full_start_date": full}
+        existing = (supabase.table("patient_visit_days").select("id")
+                    .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
+        if existing.data:
+            supabase.table("patient_visit_days").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            ins = {"facility_code": f_code, "patient_id": patient_id,
+                   "user_name": (data.get("user_name") or ""), **payload}
+            supabase.table("patient_visit_days").insert(ins).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"save_visit_type_start error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/api/save_weekday_ampm', methods=['POST'])
 @login_required
@@ -10817,7 +10898,7 @@ def patient_profile():
             pr = supabase.table('patients').select('id').eq('facility_code', f_code).eq('user_name', selected['user_name']).execute()
             if pr.data:
                 patient_id = pr.data[0]['id']
-                vr = supabase.table('patient_visit_days').select('weekdays,ampm_per_day,nth_per_day').eq('facility_code', f_code).eq('patient_id', patient_id).execute()  # visit-nth-v1
+                vr = supabase.table('patient_visit_days').select('weekdays,ampm_per_day,nth_per_day,half_start_date,full_start_date').eq('facility_code', f_code).eq('patient_id', patient_id).execute()  # visit-nth-v1 / visit-type-start-v1
                 if vr.data:
                     visit_day_data = vr.data[0]
         except Exception:
