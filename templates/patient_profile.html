@@ -645,6 +645,21 @@
           <input type="date" id="pp-jihi-date" class="form-control" style="display:none;margin-top:6px;font-size:0.82rem;">
           <div style="font-size:0.7rem;color:#8a6d1f;margin-top:5px;" id="pp-jihi-apply-hint"></div>
         </div>
+        <!-- visit-type-start-v1: 半日型/1日型の利用開始日 -->
+        <div style="margin-top:10px;padding:8px 10px;background:#eef4ff;border:1px solid #cfe0fb;border-radius:8px;">
+          <div style="font-size:0.75rem;font-weight:700;color:#185FA5;margin-bottom:5px;">利用開始日（型別・任意）</div>
+          <div style="font-size:0.7rem;color:#5f6368;margin-bottom:6px;">設定日より前は、その型の予定・実績を表示しません（月途中から開始した場合などに使用）。未設定なら従来どおり。自費は上の「自費設定の適用開始日」で管理します。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="flex:1;min-width:130px;font-size:0.78rem;color:#3c4043;">半日型 開始日
+              <input type="date" id="pp-half-start" class="form-control" style="font-size:0.82rem;margin-top:3px;">
+            </label>
+            <label style="flex:1;min-width:130px;font-size:0.78rem;color:#3c4043;">1日型 開始日
+              <input type="date" id="pp-full-start" class="form-control" style="font-size:0.82rem;margin-top:3px;">
+            </label>
+          </div>
+          <button type="button" onclick="savePPVisitTypeStart()" style="margin-top:8px;width:100%;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:9px;font-weight:700;font-size:0.82rem;cursor:pointer;">型別の利用開始日を保存</button>
+          <div id="pp-typestart-status" style="margin-top:6px;font-size:0.75rem;color:#34a853;display:none;">✓ 保存しました</div>
+        </div>
         <div id="pp-weekday-save-status" style="margin-top:8px;font-size:0.75rem;color:#34a853;display:none;">✓ 保存しました</div>
       </div>
     </div>
@@ -985,6 +1000,7 @@ function showToast(msg) {
 const PATIENT_ID = {{ patient_id | tojson }};
 const PROFILE_UUID = {{ (selected.id if selected else None) | tojson }};  // jihi-weekday-ui-v1
 const VISIT_DAY_DATA = {{ visit_day_data | tojson }};
+const SELECTED_USER_NAME = {{ (selected.user_name if selected else '') | tojson }};  // visit-type-start-v1
 const IS_WHEELCHAIR = {{ (selected.is_wheelchair if selected else False) | tojson }};  // soge-seats-ui-v1
 const DAY_KEYS = ['1','2','3','4','5','6','0'];
 const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
@@ -997,7 +1013,30 @@ const STATE_LABELS = {NONE:'×', AM:'AM', PM:'PM', ALL:'ALL'};
     btn.dataset.state = state;
     btn.textContent = STATE_LABELS[state] || '×';
   });
+  // visit-type-start-v1: 型別開始日をプリフィル
+  var _hs = document.getElementById('pp-half-start');
+  var _fs = document.getElementById('pp-full-start');
+  if (_hs) _hs.value = (VISIT_DAY_DATA && VISIT_DAY_DATA.half_start_date) ? String(VISIT_DAY_DATA.half_start_date).slice(0,10) : '';
+  if (_fs) _fs.value = (VISIT_DAY_DATA && VISIT_DAY_DATA.full_start_date) ? String(VISIT_DAY_DATA.full_start_date).slice(0,10) : '';
 })();
+// visit-type-start-v1: 型別の利用開始日を保存
+async function savePPVisitTypeStart(){
+  if (!PATIENT_ID) { alert('利用者を保存してから設定してください'); return; }
+  var half = (document.getElementById('pp-half-start')||{}).value || '';
+  var full = (document.getElementById('pp-full-start')||{}).value || '';
+  var un = SELECTED_USER_NAME || '';
+  try {
+    var res = await fetch('/api/save_visit_type_start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ patient_id: PATIENT_ID, user_name: un, half_start_date: half, full_start_date: full })
+    });
+    var j = await res.json();
+    if (j.status !== 'success') throw new Error(j.message || '保存に失敗しました');
+    var st = document.getElementById('pp-typestart-status');
+    if (st) { st.style.display='block'; setTimeout(function(){ st.style.display='none'; }, 2500); }
+    if (VISIT_DAY_DATA) { VISIT_DAY_DATA.half_start_date = half || null; VISIT_DAY_DATA.full_start_date = full || null; }
+  } catch(e){ alert(e.message); }
+}
 // jihi-validfrom-v1: 適用開始日つきで自費曜日を保存する（過去の実績を壊さない）
 function ppJihiApplyFrom() {
   var mode = document.getElementById('pp-jihi-apply').value;

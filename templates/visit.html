@@ -87,10 +87,15 @@
 
   <div class="vm-legend">
     <span><b style="color:#185FA5;">○</b> 予定</span>
+    <span><b style="color:#9334E8;">自</b> 自費</span>
     <span><b style="color:#c62828;">✕</b> 休み予定(タップで記録へ)</span>
     <span><b style="color:#2E7D32;">出</b> 出席</span>
     <span><b style="color:#9334E8;">振</b> 振替</span>
     <span><b style="color:#c62828;">休</b> 休み</span>
+  </div>
+
+  <div style="text-align:right;margin:2px 0 6px;">
+    <button id="vm-plan-toggle" onclick="vmTogglePlan()" style="font-size:0.76rem;font-weight:700;color:#185FA5;background:#e8f0fe;border:1px solid #cfe0fb;border-radius:8px;padding:5px 12px;cursor:pointer;">予定を表示</button>
   </div>
 
   <div class="vm-scrollhint">← 横にスクロールできます →</div>
@@ -104,6 +109,14 @@
 <script>
 const WD_NAMES = ['日','月','火','水','木','金','土'];
 let vmYear, vmMonth, vmPatientId = '';
+// visit-plan-collapse-v1: 予定行は既定で折りたたむ(現場の混乱防止)。トグルで表示。
+let vmShowPlan = false, _vmLastDays = null;
+function vmTogglePlan(){
+  vmShowPlan = !vmShowPlan;
+  const b = document.getElementById('vm-plan-toggle');
+  if (b) b.textContent = vmShowPlan ? '予定を隠す' : '予定を表示';
+  if (_vmLastDays) vmDrawTable(_vmLastDays);
+}
 let VM_PATIENTS = [];
 
 function vmInitMonth() {
@@ -205,6 +218,7 @@ async function vmRender() {
 }
 
 function vmDrawTable(days) {
+  _vmLastDays = days;   // visit-plan-collapse-v1: トグル再描画用に保持
   function wdClass(wd) { return wd === 0 ? 'sun' : (wd === 6 ? 'sat' : ''); }
   let dayRow = '<td class="vm-th-fixed">日付</td>';
   let wdRow = '<td class="vm-th-fixed">曜日</td>';
@@ -224,7 +238,9 @@ function vmDrawTable(days) {
         ? '<span class="vm-plan-x" onclick="vmGoRecord(\'' + d.leave_record_id + '\')">✕</span>'
         : '<span class="vm-plan-x" style="cursor:default;text-decoration:none;">✕</span>';
     } else if (d.planned) {
-      planMark = '<span class="vm-plan-o">○</span>';
+      planMark = d.jihi
+        ? '<span class="vm-plan-o" style="color:#9334E8;" title="自費">自</span>'
+        : '<span class="vm-plan-o">○</span>';
     }
     planRow += '<td class="vm-cell ' + c + '">' + planMark + '</td>';
     // 実績セル: 出席/振替(バイタル) > 休み連絡 > 経過済み予定日でバイタルなし=休。未来は空欄。
@@ -237,19 +253,17 @@ function vmDrawTable(days) {
     // visit-override-ui-v1: \u6765\u6240\u65e5(\u51fa/\u632f)\u306f\u30bf\u30c3\u30d7\u3067\u4e0a\u66f8\u304d\u30e2\u30fc\u30c0\u30eb
     if (d.actual === 'present' || d.actual === 'transfer') {
       const ov = VM_OVERRIDES[d.date] || {};
-      const isJihi = ov.payment_type === 'jihi';
+      const isJihi = ov.payment_type === 'jihi' || d.jihi;   // visit-type-start-v1: 自費予定日も自マーク
       if (isJihi) actCellExtra = ' vm-cell-jihi';
       actRow += '<td class="vm-cell ' + c + actCellExtra + '" style="cursor:pointer;" onclick="vmOpenOverride(\'' + d.date + '\')">' + actMark + (isJihi ? '<span class="vm-jihi-dot">\u81ea</span>' : '') + '</td>';
     } else {
       actRow += '<td class="vm-cell ' + c + '">' + actMark + '</td>';
     }
   });
-  const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>'
-    + '<tr>' + dayRow + '</tr>'
-    + '<tr>' + wdRow + '</tr>'
-    + '<tr>' + planRow + '</tr>'
-    + '<tr>' + actRow + '</tr>'
-    + '</tbody></table></div>';
+  const rows = ['<tr>' + dayRow + '</tr>', '<tr>' + wdRow + '</tr>'];
+  if (vmShowPlan) rows.push('<tr>' + planRow + '</tr>');   // 予定は既定で非表示(トグルで表示)
+  rows.push('<tr>' + actRow + '</tr>');
+  const html = '<div class="vm-table-wrap"><table class="vm-table"><tbody>' + rows.join('') + '</tbody></table></div>';
   document.getElementById('vm-content').innerHTML = html;
 }
 
