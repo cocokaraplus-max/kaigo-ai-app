@@ -96,11 +96,11 @@
 .lc-mode-btn.active { background:#0C447C; border-color:#0C447C; color:#fff; }
 
 /* lc-bi-simple-v1: BI(要支援・事業対象者)は紙のBIシートと同じく「点数だけ」にする。
-   要介護向けの様式3-2で必要な課題有無/環境/状況メモ/AI相談は、要支援では過剰で手が止まるため。
+   要介護向けの様式3-2で必要な課題有無/環境/状況メモは、要支援では過剰で手が止まるため非表示。
+   AI相談はBIモードでも使用可能（bi-ai-v1）。
    要素を削除せずCSSで隠すのは、保存・編集復元のJSが同じDOMを直接探しているから。 */
 body.lc-bi #lc-adl-area .lc-sub,
-body.lc-bi #lc-adl-area .lc-textfields,
-body.lc-bi #lc-adl-area .lc-assist { display:none !important; }
+body.lc-bi #lc-adl-area .lc-textfields { display:none !important; }  /* bi-ai-v1: .lc-assistはBIでも表示 */
 
 .lc-indep-btn { width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff; font-size:0.92rem; cursor:pointer; box-sizing:border-box; color:#202124; }  /* lc-indep-picker-v1 */
 .lc-indep-btn .material-symbols-outlined { font-size:20px; color:#5f6368; }
@@ -208,7 +208,7 @@ body.lc-bi #lc-adl-area .lc-assist { display:none !important; }
       <div class="lc-row" style="position:relative;"><!-- staff-name-select-v1 -->
         <label>評価者</label>
         <div style="position:relative;flex:1;">
-          <input type="text" id="lc-evaluator" placeholder="氏名を入力または選択" value="{{ my_name }}" autocomplete="off" oninput="lcStaffSearch(this.value)" onfocus="lcStaffSearch(this.value)">
+          <input type="text" id="lc-evaluator" placeholder="氏名を入力または選択" value="" autocomplete="off" oninput="lcStaffSearch(this.value)" onfocus="lcStaffSearch(this.value)">
           <div id="lc-staff-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #1a73e8;border-radius:10px;z-index:100;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);margin-top:2px;"></div>
         </div>
       </div>  {# lc-evaljob-v1 #}
