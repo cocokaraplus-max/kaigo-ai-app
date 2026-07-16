@@ -499,17 +499,20 @@ def register_patient_hub_routes(app):
         if not meeting_id:
             return jsonify({"status": "success", "added": 0, "message": "取り込める議事録が見つかりません"})
 
-        # 会議の付箋を取り込む。board_component(会議ボードの領域) → 利用者ページの zone。
-        # 会議ボード: health/bs/activity/participation/environment/personal
-        BC_TO_ZONE = {
+        # 会議の付箋を取り込む → 利用者ページの zone を決める。
+        # 優先1: board_slot(配置スロット名: bs/activity/participation/environment/personal/health)
+        # 優先2: board_component(ICF構成要素の文字: b/s/d/e)
+        # 優先3: icf_code から構成要素を引く
+        SLOT_TO_ZONE = {
             "bs": "body", "activity": "activity", "participation": "participation",
             "environment": "environment", "personal": "personal", "health": "unsorted",
         }
+        COMP_TO_ZONE = {"b": "body", "s": "body", "d": "activity", "e": "environment"}
         added = 0
         try:
             lr = (supabase.table("meeting_icf_links").select("*")
                   .eq("meeting_id", meeting_id).execute())
-            # board_component が空のとき用: icf_code→構成要素(b/s/d/e)→zone のフォールバック
+            # icf_code→構成要素(b/s/d/e) のフォールバック用
             code_comp = {}
             try:
                 mm = (supabase.table("icf_codes").select("code,component").eq("level", 2).execute())
@@ -517,18 +520,20 @@ def register_patient_hub_routes(app):
                     code_comp[c.get("code")] = (c.get("component") or "")
             except Exception:
                 pass
-            COMP_TO_ZONE = {"b": "body", "s": "body", "d": "activity", "e": "environment"}
             rows = []
             for i, s in enumerate(lr.data or []):
                 txt = (s.get("source_text") or s.get("note") or "").strip()
                 if not txt:
                     continue
-                bc = (str(s.get("board_component") or "").strip())
-                if bc:
-                    zone = BC_TO_ZONE.get(bc, "unsorted")
+                slot = str(s.get("board_slot") or "").strip().lower()
+                comp = str(s.get("board_component") or "").strip().lower()[:1]
+                if slot in SLOT_TO_ZONE:
+                    zone = SLOT_TO_ZONE[slot]
+                elif comp in COMP_TO_ZONE:
+                    zone = COMP_TO_ZONE[comp]
                 else:
-                    comp = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
-                    zone = COMP_TO_ZONE.get(comp, "unsorted")
+                    c2 = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
+                    zone = COMP_TO_ZONE.get(c2, "unsorted")
                 rows.append({
                     "facility_code": f_code,
                     "patient_profile_id": str(pid),
