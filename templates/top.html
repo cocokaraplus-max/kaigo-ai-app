@@ -188,13 +188,13 @@
 </div>
 
 <!-- timecard-top-break-countdown-v1 / big-v3 : 本人の休憩残り（全部横並び・老眼でも読める大きさ） -->
-<div id="top-break-banner" style="display:none;align-items:center;gap:12px;padding:16px 18px;
-  margin:4px 0 12px;background:#fbf0dc;border:2px solid #e6c98a;border-radius:16px;">
-  <span id="top-break-pill" style="display:inline-block;font-size:16px;font-weight:800;
-    padding:6px 14px;border-radius:12px;background:#c77d12;color:#fff;white-space:nowrap;">休憩中</span>
-  <span id="top-break-started" style="font-size:17px;font-weight:700;color:#8a6d3b;white-space:nowrap;"></span>
-  <span id="top-break-text" style="font-size:2.5rem;font-weight:800;color:#c77d12;
-    font-variant-numeric:tabular-nums;line-height:1;margin-left:auto;white-space:nowrap;"></span>
+<div id="top-break-banner" style="display:none;align-items:center;gap:8px;padding:14px 14px;
+  margin:4px 0 12px;background:#fbf0dc;border:2px solid #e6c98a;border-radius:16px;overflow:hidden;">
+  <span id="top-break-pill" style="display:inline-block;font-size:14px;font-weight:800;
+    padding:5px 11px;border-radius:12px;background:#c77d12;color:#fff;white-space:nowrap;flex:0 0 auto;">休憩中</span>
+  <span id="top-break-started" style="font-size:14px;font-weight:700;color:#8a6d3b;white-space:nowrap;flex:0 0 auto;"></span>
+  <span id="top-break-text" style="font-size:clamp(1.4rem,6vw,2.2rem);font-weight:800;color:#c77d12;
+    font-variant-numeric:tabular-nums;line-height:1;margin-left:auto;white-space:nowrap;flex:0 1 auto;min-width:0;"></span>
 </div>
 <!-- timecard-top-btn-v1 : 承認済み打刻デバイスのときだけ表示 -->
 <a id="tc-top-punch-link" href="/timecard"
@@ -900,7 +900,8 @@ document.querySelectorAll('.history-item[data-user]').forEach(function(el) {
     if(started){ started.textContent = hh+":"+mm+"〜"; started.style.color = over ? "#a5453b" : "#8a6d3b"; }
     if(pill){ pill.style.background = over ? "#c0392b" : "#c77d12"; }
     txt.style.color = over ? "#c0392b" : "#c77d12";
-    txt.textContent = (over ? "超過 " : "残り ") + _bFmt(remain);
+    // big-v4: 「残り/超過」は小さめ・数字は大きく。狭い画面でもはみ出さないよう分ける。
+    txt.innerHTML = '<span style="font-size:0.5em;font-weight:700;">' + (over ? "超過" : "残り") + '</span> ' + _bFmt(remain);
   }
   async function _bLoad(){
     try{
