@@ -2475,3 +2475,10 @@ git checkout tasukaru-dev
 ### 検証（Chrome/DEV・DEMO001）
 - get/保存/家族/病歴(手入力・承認・AI候補)/ICF(追加・領域移動・保存・できる/できない=赤)/議事録取り込み(実データ25枚→心身8・活動14・環境3に振り分け)/AI性質(122件から生成)/AI-ICF生成(16項目・できる8/できない8) を確認。`icf/generate` は保存しないこと(dbIcfCount=0)も確認。
 - ダミー利用者「検証ハブ 花子(No.ZZ999)」で全カードの見た目を確認（数秘4/病歴/家系図/ICF赤）。**DEV限定**（本番Supabaseには存在しない）。テストデータは削除済み。
+
+### 追記(A): 担当者会議のICF分類に「できる/できない」を追加 <!-- patient-hub-v1-A -->
+議事録の音声/アセスメント→ICF分類（`/api/meeting/classify_icf`, Claude）で、各項目に **polarity(can/cannot)** を付与。"できないこと"も必ず拾う指示。DDL: `db/meeting_icf_polarity.sql`（`meeting_icf_links.polarity`。**本番適用必須**）。
+- 会議保存(`/api/meeting/save`)で polarity 永続化。`admin_meetings.html` の付箋ボードで **できない=赤＋「できない」バッジ＋できる/できないトグル**（承認・needs_review の色分けと併存、承認緑は保持）。
+- ハブの議事録取り込み(`icf/import`)が polarity を読んで利用者ページでも **できない=赤**。
+- 検証(DEV): 分類が polarity を返す(できる/できない判定も的確)／使い捨て会議を保存→取り込みで cannot が赤で入る／ボードのトグルで can↔cannot 反転 を確認。使い捨て会議はDEVでSQL削除。
+- なお `icf/generate`(B・記録からAI生成) も同じ polarity を返し、ボードに追加→保存の運用。A(会議由来)とB(記録由来)の両方から できない=赤 が入る。
