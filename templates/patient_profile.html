@@ -481,16 +481,19 @@
             </div>
           </div>
 
+          <!-- patient-hub-v1: 既往歴・家族構成の入力は［利用者情報］ページに一本化（二重入力を避けるため撤去）。ここは現在値の表示のみ。 -->
           <div class="form-group span2">
-            <label>既往歴</label>
-            <textarea id="medical_history" name="medical_history"
-              placeholder="例: 脳梗塞（2018年）、高血圧、糖尿病">{{ selected.medical_history if selected else '' }}</textarea>
-          </div>
-
-          <div class="form-group span2">
-            <label>家族構成</label>
-            <textarea id="family_structure" name="family_structure"
-              placeholder="例: 長女と二人暮らし（長女：50代、日中は仕事）">{{ selected.family_structure if selected else '' }}</textarea>
+            <label>既往歴・家族構成</label>
+            <div style="padding:10px 12px; border:1.5px dashed #cfe0fb; border-radius:10px; background:#f8fbff; font-size:0.82rem; color:#3c4043;">
+              <div style="color:#1a73e8; font-weight:700; margin-bottom:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px; vertical-align:-3px;">info</span>
+                既往歴・家族構成・職歴・趣味嗜好などは
+                <a href="/patient-info" onclick="spaNav(event,'/patient-info')" style="color:#1a73e8; font-weight:700;">［利用者情報］ページ</a>
+                で入力してください。
+              </div>
+              <div style="margin-bottom:4px;"><span style="color:#80868b; font-size:0.72rem;">既往歴</span><br>{{ selected.medical_history if (selected and selected.medical_history) else '（未入力）' }}</div>
+              <div><span style="color:#80868b; font-size:0.72rem;">家族構成</span><br>{{ selected.family_structure if (selected and selected.family_structure) else '（未入力）' }}</div>
+            </div>
           </div>
 
         </div>
@@ -770,7 +773,9 @@ async function saveProfile(e) {
     'patient_number','user_name','user_name_kana','postal_code','address',
     'birth_date','gender','care_level','certification_start_date','certification_end_date',
     'support_office','care_manager_name','delegate_office',
-    'medical_history','family_structure','service_start_date','discontinued_date',
+    // patient-hub-v1: medical_history/family_structure は［利用者情報］ページで入力に一本化。
+    // この編集ページの保存対象から外す（外さないと入力欄撤去で null 上書き＝データ消失になる）。
+    'service_start_date','discontinued_date',
     'long_goal','long_goal_period_from','long_goal_period_to',
     'short_goal','short_goal_period_from','short_goal_period_to',
     'long_goal_function','short_goal_function',
