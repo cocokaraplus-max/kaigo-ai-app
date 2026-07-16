@@ -2471,3 +2471,33 @@ git checkout tasukaru-dev
   各職員の打刻表の下に赤字「備考」→「日付　区分：備考（振替元:○/○）」。`_tc_build_monthly_data` は打刻の無い職員も含むので、
   **打刻ゼロで備考だけの職員も表示**（skip条件を `not days and not notes` に変更）。Chrome/DEVでPDFテキスト抽出で確認。
   → 備考は「様式4Excel末尾の備考一覧」と「勤怠集計PDFの職員ごと備考」の2箇所に出る。
+
+## 【開発ログ】2026-07-16 利用者情報ハブ（見る/入力・家系図・ICF付箋・病歴タイムライン・数秘・AI性質/ICF生成） <!-- patient-hub-v1 -->
+
+既存の利用者情報ページ `/patient-info`（`patient_info_integration.py`＝ケアプラン）を拡張し、**検索した利用者の全履歴を1ページで見る/入力できるハブ**を新規実装。バックエンドは別モジュール `patient_hub_integration.py`（`register_patient_hub_routes(app)` を app.py で登録）。**全施設向け**。マーカー `patient-hub-v1`。
+
+### 目的・方針
+- 基本情報（既往歴・家族構成・職歴・趣味嗜好・好き嫌い）の入力を**この1ページに集約**（「どっちに入れる？」を無くす）。既往歴/家族構成は既存 `patient_profiles` の列をそのまま流用（データ移行ゼロ）。旧・編集ページ側の該当欄は今後撤去予定。
+- 1ページ内に **「見る／入力」タブ**。選択利用者はタブを変えても保持＝ページ移動なし。「見る」の各カードの✏️で「入力」へジャンプ。
+
+### データ（DDL: `db/patient_hub.sql`＋`db/patient_hub_icf_polarity.sql`。冪等。**本番適用必須**）
+- `patient_profiles` に列追加: `job_history / hobbies / likes / dislikes`。
+- `patient_family_members`（家系図: sex `m/f`, relation_role `self/spouse/child/parent/sibling/other`, is_self/is_deceased/is_cohabiting/age/sort_order）。
+- `patient_medical_events`（病歴タイムライン: event_ym, label, detail, severity, source `manual/record_ai`, status `candidate/approved/dismissed`）。承認済みのみ表示、AI候補は承認/却下。
+- `patient_icf_stickies`（ICF付箋: zone `body/activity/participation/environment/personal/unsorted`, text, icf_code, **polarity `can/cannot`**, source_meeting_id）。
+- `patient_personality_cache`（AI性質: traits(JSON文字列), summary, source_count。1利用者1行upsert）。
+
+### 主なAPI（`/api/patient-hub/*`。キーは facility_code + patient_profile_id=patient_profiles.id）
+- `get`（基本情報＋家族＋病歴(承認/候補)＋ICF＋性質＋数秘をまとめて返す）/ `save-basic` / `family/save`（一括置換）/ `medical/add` `medical/set-status`（承認/却下/削除）/ `medical/scan`（記録からAIで病歴候補=candidate）/ `icf/save`（一括置換）/ `icf/import`（議事録の付箋を取り込み）/ `icf/generate`（記録からAIで「できる/できない」ICF案を返す・**保存はしない**）/ `personality/generate` / `hobby-ocr`（趣味嗜好シートOCR。レシートOCRと同じ Gemini）。
+
+### 実装の勘所
+- **数秘**は既存の誕生日会ロジックと同じライフパスナンバー（1-9,11,22,33）をモジュール内 `_calc_numerology` に再実装＋傾向辞書。
+- **家系図**は続柄で世代を判定して SVG を自動レイアウト（親→本人/配偶者/兄弟→子）。本人=二重枠、故人=×(赤)、性別 ○/□（不明=ひし形）、同居=点線枠、婚姻・親子=線。エディタ（続柄・性別・年齢・同居・故人）で即プレビュー。
+- **ICF付箋**は pointer イベントで自作ドラッグ（iOSの sticky/慣性破綻を避けるため HTML5 DnD は不使用）。⠿ハンドルでつまむ→`elementFromPoint` で領域判定。文字は contenteditable、`board.addEventListener` の委譲でイベント処理（再描画で listener を失わない）。
+- **できる/できない**: 付箋に `polarity`。できない=赤。「見る」では領域見出しに「（できないこと有り）」注記。どの領域に不足があるか一目で分かる。
+- **議事録取り込み**: `meetings.patient_id`(=patient_profiles.id) で直近会議を特定→`meeting_icf_links` を取り込み。領域は **board_slot(配置スロット: bs/activity/participation/environment/personal/health) 優先 → board_component(構成要素 b/s/d/e) → icf_code から構成要素** の順で判定（b/s→心身機能, d→活動, e→環境）。
+- **AI生成(B)**: `icf/generate` は記録を読んで5領域＋できる/できない で ICF案を返すだけ（DB保存しない）。フロントがボードに追加→職員が確認・修正・ドラッグ→「ICF付箋を保存」で確定。議事録音声側(A)への できないこと分類は今後の拡張余地。
+
+### 検証（Chrome/DEV・DEMO001）
+- get/保存/家族/病歴(手入力・承認・AI候補)/ICF(追加・領域移動・保存・できる/できない=赤)/議事録取り込み(実データ25枚→心身8・活動14・環境3に振り分け)/AI性質(122件から生成)/AI-ICF生成(16項目・できる8/できない8) を確認。`icf/generate` は保存しないこと(dbIcfCount=0)も確認。
+- ダミー利用者「検証ハブ 花子(No.ZZ999)」で全カードの見た目を確認（数秘4/病歴/家系図/ICF赤）。**DEV限定**（本番Supabaseには存在しない）。テストデータは削除済み。
