@@ -331,7 +331,8 @@
           <div class="section-title">
             <span class="material-symbols-outlined" style="font-size:20px;">sticky_note_2</span>ICF付箋ボード
           </div>
-          <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。議事録の付箋も取り込めます。</div>
+          <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。<b style="color:#c5221f;">できない</b>は赤で表示されます。議事録の付箋取り込み・記録からのAI生成もできます。</div>
+          <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">記録からAIで生成（できる/できない）</button>
           <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">議事録から取り込み</button>
           <div id="icfBoard" style="margin-top:10px;"></div>
           <button id="saveIcfBtn" class="btn-primary" style="margin-top:6px;" onclick="window.patientInfoApp.saveIcf()">
@@ -717,6 +718,22 @@ const PATIENTS = {{ patients | tojson }};
                 await this.loadHub(this.currentPatient, false);
             } catch (e) { this.showError(e.message); }
             finally { btn.disabled = false; }
+        },
+
+        async generateIcf() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            this.showSuccess("記録からICF案を生成しています…");
+            try {
+                const r = await fetch("/api/patient-hub/icf/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "生成に失敗しました");
+                const items = j.stickies || [];
+                if (!items.length) { this.showError(j.message || "生成できる項目がありませんでした"); return; }
+                items.forEach(s => this.icfStickies.push({ zone: s.zone || "unsorted", text: s.text || "", icf_code: "", polarity: s.polarity === "cannot" ? "cannot" : "can" }));
+                this.renderIcfBoard();
+                this.switchTab("input");
+                this.showSuccess(`ICF案を${items.length}件追加しました。内容を確認して「ICF付箋を保存」を押してください。`);
+            } catch (e) { this.showError(e.message); }
         },
 
         async importIcf() {

@@ -551,6 +551,75 @@ def register_patient_hub_routes(app):
         return jsonify({"status": "success", "added": added})
 
     # ==========================================================
+    # ICF：ケース記録からAIで「できる/できない」付きICF案を生成（保存せず返す）
+    # フロントがボードに追加→職員が確認して保存する運用。
+    # ==========================================================
+    @app.route('/api/patient-hub/icf/generate', methods=['POST'])
+    @login_required
+    def api_hub_icf_generate():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        data = request.json or {}
+        pid = (data.get("pid") or "").strip()
+        pp = _pp_row(supabase, f_code, pid) if pid else None
+        if not pp:
+            return jsonify({"status": "error", "message": "利用者が特定できません"}), 400
+        user_name = pp.get("user_name")
+
+        try:
+            rr = (supabase.table("records").select("created_at,category,content")
+                  .eq("facility_code", f_code).eq("user_name", user_name)
+                  .order("created_at", desc=True).limit(200).execute())
+            recs = rr.data or []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"記録取得失敗: {e}"}), 500
+        if not recs:
+            return jsonify({"status": "success", "stickies": [], "message": "対象の記録がありません"})
+
+        lines = []
+        for r in recs:
+            c = (r.get("content") or "").replace("\n", " ").strip()
+            if c:
+                lines.append(c[:160])
+        joined = "\n".join(lines[:200])
+
+        prompt = (
+            "以下は介護施設の1利用者のケース記録の抜粋です。\n"
+            "この人の状態をICF（国際生活機能分類）の視点で整理してください。\n"
+            "『できること(can)』だけでなく『できないこと/支障(cannot)』も必ず拾ってください。\n"
+            "各項目を次の領域(zone)に分類:\n"
+            "  body=心身機能・身体構造 / activity=活動(日常動作) / participation=参加(役割・社会)\n"
+            "  environment=環境因子(家族・住環境・支援) / personal=個人因子(性格・生活歴など)\n"
+            "polarity は can(できる/良好) か cannot(できない/支障) のどちらか。\n"
+            "短い体言止めで、1項目1事実。医療診断はしない。最大16項目。\n"
+            "必ず次のJSONのみを返す（説明文禁止）:\n"
+            '{"stickies":[{"zone":"activity","text":"屋内は伝い歩き","polarity":"can"},'
+            '{"zone":"activity","text":"入浴は全介助","polarity":"cannot"}]}\n\n'
+            "=== 記録 ===\n" + joined
+        )
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content(prompt)
+            text = (resp.text or "").strip()
+            m = re.search(r'\{.*\}', text, re.DOTALL)
+            items = _json.loads(m.group())["stickies"] if m else []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"AI生成失敗: {e}"}), 500
+
+        _zones = {"body", "activity", "participation", "environment", "personal"}
+        out = []
+        for it in items:
+            txt = (str(it.get("text") or "")).strip()
+            if not txt:
+                continue
+            zone = it.get("zone") if it.get("zone") in _zones else "unsorted"
+            pol = it.get("polarity") if it.get("polarity") in ("can", "cannot") else "can"
+            out.append({"zone": zone, "text": txt, "polarity": pol})
+        return jsonify({"status": "success", "stickies": out})
+
+    # ==========================================================
     # 性質推測：ケース記録からAIで人となりを生成（キャッシュ上書き）
     # ==========================================================
     @app.route('/api/patient-hub/personality/generate', methods=['POST'])
