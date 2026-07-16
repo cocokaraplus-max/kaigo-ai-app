@@ -1171,32 +1171,6 @@ HIRO案: TASUKARUのLINEに**リッチメニュー**を作り、管理者は「T
 - DEVテストデータは都度クリーンアップ（`WHERE onboard_id IS NOT NULL` で施設＋staffs削除）。この日のテスト施設は削除済み。
 - 初回設定リンクは `https://` で送出（`request.host_url` を https 補正済み）。
 
-
----
-
-## §30 施設オンボーディング＋職員LINE利用開始 本番リリース（2026-07-04）
-
-### 完了（本番反映済み）
-- **職員LINE利用開始をリッチメニュー方式に一本化**。`/api/staff/start_link`（3点照合：facility_code+staff_name+link_code(6桁)+line_user_id → setup_token発行 → /setup）、`/staff_start`（LIFF, ID `2010588249-eVxq4tL5`）。管理者MENUに「利用開始コードを発行」ブロック新設（旧招待QR `/invite` は画面から撤去、バックエンドは残置＝無害）。発行API `/api/admin/issue_link_code`。
-- **リッチメニュー**（Messaging API「TASUKARU」`2010177151`）を作成・公開。横3分割・白線アイコン。利用開始(リンク→LIFF)／パスワード再発行(テキスト「パスワード」)／アプリ改善依頼(テキスト「アプリ改善依頼」)。webhook に kaizen 返信分岐（marker `staff-kaizen-reply-v1`）。LINE応答設定の「応答メッセージ」をオフにし標準自動応答を停止。
-- **決済後の「LINEで開く?」ループ修正**（marker `onboard-done-v1`）。Stripe Checkout の success_url を `/onboard`(LIFF) → `/onboard/done`(LIFF非読込, テンプレ `onboard_done.html`) に変更。本番でテスト決済しループ消滅を確認。
-- **ガイド**（manual.html）に「LINE利用開始」セクション追加（marker `manual-line-start-v1`）。
-- **チラシQR** 作成：オンボーディング誘導 `https://liff.line.me/2010588249-kQNvvhlg`。新規=QRから登録フォーム直行、職員=友だち追加してリッチメニュー、で動線分離。
-
-### 本番展開
-- 本番Supabase DDL（IF NOT EXISTS）：staffs に line_user_id/link_code/link_code_expires/setup_token/setup_token_expires、facilities に onboard_id/contact_email。
-- 本番Cloud Run 環境変数：LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET を追加（DEVと同値、チャンネル共通）。LINE_TOKEN_ENC_KEY はDEV/本番で別値が正しい（触らない）。
-- LINE設定を本番URLへ切替：Webhook `/line/webhook/tasukaru`、LIFF `/onboard`(2010588249-kQNvvhlg)・`/staff_start`(2010588249-eVxq4tL5)。→ 副作用：DEVのLINE機能テストは今後不可（チャンネル共通のため）。
-- tasukaru-dev → tasukaru マージ・本番デプロイ・本番E2E確認済み。テスト施設 f021e9f1a46 はクリーンアップ削除。
-
-### 次タスク（最優先：Stripe本番化）
-- Stripeアカウント本番未有効化。必須タスク2つ：担当者本人確認書類の提出、セキュリティ対策措置状況申告書（「後で続けるために保存」で中断中。全項目「はい/対象外」でないと受理されず虚偽申告不可）。
-- 申告書クリアのため TASUKARU に実装が必要（現状はセッション+パスワード認証のみ）：
-  1. アカウントロック（ログイン失敗回数制限、10回以下）
-  2. 管理者画面のIP制限orベーシック認証（Cloud Run環境ではBasic認証が現実的）
-  3. 二段階/多要素認証（メールコード方式が現実的）
-- 認証実装の着手点：before_request(app.py 39行, 現状セッション永続化のみ=土台に使える)、/login(1435行〜)、admin_auth(9457行)、is_admin_user。
-- 有効化後の技術タスク：本番モードでPrice ID 21個作成、本番Cloud Runに STRIPE_SECRET_KEY(live)+本番Price ID+Webhook署名シークレット設定、Webhook本番登録。本番運用開始までオンボーディングQRは外部配布しない（現在STRIPE_SECRET_KEYは削除済みで決済は動かない状態）。
 ---
 
 ## セキュリティ実装（2026-07-05 / Stripe本番化・申告書対応）
