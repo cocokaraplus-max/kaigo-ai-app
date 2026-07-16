@@ -534,6 +534,7 @@ async function mtgOpen(meetingId) {
         slot: mtgSlotOf(s.board_component || mtgCompOf(s.icf_code) || 'b', s.board_slot),
         source_text: s.source_text || '',
         note: s.note || '',
+        polarity: (s.polarity === 'cannot' ? 'cannot' : 'can'),
         confidence: s.confidence || 'auto',
         confirmed: !!s.confirmed,
         alt_icf_code: s.alt_icf_code || null,
@@ -895,6 +896,7 @@ async function mtgClassify() {
         slot: mtgSlotOf(x.component || 'b', null),
         source_text: x.source_text || '',
         note: '',
+        polarity: (x.polarity === 'cannot' ? 'cannot' : 'can'),
         confidence: x.confidence || 'auto',
         confirmed: false,
         alt_icf_code: x.alt_icf_code || null,
@@ -922,6 +924,7 @@ async function mtgSave() {
       icf_code: c.icf_code || null,
       source_text: c.source_text || null,
       note: c.note || null,
+      polarity: (c.polarity === 'cannot' ? 'cannot' : 'can'),
       confidence: c.confidence || 'auto',
       confirmed: !!c.confirmed,
       board_component: c.component,
@@ -1137,11 +1140,11 @@ function mtgWireBoard(){
     e.stopPropagation(); const slot=b.dataset.add;
     if(MTG_SLOTS[slot] && MTG_SLOTS[slot].codeless){
       const v = prompt(MTG_SLOTS[slot].name+'のメモを入力'); if(v && v.trim()){
-        mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:'', title_ja:'', component:'', slot:slot, source_text:'', note:v.trim(), confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 });
+        mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:'', title_ja:'', component:'', slot:slot, source_text:'', note:v.trim(), polarity:'can', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 });
         mtgRenderBoard(); }
     } else {
       const presetComp = (slot==='bs') ? null : (slot==='environment' ? 'e' : 'd');
-      mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, slot:slot, source_text:'', note:'', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, presetComp); }
+      mtgOpenIcfPicker(c=>{ mtgState.boardCards.push({ id:mtgState.cardSeq++, icf_code:c.code, title_ja:c.title_ja, component:c.component, slot:slot, source_text:'', note:'', polarity:'can', confidence:'auto', confirmed:false, alt_icf_code:null, alt_title_ja:null, alt_reason:null, sort_order:999 }); mtgRenderBoard(); }, presetComp); }
   });
 
   // ドラッグ(PC: HTML5 DnD / タッチ: Pointer Events)。スロット間移動。

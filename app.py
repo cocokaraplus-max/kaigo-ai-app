@@ -25076,6 +25076,8 @@ def api_meeting_save():
                 "sort_order": int(s.get("sort_order") or 0),
                 "alt_icf_code": alt,
                 "alt_reason": s.get("alt_reason") or None,
+                # patient-hub-v1 A: できる/できない（cannot=支障）。既定 can。
+                "polarity": (s.get("polarity") if s.get("polarity") in ("can", "cannot") else "can"),
             }
             supabase.table("meeting_icf_links").insert(link).execute()
             saved += 1
@@ -25995,12 +25997,17 @@ def api_meeting_classify_icf():
 1つの発言が複数コードに該当する場合は複数返して構いません。
 意味が近くて迷うコードがある場合は、次点候補(alt)を1つだけ添えてください。
 該当が曖昧・確信が持てないものは confidence を "needs_review" にしてください。
+【できる/できない】各項目に polarity を必ず付けてください。
+  "can"    = できる・良好・実行できている・保たれている 状態
+  "cannot" = できない・支障がある・介助が必要・低下している 状態
+"できないこと"も必ず拾って cannot として分類してください（どの領域に支障があるか把握するため）。
 
 出力は以下のJSON配列のみ。前置き・説明・マークダウンの```は一切禁止。
 [
   {{
     "icf_code": "d450",
     "source_text": "議事録中の根拠となった箇所を短く引用",
+    "polarity": "cannot",
     "confidence": "auto",
     "alt_icf_code": "d460",
     "alt_reason": "移動全般とも取れるため"
@@ -26037,11 +26044,14 @@ def api_meeting_classify_icf():
             alt = str(s.get("alt_icf_code") or "").strip()
             if alt and alt not in valid_codes:
                 alt = ""
+            _pol = str(s.get("polarity") or "").strip().lower()
+            _pol = _pol if _pol in ("can", "cannot") else "can"
             results.append({
                 "icf_code": c,
                 "title_ja": code_to_title.get(c, ""),
                 "component": code_to_comp.get(c, ""),
                 "source_text": s.get("source_text", ""),
+                "polarity": _pol,
                 "confidence": s.get("confidence", "auto"),
                 "alt_icf_code": alt or None,
                 "alt_title_ja": code_to_title.get(alt, "") if alt else None,

@@ -534,12 +534,14 @@ def register_patient_hub_routes(app):
                 else:
                     c2 = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
                     zone = COMP_TO_ZONE.get(c2, "unsorted")
+                _pol = s.get("polarity")
                 rows.append({
                     "facility_code": f_code,
                     "patient_profile_id": str(pid),
                     "zone": zone,
                     "text": txt,
                     "icf_code": (s.get("icf_code") or None),
+                    "polarity": (_pol if _pol in ("can", "cannot") else None),
                     "sort_order": int(s.get("sort_order") or i),
                     "source_meeting_id": meeting_id,
                 })
