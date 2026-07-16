@@ -484,13 +484,13 @@ def register_patient_hub_routes(app):
             return jsonify({"status": "error", "message": "利用者が特定できません"}), 400
         user_name = pp.get("user_name")
 
-        # この利用者の直近の担当者会議を1件（meetings に user_name 列がある前提。無ければ空振り）
+        # この利用者の直近の担当者会議を1件（meetings.patient_id = patient_profiles.id で紐づく）
         meeting_id = (data.get("meeting_id") or "").strip()
         try:
             if not meeting_id:
-                mq = (supabase.table("meetings").select("id,created_at")
-                      .eq("facility_code", f_code).eq("user_name", user_name)
-                      .order("created_at", desc=True).limit(1).execute())
+                mq = (supabase.table("meetings").select("id,meeting_date")
+                      .eq("facility_code", f_code).eq("patient_id", str(pid))
+                      .order("meeting_date", desc=True).limit(1).execute())
                 if mq.data:
                     meeting_id = mq.data[0]["id"]
         except Exception:
@@ -498,40 +498,30 @@ def register_patient_hub_routes(app):
         if not meeting_id:
             return jsonify({"status": "success", "added": 0, "message": "取り込める議事録が見つかりません"})
 
-        # 会議の付箋（board_slot が付いているもの＝配置済み）を取り込む
+        # 会議の付箋を取り込む。board_component(会議ボードの領域) → 利用者ページの zone。
+        # 会議ボード: health/bs/activity/participation/environment/personal
+        BC_TO_ZONE = {
+            "bs": "body", "activity": "activity", "participation": "participation",
+            "environment": "environment", "personal": "personal", "health": "unsorted",
+        }
         added = 0
         try:
             lr = (supabase.table("meeting_icf_links").select("*")
                   .eq("meeting_id", meeting_id).execute())
-            # ICFコード→領域(component)の対応
-            code_comp = {}
-            try:
-                mm = (supabase.table("icf_codes").select("code,component").eq("level", 2).execute())
-                for c in (mm.data or []):
-                    code_comp[c.get("code")] = c.get("component")
-            except Exception:
-                pass
-            zone_map = {  # component → 利用者ページの zone
-                "body": "body", "b": "body", "s": "body",
-                "activity": "activity", "d": "activity",
-                "participation": "participation",
-                "environment": "environment", "e": "environment",
-                "personal": "personal",
-            }
             rows = []
             for i, s in enumerate(lr.data or []):
-                txt = (s.get("source_text") or s.get("text") or "").strip()
+                txt = (s.get("source_text") or s.get("note") or "").strip()
                 if not txt:
                     continue
-                comp = code_comp.get(s.get("icf_code")) or (s.get("component") or "")
-                zone = zone_map.get(str(comp).lower(), "unsorted")
+                bc = (str(s.get("board_component") or "").strip())
+                zone = BC_TO_ZONE.get(bc, "unsorted")
                 rows.append({
                     "facility_code": f_code,
                     "patient_profile_id": str(pid),
                     "zone": zone,
                     "text": txt,
                     "icf_code": (s.get("icf_code") or None),
-                    "sort_order": i,
+                    "sort_order": int(s.get("sort_order") or i),
                     "source_meeting_id": meeting_id,
                 })
             if rows:
