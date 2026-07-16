@@ -1243,10 +1243,39 @@ async function loadJihiState(){
     VISIT_OVERRIDES = (b && b.overrides) ? b.overrides : {};
   } catch(e){ VISIT_OVERRIDES = {}; }
 }
+// jihi-confirm-v1: \u81ea\u8cbb\u767b\u9332\u524d\u306b\u78ba\u8a8d\u30e2\u30fc\u30c0\u30eb\u3092\u8868\u793a
+function _jihiConfirm(pname) {
+  return new Promise(function(resolve) {
+    var old = document.getElementById('jihi-confirm-modal');
+    if (old) old.remove();
+    var modal = document.createElement('div');
+    modal.id = 'jihi-confirm-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:300px;width:100%;padding:22px 20px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.18);">'
+      + '<div style="font-size:2rem;margin-bottom:8px;">\ud83d\udcb4</div>'
+      + '<div style="font-weight:800;font-size:1rem;color:#202124;margin-bottom:6px;">\u81ea\u8cbb\u3068\u3057\u3066\u767b\u9332\u3057\u307e\u3059\u304b\uff1f</div>'
+      + '<div style="font-size:0.82rem;color:#5f6368;margin-bottom:18px;line-height:1.6;">\u672c\u65e5\u306e <b>' + pname + '</b> \u3055\u3093\u306e\u5229\u7528\u3092<br>\u81ea\u8cbb\u3068\u3057\u3066\u767b\u9332\u3057\u307e\u3059\u3002</div>'
+      + '<div style="display:flex;gap:10px;">'
+      + '<button id="jihi-cancel-btn" style="flex:1;padding:11px;border-radius:9px;border:1.5px solid #dadce0;background:#fff;font-weight:700;color:#5f6368;cursor:pointer;font-size:0.9rem;">\u30ad\u30e3\u30f3\u30bb\u30eb</button>'
+      + '<button id="jihi-ok-btn" style="flex:1;padding:11px;border-radius:9px;border:none;background:#e8a33d;font-weight:800;color:#fff;cursor:pointer;font-size:0.9rem;">\u81ea\u8cbb\u3067\u767b\u9332</button>'
+      + '</div></div>';
+    document.body.appendChild(modal);
+    document.getElementById('jihi-ok-btn').onclick = function(){ modal.remove(); resolve(true); };
+    document.getElementById('jihi-cancel-btn').onclick = function(){ modal.remove(); resolve(false); };
+    modal.addEventListener('click', function(e){ if (e.target === modal){ modal.remove(); resolve(false); } });
+  });
+}
 window.toggleVitalJihi = async function(pid){
   var ds = _vitalDateStr();
   var cur = isJihiInit(pid);
   var next = cur ? 'hoken' : 'jihi';
+  // jihi-confirm-v1: \u81ea\u8cbb\u306b\u5207\u308a\u66ff\u3048\u308b\u3068\u304d\u3060\u3051\u78ba\u8a8d\u3092\u51fa\u3059\uff08\u4fdd\u967a\u306b\u623b\u3059\u3068\u304d\u306f\u4e0d\u8981\uff09
+  if (next === 'jihi') {
+    var jbtn = document.querySelector('.vital-jihi-btn[data-pid="' + pid + '"]');
+    var pname = (jbtn && jbtn.dataset.name) ? jbtn.dataset.name : '\u5229\u7528\u8005';
+    var ok = await _jihiConfirm(pname);
+    if (!ok) return;
+  }
   // \u753b\u9762\u5373\u6642\u53cd\u6620
   VISIT_OVERRIDES[String(pid)] = Object.assign({}, VISIT_OVERRIDES[String(pid)] || {}, {payment_type: next});
   var card = document.getElementById('vcard-' + pid);
@@ -1673,7 +1702,7 @@ function renderPatientList() {
                         </span>
                         <span style="font-size:0.7rem;color:#80868b;">${p.user_kana || ''}</span>
                     </button>
-                    <button type="button" class="vital-jihi-btn" data-pid="${p.id}" data-jihi="${isJihiInit(p.id) ? '1' : '0'}" onclick="event.stopPropagation(); toggleVitalJihi('${p.id}')">\u81ea\u8cbb</button>
+                    <button type="button" class="vital-jihi-btn" data-pid="${p.id}" data-name="${p.user_name||''}" data-jihi="${isJihiInit(p.id) ? '1' : '0'}" onclick="event.stopPropagation(); toggleVitalJihi('${p.id}')">\u81ea\u8cbb</button>
                 </div>
             </div>`;
         }).join('') + `</div>`;
