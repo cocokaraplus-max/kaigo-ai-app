@@ -13479,6 +13479,10 @@ register_patient_info_routes(app)
 from patient_info_import_integration import register_import_routes
 register_import_routes(app)
 
+# patient-hub-v1: 利用者情報ページを「見る/入力」ハブに拡張するAPI群
+from patient_hub_integration import register_patient_hub_routes
+register_patient_hub_routes(app)
+
 
 
 # ===== 掲示板カテゴリー管理API =====
