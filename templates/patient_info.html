@@ -71,6 +71,49 @@
     padding: 4px 8px; background: #e8f0fe; border-radius: 6px;
     display: inline-block;
 }
+
+/* patient-hub-v1: 見る/入力タブ */
+.hub-tabs { display:flex; gap:6px; background:#f1f3f4; border-radius:12px; padding:4px; margin-bottom:14px; }
+.hub-tab { flex:1; text-align:center; padding:9px 0; font-size:0.9rem; font-weight:700; color:#5f6368; border-radius:9px; cursor:pointer; border:1.5px solid transparent; }
+.hub-tab.active { background:#fff; color:#202124; border-color:#e0e0e0; }
+.hub-tab .material-symbols-outlined { font-size:18px; vertical-align:-3px; margin-right:4px; }
+
+/* 見る：カード内の小見出し・行 */
+.v-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:14px; padding:14px; margin-bottom:12px; }
+.v-card-h { font-size:0.86rem; font-weight:700; color:#1a73e8; display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.v-card-h .edit-jump { margin-left:auto; font-size:0.72rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:4px 10px; cursor:pointer; font-weight:700; }
+.v-row { font-size:0.86rem; color:#202124; line-height:1.7; margin-bottom:8px; }
+.v-row .lbl { font-size:0.7rem; color:#80868b; display:block; }
+.v-empty { font-size:0.8rem; color:#9aa0a6; }
+
+/* 数秘 */
+.num-wrap { display:flex; gap:10px; align-items:stretch; }
+.num-badge { flex:0 0 88px; background:#f6f4ff; border:1.5px solid #e5deff; border-radius:12px; text-align:center; padding:10px 6px; }
+.num-badge .n { font-size:1.9rem; font-weight:800; color:#6a4bd8; line-height:1.1; }
+.num-badge .t { font-size:0.68rem; color:#7a6bb5; }
+.num-desc { flex:1; font-size:0.82rem; color:#3c4043; line-height:1.6; }
+
+/* 性質タグ */
+.trait-chip { display:inline-block; font-size:0.76rem; background:#eef2f7; color:#3c4043; border-radius:14px; padding:4px 10px; margin:0 6px 6px 0; }
+
+/* 病歴タイムライン */
+.tl { position:relative; padding-left:16px; border-left:2px solid #e6e8eb; margin-top:6px; }
+.tl-item { position:relative; margin-bottom:12px; }
+.tl-item .dot { position:absolute; left:-21px; top:3px; width:9px; height:9px; border-radius:50%; background:#d93025; }
+.tl-item.minor .dot { background:#9aa0a6; }
+.tl-ym { font-size:0.78rem; font-weight:700; color:#202124; }
+.tl-label { font-size:0.86rem; color:#202124; }
+.tl-detail { font-size:0.74rem; color:#5f6368; }
+.tl-src { font-size:0.68rem; color:#9aa0a6; }
+.cand-box { background:#fff8e1; border:1.5px solid #f5d97a; border-radius:12px; padding:10px; margin-bottom:8px; }
+.cand-actions button { border:none; border-radius:8px; padding:5px 12px; font-size:0.74rem; font-weight:700; cursor:pointer; margin-right:6px; }
+.btn-approve { background:#e6f4ea; color:#1e8e3e; }
+.btn-dismiss { background:#fce8e6; color:#c5221f; }
+.btn-sub { width:100%; padding:10px; border:1.5px solid #1a73e8; background:#fff; color:#1a73e8; border-radius:10px; font-weight:700; font-size:0.84rem; cursor:pointer; margin-top:6px; }
+.btn-sub:disabled { opacity:0.5; cursor:not-allowed; }
+.ocr-btn { display:inline-flex; align-items:center; gap:5px; font-size:0.76rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:6px 12px; cursor:pointer; font-weight:700; margin-top:4px; }
+.med-add-row { display:grid; grid-template-columns: 120px 1fr auto; gap:6px; align-items:end; }
+@media (max-width:480px){ .med-add-row { grid-template-columns:1fr; } }
 </style>
 {% endblock %}
 
@@ -123,8 +166,134 @@
         </div>
     </div>
 
+    <!-- patient-hub-v1: 見る/入力タブ -->
+    <div id="tabbedArea" style="display:none;">
+      <div class="hub-tabs">
+        <div class="hub-tab active" id="tabView" onclick="window.patientInfoApp.switchTab('view')">
+          <span class="material-symbols-outlined">visibility</span>見る
+        </div>
+        <div class="hub-tab" id="tabInput" onclick="window.patientInfoApp.switchTab('input')">
+          <span class="material-symbols-outlined">edit</span>入力
+        </div>
+      </div>
+
+      <!-- ===== 見る（閲覧） ===== -->
+      <div id="viewPane">
+
+        <div class="v-card">
+          <div id="viewProfileHead"></div>
+        </div>
+
+        <div class="v-card">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">calculate</span>数秘（ライフパスナンバー）</div>
+          <div id="viewNumerology"></div>
+        </div>
+
+        <div class="v-card">
+          <div class="v-card-h">
+            <span class="material-symbols-outlined" style="font-size:18px;">psychology</span>記録から推測される人となり
+            <button class="edit-jump" onclick="window.patientInfoApp.genPersonality()">AIで生成/更新</button>
+          </div>
+          <div id="viewPersonality"><div class="v-empty">まだ生成されていません。「AIで生成/更新」で作成します。</div></div>
+        </div>
+
+        <div class="v-card">
+          <div class="v-card-h">
+            <span class="material-symbols-outlined" style="font-size:18px;">medical_services</span>既往歴・医療の歩み
+            <button class="edit-jump" onclick="window.patientInfoApp.scanMedical()">記録からAI抽出</button>
+          </div>
+          <div id="viewCandidates"></div>
+          <div id="viewMedical"></div>
+        </div>
+
+        <div class="v-card">
+          <div class="v-card-h">
+            <span class="material-symbols-outlined" style="font-size:18px;">badge</span>プロフィール
+            <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
+          </div>
+          <div id="viewBasic"></div>
+        </div>
+
+        <div class="v-card" style="border-style:dashed;">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">family_history</span>家族構成（ジェノグラム）</div>
+          <div class="v-empty">図の編集は次の更新で追加します（現在は下の「入力」タブの家族構成メモが使えます）。</div>
+        </div>
+
+        <div class="v-card" style="border-style:dashed;">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">sticky_note_2</span>ICF（付箋ボード）</div>
+          <div class="v-empty">付箋ボードは次の更新で追加します。</div>
+        </div>
+
+      </div>
+
+      <!-- ===== 入力（編集） ===== -->
+      <div id="inputPane" style="display:none;">
+
+        <!-- 基本情報 -->
+        <div id="basicEditor" class="section-card">
+          <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">badge</span>基本情報
+          </div>
+          <div class="goal-section-hint">既往歴・家族構成・職歴・趣味嗜好・好き嫌いはここに入力します（旧・編集ページの欄はこちらに統合）。</div>
+
+          <div class="field-row">
+            <label>既往歴</label>
+            <textarea data-basic="medical_history" placeholder="例: 脳梗塞（2020年）、高血圧、糖尿病"></textarea>
+          </div>
+          <div class="field-row">
+            <label>家族構成（メモ）</label>
+            <textarea data-basic="family_structure" placeholder="例: 長女と二人暮らし（長女は日中就労）"></textarea>
+          </div>
+          <div class="field-row">
+            <label>職歴</label>
+            <textarea data-basic="job_history" placeholder="例: 元・小学校教諭"></textarea>
+          </div>
+          <div class="field-row">
+            <label>趣味・嗜好
+              <button type="button" class="ocr-btn" onclick="document.getElementById('hobbyOcrFile').click()">
+                <span class="material-symbols-outlined" style="font-size:16px;">photo_camera</span>シートをカメラで読み取り
+              </button>
+            </label>
+            <textarea data-basic="hobbies" placeholder="例: 手芸、園芸、演歌"></textarea>
+            <input type="file" id="hobbyOcrFile" accept="image/*" capture="environment" style="display:none;">
+            <div id="ocrStatus" style="font-size:0.72rem; color:#5f6368; margin-top:4px;"></div>
+          </div>
+          <div class="field-row-inline">
+            <div class="field-row" style="margin:0;">
+              <label>好きなもの</label>
+              <textarea data-basic="likes" placeholder="例: 甘い和菓子、猫"></textarea>
+            </div>
+            <div class="field-row" style="margin:0;">
+              <label>苦手・嫌いなもの</label>
+              <textarea data-basic="dislikes" placeholder="例: 大きな音、急かされること"></textarea>
+            </div>
+          </div>
+          <button id="saveBasicBtn" class="btn-primary" style="margin-top:6px;">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>基本情報を保存
+          </button>
+        </div>
+
+        <!-- 病歴（手入力・承認済みとして確定） -->
+        <div class="section-card">
+          <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">medical_services</span>病歴を追加
+          </div>
+          <div class="goal-section-hint">大きな病気・けが・入院などを年月付きで追加します（承認済みとして「見る」に表示）。</div>
+          <div class="med-add-row">
+            <div class="field-row" style="margin:0;">
+              <label>発生年月</label>
+              <input type="month" id="medYm">
+            </div>
+            <div class="field-row" style="margin:0;">
+              <label>内容</label>
+              <input type="text" id="medLabel" placeholder="例: 脳梗塞">
+            </div>
+            <button class="btn-sub" style="margin:0; width:auto; padding:10px 16px;" onclick="window.patientInfoApp.addMedical()">追加</button>
+          </div>
+        </div>
+
     <!-- ケアプラン編集エリア -->
-    <div id="planEditor" style="display:none;">
+    <div id="planEditor">
 
         <!-- 要介護度（期間計算で使用） -->
         <div class="section-card">
@@ -246,6 +415,8 @@
             この内容で保存
         </button>
     </div>
+      </div><!-- /inputPane -->
+    </div><!-- /tabbedArea -->
 
 </div>
 </div>
@@ -272,9 +443,179 @@ const PATIENTS = {{ patients | tojson }};
             });
             
             document.getElementById("saveBtn").addEventListener("click", () => this.save());
-            
+
+            // patient-hub-v1: 基本情報保存・趣味嗜好OCR
+            document.getElementById("saveBasicBtn").addEventListener("click", () => this.saveBasic());
+            document.getElementById("hobbyOcrFile").addEventListener("change", (e) => {
+                if (e.target.files[0]) this.hobbyOcr(e.target.files[0]);
+                e.target.value = "";
+            });
+
             // 期間自動計算
             this.setupPeriodAutoCalc();
+        },
+
+        // ===== patient-hub-v1: 見る/入力ハブ =====
+        hubPid: null,
+        hubData: null,
+
+        switchTab(which) {
+            const v = document.getElementById("viewPane"), i = document.getElementById("inputPane");
+            const tv = document.getElementById("tabView"), ti = document.getElementById("tabInput");
+            if (which === "input") {
+                v.style.display = "none"; i.style.display = "block";
+                tv.classList.remove("active"); ti.classList.add("active");
+            } else {
+                v.style.display = "block"; i.style.display = "none";
+                ti.classList.remove("active"); tv.classList.add("active");
+            }
+        },
+
+        async loadHub(patient, fillInputs = true) {
+            this.hubPid = null; this.hubData = null;
+            try {
+                const res = await fetch(`/api/patient-hub/get?user_name=${encodeURIComponent(patient.user_name)}`);
+                const j = await res.json();
+                if (j.status !== "success") return;
+                this.hubPid = j.pid; this.hubData = j;
+                if (fillInputs) this.fillBasicInputs(j.profile);
+                this.renderView(j);
+            } catch (e) { /* 表示は空のまま */ }
+        },
+
+        async reloadHub() {
+            if (this.currentPatient) await this.loadHub(this.currentPatient, false);
+        },
+
+        fillBasicInputs(profile) {
+            document.querySelectorAll('[data-basic]').forEach(el => {
+                el.value = (profile && profile[el.dataset.basic]) || "";
+            });
+        },
+
+        calcAge(birth) {
+            if (!birth) return null;
+            const d = new Date(birth); if (isNaN(d.getTime())) return null;
+            const n = new Date(); let a = n.getFullYear() - d.getFullYear();
+            if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--;
+            return a;
+        },
+
+        renderView(j) {
+            const p = j.profile || {};
+            const age = this.calcAge(p.birth_date);
+            document.getElementById("viewProfileHead").innerHTML =
+                `<div style="font-size:1.05rem;font-weight:800;color:#202124;">${this.esc(p.user_name || "")}</div>` +
+                `<div style="font-size:0.78rem;color:#5f6368;margin-top:2px;">${this.esc(p.user_name_kana || "")}${age != null ? ` ・ ${age}歳` : ""}${p.care_level ? ` ・ ${this.esc(p.care_level)}` : ""}${p.is_discontinued ? " ・ 利用終了" : ""}</div>`;
+
+            const nm = j.numerology || {};
+            document.getElementById("viewNumerology").innerHTML = nm.number
+                ? `<div class="num-wrap"><div class="num-badge"><div class="n">${nm.number}</div><div class="t">ライフパス</div></div><div class="num-desc"><b>${this.esc(nm.label)}</b><br>${this.esc(nm.desc)}</div></div>`
+                : `<div class="v-empty">生年月日が未登録のため算出できません。</div>`;
+
+            const per = j.personality;
+            if (per) {
+                let traits = [];
+                try { traits = JSON.parse(per.traits || "[]"); } catch (e) { traits = (per.traits || "").split(",").filter(Boolean); }
+                document.getElementById("viewPersonality").innerHTML =
+                    traits.map(t => `<span class="trait-chip">${this.esc(t)}</span>`).join("") +
+                    `<div style="font-size:0.82rem;color:#3c4043;line-height:1.6;margin-top:4px;">${this.esc(per.summary || "")}</div>` +
+                    `<div style="font-size:0.68rem;color:#9aa0a6;margin-top:6px;">${per.source_count || 0}件の記録をもとに生成</div>`;
+            } else {
+                document.getElementById("viewPersonality").innerHTML = `<div class="v-empty">まだ生成されていません。「AIで生成/更新」で作成します。</div>`;
+            }
+
+            const cands = j.medical_candidates || [];
+            document.getElementById("viewCandidates").innerHTML = cands.length
+                ? cands.map(c => `<div class="cand-box"><div style="font-size:0.7rem;color:#9a7b1f;font-weight:700;margin-bottom:3px;">AI候補（承認待ち）</div><div class="tl-ym">${this.esc(c.event_ym || "")}</div><div class="tl-label">${this.esc(c.label)}</div>${c.detail ? `<div class="tl-detail">${this.esc(c.detail)}</div>` : ""}<div class="cand-actions" style="margin-top:6px;"><button class="btn-approve" onclick="window.patientInfoApp.setMedical('${c.id}','approve')">承認</button><button class="btn-dismiss" onclick="window.patientInfoApp.setMedical('${c.id}','dismiss')">却下</button></div></div>`).join("")
+                : "";
+
+            const meds = j.medical_approved || [];
+            document.getElementById("viewMedical").innerHTML = meds.length
+                ? `<div class="tl">` + meds.map(m => `<div class="tl-item ${m.severity === 'minor' ? 'minor' : ''}"><div class="dot"></div><div class="tl-ym">${this.esc(m.event_ym || m.event_date || "")}</div><div class="tl-label">${this.esc(m.label)}</div>${m.detail ? `<div class="tl-detail">${this.esc(m.detail)}</div>` : ""}<div class="tl-src">${m.source === 'record_ai' ? '記録から' : '手入力'}<span onclick="window.patientInfoApp.setMedical('${m.id}','delete')" style="color:#c5221f;cursor:pointer;margin-left:8px;">削除</span></div></div>`).join("") + `</div>`
+                : (cands.length ? "" : `<div class="v-empty">まだ登録がありません。「入力」タブや「記録からAI抽出」で追加できます。</div>`);
+
+            const rows = [["既往歴", p.medical_history], ["家族構成", p.family_structure], ["職歴", p.job_history], ["趣味・嗜好", p.hobbies], ["好きなもの", p.likes], ["苦手・嫌いなもの", p.dislikes]];
+            document.getElementById("viewBasic").innerHTML = rows.map(([lbl, val]) =>
+                `<div class="v-row"><span class="lbl">${lbl}</span>${val ? this.esc(val).replace(/\n/g, "<br>") : '<span class="v-empty">未入力</span>'}</div>`).join("");
+        },
+
+        async saveBasic() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            const btn = document.getElementById("saveBasicBtn"); btn.disabled = true;
+            const body = { pid: this.hubPid };
+            document.querySelectorAll('[data-basic]').forEach(el => { body[el.dataset.basic] = el.value; });
+            try {
+                const r = await fetch("/api/patient-hub/save-basic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "保存に失敗しました");
+                this.showSuccess("基本情報を保存しました ✓");
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+            finally { btn.disabled = false; }
+        },
+
+        async addMedical() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            const ym = document.getElementById("medYm").value;
+            const label = document.getElementById("medLabel").value.trim();
+            if (!label) { this.showError("内容を入力してください"); return; }
+            try {
+                const r = await fetch("/api/patient-hub/medical/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid, event_ym: ym, label }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "追加に失敗しました");
+                document.getElementById("medYm").value = ""; document.getElementById("medLabel").value = "";
+                this.showSuccess("病歴を追加しました ✓");
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+        },
+
+        async setMedical(id, action) {
+            try {
+                const r = await fetch("/api/patient-hub/medical/set-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "更新に失敗しました");
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+        },
+
+        async genPersonality() {
+            if (!this.hubPid) return;
+            this.showSuccess("AIが記録を読み込んでいます…");
+            try {
+                const r = await fetch("/api/patient-hub/personality/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "生成に失敗しました");
+                if (j.message) this.showError(j.message);
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+        },
+
+        async scanMedical() {
+            if (!this.hubPid) return;
+            this.showSuccess("記録から病歴候補を探しています…");
+            try {
+                const r = await fetch("/api/patient-hub/medical/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "抽出に失敗しました");
+                this.showSuccess(`候補を${j.added || 0}件追加しました（承認待ち）`);
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+        },
+
+        async hobbyOcr(file) {
+            if (!file || !this.hubPid) { if (!this.hubPid) this.showError("先に利用者を選択してください"); return; }
+            const st = document.getElementById("ocrStatus"); st.textContent = "読み取り中…";
+            try {
+                const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(file); });
+                const r = await fetch("/api/patient-hub/hobby-ocr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: b64, mime_type: file.type || "image/jpeg" }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "読み取りに失敗しました");
+                const o = j.ocr || {};
+                const setv = (k, v) => { if (v) { const el = document.querySelector(`[data-basic="${k}"]`); el.value = (el.value ? el.value + "\n" : "") + v; } };
+                setv("hobbies", o.hobbies); setv("likes", o.likes); setv("dislikes", o.dislikes); setv("job_history", o.job_history);
+                st.textContent = "読み取り完了。内容を確認して「基本情報を保存」を押してください。";
+            } catch (e) { st.textContent = ""; this.showError(e.message); }
         },
         
         // ---- 期間自動計算 ----
@@ -416,10 +757,12 @@ const PATIENTS = {{ patients | tojson }};
             document.getElementById("searchBox").style.display = "none";
             document.getElementById("candidates").style.display = "none";
             document.getElementById("selectedPatient").style.display = "flex";
-            document.getElementById("selectedPatientName").textContent = 
+            document.getElementById("selectedPatientName").textContent =
                 `(No.${patient.chart_number}) ${patient.user_name}`;
-            document.getElementById("planEditor").style.display = "block";
-            
+            document.getElementById("tabbedArea").style.display = "block";
+            this.switchTab("view");
+            this.loadHub(patient);
+
             this.clearForm();
             try {
                 const displayValue = patient.value || `[${patient.user_name}]`;
@@ -440,7 +783,7 @@ const PATIENTS = {{ patients | tojson }};
             this.currentPatient = null;
             document.getElementById("searchBox").style.display = "block";
             document.getElementById("selectedPatient").style.display = "none";
-            document.getElementById("planEditor").style.display = "none";
+            document.getElementById("tabbedArea").style.display = "none";
             document.getElementById("patientSearch").value = "";
             document.getElementById("patientSearch").focus();
             this.clearForm();
