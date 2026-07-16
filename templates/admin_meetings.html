@@ -1092,10 +1092,14 @@ function mtgEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 function mtgStickyHTML(c){
   const slot = c.slot || mtgSlotOf(c.component, null);
   const base = MTG_SLOTS[slot] || MTG_SLOTS.bs;
+  const isCannot = (c.polarity === 'cannot');
   let bg=base.bg, bd='1px solid transparent', tc=base.tx;
   if(c.confirmed){ bg='#E1F5EE'; bd='2px solid #0F6E56'; tc='#04342C'; }
   else if(c.confidence==='needs_review'){ bg='#FAEEDA'; bd='1px dashed #BA7517'; tc='#412402'; }
-  const label = c.icf_code ? (mtgEsc(c.icf_code)+' '+mtgEsc(c.title_ja||mtgMasterTitle(c.icf_code))) : mtgEsc(c.note||'メモ');
+  // patient-hub-v1 A(Step3): できない=赤。承認済み(緑)は色を保ち左端に赤線＋バッジで示す。
+  if(isCannot && !c.confirmed){ bg='#FDECEA'; bd='1px solid #F4A9A3'; tc='#C5221F'; }
+  const polBadge = isCannot ? '<span style="background:#c5221f;color:#fff;border-radius:8px;font-size:10px;font-weight:700;padding:1px 6px;margin-right:4px;">できない</span>' : '';
+  const label = polBadge + (c.icf_code ? (mtgEsc(c.icf_code)+' '+mtgEsc(c.title_ja||mtgMasterTitle(c.icf_code))) : mtgEsc(c.note||'メモ'));
   const src = c.source_text ? '<div class="st-src">「'+mtgEsc(c.source_text)+'」</div>' : '';
   const alt = c.alt_icf_code
     ? '<button class="st-alt" data-alt="'+c.id+'">もしかして: '+mtgEsc(c.alt_icf_code)+' '+mtgEsc(c.alt_title_ja||mtgMasterTitle(c.alt_icf_code))+'</button>'
@@ -1109,6 +1113,7 @@ function mtgStickyHTML(c){
     + src
     + '<div class="st-row">'
     + '<button class="st-btn'+(c.confirmed?' on':'')+'" data-ok="'+c.id+'">'+(c.confirmed?'✓承認':'承認')+'</button>'
+    + '<button class="st-btn" data-pol="'+c.id+'" style="'+(isCannot?'color:#c5221f;border-color:#f4a9a3;':'')+'">'+(isCannot?'できない':'できる')+'</button>'
     + codeBtn
     + '<button class="st-btn" data-del="'+c.id+'">削除</button>'
     + '</div>'
@@ -1123,6 +1128,9 @@ function mtgWireBoard(){
     e.stopPropagation(); const c=mtgFindCard(b.dataset.ok); if(c){ c.confirmed=!c.confirmed; mtgRenderBoard(); }});
   document.querySelectorAll('#mtgBoard [data-del]').forEach(b=>b.onclick=e=>{
     e.stopPropagation(); mtgState.boardCards = mtgState.boardCards.filter(x=>String(x.id)!==String(b.dataset.del)); mtgRenderBoard(); });
+  // patient-hub-v1 A(Step3): できる/できない トグル
+  document.querySelectorAll('#mtgBoard [data-pol]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); const c=mtgFindCard(b.dataset.pol); if(c){ c.polarity=(c.polarity==='cannot')?'can':'cannot'; mtgRenderBoard(); }});
   document.querySelectorAll('#mtgBoard [data-alt]').forEach(b=>b.onclick=e=>{
     e.stopPropagation(); const c=mtgFindCard(b.dataset.alt); if(c && c.alt_icf_code){
       const oc=c.icf_code, ot=c.title_ja; c.icf_code=c.alt_icf_code; c.title_ja=c.alt_title_ja||mtgMasterTitle(c.alt_icf_code);
