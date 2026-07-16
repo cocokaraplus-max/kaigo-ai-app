@@ -509,13 +509,26 @@ def register_patient_hub_routes(app):
         try:
             lr = (supabase.table("meeting_icf_links").select("*")
                   .eq("meeting_id", meeting_id).execute())
+            # board_component が空のとき用: icf_code→構成要素(b/s/d/e)→zone のフォールバック
+            code_comp = {}
+            try:
+                mm = (supabase.table("icf_codes").select("code,component").eq("level", 2).execute())
+                for c in (mm.data or []):
+                    code_comp[c.get("code")] = (c.get("component") or "")
+            except Exception:
+                pass
+            COMP_TO_ZONE = {"b": "body", "s": "body", "d": "activity", "e": "environment"}
             rows = []
             for i, s in enumerate(lr.data or []):
                 txt = (s.get("source_text") or s.get("note") or "").strip()
                 if not txt:
                     continue
                 bc = (str(s.get("board_component") or "").strip())
-                zone = BC_TO_ZONE.get(bc, "unsorted")
+                if bc:
+                    zone = BC_TO_ZONE.get(bc, "unsorted")
+                else:
+                    comp = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
+                    zone = COMP_TO_ZONE.get(comp, "unsorted")
                 rows.append({
                     "facility_code": f_code,
                     "patient_profile_id": str(pid),
