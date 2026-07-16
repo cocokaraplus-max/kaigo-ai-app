@@ -124,6 +124,23 @@
 .fam-row .l2 label { display:inline-flex; align-items:center; gap:4px; }
 .fam-del { margin-left:auto; background:#fce8e6; color:#c5221f; border:none; border-radius:8px; padding:5px 12px; cursor:pointer; font-size:0.74rem; font-weight:700; }
 .fam-legend { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; font-size:0.68rem; color:#80868b; margin-top:4px; }
+
+/* ICF付箋ボード */
+.icf-zone { border:1px solid #e6e8eb; border-radius:10px; padding:8px; margin-bottom:8px; }
+.icf-zone-h { font-size:0.76rem; font-weight:700; color:#3c4043; margin-bottom:6px; display:flex; align-items:center; }
+.icf-add { margin-left:auto; background:#fff; color:#1a73e8; border:1px solid #cfe0fb; border-radius:6px; padding:3px 9px; font-size:0.72rem; font-weight:700; cursor:pointer; }
+.icf-stickies { display:flex; flex-wrap:wrap; gap:6px; min-height:30px; }
+.icf-sticky { display:inline-flex; align-items:center; gap:4px; background:#fff7cc; border:1px solid #f0e08a; border-radius:6px; padding:4px 6px; font-size:0.8rem; max-width:100%; }
+.icf-handle { cursor:grab; color:#b0a44a; font-size:0.95rem; touch-action:none; user-select:none; line-height:1; }
+.icf-text { outline:none; min-width:24px; color:#3c4043; }
+.icf-text:focus { background:#fffde3; }
+.icf-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:0.95rem; line-height:1; padding:0 2px; }
+.icf-zone.body{background:#fdecea;border-color:#f4c7c3;} .icf-zone.activity{background:#e8f0fe;border-color:#c3d7f4;}
+.icf-zone.participation{background:#e6f4ea;border-color:#bfe3ca;} .icf-zone.environment{background:#fff8e1;border-color:#f0e08a;}
+.icf-zone.personal{background:#f3e8fd;border-color:#dcc3f4;} .icf-zone.unsorted{background:#f1f3f4;border-color:#dadce0;}
+.icf-zone.dragover { outline:2px dashed #1a73e8; outline-offset:1px; }
+.icf-vzone { margin-bottom:8px; }
+.icf-vzone .z { font-size:0.72rem; color:#80868b; margin-bottom:3px; }
 </style>
 {% endblock %}
 
@@ -232,9 +249,11 @@
           <div class="fam-legend"><span>□ 男性</span><span>○ 女性</span><span>◎ 本人</span><span>✕ 故人</span><span style="color:#1a73e8;">┈ 同居</span></div>
         </div>
 
-        <div class="v-card" style="border-style:dashed;">
-          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">sticky_note_2</span>ICF（付箋ボード）</div>
-          <div class="v-empty">付箋ボードは次の更新で追加します。</div>
+        <div class="v-card">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">sticky_note_2</span>ICF（付箋ボード）
+            <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
+          </div>
+          <div id="viewIcf"><div class="v-empty">まだ付箋がありません。「入力」タブで追加、または議事録から取り込めます。</div></div>
         </div>
 
       </div>
@@ -300,6 +319,19 @@
           </div>
           <button id="saveFamilyBtn" class="btn-primary" style="margin-top:10px;" onclick="window.patientInfoApp.saveFamily()">
             <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>家系図を保存
+          </button>
+        </div>
+
+        <!-- ICF付箋ボード -->
+        <div class="section-card">
+          <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">sticky_note_2</span>ICF付箋ボード
+          </div>
+          <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。議事録の付箋も取り込めます。</div>
+          <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">議事録から取り込み</button>
+          <div id="icfBoard" style="margin-top:10px;"></div>
+          <button id="saveIcfBtn" class="btn-primary" style="margin-top:6px;" onclick="window.patientInfoApp.saveIcf()">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>ICF付箋を保存
           </button>
         </div>
 
@@ -518,6 +550,8 @@ const PATIENTS = {{ patients | tojson }};
                         is_self: !!m.is_self,
                     }));
                     this.renderFamilyEditor();
+                    this.icfStickies = (j.icf || []).map(s => ({ zone: s.zone || "unsorted", text: s.text || "", icf_code: s.icf_code || "" }));
+                    this.renderIcfBoard();
                 }
                 this.renderView(j);
             } catch (e) { /* 表示は空のまま */ }
@@ -584,6 +618,109 @@ const PATIENTS = {{ patients | tojson }};
             gEl.innerHTML = fam.length
                 ? this.renderGenogram(fam.map(m => ({ ...m, is_self: !!m.is_self || m.relation_role === "self" })))
                 : `<div class="v-empty">まだ家族が登録されていません。「入力」タブで追加できます。</div>`;
+
+            const icf = (j.icf || []);
+            const iEl = document.getElementById("viewIcf");
+            if (!icf.length) {
+                iEl.innerHTML = `<div class="v-empty">まだ付箋がありません。「入力」タブで追加、または議事録から取り込めます。</div>`;
+            } else {
+                iEl.innerHTML = this.ICF_ZONES.filter(([z]) => icf.some(s => (s.zone || "unsorted") === z)).map(([z, t]) => {
+                    const chips = icf.filter(s => (s.zone || "unsorted") === z)
+                        .map(s => `<span class="icf-sticky">${this.esc(s.text)}</span>`).join("");
+                    return `<div class="icf-vzone"><div class="z">${t}</div><div class="icf-stickies">${chips}</div></div>`;
+                }).join("");
+            }
+        },
+
+        // ===== ICF付箋ボード =====
+        icfStickies: [],
+        icfDragInit: false,
+        ICF_ZONES: [["body", "心身機能・構造"], ["activity", "活動"], ["participation", "参加"], ["environment", "環境因子"], ["personal", "個人因子"], ["unsorted", "未分類"]],
+
+        renderIcfBoard() {
+            const board = document.getElementById("icfBoard"); if (!board) return;
+            board.innerHTML = this.ICF_ZONES.map(([z, t]) => {
+                const chips = this.icfStickies.map((s, i) => ({ s, i })).filter(o => o.s.zone === z).map(o =>
+                    `<div class="icf-sticky" data-idx="${o.i}"><span class="icf-handle" data-idx="${o.i}" aria-label="ドラッグ">⠿</span><span class="icf-text" contenteditable data-idx="${o.i}">${this.esc(o.s.text)}</span><button class="icf-del" data-idx="${o.i}" aria-label="削除">×</button></div>`).join("");
+                return `<div class="icf-zone ${z}" data-zone="${z}"><div class="icf-zone-h">${t}<button class="icf-add" data-zone="${z}">＋</button></div><div class="icf-stickies" data-zone="${z}">${chips}</div></div>`;
+            }).join("");
+            if (!this.icfDragInit) this.attachIcfEvents();
+        },
+
+        attachIcfEvents() {
+            const board = document.getElementById("icfBoard"); if (!board) return;
+            this.icfDragInit = true;
+            board.addEventListener("input", (e) => {
+                const t = e.target.closest(".icf-text");
+                if (t && this.icfStickies[+t.dataset.idx]) this.icfStickies[+t.dataset.idx].text = t.textContent;
+            });
+            board.addEventListener("click", (e) => {
+                const del = e.target.closest(".icf-del");
+                if (del) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcfBoard(); return; }
+                const add = e.target.closest(".icf-add");
+                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "" }); this.renderIcfBoard(); return; }
+            });
+            board.addEventListener("pointerdown", (e) => {
+                const h = e.target.closest(".icf-handle");
+                if (h) this.startIcfDrag(e, +h.dataset.idx);
+            });
+        },
+
+        startIcfDrag(e, idx) {
+            e.preventDefault();
+            const src = e.target.closest(".icf-sticky"); if (!src) return;
+            const ghost = src.cloneNode(true);
+            Object.assign(ghost.style, { position: "fixed", zIndex: 9999, pointerEvents: "none", opacity: "0.9", width: src.offsetWidth + "px", margin: "0" });
+            document.body.appendChild(ghost);
+            src.style.opacity = "0.3";
+            const move = (m) => {
+                ghost.style.left = (m.clientX - 18) + "px";
+                ghost.style.top = (m.clientY - 14) + "px";
+                document.querySelectorAll(".icf-zone").forEach(z => z.classList.remove("dragover"));
+                const el = document.elementFromPoint(m.clientX, m.clientY);
+                const zoneEl = el && el.closest(".icf-zone");
+                if (zoneEl) zoneEl.classList.add("dragover");
+            };
+            move(e);
+            const up = (u) => {
+                document.removeEventListener("pointermove", move);
+                document.removeEventListener("pointerup", up);
+                ghost.remove();
+                document.querySelectorAll(".icf-zone").forEach(z => z.classList.remove("dragover"));
+                const el = document.elementFromPoint(u.clientX, u.clientY);
+                const zoneEl = el && el.closest("[data-zone]");
+                if (zoneEl && this.icfStickies[idx]) { this.icfStickies[idx].zone = zoneEl.dataset.zone; }
+                this.renderIcfBoard();
+            };
+            document.addEventListener("pointermove", move);
+            document.addEventListener("pointerup", up);
+        },
+
+        async saveIcf() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            const btn = document.getElementById("saveIcfBtn"); btn.disabled = true;
+            const stickies = this.icfStickies.filter(s => (s.text || "").trim()).map(s => ({ zone: s.zone, text: s.text, icf_code: s.icf_code || "" }));
+            try {
+                const r = await fetch("/api/patient-hub/icf/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid, stickies }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "保存に失敗しました");
+                this.showSuccess("ICF付箋を保存しました ✓");
+                await this.loadHub(this.currentPatient, false);
+            } catch (e) { this.showError(e.message); }
+            finally { btn.disabled = false; }
+        },
+
+        async importIcf() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            this.showSuccess("議事録の付箋を取り込んでいます…");
+            try {
+                const r = await fetch("/api/patient-hub/icf/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "取り込みに失敗しました");
+                if (j.added) this.showSuccess(`${j.added}件を取り込みました`); else this.showError(j.message || "取り込める付箋がありませんでした");
+                await this.loadHub(this.currentPatient, true);
+                this.switchTab("input");
+            } catch (e) { this.showError(e.message); }
         },
 
         // ===== 家系図（ジェノグラム） =====
