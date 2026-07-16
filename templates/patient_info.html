@@ -114,6 +114,16 @@
 .ocr-btn { display:inline-flex; align-items:center; gap:5px; font-size:0.76rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:6px 12px; cursor:pointer; font-weight:700; margin-top:4px; }
 .med-add-row { display:grid; grid-template-columns: 120px 1fr auto; gap:6px; align-items:end; }
 @media (max-width:480px){ .med-add-row { grid-template-columns:1fr; } }
+
+/* 家系図エディタ */
+.fam-row { border:1px solid #e6e8eb; border-radius:10px; padding:8px; margin-bottom:8px; background:#fafbfc; }
+.fam-row .l1 { display:flex; gap:6px; margin-bottom:6px; }
+.fam-row .l1 input, .fam-row .l1 select { padding:7px 8px; border:1px solid #dadce0; border-radius:8px; font-size:0.82rem; box-sizing:border-box; }
+.fam-row .l1 input { flex:1; min-width:0; }
+.fam-row .l2 { display:flex; gap:12px; align-items:center; font-size:0.78rem; color:#5f6368; }
+.fam-row .l2 label { display:inline-flex; align-items:center; gap:4px; }
+.fam-del { margin-left:auto; background:#fce8e6; color:#c5221f; border:none; border-radius:8px; padding:5px 12px; cursor:pointer; font-size:0.74rem; font-weight:700; }
+.fam-legend { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; font-size:0.68rem; color:#80868b; margin-top:4px; }
 </style>
 {% endblock %}
 
@@ -214,9 +224,12 @@
           <div id="viewBasic"></div>
         </div>
 
-        <div class="v-card" style="border-style:dashed;">
-          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">family_history</span>家族構成（ジェノグラム）</div>
-          <div class="v-empty">図の編集は次の更新で追加します（現在は下の「入力」タブの家族構成メモが使えます）。</div>
+        <div class="v-card">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">family_history</span>家族構成（家系図）
+            <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
+          </div>
+          <div id="viewGenogram"><div class="v-empty">まだ家族が登録されていません。「入力」タブで追加できます。</div></div>
+          <div class="fam-legend"><span>□ 男性</span><span>○ 女性</span><span>◎ 本人</span><span>✕ 故人</span><span style="color:#1a73e8;">┈ 同居</span></div>
         </div>
 
         <div class="v-card" style="border-style:dashed;">
@@ -270,6 +283,23 @@
           </div>
           <button id="saveBasicBtn" class="btn-primary" style="margin-top:6px;">
             <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>基本情報を保存
+          </button>
+        </div>
+
+        <!-- 家族構成（家系図） -->
+        <div class="section-card">
+          <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">family_history</span>家族構成（家系図）
+          </div>
+          <div class="goal-section-hint">家族を追加すると自動で家系図になります。続柄で世代（親・本人・子）を判定し、本人は二重枠、故人は×、同居は点線枠で表示します。上の「家族構成（メモ）」は補足として併用できます。</div>
+          <div id="famRows"></div>
+          <button class="btn-sub" onclick="window.patientInfoApp.addFamilyRow()">＋ 家族を追加</button>
+          <div style="margin-top:12px;">
+            <b style="font-size:0.76rem;color:#5f6368;">プレビュー</b>
+            <div id="famPreview" style="border:1px solid #eee;border-radius:10px;padding:8px;margin-top:4px;text-align:center;"></div>
+          </div>
+          <button id="saveFamilyBtn" class="btn-primary" style="margin-top:10px;" onclick="window.patientInfoApp.saveFamily()">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>家系図を保存
           </button>
         </div>
 
@@ -478,7 +508,17 @@ const PATIENTS = {{ patients | tojson }};
                 const j = await res.json();
                 if (j.status !== "success") return;
                 this.hubPid = j.pid; this.hubData = j;
-                if (fillInputs) this.fillBasicInputs(j.profile);
+                if (fillInputs) {
+                    this.fillBasicInputs(j.profile);
+                    this.familyMembers = (j.family || []).map(m => ({
+                        member_label: m.member_label || "", sex: m.sex || "",
+                        relation_role: m.relation_role || (m.is_self ? "self" : "child"),
+                        age: (m.age != null ? m.age : ""),
+                        is_cohabiting: !!m.is_cohabiting, is_deceased: !!m.is_deceased,
+                        is_self: !!m.is_self,
+                    }));
+                    this.renderFamilyEditor();
+                }
                 this.renderView(j);
             } catch (e) { /* 表示は空のまま */ }
         },
@@ -538,6 +578,140 @@ const PATIENTS = {{ patients | tojson }};
             const rows = [["既往歴", p.medical_history], ["家族構成", p.family_structure], ["職歴", p.job_history], ["趣味・嗜好", p.hobbies], ["好きなもの", p.likes], ["苦手・嫌いなもの", p.dislikes]];
             document.getElementById("viewBasic").innerHTML = rows.map(([lbl, val]) =>
                 `<div class="v-row"><span class="lbl">${lbl}</span>${val ? this.esc(val).replace(/\n/g, "<br>") : '<span class="v-empty">未入力</span>'}</div>`).join("");
+
+            const gEl = document.getElementById("viewGenogram");
+            const fam = (j.family || []);
+            gEl.innerHTML = fam.length
+                ? this.renderGenogram(fam.map(m => ({ ...m, is_self: !!m.is_self || m.relation_role === "self" })))
+                : `<div class="v-empty">まだ家族が登録されていません。「入力」タブで追加できます。</div>`;
+        },
+
+        // ===== 家系図（ジェノグラム） =====
+        familyMembers: [],
+
+        addFamilyRow() {
+            const hasSelf = this.familyMembers.some(m => m.relation_role === "self");
+            this.familyMembers.push({ member_label: "", sex: "", relation_role: hasSelf ? "child" : "self", age: "", is_cohabiting: false, is_deceased: false, is_self: !hasSelf });
+            this.renderFamilyEditor();
+        },
+
+        delFamilyRow(i) { this.familyMembers.splice(i, 1); this.renderFamilyEditor(); },
+
+        famSet(i, k, v) { if (this.familyMembers[i]) { this.familyMembers[i][k] = v; this.renderFamilyPreview(); } },
+
+        renderFamilyEditor() {
+            const wrap = document.getElementById("famRows"); if (!wrap) return;
+            const roles = [["self", "本人"], ["spouse", "配偶者"], ["child", "子"], ["parent", "親"], ["sibling", "兄弟姉妹"], ["other", "その他"]];
+            const sexes = [["", "性別"], ["f", "○ 女性"], ["m", "□ 男性"]];
+            wrap.innerHTML = this.familyMembers.map((m, i) => `
+                <div class="fam-row">
+                  <div class="l1">
+                    <input placeholder="続柄/名前 例:長女" value="${this.esc(m.member_label || "")}" oninput="window.patientInfoApp.famSet(${i},'member_label',this.value)">
+                    <select onchange="window.patientInfoApp.famSet(${i},'sex',this.value)">${sexes.map(([v, t]) => `<option value="${v}" ${m.sex === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+                  </div>
+                  <div class="l1">
+                    <select onchange="window.patientInfoApp.famSet(${i},'relation_role',this.value)">${roles.map(([v, t]) => `<option value="${v}" ${m.relation_role === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+                    <input type="number" style="width:70px;flex:0 0 auto;" placeholder="年齢" value="${m.age != null ? m.age : ""}" oninput="window.patientInfoApp.famSet(${i},'age',this.value)">
+                  </div>
+                  <div class="l2">
+                    <label><input type="checkbox" ${m.is_cohabiting ? "checked" : ""} onchange="window.patientInfoApp.famSet(${i},'is_cohabiting',this.checked)"> 同居</label>
+                    <label><input type="checkbox" ${m.is_deceased ? "checked" : ""} onchange="window.patientInfoApp.famSet(${i},'is_deceased',this.checked)"> 故人</label>
+                    <button class="fam-del" onclick="window.patientInfoApp.delFamilyRow(${i})">削除</button>
+                  </div>
+                </div>`).join("") || '<div class="v-empty">「＋ 家族を追加」で登録します。</div>';
+            this.renderFamilyPreview();
+        },
+
+        renderFamilyPreview() {
+            const el = document.getElementById("famPreview"); if (!el) return;
+            el.innerHTML = this.familyMembers.length ? this.renderGenogram(this.familyMembers) : '<span class="v-empty" style="font-size:0.78rem;">家族を追加するとここに家系図が出ます</span>';
+        },
+
+        async saveFamily() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            const btn = document.getElementById("saveFamilyBtn"); btn.disabled = true;
+            const members = this.familyMembers.map(m => ({
+                member_label: m.member_label, sex: m.sex, relation_role: m.relation_role,
+                age: m.age, is_cohabiting: !!m.is_cohabiting, is_deceased: !!m.is_deceased,
+                is_self: m.relation_role === "self",
+            }));
+            try {
+                const r = await fetch("/api/patient-hub/family/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid, members }) });
+                const j = await r.json();
+                if (j.status !== "success") throw new Error(j.message || "保存に失敗しました");
+                this.showSuccess("家系図を保存しました ✓");
+                await this.reloadHub();
+            } catch (e) { this.showError(e.message); }
+            finally { btn.disabled = false; }
+        },
+
+        renderGenogram(members) {
+            if (!members || !members.length) return '<div class="v-empty">まだ家族が登録されていません。</div>';
+            const W = 340, cx = W / 2, rowH = 92, cellW = 64;
+            const top = members.filter(m => m.relation_role === "parent");
+            const bot = members.filter(m => m.relation_role === "child");
+            const midOrder = { sibling: 0, self: 1, spouse: 2, other: 3 };
+            const mid = members.filter(m => !["parent", "child"].includes(m.relation_role))
+                .sort((a, b) => (midOrder[a.relation_role] ?? 1) - (midOrder[b.relation_role] ?? 1));
+            let y = 30;
+            const topY = top.length ? y : null; if (top.length) y += rowH;
+            const midY = y; y += rowH;
+            const botY = bot.length ? y : null; if (bot.length) y += rowH;
+            const H = y + 6;
+            const layout = (list, ry) => { const n = list.length, tot = n * cellW, sx = cx - tot / 2 + cellW / 2; return list.map((m, i) => ({ m, x: Math.round(sx + i * cellW), y: ry })); };
+            const P = top.length ? layout(top, topY) : [];
+            const M = layout(mid, midY);
+            const C = bot.length ? layout(bot, botY) : [];
+            const all = [...P, ...M, ...C];
+            const L = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8a8f96" stroke-width="1.4"/>`;
+            let svg = "";
+            const selfN = M.find(o => o.m.relation_role === "self");
+            const spouseN = M.find(o => o.m.relation_role === "spouse");
+            let coupleX = selfN ? selfN.x : (M[0] ? M[0].x : cx);
+            if (selfN && spouseN) { svg += L(selfN.x, midY, spouseN.x, midY); coupleX = Math.round((selfN.x + spouseN.x) / 2); }
+            if (C.length) {
+                const barY = Math.round((midY + botY) / 2);
+                svg += L(coupleX, midY, coupleX, barY);
+                const xs = C.map(o => o.x);
+                svg += L(Math.min(...xs), barY, Math.max(...xs), barY);
+                C.forEach(o => { svg += L(o.x, barY, o.x, botY); });
+            }
+            if (P.length) {
+                let pX; const barY = Math.round((topY + midY) / 2);
+                if (P.length >= 2) { svg += L(P[0].x, topY, P[1].x, topY); pX = Math.round((P[0].x + P[1].x) / 2); } else pX = P[0].x;
+                const tX = selfN ? selfN.x : coupleX;
+                svg += L(pX, topY, pX, barY); svg += L(pX, barY, tX, barY); svg += L(tX, barY, tX, midY);
+            }
+            const coh = all.filter(o => o.m.is_cohabiting);
+            if (coh.length) {
+                const xs = coh.map(o => o.x), ys = coh.map(o => o.y);
+                const minX = Math.min(...xs) - 24, maxX = Math.max(...xs) + 24, minY = Math.min(...ys) - 24, maxY = Math.max(...ys) + 30;
+                svg += `<rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" rx="12" fill="none" stroke="#1a73e8" stroke-width="1.1" stroke-dasharray="5 4"/>`;
+                svg += `<text x="${maxX}" y="${minY - 3}" text-anchor="end" font-size="9" fill="#1a73e8">同居</text>`;
+            }
+            all.forEach(o => { svg += this.drawSym(o.m, o.x, o.y); });
+            return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;">${svg}</svg>`;
+        },
+
+        drawSym(m, x, y) {
+            const r = 17; const isSelf = m.is_self || m.relation_role === "self";
+            let s = "";
+            if (m.sex === "f") {
+                s += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+                if (isSelf) s += `<circle cx="${x}" cy="${y}" r="${r - 4}" fill="none" stroke="#202124" stroke-width="1.5"/>`;
+            } else if (m.sex === "m") {
+                s += `<rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+                if (isSelf) s += `<rect x="${x - r + 4}" y="${y - r + 4}" width="${(r - 4) * 2}" height="${(r - 4) * 2}" fill="none" stroke="#202124" stroke-width="1.5"/>`;
+            } else {
+                s += `<polygon points="${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+            }
+            if (m.is_deceased) {
+                s += `<line x1="${x - r}" y1="${y - r}" x2="${x + r}" y2="${y + r}" stroke="#c5221f" stroke-width="1.4"/>`;
+                s += `<line x1="${x + r}" y1="${y - r}" x2="${x - r}" y2="${y + r}" stroke="#c5221f" stroke-width="1.4"/>`;
+            }
+            const lbl = (m.member_label || "") + (m.age != null && m.age !== "" ? ` ${m.age}` : "");
+            s += `<text x="${x}" y="${y + r + 12}" text-anchor="middle" font-size="9.5" fill="#3c4043">${this.esc(lbl)}</text>`;
+            return s;
         },
 
         async saveBasic() {
