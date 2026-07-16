@@ -12628,6 +12628,20 @@ def claude_view():
         return f"エラー: {e}", 500
 
 
+@app.route('/api/staff_names', methods=['GET'])  # staff-name-select-v1
+@login_required
+def api_staff_names():
+    """在籍中の職員名一覧を返す。BIページ・議事録などの職員選択に使用。"""
+    f_code = session.get('f_code')
+    supabase = get_supabase()
+    try:
+        res = supabase.table("staffs").select("staff_name").eq("facility_code", f_code).eq("is_active", True).order("staff_name").execute()
+        names = [r["staff_name"] for r in (res.data or []) if r.get("staff_name")]
+        return jsonify({"status": "success", "names": names})
+    except Exception as e:
+        print(f"api_staff_names error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/add_staff', methods=['POST'])
 @login_required
 def api_add_staff():
