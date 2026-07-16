@@ -205,7 +205,13 @@ body.lc-bi #lc-adl-area .lc-assist { display:none !important; }
       <div class="lc-row"><label>性別</label>
         <select id="lc-gender"><option value="">選択</option><option>女性</option><option>男性</option><option>その他</option></select>  {# lc-gender-care-v1 #}
       </div>
-      <div class="lc-row"><label>評価者</label><input type="text" id="lc-evaluator" placeholder="氏名" value="{{ my_name }}"></div>  {# lc-evaljob-v1 #}
+      <div class="lc-row" style="position:relative;"><!-- staff-name-select-v1 -->
+        <label>評価者</label>
+        <div style="position:relative;flex:1;">
+          <input type="text" id="lc-evaluator" placeholder="氏名を入力または選択" value="{{ my_name }}" autocomplete="off" oninput="lcStaffSearch(this.value)" onfocus="lcStaffSearch(this.value)">
+          <div id="lc-staff-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #1a73e8;border-radius:10px;z-index:100;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);margin-top:2px;"></div>
+        </div>
+      </div>  {# lc-evaljob-v1 #}
       <div class="lc-row"><label>職種</label>  {# lc-evaljob-v1 #}
         <select id="lc-evaluator_job_sel" onchange="lcJobChange()">
           <option value="">選択</option>
@@ -894,6 +900,38 @@ function lcAdjustTotalBar() {  // lc-ui-fix-v1 / nav-hide-v4
   var wrap = document.querySelector('.lc-wrap');
   if (wrap) wrap.style.paddingBottom = (navH + totalH + 24) + 'px';
 }
+// staff-name-select-v1: 評価者欄の職員名オートコンプリート
+var _lcStaffNames = null;
+async function _lcLoadStaffNames() {
+  if (_lcStaffNames !== null) return _lcStaffNames;
+  try {
+    var r = await fetch('/api/staff_names');
+    var d = await r.json();
+    _lcStaffNames = (d.names || []);
+  } catch(e) { _lcStaffNames = []; }
+  return _lcStaffNames;
+}
+async function lcStaffSearch(q) {
+  var drop = document.getElementById('lc-staff-drop');
+  if (!drop) return;
+  var names = await _lcLoadStaffNames();
+  var filtered = q ? names.filter(function(n){ return n.includes(q); }) : names;
+  if (!filtered.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = filtered.map(function(n){
+    return '<div style="padding:10px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;" onmousedown="lcStaffPick(\'' + n.replace(/'/g,"\\'") + '\')">' + n + '</div>';
+  }).join('');
+  drop.style.display = 'block';
+}
+function lcStaffPick(name) {
+  var inp = document.getElementById('lc-evaluator');
+  var drop = document.getElementById('lc-staff-drop');
+  if (inp) inp.value = name;
+  if (drop) drop.style.display = 'none';
+}
+document.addEventListener('click', function(e){
+  var drop = document.getElementById('lc-staff-drop');
+  if (drop && !drop.contains(e.target) && e.target.id !== 'lc-evaluator') drop.style.display = 'none';
+});
 function lcJobChange() {  // lc-evaljob-v1
   var sel = document.getElementById('lc-evaluator_job_sel');
   var inp = document.getElementById('lc-evaluator_job');

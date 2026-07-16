@@ -94,7 +94,16 @@
     <div class="sm-row"><label>会議名</label><input type="text" id="smTitle" placeholder="例: 6月度全体会議 / 感染症予防勉強会"></div>
     <div class="sm-grid2">
       <div class="sm-row"><label>開催日</label><input type="date" id="smDate" value="{{ today }}"></div>
-      <div class="sm-row"><label>参加者</label><input type="text" id="smAttendees" placeholder="例: 職員一同 / ○○、△△ ほか"></div>
+      <div class="sm-row" style="flex-direction:column;align-items:stretch;"><!-- staff-name-select-v1 -->
+        <label style="margin-bottom:4px;">参加者</label>
+        <div id="smAttendeeTags" style="display:flex;flex-wrap:wrap;gap:5px;min-height:32px;padding:4px 0 2px;"></div>
+        <div style="position:relative;margin-top:4px;">
+          <input type="text" id="smAttendeeSearch" placeholder="名前で検索して追加..." autocomplete="off" oninput="smStaffSearch(this.value)" onfocus="smStaffSearch(this.value)" style="width:100%;box-sizing:border-box;">
+          <div id="smStaffDrop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #1a73e8;border-radius:10px;z-index:100;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);margin-top:2px;"></div>
+        </div>
+        <input type="hidden" id="smAttendees">
+        <button type="button" onclick="smAddAllStaff()" style="margin-top:6px;font-size:0.75rem;color:#185FA5;background:none;border:1px solid #cfe0fb;border-radius:7px;padding:4px 10px;cursor:pointer;align-self:flex-start;">全職員を追加</button>
+      </div>
     </div>
   </div>
 
@@ -212,6 +221,83 @@ var smState = {
 };
 
 function smMsg(text, ok){ var e=document.getElementById('smMsg'); e.textContent=text||''; e.className='sm-msg '+(ok?'ok':'ng'); }
+
+// ===== staff-name-select-v1: 参加者タグ選択 =====
+var _smStaffNames = null;
+async function _smLoadStaffNames() {
+  if (_smStaffNames !== null) return _smStaffNames;
+  try {
+    var r = await fetch('/api/staff_names');
+    var d = await r.json();
+    _smStaffNames = (d.names || []);
+  } catch(e) { _smStaffNames = []; }
+  return _smStaffNames;
+}
+function _smSelectedAttendees() {
+  var tags = document.getElementById('smAttendeeTags');
+  if (!tags) return [];
+  return Array.from(tags.querySelectorAll('[data-name]')).map(function(el){ return el.dataset.name; });
+}
+async function smStaffSearch(q) {
+  var drop = document.getElementById('smStaffDrop');
+  if (!drop) return;
+  var names = await _smLoadStaffNames();
+  var selected = _smSelectedAttendees();
+  var filtered = names.filter(function(n){
+    return (!q || n.includes(q)) && !selected.includes(n);
+  });
+  if (!filtered.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = filtered.map(function(n){
+    return '<div style="padding:10px 14px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid #f0f0f0;color:#202124;" onmousedown="smStaffPick(\'' + n.replace(/'/g,"\'") + '\')">' + smEsc(n) + '</div>';
+  }).join('');
+  drop.style.display = 'block';
+}
+function smStaffPick(name) {
+  var inp = document.getElementById('smAttendeeSearch');
+  var drop = document.getElementById('smStaffDrop');
+  if (inp) inp.value = '';
+  if (drop) drop.style.display = 'none';
+  _smAddAttendeeTag(name);
+}
+function _smAddAttendeeTag(name) {
+  var tags = document.getElementById('smAttendeeTags');
+  if (!tags) return;
+  if (_smSelectedAttendees().includes(name)) return;
+  var tag = document.createElement('span');
+  tag.dataset.name = name;
+  tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#e8f0fe;color:#185FA5;border-radius:16px;padding:3px 10px 3px 12px;font-size:0.82rem;font-weight:600;';
+  tag.innerHTML = smEsc(name) + '<button type="button" onmousedown="smRemoveAttendee(\'' + name.replace(/'/g,"\'") + '\')" style="background:none;border:none;color:#185FA5;cursor:pointer;font-size:1rem;line-height:1;padding:0 0 0 2px;font-weight:700;">&times;</button>';
+  tags.appendChild(tag);
+  smUpdateAttendeesHidden();
+}
+function smRemoveAttendee(name) {
+  var tags = document.getElementById('smAttendeeTags');
+  if (!tags) return;
+  var el = tags.querySelector('[data-name="' + name.replace(/"/g,'\\"') + '"]');
+  if (el) el.remove();
+  smUpdateAttendeesHidden();
+}
+function smUpdateAttendeesHidden() {
+  var inp = document.getElementById('smAttendees');
+  if (!inp) return;
+  inp.value = _smSelectedAttendees().join(', ');
+}
+async function smAddAllStaff() {
+  var names = await _smLoadStaffNames();
+  names.forEach(function(n){ _smAddAttendeeTag(n); });
+}
+function smSetAttendeeTags(str) {
+  var tags = document.getElementById('smAttendeeTags');
+  if (tags) tags.innerHTML = '';
+  if (!str) { smUpdateAttendeesHidden(); return; }
+  str.split(/[,、]/).map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(n){
+    _smAddAttendeeTag(n);
+  });
+}
+document.addEventListener('click', function(e){
+  var drop = document.getElementById('smStaffDrop');
+  if (drop && !drop.contains(e.target) && e.target.id !== 'smAttendeeSearch') drop.style.display = 'none';
+});
 
 // ===== 録音(チャンク分割) =====
 async function smToggleRec(){
@@ -494,7 +580,7 @@ async function smOpen(id){
     smState.editingId = m.id;
     document.getElementById('smTitle').value = m.title || '';
     document.getElementById('smDate').value = m.meeting_date || '';
-    document.getElementById('smAttendees').value = m.attendees || '';
+    smSetAttendeeTags(m.attendees || '');
     document.getElementById('smTranscript').value = m.transcript || '';
     document.getElementById('smMinutes').value = m.minutes || '';
     smFillDT('smDecisions', m.decisions);
@@ -533,7 +619,8 @@ function smStartNew(){
   smState.editingId = null;
   smState.sessionId = null; smState.chunkIndex = 0; smState.transcriptParts = {};
   window._smMinutesStruct = null;
-  ['smTitle','smAttendees','smTranscript','smMinutes','smDecisions','smTodos'].forEach(function(id){ document.getElementById(id).value=''; });
+  ['smTitle','smTranscript','smMinutes','smDecisions','smTodos'].forEach(function(id){ document.getElementById(id).value=''; });
+  smSetAttendeeTags('');
   document.getElementById('smDate').value = '{{ today }}';
   document.getElementById('smStyle').value = 'a';
   document.getElementById('smChunks').textContent = '';
