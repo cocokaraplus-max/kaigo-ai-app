@@ -135,6 +135,10 @@
 .icf-text { outline:none; min-width:24px; color:#3c4043; }
 .icf-text:focus { background:#fffde3; }
 .icf-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:0.95rem; line-height:1; padding:0 2px; }
+.icf-pol { border:1px solid #cfe0fb; background:#eef4ff; color:#1a73e8; border-radius:10px; font-size:0.66rem; font-weight:700; padding:1px 7px; cursor:pointer; line-height:1.4; }
+.icf-sticky.cannot { background:#fdecea; border-color:#f4a9a3; }
+.icf-sticky.cannot .icf-text { color:#c5221f; }
+.icf-sticky.cannot .icf-pol { border-color:#f4a9a3; background:#fbe3e0; color:#c5221f; }
 .icf-zone.body{background:#fdecea;border-color:#f4c7c3;} .icf-zone.activity{background:#e8f0fe;border-color:#c3d7f4;}
 .icf-zone.participation{background:#e6f4ea;border-color:#bfe3ca;} .icf-zone.environment{background:#fff8e1;border-color:#f0e08a;}
 .icf-zone.personal{background:#f3e8fd;border-color:#dcc3f4;} .icf-zone.unsorted{background:#f1f3f4;border-color:#dadce0;}
@@ -550,7 +554,7 @@ const PATIENTS = {{ patients | tojson }};
                         is_self: !!m.is_self,
                     }));
                     this.renderFamilyEditor();
-                    this.icfStickies = (j.icf || []).map(s => ({ zone: s.zone || "unsorted", text: s.text || "", icf_code: s.icf_code || "" }));
+                    this.icfStickies = (j.icf || []).map(s => ({ zone: s.zone || "unsorted", text: s.text || "", icf_code: s.icf_code || "", polarity: s.polarity || "" }));
                     this.renderIcfBoard();
                 }
                 this.renderView(j);
@@ -626,8 +630,9 @@ const PATIENTS = {{ patients | tojson }};
             } else {
                 iEl.innerHTML = this.ICF_ZONES.filter(([z]) => icf.some(s => (s.zone || "unsorted") === z)).map(([z, t]) => {
                     const chips = icf.filter(s => (s.zone || "unsorted") === z)
-                        .map(s => `<span class="icf-sticky">${this.esc(s.text)}</span>`).join("");
-                    return `<div class="icf-vzone"><div class="z">${t}</div><div class="icf-stickies">${chips}</div></div>`;
+                        .map(s => `<span class="icf-sticky ${s.polarity === "cannot" ? "cannot" : ""}">${this.esc(s.text)}</span>`).join("");
+                    const hasCannot = icf.some(s => (s.zone || "unsorted") === z && s.polarity === "cannot");
+                    return `<div class="icf-vzone"><div class="z">${t}${hasCannot ? ' <span style="color:#c5221f;">（できないこと有り）</span>' : ""}</div><div class="icf-stickies">${chips}</div></div>`;
                 }).join("");
             }
         },
@@ -640,8 +645,10 @@ const PATIENTS = {{ patients | tojson }};
         renderIcfBoard() {
             const board = document.getElementById("icfBoard"); if (!board) return;
             board.innerHTML = this.ICF_ZONES.map(([z, t]) => {
-                const chips = this.icfStickies.map((s, i) => ({ s, i })).filter(o => o.s.zone === z).map(o =>
-                    `<div class="icf-sticky" data-idx="${o.i}"><span class="icf-handle" data-idx="${o.i}" aria-label="ドラッグ">⠿</span><span class="icf-text" contenteditable data-idx="${o.i}">${this.esc(o.s.text)}</span><button class="icf-del" data-idx="${o.i}" aria-label="削除">×</button></div>`).join("");
+                const chips = this.icfStickies.map((s, i) => ({ s, i })).filter(o => o.s.zone === z).map(o => {
+                    const cannot = o.s.polarity === "cannot";
+                    return `<div class="icf-sticky ${cannot ? "cannot" : ""}" data-idx="${o.i}"><span class="icf-handle" data-idx="${o.i}" aria-label="ドラッグ">⠿</span><span class="icf-text" contenteditable data-idx="${o.i}">${this.esc(o.s.text)}</span><button class="icf-pol" data-idx="${o.i}">${cannot ? "できない" : "できる"}</button><button class="icf-del" data-idx="${o.i}" aria-label="削除">×</button></div>`;
+                }).join("");
                 return `<div class="icf-zone ${z}" data-zone="${z}"><div class="icf-zone-h">${t}<button class="icf-add" data-zone="${z}">＋</button></div><div class="icf-stickies" data-zone="${z}">${chips}</div></div>`;
             }).join("");
             if (!this.icfDragInit) this.attachIcfEvents();
@@ -657,8 +664,10 @@ const PATIENTS = {{ patients | tojson }};
             board.addEventListener("click", (e) => {
                 const del = e.target.closest(".icf-del");
                 if (del) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcfBoard(); return; }
+                const pol = e.target.closest(".icf-pol");
+                if (pol) { const s = this.icfStickies[+pol.dataset.idx]; if (s) { s.polarity = (s.polarity === "cannot") ? "can" : "cannot"; this.renderIcfBoard(); } return; }
                 const add = e.target.closest(".icf-add");
-                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "" }); this.renderIcfBoard(); return; }
+                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "", polarity: "can" }); this.renderIcfBoard(); return; }
             });
             board.addEventListener("pointerdown", (e) => {
                 const h = e.target.closest(".icf-handle");
@@ -699,7 +708,7 @@ const PATIENTS = {{ patients | tojson }};
         async saveIcf() {
             if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
             const btn = document.getElementById("saveIcfBtn"); btn.disabled = true;
-            const stickies = this.icfStickies.filter(s => (s.text || "").trim()).map(s => ({ zone: s.zone, text: s.text, icf_code: s.icf_code || "" }));
+            const stickies = this.icfStickies.filter(s => (s.text || "").trim()).map(s => ({ zone: s.zone, text: s.text, icf_code: s.icf_code || "", polarity: s.polarity || "" }));
             try {
                 const r = await fetch("/api/patient-hub/icf/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid, stickies }) });
                 const j = await r.json();

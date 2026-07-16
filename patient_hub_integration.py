@@ -455,6 +455,7 @@ def register_patient_hub_routes(app):
                     "zone": (s.get("zone") or "unsorted"),
                     "text": txt,
                     "icf_code": (s.get("icf_code") or None),
+                    "polarity": (s.get("polarity") if s.get("polarity") in ("can", "cannot") else None),
                     "color": (s.get("color") or None),
                     "pos_x": s.get("pos_x"),
                     "pos_y": s.get("pos_y"),
