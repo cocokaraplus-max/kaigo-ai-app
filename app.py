@@ -11056,6 +11056,51 @@ def api_translate_voice():
     except Exception as e:
         print(f"api_translate_voice error: {e}", flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+@app.route('/api/translate/ui', methods=['POST'])
+@login_required
+def api_translate_ui():
+    """UI要素のテキストを指定言語に翻訳する。翻訳レンズ用。translation-v1"""
+    data = request.json or {}
+    text = (data.get('text') or '').strip()
+    target_lang = (data.get('target_lang') or '').strip()
+    if not text or not target_lang:
+        return jsonify({'status': 'error', 'message': 'textとtarget_langが必要です'}), 400
+    lang_names = {
+        'en': '英語', 'zh-CN': '中国語(簡体字)', 'zh-TW': '中国語(繁体字)',
+        'ko': '韓国語', 'vi': 'ベトナム語', 'tl': 'フィリピン語(タガログ語)',
+        'id': 'インドネシア語', 'pt': 'ポルトガル語', 'es': 'スペイン語',
+        'th': 'タイ語', 'my': 'ミャンマー語',
+    }
+    from utils import get_generative_model
+    model = get_generative_model()
+    try:
+        lang_name = lang_names.get(target_lang, target_lang)
+        prompt = (
+            f"以下の日本語テキストを{lang_name}に翻訳してください。"
+            "翻訳後のテキストのみ出力してください。短いラベルや単語は簡潔に訳してください。\n\n" + text
+        )
+        result = model.generate_content([prompt])
+        return jsonify({'status': 'success', 'translated': result.text.strip(), 'original': text})
+    except Exception as e:
+        print(f"api_translate_ui error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/settings/ui_language', methods=['GET', 'POST'])
+@login_required
+def api_ui_language():
+    """ユーザーのUI表示言語設定を取得・保存する。translation-v1"""
+    f_code = session.get('f_code')
+    my_name = session.get('my_name')
+    supabase = get_supabase()
+    if request.method == 'GET':
+        lang = get_staff_setting(supabase, f_code, my_name, 'ui_language', '')
+        return jsonify({'status': 'success', 'language': lang or ''})
+    data = request.json or {}
+    lang = (data.get('language') or '').strip()
+    set_staff_setting(supabase, f_code, my_name, 'ui_language', lang)
+    return jsonify({'status': 'success'})
+
 # ===== /translation-v1 =====
 
 
