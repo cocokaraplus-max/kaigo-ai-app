@@ -73,7 +73,7 @@
     if (userLang) {
       btn.innerHTML = '<span style="font-size:1.25rem;line-height:1;">' + (LANG_FLAGS[userLang] || '🌐') + '</span>';
     } else {
-      btn.innerHTML = '<span class="material-symbols-outlined">search</span>';
+      btn.innerHTML = '<span class="material-symbols-outlined">translate</span>';
     }
   }
 
