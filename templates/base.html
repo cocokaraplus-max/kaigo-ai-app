@@ -3367,7 +3367,8 @@ document.addEventListener('input', function(e) {
         var fabArea = document.getElementById('top-fab-area');
         var isTop = window.location.pathname === '/top' || window.location.pathname === '/';
         // TOPのみベル+歯車を表示、それ以外は非表示
-        if (fabArea) fabArea.style.display = isTop ? '' : 'none';
+        // ただし翻訳ボタン（tt-lens-btn, tt-lang-btn）は全ページで表示するためfabArea自体は常に表示
+        if (fabArea) fabArea.style.display = '';
         if (bellBtn) bellBtn.style.display = isTop ? '' : 'none';
         if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
         // 目標確認ボタンはTOPのみ表示・期限切れなら赤色
